@@ -1,0 +1,13 @@
+# build outputs
+/bin/
+/dist/
+*.test
+coverage.out
+
+# session tooling (not part of the project)
+/.remember/
+/.claude/settings.local.json
+/.claude/worktrees/
+
+# OS
+.DS_Store
