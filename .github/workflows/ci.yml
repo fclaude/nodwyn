@@ -1,0 +1,28 @@
+# Runs on GitHub Actions and on Gitea Actions unchanged.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: lint
+        run: make lint
+      - name: test
+        run: make test
+      - name: exfil
+        run: make exfil
+      - name: govulncheck
+        run: govulncheck ./...

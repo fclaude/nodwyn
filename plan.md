@@ -141,7 +141,7 @@ Consequences for the plan:
 
 ### B0 — Skeleton + log (week 1)
 
-- `go mod init github.com/fclaude/nibb`, Go 1.25, Makefile (`build test lint accept exfil promote`), GitHub Actions: `go test -race`, `go vet`, `staticcheck`, `govulncheck`.
+- `go mod init github.com/fclaude/nibb`, Go 1.27, Makefile (`build test lint accept exfil promote`), GitHub Actions: `go test -race`, `go vet`, `staticcheck`, `govulncheck`.
 - `internal/log`: writer, reader, replay iterator; session ids; monotonic `seq`.
 - `internal/config`: XDG paths, policy struct, empty `bindings.toml`.
 - ADRs 1–16.
