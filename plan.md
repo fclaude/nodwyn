@@ -40,7 +40,7 @@ nibb/
     config/               XDG dirs, policy, bindings.toml loader        (B0/P3)
     scheme/               reader, values, env, eval/apply, prim table   (B1, grown in P1b)
     scheme/prelude/       *.scm embedded in the binary                  (B1)
-    prim/                 host primitives: fs, shell, http, llm-call    (B2+)
+    prim/                 host primitives: fs, shell, http, llm-call, jev (B2+, P5)
     guard/                the apply→Prim wrapper; Decision; checkers    (B2)
     llm/                  Provider interface; Ollama native client      (B2)
     loop/                 ask → tool → feed back → ask                   (B2)
@@ -50,7 +50,6 @@ nibb/
     detect/l1/            shape/entropy/prefix scanner                  (P4)
     detect/l2/            taint tags + propagation helpers              (P6)
     detect/l3/            feature classifier (build tag `nol3`)         (P8)
-    jev/                  System One client; egress edge, redacted      (P5)
     plan/                 noul gate, hard triggers, Seam A loop         (P5)
     redact/               the single context-ingress controller        (P7)
     memory/               window, summaries, session index             (P10)
@@ -227,13 +226,18 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 
 ### Phase 5 — Plan gate, hard trigger, Seam A (weeks 12–13)
 
-- `internal/jev`: client for `POST https://api.typesafe.ai/v1/systemone`, model `jev-1.13.0`, tools `jev_jev_noul`, `jev_jev_score`, `jev_jev_choice`. The Jev key is a bound data-plane credential — **the first real secret on the build machine**, and the first real use of P3.
+- **Jev as Scheme egress primitives (ADR 20).** Three host primitives registered in `internal/prim/` (Go handlers, `Meta.Egress: true`): `jev-noul`, `jev-score`, `jev-choice`. Each takes a credential handle in its first argument (`Param.Role: "credential"`). The loop's Seam A call is `(jev-score handle plan-text ask-text)` evaluated through `interp.Apply` — the same path a model tool call takes: guard intercept → binding check → redaction → HTTP → Scheme value returned. There is no separate Go client package; no second surface.
+  - Endpoint: `POST https://api.typesafe.ai/v1/systemone`, model `jev-1.13.0`. The Jev key is a bound data-plane credential (P3) — **the first real secret on the build machine**, and the first real use of P3.
+  - The guard sees Jev calls like any other egress: `guard.decision` logged, binding check fires, payload redacted (L1 now, L1+L3 at P7), `jev.req` logged with level, bytes, payload hash, redaction events, and the score.
+  - **User tools can call Jev under the same policy.** A user-registered tool that wraps `jev-score` is indistinguishable from a model tool call at the guard level; the `origin` field in the log distinguishes them, but the policy is identical. The model can only call such a tool if the user has registered it.
+  - **The loop's `provider.Chat()` is the sole Go-only call** — the control plane. Per the spec's LLM-as-tool split it is the harness's identity, not a guarded egress, not subject to the binding check, and logged as `llm.req`/`llm.resp`, not `guard.decision`.
 - **Jev is an egress edge (ADR 19).** The Jev credential is bound to `api.typesafe.ai` (P3); the payload — the user's ask and the plan text, by default — passes the same redaction controller the model context gets (L1 now, L3 later, `[REDACTED class]`) before it is sent. No bespoke sanitiser: E3 + E2 composed. `jev.content` (`none` / `plan` / `plan+summaries` / `full`, the last opt-in per repo) sets how much beyond ask+plan may go; every call is logged as `jev.req` with level, bytes, payload hash and redaction events.
+- **`register-check` (ADR 20).** A hidden builtin: `(register-check name verdict predicate)` adds a Scheme-written guard checker. `verdict` is `"deny"` or `"confirm"` (not `"allow"`). The strictest-wins rule guarantees a user checker can only **tighten**, never relax. The checker is added after all Go checkers. Hidden from the model; callable only from user-originated Scheme.
 - Noul gate before each message → plan → Seam A `score` → revise ≤3 → proceed. `gate.plan` logged per message.
 - Hard trigger (code): the B2 `ArgvTrigger` list folded in and extended — `fs-write` outside cwd, any unbound egress, executing content that arrived via `http-request`.
 - Degradation: Jev unreachable ⇒ hard trigger still enforced, gate defaults to "plan", outage logged.
 - **With nibb:** built without a plan gate; after promotion every later build session is planned and scored — the remaining phases (L2, redaction, TUI) are the hardest, so the quality lift lands where it matters.
-- **Accept:** fake Jev in `test/fakes`; exfil scenarios: a plan that quotes a canary is sent with `[REDACTED …]` in its place, never raw; `jev.content = none` sends nothing; gate events for every message in a replayed session. Promote `v0.5-plan`.
+- **Accept:** fake Jev in `test/fakes`; exfil scenarios: a Jev call with an unbound credential ⇒ Deny; a Jev call with a bound credential whose payload contains a canary ⇒ the canary is redacted in the sent payload and in `jev.req`; `jev.content = none` sends nothing; gate events for every message in a replayed session; `register-check` with a predicate matching `shell-exec` ⇒ the guard records a confirm/deny from the Scheme checker; the checker cannot override an existing Deny. Promote `v0.5-plan`.
 
 ### Phase 6 — L2 taint (weeks 14–15)
 
@@ -334,6 +338,6 @@ Still open (answer before the phase that needs them):
 3. **Where does `nibb-stable` live** — `~/.local/bin` (planned) or inside the repo, gitignored?
 4. **Keychain backend** — passphrase file (planned) or macOS Keychain from day one?
 5. **Policy default for unbound egress** — Deny (planned) or Confirm?
-6. **Jev credential** — bound data-plane credential (planned) or control-plane standing?
+6. **Jev credential** — *resolved by ADR 20*: bound data-plane credential, guarded and logged like any other egress. The control-plane model (the loop's `Chat()`) is the sole Go-only path; Jev is data plane.
 7. **Anthropic / frontier providers in v0 at all?** Planned as "optional in P3, decide on friction.md evidence". If the answer is "never in v0", `nibb-control` and the Anthropic provider are dropped from the plan.
 8. **Ollama version drift** — the live server is 0.34.2 while the compose file pins 0.34.0 by digest. Not a nibb problem, but worth a note in `infra`.

@@ -21,3 +21,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0017](./0017-standing-command-approvals.md) — Standing command approvals
 - [0018](./0018-turn-budgets-and-long-runs.md) — Turn budgets and long-running turns (proposed)
 - [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC)
+- [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (proposed, amends plan P5)
