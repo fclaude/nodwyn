@@ -1,7 +1,6 @@
 package plain
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -28,20 +27,19 @@ type Chat struct {
 	// Interrupt receives a value per Ctrl-C; nil disables.
 	Interrupt <-chan struct{}
 
-	lines  *bufio.Scanner
+	lines  *lineReader
 	recent []event.Event
 }
 
 // Run drives the session until :q or EOF.
 func (c *Chat) Run(ctx context.Context) error {
-	c.lines = bufio.NewScanner(c.In)
-	c.lines.Buffer(make([]byte, 0, 64<<10), 16<<20)
+	c.lines = newLineReader(c.In, c.Out)
 	c.banner()
 	// Drain whatever the session emitted before we attached (session.start).
 	c.drainIdle()
 	for {
-		fmt.Fprint(c.Out, "\nyou> ")
-		line, ok := c.readLine()
+		fmt.Fprintln(c.Out)
+		line, ok := c.lines.read("you> ")
 		if !ok {
 			fmt.Fprintln(c.Out)
 			return nil
@@ -71,13 +69,6 @@ func (c *Chat) banner() {
 		names = append(names, t.Name)
 	}
 	fmt.Fprintf(c.Out, "nibb session %s\nrepo  %s\ntools %s\n:h for commands\n", s.ID(), s.Repo(), strings.Join(names, " "))
-}
-
-func (c *Chat) readLine() (string, bool) {
-	if !c.lines.Scan() {
-		return "", false
-	}
-	return c.lines.Text(), true
 }
 
 // drainIdle consumes buffered events without blocking.
@@ -203,15 +194,14 @@ func (c *Chat) confirm(p event.Confirm) {
 	if p.Prompt.Detail != "" {
 		fmt.Fprintln(c.Out, indent(p.Prompt.Detail, "  "))
 	}
+	prompt := "allow? [y/N] "
 	switch {
 	case len(p.Prompt.Argv) > 0:
-		fmt.Fprint(c.Out, "allow? [y/N/a=always this session] ")
+		prompt = "allow? [y/N/a=always this session] "
 	case p.Prompt.Path != "" && !guard.IsProtected(p.Prompt.Path):
-		fmt.Fprintf(c.Out, "allow? [y/N/a=always under %s/t=all writes this turn] ", guard.DirPrefix(p.Prompt.Path))
-	default:
-		fmt.Fprint(c.Out, "allow? [y/N] ")
+		prompt = fmt.Sprintf("allow? [y/N/a=always under %s/t=all writes this turn] ", guard.DirPrefix(p.Prompt.Path))
 	}
-	line, ok := c.readLine()
+	line, ok := c.lines.read(prompt)
 	if !ok {
 		line = "n"
 	}

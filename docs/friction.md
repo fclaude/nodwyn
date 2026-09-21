@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-21 · daily use · a pasted prompt longer than 1024 characters was silently truncated — the terminal's canonical-mode line limit, not nibb's · long task descriptions could not be pasted · **resolved: the plain front-end reads prompt lines in raw mode with x/term's editor (bracketed paste, no length limit); pipes still use the scanner**
 - 2026-09-21 · daily use · a `y` per edit, four to fifteen per task, makes
   the confirm a reflex · every diff skimmed, none read · **resolved:
   standing write approvals by path prefix (`writes` in allow.toml, `a` at a
