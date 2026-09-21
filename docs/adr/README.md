@@ -20,3 +20,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0016](./0016-fallback-is-allowed.md) — Fallback is allowed and honest
 - [0017](./0017-standing-command-approvals.md) — Standing command approvals
 - [0018](./0018-turn-budgets-and-long-runs.md) — Turn budgets and long-running turns (proposed)
+- [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC)

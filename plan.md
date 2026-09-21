@@ -50,7 +50,7 @@ nibb/
     detect/l1/            shape/entropy/prefix scanner                  (P4)
     detect/l2/            taint tags + propagation helpers              (P6)
     detect/l3/            feature classifier (build tag `nol3`)         (P8)
-    jev/                  System One client + payload sanitizer         (P5)
+    jev/                  System One client; egress edge, redacted      (P5)
     plan/                 noul gate, hard triggers, Seam A loop         (P5)
     redact/               the single context-ingress controller        (P7)
     memory/               window, summaries, session index             (P10)
@@ -228,12 +228,12 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 ### Phase 5 — Plan gate, hard trigger, Seam A (weeks 12–13)
 
 - `internal/jev`: client for `POST https://api.typesafe.ai/v1/systemone`, model `jev-1.13.0`, tools `jev_jev_noul`, `jev_jev_score`, `jev_jev_choice`. The Jev key is a bound data-plane credential — **the first real secret on the build machine**, and the first real use of P3.
-- **Payload sanitizer — load-bearing.** The only thing sendable to Jev is a typed struct (`Intent`, `PlanSteps []string`, `Situation{Class, Dest, Scope}`); no field can hold a `Value`, tool result or argument; every string passes L1 (L3 later); a hit aborts the call rather than redacting.
+- **Jev is an egress edge (ADR 19).** The Jev credential is bound to `api.typesafe.ai` (P3); the payload — the user's ask and the plan text, by default — passes the same redaction controller the model context gets (L1 now, L3 later, `[REDACTED class]`) before it is sent. No bespoke sanitiser: E3 + E2 composed. `jev.content` (`none` / `plan` / `plan+summaries` / `full`, the last opt-in per repo) sets how much beyond ask+plan may go; every call is logged as `jev.req` with level, bytes, payload hash and redaction events.
 - Noul gate before each message → plan → Seam A `score` → revise ≤3 → proceed. `gate.plan` logged per message.
 - Hard trigger (code): the B2 `ArgvTrigger` list folded in and extended — `fs-write` outside cwd, any unbound egress, executing content that arrived via `http-request`.
 - Degradation: Jev unreachable ⇒ hard trigger still enforced, gate defaults to "plan", outage logged.
 - **With nibb:** built without a plan gate; after promotion every later build session is planned and scored — the remaining phases (L2, redaction, TUI) are the hardest, so the quality lift lands where it matters.
-- **Accept:** fake Jev in `test/fakes`; sanitizer type-level and runtime tests; gate events for every message in a replayed session. Promote `v0.5-plan`.
+- **Accept:** fake Jev in `test/fakes`; exfil scenarios: a plan that quotes a canary is sent with `[REDACTED …]` in its place, never raw; `jev.content = none` sends nothing; gate events for every message in a replayed session. Promote `v0.5-plan`.
 
 ### Phase 6 — L2 taint (weeks 14–15)
 

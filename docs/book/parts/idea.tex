@@ -60,11 +60,12 @@ preserves them.
 \begin{enumerate}[leftmargin=2em]
 \item \textbf{The log is the single source of truth.} Index and window are
   derived, revocable views; a stale summary means recompute-from-log.
-\item \textbf{The judge judges \emph{why}; the local stack judges \emph{what}.}
-  Jev\,---\,the external calibrated judge used at two seams\,---\,sees intent, plan
-  shape and egress \emph{situation} (class, destination, scope). It never
-  sees a secret value, an argument, or content. It is never audited for the
-  harness's own control-plane key.
+\item \textbf{The judge judges intent and plans over redacted content; the
+  local stack judges \emph{what}.} Jev\,---\,the external calibrated judge used
+  at two seams\,---\,sees the ask, the plan, and egress \emph{situations}
+  (class, destination, scope), after redaction. It never sees a secret
+  value. It is never audited for the harness's own control-plane key.
+  (Wording amended by \adr{19}.)
 \item \textbf{Secrets are credentials, not content.} The harness holds opaque
   handles into a log-excluded encrypted keychain, uses them only at a bound
   destination, and never sees the value.
@@ -162,19 +163,37 @@ it cannot (a window is text, not a value), so the text layers run there.
 
 \section{The judge: where it is allowed}
 
-Jev is an external calibrated judge with no retention guarantee. It is
-therefore banned from content entirely and admitted at exactly two seams:
+Jev is an external calibrated judge with no retention guarantee. The
+original spec drew the line at ``never content''; \adr{19} redrew it where
+it belongs, at ``never a secret value''. The question at Seam A\,---\,\emph{is
+this plan good enough for the user's ask?}\,---\,has no answer without the ask
+and the plan, and both are content.
+
+So Jev is treated as what it is: an \emph{egress edge}. Its credential is a
+bound data-plane credential (E3), and its payload passes the same
+redaction controller as the model context (E2/E4) before it leaves. No
+bespoke sanitiser; two existing mechanisms composed. What may go beyond
+the ask and the plan is a user policy\,---\,\code{jev.content}: \code{none},
+\code{plan} (default), \code{plan+summaries}, or \code{full}, the last
+opt-in per repository because it is the level at which proprietary code is
+retained elsewhere\,---\,and every call is logged with its level, size, payload
+hash and the redactions it triggered.
+
+Two seams:
 
 \begin{description}[leftmargin=1.6em]
-\item[Seam A] score a draft \emph{plan} for quality, coherence and fulfilment
-  of intent; the model revises on a low score, at most three rounds.
+\item[Seam A] score a draft \emph{plan} against the \emph{ask} for quality,
+  coherence and fulfilment; the model revises on a low score, at most three
+  rounds.
 \item[Seam C] score an ambiguous egress \emph{situation}\,---\,class,
   destination, scope\,---\,never the value.
 \end{description}
 
-Never: a secret value, a content shape, control flow, or its own loop. The
-principle is \emph{why-not-what}: the judge answers why (intent, stakes,
-abstractly), the local layers answer what (content, provenance, on-machine).
+Never: a secret value (enforced by redaction, not by withholding content),
+control flow, its own loop, or the harness's control-plane credential. The
+principle, restated: the judge judges intent and plans over \emph{redacted}
+content; the local stack judges provenance and secret shape, and is the
+only thing that ever sees a value.
 
 \chapter{The loop and the guard}
 

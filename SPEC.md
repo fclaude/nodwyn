@@ -9,7 +9,7 @@ A minimal, self-extending coding-agent harness. Single binary. One developer, 3�
 ## Invariants (load-bearing)
 
 1. **The log is the single source of truth.** Index and window are derived, revocable views; a stale summary means recompute-from-log. (Jev 0.90)
-2. **Jev judges *why* (intent, plan shape, egress *situation* = class+dest+scope); the local stack judges *what* (content, arguments, provenance).** Jev never sees a secret value. Jev is never audited for the control-plane key.
+2. **Jev judges intent, plans and egress *situations* (class+dest+scope) over redacted content; the local stack judges *what* (secret shape, arguments, provenance).** Jev never sees a secret value. Jev is never audited for the control-plane key. *(Wording amended by ADR 19.)*
 3. **Secrets are credentials, not content.** The harness holds opaque handles into a log-excluded encrypted keychain, uses them only at a bound destination, and never sees the value.
 4. **The Scheme interpreter is the only Scheme→Go surface; the guard sits on it.** (Jev 0.90)
 5. **Every I/O edge is guarded — by the mechanism that fits its substrate.**
@@ -70,12 +70,14 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 
 ## Jev — where it is allowed
 
-- **Seam A:** score a draft **plan** (abstract, quality/coherence/fulfillment). LLM revises on low score, ≤3 rounds. (part of 2.40/3)
-- **Seam C:** score an ambiguous egress **situation** on **class + destination + scope**, never the value.
-- **Never:** a secret value, content shape, control flow, or its own loop (control-plane key is exempt).
-- **Banned from secrets** by its own no-retention constraint → the local layers own all content judgment.
+*Amended 2026-09-21 by ADR 19: the original "never content" rule conflated content with secret values. Seam A needs the ask and the plan.*
 
-**Why-not-what principle:** Jev answers *why* (intent/stakes, abstract); local layers answer *what* (content/provenance, on-machine, zero-retention).
+- **Seam A:** score a draft **plan** against the **user's ask** (quality/coherence/fulfillment), over the actual text of both. LLM revises on low score, ≤3 rounds.
+- **Seam C:** score an ambiguous egress **situation** on **class + destination + scope**, never the value.
+- **Jev is an egress edge.** Its credential is a bound data-plane credential (E3) and its payload passes the same redaction controller as the model context (E2/E4). What it may see beyond ask+plan is a user policy (`jev.content`: none / plan / plan+summaries / full), logged per call.
+- **Never:** a secret value (enforced by redaction, not by withholding content), control flow, or its own loop (control-plane key is exempt).
+
+**Why-not-what principle, restated:** Jev judges intent and plans over *redacted* content; the local stack judges provenance and secret shape, and is the only thing that ever sees a value.
 
 ---
 
@@ -112,7 +114,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 - Whether to build a scheme subagent / multi-agent loop — out of v0 scope.
 - Whether embeddings are worth building — deferred; structural index first.
 - Whether the harness should support GUI — no; TUI only.
-- Whether Jev should ever be allowed to see argument content — no, on retention grounds.
+- Whether Jev should ever be allowed to see argument content — *revised by ADR 19*: yes, after redaction, at a level the user chooses; raw tool results are opt-in per repository because of retention.
 
 ---
 

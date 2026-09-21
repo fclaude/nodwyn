@@ -120,10 +120,11 @@ the sweep on itself.
 
 \paragraph{P5\,---\,plan gate and Jev (weeks 12--13).} The System One client,
 the noul gate, Seam A scoring with revision rounds, the hard-trigger list.
-The load-bearing piece is the \emph{payload sanitiser}: a typed struct is
-the only thing that can be sent; every string passes L1; a hit aborts the
-call rather than redacting. The Jev key is the first real secret on the
-machine. After promotion, every later build session is planned.
+Jev is an egress edge (\adr{19}): its credential is bound, its payload\,---\,the
+ask and the plan, by default\,---\,is redacted by the same controller the
+model context gets, and every call is logged with what left. The Jev key is
+the first real secret on the machine. After promotion, every later build
+session is planned.
 
 \paragraph{P6\,---\,L2 taint (weeks 14--15).} The reserved \code{Taint} field is
 populated at E1, propagated once in the dispatch path, checked at E3; when
