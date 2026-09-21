@@ -223,7 +223,7 @@ into Scheme values (ADR 3).
 | `(primitives)` | list of primitive names, sorted |
 | `(primitive-info name)` | alist: `doc`, `params`, `variadic`, `egress`, `irreversible`, `host`, `origin` |
 | `(register-tool name proc meta)` | add a primitive backed by a Scheme procedure; see §7 |
-| `(load path)` | evaluate a file's forms in the global environment. A **host** primitive: it reads the filesystem and is subject to the guard |
+| `(load path)` | evaluate a file's forms in the global environment; a relative path resolves against the interpreter's base directory (the repository root in a session). A **host** primitive: it reads the filesystem and is subject to the guard |
 | `(handle? x)` | |
 
 ## 6. Prelude
@@ -256,6 +256,7 @@ Every primitive declares:
 | `irreversible` | cannot be undone by the harness |
 | `host` | touches the OS (filesystem, processes, network) |
 | `origin` | `builtin` or `scheme` |
+| `preview` | Go-only, for irreversible host primitives: renders what the call would do (a diff) for the confirm prompt |
 
 Parameter **roles** (`path`, `dest`, `payload`, `credential`) tell the guard
 what an argument *is*; they are declared by host primitives from B2 on.

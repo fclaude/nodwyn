@@ -198,7 +198,11 @@ func (c *Chat) confirm(p event.Confirm) {
 	if p.Prompt.Detail != "" {
 		fmt.Fprintln(c.Out, indent(p.Prompt.Detail, "  "))
 	}
-	fmt.Fprint(c.Out, "allow? [y/N] ")
+	if len(p.Prompt.Argv) > 0 {
+		fmt.Fprint(c.Out, "allow? [y/N/a=always this session] ")
+	} else {
+		fmt.Fprint(c.Out, "allow? [y/N] ")
+	}
 	line, ok := c.readLine()
 	if !ok {
 		line = "n"
@@ -218,6 +222,7 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
   :tools         list the tools offered to the model
   :eval EXPR     evaluate Scheme with user origin
   :thinking      toggle showing the model's thinking
+  :allow         list standing command approvals in effect
 `)
 	case ":log":
 		n := 20
@@ -243,6 +248,10 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 			fmt.Fprintln(c.Out, "error:", err)
 		} else if v.Kind != scheme.KVoid {
 			fmt.Fprintln(c.Out, scheme.Write(v))
+		}
+	case ":allow":
+		for _, a := range c.Session.Allowed() {
+			fmt.Fprintln(c.Out, a)
 		}
 	case ":thinking":
 		c.ShowThinking = !c.ShowThinking

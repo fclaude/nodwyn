@@ -2,7 +2,7 @@ MODULE  := github.com/fclaude/nibb
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build test lint exfil accept promote smoke clean
+.PHONY: build test lint exfil accept promote selfcheck smoke clean
 
 build:
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nibb ./cmd/nibb
@@ -21,10 +21,13 @@ exfil:
 ## accept: everything a candidate must pass before promotion (ADR 13)
 accept: lint test exfil
 
-## promote: accept, then scripts/promote.sh (arrives in B3)
-promote: accept
-	@test -x scripts/promote.sh || { echo "scripts/promote.sh does not exist yet (B3)"; exit 1; }
-	scripts/promote.sh
+## promote: accept + selfcheck, swap in nibb-stable, tag. Usage: make promote TAG=v0.1-bootstrap
+promote:
+	scripts/promote.sh $(TAG)
+
+## selfcheck: the candidate binary proves itself (ADR 13)
+selfcheck: build
+	scripts/selfcheck.sh bin/nibb
 
 ## smoke: manual two-turn session against the real control plane (not CI)
 smoke:

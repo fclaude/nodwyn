@@ -93,7 +93,30 @@ type Window struct {
 
 // Policy holds the guard's user-settable defaults (ADR 6).
 type Policy struct {
-	Unbound string `toml:"unbound"` // "deny" (default) or "confirm" for unbound secret-bearing egress
+	Unbound       string   `toml:"unbound"`        // "deny" (default) or "confirm" for unbound secret-bearing egress
+	AllowCommands []string `toml:"allow_commands"` // standing approvals: argv prefixes that run without a confirm
+}
+
+// RepoAllow is <repo>/.nibb/allow.toml: standing approvals for one
+// repository, merged with policy.allow_commands.
+type RepoAllow struct {
+	Commands []string `toml:"commands"`
+}
+
+// LoadRepoAllow reads a repository's allow file. Missing means none.
+func LoadRepoAllow(path string) (RepoAllow, error) {
+	var r RepoAllow
+	md, err := toml.DecodeFile(path, &r)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return RepoAllow{}, nil
+		}
+		return RepoAllow{}, fmt.Errorf("allow: %s: %w", path, err)
+	}
+	if undec := md.Undecoded(); len(undec) > 0 {
+		return RepoAllow{}, fmt.Errorf("allow: %s: unknown keys: %v", path, undec)
+	}
+	return r, nil
 }
 
 // Default is the configuration nibb runs with when no config.toml exists.

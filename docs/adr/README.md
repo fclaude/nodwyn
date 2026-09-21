@@ -18,3 +18,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0014](./0014-init-scm-convention.md) — `.nibb/init.scm` convention
 - [0015](./0015-friction-log.md) — Friction log
 - [0016](./0016-fallback-is-allowed.md) — Fallback is allowed and honest
+- [0017](./0017-standing-command-approvals.md) — Standing command approvals

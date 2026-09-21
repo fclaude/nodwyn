@@ -42,11 +42,14 @@ func (v Verdict) String() string {
 
 // Decision is a checker's answer. Reason is one line for the log and the
 // user; Detail is optional longer context shown in a confirm prompt (a diff,
-// a command line).
+// a command line). Standing marks an Allow backed by a standing user
+// approval: it outranks any Confirm (the user already said yes), never a
+// Deny.
 type Decision struct {
-	Verdict Verdict
-	Reason  string
-	Detail  string
+	Verdict  Verdict
+	Reason   string
+	Detail   string
+	Standing bool
 }
 
 // Checker inspects one primitive application.
@@ -56,11 +59,14 @@ type Checker interface {
 }
 
 // Prompt is what the user is asked when a checker wants confirmation.
+// Argv is set for command lines so a front-end can offer a standing
+// approval ("a" = always this session).
 type Prompt struct {
 	Prim    string
 	Args    string // short written form
 	Reasons []string
 	Detail  string
+	Argv    []string
 }
 
 // Confirmer answers prompts. It may block; it must honour ctx.
@@ -107,9 +113,13 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 	var reasons []string
 	var details []string
 	checker := ""
+	standing := ""
 	for _, c := range g.checkers {
 		d := c.Check(ctx, p, args)
 		if d.Verdict == Allow {
+			if d.Standing && standing == "" {
+				standing = d.Reason
+			}
 			continue
 		}
 		reasons = append(reasons, d.Reason)
@@ -123,6 +133,12 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		if d.Verdict == Deny {
 			break // nothing can relax a deny
 		}
+	}
+	if final.Verdict == Confirm && standing != "" {
+		// The user approved this command line ahead of time.
+		final = Decision{Verdict: Allow, Standing: true, Reason: standing}
+		reasons = []string{standing}
+		checker = "command-allow"
 	}
 	rec := log.GuardDecision{
 		Prim:     p.Name,
@@ -151,6 +167,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		Args:    rec.Args,
 		Reasons: reasons,
 		Detail:  strings.Join(details, "\n\n"),
+		Argv:    argvArgs(p, args),
 	})
 	if err != nil {
 		rec.Answer = "error"

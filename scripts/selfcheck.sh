@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Self-check for a candidate binary (ADR 13). The candidate must:
+#   1. report a version and evaluate Scheme;
+#   2. start a session in this repository with the dev tools registered;
+#   3. read a file, run the log package's tests through the go-test dev
+#      tool (a standing approval, so no prompt), and get them green;
+#   4. complete one real model turn against the control plane;
+#   5. replay its own log.
+# Deterministic steps use :eval (user origin); only step 4 needs the model.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+CAND=${1:-bin/nibb}
+OUT=$(mktemp -t nibb-selfcheck.XXXXXX)
+trap 'rm -f "$OUT"' EXIT
+
+echo "selfcheck: $CAND ($("$CAND" version))"
+test "$("$CAND" eval -e '(+ 1 2)')" = "3"
+
+printf '%s\n' \
+	':tools' \
+	':eval (string-length (fs-read "README.md"))' \
+	':eval (go-test "./internal/log")' \
+	'Reply with exactly the single word READY and nothing else.' \
+	':q' \
+	| "$CAND" --no-confirm --repo . >"$OUT" 2>&1
+
+grep -q '^go-test ' "$OUT" || { echo "selfcheck: dev tools not registered"; cat "$OUT"; exit 1; }
+grep -q 'ok  \\tgithub.com/fclaude/nibb/internal/log' "$OUT" || { echo "selfcheck: go-test through the dev tool did not pass"; cat "$OUT"; exit 1; }
+grep -q 'READY' "$OUT" || { echo "selfcheck: model turn did not complete"; cat "$OUT"; exit 1; }
+
+SESSION=$("$CAND" sessions | tail -1)
+"$CAND" replay "$SESSION" | grep 'READY' >/dev/null || { echo "selfcheck: replay of $SESSION failed"; exit 1; }
+echo "selfcheck: ok (session $SESSION)"

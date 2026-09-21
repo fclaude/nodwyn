@@ -61,3 +61,47 @@ func TestArgsSummaryTruncates(t *testing.T) {
 		t.Fatalf("summary not truncated: %d", len(s))
 	}
 }
+
+func TestStandingApprovalOutranksConfirmNotDeny(t *testing.T) {
+	shell := &scheme.Prim{Name: "shell-exec", Meta: scheme.Meta{Doc: "d", Irreversible: true, Params: []scheme.Param{
+		{Name: "cmd", Type: "string", Role: "argv"}, {Name: "args", Type: "list", Role: "argv"},
+	}}}
+	argv := func(prog string, rest ...string) []scheme.Value {
+		items := make([]scheme.Value, len(rest))
+		for i, r := range rest {
+			items[i] = scheme.Str(r)
+		}
+		return []scheme.Value{scheme.Str(prog), scheme.List(items...)}
+	}
+	allow := NewCommandAllow("go test", "git status")
+	asked := 0
+	g := New(ConfirmFunc(func(context.Context, Prompt) (bool, error) { asked++; return false, nil }), nil, MetaPolicy{}, DefaultArgvTrigger("/repo"), allow)
+
+	if err := g.Before(context.Background(), shell, argv("go", "test", "./...")); err != nil || asked != 0 {
+		t.Fatalf("go test should pass on standing approval: %v asked=%d", err, asked)
+	}
+	if err := g.Before(context.Background(), shell, argv("/usr/local/go/bin/go", "test")); err != nil {
+		t.Fatalf("basename match: %v", err)
+	}
+	if err := g.Before(context.Background(), shell, argv("go", "build")); err == nil || asked != 1 {
+		t.Fatalf("go build is not approved: %v asked=%d", err, asked)
+	}
+	allow.Add("go build")
+	if err := g.Before(context.Background(), shell, argv("go", "build")); err != nil {
+		t.Fatalf("after Add: %v", err)
+	}
+	// A deny still wins: egress denial from MetaPolicy.
+	egress := &scheme.Prim{Name: "http", Meta: scheme.Meta{Doc: "d", Egress: true, Params: []scheme.Param{{Name: "cmd", Type: "string", Role: "argv"}}}}
+	allow.Add("http")
+	if err := g.Before(context.Background(), egress, []scheme.Value{scheme.Str("http")}); err == nil {
+		t.Fatal("standing approval must not override a deny")
+	}
+	if got := strings.Join(allow.List(), ","); got != "git status,go build,go test,http" {
+		t.Fatalf("list: %s", got)
+	}
+	for argvLine, want := range map[string]string{"go test ./x": "go test", "rg -n foo": "rg", "git status": "git status", "./bin/nibb version": "nibb version", "sh -c ls": "sh"} {
+		if got := Prefix(strings.Fields(argvLine)); got != want {
+			t.Errorf("Prefix(%q) = %q, want %q", argvLine, got, want)
+		}
+	}
+}

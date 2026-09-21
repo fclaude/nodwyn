@@ -58,6 +58,7 @@ nibb/
     frontend/tui/         bubbletea front-end over core                  (P9)
     frontend/rpc/         (post-v0) JSON-RPC over stdio/socket for a GUI
   dev/                    *.scm dev tools nibb loads to build itself    (B3)
+  .nibb/                  init.scm (loads dev/) and allow.toml (ADR 17) (B3)
   scripts/                promote.sh, selfcheck.sh
   test/exfil/             the exfil scenario suite (grows every phase)
   test/fakes/             fake Ollama + fake Jev servers
@@ -66,6 +67,7 @@ nibb/
   docs/adr/               decision records
   docs/scheme.md          the language reference for nibb's Scheme subset (B1, doc-first)
   docs/friction.md        running log of where nibb-stable got in the way
+  docs/manual.md          how to read the code and how to use nibb
 ```
 
 ---
@@ -172,12 +174,15 @@ Consequences for the plan:
 
 ### B3 — Dev tools in Scheme + first promotion (week 4)
 
-- `dev/go.scm`: `go-build`, `go-test` (pkg pattern), `go-vet`, `go-lint` — composed from `shell-exec` via `register-tool`, each with metadata (`Irreversible=false`, so no confirm — the guard still sees them).
+- **Standing command approvals (ADR 17):** the dev tools wrap `shell-exec`, which is irreversible, so without this every `go test` would prompt. `.nibb/allow.toml` (per repo), `policy.allow_commands` (global) and `a` answers (session only) give the guard a standing Allow that outranks Confirm, never Deny; every use is logged.
+- `dev/go.scm`: `go-build`, `go-test` (pkg pattern), `go-vet`, `go-fmt-check`, `run-make` — composed from `shell-exec` via `register-tool`; the guard sees both the wrapper and the inner call.
 - `dev/git.scm`: `git-status`, `git-diff`, `git-log`; **no** `git-commit`/`git-push` tools in v0 — the operator commits.
-- `dev/repo.scm`: `grep-repo`, `find-files`, `read-adr`.
-- `.nibb/init.scm` loads the above.
-- `scripts/selfcheck.sh`, `scripts/promote.sh`.
-- **Accept — the self-hosting test:** with `bin/nibb` as candidate, a scripted session adds a `string-upcase` builtin to `internal/scheme` with a test, runs `go-test`, and gets green — every tool call visible as a `guard.decision` in the log, `go-test` visibly routed through `register-tool → apply → guard → shell-exec`. Promote.
+- `dev/repo.scm`: `grep-repo`, `find-files`, `read-adr` (pure Scheme over `fs-list`/`fs-read`).
+- `.nibb/init.scm` loads the above; `load` resolves relative paths against the repository root.
+- `fs-edit` (exact, unique old→new with a diff preview) — added from the first self-hosting run's friction, see below.
+- `scripts/selfcheck.sh`, `scripts/promote.sh`, `docs/friction.md`, `docs/manual.md`.
+- **Accept — the self-hosting test:** with `bin/nibb` as candidate, a session adds a `string-reverse` builtin to `internal/scheme` with a doc row and a conformance snippet, runs `go-test`, and gets green — every tool call visible in the log, `go-test` routed through `register-tool → apply → guard → shell-exec`. Promote.
+- **Done 2026-09-21.** First run (no `fs-edit`): 28 tool calls, 15 confirms, one mangled line repaired with sed/python — correct in the end. Second run (with `fs-edit`): 10 tool calls, 4 confirms, clean 9-line diff. Promoted as `v0.1-bootstrap`.
 
 **Milestone M0 (end of week 4): `nibb-stable v0.1-bootstrap`. From here on nibb builds nibb.**
 

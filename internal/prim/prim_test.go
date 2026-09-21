@@ -48,7 +48,7 @@ func newHarness(t *testing.T) *harness {
 		h.prompts = append(h.prompts, p)
 		return h.answer, nil
 	})
-	h.in.SetGate(guard.New(confirm, logger, Checkers(o)...))
+	h.in.SetGate(guard.New(confirm, logger, Checkers(o, nil)...))
 	return h
 }
 
@@ -148,7 +148,7 @@ func TestWriteConfirmShowsDiff(t *testing.T) {
 	if p.Prim != "fs-write" || !strings.Contains(p.Detail, "-world\n+there\n") {
 		t.Fatalf("prompt: %+v", p)
 	}
-	if strings.Join(p.Reasons, ";") != "fs-write is irreversible;writes README.md" {
+	if strings.Join(p.Reasons, ";") != "fs-write is irreversible;changes README.md" {
 		t.Fatalf("reasons: %v", p.Reasons)
 	}
 	if b, _ := os.ReadFile(filepath.Join(h.root, "README.md")); string(b) != "hello\nworld\n" {
@@ -256,7 +256,31 @@ func TestToolsExposedToModel(t *testing.T) {
 	for _, p := range h.in.Tools() {
 		names = append(names, p.Name)
 	}
-	if strings.Join(names, " ") != "fs-list fs-read fs-write shell-exec" {
+	if strings.Join(names, " ") != "fs-edit fs-list fs-read fs-write shell-exec" {
 		t.Fatalf("tools: %v", names)
+	}
+}
+
+func TestEdit(t *testing.T) {
+	h := newHarness(t)
+	h.answer = true
+	h.mustEval(t, `(fs-edit "README.md" "world" "there")`)
+	if b, _ := os.ReadFile(filepath.Join(h.root, "README.md")); string(b) != "hello\nthere\n" {
+		t.Fatalf("edit: %q", b)
+	}
+	if !strings.Contains(h.prompts[0].Detail, "-world\n+there\n") {
+		t.Fatalf("preview: %s", h.prompts[0].Detail)
+	}
+	for src, want := range map[string]string{
+		`(fs-edit "README.md" "nope" "x")`:   "not found",
+		`(fs-edit "README.md" "" "x")`:       "must not be empty",
+		`(fs-edit "README.md" "e" "x")`:      "occurs 3 times",
+		`(fs-edit "missing.txt" "a" "b")`:    "fs-edit:",
+		`(fs-edit "../outside.txt" "a" "b")`: "outside the repository",
+	} {
+		_, err := h.eval(t, src)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: got %v, want %q", src, err, want)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -31,11 +32,12 @@ var specialForms = []string{
 // Interp is one interpreter instance: a global environment, the primitive
 // table, and the guard hook.
 type Interp struct {
-	global *Env
-	prims  map[string]*Prim
-	gate   Gate
-	out    io.Writer
-	isSF   map[string]bool
+	global  *Env
+	prims   map[string]*Prim
+	gate    Gate
+	out     io.Writer
+	isSF    map[string]bool
+	baseDir string
 }
 
 // Option configures New.
@@ -44,6 +46,10 @@ type Option func(*Interp)
 // WithOutput sets where display/write/newline go. Default: io.Discard —
 // the host decides who sees output (ADR 10).
 func WithOutput(w io.Writer) Option { return func(in *Interp) { in.out = w } }
+
+// WithBaseDir sets the directory relative load paths resolve against
+// (the repository root in a session). Default: the process working dir.
+func WithBaseDir(dir string) Option { return func(in *Interp) { in.baseDir = dir } }
 
 // New creates an interpreter with the builtins and the prelude loaded.
 func New(opts ...Option) *Interp {
@@ -127,8 +133,12 @@ func (in *Interp) EvalString(ctx context.Context, src string) (Value, error) {
 	return result, nil
 }
 
-// LoadFile evaluates a file's forms in the global environment.
+// LoadFile evaluates a file's forms in the global environment. A relative
+// path resolves against the base directory (WithBaseDir).
 func (in *Interp) LoadFile(ctx context.Context, path string) error {
+	if !filepath.IsAbs(path) && in.baseDir != "" {
+		path = filepath.Join(in.baseDir, path)
+	}
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return err

@@ -60,8 +60,11 @@ type Session struct {
 	closed     bool
 
 	prompts  map[string]chan bool
+	pending  map[string]guard.Prompt
 	promptN  int
 	promptMu sync.Mutex
+
+	allow *guard.CommandAllow
 }
 
 // New creates a session, writes session.start, and loads the init file.
@@ -90,6 +93,7 @@ func New(o Options) (*Session, error) {
 		id:      log.NewSessionID(time.Now()),
 		out:     make(chan event.Event, o.EventBuffer),
 		prompts: map[string]chan bool{},
+		pending: map[string]guard.Prompt{},
 	}
 	if o.LogWriter != nil {
 		s.logw = log.New(o.LogWriter, s.id)
@@ -101,7 +105,7 @@ func New(o Options) (*Session, error) {
 	}
 
 	// Interpreter: output becomes an event, never stdout.
-	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}))
+	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}), scheme.WithBaseDir(o.Repo))
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
 	po.ShellTimeout = shellTimeout
@@ -112,9 +116,19 @@ func New(o Options) (*Session, error) {
 	if o.NoConfirm {
 		confirmer = guard.DenyAll
 	}
+	// Standing approvals: config, then the repository's .nibb/allow.toml.
+	s.allow = guard.NewCommandAllow(o.Config.Policy.AllowCommands...)
+	repoAllow, err := config.LoadRepoAllow(filepath.Join(o.Repo, ".nibb", "allow.toml"))
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range repoAllow.Commands {
+		s.allow.Add(c)
+	}
+	checkers := prim.Checkers(po, s.allow)
 	// Init-time evaluation cannot prompt (nobody is listening yet): tools
 	// may be registered, actions are denied.
-	s.interp.SetGate(guard.New(guard.DenyAll, s, prim.Checkers(po)...))
+	s.interp.SetGate(guard.New(guard.DenyAll, s, checkers...))
 	init := o.InitFile
 	if init == "" {
 		if p := filepath.Join(o.Repo, ".nibb", "init.scm"); fileExists(p) {
@@ -126,7 +140,7 @@ func New(o Options) (*Session, error) {
 			return nil, fmt.Errorf("core: init: %w", err)
 		}
 	}
-	s.interp.SetGate(guard.New(confirmer, s, prim.Checkers(po)...))
+	s.interp.SetGate(guard.New(confirmer, s, checkers...))
 
 	requestTimeout, _ := o.Config.Loop.Durations()
 	s.loop = loop.New(s, o.Provider, s.interp, loop.Config{
@@ -230,22 +244,35 @@ func (s *Session) Abort() {
 	}
 }
 
-// Answer replies to a prompt event. "y"/"yes" confirm; anything else
-// declines.
+// Answer replies to a prompt event. "y"/"yes" confirm; "a"/"always"
+// confirms and adds a standing approval for the command line for the rest
+// of the session; anything else declines.
 func (s *Session) Answer(id, reply string) error {
 	s.promptMu.Lock()
 	ch, ok := s.prompts[id]
+	p := s.pending[id]
 	if ok {
 		delete(s.prompts, id)
+		delete(s.pending, id)
 	}
 	s.promptMu.Unlock()
 	if !ok {
 		return fmt.Errorf("core: no pending prompt %q", id)
 	}
 	r := strings.ToLower(strings.TrimSpace(reply))
+	if (r == "a" || r == "always") && len(p.Argv) > 0 {
+		prefix := guard.Prefix(p.Argv)
+		s.allow.Add(prefix)
+		_, _ = s.Record(log.KindNote, log.Note{Text: "standing approval for this session: " + prefix})
+		ch <- true
+		return nil
+	}
 	ch <- r == "y" || r == "yes"
 	return nil
 }
+
+// Allowed lists the standing command approvals in effect.
+func (s *Session) Allowed() []string { return s.allow.List() }
 
 // confirm is the guard's Confirmer: emit a prompt, wait for Answer or
 // cancellation.
@@ -255,6 +282,7 @@ func (s *Session) confirm(ctx context.Context, p guard.Prompt) (bool, error) {
 	id := fmt.Sprintf("p%d", s.promptN)
 	ch := make(chan bool, 1)
 	s.prompts[id] = ch
+	s.pending[id] = p
 	s.promptMu.Unlock()
 	s.Emit(event.Event{Kind: event.PromptConfirm, Payload: event.Confirm{ID: id, Prompt: p}})
 	select {
@@ -263,6 +291,7 @@ func (s *Session) confirm(ctx context.Context, p guard.Prompt) (bool, error) {
 	case <-ctx.Done():
 		s.promptMu.Lock()
 		delete(s.prompts, id)
+		delete(s.pending, id)
 		s.promptMu.Unlock()
 		return false, ctx.Err()
 	}

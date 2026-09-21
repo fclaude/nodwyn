@@ -6,8 +6,10 @@ a binding table as the sole authority over where a secret may go.
 
 - [SPEC.md](SPEC.md) — the architecture and its invariants
 - [plan.md](plan.md) — the bootstrap-then-self-host build plan
+- [docs/manual.md](docs/manual.md) — how to read the code and how to use nibb
 - [docs/adr/](docs/adr/) — decision records
-- [docs/scheme.md](docs/scheme.md) — the language reference (B1)
+- [docs/scheme.md](docs/scheme.md) — the language reference
+- [docs/friction.md](docs/friction.md) — where nibb got in the way of building nibb
 
 ## Build
 
@@ -17,6 +19,8 @@ make test       # go test -race ./...
 make lint       # vet, staticcheck, boundary lint
 make accept     # everything a candidate must pass before promotion
 make smoke      # manual two-turn session against the real control plane
+make selfcheck  # the candidate proves itself (ADR 13)
+make promote TAG=v0.N-phase   # accept + selfcheck, then ~/.local/bin/nibb-stable
 ```
 
 Requires Go 1.27 and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
@@ -35,8 +39,9 @@ bin/nibb repl                 # Scheme REPL
 
 The control plane is the Ollama server in `~/.config/nibb/config.toml`
 (default: Qwen on workshop over the tailnet; no key). Every write and every
-command is confirmed by you, with a diff for writes. Session logs live in
-`~/.local/share/nibb/sessions/`.
+command is confirmed by you, with a diff for writes and edits; standing
+approvals for read-only commands live in `.nibb/allow.toml` (ADR 17).
+Session logs live in `~/.local/share/nibb/sessions/`.
 
 Bootstrap-era safety envelope (plan §3.3): paths are pinned to the
 repository, credential-shaped files are unreadable, network tools on a

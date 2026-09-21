@@ -27,6 +27,10 @@ type Meta struct {
 	Host         bool   // touches the OS: filesystem, processes, network
 	Hidden       bool   // never offered to the model as a tool (e.g. load)
 	Origin       string // "builtin" or "scheme"
+	// Preview, for irreversible host primitives, renders what the call
+	// would do (a diff) for the confirm prompt. Go-only; not settable from
+	// register-tool.
+	Preview func(args []Value) string
 }
 
 // Call is what a primitive handler receives. Origin is who initiated the

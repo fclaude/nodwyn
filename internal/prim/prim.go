@@ -43,7 +43,7 @@ func Register(in *scheme.Interp, o Options) error {
 		return os.ErrInvalid
 	}
 	pin := guard.RepoPin{Root: o.Root}
-	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsList(o, pin), shellExec(o)} {
+	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), shellExec(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -52,13 +52,18 @@ func Register(in *scheme.Interp, o Options) error {
 }
 
 // Checkers returns the guard checkers the host primitives rely on, in the
-// order they should run: the envelope from plan §3.3 plus the write preview.
-func Checkers(o Options) []guard.Checker {
-	return []guard.Checker{
+// order they should run: the envelope from plan §3.3, the write preview,
+// and the user's standing command approvals (nil for none).
+func Checkers(o Options, allow *guard.CommandAllow) []guard.Checker {
+	cs := []guard.Checker{
 		guard.MetaPolicy{},
 		guard.RepoPin{Root: o.Root},
 		guard.DefaultDenylist(),
 		guard.DefaultArgvTrigger(o.Root),
-		WritePreview{Pin: guard.RepoPin{Root: o.Root}},
+		WritePreview{},
 	}
+	if allow != nil {
+		cs = append(cs, allow)
+	}
+	return cs
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -18,7 +19,7 @@ func TestLoadMissingIsDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c != Default() {
+	if !reflect.DeepEqual(c, Default()) {
 		t.Fatalf("missing file should yield defaults, got %+v", c)
 	}
 }

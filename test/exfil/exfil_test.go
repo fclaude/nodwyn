@@ -97,7 +97,7 @@ func TestScenarios(t *testing.T) {
 			}
 			confirms := 0
 			confirmer := guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { confirms++; return false, nil })
-			in.SetGate(guard.New(confirmer, recorder{nlog.New(&logBuf, "exfil")}, prim.Checkers(o)...))
+			in.SetGate(guard.New(confirmer, recorder{nlog.New(&logBuf, "exfil")}, prim.Checkers(o, nil)...))
 
 			ctx := scheme.WithOrigin(context.Background(), scheme.OriginModel)
 			v, err := in.EvalString(ctx, sc.src)

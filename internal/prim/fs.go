@@ -2,6 +2,7 @@ package prim
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,13 +62,14 @@ func fsWrite(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-write",
 		Meta: scheme.Meta{
-			Doc: "Write a text file inside the repository, creating it or replacing its contents. Parent directories are created.",
+			Doc: "Create a text file inside the repository or replace its entire contents. Parent directories are created. For changes to an existing file prefer fs-edit.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
 				{Name: "content", Type: "string", Doc: "the complete new contents", Role: "payload"},
 			},
 			Host:         true,
 			Irreversible: true,
+			Preview:      func(args []scheme.Value) string { return previewWrite(pin, args) },
 		},
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
 			abs, err := resolve(pin, c, 0)
@@ -124,48 +126,123 @@ func fsList(o Options, pin guard.RepoPin) *scheme.Prim {
 	}
 }
 
-// WritePreview is the guard checker that shows a diff before an fs-write is
-// confirmed. It looks only at metadata roles (path + payload on an
-// irreversible primitive), not at the name.
-type WritePreview struct {
-	Pin guard.RepoPin
-}
+// WritePreview is the guard checker that attaches a primitive's own
+// preview (a diff) to the confirm prompt of an irreversible call.
+type WritePreview struct{}
 
 func (WritePreview) Name() string { return "write-preview" }
 
-func (w WritePreview) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) guard.Decision {
-	if !p.Meta.Irreversible {
+func (WritePreview) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) guard.Decision {
+	if !p.Meta.Irreversible || p.Meta.Preview == nil {
 		return guard.Decision{Verdict: guard.Allow}
 	}
-	path, payload := -1, -1
-	for i, pa := range p.Meta.Params {
-		switch pa.Role {
-		case "path":
-			path = i
-		case "payload":
-			payload = i
-		}
-	}
-	if path < 0 || payload < 0 || path >= len(args) || payload >= len(args) || args[path].Kind != scheme.KString || args[payload].Kind != scheme.KString {
+	detail := p.Meta.Preview(args)
+	if detail == "" {
 		return guard.Decision{Verdict: guard.Allow}
 	}
-	abs := w.Pin.Resolve(args[path].S)
+	// Confirm so the detail travels with the prompt; MetaPolicy already asks
+	// for one and the guard merges the reasons.
+	return guard.Decision{Verdict: guard.Confirm, Reason: "changes " + args[0].S, Detail: detail}
+}
+
+// previewWrite renders the diff an fs-write would produce.
+func previewWrite(pin guard.RepoPin, args []scheme.Value) string {
+	if len(args) < 2 || args[0].Kind != scheme.KString || args[1].Kind != scheme.KString {
+		return ""
+	}
+	abs := pin.Resolve(args[0].S)
 	if abs == "" {
-		return guard.Decision{Verdict: guard.Allow} // RepoPin denies it
+		return "" // RepoPin denies it
 	}
 	old, err := os.ReadFile(abs)
-	newText := args[payload].S
-	var detail string
+	newText := args[1].S
 	switch {
 	case err != nil:
-		lines := strings.Count(newText, "\n")
-		detail = fmt.Sprintf("new file %s (%d lines, %d bytes)\n%s", args[path].S, lines, len(newText), Unified(args[path].S, "", newText, 3))
+		return fmt.Sprintf("new file %s (%d lines, %d bytes)\n%s", args[0].S, strings.Count(newText, "\n"), len(newText), Unified(args[0].S, "", newText, 3))
 	case string(old) == newText:
-		detail = fmt.Sprintf("%s: contents unchanged", args[path].S)
-	default:
-		detail = Unified(args[path].S, string(old), newText, 3)
+		return fmt.Sprintf("%s: contents unchanged", args[0].S)
 	}
-	// The verdict is Confirm so the detail travels with the prompt; MetaPolicy
-	// already asks for one, and the guard merges the reasons.
-	return guard.Decision{Verdict: guard.Confirm, Reason: "writes " + args[path].S, Detail: detail}
+	return Unified(args[0].S, string(old), newText, 3)
+}
+
+// applyEdit computes the result of an fs-edit without writing it: exactly
+// one occurrence of old must exist.
+func applyEdit(content, old, replacement string) (string, error) {
+	if old == "" {
+		return "", errors.New("old text must not be empty")
+	}
+	switch n := strings.Count(content, old); n {
+	case 0:
+		return "", errors.New("old text not found; it must match exactly, including whitespace")
+	case 1:
+		return strings.Replace(content, old, replacement, 1), nil
+	default:
+		return "", fmt.Errorf("old text occurs %d times; include more context so it is unique", n)
+	}
+}
+
+func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
+	preview := func(args []scheme.Value) string {
+		if len(args) < 3 || args[0].Kind != scheme.KString || args[1].Kind != scheme.KString || args[2].Kind != scheme.KString {
+			return ""
+		}
+		abs := pin.Resolve(args[0].S)
+		if abs == "" {
+			return ""
+		}
+		cur, err := os.ReadFile(abs)
+		if err != nil {
+			return "cannot read " + args[0].S + ": " + err.Error()
+		}
+		next, err := applyEdit(string(cur), args[1].S, args[2].S)
+		if err != nil {
+			return "edit would fail: " + err.Error()
+		}
+		return Unified(args[0].S, string(cur), next, 3)
+	}
+	return &scheme.Prim{
+		Name: "fs-edit",
+		Meta: scheme.Meta{
+			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new. old must match the file exactly (including whitespace) and be unique; include surrounding lines to disambiguate. Prefer this over fs-write for changes to existing files.",
+			Params: []scheme.Param{
+				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
+				{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once)"},
+				{Name: "new", Type: "string", Doc: "the replacement text", Role: "payload"},
+			},
+			Host:         true,
+			Irreversible: true,
+			Preview:      preview,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			abs, err := resolve(pin, c, 0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			old, err := c.String(1)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			repl, err := c.String(2)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			cur, err := os.ReadFile(abs)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			next, err := applyEdit(string(cur), old, repl)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			st, _ := os.Stat(abs)
+			mode := os.FileMode(0o644)
+			if st != nil {
+				mode = st.Mode().Perm()
+			}
+			if err := os.WriteFile(abs, []byte(next), mode); err != nil {
+				return scheme.Value{}, err
+			}
+			return scheme.Void, nil
+		},
+	}
 }
