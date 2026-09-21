@@ -1,0 +1,84 @@
+\chapter{Event kinds}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lp{9.6cm}@{}}
+\toprule
+Kind & Payload \\
+\midrule
+\code{session.start} & version, repo, provider, model, url, tools \\
+\code{session.end} & reason; absent after a crash \\
+\code{user.msg} & text \\
+\code{llm.req} & model, messages, tools, est\_tokens, elided seqs \\
+\code{llm.resp} & content, thinking, tool\_calls, done\_reason, usage \\
+\code{tool.call} & id, name, args, origin \\
+\code{tool.result} & id, name, ok, value or error, ms \\
+\code{guard.decision} & prim, origin, decision, checker, reason, answer, args, detail \\
+\code{egress.check} & (P3) binding lookup for a secret-bearing egress \\
+\code{gate.plan} & (P5) noul gate and Seam A outcome \\
+\code{cred.register} & (P3) class and handle id only \\
+\code{redact.event} & (P7) a \code{[REDACTED class]} substitution \\
+\code{summary} & (P10) a rebuildable summary over a seq range \\
+\code{note} & free-form text: hard stops, standing approvals, turn trust \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Ephemeral events (never logged): \code{stream.text}, \code{stream.thinking},
+\code{prompt.confirm}, \code{status}, \code{error}, \code{output}.
+
+\chapter{Decision records}
+
+\begin{center}
+\small
+\begin{tabular}{@{}lp{10.4cm}@{}}
+\toprule
+ADR & Title \\
+\midrule
+1 & Value representation: one tagged struct with a reserved taint field \\
+2 & Log format and event kinds \\
+3 & Model tool calls are Scheme applications \\
+4 & Primitive metadata \\
+5 & Keychain crypto \\
+6 & Unbound egress defaults to deny \\
+7 & Scheme scope: written from scratch, documented first \\
+8 & LLM client is a Provider interface, Ollama first \\
+9 & Context and cache discipline \\
+10 & Core/front-end boundary \\
+11 & Terminal stack \\
+12 & Two binaries, always \\
+13 & Promotion \\
+14 & \file{.nibb/init.scm} convention \\
+15 & Friction log \\
+16 & Fallback is allowed and honest \\
+17 & Standing command approvals (amended: writes) \\
+18 & Turn budgets and long-running turns (proposed) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\chapter{Glossary}
+
+\begin{description}[leftmargin=2.2em]
+\item[binding] a user-owned row authorising a credential class for a
+  destination, positions and methods; the egress authority.
+\item[checker] one stage of the guard; reads a primitive's metadata and
+  arguments, returns a verdict.
+\item[control plane] the harness's own model; configured, and in the
+  bootstrap unkeyed.
+\item[data plane] every credential the user registers; bound and injected
+  only at its destination.
+\item[envelope] the bootstrap-era compensating controls, each retired by
+  the phase that builds the real layer.
+\item[handle] an opaque reference to a keychain entry; a Scheme value that
+  can never become text.
+\item[Jev] the external calibrated judge, admitted at Seam A (plans) and
+  Seam C (egress situations), never to content.
+\item[origin] who initiated an evaluation: user or model.
+\item[primitive] a Go handler in the table; the only way Scheme reaches the
+  host.
+\item[promotion] the gated copy of a candidate binary to \code{nibb-stable}.
+\item[standing approval] a command prefix or write path the user authorised
+  ahead of time; converts a confirm to an allow, never a deny.
+\item[window] the model's context, rebuilt from the log on every request.
+\end{description}

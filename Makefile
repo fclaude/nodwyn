@@ -2,7 +2,7 @@ MODULE  := github.com/fclaude/nibb
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build test lint exfil accept promote selfcheck smoke clean
+.PHONY: build test lint exfil accept promote selfcheck smoke book clean
 
 build:
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nibb ./cmd/nibb
@@ -32,6 +32,10 @@ selfcheck: build
 ## smoke: manual two-turn session against the real control plane (not CI)
 smoke:
 	scripts/smoke.sh
+
+## book: docs/book/nibb.pdf (needs texlive)
+book:
+	cd docs/book && latexmk -pdf -interaction=nonstopmode -halt-on-error nibb.tex >/dev/null && latexmk -c >/dev/null
 
 clean:
 	rm -rf bin

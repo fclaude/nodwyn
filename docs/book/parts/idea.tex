@@ -1,0 +1,243 @@
+\part{The idea}
+
+\chapter{What \nibb{} is}
+
+\nibb{} is a coding agent's \emph{harness}: the program that sits between a
+language model and your machine. It holds the conversation, offers the model
+tools, runs the tools the model asks for, and feeds the results back. Every
+such harness answers three questions, and \nibb{} exists because it answers
+them differently.
+
+\paragraph{Who decides what the model may do?} In \nibb{}, one function. Every
+tool the model can call is a \emph{primitive} in an embedded Scheme
+interpreter, and every primitive application, whoever asks for it, passes
+through a single Go function where a \emph{guard} decides: allow, ask the
+user, or deny. There is no second path. The Scheme interpreter is the only
+surface through which anything reaches the host, and the guard sits on it.
+
+\paragraph{How are secrets protected?} By never being content. A key is not
+a string the harness tries to spot in a request; it is a \emph{credential}
+the user registered into an encrypted store, referenced by an opaque handle,
+and injected only at a destination the user has \emph{bound} it to. The
+question ``is this egress safe?'' is not ``does this look like a secret?''
+but ``is this class of credential authorised for this destination, in this
+position, with this method?''\,---\,a table lookup, owned by the user. Content
+detection exists too (a cheap deterministic layer, a taint layer, an optional
+learned layer), but it is the residual, not the authority.
+
+\paragraph{What is the source of truth?} An append-only log. One JSON line
+per event, fsynced. The model's context window, the transcript you see, the
+summaries a later phase will add\,---\,all are derived from the log and can
+be recomputed from it. A crash loses nothing; a replay reproduces a session
+byte for byte.
+
+\paragraph{And one more thing.} \nibb{} extends itself. The tools it uses to
+build itself\,---\,run the tests, show a diff, search the tree\,---\,are written in
+its own Scheme, loaded from the repository, and cross the same guard as
+everything else. From the fourth week of its life, \nibb{} has been the tool
+used to build \nibb{}.
+
+\section*{Shape}
+
+\begin{itemize}
+\item \textbf{Stack.} Go host; a user-written Scheme interpreter embedded in
+  it; a single static binary; a line-mode front-end now, a TUI later, and a
+  core that knows nothing about either.
+\item \textbf{Model.} A local Qwen served by Ollama on a workstation on the
+  tailnet. No API key, no cloud dependency, and\,---\,until credentials exist\,---\,no
+  secret anywhere on the build machine.
+\item \textbf{Scope.} One developer, three to six months, v0. No sub-agents,
+  no GUI, no embeddings, no cross-session memory. Those are decisions, not
+  omissions.
+\end{itemize}
+
+\chapter{Invariants}
+
+Five statements are load-bearing. Everything else in the design is a
+consequence of them, and every phase of the plan is judged by whether it
+preserves them.
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{The log is the single source of truth.} Index and window are
+  derived, revocable views; a stale summary means recompute-from-log.
+\item \textbf{The judge judges \emph{why}; the local stack judges \emph{what}.}
+  Jev\,---\,the external calibrated judge used at two seams\,---\,sees intent, plan
+  shape and egress \emph{situation} (class, destination, scope). It never
+  sees a secret value, an argument, or content. It is never audited for the
+  harness's own control-plane key.
+\item \textbf{Secrets are credentials, not content.} The harness holds opaque
+  handles into a log-excluded encrypted keychain, uses them only at a bound
+  destination, and never sees the value.
+\item \textbf{The Scheme interpreter is the only Scheme$\to$Go surface; the
+  guard sits on it.}
+\item \textbf{Every I/O edge is guarded\,---\,by the mechanism that fits its
+  substrate.} Scheme values get provenance tags; text gets redaction; egress
+  gets the binding check.
+\end{enumerate}
+
+Invariant~4 is the one you will meet first in the code: \code{applyPrim} in
+\file{internal/scheme/prim.go} is the only caller of any primitive's handler,
+and a test records every crossing to prove it. Invariant~1 is the one that
+shapes everything you will not see: there is no ``conversation state'' object
+anywhere; there are events, and functions that fold them.
+
+\chapter{Secrets are credentials}
+
+\section{Binding, not recognition}
+
+A secret is never suspicious in isolation. The bytes \code{sk-ant-...} sent to
+\code{api.anthropic.com} are correct; the same bytes sent to
+\code{collect.example.com} are exfiltration. Rightness is a \emph{binding}
+question:
+
+\begin{quote}
+Pass a secret-bearing egress \emph{iff} its class is authorised for
+(destination, positions, methods).
+\end{quote}
+
+The binding table is user-owned: rows of \code{(class $\to$ destination,
+positions, methods)}. A bound egress passes silently and is logged. An
+unbound or unknown one is denied by default (a confirm is opt-in policy)\,---\,it
+never fails open. The harness does not \emph{classify} a secret; the user
+\emph{binds} one, and the class is a name the user chose when registering it.
+
+\section{Two planes}
+
+The harness's own model key\,---\,when it has one\,---\,is \emph{control plane}:
+its identity, its standing; not something it can grant or revoke, and not
+something the judge audits. Every \emph{other} credential the user registers
+is \emph{data plane}: bound like any other, injected only at its destination.
+Under this split, other LLM providers become tools among tools: an OpenAI or
+Anthropic call is an egress with a bound credential, judged exactly like an
+HTTP request to anywhere else. In the bootstrap, the control plane is a local
+model that needs no key at all, so the first real secret on the machine will
+be the judge's own API key, in Phase~5.
+
+\section{The content-detection ladder}
+
+Binding is the authority, but three local, zero-retention layers watch
+content, in a fixed order, each cheaper than the next and each able to stop
+the escalation:
+
+\begin{center}
+\begin{tabular}{@{}lp{2.2cm}p{7.2cm}p{2.6cm}@{}}
+\toprule
+Layer & Acts on & Fires when & Cost \\
+\midrule
+L1 & text I/O & a known secret \emph{shape}: regex, entropy, prefix. Fails closed. & sub-millisecond \\
+L2 & Scheme values & a value tagged at ingress as a known class heads for egress. O(1) flag at the FFI. & nothing \\
+L3 & text I/O & only the class-unknown residual L1/L2 did not decide. A calibrated $P(\text{secret})$ that feeds the decision with binding, never alone. & learned; optional \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The deterministic layers early-terminate the learned one: if L1 or L2 already
+\emph{knows}, L3 is not paid for. L2 is scoped honestly\,---\,it stops the
+\emph{model's} indirect leak, not a user who can strip a tag on purpose, and
+the spec rates it accordingly (0.54).
+
+\section{The four edges}
+
+Every path between the outside world and the two substrates\,---\,Scheme values
+and the model's text context\,---\,is an edge with its own mechanism:
+
+\begin{center}
+\begin{tabular}{@{}lllp{6cm}@{}}
+\toprule
+Edge & From $\to$ to & Substrate & Mechanism \\
+\midrule
+E1 & external $\to$ Scheme value & scheme & L2 taint (provenance tag) \\
+E2 & external $\to$ model context & text & L1+L3 redaction to \code{[REDACTED class]} \\
+E3 & model/Scheme $\to$ external & both & binding check + L1/L3 (+ L2 flag) \\
+E4 & user/OS $\to$ model context & text & L1+L3 redaction (catches pasted secrets) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Redaction is a \emph{substrate controller}: it runs at every ingress to the
+context, not just on API responses, so a leaked value can never be
+re-emitted, even to a bound destination. The category error the design had
+to resolve was thinking a taint on a value could protect the context window;
+it cannot (a window is text, not a value), so the text layers run there.
+
+\section{The judge: where it is allowed}
+
+Jev is an external calibrated judge with no retention guarantee. It is
+therefore banned from content entirely and admitted at exactly two seams:
+
+\begin{description}[leftmargin=1.6em]
+\item[Seam A] score a draft \emph{plan} for quality, coherence and fulfilment
+  of intent; the model revises on a low score, at most three rounds.
+\item[Seam C] score an ambiguous egress \emph{situation}\,---\,class,
+  destination, scope\,---\,never the value.
+\end{description}
+
+Never: a secret value, a content shape, control flow, or its own loop. The
+principle is \emph{why-not-what}: the judge answers why (intent, stakes,
+abstractly), the local layers answer what (content, provenance, on-machine).
+
+\chapter{The loop and the guard}
+
+The agent loop is the plain one: ask the model; run the tool it asks for,
+through the guard; feed the result back; ask again. Stop on a plain answer or
+a hard stop. No sub-agents in the core loop.
+
+Before each message, a plan gate: a yes/no from the judge on the abstract
+intent (``is this multi-step?''), logged per message, plus a code-enforced
+hard trigger for irreversible or high-stakes actions (force pushes,
+recursive deletes, writes outside the tree, any unbound egress). The gate is
+chosen over a pure pull model because it is auditable per message and
+improves as the judge improves.
+
+The guard is a pipeline of \emph{checkers}. Each looks at the primitive's
+declared metadata and its actual arguments and returns a verdict; the
+strictest wins (deny over confirm over allow). A confirm is put to the user
+through a \emph{confirmer} the core implements as an event plus a wait, so
+the guard never knows what a terminal is. A \emph{standing approval}\,---\,a
+command prefix or a write path the user authorised ahead of time\,---\,turns a
+confirm into an allow and never turns a deny into anything. Every decision
+that reaches the host, and every non-allow, is logged with who asked (user
+or model) and why.
+
+\chapter{Memory}
+
+Three tiers, one truth:
+
+\begin{itemize}
+\item \textbf{Disk}: the lossless log plus a session-scoped structural index.
+  Source of truth.
+\item \textbf{Cache}: summaries, written \emph{as log entries}, rebuildable and
+  revocable, possibly stale.
+\item \textbf{RAM}: the token-budgeted window, with surgical pull on demand.
+\end{itemize}
+
+v0 has no cross-session memory and no embedding index; retrieval is
+structural (tree-sitter, grep). The bootstrap ships a deliberately naive
+window\,---\,elide the oldest tool results, then the oldest turns\,---\,but even it is
+rebuilt from the log on every request, and it elides \emph{in place} so the
+request prefix never changes and the model server's cache keeps hitting.
+
+\chapter{Honest limits}
+
+The spec records its own confidence, and the low numbers are the useful
+ones.
+
+\begin{enumerate}[leftmargin=2em]
+\item L2 is scoped, not a security boundary. It stops the model's
+  unintended leak; a user can strip a tag. The real lines are binding
+  (E3), fail-closed defaults, and ingress redaction (E2/E4).
+\item A bare ``confirm'' can be uninformed consent. If the class is also
+  unknown, the prompt is a rubber stamp. Mitigation: always name class and
+  destination; prefer requiring a binding to a bare yes.
+\item L3's value is its training data: strong for known shapes, weak for a
+  novel internal token\,---\,exactly the residue binding catches.
+\item ``The egress surface is closed'' stands at 0.30 until redaction is a
+  substrate controller and E4 is covered. Once all four edges are guarded,
+  the honest statement is: no path exists for a secret \emph{value} to egress
+  unless bound or explicitly re-confirmed\,---\,but ``closed'' is the user's
+  affirmation, not something the harness can prove of itself.
+\end{enumerate}
+
+And in the bootstrap, before any of P3--P7 exist, there is a fifth: the
+\code{shell-exec} hole. A \code{y} to \code{cat \textasciitilde/.ssh/id\_rsa}
+is a \code{y}. The prompt names the path; the operator reads it.

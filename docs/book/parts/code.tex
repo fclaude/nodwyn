@@ -1,0 +1,436 @@
+\part{Reading the code}
+
+\chapter{The spine: one tool call, end to end}
+
+The fastest way into \nibb{} is to follow a single tool call from the
+keyboard to the disk and back. Eleven files, in order. The excerpts below
+are the real code, lightly abridged; line numbers refer to \code{v0.1}.
+
+\section{The front-end sends a line}
+
+\file{internal/frontend/plain/chat.go}. The plain front-end reads a line,
+hands it to the session, and then does nothing but render events until the
+session says it is idle. It never touches the loop, the guard or the
+interpreter\,---\,it is a log subscriber with a reply channel.
+
+\begin{go}
+if err := c.Session.Send(line); err != nil {
+    fmt.Fprintln(c.Out, "error:", err)
+    continue
+}
+c.follow(ctx)
+
+// follow renders events until the turn ends.
+func (c *Chat) follow(ctx context.Context) {
+    for {
+        select {
+        case <-c.Interrupt:
+            fmt.Fprintln(c.Out, "\n[aborting]")
+            c.Session.Abort()
+        case ev, ok := <-c.Session.Events():
+            if !ok {
+                return
+            }
+            c.show(ev)
+            if ev.Kind == event.Status &&
+                ev.Payload.(event.StatusInfo).State == "idle" {
+                return
+            }
+        }
+    }
+}
+\end{go}
+
+\section{The session starts a turn}
+
+\file{internal/core/session.go}. \code{Send} refuses if a turn is running,
+otherwise starts one in a goroutine with a cancellable context. When the
+turn ends\,---\,however it ends\,---\,the session emits \code{status idle}. Note
+\code{turnTrust} being reset: a ``trust writes this turn'' answer cannot
+outlive the turn.
+
+\begin{go}
+func (s *Session) Send(text string) error {
+    s.mu.Lock()
+    if s.busy {
+        s.mu.Unlock()
+        return errors.New("core: a turn is already running")
+    }
+    ctx, cancel := context.WithCancel(context.Background())
+    s.busy, s.turnCancel = true, cancel
+    s.mu.Unlock()
+
+    go func() {
+        defer func() {
+            cancel()
+            s.mu.Lock()
+            s.busy, s.turnCancel, s.turnTrust = false, nil, false
+            s.mu.Unlock()
+            s.Emit(event.Event{Kind: event.Status,
+                Payload: event.StatusInfo{State: "idle"}})
+        }()
+        if err := s.loop.Turn(ctx, text); err != nil {
+            s.Emit(event.Event{Kind: event.Error,
+                Payload: event.ErrorInfo{Err: err.Error()}})
+        }
+    }()
+    return nil
+}
+\end{go}
+
+\code{Record} is the one function that writes the log, keeps the event for
+the window and forwards it to the front-end. It is what the loop, the guard
+and the session itself all call:
+
+\begin{go}
+func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
+    ev, err := s.logw.Append(kind, payload)
+    if err != nil {
+        return ev, err
+    }
+    s.evmu.Lock()
+    s.events = append(s.events, ev)
+    s.evmu.Unlock()
+    s.Emit(event.FromLog(ev, payload))
+    return ev, nil
+}
+\end{go}
+
+\section{The loop asks the model}
+
+\file{internal/loop/loop.go}. Every request rebuilds the window from the
+events so far (there is no ``messages'' field kept between requests),
+records an \code{llm.req} describing the window, streams the response, and
+records the full \code{llm.resp}. If the response has no tool calls the turn
+is over.
+
+\begin{go}
+func (l *Loop) Turn(ctx context.Context, text string) error {
+    if _, err := l.host.Record(log.KindUserMsg, log.UserMsg{Text: text}); err != nil {
+        return err
+    }
+    calls := 0
+    for {
+        w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.InputBudget)
+        l.host.Record(log.KindLLMReq, log.LLMReq{Model: l.cfg.Model,
+            Messages: len(w.Messages), Tools: len(l.tools),
+            EstTokens: w.EstTokens, Elided: w.Elided})
+
+        reqCtx, cancel := context.WithTimeout(ctx, l.cfg.RequestTimeout)
+        resp, err := l.provider.Chat(reqCtx, llm.Request{Model: l.cfg.Model,
+            Messages: w.Messages, Tools: l.tools, NumCtx: l.cfg.NumCtx,
+            KeepAlive: l.cfg.KeepAlive}, l.onDelta)
+        cancel()
+        if err != nil {
+            return err
+        }
+        l.host.Record(log.KindLLMResp, toRecord(resp))
+        if len(resp.Message.ToolCalls) == 0 {
+            return nil
+        }
+        for _, tc := range resp.Message.ToolCalls {
+            if calls++; calls > l.cfg.MaxToolCalls {
+                return ErrHardStop
+            }
+            if err := l.runTool(ctx, tc); err != nil {
+                return err
+            }
+        }
+    }
+}
+\end{go}
+
+\section{The window is a fold over the log}
+
+\file{internal/window/window.go}. \code{Build} turns \code{user.msg},
+\code{llm.resp} and \code{tool.result} events into messages, estimates their
+size, and if over budget replaces content \emph{in place}, oldest tool
+results first, never the last four entries. Because elision is a pure
+function of the events and the budget, once a seq is elided it stays
+elided on every later request\,---\,which is what keeps the prefix stable.
+
+\begin{go}
+elide := func(i int) {
+    entries[i].msg.Content = fmt.Sprintf("[elided seq=%d]", entries[i].seq)
+    entries[i].size = estimate(entries[i].msg)
+    elided = append(elided, entries[i].seq)
+}
+protect := len(entries) - Keep
+// Pass 1: oldest tool results.
+for i := 0; i < protect && total() > budget; i++ {
+    if entries[i].tool && !isElided(i) {
+        elide(i)
+    }
+}
+// Pass 2: oldest turns of any kind.
+for i := 0; i < protect && total() > budget; i++ {
+    if !isElided(i) {
+        elide(i)
+    }
+}
+\end{go}
+
+\section{The provider streams}
+
+\file{internal/llm/ollama.go}. The native \code{/api/chat} protocol sends
+newline-delimited JSON chunks. Content and thinking are accumulated and also
+forwarded as deltas; tool calls arrive as JSON objects and are kept as such;
+the final chunk carries usage. Nothing in the loop knows this is Ollama.
+
+\begin{go}
+for sc.Scan() {
+    var ch wireChunk
+    if err := json.Unmarshal(sc.Bytes(), &ch); err != nil {
+        return nil, fmt.Errorf("ollama: bad chunk: %w", err)
+    }
+    if ch.Message.Content != "" || ch.Message.Thinking != "" {
+        content.WriteString(ch.Message.Content)
+        thinking.WriteString(ch.Message.Thinking)
+        onDelta(Delta{Text: ch.Message.Content, Thinking: ch.Message.Thinking})
+    }
+    for _, wt := range ch.Message.ToolCalls {
+        out.Message.ToolCalls = append(out.Message.ToolCalls,
+            ToolCall{ID: wt.ID, Name: wt.Function.Name, Args: wt.Function.Arguments})
+    }
+    if ch.Done {
+        out.DoneReason = ch.DoneReason
+        out.Usage = Usage{PromptTokens: ch.PromptEvalCount, /* ... */}
+        break
+    }
+}
+\end{go}
+
+\section{A tool call becomes a Scheme application}
+
+\file{internal/loop/loop.go}, \code{apply}. This is \adr{3} in four lines: look
+the primitive up, order the model's named JSON arguments into the
+primitive's positional parameters (unknown or missing names are errors the
+model is told about), tag the context with \emph{model origin}, and apply.
+The model's call now takes exactly the path a call from the REPL would.
+
+\begin{go}
+func (l *Loop) apply(ctx context.Context, tc llm.ToolCall) (string, error) {
+    p, ok := l.interp.Lookup(tc.Name)
+    if !ok || !p.Tool() {
+        return "", fmt.Errorf("unknown tool %q; available: %s", tc.Name, l.toolNames())
+    }
+    args, err := p.ArgsFromJSON(tc.Args)
+    if err != nil {
+        return "", err
+    }
+    v, err := l.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginModel),
+        scheme.Value{Kind: scheme.KPrim, Prim: p}, args)
+    if err != nil {
+        return "", err
+    }
+    return render(v), nil
+}
+\end{go}
+
+\section{The single exit}
+
+\file{internal/scheme/prim.go}. Whatever the caller\,---\,the loop, \code{map},
+\code{apply}, a registered tool's body, the REPL\,---\,every primitive
+application reaches this function and no other. Arity first, then the gate,
+then the handler. A lint asserts that \code{p.Handler} is invoked nowhere
+else.
+
+\begin{go}
+// applyPrim is the single Scheme->Go exit. Every primitive application --
+// from the model, the prelude, a .scm file or the REPL -- passes through
+// here: arity check, guard, handler. Nothing else calls p.Handler.
+func (in *Interp) applyPrim(ctx context.Context, p *Prim, args []Value) (Value, error) {
+    if err := ctx.Err(); err != nil {
+        return Value{}, wrap(p.Name, err)
+    }
+    if err := checkArity(p, args); err != nil {
+        return Value{}, err
+    }
+    if in.gate != nil {
+        if err := in.gate.Before(ctx, p, args); err != nil {
+            return Value{}, wrap(p.Name, err)
+        }
+    }
+    v, err := p.Handler(&Call{Ctx: ctx, In: in, Name: p.Name, Args: args,
+        Origin: OriginFrom(ctx)})
+    if err != nil {
+        return Value{}, wrap(p.Name, err)
+    }
+    return v, nil
+}
+\end{go}
+
+\section{The guard decides}
+
+\file{internal/guard/guard.go}. Checkers run in order; a deny short-circuits;
+the strictest verdict wins; a standing approval converts a confirm into an
+allow (and carries the diff into the log, since nobody saw it). A confirm
+goes to the confirmer, which the core implements as an event plus a wait.
+
+\begin{go}
+for _, c := range g.checkers {
+    d := c.Check(ctx, p, args)
+    if d.Verdict == Allow {
+        if d.Standing && standing == "" {
+            standing = d.Reason
+        }
+        continue
+    }
+    reasons = append(reasons, d.Reason)
+    if d.Detail != "" {
+        details = append(details, d.Detail)
+    }
+    if d.Verdict > final.Verdict {
+        final, checker = d, c.Name()
+    }
+    if d.Verdict == Deny {
+        break // nothing can relax a deny
+    }
+}
+if final.Verdict == Confirm && standing != "" {
+    final = Decision{Verdict: Allow, Standing: true, Reason: standing}
+    reasons, checker = []string{standing}, "standing"
+}
+\end{go}
+
+\section{A checker reads metadata, not names}
+
+\file{internal/guard/checkers.go}. \code{RepoPin} does not know what
+\code{fs-read} is. It asks the primitive's declaration which parameters
+carry a path, resolves each against the root\,---\,following symlinks on the
+longest existing prefix, so a link out of the tree does not escape\,---\,and
+denies anything that lands outside.
+
+\begin{go}
+func (r RepoPin) Resolve(raw string) string {
+    abs := raw
+    if !filepath.IsAbs(abs) {
+        abs = filepath.Join(r.Root, abs)
+    }
+    abs = filepath.Clean(abs)
+    resolved := resolveExisting(abs)
+    root := resolveExisting(r.Root)
+    if resolved == root || strings.HasPrefix(resolved, root+string(filepath.Separator)) {
+        return abs
+    }
+    return ""
+}
+\end{go}
+
+\section{The primitive runs}
+
+\file{internal/prim/fs.go}. \code{fs-edit} replaces exactly one occurrence.
+Its \code{Preview} renders the diff the confirm prompt shows; its handler
+re-resolves the path (defense in depth: the guard already denied an escape)
+and refuses ambiguous or missing matches with messages written for the
+model to act on.
+
+\begin{go}
+func applyEdit(content, old, replacement string) (string, error) {
+    if old == "" {
+        return "", errors.New("old text must not be empty")
+    }
+    switch n := strings.Count(content, old); n {
+    case 0:
+        return "", errors.New("old text not found; it must match exactly, including whitespace")
+    case 1:
+        return strings.Replace(content, old, replacement, 1), nil
+    default:
+        return "", fmt.Errorf("old text occurs %d times; include more context so it is unique", n)
+    }
+}
+\end{go}
+
+\section{The result is recorded, and shown}
+
+Back in \file{loop.go}, \code{runTool} records \code{tool.call} before and
+\code{tool.result} after. Only context cancellation is an error here;
+everything else\,---\,a denial, a missing file, a bad argument\,---\,is a
+\emph{result} the model reads:
+
+\begin{go}
+res := log.ToolResult{ID: tc.ID, Name: tc.Name}
+value, err := l.apply(ctx, tc)
+if err != nil {
+    if ctx.Err() != nil {
+        return ctx.Err()
+    }
+    res.OK, res.Error = false, err.Error()
+} else {
+    res.OK, res.Value = true, value
+}
+_, err = l.host.Record(log.KindToolResult, res)
+\end{go}
+
+And \file{internal/log/log.go} writes it: marshal, filter (the future
+redactor), one line, fsync.
+
+\begin{go}
+line, err := json.Marshal(ev)
+line = append(line, '\n')
+if _, err := w.w.Write(line); err != nil {
+    return Event{}, fmt.Errorf("log: write: %w", err)
+}
+if w.syncer != nil {
+    if err := w.syncer.Sync(); err != nil {
+        return Event{}, fmt.Errorf("log: fsync: %w", err)
+    }
+}
+w.seq = ev.Seq
+\end{go}
+
+The front-end, meanwhile, has been receiving each of these as an event and
+printing a tool card, a guard flag, or a dimmed diff. That is the whole
+trip.
+
+\chapter{The log as truth}
+
+A session log lives under \file{\textasciitilde/.local/share/nibb/sessions/}, one \file{<id>.jsonl} per session. The
+kinds are fixed in \file{internal/log/log.go}; a reader rejects any other,
+and rejects a gap in \code{seq}. Three lines from a real session:
+
+\begin{txt}
+{"seq":2,"ts":"2026-09-21T03:14:52Z","session":"20260921T031452Z-da2e39d8",
+ "kind":"user.msg","payload":{"text":"Read internal/log/log.go and explain ..."}}
+{"seq":5,"ts":"...","kind":"tool.call","payload":{"id":"call_x","name":"fs-read",
+ "args":{"path":"internal/log/log.go"},"origin":"model"}}
+{"seq":6,"ts":"...","kind":"guard.decision","payload":{"prim":"fs-read",
+ "origin":"model","decision":"allow","args":"(\"internal/log/log.go\")"}}
+\end{txt}
+
+What is \emph{not} in the log is as telling as what is: \code{llm.req} records
+how many messages and an estimate, not the messages\,---\,they are
+reconstructible. Model thinking is stored on \code{llm.resp} and never sent
+back. Pure builtins (\code{car}, \code{+}) are allowed silently; anything that
+reaches the host, and every non-allow, is recorded.
+
+Two properties come for free once the log is the truth. A crash between
+write and fsync leaves a partial last line; \code{Open} repairs it and says
+so. And ``resume'' (not built yet) is \code{Build} over an old file.
+
+\chapter{Conventions}
+
+\paragraph{Metadata is the contract.} A primitive declares \code{Doc},
+\code{Params} (name, type, doc, \emph{role}), \code{Variadic}, \code{Egress},
+\code{Irreversible}, \code{Host}, \code{Hidden} and an optional \code{Preview}.
+The model's tool schema and the guard's judgement both come from this one
+declaration and cannot drift. Roles\,---\,\code{path}, \code{argv},
+\code{payload}, later \code{dest} and \code{credential}\,---\,are what checkers
+read. A checker that switches on a primitive's name is a bug.
+
+\paragraph{Origins.} A context carries who initiated the evaluation:
+\code{user} (REPL, \code{:eval}, \file{init.scm}) or \code{model} (a tool
+call). Every guard record has it; L2 will use it to restrict tag stripping.
+
+\paragraph{Errors.} \code{*scheme.Error} is the Scheme-level error, with an
+optional \code{Cause} for host errors (a \code{*Denied}, a cancelled
+context). Runtime failures read \code{who: what}. A tool's failure is a
+result for the model; only cancellation is an error for the loop.
+
+\paragraph{Two binaries.} \file{bin/nibb} is what you are editing;
+\code{nibb-stable} is what edits it. \code{make promote} is the only bridge.
+
+\paragraph{One ingress, one exit.} There is one function that writes the
+log, one that appends to the model's context (the window), one that calls a
+primitive's handler. Lints and tests hold each. When a phase needs a second
+one, the answer is an ADR, not a shortcut.

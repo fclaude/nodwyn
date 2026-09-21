@@ -1,0 +1,170 @@
+\part{Using \nibb}
+
+\chapter{Install and configure}
+
+\begin{sh}
+make build                        # bin/nibb from the working tree
+make promote TAG=v0.1-bootstrap   # accept + selfcheck, then ~/.local/bin/nibb-stable
+\end{sh}
+
+Use \code{nibb-stable} for real work and \file{bin/nibb} only to test a
+change to \nibb{} itself. Requires Go~1.27, \code{staticcheck}, and a
+reachable control plane.
+
+\section{config.toml}
+
+\file{\textasciitilde/.config/nibb/config.toml}; a missing file means these
+defaults:
+
+\begin{txt}
+[control]
+provider   = "ollama"
+url        = "http://workshop.example:11434"
+model      = "qwen3.8-27b-96k:latest"
+num_ctx    = 98304
+keep_alive = "30m"
+
+[window]
+input_budget   = 81920     # tokens; validated against num_ctx
+output_reserve = 8192
+
+[policy]
+unbound        = "deny"    # or "confirm" (P3)
+allow_commands = []        # standing approvals, global
+allow_writes   = []
+
+[loop]
+max_tool_calls  = 50
+request_timeout = "30m"
+shell_timeout   = "10m"
+\end{txt}
+
+\code{nibb paths} prints where everything lives. Session logs are under
+\file{\textasciitilde/.local/share/nibb/sessions/}.
+
+\chapter{A session}
+
+\begin{sh}
+$ cd ~/src/your-repo
+$ nibb-stable
+control plane: http://workshop...:11434 qwen3.8-27b-96k:latest (ollama 0.34.2)
+log: /Users/you/.local/share/nibb/sessions/20260921T143846Z-beba937b.jsonl
+nibb session 20260921T143846Z-beba937b
+repo  /Users/you/src/your-repo
+tools fs-edit fs-list fs-read fs-write shell-exec
+:h for commands
+
+you> read main.go and explain the startup sequence
+\end{sh}
+
+Commands at the prompt:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\code{:q} & quit \\
+\code{:log [n]} & last $n$ log events \\
+\code{:tools} & tools offered to the model \\
+\code{:allow} & standing command and write approvals in effect \\
+\code{:eval EXPR} & evaluate Scheme yourself (user origin) \\
+\code{:thinking} & toggle streaming the model's thinking \\
+Ctrl-C & abort the running turn; at the prompt, exit \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+While a turn runs the front-end prints streamed text, a card per tool call
+(\code{> fs-read \{"path":...\}} then \code{< fs-read ok (10398 bytes, 5 ms)}),
+guard flags, and a usage line per model request.
+
+\chapter{Confirms}
+
+Every write and every command stops for you, with a reason and, for
+writes, a diff:
+
+\begin{txt}
+--- confirm: fs-edit ("internal/x.go" "old..." "new...")
+  * fs-edit is irreversible
+  * changes internal/x.go
+  --- internal/x.go
+  +++ internal/x.go
+  @@ -12,3 +12,3 @@
+  ...
+allow? [y/N/a=always under internal//t=all writes this turn]
+\end{txt}
+
+\begin{description}[leftmargin=2.2em]
+\item[\code{y}] once.
+\item[\code{N}] (or anything else) no. The model is told
+  \code{denied: not confirmed by the user} and moves on.
+\item[\code{a}] yes, and a \emph{standing approval for this session}: the
+  command prefix (\code{go test}, \code{rg}) or the write's directory
+  (\code{internal/scheme/}). Not persisted.
+\item[\code{t}] writes only: yes, and every further write \emph{until this
+  turn ends}. For a task you intend to review with \code{git diff}
+  afterwards. Each auto-approved write's diff is logged and shown dimmed.
+\end{description}
+
+Read the reason lines. ``command line names a path outside the repository''
+and ``uses the network tool curl'' are the guard telling you what a
+\code{y} would do.
+
+\section{Standing approvals}
+
+\begin{txt}
+# ~/.config/nibb/config.toml           (global)
+[policy]
+allow_commands = ["go test", "go build", "git status", "git diff", "rg"]
+allow_writes   = []
+
+# <repo>/.nibb/allow.toml              (per repository, tracked)
+commands = ["make lint", "make test"]
+writes   = ["internal/", "docs/"]
+\end{txt}
+
+Prefixes match argv tokens: \code{"go test"} matches \code{go test ./...}
+and \code{/usr/local/go/bin/go test}, not \code{go build}. Denies still
+apply\,---\,only the confirm is waived\,---\,and every use is logged with the
+prefix as reason. \code{.nibb/}, \code{.github/}, \code{.gitea/},
+\code{scripts/} and \code{Makefile} always prompt, whatever the list says.
+Keep the lists read-only and test-only for commands; git is the undo for
+writes.
+
+\chapter{Building \nibb{} with \nibb}
+
+\begin{enumerate}[leftmargin=2em]
+\item \code{nibb-stable} in this repository; \code{:tools} lists
+  \code{go-test}, \code{git-diff}, \code{grep-repo}, \code{read-adr}, \ldots
+\item Give it small, explicit tasks: name the file, the pattern to follow,
+  the test to add, and ask it to run \code{go-test} on the package. A
+  paragraph works; a page does not.
+\item Review every diff at the confirm, or \code{t} and review with
+  \code{git diff} at the end. An \code{fs-write} of a whole existing file
+  deserves suspicion; an \code{fs-edit} rarely does.
+\item When it gets in the way, hand-edit, and add one line to
+  \file{docs/friction.md}.
+\item \code{make accept} before committing. You commit; there is no commit
+  tool.
+\item \code{make promote TAG=v0.N-phase} when a phase's acceptance is green.
+  Promotion refuses a dirty tree, runs the suite and the self-check, swaps
+  \code{nibb-stable} (keeping \code{.prev}) and tags.
+\end{enumerate}
+
+\chapter{When something is wrong}
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{5.6cm}p{8.6cm}@{}}
+\toprule
+Symptom & Look at \\
+\midrule
+\code{control plane ... unreachable} & tailscale up? \code{curl http://workshop...:11434/api/version} \\
+first turn takes 10--60\,s & another client holds workshop's single slot, or the prefix is cold; later turns are sub-second \\
+the model loops on a denied call & it was told; say so in the next message; the hard stop is 50 tool calls \\
+\code{hard stop: too many tool calls} & the turn ended; the log has everything; rephrase smaller \\
+a tool call errored & \code{:log 20}: the \code{tool.result} line has the exact error the model saw \\
+a file changed without a prompt & \code{:allow}: a standing approval covered it; the \code{guard.decision} line names which and carries the diff \\
+a session died & \code{nibb replay <id>}: everything up to the last fsync is there \\
+\bottomrule
+\end{tabular}
+\end{center}

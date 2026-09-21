@@ -1,0 +1,121 @@
+\documentclass[11pt,a4paper,oneside]{book}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[margin=2.6cm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{textcomp}
+\usepackage{amsmath}
+\usepackage[hidelinks,pdftitle={nibb},pdfauthor={nibb project}]{hyperref}
+
+\definecolor{codebg}{gray}{0.96}
+\definecolor{codecomment}{rgb}{0.35,0.45,0.35}
+\definecolor{codekw}{rgb}{0.15,0.15,0.55}
+\definecolor{codestr}{rgb}{0.5,0.2,0.2}
+
+\lstdefinelanguage{Scheme}{
+  morekeywords={define,lambda,if,let,let*,letrec,begin,set!,quote,quasiquote,unquote,cond,case,else,and,or,do,when,unless,guard,register-tool,load},
+  alsoletter={-!?*>},
+  morecomment=[l]{;},
+  morestring=[b]",
+  sensitive=true
+}
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  commentstyle=\color{codecomment}\itshape,
+  keywordstyle=\color{codekw}\bfseries,
+  stringstyle=\color{codestr},
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  frame=none,
+  xleftmargin=0.6em,
+  framexleftmargin=0.6em,
+  aboveskip=0.8em,
+  belowskip=0.8em,
+  showstringspaces=false,
+  tabsize=4,
+  extendedchars=true,
+  literate={é}{{\'e}}1 {É}{{\'E}}1 {ç}{{\c{c}}}1
+}
+\lstnewenvironment{go}{\lstset{language=Go}}{}
+\lstnewenvironment{scm}{\lstset{language=Scheme}}{}
+\lstnewenvironment{sh}{\lstset{language=bash,keywordstyle=\ttfamily}}{}
+\lstnewenvironment{txt}{\lstset{language={}}}{}
+
+\newcommand{\nibb}{\textsf{nibb}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\file}[1]{\texttt{#1}}
+\newcommand{\adr}[1]{ADR~#1}
+\newcommand{\spec}{\textsc{spec}}
+\newcommand{\todo}[1]{\textcolor{red!70!black}{[#1]}}
+\newenvironment{aside}{\begin{quote}\small}{\end{quote}}
+
+\titleformat{\chapter}[display]{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{12pt}{\Huge}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\leftmark}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+\setlist{nosep}
+
+\title{\Huge\textbf{\nibb}\\[0.6em]\Large a minimal, self-extending coding-agent harness\\[0.4em]\large the idea, the plan, the code, and the language}
+\author{v0.1-bootstrap edition}
+\date{September 2026}
+
+\begin{document}
+\frontmatter
+\maketitle
+
+\chapter*{Preface}
+\addcontentsline{toc}{chapter}{Preface}
+
+This book is written for one reader at three moments: the person who wants
+to understand what \nibb{} is trying to be, the person who has to change its
+code, and the person sitting at the prompt. It is organised accordingly.
+
+\textbf{Part I} states the idea: why a coding agent's secrets should be
+\emph{credentials} the harness never sees rather than \emph{content} it tries
+to recognise; why one guard at one boundary is worth more than many checks
+in many places; why the log, not the model's context, is the truth.
+\textbf{Part II} is the plan: a hand-written bootstrap, then a harness that
+builds itself, phase by phase, each phase retiring one of the temporary
+protections the bootstrap runs under. \textbf{Part III} is an inventory of
+what exists as of \code{v0.1-bootstrap}. \textbf{Part IV} walks the code: one
+tool call followed through eleven files, with the actual source. \textbf{Part V}
+is a tutorial and reference for \nibb{} Scheme, the small language in which
+\nibb's own tools are written. \textbf{Part VI} is the operator's manual.
+
+Everything in this book is derived from the repository: \file{SPEC.md},
+\file{plan.md}, \file{docs/scheme.md}, \file{docs/adr/}, and the source.
+Where the book and the repository disagree, the repository is right and the
+book has a bug.
+
+\paragraph{Status.} The code described is tag \code{v0.1-bootstrap}
+(2026-09-21) plus the standing-approval amendment committed the same day.
+Phase~1b (the full v0 kernel) was in review at press time; its forms are
+described in Part~V with that caveat.
+
+\tableofcontents
+
+\mainmatter
+\input{parts/idea}
+\input{parts/plan}
+\input{parts/exists}
+\input{parts/code}
+\input{parts/scheme}
+\input{parts/using}
+\appendix
+\input{parts/appendix}
+\end{document}

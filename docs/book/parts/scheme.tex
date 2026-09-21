@@ -1,0 +1,556 @@
+\part{\nibb{} Scheme}
+
+\chapter{Why a Scheme, and which one}
+
+\nibb{} embeds a small Scheme for \emph{orchestration only}. Scheme code
+decides what to do; every effect\,---\,a file, a process, a model call\,---\,is a
+Go primitive, and every primitive application crosses the guard. Scheme
+never touches the network or the filesystem on its own. That gives the
+harness one place to look (\adr{3}, invariant~4) and gives the user a way to
+extend it without touching Go: a tool is a documented Scheme procedure
+registered into the primitive table.
+
+The language is deliberately small. It is specified in
+\file{docs/scheme.md} and the interpreter implements that document and
+nothing else; the conformance suite has a snippet for every form and
+builtin, and a builtin that is not documented fails the suite. What follows
+is a tutorial over that reference.
+
+\begin{aside}
+\textbf{On P1b.} The forms \code{letrec}, \code{case}, \code{do},
+\code{when}, \code{unless}, \code{guard}, \code{with-output-to-string},
+vectors and block comments arrived in Phase 1b, which was in review when
+this book was built. Their sections are marked \textbf{[P1b]}; the shape of
+\code{guard} in particular may still change.
+\end{aside}
+
+\chapter{First steps}
+
+\section{The REPL}
+
+\begin{sh}
+$ nibb repl
+nibb> (+ 1 2)
+3
+nibb> (define (square x) (* x x))
+nibb> (map square (iota 5))
+(0 1 4 9 16)
+nibb> (car 1)
+error: car: argument 1: expected pair, got integer 1
+\end{sh}
+
+Unbalanced input continues on the next line with a \code{...>} prompt. A
+value of \emph{void}\,---\,the result of \code{define}, \code{set!},
+\code{display}\,---\,is not printed. \code{nibb eval -e EXPR} evaluates one
+expression; \code{nibb eval FILE} loads files. Inside a session,
+\code{:eval EXPR} evaluates with \emph{user} origin, and the guard sees it
+like anything else.
+
+\section{Values}
+
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Type & Written & Predicate & Notes \\
+\midrule
+empty list & \code{()} & \code{null?} & quote it in code: \code{'()} \\
+boolean & \code{\#t} \code{\#f} & \code{boolean?} & only \code{\#f} is false \\
+integer & \code{42} & \code{integer?} & int64; wraps on overflow \\
+float & \code{2.5} \code{1.0} & \code{float?} & float64; always printed with a dot or exponent \\
+string & \code{"hi"} & \code{string?} & immutable UTF-8; lengths and indices count runes \\
+symbol & \code{foo} & \code{symbol?} & case-sensitive \\
+pair / list & \code{(1 2 3)} \code{(a . b)} & \code{pair?} \code{list?} & no mutation \\
+vector [P1b] & \code{\#(1 2)} & \code{vector?} & \code{vector-set!} mutates \\
+procedure & \code{\#<procedure f>} & \code{procedure?} & closures and primitives alike \\
+handle & \code{\#<cred:class:id>} & \code{handle?} & opaque; no builtin turns it into text \\
+void & \code{\#<void>} & --- & the unspecified value \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\code{number?} is true for both numeric kinds. Two integers divide exactly
+when the result is integral, otherwise the result is a float:
+
+\begin{scm}
+(/ 6 3)      ; 2
+(/ 7 2)      ; 3.5
+(/ 1.0 4)    ; 0.25
+(expt 2 10)  ; 1024
+(sqrt 16)    ; 4.0
+(exact 2.9)  ; 2   (truncates toward zero)
+(inexact 2)  ; 2.0
+\end{scm}
+
+\section{Printing}
+
+\code{display} shows a value for humans (strings without quotes);
+\code{write} shows it for machines (strings quoted and escaped so that the
+reader can read them back). Both go to the interpreter's output writer,
+which the host provides: stdout in the REPL, an \emph{output} event in a
+session. \code{format} builds a string with \code{\textasciitilde a}
+(display), \code{\textasciitilde s} (write), \code{\textasciitilde\%}
+(newline) and \code{\textasciitilde\textasciitilde}:
+
+\begin{scm}
+(format "~a and ~s~%" "x" "y")   ; "x and \"y\"\n"
+\end{scm}
+
+\chapter{Definitions and procedures}
+
+\section{define and lambda}
+
+\begin{scm}
+(define pi 3.14159)
+(define (area r) (* pi r r))
+(define (rest-args a . more) more)    ; dotted parameter: the rest as a list
+(define variadic (lambda args args))  ; every argument as a list
+
+(area 2)               ; 12.56636
+(rest-args 1 2 3)      ; (2 3)
+(variadic 1 2)         ; (1 2)
+\end{scm}
+
+A \code{define} inside a procedure body binds in that call's environment.
+When \code{define} names a fresh anonymous closure, the closure takes that
+name for printing and for error messages: \code{(define f (lambda (a) a))
+(f)} reports \code{f: expected 1 argument(s), got 0}.
+
+\section{Closures}
+
+Procedures close over their defining environment. \code{set!} assigns an
+\emph{existing} binding; assigning an unbound name is an error.
+
+\begin{scm}
+(define (counter)
+  (let ((n 0))
+    (lambda () (set! n (+ n 1)) n)))
+(define c (counter))
+(c) (c) (c)   ; 3
+\end{scm}
+
+\section{let, let* and named let}
+
+\code{let} binds in parallel, \code{let*} sequentially. \emph{Named let}
+is the idiomatic loop: the name is bound to the loop procedure inside the
+body.
+
+\begin{scm}
+(let ((a 1) (b 2)) (+ a b))            ; 3
+(let* ((a 1) (b (+ a 1))) b)           ; 2
+(let loop ((i 0) (acc '()))
+  (if (= i 3)
+      (reverse acc)
+      (loop (+ i 1) (cons i acc))))    ; (0 1 2)
+\end{scm}
+
+\section{Tail calls}
+
+The last expression of a body, of \code{begin}, of a \code{let} body, of a
+\code{cond} clause, of \code{and}/\code{or}, and either branch of \code{if}
+is in \emph{tail position}. A call there does not grow the stack: a loop
+written as a tail-recursive procedure runs in constant space, for a
+million iterations or a billion. The test suite proves this with a
+200,000-iteration loop under an 8\,MB stack cap in nine positions.
+
+\begin{scm}
+(define (count-down n)
+  (if (= n 0) 'done (count-down (- n 1))))
+(count-down 1000000)    ; done
+\end{scm}
+
+Mutual recursion works the same way:
+
+\begin{scm}
+(define (even2? n) (if (= n 0) #t (odd2? (- n 1))))
+(define (odd2? n)  (if (= n 0) #f (even2? (- n 1))))
+(even2? 1000000)        ; #t
+\end{scm}
+
+\section{letrec [P1b]}
+
+\code{letrec} binds names that may refer to each other, for local mutual
+recursion. Initialisers should be lambdas; a plain value must not depend on
+a sibling that has not been evaluated yet.
+
+\begin{scm}
+(letrec ((ev? (lambda (n) (if (= n 0) #t (od? (- n 1)))))
+         (od? (lambda (n) (if (= n 0) #f (ev? (- n 1))))))
+  (ev? 10))   ; #t
+\end{scm}
+
+\chapter{Conditionals}
+
+\begin{scm}
+(if test then)                 ; missing else yields void
+(if test then else)
+(cond (test body ...)
+      (test => proc)           ; pass the test's value to proc
+      (else body ...))
+(and a b c)                    ; short-circuit; (and) is #t
+(or a b c)                     ; short-circuit; (or) is #f
+\end{scm}
+
+\code{cond} with \code{=>} is the idiom for ``look it up, and if found, use
+it'':
+
+\begin{scm}
+(cond ((assq 'b '((a 1) (b 2))) => cadr)
+      (else 0))    ; 2
+\end{scm}
+
+\textbf{[P1b]} \code{when} and \code{unless} evaluate a body for effect;
+\code{case} dispatches on a key against lists of datums:
+
+\begin{scm}
+(when (> x 0) (display "positive") (newline))
+(unless done? (display "still going"))
+(case 2 ((1 2 3) 'small) ((4 5) 'medium) (else 'large))   ; small
+\end{scm}
+
+\chapter{Lists and association lists}
+
+\section{Pairs and lists}
+
+\begin{scm}
+(cons 1 2)                 ; (1 . 2)
+(list 1 2 3)               ; (1 2 3)
+(car '(1 2 3))             ; 1
+(cdr '(1 2 3))             ; (2 3)
+(cadr '(1 2 3))            ; 2      also caar cdar cddr caddr cdddr
+(length '(1 2 3))          ; 3
+(append '(1) '(2 3) '())   ; (1 2 3)
+(reverse '(1 2 3))         ; (3 2 1)
+(list-ref '(a b c) 1)      ; b
+(list-tail '(a b c) 2)     ; (c)
+(iota 4)                   ; (0 1 2 3)
+\end{scm}
+
+Lists are not mutated in \nibb{} Scheme: there is no \code{set-car!}. Build
+new ones.
+
+\section{Higher-order}
+
+\begin{scm}
+(map (lambda (x) (* x x)) '(1 2 3))        ; (1 4 9)
+(map + '(1 2) '(10 20 30))                 ; (11 22)   stops at the shortest
+(for-each display '(1 2))                  ; prints 12, yields void
+(filter odd? '(1 2 3 4))                   ; (1 3)
+(fold + 0 '(1 2 3))                        ; 6         (f acc x), left to right
+(fold cons '() '(1 2))                     ; ((() . 1) . 2)
+(sort '(3 1 2) <)                          ; (1 2 3)   stable
+(apply + 1 2 '(3 4))                       ; 10        last argument is a list
+\end{scm}
+
+\section{Membership and association lists}
+
+\code{memq} and \code{assq} compare with \code{eq?}; \code{member} and
+\code{assoc} with \code{equal?}. \code{eq?} is identity for pairs and
+procedures and \emph{value} for everything else, including strings\,---\,so
+\code{(eq? "a" "a")} is true, unlike in most Schemes. \code{equal?} is
+structural.
+
+\begin{scm}
+(memq 'b '(a b c))                   ; (b c)
+(member '(1) '((1) 2))               ; ((1) 2)
+(assq 'b '((a . 1) (b . 2)))         ; (b . 2)
+(assoc "k" '(("k" . 1)))             ; ("k" . 1)
+\end{scm}
+
+Association lists are \nibb's record type\,---\,JSON objects become alists,
+tool metadata is an alist, \code{shell-exec} returns one. The prelude adds
+\code{assoc-ref}:
+
+\begin{scm}
+(define r '(("status" . 0) ("stdout" . "ok\n") ("stderr" . "")))
+(assoc-ref r "status")          ; 0
+(assoc-ref r "missing")         ; #<void>
+(assoc-ref r "missing" 'none)   ; none
+\end{scm}
+
+\chapter{Strings, JSON and quasiquote}
+
+\section{Strings}
+
+\begin{scm}
+(string-length "héllo")                  ; 5   (runes)
+(string-append "a" "b" "c")              ; "abc"
+(substring "héllo" 1 3)                  ; "él"
+(string-upcase "aé")                     ; "AÉ"
+(string-trim "  x \n")                   ; "x"
+(string-split "a,b,,c" ",")              ; ("a" "b" "" "c")   literal separator
+(string-join '("a" "b") "-")             ; "a-b"
+(string-contains? "hello" "ell")         ; #t
+(string-prefix? "he" "hello")            ; #t
+(string-replace "a-b-c" "-" "+")         ; "a+b+c"
+(string->number "42")                    ; 42       #f if not a number
+(number->string 1.5)                     ; "1.5"
+(string->symbol "ab") (symbol->string 'ab)
+\end{scm}
+
+There is no character type; one-character strings serve.
+
+\section{JSON}
+
+\code{json-parse} and \code{json-emit} are the bridge to the model and to
+tools. Objects become alists with string keys in document order, arrays
+lists, \code{null} the symbol \code{null}:
+
+\begin{scm}
+(json-parse "{\"a\":1,\"b\":[true,null,2.5]}")
+; (("a" . 1) ("b" #t null 2.5))
+
+(json-emit '(("name" . "nibb") ("tags" "go" "scheme")))
+; "{\"name\":\"nibb\",\"tags\":[\"go\",\"scheme\"]}"
+\end{scm}
+
+\code{json-emit} treats a proper list whose elements are all pairs with
+string cars as an object, and any other proper list as an array. So
+\code{'()} emits \code{[]}, and there is no way to emit \code{\{\}} in v0.
+This same mapping is how a model's tool-call arguments become Scheme values.
+
+\section{Quasiquote}
+
+One level, with \code{,} to evaluate and \code{,@} to splice:
+
+\begin{scm}
+`(1 ,(+ 1 1) ,@(list 3 4))   ; (1 2 3 4)
+\end{scm}
+
+\chapter{Errors, output capture and vectors}
+
+\section{Raising}
+
+\code{(error message irritant ...)} raises an error whose text is the
+message followed by the written irritants. Runtime failures use the same
+kind of error with a \code{who: what} message. An error that is not caught
+unwinds to the host: the REPL prints it; in a session, the model receives it
+as the tool result. A primitive the guard refuses raises
+\code{denied: <reason>}.
+
+\begin{scm}
+(error "boom" 1 "two")    ; error: boom 1 "two"
+\end{scm}
+
+\section{Catching [P1b]}
+
+\code{guard} evaluates a body and, if it raises, tries handlers in order;
+each handler is a predicate on the error message and a result:
+
+\begin{scm}
+(guard g ((error "boom"))
+  (h (lambda (m) (string-contains? m "boom")) ('caught)))   ; caught
+\end{scm}
+
+\begin{aside}
+This shape is under review: it differs from R7RS's
+\code{(guard (var clause ...) body ...)}, which is what a model trained on
+standard Scheme will write, and as implemented it can also catch a guard
+denial and a cancellation, which it must not. Expect the form to change
+before promotion; \file{docs/scheme.md} is the contract.
+\end{aside}
+
+\section{Capturing output [P1b]}
+
+\begin{scm}
+(with-output-to-string (display "hi") (newline))   ; "hi\n"
+\end{scm}
+
+\section{Vectors [P1b]}
+
+\begin{scm}
+(vector 1 "a" #t)                 ; #(1 "a" #t)
+(vector-ref #(10 20 30) 1)        ; 20
+(let ((v (vector 1 2 3)))
+  (vector-set! v 1 99)
+  (vector->list v))               ; (1 99 3)
+(equal? #(1 2) #(1 2))            ; #t   eq? compares identity
+\end{scm}
+
+\chapter{Primitives and the guard, from Scheme}
+
+Every builtin, every host primitive and every registered tool is an entry in
+the \emph{primitive table}. You can inspect it:
+
+\begin{scm}
+(length (primitives))                        ; ~130
+(primitive-info "fs-edit")
+; ((doc . "Edit a text file ...") (params . (("path" "string" "...") ...))
+;  (variadic . #f) (egress . #f) (irreversible . #t) (host . #t) (origin . "builtin"))
+\end{scm}
+
+The host primitives in the bootstrap are \code{fs-read}, \code{fs-write},
+\code{fs-edit}, \code{fs-list} and \code{shell-exec}. Calling one from
+Scheme is calling it: the guard runs, and if it says no you get an error.
+
+\begin{scm}
+(fs-read "README.md")                   ; the contents
+(fs-list ".")                           ; ("Makefile" "cmd/" ...)   dirs end in /
+(fs-read ".env")                        ; error: fs-read: denied: path .env matches the credential-file denylist (.env)
+(shell-exec "go" '("version"))          ; (("status" . 0) ("stdout" . "go version ...") ("stderr" . ""))
+\end{scm}
+
+\code{shell-exec} takes the program and a \emph{list} of arguments\,---\,there is
+no shell, no globbing, no \code{\$VAR}. The child runs in the repository
+root with an allowlisted environment; its output is capped; cancellation
+kills the whole process group.
+
+\chapter{Writing tools}
+
+\section{register-tool}
+
+A tool is a Scheme procedure plus metadata, registered into the primitive
+table. From then on it is indistinguishable from a builtin at the dispatch
+site, and the model sees it in its tool list.
+
+\begin{scm}
+(register-tool "go-test"
+  (lambda (pkg) (run "go" (list "test" "-race" pkg)))
+  '((doc . "Run the Go tests with the race detector for a package pattern.")
+    (params . (("pkg" "string" "package pattern, e.g. ./internal/log or ./...")))))
+\end{scm}
+
+The metadata alist:
+
+\begin{center}
+\small
+\begin{tabular}{@{}lp{9.5cm}@{}}
+\toprule
+Key & Meaning \\
+\midrule
+\code{doc} & one line; required; shown to the model as the tool description \\
+\code{params} & list of \code{("name" "type" "doc")}; required; type is one of \code{string integer number boolean list alist any} \\
+\code{variadic} & extra arguments allowed after \code{params}; default \code{\#f}. Prefer a list parameter: the model's schema cannot express rest arguments \\
+\code{egress}, \code{irreversible} & default \code{\#f}; declare them honestly, the guard reads them \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Rules: the name must be new\,---\,builtins cannot be shadowed and a tool
+cannot be re-registered, because the tool list must stay stable for the
+whole session (\adr{9}). A registered tool's own primitive calls are guarded
+in turn: a wrapper over \code{shell-exec} does not make \code{shell-exec}
+less irreversible.
+
+\section{The dev tools, read closely}
+
+\file{dev/go.scm} is the pattern. A helper renders a \code{shell-exec}
+result the way a model reads best\,---\,exit status, then the output:
+
+\begin{scm}
+(define (run cmd args)
+  (let ((r (shell-exec cmd args)))
+    (format "exit ~a~%~a~a"
+            (assoc-ref r "status")
+            (assoc-ref r "stdout")
+            (assoc-ref r "stderr"))))
+\end{scm}
+
+\file{dev/repo.scm} shows a tool that needs no shell at all: find an ADR by
+number by listing a directory and reading a file.
+
+\begin{scm}
+(define (adr-file n)
+  (let ((prefix (format "~a-" (pad4 n))))
+    (let loop ((names (fs-list "docs/adr")))
+      (cond ((null? names) #f)
+            ((string-prefix? prefix (car names))
+             (string-append "docs/adr/" (car names)))
+            (else (loop (cdr names)))))))
+
+(register-tool "read-adr"
+  (lambda (n)
+    (let ((f (adr-file n)))
+      (if f (fs-read f) (error "no such ADR" n))))
+  '((doc . "Read architecture decision record number n from docs/adr.")
+    (params . (("n" "integer" "the ADR number, e.g. 10")))))
+\end{scm}
+
+\section{init.scm and allow.toml}
+
+\file{<repo>/.nibb/init.scm} is loaded at start, after the prelude, with
+user origin and with confirms denied (nobody is listening yet), so it may
+register tools and must not act. \code{load} resolves relative paths against
+the repository root:
+
+\begin{scm}
+(load "dev/go.scm")
+(load "dev/git.scm")
+(load "dev/repo.scm")
+\end{scm}
+
+Pair each command-wrapping tool with a \emph{standing approval} in
+\file{.nibb/allow.toml}, or every call prompts:
+
+\begin{txt}
+commands = ["go test", "go build", "git status", "git diff", "git grep"]
+writes   = ["internal/", "docs/"]
+\end{txt}
+
+\chapter{Reference}
+
+\section{Special forms}
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{7.6cm}p{6.2cm}@{}}
+\toprule
+Form & Meaning \\
+\midrule
+\code{(define name expr)} & bind in the current environment \\
+\code{(define (name p ... [. rest]) body ...)} & named lambda \\
+\code{(lambda (p ... [. rest]) body ...)}, \code{(lambda args body ...)} & closure \\
+\code{(if test then [else])} & missing else yields void \\
+\code{(let ((v e) ...) body ...)} & parallel bindings \\
+\code{(let name ((v e) ...) body ...)} & named let \\
+\code{(let* ((v e) ...) body ...)} & sequential bindings \\
+\code{(letrec ((v e) ...) body ...)} [P1b] & mutually recursive bindings \\
+\code{(begin e ...)} & sequence \\
+\code{(set! name expr)} & assign an existing binding \\
+\code{(quote d)}, \code{'d} & the datum \\
+\code{(quasiquote d)}, \code{`d} with \code{,e} \code{,@l} & one level \\
+\code{(cond (test body ...) ...} \code{(test => proc) (else ...))} & first true clause \\
+\code{(case key ((d ...) body ...) ... (else ...))} [P1b] & dispatch on datums \\
+\code{(and e ...)}, \code{(or e ...)} & short-circuit \\
+\code{(when test e ...)}, \code{(unless test e ...)} [P1b] & conditional effect \\
+\code{(do ((v init [step]) ...)} \code{(test [e ...]) cmd ...)} [P1b] & loop, constant stack \\
+\code{(guard ...)} [P1b, in review] & catch errors \\
+\code{(with-output-to-string e ...)} [P1b] & capture output \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Special-form names are reserved: binding one as a variable does not change
+how the form is parsed.
+
+\section{Builtins by group}
+
+\begin{txt}
+Numbers      + - * / = < > <= >= quotient remainder modulo abs min max
+             floor ceiling round truncate exact inexact expt sqrt
+             number? integer? float? zero? positive? negative? even? odd?
+             number->string string->number
+Equivalence  not boolean? eq? eqv? equal?
+Lists        cons car cdr caar cadr cdar cddr caddr cdddr list list? pair?
+             null? length append reverse list-ref list-tail iota memq member
+             assq assoc map for-each filter fold sort apply
+Vectors      vector vector? vector-length vector-ref vector-set!
+[P1b]        vector->list list->vector
+Strings      string? string-length string-append substring string=? string<?
+             string-upcase string-downcase string-trim string-split string-join
+             string-contains? string-prefix? string-suffix? string-replace
+             string->symbol symbol->string symbol? format
+Output       display write newline
+Control      procedure? apply void error
+JSON         json-parse json-emit
+Meta         primitives primitive-info register-tool load handle?
+Prelude      assoc-ref identity compose string-empty?        (Scheme)
+Host         fs-read fs-write fs-edit fs-list shell-exec     (bootstrap)
+\end{txt}
+
+\section{Not in \nibb{} Scheme}
+
+\code{set-car!}/\code{set-cdr!} and string mutation; nested quasiquote;
+hygienic macros; \code{call/cc}; \code{dynamic-wind}; an \code{eval}
+primitive (the kernel surface is not exposed to programs); characters;
+exact rationals and bignums; source positions in runtime errors.

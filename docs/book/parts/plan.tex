@@ -1,0 +1,194 @@
+\part{Where things are going}
+
+\chapter{Bootstrap, then self-host}
+
+The plan has two stages. \textbf{Stage 0} (weeks 1--4) is hand-written: the
+smallest \nibb{} that can do real work on its own repository. \textbf{Stage
+1+} (weeks 5--24) is every remaining phase of the spec's build order, executed
+as \nibb{} sessions driving a promoted binary. The spec's ordering is kept;
+only the entry point changed.
+
+\section{Why this order}
+
+Three deliberate deviations from the spec's numbered build order:
+
+\begin{itemize}
+\item \textbf{The log first, not last.} Invariant~1 makes it the source of
+  truth and every later phase says ``logged''. A 200-line JSONL writer on day
+  one beats retrofitting six phases.
+\item \textbf{A walking-skeleton loop right after the guard.} The security
+  phases are then tested against a real loop, not a mock. The TUI stays at
+  its spec position as a second front-end over the same events.
+\item \textbf{A minimal kernel, grown later by \nibb{} itself.} To self-host
+  you need a working loop before a complete interpreter. Growing the
+  language is the ideal first dogfood task: pure Go, crisp tests.
+\end{itemize}
+
+\section{Two binaries, always}
+
+\file{bin/nibb} is the working-tree build. \file{\textasciitilde/.local/bin/nibb-stable}
+is the last \emph{promoted} build. All development runs \code{nibb-stable};
+\nibb{} never edits itself through the binary being edited, so a broken tree
+can never strand you. Promotion (\code{make promote TAG=v0.N-phase})
+refuses a dirty tree, runs the acceptance suite and a self-check\,---\,the
+candidate completes a scripted session and replays its own log\,---\,then swaps
+the binaries, keeps the previous one as \code{.prev}, and tags.
+
+\section{The safety envelope}
+
+Using \nibb{} before the keychain, L1 and redaction exist requires
+compensating controls. Each is retired by the phase that builds the real
+thing; some stay as defense in depth.
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{6.4cm}p{3.4cm}p{4.6cm}@{}}
+\toprule
+Bootstrap control & Stands in for & Retired by \\
+\midrule
+No credential of any kind on the build machine; the control plane needs none & keychain, bindings & P3 builds the keychain; P5 registers the first real credential \\
+Child processes get an allowlisted environment only & E2 redaction of \code{env} & never\,---\,defense in depth \\
+No \code{http-request} primitive & binding table / E3 & P3 \\
+Paths pinned to the repository root, symlinks resolved & --- & never (per-project cwd is the model) \\
+Path denylist: \code{.env*}, \code{*.pem}, \code{*.key}, \code{id\_*}, \code{\textasciitilde/.ssh}, \code{\textasciitilde/.aws}, \ldots & L1 / E2 & never\,---\,defense in depth \\
+Command-line trigger: \code{curl wget nc ssh scp rsync}, \code{git push}, \code{rm -rf}, absolute paths outside the repo $\Rightarrow$ confirm & L1 on argv, P5 hard triggers & P5 \\
+Irreversible primitives $\Rightarrow$ confirm, with a diff for writes & --- & permanent \\
+Operator rule: no secrets in the repo; never paste one into \nibb{} & E4 redaction & P7 \\
+Operator rule: bootstrap-era \nibb{} only on trusted repositories & everything & P7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Milestones}
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Weeks & Phase & Promotes & Milestone \\
+\midrule
+1--4 & Bootstrap B0--B3 (hand-written) & \code{v0.1-bootstrap} & \textbf{M0 self-hosting} (done 2026-09-21) \\
+5--6 & P1b kernel growth & \code{v0.2-kernel} & \\
+7--9 & P3 credentials & \code{v0.3-creds} & \\
+10--11 & P4 L1 & \code{v0.4-l1} & \textbf{M2 safe with real keys} \\
+12--13 & P5 plan gate + Jev & \code{v0.5-plan} & \\
+14--15 & P6 L2 taint & \code{v0.6-taint} & \\
+16--17 & P7 redaction & \code{v0.7-core} & \textbf{M3 v0-core} (3--4 month cut) \\
+18--19 & P8 L3 (optional) & \code{v0.8-l3} & \\
+20--22 & P9 TUI & \code{v0.9-tui} & \\
+23--24 & P10 memory & \code{v0.10} & \textbf{v0} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+If time runs short, cut in this order: P10, P8, P9 polish. Never P3--P7.
+
+\section{The friction log}
+
+When \code{nibb-stable} gets in the way, the rule is: hand-edit, and write
+one line in \file{docs/friction.md}. That file is the backlog for the
+front-ends and for memory, and it already paid for itself: the first
+self-hosting run showed the model rewriting a 400-line file to change one
+line; the entry became \code{fs-edit} the same afternoon, and the second run
+took a third of the tool calls. Fallback is allowed and honest: the goal is a
+built \nibb{}, not purity.
+
+\chapter{The phases}
+
+Each phase is a set of \nibb{} sessions plus a promotion. The ``with \nibb{}''
+note says what the tool can do at that point and what its promotion unlocks.
+
+\paragraph{P1b\,---\,grow the kernel (weeks 5--6).} \code{letrec}, \code{case},
+\code{do}, \code{when}/\code{unless}, vectors, a string port, \code{guard} for
+catching errors, block comments. Pure Go with a crisp conformance suite:
+the ideal first task. In review at press time.
+
+\paragraph{P3\,---\,credentials (weeks 7--9).} The encrypted keychain
+(XChaCha20-Poly1305, argon2id), \code{credential-register} with masked input
+returning an opaque handle, the binding table, the E3 check in the guard,
+\code{http-request} injecting handles only at bound positions, and a second
+provider for data-plane \code{llm-call}. Proven by the first real exfil
+scenarios: bound header passes; other host, or body instead of header,
+denied; the value appears nowhere.
+
+\paragraph{P4\,---\,L1 (weeks 10--11).} The shape catalog (prefixes, entropy,
+structure), the egress allowlist, a checker over text arguments. Sub-millisecond
+at p99 on 64\,KB; a false-positive sweep over real repositories. \nibb{} runs
+the sweep on itself.
+
+\paragraph{P5\,---\,plan gate and Jev (weeks 12--13).} The System One client,
+the noul gate, Seam A scoring with revision rounds, the hard-trigger list.
+The load-bearing piece is the \emph{payload sanitiser}: a typed struct is
+the only thing that can be sent; every string passes L1; a hit aborts the
+call rather than redacting. The Jev key is the first real secret on the
+machine. After promotion, every later build session is planned.
+
+\paragraph{P6\,---\,L2 taint (weeks 14--15).} The reserved \code{Taint} field is
+populated at E1, propagated once in the dispatch path, checked at E3; when
+L2 knows, L3 is not invoked. \code{box}/\code{wipe} strip a tag only from
+user-originated evaluation. This phase edits the interpreter's own dispatch\,---\,safe
+only because of the two-binary rule.
+
+\paragraph{P7\,---\,ingress redaction (weeks 16--17).} One context-ingress
+function, enforced by lint; \code{[REDACTED class]} at E2 and E4; the same
+redactor in front of the log writer. This retires the last operator rules.
+\nibb{} is now safe on other repositories with real keys, and
+\textbf{M3 v0-core} is reached.
+
+\paragraph{P8\,---\,L3 (weeks 18--19, optional).} Features to logistic regression
+with calibration; trained on a public corpus plus \nibb's own confirmed
+events; invoked only on the residual; excluded with a build tag.
+
+\paragraph{P9\,---\,TUI (weeks 20--22).} A bubbletea front-end over the same
+\code{core.Session}, with no core change; the friction log is its backlog.
+
+\paragraph{P10\,---\,memory (weeks 23--24).} The spec's window: summaries as
+revocable log events, a tree-sitter and grep index exposed as primitives,
+byte-for-byte replay of the window. Designed against real logs of \nibb{}
+building \nibb{}.
+
+\chapter{The control plane}
+
+The model is \code{qwen3.8-27b-96k} served by Ollama~0.34 on \code{workshop},
+reachable only inside the tailnet, with a 98,304-token context, one loaded
+model and one request slot. Verified facts and their consequences:
+
+\begin{itemize}
+\item \textbf{One slot}, shared with other clients. The loop tolerates queueing:
+  long per-request timeouts, streaming keeps the front-end alive, abort
+  cancels the HTTP request so the slot frees.
+\item \textbf{Prefix stability is a performance feature.} A cold prompt
+  evaluation of a large prefix costs tens of seconds; a warm one is free.
+  So: system prompt, then tool schemas in stable order, then messages in
+  append-only order; elide in place; load tools before the first message.
+  The native API reports evaluation time, not cached tokens; sub-second
+  \code{prompt\_eval\_ms} is the cache signal.
+\item \textbf{Thinking is data, not context.} Logged, shown dimmed, never fed
+  back.
+\item \textbf{A 27B model is the dogfood ceiling.} It does well with a
+  paragraph and badly with a page; tasks are small and explicit; the plan
+  gate does more work here than it would for a frontier model.
+\item \textbf{Swapping the control plane is a config change} once P3 exists\,---\,a
+  decision to be made on friction-log evidence, not up front.
+\end{itemize}
+
+\chapter{Long-running turns}
+
+Today a turn stops after fifty tool calls. That is the right \emph{kind} of
+guard and the wrong \emph{unit}. \adr{18} (proposed) replaces it with:
+
+\begin{itemize}
+\item \textbf{Budgets, not a count}: tool calls, wall clock, model tokens and
+  irreversible actions, each with a soft limit that raises a
+  \emph{checkpoint} and a hard limit that stops.
+\item \textbf{Checkpoints through the confirmer}: the same channel as a guard
+  prompt, so any front-end can answer and an unattended run gets a policy
+  answer; each is a log event.
+\item \textbf{A progress guard}: the same call four times in a row, a denied
+  call retried, ten consecutive tool errors\,---\,stop early, say why.
+\item \textbf{Long runs are chained turns}: the loop stays one turn; a driver
+  in the front-end sends ``continue'' while the run budget allows. Because
+  the log is the truth, a run stops and resumes at any turn boundary.
+\item \textbf{Unattended means more guards}: no interactive confirms (so every
+  write needs a standing approval), the progress guard on, hard budgets, a
+  plan whose steps are checkpoint boundaries, and the same envelope.
+\end{itemize}
