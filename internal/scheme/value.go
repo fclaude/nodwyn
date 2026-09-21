@@ -1,0 +1,319 @@
+// Package scheme is nibb's embedded Scheme: the orchestration language and
+// the only surface through which Scheme code reaches the Go host.
+//
+// The language is specified in docs/scheme.md; this package implements that
+// document and nothing more. eval and apply are fixed Go functions; loading
+// Scheme code can grow the primitive table and the global environment but
+// cannot change evaluation (ADR 7).
+package scheme
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+)
+
+// Kind tags a Value.
+type Kind uint8
+
+const (
+	KNil    Kind = iota // the empty list ()
+	KBool               // #t / #f
+	KInt                // int64
+	KFloat              // float64
+	KString             // immutable UTF-8
+	KSymbol             // interned by name
+	KPair               // cons cell
+	KProc               // closure
+	KPrim               // primitive (Go handler)
+	KHandle             // opaque credential handle (P3)
+	KVoid               // the unspecified value
+)
+
+func (k Kind) String() string {
+	switch k {
+	case KNil:
+		return "()"
+	case KBool:
+		return "boolean"
+	case KInt:
+		return "integer"
+	case KFloat:
+		return "float"
+	case KString:
+		return "string"
+	case KSymbol:
+		return "symbol"
+	case KPair:
+		return "pair"
+	case KProc, KPrim:
+		return "procedure"
+	case KHandle:
+		return "handle"
+	case KVoid:
+		return "void"
+	}
+	return "unknown"
+}
+
+// Taint is the provenance tag every value carries (SPEC L2). Reserved in
+// bootstrap: the zero value means "clean" and nothing sets it until Phase 6.
+type Taint struct {
+	bits uint64
+}
+
+// IsClean reports whether the value carries no taint.
+func (t Taint) IsClean() bool { return t.bits == 0 }
+
+// Value is a Scheme value: one tagged struct, copied by value (ADR 1).
+// Exactly one payload field is meaningful for a given Kind.
+type Value struct {
+	Kind  Kind
+	Taint Taint
+
+	I    int64
+	F    float64
+	S    string // KString and KSymbol
+	P    *Pair
+	Proc *Closure
+	Prim *Prim
+	H    *Handle
+}
+
+// Pair is a cons cell.
+type Pair struct {
+	Car, Cdr Value
+}
+
+// Closure is a lambda plus its defining environment.
+type Closure struct {
+	Name   string   // set by define for printing; "" if anonymous
+	Params []string // required positional parameters
+	Rest   string   // name bound to the remaining arguments, or ""
+	Body   []Value  // at least one expression
+	Env    *Env
+}
+
+// Handle is an opaque reference to a credential in the keychain (P3). It
+// carries a class and an id and never the value; no builtin can turn it into
+// a string.
+type Handle struct {
+	Class string
+	ID    string
+}
+
+// Constructors and constants.
+var (
+	Nil   = Value{Kind: KNil}
+	True  = Value{Kind: KBool, I: 1}
+	False = Value{Kind: KBool, I: 0}
+	Void  = Value{Kind: KVoid}
+)
+
+func Bool(b bool) Value {
+	if b {
+		return True
+	}
+	return False
+}
+func Int(n int64) Value     { return Value{Kind: KInt, I: n} }
+func Float(f float64) Value { return Value{Kind: KFloat, F: f} }
+func Str(s string) Value    { return Value{Kind: KString, S: s} }
+func Sym(s string) Value    { return Value{Kind: KSymbol, S: s} }
+func Cons(a, d Value) Value { return Value{Kind: KPair, P: &Pair{Car: a, Cdr: d}} }
+
+// List builds a proper list.
+func List(vs ...Value) Value {
+	out := Nil
+	for i := len(vs) - 1; i >= 0; i-- {
+		out = Cons(vs[i], out)
+	}
+	return out
+}
+
+// IsTrue implements Scheme truthiness: only #f is false.
+func (v Value) IsTrue() bool { return !(v.Kind == KBool && v.I == 0) }
+
+// IsNumber reports KInt or KFloat.
+func (v Value) IsNumber() bool { return v.Kind == KInt || v.Kind == KFloat }
+
+// IsProcedure reports KProc or KPrim.
+func (v Value) IsProcedure() bool { return v.Kind == KProc || v.Kind == KPrim }
+
+// AsFloat converts a number to float64.
+func (v Value) AsFloat() float64 {
+	if v.Kind == KInt {
+		return float64(v.I)
+	}
+	return v.F
+}
+
+// Slice converts a proper list to a slice. ok is false for improper lists.
+func (v Value) Slice() (out []Value, ok bool) {
+	for v.Kind == KPair {
+		out = append(out, v.P.Car)
+		v = v.P.Cdr
+	}
+	return out, v.Kind == KNil
+}
+
+// IsList reports whether v is a proper list.
+func (v Value) IsList() bool {
+	for v.Kind == KPair {
+		v = v.P.Cdr
+	}
+	return v.Kind == KNil
+}
+
+// Eqv implements eq?/eqv?: identity for pairs and procedures, value for
+// everything else.
+func Eqv(a, b Value) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	switch a.Kind {
+	case KNil, KVoid:
+		return true
+	case KBool, KInt:
+		return a.I == b.I
+	case KFloat:
+		return a.F == b.F
+	case KString, KSymbol:
+		return a.S == b.S
+	case KPair:
+		return a.P == b.P
+	case KProc:
+		return a.Proc == b.Proc
+	case KPrim:
+		return a.Prim == b.Prim
+	case KHandle:
+		return a.H == b.H
+	}
+	return false
+}
+
+// Equal implements equal?: structural equality.
+func Equal(a, b Value) bool {
+	for {
+		if a.Kind != KPair || b.Kind != KPair {
+			return Eqv(a, b)
+		}
+		if !Equal(a.P.Car, b.P.Car) {
+			return false
+		}
+		a, b = a.P.Cdr, b.P.Cdr
+	}
+}
+
+// Write renders v in machine form (strings quoted); Display in human form.
+func Write(v Value) string   { var sb strings.Builder; print(&sb, v, true); return sb.String() }
+func Display(v Value) string { var sb strings.Builder; print(&sb, v, false); return sb.String() }
+
+// String implements fmt.Stringer as Write.
+func (v Value) String() string { return Write(v) }
+
+func print(sb *strings.Builder, v Value, write bool) {
+	switch v.Kind {
+	case KNil:
+		sb.WriteString("()")
+	case KBool:
+		if v.I != 0 {
+			sb.WriteString("#t")
+		} else {
+			sb.WriteString("#f")
+		}
+	case KInt:
+		sb.WriteString(strconv.FormatInt(v.I, 10))
+	case KFloat:
+		sb.WriteString(formatFloat(v.F))
+	case KString:
+		if write {
+			quote(sb, v.S)
+		} else {
+			sb.WriteString(v.S)
+		}
+	case KSymbol:
+		sb.WriteString(v.S)
+	case KPair:
+		sb.WriteByte('(')
+		first := true
+		for v.Kind == KPair {
+			if !first {
+				sb.WriteByte(' ')
+			}
+			first = false
+			print(sb, v.P.Car, write)
+			v = v.P.Cdr
+		}
+		if v.Kind != KNil {
+			sb.WriteString(" . ")
+			print(sb, v, write)
+		}
+		sb.WriteByte(')')
+	case KProc:
+		if v.Proc.Name != "" {
+			fmt.Fprintf(sb, "#<procedure %s>", v.Proc.Name)
+		} else {
+			sb.WriteString("#<procedure>")
+		}
+	case KPrim:
+		fmt.Fprintf(sb, "#<primitive %s>", v.Prim.Name)
+	case KHandle:
+		fmt.Fprintf(sb, "#<cred:%s:%s>", v.H.Class, v.H.ID)
+	case KVoid:
+		sb.WriteString("#<void>")
+	default:
+		sb.WriteString("#<unknown>")
+	}
+}
+
+// quote writes s in the escaped form the reader accepts (docs/scheme.md §1):
+// \" \\ \n \t \r, and \xHH for any other control or invalid byte.
+func quote(sb *strings.Builder, s string) {
+	sb.WriteByte('"')
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch c {
+		case '"':
+			sb.WriteString(`\"`)
+		case '\\':
+			sb.WriteString(`\\`)
+		case '\n':
+			sb.WriteString(`\n`)
+		case '\t':
+			sb.WriteString(`\t`)
+		case '\r':
+			sb.WriteString(`\r`)
+		default:
+			if c < 0x20 || c == 0x7f {
+				fmt.Fprintf(sb, `\x%02x`, c)
+				i++
+				continue
+			}
+			if c < utf8.RuneSelf {
+				sb.WriteByte(c)
+				i++
+				continue
+			}
+			r, n := utf8.DecodeRuneInString(s[i:])
+			if r == utf8.RuneError && n == 1 {
+				fmt.Fprintf(sb, `\x%02x`, c)
+			} else {
+				sb.WriteString(s[i : i+n])
+			}
+			i += n
+			continue
+		}
+		i++
+	}
+	sb.WriteByte('"')
+}
+
+func formatFloat(f float64) string {
+	s := strconv.FormatFloat(f, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eIN") { // no dot, no exponent, not Inf/NaN
+		s += ".0"
+	}
+	return s
+}

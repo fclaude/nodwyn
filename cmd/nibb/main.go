@@ -4,12 +4,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"runtime/debug"
 
 	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nibb/internal/frontend/plain"
+	"github.com/fclaude/nibb/internal/scheme"
 )
 
 // version is set by the Makefile via -ldflags; "dev" builds fall back to VCS
@@ -20,7 +23,17 @@ func main() {
 	fs := flag.NewFlagSet("nibb", flag.ExitOnError)
 	showVersion := fs.Bool("version", false, "print version and exit")
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "usage: nibb [flags] [command]\n\ncommands:\n  version     print version\n  paths       print the config and data locations\n\nflags:\n")
+		fmt.Fprintf(fs.Output(), `usage: nibb [flags] [command]
+
+commands:
+  version              print version
+  paths                print the config and data locations
+  repl                 interactive Scheme REPL (reads stdin)
+  eval FILE...         evaluate Scheme files
+  eval -e EXPR         evaluate an expression and print its value
+
+flags:
+`)
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(os.Args[1:])
@@ -37,11 +50,41 @@ func main() {
 			fail(err)
 		}
 		fmt.Printf("config:   %s\nbindings: %s\nkeychain: %s\nsessions: %s\n", p.ConfigFile, p.Bindings, p.Keychain, p.SessionsDir)
+	case "repl":
+		in := scheme.New(scheme.WithOutput(os.Stdout))
+		if err := plain.SchemeREPL(context.Background(), in, os.Stdin, os.Stdout, true); err != nil {
+			fail(err)
+		}
+	case "eval":
+		runEval(fs.Args()[1:])
 	case "":
 		fs.Usage()
 		os.Exit(2)
 	default:
 		fail(fmt.Errorf("unknown command %q", cmd))
+	}
+}
+
+func runEval(args []string) {
+	in := scheme.New(scheme.WithOutput(os.Stdout))
+	ctx := context.Background()
+	if len(args) >= 2 && args[0] == "-e" {
+		v, err := in.EvalString(ctx, args[1])
+		if err != nil {
+			fail(err)
+		}
+		if v.Kind != scheme.KVoid {
+			fmt.Println(scheme.Write(v))
+		}
+		return
+	}
+	if len(args) == 0 {
+		fail(fmt.Errorf("eval: expected files or -e EXPR"))
+	}
+	for _, path := range args {
+		if err := in.LoadFile(ctx, path); err != nil {
+			fail(err)
+		}
 	}
 }
 

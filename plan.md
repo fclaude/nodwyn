@@ -39,6 +39,7 @@ nibb/
     log/                  append-only JSONL, replay, event kinds        (B0)
     config/               XDG dirs, policy, bindings.toml loader        (B0/P3)
     scheme/               reader, values, env, eval/apply, prim table   (B1, grown in P1b)
+    scheme/prelude/       *.scm embedded in the binary                  (B1)
     prim/                 host primitives: fs, shell, http, llm-call    (B2+)
     guard/                the apply→Prim wrapper; Decision; checkers    (B2)
     llm/                  Provider interface; Ollama native client      (B2)
@@ -56,7 +57,6 @@ nibb/
     frontend/plain/       line-mode front-end over core (bootstrap)     (B2)
     frontend/tui/         bubbletea front-end over core                  (P9)
     frontend/rpc/         (post-v0) JSON-RPC over stdio/socket for a GUI
-  prelude/                *.scm shipped in the binary (embed)
   dev/                    *.scm dev tools nibb loads to build itself    (B3)
   scripts/                promote.sh, selfcheck.sh
   test/exfil/             the exfil scenario suite (grows every phase)
@@ -154,7 +154,7 @@ Consequences for the plan:
 - Reader, printer, values with reserved `Taint`, environments, `eval` and `apply` as two fixed Go functions, trampolined tail calls, Scheme errors ⇄ Go errors.
 - Primitive table `map[string]*Prim` with handler + metadata. Pure builtins: arithmetic, strings, lists, assoc, `json-parse`/`json-emit`.
 - `register-tool`: name + lambda + metadata → inserts a `Prim` whose handler re-enters `apply`.
-- `prelude/*.scm` via `go:embed`; `load`.
+- `internal/scheme/prelude/*.scm` via `go:embed`; `load`.
 - **Accept:** ~40-snippet suite (grows to ~100 in P1b), one snippet per documented form/builtin so the doc and the suite stay in step; `(loop 1000000)` without stack growth; **kernel-fixed test** — hash of the eval/apply paths and special-form table unchanged after loading arbitrary `.scm`; only the prim table grew.
 
 ### B2 — Guard, prims, loop, line UI (weeks 2–3)

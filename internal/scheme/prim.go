@@ -1,0 +1,197 @@
+package scheme
+
+import (
+	"context"
+	"fmt"
+	"sort"
+)
+
+// Param documents one positional parameter of a primitive. Type is one of
+// string integer number boolean list alist any (docs/scheme.md §7). Role is
+// what the argument *is* to the guard (path, dest, payload, credential) and
+// is empty for plain data.
+type Param struct {
+	Name string
+	Type string
+	Doc  string
+	Role string
+}
+
+// Meta is a primitive's declaration (ADR 4). The guard reads only this.
+type Meta struct {
+	Doc          string
+	Params       []Param
+	Variadic     bool   // extra arguments allowed after Params
+	Egress       bool   // may send bytes off-machine
+	Irreversible bool   // cannot be undone by the harness
+	Host         bool   // touches the OS: filesystem, processes, network
+	Origin       string // "builtin" or "scheme"
+}
+
+// Call is what a primitive handler receives.
+type Call struct {
+	Ctx  context.Context
+	In   *Interp
+	Name string
+	Args []Value
+}
+
+// Prim is an entry in the primitive table: the only Scheme→Go surface.
+type Prim struct {
+	Name    string
+	Meta    Meta
+	Handler func(c *Call) (Value, error)
+}
+
+// Gate is the guard's hook at the single Scheme→Go exit. Before returns nil
+// to allow, or an error (conventionally a *Denied) to refuse. It may block
+// (to ask the user) and must honour ctx.
+type Gate interface {
+	Before(ctx context.Context, p *Prim, args []Value) error
+}
+
+// Register adds a primitive. Names are unique for the life of the
+// interpreter: builtins cannot be shadowed and tools cannot be re-registered
+// (ADR 9 needs a stable tool list).
+func (in *Interp) Register(p *Prim) error {
+	if p.Name == "" || p.Handler == nil {
+		return fmt.Errorf("scheme: primitive needs a name and a handler")
+	}
+	if p.Meta.Doc == "" {
+		return fmt.Errorf("scheme: primitive %q has no doc", p.Name)
+	}
+	if p.Meta.Origin == "" {
+		p.Meta.Origin = "builtin"
+	}
+	if _, dup := in.prims[p.Name]; dup {
+		return fmt.Errorf("scheme: primitive %q already registered", p.Name)
+	}
+	in.prims[p.Name] = p
+	in.global.Define(p.Name, Value{Kind: KPrim, Prim: p})
+	return nil
+}
+
+// Lookup returns a primitive by name.
+func (in *Interp) Lookup(name string) (*Prim, bool) {
+	p, ok := in.prims[name]
+	return p, ok
+}
+
+// Prims returns every primitive, sorted by name.
+func (in *Interp) Prims() []*Prim {
+	out := make([]*Prim, 0, len(in.prims))
+	for _, p := range in.prims {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// SetGate installs the guard. nil allows everything (bootstrap tests only).
+func (in *Interp) SetGate(g Gate) { in.gate = g }
+
+// applyPrim is the single Scheme→Go exit. Every primitive application —
+// from the model, the prelude, a .scm file or the REPL — passes through
+// here: arity check, guard, handler. Nothing else calls p.Handler.
+func (in *Interp) applyPrim(ctx context.Context, p *Prim, args []Value) (Value, error) {
+	if err := ctx.Err(); err != nil {
+		return Value{}, wrap(p.Name, err)
+	}
+	if err := checkArity(p, args); err != nil {
+		return Value{}, err
+	}
+	if in.gate != nil {
+		if err := in.gate.Before(ctx, p, args); err != nil {
+			return Value{}, wrap(p.Name, err)
+		}
+	}
+	v, err := p.Handler(&Call{Ctx: ctx, In: in, Name: p.Name, Args: args})
+	if err != nil {
+		return Value{}, wrap(p.Name, err)
+	}
+	return v, nil
+}
+
+func checkArity(p *Prim, args []Value) error {
+	want := len(p.Meta.Params)
+	got := len(args)
+	switch {
+	case got == want:
+		return nil
+	case got > want && p.Meta.Variadic:
+		return nil
+	case p.Meta.Variadic:
+		return errorf(p.Name, "expected at least %d argument(s), got %d", want, got)
+	default:
+		return errorf(p.Name, "expected %d argument(s), got %d", want, got)
+	}
+}
+
+// Argument accessors for handlers. Each returns a typed runtime error.
+
+func (c *Call) arg(i int) Value {
+	if i < len(c.Args) {
+		return c.Args[i]
+	}
+	return Void
+}
+
+func (c *Call) typeErr(i int, want string) error {
+	return errorf(c.Name, "argument %d: expected %s, got %s %s", i+1, want, c.arg(i).Kind, Write(c.arg(i)))
+}
+
+// String returns argument i as a Go string.
+func (c *Call) String(i int) (string, error) {
+	if v := c.arg(i); v.Kind == KString {
+		return v.S, nil
+	}
+	return "", c.typeErr(i, "string")
+}
+
+// Int returns argument i as int64.
+func (c *Call) Int(i int) (int64, error) {
+	if v := c.arg(i); v.Kind == KInt {
+		return v.I, nil
+	}
+	return 0, c.typeErr(i, "integer")
+}
+
+// Number returns argument i, checked to be a number.
+func (c *Call) Number(i int) (Value, error) {
+	if v := c.arg(i); v.IsNumber() {
+		return v, nil
+	}
+	return Value{}, c.typeErr(i, "number")
+}
+
+// List returns argument i as a slice, checked to be a proper list.
+func (c *Call) List(i int) ([]Value, error) {
+	if s, ok := c.arg(i).Slice(); ok {
+		return s, nil
+	}
+	return nil, c.typeErr(i, "list")
+}
+
+// Pair returns argument i, checked to be a pair.
+func (c *Call) Pair(i int) (*Pair, error) {
+	if v := c.arg(i); v.Kind == KPair {
+		return v.P, nil
+	}
+	return nil, c.typeErr(i, "pair")
+}
+
+// Proc returns argument i, checked to be a procedure.
+func (c *Call) Proc(i int) (Value, error) {
+	if v := c.arg(i); v.IsProcedure() {
+		return v, nil
+	}
+	return Value{}, c.typeErr(i, "procedure")
+}
+
+// Symbol returns argument i as a symbol name.
+func (c *Call) Symbol(i int) (string, error) {
+	if v := c.arg(i); v.Kind == KSymbol {
+		return v.S, nil
+	}
+	return "", c.typeErr(i, "symbol")
+}
