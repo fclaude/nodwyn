@@ -10,8 +10,7 @@ implements what is written here and nothing else; the conformance suite has a
 snippet for every form and builtin below, and a builtin that is not documented
 here fails the suite.
 
-Status: **bootstrap subset (B1)**. Phase 1b grows it; §9 lists what is
-deliberately absent.
+Status: **v0 kernel (P1b)**. §9 lists what is deliberately absent.
 
 ---
 
@@ -20,7 +19,9 @@ deliberately absent.
 | Token | Notes |
 |---|---|
 | `;` … end of line | comment |
+| `#|` … `|#` | block comment; may span lines; `|#` ends it (nesting is not supported). Unterminated is *incomplete* input |
 | `(` `)` | list delimiters; `[` `]` are **not** accepted |
+| `#(` `)` | a vector: `#(1 2 "x")` |
 | `'x` `` `x `` `,x` `,@x` | `(quote x)` `(quasiquote x)` `(unquote x)` `(unquote-splicing x)` |
 | `"…"` | string; escapes `\"` `\\` `\n` `\t` `\r`, `\xHH` (one byte), `\uHHHH` and `\UHHHHHHHH` (one code point); may span lines |
 | `42` `-7` `+3` | integer (int64) |
@@ -45,7 +46,8 @@ reading lines.
 | float | `2.5` `1.0` | `float?` | float64; always printed with a `.` or exponent |
 | string | `"hi"` | `string?` | immutable UTF-8; lengths and indices count **runes** |
 | symbol | `foo` | `symbol?` | interned by name |
-| pair / list | `(1 2 3)` `(a . b)` | `pair?` `list?` | lists are chains of pairs ending in `()`; no mutation in the bootstrap subset |
+| pair / list | `(1 2 3)` `(a . b)` | `pair?` `list?` | lists are chains of pairs ending in `()`; no mutation |
+| vector | `#(1 2 "x")` | `vector?` | indexed array; `vector-set!` mutates; no mutation of lists |
 | procedure | `#<procedure f>` `#<primitive car>` | `procedure?` | closures and primitives are both procedures |
 | handle | `#<cred:class:id>` | `handle?` | opaque credential handle (P3). Cannot be converted to a string by any builtin |
 | void | `#<void>` | — | result of `define`, `set!`, `display`, …; the REPL does not print it |
@@ -59,7 +61,7 @@ reading lines.
 - `()` unquoted is an error ("empty application").
 - A list whose head is one of the **special form** names below is that form.
   These names are reserved: binding one as a variable does not change how the
-  form is parsed.
+  form is parsed (this includes `with-output-to-string`).
 - Any other list is an **application**: the head and every argument are
   evaluated left to right, then the procedure is applied.
 - **Proper tail calls.** The last expression of a `lambda` body, `begin`,
@@ -78,6 +80,13 @@ reading lines.
 | `(let ((v e) …) body …)` | bind in parallel |
 | `(let name ((v e) …) body …)` | named let: `name` is bound to the loop procedure inside the body |
 | `(let* ((v e) …) body …)` | bind sequentially |
+| `(letrec ((v e) …) body …)` | mutual bindings: every initializer may reference the other names (a closure resolves them at call time) |
+| `(case key [(datum …) body …] … [(else body …)])` | first clause whose datum list contains a member `equal?` to the key wins; no clause → void |
+| `(do ((v init [step]) …) (test [e …]) cmd …)` | loop: check `test`; on false evaluate the `step`s (in parallel), rebind, evaluate the `cmd`s, repeat. Value is the test clause's last `e` (void if none). A Go loop — constant stack |
+| `(when test e …)` | `e …` only if `test` is true; yields void otherwise |
+| `(unless test e …)` | `e …` only if `test` is false; yields void otherwise |
+| `(guard (var clause …) body …)` | evaluate `body …`; if it raises a Scheme error, bind `var` to the condition — an alist `((message . "text") (irritants …))` — and try the clauses like `cond` (`(test body …)`, `(test => proc)`, `(else …)`). The first true clause's value is the value of `guard`; no match re-raises. A guard **denial** and a **cancellation** are never catchable |
+| `(with-output-to-string e …)` | evaluate `e …` with `display`/`write`/`newline` captured; return the captured text (a minimal string port) |
 | `(begin e …)` | evaluate in order, yield the last |
 | `(set! name expr)` | assign an **existing** binding; error if unbound |
 | `(quote d)` | the datum itself |
@@ -97,11 +106,20 @@ by the written irritants. Runtime failures (unbound variable, wrong argument
 count, wrong type, division by zero, a denied primitive) raise the same kind
 of error with a message of the form `who: what`.
 
-In the bootstrap subset **errors cannot be caught in Scheme**; they unwind to
-the host, which reports them (the REPL prints them, the agent loop feeds them
-back to the model as the tool result). `guard` arrives in Phase 1b.
+Errors may be caught with `guard` (§3):
 
-A primitive the guard denies raises `denied: <reason>`.
+```scheme
+(guard (e ((string-contains? (assoc-ref e 'message) "boom") 'caught)
+          (else (assoc-ref e 'irritants)))
+  (error "boom" 1 2))            ; caught
+```
+
+An error not caught by any clause unwinds to the host, which reports it (the
+REPL prints it, the agent loop feeds it back to the model as the tool result).
+
+A primitive the guard denies raises `denied: <reason>`. Denials and
+cancellations (an abort, a timeout) pass through `guard` untouched: a program
+cannot hide that it was refused, and an abort always unwinds.
 
 ## 5. Builtins
 
@@ -153,6 +171,19 @@ primitive in the table (§7) and can be listed with `(primitives)`.
 | `(sort l less?)` | stable; `less?` is a Scheme or primitive procedure |
 | `(apply f arg … l)` | last argument must be a list |
 
+### Vectors
+
+| | |
+|---|---|
+| `(vector x …)` `(vector? x)` | build / predicate |
+| `(vector-length v)` | |
+| `(vector-ref v i)` | 0-based; out of range is an error |
+| `(vector-set! v i x)` | mutate element `i`; yields void |
+| `(vector->list v)` `(list->vector l)` | convert between vectors and lists |
+
+`equal?` compares vectors elementwise; `eq?`/`eqv?` compare vectors by
+identity.
+
 ### Strings
 
 | | |
@@ -169,8 +200,7 @@ primitive in the table (§7) and can be listed with `(primitives)`.
 | `(string->symbol s)` `(symbol->string sym)` `(symbol? x)` | |
 | `(format fmt arg …)` | `~a` display, `~s` write, `~%` newline, `~~` tilde; too few or too many args is an error |
 
-There is no character type in the bootstrap subset; one-character strings
-serve that purpose.
+There is no character type in v0; one-character strings serve that purpose.
 
 ### Output
 
@@ -179,6 +209,7 @@ serve that purpose.
 | `(display x)` | human form: strings without quotes |
 | `(write x)` | machine form: strings quoted and escaped, readable back |
 | `(newline)` | |
+| `(with-output-to-string e …)` | a special form (reserved like the others): capture `display`/`write`/`newline` from `e …` and return the text |
 
 Output goes to the interpreter's output writer, which the host provides
 (the REPL uses stdout; the agent loop captures it). All three yield void.
@@ -210,7 +241,7 @@ Mapping, in both directions:
 
 `json-emit` treats a proper list whose elements are all pairs with string
 cars as an object and any other proper list as an array. Consequently `'()`
-emits `[]`, and there is no way to emit `{}` in the bootstrap subset.
+emits `[]`, and there is no way to emit `{}` in v0.
 Procedures, handles and symbols other than `null` cannot be emitted.
 
 This mapping is also how the agent loop turns a model's tool-call arguments
@@ -250,7 +281,7 @@ Every primitive declares:
 | Field | Meaning |
 |---|---|
 | `doc` | one line, shown to the model as the tool description |
-| `params` | ordered list of `(name type doc)`; `type` is one of `string integer number boolean list alist any` |
+| `params` | ordered list of `(name type doc)`; `type` is one of `string integer number boolean list alist vector any` |
 | `variadic` | extra arguments allowed after the declared ones |
 | `egress` | may send bytes off-machine |
 | `irreversible` | cannot be undone by the harness |
@@ -307,12 +338,11 @@ returns the context's error.
 
 ## 9. Not in nibb Scheme
 
-Deliberately absent from the bootstrap subset. Items marked *P1b* are
-planned; the rest are out of v0.
+Deliberately absent from v0.
 
-- *P1b:* `letrec`, `case`, `do`, `when`, `unless`, vectors, characters,
-  string ports, `guard` (catching errors), `define-macro` if the prelude
-  needs it, block comments `#| … |#`, source positions in runtime errors
+- characters and the full string-port API (only `with-output-to-string`)
+- source positions in runtime errors (reader errors carry positions)
+- `define-macro` — the prelude does not need it (ADR 7)
 - `set-car!` / `set-cdr!` and string mutation
 - nested quasiquote
 - hygienic macros (`define-syntax`, `syntax-rules`)

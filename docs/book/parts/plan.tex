@@ -67,7 +67,7 @@ Operator rule: bootstrap-era \nibb{} only on trusted repositories & everything &
 Weeks & Phase & Promotes & Milestone \\
 \midrule
 1--4 & Bootstrap B0--B3 (hand-written) & \code{v0.1-bootstrap} & \textbf{M0 self-hosting} (done 2026-09-21) \\
-5--6 & P1b kernel growth & \code{v0.2-kernel} & \\
+5--6 & P1b kernel growth & \code{v0.2-kernel} & committed 2026-09-21; promotion pending \\
 7--9 & P3 credentials & \code{v0.3-creds} & \\
 10--11 & P4 L1 & \code{v0.4-l1} & \textbf{M2 safe with real keys} \\
 12--13 & P5 plan gate + Jev & \code{v0.5-plan} & \\
@@ -99,8 +99,11 @@ note says what the tool can do at that point and what its promotion unlocks.
 
 \paragraph{P1b\,---\,grow the kernel (weeks 5--6).} \code{letrec}, \code{case},
 \code{do}, \code{when}/\code{unless}, vectors, a string port, \code{guard} for
-catching errors, block comments. Pure Go with a crisp conformance suite:
-the ideal first task. In review at press time.
+catching errors, block comments. Done 2026-09-21 by an external agent as a
+hand-coded fallback (\adr{16}), then reviewed: the review found a crash
+(\code{(when)}), a \code{guard} that could swallow denials and aborts, and a
+nonstandard \code{guard} shape; all fixed before commit. The conformance
+suite roughly doubled.
 
 \paragraph{P3\,---\,credentials (weeks 7--9).} The encrypted keychain
 (XChaCha20-Poly1305, argon2id), \code{credential-register} with masked input

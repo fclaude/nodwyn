@@ -19,9 +19,9 @@ is a tutorial over that reference.
 \begin{aside}
 \textbf{On P1b.} The forms \code{letrec}, \code{case}, \code{do},
 \code{when}, \code{unless}, \code{guard}, \code{with-output-to-string},
-vectors and block comments arrived in Phase 1b, which was in review when
-this book was built. Their sections are marked \textbf{[P1b]}; the shape of
-\code{guard} in particular may still change.
+vectors and block comments arrived in Phase 1b, the first phase after the
+bootstrap. Their sections are marked \textbf{[P1b]} so a reader of the
+bootstrap code knows where the kernel grew.
 \end{aside}
 
 \chapter{First steps}
@@ -206,6 +206,7 @@ it'':
 (when (> x 0) (display "positive") (newline))
 (unless done? (display "still going"))
 (case 2 ((1 2 3) 'small) ((4 5) 'medium) (else 'large))   ; small
+(case 'Foo ((foo) 'lower) (else 'exact))                 ; exact -- symbols compare by name
 \end{scm}
 
 \chapter{Lists and association lists}
@@ -334,21 +335,27 @@ as the tool result. A primitive the guard refuses raises
 
 \section{Catching [P1b]}
 
-\code{guard} evaluates a body and, if it raises, tries handlers in order;
-each handler is a predicate on the error message and a result:
+\code{guard} has the R7RS shape: a variable, \code{cond}-style clauses, and
+a body. If the body raises, the variable is bound to the \emph{condition}\,---\,an
+alist with the message and the irritants\,---\,and the clauses are tried in
+order; the first true clause's value is the value of the form. No match
+re-raises the original error.
 
 \begin{scm}
-(guard g ((error "boom"))
-  (h (lambda (m) (string-contains? m "boom")) ('caught)))   ; caught
+(guard (e ((string-contains? (assoc-ref e 'message) "boom") 'caught)
+          (else (assoc-ref e 'irritants)))
+  (error "boom" 1 2))                        ; caught
+
+(guard (e (#t (assoc-ref e 'message)))
+  (car 1))                                   ; "car: argument 1: expected pair, got integer 1"
+
+(guard (e ((assoc-ref e 'message) => string-length))
+  (error "four"))                            ; 4
 \end{scm}
 
-\begin{aside}
-This shape is under review: it differs from R7RS's
-\code{(guard (var clause ...) body ...)}, which is what a model trained on
-standard Scheme will write, and as implemented it can also catch a guard
-denial and a cancellation, which it must not. Expect the form to change
-before promotion; \file{docs/scheme.md} is the contract.
-\end{aside}
+Two things are never catchable, whatever the clauses say: a guard
+\emph{denial} and a \emph{cancellation}. A tool cannot hide that it was
+refused, and an abort always unwinds. The test suite checks both.
 
 \section{Capturing output [P1b]}
 
@@ -419,7 +426,7 @@ The metadata alist:
 Key & Meaning \\
 \midrule
 \code{doc} & one line; required; shown to the model as the tool description \\
-\code{params} & list of \code{("name" "type" "doc")}; required; type is one of \code{string integer number boolean list alist any} \\
+\code{params} & list of \code{("name" "type" "doc")}; required; type is one of \code{string integer number boolean list alist vector any} \\
 \code{variadic} & extra arguments allowed after \code{params}; default \code{\#f}. Prefer a list parameter: the model's schema cannot express rest arguments \\
 \code{egress}, \code{irreversible} & default \code{\#f}; declare them honestly, the guard reads them \\
 \bottomrule
@@ -514,7 +521,7 @@ Form & Meaning \\
 \code{(and e ...)}, \code{(or e ...)} & short-circuit \\
 \code{(when test e ...)}, \code{(unless test e ...)} [P1b] & conditional effect \\
 \code{(do ((v init [step]) ...)} \code{(test [e ...]) cmd ...)} [P1b] & loop, constant stack \\
-\code{(guard ...)} [P1b, in review] & catch errors \\
+\code{(guard (var clause ...) body ...)} [P1b] & catch errors; denials and cancellation excepted \\
 \code{(with-output-to-string e ...)} [P1b] & capture output \\
 \bottomrule
 \end{tabular}

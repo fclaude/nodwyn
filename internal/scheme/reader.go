@@ -28,6 +28,9 @@ func Read(src string) ([]Value, error) {
 	for {
 		r.skipSpace()
 		if r.eof() {
+			if r.unterminated {
+				return out, ErrIncomplete
+			}
 			return out, nil
 		}
 		v, err := r.datum()
@@ -51,9 +54,10 @@ func ReadOne(src string) (Value, error) {
 }
 
 type reader struct {
-	src       string
-	pos       int
-	line, col int
+	src          string
+	pos          int
+	line, col    int
+	unterminated bool // an open #| comment ran to EOF
 }
 
 func (r *reader) eof() bool { return r.pos >= len(r.src) }
@@ -86,6 +90,11 @@ func (r *reader) skipSpace() {
 	for !r.eof() {
 		c := r.peek()
 		switch {
+		case c == '#' && r.startsWith("#|"):
+			if !r.blockComment() {
+				r.unterminated = true
+				return
+			}
 		case c == ';':
 			for !r.eof() && r.peek() != '\n' {
 				r.next()
@@ -96,6 +105,34 @@ func (r *reader) skipSpace() {
 			return
 		}
 	}
+}
+
+// startsWith reports whether the input at the current position begins with s.
+func (r *reader) startsWith(s string) bool {
+	return len(r.src[r.pos:]) >= len(s) && r.src[r.pos:r.pos+len(s)] == s
+}
+
+// blockComment skips a "#| ... |#" block comment, updating the line and
+// column. It returns false for an unterminated comment, which consumes the
+// rest of the input so the caller sees EOF and reports incomplete input.
+func (r *reader) blockComment() bool {
+	rest := r.src[r.pos+2:]
+	j := strings.Index(rest, "|#")
+	consumed := 2 + j + 2
+	if j < 0 {
+		consumed = len(r.src) - r.pos
+	}
+	seg := r.src[r.pos : r.pos+consumed]
+	for _, ch := range seg {
+		if ch == '\n' {
+			r.line++
+			r.col = 1
+		} else {
+			r.col++
+		}
+	}
+	r.pos += consumed
+	return j >= 0
 }
 
 func isDelimiter(c rune) bool {
@@ -132,8 +169,37 @@ func (r *reader) datum() (Value, error) {
 	case '"':
 		r.next()
 		return r.str()
+	case '#':
+		if r.startsWith("#(") {
+			r.next() // '#'
+			return r.vector()
+		}
+		return r.atom()
 	}
 	return r.atom()
+}
+
+// vector reads "#( e … )" into a vector value.
+func (r *reader) vector() (Value, error) {
+	r.next() // '('
+	var items []Value
+	for {
+		r.skipSpace()
+		if r.eof() {
+			return Value{}, ErrIncomplete
+		}
+		c := r.peek()
+		if c == ')' {
+			r.next()
+			break
+		}
+		v, err := r.datum()
+		if err != nil {
+			return Value{}, err
+		}
+		items = append(items, v)
+	}
+	return Vec(items...), nil
 }
 
 func (r *reader) abbrev(name string) (Value, error) {

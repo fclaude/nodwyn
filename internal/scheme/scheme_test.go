@@ -43,6 +43,38 @@ func TestConformance(t *testing.T) {
 		{`(define (rest a . r) r) (rest 1 2 3)`, `(2 3)`}, {`((lambda args args) 1 2)`, `(1 2)`},
 		{`((lambda (a . r) (list a r)) 1)`, `(1 ())`},
 		{`(if #t 1 2)`, `1`}, {`(if #f 1 2)`, `2`}, {`(if #f 1)`, `#<void>`}, {`(if 0 'yes 'no)`, `yes`},
+		// §3 new special forms (P1b)
+		{`(letrec ((a (lambda () (b 1))) (b (lambda (n) (* n 2)))) (a))`, `2`},
+		{`(letrec ((f (lambda (n) (if (= n 0) 1 (* n (f (- n 1))))))) (f 4))`, `24`},
+		{`(define (is-even? n) (if (= n 0) #t (is-odd? (- n 1)))) (define (is-odd? n) (if (= n 0) #f (is-even? (- n 1)))) (is-even? 10)`, `#t`},
+		{`(case 2 ((1 2 3) 'in) ((4 5) 'other))`, `in`},
+		{`(case 'foo ((bar baz) 'no) ((FOO foo) 'yes) (else 'fallback))`, `yes`},
+		{`(case 'Foo ((foo) 'lower) (else 'exact))`, `exact`},
+		{`(case "hi" (("hi" "there") 'match))`, `match`},
+		{`(case 7 ((1) 'a) (else 'none))`, `none`},
+		{`(case 7 ((1) 'a))`, `#<void>`},
+		{`(do ((i 0 (+ i 1)) (out '() (cons i out))) ((= i 4) (reverse out)))`, `(0 1 2 3)`},
+		{`(do ((i 1 (+ i 1)) (acc 1 (* acc i))) ((> i 5) acc))`, `120`},
+		{`(do ((i 3 (- i 1))) ((< i 0) i))`, `-1`},
+		{`(do ((i 0 (+ i 1))) ((= i 3)))`, `#<void>`},
+		{`(when #t "yes")`, `"yes"`},
+		{`(when #f "nope")`, `#<void>`},
+		{`(unless #f "runs")`, `"runs"`},
+		{`(unless #t "skipped")`, `#<void>`},
+		{`(guard (e (#t "recovered")) (error "boom"))`, `"recovered"`},
+		{`(guard (e ((string-contains? (assoc-ref e 'message) "boom") 'caught)) (error "boom"))`, `caught`},
+		{`(guard (e (#t 42)) (+ 1 2))`, `3`},
+		{`(guard (e (#f 1) (#t 2)) (error "x"))`, `2`},
+		{`(guard (e (else (assoc-ref e 'irritants))) (error "x" 1 "two"))`, `(1 "two")`},
+		{`(guard (e ((assoc-ref e 'message) => string-length)) (error "four"))`, `4`},
+		{`(guard (e (#t "caught last")) (display "hi") (error "last"))`, `"caught last"`},
+		{`(guard (e (#t "no error")) (display "ok") (display "fine"))`, `#<void>`},
+		{`(guard (e (#t (car e))) (car 1))`, `(message . "car: argument 1: expected pair, got integer 1")`},
+		{`(guard (outer (#t 'outer)) (guard (inner (#f 'never)) (error "inner")))`, `outer`},
+		{`(with-output-to-string (display "hi") (newline))`, `"hi\n"`},
+		{`(with-output-to-string (write 42) (newline) (write 3.14))`, `"42\n3.14"`},
+		{`(with-output-to-string (display '(1 2)))`, `"(1 2)"`},
+		{`(with-output-to-string (display "A") (with-output-to-string (display "inner")) (display "B"))`, `"AB"`},
 		{`(let ((a 1) (b 2)) (+ a b))`, `3`}, {`(let* ((a 1) (b (+ a 1))) b)`, `2`},
 		{`(let loop ((i 0) (acc '())) (if (= i 3) (reverse acc) (loop (+ i 1) (cons i acc))))`, `(0 1 2)`},
 		{`(begin 1 2 3)`, `3`}, {`(begin)`, `#<void>`},
@@ -98,6 +130,15 @@ func TestConformance(t *testing.T) {
 		{`(json-emit '())`, `"[]"`}, {`(json-emit "x\"y")`, `"\"x\\\"y\""`}, {`(json-emit '(1 (2 3)))`, `"[1,[2,3]]"`},
 		{`(json-emit (json-parse "{\"k\":{\"n\":[1,{\"m\":false}]}}"))`, `"{\"k\":{\"n\":[1,{\"m\":false}]}}"`},
 		// meta
+		{`(vector 1 "a" #t)`, `#(1 "a" #t)`}, {`(vector)`, `#()`},
+		{`(vector? #(1 2))`, `#t`}, {`(vector? '(1 2))`, `#f`},
+		{`(vector-length #(1 2 3))`, `3`}, {`(vector-length #())`, `0`},
+		{`(vector-ref #(10 20 30) 1)`, `20`}, {`(vector-ref #(7) 0)`, `7`},
+		{`(let ((v (vector 1 2 3))) (vector-set! v 1 99) (vector-ref v 1))`, `99`},
+		{`(vector->list #(a b c))`, `(a b c)`}, {`(list->vector '(a b))`, `#(a b)`},
+		{`(equal? #(1 2) #(1 2))`, `#t`}, {`(equal? #(1 2) #(1 3))`, `#f`},
+		{`(let ((v #(1 2))) (eq? v v))`, `#t`}, {`(eq? #(1) #(1))`, `#f`}, {`(eq? (vector) (vector))`, `#f`},
+		{`(let ((v (vector 1))) (let ((w v)) (vector-set! w 0 2) (vector-ref v 0)))`, `2`},
 		{`(memq '(1) '((1)))`, `#f`}, {`(pair? (member "car" (primitives)))`, `#t`},
 		{`(assoc-ref (primitive-info "cons") 'origin)`, `"builtin"`},
 		{`(assoc-ref (primitive-info "load") 'host)`, `#t`},
@@ -150,6 +191,11 @@ func TestErrors(t *testing.T) {
 		{`,x`, "outside quasiquote"},
 		{`(else 1)`, "outside cond"},
 		{`(if)`, "expected 2 or 3"},
+		{`(when)`, "when: expected a test"},
+		{`(unless)`, "unless: expected a test"},
+		{`(guard)`, "guard: expected"},
+		{`(guard (e (#f 1)) (error "unhandled" 7))`, "unhandled 7"},
+		{`(guard e (error "x"))`, "expected (var clause"},
 		{`(let ((x)) x)`, "bad binding"},
 		{`(lambda)`, "expected parameters"},
 		{`(define)`, "define: expected"},
@@ -177,7 +223,7 @@ func TestErrors(t *testing.T) {
 }
 
 func TestReaderErrors(t *testing.T) {
-	for _, src := range []string{"(", "\"abc", "(1 . ", "'"} {
+	for _, src := range []string{"(", "\"abc", "(1 . ", "'", "#| never closed", "(1 #| open"} {
 		if _, err := Read(src); !errors.Is(err, ErrIncomplete) {
 			t.Errorf("%q: want ErrIncomplete, got %v", src, err)
 		}
@@ -305,6 +351,26 @@ func TestGateIsTheSingleExit(t *testing.T) {
 	}
 }
 
+// TestGuardCannotCatchDenialOrCancellation: a Scheme program must not be
+// able to hide a guard refusal or defeat an abort.
+func TestGuardCannotCatchDenialOrCancellation(t *testing.T) {
+	in := New()
+	g := &recordingGate{deny: "+"}
+	in.SetGate(g)
+	_, err := in.EvalString(context.Background(), `(guard (e (#t 'swallowed)) (+ 1 1))`)
+	var d *Denied
+	if !errors.As(err, &d) {
+		t.Fatalf("denial was caught: %v", err)
+	}
+	in2 := New()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err = in2.EvalString(ctx, `(define (forever n) (forever (+ n 1))) (guard (e (#t 'swallowed)) (forever 0))`)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancellation was caught: %v", err)
+	}
+}
+
 func TestCancellation(t *testing.T) {
 	in := New()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -404,7 +470,7 @@ func TestDocCoverage(t *testing.T) {
 }
 
 func FuzzReader(f *testing.F) {
-	for _, s := range []string{"(+ 1 2)", "'(a . b)", "\"str\\n\"", "`(1 ,x ,@y)", "#t", "1.5e3", "(((", ")", "; c\n1"} {
+	for _, s := range []string{"(+ 1 2)", "'(a . b)", "\"str\\n\"", "`(1 ,x ,@y)", "#t", "1.5e3", "(((", ")", "; c\n1", "#(1 2 \"x\")", "#( )", "#| c |# 1", "#(#(1) 2)"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, src string) {

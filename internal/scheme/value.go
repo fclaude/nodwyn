@@ -28,6 +28,7 @@ const (
 	KProc               // closure
 	KPrim               // primitive (Go handler)
 	KHandle             // opaque credential handle (P3)
+	KVec                // vector: a mutable, indexable array
 	KVoid               // the unspecified value
 )
 
@@ -51,6 +52,8 @@ func (k Kind) String() string {
 		return "procedure"
 	case KHandle:
 		return "handle"
+	case KVec:
+		return "vector"
 	case KVoid:
 		return "void"
 	}
@@ -79,6 +82,13 @@ type Value struct {
 	Proc *Closure
 	Prim *Prim
 	H    *Handle
+	V    *Vector // KVec
+}
+
+// Vector is the shared storage behind a vector value; vector-set! mutates
+// it in place and identity (eq?) is pointer identity.
+type Vector struct {
+	Items []Value
 }
 
 // Pair is a cons cell.
@@ -122,6 +132,9 @@ func Float(f float64) Value { return Value{Kind: KFloat, F: f} }
 func Str(s string) Value    { return Value{Kind: KString, S: s} }
 func Sym(s string) Value    { return Value{Kind: KSymbol, S: s} }
 func Cons(a, d Value) Value { return Value{Kind: KPair, P: &Pair{Car: a, Cdr: d}} }
+
+// Vec builds a vector from values.
+func Vec(vs ...Value) Value { return Value{Kind: KVec, V: &Vector{Items: append([]Value(nil), vs...)}} }
 
 // List builds a proper list.
 func List(vs ...Value) Value {
@@ -189,6 +202,8 @@ func Eqv(a, b Value) bool {
 		return a.Prim == b.Prim
 	case KHandle:
 		return a.H == b.H
+	case KVec:
+		return a.V == b.V
 	}
 	return false
 }
@@ -196,13 +211,25 @@ func Eqv(a, b Value) bool {
 // Equal implements equal?: structural equality.
 func Equal(a, b Value) bool {
 	for {
-		if a.Kind != KPair || b.Kind != KPair {
+		switch {
+		case a.Kind == KPair && b.Kind == KPair:
+			if !Equal(a.P.Car, b.P.Car) {
+				return false
+			}
+			a, b = a.P.Cdr, b.P.Cdr
+		case a.Kind == KVec && b.Kind == KVec:
+			if len(a.V.Items) != len(b.V.Items) {
+				return false
+			}
+			for i := range a.V.Items {
+				if !Equal(a.V.Items[i], b.V.Items[i]) {
+					return false
+				}
+			}
+			return true
+		default:
 			return Eqv(a, b)
 		}
-		if !Equal(a.P.Car, b.P.Car) {
-			return false
-		}
-		a, b = a.P.Cdr, b.P.Cdr
 	}
 }
 
@@ -261,6 +288,15 @@ func print(sb *strings.Builder, v Value, write bool) {
 		fmt.Fprintf(sb, "#<primitive %s>", v.Prim.Name)
 	case KHandle:
 		fmt.Fprintf(sb, "#<cred:%s:%s>", v.H.Class, v.H.ID)
+	case KVec:
+		sb.WriteString("#(")
+		for i, el := range v.V.Items {
+			if i > 0 {
+				sb.WriteByte(' ')
+			}
+			print(sb, el, write)
+		}
+		sb.WriteByte(')')
 	case KVoid:
 		sb.WriteString("#<void>")
 	default:

@@ -27,6 +27,7 @@ func (in *Interp) registerBuiltins() {
 	in.registerNumbers()
 	in.registerLists()
 	in.registerStrings()
+	in.registerVectors()
 	in.registerCore()
 	in.registerJSON()
 	in.registerMeta()
@@ -364,7 +365,7 @@ func parseToolMeta(c *Call, v Value) (Meta, error) {
 					return Meta{}, errorf(c.Name, "bad param %s; expected (\"name\" \"type\" \"doc\")", Write(p))
 				}
 				switch parts[1].S {
-				case "string", "integer", "number", "boolean", "list", "alist", "any":
+				case "string", "integer", "number", "boolean", "list", "alist", "vector", "any":
 				default:
 					return Meta{}, errorf(c.Name, "unknown param type %q", parts[1].S)
 				}

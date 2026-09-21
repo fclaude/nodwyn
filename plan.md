@@ -199,6 +199,10 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 - **With nibb:** the ideal first dogfood task — pure Go, crisp tests, needs only `fs-*` and `go-test`. Also the first two weeks of friction.md. Expect this to be slower than hand-coding; that is the point.
 - **Accept:** suite green; kernel-fixed test still green; promote `v0.2-kernel`.
 
+**Done 2026-09-21 (fallback, ADR 16 — hand-coded by an external agent, not a nibb-stable session; reviewed and fixed before commit):** `letrec` (shared frame, mutual closure bindings), `case` (`equal?` on datums), `do` (R5RS steps, Go loop = constant stack), `when`/`unless`, `guard` (R7RS shape `(guard (var clause …) body …)`, `var` bound to `((message . …) (irritants …))`; denials and cancellation are never catchable), `with-output-to-string` (minimal string port), vectors (`#(…)` reader, `vector*` builtins, `equal?`/`eq?` by identity) and block comments `#| … |#`. `define-macro` omitted — the prelude does not need it (ADR 7). Conformance suite roughly doubled (target was ~100); `docs/scheme.md` updated (reader, §2, §3, §4, §5, §9). Kernel version bumped `b1` → `b2`. **Not done (deferred to a follow-up):** source positions in *runtime* errors, characters, full string-port objects — all still listed in §9.
+- **Review fixes (2026-09-21):** `(when)`/`(unless)` no longer panic; `guard` re-shaped to R7RS and made unable to catch `*Denied` or context errors; `case` compares symbols exactly; vectors are a shared `*Vector` (identity, mutation) and `vector` is a declared parameter type; an unterminated `#|` is incomplete input; `with-output-to-string` is reserved like every other form.
+- **Pending:** promote `v0.2-kernel` (`make accept` is green; promotion runs `selfcheck.sh` + needs the control plane — an operator step).
+
 ### Phase 3 — Credentials: keychain, handles, binding table (weeks 7–9)
 
 - `internal/keychain`: encrypted store; entries `{id, class, created}`; the value never leaves the package except through sink functions (`InjectHeader/InjectQuery/InjectBody`) into an outgoing request at a named position. The value is never a `scheme.Value`.

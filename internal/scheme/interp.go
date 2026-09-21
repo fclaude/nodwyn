@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -19,14 +20,16 @@ var preludeFS embed.FS
 
 // kernelVersion changes only when eval/apply semantics change. It is part
 // of the fingerprint so a semantic change is visible as a new kernel.
-const kernelVersion = "b1"
+const kernelVersion = "b2"
 
-// specialForms is the fixed set of reserved names. There is no API to add
-// to it; the fingerprint covers it.
+// specialForms is the fixed set of reserved names: every one is parsed as
+// a special form wherever it heads a list, whatever the environment binds.
+// There is no API to add to it; the fingerprint covers it.
 var specialForms = []string{
-	"define", "lambda", "if", "let", "let*", "begin", "set!",
+	"define", "lambda", "if", "let", "let*", "letrec", "begin", "set!",
 	"quote", "quasiquote", "unquote", "unquote-splicing",
-	"cond", "else", "=>", "and", "or",
+	"cond", "case", "else", "=>", "and", "or",
+	"do", "when", "unless", "guard", "with-output-to-string",
 }
 
 // Interp is one interpreter instance: a global environment, the primitive
@@ -294,13 +297,79 @@ func (in *Interp) Eval(ctx context.Context, x Value, env *Env) (Value, error) {
 				x = form[len(form)-1]
 				continue
 
-			case "let", "let*":
+			case "let", "let*", "letrec":
 				nx, nenv, err := in.evalLet(ctx, head.S, form, env)
 				if err != nil {
 					return Value{}, err
 				}
 				x, env = nx, nenv
 				continue
+
+			case "case":
+				nx, done, v, err := in.evalCase(ctx, form, env)
+				if err != nil {
+					return Value{}, err
+				}
+				if done {
+					return v, nil
+				}
+				x = nx
+				continue
+
+			case "do":
+				return in.evalDo(ctx, form, env)
+
+			case "when", "unless":
+				who := head.S
+				if len(form) == 0 {
+					return Value{}, errorf(who, "expected a test")
+				}
+				test, err := in.Eval(ctx, form[0], env)
+				if err != nil {
+					return Value{}, err
+				}
+				take := test.IsTrue()
+				if who == "unless" {
+					take = !take
+				}
+				if !take || len(form) < 2 {
+					return Void, nil
+				}
+				for i := 0; i < len(form)-1; i++ {
+					if _, err := in.Eval(ctx, form[i], env); err != nil {
+						return Value{}, err
+					}
+				}
+				x = form[len(form)-1]
+				continue
+
+			case "guard":
+				return in.evalGuard(ctx, form, env)
+
+			case "with-output-to-string":
+				if len(form) == 0 {
+					return Value{}, errorf("with-output-to-string", "expected a body expression")
+				}
+				saved := in.out
+				buf := new(strings.Builder)
+				in.out = buf
+				var v Value
+				var err error
+				for i := 0; i < len(form)-1; i++ {
+					if _, err = in.Eval(ctx, form[i], env); err != nil {
+						in.out = saved
+						return Value{}, err
+					}
+				}
+				if err == nil {
+					v, err = in.Eval(ctx, form[len(form)-1], env)
+				}
+				in.out = saved
+				if err != nil {
+					return Value{}, err
+				}
+				_ = v
+				return Str(buf.String()), nil
 
 			case "cond":
 				nx, done, v, err := in.evalCond(ctx, form, env)
@@ -501,6 +570,24 @@ func (in *Interp) evalLet(ctx context.Context, who string, form []Value, env *En
 		return Value{}, nil, err
 	}
 	body := form[1:]
+	if who == "letrec" {
+		// letrec: every binding shares one frame so a closure that closes
+		// over it can see its siblings. Each initializer may reference the
+		// other names (resolving through the shared frame at call time);
+		// plain values must not depend on an un-yet-evaluated sibling.
+		nenv := NewEnv(env)
+		for _, n := range names {
+			nenv.Define(n, Void) // pre-bind so names resolve during init
+		}
+		for i, e := range inits {
+			v, err := in.Eval(ctx, e, nenv)
+			if err != nil {
+				return Value{}, nil, err
+			}
+			nenv.Define(names[i], v)
+		}
+		return in.runBodyPrefix(ctx, body, nenv)
+	}
 	if who == "let" {
 		vals := make([]Value, len(inits))
 		for i, e := range inits {
@@ -525,6 +612,99 @@ func (in *Interp) evalLet(ctx context.Context, who string, form []Value, env *En
 		nenv.Define(names[i], v)
 	}
 	return in.runBodyPrefix(ctx, body, NewEnv(nenv))
+}
+
+// evalDo implements the R5RS (do ((v init [step]) …) (test [e …]) cmd …).
+// It is a Go loop — constant stack regardless of iteration count. The value
+// of do is the value of the test clause's last expression (void if there is
+// none). Steps are evaluated in parallel using pre-step values, then assigned.
+func (in *Interp) evalDo(ctx context.Context, form []Value, env *Env) (Value, error) {
+	if len(form) < 2 {
+		return Value{}, errorf("do", "expected ((v init [step]) …) (test [e …]) [cmd …]")
+	}
+	// Parse bindings: (name init [step]).
+	var names []string
+	var inits, steps []Value
+	var haveStep []bool
+	binds, ok := form[0].Slice()
+	if !ok {
+		return Value{}, errorf("do", "bindings must be a list")
+	}
+	for _, b := range binds {
+		parts, ok := b.Slice()
+		if !ok || len(parts) < 2 || parts[0].Kind != KSymbol {
+			return Value{}, errorf("do", "bad binding %s; expected (name init [step])", Write(b))
+		}
+		names = append(names, parts[0].S)
+		inits = append(inits, parts[1])
+		if len(parts) == 3 {
+			steps = append(steps, parts[2])
+			haveStep = append(haveStep, true)
+		} else {
+			steps = append(steps, Nil)
+			haveStep = append(haveStep, false)
+		}
+	}
+	// Test clause: (test [e …]).
+	testClause, ok := form[1].Slice()
+	if !ok || len(testClause) == 0 {
+		return Value{}, errorf("do", "test clause must be (test [e …])")
+	}
+	test := testClause[0]
+	testResult := testClause[1:]
+	// Commands (body).
+	commands := form[2:]
+
+	nenv := NewEnv(env)
+	for i, e := range inits {
+		v, err := in.Eval(ctx, e, env)
+		if err != nil {
+			return Value{}, err
+		}
+		nenv.Define(names[i], v)
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return Value{}, wrap("do", err)
+		}
+		t, err := in.Eval(ctx, test, nenv)
+		if err != nil {
+			return Value{}, err
+		}
+		if t.IsTrue() {
+			if len(testResult) == 0 {
+				return Void, nil
+			}
+			for i := 0; i < len(testResult)-1; i++ {
+				if _, err := in.Eval(ctx, testResult[i], nenv); err != nil {
+					return Value{}, err
+				}
+			}
+			return in.Eval(ctx, testResult[len(testResult)-1], nenv)
+		}
+		// Steps: evaluate in parallel (all see pre-step values), then assign.
+		newVals := make([]Value, len(inits))
+		for i, s := range steps {
+			if !haveStep[i] {
+				cur, _ := nenv.Lookup(names[i])
+				newVals[i] = cur
+				continue
+			}
+			v, err := in.Eval(ctx, s, nenv)
+			if err != nil {
+				return Value{}, err
+			}
+			newVals[i] = v
+		}
+		for i, nv := range newVals {
+			nenv.Define(names[i], nv)
+		}
+		for _, c := range commands {
+			if _, err := in.Eval(ctx, c, nenv); err != nil {
+				return Value{}, err
+			}
+		}
+	}
 }
 
 // runBodyPrefix evaluates all but the last body expression and hands the
@@ -554,46 +734,157 @@ func parseBindings(who string, b Value) (names []string, inits []Value, err erro
 	return names, inits, nil
 }
 
+// evalGuard implements R7RS-shaped (guard (var clause ...) body ...): the
+// body is evaluated; if it raises a Scheme error, var is bound to the
+// condition -- an alist ((message . "text") (irritants ...)) -- and the
+// clauses are tried like cond (test body ..., test => proc, else). The
+// first true clause's value is the value of guard; no match re-raises.
+//
+// Two things are never catchable, whatever the clauses say: a guard
+// denial and a cancelled context. A tool must not be able to hide that it
+// was refused, and Abort must always unwind.
+func (in *Interp) evalGuard(ctx context.Context, form []Value, env *Env) (Value, error) {
+	if len(form) < 2 {
+		return Value{}, errorf("guard", "expected (guard (var clause ...) body ...)")
+	}
+	spec, ok := form[0].Slice()
+	if !ok || len(spec) == 0 || spec[0].Kind != KSymbol {
+		return Value{}, errorf("guard", "expected (var clause ...) as the first argument")
+	}
+	varName := spec[0].S
+	clauses := spec[1:]
+	body := form[1:]
+
+	last, err := in.evalBody(ctx, body, env)
+	if err == nil {
+		return last, nil
+	}
+	if !catchable(ctx, err) {
+		return Value{}, err
+	}
+	var se *Error
+	if !errors.As(err, &se) {
+		return Value{}, err
+	}
+	cond := List(
+		Cons(Sym("message"), Str(se.Message)),
+		Cons(Sym("irritants"), List(se.Irritants...)),
+	)
+	henv := NewEnv(env)
+	henv.Define(varName, cond)
+	nx, done, v, matched, cerr := in.condClauses(ctx, clauses, henv)
+	if cerr != nil {
+		return Value{}, cerr
+	}
+	if !matched {
+		return Value{}, err // no clause matched: re-raise the original
+	}
+	if done {
+		return v, nil
+	}
+	return in.Eval(ctx, nx, henv)
+}
+
+// catchable reports whether a Scheme program may handle err: denials and
+// cancellation are not.
+func catchable(ctx context.Context, err error) bool {
+	var d *Denied
+	if errors.As(err, &d) {
+		return false
+	}
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return true
+}
+
+// evalCase implements (case key [(datum ...) body ...] ... [(else body ...)]).
+// Datums are compared with equal? (symbols by exact name, like the rest of
+// the language).
+func (in *Interp) evalCase(ctx context.Context, form []Value, env *Env) (next Value, done bool, v Value, err error) {
+	if len(form) < 2 {
+		return Value{}, false, Value{}, errorf("case", "expected (key (datum …) (body …))")
+	}
+	key, err := in.Eval(ctx, form[0], env)
+	if err != nil {
+		return Value{}, false, Value{}, err
+	}
+	for _, clause := range form[1:] {
+		parts, isList := clause.Slice()
+		if !isList || len(parts) < 2 {
+			return Value{}, false, Value{}, errorf("case", "bad clause %s", Write(clause))
+		}
+		if parts[0].Kind == KSymbol && parts[0].S == "else" {
+			nx, _, e := in.runBodyPrefix(ctx, parts[1:], env)
+			return nx, false, Value{}, e
+		}
+		datums, isList := parts[0].Slice()
+		if !isList {
+			return Value{}, false, Value{}, errorf("case", "datums must be a list")
+		}
+		matched := false
+		for _, d := range datums {
+			if Equal(d, key) {
+				matched = true
+				break
+			}
+		}
+		if matched {
+			nx, _, e := in.runBodyPrefix(ctx, parts[1:], env)
+			return nx, false, Value{}, e
+		}
+	}
+	// No clause matched and no else.
+	return Value{}, true, Void, nil
+}
+
 // evalCond returns either a final value (done) or the expression to
 // evaluate in tail position.
 func (in *Interp) evalCond(ctx context.Context, clauses []Value, env *Env) (next Value, done bool, v Value, err error) {
+	next, done, v, _, err = in.condClauses(ctx, clauses, env)
+	return
+}
+
+// condClauses is cond's clause walk, shared with guard; matched reports
+// whether any clause (including else) was selected.
+func (in *Interp) condClauses(ctx context.Context, clauses []Value, env *Env) (next Value, done bool, v Value, matched bool, err error) {
 	for _, cl := range clauses {
 		parts, ok := cl.Slice()
 		if !ok || len(parts) == 0 {
-			return Value{}, false, Value{}, errorf("cond", "bad clause %s", Write(cl))
+			return Value{}, false, Value{}, false, errorf("cond", "bad clause %s", Write(cl))
 		}
 		if parts[0].Kind == KSymbol && parts[0].S == "else" {
 			if len(parts) == 1 {
-				return Value{}, true, Void, nil
+				return Value{}, true, Void, true, nil
 			}
 			nx, _, err := in.runBodyPrefix(ctx, parts[1:], env)
-			return nx, false, Value{}, err
+			return nx, false, Value{}, true, err
 		}
 		t, err := in.Eval(ctx, parts[0], env)
 		if err != nil {
-			return Value{}, false, Value{}, err
+			return Value{}, false, Value{}, false, err
 		}
 		if !t.IsTrue() {
 			continue
 		}
 		if len(parts) == 1 {
-			return Value{}, true, t, nil
+			return Value{}, true, t, true, nil
 		}
 		if parts[1].Kind == KSymbol && parts[1].S == "=>" {
 			if len(parts) != 3 {
-				return Value{}, false, Value{}, errorf("cond", "expected (test => proc)")
+				return Value{}, false, Value{}, false, errorf("cond", "expected (test => proc)")
 			}
 			f, err := in.Eval(ctx, parts[2], env)
 			if err != nil {
-				return Value{}, false, Value{}, err
+				return Value{}, false, Value{}, false, err
 			}
 			r, err := in.Apply(ctx, f, []Value{t})
-			return Value{}, true, r, err
+			return Value{}, true, r, true, err
 		}
 		nx, _, err := in.runBodyPrefix(ctx, parts[1:], env)
-		return nx, false, Value{}, err
+		return nx, false, Value{}, true, err
 	}
-	return Value{}, true, Void, nil
+	return Value{}, true, Void, false, nil
 }
 
 // quasi implements one-level quasiquote.

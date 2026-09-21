@@ -51,7 +51,7 @@ func (p *Prim) Schema() ToolSchema {
 		switch pa.Type {
 		case "string", "integer", "number", "boolean":
 			prop.Type = pa.Type
-		case "list":
+		case "list", "vector":
 			prop.Type = "array"
 		case "alist":
 			prop.Type = "object"
@@ -111,6 +111,8 @@ func checkParamType(pa Param, v Value) error {
 		ok = v.Kind == KBool
 	case "list", "alist":
 		ok = v.IsList()
+	case "vector":
+		ok = v.Kind == KVec
 	}
 	if !ok {
 		return errorf("type", "expected %s, got %s", pa.Type, Write(v))
