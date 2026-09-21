@@ -95,12 +95,14 @@ type Window struct {
 type Policy struct {
 	Unbound       string   `toml:"unbound"`        // "deny" (default) or "confirm" for unbound secret-bearing egress
 	AllowCommands []string `toml:"allow_commands"` // standing approvals: argv prefixes that run without a confirm
+	AllowWrites   []string `toml:"allow_writes"`   // standing approvals: repository-relative path prefixes writable without a confirm
 }
 
 // RepoAllow is <repo>/.nibb/allow.toml: standing approvals for one
 // repository, merged with policy.allow_commands.
 type RepoAllow struct {
 	Commands []string `toml:"commands"`
+	Writes   []string `toml:"writes"`
 }
 
 // LoadRepoAllow reads a repository's allow file. Missing means none.

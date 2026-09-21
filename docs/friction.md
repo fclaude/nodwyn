@@ -6,6 +6,11 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-21 · daily use · a `y` per edit, four to fifteen per task, makes
+  the confirm a reflex · every diff skimmed, none read · **resolved:
+  standing write approvals by path prefix (`writes` in allow.toml, `a` at a
+  write prompt) and `t` = all writes this turn; the diff is logged and shown
+  dimmed instead of prompted (ADR 17 amendment)**
 - 2026-09-21 · selfhost run 1 · no way to resume a session after a crash or
   `:q`; the log has everything but the window is not rebuilt from it ·
   a crash mid-task loses the conversation · `nibb --resume <id>` that

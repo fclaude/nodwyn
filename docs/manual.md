@@ -169,8 +169,13 @@ allow? [y/N]
 
 - `y` — once. `N` or anything else — no; the model is told `denied: not
   confirmed by the user` and moves on.
-- `a` — for command lines only: yes, and a **standing approval for this
-  session** for that prefix (`go test`, `rg`, …). Not persisted.
+- `a` — yes, and a **standing approval for this session**: for a command
+  line, its prefix (`go test`, `rg`, …); for a write, the file's directory
+  (`internal/scheme/`). Not persisted.
+- `t` — writes only: yes, and approve every further write **until this
+  turn ends**. Use it when you gave a task you intend to review with
+  `git diff` afterwards. The diff of each auto-approved write is logged and
+  shown dimmed as it happens.
 - Read the reason lines. `command line names a path outside the
   repository` and `uses the network tool curl` are the guard telling you
   what a `y` would do.
@@ -188,7 +193,11 @@ allow_commands = ["go test", "go build", "git status", "git diff", "rg"]
 ```toml
 # <repo>/.nibb/allow.toml   (tracked with the repository)
 commands = ["make lint", "make test"]
+writes   = ["internal/", "docs/"]     # write prefixes that never prompt
 ```
+
+`.nibb/`, `.github/`, `.gitea/`, `scripts/` and `Makefile` always prompt,
+whatever the list says — they change policy or run in CI.
 
 Prefixes match argv tokens: `"go test"` matches `go test ./...` and
 `/usr/local/go/bin/go test`, not `go build`. Denies still apply (the repo

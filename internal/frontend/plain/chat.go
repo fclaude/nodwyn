@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nibb/internal/guard"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
 )
@@ -163,6 +164,10 @@ func (c *Chat) show(ev event.Event) {
 				fmt.Fprintf(c.Out, " → %s", p.Answer)
 			}
 			fmt.Fprintln(c.Out)
+		} else if p.Detail != "" {
+			// A standing approval: nobody saw this diff, so show it dimmed.
+			endStream()
+			fmt.Fprintf(c.Out, "%s\n%s\n", dim("⚑ "+p.Reason), dim(p.Detail))
 		}
 	case string(log.KindLLMResp):
 		endStream()
@@ -198,9 +203,12 @@ func (c *Chat) confirm(p event.Confirm) {
 	if p.Prompt.Detail != "" {
 		fmt.Fprintln(c.Out, indent(p.Prompt.Detail, "  "))
 	}
-	if len(p.Prompt.Argv) > 0 {
+	switch {
+	case len(p.Prompt.Argv) > 0:
 		fmt.Fprint(c.Out, "allow? [y/N/a=always this session] ")
-	} else {
+	case p.Prompt.Path != "" && !guard.IsProtected(p.Prompt.Path):
+		fmt.Fprintf(c.Out, "allow? [y/N/a=always under %s/t=all writes this turn] ", guard.DirPrefix(p.Prompt.Path))
+	default:
 		fmt.Fprint(c.Out, "allow? [y/N] ")
 	}
 	line, ok := c.readLine()
@@ -222,7 +230,7 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
   :tools         list the tools offered to the model
   :eval EXPR     evaluate Scheme with user origin
   :thinking      toggle showing the model's thinking
-  :allow         list standing command approvals in effect
+  :allow         list standing command and write approvals in effect
 `)
 	case ":log":
 		n := 20
@@ -251,7 +259,10 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 		}
 	case ":allow":
 		for _, a := range c.Session.Allowed() {
-			fmt.Fprintln(c.Out, a)
+			fmt.Fprintln(c.Out, "command", a)
+		}
+		for _, a := range c.Session.AllowedWrites() {
+			fmt.Fprintln(c.Out, "write  ", a)
 		}
 	case ":thinking":
 		c.ShowThinking = !c.ShowThinking

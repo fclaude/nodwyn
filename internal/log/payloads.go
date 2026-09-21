@@ -85,8 +85,9 @@ type GuardDecision struct {
 	Decision string `json:"decision"` // allow | deny | confirm
 	Checker  string `json:"checker,omitempty"`
 	Reason   string `json:"reason,omitempty"`
-	Answer   string `json:"answer,omitempty"` // for confirm: yes | no
+	Answer   string `json:"answer,omitempty"` // for confirm: yes | no | turn
 	Args     string `json:"args,omitempty"`   // short written form of the arguments
+	Detail   string `json:"detail,omitempty"` // the diff, when the user did not see it (standing approvals)
 }
 
 // Note is a free-form annotation.

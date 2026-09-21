@@ -64,7 +64,11 @@ type Session struct {
 	promptN  int
 	promptMu sync.Mutex
 
-	allow *guard.CommandAllow
+	allow  *guard.CommandAllow
+	writes *guard.WriteAllow
+	// turnTrust: writes are approved without a prompt until the turn ends
+	// ("t" at a write prompt). Reset when the turn goes idle.
+	turnTrust bool
 }
 
 // New creates a session, writes session.start, and loads the init file.
@@ -125,7 +129,11 @@ func New(o Options) (*Session, error) {
 	for _, c := range repoAllow.Commands {
 		s.allow.Add(c)
 	}
-	checkers := prim.Checkers(po, s.allow)
+	s.writes = guard.NewWriteAllow(o.Config.Policy.AllowWrites...)
+	for _, w := range repoAllow.Writes {
+		s.writes.Add(w)
+	}
+	checkers := prim.Checkers(po, s.allow, s.writes)
 	// Init-time evaluation cannot prompt (nobody is listening yet): tools
 	// may be registered, actions are denied.
 	s.interp.SetGate(guard.New(guard.DenyAll, s, checkers...))
@@ -216,6 +224,7 @@ func (s *Session) Send(text string) error {
 			s.mu.Lock()
 			s.busy = false
 			s.turnCancel = nil
+			s.turnTrust = false
 			s.mu.Unlock()
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
 		}()
@@ -244,9 +253,11 @@ func (s *Session) Abort() {
 	}
 }
 
-// Answer replies to a prompt event. "y"/"yes" confirm; "a"/"always"
-// confirms and adds a standing approval for the command line for the rest
-// of the session; anything else declines.
+// Answer replies to a prompt event. "y"/"yes" confirm once. "a"/"always"
+// confirms and adds a standing approval for the rest of the session: the
+// command prefix for a command line, the file's directory for a write.
+// "t"/"turn" (writes only) confirms and approves every further write until
+// the turn ends. Anything else declines.
 func (s *Session) Answer(id, reply string) error {
 	s.promptMu.Lock()
 	ch, ok := s.prompts[id]
@@ -260,23 +271,51 @@ func (s *Session) Answer(id, reply string) error {
 		return fmt.Errorf("core: no pending prompt %q", id)
 	}
 	r := strings.ToLower(strings.TrimSpace(reply))
-	if (r == "a" || r == "always") && len(p.Argv) > 0 {
+	switch {
+	case (r == "a" || r == "always") && len(p.Argv) > 0:
 		prefix := guard.Prefix(p.Argv)
 		s.allow.Add(prefix)
-		_, _ = s.Record(log.KindNote, log.Note{Text: "standing approval for this session: " + prefix})
+		_, _ = s.Record(log.KindNote, log.Note{Text: "standing command approval for this session: " + prefix})
 		ch <- true
-		return nil
+	case (r == "a" || r == "always") && p.Path != "":
+		prefix := guard.DirPrefix(p.Path)
+		if guard.IsProtected(p.Path) {
+			_, _ = s.Record(log.KindNote, log.Note{Text: "no standing approval for protected path " + p.Path + "; approved once"})
+		} else {
+			s.writes.Add(prefix)
+			_, _ = s.Record(log.KindNote, log.Note{Text: "standing write approval for this session: " + prefix})
+		}
+		ch <- true
+	case (r == "t" || r == "turn") && p.Path != "":
+		s.mu.Lock()
+		s.turnTrust = true
+		s.mu.Unlock()
+		_, _ = s.Record(log.KindNote, log.Note{Text: "writes approved for the rest of this turn"})
+		ch <- true
+	default:
+		ch <- r == "y" || r == "yes"
 	}
-	ch <- r == "y" || r == "yes"
 	return nil
 }
 
 // Allowed lists the standing command approvals in effect.
 func (s *Session) Allowed() []string { return s.allow.List() }
 
+// AllowedWrites lists the standing write approvals in effect.
+func (s *Session) AllowedWrites() []string { return s.writes.List() }
+
 // confirm is the guard's Confirmer: emit a prompt, wait for Answer or
 // cancellation.
 func (s *Session) confirm(ctx context.Context, p guard.Prompt) (bool, error) {
+	if p.Path != "" && !guard.IsProtected(p.Path) {
+		s.mu.Lock()
+		trust := s.turnTrust
+		s.mu.Unlock()
+		if trust {
+			_, _ = s.Record(log.KindNote, log.Note{Text: "write approved by turn trust: " + p.Prim + " " + p.Path + "\n" + p.Detail})
+			return true, nil
+		}
+	}
 	s.promptMu.Lock()
 	s.promptN++
 	id := fmt.Sprintf("p%d", s.promptN)

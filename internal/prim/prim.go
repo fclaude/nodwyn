@@ -54,7 +54,7 @@ func Register(in *scheme.Interp, o Options) error {
 // Checkers returns the guard checkers the host primitives rely on, in the
 // order they should run: the envelope from plan §3.3, the write preview,
 // and the user's standing command approvals (nil for none).
-func Checkers(o Options, allow *guard.CommandAllow) []guard.Checker {
+func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow) []guard.Checker {
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
 		guard.RepoPin{Root: o.Root},
@@ -64,6 +64,9 @@ func Checkers(o Options, allow *guard.CommandAllow) []guard.Checker {
 	}
 	if allow != nil {
 		cs = append(cs, allow)
+	}
+	if writes != nil {
+		cs = append(cs, writes)
 	}
 	return cs
 }

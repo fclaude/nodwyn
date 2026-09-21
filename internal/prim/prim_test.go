@@ -48,7 +48,7 @@ func newHarness(t *testing.T) *harness {
 		h.prompts = append(h.prompts, p)
 		return h.answer, nil
 	})
-	h.in.SetGate(guard.New(confirm, logger, Checkers(o, nil)...))
+	h.in.SetGate(guard.New(confirm, logger, Checkers(o, nil, nil)...))
 	return h
 }
 

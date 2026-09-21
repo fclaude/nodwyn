@@ -22,6 +22,18 @@ The default lists are read-only and test commands. There is no approval for
 anything that commits, pushes, deletes or reaches the network; those stay
 per-call confirms.
 
+## Amendment 2026-09-21: writes
+
+The same shape applies to writes. `writes = ["internal/", "docs/"]` in
+`.nibb/allow.toml` (or `policy.allow_writes`) and "a" at a write prompt
+(the file's directory, session only) make `fs-write`/`fs-edit` under those
+prefixes a standing Allow; "t" at a write prompt approves every further
+write until the turn ends. A standing-approved write is not silent: its diff
+goes into the `guard.decision` record (`detail`) and the front-end shows it
+dimmed. Paths that change policy or run in CI — `.nibb/`, `.github/`,
+`.gitea/`, `scripts/`, `Makefile` — can never be standing-approved and
+always prompt. git remains the undo: review `git diff` before committing.
+
 ## Consequences
 - This is the command-line analogue of the binding table (SPEC): the user
   authorizes ahead of time, the harness applies silently and logs.

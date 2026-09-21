@@ -66,7 +66,8 @@ type Prompt struct {
 	Args    string // short written form
 	Reasons []string
 	Detail  string
-	Argv    []string
+	Argv    []string // set for command lines
+	Path    string   // set for writes (repository-relative)
 }
 
 // Confirmer answers prompts. It may block; it must honour ctx.
@@ -134,11 +135,13 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 			break // nothing can relax a deny
 		}
 	}
+	detail := strings.Join(details, "\n\n")
 	if final.Verdict == Confirm && standing != "" {
-		// The user approved this command line ahead of time.
+		// The user approved this ahead of time (a command prefix or a write
+		// path). The detail — a diff — goes to the log since nobody saw it.
 		final = Decision{Verdict: Allow, Standing: true, Reason: standing}
 		reasons = []string{standing}
-		checker = "command-allow"
+		checker = "standing"
 	}
 	rec := log.GuardDecision{
 		Prim:     p.Name,
@@ -147,6 +150,9 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		Checker:  checker,
 		Reason:   strings.Join(reasons, "; "),
 		Args:     summarizeArgs(args),
+	}
+	if final.Standing {
+		rec.Detail = detail
 	}
 	switch final.Verdict {
 	case Allow:
@@ -162,12 +168,14 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		return &scheme.Denied{Prim: p.Name, Reason: final.Reason}
 	}
 	// Confirm.
+	writePath, _ := WritePath(p, args)
 	ok, err := g.confirmer.Confirm(ctx, Prompt{
 		Prim:    p.Name,
 		Args:    rec.Args,
 		Reasons: reasons,
-		Detail:  strings.Join(details, "\n\n"),
+		Detail:  detail,
 		Argv:    argvArgs(p, args),
+		Path:    writePath,
 	})
 	if err != nil {
 		rec.Answer = "error"

@@ -265,3 +265,63 @@ func TestInitFileRegistersTools(t *testing.T) {
 		t.Fatalf("registered tool result: %s", srv.Requests[1].Raw)
 	}
 }
+
+func TestTurnTrustAndStandingWrites(t *testing.T) {
+	w := func(id, path, content string) fake.Turn {
+		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-write", Args: map[string]any{"path": path, "content": content}}}}
+	}
+	r := newRig(t, false,
+		w("1", "a/one.txt", "1"), w("2", "a/two.txt", "2"), w("3", "b/three.txt", "3"), fake.Turn{Content: "turn one done"},
+		w("4", "a/four.txt", "4"), w("5", ".nibb/allow.toml", "x"), fake.Turn{Content: "turn two done"},
+	)
+	// Turn 1: answer "t" at the first prompt; the next two writes must not prompt.
+	r.s.Send("write three files")
+	prompts := 0
+	var evs []event.Event
+	for ev := range r.s.Events() {
+		evs = append(evs, ev)
+		if ev.Kind == event.PromptConfirm {
+			prompts++
+			r.s.Answer(ev.Payload.(event.Confirm).ID, "t")
+		}
+		if ev.Kind == event.Status && ev.Payload.(event.StatusInfo).State == "idle" {
+			break
+		}
+	}
+	if prompts != 1 {
+		t.Fatalf("turn trust: %d prompts, want 1", prompts)
+	}
+	for _, f := range []string{"a/one.txt", "a/two.txt", "b/three.txt"} {
+		if _, err := os.Stat(filepath.Join(r.repo, f)); err != nil {
+			t.Fatalf("%s not written", f)
+		}
+	}
+	notes := 0
+	for _, e := range evs {
+		if e.Kind == "note" && strings.Contains(e.Payload.(log.Note).Text, "turn trust") {
+			notes++
+		}
+	}
+	if notes != 2 {
+		t.Fatalf("expected 2 turn-trust notes carrying diffs, got %d", notes)
+	}
+	// Turn 2: trust has expired; "a" at the a/ prompt makes a/ standing; the
+	// protected .nibb/ path still prompts.
+	r.s.Send("two more")
+	prompts = 0
+	for ev := range r.s.Events() {
+		if ev.Kind == event.PromptConfirm {
+			prompts++
+			r.s.Answer(ev.Payload.(event.Confirm).ID, "a")
+		}
+		if ev.Kind == event.Status && ev.Payload.(event.StatusInfo).State == "idle" {
+			break
+		}
+	}
+	if prompts != 2 {
+		t.Fatalf("turn two: %d prompts, want 2 (a/ then protected .nibb/)", prompts)
+	}
+	if got := strings.Join(r.s.AllowedWrites(), ","); got != "a/" {
+		t.Fatalf("standing writes: %q", got)
+	}
+}
