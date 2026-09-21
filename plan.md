@@ -167,7 +167,8 @@ Consequences for the plan:
 - `internal/window`: naive policy — full transcript until the 80 Ki budget, then elide oldest `tool.result` payloads *in place* as `[elided seq=N]`, then oldest turns. Rebuilt from the log every turn; prefix byte-stable across turns (ADR 9).
 - `internal/core`: the `Session` façade from ADR 10 — the loop runs in a goroutine, emits `Event`s, blocks on `Answer` for confirms.
 - `internal/frontend/plain`: line mode over `core.Session` — prompt, streamed text, one-line tool cards, y/n confirms, `:replay`, `:log`. `cmd/nibb` only wires config → core → front-end.
-- **Accept:** "read `internal/log/log.go` and explain it" end-to-end against workshop; `kill -9` mid-session then `nibb replay` reproduces the transcript; a session that exceeds the window budget keeps working, the elisions are visible in `:log`, and the second turn after elision reports `cached_tokens` ≈ prefix length (cache still hitting).
+- **Accept:** "read `internal/log/log.go` and explain it" end-to-end against workshop; `kill -9` mid-session then `nibb replay` reproduces the transcript; a session that exceeds the window budget keeps working, the elisions are visible in `:log`, and the turn after an elision still reports a sub-second `prompt_eval_ms` for the unchanged prefix (the native API does not report cached tokens; prompt-eval time is the cache signal).
+- **Done 2026-09-21.** The exfil runner shipped here too, with eight bootstrap scenarios (denylist, repo pin, symlink escape, argv trigger, write confirm). The plain front-end shows the fs-write diff in the confirm prompt.
 
 ### B3 — Dev tools in Scheme + first promotion (week 4)
 

@@ -19,4 +19,5 @@ turns. Model `thinking` is logged but never fed back into the window.
 ## Consequences
 - `dev/*.scm` loads before the first message, never mid-session, so the tool
   schema block does not change.
-- Reported `cached_tokens` after an elision is the acceptance check.
+- A sub-second `prompt_eval_ms` after an elision is the acceptance check (the
+  native API reports eval time, not cached tokens).

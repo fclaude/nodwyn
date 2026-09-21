@@ -26,9 +26,9 @@ promote: accept
 	@test -x scripts/promote.sh || { echo "scripts/promote.sh does not exist yet (B3)"; exit 1; }
 	scripts/promote.sh
 
-## smoke: manual two-turn session against the real control plane (B2)
+## smoke: manual two-turn session against the real control plane (not CI)
 smoke:
-	@echo "make smoke arrives in B2"; exit 1
+	scripts/smoke.sh
 
 clean:
 	rm -rf bin

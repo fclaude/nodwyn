@@ -315,6 +315,7 @@ func (in *Interp) registerMeta() {
 			Doc:    "Evaluate a Scheme file in the global environment.",
 			Params: []Param{{Name: "path", Type: "string", Doc: "file to load", Role: "path"}},
 			Host:   true,
+			Hidden: true,
 			Origin: "builtin",
 		},
 		Handler: func(c *Call) (Value, error) {

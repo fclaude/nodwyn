@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -64,6 +65,14 @@ type Config struct {
 	Control Control `toml:"control"`
 	Window  Window  `toml:"window"`
 	Policy  Policy  `toml:"policy"`
+	Loop    Loop    `toml:"loop"`
+}
+
+// Loop bounds one turn of the agent loop.
+type Loop struct {
+	MaxToolCalls   int    `toml:"max_tool_calls"`  // hard stop per user message
+	RequestTimeout string `toml:"request_timeout"` // per model request, e.g. "30m"
+	ShellTimeout   string `toml:"shell_timeout"`   // per shell-exec, e.g. "10m"
 }
 
 // Control describes the control-plane model (ADR 8). It is configured, not
@@ -99,6 +108,7 @@ func Default() Config {
 		},
 		Window: Window{InputBudget: 80 * 1024, OutputReserve: 8 * 1024},
 		Policy: Policy{Unbound: "deny"},
+		Loop:   Loop{MaxToolCalls: 50, RequestTimeout: "30m", ShellTimeout: "10m"},
 	}
 }
 
@@ -146,7 +156,22 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("policy.unbound must be \"deny\" or \"confirm\", got %q", c.Policy.Unbound)
 	}
+	if c.Loop.MaxToolCalls <= 0 {
+		return errors.New("loop.max_tool_calls must be positive")
+	}
+	for name, v := range map[string]string{"loop.request_timeout": c.Loop.RequestTimeout, "loop.shell_timeout": c.Loop.ShellTimeout} {
+		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
+			return fmt.Errorf("%s must be a positive duration, got %q", name, v)
+		}
+	}
 	return nil
+}
+
+// Durations returns the parsed loop timeouts (Validate guarantees they parse).
+func (l Loop) Durations() (request, shell time.Duration) {
+	request, _ = time.ParseDuration(l.RequestTimeout)
+	shell, _ = time.ParseDuration(l.ShellTimeout)
+	return request, shell
 }
 
 // Binding is one row of the binding table (SPEC "Egress authority"):

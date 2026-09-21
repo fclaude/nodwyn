@@ -8,10 +8,18 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"runtime/debug"
+	"sort"
+	"strings"
+	"syscall"
 
 	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/frontend/plain"
+	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
@@ -22,15 +30,24 @@ var version = "dev"
 func main() {
 	fs := flag.NewFlagSet("nibb", flag.ExitOnError)
 	showVersion := fs.Bool("version", false, "print version and exit")
+	repo := fs.String("repo", ".", "repository root; every path the model touches is pinned under it")
+	model := fs.String("model", "", "override control.model")
+	url := fs.String("url", "", "override control.url")
+	thinking := fs.Bool("show-thinking", false, "show the model's thinking as it streams")
+	noConfirm := fs.Bool("no-confirm", false, "answer every confirm with no (non-interactive runs)")
+	fs.Bool("plain", true, "line-mode front-end (the only one in bootstrap)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), `usage: nibb [flags] [command]
 
 commands:
-  version              print version
-  paths                print the config and data locations
+  (none) | chat        start a session in the plain front-end
+  replay SESSION       print a session log as a transcript (id or path)
+  sessions             list sessions
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
   eval -e EXPR         evaluate an expression and print its value
+  paths                print the config and data locations
+  version              print version
 
 flags:
 `)
@@ -43,13 +60,53 @@ flags:
 		fmt.Println("nibb", versionString())
 		return
 	}
+	paths, err := config.DefaultPaths()
+	if err != nil {
+		fail(err)
+	}
 	switch cmd {
-	case "paths":
-		p, err := config.DefaultPaths()
+	case "", "chat":
+		cfg, err := config.Load(paths.ConfigFile)
 		if err != nil {
 			fail(err)
 		}
-		fmt.Printf("config:   %s\nbindings: %s\nkeychain: %s\nsessions: %s\n", p.ConfigFile, p.Bindings, p.Keychain, p.SessionsDir)
+		if *model != "" {
+			cfg.Control.Model = *model
+		}
+		if *url != "" {
+			cfg.Control.URL = *url
+		}
+		runChat(cfg, paths, *repo, *thinking, *noConfirm)
+	case "replay":
+		if fs.NArg() < 2 {
+			fail(fmt.Errorf("replay: session id or path required"))
+		}
+		p := fs.Arg(1)
+		if !strings.Contains(p, string(filepath.Separator)) && !strings.HasSuffix(p, ".jsonl") {
+			p = log.SessionPath(paths.SessionsDir, p)
+		}
+		events, err := log.ReadFile(p)
+		if err != nil && len(events) == 0 {
+			fail(err)
+		}
+		plain.Replay(events, os.Stdout, *thinking)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "nibb: note:", err)
+		}
+	case "sessions":
+		entries, _ := os.ReadDir(paths.SessionsDir)
+		var names []string
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".jsonl") {
+				names = append(names, strings.TrimSuffix(e.Name(), ".jsonl"))
+			}
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			fmt.Println(n)
+		}
+	case "paths":
+		fmt.Printf("config:   %s\nbindings: %s\nkeychain: %s\nsessions: %s\n", paths.ConfigFile, paths.Bindings, paths.Keychain, paths.SessionsDir)
 	case "repl":
 		in := scheme.New(scheme.WithOutput(os.Stdout))
 		if err := plain.SchemeREPL(context.Background(), in, os.Stdin, os.Stdout, true); err != nil {
@@ -57,11 +114,52 @@ flags:
 		}
 	case "eval":
 		runEval(fs.Args()[1:])
-	case "":
-		fs.Usage()
-		os.Exit(2)
 	default:
 		fail(fmt.Errorf("unknown command %q", cmd))
+	}
+}
+
+func runChat(cfg config.Config, paths config.Paths, repo string, thinking, noConfirm bool) {
+	provider := llm.NewOllama(cfg.Control.URL)
+	ctx := context.Background()
+	if v, err := provider.Ping(ctx); err != nil {
+		fail(fmt.Errorf("control plane %s unreachable: %w", cfg.Control.URL, err))
+	} else {
+		fmt.Fprintf(os.Stderr, "control plane: %s %s (ollama %s)\n", cfg.Control.URL, cfg.Control.Model, v)
+	}
+	s, err := core.New(core.Options{
+		Config: cfg, Paths: paths, Repo: repo, Version: versionString(), Provider: provider, NoConfirm: noConfirm,
+	})
+	if err != nil {
+		fail(err)
+	}
+	fmt.Fprintf(os.Stderr, "log: %s\n", log.SessionPath(paths.SessionsDir, s.ID()))
+
+	interrupt := make(chan struct{}, 1)
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		for range sig {
+			if s.Busy() {
+				select {
+				case interrupt <- struct{}{}:
+				default:
+				}
+				continue
+			}
+			_ = s.Close()
+			fmt.Fprintln(os.Stderr)
+			os.Exit(130)
+		}
+	}()
+
+	chat := &plain.Chat{Session: s, In: os.Stdin, Out: os.Stdout, ShowThinking: thinking, Interrupt: interrupt}
+	runErr := chat.Run(ctx)
+	if err := s.Close(); err != nil {
+		fmt.Fprintln(os.Stderr, "nibb: close:", err)
+	}
+	if runErr != nil {
+		fail(runErr)
 	}
 }
 

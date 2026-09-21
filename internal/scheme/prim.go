@@ -25,15 +25,18 @@ type Meta struct {
 	Egress       bool   // may send bytes off-machine
 	Irreversible bool   // cannot be undone by the harness
 	Host         bool   // touches the OS: filesystem, processes, network
+	Hidden       bool   // never offered to the model as a tool (e.g. load)
 	Origin       string // "builtin" or "scheme"
 }
 
-// Call is what a primitive handler receives.
+// Call is what a primitive handler receives. Origin is who initiated the
+// evaluation (see OriginFrom).
 type Call struct {
-	Ctx  context.Context
-	In   *Interp
-	Name string
-	Args []Value
+	Ctx    context.Context
+	In     *Interp
+	Name   string
+	Args   []Value
+	Origin Origin
 }
 
 // Prim is an entry in the primitive table: the only Scheme→Go surface.
@@ -105,7 +108,7 @@ func (in *Interp) applyPrim(ctx context.Context, p *Prim, args []Value) (Value, 
 			return Value{}, wrap(p.Name, err)
 		}
 	}
-	v, err := p.Handler(&Call{Ctx: ctx, In: in, Name: p.Name, Args: args})
+	v, err := p.Handler(&Call{Ctx: ctx, In: in, Name: p.Name, Args: args, Origin: OriginFrom(ctx)})
 	if err != nil {
 		return Value{}, wrap(p.Name, err)
 	}
@@ -194,4 +197,25 @@ func (c *Call) Symbol(i int) (string, error) {
 		return v.S, nil
 	}
 	return "", c.typeErr(i, "symbol")
+}
+
+// Tool reports whether the model may call p directly: host primitives and
+// Scheme-registered tools, except those explicitly hidden.
+func (p *Prim) Tool() bool {
+	if p.Meta.Hidden {
+		return false
+	}
+	return p.Meta.Host || p.Meta.Origin == "scheme"
+}
+
+// Tools returns the primitives exposed to the model, sorted by name (a
+// stable order keeps the request prefix stable, ADR 9).
+func (in *Interp) Tools() []*Prim {
+	var out []*Prim
+	for _, p := range in.Prims() {
+		if p.Tool() {
+			out = append(out, p)
+		}
+	}
+	return out
 }
