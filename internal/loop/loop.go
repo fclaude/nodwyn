@@ -63,8 +63,9 @@ func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) *L
 // Tools returns the tool list offered to the model.
 func (l *Loop) Tools() []llm.Tool { return l.tools }
 
-// ErrHardStop is returned when a turn exceeds MaxToolCalls.
-var ErrHardStop = errors.New("hard stop: too many tool calls in one turn")
+// ErrHardStop is returned when a turn exceeds MaxToolCalls. The turn's work
+// is in the log; a "continue" message starts a fresh budget.
+var ErrHardStop = errors.New("hard stop: tool-call limit for this turn reached (loop.max_tool_calls / --max-tool-calls); say \"continue\" to go on")
 
 // Turn handles one user message to completion.
 func (l *Loop) Turn(ctx context.Context, text string) error {

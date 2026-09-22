@@ -40,6 +40,7 @@ func main() {
 	thinking := fs.Bool("show-thinking", false, "show the model's thinking as it streams")
 	noConfirm := fs.Bool("no-confirm", false, "answer every confirm with no (non-interactive runs)")
 	noKeychain := fs.Bool("no-keychain", false, "start without opening the keychain (no credential primitives)")
+	maxCalls := fs.Int("max-tool-calls", 0, "tool calls allowed per turn before the hard stop (overrides loop.max_tool_calls)")
 	fs.Bool("plain", true, "line-mode front-end (the only one in bootstrap)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), `usage: nibb [flags] [command]
@@ -81,6 +82,9 @@ flags:
 		}
 		if *url != "" {
 			cfg.Control.URL = *url
+		}
+		if *maxCalls > 0 {
+			cfg.Loop.MaxToolCalls = *maxCalls
 		}
 		runChat(cfg, paths, *repo, *thinking, *noConfirm, *noKeychain)
 	case "replay":

@@ -116,7 +116,7 @@ func JevContentRank(level string) int {
 
 // Loop bounds one turn of the agent loop.
 type Loop struct {
-	MaxToolCalls   int    `toml:"max_tool_calls"`  // hard stop per user message
+	MaxToolCalls   int    `toml:"max_tool_calls"`  // hard stop per user message (--max-tool-calls overrides)
 	RequestTimeout string `toml:"request_timeout"` // per model request, e.g. "30m"
 	ShellTimeout   string `toml:"shell_timeout"`   // per shell-exec, e.g. "10m"
 }
@@ -200,7 +200,7 @@ func Default() Config {
 		},
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 8 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
-		Loop:   Loop{MaxToolCalls: 50, RequestTimeout: "30m", ShellTimeout: "10m"},
+		Loop:   Loop{MaxToolCalls: 200, RequestTimeout: "30m", ShellTimeout: "10m"},
 		// Jev defaults: no service (nibb runs file-only, gate is "plan"), full
 		// content when one is configured. A developer points jev.url at their
 		// instance to enable the gate (ADR 19).
