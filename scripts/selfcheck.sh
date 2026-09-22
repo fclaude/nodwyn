@@ -28,6 +28,9 @@ grep -q '^go-test ' "$OUT" || { echo "selfcheck: dev tools not registered"; cat 
 grep -q 'ok  \\tgithub.com/fclaude/nibb/internal/log' "$OUT" || { echo "selfcheck: go-test through the dev tool did not pass"; cat "$OUT"; exit 1; }
 grep -q 'READY' "$OUT" || { echo "selfcheck: model turn did not complete"; cat "$OUT"; exit 1; }
 
-SESSION=$("$CAND" sessions --ids | tail -1)
+# Other clients may open sessions during the model turn. Replay this run's
+# banner ID, never whichever session happens to be newest in the shared store.
+SESSION=$(awk '$1 == "nibb" && $2 == "session" { print $3; exit }' "$OUT")
+test -n "$SESSION" || { echo "selfcheck: session banner missing"; exit 1; }
 "$CAND" replay "$SESSION" | grep 'READY' >/dev/null || { echo "selfcheck: replay of $SESSION failed"; exit 1; }
 echo "selfcheck: ok (session $SESSION)"
