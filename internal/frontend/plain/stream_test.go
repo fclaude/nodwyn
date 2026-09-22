@@ -61,3 +61,22 @@ func TestCheckpointReplayDoesNotPrompt(t *testing.T) {
 		t.Fatal(out.String())
 	}
 }
+
+func TestRPCReplayShowsEvaluationAndApprovalWithoutExecuting(t *testing.T) {
+	var history bytes.Buffer
+	w := log.New(&history, "rpc")
+	w.Append(log.KindEvalReq, log.EvalRequest{Source: "(+ 1 2)", Actor: "unix:uid=1,gid=1,pid=2"})
+	w.Append(log.KindEvalResult, log.EvalResult{Value: "3"})
+	w.Append(log.KindApprovalChange, log.ApprovalChange{Actor: "unix:uid=1,gid=1,pid=2", Scope: "session", Kind: "write", Prefix: "notes/"})
+	events, err := log.Read(&history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	Replay(events, &out, false)
+	for _, want := range []string{"scheme> (+ 1 2)\n3\n", "approval session write notes/ by unix:uid=1,gid=1,pid=2"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q in %q", want, out.String())
+		}
+	}
+}

@@ -232,6 +232,10 @@ func (c *Chat) show(ev event.Event) {
 		if ev.Payload.(event.StatusInfo).State == "idle" {
 			endStream()
 		}
+	case string(log.KindApprovalChange):
+		endStream()
+		p := ev.Payload.(log.ApprovalChange)
+		fmt.Fprintf(c.Out, "[approval requested: %s %s %s]\n", p.Scope, p.Kind, p.Prefix)
 	case string(log.KindNote):
 		endStream()
 		fmt.Fprintf(c.Out, "note: %s\n", ev.Payload.(log.Note).Text)
@@ -248,6 +252,8 @@ func (c *Chat) confirm(p event.Confirm) {
 	}
 	prompt := "allow? [y/N] "
 	switch {
+	case p.Prompt.Security:
+		// Security confirmations always apply to this call only.
 	case len(p.Prompt.Argv) > 0:
 		prompt = "allow? [y/N/a=always this session] "
 	case p.Prompt.Path != "" && !guard.IsProtected(p.Prompt.Path):
@@ -360,6 +366,23 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.SessionStart
 			_ = ev.Decode(&p)
 			fmt.Fprintf(w, "# session %s — %s %s @ %s (%d tools)\n", ev.Session, p.Model, p.Provider, p.Repo, p.Tools)
+		case log.KindEvalReq:
+			var p log.EvalRequest
+			_ = ev.Decode(&p)
+			fmt.Fprintf(w, "\nscheme> %s\n", p.Source)
+		case log.KindEvalResult:
+			var p log.EvalResult
+			_ = ev.Decode(&p)
+			if p.Error != "" {
+				fmt.Fprintf(w, "eval error: %s\n", p.Error)
+			} else if p.Value != "" {
+				fmt.Fprintln(w, p.Value)
+			}
+		case log.KindApprovalChange:
+			var p log.ApprovalChange
+			_ = ev.Decode(&p)
+			fmt.Fprintf(w, "[approval %s %s %s by %s]\n", p.Scope, p.Kind, p.Prefix, p.Actor)
+
 		case log.KindUserMsg:
 			var p log.UserMsg
 			_ = ev.Decode(&p)

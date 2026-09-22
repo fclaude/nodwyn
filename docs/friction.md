@@ -44,3 +44,4 @@ Format: `date · session · what happened · what it cost · idea`
 - 2026-09-21 · B2 smoke · cold prompt eval of a small prefix took 13 s
   (another client had the slot); warm turns are 0.2–0.5 s · none once warm ·
   nothing to do; ADR 9 holds
+- 2026-09-22 · U2 approvals and eval · implemented with an external agent under ADR 16; Unix-socket tests cover peer attribution, explicit scopes, secret containment, cancellation and schema drift · no claim of nibb self-authorship · clients can now complete prompted turns and register credentials without blocking their reply connection; turn-wide write trust no longer bypasses security confirmation

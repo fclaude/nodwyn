@@ -5,7 +5,9 @@ package rpc
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/fclaude/nibb/internal/redact"
 )
@@ -13,7 +15,7 @@ import (
 const ProtocolVersion = 1
 const maxFrame = 1 << 20
 
-var methods = []string{"session.list", "session.open", "session.resume", "session.info", "session.close", "session.send", "session.abort", "session.subscribe", "session.unsubscribe", "log.read"}
+var methods = []string{"session.list", "session.open", "session.resume", "session.info", "session.close", "session.send", "session.abort", "session.subscribe", "session.unsubscribe", "log.read", "session.answer", "session.secret", "session.approval.create", "session.eval"}
 
 type request struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -50,6 +52,15 @@ func params(raw json.RawMessage, dst any, names ...string) *rpcError {
 	for name := range fields {
 		if !slices.Contains(names, name) {
 			return failure(-32602, "Unknown parameter: "+name)
+		}
+	}
+	t := reflect.TypeOf(dst).Elem()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		tag := strings.Split(field.Tag.Get("json"), ",")
+		value, exists := fields[tag[0]]
+		if (!exists && !slices.Contains(tag, "omitempty")) || (exists && bytes.Equal(value, []byte("null"))) {
+			return failure(-32602, "Missing or null parameter: "+tag[0])
 		}
 	}
 	if json.Unmarshal(raw, dst) != nil {

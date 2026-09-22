@@ -30,6 +30,7 @@ func (c *client) notice() reply {
 	if err := c.dec.Decode(&r); err != nil {
 		c.t.Fatal(err)
 	}
+	c.observed = append(c.observed, r)
 	if r.Method == "" {
 		c.t.Fatal("expected notification", string(r.Result))
 	}
@@ -217,8 +218,8 @@ func TestPromptSurvivesReconnectAndAbortDoesNotApprove(t *testing.T) {
 	if string(want) != string(got) {
 		t.Fatal("pending prompt changed")
 	}
-	if r := other.call("session.answer", map[string]any{"id": id, "reply": "y"}); r.Error == nil || r.Error.Code != -32601 {
-		t.Fatal("approval exposed before client attribution")
+	if r := other.call("session.answer", map[string]any{"id": id, "prompt_id": "missing", "reply": "y"}); r.Error == nil || r.Error.Code != -32000 {
+		t.Fatal("accepted stale approval")
 	}
 	other.ok("session.abort", map[string]any{"id": id})
 	events := other.until(event.Status)

@@ -1,9 +1,13 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/event"
@@ -14,10 +18,10 @@ func TestPendingPromptsUseCurrentStateAndRedact(t *testing.T) {
 	const canary = "sk-ant-abcdefgh1234"
 	s := &Session{
 		prompts: map[string]pendingConfirmation{
-			"p2": {checkpoint: &pendingCheckpoint{info: budget.Checkpoint{Dimension: "actions", State: budget.State{Commands: []string{"echo " + canary}}}, reply: make(chan budget.Choice, 1)}},
-			"p1": {prompt: guard.Prompt{Detail: "contains " + canary}, reply: make(chan bool, 1)},
+			"p2": {checkpoint: &pendingCheckpoint{info: budget.Checkpoint{Dimension: "actions", State: budget.State{Commands: []string{"echo " + canary}}}, reply: make(chan checkpointReply, 1)}},
+			"p1": {prompt: guard.Prompt{Detail: "contains " + canary}, reply: make(chan guard.Approval, 1)},
 		},
-		secrets: map[string]pendingSecret{"s3": {class: "test", reply: make(chan []byte, 1)}},
+		secrets: map[string]pendingSecret{"s3": {class: "test", reply: make(chan secretReply, 1)}},
 	}
 	pending, err := s.PendingPrompts()
 	if err != nil || len(pending) != 3 {
@@ -47,5 +51,73 @@ func TestPendingPromptsUseCurrentStateAndRedact(t *testing.T) {
 	pending, err = s.PendingPrompts()
 	if err != nil || len(pending) != 0 {
 		t.Fatal("resolved prompt survived", pending, err)
+	}
+}
+
+func TestCanceledPromptsRejectRepliesBeforeCleanup(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s := &Session{
+		prompts: map[string]pendingConfirmation{"p1": {ctx: ctx, prompt: guard.Prompt{Path: "notes/a"}, reply: make(chan guard.Approval, 1)}},
+		secrets: map[string]pendingSecret{"s2": {ctx: ctx, reply: make(chan secretReply, 1)}},
+	}
+	if s.AnswerFrom("p1", "y", "test-actor") == nil {
+		t.Fatal("answered canceled prompt")
+	}
+	if s.CreateApproval("p1", "turn", "test-actor") == nil {
+		t.Fatal("granted canceled scope")
+	}
+	if s.SecretReplyFrom("s2", []byte("canary"), "test-actor") == nil {
+		t.Fatal("answered canceled secret prompt")
+	}
+	if len(s.prompts["p1"].reply) != 0 || len(s.secrets["s2"].reply) != 0 {
+		t.Fatal("queued canceled reply")
+	}
+}
+
+func TestTurnApprovalCannotWaiveSecurityConfirmation(t *testing.T) {
+	r := newRig(t, false)
+	source := `(begin (fs-write "ordinary.txt" "ordinary") (fs-write "secret.txt" "sk-ant-abcdefgh1234"))`
+	if err := r.s.StartEval(source, "test-actor"); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case ev := <-r.s.Events():
+			switch ev.Kind {
+			case event.PromptConfirm:
+				p := ev.Payload.(event.Confirm)
+				count++
+				if count == 1 {
+					if err := r.s.CreateApproval(p.ID, "turn", "test-actor"); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					if !p.Prompt.Security {
+						t.Fatal("missing security confirmation")
+					}
+					if err := r.s.AnswerFrom(p.ID, "n", "test-actor"); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case event.Status:
+				if ev.Payload.(event.StatusInfo).State == "idle" {
+					if count != 2 {
+						t.Fatalf("got %d prompts, want ordinary then security", count)
+					}
+					if _, err := os.Stat(filepath.Join(r.repo, "secret.txt")); !os.IsNotExist(err) {
+						t.Fatal("denied secret write ran")
+					}
+					if trust, _ := r.s.TurnApproval(); trust {
+						t.Fatal("turn approval survived turn")
+					}
+					return
+				}
+			}
+		case <-timeout:
+			t.Fatal("turn did not finish")
+		}
 	}
 }

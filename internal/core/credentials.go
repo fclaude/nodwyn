@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,9 +14,15 @@ import (
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
+type secretReply struct {
+	value []byte
+	actor string
+}
+
 type pendingSecret struct {
+	ctx   context.Context
 	class string
-	reply chan []byte
+	reply chan secretReply
 }
 
 // PromptAndAdd asks the user (masked input) for a secret of the given class
@@ -26,21 +33,33 @@ func (s *Session) PromptAndAdd(ctx context.Context, class string) (*scheme.Handl
 		return nil, errors.New("core: no keychain configured")
 	}
 	// Emit a secret prompt event and wait for the front-end to reply.
-	s.promptMu.Lock()
-	s.promptN++
-	id := fmt.Sprintf("s%d", s.promptN)
-	ch := make(chan []byte, 1)
-	s.promptMu.Unlock()
+	id := "s" + rand.Text()
+	ch := make(chan secretReply, 1)
 
 	// Store the pending secret prompt so SecretReply can find it.
 	s.secretsMu.Lock()
-	s.secrets[id] = pendingSecret{class: class, reply: ch}
+	s.secrets[id] = pendingSecret{ctx: ctx, class: class, reply: ch}
 	s.secretsMu.Unlock()
 
+	defer func() {
+		s.secretsMu.Lock()
+		delete(s.secrets, id)
+		select {
+		case unused := <-ch:
+			clear(unused.value)
+		default:
+		}
+		s.secretsMu.Unlock()
+	}()
 	s.Emit(event.Event{Kind: event.PromptSecret, Payload: event.SecretPrompt{ID: id, Class: class}})
 
 	select {
-	case secret := <-ch:
+	case reply := <-ch:
+		secret := reply.value
+		defer clear(secret)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if len(secret) == 0 {
 			return nil, errors.New("core: secret was empty or declined")
 		}
@@ -48,12 +67,9 @@ func (s *Session) PromptAndAdd(ctx context.Context, class string) (*scheme.Handl
 		if err != nil {
 			return nil, err
 		}
-		_, _ = s.Record(log.KindCredRegister, log.CredRegister{Class: class, Handle: h.ID})
+		_, _ = s.Record(log.KindCredRegister, log.CredRegister{Class: class, Handle: h.ID, Actor: reply.actor, PromptID: id})
 		return h, nil
 	case <-ctx.Done():
-		s.secretsMu.Lock()
-		delete(s.secrets, id)
-		s.secretsMu.Unlock()
 		return nil, ctx.Err()
 	}
 }
@@ -104,15 +120,19 @@ func (s *Session) Redactor() *l1.Scanner {
 
 // SecretReply delivers a masked secret to a pending PromptAndAdd.
 func (s *Session) SecretReply(id string, secret []byte) error {
+	return s.SecretReplyFrom(id, secret, "")
+}
+
+// SecretReplyFrom copies the bytes into the typed secret channel, never into
+// Scheme or a log. The consumer clears its transient copy after registration.
+func (s *Session) SecretReplyFrom(id string, secret []byte, actor string) error {
 	s.secretsMu.Lock()
+	defer s.secretsMu.Unlock()
 	pending, ok := s.secrets[id]
-	if ok {
-		delete(s.secrets, id)
-	}
-	s.secretsMu.Unlock()
-	if !ok {
+	if !ok || (pending.ctx != nil && pending.ctx.Err() != nil) {
 		return fmt.Errorf("core: no pending secret prompt %q", id)
 	}
-	pending.reply <- secret
+	delete(s.secrets, id)
+	pending.reply <- secretReply{value: append([]byte(nil), secret...), actor: actor}
 	return nil
 }

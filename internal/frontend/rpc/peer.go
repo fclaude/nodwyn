@@ -11,7 +11,8 @@ import (
 // session delivery nor dispatch waits on socket I/O. Overflow closes the
 // connection; reconnecting clients recover durable events through log.read.
 type peer struct {
-	ready bool // used only by the connection's request reader
+	actor string // authenticated by the Unix socket, not supplied by the client
+	ready bool   // used only by the connection's request reader
 	conn  net.Conn
 	out   chan any
 	done  chan struct{}

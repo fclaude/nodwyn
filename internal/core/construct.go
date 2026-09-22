@@ -244,7 +244,7 @@ func (s *Session) initialize() error {
 	if err := s.loadInit(); err != nil {
 		return err
 	}
-	var confirmer guard.Confirmer = guard.ConfirmFunc(s.confirm)
+	var confirmer guard.Confirmer = s
 	if o.NoConfirm {
 		confirmer = guard.DenyAll
 	}

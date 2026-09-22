@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"fmt"
+	"crypto/rand"
 	"strings"
 
 	"github.com/fclaude/nibb/internal/budget"
@@ -12,16 +12,22 @@ import (
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
+type checkpointReply struct {
+	choice budget.Choice
+	actor  string
+}
+
 type pendingCheckpoint struct {
 	info  budget.Checkpoint
-	reply chan budget.Choice
+	reply chan checkpointReply
 }
 
 // confirmBudget uses the session's existing prompt IDs, reply queue and
 // cancellation path. Budget choices never create standing tool approvals.
 func (s *Session) confirmBudget(ctx context.Context, p budget.Checkpoint) (choice budget.Choice, err error) {
+	var actor, id string
 	defer func() {
-		record := log.TurnCheckpoint{Checkpoint: p, Choice: choice}
+		record := log.TurnCheckpoint{Checkpoint: p, Choice: choice, Actor: actor, PromptID: id}
 		if err != nil {
 			record.Error = err.Error()
 		}
@@ -33,15 +39,15 @@ func (s *Session) confirmBudget(ctx context.Context, p budget.Checkpoint) (choic
 		return budget.Choice{}, nil
 	}
 	s.promptMu.Lock()
-	s.promptN++
-	id := fmt.Sprintf("p%d", s.promptN)
-	ch := make(chan budget.Choice, 1)
-	s.prompts[id] = pendingConfirmation{checkpoint: &pendingCheckpoint{info: p, reply: ch}}
+	id = "p" + rand.Text()
+	ch := make(chan checkpointReply, 1)
+	s.prompts[id] = pendingConfirmation{ctx: ctx, checkpoint: &pendingCheckpoint{info: p, reply: ch}}
 	s.promptMu.Unlock()
 	defer func() { s.promptMu.Lock(); delete(s.prompts, id); s.promptMu.Unlock() }()
 	s.Emit(event.Event{Kind: event.PromptCheckpoint, Payload: event.Checkpoint{ID: id, Checkpoint: p}})
 	select {
-	case choice = <-ch:
+	case reply := <-ch:
+		choice, actor = reply.choice, reply.actor
 		return choice, nil
 	case <-ctx.Done():
 		return budget.Choice{}, context.Cause(ctx)

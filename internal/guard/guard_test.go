@@ -186,3 +186,20 @@ func TestStandingApprovalOutranksConfirmNotDeny(t *testing.T) {
 		}
 	}
 }
+
+type failingDecisionLog struct{ err error }
+
+func (l failingDecisionLog) Record(log.Kind, any) (log.Event, error) { return log.Event{}, l.err }
+
+func TestAuditFailureStopsHostOperation(t *testing.T) {
+	failed := errors.New("audit unavailable")
+	p := &scheme.Prim{Name: "host-op", Meta: scheme.Meta{Host: true}}
+	for _, verdict := range []Verdict{Allow, Confirm, Deny} {
+		t.Run(verdict.String(), func(t *testing.T) {
+			g := New(ConfirmFunc(func(context.Context, Prompt) (bool, error) { return true, nil }), failingDecisionLog{failed}, fixed{"policy", Decision{Verdict: verdict}})
+			if err := g.Before(context.Background(), p, nil); !errors.Is(err, failed) {
+				t.Fatalf("audit failure not propagated: %v", err)
+			}
+		})
+	}
+}

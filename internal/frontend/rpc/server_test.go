@@ -61,11 +61,12 @@ func start(t *testing.T, o core.Options) (string, func()) {
 }
 
 type client struct {
-	t       *testing.T
-	conn    net.Conn
-	enc     *json.Encoder
-	dec     *json.Decoder
-	notices []reply
+	t        *testing.T
+	conn     net.Conn
+	enc      *json.Encoder
+	dec      *json.Decoder
+	notices  []reply
+	observed []reply
 }
 type reply struct {
 	Method string          `json:"method"`
@@ -95,6 +96,7 @@ func (c *client) call(method string, p any) reply {
 		if err := c.dec.Decode(&r); err != nil {
 			c.t.Fatal(err)
 		}
+		c.observed = append(c.observed, r)
 		if r.Method != "" {
 			c.notices = append(c.notices, r)
 			continue
@@ -218,7 +220,7 @@ func TestProtocolErrorsBatchesAndNotifications(t *testing.T) {
 	if r := s.frame([]byte(`[{"jsonrpc":"2.0","method":"session.list"}]`), ready); r != nil {
 		t.Fatal("notification produced reply", r)
 	}
-	r := s.frame([]byte(`{"jsonrpc":"2.0","method":"session.answer","id":"not-yet"}`), ready).(response)
+	r := s.frame([]byte(`{"jsonrpc":"2.0","method":"session.missing","id":"not-yet"}`), ready).(response)
 	if r.Error == nil || r.Error.Code != -32601 {
 		t.Fatal("unimplemented method exposed")
 	}

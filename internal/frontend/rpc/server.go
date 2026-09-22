@@ -72,7 +72,12 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 func (s *server) connection(ctx context.Context, conn net.Conn) {
 	reader := bufio.NewScanner(conn)
 	reader.Buffer(make([]byte, 4096), maxFrame)
+	actor, err := peerIdentity(conn.(*net.UnixConn))
+	if err != nil {
+		return
+	}
 	client := newPeer(conn)
+	client.actor = actor
 	defer s.unsubscribe(client)
 	written := make(chan struct{})
 	go func() { defer close(written); client.write() }()

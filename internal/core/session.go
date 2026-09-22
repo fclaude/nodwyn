@@ -46,7 +46,6 @@ type Session struct {
 	closeErr   error
 
 	prompts  map[string]pendingConfirmation
-	promptN  int
 	promptMu sync.Mutex
 
 	allow  *guard.CommandAllow
@@ -54,6 +53,7 @@ type Session struct {
 	// turnTrust: writes are approved without a prompt until the turn ends
 	// ("t" at a write prompt). Reset when the turn goes idle.
 	turnTrust bool
+	turnActor string
 
 	// P3 egress.
 	keychain *keychain.Store
@@ -80,6 +80,32 @@ func (s *Session) Events() <-chan event.Event { return s.out }
 // runs in the background and reports through Events, ending with a status
 // event whose State is "idle".
 func (s *Session) Send(text string) error {
+	return s.startTurn(func(ctx context.Context) error {
+		// P5 plan gate: noul → plan → Seam A score → revise ≤3.
+		// The gate runs under the same guard/binding/redaction policy as a
+		// model tool call (plan §Phase 5). On Jev outage it degrades to a
+		// plain plan and the loop proceeds.
+		safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
+		if err != nil {
+			return err
+		}
+		var msg log.UserMsg
+		if err := safe.Decode(&msg); err != nil {
+			return err
+		}
+		text = msg.Text
+		gres := plan.Run(ctx, s, text)
+		if gres.Plan != "" {
+			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gres.Score, gres.Revises)}})
+		}
+		return s.loop.Turn(ctx)
+	})
+}
+
+// startTurn serializes model turns and user evaluations under one cancellation
+// and budget lifetime. Neither kind of work can mutate the interpreter while
+// the other is running.
+func (s *Session) startTurn(work func(context.Context) error) error {
 	s.mu.Lock()
 	if s.closed || s.closing {
 		s.mu.Unlock()
@@ -110,28 +136,11 @@ func (s *Session) Send(text string) error {
 			s.busy = false
 			s.turnCancel = nil
 			s.turnTrust = false
+			s.turnActor = ""
 			s.mu.Unlock()
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
 		}()
-		// P5 plan gate: noul → plan → Seam A score → revise ≤3.
-		// The gate runs under the same guard/binding/redaction policy as a
-		// model tool call (plan §Phase 5). On Jev outage it degrades to a
-		// plain plan and the loop proceeds.
-		safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
-		if err != nil {
-			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})
-			return
-		}
-		var msg log.UserMsg
-		if err := safe.Decode(&msg); err != nil {
-			return
-		}
-		text = msg.Text
-		gres := plan.Run(ctx, s, text)
-		if gres.Plan != "" {
-			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gres.Score, gres.Revises)}})
-		}
-		if err := s.loop.Turn(ctx); err != nil {
+		if err := work(ctx); err != nil {
 			if ctx.Err() != nil {
 				err = context.Cause(ctx)
 				_, _ = s.Record(log.KindNote, log.Note{Text: err.Error()})

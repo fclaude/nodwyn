@@ -41,22 +41,25 @@ type budgetInfo struct {
 	Wall      budget.Limit `json:"wall_ns"`
 }
 type sessionDetails struct {
-	ID      string     `json:"id"`
-	Repo    string     `json:"repo"`
-	Busy    bool       `json:"busy"`
-	Tools   []llm.Tool `json:"tools"`
-	Budgets budgetInfo `json:"budgets"`
+	ID         string     `json:"id"`
+	Repo       string     `json:"repo"`
+	Busy       bool       `json:"busy"`
+	Tools      []llm.Tool `json:"tools"`
+	Budgets    budgetInfo `json:"budgets"`
+	Commands   []string   `json:"allowed_commands"`
+	Writes     []string   `json:"allowed_writes"`
+	TurnWrites bool       `json:"turn_writes"`
+	TurnActor  string     `json:"turn_actor,omitempty"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
 	limits, _ := s.options.Config.Budget.Limits(s.options.Config.Loop.MaxToolCalls)
-	return sessionDetails{session.ID(), session.Repo(), session.Busy(), session.Tools(), budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}}
+	trust, actor := session.TurnApproval()
+	return sessionDetails{ID: session.ID(), Repo: session.Repo(), Busy: session.Busy(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor}
 }
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if req.Method == "hello" {
-		var p struct {
-			Protocol int `json:"protocol"`
-		}
+		var p helloParams
 		if err := params(req.Params, &p, "protocol"); err != nil {
 			return nil, err
 		}
@@ -64,11 +67,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 			return nil, failure(-32001, "Unsupported protocol version")
 		}
 		client.ready = true
-		return struct {
-			Protocol int      `json:"protocol"`
-			Version  string   `json:"version"`
-			Methods  []string `json:"methods"`
-		}{ProtocolVersion, s.options.Version, methods}, nil
+		return helloResult{ProtocolVersion, s.options.Version, methods, client.actor}, nil
 	}
 	if !client.ready {
 		return nil, failure(-32001, "hello required before session methods")
@@ -77,6 +76,8 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	defer s.mu.Unlock()
 	store := core.Store{Dir: s.options.Paths.SessionsDir}
 	switch req.Method {
+	case "session.answer", "session.secret", "session.approval.create":
+		return s.answer(req, client)
 	case "session.list":
 		if err := params(req.Params, &struct{}{}); err != nil {
 			return nil, err
@@ -93,9 +94,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		}
 		return result, nil
 	case "session.open":
-		var p struct {
-			Repo string `json:"repo"`
-		}
+		var p openParams
 		if err := params(req.Params, &p, "repo"); err != nil {
 			return nil, err
 		}
@@ -115,9 +114,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		s.own(session)
 		return s.details(session), nil
 	case "session.resume", "session.info", "session.close", "session.abort", "session.unsubscribe":
-		var p struct {
-			ID string `json:"id"`
-		}
+		var p idParams
 		if err := params(req.Params, &p, "id"); err != nil {
 			return nil, err
 		}
@@ -158,11 +155,24 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 			return struct{}{}, nil
 		}
 		return s.details(owned.session), nil
-	case "session.send":
-		var p struct {
-			ID   string `json:"id"`
-			Text string `json:"text"`
+	case "session.eval":
+		var p evalParams
+		if err := params(req.Params, &p, "id", "source"); err != nil {
+			return nil, err
 		}
+		if p.ID == "" || p.Source == "" {
+			return nil, failure(-32602, "id and nonempty source are required")
+		}
+		owned, ok := s.sessions[p.ID]
+		if !ok {
+			return nil, failure(-32002, "Session is not open in this daemon")
+		}
+		if err := owned.session.StartEval(p.Source, client.actor); err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		return struct{}{}, nil
+	case "session.send":
+		var p sendParams
 		if err := params(req.Params, &p, "id", "text"); err != nil {
 			return nil, err
 		}
@@ -178,12 +188,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		}
 		return struct{}{}, nil
 	case "log.read", "session.subscribe":
-		var p struct {
-			ID      string `json:"id"`
-			After   uint64 `json:"after"`
-			Through uint64 `json:"through"`
-			Limit   int    `json:"limit"`
-		}
+		var p readParams
 		names := []string{"id", "after", "limit"}
 		if req.Method == "log.read" {
 			names = append(names, "through")

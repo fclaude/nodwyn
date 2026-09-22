@@ -169,7 +169,10 @@ daemon and survive client disconnects; shutting down the daemon releases their
 logs for later resume. A slow subscriber is disconnected without blocking turns.
 The existing plain frontend stays usable.
 
-Approval and credential replies remain the next slice. A remote turn that needs
-one waits at its prompt and can be aborted; subscriptions never grant approval.
+Clients can answer approvals and masked credential prompts, explicitly grant
+standing approval for a pending operation, and evaluate user Scheme. Replies
+carry the kernel-provided Unix peer identity; subscriptions grant no authority.
+Credential values stay in the shared host/keychain path and never enter Scheme.
+The generated wire schema is checked for drift in the normal test suite.
 See [the protocol guide](docs/protocol.md) for startup, methods, catch-up cursors,
 queue limits and ownership.

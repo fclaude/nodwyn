@@ -1,6 +1,6 @@
 # ADR 0021: A real UI after v0 — the daemon, the protocol, the clients
 
-- Status: **partially implemented** (U1 and U2 lifecycle/turn/event slices implemented; remaining U2 and U3–U4 proposed)
+- Status: **partially implemented** (U1 and local U2 implemented; optional TCP and U3–U4 proposed)
 - Date: 2026-09-22
 
 ## Context
@@ -193,3 +193,25 @@ turns while closing. See [the protocol guide](../protocol.md) for wire details.
 Attributed approvals and secret replies, explicit standing-approval creation,
 generated event schemas and approval inspection remain unimplemented. Remote
 turns may wait at a confirmation; this slice exposes abort, never implicit yes.
+
+
+## U2 local approval and evaluation implementation — 2026-09-22
+
+The local Unix-socket protocol now implements the remaining U2 methods:
+`session.answer`, `session.secret`, `session.eval`, and the explicit
+`session.approval.create`. Kernel peer UID/GID/PID supplies the actor, not a
+caller-provided label. Ordinary answers cannot create standing approvals;
+scoped grants derive their target from a live eligible prompt. Security
+confirmations remain mandatory even with turn-wide write approval. Fresh opaque
+prompt IDs prevent replies from a previous session lifetime being reused.
+
+Evaluation is asynchronous so user-origin credential registration can receive
+its masked reply over the same connection. It uses the core turn lifecycle,
+while source/results have distinct redacted log records outside model context.
+Session details expose effective command/write approvals. The generated JSON
+Schema and drift test describe requests, results and all implemented events.
+See [the protocol guide](../protocol.md) for the exact contract and limitations.
+
+This completes U2's local transport. The earlier implementation notes above
+record their respective slices, not current missing methods. Optional TCP/token
+transport is still deferred; U3/U4 remain proposed. P9 is the next client step.

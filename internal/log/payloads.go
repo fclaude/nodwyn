@@ -83,6 +83,9 @@ type ToolResult struct {
 
 // GuardDecision records the guard's answer at apply->Prim.
 type GuardDecision struct {
+	Actor    string `json:"actor,omitempty"`
+	PromptID string `json:"prompt_id,omitempty"`
+	Scope    string `json:"scope,omitempty"`
 	Prim     string `json:"prim"`
 	Origin   string `json:"origin"`
 	Decision string `json:"decision"` // allow | deny | confirm
@@ -132,8 +135,10 @@ type JevReq struct {
 // CredRegister records a credential registration. Class and Handle are
 // metadata only; the secret value never appears in the log.
 type CredRegister struct {
-	Class  string `json:"class"`
-	Handle string `json:"handle"` // the handle id
+	Actor    string `json:"actor,omitempty"`
+	PromptID string `json:"prompt_id,omitempty"`
+	Class    string `json:"class"`
+	Handle   string `json:"handle"` // the handle id
 }
 
 // Note is a free-form annotation.
@@ -144,7 +149,29 @@ type Note struct {
 // TurnCheckpoint records a budget decision, including cancellation and the
 // unchanged hard ceiling. Text is redacted by the ordinary Record boundary.
 type TurnCheckpoint struct {
+	Actor      string            `json:"actor,omitempty"`
+	PromptID   string            `json:"prompt_id,omitempty"`
 	Checkpoint budget.Checkpoint `json:"checkpoint"`
 	Choice     budget.Choice     `json:"choice"`
 	Error      string            `json:"error,omitempty"`
+}
+
+// ApprovalChange records the scope and issuer of an explicit temporary grant.
+// It never contains a secret, and replay never reinstalls the grant.
+type ApprovalChange struct {
+	Actor    string `json:"actor,omitempty"`
+	PromptID string `json:"prompt_id"`
+	Scope    string `json:"scope"`
+	Kind     string `json:"kind"` // command or write
+	Prefix   string `json:"prefix"`
+}
+
+// EvalRequest/EvalResult are user-origin history, never model messages.
+type EvalRequest struct {
+	Source string `json:"source"`
+	Actor  string `json:"actor,omitempty"`
+}
+type EvalResult struct {
+	Value string `json:"value,omitempty"`
+	Error string `json:"error,omitempty"`
 }

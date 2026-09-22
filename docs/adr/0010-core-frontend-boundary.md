@@ -39,3 +39,24 @@ secret values and reply channels, and does not grant authority to answer.
 `Session.Close` now waits for final
 turn event delivery rather than polling `Busy`; frontends keep draining until
 the event channel closes.
+
+## U2 attributed replies and asynchronous evaluation — 2026-09-22
+
+The facade adds `AnswerFrom`, `SecretReplyFrom`, `CreateApproval` and
+`StartEval`. RPC supplies an actor obtained from its authenticated transport;
+core knows only the string, not sockets or peer-credential APIs. Existing
+in-process `Answer`, `SecretReply`, `Eval` and the boolean guard `Confirmer`
+remain usable. The optional `AttributedConfirmer` returns an approval receipt
+for the guard to log. Secret replies stay separately typed as byte slices.
+
+Pending records carry their waiting context. Replies check cancellation before
+delivery, and the execution goroutine checks again before applying a scope.
+Only that goroutine installs standing approval, after recording the actor and
+derived target. Opaque random prompt IDs are not reused when a session resumes.
+Security confirmations cannot be waived by turn-wide write approval.
+
+`StartEval` shares the existing serialized turn lifecycle, cancellation,
+budgets and close wait with `Send`. It runs user-origin Scheme asynchronously,
+so an RPC client can answer prompts on the same connection. Its redacted source
+and result have separate durable event kinds and do not enter model context.
+The synchronous `Eval` entrypoint remains for the sequential plain frontend.

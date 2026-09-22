@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"strings"
 
@@ -12,100 +13,159 @@ import (
 )
 
 type pendingConfirmation struct {
+	ctx        context.Context
 	checkpoint *pendingCheckpoint
 	prompt     guard.Prompt
-	reply      chan bool
+	reply      chan guard.Approval
 }
 
-// Answer replies to a prompt event. Checkpoints accept y (double soft), n,
-// or an absolute soft limit, and never grant tool authority.
-// For tool confirmations, "y"/"yes" confirm once. "a"/"always"
-// confirms and adds a standing approval for the rest of the session: the
-// command prefix for a command line, the file's directory for a write.
-// "t"/"turn" (writes only) confirms and approves every further write until
-// the turn ends. Anything else declines.
-func (s *Session) Answer(id, reply string) error {
+// Answer preserves the terminal's y/n/a/t vocabulary. Transport callers use
+// AnswerFrom or CreateApproval so widening authority is an explicit operation.
+func (s *Session) Answer(id, reply string) error { return s.answer(id, reply, "", "", false) }
+
+// AnswerFrom accepts only a one-time answer or a budget choice. Actor is set by
+// the frontend's authenticated transport, never by the model or request body.
+func (s *Session) AnswerFrom(id, reply, actor string) error {
+	if actor == "" {
+		return fmt.Errorf("core: answering actor is required")
+	}
+	return s.answer(id, reply, actor, "", true)
+}
+
+// CreateApproval widens a specific pending ordinary confirmation. There is no
+// arbitrary prefix setter: scope and target are derived from the actual call.
+func (s *Session) CreateApproval(id, scope, actor string) error {
+	if actor == "" || (scope != "session" && scope != "turn") {
+		return fmt.Errorf("core: actor and session or turn scope are required")
+	}
+	return s.answer(id, "y", actor, scope, true)
+}
+func (s *Session) answer(id, reply, actor, scope string, strict bool) error {
 	s.promptMu.Lock()
+	defer s.promptMu.Unlock()
 	pending, ok := s.prompts[id]
-	if ok && pending.checkpoint != nil {
+	if !ok || (pending.ctx != nil && pending.ctx.Err() != nil) {
+		return fmt.Errorf("core: no pending prompt %q", id)
+	}
+	if pending.checkpoint != nil {
+		if scope != "" {
+			return fmt.Errorf("core: a checkpoint cannot grant tool approval")
+		}
 		choice, err := budget.ParseChoice(reply, pending.checkpoint.info)
 		if err != nil {
-			s.promptMu.Unlock()
 			return err
 		}
 		delete(s.prompts, id)
-		s.promptMu.Unlock()
-		pending.checkpoint.reply <- choice
+		pending.checkpoint.reply <- checkpointReply{choice: choice, actor: actor}
 		return nil
 	}
-	if ok {
-		delete(s.prompts, id)
-	}
-	s.promptMu.Unlock()
-	if !ok {
-		return fmt.Errorf("core: no pending prompt %q", id)
-	}
-	p, ch := pending.prompt, pending.reply
 	r := strings.ToLower(strings.TrimSpace(reply))
-	switch {
-	case (r == "a" || r == "always") && len(p.Argv) > 0:
-		prefix := guard.Prefix(p.Argv)
-		s.allow.Add(prefix)
-		_, _ = s.Record(log.KindNote, log.Note{Text: "standing command approval for this session: " + prefix})
-		ch <- true
-	case (r == "a" || r == "always") && p.Path != "":
-		prefix := guard.DirPrefix(p.Path)
-		if guard.IsProtected(p.Path) {
-			_, _ = s.Record(log.KindNote, log.Note{Text: "no standing approval for protected path " + p.Path + "; approved once"})
-		} else {
-			s.writes.Add(prefix)
-			_, _ = s.Record(log.KindNote, log.Note{Text: "standing write approval for this session: " + prefix})
-		}
-		ch <- true
-	case (r == "t" || r == "turn") && p.Path != "":
-		s.mu.Lock()
-		s.turnTrust = true
-		s.mu.Unlock()
-		_, _ = s.Record(log.KindNote, log.Note{Text: "writes approved for the rest of this turn"})
-		ch <- true
-	default:
-		ch <- r == "y" || r == "yes"
+	p := pending.prompt
+	if strict && scope == "" && r != "y" && r != "yes" && r != "n" && r != "no" {
+		return fmt.Errorf("core: ordinary answers accept y or n; use explicit approval creation to widen scope")
 	}
+	if !strict {
+		switch r {
+		case "a", "always":
+			if len(p.Argv) > 0 || p.Path != "" {
+				scope = "session"
+				r = "y"
+			}
+		case "t", "turn":
+			if p.Path != "" {
+				scope = "turn"
+				r = "y"
+			}
+		}
+		// Keep the terminal's protected-path fallback: approve this call only.
+		if p.Security || guard.IsProtected(p.Path) {
+			scope = ""
+		}
+	}
+	if scope != "" {
+		if p.Security || guard.IsProtected(p.Path) || (p.Path == "" && len(p.Argv) == 0) || (scope == "turn" && p.Path == "") {
+			return fmt.Errorf("core: this prompt is not eligible for that approval scope")
+		}
+	}
+	if scope == "" {
+		scope = "once"
+	}
+	delete(s.prompts, id)
+	pending.reply <- guard.Approval{Allowed: r == "y" || r == "yes", Actor: actor, PromptID: id, Scope: scope}
 	return nil
 }
-
-// Allowed lists the standing command approvals in effect.
-func (s *Session) Allowed() []string { return s.allow.List() }
-
-// AllowedWrites lists the standing write approvals in effect.
+func (s *Session) Allowed() []string       { return s.allow.List() }
 func (s *Session) AllowedWrites() []string { return s.writes.List() }
+func (s *Session) TurnApproval() (bool, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.turnTrust, s.turnActor
+}
 
-// confirm is the guard's Confirmer: emit a prompt, wait for Answer or
-// cancellation.
-func (s *Session) confirm(ctx context.Context, p guard.Prompt) (bool, error) {
-	if p.Path != "" && !guard.IsProtected(p.Path) {
-		s.mu.Lock()
-		trust := s.turnTrust
-		s.mu.Unlock()
+// Confirm satisfies the existing boolean interface; Guard uses the attributed
+// extension below when available.
+func (s *Session) Confirm(ctx context.Context, p guard.Prompt) (bool, error) {
+	a, err := s.ConfirmApproval(ctx, p)
+	return a.Allowed, err
+}
+func (s *Session) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
+	if p.Path != "" && !guard.IsProtected(p.Path) && !p.Security {
+		trust, actor := s.TurnApproval()
 		if trust {
-			_, _ = s.Record(log.KindNote, log.Note{Text: "write approved by turn trust: " + p.Prim + " " + p.Path + "\n" + p.Detail})
-			return true, nil
+			if _, err := s.Record(log.KindNote, log.Note{Text: "write approved by turn trust: " + p.Prim + " " + p.Path + "\n" + p.Detail}); err != nil {
+				return guard.Approval{}, err
+			}
+			return guard.Approval{Allowed: true, Actor: actor, Scope: "turn"}, nil
 		}
 	}
 	s.promptMu.Lock()
-	s.promptN++
-	id := fmt.Sprintf("p%d", s.promptN)
-	ch := make(chan bool, 1)
-	s.prompts[id] = pendingConfirmation{prompt: p, reply: ch}
+	id := "p" + rand.Text()
+	ch := make(chan guard.Approval, 1)
+	s.prompts[id] = pendingConfirmation{ctx: ctx, prompt: p, reply: ch}
 	s.promptMu.Unlock()
+	defer func() { s.promptMu.Lock(); delete(s.prompts, id); s.promptMu.Unlock() }()
 	s.Emit(event.Event{Kind: event.PromptConfirm, Payload: event.Confirm{ID: id, Prompt: p}})
 	select {
-	case ok := <-ch:
-		return ok, nil
+	case a := <-ch:
+		if err := ctx.Err(); err != nil {
+			return a, err
+		}
+		if a.Allowed && a.Scope != "once" {
+			if err := s.installApproval(ctx, p, a); err != nil {
+				return a, err
+			}
+		}
+		return a, nil
 	case <-ctx.Done():
-		s.promptMu.Lock()
-		delete(s.prompts, id)
-		s.promptMu.Unlock()
-		return false, ctx.Err()
+		return guard.Approval{PromptID: id}, ctx.Err()
 	}
+}
+
+// The waiting execution goroutine installs a grant, after checking cancellation
+// and recording its issuer. Reply delivery itself never mutates permission.
+func (s *Session) installApproval(ctx context.Context, p guard.Prompt, a guard.Approval) error {
+	kind, prefix := "write", guard.DirPrefix(p.Path)
+	if len(p.Argv) > 0 {
+		kind, prefix = "command", guard.Prefix(p.Argv)
+	}
+	if a.Scope == "turn" {
+		prefix = "*"
+	}
+	if _, err := s.Record(log.KindApprovalChange, log.ApprovalChange{Actor: a.Actor, PromptID: a.PromptID, Scope: a.Scope, Kind: kind, Prefix: prefix}); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if a.Scope == "turn" {
+		s.mu.Lock()
+		s.turnTrust = true
+		s.turnActor = a.Actor
+		s.mu.Unlock()
+	} else if kind == "command" {
+		s.allow.Add(prefix)
+	} else {
+		s.writes.Add(prefix)
+	}
+	return nil
 }

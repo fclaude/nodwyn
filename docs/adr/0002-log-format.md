@@ -53,3 +53,22 @@ chosen continuation and soft limit, and an optional cancellation/error string.
 Core applies the ordinary ingress redaction before recording and emitting it.
 The record is history, not an instruction to replay approvals. Readers predating
 this kind reject it as unknown, following the existing schema policy.
+
+## U2 approval and evaluation amendment — 2026-09-22
+
+Add `approval.change` (actor, prompt ID, scope, command/write kind and derived
+prefix), `eval.req` (redacted user Scheme source and optional actor), and
+`eval.result` (redacted written value or error). Evaluations complete with the
+existing `turn.end`; a request without a result can have an unknown outcome.
+These events are audit history, not model conversation or executable replay.
+`approval.change` records a requested scope before applying it; cancellation
+or a later error may prevent that grant. Current session state is authoritative
+for effective transient approval.
+
+`guard.decision` gains optional `actor`, `prompt_id` and `scope`;
+`turn.checkpoint` and `cred.register` gain optional actor and prompt ID.
+Credential registration still records no secret value. All additions pass the
+existing redaction/append path. Old records remain readable; older binaries
+that do not know the new kinds cannot read logs containing them, consistent
+with this ADR's strict reader. A guard decision that cannot be recorded stops
+the host operation instead of allowing an unaudited effect.

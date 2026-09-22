@@ -1,4 +1,4 @@
-# Local session protocol (U2, turns and events)
+# Local session protocol (U2)
 
 Start the daemon in the foreground with `nibb daemon`. It is the `nibbd` role
 from ADR 21, shipped in the existing binary. `nibb daemon --no-keychain` skips
@@ -16,17 +16,17 @@ daemon owns the endpoint before removing a stale socket and restarting.
 
 A connection has the authority of the local user. Opening or resuming a
 repository loads its current `.nibb/init.scm` and policy, just as the plain
-frontend does; initialization confirmations remain denied. Turns use the same guard and budget path as chat. Approval and secret replies,
-Scheme evaluation and TCP remain unavailable in this slice. A turn needing a
-reply waits at its prompt until aborted or its hard wall deadline expires;
-connecting or subscribing never approves it.
+frontend does; initialization confirmations remain denied. Turns and explicit
+user Scheme evaluations use the same guard and budget path as chat. Connecting
+or subscribing never approves a pending operation. The transport is local-only;
+optional TCP/token authentication from ADR 21 remains deferred.
 
 ## Transport and handshake
 
 Use [JSON-RPC 2.0](https://www.jsonrpc.org/specification), with one complete
 JSON value per newline, encoded as UTF-8. A request frame must be smaller than 1 MiB;
 an oversized frame closes the connection. Requests use named object parameters
-with exact, case-sensitive names. Unknown parameters are errors. Unknown
+with exact, case-sensitive names. Unknown or null parameters and missing required parameters are errors. Unknown
 response fields should be ignored. String, numeric and null IDs are preserved
 exactly as JSON values; large numeric IDs do not pass through floating point.
 Notifications have no response; batches execute in order and omit notification
@@ -41,9 +41,14 @@ Each connection must first complete:
 {"jsonrpc":"2.0","id":1,"method":"hello","params":{"protocol":1}}
 ```
 
-The result contains `protocol`, the binary `version`, and a `methods` list.
-Clients must use that list to discover supported operations while U2 is landing
-in slices. A different protocol version fails with code `-32001`. Request and
+The result contains `protocol`, the binary `version`, a `methods` list and
+`peer`. Clients use that list to discover supported operations. `peer` is
+`unix:uid=UID,gid=GID,pid=PID`, read from the kernel once when accepting the
+connection (Linux `SO_PEERCRED`; macOS `LOCAL_PEERCRED` and `LOCAL_PEERPID`).
+Connections must have the daemon's effective UID. Requests cannot set an actor
+or replace this identity. This attributes a local process, not a human or a
+signed application; other processes under the same user have the same socket
+authority, and PIDs can be reused after a process exits. A different protocol version fails with code `-32001`. Request and
 response payloads are not printed to daemon diagnostics. Application results
 and error messages pass through shared redaction; caller-selected correlation
 IDs are transport data and are echoed unchanged.
@@ -67,7 +72,10 @@ Open-session details contain `id`, `repo`, `busy`, `tools` (the existing model
 tool schemas) and `budgets`. Budgets contain `tool_calls`, `tokens`, `actions`
 and `wall_ns`, each with numeric `soft` and `hard` fields. These are the
 configured per-turn limits, including the legacy tool-call override; this
-slice does not expose live turn counters or approval inspection.
+protocol does not expose live turn counters. Details also include
+`allowed_commands`, `allowed_writes`, `turn_writes`, and optional `turn_actor`.
+These report current effective prefix lists and turn-wide write approval;
+file-backed and session-only prefixes share the lists. They are not setters.
 
 `session.resume` returns the already-open session if this daemon owns it.
 Otherwise it uses `core.Resume`, including its exclusive writer lock, recovery
@@ -78,8 +86,9 @@ connection can inspect or resume it. After daemon shutdown, the plain frontend
 or a new daemon can resume it from the same log.
 
 Protocol errors use the standard JSON-RPC codes. Application errors use
-`-32000` for a lifecycle/store failure, `-32001` for a missing/incompatible
-handshake, and `-32002` for a session not owned by this daemon. Unsupported
+`-32000` for a lifecycle, store or prompt-state failure, `-32001` for a missing/incompatible
+handshake, `-32002` for a session not owned by this daemon, and `-32003` if
+a reply has no transport identity. Unsupported
 methods return `-32601`. A malformed or oversized request does not terminate
 the daemon or other clients.
 
@@ -149,7 +158,86 @@ record. Closing releases all subscriptions for that session; reopening it
 requires a new subscription. Unsubscribing does not remove notifications already
 queued on the connection.
 
-## Ownership and remaining U2 work
+## Approvals and credentials
+
+| Method | Named parameters | Result |
+|---|---|---|
+| `session.answer` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","reply":"y"}` | `{}` when a one-time answer or budget choice is accepted |
+| `session.approval.create` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","scope":"session"}` | `{}` when an explicit scope choice is accepted |
+| `session.secret` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","secret":"VALUE"}` | `{}` when a credential reply is accepted |
+
+Ordinary `session.answer` accepts `y`/`yes` or `n`/`no`, case-insensitively.
+It rejects the terminal's `a` and `t` shortcuts. Budget prompts instead accept
+the existing checkpoint choices: yes to double the soft limit, no to stop, or
+an absolute soft limit within the hard ceiling (durations for wall time).
+A budget choice never creates tool authority.
+
+Standing approvals require `session.approval.create`, tied to a currently
+pending ordinary confirmation. `scope: "session"` derives the command prefix
+or write directory from that call; a file at the repository root grants only
+that file. `scope: "turn"` applies to ordinary writes until the turn ends.
+Clients cannot submit arbitrary prefixes. Security confirmations, protected
+paths and budget checkpoints cannot create standing approvals. Turn-wide and
+session approvals never waive security confirmations or denials.
+
+Prompt IDs are opaque, generated afresh, and not reused on resume. A reply is
+consumed once. Missing, canceled or already answered IDs fail without changing
+authority. An accepted reply is delivery acknowledgment: the execution goroutine
+checks cancellation again, records a scope change, applies it, and records the
+guard decision before the operation runs. Follow events to learn the outcome;
+inspect `session.info` for effective authority. A cancellation racing with a
+scope change can leave an audit of the request without an effective grant.
+Failure to record a guard decision prevents the host operation.
+
+`guard.decision` includes `actor`, `prompt_id` and `scope` for an RPC answer;
+`turn.checkpoint` and successful `cred.register` carry their reply's actor and
+prompt ID. `approval.change` records the explicit scope, derived kind/prefix
+and actor. File-backed approvals and in-process terminal replies need not have
+an RPC actor. Resume reads these as history and never reinstalls transient
+authority.
+
+A `prompt.secret` contains only its ID and credential class. Send the value
+through `session.secret`, never Scheme source. The core copies secret bytes
+into its typed reply channel and registers them in the shared encrypted
+keychain. Only an opaque handle reaches Scheme. The method never echoes the
+value or adds it to events/model history; an explicit empty string declines.
+Missing or null `secret` is an error and leaves the prompt pending. Transient
+byte copies are cleared after consumption, but JSON/string allocations are
+managed by Go's garbage collector; this is not a complete memory-erasure claim.
+
+## User Scheme evaluation
+
+`session.eval` accepts `{"id":"SESSION_ID","source":"(+ 1 2)"}` and returns
+`{}` once accepted. It has user origin, can invoke hidden setup primitives such
+as `(credential-register "service-key")`, and shares the session's single busy
+slot, guard, budget, abort and close lifecycle with model turns. Subscribe first:
+evaluation may wait for an ordinary approval, budget choice or secret reply.
+
+The durable `eval.req` contains redacted source and the initiating peer's actor.
+`eval.result` contains a redacted written `value` (omitted for void), or `error`.
+Display output arrives as `output` events; `turn.end` and idle status complete
+the lifecycle. Evaluation source/results do not enter the model conversation.
+Definitions last for the in-memory session and reset on resume; evaluations and
+host operations are never re-executed from history. A crash before `eval.result`
+can leave an unknown outcome. Inspect current state before retrying.
+
+## Generated contract
+
+[protocol.schema.json](protocol.schema.json) is generated from the actual Go
+request, result and event payload types. It uses
+[JSON Schema 2020-12](https://json-schema.org/draft/2020-12/json-schema-validation).
+`$defs/request.METHOD` and `$defs/result.METHOD` describe per-method shapes;
+`$defs/sessionEvent` describes live notifications and `$defs/payload.KIND`
+describes event payloads. Request parameters are exact; response fields may
+grow additively. Secret input is annotated `writeOnly`. Runtime checks still
+own prompt validity, policy, cursor ranges, limits and session ownership.
+
+Regenerate with `go generate ./internal/frontend/rpc` (or
+`go run ./cmd/nibb-schema -out docs/protocol.schema.json`). The normal Go test
+suite checks generated-file drift, method coverage and schema references, so
+Gitea's per-commit acceptance job enforces the contract.
+
+## Ownership
 
 `internal/frontend/rpc/socket.go` owns endpoint setup; `server.go` owns
 connections and shutdown; `protocol.go` decodes envelopes and preserves reply
@@ -163,6 +251,8 @@ Core remains unaware of sockets. `core.Store.ReadLog` supplies validated,
 redacted pages of durable history. `Session.Close` waits for turn goroutines,
 including final event delivery, before closing the channel and writer.
 
-The remaining U2 slice adds approval and secret replies, peer identity in
-approval records, explicit standing-approval creation, generated event schemas
-and a broader `session.info` view. No future method is registered as a stub.
+`identity*.go` reads platform peer credentials; `approvals.go` passes attributed
+replies to the core facade. It owns neither pending prompts nor policy changes.
+`schema.go` derives documentation from wire types. U2's local Unix transport is
+implemented; P9 can now exercise it as a first client. U3/U4 and optional TCP
+remain future work.

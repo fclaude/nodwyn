@@ -93,6 +93,8 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 				first = true
 			}
 			info.InFlight = true
+		case log.KindEvalReq:
+			info.InFlight = true
 		case log.KindLLMResp:
 			var resp log.LLMResp
 			if err := ev.Decode(&resp); err != nil {

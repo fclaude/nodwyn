@@ -65,12 +65,13 @@ type Checker interface {
 // Argv is set for command lines so a front-end can offer a standing
 // approval ("a" = always this session).
 type Prompt struct {
-	Prim    string
-	Args    string // short written form
-	Reasons []string
-	Detail  string
-	Argv    []string // set for command lines
-	Path    string   // set for writes (repository-relative)
+	Security bool // standing and turn approvals must never waive this confirmation
+	Prim     string
+	Args     string // short written form
+	Reasons  []string
+	Detail   string
+	Argv     []string // set for command lines
+	Path     string   // set for writes (repository-relative)
 }
 
 // Confirmer answers prompts. It may block; it must honour ctx.
@@ -260,45 +261,59 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		// log line per arithmetic op would bury the decisions that matter.
 		// Anything that reaches the host, and every non-allow, is recorded.
 		if p.Tool() || p.Meta.Host || p.Meta.Egress || p.Meta.Irreversible || p.Meta.Audited {
-			g.record(rec)
+			if recordErr := g.record(rec); recordErr != nil {
+				return recordErr
+			}
 		}
 		return nil
 	case Deny:
-		g.record(rec)
+		if recordErr := g.record(rec); recordErr != nil {
+			return recordErr
+		}
 		return &scheme.Denied{Prim: p.Name, Reason: final.Reason}
 	}
 	// Confirm.
 	writePath, _ := WritePath(p, args)
-	ok, err := g.confirmer.Confirm(ctx, Prompt{
-		Prim:    p.Name,
-		Args:    rec.Args,
-		Reasons: result.reasons,
-		Detail:  detail,
-		Argv:    CommandArgs(p, args),
-		Path:    writePath,
+	approval, err := g.confirm(ctx, Prompt{
+		Security: result.security,
+		Prim:     p.Name,
+		Args:     rec.Args,
+		Reasons:  result.reasons,
+		Detail:   detail,
+		Argv:     CommandArgs(p, args),
+		Path:     writePath,
 	})
+	rec.Actor, rec.PromptID, rec.Scope = approval.Actor, approval.PromptID, approval.Scope
 	if err != nil {
 		rec.Answer = "error"
-		g.record(rec)
+		if recordErr := g.record(rec); recordErr != nil {
+			return recordErr
+		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
 		return &scheme.Denied{Prim: p.Name, Reason: "confirmation failed: " + err.Error()}
 	}
-	if ok {
+	if approval.Allowed {
 		rec.Answer = "yes"
-		g.record(rec)
+		if recordErr := g.record(rec); recordErr != nil {
+			return recordErr
+		}
 		return nil
 	}
 	rec.Answer = "no"
-	g.record(rec)
+	if recordErr := g.record(rec); recordErr != nil {
+		return recordErr
+	}
 	return &scheme.Denied{Prim: p.Name, Reason: "not confirmed by the user"}
 }
 
-func (g *Guard) record(rec log.GuardDecision) {
+func (g *Guard) record(rec log.GuardDecision) error {
 	if g.logger != nil {
-		_, _ = g.logger.Record(log.KindGuardDecision, rec)
+		_, err := g.logger.Record(log.KindGuardDecision, rec)
+		return err
 	}
+	return nil
 }
 
 // summarizeArgs renders arguments for the log, truncating long strings so a
