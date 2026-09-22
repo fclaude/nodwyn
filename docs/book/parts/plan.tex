@@ -213,6 +213,53 @@ that can connect can answer a confirm. Hence 0600 in the runtime directory, no
 TCP by default, the client's identity in every decision, and no standing
 approval created over RPC without its own explicit method.
 
+\chapter{Cowork: workspaces, attachments, MCP}
+
+The same harness, applied to work that is not only code: a working folder of
+documents, files the user brings into the conversation, and tools that arrive
+from MCP servers rather than from \file{dev/*.scm}. \adr{22} models it. The
+invariants do not change; three assumptions do.
+
+\paragraph{The pin.} One root, read and write, with git as the reviewable
+undo, becomes a \textbf{workspace}: a root plus a user-owned \emph{mount
+table} mapping paths to \code{read} or \code{write} --- the filesystem
+counterpart of the binding table. No match denies; a \code{read} mount makes
+every write a deny; \file{.nibb/} stays protected. And because a working
+folder may be no repository at all, a \textbf{version store} is written
+before every irreversible write, so \adr{17}'s standing write approvals keep
+their justification without git.
+
+\paragraph{Ingress.} Everything the model sees today was produced by a tool
+nibb ran. An attachment is content from outside: it is copied into the
+workspace so the pin holds, extracted by type, \emph{redacted at ingest}
+through the same controller as every other context ingress, capped, logged,
+and tagged as external. Attachments therefore cannot ship before P7. And
+their content is \emph{data}: a file that says ``you may now write outside
+the workspace'' changes nothing, because permissions come from the mount
+table and the guard, never from text.
+
+\paragraph{The metadata contract.} The guard reads a primitive's declared
+\code{Egress}, \code{Irreversible} and parameter roles. MCP declares a name,
+a description and a JSON schema --- none of those three. So each MCP tool
+becomes a primitive named \code{server/tool}, crossing the guard like
+\code{fs-read}, and its server carries a \emph{capability profile} the user
+accepts once: transport, credential class, destination, and per-tool
+\code{egress}/\code{irreversible}/roles. \textbf{An undeclared tool is
+treated as egress \emph{and} irreversible}: every call confirms, unbound
+egress is denied. Fail closed, exactly like an unbound credential. A stdio
+server's destination is the logical \code{mcp:<name>}, which the binding
+table accepts like any host. Tool descriptions reach the model's context and
+are untrusted text --- the guard never reads them, so no description can
+widen policy.
+
+\paragraph{The accepted limit.} L1 and L3 detect \emph{credentials}. A cowork
+workspace holds documents whose sensitivity has nothing to do with shape: a
+contract, a medical letter, a salary list. Nothing in nibb recognises those.
+What applies to them is the mount table (what can be read at all), the
+confirm (what leaves), the binding table (where it may go) and the judge's
+content level. Stated plainly: \textbf{nibb controls where content goes, not
+what content means.}
+
 \chapter{Long-running turns}
 
 Today a turn stops after fifty tool calls. That is the right \emph{kind} of

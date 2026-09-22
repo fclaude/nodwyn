@@ -57,6 +57,9 @@ nibb/
     frontend/tui/         bubbletea front-end over core                  (P9)
     frontend/rpc/         JSON-RPC server over a unix socket (U2, ADR 21)
     ui/                   assets for the local web client (U3, ADR 21)
+    workspace/            root + mount table, version store (W1, ADR 22)
+    attach/               ingest: copy, extract, redact, log (W2, ADR 22)
+    mcp/                  client, capability profiles, tool binding (W3, ADR 22)
   dev/                    *.scm dev tools nibb loads to build itself    (B3)
   .nibb/                  init.scm (loads dev/) and allow.toml (ADR 17) (B3)
   scripts/                promote.sh, selfcheck.sh
@@ -310,6 +313,55 @@ this is additive work, not a refactor. Four phases, each useful alone:
 Accepted risk: the socket is an approval surface. 0600 in the runtime dir, no
 TCP by default, client identity in every decision, and creating a standing
 approval over RPC needs its own explicit method.
+
+### After v0 — cowork: workspaces, attachments, MCP (ADR 22)
+
+The same harness, applied to work that is not only code. The invariants do
+not change; three assumptions do — the pin (one root, git as undo), ingress
+(attachments are content from outside), and the metadata contract (MCP tools
+declare none of what the guard reads).
+
+- **W1 — workspaces, mounts, undo (≈1 week).** `RepoPin` generalizes to a
+  root plus a user-owned **mount table** (`path → read|write`), the
+  filesystem counterpart of the binding table; `.nibb/` stays protected. A
+  **version store** (`.nibb/versions/`, content-addressed, capped) is written
+  before every irreversible write, with `nibb undo`/`nibb versions` — this is
+  what keeps ADR 17's standing write approvals honest where there is no git.
+  A workspace `kind` (`code`/`docs`/`mixed`) picks default tools and framing,
+  never policy.
+- **W2 — attachments (≈1 week, needs P7).** `nibb attach FILE` copies into
+  `.nibb/attachments/`, extracts text by type, **redacts at ingest** through
+  the P7 controller, caps size, logs `attach`, and tags the text `external`
+  for L2. Attachment content is data, never instruction: nothing inside a
+  file can grant a permission.
+- **W3 — MCP servers (≈2 weeks, needs P3 and P7).** Each MCP tool becomes a
+  primitive named `server/tool`, so it crosses the guard like `fs-read`.
+  Because MCP declares no `egress`/`irreversible`/roles, a server carries a
+  **capability profile** in `.nibb/mcp.toml`, and **an undeclared tool is
+  egress *and* irreversible** — confirm every call, deny unbound egress.
+  Credentials and destinations use the keychain and the binding table
+  (`mcp:<name>` is a destination for stdio servers). Resources are ingress
+  through the W2 path. Servers connect before the first message so the tool
+  list stays frozen (ADR 9); tool *descriptions* are untrusted text the
+  guard never reads.
+- **W4 — workspace tool profiles.** The Go toolchain becomes one profile
+  among several (documents, data, research); `dev/*.scm` remains how a
+  workspace ships its own Scheme tools. Whether nibb *produces* docx/xlsx is
+  a dependency decision, not core work.
+- **W5 — collaboration, only if "cowork" means several people.** Identity in
+  the log, who may answer a confirm (ADR 21's socket identity), and whether
+  a workspace is synced. Blocked on open question 1 below.
+
+Accepted limit (ADR 22): **nibb controls where content goes, not what content
+means.** L1/L3 detect credentials; nothing in nibb recognises a contract or a
+medical letter. The protections that apply to those are the mount table, the
+confirm, the binding table and the Jev content level.
+
+**Open questions that block W scheduling** (ADR 22 §Open questions): does
+cowork mean several people; whose MCP servers (vetted, or arbitrary — the
+latter wants a sandbox phase); which attachment types must work (images need
+a multimodal control plane, which the local Qwen is not); does the agent
+produce non-text documents; one product or two; where a workspace lives.
 
 ## 6. Timeline at a glance
 
