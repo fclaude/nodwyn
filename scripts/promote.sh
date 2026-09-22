@@ -19,7 +19,7 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
 fi
 
 make accept
-make build
+make build VERSION="$TAG"
 scripts/selfcheck.sh bin/nibb
 
 mkdir -p "$STABLE_DIR"
