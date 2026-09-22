@@ -1,6 +1,6 @@
 # ADR 0021: A real UI after v0 — the daemon, the protocol, the clients
 
-- Status: **proposed** (scope agreed; scheduled after v0, before or beside P10 work)
+- Status: **partially implemented** (U1 and U2 lifecycle slice implemented; remaining U2 and U3–U4 proposed)
 - Date: 2026-09-22
 
 ## Context
@@ -150,3 +150,23 @@ session IDs are rejected. Legacy payloads are redacted again before entering
 in-memory history or frontend replay, without rewriting the original log.
 `turn.end` and `session.resume` are durable lifecycle markers (ADR 2 amendment).
 This adds no daemon, index, background work or RPC surface.
+
+## U2 lifecycle implementation — 2026-09-22
+
+The first U2 slice is implemented as `nibb daemon` in the existing binary.
+It provides `hello`, `session.list`, `session.open`, `session.resume`,
+`session.info` and `session.close` over a private Unix socket. The daemon owns
+sessions independently of connections; lifecycle operations are serialized and
+reuse the core's existing constructors and log locks. No core interface changed.
+The wire contract, framing, macOS runtime-path fallback and current scope are
+specified in [the protocol guide](../protocol.md). This is not completion of U2.
+
+The next slice adds turns, event notifications and log catch-up. Approval and
+secret replies, peer identity, generated event schemas and approval inspection
+follow separately. No TCP or UI client is implemented here.
+
+Two clarifications supersede the earlier method table: budget checkpoint replies
+accept `y`, `n`, or a numeric/duration soft limit (ADR 18), rather than the tool
+approval vocabulary. Ordinary `session.answer` must not accept `a` to create a
+standing approval: that requires a separate explicit method and an attributed
+decision. The approval slice must define its wire contract before exposing it.

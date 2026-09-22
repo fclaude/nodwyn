@@ -25,7 +25,7 @@ integrations and front-ends:
 | `keychain`, `binding` | Hold encrypted credentials and inject them; authorize their destinations, methods and positions. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to the model; derive its context; redact text; detect credential shapes. |
-| `frontend/plain`, `config`, `cmd/nibb` | Render and answer events; load settings; wire the application together. |
+| `frontend/plain`, `frontend/rpc`, `config`, `cmd/nibb` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
 **A user message:** the front-end calls `Session.Send`. The session records
 and redacts the message, runs the plan gate, and starts one `loop.Turn`.
@@ -73,6 +73,7 @@ Requires Go 1.27 and `staticcheck` (`go install honnef.co/go/tools/cmd/staticche
 ## Run
 
 ```
+bin/nibb daemon               # local session lifecycle server (U2 first slice)
 bin/nibb                      # chat in the current repository (plain front-end)
 bin/nibb --repo ~/src/x       # pin to another repository
 bin/nibb --show-thinking      # show the model's redacted thinking too
@@ -158,3 +159,15 @@ wall checkpoints occur at operation boundaries. Tokens are the control provider'
 reported prompt plus output usage: a response can overshoot a token ceiling,
 but no subsequent operation starts after that usage is observed. Judge-service
 usage is not included because it is not reported through the control provider.
+
+### Local daemon (U2 first slice)
+
+`nibb daemon` serves a versioned local session protocol over a private Unix
+socket. Clients can list, open, resume, inspect and close sessions. Sessions
+belong to the daemon and survive client disconnects; shutting down the daemon
+releases their logs for later resume. The existing plain frontend stays usable.
+
+This first slice has no remote turn or approval methods. Event delivery and
+reconnect catch-up come next, followed by approval/credential replies with
+client attribution. See [the protocol guide](docs/protocol.md) for socket paths,
+startup, wire examples, method results and ownership.

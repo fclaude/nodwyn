@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · U2 lifecycle · implemented with an external agent under ADR 16; real-socket tests cover disconnected clients, concurrent resume, private permissions, writer locks and process shutdown · no claim of nibb self-authorship · daemon sessions can be owned independently of a terminal; turn/event RPC is the next slice
 - 2026-09-22 · ADR 18 budgets · implemented with an external agent under ADR 16; focused tests cover nested host effects, custom choices, denial accounting, cancellation, deadlines, redaction and replay · no claim of nibb self-authorship · long supervised turns now checkpoint before exhausting hard ceilings
 - 2026-09-22 · CI validation · archive cache restore cannot overwrite existing read-only Go module files on the restricted host runner · warning and redundant archive work despite passing tests · disable Actions archive caching and reuse the runner's normal local Go caches; extract tool archives without restoring build-machine ownership
 - 2026-09-22 · ADR 18 progress guard · implemented with an external agent under ADR 16; fake-service tests cover repeated calls, denied retries, error streaks, skipped batch results and fresh turns · no claim of nibb self-authorship · stops unproductive turns before consuming the full hard budget

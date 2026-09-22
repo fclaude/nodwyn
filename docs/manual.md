@@ -59,6 +59,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/log` | the append-only log | `log.go` `Append`, `Replay` |
 | `internal/config` | XDG paths, config.toml and allow.toml | `Default`, `Validate` |
 | `internal/frontend/plain` | line mode and replay | `chat.go` `show` |
+| `internal/frontend/rpc` | local daemon connections and session lifecycle | `server.go`, `sessions.go` |
 | `cmd/nibb` | flags → core → front-end; nothing else | `main.go` |
 | `dev/`, `.nibb/` | this repository's own tools and standing approvals | `dev/go.scm` |
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
@@ -322,3 +323,12 @@ stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 | `hard stop: too many tool calls` | the turn ended; the log has everything; rephrase smaller |
 | a tool call errored | `:log 20` — the `tool.result` line has the exact error the model saw |
 | a confirm never appeared but a file changed | `:allow` — a standing approval covered it; the `guard.decision` line names which |
+
+## Local daemon
+
+`nibb daemon` starts the U2 lifecycle server in the foreground. Use
+`nibb daemon --no-keychain` to skip credential-store startup, and
+`--socket /absolute/private/directory/sock` to override its socket path.
+The initial protocol supports session lifecycle and inspection; it does not yet
+start turns or answer approvals. See [the protocol guide](protocol.md) for the
+handshake, methods, permissions and reconnect semantics.
