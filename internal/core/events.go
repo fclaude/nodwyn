@@ -18,9 +18,7 @@ func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
 	if err != nil {
 		return ev, err
 	}
-	s.evmu.Lock()
-	s.events = append(s.events, ev)
-	s.evmu.Unlock()
+	s.remember(ev)
 	s.Emit(event.FromLog(ev, payload))
 	if len(redactions) > 0 {
 		_, err = s.Record(log.KindRedact, struct {
@@ -76,4 +74,27 @@ func (s *Session) flushOutput() {
 	if text != "" {
 		s.Emit(event.Event{Kind: event.Output, Payload: event.Text{Text: text}})
 	}
+}
+
+// remember is the only mutation point for the context's recorded history.
+func (s *Session) remember(ev log.Event) {
+	s.evmu.Lock()
+	s.events = append(s.events, ev)
+	s.evmu.Unlock()
+}
+
+// restoreHistory redacts legacy logs again before they enter model context.
+// Original records remain intact on disk; they are not appended a second time.
+func (s *Session) restoreHistory(events []log.Event) error {
+	for _, ev := range events {
+		if len(ev.Payload) > 0 {
+			payload, _, err := redact.JSON(ev.Payload, nil)
+			if err != nil {
+				return err
+			}
+			ev.Payload = payload
+		}
+		s.remember(ev)
+	}
+	return nil
 }

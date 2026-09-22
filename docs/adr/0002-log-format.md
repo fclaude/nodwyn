@@ -31,3 +31,16 @@ outside the log entirely.
   alone; anything that cannot be rebuilt from the log is a bug.
 - Until P7 the log may contain what the model was shown. Bootstrap runs only
   inside the safety envelope (plan §3.3).
+
+## Amendment 2026-09-22: resume lifecycle
+
+Add `session.resume` (the current `SessionStart` configuration payload) and
+`turn.end` (a note marking completion, cancellation or failure). Resume keeps
+sequence numbers contiguous in the same file. A writer owns an exclusive file
+lock so two processes cannot append concurrently. A store's unfinished-turn
+indicator describes durable history, not process liveness. Older readers reject
+the new kinds, as they do every unknown kind.
+
+P7 redaction now occurs in `core.Record` before persistence and history insertion;
+the log writer retains its defensive filter. Resume redacts legacy history before
+it enters the model window. Original historical bytes are not rewritten.

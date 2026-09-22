@@ -28,6 +28,6 @@ grep -q '^go-test ' "$OUT" || { echo "selfcheck: dev tools not registered"; cat 
 grep -q 'ok  \\tgithub.com/fclaude/nibb/internal/log' "$OUT" || { echo "selfcheck: go-test through the dev tool did not pass"; cat "$OUT"; exit 1; }
 grep -q 'READY' "$OUT" || { echo "selfcheck: model turn did not complete"; cat "$OUT"; exit 1; }
 
-SESSION=$("$CAND" sessions | tail -1)
+SESSION=$("$CAND" sessions --ids | tail -1)
 "$CAND" replay "$SESSION" | grep 'READY' >/dev/null || { echo "selfcheck: replay of $SESSION failed"; exit 1; }
 echo "selfcheck: ok (session $SESSION)"

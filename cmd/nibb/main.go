@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
-	"sort"
 	"strings"
 	"syscall"
 
@@ -34,6 +33,7 @@ var version = "dev"
 func main() {
 	fs := flag.NewFlagSet("nibb", flag.ExitOnError)
 	showVersion := fs.Bool("version", false, "print version and exit")
+	resume := fs.String("resume", "", "resume a session by id")
 	repo := fs.String("repo", ".", "repository root; every path the model touches is pinned under it")
 	model := fs.String("model", "", "override control.model")
 	url := fs.String("url", "", "override control.url")
@@ -86,7 +86,18 @@ flags:
 		if *maxCalls > 0 {
 			cfg.Loop.MaxToolCalls = *maxCalls
 		}
-		runChat(cfg, paths, *repo, *thinking, *noConfirm, *noKeychain)
+		if *resume != "" {
+			explicitRepo := false
+			fs.Visit(func(f *flag.Flag) {
+				if f.Name == "repo" {
+					explicitRepo = true
+				}
+			})
+			if !explicitRepo {
+				*repo = ""
+			}
+		}
+		runChat(cfg, paths, *repo, *thinking, *noConfirm, *noKeychain, *resume)
 	case "replay":
 		if fs.NArg() < 2 {
 			fail(fmt.Errorf("replay: session id or path required"))
@@ -104,16 +115,27 @@ flags:
 			fmt.Fprintln(os.Stderr, "nibb: note:", err)
 		}
 	case "sessions":
-		entries, _ := os.ReadDir(paths.SessionsDir)
-		var names []string
-		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".jsonl") {
-				names = append(names, strings.TrimSuffix(e.Name(), ".jsonl"))
-			}
+		infos, err := (core.Store{Dir: paths.SessionsDir}).List()
+		if err != nil {
+			fail(err)
 		}
-		sort.Strings(names)
-		for _, n := range names {
-			fmt.Println(n)
+		ids := fs.Arg(1) == "--ids"
+		if fs.NArg() > 2 || (fs.NArg() == 2 && !ids) {
+			fail(fmt.Errorf("sessions: expected --ids or no arguments"))
+		}
+		for _, info := range infos {
+			if ids {
+				fmt.Println(info.ID)
+				continue
+			}
+			state := "idle"
+			if info.InFlight {
+				state = "interrupted"
+			}
+			if info.Truncated {
+				state += " (partial tail)"
+			}
+			fmt.Printf("%s\t%s\t%s\t%q\t%q\n", info.ID, info.LastEvent.Format("2006-01-02 15:04:05Z07:00"), state, info.Repo, info.FirstMessage)
 		}
 	case "keychain":
 		if fs.Arg(1) != "init" {
@@ -191,7 +213,7 @@ func openKeychain(paths config.Paths) (*keychain.Store, binding.Table) {
 	return nil, binding.Table{}
 }
 
-func runChat(cfg config.Config, paths config.Paths, repo string, thinking, noConfirm, noKeychain bool) {
+func runChat(cfg config.Config, paths config.Paths, repo string, thinking, noConfirm, noKeychain bool, resume string) {
 	provider := llm.NewOllama(cfg.Control.URL)
 	ctx := context.Background()
 	if v, err := provider.Ping(ctx); err != nil {
@@ -204,10 +226,17 @@ func runChat(cfg config.Config, paths config.Paths, repo string, thinking, noCon
 	if !noKeychain {
 		kc, tbl = openKeychain(paths)
 	}
-	s, err := core.New(core.Options{
+	options := core.Options{
 		Config: cfg, Paths: paths, Repo: repo, Version: versionString(), Provider: provider, NoConfirm: noConfirm,
 		Keychain: kc, Bindings: tbl,
-	})
+	}
+	var s *core.Session
+	var err error
+	if resume == "" {
+		s, err = core.New(options)
+	} else {
+		s, err = core.Resume(options, resume)
+	}
 	if err != nil {
 		fail(err)
 	}
@@ -231,7 +260,7 @@ func runChat(cfg config.Config, paths config.Paths, repo string, thinking, noCon
 		}
 	}()
 
-	chat := &plain.Chat{Session: s, In: os.Stdin, Out: os.Stdout, ShowThinking: thinking, Interrupt: interrupt}
+	chat := &plain.Chat{Session: s, In: os.Stdin, Out: os.Stdout, ShowThinking: thinking, Interrupt: interrupt, ReplayHistory: resume != ""}
 	runErr := chat.Run(ctx)
 	if err := s.Close(); err != nil {
 		fmt.Fprintln(os.Stderr, "nibb: close:", err)

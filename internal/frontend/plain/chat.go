@@ -25,6 +25,9 @@ type Chat struct {
 	In           io.Reader
 	Out          io.Writer
 	ShowThinking bool
+	// ReplayHistory displays restored history before reading input.
+	ReplayHistory bool
+	replayedSeq   uint64
 	// Interrupt receives a value per Ctrl-C; nil disables.
 	Interrupt <-chan struct{}
 
@@ -42,6 +45,13 @@ type Chat struct {
 func (c *Chat) Run(ctx context.Context) error {
 	c.lines = newLineReader(c.In, c.Out)
 	c.banner()
+	if c.ReplayHistory {
+		history := c.Session.EventsSoFar()
+		Replay(history, c.Out, c.ShowThinking)
+		if len(history) > 0 {
+			c.replayedSeq = history[len(history)-1].Seq
+		}
+	}
 	// Drain whatever the session emitted before we attached (session.start).
 	c.drainIdle()
 	for {
@@ -86,7 +96,9 @@ func (c *Chat) drainIdle() {
 			if !ok {
 				return
 			}
-			c.show(ev)
+			if ev.Seq == 0 || ev.Seq > c.replayedSeq {
+				c.show(ev)
+			}
 		default:
 			return
 		}

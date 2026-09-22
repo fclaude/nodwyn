@@ -127,3 +127,26 @@ a daemon or a container) would force two binaries.
   by default, client identity in every `guard.decision`, and no standing
   approval may be *created* over RPC without an explicit method (so a
   compromised client cannot silently widen policy).
+
+## U1 implementation — 2026-09-22
+
+U1 is implemented; U2–U4 remain proposed. The constructor is
+`core.Resume(options, id)`, returning a new `Session`, rather than mutating an
+existing session. `core.Store` derives metadata directly from JSONL logs.
+`nibb --resume ID` restores the conversation in the recorded repository, and
+`nibb sessions` shows id, last event time, unfinished-turn state, repo and first
+ask (`--ids` retains an ID-only scripting form).
+
+A resumed session loads current configuration, bindings, file-backed approvals
+and initialization. Session-only approvals, pending prompts and interactive
+Scheme state are reset. It never restarts a turn automatically. Model tool calls
+without a durable result receive an explicit failed result whose outcome is
+unknown; a crash after a side effect cannot prove the operation did not happen.
+Completed calls stay in history and are never replayed as operations.
+
+Each writer holds a nonblocking exclusive file lock until close or process exit.
+A partial final line is repaired and noted; other corruption and mismatched
+session IDs are rejected. Legacy payloads are redacted again before entering
+in-memory history or frontend replay, without rewriting the original log.
+`turn.end` and `session.resume` are durable lifecycle markers (ADR 2 amendment).
+This adds no daemon, index, background work or RPC surface.

@@ -85,7 +85,7 @@ func TestTurnWithToolCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	evs := r.drain("n")
-	want := "session.start user.msg llm.req status stream.thinking llm.resp tool.call status guard.decision tool.result llm.req status stream.text llm.resp status"
+	want := "session.start user.msg llm.req status stream.thinking llm.resp tool.call status guard.decision tool.result llm.req status stream.text llm.resp turn.end status"
 	if got := kinds(evs); got != want {
 		t.Fatalf("events:\n got %s\nwant %s", got, want)
 	}
@@ -109,7 +109,7 @@ func TestTurnWithToolCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if evsLog[0].Kind != log.KindSessionStart || evsLog[len(evsLog)-1].Kind != log.KindLLMResp {
+	if evsLog[0].Kind != log.KindSessionStart || evsLog[len(evsLog)-1].Kind != log.KindTurnEnd {
 		t.Fatalf("log shape: %s ... %s", evsLog[0].Kind, evsLog[len(evsLog)-1].Kind)
 	}
 }
@@ -183,7 +183,7 @@ func TestHardStop(t *testing.T) {
 	r := newRig(t, true, call, call, call, call, call)
 	r.s.Send("loop forever")
 	evs := r.drain("n")
-	last := evs[len(evs)-2]
+	last := evs[len(evs)-3]
 	if last.Kind != event.Error || !strings.Contains(last.Payload.(event.ErrorInfo).Err, "hard stop") {
 		t.Fatalf("expected hard stop error, got %s", kinds(evs))
 	}

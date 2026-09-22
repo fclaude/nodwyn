@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fclaude/nibb/internal/redact"
@@ -31,7 +32,9 @@ import (
 type Kind string
 
 const (
-	KindSessionStart  Kind = "session.start"  // first line of every log: version, cwd, config summary
+	KindSessionStart  Kind = "session.start"  // session identity: version, cwd, config summary
+	KindSessionResume Kind = "session.resume" // restarted process, same conversation
+	KindTurnEnd       Kind = "turn.end"       // durable end of a submitted turn
 	KindSessionEnd    Kind = "session.end"    // clean shutdown; absent after a crash
 	KindUserMsg       Kind = "user.msg"       // text the user sent (redacted from P7)
 	KindLLMReq        Kind = "llm.req"        // request to the control-plane model (window snapshot metadata)
@@ -49,7 +52,7 @@ const (
 )
 
 var kinds = map[Kind]bool{
-	KindSessionStart: true, KindSessionEnd: true,
+	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true,
 	KindUserMsg: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindEgressCheck: true, KindGatePlan: true,
@@ -127,6 +130,10 @@ func Create(path, session string, opts ...Option) (*Writer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("log: create: %w", err)
 	}
+	if err := lock(f); err != nil {
+		f.Close()
+		return nil, err
+	}
 	return New(f, session, opts...), nil
 }
 
@@ -135,23 +142,26 @@ func Create(path, session string, opts ...Option) (*Writer, error) {
 // fsync) is discarded and reported through ErrTruncated so the caller can
 // decide whether to log a note about it.
 func Open(path string, opts ...Option) (*Writer, error) {
-	events, err := ReadFile(path)
-	truncated := errors.Is(err, ErrTruncated)
-	if err != nil && !truncated {
-		return nil, err
-	}
-	if len(events) == 0 {
-		return nil, fmt.Errorf("log: open %s: no complete events", path)
-	}
-	if truncated {
-		// Drop the partial tail so the next line starts clean.
-		if err := truncateToComplete(path, events); err != nil {
-			return nil, err
-		}
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("log: open: %w", err)
+	}
+	fail := func(err error) (*Writer, error) { f.Close(); return nil, err }
+	if err := lock(f); err != nil {
+		return fail(err)
+	}
+	events, err := Read(f)
+	truncated := errors.Is(err, ErrTruncated)
+	if err != nil && !truncated {
+		return fail(err)
+	}
+	if len(events) == 0 {
+		return fail(fmt.Errorf("log: open %s: no complete events", path))
+	}
+	if truncated {
+		if err := truncateToComplete(path, events); err != nil {
+			return fail(err)
+		}
 	}
 	last := events[len(events)-1]
 	w := New(f, last.Session, opts...)
@@ -337,4 +347,13 @@ func NewSessionID(now time.Time) string {
 // SessionPath returns the log path for a session under dir.
 func SessionPath(dir, session string) string {
 	return filepath.Join(dir, session+".jsonl")
+}
+
+// lock gives one process exclusive append ownership until the file is closed.
+// The kernel releases it after a crash; there is no stale lock to remove.
+func lock(f *os.File) error {
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return fmt.Errorf("log: session is already open or cannot be locked: %w", err)
+	}
+	return nil
 }

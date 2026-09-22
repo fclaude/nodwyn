@@ -77,7 +77,9 @@ bin/nibb --repo ~/src/x       # pin to another repository
 bin/nibb --show-thinking      # show the model's redacted thinking too
 bin/nibb --no-confirm         # non-interactive: every confirm is a no
 bin/nibb replay <session-id>  # print a session log as a transcript
-bin/nibb sessions             # list sessions
+bin/nibb sessions             # id, last activity, state, repo, first ask
+bin/nibb sessions --ids       # IDs only (scripts)
+bin/nibb --resume <session-id> # continue in the recorded repository
 bin/nibb repl                 # Scheme REPL
 ```
 
@@ -86,6 +88,15 @@ The control plane is the Ollama server in `~/.config/nibb/config.toml`
 command is confirmed by you, with a diff for writes and edits; standing
 approvals for read-only commands live in `.nibb/allow.toml` (ADR 17).
 Session logs live in `~/.local/share/nibb/sessions/`.
+Resume restores the conversation and appends to that same log. It reloads current
+configuration, bindings, standing approvals from files, and repository `init.scm`;
+session-only approvals and interactive Scheme definitions are reset. An explicit
+`--repo` must match the recorded repository. Only one process may append to a
+session at a time. Interrupted tool calls are never rerun automatically: a call
+without a durable result is marked "outcome unknown" so the next turn can inspect
+current state before retrying. `sessions` reports an unfinished turn as
+`interrupted`, not as proof that another process is running. Missing final log
+lines are repaired on resume; corrupt complete lines are rejected.
 
 Bootstrap-era safety envelope (plan §3.3): paths are pinned to the
 repository, credential-shaped files are unreadable, network tools on a

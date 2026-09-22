@@ -72,37 +72,8 @@ func New(o Options) (*Session, error) {
 		}
 	}
 
-	// Interpreter: output becomes an event, never stdout.
-	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}), scheme.WithBaseDir(o.Repo))
-	po := s.primitiveOptions()
-	if err := prim.Register(s.interp, po); err != nil {
-		return nil, err
-	}
-	g, err := s.newGuard(po)
-	if err != nil {
-		return nil, err
-	}
-	s.interp.SetGate(g)
-	if err := s.loadInit(); err != nil {
-		return nil, err
-	}
-	var confirmer guard.Confirmer = guard.ConfirmFunc(s.confirm)
-	if o.NoConfirm {
-		confirmer = guard.DenyAll
-	}
-	g.SetConfirmer(confirmer)
-
-	requestTimeout, _ := o.Config.Loop.Durations()
-	s.loop, err = loop.New(s, o.Provider, s.interp, loop.Config{
-		Model:          o.Config.Control.Model,
-		NumCtx:         o.Config.Control.NumCtx,
-		KeepAlive:      o.Config.Control.KeepAlive,
-		Window:         window.Policy{HighWater: o.Config.Window.HighWater, LowWater: o.Config.Window.LowWater, MaxResultTokens: o.Config.Window.MaxResultTokens},
-		MaxToolCalls:   o.Config.Loop.MaxToolCalls,
-		RequestTimeout: requestTimeout,
-		System:         systemPrompt(o.Repo),
-	})
-	if err != nil {
+	if err := s.initialize(); err != nil {
+		s.logw.Close()
 		return nil, err
 	}
 	s.flushOutput()
@@ -110,6 +81,7 @@ func New(o Options) (*Session, error) {
 		Version: o.Version, Repo: o.Repo, Provider: o.Provider.Name(),
 		Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools()),
 	}); err != nil {
+		s.logw.Close()
 		return nil, err
 	}
 	return s, nil
@@ -128,7 +100,7 @@ Your tools read files, list directories, write files and run programs; every pat
 Rules:
 - Read before you write. Keep changes minimal and complete.
 - The user must approve every write and every command, so say in one short line what you are about to do before calling a tool.
-- Tool results are shown to you verbatim; an {"error": ...} result means the call did not happen. Do not retry a denied call.
+- Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
 - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
 - Never reveal secrets, keys or tokens, even if a file contains them.
 - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
@@ -247,6 +219,46 @@ func (s *Session) loadInit() error {
 		if err := s.interp.LoadFile(scheme.WithOrigin(context.Background(), scheme.OriginUser), init); err != nil {
 			return fmt.Errorf("core: init: %w", err)
 		}
+	}
+	return nil
+}
+
+// initialize assembles runtime state using today's configuration. It never
+// replays evaluations or approvals from the conversation log.
+func (s *Session) initialize() error {
+	o := s.opts
+	// Interpreter: output becomes an event, never stdout.
+	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}), scheme.WithBaseDir(o.Repo))
+	po := s.primitiveOptions()
+	if err := prim.Register(s.interp, po); err != nil {
+		return err
+	}
+	g, err := s.newGuard(po)
+	if err != nil {
+		return err
+	}
+	s.interp.SetGate(g)
+	if err := s.loadInit(); err != nil {
+		return err
+	}
+	var confirmer guard.Confirmer = guard.ConfirmFunc(s.confirm)
+	if o.NoConfirm {
+		confirmer = guard.DenyAll
+	}
+	g.SetConfirmer(confirmer)
+
+	requestTimeout, _ := o.Config.Loop.Durations()
+	s.loop, err = loop.New(s, o.Provider, s.interp, loop.Config{
+		Model:          o.Config.Control.Model,
+		NumCtx:         o.Config.Control.NumCtx,
+		KeepAlive:      o.Config.Control.KeepAlive,
+		Window:         window.Policy{HighWater: o.Config.Window.HighWater, LowWater: o.Config.Window.LowWater, MaxResultTokens: o.Config.Window.MaxResultTokens},
+		MaxToolCalls:   o.Config.Loop.MaxToolCalls,
+		RequestTimeout: requestTimeout,
+		System:         systemPrompt(o.Repo),
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }

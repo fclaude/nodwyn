@@ -234,3 +234,29 @@ func TestMandatoryRedactionAfterFilter(t *testing.T) {
 		t.Fatal("canary persisted")
 	}
 }
+
+func TestExclusiveWriter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	first, err := Create(path, "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if _, err := first.Append(KindNote, Note{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if second, err := Open(path); err == nil {
+		second.Close()
+		t.Fatal("concurrent writer accepted")
+	}
+	first.Close()
+	second, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	ev, err := second.Append(KindNote, Note{Text: "second"})
+	if err != nil || ev.Seq != 2 {
+		t.Fatalf("append after close: %+v %v", ev, err)
+	}
+}

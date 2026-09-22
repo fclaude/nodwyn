@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · U1 resume · implemented with an external agent under ADR 16; tested CLI restart, process kill after a real tool write, legacy redaction, partial-tail recovery and exclusive ownership · no claim of nibb self-authorship · conversation survives restart; ephemeral approvals and Scheme state deliberately reset
 - 2026-09-22 · readability refactor · implemented with an external agent under ADR 16 after reviewing the spec and roadmap; acceptance and fresh race tests passed · no claim of nibb self-authorship · preserve shared credential and integration boundaries while simplifying the code inside them
 - 2026-09-22 · P7 · implemented with an external agent under ADR 16, validated with the candidate selfcheck · no claim of nibb self-authorship · model output is now buffered because per-token redaction cannot safely recognize split credentials
 - 2026-09-22 · P6 · the doc-coverage test caught three undocumented builtins before they could ship · nothing, it failed the build · ADR 7's mechanical rule keeps paying for itself
@@ -20,7 +21,7 @@ Format: `date · session · what happened · what it cost · idea`
 - 2026-09-21 · selfhost run 1 · no way to resume a session after a crash or
   `:q`; the log has everything but the window is not rebuilt from it ·
   a crash mid-task loses the conversation · `nibb --resume <id>` that
-  reloads events and continues (P10 territory, but a small version is cheap)
+  **resolved in U1: reloads the conversation from its log without replaying tool operations**
 - 2026-09-21 · selfhost run 1 · a 27B model told to change one line
   rewrote a 400-line file with `fs-write` and mangled an unrelated line,
   then spent 10 `shell-exec` calls (sed, python3 -c) repairing it · 15

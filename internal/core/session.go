@@ -92,6 +92,7 @@ func (s *Session) Send(text string) error {
 
 	go func() {
 		defer func() {
+			_, _ = s.Record(log.KindTurnEnd, log.Note{Text: "turn ended"})
 			s.flushOutput()
 			cancel()
 			s.mu.Lock()

@@ -306,7 +306,7 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 The core is already UI-agnostic (ADR 10) and a CI lint keeps it that way, so
 this is additive work, not a refactor. Four phases, each useful alone:
 
-- **U1 — resume and the session store (≈1 day).** `Session.Resume(id)` rebuilds
+- **U1 — resume and the session store (implemented 2026-09-22).** `core.Resume(options, id)` rebuilds
   from the log (the window is already a fold over events); `core.Store` lists
   sessions; `nibb --resume <id>`. Top item in friction.md; everything later
   assumes it.
