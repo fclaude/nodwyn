@@ -73,17 +73,16 @@ func (m *model) setPrompt(e rpc.ClientEvent) error {
 	if m.resolved[p.id] || (m.prompt != nil && m.prompt.id == p.id) {
 		return nil
 	}
-	if m.prompt == nil {
-		m.draft = m.input.Value()
-	}
 	m.prompt = p
+	m.composer.Blur()
+	m.promptInput.Focus()
 	m.busy = true
-	m.input.Reset()
-	m.input.EchoMode = textinput.EchoNormal
-	m.input.Placeholder = "Type a displayed choice, then Enter"
+	m.promptInput.Reset()
+	m.promptInput.EchoMode = textinput.EchoNormal
+	m.promptInput.Placeholder = "Type a displayed choice, then Enter"
 	if p.kind == event.PromptSecret {
-		m.input.EchoMode = textinput.EchoPassword
-		m.input.Placeholder = "Secret (masked; empty declines)"
+		m.promptInput.EchoMode = textinput.EchoPassword
+		m.promptInput.Placeholder = "Secret (masked; empty declines)"
 	}
 	p.title, p.detail, p.choices = safe(p.title), safe(p.detail), safe(p.choices)
 	m.refresh(false)
@@ -95,7 +94,7 @@ func (m *model) reply(value string) tea.Cmd {
 	b, id := m.backend, m.id
 	if p.kind == event.PromptSecret {
 		secret := []byte(value)
-		m.input.Reset()
+		m.promptInput.Reset()
 		return m.action("reply", p.id, func(ctx context.Context) error { defer clear(secret); return b.Secret(ctx, id, p.id, secret) })
 	}
 	reply := strings.ToLower(strings.TrimSpace(value))
@@ -127,7 +126,7 @@ func (m *model) reply(value string) tea.Cmd {
 			return nil
 		}
 	}
-	m.input.Reset()
+	m.promptInput.Reset()
 	return m.action("reply", p.id, func(ctx context.Context) error {
 		if scope != "" {
 			return b.Grant(ctx, id, p.id, scope)

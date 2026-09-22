@@ -61,7 +61,7 @@ func (m *model) inspect(command string) tea.Cmd {
 	p := &inspector{command: command, title: strings.TrimPrefix(kind, ":"), content: "Loading…", token: m.inspectionToken, loading: true}
 	m.inspector = p
 	m.status = ""
-	m.input.Reset()
+	m.composer.Reset()
 	m.refresh(false)
 	m.viewport.GotoTop()
 	if kind == ":friction" {
@@ -208,6 +208,8 @@ const helpText = `Commands
 
 Inspectors are fixed snapshots. r refreshes; Esc returns to conversation.
 Pending approvals always take priority over an inspector.
+Enter sends a message. Alt+Enter or Ctrl+J inserts a newline.
+Bracketed paste preserves line breaks and never sends.
 PgUp/PgDn scroll; Ctrl+End jumps to the bottom.
 Ctrl+C aborts busy work, or quits when idle.
 Ctrl+Q quits; a daemon session keeps running after detach.

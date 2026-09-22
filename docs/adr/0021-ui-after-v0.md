@@ -243,3 +243,15 @@ Prompts preempt inspector display, and stale asynchronous results cannot reopen
 a closed view. These are read-only views, not the planned policy-edit workflow.
 P9's richer composing, full command parity and expanded tool/plan/budget views
 remain unfinished; U3/U4 are unchanged.
+
+
+## P9 multiline composer — 2026-09-22
+
+The TUI now uses a multiline message editor and a distinct single-line prompt
+editor. Enter sends the whole draft; Alt+Enter/Ctrl+J adds a newline. Bracketed
+paste preserves line breaks without sending, including Scheme comment lines.
+Prompt presentation preserves the draft and cursor; reconnect preserves unsent
+text while still clearing secret replies and never retrying a sent operation.
+The existing Bubbles dependency supplies the editor. Core, guard, protocol and
+plain-mode behavior are unchanged. The remaining P9 work is full command parity,
+expanded tool/plan/budget views and the guarded binding-edit workflow.

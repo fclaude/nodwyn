@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · P9 composer · implemented with an external agent under ADR 16; local/RPC tests and real terminals cover multiline Scheme comments, bracketed paste, resize and separate approval/secret input · no claim of nibb self-authorship · pasted newlines no longer collapse, and prompts/reconnects preserve unsent drafts
 - 2026-09-22 · P9 inspectors · implemented with an external agent under ADR 16; local/RPC tests cover fixed history snapshots, isolated bindings, prompt priority and denied friction reads · no claim of nibb self-authorship · log, replay, loaded policy and friction can be inspected without leaving the TUI or bypassing the guarded read path
 - 2026-09-22 · P9 first client · implemented with an external agent under ADR 16; real-socket, local-session, masked-canary, cancellation and PTY checks exercise the new frontend · no claim of nibb self-authorship · scrollable approvals and resumable daemon attachment now work in a terminal; inspectors and richer composing remain
 - 2026-09-22 · U2 turns/events · implemented with an external agent under ADR 16; fake-model and real-socket tests cover reconnect gaps, waiting prompts, slow clients, abort and close · Busy could become false before final idle delivery, so close now waits for completion · approval replies remain the next slice

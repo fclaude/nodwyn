@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -27,7 +28,8 @@ type model struct {
 	selected                                     int
 	loading, active, busy, working, disconnected bool
 	width, height                                int
-	input                                        textinput.Model
+	promptInput                                  textinput.Model
+	composer                                     textarea.Model
 	viewport                                     viewport.Model
 	transcript                                   []entry
 	liveText, liveThinking                       string
@@ -35,7 +37,7 @@ type model struct {
 	lastSeq                                      uint64
 	prompt                                       *pendingPrompt
 	resolved                                     map[string]bool
-	draft, status                                string
+	status                                       string
 	generation                                   int
 	operations                                   int
 }
@@ -65,13 +67,14 @@ type reconnectResult struct {
 func newModel(ctx context.Context, b backend, repo, id string, thinking bool) *model {
 	input := textinput.New()
 	input.Prompt = "> "
-	input.Placeholder = "Message, :eval Scheme, :thinking, :help"
+	input.Placeholder = "Type a displayed choice, then Enter"
 	input.SetVirtualCursor(true)
 	input.CharLimit = 0
-	m := &model{ctx: ctx, backend: b, repo: repo, id: id, width: 80, height: 24, input: input, viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(18)), thinking: thinking, resolved: map[string]bool{}}
+	m := &model{ctx: ctx, backend: b, repo: repo, id: id, width: 80, height: 24, promptInput: input, composer: newComposer(), viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(18)), thinking: thinking, resolved: map[string]bool{}}
 	m.viewport.SoftWrap = true
 	m.viewport.FillHeight = true
-	m.input.Focus()
+	m.composer.Focus()
+	m.layout()
 	return m
 }
 func (m *model) Init() tea.Cmd {
@@ -112,8 +115,10 @@ func (m *model) restore(s snapshot) {
 	m.prompt = nil
 	m.inspector = nil
 	m.resolved = map[string]bool{}
-	m.input.Reset()
-	m.input.EchoMode = textinput.EchoNormal
+	m.promptInput.Reset()
+	m.promptInput.EchoMode = textinput.EchoNormal
+	m.promptInput.Blur()
+	m.composer.Focus()
 	for _, e := range s.History {
 		m.consume(rpc.ClientEvent{ID: s.ID, Kind: string(e.Kind), Seq: e.Seq, Payload: e.Payload})
 	}
@@ -127,9 +132,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(1, msg.Width), max(1, msg.Height)
-		m.input.SetWidth(max(1, m.width-3))
-		m.viewport.SetWidth(m.width)
-		m.viewport.SetHeight(max(1, m.height-6))
+		m.layout()
 		m.refresh(false)
 	case listResult:
 		m.loading = false
@@ -164,8 +167,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.disconnected = true
 			m.working = false
 			m.prompt = nil
-			m.input.Reset()
-			m.input.EchoMode = textinput.EchoNormal
+			m.promptInput.Reset()
+			m.promptInput.EchoMode = textinput.EchoNormal
 			m.status = "Disconnected. Ctrl+R reconnects; submitted operations are never retried."
 			m.refresh(false)
 			return m, nil
@@ -232,8 +235,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.inspector = nil
 				m.backend.Close()
 				m.prompt = nil
-				m.input.Reset()
-				m.input.EchoMode = textinput.EchoNormal
+				m.promptInput.Reset()
+				m.promptInput.EchoMode = textinput.EchoNormal
 				return m, func() tea.Msg {
 					ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 					defer cancel()
@@ -296,22 +299,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key == "enter" {
 			return m, m.submit()
 		}
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		return m, cmd
+		return m, m.updateEditor(msg)
 	}
 	if m.active && !m.loading && !m.working && !m.disconnected && (m.inspector == nil || m.prompt != nil) {
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		return m, cmd
+		return m, m.updateEditor(msg)
 	}
 	return m, nil
 }
 func (m *model) submit() tea.Cmd {
-	text := m.input.Value()
 	if m.prompt != nil {
-		return m.reply(text)
+		return m.reply(m.promptInput.Value())
 	}
+	text := m.composer.Value()
 	if text == "" {
 		return nil
 	}
@@ -321,13 +320,13 @@ func (m *model) submit() tea.Cmd {
 	case text == ":help":
 		m.inspectionToken++
 		m.inspector = &inspector{title: "help", token: m.inspectionToken, content: helpText}
-		m.input.Reset()
+		m.composer.Reset()
 		m.refresh(false)
 		m.viewport.GotoTop()
 		return nil
 	case text == ":thinking":
 		m.thinking = !m.thinking
-		m.input.Reset()
+		m.composer.Reset()
 		m.refresh(false)
 		return nil
 	case strings.HasPrefix(text, ":") && !strings.HasPrefix(text, ":eval "):
@@ -343,7 +342,7 @@ func (m *model) submit() tea.Cmd {
 	if eval {
 		source = strings.TrimPrefix(text, ":eval ")
 	}
-	m.input.Reset()
+	m.composer.Reset()
 	m.busy = true
 	b, id := m.backend, m.id
 	return m.action("send", "", func(ctx context.Context) error { return b.Send(ctx, id, source, eval) })
@@ -401,7 +400,10 @@ func (m *model) View() tea.View {
 		if m.prompt != nil {
 			title = "nibb · NEEDS YOUR ANSWER · " + m.prompt.title
 		}
-		editor := m.input.View()
+		editor := m.composer.View()
+		if m.prompt != nil {
+			editor = m.promptInput.View()
+		}
 		if m.inspector != nil && m.prompt == nil {
 			editor = "Esc returns to conversation"
 			if m.inspector.command != "" {
@@ -414,12 +416,16 @@ func (m *model) View() tea.View {
 	if m.reconnect != nil {
 		help += " · Ctrl+R reconnect (quit detaches)"
 	}
+	if m.active && m.prompt == nil && m.inspector == nil {
+		help = "Enter sends · Alt+Enter/Ctrl+J newline · Ctrl+Q quits"
+	}
 	content := clip(title, m.width) + "\n" + body + "\n" + clip(safe(m.status), m.width) + "\n" + clip(help, m.width)
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
 }
 func (m *model) refresh(bottom bool) {
+	m.layout()
 	atBottom := m.viewport.AtBottom()
 	var rows []string
 	for _, line := range m.transcript {
@@ -450,11 +456,10 @@ func (m *model) clearPrompt(id string) {
 	m.resolved[id] = true
 	if m.prompt != nil && m.prompt.id == id {
 		m.prompt = nil
-		m.input.Reset()
-		m.input.EchoMode = textinput.EchoNormal
-		m.input.Placeholder = "Message, :eval Scheme, :thinking, :help"
-		m.input.SetValue(m.draft)
-		m.draft = ""
+		m.promptInput.Reset()
+		m.promptInput.EchoMode = textinput.EchoNormal
+		m.promptInput.Blur()
+		m.composer.Focus()
 	}
 }
 

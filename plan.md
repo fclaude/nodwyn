@@ -292,8 +292,10 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   resize, abort and explicit reconnect. See [the TUI guide](docs/tui.md).
   Read-only `:log`, `:bindings`, `:replay` and guarded `:friction` inspectors are
   also implemented, with fixed snapshots and prompt priority.
+  The multiline composer preserves pasted line breaks and drafts across prompts
+  and reconnects; Enter sends, Alt+Enter/Ctrl+J inserts a newline.
   Plain mode remains the default. P9 is not complete: binding edits,
-  richer composition and full line-mode parity remain.
+  expanded tool/plan/budget views and full line-mode parity remain.
 - `internal/frontend/tui`: a bubbletea program over `core.Session` — no new core code; if P9 needs a core change, that is a gap in ADR 10 and gets an ADR amendment, not a shortcut.
 - Views: streaming transcript; tool-call cards with guard badge; plan panel; confirm modal naming class + destination + scope with "bind this"; masked credential input; `:log :bindings :replay :friction`.
 - **With nibb:** friction.md is the backlog, ranked by frequency. Line mode stays as `nibb --plain` — it is still what CI and `selfcheck.sh` use.

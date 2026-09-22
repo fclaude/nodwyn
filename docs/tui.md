@@ -41,7 +41,9 @@ of truth; scrollback is a display derived from it.
 
 | Control | Meaning |
 |---|---|
-| Enter | Submit the current message or displayed prompt answer |
+| Enter | Send the whole draft or submit the displayed prompt answer |
+| Alt+Enter / Ctrl+J | Insert a newline in the message composer |
+| Up / Down | Move within the draft; the editor scrolls to follow the cursor |
 | PgUp / PgDn | Scroll conversation or the current approval diff |
 | Ctrl+End | Jump to the bottom |
 | Ctrl+C | Abort busy work; quit when idle |
@@ -55,9 +57,20 @@ of truth; scrollback is a display derived from it.
 | `:friction` | Read `docs/friction.md` through the existing guarded Scheme path |
 | `:help` | Show available controls in a scrollable view |
 
-The first composer is a single-line editor with horizontal scrolling and
-bracketed paste; pasted newlines are normalized by the editor. Use single-line
-Scheme for `:eval`, especially when comments are involved. A multiline composer remains planned. Existing CLI commands and plain mode remain available.
+The composer is a separate multiline editor, with up to four visible rows.
+Longer drafts scroll within it; terminal resizing does not truncate the draft.
+Enter sends the entire message. Alt+Enter or Ctrl+J inserts a newline without
+sending; Ctrl+J is useful when a terminal intercepts Alt+Enter. Bracketed paste
+preserves line breaks and never submits, so multiline `:eval` expressions keep
+Scheme comments on their own lines. CRLF/CR line endings in bracketed paste
+become LF; the editor expands tabs to four spaces and removes control characters.
+The underlying editor supports up to 10,000 logical lines.
+
+A busy session retains an attempted submission as a draft. Prompts use their
+own single-line editor; closing a prompt returns to the same draft and cursor.
+Unsent drafts also survive daemon reconnects, but are not saved across exits.
+Submitted operations are never retried automatically. Existing CLI commands
+and plain mode remain available.
 
 ## Read-only inspectors
 
@@ -132,6 +145,7 @@ text is redacted and stripped of terminal control sequences before rendering.
 - `model.go`: UI state, commands, selection, resize and navigation.
 - `events.go`: durable/ephemeral display reconciliation and safe terminal text.
 - `prompts.go`: prompt presentation and explicit answer routing.
+- `composer.go`: multiline editor setup, input routing and editor/viewport sizing.
 - `inspect.go` and `inspect_backend.go`: snapshot viewers and their read paths.
 - `run.go` and `cmd/nibb/tui.go`: lifecycle and command startup.
 
@@ -140,7 +154,8 @@ guard, keychain and log ownership are unchanged. Bubble Tea v2
 uses the `charm.land` module path; the frontend boundary lint covers it as well
 as `github.com/charmbracelet` so the new dependency cannot enter core.
 
-The initial client and read-only inspectors are implemented; P9 is not complete.
+The initial client, read-only inspectors and multiline composer are implemented;
+P9 is not complete.
 Remaining work includes fuller tool/plan/budget views and the guarded binding-edit
-workflow, richer composing, and broader parity with line-mode commands. U3's
+workflow and broader parity with line-mode commands. U3's
 desktop client and U4's background supervisor remain separate roadmap work.

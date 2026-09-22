@@ -21,22 +21,22 @@ func testModel() *model {
 }
 func TestSecretInputNeverEntersViewOrTranscript(t *testing.T) {
 	m := testModel()
-	m.input.SetValue("unfinished message")
+	m.composer.SetValue("unfinished\nmessage")
 	ev := wire(event.PromptSecret, event.SecretPrompt{ID: "secret1", Class: "service"}, 0)
 	m.consume(ev)
-	m.input.SetValue("unrecognized-canary-secret")
-	if m.input.EchoMode != textinput.EchoPassword {
+	m.promptInput.SetValue("unrecognized-canary-secret")
+	if m.promptInput.EchoMode != textinput.EchoPassword {
 		t.Fatal("secret not masked")
 	}
 	if strings.Contains(m.View().Content, "unrecognized-canary-secret") || strings.Contains(fmt.Sprint(m.transcript), "unrecognized-canary-secret") {
 		t.Fatal("secret visible")
 	}
 	m.consume(ev) // Duplicate snapshot/live prompt must not erase partially typed input.
-	if m.input.Value() != "unrecognized-canary-secret" {
+	if m.promptInput.Value() != "unrecognized-canary-secret" {
 		t.Fatal("duplicate prompt reset input")
 	}
 	m.consume(wire(string(log.KindCredRegister), log.CredRegister{PromptID: "secret1", Class: "service"}, 1))
-	if m.prompt != nil || m.input.Value() != "unfinished message" || m.input.EchoMode != textinput.EchoNormal {
+	if m.prompt != nil || m.composer.Value() != "unfinished\nmessage" || m.promptInput.Value() != "" || m.promptInput.EchoMode != textinput.EchoNormal {
 		t.Fatal("credential completion failed to restore draft")
 	}
 	m.consume(ev)
@@ -103,9 +103,9 @@ func TestFailedSendAndDisconnectRemainRecoverable(t *testing.T) {
 		t.Fatal("failed send left interface busy forever")
 	}
 	m.consume(wire(event.PromptSecret, event.SecretPrompt{ID: "p", Class: "test"}, 0))
-	m.input.SetValue("canary")
+	m.promptInput.SetValue("canary")
 	m.Update(nextResult{err: errors.New("EOF"), generation: m.generation})
-	if !m.disconnected || m.prompt != nil || m.input.Value() != "" {
+	if !m.disconnected || m.prompt != nil || m.promptInput.Value() != "" {
 		t.Fatal("disconnect retained secret or stale prompt")
 	}
 }
@@ -117,12 +117,12 @@ func TestThinkingToggleRevealsAndHidesRecordedReasoning(t *testing.T) {
 	if strings.Contains(m.View().Content, "reasoning") {
 		t.Fatal("thinking shown by default")
 	}
-	m.input.SetValue(":thinking")
+	m.composer.SetValue(":thinking")
 	m.submit()
 	if !strings.Contains(m.View().Content, "reasoning") {
 		t.Fatal("thinking toggle cannot reveal history")
 	}
-	m.input.SetValue(":thinking")
+	m.composer.SetValue(":thinking")
 	m.submit()
 	if strings.Contains(m.View().Content, "reasoning") {
 		t.Fatal("thinking toggle cannot hide history")
