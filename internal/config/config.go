@@ -14,6 +14,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -68,6 +69,46 @@ type Config struct {
 	Window  Window  `toml:"window"`
 	Policy  Policy  `toml:"policy"`
 	Loop    Loop    `toml:"loop"`
+	Jev     Jev     `toml:"jev"`
+}
+
+// Jev is the Jev service configuration (ADR 19/20). The URL is configured,
+// not keyed: the Jev service is reachable only where the user has it. Content
+// caps the per-call content level (the highest level nibb will ever send).
+type Jev struct {
+	URL     string `toml:"url"`     // Jev base URL, e.g. "http://127.0.0.1:8080"
+	Timeout string `toml:"timeout"` // per request, e.g. "10s"
+	Content string `toml:"content"` // "none" | "plan" | "plan+summaries" | "full" (default "full")
+}
+
+// Valid content levels, lowest to highest.
+const (
+	JevContentNone    = "none"
+	JevContentPlan    = "plan"
+	JevContentPlanSum = "plan+summaries"
+	JevContentFull    = "full"
+)
+
+// Enabled reports whether Jev is configured (URL is set and content is not
+// "none"). A nil/empty URL or "none" content disables Jev entirely.
+func (j Jev) Enabled() bool {
+	return j.URL != "" && j.Content != JevContentNone
+}
+
+// JevContentRank orders levels so "cap" comparisons are well-defined.
+func JevContentRank(level string) int {
+	switch level {
+	case JevContentNone:
+		return 0
+	case JevContentPlan:
+		return 1
+	case JevContentPlanSum:
+		return 2
+	case JevContentFull:
+		return 3
+	default:
+		return 3
+	}
 }
 
 // Loop bounds one turn of the agent loop.
@@ -157,6 +198,10 @@ func Default() Config {
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 8 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
 		Loop:   Loop{MaxToolCalls: 50, RequestTimeout: "30m", ShellTimeout: "10m"},
+		// Jev defaults: no service (nibb runs file-only, gate is "plan"), full
+		// content when one is configured. A developer points jev.url at their
+		// instance to enable the gate (ADR 19).
+		Jev: Jev{Timeout: "10s", Content: JevContentFull},
 	}
 }
 
@@ -219,6 +264,21 @@ func (c Config) Validate() error {
 		if d, err := time.ParseDuration(v); err != nil || d <= 0 {
 			return fmt.Errorf("%s must be a positive duration, got %q", name, v)
 		}
+	}
+	if c.Jev.URL != "" {
+		u, err := url.Parse(c.Jev.URL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("jev.url must be an absolute URL, got %q", c.Jev.URL)
+		}
+	}
+	if d, err := time.ParseDuration(c.Jev.Timeout); err != nil || d <= 0 {
+		return fmt.Errorf("jev.timeout must be a positive duration, got %q", c.Jev.Timeout)
+	}
+	switch c.Jev.Content {
+	case JevContentNone, JevContentPlan, JevContentPlanSum, JevContentFull, "":
+	default:
+		return fmt.Errorf("jev.content must be one of %q, got %q",
+			[]string{JevContentNone, JevContentPlan, JevContentPlanSum, JevContentFull}, c.Jev.Content)
 	}
 	return nil
 }

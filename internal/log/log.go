@@ -41,6 +41,7 @@ const (
 	KindGuardDecision Kind = "guard.decision" // Allow / Deny / Confirm at apply->Prim
 	KindEgressCheck   Kind = "egress.check"   // binding lookup for a secret-bearing egress (P3)
 	KindGatePlan      Kind = "gate.plan"      // noul gate + Seam A outcome per message (P5)
+	KindJevReq        Kind = "jev.req"        // a Jev call: content level, bytes, payload hash, redaction, score (P5)
 	KindCredRegister  Kind = "cred.register"  // class + handle id only, never a value (P3)
 	KindRedact        Kind = "redact.event"   // a [REDACTED class] substitution at an ingress (P7)
 	KindSummary       Kind = "summary"        // a rebuildable summary covering a seq range (P10)
@@ -52,7 +53,7 @@ var kinds = map[Kind]bool{
 	KindUserMsg: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindEgressCheck: true, KindGatePlan: true,
-	KindCredRegister: true, KindRedact: true, KindSummary: true, KindNote: true,
+	KindJevReq: true, KindCredRegister: true, KindRedact: true, KindSummary: true, KindNote: true,
 }
 
 // Known reports whether k is one of the fixed event kinds.

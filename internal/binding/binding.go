@@ -82,6 +82,9 @@ func (t Table) FactsOf(p *scheme.Prim, args []scheme.Value) Facts {
 			}
 		}
 		f.Host = destHost(p, args)
+		if f.Host == "" && p.Meta.EgressHost != "" {
+			f.Host = strings.ToLower(p.Meta.EgressHost)
+		}
 		f.Method = methodArg(p, args)
 		f.Position = positionArg(p, args)
 	}

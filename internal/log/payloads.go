@@ -100,6 +100,32 @@ type EgressCheck struct {
 	Reason string `json:"reason,omitempty"` // set when not bound
 }
 
+// GatePlan is the P5 gate outcome for one user message: the noul verdict,
+// whether a plan was required, the Seam A score, and the revision count.
+type GatePlan struct {
+	Origin    string  `json:"origin"`
+	Noul      string  `json:"noul"` // "plan" | "proceed" | "degraded"
+	Plan      string  `json:"plan,omitempty"`
+	Score     float64 `json:"score,omitempty"`
+	Revisions int     `json:"revisions,omitempty"`
+	Reason    string  `json:"reason,omitempty"`
+}
+
+// JevReq is one Jev egress (ADR 19/20): what left, how much, and the score.
+// The payload hash is a short digest; the raw payload is never logged, and a
+// redacted payload is never logged either (only the events it triggered).
+type JevReq struct {
+	Tool        string   `json:"tool"` // jev-noul | jev-score | jev-choice
+	Origin      string   `json:"origin"`
+	Level       string   `json:"level"`                // none | plan | plan+summaries | full
+	Bytes       int      `json:"bytes"`                // bytes of the redacted payload sent
+	PayloadHash string   `json:"payload_hash"`         // hex sha256[:16] of the redacted payload
+	Redactions  []string `json:"redactions,omitempty"` // class names removed by L1
+	Score       float64  `json:"score,omitempty"`
+	OK          bool     `json:"ok"`
+	Error       string   `json:"error,omitempty"`
+}
+
 // CredRegister records a credential registration. Class and Handle are
 // metadata only; the secret value never appears in the log.
 type CredRegister struct {

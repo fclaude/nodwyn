@@ -27,6 +27,11 @@ type Meta struct {
 	Host         bool   // touches the OS: filesystem, processes, network
 	Hidden       bool   // never offered to the model as a tool (e.g. load)
 	Origin       string // "builtin" or "scheme"
+	// EgressHost is the fixed destination host for egress prims that do not
+	// carry a "dest" role argument (e.g. Jev, ADR 20). The E3 binding checker
+	// uses this in place of extracting the host from a URL argument.
+	EgressHost string
+
 	// Preview, for irreversible host primitives, renders what the call
 	// would do (a diff) for the confirm prompt. Go-only; not settable from
 	// register-tool.
@@ -53,8 +58,16 @@ type Prim struct {
 // Gate is the guard's hook at the single Scheme→Go exit. Before returns nil
 // to allow, or an error (conventionally a *Denied) to refuse. It may block
 // (to ask the user) and must honour ctx.
+//
+// RegisterChecker (register-check, ADR 20) lets user-originated Scheme code
+// add a tightening-only checker to the guard pipeline. The predicate is a
+// closure (prim-name args) → boolean; when it returns #t the checker
+// returns the fixed verdict ("deny" or "confirm"); otherwise it returns
+// Allow (no opinion). The strictest-wins rule guarantees a user checker
+// can only tighten, never relax.
 type Gate interface {
 	Before(ctx context.Context, p *Prim, args []Value) error
+	RegisterChecker(name, verdict string, predicate Value) error
 }
 
 // Register adds a primitive. Names are unique for the life of the

@@ -203,6 +203,19 @@ func (st *Store) Count() int {
 	return len(st.entries)
 }
 
+// HandleForClass returns the first credential handle with the given class,
+// or nil if none exists. Order is insertion order (deterministic).
+func (st *Store) HandleForClass(class string) *scheme.Handle {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	for _, id := range st.order {
+		if st.entries[id].class == class {
+			return &scheme.Handle{Class: class, ID: id}
+		}
+	}
+	return nil
+}
+
 // Lookup returns the class and created time for id, or an error if absent.
 func (st *Store) Lookup(id string) (class string, created time.Time, err error) {
 	st.mu.Lock()

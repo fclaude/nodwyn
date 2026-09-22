@@ -25,6 +25,7 @@ import (
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/loop"
+	"github.com/fclaude/nibb/internal/plan"
 	"github.com/fclaude/nibb/internal/prim"
 	"github.com/fclaude/nibb/internal/scheme"
 	"github.com/fclaude/nibb/internal/window"
@@ -140,6 +141,11 @@ func New(o Options) (*Session, error) {
 	if s.keychain != nil {
 		po.Credentials = s
 	}
+	// P5 Jev (ADR 19/20): Jev egress primitives are registered if Jev is
+	// enabled and a keychain is available. The session is the JevClient.
+	if o.Config.Jev.Enabled() && s.keychain != nil {
+		po.Jev = s
+	}
 	if err := prim.Register(s.interp, po); err != nil {
 		return nil, err
 	}
@@ -179,7 +185,7 @@ func New(o Options) (*Session, error) {
 	checkers := prim.Checkers(po, s.allow, s.writes, egressCheckers...)
 	// Init-time evaluation cannot prompt (nobody is listening yet): tools
 	// may be registered, actions are denied.
-	s.interp.SetGate(guard.New(guard.DenyAll, s, checkers...))
+	s.interp.SetGate(guard.New(guard.DenyAll, s, checkers...).WithSchemeEval(s.evalScheme))
 	init := o.InitFile
 	if init == "" {
 		if p := filepath.Join(o.Repo, ".nibb", "init.scm"); fileExists(p) {
@@ -191,7 +197,7 @@ func New(o Options) (*Session, error) {
 			return nil, fmt.Errorf("core: init: %w", err)
 		}
 	}
-	s.interp.SetGate(guard.New(confirmer, s, checkers...))
+	s.interp.SetGate(guard.New(confirmer, s, checkers...).WithSchemeEval(s.evalScheme))
 
 	requestTimeout, _ := o.Config.Loop.Durations()
 	s.loop = loop.New(s, o.Provider, s.interp, loop.Config{
@@ -272,6 +278,14 @@ func (s *Session) Send(text string) error {
 			s.mu.Unlock()
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
 		}()
+		// P5 plan gate: noul → plan → Seam A score → revise ≤3.
+		// The gate runs under the same guard/binding/redaction policy as a
+		// model tool call (plan §Phase 5). On Jev outage it degrades to a
+		// plain plan and the loop proceeds.
+		gres := plan.Run(ctx, s, text)
+		if gres.Plan != "" {
+			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gres.Score, gres.Revises)}})
+		}
 		if err := s.loop.Turn(ctx, text); err != nil {
 			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})
 		}
@@ -521,6 +535,87 @@ func (s *Session) Do(req *http.Request) (*http.Response, error) {
 }
 
 var egressClient = &http.Client{Timeout: 2 * time.Minute}
+
+// --- P5 Jev: Session implements prim.JevClient --------------------------
+
+// BaseURL implements prim.JevClient.
+func (s *Session) BaseURL() string { return s.opts.Config.Jev.URL }
+
+// Timeout implements prim.JevClient.
+func (s *Session) Timeout() time.Duration {
+	if d, err := time.ParseDuration(s.opts.Config.Jev.Timeout); err == nil {
+		return d
+	}
+	return 10 * time.Second
+}
+
+// Level implements prim.JevClient.
+func (s *Session) Level() string {
+	if s.opts.Config.Jev.Content == "" {
+		return config.JevContentPlan
+	}
+	return s.opts.Config.Jev.Content
+}
+
+// Redactor returns the L1 scanner used to redact Jev payloads (ADR 19).
+func (s *Session) Redactor() *l1.Scanner {
+	sc := l1.New()
+	for _, cl := range s.opts.Config.Policy.L1.AllowClasses {
+		sc.AllowClass(cl)
+	}
+	for _, v := range s.opts.Config.Policy.L1.AllowValues {
+		sc.AllowValue(v)
+	}
+	return sc
+}
+
+// evalScheme is the SchemeEval guard.WithSchemeEval uses to run a
+// register-check predicate.
+func (s *Session) evalScheme(ctx context.Context, proc scheme.Value, args []scheme.Value) (scheme.Value, error) {
+	return s.interp.Apply(ctx, proc, args)
+}
+
+// --- P5 plan gate: Session implements plan.Gate --------------------------
+
+// ApplyPrim applies the named primitive through the apply→guard path (the
+// same path a model tool call takes), with user origin.
+func (s *Session) ApplyPrim(ctx context.Context, name string, args []scheme.Value) (scheme.Value, error) {
+	p, ok := s.interp.Lookup(name)
+	if !ok {
+		return scheme.Value{}, fmt.Errorf("core: unknown primitive %q", name)
+	}
+	return s.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginUser), scheme.Value{Kind: scheme.KPrim, Prim: p}, args)
+}
+
+// JevHandle returns the Jev credential handle, or nil if none is registered.
+func (s *Session) JevHandle() *scheme.Handle {
+	if s.keychain == nil {
+		return nil
+	}
+	return s.keychain.HandleForClass("jev-key")
+}
+
+// Model generates a plan for a user message using the control-plane provider.
+func (s *Session) Model(ctx context.Context, userMsg string) (string, error) {
+	if s.opts.Provider == nil {
+		return "", errors.New("core: no control-plane provider")
+	}
+	timeout, _ := s.opts.Config.Loop.Durations()
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	resp, err := s.opts.Provider.Chat(cctx, llm.Request{
+		Model:  s.opts.Config.Control.Model,
+		NumCtx: s.opts.Config.Control.NumCtx,
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "You produce a concise, concrete implementation plan. Return only the plan text."},
+			{Role: llm.RoleUser, Content: userMsg},
+		},
+	}, nil)
+	if err != nil {
+		return "", err
+	}
+	return resp.Message.Content, nil
+}
 
 // SecretReply delivers a masked secret to a pending PromptAndAdd.
 func (s *Session) SecretReply(id string, secret []byte) error {

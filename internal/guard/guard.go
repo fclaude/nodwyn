@@ -98,6 +98,10 @@ type Guard struct {
 	checkers  []Checker
 	confirmer Confirmer
 	logger    Logger
+	// ev applies a Scheme procedure to arguments; used by RegisterChecker to
+	// run a Scheme-registered checker. Set by the core (which owns the
+	// interpreter). nil means no Scheme checkers are possible.
+	ev SchemeEval
 }
 
 // New builds a guard. A nil confirmer denies every confirm; a nil logger
@@ -107,6 +111,72 @@ func New(confirmer Confirmer, logger Logger, checkers ...Checker) *Guard {
 		confirmer = DenyAll
 	}
 	return &Guard{checkers: checkers, confirmer: confirmer, logger: logger}
+}
+
+// Add appends a checker to the pipeline. Checkers run in append order; the
+// strictest verdict still wins, so order does not relax a deny.
+func (g *Guard) Add(c Checker) { g.checkers = append(g.checkers, c) }
+
+// SchemeEval is set by the core to a function that applies a Scheme
+// procedure. Required for RegisterChecker.
+type SchemeEval func(ctx context.Context, proc scheme.Value, args []scheme.Value) (scheme.Value, error)
+
+// WithSchemeEval installs the evaluator RegisterChecker uses to run a
+// Scheme procedure.
+func (g *Guard) WithSchemeEval(ev SchemeEval) *Guard { g.ev = ev; return g }
+
+// RegisterChecker implements scheme.Gate (register-check, ADR 20). It adds
+// a tightening-only checker named name. The predicate is a Scheme closure
+// (prim-name args) → boolean; when it returns #t the checker returns the
+// fixed verdict (verdict must be "deny" or "confirm"); otherwise it returns
+// Allow (no opinion). The strictest-wins merge guarantees a user checker can
+// only tighten, never relax.
+func (g *Guard) RegisterChecker(name, verdict string, predicate scheme.Value) error {
+	if g.ev == nil {
+		return errors.New("guard: no Scheme evaluator installed (WithSchemeEval)")
+	}
+	v := strings.ToLower(strings.TrimSpace(verdict))
+	var d Decision
+	switch v {
+	case "deny":
+		d = Decision{Verdict: Deny, Reason: "user checker " + name}
+	case "confirm":
+		d = Decision{Verdict: Confirm, Reason: "user checker " + name}
+	default:
+		return fmt.Errorf("register-check: verdict must be \"deny\" or \"confirm\", got %q", verdict)
+	}
+	g.Add(&schemeChecker{name: name, predicate: predicate, decision: d, ev: g.ev})
+	return nil
+}
+
+type schemeChecker struct {
+	name      string
+	predicate scheme.Value // (prim-name args) → boolean
+	decision  Decision     // returned when predicate is true
+	ev        SchemeEval
+}
+
+// schemeEvalDepth is a context key to prevent re-entrant scheme checker
+// evaluation (the predicate itself may call prims that go through the guard).
+type schemeEvalDepth int
+
+func (sc *schemeChecker) Name() string { return sc.name }
+
+func (sc *schemeChecker) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) Decision {
+	if d, _ := ctx.Value(schemeEvalDepth(0)).(schemeEvalDepth); d > 0 {
+		// Already inside a predicate eval; do not re-enter.
+		return Decision{Verdict: Allow, Reason: fmt.Sprintf("checker %q: re-entrant", sc.name)}
+	}
+	ctx = context.WithValue(ctx, schemeEvalDepth(0), schemeEvalDepth(1))
+	out, err := sc.ev(ctx, sc.predicate, []scheme.Value{scheme.Str(p.Name), scheme.List(args...)})
+	if err != nil {
+		// A checker that errors is a policy error; fail closed.
+		return Decision{Verdict: Deny, Reason: fmt.Sprintf("checker %q errored: %v", sc.name, err)}
+	}
+	if out.Kind == scheme.KBool && out.I != 0 {
+		return sc.decision
+	}
+	return Decision{Verdict: Allow, Reason: fmt.Sprintf("checker %q: no match", sc.name)}
 }
 
 // Before is the Gate hook: it runs the checkers, asks the user if needed,

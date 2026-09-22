@@ -326,6 +326,29 @@ ADR 9); `doc` and `params` are required; `egress`, `irreversible` and
 builtin at the dispatch site, and its own primitive calls are guarded in
 turn.
 
+`register-check` (ADR 20) adds a guard checker written in Scheme:
+
+```scheme
+(register-check "no-external-llms" "confirm"
+  (lambda (prim-name args)
+    (or (equal? prim-name "shell-exec")
+        (equal? prim-name "http-request"))))
+```
+
+- `name` is the checker name that appears in `guard.decision` events.
+- `verdict` is fixed to `"deny"` or `"confirm"` at registration time.
+  It can never be `"allow"` — the guard merges decisions
+  strictest-wins, so a user checker can only tighten, never relax.
+- `predicate` is a procedure `(prim-name args) → boolean`. When it
+  returns `#t` the checker returns its fixed verdict; otherwise it has
+  no opinion (allow). A predicate that raises an error fails closed
+  as a denial.
+
+The builtin is **hidden** (never offered to the model as a tool) and
+callable only from user-originated Scheme — the model cannot add or
+bypass checkers at runtime. Checkers registered this way run after all
+built-in Go checkers in the pipeline.
+
 Loading a `.scm` file can grow the primitive table and the global
 environment. It **cannot** add special forms or change evaluation: `eval`
 and `apply` are two fixed Go functions, and the kernel exposes a fingerprint

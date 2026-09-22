@@ -310,6 +310,7 @@ func (in *Interp) registerMeta() {
 		}
 		return Void, nil
 	})
+	in.registerChecker()
 	if err := in.Register(&Prim{
 		Name: "load",
 		Meta: Meta{
@@ -330,6 +331,58 @@ func (in *Interp) registerMeta() {
 			return Void, nil
 		},
 	}); err != nil {
+		panic(err)
+	}
+}
+
+// registerChecker registers the register-check builtin (ADR 20, Phase 5).
+// The builtin is hidden: the model cannot call it. It is restricted to
+// user-originated Scheme (OriginUser) so the model cannot add checkers at
+// runtime. Verdict is "deny" or "confirm" — never "allow" — so the
+// strictest-wins rule in the guard guarantees a user checker can only
+// tighten, never relax.
+func (in *Interp) registerChecker() {
+	p := &Prim{
+		Name: "register-check",
+		Meta: Meta{
+			Doc: `Add a Scheme-written guard checker (register-check, ADR 20).
+(name verdict predicate)
+  name       string — the checker name logged in guard.decision
+  verdict    "deny" or "confirm" — the verdict when predicate is #t
+  predicate  a procedure (prim-name args) → boolean
+The checker is added after all Go checkers and can only tighten.
+This builtin is hidden from the model and callable only from
+user-originated Scheme.`,
+			Params: []Param{{Name: "name", Type: "string"}, {Name: "verdict", Type: "string"}, {Name: "predicate", Type: "any"}},
+			Hidden: true,
+			Origin: "builtin",
+		},
+		Handler: func(c *Call) (Value, error) {
+			if OriginFrom(c.Ctx) != OriginUser {
+				return Value{}, errorf(c.Name, "register-check is restricted to user-originated Scheme")
+			}
+			name, err := c.String(0)
+			if err != nil {
+				return Value{}, err
+			}
+			verdict, err := c.String(1)
+			if err != nil {
+				return Value{}, err
+			}
+			pred, err := c.Proc(2)
+			if err != nil {
+				return Value{}, err
+			}
+			if c.In.gate == nil {
+				return Value{}, errorf(c.Name, "no gate installed; register-check needs a guard")
+			}
+			if err := c.In.gate.RegisterChecker(name, verdict, pred); err != nil {
+				return Value{}, errorf(c.Name, "%v", err)
+			}
+			return Void, nil
+		},
+	}
+	if err := in.Register(p); err != nil {
 		panic(err)
 	}
 }

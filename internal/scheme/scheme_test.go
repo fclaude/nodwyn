@@ -322,6 +322,10 @@ func (g *recordingGate) Before(_ context.Context, p *Prim, args []Value) error {
 	return nil
 }
 
+func (g *recordingGate) RegisterChecker(name, verdict string, predicate Value) error {
+	return errors.New("recording gate: no checkers")
+}
+
 // TestGateIsTheSingleExit: every primitive application — builtin, from a
 // registered tool, from map, from apply — crosses the gate, and a denial
 // surfaces as a Scheme error the program cannot swallow.

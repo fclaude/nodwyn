@@ -27,6 +27,11 @@ type Options struct {
 	// The core implements CredentialStore: it owns the keychain, the masked
 	// input, and the log.
 	Credentials CredentialStore
+	// P5 Jev (ADR 19/20): the noul-gate service. nil disables the jev-noul /
+	// jev-score / jev-choice primitives (the gate is "plan" — file-only mode,
+	// ADR 20 degradation). The core implements JevClient: it owns the URL,
+	// timeout, content level, redactor, transport, and the jev.req log.
+	Jev JevClient
 }
 
 // DefaultOptions returns the bootstrap defaults for a repository root.
@@ -59,6 +64,13 @@ func Register(in *scheme.Interp, o Options) error {
 	}
 	if o.Credentials != nil {
 		for _, p := range []*scheme.Prim{httpRequest(o.Credentials), credentialRegister(o.Credentials)} {
+			if err := in.Register(p); err != nil {
+				return err
+			}
+		}
+	}
+	if o.Jev != nil {
+		for _, p := range []*scheme.Prim{jevNoul(o.Jev), jevScore(o.Jev), jevChoice(o.Jev)} {
 			if err := in.Register(p); err != nil {
 				return err
 			}
