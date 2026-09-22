@@ -121,7 +121,7 @@ type JevReq struct {
 	Bytes       int      `json:"bytes"`                // bytes of the redacted payload sent
 	PayloadHash string   `json:"payload_hash"`         // hex sha256[:16] of the redacted payload
 	Redactions  []string `json:"redactions,omitempty"` // class names removed by L1
-	Score       float64  `json:"score,omitempty"`
+	Answer      any      `json:"answer,omitempty"`     // the answer object Jev returned (no content of ours)
 	OK          bool     `json:"ok"`
 	Error       string   `json:"error,omitempty"`
 }

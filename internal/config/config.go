@@ -72,13 +72,16 @@ type Config struct {
 	Jev     Jev     `toml:"jev"`
 }
 
-// Jev is the Jev service configuration (ADR 19/20). The URL is configured,
-// not keyed: the Jev service is reachable only where the user has it. Content
-// caps the per-call content level (the highest level nibb will ever send).
+// Jev is the judge's configuration (ADR 19/20). Jev is keyed: it runs only
+// when a credential of class jev-key is registered and bound to the URL's
+// host. Content is the level of what may leave (ADR 19); in v0 the gate
+// sends the ask and the plan whatever the level says, so "plan" is the
+// honest default and the higher levels are reserved.
 type Jev struct {
-	URL     string `toml:"url"`     // Jev base URL, e.g. "http://127.0.0.1:8080"
+	URL     string `toml:"url"`     // base URL; default https://api.typesafe.ai
+	Model   string `toml:"model"`   // default jev-latest
 	Timeout string `toml:"timeout"` // per request, e.g. "10s"
-	Content string `toml:"content"` // "none" | "plan" | "plan+summaries" | "full" (default "full")
+	Content string `toml:"content"` // "none" | "plan" | "plan+summaries" | "full" (default "plan")
 }
 
 // Valid content levels, lowest to highest.
@@ -89,8 +92,8 @@ const (
 	JevContentFull    = "full"
 )
 
-// Enabled reports whether Jev is configured (URL is set and content is not
-// "none"). A nil/empty URL or "none" content disables Jev entirely.
+// Enabled reports whether Jev may be used at all: a URL and a content level
+// other than "none". Whether it actually runs also needs a jev-key credential.
 func (j Jev) Enabled() bool {
 	return j.URL != "" && j.Content != JevContentNone
 }
@@ -201,7 +204,7 @@ func Default() Config {
 		// Jev defaults: no service (nibb runs file-only, gate is "plan"), full
 		// content when one is configured. A developer points jev.url at their
 		// instance to enable the gate (ADR 19).
-		Jev: Jev{Timeout: "10s", Content: JevContentFull},
+		Jev: Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan},
 	}
 }
 
@@ -273,6 +276,9 @@ func (c Config) Validate() error {
 	}
 	if d, err := time.ParseDuration(c.Jev.Timeout); err != nil || d <= 0 {
 		return fmt.Errorf("jev.timeout must be a positive duration, got %q", c.Jev.Timeout)
+	}
+	if c.Jev.Model == "" {
+		return errors.New("jev.model is required")
 	}
 	switch c.Jev.Content {
 	case JevContentNone, JevContentPlan, JevContentPlanSum, JevContentFull, "":

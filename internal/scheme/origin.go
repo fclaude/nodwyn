@@ -8,8 +8,9 @@ import "context"
 type Origin string
 
 const (
-	OriginUser  Origin = "user"
-	OriginModel Origin = "model"
+	OriginUser    Origin = "user"
+	OriginModel   Origin = "model"
+	OriginHarness Origin = "harness" // the loop's own calls (the plan gate)
 )
 
 type originKey struct{}

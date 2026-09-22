@@ -32,8 +32,8 @@ type egressStore struct {
 func (s *egressStore) PromptAndAdd(_ context.Context, class string) (*scheme.Handle, error) {
 	return s.kc.Add(class, []byte(credSecret))
 }
-func (s *egressStore) InjectHeader(id, name string, req *http.Request) error {
-	return s.kc.InjectHeader(id, name, req)
+func (s *egressStore) InjectHeader(id, name, prefix string, req *http.Request) error {
+	return s.kc.InjectHeader(id, name, prefix, req)
 }
 func (s *egressStore) InjectQuery(id, key string, req *http.Request) error {
 	return s.kc.InjectQuery(id, key, req)

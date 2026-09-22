@@ -33,8 +33,9 @@ type CredentialStore interface {
 	// stores it in the keychain, logs cred.register, and returns the handle.
 	// The secret value never becomes a Scheme value (ADR 5).
 	PromptAndAdd(ctx context.Context, class string) (*scheme.Handle, error)
-	// InjectHeader sets the credential id as the request header name.
-	InjectHeader(id, name string, req *http.Request) error
+	// InjectHeader sets the request header name to prefix + the credential
+	// value ("Bearer " or "" — from the binding position).
+	InjectHeader(id, name, prefix string, req *http.Request) error
 	// InjectQuery sets the credential id as a URL query parameter.
 	InjectQuery(id, key string, req *http.Request) error
 	// InjectBody makes the credential id the request body.
@@ -56,7 +57,7 @@ func httpRequest(cs CredentialStore) *scheme.Prim {
 				{Name: "cred", Type: "any", Role: "credential", Doc: "credential handle"},
 				{Name: "url", Type: "string", Role: "dest", Doc: "destination URL"},
 				{Name: "method", Type: "string", Role: "method", Doc: "HTTP method, e.g. POST"},
-				{Name: "position", Type: "string", Role: "position", Doc: "injection position, e.g. header:Authorization"},
+				{Name: "position", Type: "string", Role: "position", Doc: "injection position: header:NAME, header:NAME:SCHEME (e.g. header:Authorization:Bearer), query:NAME or body"},
 				{Name: "headers", Type: "list", Role: "payload", Doc: "list of (name value) pairs, or ()"},
 				{Name: "body", Type: "string", Role: "payload", Doc: "request body, or empty string"},
 			},
@@ -91,7 +92,7 @@ func doHTTPRequest(cs CredentialStore, c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
-	where, name := binding.Position(position)
+	where, name, prefix := binding.Position(position)
 
 	hdrVals, _ := c.List(4)
 	hdr := make(map[string][]string)
@@ -130,7 +131,7 @@ func doHTTPRequest(cs CredentialStore, c *scheme.Call) (scheme.Value, error) {
 	// the position is bound for this class; the handler only does the write.
 	switch where {
 	case "header":
-		if err := cs.InjectHeader(cred.ID, name, req); err != nil {
+		if err := cs.InjectHeader(cred.ID, name, prefix, req); err != nil {
 			return scheme.Void, fmt.Errorf("http-request: inject header: %w", err)
 		}
 	case "query":

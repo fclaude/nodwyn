@@ -179,6 +179,16 @@ func (sc *schemeChecker) Check(ctx context.Context, p *scheme.Prim, args []schem
 	return Decision{Verdict: Allow, Reason: fmt.Sprintf("checker %q: no match", sc.name)}
 }
 
+// SetConfirmer replaces the confirmer. The core installs DenyAll while
+// init.scm loads (nobody is listening yet) and the real one afterwards, on
+// the same guard, so checkers registered during init are kept.
+func (g *Guard) SetConfirmer(c Confirmer) {
+	if c == nil {
+		c = DenyAll
+	}
+	g.confirmer = c
+}
+
 // Before is the Gate hook: it runs the checkers, asks the user if needed,
 // logs, and returns nil (allow) or a *scheme.Denied.
 func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value) error {

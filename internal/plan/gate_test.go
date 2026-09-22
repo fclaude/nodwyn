@@ -18,8 +18,8 @@ import (
 type fakeGate struct {
 	t           *testing.T
 	handle      *scheme.Handle
-	noulOuts    []string  // scripted jev-noul verdicts
-	scoreOuts   []float64 // scripted jev-score values
+	noulOuts    []float64 // scripted jev-noul probabilities
+	scoreOuts   []float64 // scripted normalised jev-score values
 	noulErr     error
 	scoreErr    error
 	models      []string // generated plan texts (one per Model call)
@@ -44,7 +44,7 @@ func (f *fakeGate) ApplyPrim(ctx context.Context, name string, args []scheme.Val
 		}
 		out := f.noulOuts[0]
 		f.noulOuts = f.noulOuts[1:]
-		return scheme.Value{Kind: scheme.KString, S: out}, nil
+		return scheme.Float(out), nil
 	case "jev-score":
 		if f.scoreErr != nil {
 			return scheme.Value{}, f.scoreErr
@@ -54,14 +54,17 @@ func (f *fakeGate) ApplyPrim(ctx context.Context, name string, args []scheme.Val
 		}
 		out := f.scoreOuts[0]
 		f.scoreOuts = f.scoreOuts[1:]
-		return scheme.Value{Kind: scheme.KFloat, F: out}, nil
+		if len(args) != 4 || args[3].Kind != scheme.KPair {
+			return scheme.Value{}, fmt.Errorf("jev-score: expected (cred state instructions levels)")
+		}
+		return scheme.List(scheme.Cons(scheme.Str("score"), scheme.Float(out)), scheme.Cons(scheme.Str("raw"), scheme.Float(out*4))), nil
 	}
 	return scheme.Value{}, fmt.Errorf("unexpected prim %q", name)
 }
 
 func (f *fakeGate) JevHandle() *scheme.Handle { return f.handle }
 
-func (f *fakeGate) Model(ctx context.Context, userMsg string) (string, error) {
+func (f *fakeGate) Draft(ctx context.Context, prompt string) (string, error) {
 	if len(f.models) == 0 {
 		return "fallback-plan", nil
 	}
@@ -99,7 +102,7 @@ func TestNoJevHandleSkipsGate(t *testing.T) {
 }
 
 func TestNoulProceedSkipsPlan(t *testing.T) {
-	f := &fakeGate{t: t, handle: &scheme.Handle{Class: "jev-key", ID: "x"}, noulOuts: []string{"proceed"}}
+	f := &fakeGate{t: t, handle: &scheme.Handle{Class: "jev-key", ID: "x"}, noulOuts: []float64{0.2}}
 	res := Run(context.Background(), f, "trivial")
 	if !res.OK || !res.JevOut {
 		t.Fatalf("want OK+JevOut, got %+v", res)
@@ -115,7 +118,7 @@ func TestNoulProceedSkipsPlan(t *testing.T) {
 
 func TestPlanScoredAboveThreshold(t *testing.T) {
 	f := &fakeGate{t: t, handle: &scheme.Handle{Class: "jev-key", ID: "x"},
-		noulOuts:  []string{"plan"},
+		noulOuts:  []float64{0.9},
 		scoreOuts: []float64{0.9},
 		models:    []string{"the plan"},
 	}
@@ -137,7 +140,7 @@ func TestPlanScoredAboveThreshold(t *testing.T) {
 func TestPlanRevisesToThreshold(t *testing.T) {
 	// First two scores below threshold, third above: 2 revisions used.
 	f := &fakeGate{t: t, handle: &scheme.Handle{Class: "jev-key", ID: "x"},
-		noulOuts:  []string{"plan"},
+		noulOuts:  []float64{0.9},
 		scoreOuts: []float64{0.2, 0.5, 0.85},
 		models:    []string{"v1", "v2", "v3"},
 	}
@@ -168,7 +171,7 @@ func TestRevisionBound(t *testing.T) {
 		models[i] = fmt.Sprintf("v%d", i)
 	}
 	f := &fakeGate{t: t, handle: &scheme.Handle{Class: "jev-key", ID: "x"},
-		noulOuts:  []string{"plan"},
+		noulOuts:  []float64{0.9},
 		scoreOuts: scores,
 		models:    models,
 	}

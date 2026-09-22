@@ -160,3 +160,17 @@ func TestLookupConsidersEveryRowOfAClass(t *testing.T) {
 		t.Fatalf("unbound host: %v %q", ok, reason)
 	}
 }
+
+func TestPositionParsesScheme(t *testing.T) {
+	for pos, want := range map[string][3]string{
+		"header:Authorization:Bearer": {"header", "Authorization", "Bearer "},
+		"header:x-api-key":            {"header", "x-api-key", ""},
+		"query:key":                   {"query", "key", ""},
+		"body":                        {"body", "", ""},
+	} {
+		w, n, p := Position(pos)
+		if w != want[0] || n != want[1] || p != want[2] {
+			t.Errorf("Position(%q) = %q %q %q, want %v", pos, w, n, p, want)
+		}
+	}
+}

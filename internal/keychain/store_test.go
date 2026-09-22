@@ -59,10 +59,10 @@ func TestInjectHeader(t *testing.T) {
 	h, _ := st.Add("api-key", []byte("secret-value-123"))
 
 	req, _ := http.NewRequest("GET", "https://api.example.com/v1", nil)
-	if err := st.InjectHeader(h.ID, "Authorization", req); err != nil {
+	if err := st.InjectHeader(h.ID, "Authorization", "Bearer ", req); err != nil {
 		t.Fatal(err)
 	}
-	if got := req.Header.Get("Authorization"); got != "secret-value-123" {
+	if got := req.Header.Get("Authorization"); got != "Bearer secret-value-123" {
 		t.Fatalf("header: %q", got)
 	}
 }

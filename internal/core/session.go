@@ -183,9 +183,11 @@ func New(o Options) (*Session, error) {
 		egressCheckers = append(egressCheckers, guard.TextSecret{Table: s.bindings, Scanner: sc})
 	}
 	checkers := prim.Checkers(po, s.allow, s.writes, egressCheckers...)
-	// Init-time evaluation cannot prompt (nobody is listening yet): tools
-	// may be registered, actions are denied.
-	s.interp.SetGate(guard.New(guard.DenyAll, s, checkers...).WithSchemeEval(s.evalScheme))
+	// One guard for the session. While init.scm loads nobody is listening,
+	// so confirms are denied; the real confirmer is installed afterwards on
+	// the same guard, keeping any checkers init.scm registered.
+	g := guard.New(guard.DenyAll, s, checkers...).WithSchemeEval(s.evalScheme)
+	s.interp.SetGate(g)
 	init := o.InitFile
 	if init == "" {
 		if p := filepath.Join(o.Repo, ".nibb", "init.scm"); fileExists(p) {
@@ -197,7 +199,7 @@ func New(o Options) (*Session, error) {
 			return nil, fmt.Errorf("core: init: %w", err)
 		}
 	}
-	s.interp.SetGate(guard.New(confirmer, s, checkers...).WithSchemeEval(s.evalScheme))
+	g.SetConfirmer(confirmer)
 
 	requestTimeout, _ := o.Config.Loop.Durations()
 	s.loop = loop.New(s, o.Provider, s.interp, loop.Config{
@@ -505,11 +507,11 @@ func (s *Session) PromptAndAdd(ctx context.Context, class string) (*scheme.Handl
 }
 
 // InjectHeader implements prim.CredentialStore.
-func (s *Session) InjectHeader(id, name string, req *http.Request) error {
+func (s *Session) InjectHeader(id, name, prefix string, req *http.Request) error {
 	if s.keychain == nil {
 		return errors.New("core: no keychain configured")
 	}
-	return s.keychain.InjectHeader(id, name, req)
+	return s.keychain.InjectHeader(id, name, prefix, req)
 }
 
 // InjectQuery implements prim.CredentialStore.
@@ -540,6 +542,9 @@ var egressClient = &http.Client{Timeout: 2 * time.Minute}
 
 // BaseURL implements prim.JevClient.
 func (s *Session) BaseURL() string { return s.opts.Config.Jev.URL }
+
+// Model implements prim.JevClient.
+func (s *Session) Model() string { return s.opts.Config.Jev.Model }
 
 // Timeout implements prim.JevClient.
 func (s *Session) Timeout() time.Duration {
@@ -584,7 +589,7 @@ func (s *Session) ApplyPrim(ctx context.Context, name string, args []scheme.Valu
 	if !ok {
 		return scheme.Value{}, fmt.Errorf("core: unknown primitive %q", name)
 	}
-	return s.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginUser), scheme.Value{Kind: scheme.KPrim, Prim: p}, args)
+	return s.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginHarness), scheme.Value{Kind: scheme.KPrim, Prim: p}, args)
 }
 
 // JevHandle returns the Jev credential handle, or nil if none is registered.
@@ -595,8 +600,8 @@ func (s *Session) JevHandle() *scheme.Handle {
 	return s.keychain.HandleForClass("jev-key")
 }
 
-// Model generates a plan for a user message using the control-plane provider.
-func (s *Session) Model(ctx context.Context, userMsg string) (string, error) {
+// Draft asks the control-plane model for a plan (plan.Gate).
+func (s *Session) Draft(ctx context.Context, prompt string) (string, error) {
 	if s.opts.Provider == nil {
 		return "", errors.New("core: no control-plane provider")
 	}
@@ -607,8 +612,8 @@ func (s *Session) Model(ctx context.Context, userMsg string) (string, error) {
 		Model:  s.opts.Config.Control.Model,
 		NumCtx: s.opts.Config.Control.NumCtx,
 		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: "You produce a concise, concrete implementation plan. Return only the plan text."},
-			{Role: llm.RoleUser, Content: userMsg},
+			{Role: llm.RoleSystem, Content: "You are nibb's planner for the repository at " + s.opts.Repo + ". Return only the plan text."},
+			{Role: llm.RoleUser, Content: prompt},
 		},
 	}, nil)
 	if err != nil {

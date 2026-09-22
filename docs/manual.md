@@ -207,6 +207,36 @@ pin, the credential denylist); only the confirm is waived, and every use is
 logged as `allow` with reason `standing approval: go test`. Keep them
 read-only: nothing that commits, pushes, deletes or reaches the network.
 
+### The judge (Jev)
+
+The plan gate runs once a `jev-key` credential exists and is bound:
+
+```bash
+nibb keychain init                       # once
+nibb-stable                              # then, at the prompt:
+:eval (credential-register "jev-key")    # masked input
+```
+
+```toml
+# ~/.config/nibb/bindings.toml
+[[bind]]
+class = "jev-key"
+dest = "api.typesafe.ai"
+positions = ["header:Authorization:Bearer"]
+methods = ["POST"]
+```
+
+Before each user message the gate asks Jev whether the message needs a
+plan; if so the model drafts one, Jev scores it against the ask (up to
+three revisions), and the plan goes into the task block the model sees.
+Every Jev call is a guarded egress: bound credential, L1 redaction of
+what leaves, a `jev.req` log line with size, hash and the answer. Set
+`jev.content = "none"` in `config.toml` to turn it off. Without a
+`jev-key` credential nothing is sent and the loop runs without a gate.
+
+`register-check` in `.nibb/init.scm` adds your own tightening-only guard
+checkers (deny or confirm, never allow); see `docs/scheme.md` §7.
+
 ### Giving the model tools of its own
 
 `<repo>/.nibb/init.scm` is loaded at start (after the prelude). Anything it

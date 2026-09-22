@@ -210,9 +210,18 @@ func member(set []string, v string) bool {
 	return false
 }
 
-// Position splits a binding position like "header:Authorization" into
-// (where, name). where is one of "header", "query", "body".
-func Position(pos string) (where, name string) {
-	where, name, _ = strings.Cut(pos, ":")
-	return where, name
+// Position splits a binding position into (where, name, prefix). where is
+// one of "header", "query", "body"; name is the header or query key; prefix
+// is the auth scheme plus a space for a position like
+// "header:Authorization:Bearer", else "".
+func Position(pos string) (where, name, prefix string) {
+	parts := strings.SplitN(pos, ":", 3)
+	where = parts[0]
+	if len(parts) > 1 {
+		name = parts[1]
+	}
+	if len(parts) > 2 && parts[2] != "" {
+		prefix = parts[2] + " "
+	}
+	return where, name, prefix
 }

@@ -230,13 +230,15 @@ func (st *Store) Lookup(id string) (class string, created time.Time, err error) 
 // Inject* are the only ways a value leaves the package: each writes the
 // secret for id into an outgoing request at a named position (ADR 5).
 
-// InjectHeader sets the value as the request header name.
-func (st *Store) InjectHeader(id, name string, req *http.Request) error {
+// InjectHeader sets the request header name to prefix + value. prefix is
+// the auth scheme with its trailing space ("Bearer "), or "" for a bare
+// header such as x-api-key.
+func (st *Store) InjectHeader(id, name, prefix string, req *http.Request) error {
 	v, err := st.secret(id)
 	if err != nil {
 		return err
 	}
-	req.Header.Set(name, string(v))
+	req.Header.Set(name, prefix+string(v))
 	return nil
 }
 

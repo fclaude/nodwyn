@@ -325,3 +325,24 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 		t.Fatalf("standing writes: %q", got)
 	}
 }
+
+func TestInitRegisterCheckSurvivesGuardSetup(t *testing.T) {
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
+	os.WriteFile(filepath.Join(repo, "x.txt"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+(register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0o644)
+	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": "x.txt"}}}}, fake.Turn{Content: "done"})
+	defer srv.Close()
+	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	r := &rig{t: t, s: s, srv: srv}
+	s.Send("read x")
+	r.drain("n")
+	if !strings.Contains(string(srv.Requests[1].Raw), "user checker no-reads") {
+		t.Fatalf("checker registered in init.scm was lost:\n%s", srv.Requests[1].Raw)
+	}
+}

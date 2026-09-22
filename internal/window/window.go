@@ -56,14 +56,19 @@ func Build(events []log.Event, system string, fixedTokens int, pol Policy) Resul
 	}
 	var entries []entry
 	sticky := map[uint64]bool{}
-	task := ""
+	task, plan := "", ""
 	for _, ev := range events {
 		switch ev.Kind {
 		case log.KindUserMsg:
 			var p log.UserMsg
 			if ev.Decode(&p) == nil {
 				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
-				task = p.Text
+				task, plan = p.Text, ""
+			}
+		case log.KindGatePlan:
+			var p log.GatePlan
+			if ev.Decode(&p) == nil && p.Plan != "" {
+				plan = p.Plan // the gate's plan for the current task (P5)
 			}
 		case log.KindLLMResp:
 			var p log.LLMResp
@@ -97,6 +102,9 @@ func Build(events []log.Event, system string, fixedTokens int, pol Policy) Resul
 	sys := system
 	if task != "" {
 		sys = system + "\n\nCurrent task (the user's latest request):\n" + task
+	}
+	if plan != "" {
+		sys += "\n\nPlan for the current task (follow it; say so if you must deviate):\n" + plan
 	}
 
 	var elided []uint64
