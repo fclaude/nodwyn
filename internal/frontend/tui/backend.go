@@ -30,6 +30,8 @@ type backend interface {
 	Grant(context.Context, string, string, string) error
 	Secret(context.Context, string, string, []byte) error
 	Abort(context.Context, string) error
+	History(context.Context, string) ([]log.Event, error)
+	Policy(context.Context, string) (policyView, error)
 	Close()
 }
 

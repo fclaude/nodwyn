@@ -60,3 +60,18 @@ budgets and close wait with `Send`. It runs user-origin Scheme asynchronously,
 so an RPC client can answer prompts on the same connection. Its redacted source
 and result have separate durable event kinds and do not enter model context.
 The synchronous `Eval` entrypoint remains for the sequential plain frontend.
+
+## P9 read-only binding inspection — 2026-09-22
+
+`Session.Bindings()` closes a facade gap for policy inspection. It returns a
+deep copy of the loaded binding metadata, including each row's positions and
+methods. It reads no keychain values and offers no mutation. The guard keeps
+its existing table; configuration edits still require reopening the session.
+The RPC frontend includes this snapshot in `session.info` and other session
+details. Local and daemon TUI views use the same session-owned information.
+
+Log/replay inspectors use the existing redacted, paged history boundary.
+Friction inspection uses the existing fixed user-origin `(fs-read
+"docs/friction.md")` evaluation; it does not add a direct frontend file-I/O path.
+Its guard/evaluation audit remains durable, with source/results outside model
+context. No new policy, transport concept or terminal dependency enters core.

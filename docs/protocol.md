@@ -74,7 +74,11 @@ and `wall_ns`, each with numeric `soft` and `hard` fields. These are the
 configured per-turn limits, including the legacy tool-call override; this
 protocol does not expose live turn counters. Details also include
 `allowed_commands`, `allowed_writes`, `turn_writes`, and optional `turn_actor`.
-These report current effective prefix lists and turn-wide write approval;
+Session details also contain `bindings`, a copied array of loaded metadata rows
+with `Class`, `Dest`, `Positions` and `Methods` fields. No credential values are
+included; configuration edits require reopening the session. Older daemons may
+omit this additive field, which clients must distinguish from an empty array.
+The approval fields report current effective prefix lists and turn-wide write approval;
 file-backed and session-only prefixes share the lists. They are not setters.
 
 `session.resume` returns the already-open session if this daemon owns it.

@@ -187,4 +187,6 @@ session, follow the conversation, inspect scrollable approval diffs, and reply
 to budget or masked credential prompts. Ctrl+C aborts busy work; Ctrl+Q quits.
 Quitting a daemon client detaches without stopping its session; Ctrl+R reconnects
 and recovers history without resending operations. Plain mode remains the default.
+Use `:log`, `:bindings`, `:replay` and `:friction` for read-only inspection;
+Esc returns to the conversation and `r` refreshes a snapshot.
 See [the TUI guide](docs/tui.md) for controls, ownership and the remaining P9 work.

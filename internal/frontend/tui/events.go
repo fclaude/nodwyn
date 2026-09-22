@@ -101,10 +101,14 @@ func (m *model) consume(e rpc.ClientEvent) {
 		var p log.EvalRequest
 		p, err = decode[log.EvalRequest](e.Payload)
 		m.append("\nscheme> " + p.Source)
+		m.frictionRequest(p.Source)
 		m.busy = true
 	case string(log.KindEvalResult):
 		var p log.EvalResult
 		p, err = decode[log.EvalResult](e.Payload)
+		if err == nil {
+			m.frictionResult(p)
+		}
 		if p.Error != "" {
 			m.append("eval error: " + p.Error)
 		} else if p.Value != "" {

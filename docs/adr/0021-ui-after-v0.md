@@ -231,3 +231,15 @@ prompt IDs. Connection failure never retries an operation. Terminal control
 sequences are stripped from rendered content. The boundary lint now also covers
 Bubble Tea v2's `charm.land` imports. [The TUI guide](../tui.md) records current
 controls and limits. This is partial P9, not U3 or U4 completion.
+
+
+## P9 inspector slice — 2026-09-22
+
+The TUI now provides `:log [n] [kind prefix]`, `:bindings`, `:replay` and
+`:friction`. Log/replay views use a fixed paged log prefix; binding inspection
+uses the additive `bindings` field in session details and the copied core
+snapshot described in ADR 10. Friction uses the existing guarded Scheme read.
+Prompts preempt inspector display, and stale asynchronous results cannot reopen
+a closed view. These are read-only views, not the planned policy-edit workflow.
+P9's richer composing, full command parity and expanded tool/plan/budget views
+remain unfinished; U3/U4 are unchanged.

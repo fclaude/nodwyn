@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/llm"
@@ -41,21 +42,22 @@ type budgetInfo struct {
 	Wall      budget.Limit `json:"wall_ns"`
 }
 type sessionDetails struct {
-	ID         string     `json:"id"`
-	Repo       string     `json:"repo"`
-	Busy       bool       `json:"busy"`
-	Tools      []llm.Tool `json:"tools"`
-	Budgets    budgetInfo `json:"budgets"`
-	Commands   []string   `json:"allowed_commands"`
-	Writes     []string   `json:"allowed_writes"`
-	TurnWrites bool       `json:"turn_writes"`
-	TurnActor  string     `json:"turn_actor,omitempty"`
+	Bindings   []binding.Binding `json:"bindings"`
+	ID         string            `json:"id"`
+	Repo       string            `json:"repo"`
+	Busy       bool              `json:"busy"`
+	Tools      []llm.Tool        `json:"tools"`
+	Budgets    budgetInfo        `json:"budgets"`
+	Commands   []string          `json:"allowed_commands"`
+	Writes     []string          `json:"allowed_writes"`
+	TurnWrites bool              `json:"turn_writes"`
+	TurnActor  string            `json:"turn_actor,omitempty"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
 	limits, _ := s.options.Config.Budget.Limits(s.options.Config.Loop.MaxToolCalls)
 	trust, actor := session.TurnApproval()
-	return sessionDetails{ID: session.ID(), Repo: session.Repo(), Busy: session.Busy(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor}
 }
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if req.Method == "hello" {

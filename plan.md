@@ -290,7 +290,9 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   startup session selection/resume, streaming conversation and tool/guard results,
   scrollable approvals, budget replies, masked credential entry, user Scheme,
   resize, abort and explicit reconnect. See [the TUI guide](docs/tui.md).
-  Plain mode remains the default. P9 is not complete: inspectors, binding edits,
+  Read-only `:log`, `:bindings`, `:replay` and guarded `:friction` inspectors are
+  also implemented, with fixed snapshots and prompt priority.
+  Plain mode remains the default. P9 is not complete: binding edits,
   richer composition and full line-mode parity remain.
 - `internal/frontend/tui`: a bubbletea program over `core.Session` — no new core code; if P9 needs a core change, that is a gap in ADR 10 and gets an ADR amendment, not a shortcut.
 - Views: streaming transcript; tool-call cards with guard badge; plan panel; confirm modal naming class + destination + scope with "bind this"; masked credential input; `:log :bindings :replay :friction`.

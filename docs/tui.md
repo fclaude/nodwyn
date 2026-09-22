@@ -1,4 +1,4 @@
-# Terminal client: first P9 slice
+# Terminal client (P9, in progress)
 
 The TUI is opt-in. Plain chat and `--plain` remain the default and the path
 used by scripts and promotion selfchecks.
@@ -49,13 +49,46 @@ of truth; scrollback is a display derived from it.
 | Ctrl+R | Reconnect to the daemon and refresh history/prompts |
 | `:eval EXPR` | Evaluate user-origin Scheme through the usual guard |
 | `:thinking` | Show or hide thinking |
-| `:help` | Show available controls |
+| `:log [n] [kind prefix]` | Inspect the last matching durable records (default 20, maximum 1000) |
+| `:bindings` | Inspect loaded bindings and current command/write approvals |
+| `:replay` | Read a transcript of the current session's durable log |
+| `:friction` | Read `docs/friction.md` through the existing guarded Scheme path |
+| `:help` | Show available controls in a scrollable view |
 
 The first composer is a single-line editor with horizontal scrolling and
 bracketed paste; pasted newlines are normalized by the editor. Use single-line
-Scheme for `:eval`, especially when comments are involved. This slice does not
-yet provide a multiline composer or the planned `:log`, `:bindings`, `:replay`
-and `:friction` inspectors. Existing CLI commands and plain mode remain available.
+Scheme for `:eval`, especially when comments are involved. A multiline composer remains planned. Existing CLI commands and plain mode remain available.
+
+## Read-only inspectors
+
+Inspectors replace the conversation viewport without stopping event delivery.
+PgUp/PgDn scroll; `r` takes a fresh snapshot, and Esc returns to the conversation.
+A pending approval, checkpoint or masked credential prompt always takes priority.
+Late results cannot reopen a dismissed inspector or replace the prompt panel.
+
+`:log 50 guard.` shows the latest 50 records whose kind starts with `guard.`.
+Filters operate on event kind; payloads are shown as indented JSON with sequence
+and timestamp. `:replay` uses the same transcript renderer as CLI replay, with
+no execution. Both read a fixed complete prefix through `log.read`/`Store.ReadLog`;
+later pages retain the first page's watermark. They show which sequence the
+snapshot ends at and do not append events. A partial tail reports an error;
+refresh after an active writer finishes, or resume for crash recovery.
+
+`:bindings` shows the session's loaded class/destination/method/position rows
+and its current effective command/write approvals. It reads a copied snapshot,
+not the file on disk, and has no setter. Changing `bindings.toml` takes effect
+when the session is reopened. No stored credential values are accessed. An
+older daemon without binding inspection reports that limitation instead of
+showing a misleading empty table.
+
+`:friction` needs an idle session and submits the fixed user-origin evaluation
+`(fs-read "docs/friction.md")`. It therefore uses the same Scheme environment,
+repository pin, registered guard checkers, read-size limit, cancellation and
+redaction as ordinary reads. User extensions to `fs-read` also apply. It adds
+normal evaluation and guard audit records, but source/results do not enter the
+model conversation. Missing files, denied reads and escaping symlinks appear
+as errors; the frontend never falls back to reading the filesystem itself.
+The result is captured only after the matching evaluation request is observed.
 
 ## Prompts and credentials
 
@@ -99,13 +132,15 @@ text is redacted and stripped of terminal control sequences before rendering.
 - `model.go`: UI state, commands, selection, resize and navigation.
 - `events.go`: durable/ephemeral display reconciliation and safe terminal text.
 - `prompts.go`: prompt presentation and explicit answer routing.
+- `inspect.go` and `inspect_backend.go`: snapshot viewers and their read paths.
 - `run.go` and `cmd/nibb/tui.go`: lifecycle and command startup.
 
-Core, Scheme, guard, keychain and log ownership are unchanged. Bubble Tea v2
+Core now exposes a copied binding-metadata snapshot (ADR 10 amendment). Scheme,
+guard, keychain and log ownership are unchanged. Bubble Tea v2
 uses the `charm.land` module path; the frontend boundary lint covers it as well
 as `github.com/charmbracelet` so the new dependency cannot enter core.
 
-This is the first usable P9 slice, not completion of the phase. Remaining work
-includes fuller tool/plan/budget views, the inspectors and guarded binding-edit
+The initial client and read-only inspectors are implemented; P9 is not complete.
+Remaining work includes fuller tool/plan/budget views and the guarded binding-edit
 workflow, richer composing, and broader parity with line-mode commands. U3's
 desktop client and U4's background supervisor remain separate roadmap work.

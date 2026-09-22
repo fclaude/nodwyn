@@ -17,6 +17,8 @@ type entry struct {
 }
 
 type model struct {
+	inspector                                    *inspector
+	inspectionToken                              int
 	ctx                                          context.Context
 	backend                                      backend
 	reconnect                                    func(context.Context) (backend, error)
@@ -108,6 +110,7 @@ func (m *model) restore(s snapshot) {
 	m.liveText = ""
 	m.liveThinking = ""
 	m.prompt = nil
+	m.inspector = nil
 	m.resolved = map[string]bool{}
 	m.input.Reset()
 	m.input.EchoMode = textinput.EchoNormal
@@ -170,11 +173,31 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.consume(msg.event)
 		m.refresh(false)
 		return m, m.next()
+	case inspectResult:
+		if msg.generation != m.generation || m.inspector == nil || msg.token != m.inspector.token {
+			return m, nil
+		}
+		m.inspector.loading = false
+		if msg.err != nil {
+			m.inspector.content = "Cannot inspect: " + safe(msg.err.Error())
+		} else {
+			m.inspector.content = safe(msg.content)
+		}
+		m.refresh(false)
+		if m.prompt == nil {
+			m.viewport.GotoTop()
+		}
+		return m, nil
 	case actionResult:
 		m.operations = max(0, m.operations-1)
 		m.working = m.operations > 0
 		if msg.err != nil {
-			if msg.kind == "send" {
+			if msg.kind == "friction" && m.inspector != nil && m.inspector.reading {
+				m.inspector.reading = false
+				m.inspector.loading = false
+				m.inspector.content = "Friction read failed: " + safe(msg.err.Error())
+			}
+			if msg.kind == "send" || msg.kind == "friction" {
 				m.busy = false
 			}
 			m.status = "Request failed: " + safe(msg.err.Error()) + ". Inspect state before retrying."
@@ -206,6 +229,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.reconnect != nil && m.active && !m.loading && !m.working {
 				m.loading = true
 				m.generation++
+				m.inspector = nil
 				m.backend.Close()
 				m.prompt = nil
 				m.input.Reset()
@@ -254,6 +278,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.inspector != nil && m.prompt == nil {
+			switch key {
+			case "esc":
+				m.inspector = nil
+				m.refresh(true)
+			case "r":
+				if m.inspector.command != "" && !m.inspector.loading && !m.working {
+					return m, m.inspect(m.inspector.command)
+				}
+			}
+			return m, nil
+		}
 		if m.working {
 			return m, nil
 		}
@@ -264,7 +300,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
 	}
-	if m.active && !m.loading && !m.working && !m.disconnected {
+	if m.active && !m.loading && !m.working && !m.disconnected && (m.inspector == nil || m.prompt != nil) {
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		return m, cmd
@@ -280,9 +316,14 @@ func (m *model) submit() tea.Cmd {
 		return nil
 	}
 	switch {
+	case isInspectorCommand(text):
+		return m.inspect(text)
 	case text == ":help":
-		m.status = "Enter sends · :eval EXPR · :thinking · PgUp/PgDn scroll · Ctrl+C abort · Ctrl+Q quit"
+		m.inspectionToken++
+		m.inspector = &inspector{title: "help", token: m.inspectionToken, content: helpText}
 		m.input.Reset()
+		m.refresh(false)
+		m.viewport.GotoTop()
 		return nil
 	case text == ":thinking":
 		m.thinking = !m.thinking
@@ -354,10 +395,20 @@ func (m *model) View() tea.View {
 		body = strings.Join(lines, "\n") + "\n\n↑/↓ select · Enter open · Ctrl+Q quit"
 	} else {
 		title += " · " + safe(m.id)
+		if m.inspector != nil {
+			title = "nibb · " + m.inspector.title + " · read-only"
+		}
 		if m.prompt != nil {
 			title = "nibb · NEEDS YOUR ANSWER · " + m.prompt.title
 		}
-		body = m.viewport.View() + "\n" + strings.Repeat("─", m.width) + "\n" + m.input.View()
+		editor := m.input.View()
+		if m.inspector != nil && m.prompt == nil {
+			editor = "Esc returns to conversation"
+			if m.inspector.command != "" {
+				editor += " · r refreshes"
+			}
+		}
+		body = m.viewport.View() + "\n" + strings.Repeat("─", m.width) + "\n" + editor
 	}
 	help := "PgUp/PgDn scroll · Ctrl+C abort/quit · Ctrl+Q quit"
 	if m.reconnect != nil {
@@ -382,6 +433,9 @@ func (m *model) refresh(bottom bool) {
 	}
 	if m.liveText != "" {
 		content += "\nassistant> " + safe(m.liveText)
+	}
+	if m.inspector != nil {
+		content = m.inspector.content
 	}
 	if m.prompt != nil {
 		content = m.prompt.detail + "\n\n" + m.prompt.choices
