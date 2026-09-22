@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · P9 first client · implemented with an external agent under ADR 16; real-socket, local-session, masked-canary, cancellation and PTY checks exercise the new frontend · no claim of nibb self-authorship · scrollable approvals and resumable daemon attachment now work in a terminal; inspectors and richer composing remain
 - 2026-09-22 · U2 turns/events · implemented with an external agent under ADR 16; fake-model and real-socket tests cover reconnect gaps, waiting prompts, slow clients, abort and close · Busy could become false before final idle delivery, so close now waits for completion · approval replies remain the next slice
 - 2026-09-22 · U2 lifecycle · implemented with an external agent under ADR 16; real-socket tests cover disconnected clients, concurrent resume, private permissions, writer locks and process shutdown · no claim of nibb self-authorship · daemon sessions can be owned independently of a terminal; turn/event RPC is the next slice
 - 2026-09-22 · ADR 18 budgets · implemented with an external agent under ADR 16; focused tests cover nested host effects, custom choices, denial accounting, cancellation, deadlines, redaction and replay · no claim of nibb self-authorship · long supervised turns now checkpoint before exhausting hard ceilings

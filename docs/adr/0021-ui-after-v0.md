@@ -215,3 +215,19 @@ See [the protocol guide](../protocol.md) for the exact contract and limitations.
 This completes U2's local transport. The earlier implementation notes above
 record their respective slices, not current missing methods. Optional TCP/token
 transport is still deferred; U3/U4 remain proposed. P9 is the next client step.
+
+
+## P9 first protocol client — 2026-09-22
+
+The opt-in `nibb tui` now implements the initial client slice: session selection,
+conversation/guard output, approval and budget prompts, masked credentials,
+user Scheme, abort and reconnect. With `--socket` it uses the local protocol;
+without one it owns a core session through the same small view-facing adapter.
+No core facade or policy state changed. Daemon detach leaves turns running;
+local exit aborts and closes. Plain mode remains the default.
+
+The client consumes a fixed catch-up prefix before live events and deduplicates
+prompt IDs. Connection failure never retries an operation. Terminal control
+sequences are stripped from rendered content. The boundary lint now also covers
+Bubble Tea v2's `charm.land` imports. [The TUI guide](../tui.md) records current
+controls and limits. This is partial P9, not U3 or U4 completion.

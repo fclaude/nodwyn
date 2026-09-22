@@ -45,7 +45,7 @@ func main() {
 	budgetTokens := fs.Int64("budget-tokens", 0, "hard reported model token limit per turn")
 	budgetActions := fs.Int64("budget-actions", 0, "hard irreversible host-action limit per turn")
 	maxCalls := fs.Int("max-tool-calls", 0, "tool calls allowed per turn before the hard stop (overrides budget.tool_calls_hard)")
-	fs.Bool("plain", true, "line-mode front-end (the only one in bootstrap)")
+	fs.Bool("plain", true, "use the line-mode front-end")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), `usage: nibb [flags] [command]
 
@@ -54,6 +54,7 @@ commands:
   replay SESSION       print a session log as a transcript (id or path)
   sessions             list sessions
   daemon [--socket PATH] serve local sessions, turns and events
+  tui [--socket PATH]   interactive terminal client (local or daemon)
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
   eval -e EXPR         evaluate an expression and print its value
@@ -77,6 +78,11 @@ flags:
 		fail(err)
 	}
 	switch cmd {
+	case "tui":
+		fs.Visit(func(f *flag.Flag) { fail(fmt.Errorf("tui: put --%s after tui", f.Name)) })
+		if err := runTUI(paths, fs.Args()[1:]); err != nil {
+			fail(err)
+		}
 	case "daemon":
 		fs.Visit(func(f *flag.Flag) {
 			if f.Name != "no-keychain" {

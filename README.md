@@ -74,6 +74,7 @@ Requires Go 1.27 and `staticcheck` (`go install honnef.co/go/tools/cmd/staticche
 
 ```
 bin/nibb daemon               # local sessions, turns and event delivery (U2)
+bin/nibb tui                  # opt-in full-screen terminal client (P9)
 bin/nibb                      # chat in the current repository (plain front-end)
 bin/nibb --repo ~/src/x       # pin to another repository
 bin/nibb --show-thinking      # show the model's redacted thinking too
@@ -176,3 +177,14 @@ Credential values stay in the shared host/keychain path and never enter Scheme.
 The generated wire schema is checked for drift in the normal test suite.
 See [the protocol guide](docs/protocol.md) for startup, methods, catch-up cursors,
 queue limits and ownership.
+
+
+### Terminal client (first P9 slice)
+
+`nibb tui --repo /path/to/project` starts the full-screen client locally;
+`nibb tui --socket /path/to/sock` attaches to a daemon. Choose or resume a
+session, follow the conversation, inspect scrollable approval diffs, and reply
+to budget or masked credential prompts. Ctrl+C aborts busy work; Ctrl+Q quits.
+Quitting a daemon client detaches without stopping its session; Ctrl+R reconnects
+and recovers history without resending operations. Plain mode remains the default.
+See [the TUI guide](docs/tui.md) for controls, ownership and the remaining P9 work.
