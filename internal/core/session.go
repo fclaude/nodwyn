@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fclaude/nibb/internal/binding"
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/guard"
 	"github.com/fclaude/nibb/internal/keychain"
@@ -85,7 +86,12 @@ func (s *Session) Send(text string) error {
 		s.mu.Unlock()
 		return errors.New("core: a turn is already running")
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	limits, err := s.opts.Config.Budget.Limits(s.opts.Config.Loop.MaxToolCalls)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	ctx, _, cancel := budget.Start(context.Background(), limits, s.confirmBudget)
 	s.busy = true
 	s.turnCancel = cancel
 	s.mu.Unlock()
@@ -121,6 +127,10 @@ func (s *Session) Send(text string) error {
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gres.Score, gres.Revises)}})
 		}
 		if err := s.loop.Turn(ctx); err != nil {
+			if ctx.Err() != nil {
+				err = context.Cause(ctx)
+				_, _ = s.Record(log.KindNote, log.Note{Text: err.Error()})
+			}
 			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})
 		}
 	}()

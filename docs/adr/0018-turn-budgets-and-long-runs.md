@@ -1,6 +1,6 @@
 # ADR 0018: Turn budgets and long-running turns
 
-- Status: **partially implemented** (progress guard implemented; budgets, checkpoints and run driver proposed)
+- Status: **partially implemented** (turn budgets, checkpoints and progress guard implemented; run driver proposed)
 - Date: 2026-09-21
 
 ## Context
@@ -101,3 +101,37 @@ a follow-up turn has a complete transcript. A new user message starts fresh
 progress counters. This adds no authority, background driver or automatic retry.
 The existing `loop.max_tool_calls` setting and its defaults remain until the
 budget dimensions and checkpoint UI are implemented together.
+
+## Budgets and checkpoints implementation — 2026-09-22
+
+Sections 1–3 are implemented. `internal/budget` owns one turn's limits and
+accounting. Core starts its lifetime before the plan gate; loop accounts for
+model calls and reported control-provider tokens. A session gate delegates all
+authorization to guard first, then charges irreversible host attempts. Nested
+Scheme tools cannot hide host actions, and denials consume no action allowance.
+Counts reserve capacity before execution; failed authorized attempts still count.
+
+Budget prompts share core's pending-confirmation map, IDs and `Answer` route.
+The existing boolean `guard.Confirmer` stays intact: a narrow budget callback
+returns a structured choice through the same session confirmation service.
+`y` doubles the soft threshold (at least above observed usage, capped at hard),
+`n` stops, and a number/duration chooses an absolute soft threshold. Invalid
+choices retain the prompt. Budget answers never create standing approvals.
+No-confirm runs decline; cancellation is logged. `turn.checkpoint` carries the
+snapshot, choice and any error; replay displays it without prompting.
+
+The hard wall deadline includes model waits, tools, planning and confirmations.
+Soft wall checks happen between operations. Token accounting uses reported
+prompt plus output counts; one response may overshoot, after which no further
+operation starts. The judge API's usage is unavailable and is not counted here.
+A budget stop cancels the turn context and cannot be caught to continue executing
+Scheme. Partially executed tools are reported as potentially partial; remaining
+batch calls are explicitly not executed.
+
+New configurations use the proposed defaults, including 500 hard tool calls
+(the prior implemented default was 200). Explicit `loop.max_tool_calls` and
+`--max-tool-calls` keep their hard-override meaning; the file rejects conflicting
+legacy and new hard-call settings. CLI wall/token/action overrides lower the
+soft threshold if necessary. Every new turn and resumed turn gets fresh limits.
+Sections 4–5, the automatic run driver and its unattended policies, remain
+proposed and are not enabled by this change.

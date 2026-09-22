@@ -77,3 +77,34 @@ func TestPathsUnder(t *testing.T) {
 		t.Fatalf("%v %+v", err, dp)
 	}
 }
+
+func TestBudgetConfigurationAndLegacyOverride(t *testing.T) {
+	for _, body := range []string{
+		"[budget]\nwall_hard=\"bad\"\n",
+		"[budget]\ntokens_soft=0\n",
+		"[budget]\nactions_soft=10\nactions_hard=2\n",
+		"[loop]\nmax_tool_calls=0\n",
+		"[loop]\nmax_tool_calls=3\n[budget]\ntool_calls_hard=4\n",
+	} {
+		path := filepath.Join(t.TempDir(), "config.toml")
+		os.WriteFile(path, []byte(body), 0600)
+		if _, err := Load(path); err == nil {
+			t.Fatalf("accepted invalid config %s", body)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(path, []byte("[loop]\nmax_tool_calls=3\n"), 0600)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits, err := cfg.Budget.Limits(cfg.Loop.MaxToolCalls)
+	if err != nil || limits.ToolCalls.Hard != 3 || limits.ToolCalls.Soft != 3 {
+		t.Fatalf("legacy limit: %+v %v", limits, err)
+	}
+	defaults := Default()
+	limits, err = defaults.Budget.Limits(defaults.Loop.MaxToolCalls)
+	if err != nil || limits.ToolCalls.Soft != 50 || limits.ToolCalls.Hard != 500 {
+		t.Fatalf("defaults: %+v %v", limits, err)
+	}
+}

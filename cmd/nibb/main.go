@@ -13,6 +13,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/term"
 
@@ -40,7 +41,10 @@ func main() {
 	thinking := fs.Bool("show-thinking", false, "show the model's thinking as it streams")
 	noConfirm := fs.Bool("no-confirm", false, "answer every confirm with no (non-interactive runs)")
 	noKeychain := fs.Bool("no-keychain", false, "start without opening the keychain (no credential primitives)")
-	maxCalls := fs.Int("max-tool-calls", 0, "tool calls allowed per turn before the hard stop (overrides loop.max_tool_calls)")
+	budgetWall := fs.String("budget-wall", "", "hard turn wall limit, e.g. 2h")
+	budgetTokens := fs.Int64("budget-tokens", 0, "hard reported model token limit per turn")
+	budgetActions := fs.Int64("budget-actions", 0, "hard irreversible host-action limit per turn")
+	maxCalls := fs.Int("max-tool-calls", 0, "tool calls allowed per turn before the hard stop (overrides budget.tool_calls_hard)")
 	fs.Bool("plain", true, "line-mode front-end (the only one in bootstrap)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), `usage: nibb [flags] [command]
@@ -83,8 +87,37 @@ flags:
 		if *url != "" {
 			cfg.Control.URL = *url
 		}
-		if *maxCalls > 0 {
-			cfg.Loop.MaxToolCalls = *maxCalls
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "max-tool-calls":
+				if *maxCalls <= 0 {
+					fail(fmt.Errorf("max-tool-calls must be positive"))
+				}
+				cfg.Loop.MaxToolCalls = *maxCalls
+			case "budget-tokens":
+				if *budgetTokens <= 0 {
+					fail(fmt.Errorf("budget-tokens must be positive"))
+				}
+				cfg.Budget.TokensHard = *budgetTokens
+				cfg.Budget.TokensSoft = min(cfg.Budget.TokensSoft, *budgetTokens)
+			case "budget-actions":
+				if *budgetActions <= 0 {
+					fail(fmt.Errorf("budget-actions must be positive"))
+				}
+				cfg.Budget.ActionsHard = *budgetActions
+				cfg.Budget.ActionsSoft = min(cfg.Budget.ActionsSoft, *budgetActions)
+			case "budget-wall":
+				hard, err := time.ParseDuration(*budgetWall)
+				if err != nil || hard <= 0 {
+					fail(fmt.Errorf("budget-wall must be a positive duration"))
+				}
+				soft, _ := time.ParseDuration(cfg.Budget.WallSoft)
+				cfg.Budget.WallHard = hard.String()
+				cfg.Budget.WallSoft = min(soft, hard).String()
+			}
+		})
+		if err := cfg.Validate(); err != nil {
+			fail(err)
 		}
 		if *resume != "" {
 			explicitRepo := false

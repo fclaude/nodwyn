@@ -2,6 +2,9 @@ package plain
 
 import (
 	"bytes"
+	"github.com/fclaude/nibb/internal/budget"
+	"github.com/fclaude/nibb/internal/log"
+	"strings"
 	"testing"
 
 	"github.com/fclaude/nibb/internal/event"
@@ -38,5 +41,23 @@ func TestChatStreamsAreIndependent(t *testing.T) {
 	}
 	if got := second.String(); got != "· second\n" {
 		t.Fatalf("second stream: %q", got)
+	}
+}
+
+func TestCheckpointReplayDoesNotPrompt(t *testing.T) {
+	var history bytes.Buffer
+	w := log.New(&history, "checkpoint")
+	_, err := w.Append(log.KindTurnCheckpoint, log.TurnCheckpoint{Checkpoint: budget.Checkpoint{Dimension: "tool_calls", Used: 50, Limit: budget.Limit{Soft: 50, Hard: 500}}, Choice: budget.Choice{Continue: true, Soft: 100}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := log.Read(&history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	Replay(events, &out, false)
+	if !strings.Contains(out.String(), "continue=true, soft=100") || strings.Contains(out.String(), "continue?") {
+		t.Fatal(out.String())
 	}
 }

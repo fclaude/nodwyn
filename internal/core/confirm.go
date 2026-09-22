@@ -5,17 +5,21 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/guard"
 	"github.com/fclaude/nibb/internal/log"
 )
 
 type pendingConfirmation struct {
-	prompt guard.Prompt
-	reply  chan bool
+	checkpoint *pendingCheckpoint
+	prompt     guard.Prompt
+	reply      chan bool
 }
 
-// Answer replies to a prompt event. "y"/"yes" confirm once. "a"/"always"
+// Answer replies to a prompt event. Checkpoints accept y (double soft), n,
+// or an absolute soft limit, and never grant tool authority.
+// For tool confirmations, "y"/"yes" confirm once. "a"/"always"
 // confirms and adds a standing approval for the rest of the session: the
 // command prefix for a command line, the file's directory for a write.
 // "t"/"turn" (writes only) confirms and approves every further write until
@@ -23,6 +27,17 @@ type pendingConfirmation struct {
 func (s *Session) Answer(id, reply string) error {
 	s.promptMu.Lock()
 	pending, ok := s.prompts[id]
+	if ok && pending.checkpoint != nil {
+		choice, err := budget.ParseChoice(reply, pending.checkpoint.info)
+		if err != nil {
+			s.promptMu.Unlock()
+			return err
+		}
+		delete(s.prompts, id)
+		s.promptMu.Unlock()
+		pending.checkpoint.reply <- choice
+		return nil
+	}
 	if ok {
 		delete(s.prompts, id)
 	}

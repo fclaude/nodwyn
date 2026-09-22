@@ -36,9 +36,18 @@ allow_commands = []        # standing approvals, global
 allow_writes   = []
 
 [loop]
-max_tool_calls  = 200
 request_timeout = "30m"
 shell_timeout   = "10m"
+
+[budget]
+tool_calls_soft = 50
+tool_calls_hard = 500
+tokens_soft     = 1000000
+tokens_hard     = 10000000
+actions_soft    = 25
+actions_hard    = 200
+wall_soft       = "20m"
+wall_hard       = "4h"
 \end{txt}
 
 \code{nibb paths} prints where everything lives. Session logs are under

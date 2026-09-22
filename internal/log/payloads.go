@@ -1,6 +1,9 @@
 package log
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"github.com/fclaude/nibb/internal/budget"
+)
 
 // Typed payloads for the event kinds. They are the schema of the log; the
 // window, the replay command and every front-end decode these.
@@ -136,4 +139,12 @@ type CredRegister struct {
 // Note is a free-form annotation.
 type Note struct {
 	Text string `json:"text"`
+}
+
+// TurnCheckpoint records a budget decision, including cancellation and the
+// unchanged hard ceiling. Text is redacted by the ordinary Record boundary.
+type TurnCheckpoint struct {
+	Checkpoint budget.Checkpoint `json:"checkpoint"`
+	Choice     budget.Choice     `json:"choice"`
+	Error      string            `json:"error,omitempty"`
 }

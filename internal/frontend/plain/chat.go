@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/guard"
@@ -215,6 +216,9 @@ func (c *Chat) show(ev event.Event) {
 		if len(p.Elided) > 0 {
 			fmt.Fprintf(c.Out, "%s\n", dim(fmt.Sprintf("[window: %d messages, ~%d tokens, %d elided]", p.Messages, p.EstTokens, len(p.Elided))))
 		}
+	case event.PromptCheckpoint:
+		endStream()
+		c.checkpoint(ev.Payload.(event.Checkpoint))
 	case event.PromptConfirm:
 		endStream()
 		c.confirm(ev.Payload.(event.Confirm))
@@ -390,8 +394,45 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.Note
 			_ = ev.Decode(&p)
 			fmt.Fprintf(w, "note: %s\n", p.Text)
+		case log.KindTurnCheckpoint:
+			var p log.TurnCheckpoint
+			ev.Decode(&p)
+			fmt.Fprintf(w, "[checkpoint %s: continue=%t, soft=%s]\n", p.Checkpoint.Dimension, p.Choice.Continue, budgetAmount(p.Checkpoint.Dimension, p.Choice.Soft))
 		case log.KindSessionEnd:
 			fmt.Fprintf(w, "\n# end (%s)\n", ev.TS.Format(time.RFC3339))
 		}
+	}
+}
+
+func budgetAmount(dimension string, n int64) string {
+	if dimension == "wall" {
+		return time.Duration(n).String()
+	}
+	return strconv.FormatInt(n, 10)
+}
+
+func (c *Chat) checkpoint(ev event.Checkpoint) {
+	p := ev.Checkpoint
+	fmt.Fprintf(c.Out, "\n─── checkpoint: %s %s (soft %s, hard %s)\n", p.Dimension, budgetAmount(p.Dimension, p.Used), budgetAmount(p.Dimension, p.Limit.Soft), budgetAmount(p.Dimension, p.Limit.Hard))
+	fmt.Fprintf(c.Out, "  %d tool calls, %d tokens, %d actions, %s elapsed\n", p.State.ToolCalls, p.State.Tokens, p.State.Actions, p.State.Elapsed.Round(time.Second))
+	if len(p.State.Files) > 0 {
+		fmt.Fprintf(c.Out, "  files: %s\n", strings.Join(p.State.Files, ", "))
+	}
+	if len(p.State.Commands) > 0 {
+		fmt.Fprintf(c.Out, "  commands: %s\n", strings.Join(p.State.Commands, "; "))
+	}
+	for {
+		line, ok := c.lines.read("continue? [y=double soft/N/absolute soft limit] ")
+		if !ok {
+			line = "n"
+		}
+		if _, err := budget.ParseChoice(line, p); err != nil {
+			fmt.Fprintln(c.Out, err)
+			continue
+		}
+		if err := c.Session.Answer(ev.ID, line); err != nil {
+			fmt.Fprintln(c.Out, err)
+		}
+		return
 	}
 }

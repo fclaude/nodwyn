@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
@@ -78,7 +79,16 @@ var ErrHardStop = errors.New("hard stop: tool-call limit for this turn reached (
 func (l *Loop) Turn(ctx context.Context) error {
 	calls := 0
 	var progress turnProgress
+	turnBudget := budget.From(ctx)
 	for {
+		if ctx.Err() != nil {
+			return context.Cause(ctx)
+		}
+		if turnBudget != nil {
+			if err := turnBudget.Check(ctx); err != nil {
+				return err
+			}
+		}
 		w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
 		if _, err := l.host.Record(log.KindLLMReq, log.LLMReq{
 			Model: l.cfg.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
@@ -116,20 +126,41 @@ func (l *Loop) Turn(ctx context.Context) error {
 		if _, err := l.host.Record(log.KindLLMResp, respRec); err != nil {
 			return err
 		}
+		if turnBudget != nil {
+			turnBudget.AddTokens(resp.Usage.PromptTokens, resp.Usage.OutputTokens)
+		}
 		if len(resp.Message.ToolCalls) == 0 {
+			if turnBudget != nil {
+				return turnBudget.Finish(ctx)
+			}
 			return nil
 		}
 		for i, tc := range resp.Message.ToolCalls {
-			calls++
-			if calls > l.cfg.MaxToolCalls {
-				_, _ = l.host.Record(log.KindNote, log.Note{Text: fmt.Sprintf("hard stop after %d tool calls", calls-1)})
-				if err := l.skipTools(resp.Message.ToolCalls[i:], ErrHardStop.Error()); err != nil {
+			var limitErr error
+			if turnBudget != nil {
+				limitErr = turnBudget.ToolCall(ctx)
+			} else {
+				calls++
+				if calls > l.cfg.MaxToolCalls {
+					limitErr = ErrHardStop
+				}
+			}
+			if limitErr != nil {
+				if turnBudget == nil {
+					if _, err := l.host.Record(log.KindNote, log.Note{Text: limitErr.Error()}); err != nil {
+						return err
+					}
+				}
+				if err := l.skipTools(resp.Message.ToolCalls[i:], limitErr.Error()); err != nil {
 					return err
 				}
-				return ErrHardStop
+				return limitErr
 			}
 			outcome, err := l.runTool(ctx, tc)
 			if err != nil {
+				if recordErr := l.skipTools(resp.Message.ToolCalls[i+1:], err.Error()); recordErr != nil {
+					return recordErr
+				}
 				return err
 			}
 			if reason := progress.observe(tc, outcome); reason != "" {
@@ -164,7 +195,12 @@ func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (toolOutcome, error
 	res.Millis = time.Since(start).Milliseconds()
 	if err != nil {
 		if ctx.Err() != nil {
-			return outcome, ctx.Err()
+			cause := context.Cause(ctx)
+			res.Error = "Interrupted during execution; outcome may be partial: " + cause.Error()
+			if _, recordErr := l.host.Record(log.KindToolResult, res); recordErr != nil {
+				return outcome, recordErr
+			}
+			return outcome, cause
 		}
 		outcome.failed = true
 		var denied *scheme.Denied

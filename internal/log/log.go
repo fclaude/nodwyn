@@ -32,27 +32,28 @@ import (
 type Kind string
 
 const (
-	KindSessionStart  Kind = "session.start"  // session identity: version, cwd, config summary
-	KindSessionResume Kind = "session.resume" // restarted process, same conversation
-	KindTurnEnd       Kind = "turn.end"       // durable end of a submitted turn
-	KindSessionEnd    Kind = "session.end"    // clean shutdown; absent after a crash
-	KindUserMsg       Kind = "user.msg"       // text the user sent (redacted from P7)
-	KindLLMReq        Kind = "llm.req"        // request to the control-plane model (window snapshot metadata)
-	KindLLMResp       Kind = "llm.resp"       // model output: text, thinking, tool calls, usage
-	KindToolCall      Kind = "tool.call"      // a tool application about to be evaluated
-	KindToolResult    Kind = "tool.result"    // its result or error (redacted from P7)
-	KindGuardDecision Kind = "guard.decision" // Allow / Deny / Confirm at apply->Prim
-	KindEgressCheck   Kind = "egress.check"   // binding lookup for a secret-bearing egress (P3)
-	KindGatePlan      Kind = "gate.plan"      // noul gate + Seam A outcome per message (P5)
-	KindJevReq        Kind = "jev.req"        // a Jev call: content level, bytes, payload hash, redaction, score (P5)
-	KindCredRegister  Kind = "cred.register"  // class + handle id only, never a value (P3)
-	KindRedact        Kind = "redact.event"   // a [REDACTED class] substitution at an ingress (P7)
-	KindSummary       Kind = "summary"        // a rebuildable summary covering a seq range (P10)
-	KindNote          Kind = "note"           // free-form operator annotation
+	KindSessionStart   Kind = "session.start"   // session identity: version, cwd, config summary
+	KindSessionResume  Kind = "session.resume"  // restarted process, same conversation
+	KindTurnCheckpoint Kind = "turn.checkpoint" // budget state and operator answer
+	KindTurnEnd        Kind = "turn.end"        // durable end of a submitted turn
+	KindSessionEnd     Kind = "session.end"     // clean shutdown; absent after a crash
+	KindUserMsg        Kind = "user.msg"        // text the user sent (redacted from P7)
+	KindLLMReq         Kind = "llm.req"         // request to the control-plane model (window snapshot metadata)
+	KindLLMResp        Kind = "llm.resp"        // model output: text, thinking, tool calls, usage
+	KindToolCall       Kind = "tool.call"       // a tool application about to be evaluated
+	KindToolResult     Kind = "tool.result"     // its result or error (redacted from P7)
+	KindGuardDecision  Kind = "guard.decision"  // Allow / Deny / Confirm at apply->Prim
+	KindEgressCheck    Kind = "egress.check"    // binding lookup for a secret-bearing egress (P3)
+	KindGatePlan       Kind = "gate.plan"       // noul gate + Seam A outcome per message (P5)
+	KindJevReq         Kind = "jev.req"         // a Jev call: content level, bytes, payload hash, redaction, score (P5)
+	KindCredRegister   Kind = "cred.register"   // class + handle id only, never a value (P3)
+	KindRedact         Kind = "redact.event"    // a [REDACTED class] substitution at an ingress (P7)
+	KindSummary        Kind = "summary"         // a rebuildable summary covering a seq range (P10)
+	KindNote           Kind = "note"            // free-form operator annotation
 )
 
 var kinds = map[Kind]bool{
-	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true,
+	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindEgressCheck: true, KindGatePlan: true,

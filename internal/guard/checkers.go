@@ -20,9 +20,9 @@ func pathArgs(p *scheme.Prim, args []scheme.Value) []string {
 	return out
 }
 
-// argvArgs yields the command line of a primitive with Role "argv" parameters
+// CommandArgs yields the command line of a primitive with Role "argv" parameters
 // (a command string and a list of arguments).
-func argvArgs(p *scheme.Prim, args []scheme.Value) []string {
+func CommandArgs(p *scheme.Prim, args []scheme.Value) []string {
 	var out []string
 	for i, pa := range p.Meta.Params {
 		if pa.Role != "argv" || i >= len(args) {
@@ -176,7 +176,7 @@ func DefaultArgvTrigger(root string) ArgvTrigger {
 func (ArgvTrigger) Name() string { return "argv-trigger" }
 
 func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
-	argv := argvArgs(p, args)
+	argv := CommandArgs(p, args)
 	if len(argv) == 0 {
 		return Decision{Verdict: Allow}
 	}

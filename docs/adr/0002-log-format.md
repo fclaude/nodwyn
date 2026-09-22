@@ -44,3 +44,12 @@ the new kinds, as they do every unknown kind.
 P7 redaction now occurs in `core.Record` before persistence and history insertion;
 the log writer retains its defensive filter. Resume redacts legacy history before
 it enters the model window. Original historical bytes are not rewritten.
+
+## Amendment 2026-09-22: budget checkpoint records
+
+Add `turn.checkpoint` with dimension, used amount, soft/hard limits, a snapshot
+of calls/tokens/actions/elapsed nanoseconds and attempted files/commands, the
+chosen continuation and soft limit, and an optional cancellation/error string.
+Core applies the ordinary ingress redaction before recording and emitting it.
+The record is history, not an instruction to replay approvals. Readers predating
+this kind reject it as unknown, following the existing schema policy.

@@ -69,6 +69,7 @@ type Config struct {
 	Window  Window  `toml:"window"`
 	Policy  Policy  `toml:"policy"`
 	Loop    Loop    `toml:"loop"`
+	Budget  Budget  `toml:"budget"`
 	Jev     Jev     `toml:"jev"`
 }
 
@@ -116,7 +117,7 @@ func JevContentRank(level string) int {
 
 // Loop bounds one turn of the agent loop.
 type Loop struct {
-	MaxToolCalls   int    `toml:"max_tool_calls"`  // hard stop per user message (--max-tool-calls overrides)
+	MaxToolCalls   int    `toml:"max_tool_calls"`  // legacy hard override; zero when absent, --max-tool-calls overrides
 	RequestTimeout string `toml:"request_timeout"` // per model request, e.g. "30m"
 	ShellTimeout   string `toml:"shell_timeout"`   // per shell-exec, e.g. "10m"
 }
@@ -200,7 +201,8 @@ func Default() Config {
 		},
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 8 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
-		Loop:   Loop{MaxToolCalls: 200, RequestTimeout: "30m", ShellTimeout: "10m"},
+		Loop:   Loop{MaxToolCalls: 0, RequestTimeout: "30m", ShellTimeout: "10m"},
+		Budget: Budget{ToolCallsSoft: 50, ToolCallsHard: 500, TokensSoft: 1_000_000, TokensHard: 10_000_000, ActionsSoft: 25, ActionsHard: 200, WallSoft: "20m", WallHard: "4h"},
 		// Jev defaults: no service (nibb runs file-only, gate is "plan"), full
 		// content when one is configured. A developer points jev.url at their
 		// instance to enable the gate (ADR 19).
@@ -220,6 +222,12 @@ func Load(path string) (Config, error) {
 	}
 	if undec := md.Undecoded(); len(undec) > 0 {
 		return Config{}, fmt.Errorf("config: %s: unknown keys: %v", path, undec)
+	}
+	if md.IsDefined("loop", "max_tool_calls") && c.Loop.MaxToolCalls <= 0 {
+		return Config{}, fmt.Errorf("loop.max_tool_calls must be positive when set")
+	}
+	if md.IsDefined("loop", "max_tool_calls") && md.IsDefined("budget", "tool_calls_hard") {
+		return Config{}, fmt.Errorf("set budget.tool_calls_hard or legacy loop.max_tool_calls, not both")
 	}
 	if err := c.Validate(); err != nil {
 		return Config{}, fmt.Errorf("config: %s: %w", path, err)
@@ -260,8 +268,8 @@ func (c Config) Validate() error {
 			return fmt.Errorf("policy.l1.allow_classes: unknown class %q (known: %v)", cl, l1.ClassNames())
 		}
 	}
-	if c.Loop.MaxToolCalls <= 0 {
-		return errors.New("loop.max_tool_calls must be positive")
+	if _, err := c.Budget.Limits(c.Loop.MaxToolCalls); err != nil {
+		return err
 	}
 	for name, v := range map[string]string{"loop.request_timeout": c.Loop.RequestTimeout, "loop.shell_timeout": c.Loop.ShellTimeout} {
 		if d, err := time.ParseDuration(v); err != nil || d <= 0 {

@@ -19,6 +19,7 @@ integrations and front-ends:
 | Packages | Responsibility |
 |---|---|
 | `core` | Own a session, assemble dependencies, coordinate its lifetime and prompts. |
+| `budget` | Account for one turn, enforce ceilings, and request additional soft allowance. |
 | `loop`, `plan` | Run one model/tool turn; decide whether to plan and score the plan. |
 | `event`, `log` | Describe front-end events; persist the history from which context and replay are derived. |
 | `keychain`, `binding` | Hold encrypted credentials and inject them; authorize their destinations, methods and positions. |
@@ -121,5 +122,39 @@ and notarization. Publishing downloadable releases is separate from the local
 Turns also stop when the model repeats an identical tool call four times in a
 row, retries a denied call three times, or gets ten consecutive tool errors
 (ADR 18). The reason is shown and logged. Any remaining calls in that response
-are marked not executed; a new user message starts a fresh turn. Soft budgets,
-checkpoint prompts, and the long-run driver are still planned.
+are marked not executed; a new user message starts a fresh turn. Budgets and checkpoint prompts are implemented; the automatic long-run driver remains planned.
+
+Turn limits live under `[budget]` in `config.toml`:
+
+```toml
+[budget]
+tool_calls_soft = 50
+tool_calls_hard = 500
+wall_soft = "20m"
+wall_hard = "4h"
+tokens_soft = 1000000
+tokens_hard = 10000000
+actions_soft = 25
+actions_hard = 200
+```
+
+At a checkpoint, `y` doubles the soft limit up to its hard ceiling, `n` stops,
+and an absolute number (or a duration such as `40m` for wall time) chooses a
+larger soft limit. A completed answer does not ask for more soft allowance. This never approves a tool or raises a hard ceiling.
+`--no-confirm` stops at checkpoints. Each answer, including cancellation, is a
+redacted `turn.checkpoint` log record. A new turn starts with fresh accounting.
+
+`--max-tool-calls N`, `--budget-wall 2h`, `--budget-tokens N` and
+`--budget-actions N` override hard ceilings for this invocation. Explicit legacy
+`loop.max_tool_calls` settings still work; do not also set
+`budget.tool_calls_hard` in that file. Configurations without a legacy override
+now use the ADR 18 default of 500 hard tool calls (previously 200).
+
+Actions count authorized irreversible host attempts, including every nested
+write or command inside a Scheme tool. Denials consume no action allowance.
+The checkpoint lists attempted file paths and commands. Wall time includes
+planning and approval waits; its hard deadline cancels blocked work, while soft
+wall checkpoints occur at operation boundaries. Tokens are the control provider's
+reported prompt plus output usage: a response can overshoot a token ceiling,
+but no subsequent operation starts after that usage is observed. Judge-service
+usage is not included because it is not reported through the control provider.

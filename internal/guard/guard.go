@@ -274,7 +274,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		Args:    rec.Args,
 		Reasons: result.reasons,
 		Detail:  detail,
-		Argv:    argvArgs(p, args),
+		Argv:    CommandArgs(p, args),
 		Path:    writePath,
 	})
 	if err != nil {

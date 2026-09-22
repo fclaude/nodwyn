@@ -62,3 +62,28 @@ func TestCLIResume(t *testing.T) {
 		t.Fatalf("list: %s", listing)
 	}
 }
+
+func TestCLIBudgetCheckpoint(t *testing.T) {
+	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}}, fake.Turn{Content: "finished"})
+	defer srv.Close()
+	dir := t.TempDir()
+	configDir := filepath.Join(dir, "config", "nibb")
+	os.MkdirAll(configDir, 0700)
+	os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("[budget]\ntool_calls_soft=1\ntool_calls_hard=3\n"), 0600)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--url", srv.URL, "--no-keychain", "--budget-wall", "2h", "--budget-actions", "10")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+	cmd.Stdin = strings.NewReader("list twice\n4\n3\n:q\n")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("CLI: %v\n%s", err, out)
+	}
+	for _, want := range []string{"checkpoint: tool_calls", "hard limit", "finished"} {
+		if !strings.Contains(string(out), want) {
+			t.Fatalf("missing %q:\n%s", want, out)
+		}
+	}
+	if len(srv.Requests) != 2 {
+		t.Fatal("checkpoint failed to resume the turn")
+	}
+}

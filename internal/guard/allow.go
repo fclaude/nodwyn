@@ -85,7 +85,7 @@ func (*CommandAllow) Name() string { return "command-allow" }
 // Check returns a standing Allow for a matching command line. A standing
 // allow outranks a Confirm from any other checker, never a Deny.
 func (c *CommandAllow) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
-	argv := argvArgs(p, args)
+	argv := CommandArgs(p, args)
 	if m := c.Match(argv); m != "" {
 		return Decision{Verdict: Allow, Standing: true, Reason: "standing approval: " + m}
 	}
@@ -108,7 +108,7 @@ func Prefix(argv []string) string {
 
 // Argv extracts the command line from a primitive application (for the
 // core, which builds Prefix from a prompt).
-func Argv(p *scheme.Prim, args []scheme.Value) []string { return argvArgs(p, args) }
+func Argv(p *scheme.Prim, args []scheme.Value) []string { return CommandArgs(p, args) }
 
 func equal(a, b []string) bool {
 	if len(a) != len(b) {

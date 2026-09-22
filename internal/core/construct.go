@@ -121,6 +121,9 @@ func jevOptions(j config.Jev) prim.JevOptions {
 }
 
 func resolveOptions(o Options) (Options, error) {
+	if _, err := o.Config.Budget.Limits(o.Config.Loop.MaxToolCalls); err != nil {
+		return Options{}, err
+	}
 	if o.Repo == "" {
 		return Options{}, errors.New("core: repo root is required")
 	}
@@ -237,7 +240,7 @@ func (s *Session) initialize() error {
 	if err != nil {
 		return err
 	}
-	s.interp.SetGate(g)
+	s.interp.SetGate(turnGate{Gate: g})
 	if err := s.loadInit(); err != nil {
 		return err
 	}

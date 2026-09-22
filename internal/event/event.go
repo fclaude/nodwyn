@@ -4,6 +4,7 @@
 package event
 
 import (
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/guard"
 	"github.com/fclaude/nibb/internal/log"
 )
@@ -19,13 +20,14 @@ type Event struct {
 
 // Ephemeral kinds.
 const (
-	StreamText     = "stream.text"     // Payload: Text
-	StreamThinking = "stream.thinking" // Payload: Text
-	PromptConfirm  = "prompt.confirm"  // Payload: Confirm; answered through Session.Answer
-	PromptSecret   = "prompt.secret"   // Payload: SecretPrompt; answered through Session.Secret
-	Status         = "status"          // Payload: StatusInfo
-	Error          = "error"           // Payload: ErrorInfo
-	Output         = "output"          // Payload: Text — Scheme display/write output
+	StreamText       = "stream.text"       // Payload: Text
+	StreamThinking   = "stream.thinking"   // Payload: Text
+	PromptCheckpoint = "prompt.checkpoint" // Payload: Checkpoint; answered through Session.Answer
+	PromptConfirm    = "prompt.confirm"    // Payload: Confirm; answered through Session.Answer
+	PromptSecret     = "prompt.secret"     // Payload: SecretPrompt; answered through Session.Secret
+	Status           = "status"            // Payload: StatusInfo
+	Error            = "error"             // Payload: ErrorInfo
+	Output           = "output"            // Payload: Text — Scheme display/write output
 )
 
 // Text is a fragment of streamed text or output.
@@ -59,4 +61,10 @@ type ErrorInfo struct {
 // FromLog wraps a written log event with its decoded payload.
 func FromLog(ev log.Event, payload any) Event {
 	return Event{Kind: string(ev.Kind), Seq: ev.Seq, Payload: payload}
+}
+
+// Checkpoint offers additional soft budget, never additional tool authority.
+type Checkpoint struct {
+	ID         string
+	Checkpoint budget.Checkpoint
 }

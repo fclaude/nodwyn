@@ -155,7 +155,13 @@ Commands at the `you>` prompt:
 
 Flags: `--repo DIR`, `--model`, `--url`, `--show-thinking`, `--no-confirm`
 (every confirm is a no — for scripts and CI), `--no-keychain`,
-`--max-tool-calls N` (per-turn hard stop; default `loop.max_tool_calls`, 200).
+`--max-tool-calls N` (hard call override), `--budget-wall 2h`,
+`--budget-tokens N`, and `--budget-actions N`. The `[budget]` settings and
+checkpoint behavior are described in the README. Defaults are 50/500 calls,
+20m/4h wall time, 1M/10M reported model tokens and 25/200 irreversible host
+attempts (soft/hard). Legacy `loop.max_tool_calls` remains an explicit override.
+At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
+larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
 ### Confirms
 
@@ -312,7 +318,7 @@ stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 | `control plane … unreachable` | tailscale up? `curl http://workshop.example:11434/api/version` |
 | first turn takes 10–60 s | another client holds workshop's single slot, or the prefix is cold; later turns are sub-second |
 | every request takes 30–50 s | the prefix cache is missing: check `:log` for `llm.req` — a trim (elided count jumped) or a new user turn re-prefills once; if it is every request, another client is evicting workshop's single slot between your requests |
-| the model loops on a denied call | it was told; say so in the next message. `loop.max_tool_calls` (200, or `--max-tool-calls N`) is the hard stop |
+| the model loops on a denied call | the progress guard stops repeated denials; inspect the log before continuing. Budgets also bound each turn, and `--max-tool-calls N` sets a hard call ceiling |
 | `hard stop: too many tool calls` | the turn ended; the log has everything; rephrase smaller |
 | a tool call errored | `:log 20` — the `tool.result` line has the exact error the model saw |
 | a confirm never appeared but a file changed | `:allow` — a standing approval covered it; the `guard.decision` line names which |
