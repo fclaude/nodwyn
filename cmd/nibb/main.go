@@ -53,7 +53,7 @@ commands:
   (none) | chat        start a session in the plain front-end
   replay SESSION       print a session log as a transcript (id or path)
   sessions             list sessions
-  daemon [--socket PATH] serve local session lifecycle RPC
+  daemon [--socket PATH] serve local sessions, turns and events
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
   eval -e EXPR         evaluate an expression and print its value

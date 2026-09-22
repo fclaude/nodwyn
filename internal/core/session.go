@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/budget"
@@ -41,6 +40,10 @@ type Session struct {
 	busy       bool
 	turnCancel context.CancelFunc
 	closed     bool
+	closing    bool
+	turns      sync.WaitGroup // includes final event delivery after Busy becomes false
+	closeOnce  sync.Once
+	closeErr   error
 
 	prompts  map[string]pendingConfirmation
 	promptN  int
@@ -57,7 +60,7 @@ type Session struct {
 	bindings binding.Table
 
 	// P3 credential prompts: pending masked-secret prompts.
-	secrets   map[string]chan []byte
+	secrets   map[string]pendingSecret
 	secretsMu sync.Mutex
 }
 
@@ -78,7 +81,7 @@ func (s *Session) Events() <-chan event.Event { return s.out }
 // event whose State is "idle".
 func (s *Session) Send(text string) error {
 	s.mu.Lock()
-	if s.closed {
+	if s.closed || s.closing {
 		s.mu.Unlock()
 		return errors.New("core: session is closed")
 	}
@@ -94,9 +97,11 @@ func (s *Session) Send(text string) error {
 	ctx, _, cancel := budget.Start(context.Background(), limits, s.confirmBudget)
 	s.busy = true
 	s.turnCancel = cancel
+	s.turns.Add(1)
 	s.mu.Unlock()
 
 	go func() {
+		defer s.turns.Done()
 		defer func() {
 			_, _ = s.Record(log.KindTurnEnd, log.Note{Text: "turn ended"})
 			s.flushOutput()
@@ -165,22 +170,22 @@ func (s *Session) Eval(ctx context.Context, src string) (scheme.Value, error) {
 // Close ends the session: aborts a running turn, writes session.end, closes
 // the log and the events channel.
 func (s *Session) Close() error {
-	s.Abort()
-	// Wait for the turn goroutine to finish so it does not emit after close.
-	for s.Busy() {
-		time.Sleep(5 * time.Millisecond)
-	}
-	s.mu.Lock()
-	if s.closed {
+	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		s.closing = true // no new Send may race with the wait
 		s.mu.Unlock()
-		return nil
-	}
-	s.closed = true
-	s.mu.Unlock()
-	_, _ = s.logw.Append(log.KindSessionEnd, log.SessionEnd{Reason: "closed"})
-	err := s.logw.Close()
-	close(s.out)
-	return err
+		s.Abort()
+		// The frontend must keep draining until the channel closes. Busy alone
+		// cannot prove completion: the turn still owes its final idle event.
+		s.turns.Wait()
+		s.mu.Lock()
+		s.closed = true
+		s.mu.Unlock()
+		_, _ = s.logw.Append(log.KindSessionEnd, log.SessionEnd{Reason: "closed"})
+		s.closeErr = s.logw.Close()
+		close(s.out)
+	})
+	return s.closeErr
 }
 
 // evalScheme is the SchemeEval guard.WithSchemeEval uses to run a

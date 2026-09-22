@@ -61,12 +61,15 @@ func start(t *testing.T, o core.Options) (string, func()) {
 }
 
 type client struct {
-	t    *testing.T
-	conn net.Conn
-	enc  *json.Encoder
-	dec  *json.Decoder
+	t       *testing.T
+	conn    net.Conn
+	enc     *json.Encoder
+	dec     *json.Decoder
+	notices []reply
 }
 type reply struct {
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params"`
 	ID     json.RawMessage `json:"id"`
 	Result json.RawMessage `json:"result"`
 	Error  *rpcError       `json:"error"`
@@ -79,7 +82,7 @@ func connect(t *testing.T, path string) *client {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close() })
-	return &client{t, conn, json.NewEncoder(conn), json.NewDecoder(conn)}
+	return &client{t: t, conn: conn, enc: json.NewEncoder(conn), dec: json.NewDecoder(conn)}
 }
 func (c *client) call(method string, p any) reply {
 	c.t.Helper()
@@ -87,11 +90,17 @@ func (c *client) call(method string, p any) reply {
 	if err := c.enc.Encode(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": p}); err != nil {
 		c.t.Fatal(err)
 	}
-	var r reply
-	if err := c.dec.Decode(&r); err != nil {
-		c.t.Fatal(err)
+	for {
+		var r reply
+		if err := c.dec.Decode(&r); err != nil {
+			c.t.Fatal(err)
+		}
+		if r.Method != "" {
+			c.notices = append(c.notices, r)
+			continue
+		}
+		return r
 	}
-	return r
 }
 func (c *client) ok(method string, p any) json.RawMessage {
 	c.t.Helper()
@@ -181,7 +190,7 @@ func TestLifecycleAcrossConnectionsAndRestart(t *testing.T) {
 
 func TestProtocolErrorsBatchesAndNotifications(t *testing.T) {
 	s := &server{options: options(t), sessions: map[string]ownedSession{}}
-	ready := false
+	ready := &peer{}
 	cases := []struct {
 		raw  string
 		code int
@@ -194,7 +203,7 @@ func TestProtocolErrorsBatchesAndNotifications(t *testing.T) {
 		{`{"jsonrpc":"2.0","method":"hello","id":1,"params":{"protocol":1,"typo":2}}`, -32602},
 	}
 	for _, test := range cases {
-		got := s.frame([]byte(test.raw), &ready).(response)
+		got := s.frame([]byte(test.raw), ready).(response)
 		if got.Error == nil || got.Error.Code != test.code {
 			t.Fatalf("%s: %+v", test.raw, got)
 		}
@@ -202,14 +211,14 @@ func TestProtocolErrorsBatchesAndNotifications(t *testing.T) {
 	raw := `[{"jsonrpc":"2.0","method":"hello","params":{"protocol":1}},` +
 		`{"jsonrpc":"2.0","method":"session.list","id":9007199254740993},` +
 		`{"jsonrpc":"2.0","method":"unknown"},7]`
-	got := s.frame([]byte(raw), &ready).([]any)
+	got := s.frame([]byte(raw), ready).([]any)
 	if len(got) != 2 || string(got[0].(response).ID) != "9007199254740993" || got[1].(response).Error.Code != -32600 {
 		t.Fatalf("batch: %+v", got)
 	}
-	if r := s.frame([]byte(`[{"jsonrpc":"2.0","method":"session.list"}]`), &ready); r != nil {
+	if r := s.frame([]byte(`[{"jsonrpc":"2.0","method":"session.list"}]`), ready); r != nil {
 		t.Fatal("notification produced reply", r)
 	}
-	r := s.frame([]byte(`{"jsonrpc":"2.0","method":"session.send","id":"not-yet"}`), &ready).(response)
+	r := s.frame([]byte(`{"jsonrpc":"2.0","method":"session.answer","id":"not-yet"}`), ready).(response)
 	if r.Error == nil || r.Error.Code != -32601 {
 		t.Fatal("unimplemented method exposed")
 	}

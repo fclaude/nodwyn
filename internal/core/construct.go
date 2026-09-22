@@ -61,7 +61,7 @@ func New(o Options) (*Session, error) {
 		id:      log.NewSessionID(time.Now()),
 		out:     make(chan event.Event, o.EventBuffer),
 		prompts: map[string]pendingConfirmation{},
-		secrets: map[string]chan []byte{},
+		secrets: map[string]pendingSecret{},
 	}
 	if o.LogWriter != nil {
 		s.logw = log.New(o.LogWriter, s.id)

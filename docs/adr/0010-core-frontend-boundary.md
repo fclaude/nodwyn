@@ -26,3 +26,16 @@ Front-ends live under `internal/frontend/`: `plain` (bootstrap), `tui` (P9),
   `Answer`; the guard never knows which front-end is attached.
 - If P9 needs a core change, that is a gap in this ADR and gets an amendment,
   not a shortcut.
+
+## Amendment 2026-09-22: durable frontend catch-up
+
+The RPC frontend needs read-only history without reopening a session for append.
+`core.Store.ReadLog(id, after, through, limit)` provides validated pages with
+legacy-payload redaction and a fixed upper cursor. This adds no transport types
+to core and no additional history append point. Session execution and prompt
+ownership stay behind the existing facade. `Session.PendingPrompts` adds a
+read-only redacted snapshot of pending descriptors for reconnect; it excludes
+secret values and reply channels, and does not grant authority to answer.
+`Session.Close` now waits for final
+turn event delivery rather than polling `Busy`; frontends keep draining until
+the event channel closes.

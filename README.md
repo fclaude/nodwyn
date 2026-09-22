@@ -73,7 +73,7 @@ Requires Go 1.27 and `staticcheck` (`go install honnef.co/go/tools/cmd/staticche
 ## Run
 
 ```
-bin/nibb daemon               # local session lifecycle server (U2 first slice)
+bin/nibb daemon               # local sessions, turns and event delivery (U2)
 bin/nibb                      # chat in the current repository (plain front-end)
 bin/nibb --repo ~/src/x       # pin to another repository
 bin/nibb --show-thinking      # show the model's redacted thinking too
@@ -160,14 +160,16 @@ reported prompt plus output usage: a response can overshoot a token ceiling,
 but no subsequent operation starts after that usage is observed. Judge-service
 usage is not included because it is not reported through the control provider.
 
-### Local daemon (U2 first slice)
+### Local daemon (U2)
 
 `nibb daemon` serves a versioned local session protocol over a private Unix
-socket. Clients can list, open, resume, inspect and close sessions. Sessions
-belong to the daemon and survive client disconnects; shutting down the daemon
-releases their logs for later resume. The existing plain frontend stays usable.
+socket. Clients can manage sessions, send and abort turns, subscribe to events,
+and page through durable history after reconnecting. Sessions belong to the
+daemon and survive client disconnects; shutting down the daemon releases their
+logs for later resume. A slow subscriber is disconnected without blocking turns.
+The existing plain frontend stays usable.
 
-This first slice has no remote turn or approval methods. Event delivery and
-reconnect catch-up come next, followed by approval/credential replies with
-client attribution. See [the protocol guide](docs/protocol.md) for socket paths,
-startup, wire examples, method results and ownership.
+Approval and credential replies remain the next slice. A remote turn that needs
+one waits at its prompt and can be aborted; subscriptions never grant approval.
+See [the protocol guide](docs/protocol.md) for startup, methods, catch-up cursors,
+queue limits and ownership.

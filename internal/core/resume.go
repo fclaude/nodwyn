@@ -61,7 +61,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+4), prompts: map[string]pendingConfirmation{}, secrets: map[string]chan []byte{}}
+	s := &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+4), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}}
 	if err = s.restoreHistory(history); err != nil {
 		return nil, err
 	}

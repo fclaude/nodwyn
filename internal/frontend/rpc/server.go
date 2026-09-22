@@ -3,11 +3,9 @@ package rpc
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/fclaude/nibb/internal/core"
 )
@@ -74,24 +72,25 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 func (s *server) connection(ctx context.Context, conn net.Conn) {
 	reader := bufio.NewScanner(conn)
 	reader.Buffer(make([]byte, 4096), maxFrame)
-	ready := false
+	client := newPeer(conn)
+	defer s.unsubscribe(client)
+	written := make(chan struct{})
+	go func() { defer close(written); client.write() }()
+	defer func() { client.close(); <-written }()
 	for reader.Scan() {
 		if ctx.Err() != nil {
 			return
 		}
-		reply := s.frame(reader.Bytes(), &ready)
-		if reply == nil {
-			continue
-		}
-		raw, err := json.Marshal(reply)
-		if err != nil {
+		reply := s.frame(reader.Bytes(), client)
+		if reply != nil && !client.enqueue(reply) {
 			return
 		}
-		if err = conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			return
-		}
-		if _, err = conn.Write(append(raw, '\n')); err != nil {
-			return
-		}
+	}
+	if reader.Err() == nil {
+		// A client may half-close its request stream while still reading.
+		// Remove all producers before closing the queue, then flush replies.
+		s.unsubscribe(client)
+		close(client.out)
+		<-written
 	}
 }

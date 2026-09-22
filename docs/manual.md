@@ -59,7 +59,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/log` | the append-only log | `log.go` `Append`, `Replay` |
 | `internal/config` | XDG paths, config.toml and allow.toml | `Default`, `Validate` |
 | `internal/frontend/plain` | line mode and replay | `chat.go` `show` |
-| `internal/frontend/rpc` | local daemon connections and session lifecycle | `server.go`, `sessions.go` |
+| `internal/frontend/rpc` | local daemon sessions, turns and events | `server.go`, `sessions.go`, `events.go` |
 | `cmd/nibb` | flags → core → front-end; nothing else | `main.go` |
 | `dev/`, `.nibb/` | this repository's own tools and standing approvals | `dev/go.scm` |
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
@@ -326,9 +326,10 @@ stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 
 ## Local daemon
 
-`nibb daemon` starts the U2 lifecycle server in the foreground. Use
+`nibb daemon` starts the U2 session server in the foreground. Use
 `nibb daemon --no-keychain` to skip credential-store startup, and
 `--socket /absolute/private/directory/sock` to override its socket path.
-The initial protocol supports session lifecycle and inspection; it does not yet
-start turns or answer approvals. See [the protocol guide](protocol.md) for the
-handshake, methods, permissions and reconnect semantics.
+The protocol supports session lifecycle, send/abort, subscriptions and paged
+log catch-up. Approval replies remain unimplemented; turns waiting for one can
+be aborted. See [the protocol guide](protocol.md) for the handshake, methods,
+permissions and reconnect semantics.

@@ -14,6 +14,7 @@ import (
 type ownedSession struct {
 	session *core.Session
 	drained chan struct{}
+	stream  *eventStream
 }
 
 // Lifecycle operations are serialized. This keeps construction, ownership and
@@ -51,7 +52,7 @@ func (s *server) details(session *core.Session) sessionDetails {
 	limits, _ := s.options.Config.Budget.Limits(s.options.Config.Loop.MaxToolCalls)
 	return sessionDetails{session.ID(), session.Repo(), session.Busy(), session.Tools(), budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}}
 }
-func (s *server) dispatch(req request, ready *bool) (any, *rpcError) {
+func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if req.Method == "hello" {
 		var p struct {
 			Protocol int `json:"protocol"`
@@ -62,14 +63,14 @@ func (s *server) dispatch(req request, ready *bool) (any, *rpcError) {
 		if p.Protocol != ProtocolVersion {
 			return nil, failure(-32001, "Unsupported protocol version")
 		}
-		*ready = true
+		client.ready = true
 		return struct {
 			Protocol int      `json:"protocol"`
 			Version  string   `json:"version"`
 			Methods  []string `json:"methods"`
 		}{ProtocolVersion, s.options.Version, methods}, nil
 	}
-	if !*ready {
+	if !client.ready {
 		return nil, failure(-32001, "hello required before session methods")
 	}
 	s.mu.Lock()
@@ -113,7 +114,7 @@ func (s *server) dispatch(req request, ready *bool) (any, *rpcError) {
 		}
 		s.own(session)
 		return s.details(session), nil
-	case "session.resume", "session.info", "session.close":
+	case "session.resume", "session.info", "session.close", "session.abort", "session.unsubscribe":
 		var p struct {
 			ID string `json:"id"`
 		}
@@ -137,6 +138,16 @@ func (s *server) dispatch(req request, ready *bool) (any, *rpcError) {
 		if !open {
 			return nil, failure(-32002, "Session is not open in this daemon")
 		}
+		if req.Method == "session.abort" {
+			owned.session.Abort()
+			return struct{}{}, nil
+		}
+		if req.Method == "session.unsubscribe" {
+			owned.stream.mu.Lock()
+			delete(owned.stream.subscribers, client)
+			owned.stream.mu.Unlock()
+			return struct{}{}, nil
+		}
 		if req.Method == "session.close" {
 			err := owned.session.Close()
 			<-owned.drained
@@ -147,20 +158,78 @@ func (s *server) dispatch(req request, ready *bool) (any, *rpcError) {
 			return struct{}{}, nil
 		}
 		return s.details(owned.session), nil
+	case "session.send":
+		var p struct {
+			ID   string `json:"id"`
+			Text string `json:"text"`
+		}
+		if err := params(req.Params, &p, "id", "text"); err != nil {
+			return nil, err
+		}
+		if p.ID == "" || p.Text == "" {
+			return nil, failure(-32602, "id and nonempty text are required")
+		}
+		owned, ok := s.sessions[p.ID]
+		if !ok {
+			return nil, failure(-32002, "Session is not open in this daemon")
+		}
+		if err := owned.session.Send(p.Text); err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		return struct{}{}, nil
+	case "log.read", "session.subscribe":
+		var p struct {
+			ID      string `json:"id"`
+			After   uint64 `json:"after"`
+			Through uint64 `json:"through"`
+			Limit   int    `json:"limit"`
+		}
+		names := []string{"id", "after", "limit"}
+		if req.Method == "log.read" {
+			names = append(names, "through")
+		}
+		if err := params(req.Params, &p, names...); err != nil {
+			return nil, err
+		}
+		if p.ID == "" {
+			return nil, failure(-32602, "id is required")
+		}
+		if p.Limit == 0 {
+			p.Limit = 100
+		}
+		if p.Limit < 1 || p.Limit > 1000 {
+			return nil, failure(-32602, "limit must be between 1 and 1000")
+		}
+		if req.Method == "session.subscribe" {
+			owned, ok := s.sessions[p.ID]
+			if !ok {
+				return nil, failure(-32002, "Session is not open in this daemon")
+			}
+			result, err := owned.stream.subscribe(client, store, p.After, p.Limit)
+			if err != nil {
+				return nil, failure(-32000, err.Error())
+			}
+			return result, nil
+		}
+		page, err := store.ReadLog(p.ID, p.After, p.Through, p.Limit)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		return page, nil
 	default:
 		return nil, failure(-32601, "Method not found")
 	}
 }
 func (s *server) own(session *core.Session) {
 	drained := make(chan struct{})
-	s.sessions[session.ID()] = ownedSession{session, drained}
-	// Lifecycle-only protocol: drain initialization records so a session never
-	// depends on a connected client. Durable records remain in its log. Event
-	// delivery and reconnect catch-up belong to the next protocol slice.
+	stream := &eventStream{session: session, subscribers: make(map[*peer]uint64)}
+	s.sessions[session.ID()] = ownedSession{session: session, drained: drained, stream: stream}
 	go func() {
 		defer close(drained)
-		for range session.Events() {
+		for ev := range session.Events() {
+			stream.publish(ev)
 		}
+		stream.closed()
 	}()
 }
 func (s *server) close() error {

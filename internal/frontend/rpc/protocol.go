@@ -13,7 +13,7 @@ import (
 const ProtocolVersion = 1
 const maxFrame = 1 << 20
 
-var methods = []string{"session.list", "session.open", "session.resume", "session.info", "session.close"}
+var methods = []string{"session.list", "session.open", "session.resume", "session.info", "session.close", "session.send", "session.abort", "session.subscribe", "session.unsubscribe", "log.read"}
 
 type request struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -60,13 +60,13 @@ func params(raw json.RawMessage, dst any, names ...string) *rpcError {
 
 // frame accepts one JSON value per line, including JSON-RPC batches. Calls in
 // a batch execute in order; notifications execute without producing a reply.
-func (s *server) frame(raw []byte, ready *bool) any {
+func (s *server) frame(raw []byte, client *peer) any {
 	raw = bytes.TrimSpace(raw)
 	if !json.Valid(raw) {
 		return response{"2.0", nil, nil, failure(-32700, "Parse error")}
 	}
 	if raw[0] != '[' {
-		return s.call(raw, ready)
+		return s.call(raw, client)
 	}
 	var batch []json.RawMessage
 	_ = json.Unmarshal(raw, &batch)
@@ -75,7 +75,7 @@ func (s *server) frame(raw []byte, ready *bool) any {
 	}
 	var replies []any
 	for _, item := range batch {
-		if r := s.call(item, ready); r != nil {
+		if r := s.call(item, client); r != nil {
 			replies = append(replies, r)
 		}
 	}
@@ -84,7 +84,7 @@ func (s *server) frame(raw []byte, ready *bool) any {
 	}
 	return replies
 }
-func (s *server) call(raw []byte, ready *bool) any {
+func (s *server) call(raw []byte, client *peer) any {
 	// Decode envelope names exactly; encoding/json's struct matching otherwise
 	// accepts alternate casing, contrary to JSON-RPC's case-sensitive names.
 	var fields map[string]json.RawMessage
@@ -99,7 +99,7 @@ func (s *server) call(raw []byte, ready *bool) any {
 	if req.JSONRPC != "2.0" || req.Method == "" || !validID(req.ID) {
 		return response{"2.0", nil, nil, failure(-32600, "Invalid Request")}
 	}
-	result, err := s.dispatch(req, ready)
+	result, err := s.dispatch(req, client)
 	if req.ID == nil {
 		return nil
 	}

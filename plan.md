@@ -310,10 +310,11 @@ this is additive work, not a refactor. Four phases, each useful alone:
   from the log (the window is already a fold over events); `core.Store` lists
   sessions; `nibb --resume <id>`. Top item in friction.md; everything later
   assumes it.
-- **U2 — `nibbd` and the protocol (lifecycle slice implemented 2026-09-22).**
-  `nibb daemon` now provides a version handshake and session list/open/resume/info/close;
+- **U2 — `nibbd` and the protocol (lifecycle, turns and events implemented 2026-09-22).**
+  `nibb daemon` now provides a version handshake, session lifecycle, send/abort,
+  event subscriptions and paged log catch-up;
   [the protocol guide](docs/protocol.md) defines the implemented subset. Remaining:
-  turn execution, events, reconnect catch-up and attributed approval/secret replies.
+  attributed approval/secret replies, explicit standing approvals and generated schemas.
   The full target is a daemon owning sessions, JSON-RPC
   2.0 over a 0600 Unix socket: `session.{list,open,resume,send,abort,answer,secret,eval,info}`
   and `log.read`, with every `event.Event` as a notification and gap-fill from the

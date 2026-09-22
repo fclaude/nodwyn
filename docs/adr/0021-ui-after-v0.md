@@ -1,6 +1,6 @@
 # ADR 0021: A real UI after v0 — the daemon, the protocol, the clients
 
-- Status: **partially implemented** (U1 and U2 lifecycle slice implemented; remaining U2 and U3–U4 proposed)
+- Status: **partially implemented** (U1 and U2 lifecycle/turn/event slices implemented; remaining U2 and U3–U4 proposed)
 - Date: 2026-09-22
 
 ## Context
@@ -170,3 +170,26 @@ accept `y`, `n`, or a numeric/duration soft limit (ADR 18), rather than the tool
 approval vocabulary. Ordinary `session.answer` must not accept `a` to create a
 standing approval: that requires a separate explicit method and an attributed
 decision. The approval slice must define its wire contract before exposing it.
+
+## U2 turns and events implementation — 2026-09-22
+
+The second slice adds send/abort, explicit per-connection subscriptions, live
+notifications and paged `log.read`. A subscribe response fixes a durable
+watermark and returns the first catch-up page; later durable notifications begin
+after that watermark. Clients fill any remaining gap from disk using a fixed
+`through` cursor. There is no replay buffer or automatic retry of tool calls.
+`Session.PendingPrompts` supplies a redacted snapshot of current pending
+prompts on reconnect. RPC owns no second prompt-state cache. A queued live
+prompt may duplicate a snapshot entry; clients deduplicate by ID, and core
+retains ownership of whether a prompt can still be answered.
+
+Each connection has one writer and a bounded queue. A stalled client is
+disconnected without blocking the session or other subscribers. Sessions keep
+running when their clients disconnect. Closing a session still aborts its turn.
+A deterministic regression exposed that polling `Busy` did not wait for final
+idle delivery; `Close` now waits for the goroutine to finish and rejects new
+turns while closing. See [the protocol guide](../protocol.md) for wire details.
+
+Attributed approvals and secret replies, explicit standing-approval creation,
+generated event schemas and approval inspection remain unimplemented. Remote
+turns may wait at a confirmation; this slice exposes abort, never implicit yes.

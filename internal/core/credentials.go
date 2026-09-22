@@ -13,6 +13,11 @@ import (
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
+type pendingSecret struct {
+	class string
+	reply chan []byte
+}
+
 // PromptAndAdd asks the user (masked input) for a secret of the given class
 // and stores it in the keychain. It returns the opaque handle. The secret
 // value never becomes a Scheme value (ADR 5).
@@ -29,7 +34,7 @@ func (s *Session) PromptAndAdd(ctx context.Context, class string) (*scheme.Handl
 
 	// Store the pending secret prompt so SecretReply can find it.
 	s.secretsMu.Lock()
-	s.secrets[id] = ch
+	s.secrets[id] = pendingSecret{class: class, reply: ch}
 	s.secretsMu.Unlock()
 
 	s.Emit(event.Event{Kind: event.PromptSecret, Payload: event.SecretPrompt{ID: id, Class: class}})
@@ -100,7 +105,7 @@ func (s *Session) Redactor() *l1.Scanner {
 // SecretReply delivers a masked secret to a pending PromptAndAdd.
 func (s *Session) SecretReply(id string, secret []byte) error {
 	s.secretsMu.Lock()
-	ch, ok := s.secrets[id]
+	pending, ok := s.secrets[id]
 	if ok {
 		delete(s.secrets, id)
 	}
@@ -108,6 +113,6 @@ func (s *Session) SecretReply(id string, secret []byte) error {
 	if !ok {
 		return fmt.Errorf("core: no pending secret prompt %q", id)
 	}
-	ch <- secret
+	pending.reply <- secret
 	return nil
 }
