@@ -95,8 +95,10 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
 \item No credential handling: no keychain, no bindings, no network primitive.
   The \code{KHandle} kind, the \code{credential} parameter role and the
   \file{bindings.toml} loader exist as seams.
-\item No L1, L2 or L3. \code{Value.Taint} is reserved and always clean;
-  \code{log.Writer.Filter} is the hook the redactor will occupy.
+\item No L3, and no ingress redaction yet (P7). \code{log.Writer.Filter} is
+  the hook the redactor will occupy. L1 and L2 are built: shapes are
+  detected on the way out, and every value carries a provenance tag that
+  the guard reads at the egress edge.
 \item No Jev, no plan gate. \code{gate.plan} is a declared event kind with
   no writer.
 \item No session resume; the log has everything, the window is not yet

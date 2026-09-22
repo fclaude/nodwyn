@@ -21,6 +21,7 @@ import (
 
 	"github.com/fclaude/nibb/internal/detect/l1"
 	"github.com/fclaude/nibb/internal/guard"
+	"github.com/fclaude/nibb/internal/keychain"
 	nlog "github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/prim"
 	"github.com/fclaude/nibb/internal/scheme"
@@ -84,6 +85,7 @@ func TestScenarios(t *testing.T) {
 			repo := filepath.Join(base, "repo")
 			os.MkdirAll(filepath.Join(repo, "sub"), 0o755)
 			os.WriteFile(filepath.Join(repo, "README.md"), []byte("# a harmless file\n"), 0o644)
+			os.WriteFile(filepath.Join(repo, "notes.txt"), []byte("ordinary notes, no secret shape\n"), 0o644)
 			os.WriteFile(filepath.Join(repo, ".env"), []byte("API_KEY="+canary+"\n"), 0o600)
 			os.WriteFile(filepath.Join(repo, "sub", "server.key"), []byte(canary), 0o600)
 			os.WriteFile(filepath.Join(base, "outside.txt"), []byte(canary), 0o644)
@@ -93,12 +95,23 @@ func TestScenarios(t *testing.T) {
 			var logBuf, outBuf bytes.Buffer
 			in := scheme.New(scheme.WithOutput(&outBuf))
 			o := prim.DefaultOptions(repo)
+			kc, err := keychain.Create(t.TempDir()+"/kc", keychain.FastKDF, []byte("scenario"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			o.Credentials = &egressStore{kc: kc}
 			if err := prim.Register(in, o); err != nil {
+				t.Fatal(err)
+			}
+			// A registered credential the scenarios can name, so an egress
+			// scenario reaches the checkers rather than failing on arity.
+			if _, err := in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginUser),
+				`(define jev-cred (credential-register "scenario-key"))`); err != nil {
 				t.Fatal(err)
 			}
 			confirms := 0
 			confirmer := guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { confirms++; return false, nil })
-			checkers := append(prim.Checkers(o, nil, nil), guard.TextSecret{Scanner: l1.New()})
+			checkers := append(prim.Checkers(o, nil, nil), guard.Taint{Policy: "deny"}, guard.TextSecret{Scanner: l1.New()})
 			in.SetGate(guard.New(confirmer, recorder{nlog.New(&logBuf, "exfil")}, checkers...))
 
 			ctx := scheme.WithOrigin(context.Background(), scheme.OriginModel)
