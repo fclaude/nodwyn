@@ -7,7 +7,7 @@ package scheme
 // user, who is the principal.
 
 func (in *Interp) registerTaint() {
-	in.mustRegister("taint-of", "List the provenance tags a value carries, e.g. (\"external:file\"). An untainted value gives ().",
+	in.mustRegisterOpaque("taint-of", "List the provenance tags a value carries, e.g. (\"external:file\"). An untainted value gives ().",
 		[]Param{{Name: "x", Type: "any"}}, false, func(c *Call) (Value, error) {
 			names := c.Args[0].Taint.Tags()
 			out := make([]Value, len(names))
@@ -16,7 +16,7 @@ func (in *Interp) registerTaint() {
 			}
 			return List(out...), nil
 		})
-	in.mustRegister("tainted?", "True if a value carries any provenance tag.",
+	in.mustRegisterOpaque("tainted?", "True if a value carries any provenance tag.",
 		[]Param{{Name: "x", Type: "any"}}, false, func(c *Call) (Value, error) {
 			return Bool(!c.Args[0].Taint.IsClean()), nil
 		})

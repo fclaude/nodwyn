@@ -30,7 +30,7 @@ func (Egress) Name() string { return "egress" }
 
 // Check returns the binding verdict for one application.
 func (e Egress) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
-	f := e.Table.FactsOf(p, args)
+	f := egressFactsOf(p, args)
 	if !f.HasCredential {
 		// Not a secret-bearing egress: this checker has no opinion.
 		return Decision{Verdict: Allow}

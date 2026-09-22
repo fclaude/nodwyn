@@ -29,7 +29,7 @@ This is the spine. Read these in order and you have read the system.
 | Step | Where | What to notice |
 |---|---|---|
 | 1 | [internal/frontend/plain/chat.go](../internal/frontend/plain/chat.go) `Run` | reads a line, calls `Session.Send`, then only renders events until `status idle` |
-| 2 | [internal/core/session.go](../internal/core/session.go) `Send` | one goroutine per turn; `Record` writes the log *and* emits the event; `confirm` is an event plus a wait on `Answer` |
+| 2 | [internal/core/session.go](../internal/core/session.go) `Send` | one goroutine per turn; [events.go](../internal/core/events.go) records and emits; [confirm.go](../internal/core/confirm.go) handles a prompt plus a wait on `Answer` |
 | 3 | [internal/loop/loop.go](../internal/loop/loop.go) `Turn` | rebuilds the window from `EventsSoFar()` every request; tool calls become `runTool` |
 | 4 | [internal/window/window.go](../internal/window/window.go) `Build` | elides oldest tool results *in place* so the request prefix never changes |
 | 5 | [internal/llm/ollama.go](../internal/llm/ollama.go) `Chat` | native `/api/chat` streaming; thinking separated; tool-call args stay JSON objects |
@@ -50,10 +50,14 @@ This is the spine. Read these in order and you have read the system.
 | `internal/llm` | the provider seam and the Ollama client | `llm.go` `Provider` |
 | `internal/window` | the derived context | `Build` |
 | `internal/loop` | the agent loop | `Turn`, `runTool` |
-| `internal/core` | the UI-agnostic session façade | `session.go` `New`, `Send`, `confirm` |
+| `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
+| `internal/plan` | the plan gate and bounded revision policy | `gate.go` `Run` |
+| `internal/keychain` | encrypted credentials, opaque handles and injection | `keychain.go` |
+| `internal/binding` | binding loading and authorization lookup | `binding.go` `Lookup`; Scheme call decoding lives in `guard/egress_facts.go` |
+| `internal/redact`, `internal/detect/l1` | text redaction and credential-shape detection | `redact.go`, `l1.go` |
 | `internal/event` | what a front-end sees | `event.go` |
 | `internal/log` | the append-only log | `log.go` `Append`, `Replay` |
-| `internal/config` | XDG paths, config.toml, bindings.toml, allow.toml | `Default`, `Validate` |
+| `internal/config` | XDG paths, config.toml and allow.toml | `Default`, `Validate` |
 | `internal/frontend/plain` | line mode and replay | `chat.go` `show` |
 | `cmd/nibb` | flags → core → front-end; nothing else | `main.go` |
 | `dev/`, `.nibb/` | this repository's own tools and standing approvals | `dev/go.scm` |

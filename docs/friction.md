@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · readability refactor · implemented with an external agent under ADR 16 after reviewing the spec and roadmap; acceptance and fresh race tests passed · no claim of nibb self-authorship · preserve shared credential and integration boundaries while simplifying the code inside them
 - 2026-09-22 · P7 · implemented with an external agent under ADR 16, validated with the candidate selfcheck · no claim of nibb self-authorship · model output is now buffered because per-token redaction cannot safely recognize split credentials
 - 2026-09-22 · P6 · the doc-coverage test caught three undocumented builtins before they could ship · nothing, it failed the build · ADR 7's mechanical rule keeps paying for itself
 - 2026-09-22 · P5 review · the Jev client and its fake agreed on a protocol that does not exist; every test passed · a phase that would have failed on first contact with the API · rule for external APIs: fetch the docs and pin the wire shape in the fake's comments before writing the client

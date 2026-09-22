@@ -189,53 +189,66 @@ func (g *Guard) SetConfirmer(c Confirmer) {
 	g.confirmer = c
 }
 
-// Before is the Gate hook: it runs the checkers, asks the user if needed,
-// logs, and returns nil (allow) or a *scheme.Denied.
-func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value) error {
-	origin := string(scheme.OriginFrom(ctx))
-	final := Decision{Verdict: Allow}
-	var reasons []string
-	var details []string
-	checker := ""
-	standing := ""
-	security := false
+// checkResult keeps the policy verdict and its explanation together.
+type checkResult struct {
+	decision Decision
+	checker  string
+	reasons  []string
+	details  []string
+	standing string
+	security bool
+}
+
+// evaluate runs in registration order and stops at the first denial.
+// Standing approval only overrides ordinary confirmations.
+func (g *Guard) evaluate(ctx context.Context, p *scheme.Prim, args []scheme.Value) checkResult {
+	r := checkResult{decision: Decision{Verdict: Allow}}
 	for _, c := range g.checkers {
 		d := c.Check(ctx, p, args)
 		if d.Verdict == Allow {
-			if d.Standing && standing == "" {
-				standing = d.Reason
+			if d.Standing && r.standing == "" {
+				r.standing = d.Reason
 			}
 			continue
 		}
 		if d.Verdict == Confirm && d.Security {
-			security = true
+			r.security = true
 		}
-		reasons = append(reasons, d.Reason)
+		r.reasons = append(r.reasons, d.Reason)
 		if d.Detail != "" {
-			details = append(details, d.Detail)
+			r.details = append(r.details, d.Detail)
 		}
-		if d.Verdict > final.Verdict {
-			final = d
-			checker = c.Name()
+		if d.Verdict > r.decision.Verdict {
+			r.decision = d
+			r.checker = c.Name()
 		}
 		if d.Verdict == Deny {
 			break // nothing can relax a deny
 		}
 	}
-	detail := strings.Join(details, "\n\n")
-	if final.Verdict == Confirm && standing != "" && !security {
+	if r.decision.Verdict == Confirm && r.standing != "" && !r.security {
 		// The user approved this ahead of time (a command prefix or a write
 		// path). The detail — a diff — goes to the log since nobody saw it.
-		final = Decision{Verdict: Allow, Standing: true, Reason: standing}
-		reasons = []string{standing}
-		checker = "standing"
+		r.decision = Decision{Verdict: Allow, Standing: true, Reason: r.standing}
+		r.reasons = []string{r.standing}
+		r.checker = "standing"
 	}
+	return r
+}
+
+// Before is the Gate hook: it runs the checkers, asks the user if needed,
+// logs, and returns nil (allow) or a *scheme.Denied.
+func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value) error {
+	origin := string(scheme.OriginFrom(ctx))
+	result := g.evaluate(ctx, p, args)
+	final := result.decision
+	detail := strings.Join(result.details, "\n\n")
 	rec := log.GuardDecision{
 		Prim:     p.Name,
 		Origin:   origin,
 		Decision: final.Verdict.String(),
-		Checker:  checker,
-		Reason:   strings.Join(reasons, "; "),
+		Checker:  result.checker,
+		Reason:   strings.Join(result.reasons, "; "),
 		Args:     summarizeArgs(args),
 	}
 	if final.Standing {
@@ -259,7 +272,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 	ok, err := g.confirmer.Confirm(ctx, Prompt{
 		Prim:    p.Name,
 		Args:    rec.Args,
-		Reasons: reasons,
+		Reasons: result.reasons,
 		Detail:  detail,
 		Argv:    argvArgs(p, args),
 		Path:    writePath,

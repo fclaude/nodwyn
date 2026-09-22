@@ -7,10 +7,10 @@ func (in *Interp) registerVectors() {
 	in.mustRegister("vector", "Build a vector from its arguments.", nil, true, func(c *Call) (Value, error) {
 		return Vec(c.Args...), nil
 	})
-	in.mustRegister("vector?", "True for vectors.", any1, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("vector?", "True for vectors.", any1, false, func(c *Call) (Value, error) {
 		return Bool(c.Args[0].Kind == KVec), nil
 	})
-	in.mustRegister("vector-length", "Number of elements in a vector.", v, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("vector-length", "Number of elements in a vector.", v, false, func(c *Call) (Value, error) {
 		if c.Args[0].Kind != KVec {
 			return Value{}, c.typeErr(0, "vector")
 		}

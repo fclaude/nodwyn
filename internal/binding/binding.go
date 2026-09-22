@@ -1,23 +1,15 @@
-// Package binding is the egress authority (SPEC "Egress authority"): the
-// user-owned binding table and the extraction of a call's egress facts.
-// A secret class is authorized for exactly the (dest, positions, methods) it
-// is bound to; anything else is unbound.
-//
-// This package owns the table and the lookup only. It imports the
-// interpreter value type (to read a call's credential/dest/method) but not
-// the guard, so the guard can consume the check without a cycle. Deciding
-// what an unbound call does (deny or confirm) is the guard's job (ADR 6).
+// Package binding owns the user-defined egress authorization table.
+// It loads bindings and matches classes, destinations, methods and positions.
+// The guard interprets Scheme calls and decides what an unbound call does.
 package binding
 
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/fclaude/nibb/internal/scheme"
 )
 
 // Binding is one row of the binding table: a secret class authorized for
@@ -54,41 +46,6 @@ func Load(path string) (Table, error) {
 		}
 	}
 	return t, nil
-}
-
-// Facts is what E3 needs to judge a call: whether it carries a credential,
-// the credential's class, and the destination host, method and requested
-// injection position if present.
-type Facts struct {
-	HasCredential bool
-	Class         string // credential class; "" if the argument is not a handle
-	Host          string // destination hostname (lower-cased)
-	Method        string // HTTP method, if the prim declares one
-	Position      string // requested injection position, e.g. "header:Authorization"
-}
-
-// FactsOf extracts the egress facts of a primitive application.
-func (t Table) FactsOf(p *scheme.Prim, args []scheme.Value) Facts {
-	var f Facts
-	if p.Meta.Egress {
-		if i := credIndex(p, args); i >= 0 {
-			// HasCredential is true only when the credential slot is actually
-			// filled with a handle. A non-handle in the slot is not a valid
-			// credential-bearing call: the guard's other checkers still apply,
-			// but E3 has no binding to check.
-			if class, ok := credClass(args[i]); ok {
-				f.HasCredential = true
-				f.Class = class
-			}
-		}
-		f.Host = destHost(p, args)
-		if f.Host == "" && p.Meta.EgressHost != "" {
-			f.Host = strings.ToLower(p.Meta.EgressHost)
-		}
-		f.Method = methodArg(p, args)
-		f.Position = positionArg(p, args)
-	}
-	return f
 }
 
 // Lookup reports whether (class, host, method, position) is bound by any
@@ -133,61 +90,6 @@ func (t Table) rows(class string) []Binding {
 	return out
 }
 
-// credIndex returns the argument index of the primitive's credential, or -1.
-func credIndex(p *scheme.Prim, args []scheme.Value) int {
-	for i, pa := range p.Meta.Params {
-		if pa.Role == "credential" && i < len(args) {
-			return i
-		}
-	}
-	return -1
-}
-
-// credClass returns the credential's class (from the handle), or "" if the
-// argument is not a handle.
-func credClass(v scheme.Value) (string, bool) {
-	if v.Kind != scheme.KHandle {
-		return "", false
-	}
-	return v.H.Class, true
-}
-
-// destHost returns the destination hostname: the URL argument's host if the
-// primitive declares a "dest" role parameter, else "".
-func destHost(p *scheme.Prim, args []scheme.Value) string {
-	for i, pa := range p.Meta.Params {
-		if pa.Role == "dest" && i < len(args) && args[i].Kind == scheme.KString {
-			if u, err := url.Parse(args[i].S); err == nil {
-				return strings.ToLower(u.Hostname())
-			}
-			return strings.ToLower(args[i].S)
-		}
-	}
-	return ""
-}
-
-// methodArg returns the method argument if the primitive declares a
-// "method" role parameter, else "".
-func methodArg(p *scheme.Prim, args []scheme.Value) string {
-	for i, pa := range p.Meta.Params {
-		if pa.Role == "method" && i < len(args) && args[i].Kind == scheme.KString {
-			return args[i].S
-		}
-	}
-	return ""
-}
-
-// positionArg returns the requested injection position if the primitive
-// declares a "position" role parameter, else "".
-func positionArg(p *scheme.Prim, args []scheme.Value) string {
-	for i, pa := range p.Meta.Params {
-		if pa.Role == "position" && i < len(args) && args[i].Kind == scheme.KString {
-			return args[i].S
-		}
-	}
-	return ""
-}
-
 func hostMatches(bound, host string) bool {
 	bound = strings.ToLower(bound)
 	if bound == host {
@@ -224,4 +126,18 @@ func Position(pos string) (where, name, prefix string) {
 		prefix = parts[2] + " "
 	}
 	return where, name, prefix
+}
+
+// HasDestination reports whether any binding authorizes something at host.
+// It deliberately ignores credential class, method and position (L2 policy).
+func (t Table) HasDestination(host string) bool {
+	if host == "" {
+		return false
+	}
+	for _, row := range t.Bind {
+		if hostMatches(row.Dest, host) {
+			return true
+		}
+	}
+	return false
 }

@@ -1,9 +1,8 @@
 package scheme
 
 import (
-	"sort"
+	"slices"
 	"strings"
-	"sync"
 )
 
 // Taint is the provenance tag every value carries (SPEC L2, Phase 6): where
@@ -11,11 +10,9 @@ import (
 // "external:file", "external:shell" or "cred:jev-key"; a value may carry
 // several, and the union of a call's arguments flows into its result.
 //
-// Representation: a 64-bit set over an interned tag table, so a Value stays
-// a value type, a union is one OR, and "clean" stays a zero comparison. The
-// 64th slot is the overflow bit: a process that mints more than 63 distinct
-// tags marks the rest as tainted-but-unattributed, which is less precise and
-// never less safe.
+// Representation: an immutable, sorted set of names. Copies of a Value may
+// share the backing slice; constructors and Union never modify existing sets,
+// and Tags returns a copy. Attribution has no process-global registry or cap.
 //
 // Scope, stated plainly (SPEC Risk 1): L2 stops the *model* piping a tool
 // result into an egress by accident. It is not a boundary against a user,
@@ -23,13 +20,8 @@ import (
 // character by character through predicates. The real egress lines are the
 // binding check, fail-closed defaults, and ingress redaction.
 type Taint struct {
-	bits uint64
+	names []string
 }
-
-const (
-	overflowBit = uint64(1) << 63
-	maxTags     = 63
-)
 
 // Tag names for the sources the harness itself mints.
 const (
@@ -48,80 +40,30 @@ const (
 	CredPrefix     = "cred:"
 )
 
-var tags struct {
-	mu   sync.RWMutex
-	bit  map[string]uint64
-	name []string // index i holds the tag for bit 1<<i
-}
-
 // TaintOf returns the taint carrying exactly the named tags.
 func TaintOf(names ...string) Taint {
-	var t Taint
-	for _, n := range names {
-		t.bits |= bitFor(n)
-	}
-	return t
+	names = slices.Clone(names)
+	slices.Sort(names)
+	return Taint{names: slices.Compact(names)}
 }
 
-func bitFor(name string) uint64 {
-	tags.mu.RLock()
-	b, ok := tags.bit[name]
-	tags.mu.RUnlock()
-	if ok {
-		return b
-	}
-	tags.mu.Lock()
-	defer tags.mu.Unlock()
-	if b, ok := tags.bit[name]; ok {
-		return b
-	}
-	if tags.bit == nil {
-		tags.bit = make(map[string]uint64)
-	}
-	if len(tags.name) >= maxTags {
-		return overflowBit
-	}
-	b = uint64(1) << uint(len(tags.name))
-	tags.bit[name] = b
-	tags.name = append(tags.name, name)
-	return b
-}
-
-// Union combines taints.
+// Union combines taints without changing any input's backing storage.
 func Union(ts ...Taint) Taint {
-	var out Taint
+	var names []string
 	for _, t := range ts {
-		out.bits |= t.bits
+		names = append(names, t.names...)
 	}
-	return out
+	return TaintOf(names...)
 }
 
 // IsClean reports whether the value carries no taint.
-func (t Taint) IsClean() bool { return t.bits == 0 }
+func (t Taint) IsClean() bool { return len(t.names) == 0 }
 
 // Has reports whether t carries the named tag.
-func (t Taint) Has(name string) bool { return t.bits&bitFor(name) != 0 }
+func (t Taint) Has(name string) bool { return slices.Contains(t.names, name) }
 
-// Tags returns the tag names, sorted. An overflowed taint reports
-// "tainted:unattributed".
-func (t Taint) Tags() []string {
-	if t.bits == 0 {
-		return nil
-	}
-	tags.mu.RLock()
-	defer tags.mu.RUnlock()
-	var out []string
-	for i, n := range tags.name {
-		if t.bits&(uint64(1)<<uint(i)) != 0 {
-			out = append(out, n)
-		}
-	}
-	if t.bits&overflowBit != 0 {
-		out = append(out, "tainted:unattributed")
-	}
-	sort.Strings(out)
-	return out
-}
+// Tags returns a copy of the tag names in sorted order.
+func (t Taint) Tags() []string { return slices.Clone(t.names) }
 
 // String renders the tags for a log line or a guard reason.
 func (t Taint) String() string { return strings.Join(t.Tags(), ",") }
@@ -140,7 +82,7 @@ func (t Taint) Creds() []string {
 
 func (t Taint) filter(prefix string) []string {
 	var out []string
-	for _, n := range t.Tags() {
+	for _, n := range t.names {
 		if strings.HasPrefix(n, prefix) {
 			out = append(out, n)
 		}

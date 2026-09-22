@@ -28,8 +28,14 @@ type Chat struct {
 	// Interrupt receives a value per Ctrl-C; nil disables.
 	Interrupt <-chan struct{}
 
-	lines  *lineReader
-	recent []event.Event
+	lines         *lineReader
+	recent        []event.Event
+	lastWasStream bool
+	// Streaming state belongs to this frontend, not the process.
+	stream struct {
+		mode        string
+		atLineStart bool
+	}
 }
 
 // Run drives the session until :q or EOF.
@@ -108,15 +114,6 @@ func (c *Chat) follow(ctx context.Context) {
 	}
 }
 
-var lastWasStream bool
-
-// stream tracks where we are in the streamed output so thinking fragments
-// can be prefixed once per line, not once per fragment.
-var stream struct {
-	mode        string // "" | "thinking" | "text"
-	atLineStart bool
-}
-
 // writeStream renders one streamed fragment. Thinking lines are prefixed
 // with a dim marker at the start of each line; switching between thinking
 // and text starts a fresh line.
@@ -124,25 +121,25 @@ func (c *Chat) writeStream(mode, text string) {
 	if text == "" {
 		return
 	}
-	if stream.mode != mode {
-		if stream.mode != "" && !stream.atLineStart {
+	if c.stream.mode != mode {
+		if c.stream.mode != "" && !c.stream.atLineStart {
 			fmt.Fprintln(c.Out)
 		}
-		stream.mode, stream.atLineStart = mode, true
+		c.stream.mode, c.stream.atLineStart = mode, true
 	}
 	var b strings.Builder
 	for _, r := range text {
-		if stream.atLineStart && mode == "thinking" {
+		if c.stream.atLineStart && mode == "thinking" {
 			b.WriteString("· ")
 		}
-		stream.atLineStart = false
+		c.stream.atLineStart = false
 		b.WriteRune(r)
 		if r == '\n' {
-			stream.atLineStart = true
+			c.stream.atLineStart = true
 		}
 	}
 	fmt.Fprint(c.Out, b.String())
-	lastWasStream = true
+	c.lastWasStream = true
 }
 
 func (c *Chat) show(ev event.Event) {
@@ -153,13 +150,13 @@ func (c *Chat) show(ev event.Event) {
 		}
 	}
 	endStream := func() {
-		if lastWasStream {
-			if !stream.atLineStart {
+		if c.lastWasStream {
+			if !c.stream.atLineStart {
 				fmt.Fprintln(c.Out)
 			}
-			lastWasStream = false
+			c.lastWasStream = false
 		}
-		stream.mode, stream.atLineStart = "", true
+		c.stream.mode, c.stream.atLineStart = "", true
 	}
 	switch ev.Kind {
 	case event.StreamThinking:

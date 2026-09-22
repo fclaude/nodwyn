@@ -38,12 +38,17 @@ import (
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
-// JevClient is what the Jev primitives need from the core session.
+// JevOptions are fixed for the session, separate from the host services.
+type JevOptions struct {
+	URL     string
+	Model   string
+	Content string
+	Timeout time.Duration
+}
+
+// JevClient supplies the shared host services used by Jev primitives.
+// Credential values remain behind injection; handlers never open the keychain.
 type JevClient interface {
-	BaseURL() string // e.g. https://api.typesafe.ai
-	Model() string   // e.g. jev-latest
-	Timeout() time.Duration
-	Level() string // jev.content level, recorded per call
 	Redactor() *l1.Scanner
 	InjectHeader(id, name, prefix string, req *http.Request) error
 	Do(req *http.Request) (*http.Response, error)
@@ -55,11 +60,11 @@ const jevPath = "/v1/systemone"
 // jevHost is the destination the E3 binding check judges: the host of the
 // configured base URL, so the log never claims one host while bytes go to
 // another. Bind class jev-key to it (api.typesafe.ai in production).
-func jevHost(jc JevClient) string {
-	if u, err := url.Parse(jc.BaseURL()); err == nil && u.Host != "" {
+func jevHost(o JevOptions) string {
+	if u, err := url.Parse(o.URL); err == nil && u.Host != "" {
 		return strings.ToLower(u.Hostname())
 	}
-	return strings.ToLower(jc.BaseURL())
+	return strings.ToLower(o.URL)
 }
 
 // question is one System One question.
@@ -70,7 +75,7 @@ type question struct {
 }
 
 // jevCall sends one question about state and returns its answer object.
-func jevCall(jc JevClient, c *scheme.Call, tool, state string, q question) (map[string]any, error) {
+func jevCall(o JevOptions, jc JevClient, c *scheme.Call, tool, state string, q question) (map[string]any, error) {
 	if c.Args[0].Kind != scheme.KHandle {
 		return nil, fmt.Errorf("%s: arg 1 must be a credential handle", tool)
 	}
@@ -86,7 +91,7 @@ func jevCall(jc JevClient, c *scheme.Call, tool, state string, q question) (map[
 
 	body := map[string]any{
 		"state":     rstate,
-		"model":     jc.Model(),
+		"model":     o.Model,
 		"questions": map[string]question{"q": q},
 	}
 	enc, err := json.Marshal(body)
@@ -97,19 +102,19 @@ func jevCall(jc JevClient, c *scheme.Call, tool, state string, q question) (map[
 	hash := hex.EncodeToString(sum[:8])
 	record := func(ok bool, errText string, answer any) {
 		_, _ = jc.Record(nlog.KindJevReq, nlog.JevReq{
-			Tool: tool, Level: jc.Level(), Bytes: len(enc), PayloadHash: hash,
+			Tool: tool, Level: o.Content, Bytes: len(enc), PayloadHash: hash,
 			Redactions: redactions, OK: ok, Error: errText, Answer: answer,
 		})
 	}
 
-	base, err := url.Parse(jc.BaseURL())
+	base, err := url.Parse(o.URL)
 	if err != nil {
 		record(false, err.Error(), nil)
 		return nil, fmt.Errorf("%s: base url: %w", tool, err)
 	}
 	u := *base
 	u.Path = jevPath
-	ctx, cancel := context.WithTimeout(c.Ctx, jc.Timeout())
+	ctx, cancel := context.WithTimeout(c.Ctx, o.Timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(enc))
 	if err != nil {
@@ -167,14 +172,14 @@ func credParam() scheme.Param {
 
 // jevNoul: (jev-noul cred state instructions) -> probability that the
 // answer to the yes/no instructions about state is yes.
-func jevNoul(jc JevClient) *scheme.Prim {
+func jevNoul(o JevOptions, jc JevClient) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "jev-noul",
 		Meta: scheme.Meta{
 			Doc:         "Ask Jev a yes/no question about a text: returns the probability (0..1) that the answer is yes.",
 			Egress:      true,
 			Host:        true,
-			EgressHost:  jevHost(jc),
+			EgressHost:  jevHost(o),
 			TaintSource: scheme.TagHTTP,
 			Params: []scheme.Param{credParam(),
 				{Name: "state", Type: "string", Role: "payload", Doc: "the text to judge (redacted before send)"},
@@ -190,7 +195,7 @@ func jevNoul(jc JevClient) *scheme.Prim {
 			if err != nil {
 				return scheme.Void, err
 			}
-			ans, err := jevCall(jc, c, "jev-noul", state, question{Type: "noul", Instructions: instr})
+			ans, err := jevCall(o, jc, c, "jev-noul", state, question{Type: "noul", Instructions: instr})
 			if err != nil {
 				return scheme.Void, err
 			}
@@ -206,14 +211,14 @@ func jevNoul(jc JevClient) *scheme.Prim {
 // jevScore: (jev-score cred state instructions levels) -> alist with the
 // score normalised to 0..1, the raw score, the level count and confidence.
 // levels is a list of 2..10 descriptions from low to high.
-func jevScore(jc JevClient) *scheme.Prim {
+func jevScore(o JevOptions, jc JevClient) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "jev-score",
 		Meta: scheme.Meta{
 			Doc:         "Rate a text along an ordered rubric: returns ((\"score\" . 0..1) (\"raw\" . n) (\"levels\" . k) (\"confidence\" . c)).",
 			Egress:      true,
 			Host:        true,
-			EgressHost:  jevHost(jc),
+			EgressHost:  jevHost(o),
 			TaintSource: scheme.TagHTTP,
 			Params: []scheme.Param{credParam(),
 				{Name: "state", Type: "string", Role: "payload", Doc: "the text to rate (redacted before send)"},
@@ -244,7 +249,7 @@ func jevScore(jc JevClient) *scheme.Prim {
 				}
 				levels[i] = it.S
 			}
-			ans, err := jevCall(jc, c, "jev-score", state, question{Type: "score", Instructions: instr, Criteria: levels})
+			ans, err := jevCall(o, jc, c, "jev-score", state, question{Type: "score", Instructions: instr, Criteria: levels})
 			if err != nil {
 				return scheme.Void, err
 			}
@@ -268,14 +273,14 @@ func jevScore(jc JevClient) *scheme.Prim {
 // chosen option, confidence and the probability of each option. options is
 // an alist of option name -> description (Seam C: class, destination and
 // scope go in state; the options are what to do).
-func jevChoice(jc JevClient) *scheme.Prim {
+func jevChoice(o JevOptions, jc JevClient) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "jev-choice",
 		Meta: scheme.Meta{
 			Doc:         "Pick one of several options for a text: returns ((\"choice\" . name) (\"confidence\" . c) (\"probabilities\" . ((name . p) ...))).",
 			Egress:      true,
 			Host:        true,
-			EgressHost:  jevHost(jc),
+			EgressHost:  jevHost(o),
 			TaintSource: scheme.TagHTTP,
 			Params: []scheme.Param{credParam(),
 				{Name: "state", Type: "string", Role: "payload", Doc: "the situation to judge (redacted before send)"},
@@ -306,7 +311,7 @@ func jevChoice(jc JevClient) *scheme.Prim {
 			if len(opts) < 2 {
 				return scheme.Void, fmt.Errorf("jev-choice: at least two options are required")
 			}
-			ans, err := jevCall(jc, c, "jev-choice", state, question{Type: "choice", Instructions: instr, Criteria: opts})
+			ans, err := jevCall(o, jc, c, "jev-choice", state, question{Type: "choice", Instructions: instr, Criteria: opts})
 			if err != nil {
 				return scheme.Void, err
 			}

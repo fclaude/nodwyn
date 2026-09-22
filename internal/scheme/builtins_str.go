@@ -8,21 +8,18 @@ import (
 func (in *Interp) registerStrings() {
 	s1 := []Param{{Name: "s", Type: "string"}}
 	any1 := []Param{{Name: "x", Type: "any"}}
-	str := func(name, doc string, params []Param, variadic bool, h func(c *Call) (Value, error)) {
-		in.mustRegister(name, doc, params, variadic, h)
-	}
 
-	in.mustRegister("string?", "True for strings.", any1, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("string?", "True for strings.", any1, false, func(c *Call) (Value, error) {
 		return Bool(c.Args[0].Kind == KString), nil
 	})
-	str("string-length", "Length in runes.", s1, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("string-length", "Length in runes.", s1, false, func(c *Call) (Value, error) {
 		s, err := c.String(0)
 		if err != nil {
 			return Value{}, err
 		}
 		return Int(int64(utf8.RuneCountInString(s))), nil
 	})
-	str("string-append", "Concatenate strings.", nil, true, func(c *Call) (Value, error) {
+	in.mustRegister("string-append", "Concatenate strings.", nil, true, func(c *Call) (Value, error) {
 		var sb strings.Builder
 		for i := range c.Args {
 			s, err := c.String(i)
@@ -33,7 +30,7 @@ func (in *Interp) registerStrings() {
 		}
 		return Str(sb.String()), nil
 	})
-	str("substring", "Runes from start to end (exclusive); end defaults to the length.", []Param{{Name: "s", Type: "string"}, {Name: "start", Type: "integer"}}, true, func(c *Call) (Value, error) {
+	in.mustRegister("substring", "Runes from start to end (exclusive); end defaults to the length.", []Param{{Name: "s", Type: "string"}, {Name: "start", Type: "integer"}}, true, func(c *Call) (Value, error) {
 		s, err := c.String(0)
 		if err != nil {
 			return Value{}, err
@@ -58,7 +55,7 @@ func (in *Interp) registerStrings() {
 		return Str(string(runes[start:end])), nil
 	})
 	strCmp := func(name, doc string, ok func(a, b string) bool) {
-		str(name, doc, []Param{{Name: "a", Type: "string"}, {Name: "b", Type: "string"}}, true, func(c *Call) (Value, error) {
+		in.mustRegisterOpaque(name, doc, []Param{{Name: "a", Type: "string"}, {Name: "b", Type: "string"}}, true, func(c *Call) (Value, error) {
 			for i := 0; i+1 < len(c.Args); i++ {
 				a, err := c.String(i)
 				if err != nil {
@@ -78,7 +75,7 @@ func (in *Interp) registerStrings() {
 	strCmp("string=?", "String equality chain.", func(a, b string) bool { return a == b })
 	strCmp("string<?", "Lexicographic ordering chain.", func(a, b string) bool { return a < b })
 	mapStr := func(name, doc string, f func(string) string) {
-		str(name, doc, s1, false, func(c *Call) (Value, error) {
+		in.mustRegister(name, doc, s1, false, func(c *Call) (Value, error) {
 			s, err := c.String(0)
 			if err != nil {
 				return Value{}, err
@@ -90,7 +87,7 @@ func (in *Interp) registerStrings() {
 	mapStr("string-downcase", "Lower-case the string.", strings.ToLower)
 	mapStr("string-trim", "Strip leading and trailing whitespace.", strings.TrimSpace)
 
-	str("string-split", "Split s on a literal separator.", []Param{{Name: "s", Type: "string"}, {Name: "sep", Type: "string"}}, false, func(c *Call) (Value, error) {
+	in.mustRegister("string-split", "Split s on a literal separator.", []Param{{Name: "s", Type: "string"}, {Name: "sep", Type: "string"}}, false, func(c *Call) (Value, error) {
 		s, err := c.String(0)
 		if err != nil {
 			return Value{}, err
@@ -109,7 +106,7 @@ func (in *Interp) registerStrings() {
 		}
 		return List(out...), nil
 	})
-	str("string-join", "Join a list of strings with a separator.", []Param{{Name: "l", Type: "list"}, {Name: "sep", Type: "string"}}, false, func(c *Call) (Value, error) {
+	in.mustRegister("string-join", "Join a list of strings with a separator.", []Param{{Name: "l", Type: "list"}, {Name: "sep", Type: "string"}}, false, func(c *Call) (Value, error) {
 		items, err := c.List(0)
 		if err != nil {
 			return Value{}, err
@@ -128,7 +125,7 @@ func (in *Interp) registerStrings() {
 		return Str(strings.Join(parts, sep)), nil
 	})
 	two := func(name, doc, a, b string, f func(x, y string) bool) {
-		str(name, doc, []Param{{Name: a, Type: "string"}, {Name: b, Type: "string"}}, false, func(c *Call) (Value, error) {
+		in.mustRegisterOpaque(name, doc, []Param{{Name: a, Type: "string"}, {Name: b, Type: "string"}}, false, func(c *Call) (Value, error) {
 			x, err := c.String(0)
 			if err != nil {
 				return Value{}, err
@@ -143,7 +140,7 @@ func (in *Interp) registerStrings() {
 	two("string-contains?", "True if sub occurs in s.", "s", "sub", strings.Contains)
 	two("string-prefix?", "True if s starts with prefix.", "prefix", "s", func(p, s string) bool { return strings.HasPrefix(s, p) })
 	two("string-suffix?", "True if s ends with suffix.", "suffix", "s", func(p, s string) bool { return strings.HasSuffix(s, p) })
-	str("string-replace", "Replace every occurrence of old with new.", []Param{{Name: "s", Type: "string"}, {Name: "old", Type: "string"}, {Name: "new", Type: "string"}}, false, func(c *Call) (Value, error) {
+	in.mustRegister("string-replace", "Replace every occurrence of old with new.", []Param{{Name: "s", Type: "string"}, {Name: "old", Type: "string"}, {Name: "new", Type: "string"}}, false, func(c *Call) (Value, error) {
 		s, err := c.String(0)
 		if err != nil {
 			return Value{}, err
@@ -158,7 +155,7 @@ func (in *Interp) registerStrings() {
 		}
 		return Str(strings.ReplaceAll(s, old, nw)), nil
 	})
-	str("string->symbol", "The symbol with this name.", s1, false, func(c *Call) (Value, error) {
+	in.mustRegister("string->symbol", "The symbol with this name.", s1, false, func(c *Call) (Value, error) {
 		s, err := c.String(0)
 		if err != nil {
 			return Value{}, err
@@ -172,10 +169,10 @@ func (in *Interp) registerStrings() {
 		}
 		return Str(s), nil
 	})
-	in.mustRegister("symbol?", "True for symbols.", any1, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("symbol?", "True for symbols.", any1, false, func(c *Call) (Value, error) {
 		return Bool(c.Args[0].Kind == KSymbol), nil
 	})
-	str("format", "Format with ~a (display), ~s (write), ~% (newline), ~~ (tilde).", []Param{{Name: "fmt", Type: "string"}}, true, func(c *Call) (Value, error) {
+	in.mustRegister("format", "Format with ~a (display), ~s (write), ~% (newline), ~~ (tilde).", []Param{{Name: "fmt", Type: "string"}}, true, func(c *Call) (Value, error) {
 		f, err := c.String(0)
 		if err != nil {
 			return Value{}, err

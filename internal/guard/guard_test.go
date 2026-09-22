@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nibb/internal/binding"
+	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
@@ -19,6 +20,80 @@ func (f fixed) Name() string                                                 { r
 func (f fixed) Check(context.Context, *scheme.Prim, []scheme.Value) Decision { return f.d }
 
 var prim = &scheme.Prim{Name: "p", Meta: scheme.Meta{Doc: "d"}}
+
+type decisionLog struct {
+	decisions []log.GuardDecision
+}
+
+func (l *decisionLog) Record(_ log.Kind, payload any) (log.Event, error) {
+	l.decisions = append(l.decisions, payload.(log.GuardDecision))
+	return log.Event{}, nil
+}
+
+func TestDecisionExplanationPreservesCheckerOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		checkers   []Checker
+		decision   string
+		checker    string
+		reason     string
+		detail     string
+		wantPrompt bool
+	}{
+		{
+			name: "confirmation reasons retain order",
+			checkers: []Checker{
+				fixed{"first", Decision{Verdict: Confirm, Reason: "first reason", Detail: "first detail"}},
+				fixed{"second", Decision{Verdict: Confirm, Reason: "second reason", Detail: "second detail"}},
+			},
+			decision: "confirm", checker: "first", reason: "first reason; second reason",
+			detail: "first detail\n\nsecond detail", wantPrompt: true,
+		},
+		{
+			name: "first denial stops evaluation",
+			checkers: []Checker{
+				fixed{"first", Decision{Verdict: Confirm, Reason: "confirm reason"}},
+				fixed{"denial", Decision{Verdict: Deny, Reason: "deny reason"}},
+				fixed{"later", Decision{Verdict: Deny, Reason: "must not run"}},
+			},
+			decision: "deny", checker: "denial", reason: "confirm reason; deny reason",
+		},
+		{
+			name: "security confirmation survives standing approval",
+			checkers: []Checker{
+				fixed{"standing", Decision{Verdict: Allow, Standing: true, Reason: "approved"}},
+				fixed{"security", Decision{Verdict: Confirm, Security: true, Reason: "secret", Detail: "review"}},
+			},
+			decision: "confirm", checker: "security", reason: "secret", detail: "review", wantPrompt: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var recorded decisionLog
+			var prompts []Prompt
+			g := New(ConfirmFunc(func(_ context.Context, p Prompt) (bool, error) {
+				prompts = append(prompts, p)
+				return true, nil
+			}), &recorded, tc.checkers...)
+			err := g.Before(context.Background(), prim, nil)
+			if (err != nil) != (tc.decision == "deny") {
+				t.Fatalf("decision error: %v", err)
+			}
+			if len(recorded.decisions) != 1 {
+				t.Fatalf("decisions: %+v", recorded.decisions)
+			}
+			got := recorded.decisions[0]
+			if got.Decision != tc.decision || got.Checker != tc.checker || got.Reason != tc.reason {
+				t.Fatalf("unexpected explanation: %+v", got)
+			}
+			if (len(prompts) == 1) != tc.wantPrompt {
+				t.Fatalf("prompts: %+v", prompts)
+			}
+			if tc.wantPrompt && (prompts[0].Detail != tc.detail || strings.Join(prompts[0].Reasons, "; ") != tc.reason || got.Answer != "yes") {
+				t.Fatalf("prompt and record disagree: %+v, %+v", prompts[0], got)
+			}
+		})
+	}
+}
 
 func TestStrictestVerdictWins(t *testing.T) {
 	asked := 0

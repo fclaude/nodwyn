@@ -46,7 +46,7 @@ func (t Taint) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) D
 
 	// A credential class in a payload is judged like the handle itself.
 	if classes := payload.Creds(); len(classes) > 0 && p.Meta.Egress {
-		facts := t.Table.FactsOf(p, args)
+		facts := egressFactsOf(p, args)
 		for _, class := range classes {
 			if bound, _ := t.Table.Lookup(class, facts.Host, facts.Method, ""); !bound {
 				return Decision{Verdict: Deny, Reason: "a value derived from credential class " + class + " is not bound for " + destOf(facts)}
@@ -55,8 +55,8 @@ func (t Taint) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) D
 	}
 
 	if ext := payload.Externals(); len(ext) > 0 && p.Meta.Egress {
-		facts := t.Table.FactsOf(p, args)
-		if !t.knownDestination(facts.Host) {
+		facts := egressFactsOf(p, args)
+		if !t.Table.HasDestination(facts.Host) {
 			verdict := Deny
 			if t.Policy == "confirm" {
 				verdict = Confirm
@@ -75,21 +75,7 @@ func (t Taint) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) D
 	return Decision{Verdict: Allow}
 }
 
-// knownDestination reports whether any binding row names this host: the
-// user has authorised *something* to go there.
-func (t Taint) knownDestination(host string) bool {
-	if host == "" {
-		return false
-	}
-	for _, row := range t.Table.Bind {
-		if bound, _ := (binding.Table{Bind: []binding.Binding{row}}).Lookup(row.Class, host, "", ""); bound {
-			return true
-		}
-	}
-	return false
-}
-
-func destOf(f binding.Facts) string {
+func destOf(f egressFacts) string {
 	if f.Host == "" {
 		return "an unnamed destination"
 	}

@@ -26,16 +26,11 @@ import (
 // jevStore implements prim.JevClient for the Jev exfil harness.
 type jevStore struct {
 	kc        *keychain.Store
-	srv       *fakejev.Server
 	captured  *http.Request
 	bodyBytes []byte // captured request body
 }
 
-func (s *jevStore) BaseURL() string        { return s.srv.URL }
-func (s *jevStore) Model() string          { return "jev-latest" }
-func (s *jevStore) Timeout() time.Duration { return 10 * time.Second }
-func (s *jevStore) Level() string          { return "plan" }
-func (s *jevStore) Redactor() *l1.Scanner  { return l1.New() }
+func (s *jevStore) Redactor() *l1.Scanner { return l1.New() }
 func (s *jevStore) InjectHeader(id, name, prefix string, req *http.Request) error {
 	return s.kc.InjectHeader(id, name, prefix, req)
 }
@@ -88,13 +83,14 @@ func newJevHarness(t *testing.T, bound bool) *jevHarness {
 	t.Cleanup(srv.Close)
 
 	var logB strings.Builder
-	store := &jevStore{kc: kc, srv: srv}
+	store := &jevStore{kc: kc}
 	rec := recorder{nlog.New(&logB, "jev-test")}
 
 	in := scheme.New()
 	o := prim.DefaultOptions(repo)
 	o.Credentials = store
 	o.Jev = store
+	o.JevConfig = prim.JevOptions{URL: srv.URL, Model: "jev-latest", Content: "plan", Timeout: 10 * time.Second}
 	if err := prim.Register(in, o); err != nil {
 		t.Fatal(err)
 	}

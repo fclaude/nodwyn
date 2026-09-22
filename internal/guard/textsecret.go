@@ -49,7 +49,7 @@ func (ts TextSecret) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		return Decision{Verdict: Allow}
 	}
 	if p.Meta.Egress {
-		facts := ts.Table.FactsOf(p, args)
+		facts := egressFactsOf(p, args)
 		bound, reason := ts.Table.Lookup(f.Class, facts.Host, facts.Method, "")
 		if bound {
 			return Decision{Verdict: Allow, Reason: "literal " + f.Class + " is bound for " + facts.Host}

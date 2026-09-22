@@ -1,7 +1,7 @@
 // Package prim holds the host primitives: the Go handlers through which
 // Scheme — and therefore the model — touches the filesystem and processes.
-// Every one is registered with metadata the guard reads (ADR 4); none of
-// them talk to the network in bootstrap (plan §3.3).
+// Every one is registered with metadata the guard reads (ADR 4). Egress
+// handlers use shared host services for credentials and transport.
 package prim
 
 import (
@@ -27,11 +27,10 @@ type Options struct {
 	// The core implements CredentialStore: it owns the keychain, the masked
 	// input, and the log.
 	Credentials CredentialStore
-	// P5 Jev (ADR 19/20): the noul-gate service. nil disables the jev-noul /
-	// jev-score / jev-choice primitives (the gate is "plan" — file-only mode,
-	// ADR 20 degradation). The core implements JevClient: it owns the URL,
-	// timeout, content level, redactor, transport, and the jev.req log.
-	Jev JevClient
+	// Jev is optional: nil disables its primitives. The host owns credential
+	// injection, redaction, transport and recording; settings are ordinary data.
+	Jev       JevClient
+	JevConfig JevOptions
 }
 
 // DefaultOptions returns the bootstrap defaults for a repository root.
@@ -49,7 +48,7 @@ func DefaultOptions(root string) Options {
 	}
 }
 
-// Register adds the host primitives to in. When o.Keychain is set (P3) the
+// Register adds the host primitives to in. When o.Credentials is set (P3) the
 // egress primitives — http-request, credential-register — are registered
 // too; they are guarded by the E3 checker before they run.
 func Register(in *scheme.Interp, o Options) error {
@@ -70,7 +69,7 @@ func Register(in *scheme.Interp, o Options) error {
 		}
 	}
 	if o.Jev != nil {
-		for _, p := range []*scheme.Prim{jevNoul(o.Jev), jevScore(o.Jev), jevChoice(o.Jev)} {
+		for _, p := range []*scheme.Prim{jevNoul(o.JevConfig, o.Jev), jevScore(o.JevConfig, o.Jev), jevChoice(o.JevConfig, o.Jev)} {
 			if err := in.Register(p); err != nil {
 				return err
 			}

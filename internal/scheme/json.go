@@ -3,6 +3,10 @@ package scheme
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"strconv"
 	"strings"
 )
 
@@ -118,4 +122,170 @@ func checkParamType(pa Param, v Value) error {
 		return errorf("type", "expected %s, got %s", pa.Type, Write(v))
 	}
 	return nil
+}
+
+func (in *Interp) registerJSON() {
+	in.mustRegister("json-parse", "Parse JSON text into a value (objects become alists with string keys).", []Param{{Name: "s", Type: "string"}}, false, func(c *Call) (Value, error) {
+		s, err := c.String(0)
+		if err != nil {
+			return Value{}, err
+		}
+		dec := json.NewDecoder(strings.NewReader(s))
+		dec.UseNumber()
+		v, err := jsonDecode(dec)
+		if err != nil {
+			return Value{}, errorf(c.Name, "%v", err)
+		}
+		if _, err := dec.Token(); err != io.EOF {
+			return Value{}, errorf(c.Name, "trailing data after JSON value")
+		}
+		return v, nil
+	})
+	in.mustRegister("json-emit", "Render a value as compact JSON text.", []Param{{Name: "v", Type: "any"}}, false, func(c *Call) (Value, error) {
+		var buf bytes.Buffer
+		if err := jsonEncode(&buf, c.Args[0]); err != nil {
+			return Value{}, errorf(c.Name, "%v", err)
+		}
+		return Str(buf.String()), nil
+	})
+}
+
+func jsonDecode(dec *json.Decoder) (Value, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return Value{}, err
+	}
+	return jsonFromToken(dec, tok)
+}
+
+func jsonFromToken(dec *json.Decoder, tok json.Token) (Value, error) {
+	switch t := tok.(type) {
+	case nil:
+		return Sym("null"), nil
+	case bool:
+		return Bool(t), nil
+	case string:
+		return Str(t), nil
+	case json.Number:
+		if i, err := t.Int64(); err == nil {
+			return Int(i), nil
+		}
+		f, err := t.Float64()
+		if err != nil {
+			return Value{}, err
+		}
+		return Float(f), nil
+	case json.Delim:
+		switch t {
+		case '[':
+			var items []Value
+			for dec.More() {
+				v, err := jsonDecode(dec)
+				if err != nil {
+					return Value{}, err
+				}
+				items = append(items, v)
+			}
+			if _, err := dec.Token(); err != nil { // ]
+				return Value{}, err
+			}
+			return List(items...), nil
+		case '{':
+			var items []Value
+			for dec.More() {
+				kt, err := dec.Token()
+				if err != nil {
+					return Value{}, err
+				}
+				key, ok := kt.(string)
+				if !ok {
+					return Value{}, fmt.Errorf("object key is not a string")
+				}
+				v, err := jsonDecode(dec)
+				if err != nil {
+					return Value{}, err
+				}
+				items = append(items, Cons(Str(key), v))
+			}
+			if _, err := dec.Token(); err != nil { // }
+				return Value{}, err
+			}
+			return List(items...), nil
+		}
+	}
+	return Value{}, fmt.Errorf("unexpected token %v", tok)
+}
+
+func jsonEncode(buf *bytes.Buffer, v Value) error {
+	switch v.Kind {
+	case KNil:
+		buf.WriteString("[]")
+	case KBool:
+		if v.I != 0 {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+	case KInt:
+		buf.WriteString(strconv.FormatInt(v.I, 10))
+	case KFloat:
+		if math.IsNaN(v.F) || math.IsInf(v.F, 0) {
+			return fmt.Errorf("cannot emit %s", Write(v))
+		}
+		buf.WriteString(strconv.FormatFloat(v.F, 'g', -1, 64))
+	case KString:
+		b, _ := json.Marshal(v.S)
+		buf.Write(b)
+	case KSymbol:
+		if v.S != "null" {
+			return fmt.Errorf("cannot emit symbol %s", v.S)
+		}
+		buf.WriteString("null")
+	case KPair:
+		items, ok := v.Slice()
+		if !ok {
+			return fmt.Errorf("cannot emit improper list %s", Write(v))
+		}
+		if isAlist(items) {
+			buf.WriteByte('{')
+			for i, it := range items {
+				if i > 0 {
+					buf.WriteByte(',')
+				}
+				b, _ := json.Marshal(it.P.Car.S)
+				buf.Write(b)
+				buf.WriteByte(':')
+				if err := jsonEncode(buf, it.P.Cdr); err != nil {
+					return err
+				}
+			}
+			buf.WriteByte('}')
+			return nil
+		}
+		buf.WriteByte('[')
+		for i, it := range items {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			if err := jsonEncode(buf, it); err != nil {
+				return err
+			}
+		}
+		buf.WriteByte(']')
+	default:
+		return fmt.Errorf("cannot emit %s", Write(v))
+	}
+	return nil
+}
+
+func isAlist(items []Value) bool {
+	if len(items) == 0 {
+		return false
+	}
+	for _, it := range items {
+		if it.Kind != KPair || it.P.Car.Kind != KString {
+			return false
+		}
+	}
+	return true
 }

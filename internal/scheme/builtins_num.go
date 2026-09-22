@@ -6,20 +6,17 @@ import (
 )
 
 func (in *Interp) registerNumbers() {
-	num := func(name, doc string, params []Param, variadic bool, h func(c *Call) (Value, error)) {
-		in.mustRegister(name, doc, params, variadic, h)
-	}
 	n := func(name string) []Param { return []Param{{Name: name, Type: "number"}} }
 	nn := []Param{{Name: "a", Type: "number"}, {Name: "b", Type: "number"}}
 	ii := []Param{{Name: "n", Type: "integer"}, {Name: "m", Type: "integer"}}
 
-	num("+", "Sum of the arguments; (+) is 0.", nil, true, func(c *Call) (Value, error) {
+	in.mustRegister("+", "Sum of the arguments; (+) is 0.", nil, true, func(c *Call) (Value, error) {
 		return foldNum(c, Int(0), func(a, b Value) (Value, error) { return arith(a, b, '+') })
 	})
-	num("*", "Product of the arguments; (*) is 1.", nil, true, func(c *Call) (Value, error) {
+	in.mustRegister("*", "Product of the arguments; (*) is 1.", nil, true, func(c *Call) (Value, error) {
 		return foldNum(c, Int(1), func(a, b Value) (Value, error) { return arith(a, b, '*') })
 	})
-	num("-", "Subtract the rest from the first; (- n) negates.", n("n"), true, func(c *Call) (Value, error) {
+	in.mustRegister("-", "Subtract the rest from the first; (- n) negates.", n("n"), true, func(c *Call) (Value, error) {
 		first, err := c.Number(0)
 		if err != nil {
 			return Value{}, err
@@ -39,7 +36,7 @@ func (in *Interp) registerNumbers() {
 		}
 		return acc, nil
 	})
-	num("/", "Divide the first by the rest; (/ n) inverts. Exact integer division stays an integer, otherwise a float.", n("n"), true, func(c *Call) (Value, error) {
+	in.mustRegister("/", "Divide the first by the rest; (/ n) inverts. Exact integer division stays an integer, otherwise a float.", n("n"), true, func(c *Call) (Value, error) {
 		first, err := c.Number(0)
 		if err != nil {
 			return Value{}, err
@@ -60,7 +57,7 @@ func (in *Interp) registerNumbers() {
 		return acc, nil
 	})
 	cmp := func(name, doc string, ok func(a, b float64, ai, bi int64, ints bool) bool) {
-		num(name, doc, nn, true, func(c *Call) (Value, error) {
+		in.mustRegisterOpaque(name, doc, nn, true, func(c *Call) (Value, error) {
 			for i := 0; i+1 < len(c.Args); i++ {
 				a, err := c.Number(i)
 				if err != nil {
@@ -110,7 +107,7 @@ func (in *Interp) registerNumbers() {
 	})
 
 	intDiv := func(name, doc string, f func(n, m int64) int64) {
-		num(name, doc, ii, false, func(c *Call) (Value, error) {
+		in.mustRegister(name, doc, ii, false, func(c *Call) (Value, error) {
 			a, err := c.Int(0)
 			if err != nil {
 				return Value{}, err
@@ -135,7 +132,7 @@ func (in *Interp) registerNumbers() {
 		return r
 	})
 
-	num("abs", "Absolute value.", n("n"), false, func(c *Call) (Value, error) {
+	in.mustRegister("abs", "Absolute value.", n("n"), false, func(c *Call) (Value, error) {
 		v, err := c.Number(0)
 		if err != nil {
 			return Value{}, err
@@ -149,7 +146,7 @@ func (in *Interp) registerNumbers() {
 		return Float(math.Abs(v.F)), nil
 	})
 	minmax := func(name, doc string, pick func(a, b Value) bool) {
-		num(name, doc, n("n"), true, func(c *Call) (Value, error) {
+		in.mustRegister(name, doc, n("n"), true, func(c *Call) (Value, error) {
 			best, err := c.Number(0)
 			if err != nil {
 				return Value{}, err
@@ -175,7 +172,7 @@ func (in *Interp) registerNumbers() {
 	minmax("max", "Largest argument; float if any argument is a float.", func(a, b Value) bool { return a.AsFloat() > b.AsFloat() })
 
 	rounder := func(name, doc string, f func(float64) float64) {
-		num(name, doc, n("x"), false, func(c *Call) (Value, error) {
+		in.mustRegister(name, doc, n("x"), false, func(c *Call) (Value, error) {
 			v, err := c.Number(0)
 			if err != nil {
 				return Value{}, err
@@ -191,7 +188,7 @@ func (in *Interp) registerNumbers() {
 	rounder("round", "Nearest integral value, half to even; integers pass through.", math.RoundToEven)
 	rounder("truncate", "Integral value toward zero; integers pass through.", math.Trunc)
 
-	num("exact", "Float to integer, truncating toward zero; integers pass through.", n("x"), false, func(c *Call) (Value, error) {
+	in.mustRegister("exact", "Float to integer, truncating toward zero; integers pass through.", n("x"), false, func(c *Call) (Value, error) {
 		v, err := c.Number(0)
 		if err != nil {
 			return Value{}, err
@@ -204,14 +201,14 @@ func (in *Interp) registerNumbers() {
 		}
 		return Int(int64(v.F)), nil
 	})
-	num("inexact", "Integer to float; floats pass through.", n("x"), false, func(c *Call) (Value, error) {
+	in.mustRegister("inexact", "Integer to float; floats pass through.", n("x"), false, func(c *Call) (Value, error) {
 		v, err := c.Number(0)
 		if err != nil {
 			return Value{}, err
 		}
 		return Float(v.AsFloat()), nil
 	})
-	num("expt", "b raised to e. Two integers with e >= 0 give an integer; otherwise a float.", []Param{{Name: "b", Type: "number"}, {Name: "e", Type: "number"}}, false, func(c *Call) (Value, error) {
+	in.mustRegister("expt", "b raised to e. Two integers with e >= 0 give an integer; otherwise a float.", []Param{{Name: "b", Type: "number"}, {Name: "e", Type: "number"}}, false, func(c *Call) (Value, error) {
 		b, err := c.Number(0)
 		if err != nil {
 			return Value{}, err
@@ -229,7 +226,7 @@ func (in *Interp) registerNumbers() {
 		}
 		return Float(math.Pow(b.AsFloat(), e.AsFloat())), nil
 	})
-	num("sqrt", "Square root, always a float.", n("x"), false, func(c *Call) (Value, error) {
+	in.mustRegister("sqrt", "Square root, always a float.", n("x"), false, func(c *Call) (Value, error) {
 		v, err := c.Number(0)
 		if err != nil {
 			return Value{}, err
@@ -238,7 +235,7 @@ func (in *Interp) registerNumbers() {
 	})
 
 	pred := func(name, doc string, f func(v Value) bool) {
-		in.mustRegister(name, doc, []Param{{Name: "x", Type: "any"}}, false, func(c *Call) (Value, error) {
+		in.mustRegisterOpaque(name, doc, []Param{{Name: "x", Type: "any"}}, false, func(c *Call) (Value, error) {
 			return Bool(f(c.Args[0])), nil
 		})
 	}
@@ -247,7 +244,7 @@ func (in *Interp) registerNumbers() {
 	pred("float?", "True for floats.", func(v Value) bool { return v.Kind == KFloat })
 
 	numPred := func(name, doc string, f func(v Value) bool) {
-		num(name, doc, n("n"), false, func(c *Call) (Value, error) {
+		in.mustRegisterOpaque(name, doc, n("n"), false, func(c *Call) (Value, error) {
 			v, err := c.Number(0)
 			if err != nil {
 				return Value{}, err
@@ -259,7 +256,7 @@ func (in *Interp) registerNumbers() {
 	numPred("positive?", "True for numbers greater than zero.", func(v Value) bool { return v.AsFloat() > 0 })
 	numPred("negative?", "True for numbers less than zero.", func(v Value) bool { return v.AsFloat() < 0 })
 	intPred := func(name, doc string, f func(n int64) bool) {
-		num(name, doc, []Param{{Name: "n", Type: "integer"}}, false, func(c *Call) (Value, error) {
+		in.mustRegisterOpaque(name, doc, []Param{{Name: "n", Type: "integer"}}, false, func(c *Call) (Value, error) {
 			v, err := c.Int(0)
 			if err != nil {
 				return Value{}, err
@@ -270,7 +267,7 @@ func (in *Interp) registerNumbers() {
 	intPred("even?", "True for even integers.", func(n int64) bool { return n%2 == 0 })
 	intPred("odd?", "True for odd integers.", func(n int64) bool { return n%2 != 0 })
 
-	num("number->string", "Render a number the way write does.", n("n"), false, func(c *Call) (Value, error) {
+	in.mustRegister("number->string", "Render a number the way write does.", n("n"), false, func(c *Call) (Value, error) {
 		v, err := c.Number(0)
 		if err != nil {
 			return Value{}, err

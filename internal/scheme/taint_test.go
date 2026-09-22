@@ -2,7 +2,9 @@ package scheme
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -66,6 +68,13 @@ func TestSourceTagsAndPropagation(t *testing.T) {
 		`(string-length (read-thing "x"))`,
 		`(string=? (read-thing "x") "y")`,
 		`(null? (list-thing))`,
+		`(length (list-thing))`,
+		`(vector-length (list->vector (list-thing)))`,
+		`(string-prefix? "c" (read-thing "x"))`,
+		`(> (string->number (string-append "1" (substring (read-thing "x") 0 0))) 0)`,
+		`(positive? (string->number (string-append "1" (substring (read-thing "x") 0 0))))`,
+		`(odd? (string->number (string-append "1" (substring (read-thing "x") 0 0))))`,
+		`(number? (read-thing "x"))`,
 	} {
 		if !tainted(t, in, src).Taint.IsClean() {
 			t.Errorf("%s: should be opaque", src)
@@ -148,7 +157,7 @@ func TestWipeStripsAndIsUserOnlyAtTheGuard(t *testing.T) {
 	}
 }
 
-func TestTagsAndOverflow(t *testing.T) {
+func TestTagNames(t *testing.T) {
 	a := TaintOf("external:file", "cred:x")
 	if got := a.String(); got != "cred:x,external:file" {
 		t.Fatalf("tags: %q", got)
@@ -162,12 +171,63 @@ func TestTagsAndOverflow(t *testing.T) {
 	if Union(TaintOf("a"), TaintOf("b")).Tags() == nil {
 		t.Fatal("union lost tags")
 	}
-	// Exhausting the table degrades to unattributed, never to clean.
-	var last Taint
+}
+
+func TestTagSetsPreserveExactNamesBeyond63(t *testing.T) {
+	var names []string
 	for i := 0; i < 200; i++ {
-		last = TaintOf("filler:" + strings.Repeat("x", i%7) + string(rune('a'+i%26)) + string(rune('0'+i%10)))
+		names = append(names, fmt.Sprintf("external:source-%03d", i), CredTag(fmt.Sprintf("service-%03d", i)))
 	}
-	if last.IsClean() {
-		t.Fatal("an overflowed tag must still be tainted")
+	all := TaintOf(names...)
+	if len(all.Tags()) != 400 || len(all.Creds()) != 200 || len(all.Externals()) != 200 {
+		t.Fatalf("lost attribution: %d tags, %d credentials, %d sources", len(all.Tags()), len(all.Creds()), len(all.Externals()))
+	}
+	for _, name := range names {
+		if !all.Has(name) {
+			t.Errorf("lost %q", name)
+		}
+	}
+	if all.Has("unknown") || all.Has("tainted:unattributed") {
+		t.Fatal("a missing tag must not alias another tag")
+	}
+	// Creating other sets cannot change existing attribution.
+	for i := 0; i < 200; i++ {
+		_ = TaintOf(fmt.Sprintf("unrelated:%d", i))
+	}
+	if !TaintOf(names[len(names)-1]).Has(names[len(names)-1]) {
+		t.Fatal("tag identity depends on prior sets")
+	}
+}
+
+func TestTagSetsAreImmutable(t *testing.T) {
+	input := []string{"z", "a", "a"}
+	original := TaintOf(input...)
+	if !slices.Equal(input, []string{"z", "a", "a"}) {
+		t.Fatal("constructor mutated input")
+	}
+	input[0] = "changed"
+	output := original.Tags()
+	if !slices.Equal(output, []string{"a", "z"}) {
+		t.Fatalf("tags: %v", output)
+	}
+	output[0] = "changed"
+	combined := Union(original, TaintOf("b", "a"))
+	if !slices.Equal(combined.Tags(), []string{"a", "b", "z"}) {
+		t.Fatalf("union: %v", combined.Tags())
+	}
+	if !slices.Equal(original.Tags(), []string{"a", "z"}) {
+		t.Fatal("original was mutated")
+	}
+	if !Union(Taint{}, TaintOf()).IsClean() {
+		t.Fatal("zero sets should be clean")
+	}
+	if !slices.Equal(Union(original, original).Tags(), original.Tags()) {
+		t.Fatal("union duplicated tags")
+	}
+	// Value copies may share the immutable representation safely.
+	before := Tainted(Str("x"), original)
+	after := Tainted(before, TaintOf("new"))
+	if before.Taint.Has("new") || !after.Taint.Has("new") {
+		t.Fatal("value copy lost isolation")
 	}
 }

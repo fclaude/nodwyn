@@ -12,8 +12,8 @@ for p in root.rglob('*.go'):
     for line in p.read_text().splitlines():
         if re.search(r'\.events\s*=|\.events\s*\[.*\]\s*=', line):
             writes.append((str(p), line.strip()))
-assert writes == [('internal/core/session.go', 's.events = append(s.events, ev)')], writes
-s = Path('internal/core/session.go').read_text()
+assert writes == [('internal/core/events.go', 's.events = append(s.events, ev)')], writes
+s = Path('internal/core/events.go').read_text()
 record = s.split('func (s *Session) Record(',1)[1].split('\n}\n',1)[0]
 assert record.index('redact.Payload(') < record.index('s.logw.Append(') < record.index('s.events = append(')
 assert 'redact.JSON(raw, nil)' in Path('internal/log/log.go').read_text()

@@ -42,13 +42,13 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 | Layer | Acts on | When it fires | Cost |
 |---|---|---|---|
 | **L1** | text I/O | known secret *shape* (regex/entropy/prefix). Sub-millisecond, fails closed. | ~0 |
-| **L2** | scheme values (provenance) | a known-class (tainted) value is heading egress. O(1) flag at FFI boundary. | ~0 |
+| **L2** | scheme values (provenance) | a known-class (tainted) value is heading egress; exact provenance tags checked at the FFI boundary. | ~0 |
 | **L3** | text I/O | only the **class-unknown shape residual** L1/L2 didn't decide. Calibrated `P(secret)`, feeds the decision with binding — never decides alone. | learned |
 
 **The deterministic layers early-terminate the learned layer: if L1 or L2 already *knows*, L3 is not paid for.** L3 is the expensive option, invoked only on the residual. (Jev 0.73)
 
 - **L1** — regex/entropy/egress-allowlist, fails closed, auditable. (Jev 0.93)
-- **L2** — taint: tag a value at registry entry, propagate through Scheme primitives, guard checks the flag. Scoped to stopping the *model's* indirect exfil, not a user (who is the principal). (Jev 0.54, sound-for-purpose)
+- **L2** — taint: tag a value at registry entry, propagate through Scheme primitives, guard checks the tags. Tags are immutable sorted name sets with no global registry or attribution cap (amended 2026-09-22 for readability). Scoped to stopping the *model's* indirect exfil, not a user (who is the principal). (Jev 0.54, sound-for-purpose)
 - **L3** — local, interpretable feature classifier v0 (entropy, char-ngram spectra, base64/URL/JWT structure, prefix, digit-ratio). Small neural context classifier is the documented upgrade path. Trains on the public secret corpus + the harness's own confirmed events (features + boolean, never raw content). Optional — system works without it. (Jev 0.68)
 
 ---

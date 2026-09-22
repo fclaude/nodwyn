@@ -47,16 +47,16 @@ func (in *Interp) registerLists() {
 	in.mustRegister("list", "Build a proper list of the arguments.", nil, true, func(c *Call) (Value, error) {
 		return List(c.Args...), nil
 	})
-	in.mustRegister("list?", "True for proper lists.", any1, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("list?", "True for proper lists.", any1, false, func(c *Call) (Value, error) {
 		return Bool(c.Args[0].IsList()), nil
 	})
-	in.mustRegister("pair?", "True for pairs.", any1, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("pair?", "True for pairs.", any1, false, func(c *Call) (Value, error) {
 		return Bool(c.Args[0].Kind == KPair), nil
 	})
-	in.mustRegister("null?", "True for the empty list.", any1, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("null?", "True for the empty list.", any1, false, func(c *Call) (Value, error) {
 		return Bool(c.Args[0].Kind == KNil), nil
 	})
-	in.mustRegister("length", "Number of elements in a proper list.", lst, false, func(c *Call) (Value, error) {
+	in.mustRegisterOpaque("length", "Number of elements in a proper list.", lst, false, func(c *Call) (Value, error) {
 		s, err := c.List(0)
 		if err != nil {
 			return Value{}, err
