@@ -104,7 +104,10 @@ func unfinishedTools(events []log.Event) ([]log.ToolCall, error) {
 			if err := ev.Decode(&result); err != nil {
 				return nil, err
 			}
-			for i, call := range pending {
+			// Ollama may reuse IDs in later responses. A result belongs to
+			// the latest outstanding call, not an earlier interrupted turn.
+			for i := len(pending) - 1; i >= 0; i-- {
+				call := pending[i]
 				if call.ID == result.ID && call.Name == result.Name {
 					pending = append(pending[:i], pending[i+1:]...)
 					break

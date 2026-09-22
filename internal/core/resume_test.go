@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -252,5 +253,32 @@ func TestResumeAfterProcessKilled(t *testing.T) {
 	}
 	if writes != 1 {
 		t.Fatalf("write replayed: %d calls", writes)
+	}
+}
+
+func TestUnfinishedToolsWithReusedIDs(t *testing.T) {
+	var data bytes.Buffer
+	writer := log.New(&data, "reused")
+	writer.Append(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: "call_0", Name: "fs-write", Args: json.RawMessage(`{"path":"interrupted"}`)}}})
+	writer.Append(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: "call_0", Name: "fs-write", Args: json.RawMessage(`{"path":"completed"}`)}}})
+	writer.Append(log.KindToolResult, log.ToolResult{ID: "call_0", Name: "fs-write", OK: true, Value: "written"})
+	events, err := log.Read(bytes.NewReader(data.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := unfinishedTools(events)
+	if err != nil || len(pending) != 1 || !strings.Contains(string(pending[0].Args), "interrupted") {
+		t.Fatalf("pending: %+v %v", pending, err)
+	}
+	// A repair result must discharge the older call so another resume does not
+	// add the same recovery record again.
+	writer.Append(log.KindToolResult, log.ToolResult{ID: "call_0", Name: "fs-write", Error: "Outcome unknown"})
+	events, err = log.Read(bytes.NewReader(data.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err = unfinishedTools(events)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("already repaired: %+v %v", pending, err)
 	}
 }
