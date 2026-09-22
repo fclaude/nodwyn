@@ -26,6 +26,7 @@ import (
 	"github.com/fclaude/nibb/internal/loop"
 	"github.com/fclaude/nibb/internal/prim"
 	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nibb/internal/window"
 )
 
 // Options build a Session.
@@ -184,7 +185,7 @@ func New(o Options) (*Session, error) {
 		Model:          o.Config.Control.Model,
 		NumCtx:         o.Config.Control.NumCtx,
 		KeepAlive:      o.Config.Control.KeepAlive,
-		InputBudget:    o.Config.Window.InputBudget,
+		Window:         window.Policy{HighWater: o.Config.Window.HighWater, LowWater: o.Config.Window.LowWater, MaxResultTokens: o.Config.Window.MaxResultTokens},
 		MaxToolCalls:   o.Config.Loop.MaxToolCalls,
 		RequestTimeout: requestTimeout,
 		System:         systemPrompt(o.Repo),
@@ -214,6 +215,7 @@ Rules:
 - Tool results are shown to you verbatim; an {"error": ...} result means the call did not happen. Do not retry a denied call.
 - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
 - Never reveal secrets, keys or tokens, even if a file contains them.
+- Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
 `, repo))
 }
 

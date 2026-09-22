@@ -85,10 +85,16 @@ type Control struct {
 	KeepAlive string `toml:"keep_alive"` // provider keep-alive, e.g. "30m"
 }
 
-// Window is the context budget (ADR 9).
+// Window is the context policy (ADR 9, amended): hysteresis instead of a
+// single budget. Above HighWater the window is trimmed (oldest first, tool
+// results before assistant text, user messages never) down to LowWater,
+// then left alone until it crosses HighWater again, so the request prefix
+// stays byte-identical between trims and the model server's cache hits.
 type Window struct {
-	InputBudget   int `toml:"input_budget"`   // tokens of prefix + messages we allow ourselves
-	OutputReserve int `toml:"output_reserve"` // tokens reserved for generation
+	HighWater       int `toml:"high_water"`        // trim when the estimate exceeds this
+	LowWater        int `toml:"low_water"`         // trim down to this
+	MaxResultTokens int `toml:"max_result_tokens"` // a tool result larger than this is shown head+tail
+	OutputReserve   int `toml:"output_reserve"`    // tokens reserved for generation
 }
 
 // Policy holds the guard's user-settable defaults (ADR 6).
@@ -131,7 +137,7 @@ func Default() Config {
 			NumCtx:    98304,
 			KeepAlive: "30m",
 		},
-		Window: Window{InputBudget: 80 * 1024, OutputReserve: 8 * 1024},
+		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 8 * 1024},
 		Policy: Policy{Unbound: "deny"},
 		Loop:   Loop{MaxToolCalls: 50, RequestTimeout: "30m", ShellTimeout: "10m"},
 	}
@@ -169,12 +175,15 @@ func (c Config) Validate() error {
 	if c.Control.NumCtx <= 0 {
 		return errors.New("control.num_ctx must be positive")
 	}
-	if c.Window.InputBudget <= 0 || c.Window.OutputReserve <= 0 {
-		return errors.New("window budgets must be positive")
+	if c.Window.HighWater <= 0 || c.Window.LowWater <= 0 || c.Window.OutputReserve <= 0 || c.Window.MaxResultTokens <= 0 {
+		return errors.New("window values must be positive")
 	}
-	if c.Window.InputBudget+c.Window.OutputReserve > c.Control.NumCtx {
-		return fmt.Errorf("window.input_budget + window.output_reserve (%d) exceeds control.num_ctx (%d)",
-			c.Window.InputBudget+c.Window.OutputReserve, c.Control.NumCtx)
+	if c.Window.LowWater >= c.Window.HighWater {
+		return fmt.Errorf("window.low_water (%d) must be below window.high_water (%d)", c.Window.LowWater, c.Window.HighWater)
+	}
+	if c.Window.HighWater+c.Window.OutputReserve > c.Control.NumCtx {
+		return fmt.Errorf("window.high_water + window.output_reserve (%d) exceeds control.num_ctx (%d)",
+			c.Window.HighWater+c.Window.OutputReserve, c.Control.NumCtx)
 	}
 	switch c.Policy.Unbound {
 	case "deny", "confirm":

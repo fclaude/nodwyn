@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-21 · P3 session (766 messages) · every request re-prefilled 82–96K tokens (40–48 s) — the window sat at budget and elided the next-oldest live entry each request, and a big result ageing out of the protected tail un-elided earlier ones · ~40 s of prefill per tool call · **resolved: sticky elision from the log, high/low-water hysteresis, result caps, task block in the system prompt (ADR 9 amendment)**
 - 2026-09-21 · daily use · a pasted prompt longer than 1024 characters was silently truncated — the terminal's canonical-mode line limit, not nibb's · long task descriptions could not be pasted · **resolved: the plain front-end reads prompt lines in raw mode with x/term's editor (bracketed paste, no length limit); pipes still use the scanner**
 - 2026-09-21 · daily use · a `y` per edit, four to fifteen per task, makes
   the confirm a reflex · every diff skimmed, none read · **resolved:

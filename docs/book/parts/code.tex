@@ -111,7 +111,7 @@ func (l *Loop) Turn(ctx context.Context, text string) error {
     }
     calls := 0
     for {
-        w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.InputBudget)
+        w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
         l.host.Record(log.KindLLMReq, log.LLMReq{Model: l.cfg.Model,
             Messages: len(w.Messages), Tools: len(l.tools),
             EstTokens: w.EstTokens, Elided: w.Elided})
@@ -143,29 +143,27 @@ func (l *Loop) Turn(ctx context.Context, text string) error {
 \section{The window is a fold over the log}
 
 \file{internal/window/window.go}. \code{Build} turns \code{user.msg},
-\code{llm.resp} and \code{tool.result} events into messages, estimates their
-size, and if over budget replaces content \emph{in place}, oldest tool
-results first, never the last four entries. Because elision is a pure
-function of the events and the budget, once a seq is elided it stays
-elided on every later request\,---\,which is what keeps the prefix stable.
+\code{llm.resp} and \code{tool.result} events into messages and applies a
+policy shaped for a prefix cache on one shared model slot: the system
+prompt carries the \emph{current task}, so the ask is never trimmed;
+elision is \emph{sticky}\,---\,every earlier request's elided set, read back
+from the log's \code{llm.req} events, stays elided; and \emph{hysteresis}
+trims above a high-water mark down to a low-water mark, oldest first,
+tool results before assistant text, user messages never, then holds until
+the next crossing. Between trims every request is a byte-identical prefix
+plus a delta.
 
 \begin{go}
-elide := func(i int) {
-    entries[i].msg.Content = fmt.Sprintf("[elided seq=%d]", entries[i].seq)
-    entries[i].size = estimate(entries[i].msg)
-    elided = append(elided, entries[i].seq)
-}
-protect := len(entries) - Keep
-// Pass 1: oldest tool results.
-for i := 0; i < protect && total() > budget; i++ {
-    if entries[i].tool && !isElided(i) {
-        elide(i)
-    }
-}
-// Pass 2: oldest turns of any kind.
-for i := 0; i < protect && total() > budget; i++ {
-    if !isElided(i) {
-        elide(i)
+if total() > pol.HighWater {
+    trimmed = true
+    protect := len(entries) - Keep
+    // Pass 1: oldest tool results. Pass 2: oldest assistant turns.
+    for _, kind := range []string{"tool", "assistant"} {
+        for i := 0; i < protect && total() > pol.LowWater; i++ {
+            if entries[i].kind == kind && !isElided(i) {
+                elide(i)
+            }
+        }
     }
 }
 \end{go}

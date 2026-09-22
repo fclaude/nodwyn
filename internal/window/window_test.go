@@ -11,91 +11,176 @@ import (
 	"github.com/fclaude/nibb/internal/log"
 )
 
-func events(t *testing.T, n int, resultSize int) []log.Event {
+var pol = Policy{HighWater: 3000, LowWater: 1500, MaxResultTokens: 100000}
+
+// session writes n turns of user -> tool call -> tool result -> answer, with
+// tool results of resultSize bytes, and records llm.req events the way the
+// loop does (so elision is sticky across calls to Build).
+type session struct {
+	buf bytes.Buffer
+	w   *log.Writer
+	n   int
+}
+
+func newSession() *session {
+	s := &session{}
+	s.w = log.New(&s.buf, "s")
+	return s
+}
+
+func (s *session) turn(resultSize int) {
+	i := s.n
+	s.n++
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: fmt.Sprintf("question %d", i)})
+	s.w.Append(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: fmt.Sprint("c", i), Name: "fs-read", Args: json.RawMessage(`{"path":"x"}`)}}})
+	s.w.Append(log.KindToolResult, log.ToolResult{ID: fmt.Sprint("c", i), Name: "fs-read", OK: true, Value: strings.Repeat("x", resultSize)})
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: fmt.Sprintf("answer %d", i)})
+}
+
+func (s *session) events(t *testing.T) []log.Event {
 	t.Helper()
-	var buf bytes.Buffer
-	w := log.New(&buf, "s")
-	for i := 0; i < n; i++ {
-		w.Append(log.KindUserMsg, log.UserMsg{Text: fmt.Sprintf("question %d", i)})
-		w.Append(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: fmt.Sprint("c", i), Name: "fs-read", Args: json.RawMessage(`{"path":"x"}`)}}})
-		w.Append(log.KindGuardDecision, log.GuardDecision{Prim: "fs-read", Decision: "allow"}) // not a message
-		w.Append(log.KindToolResult, log.ToolResult{ID: fmt.Sprint("c", i), Name: "fs-read", OK: true, Value: strings.Repeat("x", resultSize)})
-		w.Append(log.KindLLMResp, log.LLMResp{Content: fmt.Sprintf("answer %d", i)})
-	}
-	evs, err := log.Read(&buf)
+	evs, err := log.Read(bytes.NewReader(s.buf.Bytes()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return evs
 }
 
-func TestBuildUnderBudgetKeepsEverything(t *testing.T) {
-	r := Build(events(t, 2, 30), "sys", 10, 100000)
-	if len(r.Messages) != 1+2*4 || len(r.Elided) != 0 {
-		t.Fatalf("messages=%d elided=%v", len(r.Messages), r.Elided)
+// build runs Build and records llm.req like the loop does.
+func (s *session) build(t *testing.T, p Policy) Result {
+	t.Helper()
+	r := Build(s.events(t), "sys", 10, p)
+	s.w.Append(log.KindLLMReq, log.LLMReq{Messages: len(r.Messages), EstTokens: r.EstTokens, Elided: r.Elided})
+	return r
+}
+
+func TestUnderHighWaterNothingChanges(t *testing.T) {
+	s := newSession()
+	s.turn(30)
+	s.turn(30)
+	r := s.build(t, pol)
+	if len(r.Messages) != 1+2*4 || len(r.Elided) != 0 || r.Trimmed {
+		t.Fatalf("messages=%d elided=%v trimmed=%v", len(r.Messages), r.Elided, r.Trimmed)
 	}
-	if r.Messages[0].Role != llm.RoleSystem || r.Messages[1].Role != llm.RoleUser || r.Messages[2].ToolCalls[0].ID != "c0" || r.Messages[3].Role != llm.RoleTool || r.Messages[3].ToolCallID != "c0" {
+	if r.Messages[0].Role != llm.RoleSystem || !strings.Contains(r.Messages[0].Content, "Current task") || !strings.HasSuffix(r.Messages[0].Content, "question 1") {
+		t.Fatalf("task block: %q", r.Messages[0].Content)
+	}
+	if r.Messages[3].Role != llm.RoleTool || r.Messages[3].ToolCallID != "c0" {
 		t.Fatalf("shape: %+v", r.Messages)
 	}
 }
 
-func TestElisionIsInPlaceOldestFirstAndMonotonic(t *testing.T) {
-	evs := events(t, 5, 3000) // each tool result ≈ 1000 tokens
-	r := Build(evs, "sys", 0, 2600)
-	if len(r.Elided) == 0 {
-		t.Fatal("expected elision")
+func TestHysteresisTrimsToLowWaterAndThenHolds(t *testing.T) {
+	s := newSession()
+	for i := 0; i < 6; i++ {
+		s.turn(1500) // ~500 tokens each result
 	}
-	// Oldest tool results go first, and the marker sits where the content was.
-	first := r.Elided[0]
-	var idx int
-	for i, m := range r.Messages {
-		if m.Role == llm.RoleTool && m.Content == fmt.Sprintf("[elided seq=%d]", first) {
-			idx = i
+	r := s.build(t, pol)
+	if !r.Trimmed || r.EstTokens > pol.LowWater {
+		t.Fatalf("trim: trimmed=%v est=%d", r.Trimmed, r.EstTokens)
+	}
+	first := r.Elided
+	// Small growth: no new elision, identical prefix.
+	s.turn(30)
+	r2 := s.build(t, pol)
+	if r2.Trimmed {
+		t.Fatal("trimmed again while under high water")
+	}
+	if len(r2.Elided) != len(first) {
+		t.Fatalf("elision changed between trims: %v -> %v", first, r2.Elided)
+	}
+	for i := range r.Messages {
+		if i == 0 {
+			continue // the task block changes with the new user message
 		}
-	}
-	if idx == 0 || r.Messages[idx].ToolCallID != "c0" {
-		t.Fatalf("first elided should be the oldest tool result: %v", r.Elided)
-	}
-	if r.EstTokens > 2600 {
-		t.Fatalf("still over budget: %d", r.EstTokens)
-	}
-	// Last Keep entries are untouched.
-	n := len(r.Messages)
-	for _, m := range r.Messages[n-Keep:] {
-		if strings.HasPrefix(m.Content, "[elided") {
-			t.Fatal("protected tail was elided")
-		}
-	}
-	// Adding events never un-elides: the earlier prefix is identical.
-	more := append(evs, events(t, 1, 3000)...)
-	for i := range more[len(evs):] {
-		more[len(evs)+i].Seq = uint64(len(evs) + i + 1)
-	}
-	r2 := Build(more, "sys", 0, 2600)
-	for i := range r.Messages[:idx+1] {
 		if r.Messages[i].Content != r2.Messages[i].Content {
-			t.Fatalf("prefix changed at %d: %q vs %q", i, r.Messages[i].Content, r2.Messages[i].Content)
+			t.Fatalf("prefix changed at %d", i)
 		}
-	}
-	if len(r2.Elided) < len(r.Elided) {
-		t.Fatal("elision must be monotonic")
 	}
 }
 
-func TestSecondPassElidesTurns(t *testing.T) {
-	evs := events(t, 6, 10)
-	// Make user messages big so tool elision alone cannot satisfy the budget.
-	for i := range evs {
-		if evs[i].Kind == log.KindUserMsg {
-			evs[i].Payload, _ = json.Marshal(log.UserMsg{Text: strings.Repeat("u", 3000)})
+func TestElisionIsStickyAcrossBuilds(t *testing.T) {
+	s := newSession()
+	for i := 0; i < 6; i++ {
+		s.turn(1500)
+	}
+	r := s.build(t, pol)
+	if len(r.Elided) == 0 {
+		t.Fatal("expected elision")
+	}
+	// Even with an enormous budget, previously elided seqs stay elided.
+	big := Policy{HighWater: 1 << 30, LowWater: 1 << 29, MaxResultTokens: 1 << 20}
+	r2 := s.build(t, big)
+	if len(r2.Elided) != len(r.Elided) {
+		t.Fatalf("sticky: %v vs %v", r.Elided, r2.Elided)
+	}
+	for _, m := range r2.Messages {
+		for _, seq := range r.Elided {
+			if m.ToolCallID == fmt.Sprint("c", seqToTurn(seq)) && !strings.HasPrefix(m.Content, "[elided") {
+				t.Fatalf("seq %d came back", seq)
+			}
 		}
 	}
-	r := Build(evs, "sys", 0, 2500)
-	if r.EstTokens > 2500 {
-		t.Fatalf("over budget after both passes: %d", r.EstTokens)
+}
+
+func seqToTurn(seq uint64) int { return int((seq - 1) / 4) }
+
+func TestUserMessagesAreNeverElidedToolsGoFirst(t *testing.T) {
+	s := newSession()
+	for i := 0; i < 8; i++ {
+		s.turn(600)
 	}
-	if !strings.HasPrefix(r.Messages[1].Content, "[elided seq=") {
-		t.Fatalf("oldest user turn should be elided: %q", r.Messages[1].Content[:20])
+	// Make the answers big too so pass 2 has to run.
+	evs := s.events(t)
+	for i := range evs {
+		if evs[i].Kind == log.KindLLMResp {
+			var p log.LLMResp
+			evs[i].Decode(&p)
+			if p.Content != "" {
+				p.Content = strings.Repeat("a", 1500)
+				evs[i].Payload, _ = json.Marshal(p)
+			}
+		}
+	}
+	r := Build(evs, "sys", 0, Policy{HighWater: 2000, LowWater: 800, MaxResultTokens: 100000})
+	for _, m := range r.Messages {
+		if m.Role == llm.RoleUser && strings.HasPrefix(m.Content, "[elided") {
+			t.Fatal("a user message was elided")
+		}
+	}
+	// Every non-protected tool result is elided before any assistant turn is.
+	firstAssistantElided, lastToolKept := -1, -1
+	for i, m := range r.Messages {
+		if i >= len(r.Messages)-Keep {
+			break
+		}
+		el := strings.HasPrefix(m.Content, "[elided")
+		if m.Role == llm.RoleAssistant && el && firstAssistantElided < 0 {
+			firstAssistantElided = i
+		}
+		if m.Role == llm.RoleTool && !el {
+			lastToolKept = i
+		}
+	}
+	if firstAssistantElided >= 0 && lastToolKept >= 0 {
+		t.Fatalf("assistant turn elided at %d while a tool result survived at %d", firstAssistantElided, lastToolKept)
+	}
+}
+
+func TestResultCapIsHeadTailAndDeterministic(t *testing.T) {
+	s := newSession()
+	s.turn(9000) // ~3000 tokens
+	r := Build(s.events(t), "sys", 0, Policy{HighWater: 1 << 20, LowWater: 1 << 19, MaxResultTokens: 300})
+	m := r.Messages[3]
+	if !strings.Contains(m.Content, "tokens omitted") || Estimate(m.Content) > 400 {
+		t.Fatalf("cap: %d tokens, %q", Estimate(m.Content), m.Content[:60])
+	}
+	if !strings.HasPrefix(m.Content, "xxx") || !strings.HasSuffix(m.Content, "xxx") {
+		t.Fatal("head and tail should be kept")
+	}
+	r2 := Build(s.events(t), "sys", 0, Policy{HighWater: 1 << 20, LowWater: 1 << 19, MaxResultTokens: 300})
+	if r2.Messages[3].Content != m.Content {
+		t.Fatal("cap must be deterministic")
 	}
 }
 
@@ -104,7 +189,7 @@ func TestErrorResultsBecomeJSON(t *testing.T) {
 	w := log.New(&buf, "s")
 	w.Append(log.KindToolResult, log.ToolResult{ID: "c", Name: "fs-read", OK: false, Error: "fs-read: denied: nope"})
 	evs, _ := log.Read(&buf)
-	r := Build(evs, "sys", 0, 1000)
+	r := Build(evs, "sys", 0, pol)
 	if r.Messages[1].Content != `{"error":"fs-read: denied: nope"}` {
 		t.Fatalf("%q", r.Messages[1].Content)
 	}

@@ -25,8 +25,10 @@ num_ctx    = 98304
 keep_alive = "30m"
 
 [window]
-input_budget   = 81920     # tokens; validated against num_ctx
-output_reserve = 8192
+high_water        = 61440  # trim above this (tokens; validated against num_ctx)
+low_water         = 30720  # trim down to this, then hold
+max_result_tokens = 3072   # larger tool results are shown head+tail
+output_reserve    = 8192
 
 [policy]
 unbound        = "deny"    # or "confirm" (P3)

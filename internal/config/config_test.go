@@ -52,7 +52,8 @@ func TestLoadRejectsBadValues(t *testing.T) {
 	cases := map[string]string{
 		"bad policy":       "[policy]\nunbound = \"allow\"\n",
 		"unknown key":      "[control]\napikey = \"x\"\n",
-		"budget > ctx":     "[window]\ninput_budget = 200000\n",
+		"budget > ctx":     "[window]\nhigh_water = 200000\n",
+		"low >= high":      "[window]\nlow_water = 70000\n",
 		"unknown provider": "[control]\nprovider = \"anthropic\"\n",
 	}
 	for name, body := range cases {

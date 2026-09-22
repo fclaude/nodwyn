@@ -32,7 +32,7 @@ type Config struct {
 	Model          string
 	NumCtx         int
 	KeepAlive      string
-	InputBudget    int
+	Window         window.Policy
 	MaxToolCalls   int
 	RequestTimeout time.Duration
 	System         string
@@ -73,7 +73,7 @@ func (l *Loop) Turn(ctx context.Context, text string) error {
 	}
 	calls := 0
 	for {
-		w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.InputBudget)
+		w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
 		if _, err := l.host.Record(log.KindLLMReq, log.LLMReq{
 			Model: l.cfg.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
 		}); err != nil {

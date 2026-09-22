@@ -21,3 +21,24 @@ turns. Model `thinking` is logged but never fed back into the window.
   schema block does not change.
 - A sub-second `prompt_eval_ms` after an elision is the acceptance check (the
   native API reports eval time, not cached tokens).
+
+## Amendment 2026-09-21: hysteresis, sticky elision, the task block
+
+The single `input_budget` did not deliver cache hits in practice. Once the
+window sat at the budget, every request elided the next-oldest live entry,
+which is the front of the live region, so the whole live tail re-prefilled
+each time (40–48 s at 85K tokens on workshop); and because elision was
+recomputed from scratch, a large result ageing out of the protected tail
+could *un-elide* earlier entries and break the prefix even earlier.
+
+Now: (1) elision is **sticky** — every earlier `llm.req.elided` set stays
+elided, derived from the log; (2) **hysteresis** — above `high_water` the
+window is trimmed, oldest first (tool results, then assistant text, never
+user messages), down to `low_water`, then left alone until it crosses
+`high_water` again; (3) tool results over `max_result_tokens` are shown
+head+tail with an omission marker, deterministically; (4) the system prompt
+carries the **current task** (the user message that started the turn), so
+the ask is never trimmed and the prefix changes only at turn boundaries.
+Defaults: 60Ki / 30Ki / 3Ki. Expected cost: one full prefill per trim
+(every ~30K tokens of growth) and one per user turn, instead of one per
+request.
