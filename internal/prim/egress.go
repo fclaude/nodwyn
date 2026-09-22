@@ -49,10 +49,11 @@ func httpRequest(cs CredentialStore) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "http-request",
 		Meta: scheme.Meta{
-			Doc:    "Send an HTTP request with a credential injected at a bound position. Callable from Scheme only: a handle cannot be produced from JSON, so the model reaches this through a user-registered tool.",
-			Egress: true,
-			Host:   true,
-			Hidden: true,
+			Doc:         "Send an HTTP request with a credential injected at a bound position. Callable from Scheme only: a handle cannot be produced from JSON, so the model reaches this through a user-registered tool.",
+			Egress:      true,
+			Host:        true,
+			Hidden:      true,
+			TaintSource: scheme.TagHTTP,
 			Params: []scheme.Param{
 				{Name: "cred", Type: "any", Role: "credential", Doc: "credential handle"},
 				{Name: "url", Type: "string", Role: "dest", Doc: "destination URL"},
@@ -204,5 +205,5 @@ func doCredentialRegister(cs CredentialStore, c *scheme.Call) (scheme.Value, err
 	if err != nil {
 		return scheme.Void, fmt.Errorf("credential-register: %w", err)
 	}
-	return scheme.Value{Kind: scheme.KHandle, H: h}, nil
+	return scheme.HandleValue(h), nil
 }

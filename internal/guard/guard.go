@@ -246,7 +246,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		// Pure builtins (car, +, string-append ...) are allowed silently; a
 		// log line per arithmetic op would bury the decisions that matter.
 		// Anything that reaches the host, and every non-allow, is recorded.
-		if p.Tool() || p.Meta.Host || p.Meta.Egress || p.Meta.Irreversible {
+		if p.Tool() || p.Meta.Host || p.Meta.Egress || p.Meta.Irreversible || p.Meta.Audited {
 			g.record(rec)
 		}
 		return nil

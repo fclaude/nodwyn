@@ -30,9 +30,10 @@ func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-read",
 		Meta: scheme.Meta{
-			Doc:    "Read a UTF-8 text file inside the repository and return its contents.",
-			Params: []scheme.Param{{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"}},
-			Host:   true,
+			Doc:         "Read a UTF-8 text file inside the repository and return its contents.",
+			Params:      []scheme.Param{{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"}},
+			Host:        true,
+			TaintSource: scheme.TagFile,
 		},
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
 			abs, err := resolve(pin, c, 0)
@@ -95,9 +96,10 @@ func fsList(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-list",
 		Meta: scheme.Meta{
-			Doc:    "List a directory inside the repository. Directories end with a slash. Returns a sorted list of names.",
-			Params: []scheme.Param{{Name: "path", Type: "string", Doc: "directory relative to the repository root; \".\" for the root", Role: "path"}},
-			Host:   true,
+			Doc:         "List a directory inside the repository. Directories end with a slash. Returns a sorted list of names.",
+			Params:      []scheme.Param{{Name: "path", Type: "string", Doc: "directory relative to the repository root; \".\" for the root", Role: "path"}},
+			Host:        true,
+			TaintSource: scheme.TagFile,
 		},
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
 			abs, err := resolve(pin, c, 0)

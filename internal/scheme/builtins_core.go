@@ -15,12 +15,33 @@ import (
 func (in *Interp) mustRegister(name, doc string, params []Param, variadic bool, h func(c *Call) (Value, error)) {
 	err := in.Register(&Prim{
 		Name:    name,
-		Meta:    Meta{Doc: doc, Params: params, Variadic: variadic, Origin: "builtin"},
+		Meta:    Meta{Doc: doc, Params: params, Variadic: variadic, Origin: "builtin", TaintOpaque: taintOpaque[name]},
 		Handler: h,
 	})
 	if err != nil {
 		panic(err)
 	}
+}
+
+// taintOpaque lists the builtins whose result is a *measurement* of their
+// arguments rather than something made of them: a length, a predicate, a
+// comparison. Their results carry no provenance (L2, Phase 6). Everything
+// else propagates, which is the safe default.
+//
+// Accepted limit (SPEC Risk 1): a value can still be reconstructed one bit
+// at a time through these. L2 is scoped to the model's unintended leak, not
+// to a determined extractor; the egress lines are binding and redaction.
+var taintOpaque = map[string]bool{
+	"length": true, "string-length": true, "vector-length": true,
+	"null?": true, "pair?": true, "list?": true, "string?": true, "symbol?": true,
+	"boolean?": true, "number?": true, "integer?": true, "float?": true,
+	"procedure?": true, "handle?": true, "vector?": true, "tainted?": true,
+	"zero?": true, "positive?": true, "negative?": true, "even?": true, "odd?": true,
+	"eq?": true, "eqv?": true, "equal?": true, "not": true,
+	"=": true, "<": true, ">": true, "<=": true, ">=": true,
+	"string=?": true, "string<?": true,
+	"string-contains?": true, "string-prefix?": true, "string-suffix?": true,
+	"taint-of": true,
 }
 
 func (in *Interp) registerBuiltins() {
@@ -31,6 +52,7 @@ func (in *Interp) registerBuiltins() {
 	in.registerCore()
 	in.registerJSON()
 	in.registerMeta()
+	in.registerTaint()
 }
 
 func (in *Interp) registerCore() {

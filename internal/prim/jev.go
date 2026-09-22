@@ -171,10 +171,11 @@ func jevNoul(jc JevClient) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "jev-noul",
 		Meta: scheme.Meta{
-			Doc:        "Ask Jev a yes/no question about a text: returns the probability (0..1) that the answer is yes.",
-			Egress:     true,
-			Host:       true,
-			EgressHost: jevHost(jc),
+			Doc:         "Ask Jev a yes/no question about a text: returns the probability (0..1) that the answer is yes.",
+			Egress:      true,
+			Host:        true,
+			EgressHost:  jevHost(jc),
+			TaintSource: scheme.TagHTTP,
 			Params: []scheme.Param{credParam(),
 				{Name: "state", Type: "string", Role: "payload", Doc: "the text to judge (redacted before send)"},
 				{Name: "instructions", Type: "string", Role: "payload", Doc: "the yes/no question"},
@@ -209,10 +210,11 @@ func jevScore(jc JevClient) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "jev-score",
 		Meta: scheme.Meta{
-			Doc:        "Rate a text along an ordered rubric: returns ((\"score\" . 0..1) (\"raw\" . n) (\"levels\" . k) (\"confidence\" . c)).",
-			Egress:     true,
-			Host:       true,
-			EgressHost: jevHost(jc),
+			Doc:         "Rate a text along an ordered rubric: returns ((\"score\" . 0..1) (\"raw\" . n) (\"levels\" . k) (\"confidence\" . c)).",
+			Egress:      true,
+			Host:        true,
+			EgressHost:  jevHost(jc),
+			TaintSource: scheme.TagHTTP,
 			Params: []scheme.Param{credParam(),
 				{Name: "state", Type: "string", Role: "payload", Doc: "the text to rate (redacted before send)"},
 				{Name: "instructions", Type: "string", Role: "payload", Doc: "what to rate it on"},
@@ -270,10 +272,11 @@ func jevChoice(jc JevClient) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "jev-choice",
 		Meta: scheme.Meta{
-			Doc:        "Pick one of several options for a text: returns ((\"choice\" . name) (\"confidence\" . c) (\"probabilities\" . ((name . p) ...))).",
-			Egress:     true,
-			Host:       true,
-			EgressHost: jevHost(jc),
+			Doc:         "Pick one of several options for a text: returns ((\"choice\" . name) (\"confidence\" . c) (\"probabilities\" . ((name . p) ...))).",
+			Egress:      true,
+			Host:        true,
+			EgressHost:  jevHost(jc),
+			TaintSource: scheme.TagHTTP,
 			Params: []scheme.Param{credParam(),
 				{Name: "state", Type: "string", Role: "payload", Doc: "the situation to judge (redacted before send)"},
 				{Name: "instructions", Type: "string", Role: "payload", Doc: "the question"},

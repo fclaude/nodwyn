@@ -1,0 +1,173 @@
+package scheme
+
+import (
+	"context"
+	"math/rand"
+	"strings"
+	"testing"
+)
+
+func tainted(t *testing.T, in *Interp, src string) Value {
+	t.Helper()
+	v, err := in.EvalString(WithOrigin(context.Background(), OriginModel), src)
+	if err != nil {
+		t.Fatalf("%s: %v", src, err)
+	}
+	return v
+}
+
+// withSource registers a primitive that mints a tagged value, standing in
+// for a host primitive.
+func withSource(t *testing.T) *Interp {
+	t.Helper()
+	in := New()
+	if err := in.Register(&Prim{
+		Name: "read-thing",
+		Meta: Meta{Doc: "d", Host: true, TaintSource: TagFile,
+			Params: []Param{{Name: "path", Type: "string"}}},
+		Handler: func(c *Call) (Value, error) { return Str("contents of " + c.Args[0].S), nil },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.Register(&Prim{
+		Name:    "list-thing",
+		Meta:    Meta{Doc: "d", Host: true, TaintSource: TagFile},
+		Handler: func(c *Call) (Value, error) { return List(Str("a"), Str("b")), nil },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return in
+}
+
+func TestSourceTagsAndPropagation(t *testing.T) {
+	in := withSource(t)
+	if got := tainted(t, in, `(read-thing "x")`).Taint.String(); got != TagFile {
+		t.Fatalf("source: %q", got)
+	}
+	if !tainted(t, in, `"plain"`).Taint.IsClean() {
+		t.Fatal("a literal must be clean")
+	}
+	// Propagation through composition, through map, through a closure.
+	for _, src := range []string{
+		`(string-append "k=" (read-thing "x"))`,
+		`(car (list (read-thing "x") "b"))`,
+		`(string-upcase (substring (read-thing "x") 0 3))`,
+		`(car (map string-upcase (list (read-thing "x"))))`,
+		`((lambda (v) (string-append v v)) (read-thing "x"))`,
+		`(cdr (cons "a" (read-thing "x")))`,
+		`(json-emit (list (cons "k" (read-thing "x"))))`,
+	} {
+		if got := tainted(t, in, src).Taint.String(); got != TagFile {
+			t.Errorf("%s: taint %q, want %q", src, got, TagFile)
+		}
+	}
+	// Opaque primitives measure, they do not carry.
+	for _, src := range []string{
+		`(string-length (read-thing "x"))`,
+		`(string=? (read-thing "x") "y")`,
+		`(null? (list-thing))`,
+	} {
+		if !tainted(t, in, src).Taint.IsClean() {
+			t.Errorf("%s: should be opaque", src)
+		}
+	}
+}
+
+// TestTaintSupersetProperty is the plan's acceptance property: for random
+// expression trees over pure primitives, the result's taint contains the
+// union of the tainted leaves'.
+func TestTaintSupersetProperty(t *testing.T) {
+	in := withSource(t)
+	rng := rand.New(rand.NewSource(7))
+	var build func(depth int) (src string, leaves int)
+	build = func(depth int) (string, int) {
+		if depth == 0 {
+			if rng.Intn(2) == 0 {
+				return `(read-thing "f")`, 1
+			}
+			return `"clean"`, 0
+		}
+		a, la := build(depth - 1)
+		b, lb := build(depth - 1)
+		switch rng.Intn(4) {
+		case 0:
+			return "(string-append " + a + " " + b + ")", la + lb
+		case 1:
+			return "(car (list " + a + " " + b + "))", la + lb
+		case 2:
+			return "(cadr (list " + a + " " + b + "))", la + lb
+		default:
+			return "(string-join (list " + a + " " + b + ") \"-\")", la + lb
+		}
+	}
+	for i := 0; i < 200; i++ {
+		src, leaves := build(3)
+		v := tainted(t, in, src)
+		if leaves > 0 && !v.Taint.Has(TagFile) {
+			t.Fatalf("lost taint: %s", src)
+		}
+		if leaves == 0 && !v.Taint.IsClean() {
+			t.Fatalf("invented taint: %s", src)
+		}
+	}
+}
+
+func TestHandlesCarryTheirClass(t *testing.T) {
+	in := withSource(t)
+	in.Global().Define("h", HandleValue(&Handle{Class: "jev-key", ID: "a1"}))
+	if got := tainted(t, in, `h`).Taint.String(); got != "cred:jev-key" {
+		t.Fatalf("handle taint: %q", got)
+	}
+	if got := tainted(t, in, `(taint-of h)`); Write(got) != `("cred:jev-key")` {
+		t.Fatalf("taint-of: %s", Write(got))
+	}
+	if got := tainted(t, in, `(list (tainted? h) (tainted? "x"))`); Write(got) != "(#t #f)" {
+		t.Fatalf("tainted?: %s", Write(got))
+	}
+}
+
+func TestWipeStripsAndIsUserOnlyAtTheGuard(t *testing.T) {
+	in := withSource(t)
+	// Without a gate installed, wipe simply strips.
+	v, err := in.EvalString(WithOrigin(context.Background(), OriginUser), `(wipe (read-thing "x"))`)
+	if err != nil || !v.Taint.IsClean() {
+		t.Fatalf("wipe: %v %q", err, v.Taint)
+	}
+	if v.S != "contents of x" {
+		t.Fatalf("wipe must not change the value: %q", v.S)
+	}
+	v, err = in.EvalString(WithOrigin(context.Background(), OriginUser), `(box (read-thing "x"))`)
+	if err != nil || !v.Taint.IsClean() {
+		t.Fatalf("box: %v %q", err, v.Taint)
+	}
+	// wipe and box are never offered to the model as tools.
+	for _, p := range in.Tools() {
+		if p.Name == "wipe" || p.Name == "box" {
+			t.Fatalf("%s is exposed to the model", p.Name)
+		}
+	}
+}
+
+func TestTagsAndOverflow(t *testing.T) {
+	a := TaintOf("external:file", "cred:x")
+	if got := a.String(); got != "cred:x,external:file" {
+		t.Fatalf("tags: %q", got)
+	}
+	if got := strings.Join(a.Creds(), ","); got != "x" {
+		t.Fatalf("creds: %q", got)
+	}
+	if got := strings.Join(a.Externals(), ","); got != "external:file" {
+		t.Fatalf("externals: %q", got)
+	}
+	if Union(TaintOf("a"), TaintOf("b")).Tags() == nil {
+		t.Fatal("union lost tags")
+	}
+	// Exhausting the table degrades to unattributed, never to clean.
+	var last Taint
+	for i := 0; i < 200; i++ {
+		last = TaintOf("filler:" + strings.Repeat("x", i%7) + string(rune('a'+i%26)) + string(rune('0'+i%10)))
+	}
+	if last.IsClean() {
+		t.Fatal("an overflowed tag must still be tainted")
+	}
+}

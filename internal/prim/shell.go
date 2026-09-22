@@ -24,6 +24,7 @@ func shellExec(o Options) *scheme.Prim {
 			},
 			Host:         true,
 			Irreversible: true,
+			TaintSource:  scheme.TagShell,
 		},
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
 			cmdName, err := c.String(0)

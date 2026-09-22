@@ -166,7 +166,9 @@ func New(o Options) (*Session, error) {
 	for _, w := range repoAllow.Writes {
 		s.writes.Add(w)
 	}
-	var egressCheckers []guard.Checker
+	// P6 L2: provenance. The checker runs before L1 (and later L3): when
+	// L2 knows, the learned layer is not paid for (SPEC ladder principle).
+	egressCheckers := []guard.Checker{guard.Taint{Table: o.Bindings, Policy: o.Config.Policy.Unbound}}
 	if s.keychain != nil {
 		egressCheckers = append(egressCheckers, guard.Egress{Table: s.bindings, Policy: o.Config.Policy.Unbound, Recorder: s})
 	}

@@ -259,6 +259,35 @@ into Scheme values (ADR 3).
 | `(jev-score cred state instructions levels)` | **P5.** Rate a text on an ordered rubric of 2–10 level strings; returns `(("score" . 0..1) ("raw" . n) ("levels" . k) ("confidence" . c))` |
 | `(jev-choice cred state instructions options)` | **P5.** Pick one of the options (an alist name → description); returns `(("choice" . name) ("confidence" . c) ("probabilities" . ((name . p) …)))` |
 
+### Provenance (L2)
+
+Every value carries **provenance tags**: where it came from, not what it
+contains. A host primitive tags its result (`fs-read` and `fs-list` mint
+`external:file`, `shell-exec` mints `external:shell`, `http-request` and the
+Jev primitives mint `external:http`), a credential handle carries
+`cred:<class>`, and the tags of a call's arguments flow into its result.
+
+| | |
+|---|---|
+| `(taint-of x)` | the tags as a list of strings, sorted; `()` for a clean value |
+| `(tainted? x)` | true if the value carries any tag |
+| `(wipe x)` `(box x)` | the same value with its tags removed. **User-originated Scheme only** — the guard denies either from a model-originated call — and every use is logged |
+
+Propagation happens in one place, the primitive dispatch, so there is no
+second path. A primitive whose result *measures* its arguments rather than
+being made of them carries nothing: `length`, `string-length`,
+`vector-length`, every predicate (`null?`, `string?`, `even?`, …), the
+comparisons (`=`, `<`, `string=?`, `string-contains?`, …), `not`, and
+`taint-of` itself.
+
+What provenance is for: the guard refuses to send content that came from
+outside to a destination no binding authorises, and refuses a command line
+built from tool output without a confirm. What it is **not**: a boundary
+against the user, who may `wipe`, and it does not survive a value being
+rebuilt a character at a time through the opaque primitives above. The real
+egress lines are the binding table, fail-closed defaults and ingress
+redaction (SPEC Risk 1).
+
 ### Meta
 
 | | |

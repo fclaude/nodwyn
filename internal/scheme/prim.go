@@ -21,12 +21,26 @@ type Param struct {
 type Meta struct {
 	Doc          string
 	Params       []Param
-	Variadic     bool   // extra arguments allowed after Params
-	Egress       bool   // may send bytes off-machine
-	Irreversible bool   // cannot be undone by the harness
-	Host         bool   // touches the OS: filesystem, processes, network
-	Hidden       bool   // never offered to the model as a tool (e.g. load)
-	Origin       string // "builtin" or "scheme"
+	Variadic     bool // extra arguments allowed after Params
+	Egress       bool // may send bytes off-machine
+	Irreversible bool // cannot be undone by the harness
+	Host         bool // touches the OS: filesystem, processes, network
+	Hidden       bool // never offered to the model as a tool (e.g. load)
+	Audited      bool // always record the guard decision, even an allow
+
+	// TaintSource tags this primitive's result: what the value's provenance
+	// is (L2, Phase 6). Empty means the result carries only the taint its
+	// arguments carried.
+	TaintSource string
+	// TaintOpaque means the result carries no taint from the arguments: it
+	// is a measurement of them, not made of them (length, a predicate, a
+	// comparison). Opting out is explicit and rare; propagating is the
+	// default.
+	TaintOpaque bool
+	// TaintStrip marks a primitive that removes taint (wipe, box). The
+	// guard refuses it from a model-originated call.
+	TaintStrip bool
+	Origin     string // "builtin" or "scheme"
 	// EgressHost is the fixed destination host for egress prims that do not
 	// carry a "dest" role argument (e.g. Jev, ADR 20). The E3 binding checker
 	// uses this in place of extracting the host from a URL argument.
@@ -129,7 +143,29 @@ func (in *Interp) applyPrim(ctx context.Context, p *Prim, args []Value) (Value, 
 	if err != nil {
 		return Value{}, wrap(p.Name, err)
 	}
-	return v, nil
+	return taintResult(p, args, v), nil
+}
+
+// taintResult is the one place provenance flows (L2, Phase 6): a result
+// inherits the union of its arguments' taint unless the primitive declares
+// itself opaque, plus the primitive's own source tag if it has one. Every
+// primitive application passes through here, so there is no second path.
+func taintResult(p *Prim, args []Value, v Value) Value {
+	if p.Meta.TaintStrip {
+		v.Taint = Taint{}
+		return v
+	}
+	var t Taint
+	if !p.Meta.TaintOpaque {
+		for _, a := range args {
+			t = Union(t, a.Taint)
+		}
+	}
+	if p.Meta.TaintSource != "" {
+		t = Union(t, TaintOf(p.Meta.TaintSource))
+	}
+	v.Taint = Union(v.Taint, t)
+	return v
 }
 
 func checkArity(p *Prim, args []Value) error {

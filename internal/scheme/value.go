@@ -60,15 +60,6 @@ func (k Kind) String() string {
 	return "unknown"
 }
 
-// Taint is the provenance tag every value carries (SPEC L2). Reserved in
-// bootstrap: the zero value means "clean" and nothing sets it until Phase 6.
-type Taint struct {
-	bits uint64
-}
-
-// IsClean reports whether the value carries no taint.
-func (t Taint) IsClean() bool { return t.bits == 0 }
-
 // Value is a Scheme value: one tagged struct, copied by value (ADR 1).
 // Exactly one payload field is meaningful for a given Kind.
 type Value struct {
@@ -111,6 +102,12 @@ type Closure struct {
 type Handle struct {
 	Class string
 	ID    string
+}
+
+// HandleValue wraps a handle as a value tainted with its credential class
+// (L2, Phase 6), so anything derived from it keeps the provenance.
+func HandleValue(h *Handle) Value {
+	return Value{Kind: KHandle, H: h, Taint: TaintOf(CredTag(h.Class))}
 }
 
 // Constructors and constants.

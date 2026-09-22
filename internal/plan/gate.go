@@ -70,7 +70,7 @@ func Run(ctx context.Context, g Gate, userMsg string) Result {
 	if h == nil {
 		return Result{OK: true} // no judge configured: no gate
 	}
-	hval := scheme.Value{Kind: scheme.KHandle, H: h}
+	hval := scheme.HandleValue(h)
 
 	noul, err := g.ApplyPrim(ctx, "jev-noul", []scheme.Value{hval, scheme.Str(userMsg), scheme.Str(NoulInstructions)})
 	if err != nil {
