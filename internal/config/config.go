@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/fclaude/nibb/internal/detect/l1"
 )
 
 // Paths are the directories and files nibb uses.
@@ -102,6 +104,21 @@ type Policy struct {
 	Unbound       string   `toml:"unbound"`        // "deny" (default) or "confirm" for unbound secret-bearing egress
 	AllowCommands []string `toml:"allow_commands"` // standing approvals: argv prefixes that run without a confirm
 	AllowWrites   []string `toml:"allow_writes"`   // standing approvals: repository-relative path prefixes writable without a confirm
+
+	// L1 is the secret-scanner policy (Phase 4).
+	L1 L1 `toml:"l1"`
+}
+
+// L1 configures the L1 secret scanner (Phase 4).
+type L1 struct {
+	Enabled bool `toml:"enabled"` // default true
+	// AllowClasses suppresses whole classes (e.g. "jwt" in a repo full of
+	// test tokens). Validated against the scanner's class names.
+	AllowClasses []string `toml:"allow_classes"`
+	// AllowValues suppresses exact strings: documented placeholders such as
+	// AWS's AKIAIOSFODNN7EXAMPLE. Never put a real secret here — this file
+	// is plaintext (plan §3.3).
+	AllowValues []string `toml:"allow_values"`
 }
 
 // RepoAllow is <repo>/.nibb/allow.toml: standing approvals for one
@@ -138,7 +155,7 @@ func Default() Config {
 			KeepAlive: "30m",
 		},
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 8 * 1024},
-		Policy: Policy{Unbound: "deny"},
+		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
 		Loop:   Loop{MaxToolCalls: 50, RequestTimeout: "30m", ShellTimeout: "10m"},
 	}
 }
@@ -189,6 +206,11 @@ func (c Config) Validate() error {
 	case "deny", "confirm":
 	default:
 		return fmt.Errorf("policy.unbound must be \"deny\" or \"confirm\", got %q", c.Policy.Unbound)
+	}
+	for _, cl := range c.Policy.L1.AllowClasses {
+		if !l1.IsClass(cl) {
+			return fmt.Errorf("policy.l1.allow_classes: unknown class %q (known: %v)", cl, l1.ClassNames())
+		}
 	}
 	if c.Loop.MaxToolCalls <= 0 {
 		return errors.New("loop.max_tool_calls must be positive")

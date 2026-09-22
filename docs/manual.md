@@ -197,7 +197,9 @@ writes   = ["internal/", "docs/"]     # write prefixes that never prompt
 ```
 
 `.nibb/`, `.github/`, `.gitea/`, `scripts/` and `Makefile` always prompt,
-whatever the list says — they change policy or run in CI.
+whatever the list says — they change policy or run in CI. So does a write
+whose content looks like a credential (L1): that confirm names the class
+and no standing approval waives it.
 
 Prefixes match argv tokens: `"go test"` matches `go test ./...` and
 `/usr/local/go/bin/go test`, not `go build`. Denies still apply (the repo

@@ -18,6 +18,7 @@ import (
 
 	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nibb/internal/detect/l1"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/guard"
 	"github.com/fclaude/nibb/internal/keychain"
@@ -162,6 +163,18 @@ func New(o Options) (*Session, error) {
 	var egressCheckers []guard.Checker
 	if s.keychain != nil {
 		egressCheckers = append(egressCheckers, guard.Egress{Table: s.bindings, Policy: o.Config.Policy.Unbound, Recorder: s})
+	}
+	// P4 L1: scan the secret-bearing text of egress-bearing prims for
+	// credentials the model wrote directly (not via a credential handle).
+	if o.Config.Policy.L1.Enabled {
+		sc := l1.New()
+		for _, cl := range o.Config.Policy.L1.AllowClasses {
+			sc.AllowClass(cl)
+		}
+		for _, v := range o.Config.Policy.L1.AllowValues {
+			sc.AllowValue(v)
+		}
+		egressCheckers = append(egressCheckers, guard.TextSecret{Table: s.bindings, Scanner: sc})
 	}
 	checkers := prim.Checkers(po, s.allow, s.writes, egressCheckers...)
 	// Init-time evaluation cannot prompt (nobody is listening yet): tools

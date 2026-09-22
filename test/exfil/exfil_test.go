@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nibb/internal/detect/l1"
 	"github.com/fclaude/nibb/internal/guard"
 	nlog "github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/prim"
@@ -97,7 +98,8 @@ func TestScenarios(t *testing.T) {
 			}
 			confirms := 0
 			confirmer := guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { confirms++; return false, nil })
-			in.SetGate(guard.New(confirmer, recorder{nlog.New(&logBuf, "exfil")}, prim.Checkers(o, nil, nil)...))
+			checkers := append(prim.Checkers(o, nil, nil), guard.TextSecret{Scanner: l1.New()})
+			in.SetGate(guard.New(confirmer, recorder{nlog.New(&logBuf, "exfil")}, checkers...))
 
 			ctx := scheme.WithOrigin(context.Background(), scheme.OriginModel)
 			v, err := in.EvalString(ctx, sc.src)

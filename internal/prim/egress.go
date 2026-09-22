@@ -57,8 +57,8 @@ func httpRequest(cs CredentialStore) *scheme.Prim {
 				{Name: "url", Type: "string", Role: "dest", Doc: "destination URL"},
 				{Name: "method", Type: "string", Role: "method", Doc: "HTTP method, e.g. POST"},
 				{Name: "position", Type: "string", Role: "position", Doc: "injection position, e.g. header:Authorization"},
-				{Name: "headers", Type: "list", Doc: "list of (name value) pairs, or ()"},
-				{Name: "body", Type: "string", Doc: "request body, or empty string"},
+				{Name: "headers", Type: "list", Role: "payload", Doc: "list of (name value) pairs, or ()"},
+				{Name: "body", Type: "string", Role: "payload", Doc: "request body, or empty string"},
 			},
 		},
 		Handler: func(c *scheme.Call) (scheme.Value, error) {

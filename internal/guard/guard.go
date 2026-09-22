@@ -50,6 +50,9 @@ type Decision struct {
 	Reason   string
 	Detail   string
 	Standing bool
+	// Security marks a Confirm that a standing approval must not waive: the
+	// user has to see it every time (an L1 finding in a write, for example).
+	Security bool
 }
 
 // Checker inspects one primitive application.
@@ -115,6 +118,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 	var details []string
 	checker := ""
 	standing := ""
+	security := false
 	for _, c := range g.checkers {
 		d := c.Check(ctx, p, args)
 		if d.Verdict == Allow {
@@ -122,6 +126,9 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 				standing = d.Reason
 			}
 			continue
+		}
+		if d.Verdict == Confirm && d.Security {
+			security = true
 		}
 		reasons = append(reasons, d.Reason)
 		if d.Detail != "" {
@@ -136,7 +143,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		}
 	}
 	detail := strings.Join(details, "\n\n")
-	if final.Verdict == Confirm && standing != "" {
+	if final.Verdict == Confirm && standing != "" && !security {
 		// The user approved this ahead of time (a command prefix or a write
 		// path). The detail — a diff — goes to the log since nobody saw it.
 		final = Decision{Verdict: Allow, Standing: true, Reason: standing}
