@@ -1,6 +1,6 @@
 # ADR 0018: Turn budgets and long-running turns
 
-- Status: **proposed** (design agreed in principle; not implemented)
+- Status: **partially implemented** (progress guard implemented; budgets, checkpoints and run driver proposed)
 - Date: 2026-09-21
 
 ## Context
@@ -82,3 +82,22 @@ wall=2h`), not the core's; the core exposes budgets and checkpoints, and a
   path is needed for long runs; P10's summaries make them cheaper.
 - Implementation order: budgets + checkpoints + progress guard in the loop
   (small); `Resume`; then the `run` driver. Nothing here changes the guard.
+
+## Progress guard implementation — 2026-09-22
+
+Section 3 is implemented independently of the larger budget/checkpoint change.
+Each turn observes completed tool calls and stops after four identical
+consecutive calls, an original denied call plus three retries of that same call
+(even with intervening calls), or ten consecutive failures. A successful call
+resets the error streak and clears prior denials for that call. Call identity
+uses tool name and JSON arguments; object ordering and whitespace do not matter,
+arrays retain order and numeric spellings retain full precision. Denials are
+recognized by their typed Scheme error, not text matching.
+
+The triggering result remains in history. The stop is both a durable note and a
+frontend error. Remaining calls in that response receive explicit "Not executed"
+results without evaluation, including at the existing hard tool-call limit, so
+a follow-up turn has a complete transcript. A new user message starts fresh
+progress counters. This adds no authority, background driver or automatic retry.
+The existing `loop.max_tool_calls` setting and its defaults remain until the
+budget dimensions and checkpoint UI are implemented together.

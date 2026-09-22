@@ -117,3 +117,9 @@ The same Linux runner can produce release archives for those four targets.
 Cross-compilation does not test macOS behavior or provide Developer ID signing
 and notarization. Publishing downloadable releases is separate from the local
 `nibb-stable` promotion; this workflow validates builds without publishing them.
+
+Turns also stop when the model repeats an identical tool call four times in a
+row, retries a denied call three times, or gets ten consecutive tool errors
+(ADR 18). The reason is shown and logged. Any remaining calls in that response
+are marked not executed; a new user message starts a fresh turn. Soft budgets,
+checkpoint prompts, and the long-run driver are still planned.

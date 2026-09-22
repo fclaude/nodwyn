@@ -77,6 +77,7 @@ var ErrHardStop = errors.New("hard stop: tool-call limit for this turn reached (
 // Turn handles the user message already recorded by the session to completion.
 func (l *Loop) Turn(ctx context.Context) error {
 	calls := 0
+	var progress turnProgress
 	for {
 		w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
 		if _, err := l.host.Record(log.KindLLMReq, log.LLMReq{
@@ -118,13 +119,27 @@ func (l *Loop) Turn(ctx context.Context) error {
 		if len(resp.Message.ToolCalls) == 0 {
 			return nil
 		}
-		for _, tc := range resp.Message.ToolCalls {
+		for i, tc := range resp.Message.ToolCalls {
 			calls++
 			if calls > l.cfg.MaxToolCalls {
 				_, _ = l.host.Record(log.KindNote, log.Note{Text: fmt.Sprintf("hard stop after %d tool calls", calls-1)})
+				if err := l.skipTools(resp.Message.ToolCalls[i:], ErrHardStop.Error()); err != nil {
+					return err
+				}
 				return ErrHardStop
 			}
-			if err := l.runTool(ctx, tc); err != nil {
+			outcome, err := l.runTool(ctx, tc)
+			if err != nil {
+				return err
+			}
+			if reason := progress.observe(tc, outcome); reason != "" {
+				err := fmt.Errorf("progress stop: %s; inspect the results before continuing", reason)
+				if _, recordErr := l.host.Record(log.KindNote, log.Note{Text: err.Error()}); recordErr != nil {
+					return recordErr
+				}
+				if recordErr := l.skipTools(resp.Message.ToolCalls[i+1:], err.Error()); recordErr != nil {
+					return recordErr
+				}
 				return err
 			}
 		}
@@ -133,12 +148,14 @@ func (l *Loop) Turn(ctx context.Context) error {
 
 // runTool evaluates one tool call as a Scheme application (ADR 3) with
 // model origin, and records the result the model will see. Only context
-// cancellation is an error here; every other failure is a tool result.
-func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) error {
+// cancellation or recording failure is returned as an error; operation failures
+// are tool results, with a typed outcome for turn policy.
+func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (toolOutcome, error) {
+	var outcome toolOutcome
 	if _, err := l.host.Record(log.KindToolCall, log.ToolCallEvent{
 		ToolCall: log.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args}, Origin: string(scheme.OriginModel),
 	}); err != nil {
-		return err
+		return outcome, err
 	}
 	l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "running " + tc.Name}})
 	start := time.Now()
@@ -147,8 +164,11 @@ func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) error {
 	res.Millis = time.Since(start).Milliseconds()
 	if err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return outcome, ctx.Err()
 		}
+		outcome.failed = true
+		var denied *scheme.Denied
+		outcome.denied = errors.As(err, &denied)
 		res.OK = false
 		res.Error = err.Error()
 	} else {
@@ -156,7 +176,7 @@ func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) error {
 		res.Value = value
 	}
 	_, err = l.host.Record(log.KindToolResult, res)
-	return err
+	return outcome, err
 }
 
 func (l *Loop) apply(ctx context.Context, tc llm.ToolCall) (string, error) {
@@ -196,4 +216,15 @@ func (l *Loop) toolNames() string {
 		names[i] = t.Name
 	}
 	return strings.Join(names, ", ")
+}
+
+// skipTools completes the transcript for calls that a policy stop prevented.
+// No Scheme evaluation or side effect occurs for these calls.
+func (l *Loop) skipTools(calls []llm.ToolCall, reason string) error {
+	for _, call := range calls {
+		if _, err := l.host.Record(log.KindToolResult, log.ToolResult{ID: call.ID, Name: call.Name, OK: false, Error: "Not executed: " + reason}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
