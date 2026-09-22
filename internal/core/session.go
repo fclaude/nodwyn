@@ -9,15 +9,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/guard"
+	"github.com/fclaude/nibb/internal/keychain"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/loop"
@@ -41,6 +44,12 @@ type Options struct {
 	EventBuffer int
 	// LogWriter overrides the session log destination (tests).
 	LogWriter io.Writer
+	// P3 egress (optional; nil disables egress primitives — bootstrap).
+	// Keychain is an opened keychain store (the passphrase was already
+	// provided by the front-end). Bindings is the binding table; an empty
+	// table denies every secret-bearing egress (ADR 6).
+	Keychain *keychain.Store
+	Bindings binding.Table
 }
 
 // Session is one conversation with one log.
@@ -69,6 +78,14 @@ type Session struct {
 	// turnTrust: writes are approved without a prompt until the turn ends
 	// ("t" at a write prompt). Reset when the turn goes idle.
 	turnTrust bool
+
+	// P3 egress.
+	keychain *keychain.Store
+	bindings binding.Table
+
+	// P3 credential prompts: pending masked-secret prompts.
+	secrets   map[string]chan []byte
+	secretsMu sync.Mutex
 }
 
 // New creates a session, writes session.start, and loads the init file.
@@ -98,6 +115,7 @@ func New(o Options) (*Session, error) {
 		out:     make(chan event.Event, o.EventBuffer),
 		prompts: map[string]chan bool{},
 		pending: map[string]guard.Prompt{},
+		secrets: map[string]chan []byte{},
 	}
 	if o.LogWriter != nil {
 		s.logw = log.New(o.LogWriter, s.id)
@@ -113,6 +131,13 @@ func New(o Options) (*Session, error) {
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
 	po.ShellTimeout = shellTimeout
+	// P3 egress: the session is the CredentialStore (it owns the keychain,
+	// the masked prompt, and the log). Bootstrap leaves this nil.
+	s.keychain = o.Keychain
+	s.bindings = o.Bindings
+	if s.keychain != nil {
+		po.Credentials = s
+	}
 	if err := prim.Register(s.interp, po); err != nil {
 		return nil, err
 	}
@@ -133,7 +158,11 @@ func New(o Options) (*Session, error) {
 	for _, w := range repoAllow.Writes {
 		s.writes.Add(w)
 	}
-	checkers := prim.Checkers(po, s.allow, s.writes)
+	var egressCheckers []guard.Checker
+	if s.keychain != nil {
+		egressCheckers = append(egressCheckers, guard.Egress{Table: s.bindings, Policy: o.Config.Policy.Unbound, Recorder: s})
+	}
+	checkers := prim.Checkers(po, s.allow, s.writes, egressCheckers...)
 	// Init-time evaluation cannot prompt (nobody is listening yet): tools
 	// may be registered, actions are denied.
 	s.interp.SetGate(guard.New(guard.DenyAll, s, checkers...))
@@ -402,4 +431,93 @@ type outputWriter struct{ s *Session }
 func (w outputWriter) Write(p []byte) (int, error) {
 	w.s.Emit(event.Event{Kind: event.Output, Payload: event.Text{Text: string(p)}})
 	return len(p), nil
+}
+
+// --- P3 egress: Session implements prim.CredentialStore -----------------
+
+// PromptAndAdd asks the user (masked input) for a secret of the given class
+// and stores it in the keychain. It returns the opaque handle. The secret
+// value never becomes a Scheme value (ADR 5).
+func (s *Session) PromptAndAdd(ctx context.Context, class string) (*scheme.Handle, error) {
+	if s.keychain == nil {
+		return nil, errors.New("core: no keychain configured")
+	}
+	// Emit a secret prompt event and wait for the front-end to reply.
+	s.promptMu.Lock()
+	s.promptN++
+	id := fmt.Sprintf("s%d", s.promptN)
+	ch := make(chan []byte, 1)
+	s.promptMu.Unlock()
+
+	// Store the pending secret prompt so SecretReply can find it.
+	s.secretsMu.Lock()
+	s.secrets[id] = ch
+	s.secretsMu.Unlock()
+
+	s.Emit(event.Event{Kind: event.PromptSecret, Payload: event.SecretPrompt{ID: id, Class: class}})
+
+	select {
+	case secret := <-ch:
+		if len(secret) == 0 {
+			return nil, errors.New("core: secret was empty or declined")
+		}
+		h, err := s.keychain.Add(class, secret)
+		if err != nil {
+			return nil, err
+		}
+		_, _ = s.Record(log.KindCredRegister, log.CredRegister{Class: class, Handle: h.ID})
+		return h, nil
+	case <-ctx.Done():
+		s.secretsMu.Lock()
+		delete(s.secrets, id)
+		s.secretsMu.Unlock()
+		return nil, ctx.Err()
+	}
+}
+
+// InjectHeader implements prim.CredentialStore.
+func (s *Session) InjectHeader(id, name string, req *http.Request) error {
+	if s.keychain == nil {
+		return errors.New("core: no keychain configured")
+	}
+	return s.keychain.InjectHeader(id, name, req)
+}
+
+// InjectQuery implements prim.CredentialStore.
+func (s *Session) InjectQuery(id, key string, req *http.Request) error {
+	if s.keychain == nil {
+		return errors.New("core: no keychain configured")
+	}
+	return s.keychain.InjectQuery(id, key, req)
+}
+
+// InjectBody implements prim.CredentialStore.
+func (s *Session) InjectBody(id string, req *http.Request) error {
+	if s.keychain == nil {
+		return errors.New("core: no keychain configured")
+	}
+	return s.keychain.InjectBody(id, req)
+}
+
+// Do implements prim.CredentialStore: sends the HTTP request. The request
+// carries the turn's context; the client adds a bound on a silent server.
+func (s *Session) Do(req *http.Request) (*http.Response, error) {
+	return egressClient.Do(req)
+}
+
+var egressClient = &http.Client{Timeout: 2 * time.Minute}
+
+// SecretReply delivers a masked secret to a pending PromptAndAdd.
+func (s *Session) SecretReply(id string, secret []byte) error {
+	s.secretsMu.Lock()
+	ch, ok := s.secrets[id]
+	if ok {
+		delete(s.secrets, id)
+	}
+	s.secretsMu.Unlock()
+	if !ok {
+		return fmt.Errorf("core: no pending secret prompt %q", id)
+	}
+	ch <- secret
+	return nil
 }

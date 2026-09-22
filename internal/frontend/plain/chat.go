@@ -173,6 +173,9 @@ func (c *Chat) show(ev event.Event) {
 	case event.PromptConfirm:
 		endStream()
 		c.confirm(ev.Payload.(event.Confirm))
+	case event.PromptSecret:
+		endStream()
+		c.secretInput(ev.Payload.(event.SecretPrompt))
 	case event.Error:
 		endStream()
 		fmt.Fprintf(c.Out, "error: %s\n", ev.Payload.(event.ErrorInfo).Err)
@@ -206,6 +209,18 @@ func (c *Chat) confirm(p event.Confirm) {
 		line = "n"
 	}
 	_ = c.Session.Answer(p.ID, line)
+}
+
+func (c *Chat) secretInput(p event.SecretPrompt) {
+	fmt.Fprintf(c.Out, "\n─── credential-register: %s\n", p.Class)
+	line, ok := c.lines.secret("secret (masked, empty to cancel): ")
+	if !ok {
+		line = ""
+	}
+	_ = c.Session.SecretReply(p.ID, []byte(line))
+	if line == "" {
+		fmt.Fprintln(c.Out, "cancelled")
+	}
 }
 
 func (c *Chat) command(ctx context.Context, line string) (quit bool) {

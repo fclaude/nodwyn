@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
@@ -90,11 +91,16 @@ func TestStandingApprovalOutranksConfirmNotDeny(t *testing.T) {
 	if err := g.Before(context.Background(), shell, argv("go", "build")); err != nil {
 		t.Fatalf("after Add: %v", err)
 	}
-	// A deny still wins: egress denial from MetaPolicy.
-	egress := &scheme.Prim{Name: "http", Meta: scheme.Meta{Doc: "d", Egress: true, Params: []scheme.Param{{Name: "cmd", Type: "string", Role: "argv"}}}}
+	// A deny still wins: the Egress checker denies an unbound secret-bearing
+	// call, and a standing approval must not override it.
+	egress := &scheme.Prim{Name: "http", Meta: scheme.Meta{Doc: "d", Egress: true, Params: []scheme.Param{
+		{Name: "cred", Type: "any", Role: "credential"}, {Name: "url", Type: "string", Role: "dest"},
+	}}}
+	eg := Egress{Table: binding.Table{}} // empty table: nothing is bound
+	g = New(ConfirmFunc(func(context.Context, Prompt) (bool, error) { return false, nil }), nil, MetaPolicy{}, DefaultArgvTrigger("/repo"), allow, eg)
 	allow.Add("http")
-	if err := g.Before(context.Background(), egress, []scheme.Value{scheme.Str("http")}); err == nil {
-		t.Fatal("standing approval must not override a deny")
+	if err := g.Before(context.Background(), egress, []scheme.Value{scheme.Value{Kind: scheme.KHandle, H: &scheme.Handle{Class: "openai-key", ID: "ab"}}, scheme.Str("https://api.openai.com/v1/chat")}); err == nil {
+		t.Fatal("standing approval must not override an egress deny")
 	}
 	if got := strings.Join(allow.List(), ","); got != "git status,go build,go test,http" {
 		t.Fatalf("list: %s", got)

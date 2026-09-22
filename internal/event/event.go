@@ -22,6 +22,7 @@ const (
 	StreamText     = "stream.text"     // Payload: Text
 	StreamThinking = "stream.thinking" // Payload: Text
 	PromptConfirm  = "prompt.confirm"  // Payload: Confirm; answered through Session.Answer
+	PromptSecret   = "prompt.secret"   // Payload: SecretPrompt; answered through Session.Secret
 	Status         = "status"          // Payload: StatusInfo
 	Error          = "error"           // Payload: ErrorInfo
 	Output         = "output"          // Payload: Text — Scheme display/write output
@@ -36,6 +37,12 @@ type Text struct {
 type Confirm struct {
 	ID     string
 	Prompt guard.Prompt
+}
+
+// SecretPrompt asks the user for a masked secret (credential-register).
+type SecretPrompt struct {
+	ID    string
+	Class string
 }
 
 // StatusInfo says what the session is doing.

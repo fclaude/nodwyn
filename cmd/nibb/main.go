@@ -15,9 +15,13 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/term"
+
+	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/frontend/plain"
+	"github.com/fclaude/nibb/internal/keychain"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
@@ -35,6 +39,7 @@ func main() {
 	url := fs.String("url", "", "override control.url")
 	thinking := fs.Bool("show-thinking", false, "show the model's thinking as it streams")
 	noConfirm := fs.Bool("no-confirm", false, "answer every confirm with no (non-interactive runs)")
+	noKeychain := fs.Bool("no-keychain", false, "start without opening the keychain (no credential primitives)")
 	fs.Bool("plain", true, "line-mode front-end (the only one in bootstrap)")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), `usage: nibb [flags] [command]
@@ -46,6 +51,7 @@ commands:
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
   eval -e EXPR         evaluate an expression and print its value
+  keychain init        create the encrypted keychain (asks for a passphrase)
   paths                print the config and data locations
   version              print version
 
@@ -76,7 +82,7 @@ flags:
 		if *url != "" {
 			cfg.Control.URL = *url
 		}
-		runChat(cfg, paths, *repo, *thinking, *noConfirm)
+		runChat(cfg, paths, *repo, *thinking, *noConfirm, *noKeychain)
 	case "replay":
 		if fs.NArg() < 2 {
 			fail(fmt.Errorf("replay: session id or path required"))
@@ -105,6 +111,27 @@ flags:
 		for _, n := range names {
 			fmt.Println(n)
 		}
+	case "keychain":
+		if fs.Arg(1) != "init" {
+			fail(fmt.Errorf("keychain: expected 'init'"))
+		}
+		if _, err := os.Stat(paths.Keychain); err == nil {
+			fail(fmt.Errorf("keychain already exists at %s", paths.Keychain))
+		}
+		pass := readPassphrase("new keychain passphrase: ")
+		if string(pass) != string(readPassphrase("again: ")) {
+			fail(fmt.Errorf("passphrases do not match"))
+		}
+		if len(pass) == 0 {
+			fail(fmt.Errorf("empty passphrase"))
+		}
+		if err := os.MkdirAll(filepath.Dir(paths.Keychain), 0o700); err != nil {
+			fail(err)
+		}
+		if _, err := keychain.Create(paths.Keychain, keychain.DefaultKDF, pass); err != nil {
+			fail(err)
+		}
+		fmt.Println("keychain created at", paths.Keychain)
 	case "paths":
 		fmt.Printf("config:   %s\nbindings: %s\nkeychain: %s\nsessions: %s\n", paths.ConfigFile, paths.Bindings, paths.Keychain, paths.SessionsDir)
 	case "repl":
@@ -119,7 +146,48 @@ flags:
 	}
 }
 
-func runChat(cfg config.Config, paths config.Paths, repo string, thinking, noConfirm bool) {
+// readPassphrase reads a masked line from the terminal. Passphrases never
+// come from the environment or from arguments (plan §3.3).
+func readPassphrase(prompt string) []byte {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		fail(fmt.Errorf("a passphrase needs a terminal"))
+	}
+	fmt.Fprint(os.Stderr, prompt)
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		fail(err)
+	}
+	return b
+}
+
+// openKeychain opens the keychain if one exists and stdin is a terminal.
+// Without one the session has no credential primitives (bootstrap mode).
+func openKeychain(paths config.Paths) (*keychain.Store, binding.Table) {
+	if _, err := os.Stat(paths.Keychain); err != nil {
+		return nil, binding.Table{}
+	}
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Fprintln(os.Stderr, "keychain: not a terminal; starting without credentials (use --no-keychain to silence)")
+		return nil, binding.Table{}
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		kc, err := keychain.Open(paths.Keychain, readPassphrase("keychain passphrase: "))
+		if err == nil {
+			tbl, err := binding.Load(paths.Bindings)
+			if err != nil {
+				fail(err)
+			}
+			fmt.Fprintf(os.Stderr, "keychain: %d credential(s), %d binding row(s)\n", kc.Count(), len(tbl.Bind))
+			return kc, tbl
+		}
+		fmt.Fprintln(os.Stderr, "keychain:", err)
+	}
+	fail(fmt.Errorf("keychain: could not open"))
+	return nil, binding.Table{}
+}
+
+func runChat(cfg config.Config, paths config.Paths, repo string, thinking, noConfirm, noKeychain bool) {
 	provider := llm.NewOllama(cfg.Control.URL)
 	ctx := context.Background()
 	if v, err := provider.Ping(ctx); err != nil {
@@ -127,8 +195,14 @@ func runChat(cfg config.Config, paths config.Paths, repo string, thinking, noCon
 	} else {
 		fmt.Fprintf(os.Stderr, "control plane: %s %s (ollama %s)\n", cfg.Control.URL, cfg.Control.Model, v)
 	}
+	var kc *keychain.Store
+	var tbl binding.Table
+	if !noKeychain {
+		kc, tbl = openKeychain(paths)
+	}
 	s, err := core.New(core.Options{
 		Config: cfg, Paths: paths, Repo: repo, Version: versionString(), Provider: provider, NoConfirm: noConfirm,
+		Keychain: kc, Bindings: tbl,
 	})
 	if err != nil {
 		fail(err)

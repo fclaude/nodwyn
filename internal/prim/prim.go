@@ -20,6 +20,13 @@ type Options struct {
 	MaxOutput    int           // shell-exec truncates stdout/stderr beyond this
 	ShellTimeout time.Duration // per shell-exec cap
 	EnvAllow     []string      // environment variables children may see
+
+	// P3 egress (all optional; nil disables the egress primitives — bootstrap
+	// has none). The guard's E3 checker enforces the binding table before any
+	// of these handlers run; the handlers only do the work the guard allowed.
+	// The core implements CredentialStore: it owns the keychain, the masked
+	// input, and the log.
+	Credentials CredentialStore
 }
 
 // DefaultOptions returns the bootstrap defaults for a repository root.
@@ -37,7 +44,9 @@ func DefaultOptions(root string) Options {
 	}
 }
 
-// Register adds the host primitives to in.
+// Register adds the host primitives to in. When o.Keychain is set (P3) the
+// egress primitives — http-request, credential-register — are registered
+// too; they are guarded by the E3 checker before they run.
 func Register(in *scheme.Interp, o Options) error {
 	if o.Root == "" {
 		return os.ErrInvalid
@@ -48,13 +57,22 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
+	if o.Credentials != nil {
+		for _, p := range []*scheme.Prim{httpRequest(o.Credentials), credentialRegister(o.Credentials)} {
+			if err := in.Register(p); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 // Checkers returns the guard checkers the host primitives rely on, in the
 // order they should run: the envelope from plan §3.3, the write preview,
-// and the user's standing command approvals (nil for none).
-func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow) []guard.Checker {
+// and the user's standing command approvals (nil for none). extra carries
+// the phase-specific checkers — the E3 egress checker from P3 — appended
+// after the core ones.
+func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, extra ...guard.Checker) []guard.Checker {
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
 		guard.RepoPin{Root: o.Root},
@@ -68,5 +86,6 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow) []
 	if writes != nil {
 		cs = append(cs, writes)
 	}
+	cs = append(cs, extra...)
 	return cs
 }

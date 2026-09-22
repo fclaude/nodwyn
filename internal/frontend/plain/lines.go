@@ -64,3 +64,23 @@ func (lr *lineReader) read(prompt string) (line string, ok bool) {
 	}
 	return line, true
 }
+
+// secret reads one masked line: the user's input is not echoed. It is used
+// for credential-register's masked secret input (ADR 5). On a terminal it
+// uses term.ReadPassword, which disables echo for the duration of the read.
+func (lr *lineReader) secret(prompt string) (line string, ok bool) {
+	if lr.tty == nil {
+		fmt.Fprint(lr.out, prompt)
+		if !lr.scanner.Scan() {
+			return "", false
+		}
+		return lr.scanner.Text(), true
+	}
+	fmt.Fprint(lr.out, prompt)
+	buf, err := term.ReadPassword(int(lr.tty.Fd()))
+	if err != nil {
+		return "", false
+	}
+	fmt.Fprintln(lr.out) // move to a fresh line after the masked input
+	return string(buf), true
+}

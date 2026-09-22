@@ -44,15 +44,13 @@ func argvArgs(p *scheme.Prim, args []scheme.Value) []string {
 }
 
 // MetaPolicy applies the primitive's own declaration: irreversible actions
-// need confirmation; egress is denied until the binding table exists (P3).
+// need confirmation. Egress is decided by the E3 checker (guard.Egress),
+// which owns the binding table — not here.
 type MetaPolicy struct{}
 
 func (MetaPolicy) Name() string { return "meta" }
 
 func (MetaPolicy) Check(_ context.Context, p *scheme.Prim, _ []scheme.Value) Decision {
-	if p.Meta.Egress {
-		return Decision{Verdict: Deny, Reason: "egress is not available before the binding table (P3)"}
-	}
 	if p.Meta.Irreversible {
 		return Decision{Verdict: Confirm, Reason: p.Name + " is irreversible"}
 	}

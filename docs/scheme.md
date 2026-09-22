@@ -247,6 +247,15 @@ Procedures, handles and symbols other than `null` cannot be emitted.
 This mapping is also how the agent loop turns a model's tool-call arguments
 into Scheme values (ADR 3).
 
+### Host primitives (registered by the session, not by `nibb repl`)
+
+| | |
+|---|---|
+| `(fs-read path)` `(fs-write path content)` `(fs-edit path old new)` `(fs-list path)` | repository-pinned file access; writes and edits are irreversible (confirm, diff preview) |
+| `(shell-exec cmd args)` | run a program with an argument **list** in the repository root, scrubbed environment; irreversible; returns `(("status" . n) ("stdout" . s) ("stderr" . s))` |
+| `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))` |
+| `(credential-register class)` | **P3.** Masked input through the front-end, stored in the keychain, returns `#<cred:class:id>`. User origin only; never a model tool |
+
 ### Meta
 
 | | |

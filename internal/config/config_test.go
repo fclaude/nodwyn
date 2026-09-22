@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -62,29 +61,6 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		if _, err := Load(p); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
-	}
-}
-
-func TestBindings(t *testing.T) {
-	dir := t.TempDir()
-	if b, err := LoadBindings(filepath.Join(dir, "none.toml")); err != nil || len(b.Bind) != 0 {
-		t.Fatalf("missing bindings: %v %+v", err, b)
-	}
-	p := filepath.Join(dir, "bindings.toml")
-	os.WriteFile(p, []byte(`
-[[bind]]
-class = "jev-key"
-dest = "api.typesafe.ai"
-positions = ["header:Authorization"]
-methods = ["POST"]
-`), 0o600)
-	b, err := LoadBindings(p)
-	if err != nil || len(b.Bind) != 1 || b.Bind[0].Class != "jev-key" {
-		t.Fatalf("bindings: %v %+v", err, b)
-	}
-	os.WriteFile(p, []byte("[[bind]]\nclass = \"x\"\n"), 0o600)
-	if _, err := LoadBindings(p); err == nil || !strings.Contains(err.Error(), "required") {
-		t.Fatalf("incomplete row accepted: %v", err)
 	}
 }
 

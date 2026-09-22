@@ -90,6 +90,23 @@ type GuardDecision struct {
 	Detail   string `json:"detail,omitempty"` // the diff, when the user did not see it (standing approvals)
 }
 
+// EgressCheck records a binding lookup for a secret-bearing egress (E3).
+type EgressCheck struct {
+	Prim   string `json:"prim"`
+	Class  string `json:"class"`
+	Host   string `json:"host,omitempty"`
+	Method string `json:"method,omitempty"`
+	Bound  bool   `json:"bound"`
+	Reason string `json:"reason,omitempty"` // set when not bound
+}
+
+// CredRegister records a credential registration. Class and Handle are
+// metadata only; the secret value never appears in the log.
+type CredRegister struct {
+	Class  string `json:"class"`
+	Handle string `json:"handle"` // the handle id
+}
+
 // Note is a free-form annotation.
 type Note struct {
 	Text string `json:"text"`
