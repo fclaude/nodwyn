@@ -150,7 +150,8 @@ Commands at the `you>` prompt:
 | Ctrl-C | abort the running turn; at the prompt, exit |
 
 Flags: `--repo DIR`, `--model`, `--url`, `--show-thinking`, `--no-confirm`
-(every confirm is a no — for scripts and CI).
+(every confirm is a no — for scripts and CI), `--no-keychain`,
+`--max-tool-calls N` (per-turn hard stop; default `loop.max_tool_calls`, 200).
 
 ### Confirms
 
@@ -296,7 +297,7 @@ Until Phase 7 (plan §3.3):
 | `control plane … unreachable` | tailscale up? `curl http://workshop.example:11434/api/version` |
 | first turn takes 10–60 s | another client holds workshop's single slot, or the prefix is cold; later turns are sub-second |
 | every request takes 30–50 s | the prefix cache is missing: check `:log` for `llm.req` — a trim (elided count jumped) or a new user turn re-prefills once; if it is every request, another client is evicting workshop's single slot between your requests |
-| the model loops on a denied call | it was told; say so in the next message. `loop.max_tool_calls` (50) is the hard stop |
+| the model loops on a denied call | it was told; say so in the next message. `loop.max_tool_calls` (200, or `--max-tool-calls N`) is the hard stop |
 | `hard stop: too many tool calls` | the turn ended; the log has everything; rephrase smaller |
 | a tool call errored | `:log 20` — the `tool.result` line has the exact error the model saw |
 | a confirm never appeared but a file changed | `:allow` — a standing approval covered it; the `guard.decision` line names which |
