@@ -8,7 +8,7 @@ build:
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nibb ./cmd/nibb
 
 test:
-	go test -race ./...
+	go test -race $(GO_TEST_FLAGS) ./...
 
 lint:
 	go vet ./...
@@ -17,7 +17,7 @@ lint:
 	scripts/lint-ingress.sh
 
 exfil:
-	go test -race ./test/exfil/...
+	go test -race $(GO_TEST_FLAGS) ./test/exfil/...
 
 ## accept: everything a candidate must pass before promotion (ADR 13)
 accept: lint test exfil

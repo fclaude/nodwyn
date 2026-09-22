@@ -106,3 +106,14 @@ tool results, logs, and frontend events. Responses are buffered until complete
 so split stream chunks cannot expose a key. Unknown or encoded secrets are
 not guaranteed to be detected; L3 remains P8. The old operator restrictions
 remain in force for older stable binaries until P7 promotion.
+
+Gitea runs `.gitea/workflows/ci.yml` on every push and pull request using the
+isolated `self-hosted` runner. It executes `make accept` with fresh race tests,
+then cross-compiles Linux and macOS binaries for amd64 and arm64 with cgo
+disabled. Only the Linux amd64 binary is executed on that runner. The real-model
+selfcheck remains a local promotion gate; CI needs no model or credentials.
+
+The same Linux runner can produce release archives for those four targets.
+Cross-compilation does not test macOS behavior or provide Developer ID signing
+and notarization. Publishing downloadable releases is separate from the local
+`nibb-stable` promotion; this workflow validates builds without publishing them.

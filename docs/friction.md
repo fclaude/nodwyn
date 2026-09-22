@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · Gitea CI · configured by an external agent under ADR 16; the general runner uses Alpine and the explicit self-hosted label · the GitHub-only workflow did not establish a Gitea gate · run fresh acceptance checks and all four portable build targets for every push
 - 2026-09-22 · U1 resume · implemented with an external agent under ADR 16; tested CLI restart, process kill after a real tool write, legacy redaction, partial-tail recovery and exclusive ownership · no claim of nibb self-authorship · conversation survives restart; ephemeral approvals and Scheme state deliberately reset
 - 2026-09-22 · readability refactor · implemented with an external agent under ADR 16 after reviewing the spec and roadmap; acceptance and fresh race tests passed · no claim of nibb self-authorship · preserve shared credential and integration boundaries while simplifying the code inside them
 - 2026-09-22 · P7 · implemented with an external agent under ADR 16, validated with the candidate selfcheck · no claim of nibb self-authorship · model output is now buffered because per-token redaction cannot safely recognize split credentials

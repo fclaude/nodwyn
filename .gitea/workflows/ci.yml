@@ -1,0 +1,49 @@
+name: Tests and portable builds
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: self-hosted
+    timeout-minutes: 30
+    env:
+      GOMAXPROCS: "2"
+      GOMEMLIMIT: 1GiB
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare runner tools
+        run: |
+          mkdir -p "$GOTMPDIR" "$TMPDIR" "$RUNNER_TEMP"
+          # The runner permits public HTTPS; Alpine's default mirrors may use HTTP.
+          sed 's|http://|https://|g' /etc/apk/repositories > "$RUNNER_TEMP/apk-repositories"
+          apk --repositories-file "$RUNNER_TEMP/apk-repositories" add --no-cache python3
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install analyzer
+        run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+      - name: Acceptance checks
+        run: make accept GO_TEST_FLAGS=-count=1
+      - name: Cross-compile release targets
+        run: |
+          mkdir -p "$RUNNER_TEMP/nibb-builds"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os=${target%/*}
+            arch=${target#*/}
+            echo "Building $os/$arch without cgo"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -o "$RUNNER_TEMP/nibb-builds/nibb-$os-$arch" ./cmd/nibb
+          done
+          "$RUNNER_TEMP/nibb-builds/nibb-linux-amd64" version
+          test "$("$RUNNER_TEMP/nibb-builds/nibb-linux-amd64" eval -e '(+ 1 2)')" = 3
+      - name: Check source stayed clean
+        run: git diff --exit-code

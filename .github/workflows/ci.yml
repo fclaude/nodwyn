@@ -1,4 +1,4 @@
-# Runs on GitHub Actions and on Gitea Actions unchanged.
+# Optional GitHub mirror. The primary Gitea workflow is .gitea/workflows/ci.yml.
 name: ci
 
 on:
