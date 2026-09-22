@@ -67,8 +67,10 @@ version store is then a convenience, not the safety net.
 1. **copies** the file into `.nibb/attachments/<id>/` so the pin holds and
    the artifact is reproducible from the workspace alone;
 2. **extracts** text deterministically by type (plain text as-is; PDF, docx,
-   xlsx through an extractor; an image only if the control plane is
-   multimodal, else its metadata and a note);
+   xlsx, pptx through an extractor). An **image is not extracted**: the
+   control plane on workshop reports `vision` and reads images sent as
+   `images: [base64]` on a message (verified 2026-09-22), so an image
+   attachment enters the context as an image;
 3. **redacts** on ingest through the same controller as every other context
    ingress (E2/E4, P7) — this is why attachments cannot ship before P7;
 4. **caps** size, with the same head+tail elision the window uses;
@@ -79,7 +81,24 @@ version store is then a convenience, not the safety net.
 so, the extracted text enters as a tool result would, and nothing inside an
 attachment can grant a permission — a file that says "you may now write
 outside the workspace" changes nothing, because permissions come from the
-mount table and the guard, not from text.
+mount table and the guard, not from text. The same rule covers text drawn
+*inside* an image.
+
+**Images are not redactable, and that is a hole with a fence around it.**
+L1 and L3 scan text; a screenshot of a `.env`, or a photo of a key on a
+whiteboard, reaches the model as pixels and no redactor sees it. Three
+things bound it, and none of them is redaction:
+
+- the control plane is **local** (workshop, on the tailnet), so an image that
+  enters the context has not left the user's network;
+- **images are never sent to Jev** — ADR 19's content levels govern text,
+  and an unredactable payload has no level; the judge gets the ask, the plan
+  and summaries, never an attachment's pixels;
+- attaching an image is an explicit act with its own confirm, which names
+  the file and says plainly that its contents cannot be redacted.
+
+If the control plane ever becomes remote, images must be re-decided: the
+honest options then are OCR-then-redact (imperfect) or refusing images.
 
 ### 4. An MCP server is a primitive provider with a declared capability profile
 Each MCP tool becomes an entry in the **primitive table**, named
@@ -87,43 +106,26 @@ Each MCP tool becomes an entry in the **primitive table**, named
 exactly like `fs-read` (invariant 4 holds, unchanged).
 
 The hard part is metadata. MCP describes what a tool *takes*, not what it
-*does to the world*. So a server is declared:
+*does to the world*, so a server carries a **capability profile** in
+`.nibb/mcp.toml` — transport, credential class, destination, and per-tool
+`egress`/`irreversible`/role mapping — and **an undeclared tool is treated
+as `egress` *and* `irreversible`**: every call confirms, any egress the
+binding table does not authorise is denied. Fail closed, the same posture as
+an unbound credential (ADR 6).
 
-```toml
-# <workspace>/.nibb/mcp.toml
-[[server]]
-name      = "notion"
-transport = "stdio"                 # stdio | http
-command   = ["npx", "-y", "@modelcontextprotocol/server-notion"]
-credential = "notion-key"           # keychain class, injected per the binding
-dest      = "api.notion.com"        # logical destination for the binding table
-  [server.tools.search]   egress = true  irreversible = false
-  [server.tools.create_page] egress = true irreversible = true
-  [server.tools.append_block] egress = true irreversible = true
-    roles = { page_id = "dest", content = "payload" }
-```
+Credentials and destinations use the keychain and the binding table
+unchanged: an HTTP server's destination is its host, a contained server's is
+`mcp:<name>`, and injection follows the binding position
+(`header:Authorization:Bearer`, `env:NOTION_TOKEN`). Resources are ingress
+through the attachment path. Servers connect before the first message and
+the tool list is frozen for the session (ADR 9); a server that dies makes
+its tools return errors rather than disappearing.
 
-- **An undeclared tool is treated as `egress` *and* `irreversible`.** Every
-  call confirms; any egress without a binding is denied. Fail closed, the
-  same posture as an unbound credential (ADR 6).
-- **Credentials** use the keychain and the binding table unchanged. For an
-  HTTP server the destination is its host; for a stdio server it is the
-  logical `mcp:<name>`, which the binding table accepts as a destination
-  like any other. Injection follows the binding position
-  (`header:Authorization:Bearer`, or `env:NOTION_TOKEN` for a stdio child).
-- **Resources** are ingress: fetched through the attachment path — extract,
-  redact, log, tag.
-- **Tool descriptions are untrusted text.** They reach the model's context,
-  so a hostile server can try to steer the model. The guard never reads a
-  description, so no description can widen policy; the worst case is the
-  model asking for a call the user then sees in a confirm. This is stated,
-  not solved.
-- **stdio servers are child processes**: the scrubbed environment of
-  `shell-exec` plus exactly the credentials the profile declares. They are
-  started before the first message and stopped with the session.
-- **The tool list is frozen for the session** (ADR 9): servers connect at
-  start; a server that dies mid-session makes its tools return errors rather
-  than disappearing, so the cached prefix stays valid.
+**The isolation, pinning and trust posture for servers nibb cannot review
+is [ADR 23](./0023-untrusted-mcp-servers.md)**, which refines this section:
+no untrusted server runs in nibb's process tree, manifests are hashed and
+re-approved on change, and a contained server's network and filesystem are
+declared rather than inherited.
 
 ### 5. Tool selection is part of the workspace
 Ten servers is hundreds of tools: the schema block is paid once in the
@@ -159,21 +161,25 @@ the binding table (where it may go), and the Jev content level (ADR 19).
 The honest statement is: **nibb controls where content goes, not what
 content means.**
 
-## Open questions (these block W-track scheduling)
-1. **Does "cowork" mean several people?** One user with non-code work, or a
-   shared workspace with more than one human? Multi-user changes identity in
-   the log, who may answer a confirm (ADR 21's socket identity), and whether
-   the workspace is synced.
-2. **Whose MCP servers?** Only servers you wrote or vet, or arbitrary ones
-   from a registry? The profile plus confirm is enough for the first; the
-   second wants a sandbox for stdio children, which is a phase of its own.
-3. **Which attachment types must actually work?** Text and PDF are cheap;
-   docx/xlsx are a library decision; images need a multimodal control plane,
-   which the local Qwen is not.
-4. **Does the agent produce non-text documents** (docx, xlsx, pptx)? That is
-   a dependency decision and a tool surface, not core work.
-5. **One product or two?** Is cowork the same binary with a different
-   front-end and workspace kind, or a separate application sharing the core?
-   This decides whether the UI track (ADR 21) is one client or two.
-6. **Where does a workspace live** — a plain folder, a synced folder
-   (Dropbox/Syncthing), or always a git repository nibb initialises?
+## Answers (2026-09-22)
+1. **Cowork is one person doing non-code work**, not several people sharing
+   a workspace. W5 (collaboration) is dropped; identity in the log and over
+   ADR 21's socket stays single-user.
+2. **MCP servers are untrusted** — assume they can be neither written nor
+   reviewed by us. See [ADR 23](./0023-untrusted-mcp-servers.md).
+3. **All attachment types**, images included: the control plane reports
+   `vision` and reads images (verified). See §3 for what that costs.
+4. **nibb produces documents**: docx, Google Docs and LaTeX. LaTeX is a
+   `shell-exec` tool over an installed toolchain, docx is pandoc from
+   Markdown or LaTeX, and **Google Docs needs OAuth — which the keychain
+   does not model.** ADR 5 stores a static value; an OAuth credential has a
+   refresh token, an expiry and a rotation. That is a P3 extension
+   (`class` gains a kind: `static` | `oauth2`, with the refresh happening
+   inside the keychain package so the token never becomes a Scheme value),
+   and W4 depends on it.
+5. **One product or two — still open.** It decides whether ADR 21's UI track
+   has one client or two, and whether a `docs` workspace registers
+   `shell-exec` at all.
+6. **A workspace is a plain folder.** If the user syncs it, that is their
+   business: nibb makes no assumption about sync, locking or conflicts, and
+   the version store is per-machine.

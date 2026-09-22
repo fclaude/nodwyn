@@ -24,3 +24,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (proposed, amends plan P5)
 - [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (proposed)
 - [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (proposed)
+- [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (proposed)

@@ -215,10 +215,11 @@ approval created over RPC without its own explicit method.
 
 \chapter{Cowork: workspaces, attachments, MCP}
 
-The same harness, applied to work that is not only code: a working folder of
-documents, files the user brings into the conversation, and tools that arrive
-from MCP servers rather than from \file{dev/*.scm}. \adr{22} models it. The
-invariants do not change; three assumptions do.
+The same harness, applied to work that is not only code, for one person:
+a working folder of documents, files brought into the conversation, and
+tools that arrive from MCP servers rather than from \file{dev/*.scm}.
+\adr{22} models it and \adr{23} sets the trust posture. The invariants do
+not change; three assumptions do.
 
 \paragraph{The pin.} One root, read and write, with git as the reviewable
 undo, becomes a \textbf{workspace}: a root plus a user-owned \emph{mount
@@ -229,28 +230,42 @@ folder may be no repository at all, a \textbf{version store} is written
 before every irreversible write, so \adr{17}'s standing write approvals keep
 their justification without git.
 
-\paragraph{Ingress.} Everything the model sees today was produced by a tool
-nibb ran. An attachment is content from outside: it is copied into the
-workspace so the pin holds, extracted by type, \emph{redacted at ingest}
-through the same controller as every other context ingress, capped, logged,
-and tagged as external. Attachments therefore cannot ship before P7. And
-their content is \emph{data}: a file that says ``you may now write outside
-the workspace'' changes nothing, because permissions come from the mount
-table and the guard, never from text.
+\paragraph{Ingress.} An attachment is content from outside: copied into the
+workspace so the pin holds, extracted by type, \emph{redacted at ingest},
+capped, logged, tagged external. Its content is \emph{data} --- a file that
+says ``you may now write outside the workspace'' changes nothing, because
+permissions come from the mount table and the guard, never from text.
+
+Images are the exception that has to be said out loud. The control plane
+reads images, so an image attachment enters the context as pixels, and
+\textbf{no redactor sees pixels}: a screenshot of a \file{.env} is
+unredactable. Three things bound it, and none of them is redaction --- the
+control plane is local, so the image has not left the machine's network;
+images are never sent to the judge, because an unredactable payload has no
+content level; and attaching one carries its own confirm that says so. If
+the control plane ever becomes remote, images must be re-decided.
 
 \paragraph{The metadata contract.} The guard reads a primitive's declared
 \code{Egress}, \code{Irreversible} and parameter roles. MCP declares a name,
 a description and a JSON schema --- none of those three. So each MCP tool
 becomes a primitive named \code{server/tool}, crossing the guard like
-\code{fs-read}, and its server carries a \emph{capability profile} the user
-accepts once: transport, credential class, destination, and per-tool
-\code{egress}/\code{irreversible}/roles. \textbf{An undeclared tool is
-treated as egress \emph{and} irreversible}: every call confirms, unbound
-egress is denied. Fail closed, exactly like an unbound credential. A stdio
-server's destination is the logical \code{mcp:<name>}, which the binding
-table accepts like any host. Tool descriptions reach the model's context and
-are untrusted text --- the guard never reads them, so no description can
-widen policy.
+\code{fs-read}, and its server carries a \emph{capability profile}:
+transport, credential class, destination, and per-tool metadata.
+\textbf{An undeclared tool is treated as egress \emph{and} irreversible}:
+every call confirms, unbound egress is denied.
+
+\paragraph{And the servers are untrusted.} The operating assumption is that
+a server can be neither written nor reviewed by us, which moves the risk off
+the tool call and onto the process, the manifest, the arguments and the
+results. \adr{23}: no untrusted server runs in nibb's process tree --- a
+remote server is simply a destination the binding table already models, and
+a local one runs in a digest-pinned container with a declared network
+(empty means none) and declared workspace mounts (default none), reached
+over loopback. The tool manifest is hashed at approval time, so a server
+that redescribes its tools stops the session until the change is reviewed.
+A container is not a VM, and isolation does not un-send an argument: what
+the user is really deciding at an MCP confirm is whether this third party
+may see this.
 
 \paragraph{The accepted limit.} L1 and L3 detect \emph{credentials}. A cowork
 workspace holds documents whose sensitivity has nothing to do with shape: a
