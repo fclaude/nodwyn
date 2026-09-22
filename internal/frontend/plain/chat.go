@@ -109,6 +109,41 @@ func (c *Chat) follow(ctx context.Context) {
 
 var lastWasStream bool
 
+// stream tracks where we are in the streamed output so thinking fragments
+// can be prefixed once per line, not once per fragment.
+var stream struct {
+	mode        string // "" | "thinking" | "text"
+	atLineStart bool
+}
+
+// writeStream renders one streamed fragment. Thinking lines are prefixed
+// with a dim marker at the start of each line; switching between thinking
+// and text starts a fresh line.
+func (c *Chat) writeStream(mode, text string) {
+	if text == "" {
+		return
+	}
+	if stream.mode != mode {
+		if stream.mode != "" && !stream.atLineStart {
+			fmt.Fprintln(c.Out)
+		}
+		stream.mode, stream.atLineStart = mode, true
+	}
+	var b strings.Builder
+	for _, r := range text {
+		if stream.atLineStart && mode == "thinking" {
+			b.WriteString("· ")
+		}
+		stream.atLineStart = false
+		b.WriteRune(r)
+		if r == '\n' {
+			stream.atLineStart = true
+		}
+	}
+	fmt.Fprint(c.Out, b.String())
+	lastWasStream = true
+}
+
 func (c *Chat) show(ev event.Event) {
 	if ev.Seq != 0 {
 		c.recent = append(c.recent, ev)
@@ -118,22 +153,22 @@ func (c *Chat) show(ev event.Event) {
 	}
 	endStream := func() {
 		if lastWasStream {
-			fmt.Fprintln(c.Out)
+			if !stream.atLineStart {
+				fmt.Fprintln(c.Out)
+			}
 			lastWasStream = false
 		}
+		stream.mode, stream.atLineStart = "", true
 	}
 	switch ev.Kind {
 	case event.StreamThinking:
 		if c.ShowThinking {
-			fmt.Fprint(c.Out, dim(ev.Payload.(event.Text).Text))
-			lastWasStream = true
+			c.writeStream("thinking", ev.Payload.(event.Text).Text)
 		}
 	case event.StreamText:
-		fmt.Fprint(c.Out, ev.Payload.(event.Text).Text)
-		lastWasStream = true
+		c.writeStream("text", ev.Payload.(event.Text).Text)
 	case event.Output:
-		fmt.Fprint(c.Out, ev.Payload.(event.Text).Text)
-		lastWasStream = true
+		c.writeStream("text", ev.Payload.(event.Text).Text)
 	case string(log.KindToolCall):
 		endStream()
 		p := ev.Payload.(log.ToolCallEvent)
