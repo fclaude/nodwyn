@@ -27,6 +27,7 @@ import (
 	"github.com/fclaude/nibb/internal/loop"
 	"github.com/fclaude/nibb/internal/plan"
 	"github.com/fclaude/nibb/internal/prim"
+	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
 	"github.com/fclaude/nibb/internal/window"
 )
@@ -57,14 +58,16 @@ type Options struct {
 
 // Session is one conversation with one log.
 type Session struct {
-	opts   Options
-	id     string
-	logw   *log.Writer
-	events []log.Event
-	evmu   sync.Mutex
-	out    chan event.Event
-	interp *scheme.Interp
-	loop   *loop.Loop
+	opts     Options
+	id       string
+	logw     *log.Writer
+	events   []log.Event
+	evmu     sync.Mutex
+	outputMu sync.Mutex
+	output   strings.Builder
+	out      chan event.Event
+	interp   *scheme.Interp
+	loop     *loop.Loop
 
 	mu         sync.Mutex
 	busy       bool
@@ -204,7 +207,7 @@ func New(o Options) (*Session, error) {
 	g.SetConfirmer(confirmer)
 
 	requestTimeout, _ := o.Config.Loop.Durations()
-	s.loop = loop.New(s, o.Provider, s.interp, loop.Config{
+	s.loop, err = loop.New(s, o.Provider, s.interp, loop.Config{
 		Model:          o.Config.Control.Model,
 		NumCtx:         o.Config.Control.NumCtx,
 		KeepAlive:      o.Config.Control.KeepAlive,
@@ -213,6 +216,10 @@ func New(o Options) (*Session, error) {
 		RequestTimeout: requestTimeout,
 		System:         systemPrompt(o.Repo),
 	})
+	if err != nil {
+		return nil, err
+	}
+	s.flushOutput()
 	if _, err := s.Record(log.KindSessionStart, log.SessionStart{
 		Version: o.Version, Repo: o.Repo, Provider: o.Provider.Name(),
 		Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools()),
@@ -274,6 +281,7 @@ func (s *Session) Send(text string) error {
 
 	go func() {
 		defer func() {
+			s.flushOutput()
 			cancel()
 			s.mu.Lock()
 			s.busy = false
@@ -286,11 +294,21 @@ func (s *Session) Send(text string) error {
 		// The gate runs under the same guard/binding/redaction policy as a
 		// model tool call (plan §Phase 5). On Jev outage it degrades to a
 		// plain plan and the loop proceeds.
+		safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
+		if err != nil {
+			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})
+			return
+		}
+		var msg log.UserMsg
+		if err := safe.Decode(&msg); err != nil {
+			return
+		}
+		text = msg.Text
 		gres := plan.Run(ctx, s, text)
 		if gres.Plan != "" {
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gres.Score, gres.Revises)}})
 		}
-		if err := s.loop.Turn(ctx, text); err != nil {
+		if err := s.loop.Turn(ctx); err != nil {
 			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})
 		}
 	}()
@@ -401,12 +419,18 @@ func (s *Session) confirm(ctx context.Context, p guard.Prompt) (bool, error) {
 // Eval evaluates Scheme with user origin (a front-end command). Output is
 // delivered as Output events; the result is returned.
 func (s *Session) Eval(ctx context.Context, src string) (scheme.Value, error) {
+	defer s.flushOutput()
 	return s.interp.EvalString(scheme.WithOrigin(ctx, scheme.OriginUser), src)
 }
 
 // Record appends to the log, keeps the event for the window, and forwards
 // it to the front-end. It is the loop.Host implementation.
 func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
+	clean, redactions, err := redact.Payload(payload, nil)
+	if err != nil {
+		return log.Event{}, err
+	}
+	payload = clean
 	ev, err := s.logw.Append(kind, payload)
 	if err != nil {
 		return ev, err
@@ -415,7 +439,13 @@ func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
 	s.events = append(s.events, ev)
 	s.evmu.Unlock()
 	s.Emit(event.FromLog(ev, payload))
-	return ev, nil
+	if len(redactions) > 0 {
+		_, err = s.Record(log.KindRedact, struct {
+			Source uint64         `json:"source_seq"`
+			Events []redact.Event `json:"events"`
+		}{ev.Seq, redactions})
+	}
+	return ev, err
 }
 
 // Events returns a snapshot of the log so far (loop.Host).
@@ -433,6 +463,12 @@ func (s *Session) Emit(ev event.Event) {
 	s.mu.Unlock()
 	if closed {
 		return
+	}
+	clean, _, err := redact.Payload(ev.Payload, nil)
+	if err != nil {
+		ev = event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: "event redaction failed"}}
+	} else {
+		ev.Payload = clean
 	}
 	s.out <- ev
 }
@@ -462,8 +498,22 @@ func (s *Session) Close() error {
 type outputWriter struct{ s *Session }
 
 func (w outputWriter) Write(p []byte) (int, error) {
-	w.s.Emit(event.Event{Kind: event.Output, Payload: event.Text{Text: string(p)}})
+	w.s.outputMu.Lock()
+	_, _ = w.s.output.Write(p)
+	w.s.outputMu.Unlock()
 	return len(p), nil
+}
+
+// flushOutput joins Scheme display fragments before scanning, just as model
+// fragments are joined before display. It runs at evaluation/turn boundaries.
+func (s *Session) flushOutput() {
+	s.outputMu.Lock()
+	text := s.output.String()
+	s.output.Reset()
+	s.outputMu.Unlock()
+	if text != "" {
+		s.Emit(event.Event{Kind: event.Output, Payload: event.Text{Text: text}})
+	}
 }
 
 // --- P3 egress: Session implements prim.CredentialStore -----------------
@@ -614,14 +664,14 @@ func (s *Session) Draft(ctx context.Context, prompt string) (string, error) {
 		Model:  s.opts.Config.Control.Model,
 		NumCtx: s.opts.Config.Control.NumCtx,
 		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: "You are nibb's planner for the repository at " + s.opts.Repo + ". Return only the plan text."},
-			{Role: llm.RoleUser, Content: prompt},
+			{Role: llm.RoleSystem, Content: redact.Redact("You are nibb's planner for the repository at "+s.opts.Repo+". Return only the plan text.", nil).Text},
+			{Role: llm.RoleUser, Content: redact.Redact(prompt, nil).Text},
 		},
 	}, nil)
 	if err != nil {
 		return "", err
 	}
-	return resp.Message.Content, nil
+	return redact.Redact(resp.Message.Content, nil).Text, nil
 }
 
 // SecretReply delivers a masked secret to a pending PromptAndAdd.

@@ -85,7 +85,7 @@ func TestTurnWithToolCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	evs := r.drain("n")
-	want := "session.start user.msg llm.req status stream.thinking llm.resp tool.call status guard.decision tool.result llm.req status stream.text stream.text stream.text stream.text stream.text stream.text llm.resp status"
+	want := "session.start user.msg llm.req status stream.thinking llm.resp tool.call status guard.decision tool.result llm.req status stream.text llm.resp status"
 	if got := kinds(evs); got != want {
 		t.Fatalf("events:\n got %s\nwant %s", got, want)
 	}

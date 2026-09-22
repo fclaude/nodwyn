@@ -5,11 +5,9 @@
 // keeps — the context window, summaries, the structural index — is a derived,
 // revocable view that can be recomputed from this file.
 //
-// The writer fsyncs after every event. A payload filter hook (Filter) is the
-// seat for the ingress redactor (Phase 7): once installed, nothing reaches the
-// file without passing through it. Until then the log stores what it is given,
-// which is why bootstrap-era nibb runs only inside the safety envelope
-// (plan §3.3).
+// The writer fsyncs after every event. Mandatory redaction runs after the
+// optional payload Filter, before either persistence or returning the event.
+// Core derives its context only from these written events.
 package log
 
 import (
@@ -25,6 +23,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/fclaude/nibb/internal/redact"
 )
 
 // Kind is an event kind. The set is fixed (ADR 2); a reader rejects any other.
@@ -195,6 +195,14 @@ func (w *Writer) Append(kind Kind, payload any) (Event, error) {
 		}
 		if !json.Valid(b) {
 			return Event{}, fmt.Errorf("log: filter returned invalid JSON for %s", kind)
+		}
+		raw = b
+	}
+	// Mandatory final boundary, including writers opened outside core.
+	if raw != nil {
+		b, _, err := redact.JSON(raw, nil)
+		if err != nil {
+			return Event{}, fmt.Errorf("log: redaction: %w", err)
 		}
 		raw = b
 	}

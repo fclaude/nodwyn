@@ -13,7 +13,7 @@ read [docs/adr/](adr/).
 
 A **front-end** sends the user's text to a **core session**. The session's
 **loop** builds a context **window** from the session **log**, sends it to the
-control-plane **model** (Ollama on workshop) and streams the answer. When the
+control-plane **model** (Ollama on workshop) and displays the redacted answer after generation. When the
 model asks for a tool, the loop turns the request into a Scheme application
 `(tool-name arg …)` and evaluates it in the embedded **Scheme** interpreter.
 Every primitive application — from the model, the user, or a `.scm` file —
@@ -38,7 +38,7 @@ This is the spine. Read these in order and you have read the system.
 | 8 | [internal/guard/guard.go](../internal/guard/guard.go) `Before` | checkers run in order; strictest verdict wins; a standing approval outranks confirm, never deny; every host-reaching decision is logged |
 | 9 | [internal/guard/checkers.go](../internal/guard/checkers.go), [allow.go](../internal/guard/allow.go) | the bootstrap envelope: `MetaPolicy`, `RepoPin`, `PathDenylist`, `ArgvTrigger`, `CommandAllow` |
 | 10 | [internal/prim/fs.go](../internal/prim/fs.go), [shell.go](../internal/prim/shell.go) | the host primitives; `Meta.Params[].Role` is what the guard reads; `Preview` renders the diff for the prompt |
-| 11 | [internal/log/log.go](../internal/log/log.go), [payloads.go](../internal/log/payloads.go) | the source of truth: one JSON line per event, fsync per write, the `Filter` hook where the P7 redactor will sit |
+| 11 | [internal/log/log.go](../internal/log/log.go), [payloads.go](../internal/log/payloads.go) | the source of truth: one JSON line per event, fsync per write, mandatory redaction after the optional `Filter` hook |
 
 ### Package map
 
@@ -98,7 +98,7 @@ whose content was replaced in the window.
 | P4 L1 | a checker over `Role: payload`/`argv` text; `log.Writer.Filter` |
 | P5 Jev + plan gate | `log.KindGatePlan`; `ArgvTrigger` becomes the hard-trigger list |
 | P6 taint | `Value.Taint` (reserved), `Call.Origin` |
-| P7 redaction | one context ingress: `window.Build`; the log `Filter` |
+| P7 redaction | `Session.Record` sanitizes payloads; the log writer enforces redaction; `window.Build` derives context from written events |
 | P9 TUI | `internal/frontend/tui` over `core.Session`, no core change |
 | P10 memory | replace `internal/window`; `log.KindSummary` |
 
@@ -146,7 +146,7 @@ Commands at the `you>` prompt:
 | `:tools` | tools offered to the model |
 | `:allow` | standing command approvals in effect |
 | `:eval EXPR` | evaluate Scheme yourself (user origin) |
-| `:thinking` | toggle streaming the model's thinking |
+| `:thinking` | toggle showing the model's redacted thinking |
 | Ctrl-C | abort the running turn; at the prompt, exit |
 
 Flags: `--repo DIR`, `--model`, `--url`, `--show-thinking`, `--no-confirm`
@@ -261,20 +261,31 @@ arguments); the inner `shell-exec` is still irreversible, so pair the tool
 with a standing approval. The language is in [docs/scheme.md](scheme.md);
 try things in `nibb repl` or with `:eval`.
 
-### What the bootstrap envelope does and does not protect
+### Ingress redaction and the remaining boundaries
 
-Until Phase 7 (plan §3.3):
+P7 uses the shared `internal/redact` controller for user text, tool results,
+planner requests, log payloads, and frontend events. Recognized credentials
+become `[REDACTED <class>]`; `redact.event` records the source event sequence,
+class, and offsets within the decoded string, never the removed value.
+JSON strings and nested tool arguments are decoded before scanning. The
+mandatory log pass runs after custom filters. Egress L1 allowlists do not
+turn off ingress redaction.
 
-- Paths are pinned to the repository, symlinks resolved. Credential-shaped
-  files (`.env*`, `*.pem`, `*.key`, `id_*`, `~/.ssh`, `~/.aws`, …) cannot be
-  read or written at any depth.
-- There is no network primitive. `curl`/`ssh`/`scp` on a command line, and
-  `git push`, `rm -rf`, absolute paths outside the repo, all force a confirm.
-- Child processes get an allowlisted environment (`PATH HOME GOPATH GOCACHE
-  …`), never yours.
-- **Not protected:** a `y` to `shell-exec cat ~/.ssh/id_rsa`. The prompt
-  names the path; read it. Do not paste secrets into the prompt — nothing
-  redacts them yet. Keep bootstrap-era nibb to repositories you trust.
+The log is the context ingress: `Session.Record` appends the writer's returned
+event to the live history, and `window.Build` derives messages from that history.
+The planner's separate request is also redacted. CI checks the history writer.
+
+Model content and thinking are buffered until the response completes, then
+redacted and displayed. Scanning separate token chunks would miss split keys.
+User-origin Scheme still evaluates the original source; `:eval` results are
+redacted for display. The standalone `eval` and `repl` commands are interpreter
+tools, outside the conversational context boundary.
+
+Paths remain pinned; credential-shaped files stay denied; child environments
+remain allowlisted; shell commands still require approval. Recognized secret
+shapes are covered, not arbitrary passwords, encodings, or confidential prose.
+Unknown entropy remains a residual for P8's optional L3 classifier. Older
+stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 
 ### Building nibb with nibb
 

@@ -263,6 +263,18 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 - **With nibb:** promotion retires the last two operator rules in §3.3. nibb is now safe to use on *other* repos with real keys. From here, curated session logs go into `test/sessions/` as replay fixtures for P10.
 - **Accept:** canary paste ⇒ context and log show `[REDACTED anthropic-key]`; `cat .env` ⇒ redacted before the model sees it; "repeat the key" ⇒ placeholder only; full exfil suite green. Promote `v0.7-core`.
 
+- **Implemented 2026-09-22; promotion pending.** `Session.Record` is the existing
+  log-derived context ingress (no separate mutable context store). It sanitizes
+  typed payloads, emits substitution metadata, and retains only written events;
+  the log writer independently redacts after custom filters. User input is
+  recorded before the plan gate; direct planner requests, tool schemas, and
+  frontend payloads are covered. Model responses are buffered to detect keys
+  split across chunks (ADR 25). Tests cover paste, `cat .env`, repeat-key context,
+  replay, JSON escaping, and planner/output bypasses. `make accept` and the live
+  candidate selfcheck passed. The selfcheck log in `test/sessions/` is genuine
+  acceptance evidence, not a nibb-authored build session. No stable swap or tag
+  has been made; operator-rule retirement remains tied to promotion.
+
 **Milestone M3 (end of week 17): all four edges guarded — v0-core. The 3–4-month cut.** If the budget ends here nibb is usable in line mode with the full security model, and has been building itself for 13 weeks.
 
 ### Phase 8 — L3 feature classifier, optional (weeks 18–19)

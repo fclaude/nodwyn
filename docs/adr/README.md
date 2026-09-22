@@ -26,3 +26,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (proposed)
 - [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (proposed)
 - [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (proposed)
+- [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output

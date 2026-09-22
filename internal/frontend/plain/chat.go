@@ -12,6 +12,7 @@ import (
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/guard"
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
@@ -55,7 +56,7 @@ func (c *Chat) Run(ctx context.Context) error {
 			continue
 		}
 		if err := c.Session.Send(line); err != nil {
-			fmt.Fprintln(c.Out, "error:", err)
+			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
 			continue
 		}
 		c.follow(ctx)
@@ -293,9 +294,9 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 		v, err := c.Session.Eval(ctx, src)
 		c.drainIdle()
 		if err != nil {
-			fmt.Fprintln(c.Out, "error:", err)
+			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
 		} else if v.Kind != scheme.KVoid {
-			fmt.Fprintln(c.Out, scheme.Write(v))
+			fmt.Fprintln(c.Out, redact.Redact(scheme.Write(v), nil).Text)
 		}
 	case ":allow":
 		for _, a := range c.Session.Allowed() {

@@ -4,8 +4,8 @@
 //
 // ADR 19: Jev is an egress edge and its payload "passes through the same
 // redaction controller as the model context (E2/E4): L1, later L3,
-// [REDACTED class]". Phase 5 ships this L1-only function; Phase 7 installs
-// it in front of every context ingress and the log writer. It is deliberately
+// [REDACTED class]". It runs at context ingress and the log writer, as well
+// as the Jev send boundary. It is deliberately
 // a pure function of (text, scanner) so the Jev send path (P5) and the
 // context ingress (P7) share exactly one implementation.
 package redact

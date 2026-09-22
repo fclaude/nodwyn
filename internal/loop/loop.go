@@ -14,6 +14,7 @@ import (
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
 	"github.com/fclaude/nibb/internal/window"
 )
@@ -50,14 +51,20 @@ type Loop struct {
 
 // New builds a loop. The tool list is computed once: it must not change
 // mid-session (ADR 9).
-func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) *Loop {
+func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) (*Loop, error) {
 	l := &Loop{host: host, provider: provider, interp: interp, cfg: cfg}
 	for _, p := range interp.Tools() {
 		l.tools = append(l.tools, llm.Tool{Name: p.Name, Description: p.Meta.Doc, Parameters: p.Schema()})
 	}
+	clean, _, err := redact.Payload(l.tools, nil)
+	if err != nil {
+		return nil, fmt.Errorf("loop: redact tool schemas: %w", err)
+	}
+	l.tools = clean.([]llm.Tool)
+	l.cfg.System = redact.Redact(l.cfg.System, nil).Text
 	b, _ := json.Marshal(l.tools)
 	l.toolsLen = window.Estimate(string(b))
-	return l
+	return l, nil
 }
 
 // Tools returns the tool list offered to the model.
@@ -67,11 +74,8 @@ func (l *Loop) Tools() []llm.Tool { return l.tools }
 // is in the log; a "continue" message starts a fresh budget.
 var ErrHardStop = errors.New("hard stop: tool-call limit for this turn reached (loop.max_tool_calls / --max-tool-calls); say \"continue\" to go on")
 
-// Turn handles one user message to completion.
-func (l *Loop) Turn(ctx context.Context, text string) error {
-	if _, err := l.host.Record(log.KindUserMsg, log.UserMsg{Text: text}); err != nil {
-		return err
-	}
+// Turn handles the user message already recorded by the session to completion.
+func (l *Loop) Turn(ctx context.Context) error {
 	calls := 0
 	for {
 		w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
@@ -85,14 +89,7 @@ func (l *Loop) Turn(ctx context.Context, text string) error {
 		reqCtx, cancel := context.WithTimeout(ctx, l.cfg.RequestTimeout)
 		resp, err := l.provider.Chat(reqCtx, llm.Request{
 			Model: l.cfg.Model, Messages: w.Messages, Tools: l.tools, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive,
-		}, func(d llm.Delta) {
-			if d.Thinking != "" {
-				l.host.Emit(event.Event{Kind: event.StreamThinking, Payload: event.Text{Text: d.Thinking}})
-			}
-			if d.Text != "" {
-				l.host.Emit(event.Event{Kind: event.StreamText, Payload: event.Text{Text: d.Text}})
-			}
-		})
+		}, nil)
 		cancel()
 		if err != nil {
 			_, _ = l.host.Record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
@@ -107,6 +104,13 @@ func (l *Loop) Turn(ctx context.Context, text string) error {
 		}
 		for _, tc := range resp.Message.ToolCalls {
 			respRec.ToolCalls = append(respRec.ToolCalls, log.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args})
+		}
+		// Buffer the response: tokens can split a credential at any byte.
+		if resp.Message.Thinking != "" {
+			l.host.Emit(event.Event{Kind: event.StreamThinking, Payload: event.Text{Text: redact.Redact(resp.Message.Thinking, nil).Text}})
+		}
+		if resp.Message.Content != "" {
+			l.host.Emit(event.Event{Kind: event.StreamText, Payload: event.Text{Text: redact.Redact(resp.Message.Content, nil).Text}})
 		}
 		if _, err := l.host.Record(log.KindLLMResp, respRec); err != nil {
 			return err

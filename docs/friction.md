@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · P7 · implemented with an external agent under ADR 16, validated with the candidate selfcheck · no claim of nibb self-authorship · model output is now buffered because per-token redaction cannot safely recognize split credentials
 - 2026-09-22 · P6 · the doc-coverage test caught three undocumented builtins before they could ship · nothing, it failed the build · ADR 7's mechanical rule keeps paying for itself
 - 2026-09-22 · P5 review · the Jev client and its fake agreed on a protocol that does not exist; every test passed · a phase that would have failed on first contact with the API · rule for external APIs: fetch the docs and pin the wire shape in the fake's comments before writing the client
 - 2026-09-21 · P3 session (766 messages) · every request re-prefilled 82–96K tokens (40–48 s) — the window sat at budget and elided the next-oldest live entry each request, and a big result ageing out of the protected tail un-elided earlier ones · ~40 s of prefill per tool call · **resolved: sticky elision from the log, high/low-water hysteresis, result caps, task block in the system prompt (ADR 9 amendment)**

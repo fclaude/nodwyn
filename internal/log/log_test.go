@@ -213,3 +213,24 @@ func TestSessionIDSortsByTime(t *testing.T) {
 		t.Fatal("session path extension")
 	}
 }
+
+func TestMandatoryRedactionAfterFilter(t *testing.T) {
+	var b bytes.Buffer
+	w := New(&b, "test", WithFilter(func(_ Kind, _ []byte) ([]byte, error) {
+		return []byte(`{"text":"\u0073k-ant-abcdefgh1234"}`), nil
+	}))
+	ev, err := w.Append(KindNote, Note{Text: "safe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var note Note
+	if err := ev.Decode(&note); err != nil {
+		t.Fatal(err)
+	}
+	if note.Text != "[REDACTED anthropic-key]" {
+		t.Fatalf("unfiltered event: %s", ev.Payload)
+	}
+	if bytes.Contains(b.Bytes(), []byte("abcdefgh")) {
+		t.Fatal("canary persisted")
+	}
+}

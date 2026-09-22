@@ -30,7 +30,7 @@ Requires Go 1.27 and `staticcheck` (`go install honnef.co/go/tools/cmd/staticche
 ```
 bin/nibb                      # chat in the current repository (plain front-end)
 bin/nibb --repo ~/src/x       # pin to another repository
-bin/nibb --show-thinking      # stream the model's thinking too
+bin/nibb --show-thinking      # show the model's redacted thinking too
 bin/nibb --no-confirm         # non-interactive: every confirm is a no
 bin/nibb replay <session-id>  # print a session log as a transcript
 bin/nibb sessions             # list sessions
@@ -46,5 +46,8 @@ Session logs live in `~/.local/share/nibb/sessions/`.
 Bootstrap-era safety envelope (plan §3.3): paths are pinned to the
 repository, credential-shaped files are unreadable, network tools on a
 command line need confirmation, and child processes get a scrubbed
-environment. Until Phase 7 lands, do not paste secrets into nibb and keep
-it to this repository.
+environment. P7 redacts recognized credential shapes from user messages,
+tool results, logs, and frontend events. Responses are buffered until complete
+so split stream chunks cannot expose a key. Unknown or encoded secrets are
+not guaranteed to be detected; L3 remains P8. The old operator restrictions
+remain in force for older stable binaries until P7 promotion.
