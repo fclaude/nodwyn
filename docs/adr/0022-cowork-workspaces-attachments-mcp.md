@@ -171,15 +171,19 @@ content means.**
    `vision` and reads images (verified). See §3 for what that costs.
 4. **nibb produces documents**: docx, Google Docs and LaTeX. LaTeX is a
    `shell-exec` tool over an installed toolchain, docx is pandoc from
-   Markdown or LaTeX, and **Google Docs needs OAuth — which the keychain
-   does not model.** ADR 5 stores a static value; an OAuth credential has a
-   refresh token, an expiry and a rotation. That is a P3 extension
-   (`class` gains a kind: `static` | `oauth2`, with the refresh happening
-   inside the keychain package so the token never becomes a Scheme value),
-   and W4 depends on it.
-5. **One product or two — still open.** It decides whether ADR 21's UI track
-   has one client or two, and whether a `docs` workspace registers
-   `shell-exec` at all.
+   Markdown or LaTeX, and Google Docs needs OAuth — designed in
+   [ADR 24](./0024-oauth2-credentials.md), which W5 depends on.
+5. **One product, two profiles** (agreed 2026-09-22). One core, one binary,
+   one protocol (ADR 21). A workspace `kind` selects the tool surface: a
+   `docs` workspace registers file, attachment, MCP and document primitives
+   and **does not register `shell-exec`, `register-tool` or Scheme
+   evaluation**, so a whole class of guard machinery (argv triggers, command
+   approvals) is inert there and the attack surface is much smaller. The
+   desktop client and the TUI are two front-ends over the same protocol, and
+   the protocol does not expose `session.eval` to a `docs` client. Only a
+   distribution constraint — a sandboxed or store-distributed bundle that
+   cannot run a daemon or a container — would force a second product; that
+   is revisited if and when it appears.
 6. **A workspace is a plain folder.** If the user syncs it, that is their
    business: nibb makes no assumption about sync, locking or conflicts, and
    the version store is per-machine.

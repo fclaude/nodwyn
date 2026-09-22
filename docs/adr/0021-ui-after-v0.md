@@ -100,6 +100,16 @@ Several sessions at once (workshop serializes them; the UI shows the queue), a
 run driver for long tasks (ADR 18 §4) with checkpoints surfaced as
 notifications, and desktop notifications for "needs your approval".
 
+## Amendment 2026-09-22: one product, two profiles
+
+The cowork application (ADR 22) is not a second product: one core, one
+binary, one protocol, two front-ends. A workspace `kind` selects the tool
+surface, and a `docs` workspace has no `shell-exec`, no `register-tool` and
+no Scheme evaluation — so `session.eval` is not exposed to a `docs` client,
+and the desktop client of U3 is the same client either way, showing fewer
+panels. Only a distribution constraint (a sandboxed bundle that cannot run
+a daemon or a container) would force two binaries.
+
 ## Consequences
 - **Ordering.** U1 fits anywhere (a day). U2 is the real work (about a
   week) and should land *before* P9, because a TUI over the RPC protocol is

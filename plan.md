@@ -46,6 +46,7 @@ nibb/
     loop/                 ask → tool → feed back → ask                   (B2)
     window/               naive log-derived window (B2) → memory/ (P10)
     keychain/             encrypted store, handles, sink injection      (P3)
+                          + oauth2 kind: PKCE acquire, refresh, scopes (W4, ADR 24)
     binding/              binding table, E3 lookup                      (P3)
     detect/l1/            shape/entropy/prefix scanner                  (P4)
     detect/l2/            taint tags + propagation helpers              (P6)
@@ -355,23 +356,36 @@ what the guard reads).
   workspace mounts (default none), reached over loopback HTTP. A container
   runtime becomes an optional dependency; without one, remote servers still
   work. See ADR 23 for the full posture and its accepted limits.
-- **W4 — documents in and out (≈1.5 weeks).** LaTeX through the installed
-  toolchain (`shell-exec` + a standing approval — the book already proves
-  it), docx via pandoc from Markdown or LaTeX, **Google Docs via its API —
-  which needs OAuth, and the keychain does not model a credential that
-  expires and refreshes.** That is a P3 extension: a credential gains a kind
-  (`static` | `oauth2`), with refresh inside the keychain package so a token
-  never becomes a Scheme value. W4 is blocked on it.
+- **W4 — OAuth2 credentials (≈1.5 weeks, extends P3; ADR 24).** ADR 5 stores
+  one static value; OAuth2 is a token set that expires, rotates, and is
+  acquired through a browser. A credential gains a kind (`static` |
+  `oauth2`); acquisition is Authorization Code + PKCE over a single-shot
+  loopback listener, user-origin only; **refresh happens inside the keychain**
+  — authorized by the same binding row that authorizes use, serialized per
+  credential, logged as `cred.refresh`, never interactive (a dead refresh
+  token marks the credential `needs_reauth` and denies). Binding rows may
+  name `scopes`, and every confirm involving an oauth2 credential names
+  class, destination *and* scopes. Provider profiles ship narrow default
+  scopes.
+- **W5 — documents in and out (≈1.5 weeks, needs W4).** LaTeX through the
+  installed toolchain (`shell-exec` + a standing approval — the book already
+  proves it), docx via pandoc from Markdown or LaTeX, Google Docs through its
+  API on an OAuth2 credential.
+
+**One product, two profiles** (agreed 2026-09-22). One core, one binary, one
+protocol (ADR 21). A workspace `kind` selects the tool surface: a `docs`
+workspace registers file, attachment, MCP and document primitives and **does
+not register `shell-exec`, `register-tool` or Scheme evaluation**, so argv
+triggers and command approvals are inert there and the attack surface is much
+smaller. The desktop client and the TUI are two front-ends over the same
+protocol, which does not expose `session.eval` to a `docs` client. Only a
+distribution constraint — a sandboxed bundle that cannot run a daemon or a
+container — would force a second product.
 
 Accepted limit (ADR 22): **nibb controls where content goes, not what content
 means.** L1/L3 detect credentials; nothing in nibb recognises a contract or a
 medical letter. The protections that apply to those are the mount table, the
 confirm, the binding table and the Jev content level.
-
-**Still open:** one product or two — the same binary with a `docs` workspace
-and a different default front-end, or a separate application sharing the
-core. It decides whether ADR 21's UI track has one client or two, and
-whether a `docs` workspace registers `shell-exec` at all.
 
 ## 6. Timeline at a glance
 

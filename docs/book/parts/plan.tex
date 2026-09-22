@@ -267,6 +267,29 @@ A container is not a VM, and isolation does not un-send an argument: what
 the user is really deciding at an MCP confirm is whether this third party
 may see this.
 
+\paragraph{Credentials that expire.} A cowork workspace reaches services
+that use OAuth2, and \adr{5} stores one static value. \adr{24} extends it: a
+credential gains a kind, an \code{oauth2} entry holds a token set, and
+acquisition is Authorization Code with PKCE over a single-shot loopback
+listener --- a user action, never something a tool can trigger. The
+interesting part is refresh, because it is the one piece of egress that
+happens with no confirm: it is done \emph{inside} the keychain, so no token
+becomes a value; it is authorized by the same binding row that authorizes
+use, because refreshing a credential is part of that credential's lifecycle;
+it is serialized per credential and logged every time; and when a refresh
+token dies the credential is marked and denies, rather than opening a
+browser in the middle of a turn. Scopes join class and destination in every
+confirm, because ``Google Drive, full account'' and ``Google Drive, files
+this app created'' are the difference the user actually needs to see.
+
+\paragraph{One product, two profiles.} The cowork application is not a
+second product: one core, one binary, one protocol. A workspace's \code{kind}
+selects the tool surface, and a \code{docs} workspace registers no
+\code{shell-exec}, no \code{register-tool} and no Scheme evaluation --- so
+the argv triggers and command approvals are inert there and the surface is
+much smaller. Two front-ends, one protocol. Only a distribution constraint
+would force two binaries.
+
 \paragraph{The accepted limit.} L1 and L3 detect \emph{credentials}. A cowork
 workspace holds documents whose sensitivity has nothing to do with shape: a
 contract, a medical letter, a salary list. Nothing in nibb recognises those.
