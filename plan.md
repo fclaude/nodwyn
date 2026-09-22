@@ -55,7 +55,8 @@ nibb/
     memory/               window, summaries, session index             (P10)
     frontend/plain/       line-mode front-end over core (bootstrap)     (B2)
     frontend/tui/         bubbletea front-end over core                  (P9)
-    frontend/rpc/         (post-v0) JSON-RPC over stdio/socket for a GUI
+    frontend/rpc/         JSON-RPC server over a unix socket (U2, ADR 21)
+    ui/                   assets for the local web client (U3, ADR 21)
   dev/                    *.scm dev tools nibb loads to build itself    (B3)
   .nibb/                  init.scm (loads dev/) and allow.toml (ADR 17) (B3)
   scripts/                promote.sh, selfcheck.sh
@@ -270,8 +271,9 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 
 - `internal/frontend/tui`: a bubbletea program over `core.Session` — no new core code; if P9 needs a core change, that is a gap in ADR 10 and gets an ADR amendment, not a shortcut.
 - Views: streaming transcript; tool-call cards with guard badge; plan panel; confirm modal naming class + destination + scope with "bind this"; masked credential input; `:log :bindings :replay :friction`.
-- **With nibb:** friction.md is the backlog, ranked by frequency. Line mode stays as `nibb --plain` — it is still what CI and `selfcheck.sh` use. A `frontend/rpc` for a real GUI is post-v0 but costs nothing to leave room for.
+- **With nibb:** friction.md is the backlog, ranked by frequency. Line mode stays as `nibb --plain` — it is still what CI and `selfcheck.sh` use.
 - **Accept:** every line-mode flow works in the TUI; resize; Ctrl-C mid-`shell-exec` leaves no orphan. Promote `v0.9-tui`.
+- **Shape change (ADR 21):** if U2 (the daemon and its protocol) lands first, the TUI is written as the protocol's first client — same package, same views, attaching to `nibbd` when a socket is given and running in-process otherwise.
 
 ### Phase 10 — Memory (weeks 23–24)
 
@@ -281,6 +283,33 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 - **Accept:** `nibb replay` reproduces the window byte-for-byte; dropping a summary changes the window deterministically; no cross-session state on disk except the log. Promote `v0.10` = **v0**.
 
 ---
+
+### After v0 — a real UI (ADR 21)
+
+The core is already UI-agnostic (ADR 10) and a CI lint keeps it that way, so
+this is additive work, not a refactor. Four phases, each useful alone:
+
+- **U1 — resume and the session store (≈1 day).** `Session.Resume(id)` rebuilds
+  from the log (the window is already a fold over events); `core.Store` lists
+  sessions; `nibb --resume <id>`. Top item in friction.md; everything later
+  assumes it.
+- **U2 — `nibbd` and the protocol (≈1 week).** A daemon owning sessions, JSON-RPC
+  2.0 over a 0600 Unix socket: `session.{list,open,resume,send,abort,answer,secret,eval,info}`
+  and `log.read`, with every `event.Event` as a notification and gap-fill from the
+  log on reconnect. A confirm answered over RPC records the client's identity in
+  `guard.decision`. **Best landed before P9**, so the TUI is the protocol's first
+  client and proves it.
+- **U3 — the desktop client (after v0).** A local web UI served by `nibbd`
+  (`nibb ui`), assets embedded in the binary. Views in order: session list,
+  transcript, **approvals** (the diff panel is what justifies a GUI), plan and
+  budgets, inspectors for the log, bindings and standing approvals.
+- **U4 — multi-session and background runs.** Several sessions (workshop serializes
+  them), the ADR 18 run driver with checkpoints as notifications, desktop
+  notifications for "needs your approval".
+
+Accepted risk: the socket is an approval surface. 0600 in the runtime dir, no
+TCP by default, client identity in every decision, and creating a standing
+approval over RPC needs its own explicit method.
 
 ## 6. Timeline at a glance
 

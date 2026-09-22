@@ -175,6 +175,44 @@ model and one request slot. Verified facts and their consequences:
   decision to be made on friction-log evidence, not up front.
 \end{itemize}
 
+\chapter{A real UI, after v0}
+
+v0 ships one front-end and plans a second (the TUI, P9). A \emph{real} UI
+needs four things the core does not yet provide, and \adr{21} schedules them
+as additive work: the core stays UI-agnostic (\adr{10}) and a CI lint keeps
+it that way.
+
+\begin{description}[leftmargin=1.8em]
+\item[U1 --- resume and the session store] \code{Session.Resume(id)} rebuilds
+  a session from its log --- the window is already a fold over events --- and
+  a store lists sessions from the sessions directory. One day's work, the top
+  item in the friction log, and everything later assumes it.
+\item[U2 --- \code{nibbd} and the protocol] A daemon owning sessions, speaking
+  JSON-RPC 2.0 over a 0600 Unix socket:
+  \code{session.\{list,open,resume,send,abort,answer,secret,eval,info\}} and
+  \code{log.read}, with every \code{event.Event} delivered as a notification.
+  A client that reconnects names the last sequence number it saw and the gap
+  comes from the log --- catch-up is a read, because the log is the truth. A
+  confirm answered over RPC records the client's identity, so a
+  \code{guard.decision} never loses who said yes. Best landed \emph{before}
+  P9, so the TUI becomes the protocol's first client and proves it.
+\item[U3 --- the desktop client] A local web UI served by the daemon
+  (\code{nibb ui}), assets embedded in the binary. Views in the order they
+  earn their place: session list; transcript; \textbf{approvals} --- the
+  confirm as a panel with its reasons and its diff, which is the thing a
+  terminal renders worst and a UI renders best; plan and budgets;
+  inspectors for the log, the bindings and the standing approvals.
+\item[U4 --- multi-session and background runs] Several sessions at once (the
+  model server serializes them; the UI shows the queue), the \adr{18} run
+  driver with checkpoints surfaced as notifications, and a desktop
+  notification when something needs approval.
+\end{description}
+
+The accepted risk is new: \textbf{the socket is an approval surface}. Anything
+that can connect can answer a confirm. Hence 0600 in the runtime directory, no
+TCP by default, the client's identity in every decision, and no standing
+approval created over RPC without its own explicit method.
+
 \chapter{Long-running turns}
 
 Today a turn stops after fifty tool calls. That is the right \emph{kind} of
