@@ -231,13 +231,21 @@ func Equal(a, b Value) bool {
 }
 
 // Write renders v in machine form (strings quoted); Display in human form.
-func Write(v Value) string   { var sb strings.Builder; print(&sb, v, true); return sb.String() }
-func Display(v Value) string { var sb strings.Builder; print(&sb, v, false); return sb.String() }
+func Write(v Value) string   { var sb strings.Builder; print(&sb, v, true, nil); return sb.String() }
+func Display(v Value) string { var sb strings.Builder; print(&sb, v, false, nil); return sb.String() }
+
+// WriteWithStrings renders v like Write, transforming each string before quoting.
+// It also visits strings in pairs and vectors, without changing the value.
+func WriteWithStrings(v Value, transform func(string) string) string {
+	var sb strings.Builder
+	print(&sb, v, true, transform)
+	return sb.String()
+}
 
 // String implements fmt.Stringer as Write.
 func (v Value) String() string { return Write(v) }
 
-func print(sb *strings.Builder, v Value, write bool) {
+func print(sb *strings.Builder, v Value, write bool, transform func(string) string) {
 	switch v.Kind {
 	case KNil:
 		sb.WriteString("()")
@@ -252,6 +260,9 @@ func print(sb *strings.Builder, v Value, write bool) {
 	case KFloat:
 		sb.WriteString(formatFloat(v.F))
 	case KString:
+		if transform != nil {
+			v.S = transform(v.S)
+		}
 		if write {
 			quote(sb, v.S)
 		} else {
@@ -267,12 +278,12 @@ func print(sb *strings.Builder, v Value, write bool) {
 				sb.WriteByte(' ')
 			}
 			first = false
-			print(sb, v.P.Car, write)
+			print(sb, v.P.Car, write, transform)
 			v = v.P.Cdr
 		}
 		if v.Kind != KNil {
 			sb.WriteString(" . ")
-			print(sb, v, write)
+			print(sb, v, write, transform)
 		}
 		sb.WriteByte(')')
 	case KProc:
@@ -291,7 +302,7 @@ func print(sb *strings.Builder, v Value, write bool) {
 			if i > 0 {
 				sb.WriteByte(' ')
 			}
-			print(sb, el, write)
+			print(sb, el, write, transform)
 		}
 		sb.WriteByte(')')
 	case KVoid:

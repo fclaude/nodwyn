@@ -20,13 +20,18 @@ func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
 	}
 	s.remember(ev)
 	s.Emit(event.FromLog(ev, payload))
-	if len(redactions) > 0 {
-		_, err = s.Record(log.KindRedact, struct {
-			Source uint64         `json:"source_seq"`
-			Events []redact.Event `json:"events"`
-		}{ev.Seq, redactions})
+	return ev, s.recordRedactions(ev.Seq, redactions)
+}
+
+func (s *Session) recordRedactions(source uint64, redactions []redact.Event) error {
+	if len(redactions) == 0 {
+		return nil
 	}
-	return ev, err
+	_, err := s.Record(log.KindRedact, struct {
+		Source uint64         `json:"source_seq"`
+		Events []redact.Event `json:"events"`
+	}{source, redactions})
+	return err
 }
 
 // EventsSoFar returns a snapshot of the log so far (loop.Host).

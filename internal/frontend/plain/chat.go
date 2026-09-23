@@ -331,7 +331,9 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 		if err != nil {
 			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
 		} else if v.Kind != scheme.KVoid {
-			fmt.Fprintln(c.Out, redact.Redact(scheme.Write(v), nil).Text)
+			fmt.Fprintln(c.Out, redact.Redact(scheme.WriteWithStrings(v, func(text string) string {
+				return redact.Redact(text, nil).Text
+			}), nil).Text)
 		}
 	case ":allow":
 		for _, a := range c.Session.Allowed() {

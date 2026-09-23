@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
@@ -17,13 +18,23 @@ func (s *Session) StartEval(source, actor string) error {
 		}
 		value, err := s.Eval(ctx, source)
 		result := log.EvalResult{}
+		var redactions []redact.Event
 		if err != nil {
 			result.Error = err.Error()
 		} else if value.Kind != scheme.KVoid {
-			result.Value = scheme.Write(value)
+			// Scan decoded strings before Scheme escaping can hide token boundaries.
+			result.Value = scheme.WriteWithStrings(value, func(text string) string {
+				clean := redact.Redact(text, nil)
+				redactions = append(redactions, clean.Events...)
+				return clean.Text
+			})
 		}
-		if _, recordErr := s.Record(log.KindEvalResult, result); recordErr != nil {
+		record, recordErr := s.Record(log.KindEvalResult, result)
+		if recordErr != nil {
 			return recordErr
+		}
+		if auditErr := s.recordRedactions(record.Seq, redactions); auditErr != nil {
+			return auditErr
 		}
 		return err
 	})

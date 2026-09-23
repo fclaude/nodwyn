@@ -105,3 +105,68 @@ func TestSplitSchemeOutput(t *testing.T) {
 		t.Fatalf("split output bypass: %+v", ev)
 	}
 }
+
+// Scheme escapes such as \n must not merge a secret with a preceding letter
+// before scanning. Scan the actual string leaves, including nested values.
+func TestEvalResultRedactsBeforeQuoting(t *testing.T) {
+	const canary = "AKIAABCDEFGHIJKLMNOP"
+	for _, source := range []string{
+		`(fs-read "notes.txt")`,
+		`(list (fs-read "notes.txt") (vector (fs-read "notes.txt")))`,
+	} {
+		t.Run(source, func(t *testing.T) {
+			r := newRig(t, true)
+			content := "Notes\n" + canary + "\tend"
+			if err := os.WriteFile(filepath.Join(r.repo, "notes.txt"), []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.s.StartEval(source, "test"); err != nil {
+				t.Fatal(err)
+			}
+			events := r.drain("y")
+			var resultSeq uint64
+			var audited bool
+			for _, ev := range events {
+				raw, err := json.Marshal(ev)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(raw), canary) {
+					t.Fatalf("canary in %s", ev.Kind)
+				}
+			}
+			for _, ev := range r.s.EventsSoFar() {
+				if strings.Contains(string(ev.Payload), canary) {
+					t.Fatalf("canary in history %s", ev.Kind)
+				}
+				if ev.Kind == log.KindEvalResult {
+					resultSeq = ev.Seq
+					if !strings.Contains(string(ev.Payload), "[REDACTED aws-access-key]") {
+						t.Fatal(string(ev.Payload))
+					}
+				}
+				if ev.Kind == log.KindRedact {
+					var audit struct {
+						Source uint64 `json:"source_seq"`
+					}
+					if err := json.Unmarshal(ev.Payload, &audit); err != nil {
+						t.Fatal(err)
+					}
+					if resultSeq != 0 && audit.Source == resultSeq {
+						audited = true
+					}
+				}
+			}
+			if resultSeq == 0 || !audited {
+				t.Fatal("missing evaluation result or linked redaction audit")
+			}
+			if strings.Contains(r.logb.String(), canary) {
+				t.Fatal("canary persisted")
+			}
+			value, err := r.s.Eval(context.Background(), `(fs-read "notes.txt")`)
+			if err != nil || value.S != content {
+				t.Fatal("evaluation value changed", err)
+			}
+		})
+	}
+}

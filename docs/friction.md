@@ -64,3 +64,5 @@ Format: `date · session · what happened · what it cost · idea`
 - 2026-09-22 (external agent, ADR 16): source outlines previously needed whole-file context or shell tools; `index-symbols` now returns guarded Tree-sitter definitions for Go, JavaScript and Python without runtime downloads or a native build toolchain.
 
 - 2026-09-22 (external agent, ADR 16): the daemon had no browser view of saved/live work; U3 now has a paired read-only session/transcript desk with guarded transport boundaries. Interactive approvals remain the next slice.
+
+- 2026-09-22 (external agent, ADR 16): testing the guarded browser friction view exposed an evaluation-result redaction gap: Scheme newline escaping could hide a known secret's token boundary. Session evaluation records and plain chat evaluation displays now scan string leaves before quoting, including nested pairs and vectors; evaluation values remain unchanged. Synthetic canary tests cover frontend events, history, persisted output and linked redaction audits.
