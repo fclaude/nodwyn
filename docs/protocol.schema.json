@@ -241,6 +241,41 @@
       ],
       "type": "object"
     },
+    "event.Policy": {
+      "properties": {
+        "Content": {
+          "type": "string"
+        },
+        "Err": {
+          "type": "string"
+        },
+        "Exists": {
+          "type": "boolean"
+        },
+        "ID": {
+          "type": "string"
+        },
+        "Name": {
+          "type": "string"
+        },
+        "Revision": {
+          "type": "string"
+        },
+        "Saved": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ID",
+        "Name",
+        "Content",
+        "Revision",
+        "Exists",
+        "Saved",
+        "Err"
+      ],
+      "type": "object"
+    },
     "event.SecretPrompt": {
       "properties": {
         "Class": {
@@ -1130,6 +1165,9 @@
     "payload.output": {
       "$ref": "#/$defs/event.Text"
     },
+    "payload.policy.result": {
+      "$ref": "#/$defs/event.Policy"
+    },
     "payload.prompt.checkpoint": {
       "$ref": "#/$defs/event.Checkpoint"
     },
@@ -1256,6 +1294,12 @@
         },
         {
           "$ref": "#/$defs/request.session.open"
+        },
+        {
+          "$ref": "#/$defs/request.session.policy.read"
+        },
+        {
+          "$ref": "#/$defs/request.session.policy.write"
         },
         {
           "$ref": "#/$defs/request.session.resume"
@@ -1647,6 +1691,68 @@
       ],
       "type": "object"
     },
+    "request.session.policy.read": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.policy.read"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.policyReadParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.session.policy.write": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.policy.write"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.policyWriteParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.resume": {
       "properties": {
         "id": {
@@ -1901,6 +2007,12 @@
     "result.session.open": {
       "$ref": "#/$defs/rpc.sessionDetails"
     },
+    "result.session.policy.read": {
+      "$ref": "#/$defs/rpc.inspectionStarted"
+    },
+    "result.session.policy.write": {
+      "$ref": "#/$defs/rpc.inspectionStarted"
+    },
     "result.session.resume": {
       "$ref": "#/$defs/rpc.sessionDetails"
     },
@@ -2088,6 +2200,44 @@
       },
       "required": [
         "repo"
+      ],
+      "type": "object"
+    },
+    "rpc.policyReadParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "rpc.policyWriteParams": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "revision",
+        "content"
       ],
       "type": "object"
     },
@@ -2686,6 +2836,30 @@
             },
             "payload": {
               "$ref": "#/$defs/event.Text"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "policy.result"
+            },
+            "payload": {
+              "$ref": "#/$defs/event.Policy"
             },
             "seq": {
               "minimum": 0,

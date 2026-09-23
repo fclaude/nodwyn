@@ -27,6 +27,8 @@ type Options struct {
 	// The core implements CredentialStore: it owns the keychain, the masked
 	// input, and the log.
 	Credentials CredentialStore
+	// Configured policy paths; only named policy operations can access them.
+	BindingsPath string
 	// Jev is optional: nil disables its primitives. The host owns credential
 	// injection, redaction, transport and recording; settings are ordinary data.
 	Jev       JevClient
@@ -57,6 +59,11 @@ func Register(in *scheme.Interp, o Options) error {
 	}
 	pin := guard.RepoPin{Root: o.Root}
 	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), shellExec(o), indexGrep(o, pin), indexSymbols(o, pin)} {
+		if err := in.Register(p); err != nil {
+			return err
+		}
+	}
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}

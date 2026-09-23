@@ -175,16 +175,25 @@ type RepoAllow struct {
 
 // LoadRepoAllow reads a repository's allow file. Missing means none.
 func LoadRepoAllow(path string) (RepoAllow, error) {
-	var r RepoAllow
-	md, err := toml.DecodeFile(path, &r)
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return RepoAllow{}, nil
+	}
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return RepoAllow{}, nil
-		}
-		return RepoAllow{}, fmt.Errorf("allow: %s: %w", path, err)
+		return RepoAllow{}, err
+	}
+	return ParseRepoAllow(raw)
+}
+
+// ParseRepoAllow validates proposed standing approvals with the loading rules.
+func ParseRepoAllow(raw []byte) (RepoAllow, error) {
+	var r RepoAllow
+	md, err := toml.Decode(string(raw), &r)
+	if err != nil {
+		return RepoAllow{}, fmt.Errorf("allow: %w", err)
 	}
 	if undec := md.Undecoded(); len(undec) > 0 {
-		return RepoAllow{}, fmt.Errorf("allow: %s: unknown keys: %v", path, undec)
+		return RepoAllow{}, fmt.Errorf("allow: unknown keys: %v", undec)
 	}
 	return r, nil
 }

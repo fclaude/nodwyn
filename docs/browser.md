@@ -47,8 +47,8 @@ only one-time browser buttons.
 When an unbound call has a core-approved exact binding proposal, the panel shows
 its credential class, host, method and injection position. Saving that row uses
 the separate binding method, persists beyond the session, and permits the pending
-call. The browser cannot substitute row fields or set arbitrary permission
-prefixes. Resume never reinstates session/turn grants from their audit history.
+call. That prompt-bound operation cannot substitute row fields. The separate policy-file
+editor below proposes explicit file changes for another review. Resume never reinstates session/turn grants from their audit history.
 Scheme evaluation remains unavailable from the browser.
 
 Credential prompts use a password field and the existing shared keychain path.
@@ -75,7 +75,8 @@ The session view buttons open fixed snapshots:
   recorded checkpoints. Checkpoint usage is not live remaining allowance.
 - **Log** filters durable records by kind prefix and shows the last 1–1000 matches.
 - **Policy** shows the last validated bindings, current command/write prefixes and
-  turn approval. It does not restore authority from recorded receipts or edit it.
+  turn approval. It does not restore authority from recorded receipts. Separate
+  buttons open the guarded policy-file editor.
 - **Tools** shows the model's current tool catalog and input schemas.
 - **Friction** reads `docs/friction.md` through the session interpreter and guard.
   It needs an idle open session in interactive mode. Custom checker prompts take
@@ -101,7 +102,8 @@ Implementation is deliberately small: embedded HTML/CSS/plain JavaScript,
 `internal/frontend/web` for the HTTP/WebSocket boundary, and the existing RPC
 client for session data. There is no JavaScript build system, second history store or policy evaluator. `app.js` owns connection and session
 selection, `prompts.js` renders review choices, and `inspectors.js` renders fixed
-snapshots from the same redacted records. A pinned WebSocket library avoids a
+snapshots from the same redacted records; `policy.js` renders policy drafts and
+review controls. A pinned WebSocket library avoids a
 homegrown frame parser; its license is embedded in `nibb licenses`.
 
 ## Verification and remaining U3 work
@@ -130,6 +132,32 @@ The friction view is covered through core, RPC and the browser WebSocket, with
 allow/deny/custom-confirm/cancellation, concurrent-operation rejection and canary
 redaction. Browser checks also cover prompt priority, cached result reopening,
 explicit guarded refresh and denial replacing the previous result.
-U3's confirmed policy editing remains next.
+The policy editor completes the current U3 scope. Its two targets are shared
+`bindings.toml` and repository `.nibb/allow.toml`. Reads and writes use fixed host
+primitives through the interpreter and guard, with no arbitrary path or browser
+Scheme evaluation. The editor is unavailable through read-only bridges.
+
+Each save validates TOML and requires a one-time diff confirmation. Session/turn
+approvals cannot waive it. A revision comparison under the shared policy lock
+rejects stale edits; a new read and review are required. Publication is atomic
+and mode 0600. Cooperative writers use the sibling `.lock`; an unrelated editor
+can still ignore that advisory lock. Files are capped at 64 KiB, final symlinks
+and non-regular files are refused, and repository approval paths cannot escape
+through parent symlinks. Recognized secrets are refused instead of round-tripping
+redacted text as editable policy.
+
+Bindings apply before the next egress operation. Repository approval-file changes
+apply to new or resumed sessions; existing sessions retain their current grants.
+Global `config.toml` settings and transient grants are not edited by this view.
+Drafts stay only in the selected tab/session and clear on switching, refresh or
+disconnect. After answering a prompt, reopen Policy to see the result. Successful
+saves require reloading before another edit; failures retain the draft. A failed
+connection never retries a save automatically.
+
+Tests cover per-save confirmation, denial/cancellation, stale revisions,
+caller-supplied paths/actors, environment-name hijacking, model-origin rejection,
+known-secret containment, bounded reads and filesystem escape checks. Browser
+acceptance covers creation, persistence, validation errors, stale saves and draft
+retention after a failed write.
 U4 background runs, notifications and optional general TCP transport remain
 separate roadmap work.

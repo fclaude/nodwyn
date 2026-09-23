@@ -39,6 +39,9 @@ func Load(path string) (Table, error) {
 	return parse(raw, path)
 }
 
+// Parse validates proposed binding policy using the same rules as Load.
+func Parse(raw []byte) (Table, error) { return parse(raw, "proposed policy") }
+
 func parse(raw []byte, path string) (Table, error) {
 	var t Table
 	md, err := toml.Decode(string(raw), &t)

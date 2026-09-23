@@ -153,7 +153,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	if raw := receive(); !strings.Contains(string(raw["error"]), "read-only") {
 		t.Fatal(raw)
 	}
-	for i, method := range []string{"session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.friction"} {
+	for i, method := range []string{"session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.friction", "session.policy.read", "session.policy.write"} {
 		send(uint64(20+i), method, map[string]any{"id": info.ID, "prompt_id": "not-a-prompt", "reply": "y", "secret": "synthetic"})
 		if raw := receive(); !strings.Contains(string(raw["error"]), "read-only") {
 			t.Fatal(raw)
@@ -374,5 +374,25 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	raw, _ := json.Marshal(page)
 	if !strings.Contains(string(raw), "hello browser") || !strings.Contains(string(raw), "browser reply") {
 		t.Fatal(string(raw))
+	}
+}
+
+func TestEmbeddedAssetsReachable(t *testing.T) {
+	b := &bridge{ctx: context.Background(), host: "127.0.0.1:34567", code: testCode}
+	entries, err := assets.ReadDir("assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		path := "/" + entry.Name()
+		if entry.Name() == "index.html" {
+			path = "/"
+		}
+		req := httptest.NewRequest("GET", "http://"+b.host+path, nil)
+		response := httptest.NewRecorder()
+		b.ServeHTTP(response, req)
+		if response.Code != http.StatusOK || response.Body.Len() == 0 {
+			t.Fatalf("embedded asset %s returned %d", path, response.Code)
+		}
 	}
 }

@@ -98,7 +98,7 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.connect(w, r)
-	case "/", "/app.js", "/prompts.js", "/inspectors.js", "/style.css":
+	case "/", "/app.js", "/prompts.js", "/inspectors.js", "/policy.js", "/style.css":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -247,7 +247,7 @@ func (b *bridge) allowed(method string) bool {
 		return false
 	}
 	switch method {
-	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.friction":
+	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.friction", "session.policy.read", "session.policy.write":
 		return true
 	}
 	return false

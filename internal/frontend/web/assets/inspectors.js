@@ -196,7 +196,7 @@ export function renderInspector(
     container.append(
       text(
         "p",
-        "Policy was sampled from the open session at refresh. This inspector does not change it. Recorded approval receipts do not restore authority on resume.",
+        "Policy was sampled from the open session at refresh. File edits require a separate review below when available. Recorded approval receipts do not restore authority on resume.",
       ),
     );
   } else if (kind === "tools") {

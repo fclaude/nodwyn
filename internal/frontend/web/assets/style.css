@@ -511,3 +511,14 @@ textarea:focus-visible {
   margin: 0;
   padding: 8px;
 }
+
+#policy-content {
+  width: 100%;
+  min-height: 260px;
+  font-family: monospace;
+  resize: vertical;
+}
+#inspector-content button {
+  margin: 8px 8px 8px 0;
+  width: auto;
+}

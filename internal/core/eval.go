@@ -19,10 +19,16 @@ func (s *Session) StartEval(source, actor string) error {
 }
 
 func (s *Session) evalRecorded(ctx context.Context, source, actor string) (scheme.Value, error) {
+	return s.recordEvaluation(source, actor, func() (scheme.Value, error) { return s.Eval(ctx, source) })
+}
+
+// recordEvaluation keeps both ordinary Scheme and fixed host entrypoints on the
+// same redacted evaluation history path.
+func (s *Session) recordEvaluation(source, actor string, evaluate func() (scheme.Value, error)) (scheme.Value, error) {
 	if _, err := s.Record(log.KindEvalReq, log.EvalRequest{Source: source, Actor: actor}); err != nil {
 		return scheme.Void, err
 	}
-	value, err := s.Eval(ctx, source)
+	value, err := evaluate()
 	result := log.EvalResult{}
 	var redactions []redact.Event
 	if err != nil {

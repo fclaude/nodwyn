@@ -152,6 +152,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	o := s.opts
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
+	po.BindingsPath = o.Paths.Bindings
 	po.ShellTimeout = shellTimeout
 	// P3 egress: the session is the CredentialStore (it owns the keychain,
 	// the masked prompt, and the log). Bootstrap leaves this nil.

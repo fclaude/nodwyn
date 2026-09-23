@@ -1,6 +1,6 @@
 # ADR 0021: A real UI after v0 — the daemon, the protocol, the clients
 
-- Status: **partially implemented** (U1, local U2 and P9 complete; U3 in progress; optional TCP and U4 proposed)
+- Status: **partially implemented** (U1, local U2, P9 and U3 complete; optional TCP and U4 proposed)
 - Date: 2026-09-22
 
 ## Context
@@ -434,3 +434,21 @@ The operation uses normal turn serialization, cancellation and prompt handling.
 Read-only bridges reject it. The browser caches only the completed selected
 session's result; explicit refresh reads again, and denied/canceled reads replace
 old content with an error. Confirmed policy editing remains the final U3 slice.
+
+
+## U3 confirmed policy editing completed — 2026-09-22
+
+The policy view now edits the two named user-owned policy files: shared bindings
+and repository standing approvals. Fixed user-origin host primitives perform
+bounded reads and validated, atomic replacements through the existing guard.
+They are hidden from the model catalog; frontend calls use registered primitive
+identity, so Scheme environment rebinding cannot redirect them. No arbitrary
+path or general browser evaluation method is introduced.
+
+Every save has a separate one-time diff confirmation. The persistence lock and
+revision comparison reject stale content; denial/cancellation do not publish.
+Bindings reload before egress as before. Approval files still load at session
+construction: existing sessions retain their grants, and the UI states this.
+Known-secret text is refused by the editor instead of editing a redacted copy.
+Read-only bridges reject both policy methods. This completes the U3 views and
+review flows; U4 background driving and notifications remain separate work.

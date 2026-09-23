@@ -20,6 +20,7 @@ type Event struct {
 
 // Ephemeral kinds.
 const (
+	PolicyResult     = "policy.result"     // Payload: Policy; completed guarded policy operation
 	InspectionResult = "inspection.result" // Payload: Inspection; ephemeral result of a guarded frontend read
 	StreamText       = "stream.text"       // Payload: Text
 	StreamThinking   = "stream.thinking"   // Payload: Text
@@ -85,4 +86,15 @@ type Inspection struct {
 	Name string
 	Text string
 	Err  string
+}
+
+// Policy is a completed fixed-policy read or save, not an authorization grant.
+type Policy struct {
+	ID       string
+	Name     string
+	Content  string
+	Revision string
+	Exists   bool
+	Saved    bool
+	Err      string
 }

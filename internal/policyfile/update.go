@@ -64,6 +64,7 @@ func Update(ctx context.Context, path string, change func([]byte) ([]byte, error
 		return err
 	}
 
+	existed := err == nil
 	next, err := change(raw)
 	if err != nil {
 		return err
@@ -94,7 +95,7 @@ func Update(ctx context.Context, path string, change func([]byte) ([]byte, error
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if !bytes.Equal(latest, raw) {
+	if (err == nil) != existed || !bytes.Equal(latest, raw) {
 		return fmt.Errorf("policy file: policy changed during update; retry from a new prompt")
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {

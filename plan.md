@@ -350,7 +350,7 @@ this is additive work, not a refactor. Four phases, each useful alone:
   contract. Kernel peer credentials identify answerers; resuming never restores
   transient authority. Optional TCP/token transport remains deferred.
   **P9 uses this protocol**; its terminal views and line-mode flow parity are implemented.
-- **U3 — the desktop client (in progress; conversation and prompt replies implemented).**
+- **U3 — the desktop client (implemented).**
   `nibb ui` now serves embedded assets over a paired loopback WebSocket bridge
   to the existing daemon. Session lists, fixed-prefix transcript catch-up, live
   text/tool/guard output, creation/resume/send/abort/close, and an explicit
@@ -359,7 +359,10 @@ this is additive work, not a refactor. Four phases, each useful alone:
   replies, masked credential acquisition and budget checkpoint replies are also
   implemented. Session/turn approval choices and exact persistent binding controls
   use core-derived scope metadata. Fixed plan/budget/log/policy/tool inspectors are
-  implemented, along with the guarded friction-file view. Confirmed policy editing follows next. The intended full scope is a local web UI backed by `nibbd`
+  implemented, along with the guarded friction-file view and revision-checked,
+  confirmed edits to shared bindings and repository approval files. Approval-file
+  changes take effect for new/resumed sessions; binding changes reload before
+  egress. The intended full scope is a local web UI backed by `nibbd`
   (`nibb ui`), assets embedded in the binary. Views in order: session list,
   transcript, **approvals** (the diff panel is what justifies a GUI), plan and
   budgets, inspectors for the log, bindings and standing approvals.

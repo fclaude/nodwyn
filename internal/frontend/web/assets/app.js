@@ -1,5 +1,6 @@
 import { renderPrompt } from "./prompts.js";
 import { renderInspector } from "./inspectors.js";
+import { policyChoices, renderPolicyEditor } from "./policy.js";
 const $ = (id) => document.getElementById(id);
 const text = (tag, value, className = "") => {
   const node = document.createElement(tag);
@@ -28,6 +29,75 @@ let view = "conversation",
   inspection = null,
   inspectionVersion = 0,
   historyTruncated = false;
+let policy = null;
+function showPolicyEditor() {
+  if (!policy || view !== "policy") return;
+  renderPolicyEditor(
+    $("inspector-content"),
+    policy,
+    (name) => policyOperation(name, false),
+    () => policyOperation(policy.name, true),
+    () => {
+      policy = null;
+      inspect("policy");
+    },
+  );
+  controls();
+}
+function policyResult(result) {
+  if (!policy || policy.version !== selection) return;
+  if (!policy.operation) {
+    policy.early.set(result.ID, result);
+    return;
+  }
+  if (result.ID !== policy.operation) return;
+  policy.error = result.Err;
+  policy.saved = result.Saved;
+  if (!result.Err && !result.Saved) {
+    policy.doc = result;
+    policy.draft = result.Content;
+  }
+  showPolicyEditor();
+}
+async function policyOperation(name, write) {
+  if (!selected?.open || selected.busy || policy?.starting || activePrompt)
+    return;
+  const method = write ? "session.policy.write" : "session.policy.read";
+  if (!methods.has(method)) return;
+  const previous = policy;
+  const request = {
+    name,
+    version: selection,
+    operation: null,
+    early: new Map(),
+    starting: true,
+    doc: write ? previous.doc : null,
+    draft: write ? previous.draft : "",
+    error: "",
+    saved: false,
+  };
+  policy = request;
+  showPolicyEditor();
+  const params = { id: selected.id, name };
+  if (write) {
+    params.revision = request.doc.Revision;
+    params.content = request.draft;
+  }
+  try {
+    const reply = await call(method, params);
+    if (policy !== request || request.version !== selection) return;
+    request.operation = reply.operation_id;
+    const result = request.early.get(request.operation);
+    request.early.clear();
+    if (result) policyResult(result);
+  } catch (error) {
+    if (policy === request && request.version === selection)
+      request.error = error.message;
+  } finally {
+    request.starting = false;
+    if (policy === request) showPolicyEditor();
+  }
+}
 let friction = null;
 function frictionResult(result) {
   if (!friction || friction.version !== selection) return;
@@ -107,6 +177,15 @@ function redrawInspector() {
     $("log-kind").value,
     Number($("log-count").value),
   );
+  if (
+    view === "policy" &&
+    selected?.open &&
+    methods.has("session.policy.read") &&
+    methods.has("session.policy.write")
+  )
+    policyChoices($("inspector-content"), (name) =>
+      policyOperation(name, false),
+    );
 }
 async function inspect(kind, reread = false) {
   const token = ++inspectionVersion,
@@ -128,6 +207,10 @@ async function inspect(kind, reread = false) {
         : "Loading snapshot…",
     ),
   );
+  if (kind === "policy" && policy?.version === selection) {
+    showPolicyEditor();
+    return;
+  }
   if (kind === "friction") {
     if (!reread && friction?.version === selection && friction.result)
       showFrictionResult();
@@ -207,6 +290,11 @@ function controls() {
     !methods.has("session.send") || !!activePrompt || view !== "conversation";
   for (const button of $("view-tabs").children)
     button.disabled = !ready || !selected || !!activePrompt;
+  $("inspect-refresh").hidden = view === "policy" && !!policy;
+  for (const control of $("inspector-content").querySelectorAll(
+    "button,textarea",
+  ))
+    control.disabled = !ready || selected?.busy || !!policy?.starting;
   $("inspect-refresh").disabled =
     !ready ||
     !selected ||
@@ -288,6 +376,7 @@ function connect() {
     if (socket !== connection) return;
     selection++;
     friction = null;
+    policy = null;
     clearPrompt();
     loading = false;
     queued = [];
@@ -359,6 +448,7 @@ async function selectSession(item) {
   const previousView =
     previous?.id === item.id && view !== "friction" ? view : "conversation";
   friction = null;
+  policy = null;
   inspectionVersion++;
   inspection = null;
   historyTruncated = false;
@@ -487,6 +577,9 @@ function render(event) {
   const follow =
     viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 90;
   switch (kind) {
+    case "policy.result":
+      policyResult(p);
+      break;
     case "inspection.result":
       frictionResult(p);
       break;

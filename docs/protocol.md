@@ -307,3 +307,26 @@ from that pending call. This additive metadata is a display aid, never a grant.
 The core recalculates eligibility before accepting an explicit approval or binding
 request. Browser clients connected to older daemons without `Options` offer only
 one-time answers. Protected/security confirmations do not gain wider scopes.
+
+
+### Fixed guarded inspections and policy editing
+
+`session.friction` accepts `{id}` and reads only `docs/friction.md` through the
+session guard. `session.policy.read` accepts `{id, name}` where name is
+`bindings` or `approvals`; `session.policy.write` adds `revision` and `content`.
+All return `{operation_id}` immediately so the same client can answer a prompt.
+Unknown fields, caller-supplied paths and actors are rejected. Transport identity
+attributes requests and replies. These operations require an idle open session.
+
+The matching ephemeral `inspection.result` or `policy.result` carries its `ID`,
+`Name` and `Err`; friction adds `Text`, policy adds `Content`, `Revision`, `Exists`
+and `Saved`. Results may arrive before the RPC acknowledgement; correlate by ID.
+The ordinary evaluation/guard log records provide durable audit history. A
+reconnect does not retry an operation or restore an editor draft.
+
+Policy revisions identify bytes and distinguish absence from an empty file;
+they grant no authority. Writes validate the fixed file's TOML, then require a
+one-time guard confirmation and compare the revision under the shared file lock.
+A stale revision requires reading again and reviewing a new change. Binding
+updates apply before egress; approval-file updates apply to new/resumed sessions.
+Both browser policy methods and friction are disabled by `--read-only`.
