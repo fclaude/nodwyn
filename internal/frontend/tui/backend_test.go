@@ -583,3 +583,101 @@ func TestBothBackendsPersistExactBindingAndReloadPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestBothBackendsStandingAndTurnApprovalFlows(t *testing.T) {
+	for _, mode := range []string{"local", "rpc"} {
+		t.Run(mode, func(t *testing.T) {
+			o := testOptions(t)
+			for _, dir := range []string{"notes", "drafts", ".nibb"} {
+				if err := os.MkdirAll(filepath.Join(o.Repo, dir), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var b backend
+			if mode == "local" {
+				b = newLocal(o)
+			} else {
+				b, _ = testRemote(t, o)
+			}
+			defer b.Close()
+			ctx := context.Background()
+			snap, err := b.Attach(ctx, o.Repo, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var seen []rpc.ClientEvent
+			send := func(source string) {
+				t.Helper()
+				if err := b.Send(ctx, snap.ID, source, true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			prompt := func() event.Confirm {
+				t.Helper()
+				p, err := decode[event.Confirm](nextKind(t, b, event.PromptConfirm, &seen).Payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return p
+			}
+			send(`(fs-write "notes/a" "one")`)
+			p := prompt()
+			if err := b.Grant(ctx, snap.ID, p.ID, "session"); err != nil {
+				t.Fatal(err)
+			}
+			nextKind(t, b, event.Status, &seen)
+			send(`(fs-write "notes/b" "two")`)
+			nextKind(t, b, event.Status, &seen)
+			send(`(begin (fs-write "drafts/a" "three") (fs-write "outside.txt" "four"))`)
+			p = prompt()
+			if err := b.Grant(ctx, snap.ID, p.ID, "turn"); err != nil {
+				t.Fatal(err)
+			}
+			nextKind(t, b, event.Status, &seen)
+			for _, path := range []string{"notes/a", "notes/b", "drafts/a", "outside.txt"} {
+				if _, err := os.Stat(filepath.Join(o.Repo, path)); err != nil {
+					t.Fatal("granted write missing", path, err)
+				}
+			}
+			// Turn trust expires; session directory permission remains narrow.
+			send(`(fs-write "next-turn.txt" "deny")`)
+			p = prompt()
+			if err := b.Answer(ctx, snap.ID, p.ID, "n"); err != nil {
+				t.Fatal(err)
+			}
+			nextKind(t, b, event.Status, &seen)
+			if _, err := os.Stat(filepath.Join(o.Repo, "next-turn.txt")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("turn authority persisted")
+			}
+			// Protected paths still require one-time consent.
+			send(`(fs-write ".nibb/init.scm" "; deny")`)
+			p = prompt()
+			for _, scope := range []string{"session", "turn"} {
+				if b.Grant(ctx, snap.ID, p.ID, scope) == nil {
+					t.Fatal("protected path widened", scope)
+				}
+			}
+			if err := b.Answer(ctx, snap.ID, p.ID, "n"); err != nil {
+				t.Fatal(err)
+			}
+			nextKind(t, b, event.Status, &seen)
+			policy, err := b.Policy(ctx, snap.ID)
+			if err != nil || policy.TurnWrites || len(policy.Writes) != 1 || policy.Writes[0] != "notes/" {
+				t.Fatal(policy, err)
+			}
+			grants := 0
+			for _, ev := range seen {
+				if ev.Kind == string(log.KindApprovalChange) {
+					p, _ := decode[log.ApprovalChange](ev.Payload)
+					if p.Actor == "" {
+						t.Fatal("unattributed approval")
+					}
+					grants++
+				}
+			}
+			if grants != 2 {
+				t.Fatal("unexpected approval records", grants)
+			}
+		})
+	}
+}

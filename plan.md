@@ -284,9 +284,9 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 - **With nibb:** the confirmed-event file already has weeks of entries from the build sessions — the "own events" training set is real from day one.
 - **Accept:** ECE < 0.05; < 5 ms per 4 KB; exfil suite green under both build tags. Promote `v0.8-l3`.
 
-### Phase 9 — TUI (weeks 20–22; first slice implemented 2026-09-22)
+### Phase 9 — TUI (weeks 20–22; implemented 2026-09-22)
 
-- **Implemented first slice:** opt-in `nibb tui`, direct-core and daemon adapters,
+- **Implemented:** opt-in `nibb tui`, direct-core and daemon adapters,
   startup session selection/resume, streaming conversation and tool/guard results,
   scrollable approvals, budget replies, masked credential entry, user Scheme,
   resize, abort and explicit reconnect. See [the TUI guide](docs/tui.md).
@@ -304,7 +304,8 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   class, destination, method and position; missing facts are explicit. This is
   paired with an explicit `b` action for eligible exact binding proposals. Core
   persists and audits the row; all sessions reload policy before egress. Plain
-  mode remains the default. P9 is not complete: full flow parity remains.
+  mode remains the default. Line-mode flow parity is verified; the acceptance
+  matrix and regression pointers are in [the TUI guide](docs/tui.md).
 - `internal/frontend/tui`: a bubbletea program over `core.Session` — no new core code; if P9 needs a core change, that is a gap in ADR 10 and gets an ADR amendment, not a shortcut.
 - Views: streaming transcript; tool-call cards with guard badge; plan panel; confirm modal naming class + destination + scope with "bind this"; masked credential input; `:log :bindings :replay :friction`.
 - **With nibb:** friction.md is the backlog, ranked by frequency. Line mode stays as `nibb --plain` — it is still what CI and `selfcheck.sh` use.
@@ -336,7 +337,7 @@ this is additive work, not a refactor. Four phases, each useful alone:
   [The protocol guide](docs/protocol.md) and generated schema define the wire
   contract. Kernel peer credentials identify answerers; resuming never restores
   transient authority. Optional TCP/token transport remains deferred.
-  **P9 first slice now uses this protocol**; continue with the remaining client views.
+  **P9 uses this protocol**; its terminal views and line-mode flow parity are implemented.
 - **U3 — the desktop client (after v0).** A local web UI served by `nibbd`
   (`nibb ui`), assets embedded in the binary. Views in order: session list,
   transcript, **approvals** (the diff panel is what justifies a GUI), plan and

@@ -1,4 +1,4 @@
-# Terminal client (P9, in progress)
+# Terminal client (P9)
 
 The TUI is opt-in. Plain chat and `--plain` remain the default and the path
 used by scripts and promotion selfchecks.
@@ -194,7 +194,7 @@ A daemon connection failure clears the secret editor and disables submissions.
 Ctrl+R reconnects, resumes the selected session, loads a fixed log prefix through
 paged catch-up, then applies live events beyond that prefix. Prompt snapshots
 and live duplicates share IDs; an already resolved prompt is not shown again.
-Reconnect refreshes from the full history in this first slice. It never resends
+Reconnect refreshes from the full history. It never resends
 a message, evaluation, approval or secret. If a reply was lost, inspect the
 recovered history and current prompt before deciding what to do next.
 
@@ -203,7 +203,7 @@ and a bounded notification queue. Overflow fails the connection and requires
 catch-up; it never silently drops an approval or durable event. Server/repository
 text is redacted and stripped of terminal control sequences before rendering.
 
-## Maintainer map and remaining P9 work
+## Maintainer map
 
 - `internal/frontend/rpc/client.go`: connection, handshake, request correlation,
   bounded event delivery and failure; it shares the server's wire types.
@@ -234,6 +234,31 @@ mode offers the same choices. Older daemon prompts omit the binding action.
 
 The initial client, multiline composer, tool discovery, read-only inspectors,
 tool/plan/budget presentation and guarded binding edits are implemented.
-P9 is not complete: broader flow parity with line mode remains. Live budget
-counters are not exposed by the current API. U3's desktop client and U4's
+P9 line-mode flow parity is complete. Live budget counters are not exposed by
+the current API; the budget view explicitly reports recorded usage. U3's desktop client and U4's
 background supervisor remain separate roadmap work.
+
+
+## P9 acceptance coverage
+
+The TUI covers the line frontend's user flows over both direct core ownership
+and the Unix daemon protocol. Plain mode remains the default; this milestone
+adds no desktop client or supervisor.
+
+| Flow | Regression evidence in `internal/frontend/tui` |
+|---|---|
+| Send messages, evaluate Scheme, masked credential input, cancel | `TestBothBackendsApproveRegisterAndCancel`, `TestMultilineSubmissionThroughBothBackends` |
+| One-time, standing-directory and turn approvals | `TestBothBackendsStandingAndTurnApprovalFlows`, `TestSecurityPromptNeverOffersWiderScope` |
+| Persistent credential binding, failure, cancellation and reconnect | `TestBothBackendsPersistExactBindingAndReloadPolicy` |
+| Approval audit history without replaying authority | `TestApprovalAuditIsVisibleAndDeduplicated` |
+| Tools, help, quit and approval-list commands | `TestToolInspectionThroughBothBackends`, `TestPlainCommandAliasesRespectPrompts` |
+| Log filtering, replay, bindings and guarded friction inspection | `TestInspectorsWorkLocallyAndOverRPC`, `TestLogFilterAndFixedPagination`, `TestFrictionInspectorHonorsGuardAndRepositoryBoundary` |
+| Thinking visibility and tool results | `TestThinkingToggleRevealsAndHidesRecordedReasoning`, `TestToolCardsFromLocalAndRPCEvents` |
+| Plan and budget inspection, checkpoint replies | `TestBudgetInspectionAndCheckpointThroughBothBackends`, `TestPlanViewSeparatesGateOutcomesAndMessages` |
+| Resize, multiline paste, draft preservation and scrollable prompts | `TestComposerNewlinesPasteResizeAndBusyDraft`, `TestContentCannotControlTerminalAndDiffScrolls` |
+| Abort kills shell children; quit releases local ownership | `TestAbortThroughTUIBackendKillsShellChildren`, `TestLocalCloseDrainsBackpressureAndReleasesLog` |
+| Reconnect restores history and pending prompts without resending | `TestRemoteReconnectRecoversPendingPromptAndHistory` |
+
+Real-terminal smoke checks supplement these tests for composer input, local and
+remote inspectors, tool cards, checkpoint choices, masked credentials and the
+persistent binding choice. These are operator checks, not human usability research.

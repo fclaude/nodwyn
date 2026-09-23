@@ -181,7 +181,7 @@ See [the protocol guide](docs/protocol.md) for startup, methods, catch-up cursor
 queue limits and ownership.
 
 
-### Terminal client (P9 in progress)
+### Terminal client (P9)
 
 `nibb tui --repo /path/to/project` starts the full-screen client locally;
 `nibb tui --socket /path/to/sock` attaches to a daemon. Choose or resume a
@@ -198,4 +198,4 @@ Use `:log`, `:bindings` (also `:allow`), `:replay` and `:friction` for read-only
 Esc returns to the conversation and `r` refreshes a snapshot.
 Enter sends the whole draft; Alt+Enter or Ctrl+J adds a newline. Bracketed paste
 preserves line breaks without sending. Prompts keep their own single-line input.
-See [the TUI guide](docs/tui.md) for controls, ownership and the remaining P9 work.
+See [the TUI guide](docs/tui.md) for controls, ownership and the acceptance coverage.

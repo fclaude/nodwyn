@@ -162,3 +162,18 @@ func TestBindingChoiceRequiresProposalAndKeepsSecurityPromptNarrow(t *testing.T)
 		}
 	}
 }
+
+func TestApprovalAuditIsVisibleAndDeduplicated(t *testing.T) {
+	m := testModel()
+	ev := wire(string(log.KindApprovalChange), log.ApprovalChange{PromptID: "p", Scope: "session", Kind: "write", Prefix: "notes/", Actor: "terminal"}, 1)
+	m.consume(ev)
+	m.consume(ev)
+	m.refresh(false)
+	want := "approval requested: session write notes/ by terminal"
+	if strings.Count(m.View().Content, want) != 1 {
+		t.Fatal("approval audit missing or duplicated", m.View().Content)
+	}
+	if m.prompt != nil {
+		t.Fatal("replay recreated approval")
+	}
+}

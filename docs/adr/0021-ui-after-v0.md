@@ -325,3 +325,14 @@ outcomes are shown in live output and replay. Inspectors remain read-only.
 Jev's fixed POST/Bearer scope is now complete (ADR 20 amendment). Binding edits
 are implemented; the remaining P9 item is verification/completion of line-mode
 flow parity. U3/U4 remain future work.
+
+
+## P9 acceptance completed — 2026-09-22
+
+The remaining parity audit added visible temporary approval-change records and
+end-to-end coverage for standing directory approvals, turn-scope expiry and
+protected-path restrictions through both adapters. Together with existing
+message/eval, credential, binding, inspector, plan/budget, resize, cancellation,
+reconnect and process-tree tests, this completes P9's line-mode flows. The TUI
+guide records the acceptance matrix. Plain stays the default; live budget
+counters are not claimed, and U3/U4 are still separate future phases.

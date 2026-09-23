@@ -123,6 +123,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 		} else if p.Value != "" {
 			m.append(p.Value)
 		}
+	case string(log.KindApprovalChange):
+		var p log.ApprovalChange
+		p, err = decode[log.ApprovalChange](e.Payload)
+		if err == nil {
+			m.append(fmt.Sprintf("approval requested: %s %s %s by %s", p.Scope, p.Kind, p.Prefix, p.Actor))
+		}
 	case string(log.KindBindingChange):
 		var p log.BindingChange
 		p, err = decode[log.BindingChange](e.Payload)
