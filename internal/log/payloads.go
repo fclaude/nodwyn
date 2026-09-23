@@ -2,6 +2,7 @@ package log
 
 import (
 	"encoding/json"
+	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/budget"
 )
 
@@ -174,4 +175,14 @@ type EvalRequest struct {
 type EvalResult struct {
 	Value string `json:"value,omitempty"`
 	Error string `json:"error,omitempty"`
+}
+
+// BindingChange records intent before persistence and its outcome afterwards.
+// Replaying these audit records never reinstalls permission.
+type BindingChange struct {
+	Actor    string          `json:"actor"`
+	PromptID string          `json:"prompt_id"`
+	Binding  binding.Binding `json:"binding"`
+	State    string          `json:"state"` // requested, applied, failed
+	Error    string          `json:"error,omitempty"`
 }

@@ -27,7 +27,7 @@ import (
 // it "feeds the decision with binding, never decides alone", and that is
 // L3's job (P8). Findings of that class are ignored for the verdict.
 type TextSecret struct {
-	Table   binding.Table
+	Table   binding.Authority
 	Scanner *l1.Scanner
 }
 
@@ -36,6 +36,9 @@ func (TextSecret) Name() string { return "l1" }
 
 // Check scans one application.
 func (ts TextSecret) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
+	if ts.Table == nil {
+		ts.Table = binding.Table{}
+	}
 	payload, argv := secretText(p, args)
 	s := ts.Scanner
 	if s == nil {

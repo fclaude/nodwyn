@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
 )
@@ -46,6 +47,7 @@ func (v Verdict) String() string {
 // approval: it outranks any Confirm (the user already said yes), never a
 // Deny.
 type Decision struct {
+	Binding  *binding.Binding // exact unbound E3 proposal, never an automatic grant
 	Verdict  Verdict
 	Reason   string
 	Detail   string
@@ -65,8 +67,9 @@ type Checker interface {
 // Argv is set for command lines so a front-end can offer a standing
 // approval ("a" = always this session).
 type Prompt struct {
-	Egress   *EgressScope `json:",omitempty"` // display facts, not a binding or grant
-	Security bool         // standing and turn approvals must never waive this confirmation
+	Binding  *binding.Binding `json:",omitempty"` // optional exact row for explicit persistent approval
+	Egress   *EgressScope     `json:",omitempty"` // display facts, not a binding or grant
+	Security bool             // standing and turn approvals must never waive this confirmation
 	Prim     string
 	Args     string // short written form
 	Reasons  []string
@@ -199,6 +202,7 @@ type checkResult struct {
 	details  []string
 	standing string
 	security bool
+	binding  *binding.Binding
 }
 
 // evaluate runs in registration order and stops at the first denial.
@@ -212,6 +216,9 @@ func (g *Guard) evaluate(ctx context.Context, p *scheme.Prim, args []scheme.Valu
 				r.standing = d.Reason
 			}
 			continue
+		}
+		if d.Verdict == Confirm && d.Binding != nil {
+			r.binding = d.Binding
 		}
 		if d.Verdict == Confirm && d.Security {
 			r.security = true
@@ -276,6 +283,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 	// Confirm.
 	writePath, _ := WritePath(p, args)
 	approval, err := g.confirm(ctx, Prompt{
+		Binding:  result.binding,
 		Egress:   egressScopeOf(p, args),
 		Security: result.security,
 		Prim:     p.Name,

@@ -26,7 +26,7 @@ import (
 // When L2 decides, L3 is not paid for (SPEC's ladder principle): this
 // checker runs before the learned layer and a decision here is final.
 type Taint struct {
-	Table  binding.Table
+	Table  binding.Authority
 	Policy string // "deny" (default) or "confirm" for unbound external egress
 }
 
@@ -35,6 +35,9 @@ func (Taint) Name() string { return "l2" }
 
 // Check inspects one application.
 func (t Taint) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) Decision {
+	if t.Table == nil {
+		t.Table = binding.Table{}
+	}
 	if p.Meta.TaintStrip {
 		if scheme.OriginFrom(ctx) == scheme.OriginModel {
 			return Decision{Verdict: Deny, Reason: p.Name + " is user-only: the model may not strip provenance"}

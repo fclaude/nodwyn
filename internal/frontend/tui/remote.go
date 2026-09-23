@@ -61,3 +61,7 @@ func (r *remote) Abort(ctx context.Context, id string) error {
 	return r.client.Call(ctx, "session.abort", map[string]any{"id": id}, nil)
 }
 func (r *remote) Close() { r.client.Close() }
+
+func (r *remote) Bind(ctx context.Context, id, prompt string) error {
+	return r.client.Call(ctx, "session.binding.create", map[string]any{"id": id, "prompt_id": prompt}, nil)
+}

@@ -75,3 +75,33 @@ Friction inspection uses the existing fixed user-origin `(fs-read
 "docs/friction.md")` evaluation; it does not add a direct frontend file-I/O path.
 Its guard/evaluation audit remains durable, with source/results outside model
 context. No new policy, transport concept or terminal dependency enters core.
+
+
+## P9 explicit persistent binding approval — 2026-09-22
+
+`Session.CreateBinding(promptID, actor)` closes the mutation gap identified in
+ADR 6. The frontend chooses only a pending prompt; it cannot submit a row.
+E3 supplies an exact unbound class/host/method/position proposal. Core rejects
+security prompts, canceled/resolved IDs, missing facts, mismatched proposals
+and proposals whose scope would be redacted. The waiting execution goroutine
+records the actor and requested row, persists it, refreshes policy, and records
+an applied/failed outcome before the call can proceed. A failed write denies
+the call. This is distinct from temporary command/write approval and is not
+available to Scheme or a model tool.
+
+`binding.Live` owns the session's validated snapshot; all binding-aware checkers
+read that same authority. The first guard checker refreshes it before egress.
+Malformed files deny even under confirm policy. A configured path is authoritative,
+including absence; the daemon cannot resurrect its startup table after deletion.
+`Options.Bindings` remains available for explicitly pathless, in-memory hosts.
+Inspectors report the last validated snapshot and cannot mutate it.
+
+Persistence appends TOML without reformatting existing content, uses a sibling
+advisory lock for nibb writers, and syncs a private temporary file before atomic
+rename and directory sync. External editors should honor the same lock; a
+content comparison detects edits during preparation but is not a compare-and-swap
+against an uncooperative writer. Symlink/non-regular write targets are refused.
+Other sessions observe updates at their next egress check. Binding scope remains
+hostname-based (not URL path, port or scheme), as in the existing table format.
+Audit replay does not restore permission. The protocol exposes an explicit
+`session.binding.create` operation, with identity derived from its local peer.

@@ -35,6 +35,7 @@ func contracts() map[string]methodContract {
 		"session.answer":          {answerParams{}, struct{}{}},
 		"session.secret":          {secretParams{}, struct{}{}},
 		"session.approval.create": {approvalParams{}, struct{}{}},
+		"session.binding.create":  {bindingParams{}, struct{}{}},
 	}
 }
 
@@ -85,7 +86,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindEvalReq): log.EvalRequest{}, string(log.KindEvalResult): log.EvalResult{},
 		string(log.KindUserMsg): log.UserMsg{}, string(log.KindLLMReq): log.LLMReq{}, string(log.KindLLMResp): log.LLMResp{},
 		string(log.KindToolCall): log.ToolCallEvent{}, string(log.KindToolResult): log.ToolResult{},
-		string(log.KindGuardDecision): log.GuardDecision{}, string(log.KindApprovalChange): log.ApprovalChange{},
+		string(log.KindGuardDecision): log.GuardDecision{}, string(log.KindApprovalChange): log.ApprovalChange{}, string(log.KindBindingChange): log.BindingChange{},
 		string(log.KindEgressCheck): log.EgressCheck{}, string(log.KindGatePlan): log.GatePlan{}, string(log.KindJevReq): log.JevReq{},
 		string(log.KindCredRegister): log.CredRegister{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
 		string(log.KindTurnEnd): log.Note{}, string(log.KindNote): log.Note{},

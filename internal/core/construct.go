@@ -42,7 +42,8 @@ type Options struct {
 	LogWriter io.Writer
 	// P3 egress (optional; nil disables egress primitives — bootstrap).
 	// Keychain is an opened keychain store (the passphrase was already
-	// provided by the front-end). Bindings is the binding table; an empty
+	// provided by the front-end). Bindings is an in-memory table used only
+	// when Paths.Bindings is empty; a configured file is authoritative. An empty
 	// table denies every secret-bearing egress (ADR 6).
 	Keychain *keychain.Store
 	Bindings binding.Table
@@ -154,7 +155,6 @@ func (s *Session) primitiveOptions() prim.Options {
 	// P3 egress: the session is the CredentialStore (it owns the keychain,
 	// the masked prompt, and the log). Bootstrap leaves this nil.
 	s.keychain = o.Keychain
-	s.bindings = o.Bindings
 	if s.keychain != nil {
 		po.Credentials = s
 	}
@@ -171,6 +171,11 @@ func (s *Session) primitiveOptions() prim.Options {
 // until initialization finishes, so startup never waits for an absent frontend.
 func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 	o := s.opts
+	var err error
+	s.bindings, err = binding.Open(o.Paths.Bindings, o.Bindings)
+	if err != nil {
+		return nil, err
+	}
 	// Standing approvals: config, then the repository's .nibb/allow.toml.
 	s.allow = guard.NewCommandAllow(o.Config.Policy.AllowCommands...)
 	repoAllow, err := config.LoadRepoAllow(filepath.Join(o.Repo, ".nibb", "allow.toml"))
@@ -186,7 +191,7 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 	}
 	// P6 L2: provenance. The checker runs before L1 (and later L3): when
 	// L2 knows, the learned layer is not paid for (SPEC ladder principle).
-	egressCheckers := []guard.Checker{guard.Taint{Table: o.Bindings, Policy: o.Config.Policy.Unbound}}
+	egressCheckers := []guard.Checker{guard.Taint{Table: s.bindings, Policy: o.Config.Policy.Unbound}}
 	if s.keychain != nil {
 		egressCheckers = append(egressCheckers, guard.Egress{Table: s.bindings, Policy: o.Config.Policy.Unbound, Recorder: s})
 	}
@@ -202,7 +207,7 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 		}
 		egressCheckers = append(egressCheckers, guard.TextSecret{Table: s.bindings, Scanner: sc})
 	}
-	checkers := prim.Checkers(po, s.allow, s.writes, egressCheckers...)
+	checkers := append([]guard.Checker{guard.BindingReload{Policy: s.bindings}}, prim.Checkers(po, s.allow, s.writes, egressCheckers...)...)
 	// One guard for the session. While init.scm loads nobody is listening,
 	// so confirms are denied; the real confirmer is installed afterwards on
 	// the same guard, keeping any checkers init.scm registered.

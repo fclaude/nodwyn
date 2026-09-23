@@ -82,7 +82,11 @@ func (s *Session) answer(id, reply, actor, scope string, strict bool) error {
 			scope = ""
 		}
 	}
-	if scope != "" {
+	if scope == "binding" {
+		if p.Security || p.Binding == nil {
+			return fmt.Errorf("core: this prompt has no eligible binding proposal")
+		}
+	} else if scope != "" {
 		if p.Security || guard.IsProtected(p.Path) || (p.Path == "" && len(p.Argv) == 0) || (scope == "turn" && p.Path == "") {
 			return fmt.Errorf("core: this prompt is not eligible for that approval scope")
 		}
@@ -109,6 +113,10 @@ func (s *Session) Confirm(ctx context.Context, p guard.Prompt) (bool, error) {
 	return a.Allowed, err
 }
 func (s *Session) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
+	// A proposal must be completely visible, exact, and derived from this call.
+	if !s.bindingEligible(p) {
+		p.Binding = nil
+	}
 	if p.Path != "" && !guard.IsProtected(p.Path) && !p.Security {
 		trust, actor := s.TurnApproval()
 		if trust {
@@ -144,6 +152,9 @@ func (s *Session) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Ap
 // The waiting execution goroutine installs a grant, after checking cancellation
 // and recording its issuer. Reply delivery itself never mutates permission.
 func (s *Session) installApproval(ctx context.Context, p guard.Prompt, a guard.Approval) error {
+	if a.Scope == "binding" {
+		return s.installBinding(ctx, p, a)
+	}
 	kind, prefix := "write", guard.DirPrefix(p.Path)
 	if len(p.Argv) > 0 {
 		kind, prefix = "command", guard.Prefix(p.Argv)

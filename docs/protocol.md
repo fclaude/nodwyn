@@ -76,7 +76,8 @@ protocol does not expose live turn counters. Details also include
 `allowed_commands`, `allowed_writes`, `turn_writes`, and optional `turn_actor`.
 Session details also contain `bindings`, a copied array of loaded metadata rows
 with `Class`, `Dest`, `Positions` and `Methods` fields. No credential values are
-included; configuration edits require reopening the session. Older daemons may
+included; configuration edits reload before egress. Inspection reports the
+last validated snapshot; invalid reloads deny egress. Older daemons may
 omit this additive field, which clients must distinguish from an empty array.
 The approval fields report current effective prefix lists and turn-wide write approval;
 file-backed and session-only prefixes share the lists. They are not setters.
@@ -168,10 +169,11 @@ queued on the connection.
 |---|---|---|
 | `session.answer` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","reply":"y"}` | `{}` when a one-time answer or budget choice is accepted |
 | `session.approval.create` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","scope":"session"}` | `{}` when an explicit scope choice is accepted |
+| `session.binding.create` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID"}` | `{}` when an exact pending binding choice is accepted |
 | `session.secret` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","secret":"VALUE"}` | `{}` when a credential reply is accepted |
 
 Ordinary `session.answer` accepts `y`/`yes` or `n`/`no`, case-insensitively.
-It rejects the terminal's `a` and `t` shortcuts. Budget prompts instead accept
+It rejects the terminal's `a`, `t` and `b` shortcuts. Budget prompts instead accept
 the existing checkpoint choices: yes to double the soft limit, no to stop, or
 an absolute soft limit within the hard ceiling (durations for wall time).
 A budget choice never creates tool authority.
@@ -260,3 +262,20 @@ replies to the core facade. It owns neither pending prompts nor policy changes.
 `schema.go` derives documentation from wire types. U2's local Unix transport is
 implemented; P9 can now exercise it as a first client. U3/U4 and optional TCP
 remain future work.
+
+
+## Persistent binding approval
+
+`session.binding.create` accepts only session and pending-prompt IDs, never row
+fields or an actor. E3's optional `Prompt.Binding` contains a complete exact
+proposal corresponding to `Prompt.Egress`; the core removes proposals that are
+not eligible or whose display would be redacted. The method rejects checkpoint,
+ordinary non-egress, security, canceled and resolved prompts. It is separate
+from `session.approval.create` and does not extend that method's accepted scopes.
+
+The response acknowledges the choice, not completion of persistence. Follow
+`binding.change` events (`requested`, then `applied` or `failed`) and the guard
+outcome. Each change carries the kernel-derived actor, prompt ID and proposed
+row. Persistence failure blocks the waiting call. Disconnect/reconnect never
+retries a grant automatically; durable history and pending prompts identify its
+outcome. This method and the optional proposal field are additive extensions.

@@ -44,6 +44,7 @@ const (
 	KindLLMResp        Kind = "llm.resp"        // model output: text, thinking, tool calls, usage
 	KindToolCall       Kind = "tool.call"       // a tool application about to be evaluated
 	KindToolResult     Kind = "tool.result"     // its result or error (redacted from P7)
+	KindBindingChange  Kind = "binding.change"  // requested/applied/failed persistent binding update
 	KindApprovalChange Kind = "approval.change" // explicit temporary policy expansion
 	KindGuardDecision  Kind = "guard.decision"  // Allow / Deny / Confirm at apply->Prim
 	KindEgressCheck    Kind = "egress.check"    // binding lookup for a secret-bearing egress (P3)
@@ -59,7 +60,7 @@ var kinds = map[Kind]bool{
 	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
-	KindGuardDecision: true, KindApprovalChange: true, KindEgressCheck: true, KindGatePlan: true,
+	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindEgressCheck: true, KindGatePlan: true,
 	KindJevReq: true, KindCredRegister: true, KindRedact: true, KindSummary: true, KindNote: true,
 }
 

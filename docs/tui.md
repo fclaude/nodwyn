@@ -129,8 +129,9 @@ scrolling, prompt priority and safe rendering apply.
 
 `:bindings` (also `:allow`) shows the session's loaded class/destination/method/position rows
 and its current effective command/write approvals. It reads a copied snapshot,
-not the file on disk, and has no setter. Changing `bindings.toml` takes effect
-when the session is reopened. No stored credential values are accessed. An
+not the file on disk, and has no setter. Changes to `bindings.toml` reload
+before the next egress check. Malformed policy denies egress; the inspector
+continues to show the last validated snapshot. No stored credential values are accessed. An
 older daemon without binding inspection reports that limitation instead of
 showing a misleading empty table.
 
@@ -225,12 +226,14 @@ as `github.com/charmbracelet` so the new dependency cannot enter core.
 
 Credential-bearing confirmations show the class, destination host, method and
 injection position reported by the guard. Unavailable facts are labeled
-“not specified by primitive.” This display does not create bindings; replies
-retain the existing one-time approval behavior. The same summary appears in
-plain mode. Older daemon prompts may omit this optional metadata.
+“not specified by primitive.” Eligible unbound calls offer `b`: persist the
+displayed class/host/method/position and approve this call. `y` approves once;
+`n` denies. Missing or redacted scope and security prompts cannot create a
+binding. Applied/failed outcomes appear in the transcript and replay. Plain
+mode offers the same choices. Older daemon prompts omit the binding action.
 
 The initial client, multiline composer, tool discovery, read-only inspectors,
-and tool/plan/budget presentation are implemented. P9 is not complete: guarded
-binding edits and broader flow parity with line mode remain. Live budget
+tool/plan/budget presentation and guarded binding edits are implemented.
+P9 is not complete: broader flow parity with line mode remains. Live budget
 counters are not exposed by the current API. U3's desktop client and U4's
 background supervisor remain separate roadmap work.

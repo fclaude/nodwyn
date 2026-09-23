@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nibb/internal/frontend/plain"
 	"github.com/fclaude/nibb/internal/frontend/rpc"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/redact"
@@ -121,6 +122,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 			m.append("eval error: " + p.Error)
 		} else if p.Value != "" {
 			m.append(p.Value)
+		}
+	case string(log.KindBindingChange):
+		var p log.BindingChange
+		p, err = decode[log.BindingChange](e.Payload)
+		if err == nil {
+			m.append(plain.BindingSummary(p))
 		}
 	case string(log.KindNote):
 		var p log.Note

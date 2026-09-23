@@ -179,7 +179,7 @@ func formatLog(events []log.Event, count int, filter string) string {
 }
 func formatPolicy(p policyView) string {
 	var out strings.Builder
-	out.WriteString("Loaded session bindings · metadata only\nChanges to bindings.toml apply when a session is reopened.\n\n")
+	out.WriteString("Loaded session bindings · metadata only\nLast validated snapshot. Changes to bindings.toml reload before egress; invalid files deny egress.\n\n")
 	if len(p.Bindings) == 0 {
 		out.WriteString("No bindings loaded. Secret-bearing egress is unbound.\n")
 	}

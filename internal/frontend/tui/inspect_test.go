@@ -22,6 +22,7 @@ func TestInspectorsWorkLocallyAndOverRPC(t *testing.T) {
 	for _, mode := range []string{"local", "rpc"} {
 		t.Run(mode, func(t *testing.T) {
 			o := testOptions(t)
+			o.Paths.Bindings = "" // explicitly in-memory test policy
 			o.Bindings = binding.Table{Bind: []binding.Binding{{Class: "service", Dest: "api.example.test", Methods: []string{"POST"}, Positions: []string{"header:Authorization"}}}}
 			os.MkdirAll(filepath.Join(o.Repo, "docs"), 0700)
 			const canary = "sk-ant-abcdefgh1234"

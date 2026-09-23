@@ -29,12 +29,20 @@ type Table struct {
 
 // Load reads the binding table from path. A missing file is an empty table.
 func Load(path string) (Table, error) {
-	var t Table
-	md, err := toml.DecodeFile(path, &t)
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return Table{}, nil
+	}
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return Table{}, nil
-		}
+		return Table{}, fmt.Errorf("bindings: %s: %w", path, err)
+	}
+	return parse(raw, path)
+}
+
+func parse(raw []byte, path string) (Table, error) {
+	var t Table
+	md, err := toml.Decode(string(raw), &t)
+	if err != nil {
 		return Table{}, fmt.Errorf("bindings: %s: %w", path, err)
 	}
 	if undec := md.Undecoded(); len(undec) > 0 {

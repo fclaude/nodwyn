@@ -302,9 +302,9 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   latest-turn checkpoints; live counters are not exposed. Checkpoint prompts
   show all four usage dimensions. Credential-bearing confirmations now show
   class, destination, method and position; missing facts are explicit. This is
-  display-only groundwork for binding edits, not a permission-writing path.
-  Plain mode remains the default. P9 is not complete: guarded binding edits and
-  full flow parity with line mode remain.
+  paired with an explicit `b` action for eligible exact binding proposals. Core
+  persists and audits the row; all sessions reload policy before egress. Plain
+  mode remains the default. P9 is not complete: full flow parity remains.
 - `internal/frontend/tui`: a bubbletea program over `core.Session` — no new core code; if P9 needs a core change, that is a gap in ADR 10 and gets an ADR amendment, not a shortcut.
 - Views: streaming transcript; tool-call cards with guard badge; plan panel; confirm modal naming class + destination + scope with "bind this"; masked credential input; `:log :bindings :replay :friction`.
 - **With nibb:** friction.md is the backlog, ranked by frequency. Line mode stays as `nibb --plain` — it is still what CI and `selfcheck.sh` use.

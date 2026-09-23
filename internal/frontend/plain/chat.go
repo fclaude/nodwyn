@@ -232,6 +232,9 @@ func (c *Chat) show(ev event.Event) {
 		if ev.Payload.(event.StatusInfo).State == "idle" {
 			endStream()
 		}
+	case string(log.KindBindingChange):
+		endStream()
+		fmt.Fprintln(c.Out, BindingSummary(ev.Payload.(log.BindingChange)))
 	case string(log.KindApprovalChange):
 		endStream()
 		p := ev.Payload.(log.ApprovalChange)
@@ -262,11 +265,21 @@ func (c *Chat) confirm(p event.Confirm) {
 	case p.Prompt.Path != "" && !guard.IsProtected(p.Prompt.Path):
 		prompt = fmt.Sprintf("allow? [y/N/a=always under %s/t=all writes this turn] ", guard.DirPrefix(p.Prompt.Path))
 	}
+	if p.Prompt.Binding != nil && !p.Prompt.Security {
+		prompt = "allow? [y/N/b=bind this exact scope persistently and allow] "
+	}
 	line, ok := c.lines.read(prompt)
 	if !ok {
 		line = "n"
 	}
-	_ = c.Session.Answer(p.ID, line)
+	if (strings.EqualFold(strings.TrimSpace(line), "b")) && p.Prompt.Binding != nil && !p.Prompt.Security {
+		if err := c.Session.CreateBinding(p.ID, "terminal"); err != nil {
+			fmt.Fprintf(c.Out, "binding: %s\n", err)
+			_ = c.Session.Answer(p.ID, "n")
+		}
+	} else {
+		_ = c.Session.Answer(p.ID, line)
+	}
 }
 
 func (c *Chat) secretInput(p event.SecretPrompt) {
@@ -381,6 +394,10 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			} else if p.Value != "" {
 				fmt.Fprintln(w, p.Value)
 			}
+		case log.KindBindingChange:
+			var p log.BindingChange
+			_ = ev.Decode(&p)
+			fmt.Fprintln(w, BindingSummary(p))
 		case log.KindApprovalChange:
 			var p log.ApprovalChange
 			_ = ev.Decode(&p)

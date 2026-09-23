@@ -312,3 +312,16 @@ Jev currently declares its fixed host but not its fixed method/position in guard
 metadata; those omissions are shown explicitly. A later binding proposal must
 have complete validated facts and must not infer authorization from a displayed
 or redacted prompt. Existing default-deny and one-time approval behavior remain.
+
+
+## P9 binding workflow implemented — 2026-09-22
+
+Plain mode and the TUI now offer `b` on eligible unbound credential confirmations:
+append the displayed exact scope persistently and approve this call. `y` still
+means once and `n` denies. The core derives and validates the row and owns the
+mutation; frontend adapters submit only the prompt ID. Pending proposals survive
+RPC reconnect and are rejected after cancellation or resolution. Applied/failed
+outcomes are shown in live output and replay. Inspectors remain read-only.
+Jev's fixed POST/Bearer scope is now complete (ADR 20 amendment). Binding edits
+are implemented; the remaining P9 item is verification/completion of line-mode
+flow parity. U3/U4 remain future work.

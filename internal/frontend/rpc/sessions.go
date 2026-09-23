@@ -78,7 +78,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	defer s.mu.Unlock()
 	store := core.Store{Dir: s.options.Paths.SessionsDir}
 	switch req.Method {
-	case "session.answer", "session.secret", "session.approval.create":
+	case "session.answer", "session.secret", "session.approval.create", "session.binding.create":
 		return s.answer(req, client)
 	case "session.list":
 		if err := params(req.Params, &struct{}{}); err != nil {

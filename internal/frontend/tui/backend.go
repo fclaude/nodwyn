@@ -30,6 +30,7 @@ type backend interface {
 	Send(context.Context, string, string, bool) error
 	Answer(context.Context, string, string, string) error
 	Grant(context.Context, string, string, string) error
+	Bind(context.Context, string, string) error
 	Secret(context.Context, string, string, []byte) error
 	Abort(context.Context, string) error
 	History(context.Context, string) ([]log.Event, error)
@@ -143,4 +144,8 @@ func (l *local) Close() {
 			l.session.Close()
 		}
 	})
+}
+
+func (l *local) Bind(_ context.Context, _, prompt string) error {
+	return l.session.CreateBinding(prompt, "terminal")
 }

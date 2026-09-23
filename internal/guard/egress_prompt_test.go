@@ -2,6 +2,8 @@ package guard
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/fclaude/nibb/internal/binding"
@@ -47,5 +49,21 @@ func TestEgressScopeDoesNotInventMissingFacts(t *testing.T) {
 	p.Meta.Egress = false
 	if egressScopeOf(p, args) != nil {
 		t.Fatal("ordinary call given scope")
+	}
+}
+
+func TestMalformedReloadDeniesEvenWithConfirmPolicy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bindings.toml")
+	policy, err := binding.Open(path, binding.Table{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("unknown = true"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g := New(ConfirmFunc(func(context.Context, Prompt) (bool, error) { t.Fatal("invalid policy prompted"); return true, nil }), nil, BindingReload{Policy: policy}, Egress{Table: policy, Policy: "confirm"})
+	args := []scheme.Value{{Kind: scheme.KHandle, H: &scheme.Handle{Class: "service"}}, scheme.Str("https://api.test"), scheme.Str("POST"), scheme.Str("body")}
+	if g.Before(context.Background(), credPrim(), args) == nil {
+		t.Fatal("invalid policy allowed")
 	}
 }

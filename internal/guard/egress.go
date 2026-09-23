@@ -20,7 +20,7 @@ import (
 // The guard records the lookup as an egress.check event so a binding failure
 // is auditable independent of the guard.decision.
 type Egress struct {
-	Table    binding.Table
+	Table    binding.Authority
 	Policy   string // "deny" (default) or "confirm" for unbound secret egress
 	Recorder Logger // receives the egress.check event; nil discards (tests)
 }
@@ -30,6 +30,9 @@ func (Egress) Name() string { return "egress" }
 
 // Check returns the binding verdict for one application.
 func (e Egress) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
+	if e.Table == nil {
+		e.Table = binding.Table{}
+	}
 	f := egressFactsOf(p, args)
 	if !f.HasCredential {
 		// Not a secret-bearing egress: this checker has no opinion.
@@ -43,7 +46,13 @@ func (e Egress) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) De
 		if e.Policy == "confirm" {
 			verdict = Confirm
 		}
-		return Decision{Verdict: verdict, Reason: reason}
+		d := Decision{Verdict: verdict, Reason: reason}
+		if verdict == Confirm {
+			if row, err := binding.Exact(f.Class, f.Host, f.Method, f.Position); err == nil {
+				d.Binding = &row
+			}
+		}
+		return d
 	}
 	return Decision{Verdict: Allow, Reason: "bound"}
 }

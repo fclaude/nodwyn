@@ -57,7 +57,7 @@ type Session struct {
 
 	// P3 egress.
 	keychain *keychain.Store
-	bindings binding.Table
+	bindings *binding.Live
 
 	// P3 credential prompts: pending masked-secret prompts.
 	secrets   map[string]pendingSecret

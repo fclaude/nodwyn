@@ -17,7 +17,7 @@ import (
 
 type pendingPrompt struct {
 	id, kind, title, detail, choices string
-	session, turn                    bool
+	session, turn, bind              bool
 	checkpoint                       budget.Checkpoint
 }
 
@@ -40,6 +40,10 @@ func (m *model) setPrompt(e rpc.ClientEvent) error {
 		eligible := !g.Security && !guard.IsProtected(g.Path)
 		p.session = eligible && (g.Path != "" || len(g.Argv) > 0)
 		p.turn = eligible && g.Path != ""
+		p.bind = !g.Security && g.Binding != nil
+		if p.bind {
+			p.choices += "\nb = bind this exact class/host/method/position persistently and allow this call."
+		}
 		if p.session {
 			target := guard.Prefix(g.Argv)
 			if g.Path != "" {
@@ -111,6 +115,12 @@ func (m *model) reply(value string) tea.Cmd {
 	} else {
 		switch reply {
 		case "y", "yes", "n", "no":
+		case "b":
+			if !p.bind {
+				m.status = "This prompt has no binding proposal."
+				return nil
+			}
+			scope = "binding"
 		case "a":
 			if p.session {
 				scope = "session"
@@ -132,6 +142,9 @@ func (m *model) reply(value string) tea.Cmd {
 	}
 	m.promptInput.Reset()
 	return m.action("reply", p.id, func(ctx context.Context) error {
+		if scope == "binding" {
+			return b.Bind(ctx, id, p.id)
+		}
 		if scope != "" {
 			return b.Grant(ctx, id, p.id, scope)
 		}

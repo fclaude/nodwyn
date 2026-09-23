@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · persistent binding approval · new destinations required manual TOML editing and session restart · external-agent implementation under ADR 16; local/RPC, concurrent persistence, cancellation and reload checks · prompt-derived exact rows now persist on explicit consent; invalid policy denies and deletion removes authority
 - 2026-09-22 · fixed Jev scope · host-only metadata skipped method and position authorization · external-agent implementation under ADR 16; all three primitives tested against mismatched bindings · require POST and header:Authorization:Bearer before transport
 - 2026-09-22 · P9 egress confirmations · unbound credential prompts lacked explicit method and position; Jev still omits these fixed facts from guard metadata · implemented with an external agent under ADR 16, with local/RPC canary coverage · show exact available facts and explicit omissions before adding any binding-writing operation
 - 2026-09-22 · P9 plan/budget views · implemented with an external agent under ADR 16; local/RPC and terminal checks exercise configured limits, a real checkpoint stop, history isolation and gate-score labels · no claim of nibb self-authorship · inspect recorded planning and budget decisions without treating snapshots as live usage

@@ -9,6 +9,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/guard"
 	"github.com/fclaude/nibb/internal/log"
@@ -144,5 +145,20 @@ func TestEgressPromptShowsScopeWithoutOfferingBindingGrant(t *testing.T) {
 	}
 	if m.prompt.session || m.prompt.turn {
 		t.Fatal("scope offered standing authority")
+	}
+}
+
+func TestBindingChoiceRequiresProposalAndKeepsSecurityPromptNarrow(t *testing.T) {
+	for _, security := range []bool{false, true} {
+		m := testModel()
+		row := binding.Binding{Class: "service", Dest: "api.test", Methods: []string{"POST"}, Positions: []string{"body"}}
+		m.consume(wire(event.PromptConfirm, event.Confirm{ID: "p", Prompt: guard.Prompt{Security: security, Binding: &row, Egress: &guard.EgressScope{Class: "service", Host: "api.test", Method: "POST", Position: "body"}}}, 0))
+		if m.prompt.bind == security {
+			t.Fatal("wrong binding eligibility")
+		}
+		cmd := m.reply("b")
+		if (cmd != nil) == security {
+			t.Fatal("wrong binding action")
+		}
 	}
 }

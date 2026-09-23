@@ -12,6 +12,10 @@ type approvalParams struct {
 	PromptID string `json:"prompt_id"`
 	Scope    string `json:"scope"`
 }
+type bindingParams struct {
+	ID       string `json:"id"`
+	PromptID string `json:"prompt_id"`
+}
 type secretParams struct {
 	ID       string `json:"id"`
 	PromptID string `json:"prompt_id"`
@@ -39,6 +43,13 @@ func (s *server) answer(req request, client *peer) (any, *rpcError) {
 		}
 		id, prompt = p.ID, p.PromptID
 		apply = func() error { return s.sessions[id].session.CreateApproval(prompt, p.Scope, client.actor) }
+	case "session.binding.create":
+		var p bindingParams
+		if err := params(req.Params, &p, "id", "prompt_id"); err != nil {
+			return nil, err
+		}
+		id, prompt = p.ID, p.PromptID
+		apply = func() error { return s.sessions[id].session.CreateBinding(prompt, client.actor) }
 	case "session.secret":
 		var p secretParams
 		if err := params(req.Params, &p, "id", "prompt_id", "secret"); err != nil {

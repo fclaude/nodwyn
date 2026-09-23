@@ -12,7 +12,7 @@ func TestEgressSummary(t *testing.T) {
 		t.Fatal("ordinary prompt has egress scope")
 	}
 	got := EgressSummary(&guard.EgressScope{Class: "service", Host: "api.example.test", Method: "POST", Position: "query:key"})
-	for _, want := range []string{`Credential class: "service"`, `Destination host: "api.example.test"`, `Method: "POST"`, `Position: "query:key"`, "bindings are unchanged"} {
+	for _, want := range []string{`Credential class: "service"`, `Destination host: "api.example.test"`, `Method: "POST"`, `Position: "query:key"`, "scope facts for this call"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in %s", want, got)
 		}
