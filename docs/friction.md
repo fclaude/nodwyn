@@ -60,3 +60,5 @@ Format: `date · session · what happened · what it cost · idea`
 - 2026-09-22 · U2 approvals and eval · implemented with an external agent under ADR 16; Unix-socket tests cover peer attribution, explicit scopes, secret containment, cancellation and schema drift · no claim of nibb self-authorship · clients can now complete prompted turns and register credentials without blocking their reply connection; turn-wide write trust no longer bypasses security confirmation
 
 - 2026-09-22 (external agent, ADR 16): searching through general shell commands required broad command approvals; `index-grep` now performs bounded ripgrep retrieval with every selected content read passing the existing guard. Tree-sitter symbols remain separate work.
+
+- 2026-09-22 (external agent, ADR 16): source outlines previously needed whole-file context or shell tools; `index-symbols` now returns guarded Tree-sitter definitions for Go, JavaScript and Python without runtime downloads or a native build toolchain.

@@ -136,7 +136,7 @@ nibb-stable                       # pins every path to this directory
 ```
 nibb session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
-tools fs-edit fs-list fs-read fs-write index-grep shell-exec
+tools fs-edit fs-list fs-read fs-write index-grep index-symbols shell-exec
 :h for commands
 
 you> read main.go and explain the startup sequence

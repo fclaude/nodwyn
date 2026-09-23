@@ -23,6 +23,7 @@ integrations and front-ends:
 | `loop`, `plan` | Run one model/tool turn; decide whether to plan and score the plan. |
 | `event`, `log` | Describe front-end events; persist the history from which context and replay are derived. |
 | `keychain`, `binding` | Hold encrypted credentials and inject them; authorize their destinations, methods and positions. |
+| `symbols` | Derive bounded source outlines with bundled Tree-sitter grammars; no filesystem or session ownership. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to the model; derive its context; redact text; detect credential shapes. |
 | `frontend/plain`, `frontend/rpc`, `config`, `cmd/nibb` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
@@ -70,6 +71,10 @@ make promote TAG=v0.N-phase   # accept + selfcheck, then ~/.local/bin/nibb-stabl
 ```
 
 Requires Go 1.27, ripgrep (`rg`, used by retrieval and its tests), and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
+
+Text search (`index-grep`) and bundled Tree-sitter outlines (`index-symbols`)
+use the shared guard and produce session-scoped results. See
+[memory and retrieval](docs/memory.md) for supported languages and limits.
 
 ## Run
 

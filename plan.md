@@ -312,7 +312,7 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 - **Accept:** every line-mode flow works in the TUI; resize; Ctrl-C mid-`shell-exec` leaves no orphan. Promote `v0.9-tui`.
 - **Shape change (ADR 21):** if U2 (the daemon and its protocol) lands first, the TUI is written as the protocol's first client — same package, same views, attaching to `nibbd` when a socket is given and running in-process otherwise.
 
-### Phase 10 — Memory (weeks 23–24; replay foundation implemented)
+### Phase 10 — Memory (implemented 2026-09-22)
 
 - **Implemented:** new session runtimes record their window recipe and each turn
   request records a digest. `nibb replay SESSION --window SEQ` verifies exact
@@ -321,8 +321,10 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   summaries now have validated source spans, inspection and append-only
   revocation; versioned windows retain historical replay and recent turns stay
   outside summary replacement. Existing token caps remain. Session-scoped
-  ripgrep retrieval is now exposed through guarded `index-grep`; tree-sitter
-  symbol retrieval remains. See [memory controls](docs/memory.md).
+  ripgrep retrieval is exposed through guarded `index-grep`. Bundled Tree-sitter
+  grammars provide `index-symbols` for Go, JavaScript and Python named definitions.
+  Both are on-demand, bounded views with no persistent index. Other languages
+  use text retrieval; see [memory controls](docs/memory.md) for explicit scope.
 
 - Replace the naive window with the spec's: recent turns verbatim, older spans replaced by their latest `summary` log event; `nibb summary --drop <seq>` revokes and recomputes.
 - Session index: tree-sitter symbols + ripgrep search exposed as prims (`index-symbols`, `index-grep`) — surgical pull, the model asks.

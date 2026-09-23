@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/fclaude/nibb/internal/window"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +27,8 @@ import (
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nibb/internal/symbols"
+	"github.com/fclaude/nibb/internal/window"
 )
 
 // version is set by the Makefile via -ldflags; "dev" builds fall back to VCS
@@ -66,6 +67,7 @@ commands:
   keychain init        create the encrypted keychain (asks for a passphrase)
   paths                print the config and data locations
   version              print version
+  licenses             print bundled Tree-sitter third-party notices
 
 flags:
 `)
@@ -76,6 +78,10 @@ flags:
 	cmd := fs.Arg(0)
 	if *showVersion || cmd == "version" {
 		fmt.Println("nibb", versionString())
+		return
+	}
+	if cmd == "licenses" {
+		fmt.Print(symbols.Licenses())
 		return
 	}
 	paths, err := config.DefaultPaths()

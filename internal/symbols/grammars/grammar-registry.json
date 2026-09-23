@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "grammars": [
+    {
+      "name": "json",
+      "repository": "tree-sitter/tree-sitter-json",
+      "tag": "v0.24.8",
+      "archive_sha256": "acf6e8362457e819ed8b613f2ad9a0e1b621a77556c296f3abea58f7880a9213",
+      "parser": "src/parser.c",
+      "scanners": [],
+      "language_function": "tree_sitter_json",
+      "language_name": "json"
+    },
+    {
+      "name": "javascript",
+      "repository": "tree-sitter/tree-sitter-javascript",
+      "tag": "v0.25.0",
+      "archive_sha256": "9712fc283d3dc01d996d20b6392143445d05867a7aad76fdd723824468428b86",
+      "parser": "src/parser.c",
+      "scanners": ["src/scanner.c"],
+      "language_function": "tree_sitter_javascript",
+      "language_name": "javascript"
+    },
+    {
+      "name": "python",
+      "repository": "tree-sitter/tree-sitter-python",
+      "tag": "v0.25.0",
+      "archive_sha256": "4609a3665a620e117acf795ff01b9e965880f81745f287a16336f4ca86cf270c",
+      "parser": "src/parser.c",
+      "scanners": ["src/scanner.c"],
+      "language_function": "tree_sitter_python",
+      "language_name": "python"
+    },
+    {
+      "name": "rust",
+      "repository": "tree-sitter/tree-sitter-rust",
+      "tag": "v0.24.2",
+      "archive_sha256": "061e90a539a55a6aa65dceb0ad6425c50ab1a6e3e6d4ba430e2795ed4550f10e",
+      "parser": "src/parser.c",
+      "scanners": ["src/scanner.c"],
+      "language_function": "tree_sitter_rust",
+      "language_name": "rust"
+    },
+    {
+      "name": "go",
+      "repository": "tree-sitter/tree-sitter-go",
+      "tag": "v0.25.0",
+      "archive_sha256": "2dc241b97872c53195e01b86542b411a3c1a6201d9c946c78d5c60c063bba1ef",
+      "parser": "src/parser.c",
+      "scanners": [],
+      "language_function": "tree_sitter_go",
+      "language_name": "go"
+    },
+    {
+      "name": "typescript",
+      "repository": "tree-sitter/tree-sitter-typescript",
+      "tag": "v0.23.2",
+      "archive_sha256": "2c4ce711ae8d1218a3b2f899189298159d672870b5b34dff5d937bed2f3e8983",
+      "parser": "typescript/src/parser.c",
+      "scanners": ["typescript/src/scanner.c"],
+      "language_function": "tree_sitter_typescript",
+      "language_name": "typescript"
+    },
+    {
+      "name": "tsx",
+      "repository": "tree-sitter/tree-sitter-typescript",
+      "tag": "v0.23.2",
+      "archive_sha256": "2c4ce711ae8d1218a3b2f899189298159d672870b5b34dff5d937bed2f3e8983",
+      "parser": "tsx/src/parser.c",
+      "scanners": ["tsx/src/scanner.c"],
+      "language_function": "tree_sitter_tsx",
+      "language_name": "tsx"
+    },
+    {
+      "name": "c",
+      "repository": "tree-sitter/tree-sitter-c",
+      "tag": "v0.24.2",
+      "archive_sha256": "2eeb4db31f8fa0865e45488503d13403923bcb485a1bdb637abff8c42dd97364",
+      "parser": "src/parser.c",
+      "scanners": [],
+      "language_function": "tree_sitter_c",
+      "language_name": "c"
+    },
+    {
+      "name": "cpp",
+      "repository": "tree-sitter/tree-sitter-cpp",
+      "tag": "v0.23.4",
+      "archive_sha256": "7a2c55afe3028f4105f25762ea58cc16537d1f5a1dcd9cca90410b3cd5d46051",
+      "parser": "src/parser.c",
+      "scanners": ["src/scanner.c"],
+      "language_function": "tree_sitter_cpp",
+      "language_name": "cpp"
+    },
+    {
+      "name": "java",
+      "repository": "tree-sitter/tree-sitter-java",
+      "tag": "v0.23.5",
+      "archive_sha256": "cb199e0faae4b2c08425f88cbb51c1a9319612e7b96315a174a624db9bf3d9f0",
+      "parser": "src/parser.c",
+      "scanners": [],
+      "language_function": "tree_sitter_java",
+      "language_name": "java"
+    },
+    {
+      "name": "ruby",
+      "repository": "tree-sitter/tree-sitter-ruby",
+      "tag": "v0.23.1",
+      "archive_sha256": "e7e49577ddc1f2de8e42d42353b477e338c15bbb95b2558e123ddc13d88789f0",
+      "parser": "src/parser.c",
+      "scanners": ["src/scanner.c"],
+      "language_function": "tree_sitter_ruby",
+      "language_name": "ruby"
+    },
+    {
+      "name": "bash",
+      "repository": "tree-sitter/tree-sitter-bash",
+      "tag": "v0.25.1",
+      "archive_sha256": "2e785a761225b6c433410ef9c7b63cfb0a4e83a35a19e0f2aec140b42c06b52d",
+      "parser": "src/parser.c",
+      "scanners": ["src/scanner.c"],
+      "language_function": "tree_sitter_bash",
+      "language_name": "bash"
+    }
+  ]
+}
