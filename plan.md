@@ -298,8 +298,11 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   are implemented using existing session metadata.
   Tool calls now group arguments, recorded guard decisions and full results,
   reconstructing the same view from history and live events.
-  Plain mode remains the default. P9 is not complete: binding edits,
-  plan/budget views and full line-mode parity remain.
+  Plan and budget inspectors show recorded gate outcomes, configured limits and
+  latest-turn checkpoints; live counters are not exposed. Checkpoint prompts
+  show all four usage dimensions.
+  Plain mode remains the default. P9 is not complete: guarded binding edits and
+  full flow parity with line mode remain.
 - `internal/frontend/tui`: a bubbletea program over `core.Session` — no new core code; if P9 needs a core change, that is a gap in ADR 10 and gets an ADR amendment, not a shortcut.
 - Views: streaming transcript; tool-call cards with guard badge; plan panel; confirm modal naming class + destination + scope with "bind this"; masked credential input; `:log :bindings :replay :friction`.
 - **With nibb:** friction.md is the backlog, ranked by frequency. Line mode stays as `nibb --plain` — it is still what CI and `selfcheck.sh` use.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/frontend/rpc"
 	"github.com/fclaude/nibb/internal/llm"
@@ -34,6 +35,7 @@ type backend interface {
 	History(context.Context, string) ([]log.Event, error)
 	Policy(context.Context, string) (policyView, error)
 	Tools(context.Context, string) ([]llm.Tool, error)
+	Budgets(context.Context, string) (budget.Limits, error)
 	Close()
 }
 

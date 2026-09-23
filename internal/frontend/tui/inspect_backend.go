@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/fclaude/nibb/internal/binding"
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nibb/internal/frontend/rpc"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 )
@@ -56,6 +58,28 @@ func (r *remote) Tools(ctx context.Context, id string) ([]llm.Tool, error) {
 		return nil, err
 	}
 	return info.Tools, nil
+}
+
+// These are configured limits for new turns in this session lifetime, not
+// current usage or a soft limit changed by an in-progress checkpoint reply.
+func (l *local) Budgets(ctx context.Context, _ string) (budget.Limits, error) {
+	if err := ctx.Err(); err != nil {
+		return budget.Limits{}, err
+	}
+	return l.options.Config.Budget.Limits(l.options.Config.Loop.MaxToolCalls)
+}
+func (r *remote) Budgets(ctx context.Context, id string) (budget.Limits, error) {
+	var info rpc.SessionDetails
+	if err := r.client.Call(ctx, "session.info", map[string]any{"id": id}, &info); err != nil {
+		return budget.Limits{}, err
+	}
+	limits := budget.Limits{ToolCalls: info.Budgets.ToolCalls, Tokens: info.Budgets.Tokens, Actions: info.Budgets.Actions, Wall: info.Budgets.Wall}
+	for _, limit := range []budget.Limit{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall} {
+		if limit.Soft <= 0 || limit.Hard < limit.Soft {
+			return budget.Limits{}, fmt.Errorf("daemon did not provide valid configured budget limits")
+		}
+	}
+	return limits, nil
 }
 func (l *local) History(ctx context.Context, id string) ([]log.Event, error) {
 	store := core.Store{Dir: l.options.Paths.SessionsDir}

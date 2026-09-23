@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/frontend/plain"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
@@ -38,7 +39,7 @@ func isInspectorCommand(s string) bool {
 		return false
 	}
 	switch fields[0] {
-	case ":log", ":bindings", ":replay", ":friction", ":tools", ":allow":
+	case ":log", ":bindings", ":replay", ":friction", ":tools", ":allow", ":plan", ":budget":
 		return true
 	}
 	return false
@@ -93,9 +94,18 @@ func (m *model) inspect(command string) tea.Cmd {
 			var events []log.Event
 			events, err = b.History(ctx, id)
 			if err == nil {
-				if kind == ":log" {
+				switch kind {
+				case ":log":
 					content = formatLog(events, count, filter)
-				} else {
+				case ":plan":
+					content, err = formatPlan(events)
+				case ":budget":
+					var limits budget.Limits
+					limits, err = b.Budgets(ctx, id)
+					if err == nil {
+						content, err = formatBudgets(limits, events)
+					}
+				default:
 					var out bytes.Buffer
 					plain.Replay(events, &out, thinking)
 					content = out.String()
@@ -218,6 +228,8 @@ const helpText = `Commands
 
 :log [n] [kind prefix]  Last matching durable records (default 20, max 1000).
                        Example: :log 50 guard.
+:plan                  Latest user message’s recorded planning outcome.
+:budget                Configured limits and latest turn’s recorded checkpoints.
 :tools [name]          Tools offered to the model; exact name shows input schema.
 :bindings, :allow      Loaded bindings and current approvals.
 :replay                Read-only transcript from the durable log.

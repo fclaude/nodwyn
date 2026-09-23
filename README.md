@@ -190,6 +190,8 @@ Ctrl+Q quits.
 Quitting a daemon client detaches without stopping its session; Ctrl+R reconnects
 and recovers history without resending operations. Plain mode remains the default.
 Use `:tools` to list model-facing tools, or `:tools NAME` for an input schema.
+`:plan` shows the latest message’s recorded planning outcome; `:budget` shows
+configured limits and the latest turn’s checkpoint snapshots.
 Use `:log`, `:bindings` (also `:allow`), `:replay` and `:friction` for read-only inspection;
 Esc returns to the conversation and `r` refreshes a snapshot.
 Enter sends the whole draft; Alt+Enter or Ctrl+J adds a newline. Bracketed paste

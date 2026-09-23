@@ -101,8 +101,8 @@ func (m *model) consume(e rpc.ClientEvent) {
 	case string(log.KindGatePlan):
 		var p log.GatePlan
 		p, err = decode[log.GatePlan](e.Payload)
-		if p.Plan != "" {
-			m.append(fmt.Sprintf("plan · %.2f\n%s", p.Score, p.Plan))
+		if err == nil {
+			m.append(formatGatePlan(p))
 		}
 	case string(log.KindEvalReq):
 		m.endToolInterval()
@@ -129,8 +129,10 @@ func (m *model) consume(e rpc.ClientEvent) {
 	case string(log.KindTurnCheckpoint):
 		var p log.TurnCheckpoint
 		p, err = decode[log.TurnCheckpoint](e.Payload)
-		m.clearPrompt(p.PromptID)
-		m.append(fmt.Sprintf("checkpoint %s · continue=%t", p.Checkpoint.Dimension, p.Choice.Continue))
+		if err == nil {
+			m.clearPrompt(p.PromptID)
+			m.append("checkpoint " + p.Checkpoint.Dimension + " · " + checkpointDecision(p))
+		}
 	case string(log.KindCredRegister):
 		var p log.CredRegister
 		p, err = decode[log.CredRegister](e.Payload)

@@ -280,3 +280,17 @@ model-origin decisions in the interval appear under “during this call,” neve
 as an invented aggregate permission verdict. Reconnect rebuilds these groups
 from the log. No core, guard, durable schema, RPC or plain-replay behavior changed.
 P9's plan/budget presentation, guarded binding edits and full flow parity remain.
+
+
+## P9 plan and budget inspection — 2026-09-22
+
+`:plan` renders the latest user message's recorded gate outcome, distinguishing
+plan scores, need-plan probabilities and unscored fallback plans. Absence of a
+record never implies success. `:budget` combines configured initial per-turn
+limits with the latest submitted turn's recorded checkpoints and decisions.
+Usage is explicitly historical; the current facade/protocol exposes no live
+counters or remaining allowance. Initial limits and prior checkpoint changes
+remain separate, including across resume. The existing checkpoint reply panel
+now includes all four usage dimensions. Both inspectors use existing metadata
+and paged history, adding no core API, RPC schema, policy mutation or judge call.
+Guarded binding edits and full flow parity remain P9 work.

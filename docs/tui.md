@@ -55,6 +55,8 @@ of truth; scrollback is a display derived from it.
 | `:bindings` | Inspect loaded bindings and current command/write approvals |
 | `:replay` | Read a transcript of the current session's durable log |
 | `:friction` | Read `docs/friction.md` through the existing guarded Scheme path |
+| `:plan` | Inspect the latest user message’s recorded planning outcome |
+| `:budget` | Inspect configured limits and the latest submitted turn’s checkpoints |
 | `:tools [name]` | List model-facing tools; an exact name shows the input schema |
 | `:allow` | Open the bindings/current approvals inspector |
 | `:help`, `:h` | Show available controls in a scrollable view |
@@ -141,6 +143,32 @@ model conversation. Missing files, denied reads and escaping symlinks appear
 as errors; the frontend never falls back to reading the filesystem itself.
 The result is captured only after the matching evaluation request is observed.
 
+## Plan and budget snapshots
+
+`:plan` shows the latest user message and its most recent recorded gate outcome.
+It distinguishes `plan` (recorded plan score and revision count), `proceed`
+(probability that a plan was needed, not a plan-quality score), and `degraded`
+(a fallback plan with no recorded score). The transcript uses the same labels.
+A new message without a gate outcome does not inherit the previous message's
+plan. No recorded outcome is shown as absence, never as success or an assertion
+that the judge is disabled. Use `:log` for older outcomes and diagnostic notes.
+
+`:budget` shows the configured initial soft/hard limits for the current session
+lifetime, including the legacy tool-call override. It then shows checkpoints
+from the latest submitted user-message or Scheme-evaluation turn: dimension,
+usage, soft/hard limits at that point, all four usage counters, files/commands,
+recorded choice or error, and actor when available. Elapsed time is rounded to
+milliseconds. A recorded turn end is identified separately.
+
+These are checkpoint snapshots, not live counters, remaining allowances or
+final turn totals. A turn without a recorded checkpoint has unknown usage here.
+Checkpoint increases are displayed as recorded requests, never applied by the
+viewer or carried into the next turn. On resume, old checkpoint limits remain
+historical evidence while configured limits describe the current lifetime.
+Pending checkpoints still use the existing reply panel, which now shows all
+four usage dimensions. Opening either inspector records nothing, changes no
+budget or permission, and never calls the judge. `r` refreshes and Esc returns.
+
 ## Prompts and credentials
 
 An approval temporarily replaces the transcript with the full, scrollable
@@ -187,6 +215,7 @@ text is redacted and stripped of terminal control sequences before rendering.
 - `inspect.go` and `inspect_backend.go`: snapshot viewers and their read paths.
 - `tools.go`: model-facing tool list and input-schema presentation.
 - `tool_calls.go`: serial call/result grouping and guard/result presentation.
+- `plan_budget.go`: recorded gate outcomes, checkpoint history and budget display.
 - `run.go` and `cmd/nibb/tui.go`: lifecycle and command startup.
 
 Core now exposes a copied binding-metadata snapshot (ADR 10 amendment). Scheme,
@@ -194,9 +223,8 @@ guard, keychain and log ownership are unchanged. Bubble Tea v2
 uses the `charm.land` module path; the frontend boundary lint covers it as well
 as `github.com/charmbracelet` so the new dependency cannot enter core.
 
-The initial client, read-only inspectors, tool discovery and multiline composer
-are implemented;
-P9 is not complete.
-Remaining work includes plan/budget views and the guarded binding-edit
-workflow and broader parity with line-mode commands. U3's
-desktop client and U4's background supervisor remain separate roadmap work.
+The initial client, multiline composer, tool discovery, read-only inspectors,
+and tool/plan/budget presentation are implemented. P9 is not complete: guarded
+binding edits and broader flow parity with line mode remain. Live budget
+counters are not exposed by the current API. U3's desktop client and U4's
+background supervisor remain separate roadmap work.
