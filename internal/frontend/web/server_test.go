@@ -142,8 +142,12 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	if err := json.Unmarshal(receive()["result"], &hello); err != nil {
 		t.Fatal(err)
 	}
-	if slices.Contains(hello.Methods, "session.send") || !slices.Contains(hello.Methods, "log.read") {
+	if slices.Contains(hello.Methods, "session.send") || !slices.Contains(hello.Methods, "log.read") || !slices.Contains(hello.Methods, "session.watch") {
 		t.Fatal(hello.Methods)
+	}
+	send(11, "session.watch", map[string]any{})
+	if raw := receive(); !strings.Contains(string(raw["result"]), info.ID) {
+		t.Fatal(raw)
 	}
 	send(1, "session.list", map[string]any{})
 	if raw := receive(); !strings.Contains(string(raw["result"]), info.ID) {

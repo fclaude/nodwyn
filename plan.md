@@ -366,7 +366,9 @@ this is additive work, not a refactor. Four phases, each useful alone:
   (`nibb ui`), assets embedded in the binary. Views in order: session list,
   transcript, **approvals** (the diff panel is what justifies a GUI), plan and
   budgets, inspectors for the log, bindings and standing approvals.
-- **U4 — multi-session and background runs.** Several sessions (workshop serializes
+- **U4 — multi-session and background runs (in progress).** Cross-session attention
+  indicators and opt-in generic desktop notifications are implemented. The bounded
+  run driver remains next. Several sessions (workshop serializes
   them), the ADR 18 run driver with checkpoints as notifications, desktop
   notifications for "needs your approval".
 

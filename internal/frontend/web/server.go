@@ -98,7 +98,7 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.connect(w, r)
-	case "/", "/app.js", "/prompts.js", "/inspectors.js", "/policy.js", "/style.css":
+	case "/", "/app.js", "/prompts.js", "/inspectors.js", "/policy.js", "/attention.js", "/style.css":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -136,7 +136,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 
 func readOnly(method string) bool {
 	switch method {
-	case "hello", "session.list", "session.info", "session.subscribe", "session.unsubscribe", "log.read":
+	case "hello", "session.list", "session.watch", "session.info", "session.subscribe", "session.unsubscribe", "log.read":
 		return true
 	}
 	return false

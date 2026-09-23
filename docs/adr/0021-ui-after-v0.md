@@ -1,6 +1,6 @@
 # ADR 0021: A real UI after v0 — the daemon, the protocol, the clients
 
-- Status: **partially implemented** (U1, local U2, P9 and U3 complete; optional TCP and U4 proposed)
+- Status: **partially implemented** (U1, local U2, P9 and U3 complete; optional TCP proposed; U4 in progress)
 - Date: 2026-09-22
 
 ## Context
@@ -452,3 +452,17 @@ construction: existing sessions retain their grants, and the UI states this.
 Known-secret text is refused by the editor instead of editing a redacted copy.
 Read-only bridges reject both policy methods. This completes the U3 views and
 review flows; U4 background driving and notifications remain separate work.
+
+
+## U4 cross-session attention — 2026-09-22
+
+The daemon offers a content-free state watch independent of transcript
+subscriptions. Monotonic revisions let clients merge its initial snapshot with
+live open/running/needs-answer transitions. Its lock is separate from lifecycle
+ownership so close can keep draining; existing bounded peer queues apply.
+
+The browser updates sidebar attention without reloading the selected view or
+its draft. Optional desktop notifications require an explicit browser permission
+request and use generic text while the page is hidden; no prompt content enters
+OS notification text. Reconnect establishes a new baseline without repeating old
+notifications. The ADR 18 bounded run driver remains unfinished U4 work.

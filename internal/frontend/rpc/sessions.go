@@ -24,6 +24,7 @@ type server struct {
 	options  core.Options
 	mu       sync.Mutex
 	sessions map[string]ownedSession
+	watch    stateWatch
 }
 type sessionInfo struct {
 	ID           string    `json:"id"`
@@ -78,6 +79,11 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	defer s.mu.Unlock()
 	store := core.Store{Dir: s.options.Paths.SessionsDir}
 	switch req.Method {
+	case "session.watch":
+		if err := params(req.Params, &struct{}{}); err != nil {
+			return nil, err
+		}
+		return s.watch.subscribe(client), nil
 	case "session.policy.read", "session.policy.write":
 		return s.policy(req, client)
 	case "session.answer", "session.secret", "session.approval.create", "session.binding.create":
@@ -240,12 +246,15 @@ func (s *server) own(session *core.Session) {
 	drained := make(chan struct{})
 	stream := &eventStream{session: session, subscribers: make(map[*peer]uint64)}
 	s.sessions[session.ID()] = ownedSession{session: session, drained: drained, stream: stream}
+	s.watch.update(session, true)
 	go func() {
 		defer close(drained)
 		for ev := range session.Events() {
 			stream.publish(ev)
+			s.watch.update(session, true)
 		}
 		stream.closed()
+		s.watch.update(session, false)
 	}()
 }
 func (s *server) close() error {

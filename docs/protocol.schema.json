@@ -1208,6 +1208,9 @@
     "payload.session.start": {
       "$ref": "#/$defs/log.SessionStart"
     },
+    "payload.session.state": {
+      "$ref": "#/$defs/rpc.sessionState"
+    },
     "payload.status": {
       "$ref": "#/$defs/event.StatusInfo"
     },
@@ -1315,6 +1318,9 @@
         },
         {
           "$ref": "#/$defs/request.session.unsubscribe"
+        },
+        {
+          "$ref": "#/$defs/request.session.watch"
         }
       ]
     },
@@ -1908,6 +1914,38 @@
       ],
       "type": "object"
     },
+    "request.session.watch": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.watch"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
     "response": {
       "oneOf": [
         {
@@ -2033,6 +2071,15 @@
       "properties": {},
       "required": [],
       "type": "object"
+    },
+    "result.session.watch": {
+      "items": {
+        "$ref": "#/$defs/rpc.sessionState"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
     },
     "rpc.answerParams": {
       "properties": {
@@ -2442,6 +2489,34 @@
         "last_event",
         "in_flight",
         "truncated"
+      ],
+      "type": "object"
+    },
+    "rpc.sessionState": {
+      "properties": {
+        "busy": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "needs_answer": {
+          "type": "boolean"
+        },
+        "open": {
+          "type": "boolean"
+        },
+        "revision": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "open",
+        "busy",
+        "needs_answer"
       ],
       "type": "object"
     },
@@ -3047,6 +3122,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.SessionStart"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "session.state"
+            },
+            "payload": {
+              "$ref": "#/$defs/rpc.sessionState"
             },
             "seq": {
               "minimum": 0,

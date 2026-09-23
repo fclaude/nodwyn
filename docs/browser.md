@@ -65,7 +65,10 @@ client clears the panel. Browser replies retain the Unix peer identity of the
 bridge in audit receipts; individual tabs are not separate security principals.
 
 Closing a browser tab or stopping `nibb ui` does not close sessions in the separately running daemon. Stopping the daemon still closes its
-sessions normally. The session list is a snapshot; use Refresh to update it.
+sessions normally. The session list's titles and history metadata are snapshots; use Refresh to
+update them. Open/running/needs-answer state updates live across the daemon's
+sessions, including sessions opened by another client. These updates do not
+reload the selected conversation, replace an inspector or discard a draft.
 
 The session view buttons open fixed snapshots:
 
@@ -161,3 +164,29 @@ acceptance covers creation, persistence, validation errors, stale saves and draf
 retention after a failed write.
 U4 background runs, notifications and optional general TCP transport remain
 separate roadmap work.
+
+
+## Cross-session attention (U4)
+
+The sidebar marks every open session needing a confirmation, credential reply or
+budget answer. Select that session to review its normal pending-prompt panel.
+The lightweight `session.watch` feed contains only IDs, state flags and revisions;
+it does not subscribe the browser to other sessions' transcripts or prompt text.
+Late snapshots cannot replace a newer state. Closed/resolved sessions clear their
+attention indicator, and disconnect clears the live-state claim.
+
+Desktop notifications are optional. Use **Enable desktop notifications** to ask
+this browser for permission; the choice is held only in this tab. When the page
+is hidden, a new needs-answer transition can produce a generic notification.
+It never includes task text, prompt arguments, diffs, credential classes or
+values. Clicking it opens the corresponding session for review. Resolution
+closes the notification where supported; reconnect snapshots do not re-notify old
+prompts. Blocked or unsupported browser notifications leave sidebar attention
+available. Browser/OS notification delivery still depends on their permission
+and focus settings.
+
+RPC/WebSocket tests cover content-free snapshots and live transitions. Browser
+acceptance verifies another session's prompt and resolution without disturbing a
+draft, and notification mocks verify opt-in, generic text, revision ordering,
+deduplication and reconnect behavior. Native OS notification delivery was not
+exercised by those mocks. The bounded long-run driver remains the next U4 slice.

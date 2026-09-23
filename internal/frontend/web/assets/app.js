@@ -1,6 +1,7 @@
 import { renderPrompt } from "./prompts.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
+import { Attention } from "./attention.js";
 const $ = (id) => document.getElementById(id);
 const text = (tag, value, className = "") => {
   const node = document.createElement(tag);
@@ -25,6 +26,50 @@ let queued = [],
   toolCard = null;
 const pending = new Map();
 const drafts = new Map();
+const sessionItems = new Map();
+let listVersion = 0;
+const attention = new Attention(
+  $("notifications"),
+  $("attention-summary"),
+  (state) => {
+    const item = sessionItems.get(state.id);
+    if (!item) {
+      if (state.open) refresh(false).catch((error) => notice(error.message));
+      return;
+    }
+    Object.assign(item, {
+      open: state.open,
+      busy: state.busy,
+      needs_answer: state.needs_answer,
+    });
+    for (const button of $("sessions").children) {
+      if (button.dataset.session === state.id) {
+        button.querySelector(".state").textContent = sessionLabel(item);
+        button.classList.toggle("needs-answer", !!item.needs_answer);
+      }
+    }
+    if (selected?.id === state.id) {
+      selected.open = state.open;
+      selected.busy = state.busy;
+      controls();
+    }
+  },
+  async (id) => {
+    if (!sessionItems.has(id)) await refresh(false);
+    const item = sessionItems.get(id);
+    if (item) selectSession(item).catch((error) => notice(error.message));
+  },
+);
+function sessionLabel(item) {
+  return item.needs_answer
+    ? "Needs your answer"
+    : item.busy
+      ? "Running"
+      : item.open
+        ? "Open · idle"
+        : "Saved";
+}
+
 let view = "conversation",
   inspection = null,
   inspectionVersion = 0,
@@ -338,6 +383,7 @@ function connect() {
     wait.reject(new Error("Reconnecting; no operation was retried."));
   }
   pending.clear();
+  attention.reset();
   const connection = new WebSocket(`ws://${location.host}/socket`);
   socket = connection;
   $("connection").textContent = "Connecting…";
@@ -349,10 +395,18 @@ function connect() {
     $("connection").textContent = "Connected · local daemon";
     try {
       const hello = await call("hello", { protocol: 1 });
+      if (socket !== connection) return;
       methods = new Set(hello.methods);
       $("mode").textContent = modeNotice();
       controls();
       await refresh();
+      if (socket !== connection) return;
+      if (methods.has("session.watch")) {
+        attention.reset(true);
+        const states = await call("session.watch");
+        if (socket !== connection) return;
+        for (const state of states) attention.update(state, false);
+      }
     } catch (error) {
       notice(error.message);
     }
@@ -367,6 +421,8 @@ function connect() {
       pending.delete(frame.id);
       if (frame.error) wait.reject(new Error(frame.error.message));
       else wait.resolve(frame.result);
+    } else if (frame.params?.kind === "session.state") {
+      attention.update(frame.params.payload);
     } else if (frame.params?.id === selected?.id) {
       if (loading) queued.push(frame.params);
       else render(frame.params);
@@ -375,6 +431,7 @@ function connect() {
   connection.onclose = () => {
     if (socket !== connection) return;
     selection++;
+    attention.reset();
     friction = null;
     policy = null;
     clearPrompt();
@@ -398,8 +455,22 @@ function connect() {
 function notice(value) {
   $("notice").textContent = value;
 }
-async function refresh() {
+async function refresh(refreshSelected = true) {
+  const version = ++listVersion,
+    connection = socket;
   const sessions = (await call("session.list")) || [];
+  if (version !== listVersion || socket !== connection) return;
+  sessionItems.clear();
+  for (const item of sessions) {
+    const state = attention.states.get(item.id);
+    if (state)
+      Object.assign(item, {
+        open: state.open,
+        busy: state.busy,
+        needs_answer: state.needs_answer,
+      });
+    sessionItems.set(item.id, item);
+  }
   $("sessions").replaceChildren();
   if (!sessions.length)
     $("sessions").append(
@@ -418,16 +489,11 @@ async function refresh() {
       "session" + (selected?.id === item.id ? " selected" : ""),
     );
     button.dataset.session = item.id;
+    button.classList.toggle("needs-answer", !!item.needs_answer);
     button.append(
       text("span", item.first_message || "Untitled session", "session-title"),
     );
-    button.append(
-      text(
-        "span",
-        item.busy ? "Running" : item.open ? "Open · idle" : "Saved",
-        "state",
-      ),
-    );
+    button.append(text("span", sessionLabel(item), "state"));
     button.append(text("span", item.repo, "session-meta"));
     button.append(
       text("span", new Date(item.last_event).toLocaleString(), "session-meta"),
@@ -437,7 +503,7 @@ async function refresh() {
     );
     $("sessions").append(button);
   }
-  if (selected) {
+  if (refreshSelected && selected) {
     const current = sessions.find((item) => item.id === selected.id);
     if (current) await selectSession(current);
   }

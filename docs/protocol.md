@@ -330,3 +330,20 @@ one-time guard confirmation and compare the revision under the shared file lock.
 A stale revision requires reading again and reviewing a new change. Binding
 updates apply before egress; approval-file updates apply to new/resumed sessions.
 Both browser policy methods and friction are disabled by `--read-only`.
+
+
+### Watching session attention
+
+`session.watch` takes `{}` and returns an array of current open-session states.
+Until disconnect it also receives `session.event` notifications with kind
+`session.state`, sequence zero, and the same state object as payload:
+`{id, revision, open, busy, needs_answer}`. The feed covers sessions subsequently
+opened or closed by other clients. It carries no prompt or transcript contents
+and creates no authority. Ordinary `session.subscribe` remains how a client
+loads a selected session's history and pending prompts.
+
+Apply a state only if its revision exceeds the last revision seen for that ID;
+notifications can precede the snapshot response. Revisions are daemon-local. Discard client revision tracking on reconnect; a
+restarted daemon has a new revision sequence. Closed states clear attention and are omitted from later
+snapshots. Delivery uses the existing bounded peer queue; slow clients disconnect
+and obtain a new snapshot rather than receiving an unbounded backlog.

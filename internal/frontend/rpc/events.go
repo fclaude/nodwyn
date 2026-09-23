@@ -84,6 +84,7 @@ func (stream *eventStream) subscribe(client *peer, store core.Store, after uint6
 	return result, nil
 }
 func (s *server) unsubscribe(client *peer) {
+	s.watch.unsubscribe(client)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, owned := range s.sessions {

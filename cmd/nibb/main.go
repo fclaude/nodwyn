@@ -61,7 +61,7 @@ commands:
   summary [flags] SESSION  inspect, add or revoke a conversation summary
   sessions             list sessions
   daemon [--socket PATH] serve local sessions, turns and events
-  ui [--socket PATH]    read-only browser view of daemon sessions
+  ui [--socket PATH]    interactive browser view (optional --read-only)
   tui [--socket PATH]   interactive terminal client (local or daemon)
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files

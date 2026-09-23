@@ -20,6 +20,7 @@ type methodContract struct{ params, result any }
 
 func contracts() map[string]methodContract {
 	return map[string]methodContract{
+		"session.watch":           {struct{}{}, []sessionState{}},
 		"hello":                   {helloParams{}, helloResult{}},
 		"session.list":            {struct{}{}, []sessionInfo{}},
 		"session.open":            {openParams{}, sessionDetails{}},
@@ -82,6 +83,7 @@ func WireSchema() ([]byte, error) {
 		map[string]any{"required": []string{"error"}, "not": map[string]any{"required": []string{"result"}}},
 	}}
 	payloads := map[string]any{
+		"session.state":        sessionState{},
 		event.InspectionResult: event.Inspection{},
 		event.PolicyResult:     event.Policy{},
 		event.StreamText:       event.Text{}, event.StreamThinking: event.Text{}, event.Output: event.Text{},
