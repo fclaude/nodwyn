@@ -388,3 +388,19 @@ memory wiping. Replies use the bridge's kernel-authenticated Unix peer identity;
 tabs do not establish distinct identities. Core still rejects stale IDs, forged
 actors, and attempts to exceed a checkpoint's hard ceiling. Standing approval and
 binding controls, plan/budget overviews and inspectors remain unfinished U3 work.
+
+
+## U3 scoped approval choices — 2026-09-22
+
+Eligible browser prompts now offer a session prefix grant, a turn-wide ordinary
+write grant, or the core's exact persistent binding proposal. The shared guard
+helper derives scope eligibility and labels for core, the TUI and browser prompt
+metadata. It does not authorize a call: core still checks the live prompt and
+uses the separate attributed approval/binding methods. Older daemons without
+scope metadata get one-time browser choices only.
+
+The review panel names temporary grant lifetime and persistent binding fields.
+Protected paths and security confirmations cannot acquire wider write/command
+scope, denials still win, and resume does not restore transient authority.
+Tests exercise all of these boundaries and local fake credential injection.
+Plan/budget overviews, inspectors and confirmed policy editing remain U3 work.

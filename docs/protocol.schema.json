@@ -187,6 +187,16 @@
         "ID": {
           "type": "string"
         },
+        "Options": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/guard.ApprovalOptions"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "Prompt": {
           "$ref": "#/$defs/guard.Prompt"
         }
@@ -246,6 +256,33 @@
       },
       "required": [
         "Text"
+      ],
+      "type": "object"
+    },
+    "guard.ApprovalOptions": {
+      "properties": {
+        "binding": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "session": {
+          "type": "boolean"
+        },
+        "target": {
+          "type": "string"
+        },
+        "turn": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "session",
+        "target",
+        "kind",
+        "turn",
+        "binding"
       ],
       "type": "object"
     },

@@ -82,12 +82,13 @@ func (s *Session) answer(id, reply, actor, scope string, strict bool) error {
 			scope = ""
 		}
 	}
+	options := p.ApprovalOptions()
 	if scope == "binding" {
-		if p.Security || p.Binding == nil {
+		if !options.Binding {
 			return fmt.Errorf("core: this prompt has no eligible binding proposal")
 		}
 	} else if scope != "" {
-		if p.Security || guard.IsProtected(p.Path) || (p.Path == "" && len(p.Argv) == 0) || (scope == "turn" && p.Path == "") {
+		if !options.Session || (scope == "turn" && !options.Turn) {
 			return fmt.Errorf("core: this prompt is not eligible for that approval scope")
 		}
 	}
@@ -132,7 +133,7 @@ func (s *Session) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Ap
 	s.prompts[id] = pendingConfirmation{ctx: ctx, prompt: p, reply: ch}
 	s.promptMu.Unlock()
 	defer func() { s.promptMu.Lock(); delete(s.prompts, id); s.promptMu.Unlock() }()
-	s.Emit(event.Event{Kind: event.PromptConfirm, Payload: event.Confirm{ID: id, Prompt: p}})
+	s.Emit(event.Event{Kind: event.PromptConfirm, Payload: event.NewConfirm(id, p)})
 	select {
 	case a := <-ch:
 		if err := ctx.Err(); err != nil {

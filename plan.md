@@ -357,7 +357,9 @@ this is additive work, not a refactor. Four phases, each useful alone:
   server-enforced read-only mode are implemented; see
   [the browser guide](docs/browser.md). Pending reason/diff panels, one-time
   replies, masked credential acquisition and budget checkpoint replies are also
-  implemented. Standing approvals, binding controls and inspectors follow next. The intended full scope is a local web UI backed by `nibbd`
+  implemented. Session/turn approval choices and exact persistent binding controls
+  use core-derived scope metadata. Plan/budget overviews, inspectors and policy
+  editing follow next. The intended full scope is a local web UI backed by `nibbd`
   (`nibb ui`), assets embedded in the binary. Views in order: session list,
   transcript, **approvals** (the diff panel is what justifies a GUI), plan and
   budgets, inspectors for the log, bindings and standing approvals.

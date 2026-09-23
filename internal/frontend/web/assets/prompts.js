@@ -6,11 +6,14 @@ const node = (tag, value, className = "") => {
   element.className = className;
   return element;
 };
-export function renderPrompt(container, event, enabled, reply) {
+export function renderPrompt(container, event, methods = new Set(), reply) {
   container.replaceChildren();
   container.hidden = !event;
   if (!event) return;
   const p = event.payload;
+  const enabled = methods.has(
+    event.kind === "prompt.secret" ? "session.secret" : "session.answer",
+  );
   const buttons = node("div", "", "actions");
   const button = (label, method, params) => {
     const b = node("button", label);
@@ -60,6 +63,50 @@ export function renderPrompt(container, event, enabled, reply) {
     if (enabled) {
       button("Allow once", "session.answer", { reply: "y" });
       button("Deny", "session.answer", { reply: "n" });
+      const options = p.Options;
+      if (options?.session && methods.has("session.approval.create")) {
+        container.append(
+          node(
+            "p",
+            `Session approval covers the ${options.kind} prefix “${options.target}” until this session closes. Security confirmations and denials still apply.`,
+          ),
+        );
+        button(
+          `Allow ${options.target} for this session`,
+          "session.approval.create",
+          { scope: "session" },
+        );
+      }
+      if (options?.turn && methods.has("session.approval.create")) {
+        container.append(
+          node(
+            "p",
+            "Turn approval covers ordinary file writes for this turn only. Protected paths and security confirmations still ask.",
+          ),
+        );
+        button("Allow ordinary writes this turn", "session.approval.create", {
+          scope: "turn",
+        });
+      }
+      if (
+        options?.binding &&
+        prompt.Binding &&
+        methods.has("session.binding.create")
+      ) {
+        container.append(
+          node("h3", "Exact persistent binding"),
+          node("pre", JSON.stringify(prompt.Binding, null, 2)),
+          node(
+            "p",
+            "This row persists beyond the session and allows this pending call. Other guard decisions still apply.",
+          ),
+        );
+        button(
+          "Save this exact binding and allow",
+          "session.binding.create",
+          {},
+        );
+      }
     }
   } else if (event.kind === "prompt.secret") {
     container.append(

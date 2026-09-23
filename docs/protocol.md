@@ -297,3 +297,13 @@ permission or mutation RPCs. The first editing surface is the local `nibb
 summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
 New runtimes use the summary-aware `window-v2` recipe; exact replay still supports
 `window-v1`.
+
+
+### Prompt scope metadata
+
+`prompt.confirm` may include `Options` alongside `ID` and `Prompt`. Its `session`,
+`target`, `kind`, `turn`, and `binding` fields describe the wider choices derived
+from that pending call. This additive metadata is a display aid, never a grant.
+The core recalculates eligibility before accepting an explicit approval or binding
+request. Browser clients connected to older daemons without `Options` offer only
+one-time answers. Protected/security confirmations do not gain wider scopes.

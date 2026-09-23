@@ -247,7 +247,7 @@ func (b *bridge) allowed(method string) bool {
 		return false
 	}
 	switch method {
-	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret":
+	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.binding.create":
 		return true
 	}
 	return false

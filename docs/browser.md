@@ -37,9 +37,19 @@ methods and enforces this restriction independently of the browser controls.
 The interactive mode includes a pending-prompt panel with reasons, literal
 arguments, egress scope, and the existing write diff (additions/deletions colored
 without changing the diff algorithm). Allow once and Deny answer only that live
-prompt. Security confirmations have no wider approval option. The current browser
-slice cannot create standing approvals or bindings, or evaluate Scheme; these
-methods remain rejected by the bridge.
+prompt. Eligible ordinary calls also offer the displayed command/write prefix for
+this session, or ordinary writes for this turn. Security and protected-path
+confirmations remain one-time only; no grant overrides a denial. The daemon sends
+derived scope labels in optional prompt metadata and validates the actual pending
+prompt again when an answer arrives. An older daemon without this metadata gets
+only one-time browser buttons.
+
+When an unbound call has a core-approved exact binding proposal, the panel shows
+its credential class, host, method and injection position. Saving that row uses
+the separate binding method, persists beyond the session, and permits the pending
+call. The browser cannot substitute row fields or set arbitrary permission
+prefixes. Resume never reinstates session/turn grants from their audit history.
+Scheme evaluation remains unavailable from the browser.
 
 Credential prompts use a password field and the existing shared keychain path.
 Input is cleared on submit, session switch, refresh, or disconnect; it is never
@@ -86,7 +96,10 @@ Prompt tests also cover attributed one-time approval/denial, stale and forged
 answers, canary credential isolation, and checkpoint hard ceilings. Browser checks
 exercise pending snapshots, cross-client resolution, masked input clearing,
 read-only prompt display, and valid/invalid checkpoint choices.
-U3's standing approval/binding controls, plan/budget overview and policy inspectors
-remain next.
+Scope tests additionally cover temporary grant lifetime, protected/security
+confirmations, exact persistent binding and host injection, forged destinations,
+and clean authority after resume.
+U3's plan/budget overview, policy/log/friction inspectors and policy editing remain
+next.
 U4 background runs, notifications and optional general TCP transport remain
 separate roadmap work.

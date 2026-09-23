@@ -25,3 +25,28 @@ func (g *Guard) confirm(ctx context.Context, p Prompt) (Approval, error) {
 	allowed, err := g.confirmer.Confirm(ctx, p)
 	return Approval{Allowed: allowed}, err
 }
+
+// ApprovalOptions describes the wider scopes available for one confirmation.
+// It is display metadata, not a grant; core checks the still-pending prompt again.
+type ApprovalOptions struct {
+	Session bool   `json:"session"`
+	Target  string `json:"target"`
+	Kind    string `json:"kind"`
+	Turn    bool   `json:"turn"`
+	Binding bool   `json:"binding"`
+}
+
+func (p Prompt) ApprovalOptions() ApprovalOptions {
+	options := ApprovalOptions{Binding: !p.Security && p.Binding != nil}
+	if p.Security || IsProtected(p.Path) {
+		return options
+	}
+	options.Session = p.Path != "" || len(p.Argv) > 0
+	options.Turn = p.Path != ""
+	if len(p.Argv) > 0 {
+		options.Kind, options.Target = "command", Prefix(p.Argv)
+	} else if p.Path != "" {
+		options.Kind, options.Target = "write", DirPrefix(p.Path)
+	}
+	return options
+}

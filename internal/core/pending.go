@@ -23,7 +23,7 @@ func (s *Session) PendingPrompts() ([]event.Event, error) {
 		if p.checkpoint != nil {
 			pending = append(pending, event.Event{Kind: event.PromptCheckpoint, Payload: event.Checkpoint{ID: id, Checkpoint: p.checkpoint.info}})
 		} else {
-			pending = append(pending, event.Event{Kind: event.PromptConfirm, Payload: event.Confirm{ID: id, Prompt: p.prompt}})
+			pending = append(pending, event.Event{Kind: event.PromptConfirm, Payload: event.NewConfirm(id, p.prompt)})
 		}
 	}
 	s.promptMu.Unlock()

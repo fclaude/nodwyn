@@ -37,8 +37,16 @@ type Text struct {
 
 // Confirm asks the user to approve a primitive application.
 type Confirm struct {
-	ID     string
-	Prompt guard.Prompt
+	ID      string
+	Prompt  guard.Prompt
+	Options *guard.ApprovalOptions `json:",omitempty"`
+}
+
+// NewConfirm gives all frontends the same derived scope labels. Older daemon
+// versions omit Options; browser clients then offer only one-time answers.
+func NewConfirm(id string, prompt guard.Prompt) Confirm {
+	options := prompt.ApprovalOptions()
+	return Confirm{ID: id, Prompt: prompt, Options: &options}
 }
 
 // SecretPrompt asks the user for a masked secret (credential-register).

@@ -153,7 +153,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	if raw := receive(); !strings.Contains(string(raw["error"]), "read-only") {
 		t.Fatal(raw)
 	}
-	for i, method := range []string{"session.answer", "session.secret"} {
+	for i, method := range []string{"session.answer", "session.secret", "session.approval.create", "session.binding.create"} {
 		send(uint64(20+i), method, map[string]any{"id": info.ID, "prompt_id": "not-a-prompt", "reply": "y", "secret": "synthetic"})
 		if raw := receive(); !strings.Contains(string(raw["error"]), "read-only") {
 			t.Fatal(raw)
@@ -201,6 +201,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	defer model.Close()
 	cfg := config.Default()
 	cfg.Control.URL = model.URL
+	cfg.Policy.Unbound = "confirm"
 	cfg.Budget.ToolCallsSoft = 1
 	cfg.Budget.ToolCallsHard = 3
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
@@ -273,7 +274,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	if !slices.Contains(hello.Methods, "session.send") || !slices.Contains(hello.Methods, "session.secret") {
 		t.Fatal(hello.Methods)
 	}
-	for _, method := range []string{"session.eval", "session.binding.create", "session.approval.create"} {
+	for _, method := range []string{"session.eval"} {
 		call(method, map[string]any{}, nil, true)
 	}
 	repo := filepath.Join(root, "repo")
@@ -341,15 +342,15 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 		}
 	}
 	call("session.info", p, &info, false)
-	if info.TurnWrites || len(info.Writes) != 0 {
+	if info.TurnWrites || len(info.Writes) != 1 {
 		t.Fatal("budget answer widened authority")
 	}
 	call("session.abort", p, nil, false)
 	call("session.close", p, nil, false)
 	call("session.info", p, nil, true)
 	call("session.resume", p, &info, false)
-	if info.Busy {
-		t.Fatal("resumed busy")
+	if info.Busy || len(info.Writes) != 0 || info.TurnWrites {
+		t.Fatal("resume restored busy state or transient authority")
 	}
 	var page struct {
 		Events []json.RawMessage `json:"events"`

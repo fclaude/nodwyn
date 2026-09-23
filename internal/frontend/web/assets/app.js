@@ -36,32 +36,25 @@ function showPrompt(event) {
   if (!id || resolvedPrompts.has(id) || activePrompt?.payload.ID === id) return;
   activePrompt = event;
   awaitingReply = id;
-  const method =
-    event.kind === "prompt.secret" ? "session.secret" : "session.answer";
-  renderPrompt(
-    $("prompt-panel"),
-    event,
-    methods.has(method),
-    (method, params) => {
-      const sessionID = selected.id,
-        version = selection;
-      action(async () => {
-        try {
-          await call(method, { id: sessionID, prompt_id: id, ...params });
-          resolvedPrompts.add(id);
-          if (version === selection && awaitingReply === id) {
-            clearPrompt();
-            notice(baseNotice);
-          }
-        } catch (error) {
-          // Never keep secret input or reuse an uncertain prompt after an error.
-          if (version === selection && socket?.readyState === WebSocket.OPEN)
-            await refresh();
-          throw error;
+  renderPrompt($("prompt-panel"), event, methods, (method, params) => {
+    const sessionID = selected.id,
+      version = selection;
+    action(async () => {
+      try {
+        await call(method, { id: sessionID, prompt_id: id, ...params });
+        resolvedPrompts.add(id);
+        if (version === selection && awaitingReply === id) {
+          clearPrompt();
+          notice(baseNotice);
         }
-      });
-    },
-  );
+      } catch (error) {
+        // Never keep secret input or reuse an uncertain prompt after an error.
+        if (version === selection && socket?.readyState === WebSocket.OPEN)
+          await refresh();
+        throw error;
+      }
+    });
+  });
 }
 let methods = new Set(),
   actionPending = false;
@@ -411,9 +404,7 @@ function render(event) {
       showPrompt(event);
       if (awaitingReply) {
         $("activity").textContent = "Needs your answer";
-        notice(
-          "Review the pending prompt below. Its answer applies to this session only.",
-        );
+        notice("Review the pending prompt below before choosing an answer.");
       }
       controls();
       break;

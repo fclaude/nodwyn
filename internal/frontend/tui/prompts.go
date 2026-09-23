@@ -12,7 +12,6 @@ import (
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/frontend/plain"
 	"github.com/fclaude/nibb/internal/frontend/rpc"
-	"github.com/fclaude/nibb/internal/guard"
 )
 
 type pendingPrompt struct {
@@ -37,19 +36,13 @@ func (m *model) setPrompt(e rpc.ClientEvent) error {
 			p.detail = scope + "\n\n" + p.detail
 		}
 		p.choices = "Type y (once) or n (deny), then Enter."
-		eligible := !g.Security && !guard.IsProtected(g.Path)
-		p.session = eligible && (g.Path != "" || len(g.Argv) > 0)
-		p.turn = eligible && g.Path != ""
-		p.bind = !g.Security && g.Binding != nil
+		options := g.ApprovalOptions()
+		p.session, p.turn, p.bind = options.Session, options.Turn, options.Binding
 		if p.bind {
 			p.choices += "\nb = bind this exact class/host/method/position persistently and allow this call."
 		}
 		if p.session {
-			target := guard.Prefix(g.Argv)
-			if g.Path != "" {
-				target = guard.DirPrefix(g.Path)
-			}
-			p.choices += "\na = approve " + target + " for this session."
+			p.choices += "\na = approve " + options.Target + " for this session."
 		}
 		if p.turn {
 			p.choices += "\nt = approve ordinary writes for this turn."
