@@ -289,3 +289,11 @@ redacted window recipe for that runtime. New turn `llm.req` payloads include
 support offline `nibb replay SESSION --window SEQ`; no new RPC operation is
 required. Old records remain readable but cannot provide verified exact request
 reconstruction. The generated schema documents the fields.
+
+
+Summary records now have typed `from`, `through`, `source_hash` and `text`
+payloads. `summary.drop` names `summary_seq`. These are durable history, not
+permission or mutation RPCs. The first editing surface is the local `nibb
+summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
+New runtimes use the summary-aware `window-v2` recipe; exact replay still supports
+`window-v1`.

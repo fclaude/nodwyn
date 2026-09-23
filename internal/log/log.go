@@ -52,6 +52,7 @@ const (
 	KindJevReq         Kind = "jev.req"         // a Jev call: content level, bytes, payload hash, redaction, score (P5)
 	KindCredRegister   Kind = "cred.register"   // class + handle id only, never a value (P3)
 	KindRedact         Kind = "redact.event"    // a [REDACTED class] substitution at an ingress (P7)
+	KindSummaryDrop    Kind = "summary.drop"    // revoke a summary without deleting history
 	KindSummary        Kind = "summary"         // a rebuildable summary covering a seq range (P10)
 	KindNote           Kind = "note"            // free-form operator annotation
 )
@@ -60,7 +61,7 @@ var kinds = map[Kind]bool{
 	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
-	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindEgressCheck: true, KindGatePlan: true,
+	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true,
 	KindJevReq: true, KindCredRegister: true, KindRedact: true, KindSummary: true, KindNote: true,
 }
 

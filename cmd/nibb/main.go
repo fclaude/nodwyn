@@ -56,6 +56,7 @@ commands:
   (none) | chat        start a session in the plain front-end
   replay SESSION       print a session log as a transcript (id or path)
   replay SESSION --window SEQ  reconstruct and verify a recorded model request
+  summary [flags] SESSION  inspect, add or revoke a conversation summary
   sessions             list sessions
   daemon [--socket PATH] serve local sessions, turns and events
   tui [--socket PATH]   interactive terminal client (local or daemon)
@@ -188,6 +189,10 @@ flags:
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "nibb: note:", err)
+		}
+	case "summary":
+		if err := summaryCommand(paths, fs.Args()[1:]); err != nil {
+			fail(err)
 		}
 	case "sessions":
 		infos, err := (core.Store{Dir: paths.SessionsDir}).List()

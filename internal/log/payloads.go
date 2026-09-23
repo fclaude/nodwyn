@@ -201,3 +201,15 @@ type WindowContext struct {
 	NumCtx          int             `json:"num_ctx"`
 	KeepAlive       string          `json:"keep_alive"`
 }
+
+// Summary is a user-authored, revocable replacement for a closed conversation
+// span. SourceHash binds it to the redacted source events, not to other caches.
+type Summary struct {
+	From       uint64 `json:"from"`
+	Through    uint64 `json:"through"`
+	SourceHash string `json:"source_hash"`
+	Text       string `json:"text"`
+}
+type SummaryDrop struct {
+	SummarySeq uint64 `json:"summary_seq"`
+}

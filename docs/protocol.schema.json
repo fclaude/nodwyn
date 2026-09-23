@@ -753,6 +753,43 @@
       ],
       "type": "object"
     },
+    "log.Summary": {
+      "properties": {
+        "from": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_hash": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "through": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "from",
+        "through",
+        "source_hash",
+        "text"
+      ],
+      "type": "object"
+    },
+    "log.SummaryDrop": {
+      "properties": {
+        "summary_seq": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "summary_seq"
+      ],
+      "type": "object"
+    },
     "log.ToolCall": {
       "properties": {
         "args": {},
@@ -1079,7 +1116,12 @@
     "payload.stream.thinking": {
       "$ref": "#/$defs/event.Text"
     },
-    "payload.summary": {},
+    "payload.summary": {
+      "$ref": "#/$defs/log.Summary"
+    },
+    "payload.summary.drop": {
+      "$ref": "#/$defs/log.SummaryDrop"
+    },
     "payload.tool.call": {
       "$ref": "#/$defs/log.ToolCallEvent"
     },
@@ -2790,7 +2832,33 @@
             "kind": {
               "const": "summary"
             },
-            "payload": {},
+            "payload": {
+              "$ref": "#/$defs/log.Summary"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "summary.drop"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SummaryDrop"
+            },
             "seq": {
               "minimum": 0,
               "type": "integer"

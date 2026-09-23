@@ -85,6 +85,7 @@ bin/nibb --show-thinking      # show the model's redacted thinking too
 bin/nibb --no-confirm         # non-interactive: every confirm is a no
 bin/nibb replay <session-id>  # print a session log as a transcript
 bin/nibb sessions             # id, last activity, state, repo, first ask
+bin/nibb summary SESSION      # inspect user-authored, revocable summaries
 bin/nibb sessions --ids       # IDs only (scripts)
 bin/nibb --resume <session-id> # continue in the recorded repository
 bin/nibb repl                 # Scheme REPL
@@ -201,3 +202,6 @@ Esc returns to the conversation and `r` refreshes a snapshot.
 Enter sends the whole draft; Alt+Enter or Ctrl+J adds a newline. Bracketed paste
 preserves line breaks without sending. Prompts keep their own single-line input.
 See [the TUI guide](docs/tui.md) for controls, ownership and the acceptance coverage.
+
+See [session memory](docs/memory.md) for exact request replay, summary creation
+and revocation, and the remaining structural-retrieval work.

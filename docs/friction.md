@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · P10 summaries · older context had only irreversible sticky omission markers · external-agent implementation under ADR 16; actual provider requests tested before/after summary revocation and the real v1 fixture preserved · reviewed summaries are now source-bound log entries; revocation rebuilds from source without reviving superseded caches
 - 2026-09-22 · P10 replay foundation · historical logs omitted the system prompt, tool schemas and window recipe needed to prove exact reconstruction · external-agent implementation under ADR 16; actual provider requests compared across resume and elision · record the recipe once per runtime and verify request digests before introducing revocable summaries
 - 2026-09-22 · P9 parity audit · temporary approval changes were persisted but omitted by the TUI transcript · external-agent implementation under ADR 16; local/RPC scope and process-lifecycle coverage mapped in the TUI guide · render attributed approval requests and complete the line-mode flow acceptance matrix
 - 2026-09-22 · persistent binding approval · new destinations required manual TOML editing and session restart · external-agent implementation under ADR 16; local/RPC, concurrent persistence, cancellation and reload checks · prompt-derived exact rows now persist on explicit consent; invalid policy denies and deletion removes authority

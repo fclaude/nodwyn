@@ -65,3 +65,21 @@ Legacy requests without a recipe/hash and unknown algorithm versions fail
 explicitly. Ordinary transcript replay remains available for old logs. Partial
 or malformed logs are rejected by exact CLI replay. Summaries and the structural
 index remain subsequent P10 work; this slice changes no window-selection policy.
+
+
+## P10 revocable summaries — 2026-09-22
+
+User-reviewed summary files can now be appended to a closed session's log with
+explicit source bounds and revoked by summary event sequence. The store acquires
+the existing exclusive log lock, validates source boundaries, and uses the log's
+mandatory redaction/append path; it never constructs a runtime or replays init.
+A summary's source digest is derived from the redacted original conversation.
+
+`window-v2` replaces eligible older spans, keeping the latest two user turns
+outside summary replacement and retaining existing token caps/elision. Newer
+overlapping caches supersede earlier ones; dropped/stale caches expose source,
+not superseded cache text. A lifecycle edit resets derived elision state before
+rebuilding. Summary text is an assistant history message, not a system prompt.
+`window-v1` remains executable for exact historical request replay. Later edits
+cannot alter a reconstructed earlier request. See the memory guide for controls
+and limits. Automatic text generation is not part of this slice.

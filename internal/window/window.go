@@ -48,6 +48,11 @@ const Keep = 4
 // fixedTokens is the estimated size of everything else that rides along
 // (the tool schemas).
 func Build(events []log.Event, system string, fixedTokens int, pol Policy) Result {
+	return buildV1(summaryWindow(events), system, fixedTokens, pol)
+}
+
+// buildV1 preserves the pre-summary recipe for exact historical request replay.
+func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Result {
 	type entry struct {
 		seq  uint64
 		msg  llm.Message

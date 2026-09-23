@@ -11,3 +11,11 @@ It preserves the recorded repository path, model metadata, and timing so replay
 consumers have genuine provenance. No credentials were registered or supplied.
 P7's seeded-canary coverage lives in `internal/core/redaction_test.go` and uses
 the fake Ollama server; it is intentionally separate from this live evidence.
+
+
+`p10-window-v1-selfcheck.jsonl` is the unmodified v0.27-window-replay promotion
+selfcheck, session `20260923T015153Z-56545323`, against the live local control
+plane. Its recipe and request digest were independently verified by the installed
+binary. It provides real `window-v1` compatibility evidence as summary-aware
+windows are added. Like the earlier fixture, this is an acceptance session,
+not evidence of nibb-authored development; no credentials were supplied.

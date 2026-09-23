@@ -86,7 +86,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindEvalReq): log.EvalRequest{}, string(log.KindEvalResult): log.EvalResult{},
 		string(log.KindUserMsg): log.UserMsg{}, string(log.KindLLMReq): log.LLMReq{}, string(log.KindLLMResp): log.LLMResp{},
 		string(log.KindToolCall): log.ToolCallEvent{}, string(log.KindToolResult): log.ToolResult{},
-		string(log.KindGuardDecision): log.GuardDecision{}, string(log.KindApprovalChange): log.ApprovalChange{}, string(log.KindBindingChange): log.BindingChange{},
+		string(log.KindGuardDecision): log.GuardDecision{}, string(log.KindApprovalChange): log.ApprovalChange{}, string(log.KindBindingChange): log.BindingChange{}, string(log.KindSummaryDrop): log.SummaryDrop{},
 		string(log.KindEgressCheck): log.EgressCheck{}, string(log.KindGatePlan): log.GatePlan{}, string(log.KindJevReq): log.JevReq{},
 		string(log.KindCredRegister): log.CredRegister{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
 		string(log.KindTurnEnd): log.Note{}, string(log.KindNote): log.Note{},
@@ -95,7 +95,7 @@ func WireSchema() ([]byte, error) {
 			Events []redact.Event `json:"events"`
 		}{},
 		// Summary is reserved by the log, but has no implemented typed payload yet.
-		string(log.KindSummary): json.RawMessage{},
+		string(log.KindSummary): log.Summary{},
 	}
 	var variants []any
 	kinds := make([]string, 0, len(payloads))

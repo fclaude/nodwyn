@@ -394,6 +394,14 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			} else if p.Value != "" {
 				fmt.Fprintln(w, p.Value)
 			}
+		case log.KindSummary:
+			var p log.Summary
+			_ = ev.Decode(&p)
+			fmt.Fprintf(w, "[summary seq=%d of %d..%d]\n%s\n", ev.Seq, p.From, p.Through, p.Text)
+		case log.KindSummaryDrop:
+			var p log.SummaryDrop
+			_ = ev.Decode(&p)
+			fmt.Fprintf(w, "[summary %d revoked]\n", p.SummarySeq)
 		case log.KindBindingChange:
 			var p log.BindingChange
 			_ = ev.Decode(&p)

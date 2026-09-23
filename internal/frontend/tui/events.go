@@ -129,6 +129,18 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if err == nil {
 			m.append(fmt.Sprintf("approval requested: %s %s %s by %s", p.Scope, p.Kind, p.Prefix, p.Actor))
 		}
+	case string(log.KindSummary):
+		var p log.Summary
+		p, err = decode[log.Summary](e.Payload)
+		if err == nil {
+			m.append(fmt.Sprintf("summary seq=%d of %d..%d\n%s", e.Seq, p.From, p.Through, p.Text))
+		}
+	case string(log.KindSummaryDrop):
+		var p log.SummaryDrop
+		p, err = decode[log.SummaryDrop](e.Payload)
+		if err == nil {
+			m.append(fmt.Sprintf("summary %d revoked", p.SummarySeq))
+		}
 	case string(log.KindBindingChange):
 		var p log.BindingChange
 		p, err = decode[log.BindingChange](e.Payload)

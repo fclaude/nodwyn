@@ -11,7 +11,7 @@ import (
 	"github.com/fclaude/nibb/internal/redact"
 )
 
-const RecipeVersion = "window-v1"
+const RecipeVersion = "window-v2"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas
 // and model options. It verifies reconstruction; it is not a tamper-proof seal.
@@ -51,7 +51,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			if c == nil || rec.RequestHash == "" {
 				return zero, fmt.Errorf("window replay: this legacy request lacks recorded context or a request hash")
 			}
-			if c.Version != RecipeVersion {
+			if c.Version != RecipeVersion && c.Version != "window-v1" {
 				return zero, fmt.Errorf("window replay: unsupported recipe %q", c.Version)
 			}
 			var tools []llm.Tool
@@ -62,7 +62,11 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			if err != nil {
 				return zero, err
 			}
-			built := Build(prefix, c.System, Estimate(string(canonical)), Policy{HighWater: c.HighWater, LowWater: c.LowWater, MaxResultTokens: c.MaxResultTokens})
+			build := Build
+			if c.Version == "window-v1" {
+				build = buildV1
+			}
+			built := build(prefix, c.System, Estimate(string(canonical)), Policy{HighWater: c.HighWater, LowWater: c.LowWater, MaxResultTokens: c.MaxResultTokens})
 			req := llm.Request{Model: rec.Model, Messages: built.Messages, Tools: tools, NumCtx: c.NumCtx, KeepAlive: c.KeepAlive}
 			digest, err := RequestHash(req)
 			if err != nil {
