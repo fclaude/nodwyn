@@ -62,3 +62,22 @@ func TestFactsOfNoCred(t *testing.T) {
 		t.Fatal("expected no credential")
 	}
 }
+
+func TestFixedEgressScopeAndArgumentPrecedence(t *testing.T) {
+	p := &scheme.Prim{Meta: scheme.Meta{Egress: true, EgressHost: "api.example.test", EgressMethod: "POST", EgressPosition: "header:Authorization:Bearer"}}
+	got := egressFactsOf(p, nil)
+	if got.Method != "POST" || got.Position != "header:Authorization:Bearer" {
+		t.Fatalf("fixed facts: %+v", got)
+	}
+	p.Meta.Params = []scheme.Param{{Role: "method"}, {Role: "position"}}
+	got = egressFactsOf(p, []scheme.Value{scheme.Str("GET"), scheme.Str("query:key")})
+	if got.Method != "GET" || got.Position != "query:key" {
+		t.Fatalf("arguments ignored: %+v", got)
+	}
+	for _, args := range [][]scheme.Value{nil, {scheme.Bool(false), scheme.Bool(false)}, {scheme.Str(""), scheme.Str("")}} {
+		got = egressFactsOf(p, args)
+		if got.Method != "" || got.Position != "" {
+			t.Fatalf("invalid arguments replaced by fixed facts: %+v", got)
+		}
+	}
+}

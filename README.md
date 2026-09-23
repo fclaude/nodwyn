@@ -45,7 +45,9 @@ control-plane model call is the deliberate exception described in the spec.
 register its handlers in `prim` with explicit egress/irreversible metadata
 and credential, destination and payload roles. Supply its settings during
 core construction and use host interfaces for credential injection,
-transport, redaction and recording, as Jev does. Do not open the keychain or
+transport, redaction and recording, as Jev does. Declare fixed request scope
+with `EgressHost`, `EgressMethod` and `EgressPosition` when the primitive has no
+corresponding role parameters. Do not open the keychain or
 read secrets in the integration. Test it through Scheme and the guard with
 a local fake service, bound/unbound destinations and canary credentials.
 Integration-specific settings should not become getters on `Session`.

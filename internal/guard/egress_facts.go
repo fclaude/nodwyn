@@ -76,25 +76,30 @@ func destHost(p *scheme.Prim, args []scheme.Value) string {
 }
 
 // methodArg returns the method argument if the primitive declares a
-// "method" role parameter, else "".
+// "method" role parameter, else its fixed host metadata.
 func methodArg(p *scheme.Prim, args []scheme.Value) string {
 	for i, pa := range p.Meta.Params {
-		if pa.Role == "method" && i < len(args) && args[i].Kind == scheme.KString {
-			return args[i].S
+		if pa.Role == "method" {
+			if i < len(args) && args[i].Kind == scheme.KString {
+				return args[i].S
+			}
+			return ""
 		}
 	}
-	return ""
+	return p.Meta.EgressMethod
 }
 
-// positionArg returns the requested injection position if the primitive
-// declares a "position" role parameter, else "".
+// positionArg uses the declared argument, or fixed host metadata if absent.
 func positionArg(p *scheme.Prim, args []scheme.Value) string {
 	for i, pa := range p.Meta.Params {
-		if pa.Role == "position" && i < len(args) && args[i].Kind == scheme.KString {
-			return args[i].S
+		if pa.Role == "position" {
+			if i < len(args) && args[i].Kind == scheme.KString {
+				return args[i].S
+			}
+			return ""
 		}
 	}
-	return ""
+	return p.Meta.EgressPosition
 }
 
 // EgressScope describes the credential-bearing call being confirmed. Empty

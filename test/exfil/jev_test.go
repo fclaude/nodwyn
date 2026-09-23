@@ -329,3 +329,29 @@ func TestRegisterCheckDenyWins(t *testing.T) {
 func itoaStr(i int) string {
 	return strconv.Itoa(i)
 }
+
+func TestJevRequiresActualMethodAndInjectionPosition(t *testing.T) {
+	for _, method := range []string{"GET", "POST"} {
+		for _, position := range []string{"query:key", "header:Authorization:Bearer"} {
+			for _, source := range []string{`(jev-noul jcred "hello" "question")`, `(jev-score jcred "hello" "rate" '("bad" "good"))`, `(jev-choice jcred "hello" "choose" '(("allow" . "permit") ("deny" . "block")))`} {
+				t.Run(method+"/"+position+"/"+source, func(t *testing.T) {
+					h := newJevHarness(t, true)
+					rows := jevBinding(h.srv)
+					rows[0].Methods = []string{method}
+					rows[0].Positions = []string{position}
+					h.in.SetGate(guard.New(nil, nil, guard.Egress{Table: binding.Table{Bind: rows}}))
+					_, err := h.model(t, source)
+					allowed := method == "POST" && position == "header:Authorization:Bearer"
+					var denied *scheme.Denied
+					if allowed {
+						if h.store.captured == nil {
+							t.Fatalf("matching scope did not send: %v", err)
+						}
+					} else if !errors.As(err, &denied) || h.store.captured != nil {
+						t.Fatalf("mismatched scope reached transport: %v", err)
+					}
+				})
+			}
+		}
+	}
+}

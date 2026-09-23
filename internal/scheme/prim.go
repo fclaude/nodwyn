@@ -45,6 +45,10 @@ type Meta struct {
 	// carry a "dest" role argument (e.g. Jev, ADR 20). The E3 binding checker
 	// uses this in place of extracting the host from a URL argument.
 	EgressHost string
+	// Fixed scope for host integrations without method/position parameters.
+	// Go-only: Scheme extensions cannot declare a different host operation.
+	EgressMethod   string
+	EgressPosition string
 
 	// Preview, for irreversible host primitives, renders what the call
 	// would do (a diff) for the confirm prompt. Go-only; not settable from

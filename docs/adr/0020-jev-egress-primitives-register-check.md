@@ -153,3 +153,19 @@ Jev — crosses the guard as a Scheme application.
   canary ⇒ the canary is redacted in the sent payload and in `jev.req`.
 - The repo layout in plan.md drops `internal/jev/`; the Jev handler lives
   in `internal/prim/` alongside the other host primitives.
+
+
+## Fixed request scope implemented — 2026-09-22
+
+All three Jev primitives now declare `EgressMethod: "POST"` and
+`EgressPosition: "header:Authorization:Bearer"` alongside their configured host.
+The guard uses these Go-owned facts when there is no corresponding role
+parameter. A declared argument always takes precedence, including malformed or
+missing arguments; fixed metadata never hides an invalid dynamic argument.
+
+This closes an authorization gap: a Jev row matching only class and host could
+previously authorize a request even if it listed GET or a query injection.
+Jev now requires the actual POST and Bearer-header scope. Request bytes and
+credential ownership are unchanged. Confirmations carry the same complete facts
+used by authorization. Tests exercise all three primitives with matching and
+mismatching method/position rows and assert no transport call on denial.
