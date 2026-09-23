@@ -65,7 +65,8 @@ type Checker interface {
 // Argv is set for command lines so a front-end can offer a standing
 // approval ("a" = always this session).
 type Prompt struct {
-	Security bool // standing and turn approvals must never waive this confirmation
+	Egress   *EgressScope `json:",omitempty"` // display facts, not a binding or grant
+	Security bool         // standing and turn approvals must never waive this confirmation
 	Prim     string
 	Args     string // short written form
 	Reasons  []string
@@ -275,6 +276,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 	// Confirm.
 	writePath, _ := WritePath(p, args)
 	approval, err := g.confirm(ctx, Prompt{
+		Egress:   egressScopeOf(p, args),
 		Security: result.security,
 		Prim:     p.Name,
 		Args:     rec.Args,

@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · P9 egress confirmations · unbound credential prompts lacked explicit method and position; Jev still omits these fixed facts from guard metadata · implemented with an external agent under ADR 16, with local/RPC canary coverage · show exact available facts and explicit omissions before adding any binding-writing operation
 - 2026-09-22 · P9 plan/budget views · implemented with an external agent under ADR 16; local/RPC and terminal checks exercise configured limits, a real checkpoint stop, history isolation and gate-score labels · no claim of nibb self-authorship · inspect recorded planning and budget decisions without treating snapshots as live usage
 - 2026-09-22 · P9 tool-call presentation · implemented with an external agent under ADR 16; local/RPC and terminal checks cover nested guards, a declined write, history reconstruction, reused IDs and canary redaction · no claim of nibb self-authorship · tool results are readable beside their arguments and recorded decisions instead of only a byte count
 - 2026-09-22 · P9 tool discovery · implemented with an external agent under ADR 16; local/RPC tests cover initialization tools, schemas, safe rendering and inspection without execution · no claim of nibb self-authorship · inspect the model-facing catalog and use familiar plain-mode command aliases without leaving the TUI

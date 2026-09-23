@@ -19,7 +19,7 @@ func TestPendingPromptsUseCurrentStateAndRedact(t *testing.T) {
 	s := &Session{
 		prompts: map[string]pendingConfirmation{
 			"p2": {checkpoint: &pendingCheckpoint{info: budget.Checkpoint{Dimension: "actions", State: budget.State{Commands: []string{"echo " + canary}}}, reply: make(chan checkpointReply, 1)}},
-			"p1": {prompt: guard.Prompt{Detail: "contains " + canary}, reply: make(chan guard.Approval, 1)},
+			"p1": {prompt: guard.Prompt{Detail: "contains " + canary, Egress: &guard.EgressScope{Class: "service", Host: canary, Method: "POST", Position: "body"}}, reply: make(chan guard.Approval, 1)},
 		},
 		secrets: map[string]pendingSecret{"s3": {class: "test", reply: make(chan secretReply, 1)}},
 	}
@@ -33,6 +33,15 @@ func TestPendingPromptsUseCurrentStateAndRedact(t *testing.T) {
 	raw, err := json.Marshal(pending)
 	if err != nil || strings.Contains(string(raw), canary) {
 		t.Fatal("unsafe snapshot", err)
+	}
+	// Display scope is redacted and isolated from the pending authorization data.
+	scope := pending[0].Payload.(event.Confirm).Prompt.Egress
+	if scope == nil || scope.Class != "service" || scope.Method != "POST" || scope.Position != "body" {
+		t.Fatal("scope lost in snapshot", scope)
+	}
+	scope.Class = "changed"
+	if s.prompts["p1"].prompt.Egress.Class != "service" {
+		t.Fatal("snapshot mutated pending scope")
 	}
 	// Snapshots must not alias mutable budget slices in the core's pending state.
 	pending[1].Payload.(event.Checkpoint).Checkpoint.State.Commands[0] = "changed"

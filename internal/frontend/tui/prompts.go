@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nibb/internal/frontend/plain"
 	"github.com/fclaude/nibb/internal/frontend/rpc"
 	"github.com/fclaude/nibb/internal/guard"
 )
@@ -32,6 +33,9 @@ func (m *model) setPrompt(e rpc.ClientEvent) error {
 		p.id = value.ID
 		p.title = g.Prim
 		p.detail = "Operation: " + g.Prim + "\nArguments: " + g.Args + "\n\n" + strings.Join(g.Reasons, "\n") + "\n\n" + g.Detail
+		if scope := plain.EgressSummary(g.Egress); scope != "" {
+			p.detail = scope + "\n\n" + p.detail
+		}
 		p.choices = "Type y (once) or n (deny), then Enter."
 		eligible := !g.Security && !guard.IsProtected(g.Path)
 		p.session = eligible && (g.Path != "" || len(g.Argv) > 0)

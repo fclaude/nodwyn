@@ -300,7 +300,9 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   reconstructing the same view from history and live events.
   Plan and budget inspectors show recorded gate outcomes, configured limits and
   latest-turn checkpoints; live counters are not exposed. Checkpoint prompts
-  show all four usage dimensions.
+  show all four usage dimensions. Credential-bearing confirmations now show
+  class, destination, method and position; missing facts are explicit. This is
+  display-only groundwork for binding edits, not a permission-writing path.
   Plain mode remains the default. P9 is not complete: guarded binding edits and
   full flow parity with line mode remain.
 - `internal/frontend/tui`: a bubbletea program over `core.Session` — no new core code; if P9 needs a core change, that is a gap in ADR 10 and gets an ADR amendment, not a shortcut.

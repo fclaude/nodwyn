@@ -294,3 +294,21 @@ remain separate, including across resume. The existing checkpoint reply panel
 now includes all four usage dimensions. Both inspectors use existing metadata
 and paged history, adding no core API, RPC schema, policy mutation or judge call.
 Guarded binding edits and full flow parity remain P9 work.
+
+
+## P9 credential scope in confirmations — 2026-09-22
+
+Credential-bearing confirmations now carry optional structured call facts from
+`guard` through the existing confirm event: class, destination host, method and
+injection position. Plain and TUI clients show the same scope summary; absent
+facts are explicitly unspecified rather than inferred or treated as wildcards.
+This also covers a confirmation requested by another checker on a bound call.
+The metadata is display-only, redacted at the existing frontend boundary, and
+included in reconnect snapshots. Older events without it remain readable.
+
+This is a prerequisite to ADR 6's binding workflow, not its completion. No new
+permission operation, persistence or hot reload is introduced. In particular,
+Jev currently declares its fixed host but not its fixed method/position in guard
+metadata; those omissions are shown explicitly. A later binding proposal must
+have complete validated facts and must not infer authorization from a displayed
+or redacted prompt. Existing default-deny and one-time approval behavior remain.

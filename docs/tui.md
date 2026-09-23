@@ -223,6 +223,12 @@ guard, keychain and log ownership are unchanged. Bubble Tea v2
 uses the `charm.land` module path; the frontend boundary lint covers it as well
 as `github.com/charmbracelet` so the new dependency cannot enter core.
 
+Credential-bearing confirmations show the class, destination host, method and
+injection position reported by the guard. Unavailable facts are labeled
+“not specified by primitive.” This display does not create bindings; replies
+retain the existing one-time approval behavior. The same summary appears in
+plain mode. Older daemon prompts may omit this optional metadata.
+
 The initial client, multiline composer, tool discovery, read-only inspectors,
 and tool/plan/budget presentation are implemented. P9 is not complete: guarded
 binding edits and broader flow parity with line mode remain. Live budget

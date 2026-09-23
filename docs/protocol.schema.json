@@ -249,6 +249,29 @@
       ],
       "type": "object"
     },
+    "guard.EgressScope": {
+      "properties": {
+        "Class": {
+          "type": "string"
+        },
+        "Host": {
+          "type": "string"
+        },
+        "Method": {
+          "type": "string"
+        },
+        "Position": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Class",
+        "Host",
+        "Method",
+        "Position"
+      ],
+      "type": "object"
+    },
     "guard.Prompt": {
       "properties": {
         "Args": {
@@ -265,6 +288,16 @@
         },
         "Detail": {
           "type": "string"
+        },
+        "Egress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/guard.EgressScope"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "Path": {
           "type": "string"

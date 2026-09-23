@@ -244,6 +244,9 @@ func (c *Chat) show(ev event.Event) {
 
 func (c *Chat) confirm(p event.Confirm) {
 	fmt.Fprintf(c.Out, "\n─── confirm: %s %s\n", p.Prompt.Prim, p.Prompt.Args)
+	if scope := EgressSummary(p.Prompt.Egress); scope != "" {
+		fmt.Fprintln(c.Out, indent(scope, "  "))
+	}
 	for _, r := range p.Prompt.Reasons {
 		fmt.Fprintf(c.Out, "  • %s\n", r)
 	}

@@ -96,3 +96,21 @@ func positionArg(p *scheme.Prim, args []scheme.Value) string {
 	}
 	return ""
 }
+
+// EgressScope describes the credential-bearing call being confirmed. Empty
+// fields mean the primitive did not supply that fact; they are not wildcards.
+// It is display metadata only and must not be used as permission to add a binding.
+type EgressScope struct {
+	Class    string
+	Host     string
+	Method   string
+	Position string
+}
+
+func egressScopeOf(p *scheme.Prim, args []scheme.Value) *EgressScope {
+	f := egressFactsOf(p, args)
+	if !f.HasCredential {
+		return nil
+	}
+	return &EgressScope{Class: f.Class, Host: f.Host, Method: f.Method, Position: f.Position}
+}

@@ -308,3 +308,71 @@ func TestAbortThroughTUIBackendKillsShellChildren(t *testing.T) {
 		})
 	}
 }
+
+func TestBothBackendsDeliverCredentialEgressScope(t *testing.T) {
+	for _, mode := range []string{"local", "rpc"} {
+		t.Run(mode, func(t *testing.T) {
+			o := testOptions(t)
+			o.Config.Policy.Unbound = "confirm"
+			store, err := keychain.Create(filepath.Join(o.Repo, "test.keychain"), keychain.FastKDF, []byte("test-passphrase"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			o.Keychain = store
+			var b backend
+			if mode == "local" {
+				b = newLocal(o)
+			} else {
+				b, _ = testRemote(t, o)
+			}
+			defer b.Close()
+			ctx := context.Background()
+			snap, err := b.Attach(ctx, o.Repo, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			source := `(let ((key (credential-register "scope-service"))) (http-request key "https://api.example.test/v1" "POST" "header:Authorization:Bearer" '() ""))`
+			if err := b.Send(ctx, snap.ID, source, true); err != nil {
+				t.Fatal(err)
+			}
+			var events []rpc.ClientEvent
+			secretEvent := nextKind(t, b, event.PromptSecret, &events)
+			secret, err := decode[event.SecretPrompt](secretEvent.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			const canary = "scope-canary-918b7e"
+			if err := b.Secret(ctx, snap.ID, secret.ID, []byte(canary)); err != nil {
+				t.Fatal(err)
+			}
+			ev := nextKind(t, b, event.PromptConfirm, &events)
+			prompt, err := decode[event.Confirm](ev.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope := prompt.Prompt.Egress
+			if scope == nil || scope.Class != "scope-service" || scope.Host != "api.example.test" || scope.Method != "POST" || scope.Position != "header:Authorization:Bearer" {
+				t.Fatalf("scope = %+v", scope)
+			}
+			if err := b.Grant(ctx, snap.ID, prompt.ID, "session"); err == nil {
+				t.Fatal("egress granted standing approval")
+			}
+			if err := b.Answer(ctx, snap.ID, prompt.ID, "n"); err != nil {
+				t.Fatal(err)
+			}
+			nextKind(t, b, event.Status, &events)
+			policy, err := b.Policy(ctx, snap.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(policy.Bindings) != 0 {
+				t.Fatal("confirmation modified bindings")
+			}
+			for _, ev := range events {
+				if strings.Contains(string(ev.Payload), canary) {
+					t.Fatal("secret entered frontend events")
+				}
+			}
+		})
+	}
+}

@@ -128,3 +128,21 @@ func TestThinkingToggleRevealsAndHidesRecordedReasoning(t *testing.T) {
 		t.Fatal("thinking toggle cannot hide history")
 	}
 }
+
+func TestEgressPromptShowsScopeWithoutOfferingBindingGrant(t *testing.T) {
+	m := testModel()
+	m.consume(wire(event.PromptConfirm, event.Confirm{ID: "egress", Prompt: guard.Prompt{Prim: "http-request", Egress: &guard.EgressScope{Class: "service", Host: "api.example.test", Method: "POST", Position: "body"}}}, 0))
+	for _, want := range []string{`Credential class: "service"`, `Destination host: "api.example.test"`, `Method: "POST"`, `Position: "body"`} {
+		if !strings.Contains(m.prompt.detail, want) {
+			t.Fatalf("missing %q in %s", want, m.prompt.detail)
+		}
+	}
+	for _, answer := range []string{"a", "t", "bind"} {
+		if m.reply(answer) != nil {
+			t.Fatalf("%q granted authority", answer)
+		}
+	}
+	if m.prompt.session || m.prompt.turn {
+		t.Fatal("scope offered standing authority")
+	}
+}
