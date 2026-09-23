@@ -3,17 +3,13 @@ package binding
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
-	"syscall"
-	"time"
 	"unicode"
 
 	"github.com/BurntSushi/toml"
+	"github.com/fclaude/nibb/internal/policyfile"
 )
 
 // Exact constructs a single-call proposal. It accepts no wildcard, missing
@@ -79,92 +75,18 @@ func AppendExact(ctx context.Context, path string, row Binding) error {
 	if path == "" {
 		return fmt.Errorf("bindings: no persistence path")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	fd, err := syscall.Open(path+".lock", syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0o600)
-	if err != nil {
-		return err
-	}
-	lock := os.NewFile(uintptr(fd), path+".lock")
-	defer lock.Close()
-	if info, err := lock.Stat(); err != nil {
-		return err
-	} else if !info.Mode().IsRegular() {
-		return fmt.Errorf("bindings: lock is not a regular file")
-	}
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
+	return policyfile.Update(ctx, path, func(raw []byte) ([]byte, error) {
+		table, err := parse(raw, path)
+		if err != nil {
+			return nil, err
 		}
-		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			break
+		if bound, _ := table.Lookup(row.Class, row.Dest, row.Methods[0], row.Positions[0]); bound {
+			return nil, ctx.Err()
 		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) {
-			return err
+		var addition bytes.Buffer
+		if err := toml.NewEncoder(&addition).Encode(Table{Bind: []Binding{row}}); err != nil {
+			return nil, err
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
-		return fmt.Errorf("bindings: refusing to replace non-regular policy file")
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	table, err := parse(raw, path)
-	if err != nil {
-		return err
-	}
-	if bound, _ := table.Lookup(row.Class, row.Dest, row.Methods[0], row.Positions[0]); bound {
-		return ctx.Err()
-	}
-	var addition bytes.Buffer
-	if err := toml.NewEncoder(&addition).Encode(Table{Bind: []Binding{row}}); err != nil {
-		return err
-	}
-	next := append(append(append([]byte(nil), raw...), '\n'), addition.Bytes()...)
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".bindings-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
-	if _, err := tmp.Write(next); err != nil {
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	// Detect non-cooperating edits made while constructing the new file.
-	latest, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if !bytes.Equal(latest, raw) {
-		return fmt.Errorf("bindings: policy changed during append; retry from a new prompt")
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return err
-	}
-	dir, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+		return append(append(append([]byte(nil), raw...), '\n'), addition.Bytes()...), nil
+	})
 }

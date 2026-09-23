@@ -23,6 +23,7 @@ integrations and front-ends:
 | `loop`, `plan` | Run one model/tool turn; decide whether to plan and score the plan. |
 | `event`, `log` | Describe front-end events; persist the history from which context and replay are derived. |
 | `keychain`, `binding` | Hold encrypted credentials and inject them; authorize their destinations, methods and positions. |
+| `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
 | `symbols` | Derive bounded source outlines with bundled Tree-sitter grammars; no filesystem or session ownership. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to the model; derive its context; redact text; detect credential shapes. |
