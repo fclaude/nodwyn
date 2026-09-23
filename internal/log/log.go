@@ -32,6 +32,9 @@ import (
 type Kind string
 
 const (
+	KindRunState       Kind = "run.state"
+	KindRunTurn        Kind = "run.turn"
+	KindRunCheckpoint  Kind = "run.checkpoint"
 	KindSessionStart   Kind = "session.start"   // session identity: version, cwd, config summary
 	KindSessionResume  Kind = "session.resume"  // restarted process, same conversation
 	KindTurnCheckpoint Kind = "turn.checkpoint" // budget state and operator answer
@@ -58,6 +61,7 @@ const (
 )
 
 var kinds = map[Kind]bool{
+	KindRunState: true, KindRunTurn: true, KindRunCheckpoint: true,
 	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,

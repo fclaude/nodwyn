@@ -1,6 +1,6 @@
 # ADR 0018: Turn budgets and long-running turns
 
-- Status: **partially implemented** (turn budgets, checkpoints and progress guard implemented; run driver proposed)
+- Status: **partially implemented** (turn budgets, checkpoints, progress guard and supervised driver implemented; unattended policy proposed)
 - Date: 2026-09-21
 
 ## Context
@@ -135,3 +135,21 @@ legacy and new hard-call settings. CLI wall/token/action overrides lower the
 soft threshold if necessary. Every new turn and resumed turn gets fresh limits.
 Sections 4–5, the automatic run driver and its unattended policies, remain
 proposed and are not enabled by this change.
+
+## Supervised driver implementation — 2026-09-22
+
+Section 4 is implemented in `internal/frontend/run`, owned by the RPC daemon.
+`nibb run --task FILE --budget-wall 2h --max-turns 20` requires finite run limits
+and records a plan for every turn. Planning now charges reported control-model
+tokens to the same turn budget. Typed budget stops and additive `turn.end`
+outcomes distinguish hard ceilings from declined checkpoints and failures.
+
+Continuation after a successful or hard-limited turn requires a one-time run
+checkpoint. It grants no tool authority. Completion is an exact final-line
+marker in a successful plain model response, explicitly model-reported rather
+than verified. Logs preserve limits and turn count across explicit resume;
+missing outcomes and truncated tails prevent automatic continuation. The daemon
+joins drivers before session shutdown. See [runs](../runs.md).
+
+Section 5 remains pending. This implementation does not expose unattended mode
+or remove confirmations to approximate it.

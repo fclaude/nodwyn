@@ -162,8 +162,8 @@ caller-supplied paths/actors, environment-name hijacking, model-origin rejection
 known-secret containment, bounded reads and filesystem escape checks. Browser
 acceptance covers creation, persistence, validation errors, stale saves and draft
 retention after a failed write.
-U4 background runs, notifications and optional general TCP transport remain
-separate roadmap work.
+Supervised background runs and cross-session notifications are described below.
+Optional general TCP transport remains separate roadmap work.
 
 
 ## Cross-session attention (U4)
@@ -189,4 +189,6 @@ RPC/WebSocket tests cover content-free snapshots and live transitions. Browser
 acceptance verifies another session's prompt and resolution without disturbing a
 draft, and notification mocks verify opt-in, generic text, revision ordering,
 deduplication and reconnect behavior. Native OS notification delivery was not
-exercised by those mocks. The bounded long-run driver remains the next U4 slice.
+exercised by those mocks. The supervised run driver is now available through `nibb run`; the browser
+receives its ordinary checkpoint prompts and Abort stops the whole run. See
+[runs](runs.md). Unattended continuation remains the next U4 slice.

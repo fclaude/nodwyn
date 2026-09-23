@@ -12,6 +12,7 @@ import (
 
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nibb/internal/frontend/run"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/redact"
 )
@@ -20,6 +21,10 @@ type methodContract struct{ params, result any }
 
 func contracts() map[string]methodContract {
 	return map[string]methodContract{
+		"run.start":               {runParams{}, runResult{}},
+		"run.info":                {idParams{}, run.State{}},
+		"run.stop":                {idParams{}, struct{}{}},
+		"run.resume":              {idParams{}, runResult{}},
 		"session.watch":           {struct{}{}, []sessionState{}},
 		"hello":                   {helloParams{}, helloResult{}},
 		"session.list":            {struct{}{}, []sessionInfo{}},
@@ -96,12 +101,13 @@ func WireSchema() ([]byte, error) {
 		string(log.KindGuardDecision): log.GuardDecision{}, string(log.KindApprovalChange): log.ApprovalChange{}, string(log.KindBindingChange): log.BindingChange{}, string(log.KindSummaryDrop): log.SummaryDrop{},
 		string(log.KindEgressCheck): log.EgressCheck{}, string(log.KindGatePlan): log.GatePlan{}, string(log.KindJevReq): log.JevReq{},
 		string(log.KindCredRegister): log.CredRegister{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
-		string(log.KindTurnEnd): log.Note{}, string(log.KindNote): log.Note{},
+		string(log.KindRunState): log.RunState{}, string(log.KindRunTurn): log.RunTurn{}, string(log.KindRunCheckpoint): log.RunCheckpoint{},
+		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{},
 		string(log.KindRedact): struct {
 			Source uint64         `json:"source_seq"`
 			Events []redact.Event `json:"events"`
 		}{},
-		// Summary is reserved by the log, but has no implemented typed payload yet.
+		// Summaries are a revocable view over a recorded sequence range.
 		string(log.KindSummary): log.Summary{},
 	}
 	var variants []any

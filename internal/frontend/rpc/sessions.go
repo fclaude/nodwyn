@@ -9,11 +9,14 @@ import (
 	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nibb/internal/frontend/run"
 	"github.com/fclaude/nibb/internal/llm"
 )
 
 type ownedSession struct {
 	session *core.Session
+	driver  *run.Driver
 	drained chan struct{}
 	stream  *eventStream
 }
@@ -58,7 +61,7 @@ type sessionDetails struct {
 func (s *server) details(session *core.Session) sessionDetails {
 	limits, _ := s.options.Config.Budget.Limits(s.options.Config.Loop.MaxToolCalls)
 	trust, actor := session.TurnApproval()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor}
 }
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if req.Method == "hello" {
@@ -79,6 +82,8 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	defer s.mu.Unlock()
 	store := core.Store{Dir: s.options.Paths.SessionsDir}
 	switch req.Method {
+	case "run.start", "run.info", "run.stop", "run.resume":
+		return s.run(req, client)
 	case "session.watch":
 		if err := params(req.Params, &struct{}{}); err != nil {
 			return nil, err
@@ -99,7 +104,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		result := make([]sessionInfo, 0, len(infos))
 		for _, i := range infos {
 			owned, open := s.sessions[i.ID]
-			busy := open && owned.session.Busy()
+			busy := open && (owned.session.Busy() || owned.driver.Active())
 			result = append(result, sessionInfo{i.ID, i.Repo, open, busy, i.FirstMessage, i.LastEvent, i.InFlight, i.Truncated})
 		}
 		return result, nil
@@ -146,6 +151,9 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 			return nil, failure(-32002, "Session is not open in this daemon")
 		}
 		if req.Method == "session.friction" {
+			if owned.driver.Active() {
+				return nil, failure(-32000, "Stop the active run before inspecting friction")
+			}
 			operation, err := owned.session.ReadFriction(client.actor)
 			if err != nil {
 				return nil, failure(-32000, err.Error())
@@ -153,6 +161,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 			return inspectionStarted{operation}, nil
 		}
 		if req.Method == "session.abort" {
+			owned.driver.Stop()
 			owned.session.Abort()
 			return struct{}{}, nil
 		}
@@ -163,6 +172,8 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 			return struct{}{}, nil
 		}
 		if req.Method == "session.close" {
+			owned.driver.Stop()
+			owned.driver.Wait()
 			err := owned.session.Close()
 			<-owned.drained
 			delete(s.sessions, p.ID)
@@ -184,6 +195,9 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		if !ok {
 			return nil, failure(-32002, "Session is not open in this daemon")
 		}
+		if owned.driver.Active() {
+			return nil, failure(-32000, "Stop the active run before evaluating")
+		}
 		if err := owned.session.StartEval(p.Source, client.actor); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
@@ -199,6 +213,9 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		owned, ok := s.sessions[p.ID]
 		if !ok {
 			return nil, failure(-32002, "Session is not open in this daemon")
+		}
+		if owned.driver.Active() {
+			return nil, failure(-32000, "Stop the active run before sending a message")
 		}
 		if err := owned.session.Send(p.Text); err != nil {
 			return nil, failure(-32000, err.Error())
@@ -231,6 +248,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 			if err != nil {
 				return nil, failure(-32000, err.Error())
 			}
+			result.Busy = result.Busy || owned.driver.Active()
 			return result, nil
 		}
 		page, err := store.ReadLog(p.ID, p.After, p.Through, p.Limit)
@@ -242,16 +260,28 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32601, "Method not found")
 	}
 }
-func (s *server) own(session *core.Session) {
+func (s *server) own(session *core.Session, drivers ...*run.Driver) {
+	var driver *run.Driver
+	if len(drivers) > 0 {
+		driver = drivers[0]
+	}
 	drained := make(chan struct{})
 	stream := &eventStream{session: session, subscribers: make(map[*peer]uint64)}
-	s.sessions[session.ID()] = ownedSession{session: session, drained: drained, stream: stream}
-	s.watch.update(session, true)
+	s.sessions[session.ID()] = ownedSession{session: session, driver: driver, drained: drained, stream: stream}
+	s.watch.update(session, true, driver.Active())
 	go func() {
 		defer close(drained)
 		for ev := range session.Events() {
+			if driver != nil {
+				driver.Observe(ev)
+			}
+			if driver.Active() && ev.Kind == event.Status {
+				if p, ok := ev.Payload.(event.StatusInfo); ok && p.State == "idle" {
+					ev.Payload = event.StatusInfo{State: "run", Detail: "Run active"}
+				}
+			}
 			stream.publish(ev)
-			s.watch.update(session, true)
+			s.watch.update(session, true, driver.Active())
 		}
 		stream.closed()
 		s.watch.update(session, false)
@@ -260,6 +290,8 @@ func (s *server) own(session *core.Session) {
 func (s *server) close() error {
 	var first error
 	for id, owned := range s.sessions {
+		owned.driver.Stop()
+		owned.driver.Wait()
 		if err := owned.session.Close(); err != nil && first == nil {
 			first = err
 		}

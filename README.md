@@ -27,6 +27,7 @@ integrations and front-ends:
 | `symbols` | Derive bounded source outlines with bundled Tree-sitter grammars; no filesystem or session ownership. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to the model; derive its context; redact text; detect credential shapes. |
+| `frontend/run` | Chain planned turns under a finite deadline and turn count; ask for continuation without granting tool authority. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nibb` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
 **A user message:** the front-end calls `Session.Send`. The session records
@@ -214,3 +215,20 @@ and revocation, and the remaining structural-retrieval work.
 
 The [browser guide](docs/browser.md) describes the U3 session/transcript
 view, pairing, and the interactive features still to come.
+
+### Supervised background runs
+
+Start `nibb daemon`, then submit a bounded task:
+
+```sh
+nibb run --task task.txt --repo . --budget-wall 2h --max-turns 20
+nibb run status SESSION
+nibb run stop SESSION
+nibb run resume SESSION
+```
+
+Attach the browser or terminal client to the daemon to answer tool prompts and
+between-turn checkpoints. Disconnecting the client leaves the run owned by the
+daemon. Resume preserves the original deadline and consumed turn count; it never
+replays an interrupted tool or restores temporary approvals. See [runs](docs/runs.md)
+for completion semantics and recovery. Unattended continuation is not enabled yet.

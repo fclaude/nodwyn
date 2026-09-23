@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/budget"
+	"time"
 )
 
 // Typed payloads for the event kinds. They are the schema of the log; the
@@ -212,4 +213,33 @@ type Summary struct {
 }
 type SummaryDrop struct {
 	SummarySeq uint64 `json:"summary_seq"`
+}
+
+// TurnEnd retains the old note text and adds machine-readable outcomes. Older
+// logs lack Outcome; readers must treat that as unknown, not as success.
+type TurnEnd struct {
+	Text    string `json:"text"`
+	Outcome string `json:"outcome,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// RunState is a durable snapshot of driver limits and disposition. The original
+// deadline and maximum are preserved when explicitly resuming.
+type RunState struct {
+	Task     string    `json:"task"`
+	Deadline time.Time `json:"deadline"`
+	MaxTurns int       `json:"max_turns"`
+	Turns    int       `json:"turns"`
+	Status   string    `json:"status"`
+	Reason   string    `json:"reason,omitempty"`
+	Actor    string    `json:"actor,omitempty"`
+}
+type RunTurn struct {
+	Number int `json:"number"`
+}
+type RunCheckpoint struct {
+	Number   int    `json:"number"`
+	Allowed  bool   `json:"allowed"`
+	Actor    string `json:"actor,omitempty"`
+	PromptID string `json:"prompt_id"`
 }

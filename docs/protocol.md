@@ -347,3 +347,21 @@ notifications can precede the snapshot response. Revisions are daemon-local. Dis
 restarted daemon has a new revision sequence. Closed states clear attention and are omitted from later
 snapshots. Delivery uses the existing bounded peer queue; slow clients disconnect
 and obtain a new snapshot rather than receiving an unbounded backlog.
+
+## Supervised run methods
+
+- `run.start {repo, task, wall, max_turns}` creates a new daemon-owned session
+  and returns `{id, state}`. `wall` is a positive duration; `max_turns` is 1–10000.
+- `run.info {id}` returns task, original deadline, maximum and consumed turns,
+  status and reason. A saved formerly running run is reported paused.
+- `run.stop {id}` cancels the driver and its active turn or checkpoint.
+- `run.resume {id}` explicitly reopens a stopped run at a recorded turn boundary,
+  preserving its original deadline and turn count. No transient grants survive.
+
+Run methods are available through local RPC/CLI; the browser can follow the
+session, answer its existing prompts and stop it with `session.abort`. While a
+run is active, session `busy` includes the between-turn wait. Manual send/eval
+and policy/friction operations are rejected until it stops. New `run.state`,
+`run.turn` and `run.checkpoint` records and optional `turn.end.outcome/error`
+fields are described by the generated schema. See [runs](runs.md) for limits,
+completion-marker semantics and recovery constraints.

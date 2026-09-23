@@ -210,3 +210,43 @@ func TestJevOutageDegradesToPlan(t *testing.T) {
 		t.Fatalf("want gate.plan noul=degraded, got %+v", gp)
 	}
 }
+
+// A driver must not be able to bypass planning through noul or a missing judge.
+func TestRequiredPlan(t *testing.T) {
+	for _, judge := range []bool{false, true} {
+		t.Run(fmt.Sprint(judge), func(t *testing.T) {
+			f := &fakeGate{t: t, models: []string{"required plan"}, noulOuts: []float64{0}, scoreOuts: []float64{0.9}}
+			if judge {
+				f.handle = &scheme.Handle{Class: "jev-key", ID: "x"}
+			}
+			result := Required(context.Background(), f, "work")
+			if !result.OK || result.Plan != "required plan" || gatePlan(f) == nil {
+				t.Fatalf("%+v", result)
+			}
+			if len(f.noulOuts) != 1 {
+				t.Fatal("required planning consulted noul")
+			}
+		})
+	}
+	f := &fakeGate{t: t, models: []string{" \n "}}
+	if result := Required(context.Background(), f, "work"); result.OK {
+		t.Fatal("accepted empty plan")
+	}
+}
+
+type failingRecordGate struct{ *fakeGate }
+
+func (f failingRecordGate) Record(log.Kind, any) (log.Event, error) {
+	return log.Event{}, fmt.Errorf("disk failed")
+}
+func TestRequiredPlanMustBeRecorded(t *testing.T) {
+	for _, judge := range []bool{false, true} {
+		f := &fakeGate{t: t, models: []string{"plan"}, scoreOuts: []float64{0.9}}
+		if judge {
+			f.handle = &scheme.Handle{Class: "jev-key", ID: "x"}
+		}
+		if result := Required(context.Background(), failingRecordGate{f}, "work"); result.OK || result.Error != "disk failed" {
+			t.Fatalf("%+v", result)
+		}
+	}
+}

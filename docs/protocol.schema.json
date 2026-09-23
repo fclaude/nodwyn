@@ -796,6 +796,73 @@
       ],
       "type": "object"
     },
+    "log.RunCheckpoint": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "allowed": {
+          "type": "boolean"
+        },
+        "number": {
+          "type": "integer"
+        },
+        "prompt_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "allowed",
+        "prompt_id"
+      ],
+      "type": "object"
+    },
+    "log.RunState": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "deadline": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "max_turns": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "turns": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task",
+        "deadline",
+        "max_turns",
+        "turns",
+        "status"
+      ],
+      "type": "object"
+    },
+    "log.RunTurn": {
+      "properties": {
+        "number": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "number"
+      ],
+      "type": "object"
+    },
     "log.SessionEnd": {
       "properties": {
         "reason": {
@@ -973,6 +1040,23 @@
       "required": [
         "checkpoint",
         "choice"
+      ],
+      "type": "object"
+    },
+    "log.TurnEnd": {
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
       ],
       "type": "object"
     },
@@ -1199,6 +1283,15 @@
       ],
       "type": "object"
     },
+    "payload.run.checkpoint": {
+      "$ref": "#/$defs/log.RunCheckpoint"
+    },
+    "payload.run.state": {
+      "$ref": "#/$defs/log.RunState"
+    },
+    "payload.run.turn": {
+      "$ref": "#/$defs/log.RunTurn"
+    },
     "payload.session.end": {
       "$ref": "#/$defs/log.SessionEnd"
     },
@@ -1236,7 +1329,7 @@
       "$ref": "#/$defs/log.TurnCheckpoint"
     },
     "payload.turn.end": {
-      "$ref": "#/$defs/log.Note"
+      "$ref": "#/$defs/log.TurnEnd"
     },
     "payload.user.msg": {
       "$ref": "#/$defs/log.UserMsg"
@@ -1267,6 +1360,18 @@
         },
         {
           "$ref": "#/$defs/request.log.read"
+        },
+        {
+          "$ref": "#/$defs/request.run.info"
+        },
+        {
+          "$ref": "#/$defs/request.run.resume"
+        },
+        {
+          "$ref": "#/$defs/request.run.start"
+        },
+        {
+          "$ref": "#/$defs/request.run.stop"
         },
         {
           "$ref": "#/$defs/request.session.abort"
@@ -1374,6 +1479,130 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.readParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.run.info": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "run.info"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.run.resume": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "run.resume"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.run.start": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "run.start"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.runParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.run.stop": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "run.stop"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
             }
           ],
           "unevaluatedProperties": false
@@ -1997,6 +2226,20 @@
     "result.log.read": {
       "$ref": "#/$defs/core.LogPage"
     },
+    "result.run.info": {
+      "$ref": "#/$defs/run.State"
+    },
+    "result.run.resume": {
+      "$ref": "#/$defs/rpc.runResult"
+    },
+    "result.run.start": {
+      "$ref": "#/$defs/rpc.runResult"
+    },
+    "result.run.stop": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
     "result.session.abort": {
       "properties": {},
       "required": [],
@@ -2325,6 +2568,44 @@
       ],
       "type": "object"
     },
+    "rpc.runParams": {
+      "properties": {
+        "max_turns": {
+          "type": "integer"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "wall": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "task",
+        "wall",
+        "max_turns"
+      ],
+      "type": "object"
+    },
+    "rpc.runResult": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/run.State"
+        }
+      },
+      "required": [
+        "id",
+        "state"
+      ],
+      "type": "object"
+    },
     "rpc.secretParams": {
       "properties": {
         "id": {
@@ -2560,6 +2841,37 @@
         "page",
         "busy",
         "pending"
+      ],
+      "type": "object"
+    },
+    "run.State": {
+      "properties": {
+        "deadline": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "max_turns": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "turns": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task",
+        "deadline",
+        "max_turns",
+        "turns",
+        "status"
       ],
       "type": "object"
     },
@@ -3070,6 +3382,78 @@
               "type": "string"
             },
             "kind": {
+              "const": "run.checkpoint"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.RunCheckpoint"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "run.state"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.RunState"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "run.turn"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.RunTurn"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
               "const": "session.end"
             },
             "payload": {
@@ -3361,7 +3745,7 @@
               "const": "turn.end"
             },
             "payload": {
-              "$ref": "#/$defs/log.Note"
+              "$ref": "#/$defs/log.TurnEnd"
             },
             "seq": {
               "minimum": 0,

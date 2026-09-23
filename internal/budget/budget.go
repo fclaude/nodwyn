@@ -70,6 +70,15 @@ func ParseChoice(reply string, p Checkpoint) (Choice, error) {
 	return Choice{true, next}, nil
 }
 
+// Stop distinguishes a hard turn ceiling from a declined checkpoint. Drivers
+// may start a new bounded turn after the former, never after the latter.
+type Stop struct {
+	Hard   bool
+	Reason string
+}
+
+func (s *Stop) Error() string { return s.Reason }
+
 type Confirm func(context.Context, Checkpoint) (Choice, error)
 
 type Turn struct {
@@ -88,7 +97,7 @@ func Start(parent context.Context, limits Limits, confirm Confirm) (context.Cont
 	if confirm == nil {
 		confirm = func(context.Context, Checkpoint) (Choice, error) { return Choice{}, nil }
 	}
-	deadline, stopTimer := context.WithTimeoutCause(parent, time.Duration(limits.Wall.Hard), errors.New("hard stop: wall budget reached"))
+	deadline, stopTimer := context.WithTimeoutCause(parent, time.Duration(limits.Wall.Hard), &Stop{Hard: true, Reason: "hard stop: wall budget reached"})
 	ctx, cancel := context.WithCancelCause(deadline)
 	t := &Turn{limits: limits, start: time.Now(), confirm: confirm, cancel: cancel}
 	return context.WithValue(ctx, contextKey{}, t), t, func() {
@@ -107,8 +116,8 @@ func (t *Turn) snapshot() State {
 	s.Commands = append([]string(nil), s.Commands...)
 	return s
 }
-func (t *Turn) stop(reason string) error {
-	err := errors.New(reason)
+func (t *Turn) stop(reason string, hard bool) error {
+	err := &Stop{Hard: hard, Reason: reason}
 	t.cancel(err)
 	return err
 }
@@ -117,7 +126,7 @@ func (t *Turn) hard(ctx context.Context, dimension string, used int64, limit Lim
 		return context.Cause(ctx)
 	}
 	if used >= limit.Hard {
-		return t.stop("hard stop: " + dimension + " budget reached")
+		return t.stop("hard stop: "+dimension+" budget reached", true)
 	}
 	return nil
 }
@@ -141,10 +150,10 @@ func (t *Turn) check(ctx context.Context, dimension string, used int64, limit *L
 		return context.Cause(ctx)
 	}
 	if !choice.Continue {
-		return t.stop("checkpoint stopped: " + dimension + " budget")
+		return t.stop("checkpoint stopped: "+dimension+" budget", false)
 	}
 	if choice.Soft <= used || choice.Soft <= limit.Soft || choice.Soft > limit.Hard {
-		return t.stop("checkpoint stopped: invalid budget choice")
+		return t.stop("checkpoint stopped: invalid budget choice", false)
 	}
 	limit.Soft = choice.Soft
 	return nil

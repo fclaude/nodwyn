@@ -79,7 +79,13 @@ func (s *Session) Events() <-chan event.Event { return s.out }
 // Send starts a turn for the user's text. It returns immediately; the turn
 // runs in the background and reports through Events, ending with a status
 // event whose State is "idle".
-func (s *Session) Send(text string) error {
+func (s *Session) Send(text string) error { return s.send(text, false) }
+
+// SendPlanned requires a recorded, nonempty plan before executing host work.
+// Long-run drivers use this without changing the ordinary one-turn loop.
+func (s *Session) SendPlanned(text string) error { return s.send(text, true) }
+
+func (s *Session) send(text string, required bool) error {
 	return s.startTurn(func(ctx context.Context) error {
 		// P5 plan gate: noul → plan → Seam A score → revise ≤3.
 		// The gate runs under the same guard/binding/redaction policy as a
@@ -94,7 +100,15 @@ func (s *Session) Send(text string) error {
 			return err
 		}
 		text = msg.Text
-		gres := plan.Run(ctx, s, text)
+		var gres plan.Result
+		if required {
+			gres = plan.Required(ctx, s, text)
+		} else {
+			gres = plan.Run(ctx, s, text)
+		}
+		if required && !gres.OK {
+			return fmt.Errorf("required plan: %s", gres.Error)
+		}
 		if gres.Plan != "" {
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gres.Score, gres.Revises)}})
 		}
@@ -127,9 +141,10 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 	s.mu.Unlock()
 
 	go func() {
+		var turnErr error
 		defer s.turns.Done()
 		defer func() {
-			_, _ = s.Record(log.KindTurnEnd, log.Note{Text: "turn ended"})
+			_, _ = s.Record(log.KindTurnEnd, turnOutcome(ctx, turnErr))
 			s.flushOutput()
 			cancel()
 			s.mu.Lock()
@@ -141,8 +156,10 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
 		}()
 		if err := work(ctx); err != nil {
+			turnErr = err
 			if ctx.Err() != nil {
 				err = context.Cause(ctx)
+				turnErr = err
 				_, _ = s.Record(log.KindNote, log.Note{Text: err.Error()})
 			}
 			s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: err.Error()}})

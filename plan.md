@@ -368,7 +368,9 @@ this is additive work, not a refactor. Four phases, each useful alone:
   budgets, inspectors for the log, bindings and standing approvals.
 - **U4 — multi-session and background runs (in progress).** Cross-session attention
   indicators and opt-in generic desktop notifications are implemented. The bounded
-  run driver remains next. Several sessions (workshop serializes
+  supervised run driver is implemented with required plans, finite wall/turn limits,
+  checkpoint replies, and explicit resume at recorded turn boundaries; see
+  [runs](docs/runs.md). Unattended policy remains next. Several sessions (workshop serializes
   them), the ADR 18 run driver with checkpoints as notifications, desktop
   notifications for "needs your approval".
 

@@ -14,6 +14,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
@@ -66,32 +67,61 @@ type Result struct {
 
 // Run executes the gate for one user message.
 func Run(ctx context.Context, g Gate, userMsg string) Result {
+	return run(ctx, g, userMsg, false)
+}
+
+// Required uses the same score/revise path, but always drafts a plan. The host
+// must refuse execution when the result is not OK; an empty plan is a failure.
+func Required(ctx context.Context, g Gate, userMsg string) Result {
+	result := run(ctx, g, userMsg, true)
+	if result.OK && strings.TrimSpace(result.Plan) == "" {
+		result.OK, result.Error = false, "planner returned an empty plan"
+	}
+	return result
+}
+
+func run(ctx context.Context, g Gate, userMsg string, required bool) Result {
 	h := g.JevHandle()
 	if h == nil {
-		return Result{OK: true} // no judge configured: no gate
+		if !required {
+			return Result{OK: true}
+		}
+		text, err := g.Draft(ctx, planPrompt(userMsg))
+		if err != nil {
+			return Result{Error: err.Error()}
+		}
+		if _, err := g.Record(log.KindGatePlan, log.GatePlan{Origin: "gate", Noul: "required", Plan: text}); err != nil {
+			return Result{Error: err.Error()}
+		}
+		return Result{OK: true, Plan: text}
 	}
 	hval := scheme.HandleValue(h)
 
-	noul, err := g.ApplyPrim(ctx, "jev-noul", []scheme.Value{hval, scheme.Str(userMsg), scheme.Str(NoulInstructions)})
-	if err != nil {
-		_, _ = g.Record(log.KindNote, log.Note{Text: "jev-noul failed: " + err.Error() + "; gate defaults to plan"})
-		plan, perr := g.Draft(ctx, planPrompt(userMsg))
-		if perr != nil {
-			return Result{OK: false, Error: perr.Error()}
+	jevOut := false
+	if !required {
+		noul, err := g.ApplyPrim(ctx, "jev-noul", []scheme.Value{hval, scheme.Str(userMsg), scheme.Str(NoulInstructions)})
+		if err != nil {
+			_, _ = g.Record(log.KindNote, log.Note{Text: "jev-noul failed: " + err.Error() + "; gate defaults to plan"})
+			plan, perr := g.Draft(ctx, planPrompt(userMsg))
+			if perr != nil {
+				return Result{OK: false, Error: perr.Error()}
+			}
+			_, _ = g.Record(log.KindGatePlan, log.GatePlan{Origin: "gate", Noul: "degraded", Plan: plan, Reason: err.Error()})
+			return Result{Plan: plan, OK: true}
 		}
-		_, _ = g.Record(log.KindGatePlan, log.GatePlan{Origin: "gate", Noul: "degraded", Plan: plan, Reason: err.Error()})
-		return Result{Plan: plan, OK: true}
-	}
-	p := noul.AsFloat()
-	if p < NoulThreshold {
-		_, _ = g.Record(log.KindGatePlan, log.GatePlan{Origin: "gate", Noul: "proceed", Score: p})
-		return Result{OK: true, JevOut: true}
+		p := noul.AsFloat()
+		if p < NoulThreshold {
+			_, _ = g.Record(log.KindGatePlan, log.GatePlan{Origin: "gate", Noul: "proceed", Score: p})
+			return Result{OK: true, JevOut: true}
+		}
+
+		jevOut = true
 	}
 
 	plan, err := g.Draft(ctx, planPrompt(userMsg))
 	if err != nil {
 		_, _ = g.Record(log.KindNote, log.Note{Text: "plan generation failed: " + err.Error()})
-		return Result{OK: false, Error: err.Error(), JevOut: true}
+		return Result{OK: false, Error: err.Error(), JevOut: jevOut}
 	}
 	levels := make([]scheme.Value, len(ScoreLevels))
 	for i, l := range ScoreLevels {
@@ -105,6 +135,7 @@ func Run(ctx context.Context, g Gate, userMsg string) Result {
 			_, _ = g.Record(log.KindNote, log.Note{Text: fmt.Sprintf("jev-score failed at round %d: %v", round, err)})
 			break
 		}
+		jevOut = true
 		score := scoreOf(ans)
 		if score > bestScore {
 			best, bestScore = plan, score
@@ -120,8 +151,11 @@ func Run(ctx context.Context, g Gate, userMsg string) Result {
 		plan = revised
 		revises++
 	}
-	_, _ = g.Record(log.KindGatePlan, log.GatePlan{Origin: "gate", Noul: "plan", Plan: best, Score: bestScore, Revisions: revises})
-	return Result{Plan: best, Score: bestScore, Revises: revises, OK: true, JevOut: true}
+	_, recordErr := g.Record(log.KindGatePlan, log.GatePlan{Origin: "gate", Noul: "plan", Plan: best, Score: bestScore, Revisions: revises})
+	if required && recordErr != nil {
+		return Result{Error: recordErr.Error(), JevOut: jevOut}
+	}
+	return Result{Plan: best, Score: bestScore, Revises: revises, OK: true, JevOut: jevOut}
 }
 
 // scoreOf reads the normalised score from a jev-score result alist.

@@ -26,10 +26,10 @@ type stateWatch struct {
 	clients  map[*peer]bool
 }
 
-func (w *stateWatch) update(session *core.Session, open bool) {
+func (w *stateWatch) update(session *core.Session, open bool, running ...bool) {
 	state := sessionState{ID: session.ID(), Open: open}
 	if open {
-		state.Busy = session.Busy()
+		state.Busy = session.Busy() || (len(running) > 0 && running[0])
 		pending, err := session.PendingPrompts()
 		state.NeedsAnswer = err != nil || len(pending) > 0
 	}

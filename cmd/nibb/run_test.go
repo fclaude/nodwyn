@@ -1,0 +1,89 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nibb/internal/frontend/run"
+	"github.com/fclaude/nibb/internal/llm"
+	fake "github.com/fclaude/nibb/test/fakes/ollama"
+)
+
+func TestCLIBoundedRun(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "nibb-run-cli-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	socket := filepath.Join(dir, "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := fake.New(fake.Turn{Content: "1. Return the requested answer."}, fake.Turn{Content: "done\n" + run.CompleteLine})
+	defer srv.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data")), Provider: llm.NewOllama(srv.URL)})
+	}()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	task := filepath.Join(dir, "task.txt")
+	os.WriteFile(task, []byte("Return an answer."), 0600)
+	invoke := func(args ...string) []byte {
+		t.Helper()
+		callCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stop()
+		cmd := exec.CommandContext(callCtx, os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--", "run"}, args...)...)
+		cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "cli-config"), "XDG_DATA_HOME="+filepath.Join(dir, "cli-data"))
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("CLI %v: %v %s", args, err, stderr.String())
+		}
+		return bytes.SplitN(out, []byte("\n"), 2)[0]
+	}
+	var started struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(invoke("--socket", socket, "--repo", dir, "--task", task, "--budget-wall", "1m", "--max-turns", "2"), &started); err != nil || started.ID == "" {
+		t.Fatalf("start %v %+v", err, started)
+	}
+	// The submitting CLI has exited; a new invocation sees daemon-owned progress.
+	var state run.State
+	for end := time.Now().Add(4 * time.Second); time.Now().Before(end); {
+		if err := json.Unmarshal(invoke("status", "--socket", socket, started.ID), &state); err != nil {
+			t.Fatal(err)
+		}
+		if state.Status != "running" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if state.Status != "completed" || state.Turns != 1 {
+		t.Fatalf("%+v", state)
+	}
+}
+func TestRunRejectsImplicitLimits(t *testing.T) {
+	for _, args := range [][]string{{}, {"--task", "missing", "--max-turns", "2"}, {"resume", "--budget-wall", "2h", "id"}} {
+		if err := runTask(args); err == nil || strings.Contains(err.Error(), "daemon") {
+			t.Fatalf("did not reject invalid request before connecting: %v", err)
+		}
+	}
+}

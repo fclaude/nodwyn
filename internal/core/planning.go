@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
@@ -33,6 +34,12 @@ func (s *Session) Draft(ctx context.Context, prompt string) (string, error) {
 	if s.opts.Provider == nil {
 		return "", errors.New("core: no control-plane provider")
 	}
+	turn := budget.From(ctx)
+	if turn != nil {
+		if err := turn.Check(ctx); err != nil {
+			return "", err
+		}
+	}
 	timeout, _ := s.opts.Config.Loop.Durations()
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -46,6 +53,12 @@ func (s *Session) Draft(ctx context.Context, prompt string) (string, error) {
 	}, nil)
 	if err != nil {
 		return "", err
+	}
+	if turn != nil {
+		turn.AddTokens(resp.Usage.PromptTokens, resp.Usage.OutputTokens)
+		if err := turn.Finish(ctx); err != nil {
+			return "", err
+		}
 	}
 	return redact.Redact(resp.Message.Content, nil).Text, nil
 }

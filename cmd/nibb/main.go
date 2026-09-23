@@ -60,6 +60,8 @@ commands:
   replay SESSION --window SEQ  reconstruct and verify a recorded model request
   summary [flags] SESSION  inspect, add or revoke a conversation summary
   sessions             list sessions
+  run [flags]          submit a bounded supervised task to the daemon
+  run status|stop|resume [--socket PATH] SESSION
   daemon [--socket PATH] serve local sessions, turns and events
   ui [--socket PATH]    interactive browser view (optional --read-only)
   tui [--socket PATH]   interactive terminal client (local or daemon)
@@ -99,6 +101,11 @@ flags:
 	case "tui":
 		fs.Visit(func(f *flag.Flag) { fail(fmt.Errorf("tui: put --%s after tui", f.Name)) })
 		if err := runTUI(paths, fs.Args()[1:]); err != nil {
+			fail(err)
+		}
+	case "run":
+		fs.Visit(func(f *flag.Flag) { fail(fmt.Errorf("run: put --%s after run; the daemon owns configuration", f.Name)) })
+		if err := runTask(fs.Args()[1:]); err != nil {
 			fail(err)
 		}
 	case "daemon":

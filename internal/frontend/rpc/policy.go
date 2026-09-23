@@ -26,6 +26,9 @@ func (s *server) policy(req request, client *peer) (any, *rpcError) {
 	if !ok {
 		return nil, failure(-32002, "Session is not open in this daemon")
 	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before editing policy")
+	}
 	var operation string
 	var err error
 	if req.Method == "session.policy.read" {
