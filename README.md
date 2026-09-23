@@ -26,7 +26,7 @@ integrations and front-ends:
 | `symbols` | Derive bounded source outlines with bundled Tree-sitter grammars; no filesystem or session ownership. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to the model; derive its context; redact text; detect credential shapes. |
-| `frontend/plain`, `frontend/rpc`, `config`, `cmd/nibb` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
+| `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nibb` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
 **A user message:** the front-end calls `Session.Send`. The session records
 and redacts the message, runs the plan gate, and starts one `loop.Turn`.
@@ -81,6 +81,7 @@ use the shared guard and produce session-scoped results. See
 ```
 bin/nibb daemon               # local sessions, turns and event delivery (U2)
 bin/nibb tui                  # opt-in full-screen terminal client (P9)
+bin/nibb ui                   # paired, read-only browser view (requires daemon)
 bin/nibb                      # chat in the current repository (plain front-end)
 bin/nibb --repo ~/src/x       # pin to another repository
 bin/nibb --show-thinking      # show the model's redacted thinking too
@@ -209,3 +210,6 @@ See [the TUI guide](docs/tui.md) for controls, ownership and the acceptance cove
 
 See [session memory](docs/memory.md) for exact request replay, summary creation
 and revocation, and the remaining structural-retrieval work.
+
+The [browser guide](docs/browser.md) describes the first U3 session/transcript
+view, pairing, and the interactive features still to come.

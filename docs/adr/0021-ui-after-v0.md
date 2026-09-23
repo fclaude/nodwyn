@@ -1,6 +1,6 @@
 # ADR 0021: A real UI after v0 — the daemon, the protocol, the clients
 
-- Status: **partially implemented** (U1 and local U2 implemented; optional TCP and U3–U4 proposed)
+- Status: **partially implemented** (U1, local U2 and P9 complete; U3 in progress; optional TCP and U4 proposed)
 - Date: 2026-09-22
 
 ## Context
@@ -336,3 +336,24 @@ message/eval, credential, binding, inspector, plan/budget, resize, cancellation,
 reconnect and process-tree tests, this completes P9's line-mode flows. The TUI
 guide records the acceptance matrix. Plain stays the default; live budget
 counters are not claimed, and U3/U4 are still separate future phases.
+
+
+## U3 read-only browser slice — 2026-09-22
+
+`nibb ui` serves embedded assets on a random 127.0.0.1 port and bridges a
+WebSocket to an existing Unix-socket daemon. The serving process is a frontend
+attachment, so closing it does not take the daemon's sessions down. This refines
+"served by nibbd" above: the same binary/protocol serves the UI, while ownership
+stays in the separately running daemon. No general TCP RPC listener is exposed.
+
+Pairing uses a random code shown in the local terminal, a same-origin POST and
+an HttpOnly SameSite cookie. Exact Host/Origin checks, fetch-metadata checks,
+no-store responses and a restrictive CSP protect the browser boundary. Tokens
+never travel in URLs or session logs. Each browser socket has its own existing
+RPC client; kernel identity remains the bridge process's identity.
+
+This slice exposes only hello, session listing/details, subscriptions and paged
+log reads. All mutation methods are rejected by the bridge. The browser renders
+literal text, catches up to a fixed watermark before live delivery, and never
+retries an operation after disconnect. Interactive turns, approvals, credentials,
+plan/budget views and inspectors are still U3 work, not implemented by this slice.

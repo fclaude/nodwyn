@@ -62,3 +62,5 @@ Format: `date · session · what happened · what it cost · idea`
 - 2026-09-22 (external agent, ADR 16): searching through general shell commands required broad command approvals; `index-grep` now performs bounded ripgrep retrieval with every selected content read passing the existing guard. Tree-sitter symbols remain separate work.
 
 - 2026-09-22 (external agent, ADR 16): source outlines previously needed whole-file context or shell tools; `index-symbols` now returns guarded Tree-sitter definitions for Go, JavaScript and Python without runtime downloads or a native build toolchain.
+
+- 2026-09-22 (external agent, ADR 16): the daemon had no browser view of saved/live work; U3 now has a paired read-only session/transcript desk with guarded transport boundaries. Interactive approvals remain the next slice.

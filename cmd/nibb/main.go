@@ -23,6 +23,7 @@ import (
 	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/frontend/plain"
+	webui "github.com/fclaude/nibb/internal/frontend/web"
 	"github.com/fclaude/nibb/internal/keychain"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
@@ -60,6 +61,7 @@ commands:
   summary [flags] SESSION  inspect, add or revoke a conversation summary
   sessions             list sessions
   daemon [--socket PATH] serve local sessions, turns and events
+  ui [--socket PATH]    read-only browser view of daemon sessions
   tui [--socket PATH]   interactive terminal client (local or daemon)
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
@@ -67,7 +69,7 @@ commands:
   keychain init        create the encrypted keychain (asks for a passphrase)
   paths                print the config and data locations
   version              print version
-  licenses             print bundled Tree-sitter third-party notices
+  licenses             print parser and browser dependency notices
 
 flags:
 `)
@@ -81,7 +83,7 @@ flags:
 		return
 	}
 	if cmd == "licenses" {
-		fmt.Print(symbols.Licenses())
+		fmt.Print(symbols.Licenses(), webui.Licenses())
 		return
 	}
 	paths, err := config.DefaultPaths()
@@ -89,6 +91,11 @@ flags:
 		fail(err)
 	}
 	switch cmd {
+	case "ui":
+		fs.Visit(func(f *flag.Flag) { fail(fmt.Errorf("ui: put --%s after ui", f.Name)) })
+		if err := runUI(fs.Args()[1:]); err != nil {
+			fail(err)
+		}
 	case "tui":
 		fs.Visit(func(f *flag.Flag) { fail(fmt.Errorf("tui: put --%s after tui", f.Name)) })
 		if err := runTUI(paths, fs.Args()[1:]); err != nil {

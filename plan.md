@@ -350,7 +350,12 @@ this is additive work, not a refactor. Four phases, each useful alone:
   contract. Kernel peer credentials identify answerers; resuming never restores
   transient authority. Optional TCP/token transport remains deferred.
   **P9 uses this protocol**; its terminal views and line-mode flow parity are implemented.
-- **U3 — the desktop client (after v0).** A local web UI served by `nibbd`
+- **U3 — the desktop client (in progress; read-only slice implemented).**
+  `nibb ui` now serves embedded assets over a paired loopback WebSocket bridge
+  to the existing daemon. Session lists, fixed-prefix transcript catch-up, live
+  text/tool/guard output and read-only method enforcement are implemented; see
+  [the browser guide](docs/browser.md). Interactive controls and approval panels
+  follow next. The intended full scope is a local web UI backed by `nibbd`
   (`nibb ui`), assets embedded in the binary. Views in order: session list,
   transcript, **approvals** (the diff panel is what justifies a GUI), plan and
   budgets, inspectors for the log, bindings and standing approvals.

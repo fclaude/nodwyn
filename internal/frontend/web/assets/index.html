@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>nibb · Sessions</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <strong>nibb<span class="dot">.</span></strong
+      ><span class="subtitle">SESSION DESK</span
+      ><span id="connection" role="status">Connecting…</span
+      ><button id="reconnect" hidden>Reconnect</button>
+    </header>
+    <section id="pairing" class="pairing" hidden>
+      <div class="eyebrow">LOCAL CONNECTION</div>
+      <h1>Your sessions, in view.</h1>
+      <p>
+        Paste the pairing code printed by <code>nibb ui</code>. It stays on this
+        computer and is never added to a session.
+      </p>
+      <form id="pair-form">
+        <label for="pair-code">Pairing code</label
+        ><input
+          id="pair-code"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          required
+        /><button type="submit">Connect this browser</button>
+      </form>
+      <p id="pair-error" role="alert"></p>
+    </section>
+    <main id="workspace" hidden>
+      <aside>
+        <div class="aside-title">
+          <h2>Sessions</h2>
+          <button id="refresh" aria-label="Refresh sessions">Refresh</button>
+        </div>
+        <p class="hint">Read-only view · operations stay in your terminal.</p>
+        <nav id="sessions" aria-label="Sessions"></nav>
+      </aside>
+      <section class="conversation">
+        <div class="conversation-head">
+          <div>
+            <div class="eyebrow">CONVERSATION</div>
+            <h1 id="session-title">Select a session</h1>
+            <p id="repo"></p>
+          </div>
+          <span id="activity"></span>
+        </div>
+        <div id="notice" role="status"></div>
+        <div id="transcript" aria-label="Session transcript">
+          <div class="empty">
+            <h2>A clear view of the work.</h2>
+            <p>
+              Choose a session to read its conversation, tool results, and guard
+              decisions.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
