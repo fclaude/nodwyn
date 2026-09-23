@@ -644,6 +644,9 @@
         "model": {
           "type": "string"
         },
+        "request_hash": {
+          "type": "string"
+        },
         "tools": {
           "type": "integer"
         }
@@ -711,6 +714,16 @@
     },
     "log.SessionStart": {
       "properties": {
+        "context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.WindowContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "model": {
           "type": "string"
         },
@@ -870,6 +883,43 @@
       },
       "required": [
         "text"
+      ],
+      "type": "object"
+    },
+    "log.WindowContext": {
+      "properties": {
+        "high_water": {
+          "type": "integer"
+        },
+        "keep_alive": {
+          "type": "string"
+        },
+        "low_water": {
+          "type": "integer"
+        },
+        "max_result_tokens": {
+          "type": "integer"
+        },
+        "num_ctx": {
+          "type": "integer"
+        },
+        "system": {
+          "type": "string"
+        },
+        "tools": {},
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "system",
+        "tools",
+        "high_water",
+        "low_water",
+        "max_result_tokens",
+        "num_ctx",
+        "keep_alive"
       ],
       "type": "object"
     },

@@ -279,3 +279,13 @@ outcome. Each change carries the kernel-derived actor, prompt ID and proposed
 row. Persistence failure blocks the waiting call. Disconnect/reconnect never
 retries a grant automatically; durable history and pending prompts identify its
 outcome. This method and the optional proposal field are additive extensions.
+
+
+## Recorded window recipes
+
+New `session.start` / `session.resume` payloads may include `context`, the
+redacted window recipe for that runtime. New turn `llm.req` payloads include
+`request_hash`, covering the provider-neutral request. These additive fields
+support offline `nibb replay SESSION --window SEQ`; no new RPC operation is
+required. Old records remain readable but cannot provide verified exact request
+reconstruction. The generated schema documents the fields.

@@ -90,17 +90,21 @@ func (l *Loop) Turn(ctx context.Context) error {
 			}
 		}
 		w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
+		request := llm.Request{Model: l.cfg.Model, Messages: w.Messages, Tools: l.tools, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}
+		digest, err := window.RequestHash(request)
+		if err != nil {
+			return err
+		}
 		if _, err := l.host.Record(log.KindLLMReq, log.LLMReq{
-			Model: l.cfg.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
+			RequestHash: digest,
+			Model:       l.cfg.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
 		}); err != nil {
 			return err
 		}
 		l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "waiting for model"}})
 
 		reqCtx, cancel := context.WithTimeout(ctx, l.cfg.RequestTimeout)
-		resp, err := l.provider.Chat(reqCtx, llm.Request{
-			Model: l.cfg.Model, Messages: w.Messages, Tools: l.tools, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive,
-		}, nil)
+		resp, err := l.provider.Chat(reqCtx, request, nil)
 		cancel()
 		if err != nil {
 			_, _ = l.host.Record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
@@ -263,4 +267,11 @@ func (l *Loop) skipTools(calls []llm.ToolCall, reason string) error {
 		}
 	}
 	return nil
+}
+
+// WindowContext is the immutable, redacted recipe needed to replay requests.
+// Tool schema marshaling already succeeded in New.
+func (l *Loop) WindowContext() *log.WindowContext {
+	tools, _ := json.Marshal(l.tools)
+	return &log.WindowContext{Version: window.RecipeVersion, System: l.cfg.System, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}
 }

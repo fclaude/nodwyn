@@ -79,6 +79,7 @@ func New(o Options) (*Session, error) {
 	}
 	s.flushOutput()
 	if _, err := s.Record(log.KindSessionStart, log.SessionStart{
+		Context: s.loop.WindowContext(),
 		Version: o.Version, Repo: o.Repo, Provider: o.Provider.Name(),
 		Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools()),
 	}); err != nil {

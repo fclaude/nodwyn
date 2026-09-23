@@ -312,7 +312,13 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
 - **Accept:** every line-mode flow works in the TUI; resize; Ctrl-C mid-`shell-exec` leaves no orphan. Promote `v0.9-tui`.
 - **Shape change (ADR 21):** if U2 (the daemon and its protocol) lands first, the TUI is written as the protocol's first client — same package, same views, attaching to `nibbd` when a socket is given and running in-process otherwise.
 
-### Phase 10 — Memory (weeks 23–24)
+### Phase 10 — Memory (weeks 23–24; replay foundation implemented)
+
+- **Implemented:** new session runtimes record their window recipe and each turn
+  request records a digest. `nibb replay SESSION --window SEQ` verifies exact
+  reconstruction without using current configuration or contacting a model.
+  Legacy logs explicitly report missing reconstruction data. Summary lifecycle
+  and session-scoped structural retrieval remain.
 
 - Replace the naive window with the spec's: recent turns verbatim, older spans replaced by their latest `summary` log event; `nibb summary --drop <seq>` revokes and recomputes.
 - Session index: tree-sitter symbols + ripgrep search exposed as prims (`index-symbols`, `index-grep`) — surgical pull, the model asks.

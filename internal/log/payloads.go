@@ -11,12 +11,13 @@ import (
 
 // SessionStart is the first event of every session.
 type SessionStart struct {
-	Version  string `json:"version"`
-	Repo     string `json:"repo"`
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	URL      string `json:"url"`
-	Tools    int    `json:"tools"`
+	Context  *WindowContext `json:"context,omitempty"`
+	Version  string         `json:"version"`
+	Repo     string         `json:"repo"`
+	Provider string         `json:"provider"`
+	Model    string         `json:"model"`
+	URL      string         `json:"url"`
+	Tools    int            `json:"tools"`
 }
 
 // SessionEnd is written on clean shutdown.
@@ -32,11 +33,12 @@ type UserMsg struct {
 // LLMReq describes a request to the control-plane model. The messages are
 // not repeated: they are rebuilt from the log by the window.
 type LLMReq struct {
-	Model     string   `json:"model"`
-	Messages  int      `json:"messages"`
-	Tools     int      `json:"tools"`
-	EstTokens int      `json:"est_tokens"`
-	Elided    []uint64 `json:"elided,omitempty"`
+	RequestHash string   `json:"request_hash,omitempty"`
+	Model       string   `json:"model"`
+	Messages    int      `json:"messages"`
+	Tools       int      `json:"tools"`
+	EstTokens   int      `json:"est_tokens"`
+	Elided      []uint64 `json:"elided,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.
@@ -185,4 +187,17 @@ type BindingChange struct {
 	Binding  binding.Binding `json:"binding"`
 	State    string          `json:"state"` // requested, applied, failed
 	Error    string          `json:"error,omitempty"`
+}
+
+// WindowContext captures the recipe fixed for one session runtime. Resume may
+// install a new recipe. It contains no model response or current conversation.
+type WindowContext struct {
+	Version         string          `json:"version"`
+	System          string          `json:"system"`
+	Tools           json.RawMessage `json:"tools"`
+	HighWater       int             `json:"high_water"`
+	LowWater        int             `json:"low_water"`
+	MaxResultTokens int             `json:"max_result_tokens"`
+	NumCtx          int             `json:"num_ctx"`
+	KeepAlive       string          `json:"keep_alive"`
 }

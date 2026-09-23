@@ -5,12 +5,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/fclaude/nibb/internal/window"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -52,6 +55,7 @@ func main() {
 commands:
   (none) | chat        start a session in the plain front-end
   replay SESSION       print a session log as a transcript (id or path)
+  replay SESSION --window SEQ  reconstruct and verify a recorded model request
   sessions             list sessions
   daemon [--socket PATH] serve local sessions, turns and events
   tui [--socket PATH]   interactive terminal client (local or daemon)
@@ -159,7 +163,29 @@ flags:
 		if err != nil && len(events) == 0 {
 			fail(err)
 		}
-		plain.Replay(events, os.Stdout, *thinking)
+		if fs.NArg() > 2 {
+			if fs.NArg() != 4 || fs.Arg(2) != "--window" {
+				fail(fmt.Errorf("usage: nibb replay SESSION [--window SEQ]"))
+			}
+			seq, parseErr := strconv.ParseUint(fs.Arg(3), 10, 64)
+			if parseErr != nil || seq == 0 {
+				fail(fmt.Errorf("replay: --window requires a positive event sequence"))
+			}
+			if err != nil {
+				fail(err)
+			}
+			request, replayErr := window.ReplayRequest(events, seq)
+			if replayErr != nil {
+				fail(replayErr)
+			}
+			encoder := json.NewEncoder(os.Stdout)
+			encoder.SetIndent("", "  ")
+			if encodeErr := encoder.Encode(request); encodeErr != nil {
+				fail(encodeErr)
+			}
+		} else {
+			plain.Replay(events, os.Stdout, *thinking)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "nibb: note:", err)
 		}

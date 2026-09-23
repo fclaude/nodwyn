@@ -80,6 +80,8 @@ bin/nibb tui                  # opt-in full-screen terminal client (P9)
 bin/nibb                      # chat in the current repository (plain front-end)
 bin/nibb --repo ~/src/x       # pin to another repository
 bin/nibb --show-thinking      # show the model's redacted thinking too
+# Exact request replay (new logs with recorded context):
+# bin/nibb replay SESSION_ID --window REQUEST_SEQ
 bin/nibb --no-confirm         # non-interactive: every confirm is a no
 bin/nibb replay <session-id>  # print a session log as a transcript
 bin/nibb sessions             # id, last activity, state, repo, first ask
