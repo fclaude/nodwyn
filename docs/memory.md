@@ -1,7 +1,7 @@
 # Session memory
 
 The lossless session log remains the source of truth. The window, summary
-selection and later structural indexes are derived views. Memory never restores
+selection and structural retrieval are derived views. Memory never restores
 credential permissions, approvals or Scheme state.
 
 ## Exact request replay
@@ -64,7 +64,50 @@ that request, so a later revocation cannot change what the model originally saw.
 The checked-in v0.27 selfcheck fixture exercises real v1 compatibility; synthetic
 and fake-service tests separately exercise replacement, revocation and canaries.
 
+## Repository text retrieval
+
+`index-grep` is a read-only Scheme primitive and model tool:
+
+```scheme
+(index-grep "internal/window" "func (Build|ReplayRequest)")
+(index-grep "README.md" "summary")
+```
+
+It returns an object/alist with `matches` (path, one-based line, text), `files`
+searched, `skipped` candidates and `truncated`. Results are sorted by path and
+line. An empty match list is an ordinary no-match result. A truncated result is
+explicitly incomplete: narrow the path or pattern. There is no persistent index;
+every call observes current files under that session's repository root.
+
+Install [ripgrep](https://github.com/BurntSushi/ripgrep#installation) (`rg`) on the
+host running the session, including a daemon host. The binary still builds with
+cgo disabled on Linux and macOS. Missing ripgrep produces an actionable tool
+error and does not prevent nibb from starting. CI installs it to exercise real
+searches, rather than skipping those tests.
+
+Discovery skips hidden paths and symlinks. It does not load ignore files or
+ripgrep configuration: an ignore file could itself link to protected content.
+Non-hidden ignored files are therefore candidates; select a narrower directory
+to exclude build/vendor output. Explicit file paths may select hidden files,
+subject to the same guard. Nonregular,
+protected, oversized, binary and non-UTF-8 candidates are skipped. The `skipped`
+count excludes paths that discovery never selected (for example hidden files).
+Each selected content read goes through `fs-read` and the full shared guard,
+including extension checkers. A denial stops the search; it is never treated as
+an empty file. Results carry file provenance and pass ordinary tool-result
+redaction before logging or entering a model request.
+
+Searches accept no arbitrary command flags, invoke no shell or preprocessors,
+and inherit no host credential environment. Ripgrep matches text supplied on
+stdin after its guarded read. Limits are 128 discovered files, 100 matching
+lines, a 4 KiB pattern, the existing per-file read/output caps, and 30 seconds
+for the whole query. Oversized discovery or raw structured output returns an
+error asking for a narrower search; it never reports a partial JSON prefix as
+complete. Cancellation stops the active child process. File edits concurrent
+with a query retain the ordinary filesystem read semantics; this is not a
+transactional repository snapshot.
+
 ## Remaining P10 work
 
-Session-scoped structural retrieval (`index-symbols` and `index-grep`) remains.
-There is no cross-session memory, semantic index or automatic summary generator.
+Tree-sitter symbol retrieval (`index-symbols`) remains. There is no cross-session
+memory, semantic index or automatic summary generator.

@@ -54,8 +54,7 @@ Integration-specific settings should not become getters on `Session`.
 
 The roadmap extends these boundaries: ADR 21 uses events for RPC clients;
 ADRs 22–23 bring MCP tools through the primitive/guard path; ADR 24 extends
-the credential lifecycle to OAuth. These are planned features, not claims
-that RPC, MCP or OAuth are already implemented. Keep `loop`, `plan`, and
+the credential lifecycle to OAuth. Local RPC is implemented; MCP and OAuth remain planned extensions. Keep `loop`, `plan`, and
 `event` separate, and keep credential management shared across integrations.
 
 ## Build
@@ -70,7 +69,7 @@ make selfcheck  # the candidate proves itself (ADR 13)
 make promote TAG=v0.N-phase   # accept + selfcheck, then ~/.local/bin/nibb-stable
 ```
 
-Requires Go 1.27 and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
+Requires Go 1.27, ripgrep (`rg`, used by retrieval and its tests), and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
 
 ## Run
 

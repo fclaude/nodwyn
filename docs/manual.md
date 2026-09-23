@@ -121,7 +121,7 @@ make promote TAG=v0.1-bootstrap  # accept + selfcheck, then ~/.local/bin/nibb-st
 Use `nibb-stable` for real work and `bin/nibb` only to test a change to
 nibb itself. Never run the binary you are editing (ADR 12).
 
-Requires Go 1.27, `staticcheck`, and a reachable control plane: by default
+Requires Go 1.27, `staticcheck`, ripgrep (`rg`) for text retrieval, and a reachable control plane: by default
 the Ollama server on workshop over the tailnet (`bin/nibb paths` shows where
 `config.toml` lives; a missing file means the defaults in
 [internal/config/config.go](../internal/config/config.go)).
@@ -136,7 +136,7 @@ nibb-stable                       # pins every path to this directory
 ```
 nibb session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
-tools fs-edit fs-list fs-read fs-write shell-exec
+tools fs-edit fs-list fs-read fs-write index-grep shell-exec
 :h for commands
 
 you> read main.go and explain the startup sequence

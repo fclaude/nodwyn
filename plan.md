@@ -321,7 +321,8 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   summaries now have validated source spans, inspection and append-only
   revocation; versioned windows retain historical replay and recent turns stay
   outside summary replacement. Existing token caps remain. Session-scoped
-  structural retrieval remains; see [memory controls](docs/memory.md).
+  ripgrep retrieval is now exposed through guarded `index-grep`; tree-sitter
+  symbol retrieval remains. See [memory controls](docs/memory.md).
 
 - Replace the naive window with the spec's: recent turns verbatim, older spans replaced by their latest `summary` log event; `nibb summary --drop <seq>` revokes and recomputes.
 - Session index: tree-sitter symbols + ripgrep search exposed as prims (`index-symbols`, `index-grep`) — surgical pull, the model asks.

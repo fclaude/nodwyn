@@ -26,7 +26,7 @@ jobs:
           mkdir -p "$GOTMPDIR" "$TMPDIR" "$RUNNER_TEMP"
           # The runner permits public HTTPS; Alpine's default mirrors may use HTTP.
           sed 's|http://|https://|g' /etc/apk/repositories > "$RUNNER_TEMP/apk-repositories"
-          apk --repositories-file "$RUNNER_TEMP/apk-repositories" add --no-cache python3
+          apk --repositories-file "$RUNNER_TEMP/apk-repositories" add --no-cache python3 ripgrep
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
