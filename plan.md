@@ -294,6 +294,8 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   also implemented, with fixed snapshots and prompt priority.
   The multiline composer preserves pasted line breaks and drafts across prompts
   and reconnects; Enter sends, Alt+Enter/Ctrl+J inserts a newline.
+  Tool discovery (`:tools [name]`) and plain-mode help/quit/approval-list aliases
+  are implemented using existing session metadata.
   Plain mode remains the default. P9 is not complete: binding edits,
   expanded tool/plan/budget views and full line-mode parity remain.
 - `internal/frontend/tui`: a bubbletea program over `core.Session` — no new core code; if P9 needs a core change, that is a gap in ADR 10 and gets an ADR amendment, not a shortcut.

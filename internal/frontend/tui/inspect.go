@@ -11,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/fclaude/nibb/internal/frontend/plain"
+	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
 )
@@ -37,7 +38,7 @@ func isInspectorCommand(s string) bool {
 		return false
 	}
 	switch fields[0] {
-	case ":log", ":bindings", ":replay", ":friction":
+	case ":log", ":bindings", ":replay", ":friction", ":tools", ":allow":
 		return true
 	}
 	return false
@@ -48,7 +49,7 @@ func (m *model) inspect(command string) tea.Cmd {
 		return nil
 	}
 	kind := fields[0]
-	count, filter, err := logFilter(fields)
+	count, filter, err := inspectorArgs(fields)
 	if err != nil {
 		m.status = err.Error()
 		return nil
@@ -76,7 +77,13 @@ func (m *model) inspect(command string) tea.Cmd {
 		defer cancel()
 		var content string
 		var err error
-		if kind == ":bindings" {
+		if kind == ":tools" {
+			var catalog []llm.Tool
+			catalog, err = b.Tools(ctx, id)
+			if err == nil {
+				content, err = formatTools(catalog, filter)
+			}
+		} else if kind == ":bindings" || kind == ":allow" {
 			var policy policyView
 			policy, err = b.Policy(ctx, id)
 			if err == nil {
@@ -100,6 +107,18 @@ func (m *model) inspect(command string) tea.Cmd {
 		}
 		return inspectResult{token: p.token, generation: gen, content: content, err: err}
 	}
+}
+func inspectorArgs(fields []string) (int, string, error) {
+	if fields[0] == ":tools" {
+		if len(fields) > 2 {
+			return 0, "", fmt.Errorf("usage: :tools [exact name]")
+		}
+		if len(fields) == 2 {
+			return 0, fields[1], nil
+		}
+		return 0, "", nil
+	}
+	return logFilter(fields)
 }
 func logFilter(fields []string) (int, string, error) {
 	count, filter := 20, ""
@@ -199,12 +218,14 @@ const helpText = `Commands
 
 :log [n] [kind prefix]  Last matching durable records (default 20, max 1000).
                        Example: :log 50 guard.
-:bindings              Loaded bindings and current approvals.
+:tools [name]          Tools offered to the model; exact name shows input schema.
+:bindings, :allow      Loaded bindings and current approvals.
 :replay                Read-only transcript from the durable log.
 :friction              Guarded read of docs/friction.md; needs an idle session.
 :eval EXPR             User-origin Scheme evaluation.
 :thinking              Show or hide thinking.
-:help                  This view.
+:help, :h              This view.
+:q, :quit, :exit       Quit (detach in daemon mode).
 
 Inspectors are fixed snapshots. r refreshes; Esc returns to conversation.
 Pending approvals always take priority over an inspector.

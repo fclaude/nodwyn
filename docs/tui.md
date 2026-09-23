@@ -55,7 +55,10 @@ of truth; scrollback is a display derived from it.
 | `:bindings` | Inspect loaded bindings and current command/write approvals |
 | `:replay` | Read a transcript of the current session's durable log |
 | `:friction` | Read `docs/friction.md` through the existing guarded Scheme path |
-| `:help` | Show available controls in a scrollable view |
+| `:tools [name]` | List model-facing tools; an exact name shows the input schema |
+| `:allow` | Open the bindings/current approvals inspector |
+| `:help`, `:h` | Show available controls in a scrollable view |
+| `:q`, `:quit`, `:exit` | Quit using the same lifecycle as Ctrl+Q |
 
 The composer is a separate multiline editor, with up to four visible rows.
 Longer drafts scroll within it; terminal resizing does not truncate the draft.
@@ -87,7 +90,17 @@ later pages retain the first page's watermark. They show which sequence the
 snapshot ends at and do not append events. A partial tail reports an error;
 refresh after an active writer finishes, or resume for crash recovery.
 
-`:bindings` shows the session's loaded class/destination/method/position rows
+`:tools` lists names and descriptions from the session's model-facing catalog.
+`:tools NAME` shows one tool's description and JSON input schema; names must
+match exactly. This includes tools registered during initialization and excludes
+ordinary Scheme builtins and hidden primitives. Inspection never evaluates the
+tool, contacts its external service or grants permission to call it. The catalog
+is captured when the session is constructed, so later edits to initialization
+files do not change this view. Local mode reads `Session.Tools`; daemon mode
+reads the existing `session.info.tools` field. Normal inspector refresh,
+scrolling, prompt priority and safe rendering apply.
+
+`:bindings` (also `:allow`) shows the session's loaded class/destination/method/position rows
 and its current effective command/write approvals. It reads a copied snapshot,
 not the file on disk, and has no setter. Changing `bindings.toml` takes effect
 when the session is reopened. No stored credential values are accessed. An
@@ -147,6 +160,7 @@ text is redacted and stripped of terminal control sequences before rendering.
 - `prompts.go`: prompt presentation and explicit answer routing.
 - `composer.go`: multiline editor setup, input routing and editor/viewport sizing.
 - `inspect.go` and `inspect_backend.go`: snapshot viewers and their read paths.
+- `tools.go`: model-facing tool list and input-schema presentation.
 - `run.go` and `cmd/nibb/tui.go`: lifecycle and command startup.
 
 Core now exposes a copied binding-metadata snapshot (ADR 10 amendment). Scheme,
@@ -154,7 +168,8 @@ guard, keychain and log ownership are unchanged. Bubble Tea v2
 uses the `charm.land` module path; the frontend boundary lint covers it as well
 as `github.com/charmbracelet` so the new dependency cannot enter core.
 
-The initial client, read-only inspectors and multiline composer are implemented;
+The initial client, read-only inspectors, tool discovery and multiline composer
+are implemented;
 P9 is not complete.
 Remaining work includes fuller tool/plan/budget views and the guarded binding-edit
 workflow and broader parity with line-mode commands. U3's

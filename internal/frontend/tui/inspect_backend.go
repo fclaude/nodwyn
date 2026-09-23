@@ -6,6 +6,7 @@ import (
 
 	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 )
 
@@ -37,6 +38,24 @@ func (r *remote) Policy(ctx context.Context, id string) (policyView, error) {
 		return policyView{}, fmt.Errorf("daemon lacks binding inspection; upgrade it before using :bindings")
 	}
 	return policyView{Bindings: *info.Bindings, Commands: info.Commands, Writes: info.Writes, TurnWrites: info.TurnWrites}, nil
+}
+
+// Read the model-facing catalog captured when the session was constructed,
+// not the interpreter's mutable registry or configuration files on disk.
+func (l *local) Tools(ctx context.Context, _ string) ([]llm.Tool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return l.session.Tools(), nil
+}
+func (r *remote) Tools(ctx context.Context, id string) ([]llm.Tool, error) {
+	var info struct {
+		Tools []llm.Tool `json:"tools"`
+	}
+	if err := r.client.Call(ctx, "session.info", map[string]any{"id": id}, &info); err != nil {
+		return nil, err
+	}
+	return info.Tools, nil
 }
 func (l *local) History(ctx context.Context, id string) ([]log.Event, error) {
 	store := core.Store{Dir: l.options.Paths.SessionsDir}

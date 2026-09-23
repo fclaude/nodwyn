@@ -255,3 +255,15 @@ text while still clearing secret replies and never retrying a sent operation.
 The existing Bubbles dependency supplies the editor. Core, guard, protocol and
 plain-mode behavior are unchanged. The remaining P9 work is full command parity,
 expanded tool/plan/budget views and the guarded binding-edit workflow.
+
+
+## P9 tool discovery — 2026-09-22
+
+The TUI exposes `:tools` and `:tools NAME` for the model-facing catalog and input
+schemas. Both adapters read existing session metadata; inspection does not query
+the interpreter registry or invoke a tool. The catalog remains the one captured
+at session construction. No core facade or wire schema changes were needed.
+Plain-mode aliases `:h`, `:q`, `:quit`, `:exit` and `:allow` are also recognized;
+`:allow` opens the existing binding/current approval view. Commands do not
+intercept a pending prompt's reply. Full flow parity and richer tool/plan/budget
+presentation remain P9 work, along with guarded binding edits.

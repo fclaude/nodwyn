@@ -317,7 +317,9 @@ func (m *model) submit() tea.Cmd {
 	switch {
 	case isInspectorCommand(text):
 		return m.inspect(text)
-	case text == ":help":
+	case text == ":q" || text == ":quit" || text == ":exit":
+		return tea.Quit
+	case text == ":help" || text == ":h":
 		m.inspectionToken++
 		m.inspector = &inspector{title: "help", token: m.inspectionToken, content: helpText}
 		m.composer.Reset()

@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 )
 
@@ -32,6 +33,7 @@ type backend interface {
 	Abort(context.Context, string) error
 	History(context.Context, string) ([]log.Event, error)
 	Policy(context.Context, string) (policyView, error)
+	Tools(context.Context, string) ([]llm.Tool, error)
 	Close()
 }
 

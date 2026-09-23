@@ -187,7 +187,8 @@ session, follow the conversation, inspect scrollable approval diffs, and reply
 to budget or masked credential prompts. Ctrl+C aborts busy work; Ctrl+Q quits.
 Quitting a daemon client detaches without stopping its session; Ctrl+R reconnects
 and recovers history without resending operations. Plain mode remains the default.
-Use `:log`, `:bindings`, `:replay` and `:friction` for read-only inspection;
+Use `:tools` to list model-facing tools, or `:tools NAME` for an input schema.
+Use `:log`, `:bindings` (also `:allow`), `:replay` and `:friction` for read-only inspection;
 Esc returns to the conversation and `r` refreshes a snapshot.
 Enter sends the whole draft; Alt+Enter or Ctrl+J adds a newline. Bracketed paste
 preserves line breaks without sending. Prompts keep their own single-line input.

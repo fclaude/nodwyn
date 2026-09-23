@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-22 · P9 tool discovery · implemented with an external agent under ADR 16; local/RPC tests cover initialization tools, schemas, safe rendering and inspection without execution · no claim of nibb self-authorship · inspect the model-facing catalog and use familiar plain-mode command aliases without leaving the TUI
 - 2026-09-22 · composer promotion · the live model returned READY, but selfcheck replayed a newer unrelated session from the shared store · stable swap correctly stopped · select the ID printed in the selfcheck session banner; regression coverage includes a newer unrelated session
 - 2026-09-22 · P9 composer · implemented with an external agent under ADR 16; local/RPC tests and real terminals cover multiline Scheme comments, bracketed paste, resize and separate approval/secret input · no claim of nibb self-authorship · pasted newlines no longer collapse, and prompts/reconnects preserve unsent drafts
 - 2026-09-22 · P9 inspectors · implemented with an external agent under ADR 16; local/RPC tests cover fixed history snapshots, isolated bindings, prompt priority and denied friction reads · no claim of nibb self-authorship · log, replay, loaded policy and friction can be inspected without leaving the TUI or bypassing the guarded read path
