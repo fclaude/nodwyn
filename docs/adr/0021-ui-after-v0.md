@@ -419,3 +419,18 @@ sampled separately; saved logs cannot claim current tools or authority. Pending
 prompts take priority over inspector navigation. Browser checks cover paged log
 filters, stale-plan exclusion, snapshot refresh and prompt priority. The guarded
 friction-file view and confirmed policy editing remain U3 work.
+
+
+## U3 guarded friction inspection — 2026-09-22
+
+The browser's Friction view starts a fixed `docs/friction.md` read through the
+session interpreter and guard. The additive `session.friction` method returns an
+operation ID immediately, leaving the same connection free to answer custom
+checker prompts. An ephemeral `inspection.result` carries the redacted text or
+error; the existing evaluation and guard records provide durable audit history.
+No arbitrary path or general browser Scheme evaluation is exposed.
+
+The operation uses normal turn serialization, cancellation and prompt handling.
+Read-only bridges reject it. The browser caches only the completed selected
+session's result; explicit refresh reads again, and denied/canceled reads replace
+old content with an error. Confirmed policy editing remains the final U3 slice.

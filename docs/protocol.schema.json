@@ -218,6 +218,29 @@
       ],
       "type": "object"
     },
+    "event.Inspection": {
+      "properties": {
+        "Err": {
+          "type": "string"
+        },
+        "ID": {
+          "type": "string"
+        },
+        "Name": {
+          "type": "string"
+        },
+        "Text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ID",
+        "Name",
+        "Text",
+        "Err"
+      ],
+      "type": "object"
+    },
     "event.SecretPrompt": {
       "properties": {
         "Class": {
@@ -1089,6 +1112,9 @@
     "payload.guard.decision": {
       "$ref": "#/$defs/log.GuardDecision"
     },
+    "payload.inspection.result": {
+      "$ref": "#/$defs/event.Inspection"
+    },
     "payload.jev.req": {
       "$ref": "#/$defs/log.JevReq"
     },
@@ -1218,6 +1244,9 @@
         },
         {
           "$ref": "#/$defs/request.session.eval"
+        },
+        {
+          "$ref": "#/$defs/request.session.friction"
         },
         {
           "$ref": "#/$defs/request.session.info"
@@ -1481,6 +1510,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.evalParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.session.friction": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.friction"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
             }
           ],
           "unevaluatedProperties": false
@@ -1823,6 +1883,9 @@
       "required": [],
       "type": "object"
     },
+    "result.session.friction": {
+      "$ref": "#/$defs/rpc.inspectionStarted"
+    },
     "result.session.info": {
       "$ref": "#/$defs/rpc.sessionDetails"
     },
@@ -2003,6 +2066,17 @@
       },
       "required": [
         "id"
+      ],
+      "type": "object"
+    },
+    "rpc.inspectionStarted": {
+      "properties": {
+        "operation_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
       ],
       "type": "object"
     },
@@ -2468,6 +2542,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.GuardDecision"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "inspection.result"
+            },
+            "payload": {
+              "$ref": "#/$defs/event.Inspection"
             },
             "seq": {
               "minimum": 0,

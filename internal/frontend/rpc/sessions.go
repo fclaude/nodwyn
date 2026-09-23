@@ -115,7 +115,7 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		}
 		s.own(session)
 		return s.details(session), nil
-	case "session.resume", "session.info", "session.close", "session.abort", "session.unsubscribe":
+	case "session.resume", "session.info", "session.close", "session.abort", "session.unsubscribe", "session.friction":
 		var p idParams
 		if err := params(req.Params, &p, "id"); err != nil {
 			return nil, err
@@ -136,6 +136,13 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 		}
 		if !open {
 			return nil, failure(-32002, "Session is not open in this daemon")
+		}
+		if req.Method == "session.friction" {
+			operation, err := owned.session.ReadFriction(client.actor)
+			if err != nil {
+				return nil, failure(-32000, err.Error())
+			}
+			return inspectionStarted{operation}, nil
 		}
 		if req.Method == "session.abort" {
 			owned.session.Abort()

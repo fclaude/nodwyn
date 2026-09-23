@@ -20,6 +20,7 @@ type Event struct {
 
 // Ephemeral kinds.
 const (
+	InspectionResult = "inspection.result" // Payload: Inspection; ephemeral result of a guarded frontend read
 	StreamText       = "stream.text"       // Payload: Text
 	StreamThinking   = "stream.thinking"   // Payload: Text
 	PromptCheckpoint = "prompt.checkpoint" // Payload: Checkpoint; answered through Session.Answer
@@ -75,4 +76,13 @@ func FromLog(ev log.Event, payload any) Event {
 type Checkpoint struct {
 	ID         string
 	Checkpoint budget.Checkpoint
+}
+
+// Inspection carries a completed guarded read. ID ties it to the initiating
+// request; this is a display result and never confers approval authority.
+type Inspection struct {
+	ID   string
+	Name string
+	Text string
+	Err  string
 }

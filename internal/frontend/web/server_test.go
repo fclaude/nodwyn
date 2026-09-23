@@ -64,7 +64,7 @@ func TestBrowserAuthorityBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, method := range []string{"session.open", "session.resume", "session.send", "session.eval", "session.answer", "session.secret", "session.binding.create", "session.approval.create", "session.abort", "session.close"} {
+	for _, method := range []string{"session.open", "session.resume", "session.send", "session.eval", "session.friction", "session.answer", "session.secret", "session.binding.create", "session.approval.create", "session.abort", "session.close"} {
 		if readOnly(method) {
 			t.Fatal(method)
 		}
@@ -153,7 +153,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	if raw := receive(); !strings.Contains(string(raw["error"]), "read-only") {
 		t.Fatal(raw)
 	}
-	for i, method := range []string{"session.answer", "session.secret", "session.approval.create", "session.binding.create"} {
+	for i, method := range []string{"session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.friction"} {
 		send(uint64(20+i), method, map[string]any{"id": info.ID, "prompt_id": "not-a-prompt", "reply": "y", "secret": "synthetic"})
 		if raw := receive(); !strings.Contains(string(raw["error"]), "read-only") {
 			t.Fatal(raw)
@@ -316,6 +316,21 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 			}
 			read()
 		}
+	}
+	os.MkdirAll(filepath.Join(repo, "docs"), 0700)
+	os.WriteFile(filepath.Join(repo, "docs", "friction.md"), []byte("Browser friction fixture\nAKIAABCDEFGHIJKLMNOP\n"), 0600)
+	var inspection struct {
+		OperationID string `json:"operation_id"`
+	}
+	call("session.friction", p, &inspection, false)
+	var friction event.Inspection
+	if err := json.Unmarshal(next(event.InspectionResult).Payload, &friction); err != nil {
+		t.Fatal(err)
+	}
+	if friction.ID != inspection.OperationID || friction.Err != "" || !strings.Contains(friction.Text, "[REDACTED aws-access-key]") {
+		t.Fatalf("unsafe or missing inspection: %+v", friction)
+	}
+	for !strings.Contains(string(next("status").Payload), "idle") {
 	}
 	checkBrowserPrompts(t, terminal, ctx, info.ID, repo, store, call, next)
 	model.Script(fake.Turn{ToolCalls: []fake.ToolCall{

@@ -26,6 +26,7 @@ func contracts() map[string]methodContract {
 		"session.resume":          {idParams{}, sessionDetails{}},
 		"session.info":            {idParams{}, sessionDetails{}},
 		"session.close":           {idParams{}, struct{}{}},
+		"session.friction":        {idParams{}, inspectionStarted{}},
 		"session.eval":            {evalParams{}, struct{}{}},
 		"session.send":            {sendParams{}, struct{}{}},
 		"session.abort":           {idParams{}, struct{}{}},
@@ -79,7 +80,8 @@ func WireSchema() ([]byte, error) {
 		map[string]any{"required": []string{"error"}, "not": map[string]any{"required": []string{"result"}}},
 	}}
 	payloads := map[string]any{
-		event.StreamText: event.Text{}, event.StreamThinking: event.Text{}, event.Output: event.Text{},
+		event.InspectionResult: event.Inspection{},
+		event.StreamText:       event.Text{}, event.StreamThinking: event.Text{}, event.Output: event.Text{},
 		event.Status: event.StatusInfo{}, event.Error: event.ErrorInfo{}, event.PromptConfirm: event.Confirm{},
 		event.PromptCheckpoint: event.Checkpoint{}, event.PromptSecret: event.SecretPrompt{},
 		string(log.KindSessionStart): log.SessionStart{}, string(log.KindSessionResume): log.SessionStart{}, string(log.KindSessionEnd): log.SessionEnd{},

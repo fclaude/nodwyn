@@ -28,6 +28,68 @@ let view = "conversation",
   inspection = null,
   inspectionVersion = 0,
   historyTruncated = false;
+let friction = null;
+function frictionResult(result) {
+  if (!friction || friction.version !== selection) return;
+  if (!friction.operation) {
+    friction.early.set(result.ID, result);
+    return;
+  }
+  if (result.ID !== friction.operation) return;
+  friction.result = result;
+  if (view === "friction") showFrictionResult();
+}
+function showFrictionResult() {
+  if (!friction?.result) return;
+  const result = friction.result;
+  $("inspector-content").replaceChildren(
+    text(
+      "p",
+      "docs/friction.md · guarded read · refresh to read again",
+      "hint",
+    ),
+    text("pre", result.Err || result.Text),
+  );
+}
+async function readFriction() {
+  if (!selected?.open || selected.busy || !methods.has("session.friction")) {
+    $("inspector-content").replaceChildren(
+      text(
+        "p",
+        "A friction read requires an idle, open session and interactive browser mode on a daemon that supports this operation.",
+      ),
+    );
+    return;
+  }
+  if (friction?.starting) return;
+  const request = {
+    starting: true,
+    version: selection,
+    operation: null,
+    early: new Map(),
+    result: null,
+  };
+  friction = request;
+  controls();
+  try {
+    const reply = await call("session.friction", { id: selected.id });
+    if (friction !== request || request.version !== selection) return;
+    request.operation = reply.operation_id;
+    const result = request.early.get(request.operation);
+    request.early.clear();
+    if (result) frictionResult(result);
+  } catch (error) {
+    if (
+      friction === request &&
+      request.version === selection &&
+      view === "friction"
+    )
+      $("inspector-content").replaceChildren(text("p", error.message));
+  } finally {
+    request.starting = false;
+    controls();
+  }
+}
 function setView(kind) {
   view = kind;
   $("transcript").hidden = kind !== "conversation";
@@ -46,7 +108,7 @@ function redrawInspector() {
     Number($("log-count").value),
   );
 }
-async function inspect(kind) {
+async function inspect(kind, reread = false) {
   const token = ++inspectionVersion,
     version = selection;
   if (kind === "conversation") {
@@ -58,7 +120,20 @@ async function inspect(kind) {
   setView(kind);
   $("inspector-title").textContent = kind[0].toUpperCase() + kind.slice(1);
   $("log-filter").hidden = kind !== "log";
-  $("inspector-content").replaceChildren(text("p", "Loading snapshot…"));
+  $("inspector-content").replaceChildren(
+    text(
+      "p",
+      kind === "friction"
+        ? "Reading through the session guard…"
+        : "Loading snapshot…",
+    ),
+  );
+  if (kind === "friction") {
+    if (!reread && friction?.version === selection && friction.result)
+      showFrictionResult();
+    else await readFriction();
+    return;
+  }
   const snapshot = {
     events: [...seen.values()].sort((a, b) => a.seq - b.seq),
     info: null,
@@ -132,7 +207,10 @@ function controls() {
     !methods.has("session.send") || !!activePrompt || view !== "conversation";
   for (const button of $("view-tabs").children)
     button.disabled = !ready || !selected || !!activePrompt;
-  $("inspect-refresh").disabled = !ready || !selected;
+  $("inspect-refresh").disabled =
+    !ready ||
+    !selected ||
+    (view === "friction" && (selected.busy || friction?.starting));
   for (const control of $("log-filter").elements)
     control.disabled = !ready || !inspection;
   $("message").disabled = !ready || !selected?.open;
@@ -209,6 +287,7 @@ function connect() {
   connection.onclose = () => {
     if (socket !== connection) return;
     selection++;
+    friction = null;
     clearPrompt();
     loading = false;
     queued = [];
@@ -277,7 +356,9 @@ async function refresh() {
 async function selectSession(item) {
   const version = ++selection,
     previous = selected;
-  const previousView = previous?.id === item.id ? view : "conversation";
+  const previousView =
+    previous?.id === item.id && view !== "friction" ? view : "conversation";
+  friction = null;
   inspectionVersion++;
   inspection = null;
   historyTruncated = false;
@@ -406,6 +487,9 @@ function render(event) {
   const follow =
     viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 90;
   switch (kind) {
+    case "inspection.result":
+      frictionResult(p);
+      break;
     case "user.msg":
       toolCard = null;
       if (!loading) busy(true);
@@ -561,9 +645,10 @@ $("refresh").addEventListener("click", () =>
 $("reconnect").addEventListener("click", connect);
 for (const button of $("view-tabs").children)
   button.addEventListener("click", () => inspect(button.dataset.view));
-$("inspect-refresh").addEventListener("click", () =>
-  refresh().catch((error) => notice(error.message)),
-);
+$("inspect-refresh").addEventListener("click", () => {
+  if (view === "friction") inspect("friction", true);
+  else refresh().catch((error) => notice(error.message));
+});
 $("log-filter").addEventListener("submit", (event) => {
   event.preventDefault();
   redrawInspector();

@@ -77,13 +77,19 @@ The session view buttons open fixed snapshots:
 - **Policy** shows the last validated bindings, current command/write prefixes and
   turn approval. It does not restore authority from recorded receipts or edit it.
 - **Tools** shows the model's current tool catalog and input schemas.
+- **Friction** reads `docs/friction.md` through the session interpreter and guard.
+  It needs an idle open session in interactive mode. Custom checker prompts take
+  priority; after answering, reopen Friction to see the completed result. Refresh
+  view starts a new guarded read. Denial or cancellation returns an error, never
+  the preceding read's contents. Text passes normal redaction and is rendered
+  literally. This fixed-path operation cannot select arbitrary files.
 
 Every inspector names its log watermark. Live transcript events keep arriving but
 an open inspector stays fixed until Refresh view reloads history and metadata.
 Current session metadata is sampled separately from the log prefix. Saved sessions
 retain plan/log views; current limits, policy and tools require an open session.
 Pending prompts take priority over inspector navigation. Read-only mode has the
-same inspectors and retains its server-side mutation restrictions.
+same snapshot inspectors; it cannot start a friction read. It retains its server-side mutation restrictions.
 
 The bridge binds only `127.0.0.1` on a random port. Every request checks its exact
 Host; pairing and WebSocket upgrades also require the exact browser origin.
@@ -93,8 +99,7 @@ remains private, and kernel peer identity still identifies the bridge process.
 
 Implementation is deliberately small: embedded HTML/CSS/plain JavaScript,
 `internal/frontend/web` for the HTTP/WebSocket boundary, and the existing RPC
-client for session data. There is no JavaScript build system, new core facade,
-second history store or policy evaluator. `app.js` owns connection and session
+client for session data. There is no JavaScript build system, second history store or policy evaluator. `app.js` owns connection and session
 selection, `prompts.js` renders review choices, and `inspectors.js` renders fixed
 snapshots from the same redacted records. A pinned WebSocket library avoids a
 homegrown frame parser; its license is embedded in `nibb licenses`.
@@ -121,6 +126,10 @@ confirmations, exact persistent binding and host injection, forged destinations,
 and clean authority after resume.
 Inspector browser checks cover paged log filters, older-plan exclusion, fixed
 snapshot refresh, current/saved session distinctions and prompt priority.
-U3's guarded friction-file view and confirmed policy editing remain next.
+The friction view is covered through core, RPC and the browser WebSocket, with
+allow/deny/custom-confirm/cancellation, concurrent-operation rejection and canary
+redaction. Browser checks also cover prompt priority, cached result reopening,
+explicit guarded refresh and denial replacing the previous result.
+U3's confirmed policy editing remains next.
 U4 background runs, notifications and optional general TCP transport remain
 separate roadmap work.

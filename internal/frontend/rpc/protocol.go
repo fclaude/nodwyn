@@ -15,7 +15,7 @@ import (
 const ProtocolVersion = 1
 const maxFrame = 1 << 20
 
-var methods = []string{"session.list", "session.open", "session.resume", "session.info", "session.close", "session.send", "session.abort", "session.subscribe", "session.unsubscribe", "log.read", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.eval"}
+var methods = []string{"session.list", "session.open", "session.resume", "session.info", "session.close", "session.send", "session.abort", "session.subscribe", "session.unsubscribe", "log.read", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.eval", "session.friction"}
 
 type request struct {
 	JSONRPC string          `json:"jsonrpc"`

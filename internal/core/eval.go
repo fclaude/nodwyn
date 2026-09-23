@@ -13,29 +13,34 @@ import (
 // and result are redacted on the durable path; neither enters model context.
 func (s *Session) StartEval(source, actor string) error {
 	return s.startTurn(func(ctx context.Context) error {
-		if _, err := s.Record(log.KindEvalReq, log.EvalRequest{Source: source, Actor: actor}); err != nil {
-			return err
-		}
-		value, err := s.Eval(ctx, source)
-		result := log.EvalResult{}
-		var redactions []redact.Event
-		if err != nil {
-			result.Error = err.Error()
-		} else if value.Kind != scheme.KVoid {
-			// Scan decoded strings before Scheme escaping can hide token boundaries.
-			result.Value = scheme.WriteWithStrings(value, func(text string) string {
-				clean := redact.Redact(text, nil)
-				redactions = append(redactions, clean.Events...)
-				return clean.Text
-			})
-		}
-		record, recordErr := s.Record(log.KindEvalResult, result)
-		if recordErr != nil {
-			return recordErr
-		}
-		if auditErr := s.recordRedactions(record.Seq, redactions); auditErr != nil {
-			return auditErr
-		}
+		_, err := s.evalRecorded(ctx, source, actor)
 		return err
 	})
+}
+
+func (s *Session) evalRecorded(ctx context.Context, source, actor string) (scheme.Value, error) {
+	if _, err := s.Record(log.KindEvalReq, log.EvalRequest{Source: source, Actor: actor}); err != nil {
+		return scheme.Void, err
+	}
+	value, err := s.Eval(ctx, source)
+	result := log.EvalResult{}
+	var redactions []redact.Event
+	if err != nil {
+		result.Error = err.Error()
+	} else if value.Kind != scheme.KVoid {
+		// Scan decoded strings before Scheme escaping can hide token boundaries.
+		result.Value = scheme.WriteWithStrings(value, func(text string) string {
+			clean := redact.Redact(text, nil)
+			redactions = append(redactions, clean.Events...)
+			return clean.Text
+		})
+	}
+	record, recordErr := s.Record(log.KindEvalResult, result)
+	if recordErr != nil {
+		return scheme.Void, recordErr
+	}
+	if auditErr := s.recordRedactions(record.Seq, redactions); auditErr != nil {
+		return scheme.Void, auditErr
+	}
+	return value, err
 }

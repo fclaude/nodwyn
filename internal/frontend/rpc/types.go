@@ -37,3 +37,7 @@ type evalParams struct {
 	ID     string `json:"id"`
 	Source string `json:"source"`
 }
+
+type inspectionStarted struct {
+	OperationID string `json:"operation_id"`
+}
