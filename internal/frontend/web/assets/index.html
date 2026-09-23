@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>nibb · Sessions</title>
     <link rel="stylesheet" href="/style.css" />
-    <script src="/app.js" defer></script>
+    <script type="module" src="/app.js"></script>
   </head>
   <body>
     <header>
@@ -88,6 +88,12 @@
             </p>
           </div>
         </div>
+        <section
+          id="prompt-panel"
+          aria-label="Pending approval"
+          aria-live="polite"
+          hidden
+        ></section>
         <form id="composer" hidden>
           <label for="message">Message</label>
           <textarea

@@ -16,7 +16,9 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nibb/internal/keychain"
 	"github.com/fclaude/nibb/internal/llm"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
@@ -151,6 +153,12 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	if raw := receive(); !strings.Contains(string(raw["error"]), "read-only") {
 		t.Fatal(raw)
 	}
+	for i, method := range []string{"session.answer", "session.secret"} {
+		send(uint64(20+i), method, map[string]any{"id": info.ID, "prompt_id": "not-a-prompt", "reply": "y", "secret": "synthetic"})
+		if raw := receive(); !strings.Contains(string(raw["error"]), "read-only") {
+			t.Fatal(raw)
+		}
+	}
 	send(3, "session.subscribe", map[string]any{"id": info.ID})
 	if raw := receive(); len(raw["result"]) == 0 {
 		t.Fatal(raw)
@@ -193,10 +201,16 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	defer model.Close()
 	cfg := config.Default()
 	cfg.Control.URL = model.URL
+	cfg.Budget.ToolCallsSoft = 1
+	cfg.Budget.ToolCallsHard = 3
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	store, err := keychain.Create(filepath.Join(root, "keychain"), keychain.FastKDF, []byte("test-passphrase"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan error, 1)
 	go func() {
-		done <- rpc.Serve(ctx, listener, core.Options{Config: cfg, Paths: paths, Provider: llm.NewOllama(model.URL)})
+		done <- rpc.Serve(ctx, listener, core.Options{Keychain: store, Config: cfg, Paths: paths, Provider: llm.NewOllama(model.URL)})
 	}()
 	defer func() {
 		cancel()
@@ -256,10 +270,10 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	}
 	var hello rpc.HelloResult
 	call("hello", map[string]any{"protocol": 1}, &hello, false)
-	if !slices.Contains(hello.Methods, "session.send") || slices.Contains(hello.Methods, "session.secret") {
+	if !slices.Contains(hello.Methods, "session.send") || !slices.Contains(hello.Methods, "session.secret") {
 		t.Fatal(hello.Methods)
 	}
-	for _, method := range []string{"session.eval", "session.answer", "session.secret", "session.binding.create", "session.approval.create"} {
+	for _, method := range []string{"session.eval", "session.binding.create", "session.approval.create"} {
 		call(method, map[string]any{}, nil, true)
 	}
 	repo := filepath.Join(root, "repo")
@@ -284,6 +298,51 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	}
 	if !has("user.msg", "hello browser") || !has("llm.resp", "browser reply") {
 		t.Fatal(events)
+	}
+	terminal, err := rpc.Dial(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	next := func(kind string) rpc.ClientEvent {
+		t.Helper()
+		for {
+			for i, event := range events {
+				if event.Kind == kind {
+					events = events[i+1:]
+					return event
+				}
+			}
+			read()
+		}
+	}
+	checkBrowserPrompts(t, terminal, ctx, info.ID, repo, store, call, next)
+	model.Script(fake.Turn{ToolCalls: []fake.ToolCall{
+		{ID: "list1", Name: "fs-list", Args: map[string]any{"path": "."}},
+		{ID: "list2", Name: "fs-list", Args: map[string]any{"path": "."}},
+	}}, fake.Turn{Content: "checkpoint complete"})
+	call("session.send", map[string]any{"id": info.ID, "text": "test checkpoint"}, nil, false)
+	var checkpoint event.Checkpoint
+	if err := json.Unmarshal(next("prompt.checkpoint").Payload, &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if checkpoint.Checkpoint.Used != 1 {
+		t.Fatal(checkpoint)
+	}
+	call("session.answer", map[string]any{"id": info.ID, "prompt_id": checkpoint.ID, "reply": "4"}, nil, true)
+	call("session.answer", map[string]any{"id": info.ID, "prompt_id": checkpoint.ID, "reply": "3"}, nil, false)
+	if raw := next("turn.checkpoint").Payload; !strings.Contains(string(raw), `"soft":3`) || !strings.Contains(string(raw), `unix:uid=`) {
+		t.Fatal(string(raw))
+	}
+	for {
+		raw := next("status").Payload
+		if strings.Contains(string(raw), "idle") {
+			break
+		}
+	}
+	call("session.info", p, &info, false)
+	if info.TurnWrites || len(info.Writes) != 0 {
+		t.Fatal("budget answer widened authority")
 	}
 	call("session.abort", p, nil, false)
 	call("session.close", p, nil, false)

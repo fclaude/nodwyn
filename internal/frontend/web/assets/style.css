@@ -402,3 +402,51 @@ textarea:focus-visible {
 #new-session label {
   margin-top: 12px;
 }
+
+#prompt-panel {
+  border-top: 2px solid #b79b58;
+  background: #fffcf3;
+  padding: 20px 24px;
+  max-height: 60vh;
+  flex-shrink: 1;
+  overflow: auto;
+}
+#prompt-panel h2 {
+  margin-top: 8px;
+}
+#prompt-panel h3 {
+  font-size: 13px;
+}
+#prompt-panel p,
+#prompt-panel li {
+  font-size: 13px;
+}
+#prompt-panel label {
+  margin-top: 12px;
+}
+#prompt-panel form {
+  max-width: 600px;
+}
+.diff {
+  border: 1px solid var(--line);
+  background: white;
+  padding: 10px;
+}
+.diff span {
+  display: inline;
+  min-height: 1em;
+  white-space: pre-wrap;
+}
+.diff .addition {
+  background: #e8f4e8;
+  color: #234d2c;
+}
+.diff .deletion {
+  background: #f9e9e5;
+  color: #7c352b;
+}
+
+.conversation:has(#prompt-panel:not([hidden])) #transcript {
+  padding: 12px 24px;
+  min-height: 0;
+}

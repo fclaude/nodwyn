@@ -98,7 +98,7 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.connect(w, r)
-	case "/", "/app.js", "/style.css":
+	case "/", "/app.js", "/prompts.js", "/style.css":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -237,8 +237,8 @@ func write(ctx context.Context, c *websocket.Conn, v any) error {
 	return wsjson.Write(ctx, c, v)
 }
 
-// Conversation controls do not expose Scheme evaluation or prompt authority.
-// Those operations need their own complete UI before joining this allowlist.
+// Only operations with a complete browser view join this allowlist.
+// Core remains authoritative for every answer and its live prompt ID.
 func (b *bridge) allowed(method string) bool {
 	if readOnly(method) {
 		return true
@@ -247,7 +247,7 @@ func (b *bridge) allowed(method string) bool {
 		return false
 	}
 	switch method {
-	case "session.open", "session.resume", "session.send", "session.abort", "session.close":
+	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret":
 		return true
 	}
 	return false

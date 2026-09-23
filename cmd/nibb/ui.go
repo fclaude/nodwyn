@@ -19,7 +19,7 @@ import (
 func runUI(args []string) error {
 	flags := flag.NewFlagSet("nibb ui", flag.ContinueOnError)
 	socket := flags.String("socket", "", "daemon socket path")
-	readOnly := flags.Bool("read-only", false, "disable browser conversation and lifecycle operations")
+	readOnly := flags.Bool("read-only", false, "view sessions without messages, prompt replies, or lifecycle changes")
 	noOpen := flags.Bool("no-open", false, "print the local URL without opening a browser")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -58,7 +58,7 @@ func runUI(args []string) error {
 	if *readOnly {
 		fmt.Fprintln(os.Stderr, "Read-only session view. Ctrl-C stops the bridge; daemon sessions keep running.")
 	} else {
-		fmt.Fprintln(os.Stderr, "Browser conversation controls enabled. Approval and credential replies remain in the terminal. Ctrl-C stops only the bridge.")
+		fmt.Fprintln(os.Stderr, "Browser conversation and prompt replies enabled. Ctrl-C stops only the bridge.")
 	}
 	if !*noOpen {
 		command := "xdg-open"

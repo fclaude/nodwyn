@@ -372,3 +372,19 @@ reply automatically retries a mutation. Transcript catch-up restores the current
 busy snapshot after historical events, then applies queued live events. Browser
 checks cover creation, sending, drafts, close/resume and aborting a pending prompt.
 Approval/diff panels, masked replies and inspectors remain U3 work.
+
+
+## U3 prompt panel — 2026-09-22
+
+The browser now displays pending confirmations with reasons, arguments, egress
+scope and the existing write diff. One-time allow/deny, masked keychain input,
+and budget checkpoint answers use the existing explicit RPC methods. Read-only
+mode renders these prompts without reply controls and rejects replies server-side.
+
+A reconnect restores pending snapshots; durable receipts, idle, or another client
+answering clear the panel. Secret input is never a message draft and clears on
+submit, refresh, session switch and disconnect. Browser strings cannot promise
+memory wiping. Replies use the bridge's kernel-authenticated Unix peer identity;
+tabs do not establish distinct identities. Core still rejects stale IDs, forged
+actors, and attempts to exceed a checkpoint's hard ceiling. Standing approval and
+binding controls, plan/budget overviews and inspectors remain unfinished U3 work.

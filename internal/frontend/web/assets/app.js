@@ -1,4 +1,4 @@
-"use strict";
+import { renderPrompt } from "./prompts.js";
 const $ = (id) => document.getElementById(id);
 const text = (tag, value, className = "") => {
   const node = document.createElement(tag);
@@ -23,11 +23,51 @@ let queued = [],
   toolCard = null;
 const pending = new Map();
 const drafts = new Map();
+let activePrompt = null;
+let resolvedPrompts = new Set();
+function clearPrompt() {
+  if (activePrompt) resolvedPrompts.add(activePrompt.payload.ID);
+  activePrompt = null;
+  awaitingReply = "";
+  renderPrompt($("prompt-panel"), null);
+}
+function showPrompt(event) {
+  const id = event.payload.ID;
+  if (!id || resolvedPrompts.has(id) || activePrompt?.payload.ID === id) return;
+  activePrompt = event;
+  awaitingReply = id;
+  const method =
+    event.kind === "prompt.secret" ? "session.secret" : "session.answer";
+  renderPrompt(
+    $("prompt-panel"),
+    event,
+    methods.has(method),
+    (method, params) => {
+      const sessionID = selected.id,
+        version = selection;
+      action(async () => {
+        try {
+          await call(method, { id: sessionID, prompt_id: id, ...params });
+          resolvedPrompts.add(id);
+          if (version === selection && awaitingReply === id) {
+            clearPrompt();
+            notice(baseNotice);
+          }
+        } catch (error) {
+          // Never keep secret input or reuse an uncertain prompt after an error.
+          if (version === selection && socket?.readyState === WebSocket.OPEN)
+            await refresh();
+          throw error;
+        }
+      });
+    },
+  );
+}
 let methods = new Set(),
   actionPending = false;
 function modeNotice() {
   return methods.has("session.send")
-    ? "Approval and credential replies remain in the terminal client."
+    ? "Review each requested operation in its approval panel."
     : "Read-only view. Send messages and answer prompts in the terminal client.";
 }
 function controls() {
@@ -35,7 +75,9 @@ function controls() {
   const ready = connected && !loading && !actionPending;
   $("new-session").hidden = !methods.has("session.open");
   $("create").disabled = !ready;
-  $("composer").hidden = !methods.has("session.send");
+  for (const control of $("prompt-panel").querySelectorAll("button,input"))
+    control.disabled = !ready;
+  $("composer").hidden = !methods.has("session.send") || !!activePrompt;
   $("message").disabled = !ready || !selected?.open;
   $("send").disabled =
     !ready || !selected?.open || selected.busy || !$("message").value.trim();
@@ -110,6 +152,7 @@ function connect() {
   connection.onclose = () => {
     if (socket !== connection) return;
     selection++;
+    clearPrompt();
     loading = false;
     queued = [];
     for (const wait of pending.values()) {
@@ -182,7 +225,8 @@ async function selectSession(item) {
   $("message").value = drafts.get(item.id) || "";
   loading = true;
   controls();
-  awaitingReply = "";
+  clearPrompt();
+  resolvedPrompts = new Set();
   queued = [];
   seen = new Set();
   streamText = null;
@@ -263,7 +307,7 @@ function entry(label, content, kind = "") {
   const node = text("article", "", `entry ${kind}`);
   node.append(text("div", label, "entry-label"));
   if (content !== undefined) node.append(text("div", content, "message"));
-  $("transcript").querySelector(":scope > .hint")?.remove();
+  $("transcript").querySelector(":scope > p.hint")?.remove();
   $("transcript").append(node);
   return node;
 }
@@ -283,6 +327,16 @@ function render(event) {
   if (event.seq) seen.add(event.seq);
   const p = event.payload || {},
     kind = event.kind;
+  if (
+    p.prompt_id &&
+    ["guard.decision", "turn.checkpoint", "cred.register"].includes(kind)
+  ) {
+    resolvedPrompts.add(p.prompt_id);
+    if (awaitingReply === p.prompt_id) {
+      clearPrompt();
+      notice(baseNotice);
+    }
+  }
   const viewport = $("transcript");
   const follow =
     viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 90;
@@ -330,11 +384,6 @@ function render(event) {
       break;
     }
     case "guard.decision": {
-      if (awaitingReply && p.prompt_id === awaitingReply) {
-        awaitingReply = "";
-        notice(baseNotice);
-        $("activity").textContent = "Running";
-      }
       const node =
         (p.origin === "model" ? toolCard?.node : null) ||
         entry("Guard", undefined, "audit");
@@ -357,19 +406,23 @@ function render(event) {
     case "prompt.confirm":
     case "prompt.secret":
     case "prompt.checkpoint":
+      if (resolvedPrompts.has(p.ID)) break;
       busy(true);
-      awaitingReply = p.ID ?? p.id;
-      $("activity").textContent = "Needs your answer";
-      notice(
-        "This session needs your answer. Use the terminal client; this browser view cannot approve or submit secrets.",
-      );
+      showPrompt(event);
+      if (awaitingReply) {
+        $("activity").textContent = "Needs your answer";
+        notice(
+          "Review the pending prompt below. Its answer applies to this session only.",
+        );
+      }
+      controls();
       break;
     case "status":
       if (field(p, "state") === "idle") {
         busy(false);
         $("activity").textContent = "Idle";
         if (awaitingReply) {
-          awaitingReply = "";
+          clearPrompt();
           notice(baseNotice);
         }
       } else {
@@ -383,7 +436,7 @@ function render(event) {
       break;
     case "session.closed":
       selected.open = false;
-      awaitingReply = "";
+      clearPrompt();
       busy(false);
       $("activity").textContent = "Saved";
       notice("Session closed. Its transcript remains available.");
@@ -394,7 +447,8 @@ function render(event) {
     case "approval.change":
     case "binding.change":
     case "summary":
-    case "summary.drop": {
+    case "summary.drop":
+    case "cred.register": {
       const node = entry(kind, undefined, "audit");
       detail(node, "Recorded details", p);
       break;
