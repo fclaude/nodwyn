@@ -13,6 +13,7 @@ import (
 )
 
 type entry struct {
+	tool     *toolCallView
 	text     string
 	thinking bool
 }
@@ -32,6 +33,7 @@ type model struct {
 	composer                                     textarea.Model
 	viewport                                     viewport.Model
 	transcript                                   []entry
+	activeTool                                   *toolCallView
 	liveText, liveThinking                       string
 	thinking                                     bool
 	lastSeq                                      uint64
@@ -110,6 +112,7 @@ func (m *model) restore(s snapshot) {
 	m.loading, m.disconnected = false, false
 	m.lastSeq = 0
 	m.transcript = nil
+	m.activeTool = nil
 	m.liveText = ""
 	m.liveThinking = ""
 	m.prompt = nil
@@ -125,6 +128,9 @@ func (m *model) restore(s snapshot) {
 	m.busy = s.Busy
 	for _, e := range s.Pending {
 		m.consume(e)
+	}
+	if !m.busy {
+		m.endToolInterval()
 	}
 	m.refresh(true)
 }
@@ -432,7 +438,11 @@ func (m *model) refresh(bottom bool) {
 	var rows []string
 	for _, line := range m.transcript {
 		if !line.thinking || m.thinking {
-			rows = append(rows, line.text)
+			if line.tool != nil {
+				rows = append(rows, line.tool.render())
+			} else {
+				rows = append(rows, line.text)
+			}
 		}
 	}
 	content := strings.Join(rows, "\n")

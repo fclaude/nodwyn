@@ -54,11 +54,13 @@ func (m *model) consume(e rpc.ClientEvent) {
 			m.append(p.Text)
 		}
 	case string(log.KindUserMsg):
+		m.endToolInterval()
 		var p log.UserMsg
 		p, err = decode[log.UserMsg](e.Payload)
 		m.append("\nyou> " + p.Text)
 		m.busy = true
 	case string(log.KindLLMResp):
+		m.endToolInterval()
 		var p log.LLMResp
 		p, err = decode[log.LLMResp](e.Payload)
 		if p.Thinking != "" {
@@ -73,23 +75,28 @@ func (m *model) consume(e rpc.ClientEvent) {
 	case string(log.KindToolCall):
 		var p log.ToolCallEvent
 		p, err = decode[log.ToolCallEvent](e.Payload)
-		m.append("▸ " + p.Name + " " + string(p.Args))
+		if err == nil {
+			m.startToolCall(p)
+		} else {
+			m.endToolInterval()
+		}
 	case string(log.KindToolResult):
 		var p log.ToolResult
 		p, err = decode[log.ToolResult](e.Payload)
-		if p.OK {
-			m.append(fmt.Sprintf("◂ %s · ok (%d bytes)", p.Name, len(p.Value)))
-		} else {
-			m.append("◂ " + p.Name + " · error: " + p.Error)
+		if err == nil {
+			m.recordToolResult(p)
 		}
 	case string(log.KindGuardDecision):
 		var p log.GuardDecision
 		p, err = decode[log.GuardDecision](e.Payload)
-		if p.Decision != "allow" || p.Detail != "" {
-			m.append("⚑ " + p.Prim + " · " + p.Decision + " " + p.Answer + " · " + p.Reason + "\n" + p.Detail)
-		}
-		if p.PromptID != "" {
-			m.clearPrompt(p.PromptID)
+		if err == nil {
+			grouped := m.recordToolDecision(p)
+			if !grouped && (p.Decision != "allow" || p.Detail != "") {
+				m.append("⚑ " + p.Prim + " · " + p.Decision + " " + p.Answer + " · " + p.Reason + "\n" + p.Detail)
+			}
+			if p.PromptID != "" {
+				m.clearPrompt(p.PromptID)
+			}
 		}
 	case string(log.KindGatePlan):
 		var p log.GatePlan
@@ -98,6 +105,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 			m.append(fmt.Sprintf("plan · %.2f\n%s", p.Score, p.Plan))
 		}
 	case string(log.KindEvalReq):
+		m.endToolInterval()
 		var p log.EvalRequest
 		p, err = decode[log.EvalRequest](e.Payload)
 		m.append("\nscheme> " + p.Source)
@@ -138,17 +146,20 @@ func (m *model) consume(e rpc.ClientEvent) {
 		var p event.StatusInfo
 		p, err = decode[event.StatusInfo](e.Payload)
 		if p.State == "idle" {
+			m.endToolInterval()
 			m.busy = false
 			if m.prompt != nil {
 				m.clearPrompt(m.prompt.id)
 			}
 		}
-	case string(log.KindTurnEnd):
+	case string(log.KindTurnEnd), string(log.KindSessionEnd):
+		m.endToolInterval()
 		m.busy = false
 		if m.prompt != nil {
 			m.clearPrompt(m.prompt.id)
 		}
 	case "session.closed":
+		m.endToolInterval()
 		m.disconnected = true
 		m.busy = false
 		m.status = "Session closed. Reconnect to resume its history."

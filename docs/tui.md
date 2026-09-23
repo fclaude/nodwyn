@@ -75,6 +75,31 @@ Unsent drafts also survive daemon reconnects, but are not saved across exits.
 Submitted operations are never retried automatically. Existing CLI commands
 and plain mode remain available.
 
+## Tool-call groups
+
+Each model tool call has one transcript group with its name, call ID, formatted
+arguments, guard decisions and full result or error. The header reports the
+recorded result status and elapsed milliseconds. While awaiting a result it
+says so; if the interval ends without one, it says `no result recorded`.
+PgUp/PgDn scroll through long arguments, results and standing-approval diffs.
+All rendered fields pass through the existing redaction and terminal sanitizer.
+
+Calls execute serially. The frontend joins a result only to the current open
+call with the same ID and name, so reused provider IDs do not overwrite earlier
+calls. A result without a matching call (including a skipped call) is displayed
+separately with arguments marked unavailable. It never fabricates an execution.
+
+Guard records have no call ID. The group therefore labels them **guard decisions
+during this call**, using only model-origin records within the open call/result
+interval. This includes nested Scheme operations; it is not an inferred overall
+permission verdict. User-origin and out-of-interval decisions keep their existing
+standalone presentation. Pending approvals still replace the transcript and
+require an explicit answer.
+
+History catch-up reconstructs the same groups as live delivery. Reconnect can
+continue an open call; duplicate events are ignored by sequence. The durable log,
+RPC schema, CLI replay and `:replay` output are unchanged.
+
 ## Read-only inspectors
 
 Inspectors replace the conversation viewport without stopping event delivery.
@@ -161,6 +186,7 @@ text is redacted and stripped of terminal control sequences before rendering.
 - `composer.go`: multiline editor setup, input routing and editor/viewport sizing.
 - `inspect.go` and `inspect_backend.go`: snapshot viewers and their read paths.
 - `tools.go`: model-facing tool list and input-schema presentation.
+- `tool_calls.go`: serial call/result grouping and guard/result presentation.
 - `run.go` and `cmd/nibb/tui.go`: lifecycle and command startup.
 
 Core now exposes a copied binding-metadata snapshot (ADR 10 amendment). Scheme,
@@ -171,6 +197,6 @@ as `github.com/charmbracelet` so the new dependency cannot enter core.
 The initial client, read-only inspectors, tool discovery and multiline composer
 are implemented;
 P9 is not complete.
-Remaining work includes fuller tool/plan/budget views and the guarded binding-edit
+Remaining work includes plan/budget views and the guarded binding-edit
 workflow and broader parity with line-mode commands. U3's
 desktop client and U4's background supervisor remain separate roadmap work.

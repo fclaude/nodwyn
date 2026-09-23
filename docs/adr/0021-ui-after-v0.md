@@ -267,3 +267,16 @@ Plain-mode aliases `:h`, `:q`, `:quit`, `:exit` and `:allow` are also recognized
 `:allow` opens the existing binding/current approval view. Commands do not
 intercept a pending prompt's reply. Full flow parity and richer tool/plan/budget
 presentation remain P9 work, along with guarded binding edits.
+
+
+## P9 tool-call presentation — 2026-09-22
+
+Tool calls now render as grouped arguments, recorded guard decisions, and full
+results/errors with elapsed time. The frontend follows the existing serial
+execution interval and requires matching result ID and name; reused IDs do not
+merge across intervals. Skipped/unmatched results stand alone, and missing
+results remain explicitly unknown. Guard records lack call IDs, so only
+model-origin decisions in the interval appear under “during this call,” never
+as an invented aggregate permission verdict. Reconnect rebuilds these groups
+from the log. No core, guard, durable schema, RPC or plain-replay behavior changed.
+P9's plan/budget presentation, guarded binding edits and full flow parity remain.

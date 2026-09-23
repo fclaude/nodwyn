@@ -184,7 +184,9 @@ queue limits and ownership.
 `nibb tui --repo /path/to/project` starts the full-screen client locally;
 `nibb tui --socket /path/to/sock` attaches to a daemon. Choose or resume a
 session, follow the conversation, inspect scrollable approval diffs, and reply
-to budget or masked credential prompts. Ctrl+C aborts busy work; Ctrl+Q quits.
+to budget or masked credential prompts. Tool calls group their arguments,
+recorded guard decisions and full results or errors. Ctrl+C aborts busy work;
+Ctrl+Q quits.
 Quitting a daemon client detaches without stopping its session; Ctrl+R reconnects
 and recovers history without resending operations. Plain mode remains the default.
 Use `:tools` to list model-facing tools, or `:tools NAME` for an input schema.
