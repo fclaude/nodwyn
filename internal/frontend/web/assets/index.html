@@ -39,7 +39,21 @@
           <h2>Sessions</h2>
           <button id="refresh" aria-label="Refresh sessions">Refresh</button>
         </div>
-        <p class="hint">Read-only view · operations stay in your terminal.</p>
+        <p id="mode" class="hint"></p>
+        <details id="new-session" hidden>
+          <summary>New session</summary>
+          <form id="new-form">
+            <label for="new-repo">Existing repository directory</label>
+            <input
+              id="new-repo"
+              placeholder="/absolute/path/to/project"
+              required
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="create" type="submit">Create session</button>
+          </form>
+        </details>
         <nav id="sessions" aria-label="Sessions"></nav>
       </aside>
       <section class="conversation">
@@ -49,7 +63,20 @@
             <h1 id="session-title">Select a session</h1>
             <p id="repo"></p>
           </div>
-          <span id="activity"></span>
+          <div>
+            <span id="activity"></span>
+            <div class="actions">
+              <button id="resume" hidden>Resume</button
+              ><button id="abort" hidden>Abort turn</button>
+              <button
+                id="close-session"
+                hidden
+                title="Close the session, stopping any work; history is kept"
+              >
+                Close session
+              </button>
+            </div>
+          </div>
         </div>
         <div id="notice" role="status"></div>
         <div id="transcript" aria-label="Session transcript">
@@ -61,6 +88,20 @@
             </p>
           </div>
         </div>
+        <form id="composer" hidden>
+          <label for="message">Message</label>
+          <textarea
+            id="message"
+            rows="3"
+            placeholder="What should nibb work on?"
+            spellcheck="true"
+          ></textarea>
+          <div class="compose-footer">
+            <span class="hint"
+              >Drafts stay in this tab. Sending starts a model turn.</span
+            ><button id="send" type="submit">Send</button>
+          </div>
+        </form>
       </section>
     </main>
   </body>

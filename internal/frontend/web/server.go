@@ -33,21 +33,28 @@ func PairingCode() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
+type Options struct {
+	Socket      string
+	PairingCode string
+	ReadOnly    bool
+}
+
 type bridge struct {
+	readOnly           bool
 	ctx                context.Context
 	socket, host, code string
 }
 
 // Serve accepts only a 127.0.0.1 listener. The pairing code travels through the
 // local terminal and a same-origin POST, never a URL, script-accessible storage or RPC log.
-func Serve(ctx context.Context, listener net.Listener, socket, code string) error {
+func Serve(ctx context.Context, listener net.Listener, options Options) error {
 	addr, ok := listener.Addr().(*net.TCPAddr)
-	if !ok || !addr.IP.Equal(net.IPv4(127, 0, 0, 1)) || len(code) < 32 {
+	if !ok || !addr.IP.Equal(net.IPv4(127, 0, 0, 1)) || len(options.PairingCode) < 32 {
 		return fmt.Errorf("web: requires 127.0.0.1 and a strong pairing code")
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	b := &bridge{ctx: ctx, socket: socket, host: listener.Addr().String(), code: code}
+	b := &bridge{ctx: ctx, socket: options.Socket, host: listener.Addr().String(), code: options.PairingCode, readOnly: options.ReadOnly}
 	server := &http.Server{Handler: b, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10}
 	done := make(chan struct{})
 	go func() {
@@ -145,7 +152,9 @@ type request struct {
 func (b *bridge) connect(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(b.ctx)
 	defer cancel()
-	client, err := rpc.Dial(ctx, b.socket)
+	dialCtx, stop := context.WithTimeout(ctx, 5*time.Second)
+	client, err := rpc.Dial(dialCtx, b.socket)
+	stop()
 	if err != nil {
 		http.Error(w, "Daemon unavailable", http.StatusServiceUnavailable)
 		return
@@ -186,11 +195,29 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case req.JSONRPC != "2.0" || req.ID == 0:
 			callErr = errors.New("invalid request")
-		case !readOnly(req.Method):
-			callErr = errors.New("this browser view is read-only; use the terminal client for this operation")
+		case !b.allowed(req.Method):
+			callErr = errors.New("operation unavailable in this browser mode; use the terminal client")
+			if b.readOnly {
+				callErr = errors.New("this browser view is read-only; use the terminal client for this operation")
+			}
 		default:
 			callCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-			callErr = client.Call(callCtx, req.Method, req.Params, &result)
+			if req.Method == "hello" {
+				var hello rpc.HelloResult
+				callErr = client.Call(callCtx, req.Method, req.Params, &hello)
+				if callErr == nil {
+					methods := []string{}
+					for _, method := range hello.Methods {
+						if b.allowed(method) {
+							methods = append(methods, method)
+						}
+					}
+					hello.Methods = methods
+					result, callErr = json.Marshal(hello)
+				}
+			} else {
+				callErr = client.Call(callCtx, req.Method, req.Params, &result)
+			}
 			stop()
 		}
 		reply := map[string]any{"jsonrpc": "2.0", "id": req.ID}
@@ -208,4 +235,20 @@ func write(ctx context.Context, c *websocket.Conn, v any) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	return wsjson.Write(ctx, c, v)
+}
+
+// Conversation controls do not expose Scheme evaluation or prompt authority.
+// Those operations need their own complete UI before joining this allowlist.
+func (b *bridge) allowed(method string) bool {
+	if readOnly(method) {
+		return true
+	}
+	if b.readOnly {
+		return false
+	}
+	switch method {
+	case "session.open", "session.resume", "session.send", "session.abort", "session.close":
+		return true
+	}
+	return false
 }

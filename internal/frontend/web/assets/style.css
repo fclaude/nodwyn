@@ -353,3 +353,52 @@ code {
     margin: 7vh auto;
   }
 }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+#composer {
+  border-top: 1px solid var(--line);
+  padding: 12px 24px;
+}
+#composer label {
+  margin: 0 0 5px;
+}
+textarea {
+  width: 100%;
+  resize: vertical;
+  max-height: 25vh;
+  min-height: 60px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px;
+  font: inherit;
+  color: var(--ink);
+  background: white;
+}
+textarea:focus-visible {
+  outline: 3px solid #98b9a3;
+}
+.compose-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+.compose-footer .hint {
+  margin: 4px 0;
+}
+.compose-footer button {
+  width: auto;
+  margin: 4px 0;
+  padding: 7px 22px;
+}
+#new-session {
+  margin-bottom: 20px;
+}
+#new-session label {
+  margin-top: 12px;
+}

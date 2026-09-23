@@ -22,6 +22,35 @@ let queued = [],
   streamThinking = null,
   toolCard = null;
 const pending = new Map();
+const drafts = new Map();
+let methods = new Set(),
+  actionPending = false;
+function modeNotice() {
+  return methods.has("session.send")
+    ? "Approval and credential replies remain in the terminal client."
+    : "Read-only view. Send messages and answer prompts in the terminal client.";
+}
+function controls() {
+  const connected = socket?.readyState === WebSocket.OPEN;
+  const ready = connected && !loading && !actionPending;
+  $("new-session").hidden = !methods.has("session.open");
+  $("create").disabled = !ready;
+  $("composer").hidden = !methods.has("session.send");
+  $("message").disabled = !ready || !selected?.open;
+  $("send").disabled =
+    !ready || !selected?.open || selected.busy || !$("message").value.trim();
+  $("resume").hidden =
+    !selected || selected.open || !methods.has("session.resume");
+  $("resume").disabled = !ready;
+  $("abort").hidden = !selected?.open || !methods.has("session.abort");
+  $("abort").disabled = !ready || !selected?.busy;
+  $("close-session").hidden = !selected?.open || !methods.has("session.close");
+  $("close-session").disabled = !ready || selected?.busy;
+}
+function busy(value) {
+  if (selected) selected.busy = value;
+  controls();
+}
 function call(method, params = {}) {
   return new Promise((resolve, reject) => {
     if (socket?.readyState !== WebSocket.OPEN) {
@@ -54,6 +83,10 @@ function connect() {
     $("workspace").hidden = false;
     $("connection").textContent = "Connected · local daemon";
     try {
+      const hello = await call("hello", { protocol: 1 });
+      methods = new Set(hello.methods);
+      $("mode").textContent = modeNotice();
+      controls();
       await refresh();
     } catch (error) {
       notice(error.message);
@@ -84,6 +117,7 @@ function connect() {
       wait.reject(new Error("Connection lost; no operation was retried."));
     }
     pending.clear();
+    controls();
     $("connection").textContent = "Disconnected";
     $("reconnect").hidden = false;
     if ($("workspace").hidden) $("pairing").hidden = false;
@@ -101,7 +135,13 @@ async function refresh() {
   $("sessions").replaceChildren();
   if (!sessions.length)
     $("sessions").append(
-      text("p", "No sessions yet. Start one in the terminal.", "hint"),
+      text(
+        "p",
+        methods.has("session.open")
+          ? "No sessions yet. Create one above."
+          : "No sessions yet. Start one in the terminal.",
+        "hint",
+      ),
     );
   for (const item of sessions) {
     const button = text(
@@ -137,8 +177,11 @@ async function refresh() {
 async function selectSession(item) {
   const version = ++selection,
     previous = selected;
+  if (previous) drafts.set(previous.id, $("message").value);
   selected = item;
+  $("message").value = drafts.get(item.id) || "";
   loading = true;
+  controls();
   awaitingReply = "";
   queued = [];
   seen = new Set();
@@ -161,6 +204,7 @@ async function selectSession(item) {
       await call("session.unsubscribe", { id: previous.id }).catch(() => {});
     if (version !== selection) return;
     let page,
+      snapshotBusy = item.busy,
       prompts = [];
     if (item.open) {
       const snapshot = await call("session.subscribe", {
@@ -171,7 +215,7 @@ async function selectSession(item) {
       if (version !== selection) return;
       page = snapshot.page;
       prompts = snapshot.pending;
-      $("activity").textContent = snapshot.busy ? "Running" : "Idle";
+      snapshotBusy = snapshot.busy;
     } else page = await call("log.read", { id: item.id, after: 0, limit: 200 });
     const through = page.through;
     let truncated = false;
@@ -190,18 +234,27 @@ async function selectSession(item) {
     if (version !== selection) return;
     baseNotice = truncated
       ? "Incomplete log tail: showing its valid prefix. Use the terminal client to recover it."
-      : "Read-only view. Send messages and answer prompts in the terminal client.";
+      : modeNotice();
+    selected.busy = snapshotBusy;
+    $("activity").textContent = item.open
+      ? snapshotBusy
+        ? "Running"
+        : "Idle"
+      : "Saved";
     notice(baseNotice);
     for (const event of prompts) render(event);
     loading = false;
     for (const event of queued) render(event);
     queued = [];
+    controls();
     if (!$("transcript").children.length)
       $("transcript").append(text("p", "No conversation yet.", "hint"));
   } catch (error) {
     if (version === selection) {
-      loading = false;
+      // A failed history load must not enable sending against uncertain state.
+      loading = true;
       queued = [];
+      controls();
       notice(error.message);
     }
   }
@@ -210,6 +263,7 @@ function entry(label, content, kind = "") {
   const node = text("article", "", `entry ${kind}`);
   node.append(text("div", label, "entry-label"));
   if (content !== undefined) node.append(text("div", content, "message"));
+  $("transcript").querySelector(":scope > .hint")?.remove();
   $("transcript").append(node);
   return node;
 }
@@ -235,6 +289,7 @@ function render(event) {
   switch (kind) {
     case "user.msg":
       toolCard = null;
+      if (!loading) busy(true);
       entry("You", p.text, "user");
       break;
     case "stream.text":
@@ -302,6 +357,7 @@ function render(event) {
     case "prompt.confirm":
     case "prompt.secret":
     case "prompt.checkpoint":
+      busy(true);
       awaitingReply = p.ID ?? p.id;
       $("activity").textContent = "Needs your answer";
       notice(
@@ -310,18 +366,25 @@ function render(event) {
       break;
     case "status":
       if (field(p, "state") === "idle") {
+        busy(false);
         $("activity").textContent = "Idle";
         if (awaitingReply) {
           awaitingReply = "";
           notice(baseNotice);
         }
-      } else if (!awaitingReply)
-        $("activity").textContent = field(p, "detail") || field(p, "state");
+      } else {
+        busy(true);
+        if (!awaitingReply)
+          $("activity").textContent = field(p, "detail") || field(p, "state");
+      }
       break;
     case "error":
       entry("Error", field(p, "err"), "audit");
       break;
     case "session.closed":
+      selected.open = false;
+      awaitingReply = "";
+      busy(false);
       $("activity").textContent = "Saved";
       notice("Session closed. Its transcript remains available.");
       break;
@@ -342,7 +405,10 @@ function render(event) {
       break;
     case "eval.req":
     case "eval.result": {
-      if (kind === "eval.req") $("activity").textContent = "Evaluating";
+      if (kind === "eval.req" && !loading) {
+        busy(true);
+        $("activity").textContent = "Evaluating";
+      }
       toolCard = null;
       const node = entry(kind, undefined, "audit");
       detail(node, "User evaluation", p);
@@ -376,4 +442,78 @@ $("refresh").addEventListener("click", () =>
   refresh().catch((error) => notice(error.message)),
 );
 $("reconnect").addEventListener("click", connect);
+$("message").addEventListener("input", () => {
+  if (selected) drafts.set(selected.id, $("message").value);
+  controls();
+});
+async function action(work) {
+  if (actionPending) return;
+  actionPending = true;
+  controls();
+  try {
+    await work();
+  } catch (error) {
+    notice(
+      `${error.message} Nothing was retried; inspect the transcript before sending again.`,
+    );
+  } finally {
+    actionPending = false;
+    controls();
+  }
+}
+$("new-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  action(async () => {
+    const version = selection;
+    const info = await call("session.open", {
+      repo: $("new-repo").value.trim(),
+    });
+    if (version === selection) await selectSession({ ...info, open: true });
+    await refresh();
+  });
+});
+$("resume").addEventListener("click", () =>
+  action(async () => {
+    const item = selected,
+      version = selection;
+    const info = await call("session.resume", { id: item.id });
+    if (version === selection)
+      await selectSession({ ...item, ...info, open: true });
+    await refresh();
+  }),
+);
+$("close-session").addEventListener("click", () =>
+  action(async () => {
+    await call("session.close", { id: selected.id });
+    await refresh();
+  }),
+);
+$("abort").addEventListener("click", () =>
+  action(async () => {
+    await call("session.abort", { id: selected.id });
+  }),
+);
+$("composer").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if ($("send").disabled) return;
+  const item = selected,
+    version = selection,
+    draft = $("message").value;
+  action(async () => {
+    busy(true);
+    $("activity").textContent = "Sending…";
+    try {
+      await call("session.send", { id: item.id, text: draft });
+      if (drafts.get(item.id) === draft) drafts.delete(item.id);
+      if (selected?.id === item.id && $("message").value === draft)
+        $("message").value = "";
+    } catch (error) {
+      // State may already have changed at the daemon; a failed reply is not
+      // evidence of failed delivery. Reload before enabling another send.
+      if (version === selection && socket?.readyState === WebSocket.OPEN)
+        await refresh();
+      throw error;
+    }
+  });
+});
 connect();

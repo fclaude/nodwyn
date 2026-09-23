@@ -357,3 +357,18 @@ log reads. All mutation methods are rejected by the bridge. The browser renders
 literal text, catches up to a fixed watermark before live delivery, and never
 retries an operation after disconnect. Interactive turns, approvals, credentials,
 plan/budget views and inspectors are still U3 work, not implemented by this slice.
+
+
+## U3 conversation controls — 2026-09-22
+
+The paired browser bridge now forwards session open/resume/send/abort/close to the
+existing daemon. `--read-only` preserves the original authority restriction.
+Hello advertises only methods allowed by this bridge; server enforcement remains
+independent of the visible controls. Scheme evaluation, prompt replies, secrets,
+standing approvals and bindings are still unavailable from this slice.
+
+The composer holds per-session drafts only in tab memory. No reconnect or failed
+reply automatically retries a mutation. Transcript catch-up restores the current
+busy snapshot after historical events, then applies queued live events. Browser
+checks cover creation, sending, drafts, close/resume and aborting a pending prompt.
+Approval/diff panels, masked replies and inspectors remain U3 work.

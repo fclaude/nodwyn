@@ -11,6 +11,7 @@ import (
 )
 
 // These aliases expose the server's existing wire contract to frontend clients.
+type HelloResult = helloResult
 type SessionInfo = sessionInfo
 type SessionDetails = sessionDetails
 

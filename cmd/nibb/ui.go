@@ -19,6 +19,7 @@ import (
 func runUI(args []string) error {
 	flags := flag.NewFlagSet("nibb ui", flag.ContinueOnError)
 	socket := flags.String("socket", "", "daemon socket path")
+	readOnly := flags.Bool("read-only", false, "disable browser conversation and lifecycle operations")
 	noOpen := flags.Bool("no-open", false, "print the local URL without opening a browser")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -54,7 +55,11 @@ func runUI(args []string) error {
 	url := "http://" + listener.Addr().String()
 	fmt.Fprintln(os.Stderr, "Browser view:", url)
 	fmt.Fprintln(os.Stderr, "Pairing code (paste into this browser only):", code)
-	fmt.Fprintln(os.Stderr, "Read-only session view. Ctrl-C stops the browser bridge; daemon sessions keep running.")
+	if *readOnly {
+		fmt.Fprintln(os.Stderr, "Read-only session view. Ctrl-C stops the bridge; daemon sessions keep running.")
+	} else {
+		fmt.Fprintln(os.Stderr, "Browser conversation controls enabled. Approval and credential replies remain in the terminal. Ctrl-C stops only the bridge.")
+	}
 	if !*noOpen {
 		command := "xdg-open"
 		if runtime.GOOS == "darwin" {
@@ -67,5 +72,5 @@ func runUI(args []string) error {
 			go launcher.Wait()
 		}
 	}
-	return webui.Serve(ctx, listener, *socket, code)
+	return webui.Serve(ctx, listener, webui.Options{Socket: *socket, PairingCode: code, ReadOnly: *readOnly})
 }

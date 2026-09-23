@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ import (
 const testCode = "test-only-browser-pairing-capability-000000"
 
 func TestBrowserAuthorityBoundary(t *testing.T) {
-	b := &bridge{ctx: context.Background(), host: "127.0.0.1:34567", code: testCode}
+	b := &bridge{readOnly: true, ctx: context.Background(), host: "127.0.0.1:34567", code: testCode}
 	for _, tt := range []struct {
 		name, method, path, host, origin, site, body string
 		status                                       int
@@ -107,7 +108,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	if err := client.Call(ctx, "session.open", map[string]any{"repo": repo}, &info); err != nil {
 		t.Fatal(err)
 	}
-	b := &bridge{ctx: ctx, socket: socket, code: testCode}
+	b := &bridge{readOnly: true, ctx: ctx, socket: socket, code: testCode}
 	server := httptest.NewUnstartedServer(b)
 	b.host = server.Listener.Addr().String()
 	server.Start()
@@ -133,6 +134,14 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 			t.Fatal(err)
 		}
 		return frame
+	}
+	send(10, "hello", map[string]any{"protocol": 1})
+	var hello rpc.HelloResult
+	if err := json.Unmarshal(receive()["result"], &hello); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(hello.Methods, "session.send") || !slices.Contains(hello.Methods, "log.read") {
+		t.Fatal(hello.Methods)
 	}
 	send(1, "session.list", map[string]any{})
 	if raw := receive(); !strings.Contains(string(raw["result"]), info.ID) {
@@ -164,5 +173,131 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	// Browser detach cannot close the daemon-owned session.
 	if err := client.Call(ctx, "session.info", map[string]any{"id": info.ID}, &info); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestConversationLifecycleThroughBrowser(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	root, err := os.MkdirTemp("/tmp", "nibb-web-chat-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	socket := filepath.Join(root, "run", "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := fake.New(fake.Turn{Content: "browser reply"})
+	defer model.Close()
+	cfg := config.Default()
+	cfg.Control.URL = model.URL
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	done := make(chan error, 1)
+	go func() {
+		done <- rpc.Serve(ctx, listener, core.Options{Config: cfg, Paths: paths, Provider: llm.NewOllama(model.URL)})
+	}()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	b := &bridge{ctx: ctx, socket: socket, code: testCode}
+	server := httptest.NewUnstartedServer(b)
+	b.host = server.Listener.Addr().String()
+	server.Start()
+	defer server.Close()
+	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testCode}}
+	conn, _, err := websocket.Dial(ctx, "ws://"+b.host+"/socket", &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	var id uint64
+	var events []rpc.ClientEvent
+	read := func() map[string]json.RawMessage {
+		t.Helper()
+		var frame map[string]json.RawMessage
+		if err := wsjson.Read(ctx, conn, &frame); err != nil {
+			t.Fatal(err)
+		}
+		if string(frame["method"]) == `"session.event"` {
+			var event rpc.ClientEvent
+			if err := json.Unmarshal(frame["params"], &event); err != nil {
+				t.Fatal(err)
+			}
+			events = append(events, event)
+		}
+		return frame
+	}
+	call := func(method string, params any, out any, wantError bool) {
+		t.Helper()
+		id++
+		if err := wsjson.Write(ctx, conn, map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			frame := read()
+			if len(frame["id"]) == 0 {
+				continue
+			}
+			if (len(frame["error"]) > 0) != wantError {
+				t.Fatalf("%s: %s", method, frame)
+			}
+			if out != nil {
+				if err := json.Unmarshal(frame["result"], out); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return
+		}
+	}
+	var hello rpc.HelloResult
+	call("hello", map[string]any{"protocol": 1}, &hello, false)
+	if !slices.Contains(hello.Methods, "session.send") || slices.Contains(hello.Methods, "session.secret") {
+		t.Fatal(hello.Methods)
+	}
+	for _, method := range []string{"session.eval", "session.answer", "session.secret", "session.binding.create", "session.approval.create"} {
+		call(method, map[string]any{}, nil, true)
+	}
+	repo := filepath.Join(root, "repo")
+	if err := os.Mkdir(repo, 0700); err != nil {
+		t.Fatal(err)
+	}
+	var info rpc.SessionDetails
+	call("session.open", map[string]any{"repo": repo}, &info, false)
+	p := map[string]any{"id": info.ID}
+	call("session.subscribe", p, nil, false)
+	call("session.send", map[string]any{"id": info.ID, "text": "hello browser"}, nil, false)
+	has := func(kind, content string) bool {
+		for _, event := range events {
+			if event.Kind == kind && strings.Contains(string(event.Payload), content) {
+				return true
+			}
+		}
+		return false
+	}
+	for !has("status", "idle") {
+		read()
+	}
+	if !has("user.msg", "hello browser") || !has("llm.resp", "browser reply") {
+		t.Fatal(events)
+	}
+	call("session.abort", p, nil, false)
+	call("session.close", p, nil, false)
+	call("session.info", p, nil, true)
+	call("session.resume", p, &info, false)
+	if info.Busy {
+		t.Fatal("resumed busy")
+	}
+	var page struct {
+		Events []json.RawMessage `json:"events"`
+	}
+	call("log.read", p, &page, false)
+	raw, _ := json.Marshal(page)
+	if !strings.Contains(string(raw), "hello browser") || !strings.Contains(string(raw), "browser reply") {
+		t.Fatal(string(raw))
 	}
 }

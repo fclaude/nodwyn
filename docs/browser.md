@@ -1,11 +1,12 @@
 # Local browser view
 
-The first U3 slice is a read-only session desk. Run a daemon, then attach the
+The U3 session desk supports conversations and session lifecycle controls. Run a daemon, then attach the
 browser bridge in another terminal:
 
 ```sh
 nibb daemon
 nibb ui                         # opens the local browser page
+nibb ui --read-only             # disable conversation and lifecycle controls
 nibb ui --socket /absolute/private/sock --no-open
 ```
 
@@ -23,9 +24,18 @@ reloads that prefix. A reconnect never retries an operation. Browser reload
 retains pairing through the session cookie; select a session again to inspect it.
 Untrusted text is rendered as literal text, never HTML or executable Markdown.
 
-This slice cannot create/resume sessions, send messages, evaluate Scheme, answer
-prompts, submit secrets, create bindings or approvals, abort, or close a session.
-The bridge rejects these methods even if called outside the visible controls.
+Create a session with an existing absolute repository directory, resume a saved
+session, and send messages from the composer. Abort cancels the current turn or
+pending prompt. Close ends the session and preserves its transcript; it is disabled
+while known busy, but another client can start work concurrently, so closing can
+still interrupt work. Drafts remain separately in memory for each session in this
+tab and disappear on page reload. A failed reply may follow successful delivery:
+inspect the transcript before sending again. No operation is automatically retried.
+
+`--read-only` retains the original view-only mode. The server filters advertised
+methods and enforces this restriction independently of the browser controls.
+Neither mode can evaluate Scheme, answer prompts, submit secrets, or create
+bindings or approvals; these methods are rejected by the bridge.
 Pending confirmations are surfaced with a notice directing the user to the
 terminal client. Closing a browser tab or stopping `nibb ui` does not close
 sessions in the separately running daemon. Stopping the daemon still closes its
@@ -46,13 +56,17 @@ homegrown frame parser; its license is embedded in `nibb licenses`.
 ## Verification and remaining U3 work
 
 Tests cover pairing, missing/wrong credentials, origin/Host rejection, read-only
-method enforcement, live daemon events and session survival after browser detach.
+method enforcement, filtered capability discovery, browser lifecycle/message
+operations, durable history after resume, live daemon events and session survival
+after browser detach.
 Browser checks use isolated synthetic sessions and local fake services, covering
 literal HTML-like text, paging, refresh, collapsed thinking/tool details, reload,
 disconnect notices and narrow layouts. These are acceptance fixtures, not claims
 of production usage.
 
-U3's interactive conversation and lifecycle controls, approval/diff panels,
-masked credential replies, plan/budget views and policy inspectors remain next.
+Browser acceptance also covers creation, message errors, independent drafts,
+close/resume, and aborting a pending confirmation without executing its operation.
+U3's approval/diff panels, masked credential replies, plan/budget views and policy
+inspectors remain next.
 U4 background runs, notifications and optional general TCP transport remain
 separate roadmap work.
