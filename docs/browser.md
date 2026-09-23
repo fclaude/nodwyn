@@ -67,6 +67,24 @@ bridge in audit receipts; individual tabs are not separate security principals.
 Closing a browser tab or stopping `nibb ui` does not close sessions in the separately running daemon. Stopping the daemon still closes its
 sessions normally. The session list is a snapshot; use Refresh to update it.
 
+The session view buttons open fixed snapshots:
+
+- **Plan** shows the latest user message's recorded gate outcome, score and plan.
+  A newer message without a recorded outcome never inherits an older plan.
+- **Budget** separates current configured soft/hard limits from the latest turn's
+  recorded checkpoints. Checkpoint usage is not live remaining allowance.
+- **Log** filters durable records by kind prefix and shows the last 1–1000 matches.
+- **Policy** shows the last validated bindings, current command/write prefixes and
+  turn approval. It does not restore authority from recorded receipts or edit it.
+- **Tools** shows the model's current tool catalog and input schemas.
+
+Every inspector names its log watermark. Live transcript events keep arriving but
+an open inspector stays fixed until Refresh view reloads history and metadata.
+Current session metadata is sampled separately from the log prefix. Saved sessions
+retain plan/log views; current limits, policy and tools require an open session.
+Pending prompts take priority over inspector navigation. Read-only mode has the
+same inspectors and retains its server-side mutation restrictions.
+
 The bridge binds only `127.0.0.1` on a random port. Every request checks its exact
 Host; pairing and WebSocket upgrades also require the exact browser origin.
 Cross-site fetches and framing are refused. Neither the optional general TCP RPC
@@ -76,7 +94,9 @@ remains private, and kernel peer identity still identifies the bridge process.
 Implementation is deliberately small: embedded HTML/CSS/plain JavaScript,
 `internal/frontend/web` for the HTTP/WebSocket boundary, and the existing RPC
 client for session data. There is no JavaScript build system, new core facade,
-second history store or policy evaluator. A pinned WebSocket library avoids a
+second history store or policy evaluator. `app.js` owns connection and session
+selection, `prompts.js` renders review choices, and `inspectors.js` renders fixed
+snapshots from the same redacted records. A pinned WebSocket library avoids a
 homegrown frame parser; its license is embedded in `nibb licenses`.
 
 ## Verification and remaining U3 work
@@ -99,7 +119,8 @@ read-only prompt display, and valid/invalid checkpoint choices.
 Scope tests additionally cover temporary grant lifetime, protected/security
 confirmations, exact persistent binding and host injection, forged destinations,
 and clean authority after resume.
-U3's plan/budget overview, policy/log/friction inspectors and policy editing remain
-next.
+Inspector browser checks cover paged log filters, older-plan exclusion, fixed
+snapshot refresh, current/saved session distinctions and prompt priority.
+U3's guarded friction-file view and confirmed policy editing remain next.
 U4 background runs, notifications and optional general TCP transport remain
 separate roadmap work.

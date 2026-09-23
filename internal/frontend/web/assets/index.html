@@ -78,7 +78,41 @@
             </div>
           </div>
         </div>
+        <nav id="view-tabs" aria-label="Session views">
+          <button data-view="conversation" aria-pressed="true">
+            Conversation
+          </button>
+          <button data-view="plan" aria-pressed="false">Plan</button>
+          <button data-view="budget" aria-pressed="false">Budget</button>
+          <button data-view="log" aria-pressed="false">Log</button>
+          <button data-view="policy" aria-pressed="false">Policy</button>
+          <button data-view="tools" aria-pressed="false">Tools</button>
+        </nav>
         <div id="notice" role="status"></div>
+        <section id="inspector" aria-label="Session inspector" hidden>
+          <div class="inspector-toolbar">
+            <h2 id="inspector-title"></h2>
+            <button id="inspect-refresh">Refresh view</button>
+          </div>
+          <form id="log-filter" hidden>
+            <label for="log-kind">Kind prefix</label
+            ><input
+              id="log-kind"
+              placeholder="e.g. guard."
+              autocomplete="off"
+            />
+            <label for="log-count">Maximum records</label
+            ><input
+              id="log-count"
+              type="number"
+              min="1"
+              max="1000"
+              value="50"
+              required
+            /><button type="submit">Filter records</button>
+          </form>
+          <div id="inspector-content"></div>
+        </section>
         <div id="transcript" aria-label="Session transcript">
           <div class="empty">
             <h2>A clear view of the work.</h2>

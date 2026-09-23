@@ -98,7 +98,7 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.connect(w, r)
-	case "/", "/app.js", "/prompts.js", "/style.css":
+	case "/", "/app.js", "/prompts.js", "/inspectors.js", "/style.css":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return

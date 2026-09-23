@@ -1,4 +1,5 @@
 import { renderPrompt } from "./prompts.js";
+import { renderInspector } from "./inspectors.js";
 const $ = (id) => document.getElementById(id);
 const text = (tag, value, className = "") => {
   const node = document.createElement(tag);
@@ -17,12 +18,67 @@ let awaitingReply = "",
   baseNotice =
     "Read-only view. Send messages and answer prompts in the terminal client.";
 let queued = [],
-  seen = new Set(),
+  seen = new Map(),
   streamText = null,
   streamThinking = null,
   toolCard = null;
 const pending = new Map();
 const drafts = new Map();
+let view = "conversation",
+  inspection = null,
+  inspectionVersion = 0,
+  historyTruncated = false;
+function setView(kind) {
+  view = kind;
+  $("transcript").hidden = kind !== "conversation";
+  $("inspector").hidden = kind === "conversation";
+  for (const button of $("view-tabs").children)
+    button.setAttribute("aria-pressed", String(button.dataset.view === kind));
+  controls();
+}
+function redrawInspector() {
+  if (!inspection) return;
+  renderInspector(
+    $("inspector-content"),
+    view,
+    inspection,
+    $("log-kind").value,
+    Number($("log-count").value),
+  );
+}
+async function inspect(kind) {
+  const token = ++inspectionVersion,
+    version = selection;
+  if (kind === "conversation") {
+    setView(kind);
+    return;
+  }
+  if (!selected || loading || activePrompt) return;
+  inspection = null;
+  setView(kind);
+  $("inspector-title").textContent = kind[0].toUpperCase() + kind.slice(1);
+  $("log-filter").hidden = kind !== "log";
+  $("inspector-content").replaceChildren(text("p", "Loading snapshot…"));
+  const snapshot = {
+    events: [...seen.values()].sort((a, b) => a.seq - b.seq),
+    info: null,
+    infoError:
+      "No open session. Resume in a client to inspect current configuration.",
+    truncated: historyTruncated,
+  };
+  if (selected.open && ["budget", "policy", "tools"].includes(kind)) {
+    try {
+      snapshot.info = await call("session.info", { id: selected.id });
+    } catch (error) {
+      snapshot.infoError = error.message;
+    }
+  }
+  if (token !== inspectionVersion || version !== selection || activePrompt)
+    return;
+  inspection = snapshot;
+  redrawInspector();
+  controls();
+}
 let activePrompt = null;
 let resolvedPrompts = new Set();
 function clearPrompt() {
@@ -35,6 +91,8 @@ function showPrompt(event) {
   const id = event.payload.ID;
   if (!id || resolvedPrompts.has(id) || activePrompt?.payload.ID === id) return;
   activePrompt = event;
+  inspectionVersion++;
+  setView("conversation");
   awaitingReply = id;
   renderPrompt($("prompt-panel"), event, methods, (method, params) => {
     const sessionID = selected.id,
@@ -70,7 +128,13 @@ function controls() {
   $("create").disabled = !ready;
   for (const control of $("prompt-panel").querySelectorAll("button,input"))
     control.disabled = !ready;
-  $("composer").hidden = !methods.has("session.send") || !!activePrompt;
+  $("composer").hidden =
+    !methods.has("session.send") || !!activePrompt || view !== "conversation";
+  for (const button of $("view-tabs").children)
+    button.disabled = !ready || !selected || !!activePrompt;
+  $("inspect-refresh").disabled = !ready || !selected;
+  for (const control of $("log-filter").elements)
+    control.disabled = !ready || !inspection;
   $("message").disabled = !ready || !selected?.open;
   $("send").disabled =
     !ready || !selected?.open || selected.busy || !$("message").value.trim();
@@ -213,6 +277,11 @@ async function refresh() {
 async function selectSession(item) {
   const version = ++selection,
     previous = selected;
+  const previousView = previous?.id === item.id ? view : "conversation";
+  inspectionVersion++;
+  inspection = null;
+  historyTruncated = false;
+  setView("conversation");
   if (previous) drafts.set(previous.id, $("message").value);
   selected = item;
   $("message").value = drafts.get(item.id) || "";
@@ -221,7 +290,7 @@ async function selectSession(item) {
   clearPrompt();
   resolvedPrompts = new Set();
   queued = [];
-  seen = new Set();
+  seen = new Map();
   streamText = null;
   streamThinking = null;
   toolCard = null;
@@ -272,6 +341,7 @@ async function selectSession(item) {
     baseNotice = truncated
       ? "Incomplete log tail: showing its valid prefix. Use the terminal client to recover it."
       : modeNotice();
+    historyTruncated = truncated;
     selected.busy = snapshotBusy;
     $("activity").textContent = item.open
       ? snapshotBusy
@@ -286,6 +356,8 @@ async function selectSession(item) {
     controls();
     if (!$("transcript").children.length)
       $("transcript").append(text("p", "No conversation yet.", "hint"));
+    if (!activePrompt && previousView !== "conversation")
+      await inspect(previousView);
   } catch (error) {
     if (version === selection) {
       // A failed history load must not enable sending against uncertain state.
@@ -317,7 +389,7 @@ function detail(parent, label, value) {
 }
 function render(event) {
   if (event.seq && seen.has(event.seq)) return;
-  if (event.seq) seen.add(event.seq);
+  if (event.seq) seen.set(event.seq, event);
   const p = event.payload || {},
     kind = event.kind;
   if (
@@ -487,6 +559,15 @@ $("refresh").addEventListener("click", () =>
   refresh().catch((error) => notice(error.message)),
 );
 $("reconnect").addEventListener("click", connect);
+for (const button of $("view-tabs").children)
+  button.addEventListener("click", () => inspect(button.dataset.view));
+$("inspect-refresh").addEventListener("click", () =>
+  refresh().catch((error) => notice(error.message)),
+);
+$("log-filter").addEventListener("submit", (event) => {
+  event.preventDefault();
+  redrawInspector();
+});
 $("message").addEventListener("input", () => {
   if (selected) drafts.set(selected.id, $("message").value);
   controls();

@@ -404,3 +404,18 @@ Protected paths and security confirmations cannot acquire wider write/command
 scope, denials still win, and resume does not restore transient authority.
 Tests exercise all of these boundaries and local fake credential injection.
 Plan/budget overviews, inspectors and confirmed policy editing remain U3 work.
+
+
+## U3 read-only inspectors — 2026-09-22
+
+The browser adds fixed plan, budget, filtered log, current policy and tool-catalog
+views. They use the same redacted durable records and existing `session.info`
+metadata. Plan lookup starts at the latest user message; absent planning outcomes
+never inherit an earlier plan. Budget limits and checkpoint records are labeled
+separately, without inventing live remaining allowance.
+
+Views identify their log watermark and refresh explicitly. Current metadata is
+sampled separately; saved logs cannot claim current tools or authority. Pending
+prompts take priority over inspector navigation. Browser checks cover paged log
+filters, stale-plan exclusion, snapshot refresh and prompt priority. The guarded
+friction-file view and confirmed policy editing remain U3 work.

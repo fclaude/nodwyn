@@ -450,3 +450,64 @@ textarea:focus-visible {
   padding: 12px 24px;
   min-height: 0;
 }
+
+#view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--line);
+}
+#view-tabs [aria-pressed="true"] {
+  background: var(--wash);
+  border-color: #8ca393;
+}
+#inspector {
+  overflow: auto;
+  padding: 20px 24px;
+  flex: 1;
+  min-height: 0;
+}
+.inspector-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+#inspector table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  margin: 16px 0;
+}
+#inspector th,
+#inspector td {
+  padding: 8px;
+  border: 1px solid var(--line);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+#inspector th {
+  background: var(--wash);
+}
+#inspector-content {
+  overflow-wrap: anywhere;
+}
+#log-filter {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+#log-filter label {
+  margin: 0;
+}
+#log-filter input {
+  width: 130px;
+}
+#log-filter button {
+  width: auto;
+  margin: 0;
+  padding: 8px;
+}
