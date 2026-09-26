@@ -155,7 +155,8 @@ Commands at the `you>` prompt:
 | Ctrl-C | abort the running turn; at the prompt, exit |
 
 Flags: `--repo DIR`, `--model`, `--url`, `--show-thinking`, `--no-confirm`
-(every confirm is a no — for scripts and CI), `--no-keychain`,
+(every confirm is a no — for scripts and CI), `--yolo` (every ordinary
+confirm is a yes — for work nobody is watching), `--no-keychain`,
 `--max-tool-calls N` (hard call override), `--budget-wall 2h`,
 `--budget-tokens N`, and `--budget-actions N`. The `[budget]` settings and
 checkpoint behavior are described in the README. Defaults are 50/500 calls,
@@ -191,6 +192,28 @@ allow? [y/N]
 - Read the reason lines. `command line names a path outside the
   repository` and `uses the network tool curl` are the guard telling you
   what a `y` would do.
+
+### Unattended runs
+
+`--yolo` answers ordinary confirms with yes, so a benchmark harness or a
+test rig never stops to ask. It answers the guard's questions; it does not
+overrule its refusals. Still denied, exactly as with a human at the prompt:
+
+- anything outside the repository, and symlinks that leave it;
+- credential-shaped files (`.env*`, `*.pem`, `id_*`, `~/.ssh`, …);
+- a literal key on a command line, or in a request to an unbound host;
+- content that came from a file or a command heading somewhere no binding
+  names;
+- **security confirms** — a write whose content looks like a credential, a
+  command line built out of tool output. Those exist for the case where a
+  human was the control, so yolo refuses them rather than pretending.
+
+Budgets are what stop a runaway turn when nobody is watching, so set
+`--max-tool-calls`, `--budget-wall` and `--budget-actions` for the job.
+Every decision is logged with its verdict and `nibb replay` shows exactly
+what the run did.
+
+Use it on a throwaway checkout. The guard makes yolo survivable, not safe.
 
 ### Standing approvals
 

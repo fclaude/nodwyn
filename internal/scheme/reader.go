@@ -167,6 +167,9 @@ func (r *reader) datum() (Value, error) {
 		}
 		return r.abbrev("unquote")
 	case '"':
+		if r.startsWith(`"""`) {
+			return r.rawString()
+		}
 		r.next()
 		return r.str()
 	case '#':
@@ -259,6 +262,73 @@ func (r *reader) list() (Value, error) {
 		out = Cons(items[i], out)
 	}
 	return out, nil
+}
+
+// rawString reads a """ … """ block: no escapes, so the text between the
+// delimiters is exactly what the file holds. It is for prose that belongs
+// in a program — instructions, tool documentation, templates — where
+// backslash escaping and one-line-per-string are the wrong tools.
+//
+// When the opening delimiter is followed by a newline the block is treated
+// as an indented text block: that first newline goes, the indentation
+// shared by every non-blank line and by the closing delimiter's line is
+// removed, and the newline before the closing delimiter goes. So a block
+// nested inside a define reads at the indentation it is written at and
+// produces text with none. Anything else is verbatim.
+func (r *reader) rawString() (Value, error) {
+	for i := 0; i < 3; i++ {
+		r.next()
+	}
+	start := r.pos
+	for !r.startsWith(`"""`) {
+		if r.eof() {
+			return Value{}, ErrIncomplete
+		}
+		r.next()
+	}
+	body := r.src[start:r.pos]
+	closing := r.col
+	for i := 0; i < 3; i++ {
+		r.next()
+	}
+	return Str(textBlock(body, closing)), nil
+}
+
+// textBlock applies the indented-block rule. closingCol is the 1-based
+// column the closing delimiter starts at, which is the indentation the
+// author chose for the block as a whole.
+func textBlock(body string, closingCol int) string {
+	after, isBlock := strings.CutPrefix(body, "\n")
+	if !isBlock {
+		return body
+	}
+	lines := strings.Split(after, "\n")
+	// The closing delimiter sits on its own line when the body ends with a
+	// newline; that trailing empty line is the delimiter's own indentation
+	// and never part of the text.
+	if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	indent := closingCol - 1
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if n := len(line) - len(strings.TrimLeft(line, " \t")); n < indent {
+			indent = n
+		}
+	}
+	if indent < 0 {
+		indent = 0
+	}
+	for i, line := range lines {
+		if len(line) < indent {
+			lines[i] = strings.TrimLeft(line, " \t")
+			continue
+		}
+		lines[i] = line[indent:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (r *reader) str() (Value, error) {

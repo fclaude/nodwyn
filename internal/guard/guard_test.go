@@ -203,3 +203,25 @@ func TestAuditFailureStopsHostOperation(t *testing.T) {
 		})
 	}
 }
+
+// Yolo answers the guard's questions; it never overturns its refusals.
+func TestAutoAllowAnswersConfirmsButNotDenials(t *testing.T) {
+	ordinary := &scheme.Prim{Name: "fs-write", Meta: scheme.Meta{Doc: "d", Irreversible: true}}
+	g := New(AutoAllow, nil, MetaPolicy{})
+	if err := g.Before(context.Background(), ordinary, nil); err != nil {
+		t.Fatalf("ordinary confirm should pass: %v", err)
+	}
+	// A security confirm is exactly the case a human was the control for.
+	secure := fixed{"scanner", Decision{Verdict: Confirm, Security: true, Reason: "looks like a credential"}}
+	g = New(AutoAllow, nil, MetaPolicy{}, secure)
+	if err := g.Before(context.Background(), ordinary, nil); err == nil {
+		t.Fatal("security confirm must not be auto-approved")
+	}
+	// And a deny is not a question at all.
+	g = New(AutoAllow, nil, fixed{"pin", Decision{Verdict: Deny, Reason: "outside the repository"}})
+	err := g.Before(context.Background(), ordinary, nil)
+	var denied *scheme.Denied
+	if !errors.As(err, &denied) || denied.Reason != "outside the repository" {
+		t.Fatalf("deny must stand under AutoAllow: %v", err)
+	}
+}

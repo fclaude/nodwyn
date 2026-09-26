@@ -33,6 +33,10 @@ type Options struct {
 	Provider llm.Provider // nil: built from Config.Control
 	// NoConfirm answers every confirm with "no" (non-interactive runs).
 	NoConfirm bool
+	// AutoApprove answers ordinary confirms with "yes" and security
+	// confirms with "no" (guard.AutoAllow). Denials are unaffected: this
+	// answers the guard's questions, it does not overrule its refusals.
+	AutoApprove bool
 	// InitFile is loaded after the prelude with user origin; "" disables.
 	// Default: <Repo>/.nibb/init.scm if it exists.
 	InitFile string
@@ -252,8 +256,11 @@ func (s *Session) initialize() error {
 		return err
 	}
 	var confirmer guard.Confirmer = s
-	if o.NoConfirm {
+	switch {
+	case o.NoConfirm:
 		confirmer = guard.DenyAll
+	case o.AutoApprove:
+		confirmer = guard.AutoAllow
 	}
 	g.SetConfirmer(confirmer)
 

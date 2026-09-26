@@ -29,6 +29,9 @@ func (c *cli) chat() error {
 	if c.url != "" {
 		cfg.Control.URL = c.url
 	}
+	if c.noConfirm && c.yolo {
+		return fmt.Errorf("--no-confirm and --yolo answer the same prompts differently; pick one")
+	}
 	if err := c.applyBudgets(&cfg); err != nil {
 		return err
 	}
@@ -98,9 +101,14 @@ func (c *cli) session(cfg config.Config, repo string) error {
 			return err
 		}
 	}
+	if c.yolo {
+		// Unattended approval is worth saying out loud, every time.
+		fmt.Fprintf(os.Stderr, "yolo: ordinary confirms are answered yes in %s; denials and security confirms still stop the model\n", repoLabel(repo))
+	}
 	options := core.Options{
 		Config: cfg, Paths: c.paths, Repo: repo, Version: versionString(),
-		Provider: provider, NoConfirm: c.noConfirm, Keychain: kc, Bindings: bindings,
+		Provider: provider, NoConfirm: c.noConfirm, AutoApprove: c.yolo,
+		Keychain: kc, Bindings: bindings,
 	}
 	var s *core.Session
 	if c.resume == "" {
@@ -122,6 +130,13 @@ func (c *cli) session(cfg config.Config, repo string) error {
 		fmt.Fprintln(os.Stderr, "nibb: close:", err)
 	}
 	return runErr
+}
+
+func repoLabel(repo string) string {
+	if repo == "" {
+		return "the resumed session's repository"
+	}
+	return repo
 }
 
 // watchInterrupts turns Ctrl-C into a turn abort while the session is

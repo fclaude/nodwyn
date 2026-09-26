@@ -24,6 +24,7 @@ Status: **v0 kernel (P1b)**. §9 lists what is deliberately absent.
 | `#(` `)` | a vector: `#(1 2 "x")` |
 | `'x` `` `x `` `,x` `,@x` | `(quote x)` `(quasiquote x)` `(unquote x)` `(unquote-splicing x)` |
 | `"…"` | string; escapes `\"` `\\` `\n` `\t` `\r`, `\xHH` (one byte), `\uHHHH` and `\UHHHHHHHH` (one code point); may span lines |
+| `"""…"""` | raw string: no escapes, so the text is exactly what the file holds. See §1.1 |
 | `42` `-7` `+3` | integer (int64) |
 | `3.14` `1e3` `-0.5` `.5` | float (float64) |
 | `#t` `#f` | booleans |
@@ -35,6 +36,41 @@ float if `strconv.ParseFloat` accepts it, else it is a symbol.
 
 Unbalanced input is reported as *incomplete*, which the REPL uses to keep
 reading lines.
+
+### 1.1 Raw strings
+
+`"""` begins a raw string and the next `"""` ends it. Nothing between them
+is an escape, so quotes and backslashes are themselves:
+
+```scheme
+(define pattern """\d+\.\d+""")
+```
+
+When the opening delimiter is followed immediately by a newline the block is
+read as **indented text**: that first newline is dropped, the indentation
+shared by every non-blank line and by the closing delimiter's line is
+removed, and the newline before the closing delimiter is dropped. A block
+therefore reads at the indentation it is written at and produces text with
+none:
+
+```scheme
+(define instructions
+  """
+  Prefer table-driven tests.
+  Run `make accept` before saying a change is done.
+  """)
+```
+
+is exactly `"Prefer table-driven tests.\nRun `make accept` before saying a
+change is done."`. Lines indented further than the margin keep the
+difference, and blank lines stay blank.
+
+Anything else is verbatim: `"""a "b" c"""` is `a "b" c`.
+
+Note that `"""` always starts a raw string, so an empty string written
+immediately before another string (`"""x"`) is read as a raw string rather
+than as `""` followed by `"x"`. Separate them, as ordinary formatting
+already does.
 
 ## 2. Data types
 

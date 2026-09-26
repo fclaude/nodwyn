@@ -494,3 +494,50 @@ func FuzzReader(f *testing.F) {
 		}
 	})
 }
+
+// Raw strings exist so prose can live in a program: instructions, tool
+// documentation, templates. No escapes, and an indented block reads at the
+// indentation it is written at.
+func TestRawStrings(t *testing.T) {
+	cases := []struct{ src, want string }{
+		// Verbatim when the opening delimiter is not followed by a newline.
+		{`"""one line"""`, `"one line"`},
+		{`"""has "quotes" and \n backslashes"""`, `"has \"quotes\" and \\n backslashes"`},
+		{`""""""`, `""`},
+		// An indented block loses the first newline, the shared indentation
+		// and the newline before the closing delimiter.
+		{"\"\"\"\n  alpha\n  beta\n  \"\"\"", `"alpha\nbeta"`},
+		// Deeper lines keep their relative indentation; blank lines survive.
+		{"\"\"\"\n  alpha\n    deeper\n\n  beta\n  \"\"\"", `"alpha\n  deeper\n\nbeta"`},
+		// The closing delimiter's own indentation sets the margin even when
+		// a line is flush left.
+		{"\"\"\"\nflush\n  indented\n\"\"\"", `"flush\n  indented"`},
+		// A raw string is an ordinary string everywhere else.
+		{`(string-length """abc""")`, `3`},
+		{`(string-append """a""" "b")`, `"ab"`},
+	}
+	for _, tc := range cases {
+		in := New()
+		v, err := in.EvalString(context.Background(), tc.src)
+		if err != nil {
+			t.Errorf("%s: %v", tc.src, err)
+			continue
+		}
+		if got := Write(v); got != tc.want {
+			t.Errorf("%s\n  got  %s\n  want %s", tc.src, got, tc.want)
+		}
+	}
+	// An unterminated block is incomplete input, so the REPL keeps reading.
+	if _, err := Read(`"""never closed`); !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("unterminated raw string: %v", err)
+	}
+	// Round trip: what a raw string produces, write renders readably.
+	v, err := New().EvalString(context.Background(), "\"\"\"\n  a \"b\"\n  \"\"\"")
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := ReadOne(Write(v))
+	if err != nil || !Equal(v, back) {
+		t.Fatalf("round trip: %v %s", err, Write(v))
+	}
+}

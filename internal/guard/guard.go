@@ -91,6 +91,23 @@ func (f ConfirmFunc) Confirm(ctx context.Context, p Prompt) (bool, error) { retu
 // DenyAll is the Confirmer for non-interactive runs: every confirm is a no.
 var DenyAll = ConfirmFunc(func(context.Context, Prompt) (bool, error) { return false, nil })
 
+// AutoAllow answers ordinary confirms with yes and security confirms with
+// no. It is for work nobody is watching — a benchmark harness, a test rig —
+// where stopping to ask is the same as failing.
+//
+// What it does not touch is the point: a confirm is the guard asking
+// permission, and a deny is the guard refusing. AutoAllow answers the
+// question; it never overturns a refusal. So under it the repository pin,
+// the credential-file denylist, unbound egress, a literal key on a command
+// line and tainted content heading somewhere unbound all still deny, and
+// budgets still stop a runaway turn. Security confirms — a write whose
+// content looks like a credential, a command line built out of tool
+// output — stay refused, because those are exactly the cases where a human
+// was the control.
+var AutoAllow = ConfirmFunc(func(_ context.Context, p Prompt) (bool, error) {
+	return !p.Security, nil
+})
+
 // Logger receives guard decisions. The core session satisfies it (so the
 // decision also reaches the front-end); a bare *log.Writer does not, on
 // purpose: a decision the user cannot see is a decision half-logged.

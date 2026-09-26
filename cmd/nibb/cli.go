@@ -17,6 +17,7 @@ type cli struct {
 	showVersion bool
 	thinking    bool
 	noConfirm   bool
+	yolo        bool
 	noKeychain  bool
 	resume      string
 	repo        string
@@ -59,6 +60,7 @@ func newCLI(args []string) *cli {
 	c.fs.StringVar(&c.url, "url", "", "override control.url")
 	c.fs.BoolVar(&c.thinking, "show-thinking", false, "show the model's thinking as it streams")
 	c.fs.BoolVar(&c.noConfirm, "no-confirm", false, "answer every confirm with no (non-interactive runs)")
+	c.fs.BoolVar(&c.yolo, "yolo", false, "answer ordinary confirms with yes (unattended runs); denials and security confirms are unaffected")
 	c.fs.BoolVar(&c.noKeychain, "no-keychain", false, "start without opening the keychain (no credential primitives)")
 	c.fs.StringVar(&c.budgetWall, "budget-wall", "", "hard turn wall limit, e.g. 2h")
 	c.fs.Int64Var(&c.budgetTokens, "budget-tokens", 0, "hard reported model token limit per turn")
