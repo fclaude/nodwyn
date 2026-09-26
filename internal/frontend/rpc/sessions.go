@@ -63,6 +63,40 @@ func (s *server) details(session *core.Session) sessionDetails {
 	trust, actor := session.TurnApproval()
 	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor}
 }
+
+// handler is one RPC method. Every handler runs with s.mu held and with
+// the client already past hello, so none of them repeats those checks.
+type handler func(*server, request, *peer) (any, *rpcError)
+
+// methodTable is the dispatch. It is the one place a method name turns
+// into behaviour; protocol.methods advertises the same set, and a test
+// holds the two together.
+var methodTable = map[string]handler{
+	"run.start":               (*server).run,
+	"run.info":                (*server).run,
+	"run.stop":                (*server).run,
+	"run.resume":              (*server).run,
+	"session.policy.read":     (*server).policy,
+	"session.policy.write":    (*server).policy,
+	"session.answer":          (*server).answer,
+	"session.secret":          (*server).answer,
+	"session.approval.create": (*server).answer,
+	"session.binding.create":  (*server).answer,
+	"session.watch":           (*server).subscribeState,
+	"session.list":            (*server).list,
+	"session.open":            (*server).open,
+	"session.resume":          (*server).resume,
+	"session.info":            (*server).info,
+	"session.close":           (*server).closeSession,
+	"session.abort":           (*server).abort,
+	"session.unsubscribe":     (*server).unsubscribeSession,
+	"session.friction":        (*server).friction,
+	"session.eval":            (*server).eval,
+	"session.send":            (*server).send,
+	"session.subscribe":       (*server).subscribe,
+	"log.read":                (*server).readLog,
+}
+
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if req.Method == "hello" {
 		var p helloParams
@@ -78,188 +112,254 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if !client.ready {
 		return nil, failure(-32001, "hello required before session methods")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	store := core.Store{Dir: s.options.Paths.SessionsDir}
-	switch req.Method {
-	case "run.start", "run.info", "run.stop", "run.resume":
-		return s.run(req, client)
-	case "session.watch":
-		if err := params(req.Params, &struct{}{}); err != nil {
-			return nil, err
-		}
-		return s.watch.subscribe(client), nil
-	case "session.policy.read", "session.policy.write":
-		return s.policy(req, client)
-	case "session.answer", "session.secret", "session.approval.create", "session.binding.create":
-		return s.answer(req, client)
-	case "session.list":
-		if err := params(req.Params, &struct{}{}); err != nil {
-			return nil, err
-		}
-		infos, err := store.List()
-		if err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-		result := make([]sessionInfo, 0, len(infos))
-		for _, i := range infos {
-			owned, open := s.sessions[i.ID]
-			busy := open && (owned.session.Busy() || owned.driver.Active())
-			result = append(result, sessionInfo{i.ID, i.Repo, open, busy, i.FirstMessage, i.LastEvent, i.InFlight, i.Truncated})
-		}
-		return result, nil
-	case "session.open":
-		var p openParams
-		if err := params(req.Params, &p, "repo"); err != nil {
-			return nil, err
-		}
-		if !filepath.IsAbs(p.Repo) {
-			return nil, failure(-32602, "repo must be an absolute directory")
-		}
-		info, err := os.Stat(p.Repo)
-		if err != nil || !info.IsDir() {
-			return nil, failure(-32602, "repo must be an existing directory")
-		}
-		options := s.options
-		options.Repo = p.Repo
-		session, err := core.New(options)
-		if err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-		s.own(session)
-		return s.details(session), nil
-	case "session.resume", "session.info", "session.close", "session.abort", "session.unsubscribe", "session.friction":
-		var p idParams
-		if err := params(req.Params, &p, "id"); err != nil {
-			return nil, err
-		}
-		if p.ID == "" {
-			return nil, failure(-32602, "id is required")
-		}
-		owned, open := s.sessions[p.ID]
-		if req.Method == "session.resume" && !open {
-			options := s.options
-			options.Repo = ""
-			session, err := core.Resume(options, p.ID)
-			if err != nil {
-				return nil, failure(-32000, err.Error())
-			}
-			s.own(session)
-			return s.details(session), nil
-		}
-		if !open {
-			return nil, failure(-32002, "Session is not open in this daemon")
-		}
-		if req.Method == "session.friction" {
-			if owned.driver.Active() {
-				return nil, failure(-32000, "Stop the active run before inspecting friction")
-			}
-			operation, err := owned.session.ReadFriction(client.actor)
-			if err != nil {
-				return nil, failure(-32000, err.Error())
-			}
-			return inspectionStarted{operation}, nil
-		}
-		if req.Method == "session.abort" {
-			owned.driver.Stop()
-			owned.session.Abort()
-			return struct{}{}, nil
-		}
-		if req.Method == "session.unsubscribe" {
-			owned.stream.mu.Lock()
-			delete(owned.stream.subscribers, client)
-			owned.stream.mu.Unlock()
-			return struct{}{}, nil
-		}
-		if req.Method == "session.close" {
-			owned.driver.Stop()
-			owned.driver.Wait()
-			err := owned.session.Close()
-			<-owned.drained
-			delete(s.sessions, p.ID)
-			if err != nil {
-				return nil, failure(-32000, err.Error())
-			}
-			return struct{}{}, nil
-		}
-		return s.details(owned.session), nil
-	case "session.eval":
-		var p evalParams
-		if err := params(req.Params, &p, "id", "source"); err != nil {
-			return nil, err
-		}
-		if p.ID == "" || p.Source == "" {
-			return nil, failure(-32602, "id and nonempty source are required")
-		}
-		owned, ok := s.sessions[p.ID]
-		if !ok {
-			return nil, failure(-32002, "Session is not open in this daemon")
-		}
-		if owned.driver.Active() {
-			return nil, failure(-32000, "Stop the active run before evaluating")
-		}
-		if err := owned.session.StartEval(p.Source, client.actor); err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-		return struct{}{}, nil
-	case "session.send":
-		var p sendParams
-		if err := params(req.Params, &p, "id", "text"); err != nil {
-			return nil, err
-		}
-		if p.ID == "" || p.Text == "" {
-			return nil, failure(-32602, "id and nonempty text are required")
-		}
-		owned, ok := s.sessions[p.ID]
-		if !ok {
-			return nil, failure(-32002, "Session is not open in this daemon")
-		}
-		if owned.driver.Active() {
-			return nil, failure(-32000, "Stop the active run before sending a message")
-		}
-		if err := owned.session.Send(p.Text); err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-		return struct{}{}, nil
-	case "log.read", "session.subscribe":
-		var p readParams
-		names := []string{"id", "after", "limit"}
-		if req.Method == "log.read" {
-			names = append(names, "through")
-		}
-		if err := params(req.Params, &p, names...); err != nil {
-			return nil, err
-		}
-		if p.ID == "" {
-			return nil, failure(-32602, "id is required")
-		}
-		if p.Limit == 0 {
-			p.Limit = 100
-		}
-		if p.Limit < 1 || p.Limit > 1000 {
-			return nil, failure(-32602, "limit must be between 1 and 1000")
-		}
-		if req.Method == "session.subscribe" {
-			owned, ok := s.sessions[p.ID]
-			if !ok {
-				return nil, failure(-32002, "Session is not open in this daemon")
-			}
-			result, err := owned.stream.subscribe(client, store, p.After, p.Limit)
-			if err != nil {
-				return nil, failure(-32000, err.Error())
-			}
-			result.Busy = result.Busy || owned.driver.Active()
-			return result, nil
-		}
-		page, err := store.ReadLog(p.ID, p.After, p.Through, p.Limit)
-		if err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-		return page, nil
-	default:
+	call, ok := methodTable[req.Method]
+	if !ok {
 		return nil, failure(-32601, "Method not found")
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return call(s, req, client)
 }
+
+// store reads session logs from disk, for the methods that answer about
+// sessions this daemon does not have open.
+func (s *server) store() core.Store { return core.Store{Dir: s.options.Paths.SessionsDir} }
+
+// session decodes an id parameter and finds the open session it names.
+func (s *server) session(req request) (ownedSession, string, *rpcError) {
+	var p idParams
+	if err := params(req.Params, &p, "id"); err != nil {
+		return ownedSession{}, "", err
+	}
+	if p.ID == "" {
+		return ownedSession{}, "", failure(-32602, "id is required")
+	}
+	owned, open := s.sessions[p.ID]
+	if !open {
+		return ownedSession{}, p.ID, failure(-32002, "Session is not open in this daemon")
+	}
+	return owned, p.ID, nil
+}
+
+func (s *server) subscribeState(req request, client *peer) (any, *rpcError) {
+	if err := params(req.Params, &struct{}{}); err != nil {
+		return nil, err
+	}
+	return s.watch.subscribe(client), nil
+}
+
+func (s *server) list(req request, _ *peer) (any, *rpcError) {
+	if err := params(req.Params, &struct{}{}); err != nil {
+		return nil, err
+	}
+	infos, err := s.store().List()
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	result := make([]sessionInfo, 0, len(infos))
+	for _, i := range infos {
+		owned, open := s.sessions[i.ID]
+		busy := open && (owned.session.Busy() || owned.driver.Active())
+		result = append(result, sessionInfo{i.ID, i.Repo, open, busy, i.FirstMessage, i.LastEvent, i.InFlight, i.Truncated})
+	}
+	return result, nil
+}
+
+func (s *server) open(req request, _ *peer) (any, *rpcError) {
+	var p openParams
+	if err := params(req.Params, &p, "repo"); err != nil {
+		return nil, err
+	}
+	if !filepath.IsAbs(p.Repo) {
+		return nil, failure(-32602, "repo must be an absolute directory")
+	}
+	if info, err := os.Stat(p.Repo); err != nil || !info.IsDir() {
+		return nil, failure(-32602, "repo must be an existing directory")
+	}
+	options := s.options
+	options.Repo = p.Repo
+	session, err := core.New(options)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	s.own(session)
+	return s.details(session), nil
+}
+
+// resume opens a session that exists on disk; one already open is simply
+// described, so a client may call resume without checking first.
+func (s *server) resume(req request, _ *peer) (any, *rpcError) {
+	owned, id, err := s.session(req)
+	if err == nil {
+		return s.details(owned.session), nil
+	}
+	if id == "" {
+		return nil, err
+	}
+	options := s.options
+	options.Repo = ""
+	session, resumeErr := core.Resume(options, id)
+	if resumeErr != nil {
+		return nil, failure(-32000, resumeErr.Error())
+	}
+	s.own(session)
+	return s.details(session), nil
+}
+
+func (s *server) info(req request, _ *peer) (any, *rpcError) {
+	owned, _, err := s.session(req)
+	if err != nil {
+		return nil, err
+	}
+	return s.details(owned.session), nil
+}
+
+func (s *server) abort(req request, _ *peer) (any, *rpcError) {
+	owned, _, err := s.session(req)
+	if err != nil {
+		return nil, err
+	}
+	owned.driver.Stop()
+	owned.session.Abort()
+	return struct{}{}, nil
+}
+
+func (s *server) unsubscribeSession(req request, client *peer) (any, *rpcError) {
+	owned, _, err := s.session(req)
+	if err != nil {
+		return nil, err
+	}
+	owned.stream.mu.Lock()
+	delete(owned.stream.subscribers, client)
+	owned.stream.mu.Unlock()
+	return struct{}{}, nil
+}
+
+func (s *server) closeSession(req request, _ *peer) (any, *rpcError) {
+	owned, id, err := s.session(req)
+	if err != nil {
+		return nil, err
+	}
+	owned.driver.Stop()
+	owned.driver.Wait()
+	closeErr := owned.session.Close()
+	<-owned.drained
+	delete(s.sessions, id)
+	if closeErr != nil {
+		return nil, failure(-32000, closeErr.Error())
+	}
+	return struct{}{}, nil
+}
+
+func (s *server) friction(req request, client *peer) (any, *rpcError) {
+	owned, _, err := s.session(req)
+	if err != nil {
+		return nil, err
+	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before inspecting friction")
+	}
+	operation, readErr := owned.session.ReadFriction(client.actor)
+	if readErr != nil {
+		return nil, failure(-32000, readErr.Error())
+	}
+	return inspectionStarted{operation}, nil
+}
+
+func (s *server) eval(req request, client *peer) (any, *rpcError) {
+	var p evalParams
+	if err := params(req.Params, &p, "id", "source"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" || p.Source == "" {
+		return nil, failure(-32602, "id and nonempty source are required")
+	}
+	owned, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before evaluating")
+	}
+	if err := owned.session.StartEval(p.Source, client.actor); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return struct{}{}, nil
+}
+
+func (s *server) send(req request, _ *peer) (any, *rpcError) {
+	var p sendParams
+	if err := params(req.Params, &p, "id", "text"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" || p.Text == "" {
+		return nil, failure(-32602, "id and nonempty text are required")
+	}
+	owned, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before sending a message")
+	}
+	if err := owned.session.Send(p.Text); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return struct{}{}, nil
+}
+
+// readRange decodes the paging parameters shared by log.read and
+// session.subscribe. through belongs only to log.read.
+func readRange(req request, withThrough bool) (readParams, *rpcError) {
+	var p readParams
+	names := []string{"id", "after", "limit"}
+	if withThrough {
+		names = append(names, "through")
+	}
+	if err := params(req.Params, &p, names...); err != nil {
+		return p, err
+	}
+	if p.ID == "" {
+		return p, failure(-32602, "id is required")
+	}
+	if p.Limit == 0 {
+		p.Limit = 100
+	}
+	if p.Limit < 1 || p.Limit > 1000 {
+		return p, failure(-32602, "limit must be between 1 and 1000")
+	}
+	return p, nil
+}
+
+func (s *server) subscribe(req request, client *peer) (any, *rpcError) {
+	p, err := readRange(req, false)
+	if err != nil {
+		return nil, err
+	}
+	owned, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	result, subErr := owned.stream.subscribe(client, s.store(), p.After, p.Limit)
+	if subErr != nil {
+		return nil, failure(-32000, subErr.Error())
+	}
+	result.Busy = result.Busy || owned.driver.Active()
+	return result, nil
+}
+
+func (s *server) readLog(req request, _ *peer) (any, *rpcError) {
+	p, err := readRange(req, true)
+	if err != nil {
+		return nil, err
+	}
+	page, readErr := s.store().ReadLog(p.ID, p.After, p.Through, p.Limit)
+	if readErr != nil {
+		return nil, failure(-32000, readErr.Error())
+	}
+	return page, nil
+}
+
 func (s *server) own(session *core.Session, drivers ...*run.Driver) {
 	var driver *run.Driver
 	if len(drivers) > 0 {

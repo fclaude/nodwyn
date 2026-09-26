@@ -135,184 +135,256 @@ func (m *model) restore(s snapshot) {
 	}
 	m.refresh(true)
 }
+
+// Update routes one message. Three kinds only mutate and fall through to
+// the editor, so a paste or a cursor blink still reaches the composer; the
+// rest answer for themselves.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = max(1, msg.Width), max(1, msg.Height)
-		m.layout()
-		m.refresh(false)
+		m.resize(msg)
 	case listResult:
-		m.loading = false
-		m.sessions = msg.items
-		if msg.err != nil {
-			m.status = "Cannot list sessions: " + safe(msg.err.Error())
-		}
-	case attachResult:
-		m.loading = false
-		if msg.err != nil {
-			m.status = "Cannot attach: " + safe(msg.err.Error())
-			return m, nil
-		}
-		m.restore(msg.snapshot)
-		m.status = ""
-		return m, m.next()
-	case reconnectResult:
-		m.loading = false
-		if msg.err != nil {
-			m.status = "Reconnect failed: " + safe(msg.err.Error())
-			return m, nil
-		}
-		m.backend = msg.backend
-		m.restore(msg.snapshot)
-		m.status = "Reconnected; history and current prompts refreshed."
-		return m, m.next()
-	case nextResult:
-		if msg.generation != m.generation {
-			return m, nil
-		}
-		if msg.err != nil {
-			m.disconnected = true
-			m.working = false
-			m.prompt = nil
-			m.promptInput.Reset()
-			m.promptInput.EchoMode = textinput.EchoNormal
-			m.status = "Disconnected. Ctrl+R reconnects; submitted operations are never retried."
-			m.refresh(false)
-			return m, nil
-		}
-		m.consume(msg.event)
-		m.refresh(false)
-		return m, m.next()
-	case inspectResult:
-		if msg.generation != m.generation || m.inspector == nil || msg.token != m.inspector.token {
-			return m, nil
-		}
-		m.inspector.loading = false
-		if msg.err != nil {
-			m.inspector.content = "Cannot inspect: " + safe(msg.err.Error())
-		} else {
-			m.inspector.content = safe(msg.content)
-		}
-		m.refresh(false)
-		if m.prompt == nil {
-			m.viewport.GotoTop()
-		}
-		return m, nil
+		m.sessionsListed(msg)
 	case actionResult:
-		m.operations = max(0, m.operations-1)
-		m.working = m.operations > 0
-		if msg.err != nil {
-			if msg.kind == "friction" && m.inspector != nil && m.inspector.reading {
-				m.inspector.reading = false
-				m.inspector.loading = false
-				m.inspector.content = "Friction read failed: " + safe(msg.err.Error())
-			}
-			if msg.kind == "send" || msg.kind == "friction" {
-				m.busy = false
-			}
-			m.status = "Request failed: " + safe(msg.err.Error()) + ". Inspect state before retrying."
-			if msg.kind == "reply" {
-				m.clearPrompt(msg.prompt)
-			}
-		} else {
-			m.status = ""
-			if msg.kind == "reply" {
-				m.clearPrompt(msg.prompt)
-			}
-		}
-		m.refresh(false)
+		m.actionFinished(msg)
+	case attachResult:
+		return m, m.attached(msg)
+	case reconnectResult:
+		return m, m.reconnected(msg)
+	case nextResult:
+		return m, m.eventArrived(msg)
+	case inspectResult:
+		return m, m.inspected(msg)
 	case tea.KeyPressMsg:
-		key := msg.String()
-		switch key {
-		case "ctrl+q":
-			return m, tea.Quit
-		case "ctrl+c":
-			if m.active && m.busy && !m.disconnected {
-				b, id := m.backend, m.id
-				return m, m.action("abort", "", func(ctx context.Context) error { return b.Abort(ctx, id) })
-			}
-			if m.busy {
-				return m, nil
-			}
-			return m, tea.Quit
-		case "ctrl+r":
-			if m.reconnect != nil && m.active && !m.loading && !m.working {
-				m.loading = true
-				m.generation++
-				m.inspector = nil
-				m.backend.Close()
-				m.prompt = nil
-				m.promptInput.Reset()
-				m.promptInput.EchoMode = textinput.EchoNormal
-				return m, func() tea.Msg {
-					ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
-					defer cancel()
-					b, err := m.reconnect(ctx)
-					if err != nil {
-						return reconnectResult{err: err}
-					}
-					s, err := b.Attach(ctx, m.repo, m.id)
-					if err != nil {
-						b.Close()
-						return reconnectResult{err: err}
-					}
-					return reconnectResult{backend: b, snapshot: s}
-				}
-			}
-		case "pgup":
-			m.viewport.PageUp()
-			return m, nil
-		case "pgdown":
-			m.viewport.PageDown()
-			return m, nil
-		case "ctrl+end":
-			m.viewport.GotoBottom()
-			return m, nil
-		}
-		if m.loading || m.disconnected {
-			return m, nil
-		}
-		if !m.active {
-			switch key {
-			case "up":
-				m.selected = max(0, m.selected-1)
-			case "down":
-				m.selected = min(len(m.sessions), m.selected+1)
-			case "enter":
-				m.loading = true
-				id := ""
-				if m.selected > 0 {
-					id = m.sessions[m.selected-1].ID
-				}
-				return m, m.attach(id)
-			}
-			return m, nil
-		}
-		if m.inspector != nil && m.prompt == nil {
-			switch key {
-			case "esc":
-				m.inspector = nil
-				m.refresh(true)
-			case "r":
-				if m.inspector.command != "" && !m.inspector.loading && !m.working {
-					return m, m.inspect(m.inspector.command)
-				}
-			}
-			return m, nil
-		}
-		if m.working {
-			return m, nil
-		}
-		if key == "enter" {
-			return m, m.submit()
-		}
-		return m, m.updateEditor(msg)
+		return m, m.keyPressed(msg)
 	}
-	if m.active && !m.loading && !m.working && !m.disconnected && (m.inspector == nil || m.prompt != nil) {
+	if m.editing() {
 		return m, m.updateEditor(msg)
 	}
 	return m, nil
 }
+
+// editing reports whether the composer or the prompt input has the keyboard.
+func (m *model) editing() bool {
+	return m.active && !m.loading && !m.working && !m.disconnected &&
+		(m.inspector == nil || m.prompt != nil)
+}
+
+func (m *model) resize(msg tea.WindowSizeMsg) {
+	m.width, m.height = max(1, msg.Width), max(1, msg.Height)
+	m.layout()
+	m.refresh(false)
+}
+
+func (m *model) sessionsListed(msg listResult) {
+	m.loading = false
+	m.sessions = msg.items
+	if msg.err != nil {
+		m.status = "Cannot list sessions: " + safe(msg.err.Error())
+	}
+}
+
+func (m *model) attached(msg attachResult) tea.Cmd {
+	m.loading = false
+	if msg.err != nil {
+		m.status = "Cannot attach: " + safe(msg.err.Error())
+		return nil
+	}
+	m.restore(msg.snapshot)
+	m.status = ""
+	return m.next()
+}
+
+func (m *model) reconnected(msg reconnectResult) tea.Cmd {
+	m.loading = false
+	if msg.err != nil {
+		m.status = "Reconnect failed: " + safe(msg.err.Error())
+		return nil
+	}
+	m.backend = msg.backend
+	m.restore(msg.snapshot)
+	m.status = "Reconnected; history and current prompts refreshed."
+	return m.next()
+}
+
+// eventArrived consumes one session event and asks for the next. A stream
+// error is terminal for this connection: submitted operations are never
+// retried, because the daemon may already have applied them.
+func (m *model) eventArrived(msg nextResult) tea.Cmd {
+	if msg.generation != m.generation {
+		return nil
+	}
+	if msg.err != nil {
+		m.disconnected = true
+		m.working = false
+		m.prompt = nil
+		m.promptInput.Reset()
+		m.promptInput.EchoMode = textinput.EchoNormal
+		m.status = "Disconnected. Ctrl+R reconnects; submitted operations are never retried."
+		m.refresh(false)
+		return nil
+	}
+	m.consume(msg.event)
+	m.refresh(false)
+	return m.next()
+}
+
+func (m *model) inspected(msg inspectResult) tea.Cmd {
+	if msg.generation != m.generation || m.inspector == nil || msg.token != m.inspector.token {
+		return nil
+	}
+	m.inspector.loading = false
+	if msg.err != nil {
+		m.inspector.content = "Cannot inspect: " + safe(msg.err.Error())
+	} else {
+		m.inspector.content = safe(msg.content)
+	}
+	m.refresh(false)
+	if m.prompt == nil {
+		m.viewport.GotoTop()
+	}
+	return nil
+}
+
+func (m *model) actionFinished(msg actionResult) {
+	m.operations = max(0, m.operations-1)
+	m.working = m.operations > 0
+	if msg.err != nil {
+		if msg.kind == "friction" && m.inspector != nil && m.inspector.reading {
+			m.inspector.reading = false
+			m.inspector.loading = false
+			m.inspector.content = "Friction read failed: " + safe(msg.err.Error())
+		}
+		if msg.kind == "send" || msg.kind == "friction" {
+			m.busy = false
+		}
+		m.status = "Request failed: " + safe(msg.err.Error()) + ". Inspect state before retrying."
+	} else {
+		m.status = ""
+	}
+	if msg.kind == "reply" {
+		m.clearPrompt(msg.prompt)
+	}
+	m.refresh(false)
+}
+
+// keyPressed applies the keys that work everywhere, then hands the rest to
+// whichever surface has focus.
+func (m *model) keyPressed(msg tea.KeyPressMsg) tea.Cmd {
+	key := msg.String()
+	if cmd, handled := m.globalKey(key); handled {
+		return cmd
+	}
+	if m.loading || m.disconnected {
+		return nil
+	}
+	if !m.active {
+		return m.listKey(key)
+	}
+	if m.inspector != nil && m.prompt == nil {
+		return m.inspectorKey(key)
+	}
+	if m.working {
+		return nil
+	}
+	if key == "enter" {
+		return m.submit()
+	}
+	return m.updateEditor(msg)
+}
+
+// globalKey handles quit, abort, reconnect and scrolling. handled is false
+// when the key was ours but its precondition failed, so the surfaces below
+// still get a chance at it.
+func (m *model) globalKey(key string) (tea.Cmd, bool) {
+	switch key {
+	case "ctrl+q":
+		return tea.Quit, true
+	case "ctrl+c":
+		if m.active && m.busy && !m.disconnected {
+			b, id := m.backend, m.id
+			return m.action("abort", "", func(ctx context.Context) error { return b.Abort(ctx, id) }), true
+		}
+		if m.busy {
+			return nil, true
+		}
+		return tea.Quit, true
+	case "ctrl+r":
+		if m.reconnect == nil || !m.active || m.loading || m.working {
+			return nil, false
+		}
+		return m.startReconnect(), true
+	case "pgup":
+		m.viewport.PageUp()
+		return nil, true
+	case "pgdown":
+		m.viewport.PageDown()
+		return nil, true
+	case "ctrl+end":
+		m.viewport.GotoBottom()
+		return nil, true
+	}
+	return nil, false
+}
+
+// startReconnect drops the current connection and dials again. The
+// generation bump makes every event still in flight on the old stream
+// belong to nobody.
+func (m *model) startReconnect() tea.Cmd {
+	m.loading = true
+	m.generation++
+	m.inspector = nil
+	m.backend.Close()
+	m.prompt = nil
+	m.promptInput.Reset()
+	m.promptInput.EchoMode = textinput.EchoNormal
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+		defer cancel()
+		b, err := m.reconnect(ctx)
+		if err != nil {
+			return reconnectResult{err: err}
+		}
+		s, err := b.Attach(ctx, m.repo, m.id)
+		if err != nil {
+			b.Close()
+			return reconnectResult{err: err}
+		}
+		return reconnectResult{backend: b, snapshot: s}
+	}
+}
+
+// listKey moves through the session list; entry 0 opens a new session.
+func (m *model) listKey(key string) tea.Cmd {
+	switch key {
+	case "up":
+		m.selected = max(0, m.selected-1)
+	case "down":
+		m.selected = min(len(m.sessions), m.selected+1)
+	case "enter":
+		m.loading = true
+		id := ""
+		if m.selected > 0 {
+			id = m.sessions[m.selected-1].ID
+		}
+		return m.attach(id)
+	}
+	return nil
+}
+
+func (m *model) inspectorKey(key string) tea.Cmd {
+	switch key {
+	case "esc":
+		m.inspector = nil
+		m.refresh(true)
+	case "r":
+		if m.inspector.command != "" && !m.inspector.loading && !m.working {
+			return m.inspect(m.inspector.command)
+		}
+	}
+	return nil
+}
+
 func (m *model) submit() tea.Cmd {
 	if m.prompt != nil {
 		return m.reply(m.promptInput.Value())

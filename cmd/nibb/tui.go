@@ -43,7 +43,9 @@ func runTUI(paths config.Paths, args []string) error {
 			return err
 		}
 		if !*noKeychain {
-			o.Keychain, o.Bindings = openKeychain(paths)
+			if o.Keychain, o.Bindings, err = openKeychain(paths); err != nil {
+				return err
+			}
 		}
 	}
 	return tui.Run(context.Background(), tui.Options{Core: o, Socket: *socket, Resume: *resume, ShowThinking: *thinking, Input: os.Stdin, Output: os.Stdout})

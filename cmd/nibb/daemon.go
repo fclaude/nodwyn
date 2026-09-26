@@ -36,7 +36,9 @@ func runDaemon(paths config.Paths, args []string, noKeychain bool) error {
 	}
 	options := core.Options{Config: cfg, Paths: paths, Version: versionString()}
 	if !noKeychain {
-		options.Keychain, options.Bindings = openKeychain(paths)
+		if options.Keychain, options.Bindings, err = openKeychain(paths); err != nil {
+			return err
+		}
 	}
 	listener, err := rpc.Listen(*socket)
 	if err != nil {
