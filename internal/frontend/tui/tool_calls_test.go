@@ -44,11 +44,11 @@ func TestToolCardsKeepReusedIDsAndSkippedCallsSeparate(t *testing.T) {
 		t.Fatal("calls or decisions merged by reused ID")
 	}
 	for i, want := range []string{"first value", "second failed", "No matching call record"} {
-		if !strings.Contains(cards[i].render(), want) {
+		if !strings.Contains(cards[i].render(true), want) {
 			t.Fatalf("card %d missing %q", i, want)
 		}
 	}
-	if cards[2].call != nil || strings.Contains(cards[2].render(), "awaiting result") {
+	if cards[2].call != nil || strings.Contains(cards[2].render(true), "awaiting result") {
 		t.Fatal("skipped result appeared to execute")
 	}
 }
@@ -63,7 +63,7 @@ func TestToolCardIntervalsDoNotGuessMissingResults(t *testing.T) {
 	if len(cards) != 2 || cards[0].result != nil || !cards[0].ended || len(cards[0].decisions) != 1 {
 		t.Fatal("mismatched result or origin was assigned to a call")
 	}
-	if !strings.Contains(cards[0].render(), "no result recorded") || cards[1].call != nil {
+	if !strings.Contains(cards[0].render(true), "no result recorded") || cards[1].call != nil {
 		t.Fatal("unmatched result presented as a completed call")
 	}
 	m.consume(wire(string(log.KindToolCall), callRecord("two", "read"), 5))
@@ -81,18 +81,18 @@ func TestToolCardsRestoreOpenIntervalsAndRenderSafely(t *testing.T) {
 	snap := snapshot{ID: "session", Repo: "/repo", Busy: true, History: []log.Event{{Seq: 1, Kind: log.KindToolCall, Payload: e.Payload}}}
 	m := testModel()
 	m.restore(snap)
-	if m.activeTool == nil || !strings.Contains(m.activeTool.render(), "awaiting result") {
+	if m.activeTool == nil || !strings.Contains(m.activeTool.render(true), "awaiting result") {
 		t.Fatal("catch-up lost an open call")
 	}
 	m.consume(wire(string(log.KindGuardDecision), log.GuardDecision{Prim: "read", Origin: "model", Decision: "confirm", Answer: "yes", Detail: canary + "\x1b[2J"}, 2))
 	m.consume(wire(string(log.KindToolResult), log.ToolResult{ID: "live", Name: "read", OK: true, Value: canary + "\x1b]52;c;ATTACK\a\nvisible result"}, 3))
-	text := toolCards(m)[0].render()
+	text := toolCards(m)[0].render(true)
 	if strings.Contains(text, canary) || strings.Contains(text, "\x1b") || strings.Contains(text, "ATTACK") || !strings.Contains(text, "visible result") {
 		t.Fatal("unsafe or missing tool detail")
 	}
 	snap.Busy = false
 	m.restore(snap)
-	if m.activeTool != nil || !strings.Contains(toolCards(m)[0].render(), "no result recorded") {
+	if m.activeTool != nil || !strings.Contains(toolCards(m)[0].render(true), "no result recorded") {
 		t.Fatal("idle history displayed an interrupted call as running")
 	}
 }
@@ -174,7 +174,7 @@ func TestToolCardsFromLocalAndRPCEvents(t *testing.T) {
 				t.Fatal("history lost tool cards")
 			}
 			for i, restored := range restoredCards {
-				if restored.render() != cards[i].render() || strings.Contains(restored.render(), "sk-ant-abcdefgh1234") {
+				if restored.render(true) != cards[i].render(true) || strings.Contains(restored.render(true), "sk-ant-abcdefgh1234") {
 					t.Fatal("history changed or exposed tool details")
 				}
 			}
@@ -190,7 +190,74 @@ func TestMalformedToolResultDoesNotInventSuccess(t *testing.T) {
 		t.Fatal("malformed result was presented as a tool outcome")
 	}
 	m.consume(wire(event.Status, event.StatusInfo{State: "idle"}, 0))
-	if !strings.Contains(toolCards(m)[0].render(), "no result recorded") {
+	if !strings.Contains(toolCards(m)[0].render(true), "no result recorded") {
 		t.Fatal("missing outcome presented as successful")
+	}
+}
+
+// A conversation is unreadable when every tool call dumps its arguments and
+// its result into it. The compact line carries what a reader scans; the
+// body is behind :details.
+func TestCompactToolLineSummarisesWithoutTheBody(t *testing.T) {
+	m := testModel()
+	m.consume(wire(string(log.KindToolCall), log.ToolCallEvent{
+		ToolCall: log.ToolCall{ID: "c1", Name: "fs-read", Args: json.RawMessage(`{"path":"internal/log/log.go"}`)},
+		Origin:   "model",
+	}, 1))
+	m.consume(wire(string(log.KindGuardDecision), log.GuardDecision{Prim: "fs-read", Origin: "model", Decision: "allow"}, 2))
+	m.consume(wire(string(log.KindToolResult), log.ToolResult{
+		ID: "c1", Name: "fs-read", OK: true, Value: strings.Repeat("x", 10240), Millis: 5,
+	}, 3))
+	card := toolCards(m)[0]
+
+	compact := card.render(false)
+	if strings.Contains(compact, "\n") {
+		t.Fatalf("compact render must be one line: %q", compact)
+	}
+	for _, want := range []string{"fs-read", "internal/log/log.go", "[allow]", "✓ 10.0 kB", "5 ms"} {
+		if !strings.Contains(compact, want) {
+			t.Errorf("compact line missing %q: %q", want, compact)
+		}
+	}
+	if strings.Contains(compact, strings.Repeat("x", 64)) {
+		t.Error("compact line must not carry the result body")
+	}
+	if full := card.render(true); !strings.Contains(full, strings.Repeat("x", 64)) {
+		t.Error("details render must carry the result body")
+	}
+}
+
+// Once a call names its target, a long prose argument is noise on the line.
+func TestArgSummaryLeadsWithTheTargetAndDropsProse(t *testing.T) {
+	long := strings.Repeat("prose ", 40)
+	got := argSummary([]byte(`{"new":"` + long + `","path":"README.md","old":"short old"}`))
+	if !strings.HasPrefix(got, "README.md") {
+		t.Fatalf("target should lead: %q", got)
+	}
+	if strings.Contains(got, "prose prose") {
+		t.Errorf("long prose argument should be dropped: %q", got)
+	}
+	if !strings.Contains(got, "short old") {
+		t.Errorf("short arguments should survive: %q", got)
+	}
+	if plain := argSummary([]byte(`{"a":"one","b":"two"}`)); plain != "one two" {
+		t.Errorf("without a target key every value shows: %q", plain)
+	}
+}
+
+// A session row must keep the detail that tells two sessions apart, even
+// when the first message is long enough to fill the terminal.
+func TestSessionRowKeepsTheMetaColumn(t *testing.T) {
+	long := strings.Repeat("a long first message ", 10)
+	row := twoColumn(long, "nibb · 4d", 60, false)
+	if !strings.HasSuffix(ansiStrip(row), "nibb · 4d") {
+		t.Fatalf("meta must survive clipping: %q", row)
+	}
+	if width := lipglossWidth(row); width != 60 {
+		t.Fatalf("row width %d, want 60: %q", width, row)
+	}
+	short := ansiStrip(twoColumn("untitled", "nibb · 4d", 60, false))
+	if !strings.HasPrefix(short, "untitled  ") || !strings.HasSuffix(short, "nibb · 4d") {
+		t.Fatalf("short label should be padded to the meta column: %q", short)
 	}
 }

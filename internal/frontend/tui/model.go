@@ -36,6 +36,7 @@ type model struct {
 	activeTool                                   *toolCallView
 	liveText, liveThinking                       string
 	thinking                                     bool
+	details                                      bool // tool arguments and results inline
 	lastSeq                                      uint64
 	prompt                                       *pendingPrompt
 	resolved                                     map[string]bool
@@ -337,6 +338,12 @@ func (m *model) submit() tea.Cmd {
 		m.composer.Reset()
 		m.refresh(false)
 		return nil
+	case text == ":details":
+		m.details = !m.details
+		m.status = "Tool arguments and results: " + onOff(m.details)
+		m.composer.Reset()
+		m.refresh(false)
+		return nil
 	case strings.HasPrefix(text, ":") && !strings.HasPrefix(text, ":eval "):
 		m.status = "Unknown command; :help lists this slice's commands."
 		return nil
@@ -375,29 +382,38 @@ func (m *model) View() tea.View {
 	var body string
 	if !m.active {
 		title = "nibb · choose a session"
-		rows := []string{"New session in " + safe(m.repo)}
+		// A list row is two columns: what the session is about on the left,
+		// which project and how long ago on the right. The right column is
+		// reserved first, so a long first message is clipped instead of
+		// pushing the identifying detail off the end.
+		type row struct{ label, meta string }
+		rows := []row{{label: "New session in " + safe(m.repo)}}
 		for _, s := range m.sessions {
 			label := s.FirstMessage
 			if label == "" {
-				label = s.ID
+				label = "untitled"
 			}
-			state := ""
-			if s.Busy {
-				state = " [running]"
-			} else if s.InFlight {
-				state = " [interrupted]"
+			switch {
+			case s.Busy:
+				label += " [running]"
+			case s.InFlight:
+				label += " [interrupted]"
 			}
-			rows = append(rows, safe(label)+state+" · "+safe(s.Repo))
+			meta := safe(repoName(s.Repo))
+			if age := since(s.LastEvent); age != "" {
+				meta += " · " + age
+			}
+			rows = append(rows, row{safe(label), meta})
 		}
 		start := max(0, m.selected-max(1, m.height-8)+1)
 		end := min(len(rows), start+max(1, m.height-8))
 		var lines []string
 		for i := start; i < end; i++ {
-			mark := "  "
+			mark, marked := "  ", false
 			if i == m.selected {
-				mark = "› "
+				mark, marked = styleCursor.Render("›")+" ", true
 			}
-			lines = append(lines, clip(mark+rows[i], m.width))
+			lines = append(lines, mark+twoColumn(rows[i].label, rows[i].meta, m.width-2, marked))
 		}
 		body = strings.Join(lines, "\n") + "\n\n↑/↓ select · Enter open · Ctrl+Q quit"
 	} else {
@@ -418,7 +434,7 @@ func (m *model) View() tea.View {
 				editor += " · r refreshes"
 			}
 		}
-		body = m.viewport.View() + "\n" + strings.Repeat("─", m.width) + "\n" + editor
+		body = m.viewport.View() + "\n" + styleRule.Render(strings.Repeat("─", m.width)) + "\n" + editor
 	}
 	help := "PgUp/PgDn scroll · Ctrl+C abort/quit · Ctrl+Q quit"
 	if m.reconnect != nil {
@@ -427,10 +443,22 @@ func (m *model) View() tea.View {
 	if m.active && m.prompt == nil && m.inspector == nil {
 		help = "Enter sends · Alt+Enter/Ctrl+J newline · Ctrl+Q quits"
 	}
-	content := clip(title, m.width) + "\n" + body + "\n" + clip(safe(m.status), m.width) + "\n" + clip(help, m.width)
+	titleStyle := styleTitle
+	if m.prompt != nil {
+		titleStyle = styleTitleAlert
+	}
+	content := bar(titleStyle, clip(title, m.width), m.width) + "\n" + body +
+		"\n" + styleStatus.Render(clip(safe(m.status), m.width)) +
+		"\n" + styleHelp.Render(clip(help, m.width))
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
+}
+func onOff(v bool) string {
+	if v {
+		return "shown"
+	}
+	return "hidden"
 }
 func (m *model) refresh(bottom bool) {
 	m.layout()
@@ -439,7 +467,7 @@ func (m *model) refresh(bottom bool) {
 	for _, line := range m.transcript {
 		if !line.thinking || m.thinking {
 			if line.tool != nil {
-				rows = append(rows, line.tool.render())
+				rows = append(rows, line.tool.render(m.details))
 			} else {
 				rows = append(rows, line.text)
 			}
@@ -450,7 +478,7 @@ func (m *model) refresh(bottom bool) {
 		content += "\nthinking> " + safe(m.liveThinking)
 	}
 	if m.liveText != "" {
-		content += "\nassistant> " + safe(m.liveText)
+		content += "\nnibb> " + safe(m.liveText)
 	}
 	if m.inspector != nil {
 		content = m.inspector.content

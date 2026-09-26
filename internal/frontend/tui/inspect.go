@@ -236,6 +236,7 @@ const helpText = `Commands
 :friction              Guarded read of docs/friction.md; needs an idle session.
 :eval EXPR             User-origin Scheme evaluation.
 :thinking              Show or hide thinking.
+:details               Show or hide tool arguments and results inline.
 :help, :h              This view.
 :q, :quit, :exit       Quit (detach in daemon mode).
 

@@ -68,9 +68,10 @@ func (m *model) consume(e rpc.ClientEvent) {
 			m.transcript = append(m.transcript, entry{text: safe("thinking> " + p.Thinking), thinking: true})
 		}
 		if p.Content != "" {
-			m.append("assistant> " + p.Content)
+			m.append("nibb> " + p.Content)
 		}
-		m.append(fmt.Sprintf("[%d prompt / %d output tokens]", p.Usage.PromptTokens, p.Usage.OutputTokens))
+		m.append(fmt.Sprintf("      %d→%d tok · %.1fs", p.Usage.PromptTokens, p.Usage.OutputTokens,
+			float64(p.Usage.TotalMS)/1000))
 		m.liveText = ""
 		m.liveThinking = ""
 	case string(log.KindToolCall):

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/fclaude/nibb/internal/log"
@@ -55,24 +56,37 @@ func (m *model) recordToolDecision(decision log.GuardDecision) bool {
 	return true
 }
 
-func (card *toolCallView) render() string {
-	var out strings.Builder
-	name, id, state := "", "", "awaiting result"
+// render draws a call as the one line a reader scans: what ran, on what,
+// how the guard judged it, and what came back. details adds the arguments,
+// the guard's reasoning and the result body underneath — a 13 kB file read
+// belongs behind a toggle, not in the middle of a conversation.
+func (card *toolCallView) render(details bool) string {
+	name, id := "", ""
 	if card.call != nil {
 		name, id = card.call.Name, card.call.ID
 	}
-	if card.ended {
-		state = "no result recorded"
-	}
 	if card.result != nil {
 		name, id = card.result.Name, card.result.ID
-		state = "error"
-		if card.result.OK {
-			state = "ok"
-		}
-		state += fmt.Sprintf(" · %d ms", card.result.Millis)
 	}
-	fmt.Fprintf(&out, "\n▸ %s · %s\n  call ID: %s\n", name, state, id)
+	line := "⎿ " + name
+	if card.call != nil {
+		if summary := argSummary(card.call.Args); summary != "" {
+			line += "  " + summary
+		}
+	}
+	if verdict := card.verdict(); verdict != "" {
+		line += "  [" + verdict + "]"
+	}
+	line += "  " + card.state()
+	if !details {
+		return safe(line)
+	}
+
+	var out strings.Builder
+	out.WriteString(line + "\n")
+	if id != "" {
+		fmt.Fprintf(&out, "  call ID: %s\n", id)
+	}
 	if card.call != nil {
 		var args bytes.Buffer
 		if err := json.Indent(&args, card.call.Args, "", "  "); err == nil {
@@ -113,6 +127,105 @@ func (card *toolCallView) render() string {
 		}
 	}
 	return safe(out.String())
+}
+
+// state is the right-hand end of the compact line.
+func (card *toolCallView) state() string {
+	if card.result == nil {
+		if card.ended {
+			return "no result recorded"
+		}
+		return "awaiting result"
+	}
+	if !card.result.OK {
+		return fmt.Sprintf("✕ error · %d ms", card.result.Millis)
+	}
+	return fmt.Sprintf("✓ %s · %d ms", byteSize(len(card.result.Value)), card.result.Millis)
+}
+
+// verdict is the last guard decision recorded against this call, which is
+// the one that let it run or stopped it.
+func (card *toolCallView) verdict() string {
+	if len(card.decisions) == 0 {
+		return ""
+	}
+	last := card.decisions[len(card.decisions)-1]
+	out := last.Decision
+	if last.Answer != "" {
+		out += "→" + last.Answer
+	}
+	return out
+}
+
+func byteSize(n int) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d B", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1f kB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	}
+}
+
+// argSummary renders a call's arguments as one line. What identifies a call
+// is its target, so those keys lead; once a target is named, a long prose
+// argument says nothing a scanning reader needs, and the details view still
+// has every argument in full.
+var targetKeys = []string{"path", "file", "dir", "pkg", "target", "url", "cmd", "name", "glob", "pattern"}
+
+func argSummary(raw json.RawMessage) string {
+	var fields map[string]any
+	if len(raw) == 0 || json.Unmarshal(raw, &fields) != nil {
+		return oneLine(string(raw))
+	}
+	rank := func(key string) int {
+		for i, k := range targetKeys {
+			if k == key {
+				return i
+			}
+		}
+		return len(targetKeys)
+	}
+	keys := make([]string, 0, len(fields))
+	named := false
+	for key := range fields {
+		keys = append(keys, key)
+		if rank(key) < len(targetKeys) {
+			named = true
+		}
+	}
+	sort.SliceStable(keys, func(i, j int) bool {
+		if a, b := rank(keys[i]), rank(keys[j]); a != b {
+			return a < b
+		}
+		return keys[i] < keys[j]
+	})
+	var parts []string
+	for _, key := range keys {
+		value := ""
+		if s, ok := fields[key].(string); ok {
+			value = s
+		} else if encoded, err := json.Marshal(fields[key]); err == nil {
+			value = string(encoded)
+		}
+		if value == "" || value == "[]" || value == "{}" || value == "null" {
+			continue
+		}
+		if named && rank(key) == len(targetKeys) && len(value) > 48 {
+			continue
+		}
+		parts = append(parts, value)
+	}
+	return oneLine(strings.Join(parts, " "))
+}
+
+func oneLine(value string) string {
+	flat := strings.Join(strings.Fields(value), " ")
+	if len(flat) > 140 {
+		return flat[:139] + "…"
+	}
+	return flat
 }
 
 func section(out *strings.Builder, label, text string) {
