@@ -1,5 +1,11 @@
-// Package budget bounds one supervised turn. It owns accounting and checkpoint
-// choices; the session supplies the prompt and durable-recording callback.
+// Package budget bounds one supervised turn (ADR 18). It owns accounting and
+// checkpoint choices; the session supplies the prompt and durable-recording
+// callback.
+//
+// A turn is measured in four dimensions: tool calls, model tokens,
+// irreversible actions and wall time. Each has a soft limit, which raises a
+// checkpoint asking whether to continue, and a hard limit, which stops the
+// turn and cancels its context.
 package budget
 
 import (
@@ -11,12 +17,17 @@ import (
 	"time"
 )
 
+// Limit is one dimension's ceilings. Wall limits are nanoseconds.
 type Limit struct {
-	Soft int64 `json:"soft"`
-	Hard int64 `json:"hard"`
+	Soft int64 `json:"soft"` // reaching it raises a checkpoint
+	Hard int64 `json:"hard"` // reaching it stops the turn
 }
+
+// Limits are a turn's ceilings in every dimension.
 type Limits struct{ ToolCalls, Tokens, Actions, Wall Limit }
 
+// State is what a turn has used so far, shown at a checkpoint. Files and
+// Commands are the distinct targets of its irreversible actions.
 type State struct {
 	ToolCalls int64         `json:"tool_calls"`
 	Tokens    int64         `json:"tokens"`
@@ -26,6 +37,8 @@ type State struct {
 	Commands  []string      `json:"commands"`
 }
 
+// Checkpoint is the question put to the user when a soft limit is reached:
+// this dimension has used this much of this limit; continue?
 type Checkpoint struct {
 	Dimension string `json:"dimension"`
 	Used      int64  `json:"used"`
@@ -33,6 +46,7 @@ type Checkpoint struct {
 	State     State  `json:"state"`
 }
 
+// Choice answers a Checkpoint: stop, or continue up to a new soft limit.
 type Choice struct {
 	Continue bool  `json:"continue"`
 	Soft     int64 `json:"soft"`
@@ -79,8 +93,12 @@ type Stop struct {
 
 func (s *Stop) Error() string { return s.Reason }
 
+// Confirm asks the user about a checkpoint. The session implements it with
+// the same prompt channel the guard uses, so any front-end can answer.
 type Confirm func(context.Context, Checkpoint) (Choice, error)
 
+// Turn accounts for one turn. It travels in the turn's context (From), so
+// the loop and the guard's gate charge the same budget.
 type Turn struct {
 	limits  Limits
 	state   State
@@ -105,10 +123,13 @@ func Start(parent context.Context, limits Limits, confirm Confirm) (context.Cont
 		stopTimer()
 	}
 }
+
+// From returns the budget Start bound to ctx, or nil if there is none.
 func From(ctx context.Context) *Turn {
 	t, _ := ctx.Value(contextKey{}).(*Turn)
 	return t
 }
+
 func (t *Turn) snapshot() State {
 	s := t.state
 	s.Elapsed = time.Since(t.start)
@@ -116,11 +137,15 @@ func (t *Turn) snapshot() State {
 	s.Commands = append([]string(nil), s.Commands...)
 	return s
 }
+
+// stop ends the turn: it cancels the turn's context with the Stop as cause.
 func (t *Turn) stop(reason string, hard bool) error {
 	err := &Stop{Hard: hard, Reason: reason}
 	t.cancel(err)
 	return err
 }
+
+// hard stops the turn if used has reached the hard limit.
 func (t *Turn) hard(ctx context.Context, dimension string, used int64, limit Limit) error {
 	if ctx.Err() != nil {
 		return context.Cause(ctx)
@@ -130,6 +155,9 @@ func (t *Turn) hard(ctx context.Context, dimension string, used int64, limit Lim
 	}
 	return nil
 }
+
+// check applies both limits: past the hard one the turn stops; past the
+// soft one the user is asked, and may raise it towards the hard one.
 func (t *Turn) check(ctx context.Context, dimension string, used int64, limit *Limit) error {
 	if err := t.hard(ctx, dimension, used, *limit); err != nil {
 		return err
@@ -169,6 +197,8 @@ func (t *Turn) Check(ctx context.Context) error {
 	}
 	return t.check(ctx, "tokens", t.state.Tokens, &t.limits.Tokens)
 }
+
+// ToolCall charges one tool call, checking every limit first.
 func (t *Turn) ToolCall(ctx context.Context) error {
 	if err := t.hard(ctx, "tool_calls", t.state.ToolCalls, t.limits.ToolCalls); err != nil {
 		return err
@@ -182,6 +212,9 @@ func (t *Turn) ToolCall(ctx context.Context) error {
 	t.state.ToolCalls++
 	return nil
 }
+
+// Action charges one irreversible action — a write to path or a run of
+// command — checking every limit first.
 func (t *Turn) Action(ctx context.Context, path, command string) error {
 	if err := t.hard(ctx, "actions", t.state.Actions, t.limits.Actions); err != nil {
 		return err
@@ -201,6 +234,7 @@ func (t *Turn) Action(ctx context.Context, path, command string) error {
 	}
 	return nil
 }
+
 func uniqueAppend(items []string, item string) []string {
 	for _, old := range items {
 		if old == item {

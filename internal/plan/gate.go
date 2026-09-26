@@ -35,6 +35,7 @@ const NoulInstructions = "Does carrying out this request take several distinct s
 // ScoreInstructions and ScoreLevels are the Seam A rubric.
 const ScoreInstructions = "The text is a plan written for the request quoted at its top. Rate how well the plan fulfils the request: complete, concrete, in a sensible order, with nothing unnecessary or unsafe."
 
+// ScoreLevels are the rubric's levels, worst first.
 var ScoreLevels = []string{
 	"misses or contradicts the request",
 	"addresses part of the request; major steps missing or wrong",

@@ -118,16 +118,28 @@ var (
 	Void  = Value{Kind: KVoid}
 )
 
+// Bool, Int, Float, Str, Sym and Cons build a value of each kind; the
+// result carries no provenance.
 func Bool(b bool) Value {
 	if b {
 		return True
 	}
 	return False
 }
-func Int(n int64) Value     { return Value{Kind: KInt, I: n} }
+
+// Int builds an integer.
+func Int(n int64) Value { return Value{Kind: KInt, I: n} }
+
+// Float builds a float.
 func Float(f float64) Value { return Value{Kind: KFloat, F: f} }
-func Str(s string) Value    { return Value{Kind: KString, S: s} }
-func Sym(s string) Value    { return Value{Kind: KSymbol, S: s} }
+
+// Str builds a string.
+func Str(s string) Value { return Value{Kind: KString, S: s} }
+
+// Sym builds a symbol.
+func Sym(s string) Value { return Value{Kind: KSymbol, S: s} }
+
+// Cons builds a pair.
 func Cons(a, d Value) Value { return Value{Kind: KPair, P: &Pair{Car: a, Cdr: d}} }
 
 // Vec builds a vector from values.
@@ -230,8 +242,10 @@ func Equal(a, b Value) bool {
 	}
 }
 
-// Write renders v in machine form (strings quoted); Display in human form.
-func Write(v Value) string   { var sb strings.Builder; print(&sb, v, true, nil); return sb.String() }
+// Write renders v in machine form (strings quoted), as the reader reads it.
+func Write(v Value) string { var sb strings.Builder; print(&sb, v, true, nil); return sb.String() }
+
+// Display renders v in human form (strings as their text).
 func Display(v Value) string { var sb strings.Builder; print(&sb, v, false, nil); return sb.String() }
 
 // WriteWithStrings renders v like Write, transforming each string before quoting.

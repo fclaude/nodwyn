@@ -19,6 +19,9 @@ type Budget struct {
 	WallHard      string `toml:"wall_hard"`
 }
 
+// Limits validates the configured budget and converts it for budget.Start.
+// legacyCalls is loop.max_tool_calls (or --max-tool-calls); when set it
+// becomes the hard tool-call limit.
 func (b Budget) Limits(legacyCalls int) (budget.Limits, error) {
 	wallSoft, e1 := time.ParseDuration(b.WallSoft)
 	wallHard, e2 := time.ParseDuration(b.WallHard)

@@ -17,17 +17,24 @@ import (
 	"github.com/fclaude/nibb/internal/log"
 )
 
+// CompleteLine, alone on the last line of an answer, is how the model says
+// the whole task is done.
 const CompleteLine = "NIBB_RUN_COMPLETE"
 
+// State is a run as recorded in its session log, from which it resumes.
 type State struct {
 	Task     string    `json:"task"`
 	Deadline time.Time `json:"deadline"`
 	MaxTurns int       `json:"max_turns"`
-	Turns    int       `json:"turns"`
-	Status   string    `json:"status"`
-	Reason   string    `json:"reason,omitempty"`
+	Turns    int       `json:"turns"` // turns started so far
+	// Status is running, completed, limited (deadline or turn count),
+	// stopped or error; Reason says why it is not running.
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
 }
 
+// Validate reports whether a run can start or resume: a task, turns left and
+// a deadline in the future.
 func (s State) Validate() error {
 	if !utf8.ValidString(s.Task) || strings.TrimSpace(s.Task) == "" || len(s.Task) > 64<<10 {
 		return errors.New("run task must be valid UTF-8, nonempty and at most 64 KiB")
@@ -41,11 +48,15 @@ func (s State) Validate() error {
 	return nil
 }
 
+// completion is how one turn ended, and its final answer if it gave one.
 type completion struct {
 	end    log.TurnEnd
 	answer string
 }
 
+// Driver runs one run: it sends a planned turn, waits for it to end, stops
+// if the model reported completion or a limit was reached, and otherwise asks
+// whether to continue. The continuation prompt grants no tool permission.
 type Driver struct {
 	session  *core.Session
 	mu       sync.Mutex
@@ -69,18 +80,26 @@ func New(session *core.Session, state State) (*Driver, error) {
 	state.Reason = ""
 	return &Driver{session: session, state: state, ctx: ctx, cancel: cancel, finished: make(chan completion, 1), done: make(chan struct{})}, nil
 }
+
+// Info returns the run's current state.
 func (d *Driver) Info() State { d.mu.Lock(); defer d.mu.Unlock(); return d.state }
+
+// Active reports whether the run is still going.
 func (d *Driver) Active() bool {
 	if d == nil {
 		return false
 	}
 	return d.Info().Status == "running"
 }
+
+// Stop ends the run, aborting a turn in progress. Wait for it to finish.
 func (d *Driver) Stop() {
 	if d != nil {
 		d.cancel()
 	}
 }
+
+// Wait blocks until the run has finished and recorded its final state.
 func (d *Driver) Wait() {
 	if d != nil {
 		<-d.done
@@ -113,7 +132,10 @@ func (d *Driver) Observe(ev event.Event) {
 		}
 	}
 }
+
+// Start runs the driver in the background on behalf of actor.
 func (d *Driver) Start(actor string) { go d.execute(actor) }
+
 func (d *Driver) execute(actor string) {
 	defer close(d.done)
 	defer d.cancel()
@@ -195,10 +217,14 @@ func (d *Driver) execute(actor string) {
 		}
 	}
 }
+
+// Complete reports whether answer ends with CompleteLine.
 func Complete(answer string) bool {
 	lines := strings.Split(strings.TrimRight(answer, "\r\n"), "\n")
 	return len(lines) > 0 && strings.TrimSuffix(lines[len(lines)-1], "\r") == CompleteLine
 }
+
+// finish records the run's final state and releases Wait.
 func (d *Driver) finish(status, reason string) {
 	state := d.Info()
 	_, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: status, Reason: reason})

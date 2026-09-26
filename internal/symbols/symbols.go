@@ -17,17 +17,24 @@ import (
 //go:embed grammars/*.wasm
 var grammars embed.FS
 
+// MaxDefinitions bounds an outline; the rest are dropped and Truncated set.
 const MaxDefinitions = 100
-const maxVisitedNodes = 100000
-const maxNameBytes = 512
 
+const (
+	maxVisitedNodes = 100000 // syntax nodes walked per file
+	maxNameBytes    = 512    // longer names are cut
+)
+
+// Definition is one named definition: a function, method, type or class.
 type Definition struct {
 	Name    string `json:"name"`
 	Kind    string `json:"kind"`
-	Line    int    `json:"line"`
+	Line    int    `json:"line"` // 1-based
 	EndLine int    `json:"end_line"`
 }
 
+// Outline is what index-symbols returns for a file. ParseErrors means the
+// grammar recovered from syntax errors, so definitions may be missing.
 type Outline struct {
 	Language    string       `json:"language"`
 	Definitions []Definition `json:"definitions"`
@@ -35,6 +42,8 @@ type Outline struct {
 	Truncated   bool         `json:"truncated"`
 }
 
+// Language picks a grammar by file extension, or explains that there is
+// none.
 func Language(path string) (string, error) {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".go":

@@ -13,6 +13,8 @@ import (
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
+// MaxPolicyBytes bounds a policy file read or written through
+// policy-read and policy-write.
 const MaxPolicyBytes = 64 << 10
 
 // PolicyDocument is configuration text, not a restored grant. Binding changes

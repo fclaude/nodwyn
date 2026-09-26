@@ -7,18 +7,26 @@ import (
 	"github.com/fclaude/nibb/internal/llm"
 )
 
-// turnProgress belongs to one turn. It observes completed calls, never grants
-// authority, and retains no state across the user's next message (ADR 18).
+// turnProgress notices a turn going in circles (ADR 18): the same call four
+// times in a row, a denied call retried three times, ten failures in a row.
+// It belongs to one turn, observes completed calls and never grants
+// authority; the user's next message starts a fresh one.
 type turnProgress struct {
-	last     callKey
-	repeated int
-	errors   int
-	denials  map[callKey]int
+	last     callKey         // the previous call
+	repeated int             // how many times in a row last has run
+	errors   int             // consecutive failed calls
+	denials  map[callKey]int // denials per call, until it succeeds
 }
 
+// callKey identifies a call by what it does, not by its id.
 type callKey struct{ name, args string }
+
+// toolOutcome classifies a result: failed covers any error, denied only a
+// guard refusal.
 type toolOutcome struct{ failed, denied bool }
 
+// observe records one completed call and returns why the turn should stop,
+// or "" to go on.
 func (p *turnProgress) observe(call llm.ToolCall, outcome toolOutcome) string {
 	key := keyOf(call)
 	if key == p.last {
@@ -53,8 +61,9 @@ func (p *turnProgress) observe(call llm.ToolCall, outcome toolOutcome) string {
 	return ""
 }
 
-// Ignore JSON object ordering and whitespace, but preserve array order and
-// exact numeric spellings; float conversion would merge large integer values.
+// keyOf ignores JSON object ordering and whitespace, but preserves array
+// order and exact numeric spellings; float conversion would merge large
+// integer values.
 func keyOf(call llm.ToolCall) callKey {
 	args := call.Args
 	decoder := json.NewDecoder(bytes.NewReader(args))

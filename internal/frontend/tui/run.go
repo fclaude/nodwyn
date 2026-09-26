@@ -11,15 +11,17 @@ import (
 	"github.com/fclaude/nibb/internal/frontend/rpc"
 )
 
+// Options configure the terminal client.
 type Options struct {
-	Core         core.Options
-	Socket       string
-	Resume       string
+	Core         core.Options // for a session in this process, when Socket is ""
+	Socket       string       // a daemon to attach to instead
+	Resume       string       // session to reopen; "" starts a new one
 	ShowThinking bool
 	Input        io.Reader
 	Output       io.Writer
 }
 
+// Run shows the terminal client until the user quits or ctx ends.
 func Run(ctx context.Context, o Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	// Keep cleanup independent of which model message wins a race with quitting.

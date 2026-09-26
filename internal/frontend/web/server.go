@@ -25,6 +25,7 @@ import (
 //go:embed assets/*
 var assets embed.FS
 
+// PairingCode returns a fresh random code for pairing a browser with Serve.
 func PairingCode() (string, error) {
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -33,10 +34,11 @@ func PairingCode() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
+// Options configure the browser console.
 type Options struct {
-	Socket      string
-	PairingCode string
-	ReadOnly    bool
+	Socket      string // the daemon the browser's requests are relayed to
+	PairingCode string // printed in the terminal; a browser presents it once
+	ReadOnly    bool   // allow only listing, watching and reading logs
 }
 
 type bridge struct {

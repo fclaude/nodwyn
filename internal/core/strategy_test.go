@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -285,5 +286,42 @@ func TestStrategyStopsBatchAtFirstFailure(t *testing.T) {
 	got := r.results()
 	if got["a"] != "" || got["b"] == "" || got["c"] != "Not executed: an earlier call in this batch failed" {
 		t.Fatalf("results: %v", got)
+	}
+}
+
+// failAfterUserMsg is a log destination that breaks once the user's
+// message is written, as a full disk would.
+type failAfterUserMsg struct{ broken bool }
+
+func (w *failAfterUserMsg) Write(p []byte) (int, error) {
+	if w.broken {
+		return 0, errors.New("disk full")
+	}
+	w.broken = bytes.Contains(p, []byte(`"user.msg"`))
+	return len(p), nil
+}
+
+// A strategy cannot catch a log failure and carry on unrecorded.
+func TestStrategyCannotCatchLogFailure(t *testing.T) {
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+(define (agent-turn request)
+  (let retry ((n 0))
+    (guard (e (else (if (< n 100) (retry (+ n 1)) 'gave-up)))
+      (model-turn))))`), 0o644)
+	srv := fake.New(fake.Turn{Content: "never asked"})
+	t.Cleanup(srv.Close)
+	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &failAfterUserMsg{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	r := &rig{t: t, s: s, srv: srv}
+	if err := r.turn("hi"); !strings.Contains(err, "disk full") {
+		t.Fatalf("turn error %q", err)
+	}
+	if len(srv.Requests) != 0 {
+		t.Fatal("the model was asked although the request could not be recorded")
 	}
 }

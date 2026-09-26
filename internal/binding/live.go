@@ -25,6 +25,9 @@ type Live struct {
 	table  Table
 }
 
+// Open loads the bindings file at path. With no path, initial is the table
+// for the whole session (tests, embedders); with one, the file alone is
+// authoritative and initial is ignored.
 func Open(path string, initial Table) (*Live, error) {
 	p := &Live{path: path, table: cloneTable(initial)}
 	// A configured file is authoritative, including its absence. Never restore
@@ -39,6 +42,8 @@ func Open(path string, initial Table) (*Live, error) {
 	return p, nil
 }
 
+// Refresh rereads the file if it changed. A file that no longer parses
+// leaves the previous table in place and returns the error.
 func (p *Live) Refresh() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -61,21 +66,27 @@ func (p *Live) Refresh() error {
 	return nil
 }
 
+// Snapshot returns a copy of the current table.
 func (p *Live) Snapshot() Table {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return cloneTable(p.table)
 }
+
+// Lookup is Table.Lookup on the current table.
 func (p *Live) Lookup(class, host, method, position string) (bool, string) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.table.Lookup(class, host, method, position)
 }
+
+// HasDestination is Table.HasDestination on the current table.
 func (p *Live) HasDestination(host string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.table.HasDestination(host)
 }
+
 func cloneTable(t Table) Table {
 	out := Table{Bind: make([]Binding, len(t.Bind))}
 	for i, row := range t.Bind {

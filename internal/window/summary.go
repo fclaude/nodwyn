@@ -11,6 +11,7 @@ import (
 	"github.com/fclaude/nibb/internal/redact"
 )
 
+// MaxSummaryBytes bounds a summary's text.
 const MaxSummaryBytes = 16 * 1024
 
 // SummarySourceHash validates whole conversational turns and fingerprints their
@@ -67,6 +68,9 @@ type SummaryInfo struct {
 	Status  string      `json:"status"` // active, recent, dropped, stale, superseded
 }
 
+// Summaries lists every summary in the log with its status: whether the
+// window uses it, and if not, why (dropped, stale, superseded, or too
+// recent to replace).
 func Summaries(events []log.Event) []SummaryInfo {
 	out := []SummaryInfo{}
 	dropped := map[uint64]bool{}

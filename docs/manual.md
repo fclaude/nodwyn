@@ -32,10 +32,10 @@ This is the spine. Read these in order and you have read the system.
 |---|---|---|
 | 1 | [internal/frontend/plain/chat.go](../internal/frontend/plain/chat.go) `Run` | reads a line, calls `Session.Send`, then only renders events until `status idle` |
 | 2 | [internal/core/session.go](../internal/core/session.go) `Send` | one goroutine per turn; [events.go](../internal/core/events.go) records and emits; [confirm.go](../internal/core/confirm.go) handles a prompt plus a wait on `Answer` |
-| 3 | [internal/loop/strategy.scm](../internal/loop/strategy.scm) `agent-turn`, [prims.go](../internal/loop/prims.go) `modelTurn`, `runTools` | the loop is Scheme; its primitives rebuild the window from `EventsSoFar()` every request and give each model call exactly one result via `runTool` |
+| 3 | [internal/loop/strategy.scm](../internal/loop/strategy.scm) `agent-turn`, [prims.go](../internal/loop/prims.go) `modelTurn`, `runTools` | the loop is Scheme; its primitives rebuild the window from `EventsSoFar()` every request ([model.go](../internal/loop/model.go) `ask`) and give each model call exactly one result ([turn.go](../internal/loop/turn.go) `claim`, [tools.go](../internal/loop/tools.go) `runTool`) |
 | 4 | [internal/window/window.go](../internal/window/window.go) `Build` | elides oldest tool results *in place* so the request prefix never changes |
 | 5 | [internal/llm/ollama.go](../internal/llm/ollama.go) `Chat` | native `/api/chat` streaming; thinking separated; tool-call args stay JSON objects |
-| 6 | [internal/loop/loop.go](../internal/loop/loop.go) `apply` | `Prim.ArgsFromJSON` orders named JSON args into positional Scheme values; `WithOrigin(ctx, OriginModel)` |
+| 6 | [internal/loop/tools.go](../internal/loop/tools.go) `apply` | `Prim.ArgsFromJSON` orders named JSON args into positional Scheme values; `WithOrigin(ctx, OriginModel)` |
 | 7 | [internal/scheme/prim.go](../internal/scheme/prim.go) `applyPrim` | **the single Scheme→Go exit**: arity check, `gate.Before`, then the handler |
 | 8 | [internal/guard/guard.go](../internal/guard/guard.go) `Before` | checkers run in order; strictest verdict wins; a standing approval outranks confirm, never deny; every host-reaching decision is logged |
 | 9 | [internal/guard/checkers.go](../internal/guard/checkers.go), [allow.go](../internal/guard/allow.go) | the bootstrap envelope: `MetaPolicy`, `RepoPin`, `PathDenylist`, `ArgvTrigger`, `CommandAllow` |
@@ -51,7 +51,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/prim` | host primitives and the diff | `prim.go` `Register`, `Checkers` |
 | `internal/llm` | the provider seam and the Ollama client | `llm.go` `Provider` |
 | `internal/window` | the derived context | `Build` |
-| `internal/loop` | the loop's primitives and default strategy | `strategy.scm`, `prims.go`, `loop.go` `Turn` |
+| `internal/loop` | the loop's primitives and default strategy | the package comment's reading order, starting at `loop.go` `Turn` |
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
 | `internal/plan` | the plan gate and bounded revision policy | `gate.go` `Run` |
 | `internal/keychain` | encrypted credentials, opaque handles and injection | `keychain.go` |

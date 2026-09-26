@@ -149,8 +149,9 @@ func (in *Interp) evalGuard(ctx context.Context, form []Value, env *Env) (Value,
 	return in.Eval(ctx, result.next, henv)
 }
 
-// catchable reports whether a Scheme program may handle err: denials and
-// cancellation are not.
+// catchable reports whether a Scheme program may handle err. A denial, a
+// Halt and a cancellation are not: a program cannot hide that it was
+// refused, keep going after the harness stopped it, or outlive an abort.
 func catchable(ctx context.Context, err error) bool {
 	var d *Denied
 	if errors.As(err, &d) {

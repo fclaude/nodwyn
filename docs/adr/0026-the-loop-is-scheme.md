@@ -30,7 +30,8 @@ primitives:
   when the model is asked again or the turn ends;
 - budgets, the tool-call limit and the progress guard (ADR 18) end the turn
   with `scheme.Halt`, which `guard` cannot catch, like a denial or a
-  cancellation;
+  cancellation; so does a failure to write the log, since a strategy that
+  caught it would carry on unrecorded;
 - tool results keep their provenance (L2).
 
 The primitives are hidden from the model and refused outside a turn and

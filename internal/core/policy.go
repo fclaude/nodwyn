@@ -11,6 +11,8 @@ import (
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
+// ReadPolicy returns a fixed configured policy file (bindings or approvals)
+// for a front-end's inspector, through the same guarded path as policy-read.
 func (s *Session) ReadPolicy(name, actor string) (string, error) {
 	return s.policyOperation(name, "", "", actor, false)
 }

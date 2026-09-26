@@ -156,8 +156,9 @@ REPL prints it, the agent loop feeds it back to the model as the tool result).
 A primitive the guard denies raises `denied: <reason>`. Denials and
 cancellations (an abort, a timeout) pass through `guard` untouched: a program
 cannot hide that it was refused, and an abort always unwinds. So do the agent
-loop's stops (§9): a spent budget, the tool-call limit and a progress stop end
-the turn whatever the strategy's `guard` clauses say.
+loop's stops (§9): a spent budget, the tool-call limit, a progress stop and a
+log that can no longer be written end the turn whatever the strategy's `guard`
+clauses say.
 
 ## 5. Builtins
 
@@ -476,7 +477,8 @@ had called them directly. Whatever the strategy does:
   the strategy asks the model again or when the turn ends;
 - budgets, the tool-call limit and the progress guard (the same call four
   times in a row, a denied call retried three times, ten failures in a row)
-  end the turn with an error no `guard` clause can catch (§4).
+  end the turn with an error no `guard` clause can catch (§4), and so does a
+  failure to write the log, which is the source of truth.
 
 ## 10. Not in nibb Scheme
 

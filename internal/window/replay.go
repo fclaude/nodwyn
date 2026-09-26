@@ -11,6 +11,8 @@ import (
 	"github.com/fclaude/nibb/internal/redact"
 )
 
+// RecipeVersion names how windows are built. It is recorded with the window
+// recipe, so a replay can refuse a recipe it does not know.
 const RecipeVersion = "window-v2"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas

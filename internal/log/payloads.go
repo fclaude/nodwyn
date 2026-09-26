@@ -175,6 +175,8 @@ type EvalRequest struct {
 	Source string `json:"source"`
 	Actor  string `json:"actor,omitempty"`
 }
+
+// EvalResult is the outcome of the EvalRequest before it.
 type EvalResult struct {
 	Value string `json:"value,omitempty"`
 	Error string `json:"error,omitempty"`
@@ -211,6 +213,9 @@ type Summary struct {
 	SourceHash string `json:"source_hash"`
 	Text       string `json:"text"`
 }
+
+// SummaryDrop revokes the summary recorded at SummarySeq; the window uses
+// the source events again.
 type SummaryDrop struct {
 	SummarySeq uint64 `json:"summary_seq"`
 }
@@ -234,9 +239,14 @@ type RunState struct {
 	Reason   string    `json:"reason,omitempty"`
 	Actor    string    `json:"actor,omitempty"`
 }
+
+// RunTurn marks the start of a run's Number-th turn.
 type RunTurn struct {
 	Number int `json:"number"`
 }
+
+// RunCheckpoint is the answer, after turn Number, to whether the run should
+// continue.
 type RunCheckpoint struct {
 	Number   int    `json:"number"`
 	Allowed  bool   `json:"allowed"`

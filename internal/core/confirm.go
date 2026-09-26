@@ -99,8 +99,15 @@ func (s *Session) answer(id, reply, actor, scope string, strict bool) error {
 	pending.reply <- guard.Approval{Allowed: r == "y" || r == "yes", Actor: actor, PromptID: id, Scope: scope}
 	return nil
 }
-func (s *Session) Allowed() []string       { return s.allow.List() }
+
+// Allowed lists the command prefixes with a standing approval.
+func (s *Session) Allowed() []string { return s.allow.List() }
+
+// AllowedWrites lists the write paths with a standing approval.
 func (s *Session) AllowedWrites() []string { return s.writes.List() }
+
+// TurnApproval reports whether ordinary writes are approved for the rest of
+// the current turn, and who approved them.
 func (s *Session) TurnApproval() (bool, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -113,6 +120,10 @@ func (s *Session) Confirm(ctx context.Context, p guard.Prompt) (bool, error) {
 	a, err := s.ConfirmApproval(ctx, p)
 	return a.Allowed, err
 }
+
+// ConfirmApproval puts a guard prompt to the front-end and returns the
+// attributed answer: who answered, and whether for this call, this turn or
+// standing. Turn trust answers ordinary writes without asking.
 func (s *Session) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
 	// A proposal must be completely visible, exact, and derived from this call.
 	if !s.bindingEligible(p) {

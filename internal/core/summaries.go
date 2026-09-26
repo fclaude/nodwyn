@@ -42,6 +42,9 @@ func (s Store) AddSummary(id string, from, through uint64, text string) (log.Eve
 	}
 	return s.recordSummary(id, log.Summary{From: from, Through: through, Text: text}, 0)
 }
+
+// DropSummary revokes the summary recorded at seq; the window falls back to
+// its source events. Like AddSummary, a local user operation.
 func (s Store) DropSummary(id string, seq uint64) (log.Event, error) {
 	if seq == 0 {
 		return log.Event{}, fmt.Errorf("summary: a positive summary sequence is required")

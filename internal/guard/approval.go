@@ -36,6 +36,11 @@ type ApprovalOptions struct {
 	Binding bool   `json:"binding"`
 }
 
+// ApprovalOptions says which answers beyond "once" this prompt may offer:
+// saving the proposed binding, unless it is a security prompt; and, unless
+// it is a security prompt or touches a protected path, approving a command
+// prefix for the session, or a write's directory for the session or the
+// rest of the turn.
 func (p Prompt) ApprovalOptions() ApprovalOptions {
 	options := ApprovalOptions{Binding: !p.Security && p.Binding != nil}
 	if p.Security || IsProtected(p.Path) {

@@ -11,9 +11,11 @@ import (
 )
 
 // These aliases expose the server's existing wire contract to frontend clients.
-type HelloResult = helloResult
-type SessionInfo = sessionInfo
-type SessionDetails = sessionDetails
+type (
+	HelloResult    = helloResult
+	SessionInfo    = sessionInfo
+	SessionDetails = sessionDetails
+)
 
 // ClientEvent keeps the payload encoded until the receiving frontend interprets it.
 type ClientEvent struct {
@@ -36,11 +38,14 @@ type Client struct {
 	err     error
 	once    sync.Once
 }
+
 type clientReply struct {
 	Result json.RawMessage `json:"result"`
 	Error  *rpcError       `json:"error"`
 }
 
+// Dial connects to the daemon's socket and checks that it speaks
+// ProtocolVersion.
 func Dial(ctx context.Context, socket string) (*Client, error) {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	if err != nil {
@@ -73,11 +78,19 @@ func Dial(ctx context.Context, socket string) (*Client, error) {
 	}
 	return c, nil
 }
+
+// Close ends the connection; pending calls and Next return an error.
 func (c *Client) Close() { c.fail(errors.New("connection closed")) }
+
 func (c *Client) fail(err error) {
 	c.once.Do(func() { c.mu.Lock(); c.err = err; c.mu.Unlock(); close(c.done); c.conn.Close() })
 }
 func (c *Client) failure() error { c.mu.Lock(); defer c.mu.Unlock(); return c.err }
+
+// read is the connection's only reader: replies go to the waiting Call,
+// notifications to the event queue. A full queue closes the connection
+// rather than drop an event silently; the client reconnects and reads the
+// durable history instead.
 func (c *Client) read() {
 	d := json.NewDecoder(c.conn)
 	for {
@@ -130,6 +143,9 @@ func (c *Client) read() {
 		}
 	}
 }
+
+// Call sends one request and decodes the reply into result (which may be
+// nil). A daemon error is returned with the method name.
 func (c *Client) Call(ctx context.Context, method string, params, result any) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -186,6 +202,8 @@ func (c *Client) Call(ctx context.Context, method string, params, result any) er
 		return c.failure()
 	}
 }
+
+// Next returns the next event from a subscribed session, in order.
 func (c *Client) Next(ctx context.Context) (ClientEvent, error) {
 	select {
 	case ev := <-c.events:

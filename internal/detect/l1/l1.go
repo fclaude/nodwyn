@@ -139,6 +139,8 @@ var rules = []rule{
 // is scanned over the whole string, not per token).
 var pemRe = regexp.MustCompile(`(?s)-----BEGIN [A-Z ]+-----.+?-----END [A-Z ]+-----`)
 
+// Scan returns every credential-shaped span in text that the allowlist does
+// not suppress: PEM blocks, then tokens matched by the class rules, in order.
 func (s *Scanner) Scan(text string) []Finding {
 	if len(text) < 8 {
 		return nil
