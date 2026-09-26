@@ -45,9 +45,12 @@ func (l *Loop) ask(ctx context.Context, name string) (*llm.Response, error) {
 	}
 	l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "waiting for model"}})
 
-	reqCtx, cancel := context.WithTimeout(ctx, l.cfg.RequestTimeout)
-	resp, err := ep.Provider.Chat(reqCtx, request, nil)
-	cancel()
+	attempt := func(parent context.Context) (context.Context, context.CancelFunc) {
+		return context.WithTimeout(parent, l.cfg.RequestTimeout)
+	}
+	resp, err := llm.ChatRetrying(ctx, ep.Provider, request, attempt, func(n int, err error) {
+		_ = l.record(log.KindNote, log.Note{Text: fmt.Sprintf("model request failed, retrying (%d/%d): %s", n, llm.Retries, err)})
+	})
 	if err != nil {
 		_ = l.record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
 		return nil, err

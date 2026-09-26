@@ -7,6 +7,7 @@ import (
 
 	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
 )
@@ -45,16 +46,19 @@ func (s *Session) Draft(ctx context.Context, prompt string) (string, error) {
 		}
 	}
 	timeout, _ := s.opts.Config.Loop.Durations()
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	resp, err := s.opts.Provider.Chat(cctx, llm.Request{
+	attempt := func(parent context.Context) (context.Context, context.CancelFunc) {
+		return context.WithTimeout(parent, timeout)
+	}
+	resp, err := llm.ChatRetrying(ctx, s.opts.Provider, llm.Request{
 		Model:  s.opts.Config.Control.Model,
 		NumCtx: s.opts.Config.Control.NumCtx,
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: redact.Redact("You are nibb's planner for the repository at "+s.opts.Repo+". Return only the plan text.", nil).Text},
 			{Role: llm.RoleUser, Content: redact.Redact(prompt, nil).Text},
 		},
-	}, nil)
+	}, attempt, func(n int, err error) {
+		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("plan request failed, retrying (%d/%d): %s", n, llm.Retries, err)})
+	})
 	if err != nil {
 		return "", err
 	}

@@ -98,6 +98,9 @@ func TestSupervisedRun(t *testing.T) {
 	}
 }
 func TestRunStops(t *testing.T) {
+	// A provider error is retried before it stops the run; keep that quick.
+	defer func(d time.Duration) { llm.RetryDelay = d }(llm.RetryDelay)
+	llm.RetryDelay = time.Millisecond
 	for _, tc := range []struct {
 		name, answer string
 		max          int
