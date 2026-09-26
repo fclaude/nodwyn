@@ -3,6 +3,7 @@ package loop
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
@@ -43,6 +44,16 @@ func (l *Loop) install() error {
 				Origin: "builtin",
 			},
 			Handler: l.skipToolsPrim,
+		},
+		{
+			Name: "add-message",
+			Meta: scheme.Meta{
+				Doc:    "Add text to the conversation; the model reads it as a user message at the next model-turn. Refused while calls from the latest model-turn are unanswered.",
+				Params: []scheme.Param{{Name: "text", Type: "string", Doc: "what the model should read"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.addMessage,
 		},
 	} {
 		if err := l.interp.Register(p); err != nil {
@@ -154,6 +165,28 @@ func (l *Loop) skipToolsPrim(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, err
 	}
 	return scheme.Void, l.skipTools(calls, reason)
+}
+
+// addMessage is (add-message text): the strategy speaking to the model,
+// for when there is no tool call to answer. It is refused while calls are
+// unanswered, because a tool call must be followed by its result before
+// anything else.
+func (l *Loop) addMessage(c *scheme.Call) (scheme.Value, error) {
+	t, err := l.active(c)
+	if err != nil {
+		return scheme.Void, err
+	}
+	text, err := c.String(0)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return scheme.Void, errors.New("text is required")
+	}
+	if t.unanswered() > 0 {
+		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", t.unanswered())
+	}
+	return scheme.Void, l.record(log.KindHarnessMsg, log.HarnessMsg{Text: text})
 }
 
 // stop ends the turn: the calls that have not run are answered with the

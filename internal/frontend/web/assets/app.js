@@ -694,6 +694,15 @@ function userTurn(content) {
   transcript().append(node);
   return node;
 }
+// harnessTurn shows what the loop's strategy told the model (add-message):
+// the model reads it as a user message, so it sits where the user's would.
+function harnessTurn(content) {
+  endTurn();
+  const node = text("article", "", "turn harness");
+  node.append(text("div", "nibb → model", "turn-label"), text("div", content, "message"));
+  transcript().append(node);
+  return node;
+}
 // agentTurn returns the open reply block, opening one when the harness
 // speaks or acts without a preceding message of its own.
 function agentTurn() {
@@ -822,6 +831,9 @@ function render(event) {
     case "user.msg":
       if (!loading) busy(true);
       userTurn(p.text);
+      break;
+    case "harness.msg":
+      harnessTurn(field(p, "text"));
       break;
     case "stream.text":
       if (!streamText) {

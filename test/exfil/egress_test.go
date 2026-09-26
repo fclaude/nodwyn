@@ -32,6 +32,9 @@ type egressStore struct {
 func (s *egressStore) PromptAndAdd(_ context.Context, class string) (*scheme.Handle, error) {
 	return s.kc.Add(class, []byte(credSecret))
 }
+func (s *egressStore) HandleForClass(class string) *scheme.Handle {
+	return s.kc.HandleForClass(class)
+}
 func (s *egressStore) InjectHeader(id, name, prefix string, req *http.Request) error {
 	return s.kc.InjectHeader(id, name, prefix, req)
 }
@@ -223,5 +226,48 @@ func TestCredentialRegisterRefusesModelOrigin(t *testing.T) {
 	}
 	if _, err := in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginUser), `(credential-register "x")`); err != nil {
 		t.Fatalf("user-origin registration: %v", err)
+	}
+}
+
+// TestCredentialLookupRefusesModelOrigin: Scheme may look up the handle of a
+// stored key (so a strategy can call a keyed judge or model), but a
+// model-originated evaluation may not, and an unknown class is #f.
+func TestCredentialLookupRefusesModelOrigin(t *testing.T) {
+	kc, err := keychain.Create(t.TempDir()+"/kc", keychain.FastKDF, []byte("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := kc.Add("judge-key", []byte(credSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := scheme.New()
+	o := prim.DefaultOptions(t.TempDir())
+	o.Credentials = &egressStore{kc: kc}
+	if err := prim.Register(in, o); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginModel), `(credential "judge-key")`); err == nil || !strings.Contains(err.Error(), "model-originated") {
+		t.Fatalf("model-origin lookup should be refused: %v", err)
+	}
+	for _, origin := range []scheme.Origin{scheme.OriginUser, scheme.OriginHarness} {
+		v, err := in.EvalString(scheme.WithOrigin(context.Background(), origin), `(credential "judge-key")`)
+		if err != nil || v.Kind != scheme.KHandle || v.H.ID != stored.ID {
+			t.Fatalf("%s lookup: %v %v", origin, v, err)
+		}
+		if strings.Contains(scheme.Write(v), credSecret) {
+			t.Fatal("a handle printed its secret")
+		}
+	}
+	if v, _ := in.EvalString(context.Background(), `(credential "no-such-key")`); v.Kind != scheme.KBool || v.IsTrue() {
+		t.Fatalf("unknown class: %v", v)
+	}
+	// Without a keychain there is never a handle, and no error either.
+	bare := scheme.New()
+	if err := prim.Register(bare, prim.DefaultOptions(t.TempDir())); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := bare.EvalString(context.Background(), `(credential "judge-key")`); err != nil || v.IsTrue() {
+		t.Fatalf("no keychain: %v %v", v, err)
 	}
 }

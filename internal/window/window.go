@@ -16,6 +16,8 @@
 //   - Tool results larger than MaxResultTokens are shown head+tail with a
 //     marker; the model re-reads what it needs.
 //   - User messages are never elided; they are small and they are the ask.
+//     Neither are harness messages (add-message): they are the loop's
+//     instructions to the model, and it reads them as user messages.
 package window
 
 import (
@@ -69,6 +71,13 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 			if ev.Decode(&p) == nil {
 				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
 				task, plan = p.Text, ""
+			}
+		case log.KindHarnessMsg:
+			// Shown as a user message, but not the task: the ask is still
+			// the user's.
+			var p log.HarnessMsg
+			if ev.Decode(&p) == nil {
+				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
 			}
 		case log.KindGatePlan:
 			var p log.GatePlan

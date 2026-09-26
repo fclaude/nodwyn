@@ -4,14 +4,14 @@
 // results back, stop on a plain answer — is a Scheme procedure, agent-turn.
 // Its default is strategy.scm, and a project may redefine it in
 // .nibb/init.scm (ADR 26). This package keeps what a strategy must not be
-// able to skip, and gives the strategy three primitives to work with:
-// model-turn, run-tools and skip-tools.
+// able to skip, and gives the strategy the primitives to work with:
+// model-turn, run-tools, skip-tools and add-message.
 //
 // Reading order:
 //
 //   - loop.go: a session's Loop, and how one turn starts and ends
 //   - strategy.scm: the default agent-turn
-//   - prims.go: the three primitives and the Scheme values they exchange
+//   - prims.go: the primitives and the Scheme values they exchange
 //   - model.go: one request to the model
 //   - tools.go: one tool call, run or skipped
 //   - turn.go: the per-turn bookkeeping that keeps the transcript well-formed

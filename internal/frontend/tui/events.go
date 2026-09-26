@@ -152,6 +152,11 @@ func (m *model) consume(e rpc.ClientEvent) {
 		var p log.Note
 		p, err = decode[log.Note](e.Payload)
 		m.append("note: " + p.Text)
+	case string(log.KindHarnessMsg):
+		m.endToolInterval()
+		var p log.HarnessMsg
+		p, err = decode[log.HarnessMsg](e.Payload)
+		m.append("nibb> " + p.Text)
 	case string(log.KindTurnCheckpoint):
 		var p log.TurnCheckpoint
 		p, err = decode[log.TurnCheckpoint](e.Payload)

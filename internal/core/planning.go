@@ -22,11 +22,15 @@ func (s *Session) ApplyPrim(ctx context.Context, name string, args []scheme.Valu
 }
 
 // JevHandle returns the Jev credential handle, or nil if none is registered.
-func (s *Session) JevHandle() *scheme.Handle {
+func (s *Session) JevHandle() *scheme.Handle { return s.HandleForClass("jev-key") }
+
+// HandleForClass returns the handle of a stored credential of class, or nil
+// when there is none or no keychain is open (prim.CredentialStore).
+func (s *Session) HandleForClass(class string) *scheme.Handle {
 	if s.keychain == nil {
 		return nil
 	}
-	return s.keychain.HandleForClass("jev-key")
+	return s.keychain.HandleForClass(class)
 }
 
 // Draft asks the control-plane model for a plan (plan.Gate).

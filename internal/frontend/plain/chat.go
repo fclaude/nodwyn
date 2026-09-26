@@ -417,6 +417,10 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.UserMsg
 			_ = ev.Decode(&p)
 			fmt.Fprintf(w, "\nyou> %s\n", p.Text)
+		case log.KindHarnessMsg:
+			var p log.HarnessMsg
+			_ = ev.Decode(&p)
+			fmt.Fprintf(w, "nibb> %s\n", p.Text)
 		case log.KindLLMResp:
 			var p log.LLMResp
 			_ = ev.Decode(&p)

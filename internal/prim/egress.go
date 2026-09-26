@@ -1,4 +1,4 @@
-// Egress primitives (P3): http-request and credential-register.
+// Egress primitives (P3): http-request, credential-register and credential.
 //
 // Both are guarded before their handler runs. http-request is an Egress
 // prim, so the E3 checker (guard.Egress) looks up the credential slot
@@ -33,6 +33,9 @@ type CredentialStore interface {
 	// stores it in the keychain, logs cred.register, and returns the handle.
 	// The secret value never becomes a Scheme value (ADR 5).
 	PromptAndAdd(ctx context.Context, class string) (*scheme.Handle, error)
+	// HandleForClass returns the handle of a stored credential of class, or
+	// nil if none is stored.
+	HandleForClass(class string) *scheme.Handle
 	// InjectHeader sets the request header name to prefix + the credential
 	// value ("Bearer " or "" — from the binding position).
 	InjectHeader(id, name, prefix string, req *http.Request) error
@@ -181,6 +184,42 @@ func credentialRegister(cs CredentialStore) *scheme.Prim {
 		},
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
 			return doCredentialRegister(cs, c)
+		},
+	}
+}
+
+// credential builds the credential prim: the handle of a key already in the
+// keychain, so Scheme can reach a keyed service (a judge, a model API)
+// without asking the user for the key again. A handle is opaque and every
+// use of it is checked against the binding table, so looking one up grants
+// nothing. cs is nil when no keychain is open; then there is never a handle.
+func credential(cs CredentialStore) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "credential",
+		Meta: scheme.Meta{
+			Doc:    "Return the handle of a stored credential of class, or #f if none is stored. Not callable from model-originated code.",
+			Hidden: true,
+			Params: []scheme.Param{
+				{Name: "class", Type: "string", Doc: "secret class, e.g. jev-key"},
+			},
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			// The model has no use for a handle of its own: its tools are
+			// user-registered, and they look up the handles they need.
+			if c.Origin == scheme.OriginModel {
+				return scheme.Void, fmt.Errorf("credential: not allowed from a model-originated call")
+			}
+			class, err := c.String(0)
+			if err != nil {
+				return scheme.Void, err
+			}
+			if cs == nil {
+				return scheme.False, nil
+			}
+			if h := cs.HandleForClass(class); h != nil {
+				return scheme.HandleValue(h), nil
+			}
+			return scheme.False, nil
 		},
 	}
 }

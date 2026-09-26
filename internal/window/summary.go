@@ -42,7 +42,7 @@ func SummarySourceHash(events []log.Event, from, through uint64) (string, error)
 		// Summaries are caches of the conversation, never of other summaries or
 		// approval records. Original tool-call and result IDs stay in the source.
 		switch ev.Kind {
-		case log.KindUserMsg, log.KindLLMResp, log.KindToolResult:
+		case log.KindUserMsg, log.KindHarnessMsg, log.KindLLMResp, log.KindToolResult:
 		default:
 			continue
 		}
@@ -166,7 +166,7 @@ func summaryWindow(events []log.Event) []log.Event {
 			}
 			// Preserve non-conversation events needed for the policy fold.
 			switch ev.Kind {
-			case log.KindUserMsg, log.KindLLMResp, log.KindToolResult, log.KindGatePlan:
+			case log.KindUserMsg, log.KindHarnessMsg, log.KindLLMResp, log.KindToolResult, log.KindGatePlan:
 				covered = true
 			}
 			break

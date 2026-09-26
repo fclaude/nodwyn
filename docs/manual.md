@@ -79,6 +79,7 @@ Read a test when you want to know what a claim actually means.
 | Proper tail calls | `TestTailCalls`: 200k iterations in nine tail positions under an 8 MB stack cap |
 | Every primitive is documented | `TestDocCoverage` (builtins) and `TestSessionPrimitivesAreDocumented` (host and loop primitives) fail for any primitive missing from `docs/scheme.md` |
 | A loop strategy cannot skip the invariants | [strategy_test.go](../internal/core/strategy_test.go): fabricated or rewritten calls refused, unanswered calls answered, stops uncatchable, provenance kept |
+| Agent behaviours are user code, not core features | [userland_test.go](../internal/core/userland_test.go): each behaviour is written as a user's `init.scm`; one that needs Go marks a gap in the core |
 | A handle can never become text | `TestHandlePrintsOpaque` |
 | The core knows nothing about terminals | [scripts/lint-boundaries.sh](../scripts/lint-boundaries.sh) in `make lint` |
 | No path exists for the canary to leak | [test/exfil](../test/exfil/): each scenario asserts the decision *and* greps the canary out of log, output and result |
@@ -342,10 +343,18 @@ error instead of running calls that assumed success:
 ```
 
 A strategy decides which calls run, what the model is told about the ones
-that don't, and when to ask the model again. It cannot run a call the model
-did not make, loosen the guard, or keep a turn going past a budget or a
-progress stop ([docs/scheme.md](scheme.md) §9). It cannot yet add text to the
-conversation: the system prompt and the plan gate are still set in Go.
+that don't, when to ask the model again, and — with `add-message` — what to
+say when the model stops with work left. It can reach a keyed judge or model
+API with `(credential class)` and `http-request`. It cannot run a call the
+model did not make, loosen the guard, or keep a turn going past a budget or a
+progress stop ([docs/scheme.md](scheme.md) §9). The system prompt and the
+built-in plan gate are still set in Go, and every turn uses the one
+configured model.
+
+[internal/core/userland_test.go](../internal/core/userland_test.go) holds
+larger examples, each a behaviour written as a user would write it: a plan
+cycle where the model must submit a plan, a keyed oracle approves it, and the
+strategy keeps the model on it until every step is done.
 
 ### Ingress redaction and the remaining boundaries
 

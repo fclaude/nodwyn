@@ -31,6 +31,13 @@ type UserMsg struct {
 	Text string `json:"text"`
 }
 
+// HarnessMsg is text the loop's strategy added to the conversation with
+// add-message. The model reads it as a user message; it never changes the
+// current task.
+type HarnessMsg struct {
+	Text string `json:"text"`
+}
+
 // LLMReq describes a request to the control-plane model. The messages are
 // not repeated: they are rebuilt from the log by the window.
 type LLMReq struct {

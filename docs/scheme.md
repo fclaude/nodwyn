@@ -298,6 +298,7 @@ into Scheme values (ADR 3).
 | `(policy-read name)` | User-only, hidden from the model catalog. Read configured `bindings` or repository `approvals`, returning content, revision and existence; bounded to 64 KiB and rejects recognized secrets. No arbitrary path. |
 | `(policy-write name revision content)` | User-only, hidden from the model catalog. Validate TOML and atomically replace that fixed policy after a one-time diff confirmation and revision check. Binding changes reload before egress; approval-file changes affect new/resumed sessions. |
 | `(credential-register class)` | **P3.** Masked input through the front-end, stored in the keychain, returns `#<cred:class:id>`. User origin only; never a model tool |
+| `(credential class)` | The handle of a key already in the keychain, or `#f` if there is none (or no keychain is open). This is how Scheme reaches a keyed service — `(jev-noul (credential "jev-key") …)`, or `http-request` to a judge or a model API — without asking for the key again. Looking a handle up grants nothing: every use is checked against the binding table. Refused to model-originated code |
 | `(jev-noul cred state instructions)` | **P5.** Ask the judge a yes/no question about a text; returns the probability of yes (0..1). Egress to the configured Jev host; `state` and `instructions` are redacted (L1) before they leave; logged as `jev.req` |
 | `(jev-score cred state instructions levels)` | **P5.** Rate a text on an ordered rubric of 2–10 level strings; returns `(("score" . 0..1) ("raw" . n) ("levels" . k) ("confidence" . c))` |
 | `(jev-choice cred state instructions options)` | **P5.** Pick one of the options (an alist name → description); returns `(("choice" . name) ("confidence" . c) ("probabilities" . ((name . p) …)))` |
@@ -464,9 +465,14 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
 | `(model-turn)` | Ask the model once. Returns an alist: `content`, `thinking`, `done` (why it stopped) and `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded for `nibb replay --window`. |
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
+| `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
 
-All three are hidden from the model and refused outside a turn and from
-model-originated code. The strategy runs with harness origin, so it cannot
+A strategy talks to the model through tools: a tool's description is an
+instruction, its result and a skip reason are feedback. `add-message` is for
+when there is no call to answer, such as a model that stopped with work left.
+
+These primitives are hidden from the model and refused outside a turn and
+from model-originated code. The strategy runs with harness origin, so it cannot
 strip provenance or change policy (`wipe`, `register-check` and `policy-write`
 are user-only); the tools it runs execute with model origin, as if the model
 had called them directly. Whatever the strategy does:

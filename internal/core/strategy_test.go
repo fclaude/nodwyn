@@ -325,3 +325,46 @@ func TestStrategyCannotCatchLogFailure(t *testing.T) {
 		t.Fatal("the model was asked although the request could not be recorded")
 	}
 }
+
+// add-message is how a strategy speaks when the model has not called a
+// tool: the model reads it as a user message, and the task stays the user's.
+func TestAddMessageReachesTheModel(t *testing.T) {
+	r := strategyRig(t, `
+(define (agent-turn request)
+  (model-turn)
+  (add-message "Before you finish, list the files you changed.")
+  (model-turn))`, 10,
+		fake.Turn{Content: "Done."},
+		fake.Turn{Content: "I changed nothing."},
+	)
+	if err := r.turn("tidy up"); err != "" {
+		t.Fatal(err)
+	}
+	raw := string(r.srv.Requests[1].Raw)
+	if !strings.Contains(raw, `"role":"user","content":"Before you finish, list the files you changed."`) {
+		t.Fatalf("second request lacks the harness message:\n%s", raw)
+	}
+	if !strings.Contains(raw, `Current task (the user's latest request):\ntidy up"`) {
+		t.Fatalf("the harness message replaced the task:\n%s", raw)
+	}
+	if !strings.Contains(r.logb.String(), `"kind":"harness.msg"`) {
+		t.Fatal("the harness message was not logged")
+	}
+}
+
+// A tool call must be followed by its result, so a strategy cannot speak
+// between them.
+func TestAddMessageRefusedWhileCallsAreUnanswered(t *testing.T) {
+	r := strategyRig(t, `
+(define (agent-turn request)
+  (model-turn)
+  (add-message "hello"))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("r")}},
+	)
+	if err := r.turn("go"); !strings.Contains(err, "unanswered; run or skip them first") {
+		t.Fatalf("turn error %q", err)
+	}
+	if strings.Contains(r.logb.String(), `"kind":"harness.msg"`) {
+		t.Fatal("a harness message was logged between a call and its result")
+	}
+}

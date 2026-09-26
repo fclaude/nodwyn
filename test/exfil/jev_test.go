@@ -31,6 +31,9 @@ type jevStore struct {
 }
 
 func (s *jevStore) Redactor() *l1.Scanner { return l1.New() }
+func (s *jevStore) HandleForClass(class string) *scheme.Handle {
+	return s.kc.HandleForClass(class)
+}
 func (s *jevStore) InjectHeader(id, name, prefix string, req *http.Request) error {
 	return s.kc.InjectHeader(id, name, prefix, req)
 }

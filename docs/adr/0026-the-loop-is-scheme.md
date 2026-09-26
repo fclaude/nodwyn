@@ -49,3 +49,25 @@ user.
   fixed for a session (ADR 9).
 - Go is left with I/O and invariants. New turn behaviour should be a
   strategy first and a primitive only when it needs an invariant.
+
+## Addendum — the userland standard (2026-09-26)
+
+A pressure test asked whether a user could write the behaviours we want
+with what the core offers, instead of asking what features to add. A plan
+cycle ran as a plain `init.scm`: tools are already the channel between a
+strategy and the model (a tool's description instructs, its result and a
+skip reason give feedback). It stopped at two walls, both at the model
+boundary, which two primitives now remove:
+
+- `(credential class)`: the handle of a stored key. Scheme could call
+  `jev-*` and `http-request` but had no way to get the handle they need, so
+  no keyed oracle — a judge, a stronger model, a review bot — was reachable
+  from user code.
+- `(add-message text)`: the strategy speaking to the model when there is no
+  call to answer, logged as `harness.msg` (window recipe v3).
+
+The standard is kept as tests: `internal/core/userland_test.go` holds each
+behaviour written as a user would write it. Two walls remain for routing
+work to another model: `model-turn` cannot choose a model, and a strategy
+cannot choose what a model sees (the window is Go's view of the whole
+log).

@@ -34,6 +34,17 @@ func (t *turnState) expect(calls []llm.ToolCall) {
 	}
 }
 
+// unanswered counts the pending calls nobody has run or skipped yet.
+func (t *turnState) unanswered() int {
+	n := 0
+	for _, p := range t.pending {
+		if !p.answered {
+			n++
+		}
+	}
+	return n
+}
+
 // claim resolves call values from a strategy back to the calls the model
 // made, and marks them answered. A call not in the latest response, one
 // already answered, or one whose args were changed is refused: the log's

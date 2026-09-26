@@ -674,6 +674,17 @@
       ],
       "type": "object"
     },
+    "log.HarnessMsg": {
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
     "log.JevReq": {
       "properties": {
         "answer": {},
@@ -1230,6 +1241,9 @@
     },
     "payload.guard.decision": {
       "$ref": "#/$defs/log.GuardDecision"
+    },
+    "payload.harness.msg": {
+      "$ref": "#/$defs/log.HarnessMsg"
     },
     "payload.inspection.result": {
       "$ref": "#/$defs/event.Inspection"
@@ -3083,6 +3097,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.GuardDecision"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "harness.msg"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.HarnessMsg"
             },
             "seq": {
               "minimum": 0,

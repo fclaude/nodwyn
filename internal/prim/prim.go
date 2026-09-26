@@ -63,7 +63,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}

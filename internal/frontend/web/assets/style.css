@@ -377,6 +377,11 @@ h1 {
   margin-bottom: 3px;
 }
 .turn.user .turn-label { color: var(--green); }
+.turn.harness {
+  border-left: 2px dashed var(--line-2);
+  padding: 2px 0 2px 12px;
+  color: var(--ink-2);
+}
 .message { white-space: pre-wrap; }
 .turn.agent .message + .message { margin-top: 8px; }
 
