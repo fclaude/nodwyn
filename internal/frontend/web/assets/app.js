@@ -17,8 +17,7 @@ let socket,
   selection = 0,
   loading = false;
 let awaitingReply = "",
-  baseNotice =
-    "Read-only view. Send messages and answer prompts in the terminal client.";
+  baseNotice = "";
 let queued = [],
   seen = new Map(),
   streamText = null,
@@ -60,14 +59,34 @@ const attention = new Attention(
     if (item) selectSession(item).catch((error) => notice(error.message));
   },
 );
+// A sidebar row has room for the project and how long ago, not a full
+// path and a locale timestamp; the row's tooltip keeps both.
+function repoName(path) {
+  if (!path) return "—";
+  const parts = path.replace(/\/+$/, "").split("/");
+  return parts[parts.length - 1] || path;
+}
+function ago(when) {
+  const then = new Date(when).getTime();
+  if (!then) return "";
+  const s = Math.max(0, (Date.now() - then) / 1000);
+  if (s < 60) return "now";
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  if (s < 86400 * 30) return `${Math.floor(s / 86400)}d`;
+  return new Date(when).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
 function sessionLabel(item) {
   return item.needs_answer
-    ? "Needs your answer"
+    ? "needs you"
     : item.busy
-      ? "Running"
+      ? "running"
       : item.open
-        ? "Open · idle"
-        : "Saved";
+        ? "idle"
+        : "saved";
 }
 
 let view = "conversation",
@@ -319,9 +338,16 @@ function showPrompt(event) {
 }
 let methods = new Set(),
   actionPending = false;
+// The sidebar states the mode once. The banner carries news, not a
+// standing description, so in read-write mode its base text is empty.
+function modeLine() {
+  return methods.has("session.send")
+    ? "Read-write · every operation is approved here"
+    : "Read-only · send and answer in the terminal client";
+}
 function modeNotice() {
   return methods.has("session.send")
-    ? "Review each requested operation in its approval panel."
+    ? ""
     : "Read-only view. Send messages and answer prompts in the terminal client.";
 }
 function controls() {
@@ -386,18 +412,18 @@ function connect() {
   attention.reset();
   const connection = new WebSocket(`ws://${location.host}/socket`);
   socket = connection;
-  $("connection").textContent = "Connecting…";
+  connectionState("", "Connecting…");
   $("reconnect").hidden = true;
   connection.onopen = async () => {
     if (socket !== connection) return;
     $("pairing").hidden = true;
     $("workspace").hidden = false;
-    $("connection").textContent = "Connected · local daemon";
+    connectionState("live", "local daemon");
     try {
       const hello = await call("hello", { protocol: 1 });
       if (socket !== connection) return;
       methods = new Set(hello.methods);
-      $("mode").textContent = modeNotice();
+      $("mode").textContent = modeLine();
       controls();
       await refresh();
       if (socket !== connection) return;
@@ -443,7 +469,7 @@ function connect() {
     }
     pending.clear();
     controls();
-    $("connection").textContent = "Disconnected";
+    connectionState("down", "Disconnected");
     $("reconnect").hidden = false;
     if ($("workspace").hidden) $("pairing").hidden = false;
     else
@@ -451,6 +477,45 @@ function connect() {
         "Connection lost. Reconnect to reload the durable transcript. No operations were retried.",
       );
   };
+}
+// The theme follows the system until the reader overrides it; the choice
+// is this browser's, so it lives in localStorage and never in a session.
+function applyTheme(mode) {
+  const root = document.documentElement;
+  if (mode) root.dataset.theme = mode;
+  else delete root.dataset.theme;
+  const dark =
+    mode === "dark" ||
+    (!mode && matchMedia("(prefers-color-scheme: dark)").matches);
+  $("theme").textContent = dark ? "Light" : "Dark";
+}
+function initTheme() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem("nibb-theme");
+  } catch {
+    stored = null;
+  }
+  applyTheme(stored);
+  $("theme").addEventListener("click", () => {
+    const dark = !(
+      document.documentElement.dataset.theme === "light" ||
+      (!document.documentElement.dataset.theme &&
+        !matchMedia("(prefers-color-scheme: dark)").matches)
+    );
+    const next = dark ? "light" : "dark";
+    applyTheme(next);
+    try {
+      localStorage.setItem("nibb-theme", next);
+    } catch {
+      /* a browser that refuses storage still gets the theme for this tab */
+    }
+  });
+}
+function connectionState(state, label) {
+  const node = $("connection");
+  node.dataset.state = state;
+  node.textContent = label;
 }
 function notice(value) {
   $("notice").textContent = value;
@@ -494,10 +559,10 @@ async function refresh(refreshSelected = true) {
       text("span", item.first_message || "Untitled session", "session-title"),
     );
     button.append(text("span", sessionLabel(item), "state"));
-    button.append(text("span", item.repo, "session-meta"));
     button.append(
-      text("span", new Date(item.last_event).toLocaleString(), "session-meta"),
+      text("span", `${repoName(item.repo)} · ${ago(item.last_event)}`, "session-meta"),
     );
+    button.title = `${item.repo}\n${new Date(item.last_event).toLocaleString()}`;
     button.addEventListener("click", () =>
       selectSession(item).catch((error) => notice(error.message)),
     );
@@ -605,12 +670,45 @@ async function selectSession(item) {
     }
   }
 }
+// A transcript is a sequence of turns, not a sequence of events: the
+// user's message opens one, everything the harness does in reply belongs
+// to it, and going idle closes it. Telemetry lives in the turn's footer,
+// where it can be read but does not compete with the answer.
+let agentBlock = null;
+function transcript() {
+  const view = $("transcript");
+  view.querySelector(":scope > .empty")?.remove();
+  view.querySelector(":scope > p.hint")?.remove();
+  return view;
+}
+function endTurn() {
+  agentBlock = null;
+  streamText = null;
+  streamThinking = null;
+  toolCard = null;
+}
+function userTurn(content) {
+  endTurn();
+  const node = text("article", "", "turn user");
+  node.append(text("div", "you", "turn-label"), text("div", content, "message"));
+  transcript().append(node);
+  return node;
+}
+// agentTurn returns the open reply block, opening one when the harness
+// speaks or acts without a preceding message of its own.
+function agentTurn() {
+  if (!agentBlock) {
+    agentBlock = text("article", "", "turn agent");
+    agentBlock.append(text("div", "nibb", "turn-label"));
+    transcript().append(agentBlock);
+  }
+  return agentBlock;
+}
 function entry(label, content, kind = "") {
-  const node = text("article", "", `entry ${kind}`);
-  node.append(text("div", label, "entry-label"));
-  if (content !== undefined) node.append(text("div", content, "message"));
-  $("transcript").querySelector(":scope > p.hint")?.remove();
-  $("transcript").append(node);
+  const node = text("div", "", kind === "hint" ? "turn-foot" : `audit ${kind}`);
+  if (label) node.append(text("span", label + " ", "eyebrow"));
+  if (content !== undefined) node.append(text("span", content));
+  agentTurn().append(node);
   return node;
 }
 function detail(parent, label, value) {
@@ -623,6 +721,78 @@ function detail(parent, label, value) {
     ),
   );
   parent.append(node);
+  return node;
+}
+// Event kinds are the log's vocabulary; a reader wants the harness's.
+const auditLabels = {
+  "gate.plan": "plan gate",
+  "turn.checkpoint": "budget checkpoint",
+  "egress.check": "egress check",
+  "approval.change": "approval changed",
+  "binding.change": "binding changed",
+  summary: "summary written",
+  "summary.drop": "summary revoked",
+  "cred.register": "credential registered",
+};
+function sizeOf(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+// argSummary renders a tool call's arguments as the one line a reader
+// scans. What identifies a call is its target, so those keys lead; the
+// rest follows on the same line, and the full arguments are one click
+// away in the row's body.
+const targetKeys = ["path", "file", "dir", "pkg", "target", "url", "cmd", "name", "glob", "pattern"];
+function argSummary(args) {
+  if (args == null) return "";
+  let parsed = args;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return oneLine(parsed);
+    }
+  }
+  if (typeof parsed !== "object") return oneLine(String(parsed));
+  const entries = Object.entries(parsed);
+  const rank = (key) => {
+    const i = targetKeys.indexOf(key);
+    return i < 0 ? targetKeys.length : i;
+  };
+  entries.sort((a, b) => rank(a[0]) - rank(b[0]));
+  const named = entries.some(([key]) => targetKeys.includes(key));
+  const line = entries
+    .map(([key, v]) => [key, typeof v === "string" ? v : JSON.stringify(v)])
+    // Once a call names its target, a long prose argument (the new text of
+    // an edit, a file's contents) says nothing a reader scanning the line
+    // needs; the row's body still holds every argument in full.
+    .filter(([key, v]) => !named || targetKeys.includes(key) || v.length <= 48)
+    .map(([, v]) => v)
+    .filter((v) => v !== "" && v !== "[]" && v !== "{}" && v !== "null")
+    .join(" ");
+  return oneLine(line);
+}
+function oneLine(value, limit = 140) {
+  const flat = value.replace(/\s+/g, " ").trim();
+  return flat.length > limit ? flat.slice(0, limit - 1) + "…" : flat;
+}
+// toolRow is one collapsed line: name, arguments, and — once the result
+// arrives — its verdict, size and duration.
+function toolRow(name, args) {
+  const row = document.createElement("details");
+  row.className = "tool-row";
+  const summary = document.createElement("summary");
+  summary.append(
+    text("span", name, "tool-name"),
+    text("span", argSummary(args), "tool-args"),
+    text("span", "…", "tool-stat"),
+  );
+  row.append(summary, text("div", "", "tool-body"));
+  if (args !== undefined && args !== null && args !== "")
+    detail(row.querySelector(".tool-body"), "Arguments", args);
+  agentTurn().append(row);
+  return row;
 }
 function render(event) {
   if (event.seq && seen.has(event.seq)) return;
@@ -650,64 +820,85 @@ function render(event) {
       frictionResult(p);
       break;
     case "user.msg":
-      toolCard = null;
       if (!loading) busy(true);
-      entry("You", p.text, "user");
+      userTurn(p.text);
       break;
     case "stream.text":
-      if (!streamText)
-        streamText = entry("nibb · responding", "").querySelector(".message");
+      if (!streamText) {
+        streamText = text("div", "", "message");
+        agentTurn().append(streamText);
+      }
       streamText.textContent += field(p, "text");
       break;
     case "stream.thinking":
-      if (!streamThinking) {
-        const node = entry("nibb");
-        detail(node, "Thinking", "");
-        streamThinking = node.querySelector("pre");
-      }
+      if (!streamThinking)
+        streamThinking = detail(agentTurn(), "Thinking", "").querySelector(
+          "pre",
+        );
       streamThinking.textContent += field(p, "text");
       break;
     case "llm.resp": {
-      streamText?.closest("article").remove();
-      streamThinking?.closest("article").remove();
+      // The streamed fragments were provisional; the recorded response is
+      // what the log holds, so it replaces them.
+      streamText?.remove();
+      streamThinking?.closest("details").remove();
       streamText = null;
       streamThinking = null;
-      if (p.content || p.thinking) {
-        const node = entry("nibb", p.content || "");
-        if (p.thinking) detail(node, "Thinking", p.thinking);
-      }
+      const turn = agentTurn();
+      if (p.thinking) detail(turn, "Thinking", p.thinking);
+      if (p.content) turn.append(text("div", p.content, "message"));
       if (p.usage)
-        entry(
-          "Usage",
-          `${p.usage.prompt_tokens || 0} input tokens · ${p.usage.output_tokens || 0} output tokens · ${p.usage.total_ms || 0} ms`,
-          "hint",
+        turn.append(
+          text(
+            "div",
+            `${p.usage.prompt_tokens || 0}→${p.usage.output_tokens || 0} tok · ${((p.usage.total_ms || 0) / 1000).toFixed(1)}s`,
+            "turn-foot",
+          ),
         );
       toolCard = null;
       break;
     }
     case "tool.call": {
-      const node = entry(`Tool · ${p.name}`, undefined, "tool");
-      detail(node, "Arguments", p.args);
-      toolCard = { id: p.id, name: p.name, node };
+      const row = toolRow(p.name, p.args);
+      toolCard = { id: p.id, name: p.name, node: row };
       break;
     }
     case "guard.decision": {
-      const node =
-        (p.origin === "model" ? toolCard?.node : null) ||
-        entry("Guard", undefined, "audit");
-      const line = text("div", `${p.prim || "Operation"} · ${p.reason || ""}`);
-      line.append(
-        text("span", p.decision || "recorded", `badge ${p.decision || ""}`),
-      );
-      node.append(line);
+      const verdict = p.decision || "recorded";
+      const row = p.origin === "model" ? toolCard?.node : null;
+      if (row) {
+        // The verdict belongs on the call it judged, not beside it.
+        const summary = row.querySelector("summary");
+        summary.insertBefore(
+          text("span", verdict, `badge ${verdict}`),
+          summary.querySelector(".tool-stat"),
+        );
+        if (p.reason)
+          row
+            .querySelector(".tool-body")
+            .prepend(text("div", p.reason, "turn-foot"));
+        break;
+      }
+      const node = entry("guard", `${p.prim || "operation"} · ${p.reason || ""}`, verdict);
+      node.append(text("span", " "), text("span", verdict, `badge ${verdict}`));
       break;
     }
     case "tool.result": {
-      const node =
+      const row =
         toolCard?.id === p.id && toolCard.name === p.name
           ? toolCard.node
-          : entry(`Result · ${p.name}`, undefined, "tool");
-      detail(node, p.ok ? "Result" : "Error", p.ok ? p.value : p.error);
+          : toolRow(p.name, undefined);
+      const body = p.ok ? p.value : p.error;
+      const stat = row.querySelector(".tool-stat");
+      stat.className = `tool-stat ${p.ok ? "ok" : "failed"}`;
+      stat.textContent = [
+        p.ok ? sizeOf((body || "").length) : "error",
+        p.ms === undefined ? null : `${p.ms} ms`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      detail(row.querySelector(".tool-body"), p.ok ? "Result" : "Error", body);
+      if (!p.ok) row.open = true;
       toolCard = null;
       break;
     }
@@ -726,6 +917,7 @@ function render(event) {
     case "status":
       if (field(p, "state") === "idle") {
         busy(false);
+        endTurn();
         $("activity").textContent = "Idle";
         if (awaitingReply) {
           clearPrompt();
@@ -738,7 +930,7 @@ function render(event) {
       }
       break;
     case "error":
-      entry("Error", field(p, "err"), "audit");
+      entry("error", field(p, "err"), "deny");
       break;
     case "session.closed":
       selected.open = false;
@@ -755,7 +947,7 @@ function render(event) {
     case "summary":
     case "summary.drop":
     case "cred.register": {
-      const node = entry(kind, undefined, "audit");
+      const node = entry(auditLabels[kind] || kind, undefined);
       detail(node, "Recorded details", p);
       break;
     }
@@ -886,4 +1078,11 @@ $("composer").addEventListener("submit", (event) => {
     }
   });
 });
+// A composer that only sends on a button click is a composer you fight.
+$("message").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+  event.preventDefault();
+  $("composer").requestSubmit();
+});
+initTheme();
 connect();
