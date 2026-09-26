@@ -39,8 +39,10 @@ func (t Taint) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) D
 		t.Table = binding.Table{}
 	}
 	if p.Meta.TaintStrip {
-		if scheme.OriginFrom(ctx) == scheme.OriginModel {
-			return Decision{Verdict: Deny, Reason: p.Name + " is user-only: the model may not strip provenance"}
+		// Harness origin is refused too: an agent-turn strategy runs with it
+		// and handles every tool result, so it must not launder them.
+		if o := scheme.OriginFrom(ctx); o != scheme.OriginUser {
+			return Decision{Verdict: Deny, Reason: p.Name + " is user-only: " + string(o) + "-originated code may not strip provenance"}
 		}
 		return Decision{Verdict: Allow, Reason: "provenance stripped by the user"}
 	}

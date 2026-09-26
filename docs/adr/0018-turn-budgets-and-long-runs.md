@@ -102,6 +102,10 @@ progress counters. This adds no authority, background driver or automatic retry.
 The existing `loop.max_tool_calls` setting and its defaults remain until the
 budget dimensions and checkpoint UI are implemented together.
 
+Since ADR 26 the loop is a Scheme strategy; these checks and the budgets run
+inside its `run-tools` and `model-turn` primitives, and a stop cannot be
+caught by the strategy's `guard`.
+
 ## Budgets and checkpoints implementation — 2026-09-22
 
 Sections 1–3 are implemented. `internal/budget` owns one turn's limits and

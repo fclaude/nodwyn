@@ -1,10 +1,19 @@
-// Package loop is the agent loop from the spec: ask the model, run the tool
-// it asked for through the guard, feed the result back, ask again. It stops
-// on a plain answer or a hard stop. No sub-agents.
+// Package loop is the mechanism under the agent loop. The loop itself — ask
+// the model, run the tools it asked for, feed the results back, stop on a
+// plain answer — is a Scheme procedure, agent-turn (strategy.scm), which a
+// project may redefine in .nibb/init.scm.
+//
+// What stays here is what a strategy must not be able to skip, exposed as
+// primitives it calls (prims.go): building the window from the log and
+// recording each request for replay, running only calls the model made and
+// giving every one exactly one result, the budgets, and the progress guard.
+// The SPEC's division, restored: Scheme owns orchestration, Go owns I/O and
+// the invariants.
 package loop
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,24 +57,63 @@ type Loop struct {
 	cfg      Config
 	tools    []llm.Tool
 	toolsLen int
+	frozen   bool
+
+	// turn is the state of the turn in progress, nil between turns. The
+	// session runs one turn at a time, so a field suffices.
+	turn *turnState
 }
 
-// New builds a loop. The tool list is computed once: it must not change
-// mid-session (ADR 9).
+// turnState is what the primitives share for one turn.
+type turnState struct {
+	budget   *budget.Turn // nil when no budget was started (legacy callers)
+	calls    int          // tool calls, for the legacy MaxToolCalls limit
+	progress turnProgress
+	// pending holds the calls from the latest model response that have no
+	// result yet. Only these can be run or skipped, and each once.
+	pending []pendingCall
+}
+
+type pendingCall struct {
+	call     llm.ToolCall
+	answered bool
+}
+
+//go:embed strategy.scm
+var defaultStrategy string
+
+// New builds a loop and installs its primitives and the default strategy
+// into interp. Call it before loading .nibb/init.scm, so the project may
+// redefine agent-turn, and call Freeze afterwards.
 func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) (*Loop, error) {
 	l := &Loop{host: host, provider: provider, interp: interp, cfg: cfg}
-	for _, p := range interp.Tools() {
+	if err := l.install(); err != nil {
+		return nil, err
+	}
+	if _, err := interp.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginHarness), defaultStrategy); err != nil {
+		return nil, fmt.Errorf("loop: default strategy: %w", err)
+	}
+	return l, nil
+}
+
+// Freeze fixes the tool list offered to the model. It runs once, after
+// .nibb/init.scm has registered its tools; the list must not change
+// mid-session (ADR 9).
+func (l *Loop) Freeze() error {
+	l.tools = nil
+	for _, p := range l.interp.Tools() {
 		l.tools = append(l.tools, llm.Tool{Name: p.Name, Description: p.Meta.Doc, Parameters: p.Schema()})
 	}
 	clean, _, err := redact.Payload(l.tools, nil)
 	if err != nil {
-		return nil, fmt.Errorf("loop: redact tool schemas: %w", err)
+		return fmt.Errorf("loop: redact tool schemas: %w", err)
 	}
 	l.tools = clean.([]llm.Tool)
 	l.cfg.System = redact.Redact(l.cfg.System, nil).Text
 	b, _ := json.Marshal(l.tools)
 	l.toolsLen = window.Estimate(string(b))
-	return l, nil
+	l.frozen = true
+	return nil
 }
 
 // Tools returns the tool list offered to the model.
@@ -75,136 +123,81 @@ func (l *Loop) Tools() []llm.Tool { return l.tools }
 // is in the log; a "continue" message starts a fresh budget.
 var ErrHardStop = errors.New("hard stop: tool-call limit for this turn reached (loop.max_tool_calls / --max-tool-calls); say \"continue\" to go on")
 
-// Turn handles the user message already recorded by the session to completion.
-func (l *Loop) Turn(ctx context.Context) error {
-	calls := 0
-	var progress turnProgress
-	turnBudget := budget.From(ctx)
-	for {
-		if ctx.Err() != nil {
-			return context.Cause(ctx)
-		}
-		if turnBudget != nil {
-			if err := turnBudget.Check(ctx); err != nil {
-				return err
-			}
-		}
-		w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
-		request := llm.Request{Model: l.cfg.Model, Messages: w.Messages, Tools: l.tools, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}
-		digest, err := window.RequestHash(request)
-		if err != nil {
-			return err
-		}
-		if _, err := l.host.Record(log.KindLLMReq, log.LLMReq{
-			RequestHash: digest,
-			Model:       l.cfg.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
-		}); err != nil {
-			return err
-		}
-		l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "waiting for model"}})
-
-		reqCtx, cancel := context.WithTimeout(ctx, l.cfg.RequestTimeout)
-		resp, err := l.provider.Chat(reqCtx, request, nil)
-		cancel()
-		if err != nil {
-			_, _ = l.host.Record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
-			return err
-		}
-		respRec := log.LLMResp{
-			Content: resp.Message.Content, Thinking: resp.Message.Thinking, DoneReason: resp.DoneReason,
-			Usage: log.Usage{
-				PromptTokens: resp.Usage.PromptTokens, OutputTokens: resp.Usage.OutputTokens,
-				PromptEvalMS: resp.Usage.PromptEvalMS, EvalMS: resp.Usage.EvalMS, TotalMS: resp.Usage.TotalMS, LoadMS: resp.Usage.LoadMS,
-			},
-		}
-		for _, tc := range resp.Message.ToolCalls {
-			respRec.ToolCalls = append(respRec.ToolCalls, log.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args})
-		}
-		// Buffer the response: tokens can split a credential at any byte.
-		if resp.Message.Thinking != "" {
-			l.host.Emit(event.Event{Kind: event.StreamThinking, Payload: event.Text{Text: redact.Redact(resp.Message.Thinking, nil).Text}})
-		}
-		if resp.Message.Content != "" {
-			l.host.Emit(event.Event{Kind: event.StreamText, Payload: event.Text{Text: redact.Redact(resp.Message.Content, nil).Text}})
-		}
-		if _, err := l.host.Record(log.KindLLMResp, respRec); err != nil {
-			return err
-		}
-		if turnBudget != nil {
-			turnBudget.AddTokens(resp.Usage.PromptTokens, resp.Usage.OutputTokens)
-		}
-		if len(resp.Message.ToolCalls) == 0 {
-			if turnBudget != nil {
-				return turnBudget.Finish(ctx)
-			}
-			return nil
-		}
-		for i, tc := range resp.Message.ToolCalls {
-			var limitErr error
-			if turnBudget != nil {
-				limitErr = turnBudget.ToolCall(ctx)
-			} else {
-				calls++
-				if calls > l.cfg.MaxToolCalls {
-					limitErr = ErrHardStop
-				}
-			}
-			if limitErr != nil {
-				if turnBudget == nil {
-					if _, err := l.host.Record(log.KindNote, log.Note{Text: limitErr.Error()}); err != nil {
-						return err
-					}
-				}
-				if err := l.skipTools(resp.Message.ToolCalls[i:], limitErr.Error()); err != nil {
-					return err
-				}
-				return limitErr
-			}
-			outcome, err := l.runTool(ctx, tc)
-			if err != nil {
-				if recordErr := l.skipTools(resp.Message.ToolCalls[i+1:], err.Error()); recordErr != nil {
-					return recordErr
-				}
-				return err
-			}
-			if reason := progress.observe(tc, outcome); reason != "" {
-				err := fmt.Errorf("progress stop: %s; inspect the results before continuing", reason)
-				if _, recordErr := l.host.Record(log.KindNote, log.Note{Text: err.Error()}); recordErr != nil {
-					return recordErr
-				}
-				if recordErr := l.skipTools(resp.Message.ToolCalls[i+1:], err.Error()); recordErr != nil {
-					return recordErr
-				}
-				return err
-			}
-		}
+// Turn runs the strategy for a user message the session has already
+// recorded. The strategy runs with harness origin; the tools it runs on the
+// model's behalf run with model origin.
+func (l *Loop) Turn(ctx context.Context, request string) error {
+	if !l.frozen {
+		return errors.New("loop: Freeze was not called")
 	}
+	strategy, ok := l.interp.Global().Lookup("agent-turn")
+	if !ok || !strategy.IsProcedure() {
+		return errors.New("loop: agent-turn is not defined as a procedure")
+	}
+	l.turn = &turnState{budget: budget.From(ctx)}
+	defer func() { l.turn = nil }()
+
+	_, err := l.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginHarness), strategy, []scheme.Value{scheme.Str(request)})
+	// Every call the model made gets exactly one result, whatever the
+	// strategy did with it: an unanswered call would make the next request
+	// malformed.
+	if skipErr := l.skipPending("the turn ended before this call ran"); skipErr != nil && err == nil {
+		err = skipErr
+	}
+	if err != nil {
+		return surfaced(ctx, err)
+	}
+	if l.turn.budget != nil {
+		return l.turn.budget.Finish(ctx)
+	}
+	return nil
+}
+
+// surfaced turns an error that came up through Scheme into the one the
+// session reports: the cancellation cause, the stop itself, or the Go error
+// a primitive raised — never its Scheme wrapping, which only adds the
+// primitive's name.
+func surfaced(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return context.Cause(ctx)
+	}
+	var halt *scheme.Halt
+	if errors.As(err, &halt) {
+		return halt.Err
+	}
+	var se *scheme.Error
+	if errors.As(err, &se) && se.Cause != nil {
+		return se.Cause
+	}
+	return err
 }
 
 // runTool evaluates one tool call as a Scheme application (ADR 3) with
 // model origin, and records the result the model will see. Only context
-// cancellation or recording failure is returned as an error; operation failures
-// are tool results, with a typed outcome for turn policy.
-func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (toolOutcome, error) {
+// cancellation or recording failure is returned as an error; operation
+// failures are tool results, with a typed outcome for turn policy. value
+// is what a strategy receives: the recorded text, still carrying the
+// provenance of the value the tool produced (L2).
+func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (log.ToolResult, scheme.Value, toolOutcome, error) {
 	var outcome toolOutcome
+	res := log.ToolResult{ID: tc.ID, Name: tc.Name}
 	if _, err := l.host.Record(log.KindToolCall, log.ToolCallEvent{
 		ToolCall: log.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args}, Origin: string(scheme.OriginModel),
 	}); err != nil {
-		return outcome, err
+		return res, scheme.Void, outcome, err
 	}
 	l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "running " + tc.Name}})
 	start := time.Now()
-	res := log.ToolResult{ID: tc.ID, Name: tc.Name}
-	value, err := l.apply(ctx, tc)
+	produced, err := l.apply(ctx, tc)
 	res.Millis = time.Since(start).Milliseconds()
 	if err != nil {
 		if ctx.Err() != nil {
 			cause := context.Cause(ctx)
 			res.Error = "Interrupted during execution; outcome may be partial: " + cause.Error()
 			if _, recordErr := l.host.Record(log.KindToolResult, res); recordErr != nil {
-				return outcome, recordErr
+				return res, scheme.Void, outcome, recordErr
 			}
-			return outcome, cause
+			return res, scheme.Void, outcome, cause
 		}
 		outcome.failed = true
 		var denied *scheme.Denied
@@ -213,26 +206,22 @@ func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (toolOutcome, error
 		res.Error = err.Error()
 	} else {
 		res.OK = true
-		res.Value = value
+		res.Value = render(produced)
 	}
 	_, err = l.host.Record(log.KindToolResult, res)
-	return outcome, err
+	return res, scheme.Tainted(scheme.Str(res.Value), produced.Taint), outcome, err
 }
 
-func (l *Loop) apply(ctx context.Context, tc llm.ToolCall) (string, error) {
+func (l *Loop) apply(ctx context.Context, tc llm.ToolCall) (scheme.Value, error) {
 	p, ok := l.interp.Lookup(tc.Name)
 	if !ok || !p.Tool() {
-		return "", fmt.Errorf("unknown tool %q; available: %s", tc.Name, l.toolNames())
+		return scheme.Void, fmt.Errorf("unknown tool %q; available: %s", tc.Name, l.toolNames())
 	}
 	args, err := p.ArgsFromJSON(tc.Args)
 	if err != nil {
-		return "", err
+		return scheme.Void, err
 	}
-	v, err := l.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginModel), scheme.Value{Kind: scheme.KPrim, Prim: p}, args)
-	if err != nil {
-		return "", err
-	}
-	return render(v), nil
+	return l.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginModel), scheme.Value{Kind: scheme.KPrim, Prim: p}, args)
 }
 
 // render turns a tool's value into what the model reads: strings as-is,

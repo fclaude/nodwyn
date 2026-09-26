@@ -252,18 +252,8 @@ func (s *Session) initialize() error {
 		return err
 	}
 	s.interp.SetGate(turnGate{Gate: g})
-	if err := s.loadInit(); err != nil {
-		return err
-	}
-	var confirmer guard.Confirmer = s
-	switch {
-	case o.NoConfirm:
-		confirmer = guard.DenyAll
-	case o.AutoApprove:
-		confirmer = guard.AutoAllow
-	}
-	g.SetConfirmer(confirmer)
-
+	// The loop installs agent-turn before init.scm loads, so a project can
+	// redefine it; the tool list is frozen once init.scm has run.
 	requestTimeout, _ := o.Config.Loop.Durations()
 	s.loop, err = loop.New(s, o.Provider, s.interp, loop.Config{
 		Model:          o.Config.Control.Model,
@@ -277,5 +267,19 @@ func (s *Session) initialize() error {
 	if err != nil {
 		return err
 	}
+	if err := s.loadInit(); err != nil {
+		return err
+	}
+	if err := s.loop.Freeze(); err != nil {
+		return err
+	}
+	var confirmer guard.Confirmer = s
+	switch {
+	case o.NoConfirm:
+		confirmer = guard.DenyAll
+	case o.AutoApprove:
+		confirmer = guard.AutoAllow
+	}
+	g.SetConfirmer(confirmer)
 	return nil
 }

@@ -112,7 +112,7 @@ func (s *Session) send(text string, required bool) error {
 		if gres.Plan != "" {
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gres.Score, gres.Revises)}})
 		}
-		return s.loop.Turn(ctx)
+		return s.loop.Turn(ctx, text)
 	})
 }
 

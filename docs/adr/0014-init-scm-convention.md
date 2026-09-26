@@ -15,3 +15,5 @@ primitives via `register-tool`. Nothing in `dev/` bypasses the guard.
 ## Consequences
 - Loading happens before the first message (ADR 9).
 - A project can ship its own tools the same way.
+- A project can replace the agent loop the same way: the default
+  `agent-turn` is installed before `init.scm` loads (ADR 26).

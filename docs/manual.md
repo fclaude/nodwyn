@@ -11,11 +11,13 @@ read [docs/adr/](adr/).
 
 ### The one-paragraph model
 
-A **front-end** sends the user's text to a **core session**. The session's
-**loop** builds a context **window** from the session **log**, sends it to the
-control-plane **model** (Ollama on workshop) and displays the redacted answer after generation. When the
-model asks for a tool, the loop turns the request into a Scheme application
-`(tool-name arg …)` and evaluates it in the embedded **Scheme** interpreter.
+A **front-end** sends the user's text to a **core session**, which calls the
+**loop**: a Scheme procedure, `agent-turn`, over three Go primitives. They
+build a context **window** from the session **log**, send it to the
+control-plane **model** (Ollama on workshop) and display the redacted answer after
+generation. When the model asks for a tool, the loop turns the request into a
+Scheme application `(tool-name arg …)` and evaluates it in the embedded
+**Scheme** interpreter.
 Every primitive application — from the model, the user, or a `.scm` file —
 passes through one Go function, `applyPrim`, where the **guard** decides
 allow / confirm / deny before the **host primitive** runs. Everything is
@@ -30,7 +32,7 @@ This is the spine. Read these in order and you have read the system.
 |---|---|---|
 | 1 | [internal/frontend/plain/chat.go](../internal/frontend/plain/chat.go) `Run` | reads a line, calls `Session.Send`, then only renders events until `status idle` |
 | 2 | [internal/core/session.go](../internal/core/session.go) `Send` | one goroutine per turn; [events.go](../internal/core/events.go) records and emits; [confirm.go](../internal/core/confirm.go) handles a prompt plus a wait on `Answer` |
-| 3 | [internal/loop/loop.go](../internal/loop/loop.go) `Turn` | rebuilds the window from `EventsSoFar()` every request; tool calls become `runTool` |
+| 3 | [internal/loop/strategy.scm](../internal/loop/strategy.scm) `agent-turn`, [prims.go](../internal/loop/prims.go) `modelTurn`, `runTools` | the loop is Scheme; its primitives rebuild the window from `EventsSoFar()` every request and give each model call exactly one result via `runTool` |
 | 4 | [internal/window/window.go](../internal/window/window.go) `Build` | elides oldest tool results *in place* so the request prefix never changes |
 | 5 | [internal/llm/ollama.go](../internal/llm/ollama.go) `Chat` | native `/api/chat` streaming; thinking separated; tool-call args stay JSON objects |
 | 6 | [internal/loop/loop.go](../internal/loop/loop.go) `apply` | `Prim.ArgsFromJSON` orders named JSON args into positional Scheme values; `WithOrigin(ctx, OriginModel)` |
@@ -49,7 +51,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/prim` | host primitives and the diff | `prim.go` `Register`, `Checkers` |
 | `internal/llm` | the provider seam and the Ollama client | `llm.go` `Provider` |
 | `internal/window` | the derived context | `Build` |
-| `internal/loop` | the agent loop | `Turn`, `runTool` |
+| `internal/loop` | the loop's primitives and default strategy | `strategy.scm`, `prims.go`, `loop.go` `Turn` |
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
 | `internal/plan` | the plan gate and bounded revision policy | `gate.go` `Run` |
 | `internal/keychain` | encrypted credentials, opaque handles and injection | `keychain.go` |
@@ -75,7 +77,8 @@ Read a test when you want to know what a claim actually means.
 | The interpreter is the only Scheme→Go surface; the guard sits on it | `applyPrim` is the only caller of `Prim.Handler`; [scheme_test.go](../internal/scheme/scheme_test.go) `TestGateIsTheSingleExit` records every crossing including through `map`/`apply`/`sort` |
 | Loading `.scm` cannot change evaluation | `TestKernelFixed`: fingerprint unchanged, only the primitive table grew |
 | Proper tail calls | `TestTailCalls`: 200k iterations in nine tail positions under an 8 MB stack cap |
-| Every builtin is documented | `TestDocCoverage` fails for any primitive missing from `docs/scheme.md` |
+| Every primitive is documented | `TestDocCoverage` (builtins) and `TestSessionPrimitivesAreDocumented` (host and loop primitives) fail for any primitive missing from `docs/scheme.md` |
+| A loop strategy cannot skip the invariants | [strategy_test.go](../internal/core/strategy_test.go): fabricated or rewritten calls refused, unanswered calls answered, stops uncatchable, provenance kept |
 | A handle can never become text | `TestHandlePrintsOpaque` |
 | The core knows nothing about terminals | [scripts/lint-boundaries.sh](../scripts/lint-boundaries.sh) in `make lint` |
 | No path exists for the canary to leak | [test/exfil](../test/exfil/): each scenario asserts the decision *and* greps the canary out of log, output and result |
@@ -91,7 +94,8 @@ jq -c '[.seq,.kind]' ~/.local/share/nibb/sessions/<id>.jsonl
 ```
 
 Event kinds are listed in [internal/log/log.go](../internal/log/log.go).
-`guard.decision` lines carry `origin` (user or model), `decision`, `checker`,
+`guard.decision` lines carry `origin` (user, model, or harness for the loop
+strategy and plan gate), `decision`, `checker`,
 `reason` and, for confirms, `answer`. An `llm.req` has `elided`: the seqs
 whose content was replaced in the window.
 
@@ -313,6 +317,35 @@ rather than variadic ones (the model's tool schema cannot express rest
 arguments); the inner `shell-exec` is still irreversible, so pair the tool
 with a standing approval. The language is in [docs/scheme.md](scheme.md);
 try things in `nibb repl` or with `:eval`.
+
+### Changing the loop
+
+A turn is the Scheme procedure `agent-turn`; redefine it in
+`.nibb/init.scm` to change how turns go. This one runs a batch of tool calls
+in order but stops at the first failure, so the model re-plans from the
+error instead of running calls that assumed success:
+
+```scheme
+(define (run-until-failure calls)
+  (unless (null? calls)
+    (let ((result (car (run-tools (list (car calls))))))
+      (if (assoc-ref result 'ok)
+          (run-until-failure (cdr calls))
+          (skip-tools (cdr calls) "an earlier call in this batch failed")))))
+
+(define (agent-turn request)
+  (let loop ((reply (model-turn)))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls)
+        (run-until-failure calls)
+        (loop (model-turn))))))
+```
+
+A strategy decides which calls run, what the model is told about the ones
+that don't, and when to ask the model again. It cannot run a call the model
+did not make, loosen the guard, or keep a turn going past a budget or a
+progress stop ([docs/scheme.md](scheme.md) §9). It cannot yet add text to the
+conversation: the system prompt and the plan gate are still set in Go.
 
 ### Ingress redaction and the remaining boundaries
 

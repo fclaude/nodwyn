@@ -20,6 +20,8 @@ A minimal, self-extending coding-agent harness. Single binary. One developer, 3�
 
 `ask LLM → run tool (through guard) → feed result back → ask again`. Stop on a plain answer or a hard stop. No sub-agents for the core loop.
 
+The loop is a Scheme procedure, `agent-turn`, so how a turn goes — plan first, consult the judge, stop a batch at its first failure — can change without changing Go. What a turn must not skip stays in Go, behind three primitives: windows built from the log, only the model's own calls run, one result per call, budgets and the progress guard. *(Added by ADR 26.)*
+
 **Plan trigger:** a Jev yes/no gate (intent-only, logged, not secrets) before each message, *plus* a code-enforced hard trigger for irreversible/high-stakes actions. (Jev 0.77)
 Chosen over a pure pull model because the gate is auditable per message and improves as Jev improves.
 

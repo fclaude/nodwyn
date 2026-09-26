@@ -10,7 +10,7 @@ implements what is written here and nothing else; the conformance suite has a
 snippet for every form and builtin below, and a builtin that is not documented
 here fails the suite.
 
-Status: **v0 kernel (P1b)**. §9 lists what is deliberately absent.
+Status: **v0 kernel (P1b)**. §10 lists what is deliberately absent.
 
 ---
 
@@ -155,7 +155,9 @@ REPL prints it, the agent loop feeds it back to the model as the tool result).
 
 A primitive the guard denies raises `denied: <reason>`. Denials and
 cancellations (an abort, a timeout) pass through `guard` untouched: a program
-cannot hide that it was refused, and an abort always unwinds.
+cannot hide that it was refused, and an abort always unwinds. So do the agent
+loop's stops (§9): a spent budget, the tool-call limit and a progress stop end
+the turn whatever the strategy's `guard` clauses say.
 
 ## 5. Builtins
 
@@ -288,6 +290,8 @@ into Scheme values (ADR 3).
 | | |
 |---|---|
 | `(fs-read path)` `(fs-write path content)` `(fs-edit path old new)` `(fs-list path)` | repository-pinned file access; writes and edits are irreversible (confirm, diff preview) |
+| `(index-grep path pattern)` | **P10.** Search a repository file or directory with a ripgrep pattern (not command-line options). Returns matches (path, line, text), files searched and skipped, and a truncated flag; at most 128 files and 100 matching lines; protected, binary and oversized files and symlinks are skipped. Needs `rg` on `PATH` |
+| `(index-symbols path)` | **P10.** Outline the named definitions in one Go, JavaScript or Python file with bundled Tree-sitter grammars: name, kind, line, end line (at most 100), parse errors. Syntax, not types |
 | `(shell-exec cmd args)` | run a program with an argument **list** in the repository root, scrubbed environment; irreversible; returns `(("status" . n) ("stdout" . s) ("stderr" . s))` |
 | `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))` |
 | `(policy-read name)` | User-only, hidden from the model catalog. Read configured `bindings` or repository `approvals`, returning content, revision and existence; bounded to 64 KiB and rejects recognized secrets. No arbitrary path. |
@@ -300,16 +304,17 @@ into Scheme values (ADR 3).
 ### Provenance (L2)
 
 Every value carries **provenance tags**: where it came from, not what it
-contains. A host primitive tags its result (`fs-read` and `fs-list` mint
-`external:file`, `shell-exec` mints `external:shell`, `http-request` and the
-Jev primitives mint `external:http`), a credential handle carries
-`cred:<class>`, and the tags of a call's arguments flow into its result.
+contains. A host primitive tags its result (`fs-read`, `fs-list` and the
+index primitives mint `external:file`, `shell-exec` mints `external:shell`,
+`http-request` and the Jev primitives mint `external:http`), a credential
+handle carries `cred:<class>`, and the tags of a call's arguments flow into
+its result.
 
 | | |
 |---|---|
 | `(taint-of x)` | the tags as a list of strings, sorted; `()` for a clean value |
 | `(tainted? x)` | true if the value carries any tag |
-| `(wipe x)` `(box x)` | the same value with its tags removed. **User-originated Scheme only** — the guard denies either from a model-originated call — and every use is logged |
+| `(wipe x)` `(box x)` | the same value with its tags removed. **User-originated Scheme only** — the guard denies either from model-originated code and from an agent-turn strategy (§9), which handles every tool result — and every use is logged |
 
 Propagation happens in one place, the primitive dispatch, so there is no
 second path. A primitive whose result *measures* its arguments rather than
@@ -438,7 +443,42 @@ fp := in.Fingerprint()                       // kernel fingerprint
 `ctx` cancellation is checked at every application; a cancelled evaluation
 returns the context's error.
 
-## 9. Not in nibb Scheme
+## 9. The agent loop
+
+A turn is a Scheme procedure. The session records the user's message and
+calls `(agent-turn request)` with the recorded (redacted) text. The default is
+installed before `.nibb/init.scm` loads, so a project can redefine it:
+
+```scheme
+(define (agent-turn request)
+  (let loop ((reply (model-turn)))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls)
+        (run-tools calls)
+        (loop (model-turn))))))
+```
+
+| | |
+|---|---|
+| `(model-turn)` | Ask the model once. Returns an alist: `content`, `thinking`, `done` (why it stopped) and `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded for `nibb replay --window`. |
+| `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
+| `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
+
+All three are hidden from the model and refused outside a turn and from
+model-originated code. The strategy runs with harness origin, so it cannot
+strip provenance or change policy (`wipe`, `register-check` and `policy-write`
+are user-only); the tools it runs execute with model origin, as if the model
+had called them directly. Whatever the strategy does:
+
+- it runs or skips only calls the model made, each once, with the arguments
+  the model sent;
+- every call gets exactly one result: calls left unanswered are skipped when
+  the strategy asks the model again or when the turn ends;
+- budgets, the tool-call limit and the progress guard (the same call four
+  times in a row, a denied call retried three times, ten failures in a row)
+  end the turn with an error no `guard` clause can catch (§4).
+
+## 10. Not in nibb Scheme
 
 Deliberately absent from v0.
 

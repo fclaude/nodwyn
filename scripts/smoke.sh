@@ -12,4 +12,4 @@ printf '%s\n' \
 	| ./bin/nibb --no-confirm --repo . "$@"
 echo
 echo "=== replay ==="
-./bin/nibb replay "$(./bin/nibb sessions | tail -1)"
+./bin/nibb replay "$(./bin/nibb sessions --ids | tail -1)"

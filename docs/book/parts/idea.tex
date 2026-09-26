@@ -201,6 +201,13 @@ The agent loop is the plain one: ask the model; run the tool it asks for,
 through the guard; feed the result back; ask again. Stop on a plain answer or
 a hard stop. No sub-agents in the core loop.
 
+The loop is itself a Scheme procedure, \code{agent-turn}, so how a turn goes
+can change without changing Go: plan first, check with the judge, stop a
+batch of calls at the first failure. What a turn must not skip stays in Go,
+behind three primitives: windows built from the log, only the model's own
+calls run, exactly one result per call, and budgets and a progress guard
+that the procedure cannot catch (\adr{26}).
+
 Before each message, a plan gate: a yes/no from the judge on the abstract
 intent (``is this multi-step?''), logged per message, plus a code-enforced
 hard trigger for irreversible or high-stakes actions (force pushes,
@@ -215,8 +222,8 @@ through a \emph{confirmer} the core implements as an event plus a wait, so
 the guard never knows what a terminal is. A \emph{standing approval}\,---\,a
 command prefix or a write path the user authorised ahead of time\,---\,turns a
 confirm into an allow and never turns a deny into anything. Every decision
-that reaches the host, and every non-allow, is logged with who asked (user
-or model) and why.
+that reaches the host, and every non-allow, is logged with who asked (the
+user, the model or the harness) and why.
 
 \chapter{Memory}
 

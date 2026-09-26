@@ -79,7 +79,7 @@ func TestCommandLineBuiltFromToolOutput(t *testing.T) {
 	}
 }
 
-func TestWipeIsDeniedToTheModel(t *testing.T) {
+func TestWipeIsUserOnly(t *testing.T) {
 	wipe := &scheme.Prim{Name: "wipe", Meta: scheme.Meta{Doc: "d", TaintStrip: true, Hidden: true, Audited: true,
 		Params: []scheme.Param{{Name: "x", Type: "any"}}}}
 	ck := guard.Taint{}
@@ -91,9 +91,10 @@ func TestWipeIsDeniedToTheModel(t *testing.T) {
 	if d := ck.Check(user, wipe, []scheme.Value{taintedStr("x", fileTaint)}); d.Verdict != guard.Allow {
 		t.Fatalf("user wipe: %+v", d)
 	}
-	// The harness's own calls are not the model's.
+	// An agent-turn strategy runs with harness origin and handles every
+	// tool result; it must not launder them.
 	harness := scheme.WithOrigin(context.Background(), scheme.OriginHarness)
-	if d := ck.Check(harness, wipe, nil); d.Verdict != guard.Allow {
+	if d := ck.Check(harness, wipe, nil); d.Verdict != guard.Deny {
 		t.Fatalf("harness wipe: %+v", d)
 	}
 }

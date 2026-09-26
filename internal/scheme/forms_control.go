@@ -156,6 +156,10 @@ func catchable(ctx context.Context, err error) bool {
 	if errors.As(err, &d) {
 		return false
 	}
+	var h *Halt
+	if errors.As(err, &h) {
+		return false
+	}
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
