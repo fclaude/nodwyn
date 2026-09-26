@@ -89,6 +89,37 @@ func (c *Chat) banner() {
 	fmt.Fprintf(c.Out, "nibb session %s\nrepo  %s\ntools %s\n:h for commands\n", s.ID(), s.Repo(), strings.Join(names, " "))
 }
 
+// evalFollowing evaluates src while rendering the session's events, so a
+// prompt the evaluation raises (credential-register's masked input, a
+// confirm) is shown and answered instead of waiting for a reply that the
+// front-end would only read after Eval returned.
+func (c *Chat) evalFollowing(ctx context.Context, src string) (scheme.Value, error) {
+	type result struct {
+		v   scheme.Value
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		v, err := c.Session.Eval(ctx, src)
+		done <- result{v, err}
+	}()
+	for {
+		select {
+		case r := <-done:
+			c.drainIdle()
+			return r.v, r.err
+		case ev, ok := <-c.Session.Events():
+			if !ok {
+				r := <-done
+				return r.v, r.err
+			}
+			if ev.Seq == 0 || ev.Seq > c.replayedSeq {
+				c.show(ev)
+			}
+		}
+	}
+}
+
 // drainIdle consumes buffered events without blocking.
 func (c *Chat) drainIdle() {
 	for {
@@ -326,8 +357,7 @@ func (c *Chat) command(ctx context.Context, line string) (quit bool) {
 		}
 	case ":eval":
 		src := strings.TrimSpace(strings.TrimPrefix(line, ":eval"))
-		v, err := c.Session.Eval(ctx, src)
-		c.drainIdle()
+		v, err := c.evalFollowing(ctx, src)
 		if err != nil {
 			fmt.Fprintln(c.Out, "error:", redact.Redact(err.Error(), nil).Text)
 		} else if v.Kind != scheme.KVoid {
