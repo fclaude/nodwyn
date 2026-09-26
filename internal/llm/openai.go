@@ -30,7 +30,7 @@ type OpenAI struct {
 func NewOpenAI(base string, authorize func(*http.Request) error) *OpenAI {
 	return &OpenAI{
 		URL:       strings.TrimRight(base, "/"),
-		Client:    &http.Client{Transport: &http.Transport{IdleConnTimeout: 90 * time.Second}},
+		Client:    &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, IdleConnTimeout: 90 * time.Second}},
 		Authorize: authorize,
 	}
 }

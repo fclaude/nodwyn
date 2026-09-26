@@ -27,6 +27,7 @@ func NewOllama(base string) *Ollama {
 		URL: strings.TrimRight(base, "/"),
 		Client: &http.Client{
 			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
 				ResponseHeaderTimeout: 0,
 				IdleConnTimeout:       90 * time.Second,
 			},

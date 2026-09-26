@@ -101,7 +101,9 @@ bin/nibb repl                 # Scheme REPL
 ```
 
 The control plane is the Ollama server in `~/.config/nibb/config.toml`
-(default: Qwen on workshop over the tailnet; no key). Every write and every
+(default: Qwen on workshop over the tailnet; no key). Model requests honor
+`HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, so a sandbox whose only egress is
+an allowlist proxy can still reach the model. Every write and every
 command is confirmed by you, with a diff for writes and edits; standing
 approvals for read-only commands live in `.nibb/allow.toml` (ADR 17).
 Session logs live in `~/.local/share/nibb/sessions/`.
