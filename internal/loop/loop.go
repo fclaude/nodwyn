@@ -5,7 +5,7 @@
 // Its default is strategy.scm, and a project may redefine it in
 // .nibb/init.scm (ADR 26). This package keeps what a strategy must not be
 // able to skip, and gives the strategy the primitives to work with:
-// model-turn, run-tools, skip-tools and add-message.
+// model-turn, run-tools, skip-tools, add-message, narrow-context and widen.
 //
 // Reading order:
 //
@@ -51,6 +51,9 @@ type Config struct {
 	NumCtx    int           // context size requested from the model server
 	KeepAlive string        // how long the server keeps the model loaded
 	Window    window.Policy // when and how older context is elided
+	// Models are the other models a strategy may ask by name, with
+	// (model-turn "NAME"): the configured model registry.
+	Models map[string]Endpoint
 	// MaxToolCalls stops a turn that started no budget (budget.From is nil).
 	MaxToolCalls   int
 	RequestTimeout time.Duration // per model request
@@ -72,6 +75,14 @@ type Loop struct {
 	// turn is the turn in progress, nil between turns. The session runs one
 	// turn at a time, so a field suffices.
 	turn *turnState
+}
+
+// Endpoint is one model a strategy can ask by name.
+type Endpoint struct {
+	Provider  llm.Provider
+	Model     string // model id as the provider names it
+	NumCtx    int
+	KeepAlive string
 }
 
 //go:embed strategy.scm

@@ -169,3 +169,92 @@ func TestUserlandPlanCycle(t *testing.T) {
 		t.Error("the oracle's key reached the log")
 	}
 }
+
+// routeImplementation plans on the control model, then hands the task and
+// the plan, and nothing else, to the model a routing rule picks. If the
+// result diverges from what was asked, a stronger model gets one retry. The
+// control model then sees everything that happened and reports it.
+const routeImplementation = `
+(define (plan-for request)
+  (add-message "Before any change: reply with a short numbered plan, and nothing else.")
+  (let ((reply (model-turn)))
+    (skip-tools (assoc-ref reply 'tool-calls '()) "Plan first; the work happens next.")
+    (assoc-ref reply 'content)))
+
+;; The routing rule is yours: here, short plans go to the small model.
+(define (route request plan)
+  (if (< (string-length plan) 400) "impl" "strong"))
+
+(define (implement model request plan note)
+  (narrow-context (string-append "You implement an approved plan in this repository.\nTask: " request "\nPlan:\n" plan))
+  (add-message (string-append "Carry out the plan, then reply with a one-line summary." note))
+  (let loop ((reply (model-turn model)))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls)
+        (run-tools calls)
+        (loop (model-turn model))))))
+
+;; A local oracle: the file says what the task asked for.
+(define (diverged?)
+  (guard (e (else #t))
+    (not (equal? (fs-read "hello.txt") "hi\n"))))
+
+(define (agent-turn request)
+  (let* ((plan (plan-for request))
+         (model (route request plan)))
+    (implement model request plan "")
+    (when (diverged?)
+      (implement "strong" request plan " A first attempt did not match the task; check the file's exact content."))
+    (widen)
+    (add-message "The work is done. Summarise it for the user in one line.")
+    (model-turn)))
+`
+
+func TestUserlandRouteImplementation(t *testing.T) {
+	impl := newFakeOpenAI(t,
+		oaiCall("i1", "fs-write", `{"path":"hello.txt","content":"helo\n"}`),
+		oaiText("wrote hello.txt"),
+	)
+	strong := newFakeOpenAI(t,
+		oaiCall("s1", "fs-write", `{"path":"hello.txt","content":"hi\n"}`),
+		oaiText("fixed hello.txt"),
+	)
+	r := modelRig(t, routeImplementation, map[string]config.Model{
+		"impl":   {Provider: "openai", URL: impl.URL + "/v1", Model: "small-coder"},
+		"strong": {Provider: "openai", URL: strong.URL + "/v1", Model: "large-coder"},
+	}, Options{},
+		fake.Turn{Content: "1. write hello.txt saying hi"},
+		fake.Turn{Content: "Created hello.txt saying hi, after one retry."},
+	)
+	if e := r.turn("create hello.txt saying hi"); e != "" {
+		t.Fatal(e)
+	}
+
+	// The implementer got the task and the plan under its own system
+	// prompt, not the conversation.
+	first := impl.seen()[0].body
+	if !strings.Contains(first, `Plan:\n1. write hello.txt saying hi`) || strings.Contains(first, "You are nibb") ||
+		strings.Count(first, `"role":`) != 2 {
+		t.Fatalf("implementer's first request:\n%s", first)
+	}
+	// The retry starts fresh too: the stronger model does not inherit the
+	// first attempt, only the note about it.
+	retry := strong.seen()[0].body
+	if !strings.Contains(retry, "A first attempt did not match") || strings.Contains(retry, "helo") {
+		t.Fatalf("stronger model's first request:\n%s", retry)
+	}
+	if b, _ := os.ReadFile(filepath.Join(r.repo, "hello.txt")); string(b) != "hi\n" {
+		t.Fatalf("hello.txt = %q", b)
+	}
+	// Widened, the control model sees what both did.
+	final := string(r.srv.Requests[1].Raw)
+	if !strings.Contains(final, `helo\n`) || !strings.Contains(final, "fixed hello.txt") || !strings.Contains(final, "Summarise it for the user") {
+		t.Fatalf("control model's final request lacks the work:\n%s", final)
+	}
+	if len(impl.seen()) != 2 || len(strong.seen()) != 2 || len(r.srv.Requests) != 2 {
+		t.Fatalf("requests: impl %d, strong %d, control %d", len(impl.seen()), len(strong.seen()), len(r.srv.Requests))
+	}
+	if n := replayAll(t, r.logb); n != 6 {
+		t.Fatalf("replayed %d of 6 requests", n)
+	}
+}

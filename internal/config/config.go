@@ -71,6 +71,22 @@ type Config struct {
 	Loop    Loop    `toml:"loop"`
 	Budget  Budget  `toml:"budget"`
 	Jev     Jev     `toml:"jev"`
+	// Models are the models a loop strategy may ask by name, besides the
+	// control model: (model-turn "NAME") for [models.NAME].
+	Models map[string]Model `toml:"models"`
+}
+
+// Model is one entry of the model registry. Configuring a model is
+// consenting that what a strategy sends it leaves the machine. A keyed model
+// also needs its key bound to the URL's host (bindings.toml, POST at
+// header:Authorization:Bearer); that is checked on every request.
+type Model struct {
+	Provider   string `toml:"provider"`   // "ollama", or "openai" for any chat-completions server
+	URL        string `toml:"url"`        // base URL; for openai including the version, e.g. https://api.openai.com/v1
+	Model      string `toml:"model"`      // model id as the provider names it
+	NumCtx     int    `toml:"num_ctx"`    // context length; sent to ollama, informational otherwise
+	KeepAlive  string `toml:"keep_alive"` // ollama only
+	Credential string `toml:"credential"` // keychain class of the API key; empty for none
 }
 
 // Jev is the judge's configuration (ADR 19/20). Jev is keyed: it runs only
@@ -257,6 +273,11 @@ func (c Config) Validate() error {
 	if c.Control.NumCtx <= 0 {
 		return errors.New("control.num_ctx must be positive")
 	}
+	for name, m := range c.Models {
+		if err := m.validate(); err != nil {
+			return fmt.Errorf("models.%s: %w", name, err)
+		}
+	}
 	if c.Window.HighWater <= 0 || c.Window.LowWater <= 0 || c.Window.OutputReserve <= 0 || c.Window.MaxResultTokens <= 0 {
 		return errors.New("window values must be positive")
 	}
@@ -311,4 +332,26 @@ func (l Loop) Durations() (request, shell time.Duration) {
 	request, _ = time.ParseDuration(l.RequestTimeout)
 	shell, _ = time.ParseDuration(l.ShellTimeout)
 	return request, shell
+}
+
+func (m Model) validate() error {
+	switch m.Provider {
+	case "ollama", "openai":
+	default:
+		return fmt.Errorf("provider %q is not supported (ollama, openai)", m.Provider)
+	}
+	u, err := url.Parse(m.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("url %q must be an http or https URL", m.URL)
+	}
+	if m.Model == "" {
+		return errors.New("model is required")
+	}
+	if m.NumCtx < 0 {
+		return errors.New("num_ctx must not be negative")
+	}
+	if m.Provider == "ollama" && m.Credential != "" {
+		return errors.New("credential is not supported for ollama")
+	}
+	return nil
 }

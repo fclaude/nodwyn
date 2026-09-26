@@ -503,6 +503,22 @@
       ],
       "type": "object"
     },
+    "log.ContextNarrow": {
+      "properties": {
+        "system": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "system"
+      ],
+      "type": "object"
+    },
+    "log.ContextWiden": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
     "log.CredRegister": {
       "properties": {
         "actor": {
@@ -741,14 +757,23 @@
             "null"
           ]
         },
+        "endpoint": {
+          "type": "string"
+        },
         "est_tokens": {
           "type": "integer"
+        },
+        "keep_alive": {
+          "type": "string"
         },
         "messages": {
           "type": "integer"
         },
         "model": {
           "type": "string"
+        },
+        "num_ctx": {
+          "type": "integer"
         },
         "request_hash": {
           "type": "string"
@@ -1220,6 +1245,12 @@
     },
     "payload.binding.change": {
       "$ref": "#/$defs/log.BindingChange"
+    },
+    "payload.context.narrow": {
+      "$ref": "#/$defs/log.ContextNarrow"
+    },
+    "payload.context.widen": {
+      "$ref": "#/$defs/log.ContextWiden"
     },
     "payload.cred.register": {
       "$ref": "#/$defs/log.CredRegister"
@@ -2929,6 +2960,54 @@
             },
             "payload": {
               "$ref": "#/$defs/log.BindingChange"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "context.narrow"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.ContextNarrow"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "context.widen"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.ContextWiden"
             },
             "seq": {
               "minimum": 0,

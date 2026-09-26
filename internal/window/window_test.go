@@ -194,3 +194,37 @@ func TestErrorResultsBecomeJSON(t *testing.T) {
 		t.Fatalf("%q", r.Messages[1].Content)
 	}
 }
+
+// A narrowed context is only what follows the narrowing, under the
+// strategy's system prompt; widen or the user's next message ends it.
+func TestNarrowedContext(t *testing.T) {
+	s := newSession()
+	s.turn(10)
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "build the thing"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: "plan: 1. write it"})
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "You implement a plan."})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "Plan: 1. write it"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: "written"})
+
+	narrowed := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages
+	if len(narrowed) != 3 || narrowed[0].Content != "You implement a plan." ||
+		narrowed[1].Content != "Plan: 1. write it" || narrowed[2].Content != "written" {
+		t.Fatalf("narrowed window: %+v", narrowed)
+	}
+
+	s.w.Append(log.KindContextWiden, log.ContextWiden{})
+	wide := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages
+	if !strings.HasPrefix(wide[0].Content, "SESSION PROMPT") || !strings.Contains(wide[0].Content, "build the thing") {
+		t.Fatalf("widened system prompt: %q", wide[0].Content)
+	}
+	if len(wide) != 1+4+4 { // system, the first turn, then this turn with what happened while narrowed
+		t.Fatalf("widened window has %d messages: %+v", len(wide), wide)
+	}
+
+	// Narrowing never outlives the turn: the next user message widens.
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "side task"})
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "next"})
+	if next := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages; !strings.HasPrefix(next[0].Content, "SESSION PROMPT") {
+		t.Fatalf("a new turn stayed narrowed: %q", next[0].Content)
+	}
+}

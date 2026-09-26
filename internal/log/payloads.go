@@ -38,6 +38,16 @@ type HarnessMsg struct {
 	Text string `json:"text"`
 }
 
+// ContextNarrow starts a narrowed context: until a widen or the next user
+// message, the model sees System as its system prompt and only what comes
+// after this event.
+type ContextNarrow struct {
+	System string `json:"system"`
+}
+
+// ContextWiden ends a narrowed context.
+type ContextWiden struct{}
+
 // LLMReq describes a request to the control-plane model. The messages are
 // not repeated: they are rebuilt from the log by the window.
 type LLMReq struct {
@@ -47,6 +57,12 @@ type LLMReq struct {
 	Tools       int      `json:"tools"`
 	EstTokens   int      `json:"est_tokens"`
 	Elided      []uint64 `json:"elided,omitempty"`
+	// Endpoint is the registry name when a strategy asked a model other
+	// than the control model ([models.NAME]); NumCtx and KeepAlive are then
+	// that request's, since they differ from the session's recipe.
+	Endpoint  string `json:"endpoint,omitempty"`
+	NumCtx    int    `json:"num_ctx,omitempty"`
+	KeepAlive string `json:"keep_alive,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.

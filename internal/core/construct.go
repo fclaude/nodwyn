@@ -260,6 +260,7 @@ func (s *Session) initialize() error {
 		NumCtx:         o.Config.Control.NumCtx,
 		KeepAlive:      o.Config.Control.KeepAlive,
 		Window:         window.Policy{HighWater: o.Config.Window.HighWater, LowWater: o.Config.Window.LowWater, MaxResultTokens: o.Config.Window.MaxResultTokens},
+		Models:         s.models(),
 		MaxToolCalls:   o.Config.Loop.MaxToolCalls,
 		RequestTimeout: requestTimeout,
 		System:         systemPrompt(o.Repo),

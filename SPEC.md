@@ -34,7 +34,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 > **Pass a secret-bearing egress iff its class is authorized for (destination, positions, methods).** (Jev 1.0)
 
 - **Binding table (user-owned):** `(secret-class → destination, positions, methods)`. Bound → silent pass + logged. Unbound/unknown → **deny or confirm**, never fail open. (Jev 1.0)
-- **LLM-as-tool split:** the harness's *own* LLM key is **control-plane** (its identity, standing, not grant/revoke, not Jev-audited for mutation). *Other* providers (OpenAI, local, MCP) are **data-plane** credentials the user binds → LLMs become tools among tools. (Jev 0.61 — the confirm loop is the soft spot, see Risks)
+- **LLM-as-tool split:** the harness's *own* LLM key is **control-plane** (its identity, standing, not grant/revoke, not Jev-audited for mutation). *Other* providers (OpenAI, local, MCP) are **data-plane** credentials the user binds → LLMs become tools among tools. (Jev 0.61 — the confirm loop is the soft spot, see Risks) A loop strategy may also hand work to them: a configured model, asked by name, over a context the strategy narrowed; its key is bound and checked like any other. *(ADR 27.)*
 - The harness does not *classify* a secret; the user **binds** one.
 
 ---

@@ -28,3 +28,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (proposed)
 - [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output
 - [0026](./0026-the-loop-is-scheme.md) — The agent loop is a Scheme procedure
+- [0027](./0027-models-and-narrowed-contexts.md) — Configured models and narrowed contexts

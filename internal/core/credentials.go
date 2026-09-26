@@ -6,11 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/detect/l1"
 	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/loop"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
@@ -135,4 +139,55 @@ func (s *Session) SecretReplyFrom(id string, secret []byte, actor string) error 
 	delete(s.secrets, id)
 	pending.reply <- secretReply{value: append([]byte(nil), secret...), actor: actor}
 	return nil
+}
+
+// modelKeyPosition is where a keyed model's key goes. A model's key must be
+// bound for it like any other credential.
+const modelKeyPosition = "header:Authorization:Bearer"
+
+// authorize returns how requests to a keyed model get their key. The key is
+// injected only if class is bound to the request's host for its method at
+// modelKeyPosition, checked on every request so a binding change applies at
+// once, and the check is logged like any egress.
+func (s *Session) authorize(class string) func(*http.Request) error {
+	return func(req *http.Request) error {
+		h := s.HandleForClass(class)
+		if h == nil {
+			return fmt.Errorf("no %s credential in the keychain", class)
+		}
+		if err := s.bindings.Refresh(); err != nil {
+			return err
+		}
+		host := strings.ToLower(req.URL.Hostname())
+		bound, reason := s.bindings.Lookup(class, host, req.Method, modelKeyPosition)
+		if _, err := s.Record(log.KindEgressCheck, log.EgressCheck{Prim: "model-turn", Class: class, Host: host, Method: req.Method, Bound: bound, Reason: reason}); err != nil {
+			return err
+		}
+		if !bound {
+			return errors.New(reason)
+		}
+		_, name, prefix := binding.Position(modelKeyPosition)
+		return s.keychain.InjectHeader(h.ID, name, prefix, req)
+	}
+}
+
+// models builds the model registry ([models.NAME]) a strategy can ask by
+// name.
+func (s *Session) models() map[string]loop.Endpoint {
+	out := make(map[string]loop.Endpoint, len(s.opts.Config.Models))
+	for name, m := range s.opts.Config.Models {
+		var p llm.Provider
+		switch m.Provider {
+		case "ollama":
+			p = llm.NewOllama(m.URL)
+		case "openai":
+			var auth func(*http.Request) error
+			if m.Credential != "" {
+				auth = s.authorize(m.Credential)
+			}
+			p = llm.NewOpenAI(m.URL, auth)
+		}
+		out[name] = loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive}
+	}
+	return out
 }

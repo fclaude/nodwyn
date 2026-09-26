@@ -67,7 +67,6 @@ boundary, which two primitives now remove:
   call to answer, logged as `harness.msg` (window recipe v3).
 
 The standard is kept as tests: `internal/core/userland_test.go` holds each
-behaviour written as a user would write it. Two walls remain for routing
-work to another model: `model-turn` cannot choose a model, and a strategy
-cannot choose what a model sees (the window is Go's view of the whole
-log).
+behaviour written as a user would write it. Two walls remained for routing
+work to another model: `model-turn` could not choose a model, and a
+strategy could not choose what a model sees. ADR 27 removes both.

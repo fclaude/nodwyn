@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -106,5 +107,42 @@ func TestBudgetConfigurationAndLegacyOverride(t *testing.T) {
 	limits, err = defaults.Budget.Limits(defaults.Loop.MaxToolCalls)
 	if err != nil || limits.ToolCalls.Soft != 50 || limits.ToolCalls.Hard != 500 {
 		t.Fatalf("defaults: %+v %v", limits, err)
+	}
+}
+
+func TestModelsRegistry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(path, []byte(`
+[models.impl]
+provider = "openai"
+url = "https://api.example.test/v1"
+model = "coder-large"
+credential = "example-key"
+
+[models.local]
+provider = "ollama"
+url = "http://localhost:11434"
+model = "qwen:small"
+num_ctx = 32768
+`), 0o600)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := c.Models["impl"]; m.Provider != "openai" || m.Credential != "example-key" || m.Model != "coder-large" {
+		t.Fatalf("impl: %+v", m)
+	}
+	if c.Models["local"].NumCtx != 32768 {
+		t.Fatalf("local: %+v", c.Models["local"])
+	}
+	for _, bad := range []string{
+		"[models.x]\nprovider = \"gpt\"\nurl = \"https://a.test\"\nmodel = \"m\"\n",
+		"[models.x]\nprovider = \"openai\"\nurl = \"ftp://a.test\"\nmodel = \"m\"\n",
+		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\n",
+	} {
+		os.WriteFile(path, []byte(bad), 0o600)
+		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "models.x") {
+			t.Fatalf("accepted %q: %v", bad, err)
+		}
 	}
 }

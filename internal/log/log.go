@@ -44,6 +44,8 @@ const (
 	KindEvalResult     Kind = "eval.result"     // evaluation outcome, redacted
 	KindUserMsg        Kind = "user.msg"        // text the user sent (redacted from P7)
 	KindHarnessMsg     Kind = "harness.msg"     // text the loop's strategy added for the model (add-message)
+	KindContextNarrow  Kind = "context.narrow"  // the window starts here, with its own system prompt (narrow-context)
+	KindContextWiden   Kind = "context.widen"   // the window is the whole conversation again (widen)
 	KindLLMReq         Kind = "llm.req"         // request to the control-plane model (window snapshot metadata)
 	KindLLMResp        Kind = "llm.resp"        // model output: text, thinking, tool calls, usage
 	KindToolCall       Kind = "tool.call"       // a tool application about to be evaluated
@@ -64,7 +66,7 @@ const (
 var kinds = map[Kind]bool{
 	KindRunState: true, KindRunTurn: true, KindRunCheckpoint: true,
 	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true, KindTurnCheckpoint: true,
-	KindUserMsg: true, KindHarnessMsg: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
+	KindUserMsg: true, KindHarnessMsg: true, KindContextNarrow: true, KindContextWiden: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true,
 	KindJevReq: true, KindCredRegister: true, KindRedact: true, KindSummary: true, KindNote: true,

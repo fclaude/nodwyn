@@ -157,6 +157,14 @@ func (m *model) consume(e rpc.ClientEvent) {
 		var p log.HarnessMsg
 		p, err = decode[log.HarnessMsg](e.Payload)
 		m.append("nibb> " + p.Text)
+	case string(log.KindContextNarrow):
+		m.endToolInterval()
+		var p log.ContextNarrow
+		p, err = decode[log.ContextNarrow](e.Payload)
+		m.append("── context narrowed ──\n" + p.System)
+	case string(log.KindContextWiden):
+		m.endToolInterval()
+		m.append("── context widened ──")
 	case string(log.KindTurnCheckpoint):
 		var p log.TurnCheckpoint
 		p, err = decode[log.TurnCheckpoint](e.Payload)

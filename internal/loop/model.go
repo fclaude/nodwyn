@@ -2,6 +2,10 @@ package loop
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/llm"
@@ -10,26 +14,39 @@ import (
 	"github.com/fclaude/nibb/internal/window"
 )
 
-// ask sends one request to the model and records both sides. The window is
-// rebuilt from the log every time, so the model sees exactly what has been
-// recorded, and the request's hash lets nibb replay --window prove it.
-func (l *Loop) ask(ctx context.Context) (*llm.Response, error) {
+// ask sends one request to a model and records both sides: the control
+// model when name is "", otherwise the registry's model of that name. The
+// window is rebuilt from the log every time, so the model sees exactly what
+// has been recorded, and the request's hash lets nibb replay --window prove
+// it.
+func (l *Loop) ask(ctx context.Context, name string) (*llm.Response, error) {
+	ep, err := l.endpoint(name)
+	if err != nil {
+		return nil, err
+	}
 	w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
-	request := llm.Request{Model: l.cfg.Model, Messages: w.Messages, Tools: l.tools, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}
+	if !hasUserMessage(w.Messages) {
+		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
+	}
+	request := llm.Request{Model: ep.Model, Messages: w.Messages, Tools: l.tools, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive}
 	digest, err := window.RequestHash(request)
 	if err != nil {
 		return nil, err
 	}
-	if err := l.record(log.KindLLMReq, log.LLMReq{
+	rec := log.LLMReq{
 		RequestHash: digest,
-		Model:       l.cfg.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
-	}); err != nil {
+		Model:       ep.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
+	}
+	if name != "" {
+		rec.Endpoint, rec.NumCtx, rec.KeepAlive = name, ep.NumCtx, ep.KeepAlive
+	}
+	if err := l.record(log.KindLLMReq, rec); err != nil {
 		return nil, err
 	}
 	l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "busy", Detail: "waiting for model"}})
 
 	reqCtx, cancel := context.WithTimeout(ctx, l.cfg.RequestTimeout)
-	resp, err := l.provider.Chat(reqCtx, request, nil)
+	resp, err := ep.Provider.Chat(reqCtx, request, nil)
 	cancel()
 	if err != nil {
 		_ = l.record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
@@ -40,6 +57,31 @@ func (l *Loop) ask(ctx context.Context) (*llm.Response, error) {
 		return nil, err
 	}
 	return resp, nil
+}
+
+func hasUserMessage(msgs []llm.Message) bool {
+	for _, m := range msgs {
+		if m.Role == llm.RoleUser {
+			return true
+		}
+	}
+	return false
+}
+
+// endpoint resolves a model name: "" is the control model.
+func (l *Loop) endpoint(name string) (Endpoint, error) {
+	if name == "" {
+		return Endpoint{Provider: l.provider, Model: l.cfg.Model, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}, nil
+	}
+	if ep, ok := l.cfg.Models[name]; ok {
+		return ep, nil
+	}
+	names := make([]string, 0, len(l.cfg.Models))
+	for n := range l.cfg.Models {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return Endpoint{}, fmt.Errorf("no model %q is configured; [models] has: %s", name, strings.Join(names, ", "))
 }
 
 // show displays a complete response. It is not streamed: a credential can

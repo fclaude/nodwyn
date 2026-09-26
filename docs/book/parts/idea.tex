@@ -204,9 +204,11 @@ a hard stop. No sub-agents in the core loop.
 The loop is itself a Scheme procedure, \code{agent-turn}, so how a turn goes
 can change without changing Go: plan first, check with the judge, stop a
 batch of calls at the first failure. What a turn must not skip stays in Go,
-behind three primitives: windows built from the log, only the model's own
+behind a few primitives: windows built from the log, only the model's own
 calls run, exactly one result per call, and budgets and a progress guard
-that the procedure cannot catch (\adr{26}).
+that the procedure cannot catch (\adr{26}). The same procedure can route
+work: narrow the context to a task and a plan, and hand it to another model
+the user configured (\adr{27}).
 
 Before each message, a plan gate: a yes/no from the judge on the abstract
 intent (``is this multi-step?''), logged per message, plus a code-enforced

@@ -55,7 +55,7 @@ to the judge.
   redaction controller for the send path (or ships L1-only redaction for
   Jev first, which is the same function).
 - The only content leaving the machine in v0 is what goes to Jev (the
-  control plane is local). The knob and the log make that visible.
+  control plane is local). The knob and the log make that visible. *(No longer so once a remote model is configured: ADR 27.)*
 - The spec's "why-not-what" line is restated as: Jev judges intent and
   plans over redacted content; the local stack judges provenance and
   secret shape, and is the only thing that ever sees a value.

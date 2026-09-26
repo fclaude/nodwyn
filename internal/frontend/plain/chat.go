@@ -421,6 +421,12 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.HarnessMsg
 			_ = ev.Decode(&p)
 			fmt.Fprintf(w, "nibb> %s\n", p.Text)
+		case log.KindContextNarrow:
+			var p log.ContextNarrow
+			_ = ev.Decode(&p)
+			fmt.Fprintf(w, "── context narrowed ──\n%s\n", dim(p.System))
+		case log.KindContextWiden:
+			fmt.Fprintln(w, "── context widened ──")
 		case log.KindLLMResp:
 			var p log.LLMResp
 			_ = ev.Decode(&p)

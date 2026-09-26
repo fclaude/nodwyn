@@ -26,7 +26,7 @@ integrations and front-ends:
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
 | `symbols` | Derive bounded source outlines with bundled Tree-sitter grammars; no filesystem or session ownership. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
-| `llm`, `window`, `redact`, `detect/l1` | Talk to the model; derive its context; redact text; detect credential shapes. |
+| `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible); derive their context; redact text; detect credential shapes. |
 | `frontend/run` | Chain planned turns under a finite deadline and turn count; ask for continuation without granting tool authority. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nibb` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 

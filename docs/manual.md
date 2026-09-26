@@ -12,7 +12,7 @@ read [docs/adr/](adr/).
 ### The one-paragraph model
 
 A **front-end** sends the user's text to a **core session**, which calls the
-**loop**: a Scheme procedure, `agent-turn`, over three Go primitives. They
+**loop**: a Scheme procedure, `agent-turn`, over a few Go primitives. They
 build a context **window** from the session **log**, send it to the
 control-plane **model** (Ollama on workshop) and display the redacted answer after
 generation. When the model asks for a tool, the loop turns the request into a
@@ -348,13 +348,55 @@ say when the model stops with work left. It can reach a keyed judge or model
 API with `(credential class)` and `http-request`. It cannot run a call the
 model did not make, loosen the guard, or keep a turn going past a budget or a
 progress stop ([docs/scheme.md](scheme.md) §9). The system prompt and the
-built-in plan gate are still set in Go, and every turn uses the one
-configured model.
+built-in plan gate are still set in Go.
 
 [internal/core/userland_test.go](../internal/core/userland_test.go) holds
-larger examples, each a behaviour written as a user would write it: a plan
-cycle where the model must submit a plan, a keyed oracle approves it, and the
-strategy keeps the model on it until every step is done.
+larger examples, each a behaviour written as a user would write it:
+
+- a plan cycle: the model must submit a plan, a keyed oracle approves it, and
+  the strategy keeps the model on it until every step is done;
+- routing: the control model plans, a rule picks the model that implements,
+  which gets only the task and the plan (`narrow-context`); if the result
+  diverges, a stronger model gets one retry, and the control model reports.
+
+### Choosing models
+
+The control model (`[control]`) answers `(model-turn)`. Any other model a
+strategy may use is an entry in `config.toml`, asked by name with
+`(model-turn "NAME")`:
+
+```toml
+[models.coder]
+provider = "openai"                 # any chat-completions server
+url = "https://api.openai.com/v1"   # including the version
+model = "gpt-5.1-codex"
+credential = "openai-key"           # keychain class; omit for a local server
+
+[models.local]
+provider = "ollama"
+url = "http://localhost:11434"
+model = "qwen3:8b"
+num_ctx = 32768
+```
+
+A keyed model needs its key stored (`(credential-register "openai-key")`)
+and bound to the model's host, like any credential:
+
+```toml
+# bindings.toml
+[[bind]]
+class = "openai-key"
+dest = "api.openai.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["POST"]
+```
+
+The binding is checked on every request and logged as `egress.check`; an
+unbound key is never sent. Configuring a model is consenting that what a
+strategy sends it leaves the machine: with `narrow-context` that can be just
+a task and a plan, but a strategy that asks a model over the whole
+conversation sends the whole conversation. Only you configure models; the
+model cannot. `[control]` is Ollama-only for now.
 
 ### Ingress redaction and the remaining boundaries
 

@@ -462,14 +462,22 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
 
 | | |
 |---|---|
-| `(model-turn)` | Ask the model once. Returns an alist: `content`, `thinking`, `done` (why it stopped) and `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded for `nibb replay --window`. |
+| `(model-turn)` `(model-turn name)` | Ask a model once: the control model, or the configured model `[models.NAME]` (manual, "Choosing models"). Returns an alist: `content`, `thinking`, `done` (why it stopped) and `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nibb replay --window`. |
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
+| `(narrow-context system)` | Start a fresh context, like Emacs's narrowing: until `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Refused while calls are unanswered. |
+| `(widen)` | End a narrowed context. Models see the whole conversation again, including what happened while it was narrowed. A new user message widens too. |
 
 A strategy talks to the model through tools: a tool's description is an
 instruction, its result and a skip reason are feedback. `add-message` is for
 when there is no call to answer, such as a model that stopped with work left.
+
+Routing work to another model is `narrow-context`, `add-message` and
+`(model-turn name)` in a loop: the other model gets a context the strategy
+built, and its tool calls run like any model's. Narrowing and routing are
+events in the log, so replay rebuilds every request whichever model it went
+to.
 
 These primitives are hidden from the model and refused outside a turn and
 from model-originated code. The strategy runs with harness origin, so it cannot

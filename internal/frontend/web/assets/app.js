@@ -742,6 +742,8 @@ const auditLabels = {
   summary: "summary written",
   "summary.drop": "summary revoked",
   "cred.register": "credential registered",
+  "context.narrow": "context narrowed",
+  "context.widen": "context widened",
 };
 function sizeOf(n) {
   if (n < 1024) return `${n} B`;
@@ -958,7 +960,9 @@ function render(event) {
     case "binding.change":
     case "summary":
     case "summary.drop":
-    case "cred.register": {
+    case "cred.register":
+    case "context.narrow":
+    case "context.widen": {
       const node = entry(auditLabels[kind] || kind, undefined);
       detail(node, "Recorded details", p);
       break;

@@ -19,9 +19,10 @@ func (l *Loop) install() error {
 		{
 			Name: "model-turn",
 			Meta: scheme.Meta{
-				Doc:    "Ask the control-plane model once, over the window built from the log. Returns an alist with keys content, thinking, done (the stop reason) and tool-calls; each call is an alist with keys id, name and args (the model's JSON text).",
-				Hidden: true,
-				Origin: "builtin",
+				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys content, thinking, done (the stop reason) and tool-calls; each call is an alist with keys id, name and args (the model's JSON text).",
+				Variadic: true, // (model-turn) or (model-turn name)
+				Hidden:   true,
+				Origin:   "builtin",
 			},
 			Handler: l.modelTurn,
 		},
@@ -55,6 +56,25 @@ func (l *Loop) install() error {
 			},
 			Handler: l.addMessage,
 		},
+		{
+			Name: "narrow-context",
+			Meta: scheme.Meta{
+				Doc:    "Start a fresh context: until widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Refused while calls from the latest model-turn are unanswered.",
+				Params: []scheme.Param{{Name: "system", Type: "string", Doc: "the system prompt of the new context"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.narrowContext,
+		},
+		{
+			Name: "widen",
+			Meta: scheme.Meta{
+				Doc:    "End a narrowed context: models see the whole conversation again, including what happened while it was narrowed.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.widen,
+		},
 	} {
 		if err := l.interp.Register(p); err != nil {
 			return err
@@ -75,13 +95,24 @@ func (l *Loop) active(c *scheme.Call) (*turnState, error) {
 	return l.turn, nil
 }
 
-// modelTurn is (model-turn): answer the calls the strategy left
+// modelTurn is (model-turn [name]): answer the calls the strategy left
 // unanswered, check the budget, ask the model, and hand its reply to the
-// strategy. The reply's calls become the ones run-tools may run.
+// strategy. The reply's calls become the ones run-tools may run, whichever
+// model made them.
 func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 	t, err := l.active(c)
 	if err != nil {
 		return scheme.Void, err
+	}
+	var name string
+	switch len(c.Args) {
+	case 0:
+	case 1:
+		if name, err = c.String(0); err != nil {
+			return scheme.Void, err
+		}
+	default:
+		return scheme.Void, errors.New("expected at most one argument, a model name")
 	}
 	if err := l.skipPending("the strategy asked the model again before running this call"); err != nil {
 		return scheme.Void, err
@@ -91,7 +122,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, halt(err)
 		}
 	}
-	resp, err := l.ask(c.Ctx)
+	resp, err := l.ask(c.Ctx, name)
 	if err != nil {
 		return scheme.Void, err
 	}
@@ -183,10 +214,42 @@ func (l *Loop) addMessage(c *scheme.Call) (scheme.Value, error) {
 	if strings.TrimSpace(text) == "" {
 		return scheme.Void, errors.New("text is required")
 	}
-	if t.unanswered() > 0 {
-		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", t.unanswered())
+	if n := t.unanswered(); n > 0 {
+		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", n)
 	}
 	return scheme.Void, l.record(log.KindHarnessMsg, log.HarnessMsg{Text: text})
+}
+
+// narrowContext is (narrow-context system). The narrowing is an event in
+// the log, so every later window, and a replay, rebuilds the same context.
+func (l *Loop) narrowContext(c *scheme.Call) (scheme.Value, error) {
+	t, err := l.active(c)
+	if err != nil {
+		return scheme.Void, err
+	}
+	system, err := c.String(0)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if strings.TrimSpace(system) == "" {
+		return scheme.Void, errors.New("a system prompt is required")
+	}
+	if n := t.unanswered(); n > 0 {
+		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", n)
+	}
+	return scheme.Void, l.record(log.KindContextNarrow, log.ContextNarrow{System: system})
+}
+
+// widen is (widen).
+func (l *Loop) widen(c *scheme.Call) (scheme.Value, error) {
+	t, err := l.active(c)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if n := t.unanswered(); n > 0 {
+		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", n)
+	}
+	return scheme.Void, l.record(log.KindContextWiden, log.ContextWiden{})
 }
 
 // stop ends the turn: the calls that have not run are answered with the

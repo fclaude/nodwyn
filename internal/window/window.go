@@ -18,6 +18,10 @@
 //   - User messages are never elided; they are small and they are the ask.
 //     Neither are harness messages (add-message): they are the loop's
 //     instructions to the model, and it reads them as user messages.
+//   - A strategy may narrow the context (narrow-context): until it widens or
+//     the user speaks again, the window is only what came after the
+//     narrowing, under the strategy's own system prompt. This is how a model
+//     is handed a task without the conversation that led to it.
 package window
 
 import (
@@ -64,6 +68,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	var entries []entry
 	sticky := map[uint64]bool{}
 	task, plan := "", ""
+	narrowed, narrowAt, narrowSystem := false, 0, ""
 	for _, ev := range events {
 		switch ev.Kind {
 		case log.KindUserMsg:
@@ -71,7 +76,15 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 			if ev.Decode(&p) == nil {
 				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
 				task, plan = p.Text, ""
+				narrowed = false // a new turn sees the whole conversation
 			}
+		case log.KindContextNarrow:
+			var p log.ContextNarrow
+			if ev.Decode(&p) == nil {
+				narrowed, narrowAt, narrowSystem = true, len(entries), p.System
+			}
+		case log.KindContextWiden:
+			narrowed = false
 		case log.KindHarnessMsg:
 			// Shown as a user message, but not the task: the ask is still
 			// the user's.
@@ -119,6 +132,11 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	}
 	if plan != "" {
 		sys += "\n\nPlan for the current task (follow it; say so if you must deviate):\n" + plan
+	}
+	if narrowed {
+		// The strategy's system prompt replaces the session's, task and plan
+		// included: it says what this model needs to know.
+		sys, entries = narrowSystem, entries[narrowAt:]
 	}
 
 	var elided []uint64
