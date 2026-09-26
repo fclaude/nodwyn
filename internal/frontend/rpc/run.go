@@ -16,6 +16,10 @@ type runParams struct {
 	Task     string `json:"task"`
 	Wall     string `json:"wall"`
 	MaxTurns int    `json:"max_turns"`
+	// AutoApprove answers this run's ordinary confirms with yes. It is a
+	// property of the run, never of the daemon: a daemon that auto-approved
+	// everything would do so for sessions opened later from a browser too.
+	AutoApprove bool `json:"auto_approve"`
 }
 type runResult struct {
 	ID    string    `json:"id"`
@@ -25,7 +29,7 @@ type runResult struct {
 func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if req.Method == "run.start" {
 		var p runParams
-		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns"); err != nil {
+		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve"); err != nil {
 			return nil, err
 		}
 		info, err := os.Stat(p.Repo)
@@ -43,6 +47,9 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		options := s.options
 		options.Repo = p.Repo
 		options.NoConfirm = false
+		// Without this a run stops at the first write and waits for a client
+		// that may not exist, until its budget kills it.
+		options.AutoApprove = p.AutoApprove
 		session, err := core.New(options)
 		if err != nil {
 			return nil, failure(-32000, err.Error())

@@ -26,6 +26,7 @@ func runTask(args []string) error {
 	task := flags.String("task", "", "UTF-8 task file (at most 64 KiB)")
 	wall := flags.String("budget-wall", "", "required total run deadline, e.g. 2h")
 	turns := flags.Int("max-turns", 0, "required maximum number of turns")
+	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -54,7 +55,10 @@ func runTask(args []string) error {
 		if err != nil {
 			return err
 		}
-		params = map[string]any{"repo": root, "task": string(data), "wall": *wall, "max_turns": *turns}
+		params = map[string]any{"repo": root, "task": string(data), "wall": *wall, "max_turns": *turns, "auto_approve": *yolo}
+		if *yolo {
+			fmt.Fprintf(os.Stderr, "yolo: this run's ordinary confirms are answered yes in %s; denials and security confirms still stop it\n", root)
+		}
 	} else {
 		if flags.NArg() != 1 {
 			return errors.New("run " + command + " requires a session ID")

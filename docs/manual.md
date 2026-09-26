@@ -215,6 +215,25 @@ what the run did.
 
 Use it on a throwaway checkout. The guard makes yolo survivable, not safe.
 
+**With credentials.** `--yolo` on its own cannot unlock the keychain: a
+passphrase needs a terminal (plan §3.3), so an unattended process with a
+keychain on disk starts without one and says so. When the run is *supposed*
+to have keys — measuring how the model uses a bound tool, for instance —
+put the keychain in the daemon and submit runs to it:
+
+```bash
+nibb daemon                      # unlock once, interactively, and leave it
+nibb run start --repo /path/to/checkout --task task.md   --max-turns 40 --budget-wall 20m --yolo
+```
+
+The daemon holds the keychain and the binding table; every session it opens
+inherits them, so the run has exactly the credentials you bound and no way
+to acquire others. `--yolo` there is a property of **that run**, not of the
+daemon: a daemon left running never auto-approves a session someone opens
+later from the browser. `nibb run status|stop` follow the run, and its
+turns are bounded by `--max-turns` and `--budget-wall` rather than by
+anyone watching.
+
 ### Standing approvals
 
 Commands you never want to be asked about go in one of two files:

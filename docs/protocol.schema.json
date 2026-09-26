@@ -2570,6 +2570,9 @@
     },
     "rpc.runParams": {
       "properties": {
+        "auto_approve": {
+          "type": "boolean"
+        },
         "max_turns": {
           "type": "integer"
         },
@@ -2587,7 +2590,8 @@
         "repo",
         "task",
         "wall",
-        "max_turns"
+        "max_turns",
+        "auto_approve"
       ],
       "type": "object"
     },
