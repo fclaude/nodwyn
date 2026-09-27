@@ -657,9 +657,11 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `plan-needed-threshold` | the judge's probability of "needs a plan" at which a request gets one (0.5) |
 | `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
 | `plan-max-revisions` | revisions after the first draft (3) |
+| `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded` or `required`), `plan`, `score`, `revisions`, `reason` |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
+| `(log-note text)` | add a note to the session log, for the record and the transcript; the model never sees it |
 
 A turn that must plan (`plan-required?`) always drafts one, scored if there
 is a judge, and fails if the plan is empty. The core keeps that honest

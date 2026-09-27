@@ -15,6 +15,7 @@
 (define plan-needed-threshold 0.5) ; the judge's "needs a plan" probability at which a request gets one
 (define plan-accept-score 0.7)     ; the normalised score at which a plan is accepted
 (define plan-max-revisions 3)      ; revisions after the first draft (SPEC: at most 3)
+(define plan-empty-retries 2)      ; more times the planner is asked when it gives no plan
 
 ;; The judge's key when a judge is configured, or #f.
 (define (plan-judge)
@@ -22,20 +23,26 @@
        (credential "jev-key")))
 
 ;; A plan from the control model, asked in a context of its own that is then
-;; folded away: the conversation keeps only the plan the gate records. Tools
-;; are offered as in every request, so a model that calls them instead of
-;; writing a plan has them answered as not run and is asked once more.
+;; folded away: the conversation keeps only the plan the gate records. A
+;; model sometimes answers with thinking only, or with tool calls instead of
+;; a plan (answered as not run); either way it is asked again, in a fresh
+;; context, up to plan-empty-retries more times, each noted in the log.
 (define (plan-ask prompt)
-  (narrow-context (plan-system-prompt (repository)) "planner")
-  (add-message prompt)
-  (let ask ((tries 1))
+  (let ask ((attempt 0))
+    (narrow-context (plan-system-prompt (repository)) "planner")
+    (add-message prompt)
     (let* ((reply (model-turn))
-           (calls (assoc-ref reply 'tool-calls '()))
            (text (assoc-ref reply 'content "")))
-      (skip-tools calls "Plan only: reply with the plan as text; the work comes after it.")
-      (if (and (pair? calls) (string-empty? (string-trim text)) (< tries 2))
-          (ask (+ tries 1))
-          (begin (fold-context) text)))))
+      (skip-tools (assoc-ref reply 'tool-calls '())
+                  "Plan only: reply with the plan as text; the work comes after it.")
+      (fold-context)
+      (if (and (string-empty? (string-trim text)) (< attempt plan-empty-retries))
+          (begin
+            (log-note (string-append "planner returned an empty plan, asking again ("
+                                     (number->string (+ attempt 1)) "/"
+                                     (number->string plan-empty-retries) ")"))
+            (ask (+ attempt 1)))
+          text))))
 
 ;; The judge's normalised score (0 to 1) for plan against request, or the
 ;; error it failed with.
@@ -46,9 +53,14 @@
                "score")))
 
 ;; Drafts a plan and, with a judge, revises it until it scores
-;; plan-accept-score or the revisions run out; a judge failure keeps the best
-;; plan so far. Records the best plan under decision, and returns it.
+;; plan-accept-score or the revisions run out. A judge failure, or a
+;; revision that comes back empty, keeps the best plan so far. Records the
+;; best plan under decision, and returns it.
 (define (plan-best judge request decision)
+  (define (keep best best-score revisions reason)
+    (record-plan (list (cons 'decision decision) (cons 'plan best) (cons 'score best-score)
+                       (cons 'revisions revisions) (cons 'reason reason)))
+    best)
   (let loop ((plan (plan-ask (plan-draft-prompt request)))
              (round 0) (best #f) (best-score 0) (revisions 0))
     (let* ((score (if judge (plan-score judge request plan) #f))
@@ -56,17 +68,17 @@
            (better (or (not best) (and scored (> score best-score))))
            (best (if better plan best))
            (best-score (if (and better scored) score best-score)))
-      (if (or (not scored) (>= score plan-accept-score) (= round plan-max-revisions))
-          (begin
-            (record-plan
-             (list (cons 'decision decision) (cons 'plan best) (cons 'score best-score)
-                   (cons 'revisions revisions)
-                   (cons 'reason (if (or scored (not judge)) ""
-                                     (string-append "jev-score failed at round " (number->string round)
-                                                    ": " (assoc-ref score 'message ""))))))
-            best)
-          (loop (plan-ask (plan-revise-prompt request plan score))
-                (+ round 1) best best-score (+ revisions 1))))))
+      (cond ((and judge (not scored))
+             (keep best best-score revisions
+                   (string-append "jev-score failed at round " (number->string round)
+                                  ": " (assoc-ref score 'message ""))))
+            ((or (not scored) (>= score plan-accept-score) (= round plan-max-revisions))
+             (keep best best-score revisions ""))
+            (else
+             (let ((revised (plan-ask (plan-revise-prompt request plan score))))
+               (if (string-empty? (string-trim revised))
+                   (keep best best-score revisions "")
+                   (loop revised (+ round 1) best best-score (+ revisions 1)))))))))
 
 (define (plan-gate request)
   (let ((judge (plan-judge)))

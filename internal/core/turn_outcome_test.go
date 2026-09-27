@@ -44,11 +44,12 @@ func TestTurnOutcome(t *testing.T) {
 func TestRequiredPlanPrecedesExecution(t *testing.T) {
 	for _, empty := range []bool{false, true} {
 		t.Run(fmt.Sprint(empty), func(t *testing.T) {
-			plan := "1. Read main.go."
+			turns := []fake.Turn{{Content: "1. Read main.go."}, {Content: "done"}}
 			if empty {
-				plan = "   "
+				// Asked three times, and empty every time.
+				turns = []fake.Turn{{Content: "   "}, {Content: ""}, {Content: "\n"}}
 			}
-			r := newRig(t, true, fake.Turn{Content: plan}, fake.Turn{Content: "done"})
+			r := newRig(t, true, turns...)
 			if err := r.s.SendPlanned("read main.go"); err != nil {
 				t.Fatal(err)
 			}

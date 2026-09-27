@@ -58,6 +58,16 @@ func (l *Loop) install() error {
 			Handler: l.addMessage,
 		},
 		{
+			Name: "log-note",
+			Meta: scheme.Meta{
+				Doc:    "Add a note to the session log, for the record and the transcript; the model never sees it.",
+				Params: []scheme.Param{{Name: "text", Type: "string", Doc: "the note"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.logNote,
+		},
+		{
 			Name: "record-plan",
 			Meta: scheme.Meta{
 				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded or required), plan, score, revisions and reason. The window shows a recorded plan to the model for the rest of the turn.",
@@ -258,6 +268,21 @@ func (l *Loop) addMessage(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", n)
 	}
 	return scheme.Void, l.record(log.KindHarnessMsg, log.HarnessMsg{Text: text})
+}
+
+// logNote is (log-note text).
+func (l *Loop) logNote(c *scheme.Call) (scheme.Value, error) {
+	if _, err := l.active(c); err != nil {
+		return scheme.Void, err
+	}
+	text, err := c.String(0)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return scheme.Void, errors.New("text is required")
+	}
+	return scheme.Void, l.record(log.KindNote, log.Note{Text: text})
 }
 
 // recordPlan is (record-plan outcome): the plan gate's outcome, in the log

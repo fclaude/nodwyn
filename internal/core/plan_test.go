@@ -243,3 +243,34 @@ func TestRequiredPlanBlocksActionUntilRecorded(t *testing.T) {
 		t.Fatal("an unplanned write ran")
 	}
 }
+
+// A model sometimes answers the planner with thinking only; one empty sample
+// must not end a run that requires a plan, so it is asked again, noted.
+func TestPlanGateAsksAgainForAnEmptyPlan(t *testing.T) {
+	r := judgedRig(t, nil, "", fake.Turn{Content: ""}, fake.Turn{Content: "1. read\n2. fix"}, fake.Turn{Content: "done"})
+	if err := r.s.SendPlanned("work"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Plan != "1. read\n2. fix" {
+		t.Fatalf("plans %+v", plans)
+	}
+	if n := strings.Count(r.logb.String(), "planner returned an empty plan, asking again (1/2)"); n != 1 {
+		t.Fatalf("retry notes: %d", n)
+	}
+}
+
+// A revision that comes back empty keeps the best plan instead of replacing
+// it with nothing.
+func TestPlanGateKeepsTheBestPlanWhenARevisionIsEmpty(t *testing.T) {
+	judge := newFakeJudge(t, noul(0.9), score(0.8))
+	r := judgedRig(t, judge, "", fake.Turn{Content: "first plan"}, fake.Turn{Content: ""}, fake.Turn{Content: ""}, fake.Turn{Content: ""}, fake.Turn{Content: "done"})
+	if e := r.turn("work"); e != "" {
+		t.Fatal(e)
+	}
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Plan != "first plan" || plans[0].Score != 0.2 || plans[0].Revisions != 0 {
+		t.Fatalf("plans %+v", plans)
+	}
+}
