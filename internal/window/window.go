@@ -68,7 +68,13 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	var entries []entry
 	sticky := map[uint64]bool{}
 	task, plan := "", ""
-	narrowed, narrowAt, narrowSystem := false, 0, ""
+	// Narrowed contexts, innermost last: each starts at an entry index with
+	// its own system prompt. A fold drops the innermost and its entries.
+	type frame struct {
+		at     int
+		system string
+	}
+	var frames []frame
 	for _, ev := range events {
 		switch ev.Kind {
 		case log.KindUserMsg:
@@ -76,15 +82,19 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 			if ev.Decode(&p) == nil {
 				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
 				task, plan = p.Text, ""
-				narrowed = false // a new turn sees the whole conversation
+				frames = nil // a new turn sees the whole conversation
 			}
 		case log.KindContextNarrow:
 			var p log.ContextNarrow
 			if ev.Decode(&p) == nil {
-				narrowed, narrowAt, narrowSystem = true, len(entries), p.System
+				frames = append(frames, frame{at: len(entries), system: p.System})
 			}
 		case log.KindContextWiden:
-			narrowed = false
+			frames = nil
+		case log.KindContextFold:
+			if n := len(frames); n > 0 {
+				entries, frames = entries[:frames[n-1].at], frames[:n-1]
+			}
 		case log.KindHarnessMsg:
 			// Shown as a user message, but not the task: the ask is still
 			// the user's.
@@ -133,10 +143,10 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	if plan != "" {
 		sys += "\n\nPlan for the current task (follow it; say so if you must deviate):\n" + plan
 	}
-	if narrowed {
+	if n := len(frames); n > 0 {
 		// The strategy's system prompt replaces the session's, task and plan
 		// included: it says what this model needs to know.
-		sys, entries = narrowSystem, entries[narrowAt:]
+		sys, entries = frames[n-1].system, entries[frames[n-1].at:]
 	}
 
 	var elided []uint64

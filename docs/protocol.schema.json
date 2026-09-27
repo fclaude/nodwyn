@@ -503,6 +503,11 @@
       ],
       "type": "object"
     },
+    "log.ContextFold": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
     "log.ContextNarrow": {
       "properties": {
         "system": {
@@ -1245,6 +1250,9 @@
     },
     "payload.binding.change": {
       "$ref": "#/$defs/log.BindingChange"
+    },
+    "payload.context.fold": {
+      "$ref": "#/$defs/log.ContextFold"
     },
     "payload.context.narrow": {
       "$ref": "#/$defs/log.ContextNarrow"
@@ -2960,6 +2968,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.BindingChange"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "context.fold"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.ContextFold"
             },
             "seq": {
               "minimum": 0,

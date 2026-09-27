@@ -59,12 +59,31 @@ func (l *Loop) install() error {
 		{
 			Name: "narrow-context",
 			Meta: scheme.Meta{
-				Doc:    "Start a fresh context: until widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Refused while calls from the latest model-turn are unanswered.",
+				Doc:    "Start a fresh context: until fold-context, widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Contexts nest; calls pending when it opens wait until it folds.",
 				Params: []scheme.Param{{Name: "system", Type: "string", Doc: "the system prompt of the new context"}},
 				Hidden: true,
 				Origin: "builtin",
 			},
 			Handler: l.narrowContext,
+		},
+		{
+			Name: "fold-context",
+			Meta: scheme.Meta{
+				Doc:    "End the innermost narrowed context and fold it away: later windows skip everything since its narrow-context and see the context around it again. Calls that were pending when it opened are the latest model-turn's again. Refused while calls from the latest model-turn are unanswered.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.foldContext,
+		},
+		{
+			Name: "answer-call",
+			Meta: scheme.Meta{
+				Doc:    "Answer one of the model's calls with text the strategy produced, as a successful result, without running the tool: how a tool the strategy handles itself, such as a sub-agent, answers. Counts against the turn's tool-call budget.",
+				Params: []scheme.Param{{Name: "call", Type: "list", Doc: "one call from the latest model-turn"}, {Name: "text", Type: "string", Doc: "the result the model reads"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.answerCall,
 		},
 		{
 			Name: "session-system-prompt",
@@ -78,7 +97,7 @@ func (l *Loop) install() error {
 		{
 			Name: "widen",
 			Meta: scheme.Meta{
-				Doc:    "End a narrowed context: models see the whole conversation again, including what happened while it was narrowed.",
+				Doc:    "End every narrowed context: models see the whole conversation again, including what happened while it was narrowed. Refused while a context holds calls waiting for an answer; fold it instead.",
 				Hidden: true,
 				Origin: "builtin",
 			},
@@ -243,10 +262,63 @@ func (l *Loop) narrowContext(c *scheme.Call) (scheme.Value, error) {
 	if strings.TrimSpace(system) == "" {
 		return scheme.Void, errors.New("a system prompt is required")
 	}
+	if err := l.record(log.KindContextNarrow, log.ContextNarrow{System: system}); err != nil {
+		return scheme.Void, err
+	}
+	// The latest model-turn's calls wait for this context to fold; its own
+	// model-turns start with none pending.
+	t.contexts = append(t.contexts, t.pending)
+	t.pending = nil
+	return scheme.Void, nil
+}
+
+// foldContext is (fold-context).
+func (l *Loop) foldContext(c *scheme.Call) (scheme.Value, error) {
+	t, err := l.active(c)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if len(t.contexts) == 0 {
+		return scheme.Void, errors.New("no narrowed context is open in this turn")
+	}
 	if n := t.unanswered(); n > 0 {
 		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", n)
 	}
-	return scheme.Void, l.record(log.KindContextNarrow, log.ContextNarrow{System: system})
+	return scheme.Void, l.fold(t)
+}
+
+// fold records the fold and gives the enclosing context its pending calls
+// back.
+func (l *Loop) fold(t *turnState) error {
+	if err := l.record(log.KindContextFold, log.ContextFold{}); err != nil {
+		return err
+	}
+	n := len(t.contexts)
+	t.pending, t.contexts = t.contexts[n-1], t.contexts[:n-1]
+	return nil
+}
+
+// answerCall is (answer-call call text).
+func (l *Loop) answerCall(c *scheme.Call) (scheme.Value, error) {
+	t, err := l.active(c)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if len(c.Args) != 2 {
+		return scheme.Void, errors.New("expected a call and the text that answers it")
+	}
+	text, err := c.String(1)
+	if err != nil {
+		return scheme.Void, err
+	}
+	calls, err := t.claim([]scheme.Value{c.Args[0]})
+	if err != nil {
+		return scheme.Void, err
+	}
+	if err := l.reserveCall(c.Ctx, t); err != nil {
+		return scheme.Void, l.stop(err, calls)
+	}
+	return scheme.Void, l.record(log.KindToolResult, log.ToolResult{ID: calls[0].ID, Name: calls[0].Name, OK: true, Value: text})
 }
 
 // sessionSystemPrompt is (session-system-prompt). It needs no turn: the
@@ -270,7 +342,14 @@ func (l *Loop) widen(c *scheme.Call) (scheme.Value, error) {
 	if n := t.unanswered(); n > 0 {
 		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", n)
 	}
-	return scheme.Void, l.record(log.KindContextWiden, log.ContextWiden{})
+	if t.parked() {
+		return scheme.Void, errors.New("a narrowed context holds calls waiting for an answer; fold it with fold-context instead")
+	}
+	if err := l.record(log.KindContextWiden, log.ContextWiden{}); err != nil {
+		return scheme.Void, err
+	}
+	t.contexts = nil
+	return scheme.Void, nil
 }
 
 // stop ends the turn: the calls that have not run are answered with the

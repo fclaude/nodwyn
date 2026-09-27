@@ -48,6 +48,11 @@ type ContextNarrow struct {
 // ContextWiden ends a narrowed context.
 type ContextWiden struct{}
 
+// ContextFold ends the innermost narrowed context and folds it away: later
+// windows skip everything since its narrow, and see the context around it
+// again.
+type ContextFold struct{}
+
 // LLMReq describes a request to the control-plane model. The messages are
 // not repeated: they are rebuilt from the log by the window.
 type LLMReq struct {

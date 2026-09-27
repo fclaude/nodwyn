@@ -13,9 +13,9 @@ import (
 
 // RecipeVersion names how windows are built. It is recorded with the window
 // recipe, so a replay can refuse a recipe it does not know. v3 added
-// harness messages and v4 narrowed contexts; an older log has neither, so
-// Build rebuilds it unchanged.
-const RecipeVersion = "window-v4"
+// harness messages, v4 narrowed contexts and v5 folded ones; an older log has
+// none of them, so Build rebuilds it unchanged.
+const RecipeVersion = "window-v5"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas
 // and model options. It verifies reconstruction; it is not a tamper-proof seal.
@@ -56,7 +56,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 				return zero, fmt.Errorf("window replay: this legacy request lacks recorded context or a request hash")
 			}
 			switch c.Version {
-			case "window-v1", "window-v2", "window-v3", RecipeVersion:
+			case "window-v1", "window-v2", "window-v3", "window-v4", RecipeVersion:
 			default:
 				return zero, fmt.Errorf("window replay: unsupported recipe %q", c.Version)
 			}

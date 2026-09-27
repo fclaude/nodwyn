@@ -54,3 +54,28 @@ whole anyway (ADR 25).
 - `[control]` is still Ollama-only, so a user with only a keyed provider
   cannot yet make it the default model. Making the control model an entry
   of the same registry is the next step.
+
+## Amendment: folded contexts and sub-agents
+
+A narrowed context could only end by widening, which shows the model
+everything that happened inside it, and could not open while the model's
+calls were unanswered. So a sub-agent's work leaked into its caller's
+context, and a tool the model calls could not be answered by one.
+
+- Narrowed contexts nest. `(fold-context)` ends the innermost one and folds
+  it away: later windows skip everything since its `narrow-context`, and see
+  the enclosing context again. The log keeps the span, logged as
+  `context.fold`; window recipe v5 rebuilds it (a log without the event
+  builds as under v4).
+- `narrow-context` no longer waits for the latest model-turn's calls to be
+  answered: they wait for the context to fold, and the context's own
+  model-turns start with none pending. `(answer-call call text)` answers one
+  of them with the strategy's text, counted against the tool-call budget.
+  `widen` is refused while a context holds calls waiting for an answer.
+- A turn that ends with such a context open folds it and answers its
+  waiting calls as not executed, so a call is always followed by its result
+  in every later window.
+
+A sub-agent (`sub-agent`) and a tool the model calls that a sub-agent
+answers (`define-agent-tool`, dispatched by `run-calls`) are user code over
+these primitives, in `internal/loop/agents.scm` (docs/scheme.md §9.3).

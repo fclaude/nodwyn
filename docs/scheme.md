@@ -456,7 +456,7 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
   (let loop ((reply (model-turn)))
     (let ((calls (assoc-ref reply 'tool-calls '())))
       (unless (null? calls)
-        (run-tools calls)
+        (run-calls calls)
         (maybe-compact request reply)
         (loop (model-turn))))))
 ```
@@ -467,8 +467,10 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
-| `(narrow-context system)` | Start a fresh context, like Emacs's narrowing: until `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Refused while calls are unanswered. |
-| `(widen)` | End a narrowed context. Models see the whole conversation again, including what happened while it was narrowed. A new user message widens too. |
+| `(narrow-context system)` | Start a fresh context, like Emacs's narrowing: until `fold-context`, `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Contexts nest. Calls from the latest `model-turn` that are still unanswered wait for this context to fold; its own `model-turn`s start with none pending. |
+| `(fold-context)` | End the innermost narrowed context and fold it away: later windows skip everything since its `narrow-context` and see the enclosing context again; the log keeps it all. The calls that waited for it are the latest `model-turn`'s again. Refused while calls are unanswered. |
+| `(widen)` | End every narrowed context. Models see the whole conversation again, including what happened while it was narrowed. A new user message widens too. Refused while a context holds calls waiting for an answer: fold it. |
+| `(answer-call call text)` | Answer one of the model's calls with `text`, as a successful result, without running the tool: how a tool the strategy handles itself answers. Counts against the tool-call budget. |
 | `(session-system-prompt)` | The system prompt the session started with (§9.1), fixed for its life: what a narrowed context passes to `narrow-context` to keep the model's standing instructions. |
 
 A strategy talks to the model through tools: a tool's description is an
@@ -555,10 +557,41 @@ conversation, so replay and audit see everything the note replaced.
 ```
 
 A strategy that redefines `agent-turn` calls `maybe-compact` itself, where the
-default does: after `run-tools`, before the next `model-turn`. Compacting
+default does: after running the calls, before the next `model-turn`. Compacting
 rewrites the start of the context, so the server re-reads the new, short
 prompt once instead of reusing its cache (ADR 9); a threshold well below
 `high_water` compacts rarely and keeps the prefix stable in between.
+
+### 9.3 Sub-agents
+
+A sub-agent is a model loop in a context of its own: it gets a system prompt
+and a task, works with the tools it is given, and answers; the context then
+folds away, so whoever asked sees only the answer (ADR 27). They are user
+code, in `internal/loop/agents.scm`:
+
+| | |
+|---|---|
+| `(sub-agent system task tools)` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (other calls are skipped) or is `#f` for all; returns its final answer, after `fold-context` |
+| `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40) |
+| `(define-agent-tool name doc params handler)` | register a tool the model calls like any other, answered by `(handler call args)`, `args` parsed from the model's JSON; define it in `.nibb/init.scm` |
+| `(run-calls calls)` | run a reply's calls: agent tools through their handlers and `answer-call`, the rest with `run-tools`; returns one result alist per call. The default `agent-turn` uses it |
+
+```scheme
+;; .nibb/init.scm: a reviewer the model can consult, reading but not writing
+(define-agent-tool "ask-reviewer"
+  "Ask a reviewer who can read the repository whether a change is finished."
+  '(("change" "string" "what you changed and why, and how you tested it"))
+  (lambda (call args)
+    (sub-agent "You are a strict code reviewer. Read what you need, then reply VERDICT: done, or what is missing."
+               (assoc-ref args "change")
+               '("fs-read" "fs-list" "index-grep"))))
+```
+
+A strategy can also run one itself, such as a review when the model stops:
+`(sub-agent reviewer-system (string-append issue diff tests) '())`. A
+sub-agent is asked on the same model unless its loop routes elsewhere
+(`(model-turn name)`), and each fold costs the server one re-read of the
+caller's context: the prefix it had cached was the sub-agent's (ADR 9).
 
 ## 10. Not in nibb Scheme
 

@@ -17,6 +17,24 @@ type turnState struct {
 	// pending holds the calls from the latest model response. Only an
 	// unanswered one can be run or skipped, and answering it is final.
 	pending []pendingCall
+	// contexts are the contexts narrowed during this turn, innermost last.
+	// Each keeps the calls that were pending when it opened; they wait,
+	// unanswered, until it folds (a sub-agent answering the model's call).
+	contexts [][]pendingCall
+}
+
+// parked reports whether an open context holds calls still waiting for an
+// answer: the transcript is well-formed only once they are answered after
+// their context folds.
+func (t *turnState) parked() bool {
+	for _, calls := range t.contexts {
+		for _, p := range calls {
+			if !p.answered {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type pendingCall struct {

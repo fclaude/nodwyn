@@ -5,14 +5,15 @@
 // Its default is strategy.scm, and a project may redefine it in
 // .nibb/init.scm (ADR 26). This package keeps what a strategy must not be
 // able to skip, and gives the strategy the primitives to work with:
-// model-turn, run-tools, skip-tools, add-message, narrow-context, widen and
-// session-system-prompt.
+// model-turn, run-tools, skip-tools, answer-call, add-message,
+// narrow-context, fold-context, widen and session-system-prompt.
 //
 // Reading order:
 //
 //   - loop.go: a session's Loop, and how one turn starts and ends
 //   - strategy.scm: the default agent-turn
 //   - compact.scm: context compaction, as user code over the primitives
+//   - agents.scm: sub-agents and agent tools, as user code over the primitives
 //   - prims.go: the primitives and the Scheme values they exchange
 //   - model.go: one request to the model
 //   - tools.go: one tool call, run or skipped
@@ -96,6 +97,9 @@ var defaultPrompts string
 //go:embed compact.scm
 var defaultCompaction string
 
+//go:embed agents.scm
+var defaultAgents string
+
 // New builds a loop and installs its primitives and the default strategy
 // into interp. Call it before loading .nibb/init.scm, so the project may
 // redefine agent-turn, and call Freeze afterwards.
@@ -113,6 +117,9 @@ func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) (*
 	}
 	if _, err := interp.EvalString(harness, defaultCompaction); err != nil {
 		return nil, fmt.Errorf("loop: default compaction: %w", err)
+	}
+	if _, err := interp.EvalString(harness, defaultAgents); err != nil {
+		return nil, fmt.Errorf("loop: default agents: %w", err)
 	}
 	return l, nil
 }
@@ -243,6 +250,9 @@ func (l *Loop) Turn(ctx context.Context, request string) error {
 	defer func() { l.turn = nil }()
 
 	_, err := l.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginHarness), strategy, []scheme.Value{scheme.Str(request)})
+	if unwindErr := l.unwind(); unwindErr != nil && err == nil {
+		err = unwindErr
+	}
 	if skipErr := l.skipPending("the turn ended before this call ran"); skipErr != nil && err == nil {
 		err = skipErr
 	}
@@ -251,6 +261,27 @@ func (l *Loop) Turn(ctx context.Context, request string) error {
 	}
 	if l.turn.budget != nil {
 		return l.turn.budget.Finish(ctx)
+	}
+	return nil
+}
+
+// unwind folds the contexts a turn left open while any of them holds calls
+// waiting for an answer, innermost first, answering what each left pending:
+// a call must be followed by its result, so a sub-agent's context cannot
+// stay between them. Contexts without waiting calls, such as a compaction's,
+// stay open until the next user message.
+func (l *Loop) unwind() error {
+	t := l.turn
+	for t.parked() {
+		if err := l.skipPending("the turn ended before this call ran"); err != nil {
+			return err
+		}
+		if err := l.fold(t); err != nil {
+			return err
+		}
+		if err := l.skipPending("the turn ended before the sub-agent answering this call finished"); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -228,3 +228,44 @@ func TestNarrowedContext(t *testing.T) {
 		t.Fatalf("a new turn stayed narrowed: %q", next[0].Content)
 	}
 }
+
+// Contexts nest: a fold drops the innermost one, its messages included, and
+// the window is the enclosing context again.
+func TestFoldedContext(t *testing.T) {
+	s := newSession()
+	s.turn(10)
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "build the thing"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: "working"})
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "compacted"})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "handover"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: "x", Name: "ask-expert", Args: json.RawMessage(`{}`)}}})
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "You are an expert."})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "the question"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: "the answer"})
+
+	inner := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages
+	if len(inner) != 3 || inner[0].Content != "You are an expert." || inner[1].Content != "the question" {
+		t.Fatalf("inner context: %+v", inner)
+	}
+
+	s.w.Append(log.KindContextFold, log.ContextFold{})
+	s.w.Append(log.KindToolResult, log.ToolResult{ID: "x", Name: "ask-expert", OK: true, Value: "the answer"})
+	outer := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages
+	if len(outer) != 4 || outer[0].Content != "compacted" || outer[1].Content != "handover" ||
+		len(outer[2].ToolCalls) != 1 || outer[3].Role != llm.RoleTool || outer[3].Content != "the answer" {
+		t.Fatalf("after the fold: %+v", outer)
+	}
+
+	// Folding the outer context too hides all of it (widen would keep it):
+	// the whole conversation again, up to where the first narrowing began.
+	s.w.Append(log.KindContextFold, log.ContextFold{})
+	wide := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages
+	for _, m := range wide {
+		if m.Content == "the question" || m.Content == "handover" {
+			t.Fatalf("a folded context came back: %+v", wide)
+		}
+	}
+	if !strings.HasPrefix(wide[0].Content, "SESSION PROMPT") || wide[len(wide)-1].Content != "working" {
+		t.Fatalf("whole conversation after folding everything: %+v", wide)
+	}
+}

@@ -18,7 +18,8 @@ Kinds are enumerated in `internal/log`: `session.start`, `session.end`,
 `user.msg`, `llm.req`, `llm.resp`, `tool.call`, `tool.result`,
 `guard.decision`, `egress.check`, `gate.plan`, `cred.register` (class + id
 only), `redact.event`, `summary`, `note`. Adding a kind is an amendment to this
-ADR.
+ADR. Amendment (ADR 27): `context.fold` ends the innermost narrowed context
+and hides it from later windows.
 
 The writer has a payload `Filter` hook. The ingress redactor (P7) installs
 itself there, so from P7 nothing reaches disk unredacted. The keychain file is
