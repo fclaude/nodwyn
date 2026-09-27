@@ -14,12 +14,13 @@ import (
 	"github.com/fclaude/nibb/internal/window"
 )
 
-// ask sends one request to a model and records both sides: the control
-// model when name is "", otherwise the registry's model of that name. The
+// ask sends one request to a model and records both sides: the registry's
+// model of that name (ControlModel for the control model), offering the
+// session's tools unless tools is false. The
 // window is rebuilt from the log every time, so the model sees exactly what
 // has been recorded, and the request's hash lets nibb replay --window prove
 // it.
-func (l *Loop) ask(ctx context.Context, name string) (*llm.Response, error) {
+func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response, error) {
 	ep, err := l.endpoint(name)
 	if err != nil {
 		return nil, err
@@ -28,14 +29,18 @@ func (l *Loop) ask(ctx context.Context, name string) (*llm.Response, error) {
 	if !hasUserMessage(w.Messages) {
 		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
 	}
-	request := llm.Request{Model: ep.Model, Messages: w.Messages, Tools: l.tools, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive}
+	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive}
+	if tools {
+		request.Tools = l.tools
+	}
 	digest, err := window.RequestHash(request)
 	if err != nil {
 		return nil, err
 	}
 	rec := log.LLMReq{
 		RequestHash: digest,
-		Model:       ep.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
+		Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
+		NoTools: !tools,
 	}
 	if name != ControlModel {
 		// The session's recipe carries the control model's settings; any

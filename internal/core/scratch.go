@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The scratch directory is where a session's throwaway files go: scripts
@@ -12,24 +13,45 @@ import (
 // repository, so none of it reaches the repository's diff; the file
 // primitives may read and write it without prompts, shell-exec gets it as
 // TMPDIR, and it is removed when the session closes. A resumed session gets
-// the same directory back.
+// a new, empty one.
+//
+// Each directory is made by os.MkdirTemp (unpredictable name, mode 0700)
+// under nibb's own data directory, so no other user can plant or share it;
+// only a session without a data directory (tests, embedders) falls back to
+// the system's temporary directory. Directories a crashed session left
+// behind are swept once they are a week old.
 
-// scratchRoot holds every session's scratch directory.
-func scratchRoot() string { return filepath.Join(os.TempDir(), "nibb-scratch") }
+// scratchMaxAge is how long a scratch directory may outlive its session.
+const scratchMaxAge = 7 * 24 * time.Hour
 
-// makeScratch creates the session's scratch directory, private to the
-// user, and returns its path with symbolic links resolved (macOS's
-// temporary directory is behind one), which is the path the model is told.
-func makeScratch(id string) (string, error) {
+// scratchRoot holds the sessions' scratch directories: dataDir/scratch, or
+// the system temporary directory when there is no data directory.
+func scratchRoot(dataDir string) string {
+	if dataDir == "" {
+		return os.TempDir()
+	}
+	return filepath.Join(dataDir, "scratch")
+}
+
+// makeScratch creates a scratch directory for the session and returns its
+// path with symbolic links resolved (macOS's temporary directory is behind
+// one), which is the path the tools are given.
+func makeScratch(dataDir, id string) (string, error) {
 	if id == "" || strings.ContainsAny(id, `/\`) || strings.HasPrefix(id, ".") {
 		return "", fmt.Errorf("core: scratch: bad session id %q", id)
 	}
-	dir := filepath.Join(scratchRoot(), id)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	root := scratchRoot(dataDir)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", fmt.Errorf("core: scratch: %w", err)
+	}
+	sweepScratch(root)
+	dir, err := os.MkdirTemp(root, "nibb-scratch-"+id+"-")
+	if err != nil {
 		return "", fmt.Errorf("core: scratch: %w", err)
 	}
 	resolved, err := filepath.EvalSymlinks(dir)
 	if err != nil {
+		_ = os.RemoveAll(dir)
 		return "", fmt.Errorf("core: scratch: %w", err)
 	}
 	return resolved, nil
@@ -38,12 +60,24 @@ func makeScratch(id string) (string, error) {
 // removeScratch deletes a scratch directory made by makeScratch, and
 // nothing else.
 func removeScratch(dir string) {
-	if dir == "" {
+	if dir != "" && strings.HasPrefix(filepath.Base(dir), "nibb-scratch-") {
+		_ = os.RemoveAll(dir)
+	}
+}
+
+// sweepScratch removes scratch directories older than scratchMaxAge: those
+// of sessions that ended without closing.
+func sweepScratch(root string) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
 		return
 	}
-	root, err := filepath.EvalSymlinks(scratchRoot())
-	if err != nil || filepath.Dir(dir) != root {
-		return
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "nibb-scratch-") {
+			continue
+		}
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > scratchMaxAge {
+			_ = os.RemoveAll(filepath.Join(root, e.Name()))
+		}
 	}
-	_ = os.RemoveAll(dir)
 }

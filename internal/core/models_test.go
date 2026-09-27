@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -226,5 +227,18 @@ func TestKeyedControlModel(t *testing.T) {
 	}
 	if n := replayAll(t, logb); n != 1 {
 		t.Fatalf("replayed %d requests", n)
+	}
+}
+
+// An ollama model without num_ctx is asked for the window's size, not left to
+// Ollama's own default context, which would cut the prompt silently.
+func TestOllamaIsAskedForTheWindowsContext(t *testing.T) {
+	r := strategyRig(t, "", 10, fake.Turn{Content: "done"})
+	if r.turn("hello") != "" {
+		t.Fatal("turn failed")
+	}
+	want := `"num_ctx":` + strconv.Itoa(config.Default().WindowNumCtx())
+	if !strings.Contains(string(r.srv.Requests[0].Raw), want) {
+		t.Fatalf("request does not ask for %s:\n%s", want, r.srv.Requests[0].Raw)
 	}
 }

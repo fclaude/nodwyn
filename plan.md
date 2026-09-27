@@ -328,7 +328,7 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   grammar binaries.
 
 - Replace the naive window with the spec's: recent turns verbatim, older spans replaced by their latest `summary` log event; `nibb summary --drop <seq>` revokes and recomputes.
-- Session index: tree-sitter symbols + ripgrep search exposed as prims (`index-symbols`, `index-grep`) — surgical pull, the model asks.
+- Session index: tree-sitter symbols + ripgrep search exposed as prims (`index-symbols`, `index-grep`) — surgical pull, the model asks. (`index-symbols` and its vendored grammars were removed on 2026-09-27; `index-grep` remains.)
 - **With nibb:** `test/sessions/` holds real logs of nibb building nibb since P7; window and summary policies are designed and tested against them, not synthetic transcripts.
 - **Accept:** `nibb replay` reproduces the window byte-for-byte; dropping a summary changes the window deterministically; no cross-session state on disk except the log. Promote `v0.10` = **v0**.
 

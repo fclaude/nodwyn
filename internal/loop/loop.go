@@ -1,9 +1,10 @@
 // Package loop provides the agent loop.
 //
 // The loop itself — ask the model, run the tools it asked for, feed the
-// results back, stop on a plain answer — is a Scheme procedure, agent-turn.
-// Its default is strategy.scm, and a project may redefine it in
-// .nibb/init.scm (ADR 26). This package keeps what a strategy must not be
+// results back, stop on a plain answer — is a Scheme procedure, agent-turn,
+// which turn applies after planning when the turn must plan. Their defaults
+// are strategy.scm, and a project may redefine either in .nibb/init.scm
+// (ADR 26). This package keeps what a strategy must not be
 // able to skip, and gives the strategy the primitives to work with:
 // model-turn, run-tools, skip-tools, answer-call, add-message,
 // narrow-context, fold-context, widen and session-system-prompt.
@@ -265,8 +266,8 @@ func (l *Loop) Freeze() error {
 // Tools returns the tool list offered to the model.
 func (l *Loop) Tools() []llm.Tool { return l.tools }
 
-// Turn runs one turn: agent-turn applied to request, the user message the
-// session has already recorded. The strategy runs with harness origin; the
+// Turn runs one turn: the Scheme turn applied to request, the user message
+// the session has already recorded. The strategy runs with harness origin; the
 // tools it runs on the model's behalf run with model origin.
 //
 // Whatever the strategy did, every tool call the model made has a result
@@ -277,9 +278,9 @@ func (l *Loop) Turn(ctx context.Context, request string) error {
 	if !l.frozen {
 		return errors.New("loop: Freeze was not called")
 	}
-	strategy, ok := l.interp.Global().Lookup("agent-turn")
+	strategy, ok := l.interp.Global().Lookup("turn")
 	if !ok || !strategy.IsProcedure() {
-		return errors.New("loop: agent-turn is not defined as a procedure")
+		return errors.New("loop: turn is not defined as a procedure")
 	}
 	l.turn = &turnState{budget: budget.From(ctx)}
 	defer func() { l.turn = nil }()

@@ -108,13 +108,20 @@ func (s *Session) send(text string, required bool) error {
 	return s.startTurn(func(ctx context.Context) error { return s.turn(ctx, text, required) })
 }
 
-// turn records the user's message and runs agent-turn on it. The plan gate
-// is Scheme, the default agent-turn's first step (internal/loop/plan.scm);
-// what stays here is the invariant a strategy cannot skip: a turn that must
-// plan does nothing irreversible before it records one (plan.go).
+// turn records the user's message and runs the Scheme turn on it, which
+// plans when the turn must and then applies agent-turn (strategy.scm). What
+// stays here is the invariant no Scheme can skip: a turn that must plan does
+// nothing irreversible before it records a plan, and fails if it records
+// none (plan.go).
 func (s *Session) turn(ctx context.Context, text string, required bool) error {
 	s.planRequired.Store(required)
 	s.planned.Store(false)
+	// The flags are the turn's: an evaluation after it, even after a
+	// required turn that failed unplanned, is not held to its plan.
+	defer func() {
+		s.planRequired.Store(false)
+		s.planned.Store(false)
+	}()
 	safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
 	if err != nil {
 		return err

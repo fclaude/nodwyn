@@ -208,6 +208,9 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 		p = llm.NewOpenAI(m.URL, auth)
 	default: // "ollama", which validation guarantees for any other value
 		p = llm.NewOllama(m.URL)
+		if m.NumCtx == 0 {
+			m.NumCtx = s.opts.Config.WindowNumCtx()
+		}
 	}
 	return loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive}
 }

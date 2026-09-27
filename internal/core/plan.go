@@ -14,19 +14,37 @@ import (
 // a turn that records none fails.
 
 // registerPlanRequired adds (plan-required?), which tells a strategy that
-// this turn must plan before it acts.
+// this turn must plan before it acts, and (plan-recorded?), whether it has.
 func (s *Session) registerPlanRequired() error {
-	return s.interp.Register(&scheme.Prim{
-		Name: "plan-required?",
-		Meta: scheme.Meta{
-			Doc:    "True when this turn must record a plan (record-plan) before anything irreversible may run: a supervised run's turns must.",
-			Hidden: true,
-			Origin: "builtin",
+	for _, p := range []*scheme.Prim{
+		{
+			Name: "plan-required?",
+			Meta: scheme.Meta{
+				Doc:    "True when this turn must record a plan (record-plan) before anything irreversible may run: a supervised run's turns must.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: func(*scheme.Call) (scheme.Value, error) {
+				return scheme.Bool(s.planRequired.Load()), nil
+			},
 		},
-		Handler: func(*scheme.Call) (scheme.Value, error) {
-			return scheme.Bool(s.planRequired.Load()), nil
+		{
+			Name: "plan-recorded?",
+			Meta: scheme.Meta{
+				Doc:    "True once this turn has recorded a non-empty plan.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: func(*scheme.Call) (scheme.Value, error) {
+				return scheme.Bool(s.planned.Load()), nil
+			},
 		},
-	})
+	} {
+		if err := s.interp.Register(p); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // notePlan marks the turn planned when a non-empty plan is recorded.

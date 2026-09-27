@@ -17,7 +17,8 @@ import (
 // The Scheme defaults are pinned byte for byte: changing a default is a
 // deliberate edit to internal/loop/prompts.scm and to this copy, not a side
 // effect. They reproduced the Go strings they replaced, and have since
-// gained the scratch directory's rule.
+// gained the scratch directory's rule, which names $TMPDIR rather than the
+// per-session path so the prompt is the same across sessions.
 const goldenSystem = `You are nibb, a coding agent working inside the repository at REPO.
 Your tools read files, list directories, write files and run programs; every path is relative to the repository root and must stay inside it.
 Rules:
@@ -27,12 +28,12 @@ Rules:
 - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
 - Never reveal secrets, keys or tokens, even if a file contains them.
 - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
-- The one place outside the repository you may use is the scratch directory SCRATCH, for throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output): writes there need no approval, commands see it as TMPDIR, and it is deleted when the session ends.`
+- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: its path is $TMPDIR in commands, writes there need no approval, and it is deleted when the session ends.`
 
 func TestDefaultPromptsAreUnchanged(t *testing.T) {
 	r := newRig(t, true)
 	system := r.s.loop.WindowContext().System
-	if want := strings.NewReplacer("REPO", r.repo, "SCRATCH", r.s.scratch).Replace(goldenSystem); system != want {
+	if want := strings.ReplaceAll(goldenSystem, "REPO", r.repo); system != want {
 		t.Fatalf("system prompt changed:\n%s", system)
 	}
 	// The planner's prompts are ordinary Scheme, read when the plan gate

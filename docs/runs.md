@@ -24,11 +24,16 @@ still apply, including planning tokens reported by the control provider. A
 provider response can exceed its token ceiling; no further operation then starts.
 Judge token usage remains unavailable.
 
-Each turn requires a nonempty, durably recorded plan before execution. With a
-Jev credential the existing score/revise path still runs through Scheme and the
-guard; the noul decision cannot skip a required plan. Without a judge, the model
-still drafts a plan. Judge outages retain the existing plain-plan fallback.
-Planner or plan-recording failure prevents execution.
+Each turn requires a nonempty, durably recorded plan before execution. The
+Scheme `turn` runs the plan gate first in every run turn, whatever `agent-turn`
+a project defines ([docs/scheme.md](scheme.md) §9.5): the control model drafts
+the plan in a context of its own, offered no tools, and with a Jev credential
+the score/revise path runs through the guard; the noul decision cannot skip a
+required plan. Without a judge the model still drafts a plan. Judge outages
+retain the plain-plan fallback. The core refuses anything irreversible until a
+plan is recorded and fails a turn that records none; a project that redefines
+`turn` to plan its own way is held to the same rule. Planner or plan-recording
+failure prevents execution.
 
 The continuation asks for one unfinished plan step and a progress report. This
 is an instruction to the model, not a parser that proves a step was completed.

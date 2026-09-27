@@ -5,14 +5,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fclaude/nibb/internal/llm"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
 // A session's scratch directory takes throwaway files without a prompt, is
-// the TMPDIR of its commands, is gone when the session closes, and comes
-// back, at the same path, when the session resumes.
+// the TMPDIR of its commands, lives under nibb's data directory, and is gone
+// when the session closes; a resumed session gets a new, empty one. The
+// system prompt names $TMPDIR, not the per-session path.
 func TestScratchDirectory(t *testing.T) {
 	srv := fake.New(fake.Turn{Content: "ok"}, fake.Turn{Content: "ok"})
 	defer srv.Close()
@@ -31,11 +33,15 @@ func TestScratchDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := s.scratch
-	if dir == "" || strings.HasPrefix(dir, o.Repo) {
+	data, _ := filepath.EvalSymlinks(o.Paths.DataDir)
+	if dir == "" || strings.HasPrefix(dir, o.Repo) || !strings.HasPrefix(dir, filepath.Join(data, "scratch")+string(filepath.Separator)) {
 		t.Fatalf("scratch directory %q", dir)
 	}
-	if prompt := s.loop.WindowContext().System; !strings.Contains(prompt, "scratch directory "+dir) {
-		t.Fatalf("the system prompt does not name the scratch directory:\n%s", prompt)
+	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("scratch directory mode: %v %v", info, err)
+	}
+	if prompt := s.loop.WindowContext().System; strings.Contains(prompt, dir) || !strings.Contains(prompt, "$TMPDIR") {
+		t.Fatalf("the system prompt should name $TMPDIR, not the path:\n%s", prompt)
 	}
 	r := &rig{t: t, s: s, srv: srv}
 	if e := r.turn("go"); e != "" {
@@ -59,11 +65,37 @@ func TestScratchDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resumed.Close()
-	if resumed.scratch != dir {
+	if resumed.scratch == "" || resumed.scratch == dir {
 		t.Fatalf("resumed scratch %q, was %q", resumed.scratch, dir)
 	}
 	v, err := resumed.Eval(t.Context(), `(assoc-ref (shell-exec "sh" '("-c" "printf %s \"$TMPDIR\"")) "stdout")`)
-	if err != nil || v.S != dir {
+	if err != nil || v.S != resumed.scratch {
 		t.Fatalf("TMPDIR in commands: %q %v", v.S, err)
+	}
+}
+
+// A scratch directory a crashed session left behind is swept once it is a
+// week old; a recent one is kept.
+func TestScratchSweep(t *testing.T) {
+	data := t.TempDir()
+	root := scratchRoot(data)
+	os.MkdirAll(filepath.Join(root, "nibb-scratch-old-1"), 0o700)
+	os.MkdirAll(filepath.Join(root, "nibb-scratch-new-1"), 0o700)
+	os.MkdirAll(filepath.Join(root, "unrelated"), 0o700)
+	week := time.Now().Add(-8 * 24 * time.Hour)
+	os.Chtimes(filepath.Join(root, "nibb-scratch-old-1"), week, week)
+	os.Chtimes(filepath.Join(root, "unrelated"), week, week)
+	dir, err := makeScratch(data, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{"nibb-scratch-old-1": false, "nibb-scratch-new-1": true, "unrelated": true} {
+		if _, err := os.Stat(filepath.Join(root, name)); (err == nil) != want {
+			t.Errorf("%s: exists=%v, want %v", name, err == nil, want)
+		}
+	}
+	removeScratch(dir)
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("removeScratch left the directory")
 	}
 }

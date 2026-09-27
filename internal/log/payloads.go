@@ -73,6 +73,9 @@ type LLMReq struct {
 	Endpoint  string `json:"endpoint,omitempty"`
 	NumCtx    int    `json:"num_ctx,omitempty"`
 	KeepAlive string `json:"keep_alive,omitempty"`
+	// NoTools is set when the request offered the model no tools, as the
+	// planner's does ((model-turn name '((tools . #f)))).
+	NoTools bool `json:"no_tools,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.

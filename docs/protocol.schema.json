@@ -789,6 +789,9 @@
         "model": {
           "type": "string"
         },
+        "no_tools": {
+          "type": "boolean"
+        },
         "num_ctx": {
           "type": "integer"
         },

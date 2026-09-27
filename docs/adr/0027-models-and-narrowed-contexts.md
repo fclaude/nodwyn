@@ -90,3 +90,11 @@ anyone else. A session opens without `[control]`, so logs can still be
 replayed and Scheme evaluated, and its first model request fails with the
 table to add. That failure, like a key that is missing or not bound, is a
 permanent error the request retry does not repeat.
+
+## Amendment: the planner and the control model — 2026-09-27
+
+The plan gate is user code (`plan.scm`) and asks the control model like any
+other model turn, in a narrowed context that folds away, offered no tools;
+its requests are recorded and replay (window-v7 for the tool-less request).
+`[control]` is a configured model like `[models.NAME]`, registered as
+`"control"`, with no built-in default.

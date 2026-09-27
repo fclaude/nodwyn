@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -238,14 +239,29 @@ func Load(path string) (Config, error) {
 // Validate rejects configurations the harness must not run with.
 func (c Config) Validate() error {
 	if c.Control != (Model{}) {
+		need := c.Window.HighWater + c.Window.OutputReserve
+		var missing []string
+		if c.Control.URL == "" {
+			missing = append(missing, "url")
+		}
+		if c.Control.Model == "" {
+			missing = append(missing, "model")
+		}
+		if len(missing) > 0 {
+			verb := "is"
+			if len(missing) > 1 {
+				verb = "are"
+			}
+			return fmt.Errorf("control: %s %s required: nibb has no built-in control model (it no longer assumes ollama at http://localhost:11434); set provider, url, model and num_ctx in [control]",
+				strings.Join(missing, " and "), verb)
+		}
 		if err := c.Control.validate(); err != nil {
 			return fmt.Errorf("control: %w", err)
 		}
-		// Unset, the model's context length is unknown; set, the window
-		// must fit in it.
-		if n := c.Control.NumCtx; n > 0 && c.Window.HighWater+c.Window.OutputReserve > n {
-			return fmt.Errorf("window.high_water + window.output_reserve (%d) exceeds control.num_ctx (%d)",
-				c.Window.HighWater+c.Window.OutputReserve, c.Control.NumCtx)
+		// Unset, an ollama model is asked for the window's size (WindowNumCtx)
+		// and another server decides its own; set, the window must fit in it.
+		if n := c.Control.NumCtx; n > 0 && need > n {
+			return fmt.Errorf("window.high_water + window.output_reserve (%d) exceeds control.num_ctx (%d)", need, n)
 		}
 	}
 	if _, ok := c.Models[ControlModel]; ok {
@@ -330,6 +346,12 @@ func (m Model) validate() error {
 	return nil
 }
 
+// WindowNumCtx is the context length an ollama model is asked for when its
+// num_ctx is unset: the window's high water plus the output reserve. Left to
+// itself Ollama would use its own default, usually far smaller, and cut the
+// prompt silently.
+func (c Config) WindowNumCtx() int { return c.Window.HighWater + c.Window.OutputReserve }
+
 // MissingControl is the error for a session that needs a model when
 // config.toml has no [control]: it says what to add, and where.
 func MissingControl(configFile string) error {
@@ -343,6 +365,6 @@ func MissingControl(configFile string) error {
 provider = "ollama"               # or "openai" for any chat-completions server
 url = "http://localhost:11434"    # for openai, the base URL including /v1
 model = "qwen3:8b"
-num_ctx = 32768
+num_ctx = 81920                   # at least window.high_water + window.output_reserve (69632 by default)
 # credential = "openai-key"       # keychain class of the API key, bound in bindings.toml`, where)
 }

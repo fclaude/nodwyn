@@ -83,3 +83,13 @@ rebuilding. Summary text is an assistant history message, not a system prompt.
 `window-v1` remains executable for exact historical request replay. Later edits
 cannot alter a reconstructed earlier request. See the memory guide for controls
 and limits. Automatic text generation is not part of this slice.
+
+## Amendment: headers and tool-less requests in the recipe — 2026-09-27
+
+The window's task and plan headers are Scheme prompts (`task-header`,
+`plan-header`), read once after `init.scm` and fixed for the session like the
+system prompt; the recipe records them (window-v6), and an absent header
+means the default text, so older logs rebuild byte for byte. A model turn may
+offer no tools (`(model-turn name '((tools . #f)))`, the planner's); its
+`llm.req` records `no_tools` and replay omits the catalog for it
+(window-v7). Recipes v1 to v6 still replay under their own rules.

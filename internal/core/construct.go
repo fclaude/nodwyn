@@ -219,7 +219,7 @@ func (s *Session) loadInit() error {
 // replays evaluations or approvals from the conversation log.
 func (s *Session) initialize() (err error) {
 	o := s.opts
-	if s.scratch, err = makeScratch(s.id); err != nil {
+	if s.scratch, err = makeScratch(s.opts.Paths.DataDir, s.id); err != nil {
 		return err
 	}
 	defer func() {

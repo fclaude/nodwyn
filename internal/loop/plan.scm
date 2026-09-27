@@ -23,15 +23,15 @@
        (credential "jev-key")))
 
 ;; A plan from the control model, asked in a context of its own that is then
-;; folded away: the conversation keeps only the plan the gate records. A
-;; model sometimes answers with thinking only, or with tool calls instead of
-;; a plan (answered as not run); either way it is asked again, in a fresh
-;; context, up to plan-empty-retries more times, each noted in the log.
+;; folded away: the conversation keeps only the plan the gate records. The
+;; planner is offered no tools, so it answers in text. A model sometimes
+;; answers with thinking only; it is then asked again, in a fresh context, up
+;; to plan-empty-retries more times, each noted in the log.
 (define (plan-ask prompt)
   (let ask ((attempt 0))
     (narrow-context (plan-system-prompt (repository)) "planner")
     (add-message prompt)
-    (let* ((reply (model-turn))
+    (let* ((reply (model-turn "control" '((tools . #f))))
            (text (assoc-ref reply 'content "")))
       (skip-tools (assoc-ref reply 'tool-calls '())
                   "Plan only: reply with the plan as text; the work comes after it.")
@@ -82,7 +82,8 @@
 
 (define (plan-gate request)
   (let ((judge (plan-judge)))
-    (cond ((plan-required?)
+    (cond ((plan-recorded?) #f) ; this turn has its plan already
+          ((plan-required?)
            (let ((plan (plan-best judge request (if judge "plan" "required"))))
              (when (string-empty? (string-trim plan))
                (error "required plan: the planner returned an empty plan"))))

@@ -19,13 +19,12 @@
    (scratch-rule (scratch-dir))))
 
 ;; The system prompt's rule for the session's scratch directory, or "" when
-;; there is none (nibb repl).
+;; there is none (nibb repl). It names $TMPDIR, not the directory's path,
+;; which differs per session: the system prompt stays the same across a
+;; repository's sessions.
 (define (scratch-rule dir)
   (if dir
-      (string-append
-       "\n- The one place outside the repository you may use is the scratch directory "
-       dir
-       ", for throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output): writes there need no approval, commands see it as TMPDIR, and it is deleted when the session ends.")
+      "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: its path is $TMPDIR in commands, writes there need no approval, and it is deleted when the session ends."
       ""))
 
 ;; The planner's system prompt.

@@ -6,6 +6,8 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-27 · SWE-bench harness · a run whose strategy redefined agent-turn got no plan once the gate moved into Scheme, so its first write was refused; and the planner was offered every tool, so a tool-call answer counted as no plan · every custom strategy broke under `nibb run` · **resolved: the host runs `turn`, which plans first in a run whatever agent-turn is; the planner is asked with no tools (`model-turn` options, recipe v7)**
+- 2026-09-27 · SWE-bench harness · a turn that ended on a folded reviewer's reply was recorded as limited, not completed · run statuses misreported · **resolved: completion is judged by the reply the conversation still shows (eece625)**
 - 2026-09-27 · SWE-bench harness · the planner once answered with thinking only, and a run requires a nonempty plan, so the task ended before any work · one benchmark task in about 85 lost outright · **resolved: an empty draft is asked for again up to twice, noted in the log; an empty revision keeps the best plan**
 - 2026-09-27 · SWE-bench tuning · writes to /tmp were refused, so the model put throwaway scripts in the repository or wrote them through the shell · stray files in the patch, and turns spent working around the pin · **resolved: each session has a scratch directory outside the repository, writable without prompts and TMPDIR for commands (ADR 28)**
 - 2026-09-26 · SWE-bench harness · L1 took any three dot-joined words of 8+ characters for a JWT, so Django test labels such as `model_fields.test_jsonfield.TestQuerying` were secrets: shell-exec denied the test runs, and a judge request quoting one was refused as an unbound secret, which ended the turn · two of fifteen Jev-verify tasks lost outright, and denied test commands in two other variants · **resolved: a JWT must start with an encoded JSON header and payload (`eyJ…` `.ey…`)**
@@ -77,7 +79,7 @@ Format: `date · session · what happened · what it cost · idea`
 
 - 2026-09-22 (external agent, ADR 16): searching through general shell commands required broad command approvals; `index-grep` now performs bounded ripgrep retrieval with every selected content read passing the existing guard. Tree-sitter symbols remain separate work.
 
-- 2026-09-22 (external agent, ADR 16): source outlines previously needed whole-file context or shell tools; `index-symbols` now returns guarded Tree-sitter definitions for Go, JavaScript and Python without runtime downloads or a native build toolchain.
+- 2026-09-22 (external agent, ADR 16): source outlines previously needed whole-file context or shell tools; `index-symbols` now returns guarded Tree-sitter definitions for Go, JavaScript and Python without runtime downloads or a native build toolchain. (Removed 2026-09-27 with its vendored grammars.)
 
 - 2026-09-22 (external agent, ADR 16): the daemon had no browser view of saved/live work; U3 now has a paired read-only session/transcript desk with guarded transport boundaries. Interactive approvals remain the next slice.
 

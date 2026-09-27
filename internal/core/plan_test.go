@@ -18,6 +18,7 @@ import (
 	"github.com/fclaude/nibb/internal/keychain"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/window"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
@@ -224,9 +225,10 @@ func TestRequiredPlanSkipsTheQuestion(t *testing.T) {
 	}
 }
 
-// A strategy that skips the gate cannot act in a turn that must plan.
+// A project that replaces turn, the only way past the gate, still cannot act
+// in a turn that must plan until it records a plan.
 func TestRequiredPlanBlocksActionUntilRecorded(t *testing.T) {
-	r := judgedRig(t, nil, `(define (agent-turn request) (fs-write "x.txt" "y"))`)
+	r := judgedRig(t, nil, `(define (turn request) (fs-write "x.txt" "y"))`)
 	if err := r.s.SendPlanned("work"); err != nil {
 		t.Fatal(err)
 	}
@@ -272,5 +274,59 @@ func TestPlanGateKeepsTheBestPlanWhenARevisionIsEmpty(t *testing.T) {
 	plans := r.gatePlans()
 	if len(plans) != 1 || plans[0].Plan != "first plan" || plans[0].Score != 0.2 || plans[0].Revisions != 0 {
 		t.Fatalf("plans %+v", plans)
+	}
+}
+
+// A strategy that redefines agent-turn without the gate still plans in a run:
+// turn plans first. The planner is offered no tools, and its request, like
+// the strategy's, replays from the log.
+func TestCustomStrategyIsPlannedInARun(t *testing.T) {
+	r := judgedRig(t, nil, `(define (agent-turn request)
+  (let loop ((reply (model-turn)))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls) (run-tools calls) (loop (model-turn))))))`,
+		fake.Turn{Content: "1. write x.txt"},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "x.txt", "content": "y"}}}},
+		fake.Turn{Content: "done"})
+	r.s.opts.AutoApprove = true
+	if err := r.s.SendPlanned("write x.txt"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("y")
+	if plans := r.gatePlans(); len(plans) != 1 || plans[0].Plan != "1. write x.txt" {
+		t.Fatalf("plans %+v", plans)
+	}
+	if strings.Contains(string(r.srv.Requests[0].Raw), `"tools"`) || !strings.Contains(string(r.srv.Requests[1].Raw), `"tools"`) {
+		t.Fatal("the planner was offered tools, or the strategy was not")
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reqs := 0
+	for _, ev := range evs {
+		if ev.Kind != log.KindLLMReq {
+			continue
+		}
+		reqs++
+		if _, err := window.ReplayRequest(evs, ev.Seq); err != nil {
+			t.Fatalf("request %d: %v", ev.Seq, err)
+		}
+	}
+	if reqs != 3 {
+		t.Fatalf("%d requests", reqs)
+	}
+}
+
+// The turn's plan flags end with it: an evaluation after a required turn that
+// failed unplanned is not held to that turn's plan.
+func TestPlanFlagsEndWithTheTurn(t *testing.T) {
+	r := judgedRig(t, nil, `(define (turn request) (fs-write "x.txt" "y"))`)
+	if err := r.s.SendPlanned("work"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if got := r.eval(`(list (plan-required?) (plan-recorded?))`); got != "(#f #f)" {
+		t.Fatalf("plan flags after the turn: %s", got)
 	}
 }

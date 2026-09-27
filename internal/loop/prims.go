@@ -20,8 +20,8 @@ func (l *Loop) install() error {
 		{
 			Name: "model-turn",
 			Meta: scheme.Meta{
-				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys content, thinking, done (the stop reason), tool-calls, prompt-tokens and output-tokens (the server's counts; 0 when it gives none); each call is an alist with keys id, name and args (the model's JSON text).",
-				Variadic: true, // (model-turn) or (model-turn name)
+				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]; an options alist may follow the name, where (tools . #f) offers the model no tools. Returns an alist with keys content, thinking, done (the stop reason), tool-calls, prompt-tokens and output-tokens (the server's counts; 0 when it gives none); each call is an alist with keys id, name and args (the model's JSON text).",
+				Variadic: true, // (model-turn), (model-turn name) or (model-turn name options)
 				Hidden:   true,
 				Origin:   "builtin",
 			},
@@ -145,7 +145,7 @@ func (l *Loop) active(c *scheme.Call) (*turnState, error) {
 	return l.turn, nil
 }
 
-// modelTurn is (model-turn [name]): answer the calls the strategy left
+// modelTurn is (model-turn [name [options]]): answer the calls the strategy left
 // unanswered, check the budget, ask the model, and hand its reply to the
 // strategy. The reply's calls become the ones run-tools may run, whichever
 // model made them.
@@ -154,15 +154,26 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
-	name := ControlModel
-	switch len(c.Args) {
-	case 0:
-	case 1:
+	name, tools := ControlModel, true
+	if len(c.Args) > 2 {
+		return scheme.Void, errors.New("expected at most a model name and an options alist")
+	}
+	if len(c.Args) > 0 {
 		if name, err = c.String(0); err != nil {
 			return scheme.Void, err
 		}
-	default:
-		return scheme.Void, errors.New("expected at most one argument, a model name")
+	}
+	if len(c.Args) == 2 {
+		opts, ok := c.Args[1].Slice()
+		if !ok {
+			return scheme.Void, errors.New("options must be an alist, such as '((tools . #f))")
+		}
+		for _, o := range opts {
+			if o.Kind != scheme.KPair || o.P.Car.Kind != scheme.KSymbol || o.P.Car.S != "tools" {
+				return scheme.Void, fmt.Errorf("unknown model-turn option %s; the only one is tools", scheme.Write(o))
+			}
+			tools = !scheme.Equal(o.P.Cdr, scheme.False) // only #f is false
+		}
 	}
 	if err := l.skipPending("the strategy asked the model again before running this call"); err != nil {
 		return scheme.Void, err
@@ -172,7 +183,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, halt(err)
 		}
 	}
-	resp, err := l.ask(c.Ctx, name)
+	resp, err := l.ask(c.Ctx, name, tools)
 	if err != nil {
 		return scheme.Void, err
 	}

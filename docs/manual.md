@@ -403,7 +403,7 @@ credential = "openai-key"           # keychain class; omit for a local server
 provider = "ollama"
 url = "http://localhost:11434"
 model = "qwen3:8b"
-num_ctx = 32768
+num_ctx = 81920
 ```
 
 A keyed model needs its key stored (`(credential-register "openai-key")`)
@@ -433,8 +433,15 @@ asks, and a keyed chat-completions server works there too.
 provider = "ollama"               # the default; or "openai"
 url = "http://localhost:11434"
 model = "qwen3:8b"
-num_ctx = 32768                   # optional; when set, the window must fit in it
+num_ctx = 81920                   # at least window.high_water + window.output_reserve
 ```
+
+`url` and `model` are required; nibb has no built-in control model. Unset,
+`num_ctx` asks an ollama model for exactly the window's size
+(`window.high_water + window.output_reserve`, 69632 by default) rather than
+leaving Ollama at its own, usually smaller, default, which would cut the
+prompt silently; a chat-completions server decides its own. Set, the window
+must fit in it.
 
 A session opens without it, to replay or evaluate; its first model request
 fails with that table, and is not retried. A key that is missing or not
@@ -452,7 +459,8 @@ turn off ingress redaction.
 
 The log is the context ingress: `Session.Record` appends the writer's returned
 event to the live history, and `window.Build` derives messages from that history.
-The planner's separate request is also redacted. CI checks the history writer.
+The planner's requests are model turns like any other, in a narrowed context,
+so they are built from the same redacted history. CI checks the history writer.
 
 Model content and thinking are buffered until the response completes, then
 redacted and displayed. Scanning separate token chunks would miss split keys.
@@ -486,8 +494,8 @@ stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 |---|---|
 | `no control model is configured` | add the `[control]` table it prints to `config.toml` ("Choosing models") |
 | `control model … unreachable` | is the `[control]` URL right and the server up? For Ollama, `curl <url>/api/version` |
-| first turn takes 10–60 s | another client holds workshop's single slot, or the prefix is cold; later turns are sub-second |
-| every request takes 30–50 s | the prefix cache is missing: check `:log` for `llm.req` — a trim (elided count jumped) or a new user turn re-prefills once; if it is every request, another client is evicting workshop's single slot between your requests |
+| first turn takes 10–60 s | another client holds the model server's slot, or the prefix is cold; later turns are sub-second |
+| every request takes 30–50 s | the prefix cache is missing: check `:log` for `llm.req` — a trim (elided count jumped) or a new user turn re-prefills once; if it is every request, another client is evicting the server's slot between your requests (a single-slot Ollama, for example) |
 | the model loops on a denied call | the progress guard stops repeated denials; inspect the log before continuing. Budgets also bound each turn, and `--max-tool-calls N` sets a hard call ceiling |
 | `hard stop: too many tool calls` | the turn ended; the log has everything; rephrase smaller |
 | a tool call errored | `:log 20` — the `tool.result` line has the exact error the model saw |
