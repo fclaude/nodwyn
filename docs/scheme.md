@@ -457,17 +457,19 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
     (let ((calls (assoc-ref reply 'tool-calls '())))
       (unless (null? calls)
         (run-tools calls)
+        (maybe-compact request reply)
         (loop (model-turn))))))
 ```
 
 | | |
 |---|---|
-| `(model-turn)` `(model-turn name)` | Ask a model once: the control model, or the configured model `[models.NAME]` (manual, "Choosing models"). Returns an alist: `content`, `thinking`, `done` (why it stopped) and `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nibb replay --window`. |
+| `(model-turn)` `(model-turn name)` | Ask a model once: the control model, or the configured model `[models.NAME]` (manual, "Choosing models"). Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nibb replay --window`. |
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
 | `(narrow-context system)` | Start a fresh context, like Emacs's narrowing: until `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Refused while calls are unanswered. |
 | `(widen)` | End a narrowed context. Models see the whole conversation again, including what happened while it was narrowed. A new user message widens too. |
+| `(session-system-prompt)` | The system prompt the session started with (§9.1), fixed for its life: what a narrowed context passes to `narrow-context` to keep the model's standing instructions. |
 
 A strategy talks to the model through tools: a tool's description is an
 instruction, its result and a skip reason are feedback. `add-message` is for
@@ -525,6 +527,37 @@ fixed for the session like the tool list (ADR 9), and the planner keeps the
 procedures bound at that moment. A prompt that is not a procedure or a
 non-empty string (a list of strings for the levels) stops the session from
 starting.
+
+### 9.2 Compaction
+
+A long turn fills the context with tool results the model no longer needs.
+nibb elides the oldest ones past `[window] high_water` on its own; compaction
+goes further, as user code over the primitives above, in
+`internal/loop/compact.scm`. When a reply's `prompt-tokens` passes
+`compact-threshold`, `maybe-compact` asks the model for a handover note (the
+task, what it found and changed, how to test, what is left), then narrows the
+context to the session's system prompt, the request and that note. The
+repository keeps the model's changes, and the log keeps the whole
+conversation, so replay and audit see everything the note replaced.
+
+| | |
+|---|---|
+| `compact-threshold` | prompt tokens past which the context is compacted; `#f` (the default) never compacts |
+| `compact-attempts` | replies to the note request that may be tool calls (they are skipped) before compaction gives up; after giving up it waits for the context to grow another quarter of the threshold |
+| `compact-summary-prompt` | the request for the note (a prompt, §9.1) |
+| `(compact-handover-prompt request note)` | what the compacted context starts with |
+| `(maybe-compact request reply)` | compact if `reply` passed the threshold; call it once the reply's calls are answered |
+| `(compact-context request)` | compact now; `#t` if the turn continues in the narrowed context |
+
+```scheme
+(define compact-threshold 40000)    ; in .nibb/init.scm
+```
+
+A strategy that redefines `agent-turn` calls `maybe-compact` itself, where the
+default does: after `run-tools`, before the next `model-turn`. Compacting
+rewrites the start of the context, so the server re-reads the new, short
+prompt once instead of reusing its cache (ADR 9); a threshold well below
+`high_water` compacts rarely and keeps the prefix stable in between.
 
 ## 10. Not in nibb Scheme
 

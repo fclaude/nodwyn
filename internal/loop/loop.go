@@ -5,12 +5,14 @@
 // Its default is strategy.scm, and a project may redefine it in
 // .nibb/init.scm (ADR 26). This package keeps what a strategy must not be
 // able to skip, and gives the strategy the primitives to work with:
-// model-turn, run-tools, skip-tools, add-message, narrow-context and widen.
+// model-turn, run-tools, skip-tools, add-message, narrow-context, widen and
+// session-system-prompt.
 //
 // Reading order:
 //
 //   - loop.go: a session's Loop, and how one turn starts and ends
 //   - strategy.scm: the default agent-turn
+//   - compact.scm: context compaction, as user code over the primitives
 //   - prims.go: the primitives and the Scheme values they exchange
 //   - model.go: one request to the model
 //   - tools.go: one tool call, run or skipped
@@ -93,6 +95,9 @@ var defaultStrategy string
 //go:embed prompts.scm
 var defaultPrompts string
 
+//go:embed compact.scm
+var defaultCompaction string
+
 // New builds a loop and installs its primitives and the default strategy
 // into interp. Call it before loading .nibb/init.scm, so the project may
 // redefine agent-turn, and call Freeze afterwards.
@@ -107,6 +112,9 @@ func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) (*
 	}
 	if _, err := interp.EvalString(harness, defaultPrompts); err != nil {
 		return nil, fmt.Errorf("loop: default prompts: %w", err)
+	}
+	if _, err := interp.EvalString(harness, defaultCompaction); err != nil {
+		return nil, fmt.Errorf("loop: default compaction: %w", err)
 	}
 	return l, nil
 }

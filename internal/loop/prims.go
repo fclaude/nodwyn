@@ -19,7 +19,7 @@ func (l *Loop) install() error {
 		{
 			Name: "model-turn",
 			Meta: scheme.Meta{
-				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys content, thinking, done (the stop reason) and tool-calls; each call is an alist with keys id, name and args (the model's JSON text).",
+				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys content, thinking, done (the stop reason), tool-calls, prompt-tokens and output-tokens (the server's counts; 0 when it gives none); each call is an alist with keys id, name and args (the model's JSON text).",
 				Variadic: true, // (model-turn) or (model-turn name)
 				Hidden:   true,
 				Origin:   "builtin",
@@ -65,6 +65,15 @@ func (l *Loop) install() error {
 				Origin: "builtin",
 			},
 			Handler: l.narrowContext,
+		},
+		{
+			Name: "session-system-prompt",
+			Meta: scheme.Meta{
+				Doc:    "The session's system prompt, fixed when it started: what a narrowed context passes to narrow-context to keep the model's standing instructions.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.sessionSystemPrompt,
 		},
 		{
 			Name: "widen",
@@ -240,6 +249,18 @@ func (l *Loop) narrowContext(c *scheme.Call) (scheme.Value, error) {
 	return scheme.Void, l.record(log.KindContextNarrow, log.ContextNarrow{System: system})
 }
 
+// sessionSystemPrompt is (session-system-prompt). It needs no turn: the
+// prompt is fixed once the session has started.
+func (l *Loop) sessionSystemPrompt(c *scheme.Call) (scheme.Value, error) {
+	if c.Origin == scheme.OriginModel {
+		return scheme.Void, errors.New("not callable from a model-originated evaluation")
+	}
+	if !l.frozen {
+		return scheme.Void, errors.New("the system prompt is not fixed until the session has started")
+	}
+	return scheme.Str(l.cfg.System), nil
+}
+
 // widen is (widen).
 func (l *Loop) widen(c *scheme.Call) (scheme.Value, error) {
 	t, err := l.active(c)
@@ -279,6 +300,8 @@ func replyValue(resp *llm.Response) scheme.Value {
 		scheme.Cons(scheme.Sym("thinking"), scheme.Str(resp.Message.Thinking)),
 		scheme.Cons(scheme.Sym("done"), scheme.Str(resp.DoneReason)),
 		scheme.Cons(scheme.Sym("tool-calls"), scheme.List(calls...)),
+		scheme.Cons(scheme.Sym("prompt-tokens"), scheme.Int(int64(resp.Usage.PromptTokens))),
+		scheme.Cons(scheme.Sym("output-tokens"), scheme.Int(int64(resp.Usage.OutputTokens))),
 	)
 }
 

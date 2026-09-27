@@ -52,3 +52,28 @@
     "covers the request but vaguely, out of order, or with unnecessary steps"
     "complete and concrete with minor gaps"
     "complete, concrete, minimal and safe"))
+
+;; Compaction's request for a handover note (compact.scm).
+(define compact-summary-prompt
+  """
+  The conversation is getting long and will be cleared to make room. Before that, write a handover note for yourself; it is all you will keep. Do not call tools. Include:
+  - the task in one or two sentences, and what done looks like;
+  - what you found: the root cause, and the files, functions and line areas involved;
+  - what you changed so far, file by file, and why;
+  - the commands that run the tests and reproduce the problem, and their latest results;
+  - what is left to do, in order, and anything you ruled out.
+  Be specific: names, paths and commands, not descriptions of them.
+  """)
+
+;; What a compacted context starts with: the task and the handover note.
+(define (compact-handover-prompt request note)
+  (string-append
+   request
+   """
+
+
+   The conversation so far was cleared to make room; this is your own handover note from before it was cleared. The repository still holds every change you made. Continue the task from here; re-read files when you need their exact content.
+
+   Handover note:
+   """
+   "\n" note))
