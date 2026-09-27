@@ -9,8 +9,6 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/coder/websocket v1.8.14
-	github.com/tetratelabs/wazero v1.10.1
-	github.com/zema1/wasitter v0.1.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.46.0

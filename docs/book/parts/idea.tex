@@ -239,8 +239,8 @@ Three tiers, one truth:
 \item \textbf{RAM}: the token-budgeted window, with surgical pull on demand.
 \end{itemize}
 
-v0 has no cross-session memory and no embedding index; retrieval is
-structural (tree-sitter, grep). The bootstrap ships a deliberately naive
+v0 has no cross-session memory and no embedding index; retrieval is text
+search (grep). The bootstrap ships a deliberately naive
 window\,---\,elide the oldest tool results, then the oldest turns\,---\,but even it is
 rebuilt from the log on every request, and it elides \emph{in place} so the
 request prefix never changes and the model server's cache keeps hitting.

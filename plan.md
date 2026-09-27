@@ -321,10 +321,11 @@ Each phase: (a) open a session in `nibb-stable`, (b) point it at the ADR and the
   summaries now have validated source spans, inspection and append-only
   revocation; versioned windows retain historical replay and recent turns stay
   outside summary replacement. Existing token caps remain. Session-scoped
-  ripgrep retrieval is exposed through guarded `index-grep`. Bundled Tree-sitter
-  grammars provide `index-symbols` for Go, JavaScript and Python named definitions.
-  Both are on-demand, bounded views with no persistent index. Other languages
-  use text retrieval; see [memory controls](docs/memory.md) for explicit scope.
+  ripgrep retrieval is exposed through guarded `index-grep`, an on-demand,
+  bounded view with no persistent index; see [memory controls](docs/memory.md)
+  for explicit scope. Tree-sitter outlines (`index-symbols`) shipped here and
+  were removed on 2026-09-27: unused by models, and dependent on vendored
+  grammar binaries.
 
 - Replace the naive window with the spec's: recent turns verbatim, older spans replaced by their latest `summary` log event; `nibb summary --drop <seq>` revokes and recomputes.
 - Session index: tree-sitter symbols + ripgrep search exposed as prims (`index-symbols`, `index-grep`) — surgical pull, the model asks.

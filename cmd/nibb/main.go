@@ -9,7 +9,6 @@ import (
 	"runtime/debug"
 
 	webui "github.com/fclaude/nibb/internal/frontend/web"
-	"github.com/fclaude/nibb/internal/symbols"
 )
 
 // version is set by the Makefile via -ldflags; "dev" builds fall back to VCS
@@ -35,7 +34,7 @@ commands:
   keychain init        create the encrypted keychain (asks for a passphrase)
   paths                print the config and data locations
   version              print version
-  licenses             print parser and browser dependency notices
+  licenses             print the browser console's dependency notices
 
 flags:
 `
@@ -46,7 +45,7 @@ func main() {
 	}
 }
 
-func licenseText() string { return symbols.Licenses() + webui.Licenses() }
+func licenseText() string { return webui.Licenses() }
 
 func versionString() string {
 	if version != "dev" {

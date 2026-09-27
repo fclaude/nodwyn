@@ -292,7 +292,6 @@ into Scheme values (ADR 3).
 |---|---|
 | `(fs-read path)` `(fs-write path content)` `(fs-edit path old new)` `(fs-list path)` | repository-pinned file access; writes and edits are irreversible (confirm, diff preview) |
 | `(index-grep path pattern)` | **P10.** Search a repository file or directory with a ripgrep pattern (not command-line options). Returns matches (path, line, text), files searched and skipped, and a truncated flag; at most 128 files and 100 matching lines; protected, binary and oversized files and symlinks are skipped. Needs `rg` on `PATH` |
-| `(index-symbols path)` | **P10.** Outline the named definitions in one Go, JavaScript or Python file with bundled Tree-sitter grammars: name, kind, line, end line (at most 100), parse errors. Syntax, not types |
 | `(shell-exec cmd args)` | run a program with an argument **list** in the repository root, scrubbed environment; irreversible; returns `(("status" . n) ("stdout" . s) ("stderr" . s))` |
 | `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))` |
 | `(policy-read name)` | User-only, hidden from the model catalog. Read configured `bindings` or repository `approvals`, returning content, revision and existence; bounded to 64 KiB and rejects recognized secrets. No arbitrary path. |
@@ -306,8 +305,8 @@ into Scheme values (ADR 3).
 ### Provenance (L2)
 
 Every value carries **provenance tags**: where it came from, not what it
-contains. A host primitive tags its result (`fs-read`, `fs-list` and the
-index primitives mint `external:file`, `shell-exec` mints `external:shell`,
+contains. A host primitive tags its result (`fs-read`, `fs-list` and
+`index-grep` mint `external:file`, `shell-exec` mints `external:shell`,
 `http-request` and the Jev primitives mint `external:http`), a credential
 handle carries `cred:<class>`, and the tags of a call's arguments flow into
 its result.

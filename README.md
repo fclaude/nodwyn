@@ -24,7 +24,6 @@ integrations and front-ends:
 | `event`, `log` | Describe front-end events; persist the history from which context and replay are derived. |
 | `keychain`, `binding` | Hold encrypted credentials and inject them; authorize their destinations, methods and positions. |
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
-| `symbols` | Derive bounded source outlines with bundled Tree-sitter grammars; no filesystem or session ownership. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible); derive their context; redact text; detect credential shapes. |
 | `frontend/run` | Chain planned turns under a finite deadline and turn count; ask for continuation without granting tool authority. |
@@ -76,9 +75,8 @@ make promote TAG=v0.N-phase   # accept + selfcheck, then ~/.local/bin/nibb-stabl
 
 Requires Go 1.27, ripgrep (`rg`, used by retrieval and its tests), and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
 
-Text search (`index-grep`) and bundled Tree-sitter outlines (`index-symbols`)
-use the shared guard and produce session-scoped results. See
-[memory and retrieval](docs/memory.md) for supported languages and limits.
+Text search (`index-grep`) uses the shared guard and produces session-scoped
+results. See [memory and retrieval](docs/memory.md) for its limits.
 
 ## Run
 

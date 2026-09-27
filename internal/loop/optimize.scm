@@ -84,7 +84,7 @@
 ;; .nibb/.
 (define (optimizer-may-call? call)
   (let ((name (assoc-ref call 'name)))
-    (cond ((member name '("fs-read" "fs-list" "index-grep" "index-symbols")) #t)
+    (cond ((member name '("fs-read" "fs-list" "index-grep")) #t)
           ((member name '("fs-write" "fs-edit"))
            (string-prefix? ".nibb/" (format "~a" (assoc-ref (json-parse (assoc-ref call 'args "{}")) "path" ""))))
           (else #f))))

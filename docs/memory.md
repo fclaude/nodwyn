@@ -107,40 +107,14 @@ complete. Cancellation stops the active child process. File edits concurrent
 with a query retain the ordinary filesystem read semantics; this is not a
 transactional repository snapshot.
 
-## Source outlines
+## Source outlines (removed)
 
-`(index-symbols "internal/window/window.go")` reads one file through `fs-read`
-and the full guard, then returns a Tree-sitter outline. Supported files are Go
-(`.go`), JavaScript (`.js`, `.mjs`, `.cjs`, `.jsx`) and Python (`.py`, `.pyi`).
-Other extensions fail explicitly and suggest `index-grep`; there is no fallback
-that guesses declarations with regular expressions.
-
-The result contains `language`, `definitions`, `parse_errors` and `truncated`.
-Each definition has a name, kind, one-based name line and ending declaration
-line. Definitions stay in source order, including nested declarations. Go
-covers functions, methods and named types; JavaScript covers named functions,
-classes and methods; Python covers functions and classes. This is a syntax
-outline, not type resolution, a call graph or a complete variable index.
-
-Incomplete code can still yield useful definitions; `parse_errors` reports that
-Tree-sitter recovered from syntax errors. At most 100 definitions and 100,000
-tree nodes are visited. Names over 512 bytes are omitted rather than fabricated
-by truncation; either limit sets `truncated`. The ordinary file/output caps
-apply, with a 1 MiB parser input ceiling and a five-second parsing deadline.
-Symlinks, protected files and non-UTF-8 content are rejected. Results retain file
-provenance and the ordinary tool-result redaction path.
-
-`internal/symbols` owns parsing only. Each call creates and closes an isolated
-WebAssembly runtime with a 128 MiB guest-memory cap and cancellation enabled.
-It receives no host filesystem, environment or network access, and stores no
-persistent index or compilation cache. Grammars are bundled and version-pinned;
-users do not need Tree-sitter, a native compiler, or runtime downloads. This
-adds two Go dependencies: the thin upstream-runtime binding and wazero, keeping
-all four existing Linux/macOS builds free of cgo. Asset provenance, update
-instructions and redistribution notices live in
-[the grammar directory](../internal/symbols/grammars/README.md). The standalone
-binary includes those notices; `nibb licenses` prints them without loading a
-session or contacting a service.
+`index-symbols`, a Tree-sitter outline of one Go, JavaScript or Python file,
+was removed on 2026-09-27. Models did not use it (no call in 85 local
+sessions, against hundreds of `fs-read` and `shell-exec` calls), and it
+carried about 1.1 MB of vendored grammar binaries plus a WebAssembly runtime:
+the binding's Go module embeds only JavaScript and JSON, so Go and Python
+could not come from it. `index-grep` and `fs-read` cover retrieval.
 
 There is no cross-session memory, semantic index or automatic summary generator.
 Those are not claims made by this P10 implementation.

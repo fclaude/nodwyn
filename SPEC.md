@@ -89,7 +89,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 - **Cache =** summaries as log entries (rebuildable, revocable, possibly stale).
 - **RAM =** token-budgeted window, surgical pull on demand.
 - **v0 scope:** no cross-session, no embeddings/prometheus-style index. (Jev 0.84)
-- Retrieval is session-scoped structural (tree-sitter/grep); semantic/embedding index deferred.
+- Retrieval is session-scoped text search (grep); structural outlines and a semantic/embedding index are deferred.
 
 ---
 
