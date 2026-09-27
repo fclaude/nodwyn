@@ -80,6 +80,22 @@ func Required(ctx context.Context, g Gate, userMsg string) Result {
 	return result
 }
 
+// EmptyDraftRetries is how many more times the planner is asked when it
+// returns no text: a model occasionally answers with thinking only, and one
+// empty sample must not cost a run that requires a plan.
+const EmptyDraftRetries = 2
+
+// ask sends one planner prompt, asking again while the answer is empty.
+func ask(ctx context.Context, g Gate, prompt string) (string, error) {
+	for attempt := 0; ; attempt++ {
+		text, err := g.Draft(ctx, prompt)
+		if err != nil || strings.TrimSpace(text) != "" || attempt == EmptyDraftRetries {
+			return text, err
+		}
+		_, _ = g.Record(log.KindNote, log.Note{Text: fmt.Sprintf("planner returned an empty plan, asking again (%d/%d)", attempt+1, EmptyDraftRetries)})
+	}
+}
+
 func run(ctx context.Context, g Gate, userMsg string, required bool) Result {
 	ps := g.PlanPrompts()
 	draft := func() (string, error) {
@@ -87,7 +103,7 @@ func run(ctx context.Context, g Gate, userMsg string, required bool) Result {
 		if err != nil {
 			return "", err
 		}
-		return g.Draft(ctx, prompt)
+		return ask(ctx, g, prompt)
 	}
 	h := g.JevHandle()
 	if h == nil {
@@ -156,9 +172,13 @@ func run(ctx context.Context, g Gate, userMsg string, required bool) Result {
 			_, _ = g.Record(log.KindNote, log.Note{Text: "plan revision failed: " + err.Error()})
 			break
 		}
-		revised, err := g.Draft(ctx, prompt)
+		revised, err := ask(ctx, g, prompt)
 		if err != nil {
 			_, _ = g.Record(log.KindNote, log.Note{Text: "plan revision failed: " + err.Error()})
+			break
+		}
+		if strings.TrimSpace(revised) == "" {
+			// Keep the best plan so far rather than replace it with nothing.
 			break
 		}
 		plan = revised

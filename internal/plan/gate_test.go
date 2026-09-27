@@ -8,6 +8,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/fclaude/nibb/internal/log"
@@ -238,9 +239,33 @@ func TestRequiredPlan(t *testing.T) {
 			}
 		})
 	}
-	f := &fakeGate{t: t, models: []string{" \n "}}
+	f := &fakeGate{t: t, models: []string{" \n ", "", "\n"}}
 	if result := Required(context.Background(), f, "work"); result.OK {
 		t.Fatal("accepted empty plan")
+	}
+}
+
+// An empty draft is asked for again: a model sometimes answers with thinking
+// only, and one empty sample must not end a run that requires a plan.
+func TestEmptyDraftIsAskedAgain(t *testing.T) {
+	f := &fakeGate{t: t, models: []string{"", "1. read\n2. fix"}}
+	result := Required(context.Background(), f, "work")
+	if !result.OK || result.Plan != "1. read\n2. fix" {
+		t.Fatalf("%+v", result)
+	}
+	notes := 0
+	for i, k := range f.logKinds {
+		if k == log.KindNote && strings.Contains(fmt.Sprint(f.logPayloads[i]), "empty plan, asking again (1/2)") {
+			notes++
+		}
+	}
+	if notes != 1 {
+		t.Fatalf("expected one retry note, got %d: %v", notes, f.logPayloads)
+	}
+	// A revision that comes back empty keeps the best plan.
+	f = &fakeGate{t: t, handle: &scheme.Handle{Class: "jev-key", ID: "x"}, models: []string{"first plan", "", "", ""}, noulOuts: []float64{0.9}, scoreOuts: []float64{0.2, 0.2}}
+	if result := Run(context.Background(), f, "work"); !result.OK || result.Plan != "first plan" {
+		t.Fatalf("empty revision replaced the plan: %+v", result)
 	}
 }
 
