@@ -7,7 +7,8 @@
 ;;   /optimize ID ID ...       the sessions named
 ;;
 ;; and any other words after it are a focus ("/optimize 5 test runs"). Its
-;; writes are limited to .nibb/, and every one prompts (a protected path).
+;; writes are limited to .nibb/, and every one prompts (a protected path), so
+;; it needs a person: an unattended run (--yolo) refuses those writes.
 ;; Once it is done the init file is reloaded; if the reload fails, the file is
 ;; restored. The model then tells the user what changed.
 

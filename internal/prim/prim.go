@@ -96,6 +96,7 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 		guard.RepoPin{Root: o.Root},
 		guard.DefaultDenylist(),
 		guard.DefaultArgvTrigger(o.Root),
+		guard.ProtectedPaths{Root: o.Root},
 		WritePreview{},
 	}
 	if allow != nil {

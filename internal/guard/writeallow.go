@@ -88,12 +88,15 @@ func (w *WriteAllow) Match(rel string) string {
 	return ""
 }
 
-// IsProtected reports whether rel is one of the always-prompt paths.
+// IsProtected reports whether rel is one of the always-prompt paths. Case
+// is ignored: on a case-insensitive file system (macOS's default) .GIT/hooks
+// is .git/hooks.
 func IsProtected(rel string) bool {
-	rel = filepath.ToSlash(filepath.Clean(rel))
+	rel = strings.ToLower(filepath.ToSlash(filepath.Clean(rel)))
 	for _, p := range Protected {
+		p = strings.ToLower(p)
 		if strings.HasSuffix(p, "/") {
-			if strings.HasPrefix(rel, p) {
+			if strings.HasPrefix(rel, p) || rel+"/" == p {
 				return true
 			}
 		} else if rel == p {
@@ -101,6 +104,39 @@ func IsProtected(rel string) bool {
 		}
 	}
 	return false
+}
+
+// ProtectedPaths makes every write to a protected path a security confirm.
+// Those files hold code that later runs with the user's authority — git
+// hooks, CI definitions, the Makefile and scripts, and .nibb/init.scm, which
+// nibb loads as the user — so each write needs a person: no standing or
+// turn approval waives it, and unattended runs (AutoAllow) refuse it.
+type ProtectedPaths struct {
+	Root string // the repository; paths are judged relative to it
+}
+
+// Name identifies the checker in the log.
+func (ProtectedPaths) Name() string { return "protected-path" }
+
+// Check judges the path as the repository pin does: absolute paths and
+// symbolic links are resolved first, so neither reaches a protected file
+// under another name.
+func (pp ProtectedPaths) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
+	raw, ok := WritePath(p, args)
+	if !ok {
+		return Decision{Verdict: Allow}
+	}
+	rel := raw
+	if abs := RepoPin(pp).Resolve(raw); abs != "" {
+		if r, err := filepath.Rel(resolveExisting(pp.Root), resolveExisting(abs)); err == nil {
+			rel = r
+		}
+	}
+	if !IsProtected(rel) {
+		return Decision{Verdict: Allow}
+	}
+	return Decision{Verdict: Confirm, Security: true,
+		Reason: "protected path " + filepath.ToSlash(rel) + ": it holds code that later runs with your authority"}
 }
 
 func (*WriteAllow) Name() string { return "write-allow" }

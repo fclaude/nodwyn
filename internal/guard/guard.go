@@ -102,8 +102,9 @@ var DenyAll = ConfirmFunc(func(context.Context, Prompt) (bool, error) { return f
 // line and tainted content heading somewhere unbound all still deny, and
 // budgets still stop a runaway turn. Security confirms — a write whose
 // content looks like a credential, a command line built out of tool
-// output — stay refused, because those are exactly the cases where a human
-// was the control.
+// output, a write to a protected path such as .nibb/ or .git/ — stay
+// refused, because those are exactly the cases where a human was the
+// control.
 var AutoAllow = ConfirmFunc(func(_ context.Context, p Prompt) (bool, error) {
 	return !p.Security, nil
 })
@@ -331,6 +332,11 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 	rec.Answer = "no"
 	if recordErr := g.record(rec); recordErr != nil {
 		return recordErr
+	}
+	if result.security {
+		// Say why: under an unattended run nobody declined, the harness did.
+		return &scheme.Denied{Prim: p.Name, Reason: "not confirmed: " + strings.Join(result.reasons, "; ") +
+			". This needs a person to approve; unattended runs (--yolo) never approve it"}
 	}
 	return &scheme.Denied{Prim: p.Name, Reason: "not confirmed by the user"}
 }

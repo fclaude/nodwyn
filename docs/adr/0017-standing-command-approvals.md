@@ -34,6 +34,13 @@ dimmed. Paths that change policy or run in CI — `.nibb/`, `.github/`,
 `.gitea/`, `scripts/`, `Makefile` — can never be standing-approved and
 always prompt. git remains the undo: review `git diff` before committing.
 
+*Amended 2026-09-27:* `.git/` is on that list too (hooks run at your next
+commit), and a write to any of these paths is a security confirm
+(`guard.ProtectedPaths`), judged after resolving absolute paths, `..`, case
+and symbolic links like the repository pin. An unattended run (`--yolo`)
+answers ordinary confirms but never security ones, so it cannot write them;
+before this, it could.
+
 ## Consequences
 - This is the command-line analogue of the binding table (SPEC): the user
   authorizes ahead of time, the harness applies silently and logs.

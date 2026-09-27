@@ -210,8 +210,11 @@ overrule its refusals. Still denied, exactly as with a human at the prompt:
 - content that came from a file or a command heading somewhere no binding
   names;
 - **security confirms** — a write whose content looks like a credential, a
-  command line built out of tool output. Those exist for the case where a
-  human was the control, so yolo refuses them rather than pretending.
+  command line built out of tool output, a write to a protected path
+  (`.nibb/`, `.git/`, `.github/`, `.gitea/`, `scripts/`, `Makefile`). Those
+  exist for the case where a human was the control, so yolo refuses them
+  rather than pretending, and so `/optimize`, which edits `.nibb/`, needs a
+  person at the prompt.
 
 Budgets are what stop a runaway turn when nobody is watching, so set
 `--max-tool-calls`, `--budget-wall` and `--budget-actions` for the job.
@@ -255,10 +258,12 @@ commands = ["make lint", "make test"]
 writes   = ["internal/", "docs/"]     # write prefixes that never prompt
 ```
 
-`.nibb/`, `.github/`, `.gitea/`, `scripts/` and `Makefile` always prompt,
-whatever the list says — they change policy or run in CI. So does a write
-whose content looks like a credential (L1): that confirm names the class
-and no standing approval waives it.
+`.nibb/`, `.git/`, `.github/`, `.gitea/`, `scripts/` and `Makefile` always
+prompt, whatever the list says: they hold code that later runs with your
+authority (`init.scm`, git hooks, CI, build scripts). Each write there is a
+security confirm, so no standing or turn approval waives it and an
+unattended run refuses it. So does a write whose content looks like a
+credential (L1): that confirm names the class.
 
 Prefixes match argv tokens: `"go test"` matches `go test ./...` and
 `/usr/local/go/bin/go test`, not `go build`. Denies still apply (the repo

@@ -627,7 +627,8 @@ refusals, judges' verdicts, sub-agents, notes) within
 `optimize-session-chars` per session and `optimize-total-chars` in all, and
 hands them to a sub-agent labelled `optimizer`. That agent may read the
 repository and write only under `.nibb/`, a protected path, so every write
-asks the user and shows the diff. When it is done `init.scm` is reloaded (and
+asks the user and shows the diff; an unattended run (`--yolo`) refuses those
+writes, so `/optimize` needs a person at the prompt. When it is done `init.scm` is reloaded (and
 restored if the reload fails), and the model tells the user what changed.
 Its prompts are `optimizer-system-prompt` and `(optimizer-task history
 focus)` (§9.1). A strategy that redefines `agent-turn` keeps `/optimize` by

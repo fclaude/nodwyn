@@ -165,7 +165,9 @@ func TestSecurityAndProtectedPromptsCannotCreateStandingApproval(t *testing.T) {
 		name, source string
 		security     bool
 	}{
-		{"protected", `(fs-write ".nibb/allow.toml" "test")`, false},
+		// Protected paths hold code that later runs as the user, so their
+		// writes are security prompts too (guard.ProtectedPaths).
+		{"protected", `(fs-write ".nibb/allow.toml" "test")`, true},
 		{"security", `(fs-write "secret.txt" "sk-ant-abcdefgh1234")`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
