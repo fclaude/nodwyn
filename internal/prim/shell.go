@@ -3,10 +3,12 @@ package prim
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,7 +21,7 @@ func shellExec(o Options) *scheme.Prim {
 		Meta: scheme.Meta{
 			Doc: "Run a program with arguments in the repository root (no shell: pass arguments as a list). Returns an alist with status, stdout and stderr.",
 			Params: []scheme.Param{
-				{Name: "cmd", Type: "string", Doc: "program name or path", Role: "argv"},
+				{Name: "cmd", Type: "string", Doc: "one program name or path, without its arguments", Role: "argv"},
 				{Name: "args", Type: "list", Doc: "list of argument strings", Role: "argv"},
 			},
 			Host:         true,
@@ -72,6 +74,12 @@ func shellExec(o Options) *scheme.Prim {
 				if status < 0 {
 					status = 128 // killed by signal
 				}
+			case errors.Is(runErr, exec.ErrNotFound) && strings.ContainsAny(cmdName, " \t"):
+				// Models used to a shell often send a whole command line as
+				// cmd; say how to split it instead of only "not found".
+				fields := strings.Fields(cmdName)
+				suggested, _ := json.Marshal(append(fields[1:], args...))
+				return scheme.Value{}, fmt.Errorf("%q is a command line, not a program: cmd names one program and args holds its arguments, e.g. cmd %q args %s (there is no shell; use cmd \"sh\" args [\"-c\", ...] for pipes)", cmdName, fields[0], suggested)
 			default:
 				return scheme.Value{}, runErr
 			}

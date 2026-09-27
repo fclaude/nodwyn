@@ -203,8 +203,13 @@ func TestShellExec(t *testing.T) {
 	if _, err := h.eval(t, `(shell-exec "definitely-not-a-program-xyz" '())`); err == nil {
 		t.Fatal("missing program")
 	}
+	// a whole command line as cmd gets told how to split it
+	_, err := h.eval(t, `(shell-exec "python3 -m pip" '("--version"))`)
+	if err == nil || !strings.Contains(err.Error(), `cmd "python3" args ["-m","pip","--version"]`) {
+		t.Fatalf("command line as cmd: %v", err)
+	}
 	// shell-exec is irreversible: every call was confirmed
-	if len(h.prompts) != 5 {
+	if len(h.prompts) != 6 {
 		t.Fatalf("prompts: %d", len(h.prompts))
 	}
 }
