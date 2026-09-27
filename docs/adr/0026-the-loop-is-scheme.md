@@ -46,7 +46,9 @@ user.
 - A strategy chooses which calls run and when to ask again, but cannot yet
   add text to the conversation. The plan gate and the system prompt are still
   Go; moving them into Scheme is the next step, keeping the system prompt
-  fixed for a session (ADR 9).
+  fixed for a session (ADR 9). *Update:* every prompt, the system
+  prompt included, is now Scheme (internal/loop/prompts.scm, read once and
+  fixed by Freeze); the plan gate's control flow is the part still in Go.
 - Go is left with I/O and invariants. New turn behaviour should be a
   strategy first and a primitive only when it needs an invariant.
 

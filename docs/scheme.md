@@ -506,6 +506,7 @@ strings (§1.1):
 | | |
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt |
+| `(plan-system-prompt repo)` | the planner's system prompt |
 | `(plan-draft-prompt request)` | the planner's request for a plan |
 | `(plan-revise-prompt request plan score)` | the request for a better plan after the judge scored it `score` (0..1) |
 | `plan-needed-question` | the judge's yes/no question: does this request need a plan? |

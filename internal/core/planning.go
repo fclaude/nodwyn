@@ -57,7 +57,7 @@ func (s *Session) Draft(ctx context.Context, prompt string) (string, error) {
 		Model:  s.opts.Config.Control.Model,
 		NumCtx: s.opts.Config.Control.NumCtx,
 		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: redact.Redact("You are nibb's planner for the repository at "+s.opts.Repo+". Return only the plan text.", nil).Text},
+			{Role: llm.RoleSystem, Content: redact.Redact(s.planPrompts.System, nil).Text},
 			{Role: llm.RoleUser, Content: redact.Redact(prompt, nil).Text},
 		},
 	}, attempt, func(n int, err error) {

@@ -98,47 +98,47 @@ func (s *Session) Record(kind log.Kind, payload any) (log.Event, error) {
 
 \section{The loop asks the model}
 
-\file{internal/loop/loop.go}. Every request rebuilds the window from the
-events so far (there is no ``messages'' field kept between requests),
-records an \code{llm.req} describing the window, streams the response, and
-records the full \code{llm.resp}. If the response has no tool calls the turn
-is over.
+\file{internal/loop/loop.go}. The loop itself is Scheme: \code{Turn} applies
+\code{agent-turn}, the default from \file{internal/loop/strategy.scm} or a
+project's redefinition, with harness origin, then answers any call the
+strategy left unanswered and closes the turn's budget.
 
 \begin{go}
-func (l *Loop) Turn(ctx context.Context, text string) error {
-    if _, err := l.host.Record(log.KindUserMsg, log.UserMsg{Text: text}); err != nil {
-        return err
+func (l *Loop) Turn(ctx context.Context, request string) error {
+    strategy, _ := l.interp.Global().Lookup("agent-turn")
+    l.turn = &turnState{budget: budget.From(ctx)}
+    defer func() { l.turn = nil }()
+    _, err := l.interp.Apply(scheme.WithOrigin(ctx, scheme.OriginHarness),
+        strategy, []scheme.Value{scheme.Str(request)})
+    if skipErr := l.skipPending("the turn ended before this call ran"); skipErr != nil && err == nil {
+        err = skipErr
     }
-    calls := 0
-    for {
-        w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
-        l.host.Record(log.KindLLMReq, log.LLMReq{Model: l.cfg.Model,
-            Messages: len(w.Messages), Tools: len(l.tools),
-            EstTokens: w.EstTokens, Elided: w.Elided})
-
-        reqCtx, cancel := context.WithTimeout(ctx, l.cfg.RequestTimeout)
-        resp, err := l.provider.Chat(reqCtx, llm.Request{Model: l.cfg.Model,
-            Messages: w.Messages, Tools: l.tools, NumCtx: l.cfg.NumCtx,
-            KeepAlive: l.cfg.KeepAlive}, l.onDelta)
-        cancel()
-        if err != nil {
-            return err
-        }
-        l.host.Record(log.KindLLMResp, toRecord(resp))
-        if len(resp.Message.ToolCalls) == 0 {
-            return nil
-        }
-        for _, tc := range resp.Message.ToolCalls {
-            if calls++; calls > l.cfg.MaxToolCalls {
-                return ErrHardStop
-            }
-            if err := l.runTool(ctx, tc); err != nil {
-                return err
-            }
-        }
+    if err != nil {
+        return surfaced(ctx, err)
     }
+    return l.turn.budget.Finish(ctx)
 }
 \end{go}
+
+The default strategy asks, runs what the model asked for, and asks again
+until a reply has no tool calls:
+
+\begin{scm}
+(define (agent-turn request)
+  (let loop ((reply (model-turn)))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls)
+        (run-tools calls)
+        (maybe-compact request reply)
+        (loop (model-turn))))))
+\end{scm}
+
+\code{model-turn} (\file{internal/loop/model.go}) is where the model is
+asked. Every request rebuilds the window from the events so far (there is no
+``messages'' field kept between requests), records an \code{llm.req}
+describing the window, streams the response, and records the full
+\code{llm.resp}. The budget, the tool-call limit and the progress guard sit
+in the primitives, where no strategy can skip them.
 
 \section{The window is a fold over the log}
 

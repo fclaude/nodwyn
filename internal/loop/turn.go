@@ -7,14 +7,12 @@ import (
 
 	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
 // turnState is what the primitives share during one turn.
 type turnState struct {
 	budget   *budget.Turn // nil when the session started no budget
-	calls    int          // tool calls so far, for Config.MaxToolCalls
 	progress turnProgress
 	// pending holds the calls from the latest model response. Only an
 	// unanswered one can be run or skipped, and answering it is final.
@@ -96,19 +94,13 @@ func (l *Loop) skipPending(reason string) error {
 	return l.skipTools(calls, reason)
 }
 
-// reserveCall counts the next tool call against the turn's limits and
-// returns the stop if it would exceed them. A budget records its own stop;
-// the plain MaxToolCalls limit is recorded here, as a note.
+// reserveCall counts the next tool call against the turn's budget and
+// returns the stop if it would exceed it; the budget records its own stop.
+// Every session turn has a budget, whose hard limit also carries the legacy
+// loop.max_tool_calls.
 func (l *Loop) reserveCall(ctx context.Context, t *turnState) error {
-	if t.budget != nil {
-		return t.budget.ToolCall(ctx)
-	}
-	t.calls++
-	if t.calls <= l.cfg.MaxToolCalls {
+	if t.budget == nil {
 		return nil
 	}
-	if err := l.record(log.KindNote, log.Note{Text: ErrHardStop.Error()}); err != nil {
-		return err
-	}
-	return ErrHardStop
+	return t.budget.ToolCall(ctx)
 }

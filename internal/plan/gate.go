@@ -47,6 +47,7 @@ type Gate interface {
 // are Scheme (internal/loop/prompts.scm) and a project may redefine them in
 // .nibb/init.scm.
 type Prompts struct {
+	System      string // the planner's system prompt
 	Draft       func(request string) (string, error)
 	Revise      func(request, plan string, score float64) (string, error)
 	Needed      string   // the judge's yes/no question: does the request need a plan?

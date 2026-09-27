@@ -24,7 +24,7 @@ func (l *Loop) ask(ctx context.Context, name string) (*llm.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := window.Build(l.host.EventsSoFar(), l.cfg.System, l.toolsLen, l.cfg.Window)
+	w := window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, l.cfg.Window)
 	if !hasUserMessage(w.Messages) {
 		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
 	}

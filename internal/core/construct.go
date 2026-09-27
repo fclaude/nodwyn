@@ -245,7 +245,6 @@ func (s *Session) initialize() error {
 		KeepAlive:      o.Config.Control.KeepAlive,
 		Window:         window.Policy{HighWater: o.Config.Window.HighWater, LowWater: o.Config.Window.LowWater, MaxResultTokens: o.Config.Window.MaxResultTokens},
 		Models:         s.models(),
-		MaxToolCalls:   o.Config.Loop.MaxToolCalls,
 		RequestTimeout: requestTimeout,
 	})
 	if err != nil {
@@ -256,12 +255,9 @@ func (s *Session) initialize() error {
 	}
 	// Prompts are Scheme (internal/loop/prompts.scm, or the project's
 	// redefinitions); read them once, now that init.scm has run.
-	system, planPrompts, err := s.loop.ReadPrompts(o.Repo)
+	planPrompts, err := s.loop.ReadPrompts(o.Repo)
 	if err != nil {
 		return fmt.Errorf("core: %w", err)
-	}
-	if err := s.loop.SetSystem(system); err != nil {
-		return err
 	}
 	s.planPrompts = planPrompts
 	if err := s.loop.Freeze(); err != nil {

@@ -115,22 +115,6 @@ func (j Jev) Enabled() bool {
 	return j.URL != "" && j.Content != JevContentNone
 }
 
-// JevContentRank orders levels so "cap" comparisons are well-defined.
-func JevContentRank(level string) int {
-	switch level {
-	case JevContentNone:
-		return 0
-	case JevContentPlan:
-		return 1
-	case JevContentPlanSum:
-		return 2
-	case JevContentFull:
-		return 3
-	default:
-		return 3
-	}
-}
-
 // Loop bounds one turn of the agent loop.
 type Loop struct {
 	MaxToolCalls   int    `toml:"max_tool_calls"`  // legacy hard override; zero when absent, --max-tool-calls overrides

@@ -17,6 +17,10 @@
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """))
 
+;; The planner's system prompt.
+(define (plan-system-prompt repo)
+  (string-append "You are nibb's planner for the repository at " repo ". Return only the plan text."))
+
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)
   (string-append

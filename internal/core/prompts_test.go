@@ -32,6 +32,9 @@ func TestDefaultPromptsAreUnchanged(t *testing.T) {
 		t.Fatalf("system prompt changed:\n%s", system)
 	}
 	ps := r.s.PlanPrompts()
+	if want := "You are nibb's planner for the repository at " + r.repo + ". Return only the plan text."; ps.System != want {
+		t.Fatalf("plan-system-prompt: %q", ps.System)
+	}
 	draft, err := ps.Draft("fix it")
 	if err != nil || draft != "Write a short, concrete plan for the following request: numbered steps, each naming the file or command involved, nothing else.\n\nRequest:\nfix it" {
 		t.Fatalf("plan-draft: %q %v", draft, err)
@@ -67,6 +70,7 @@ func TestInitRedefinesPromptsWithRawStrings(t *testing.T) {
     Request:
     """ "\n" request))
 (define plan-score-levels '("wrong" "right"))
+(define (plan-system-prompt repo) "Plan tersely.")
 `, 0, fake.Turn{Content: "done"})
 	system := r.s.loop.WindowContext().System
 	if !strings.HasPrefix(system, "You are nibb") || !strings.HasSuffix(system, "\nWork unattended:\n- run the tests you touch.") {
@@ -82,6 +86,9 @@ func TestInitRedefinesPromptsWithRawStrings(t *testing.T) {
 	if draft, _ := ps.Draft("add a flag"); draft != "List every behaviour the request requires, then the steps.\nRequest:\nadd a flag" {
 		t.Fatalf("plan-draft: %q", draft)
 	}
+	if ps.System != "Plan tersely." {
+		t.Fatalf("plan-system-prompt: %q", ps.System)
+	}
 	if len(ps.ScoreLevels) != 2 || ps.ScoreLevels[1] != "right" {
 		t.Fatalf("levels: %v", ps.ScoreLevels)
 	}
@@ -94,8 +101,8 @@ func TestPromptsAreFixedOnceTheSessionStarts(t *testing.T) {
 	if r.s.loop.WindowContext().System != before {
 		t.Fatal("redefining system-prompt after start changed the session")
 	}
-	if err := r.s.loop.SetSystem("x"); err == nil {
-		t.Fatal("SetSystem after Freeze was accepted")
+	if _, err := r.s.loop.ReadPrompts(r.repo); err == nil {
+		t.Fatal("reading the prompts again after the session started was accepted")
 	}
 }
 

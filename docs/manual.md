@@ -347,8 +347,8 @@ that don't, when to ask the model again, and — with `add-message` — what to
 say when the model stops with work left. It can reach a keyed judge or model
 API with `(credential class)` and `http-request`. It cannot run a call the
 model did not make, loosen the guard, or keep a turn going past a budget or a
-progress stop ([docs/scheme.md](scheme.md) §9). The system prompt and the
-built-in plan gate are still set in Go.
+progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
+(§9.1); the built-in plan gate's control flow and thresholds are still Go.
 
 [internal/core/userland_test.go](../internal/core/userland_test.go) holds
 larger examples, each a behaviour written as a user would write it:

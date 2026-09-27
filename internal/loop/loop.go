@@ -57,11 +57,8 @@ type Config struct {
 	Window    window.Policy // when and how older context is elided
 	// Models are the other models a strategy may ask by name, with
 	// (model-turn "NAME"): the configured model registry.
-	Models map[string]Endpoint
-	// MaxToolCalls stops a turn that started no budget (budget.From is nil).
-	MaxToolCalls   int
+	Models         map[string]Endpoint
 	RequestTimeout time.Duration // per model request
-	System         string        // the system prompt, fixed for the session (ADR 9)
 }
 
 // Loop runs a session's turns. Build it with New before .nibb/init.scm
@@ -74,6 +71,7 @@ type Loop struct {
 
 	tools    []llm.Tool // offered to the model; fixed by Freeze
 	toolsLen int        // estimated tokens of tools, for the window
+	system   string     // from ReadPrompts; fixed by Freeze (ADR 9)
 	frozen   bool
 
 	// turn is the turn in progress, nil between turns. The session runs one
@@ -121,10 +119,13 @@ func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) (*
 
 // ReadPrompts evaluates the prompts as defined when it is called: the
 // defaults in prompts.scm, or a project's redefinitions from .nibb/init.scm.
-// It returns the system prompt for repo and the planner's prompts. The
-// planner's procedures are the ones bound now, so a later redefinition does
-// not change a running session.
-func (l *Loop) ReadPrompts(repo string) (string, plan.Prompts, error) {
+// It takes the system prompt for repo, which Freeze then fixes, and returns
+// the planner's prompts. The planner's procedures are the ones bound now, so
+// a later redefinition does not change a running session.
+func (l *Loop) ReadPrompts(repo string) (plan.Prompts, error) {
+	if l.frozen {
+		return plan.Prompts{}, errors.New("loop: the system prompt is fixed once the session has started")
+	}
 	ctx := scheme.WithOrigin(context.Background(), scheme.OriginHarness)
 	lookup := func(name string) (scheme.Value, error) {
 		v, err := l.interp.EvalString(ctx, name)
@@ -147,42 +148,45 @@ func (l *Loop) ReadPrompts(repo string) (string, plan.Prompts, error) {
 		return text(name, v)
 	}
 	procs := map[string]scheme.Value{}
-	for _, name := range []string{"system-prompt", "plan-draft-prompt", "plan-revise-prompt"} {
+	for _, name := range []string{"system-prompt", "plan-system-prompt", "plan-draft-prompt", "plan-revise-prompt"} {
 		v, err := lookup(name)
 		if err != nil {
-			return "", plan.Prompts{}, err
+			return plan.Prompts{}, err
 		}
 		if !v.IsProcedure() {
-			return "", plan.Prompts{}, fmt.Errorf("loop: prompt %s must be a procedure", name)
+			return plan.Prompts{}, fmt.Errorf("loop: prompt %s must be a procedure", name)
 		}
 		procs[name] = v
 	}
 	system, err := call("system-prompt", procs["system-prompt"], scheme.Str(repo))
 	if err != nil {
-		return "", plan.Prompts{}, err
+		return plan.Prompts{}, err
 	}
 	var ps plan.Prompts
+	if ps.System, err = call("plan-system-prompt", procs["plan-system-prompt"], scheme.Str(repo)); err != nil {
+		return plan.Prompts{}, err
+	}
 	for name, dst := range map[string]*string{"plan-needed-question": &ps.Needed, "plan-score-rubric": &ps.ScoreRubric} {
 		v, err := lookup(name)
 		if err != nil {
-			return "", plan.Prompts{}, err
+			return plan.Prompts{}, err
 		}
 		if *dst, err = text(name, v); err != nil {
-			return "", plan.Prompts{}, err
+			return plan.Prompts{}, err
 		}
 	}
 	levels, err := lookup("plan-score-levels")
 	if err != nil {
-		return "", plan.Prompts{}, err
+		return plan.Prompts{}, err
 	}
 	items, ok := levels.Slice()
 	if !ok || len(items) < 2 || len(items) > 10 {
-		return "", plan.Prompts{}, fmt.Errorf("loop: prompt plan-score-levels must be a list of 2 to 10 strings")
+		return plan.Prompts{}, fmt.Errorf("loop: prompt plan-score-levels must be a list of 2 to 10 strings")
 	}
 	for _, item := range items {
 		level, err := text("plan-score-levels", item)
 		if err != nil {
-			return "", plan.Prompts{}, err
+			return plan.Prompts{}, err
 		}
 		ps.ScoreLevels = append(ps.ScoreLevels, level)
 	}
@@ -192,7 +196,8 @@ func (l *Loop) ReadPrompts(repo string) (string, plan.Prompts, error) {
 	ps.Revise = func(request, plan string, score float64) (string, error) {
 		return call("plan-revise-prompt", procs["plan-revise-prompt"], scheme.Str(request), scheme.Str(plan), scheme.Float(score))
 	}
-	return system, ps, nil
+	l.system = system
+	return ps, nil
 }
 
 // Freeze fixes the tool list offered to the model. It runs once, after
@@ -208,32 +213,15 @@ func (l *Loop) Freeze() error {
 		return fmt.Errorf("loop: redact tool schemas: %w", err)
 	}
 	l.tools = clean.([]llm.Tool)
-	l.cfg.System = redact.Redact(l.cfg.System, nil).Text
+	l.system = redact.Redact(l.system, nil).Text
 	b, _ := json.Marshal(l.tools)
 	l.toolsLen = window.Estimate(string(b))
 	l.frozen = true
 	return nil
 }
 
-// SetSystem replaces the system prompt. It is refused once the loop is
-// frozen: the system prompt is fixed for the session (ADR 9).
-func (l *Loop) SetSystem(text string) error {
-	if l.frozen {
-		return errors.New("loop: the system prompt is fixed once the session has started")
-	}
-	l.cfg.System = text
-	return nil
-}
-
-// Frozen reports whether the tool list and system prompt are fixed.
-func (l *Loop) Frozen() bool { return l.frozen }
-
 // Tools returns the tool list offered to the model.
 func (l *Loop) Tools() []llm.Tool { return l.tools }
-
-// ErrHardStop is returned when a turn exceeds MaxToolCalls. The turn's work
-// is in the log; a "continue" message starts a fresh budget.
-var ErrHardStop = errors.New("hard stop: tool-call limit for this turn reached (loop.max_tool_calls / --max-tool-calls); say \"continue\" to go on")
 
 // Turn runs one turn: agent-turn applied to request, the user message the
 // session has already recorded. The strategy runs with harness origin; the
@@ -300,5 +288,5 @@ func (l *Loop) record(kind log.Kind, payload any) error {
 // Tool schema marshaling already succeeded in Freeze.
 func (l *Loop) WindowContext() *log.WindowContext {
 	tools, _ := json.Marshal(l.tools)
-	return &log.WindowContext{Version: window.RecipeVersion, System: l.cfg.System, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}
+	return &log.WindowContext{Version: window.RecipeVersion, System: l.system, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}
 }

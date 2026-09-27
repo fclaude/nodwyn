@@ -258,7 +258,7 @@ func (l *Loop) sessionSystemPrompt(c *scheme.Call) (scheme.Value, error) {
 	if !l.frozen {
 		return scheme.Void, errors.New("the system prompt is not fixed until the session has started")
 	}
-	return scheme.Str(l.cfg.System), nil
+	return scheme.Str(l.system), nil
 }
 
 // widen is (widen).
