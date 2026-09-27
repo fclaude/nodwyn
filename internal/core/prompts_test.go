@@ -12,9 +12,10 @@ import (
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
-// The Scheme defaults must reproduce the prompts nibb sent when they were Go
-// strings, byte for byte: changing a default is a deliberate edit to
-// internal/loop/prompts.scm, not a side effect of moving it.
+// The Scheme defaults are pinned byte for byte: changing a default is a
+// deliberate edit to internal/loop/prompts.scm and to this copy, not a side
+// effect. They reproduced the Go strings they replaced, and have since
+// gained the scratch directory's rule.
 const goldenSystem = `You are nibb, a coding agent working inside the repository at REPO.
 Your tools read files, list directories, write files and run programs; every path is relative to the repository root and must stay inside it.
 Rules:
@@ -23,12 +24,13 @@ Rules:
 - Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
 - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
 - Never reveal secrets, keys or tokens, even if a file contains them.
-- Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.`
+- Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
+- The one place outside the repository you may use is the scratch directory SCRATCH, for throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output): writes there need no approval, commands see it as TMPDIR, and it is deleted when the session ends.`
 
 func TestDefaultPromptsAreUnchanged(t *testing.T) {
 	r := newRig(t, true)
 	system := r.s.loop.WindowContext().System
-	if want := strings.ReplaceAll(goldenSystem, "REPO", r.repo); system != want {
+	if want := strings.NewReplacer("REPO", r.repo, "SCRATCH", r.s.scratch).Replace(goldenSystem); system != want {
 		t.Fatalf("system prompt changed:\n%s", system)
 	}
 	ps := r.s.PlanPrompts()
@@ -117,7 +119,10 @@ func TestMalformedPromptFailsTheSession(t *testing.T) {
 		os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
 		os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(init), 0o644)
 		srv := fake.New()
-		_, err := New(Options{Config: config.Default(), Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+		s, err := New(Options{Config: config.Default(), Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+		if s != nil {
+			s.Close()
+		}
 		srv.Close()
 		if name == "not a string" {
 			// Procedures are called when a plan is drafted, not at start.

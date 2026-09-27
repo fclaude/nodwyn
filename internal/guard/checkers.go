@@ -58,10 +58,12 @@ func (MetaPolicy) Check(_ context.Context, p *scheme.Prim, _ []scheme.Value) Dec
 }
 
 // RepoPin denies path arguments that resolve outside the repository root
-// (plan §3.3). Symlinks are resolved so a link out of the repo does not
-// escape the pin.
+// (plan §3.3), or outside the session's scratch directory when there is
+// one. Symlinks are resolved so a link out of either does not escape the
+// pin. Relative paths are always relative to the repository.
 type RepoPin struct {
-	Root string // absolute, cleaned
+	Root    string // absolute, cleaned
+	Scratch string // the session's scratch directory; "" for none
 }
 
 func (RepoPin) Name() string { return "repo-pin" }
@@ -69,7 +71,11 @@ func (RepoPin) Name() string { return "repo-pin" }
 func (r RepoPin) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
 	for _, raw := range pathArgs(p, args) {
 		if !r.inside(raw) {
-			return Decision{Verdict: Deny, Reason: "path " + raw + " is outside the repository " + r.Root}
+			where := "the repository " + r.Root
+			if r.Scratch != "" {
+				where += " and the scratch directory " + r.Scratch
+			}
+			return Decision{Verdict: Deny, Reason: "path " + raw + " is outside " + where}
 		}
 	}
 	return Decision{Verdict: Allow}
@@ -86,11 +92,18 @@ func (r RepoPin) Resolve(raw string) string {
 	// Resolve symlinks on the longest existing prefix so a new file under a
 	// linked directory is judged by where the link points.
 	resolved := resolveExisting(abs)
-	root := resolveExisting(r.Root)
-	if resolved == root || strings.HasPrefix(resolved, root+string(filepath.Separator)) {
+	if within(resolved, resolveExisting(r.Root)) {
+		return abs
+	}
+	if r.Scratch != "" && filepath.IsAbs(raw) && within(resolved, resolveExisting(r.Scratch)) {
 		return abs
 	}
 	return ""
+}
+
+// within reports whether path is dir or below it.
+func within(path, dir string) bool {
+	return path == dir || strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
 func (r RepoPin) inside(raw string) bool { return r.Resolve(raw) != "" }
@@ -160,6 +173,7 @@ func (d PathDenylist) Check(_ context.Context, p *scheme.Prim, args []scheme.Val
 // trigger list (plan §3.3).
 type ArgvTrigger struct {
 	Root     string
+	Scratch  string   // the session's scratch directory, which is not "outside"
 	Network  []string // program names
 	Patterns []string // substrings of the joined command line
 }
@@ -189,7 +203,7 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			}
 		}
 		if filepath.IsAbs(tok) {
-			if pin := (RepoPin{Root: a.Root}); !pin.inside(tok) && !isSystemBinary(tok) {
+			if pin := (RepoPin{Root: a.Root, Scratch: a.Scratch}); !pin.inside(tok) && !isSystemBinary(tok) {
 				return Decision{Verdict: Confirm, Reason: "command line names a path outside the repository: " + tok, Detail: line}
 			}
 		}

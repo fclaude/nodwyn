@@ -15,7 +15,18 @@
    - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
    - Never reveal secrets, keys or tokens, even if a file contains them.
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
-   """))
+   """
+   (scratch-rule (scratch-dir))))
+
+;; The system prompt's rule for the session's scratch directory, or "" when
+;; there is none (nibb repl).
+(define (scratch-rule dir)
+  (if dir
+      (string-append
+       "\n- The one place outside the repository you may use is the scratch directory "
+       dir
+       ", for throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output): writes there need no approval, commands see it as TMPDIR, and it is deleted when the session ends.")
+      ""))
 
 ;; The planner's system prompt.
 (define (plan-system-prompt repo)

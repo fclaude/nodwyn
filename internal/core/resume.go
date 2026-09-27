@@ -27,9 +27,13 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if err != nil && !truncated {
 		return nil, err
 	}
+	var s *Session
 	defer func() {
 		if err != nil {
 			writer.Close()
+			if s != nil {
+				removeScratch(s.scratch)
+			}
 		}
 	}()
 	info, history, err := store.read(id)
@@ -61,7 +65,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+4), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}}
+	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+4), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}}
 	if err = s.restoreHistory(history); err != nil {
 		return nil, err
 	}

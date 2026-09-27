@@ -49,6 +49,10 @@ func shellExec(o Options) *scheme.Prim {
 			cmd := exec.CommandContext(ctx, cmdName, args...)
 			cmd.Dir = o.Root
 			cmd.Env = scrubEnv(o.EnvAllow)
+			if o.Scratch != "" {
+				// Temporary files go to the session's scratch directory.
+				cmd.Env = append(cmd.Env, "TMPDIR="+o.Scratch)
+			}
 			cmd.Stdin = nil
 			// Children get their own process group so cancellation kills the
 			// whole tree, not just the parent.

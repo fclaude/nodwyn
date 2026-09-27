@@ -60,6 +60,7 @@ type Session struct {
 	// P3 egress.
 	keychain *keychain.Store
 	bindings *binding.Live
+	scratch  string // the session's scratch directory (scratch.go)
 
 	// P3 credential prompts: pending masked-secret prompts.
 	secrets   map[string]pendingSecret
@@ -211,6 +212,7 @@ func (s *Session) Close() error {
 		s.mu.Unlock()
 		_, _ = s.logw.Append(log.KindSessionEnd, log.SessionEnd{Reason: "closed"})
 		s.closeErr = s.logw.Close()
+		removeScratch(s.scratch)
 		close(s.out)
 	})
 	return s.closeErr

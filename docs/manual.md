@@ -170,6 +170,18 @@ attempts (soft/hard). Legacy `loop.max_tool_calls` remains an explicit override.
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
+### The scratch directory
+
+Each session gets a scratch directory outside the repository,
+`$TMPDIR/nibb-scratch/<session-id>`, for throwaway files: a script that
+reproduces a bug, notes, temporary output. The default system prompt names
+it. The file primitives take absolute paths inside it, and writes there need
+no approval; commands run with `TMPDIR` set to it. Nothing in it reaches the
+repository or its diff, and a clean close removes it; a resumed session gets
+the same directory back. Everything else outside the repository stays
+refused, and a symbolic link out of the scratch directory does not escape it
+(ADR 28).
+
 ### Confirms
 
 Every write and every command stops for you:

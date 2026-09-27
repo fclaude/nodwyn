@@ -16,6 +16,7 @@ import (
 // Options configure the host primitives.
 type Options struct {
 	Root         string        // repository root; every path is pinned under it
+	Scratch      string        // the session's scratch directory, outside Root; "" for none
 	MaxReadBytes int64         // fs-read refuses larger files
 	MaxOutput    int           // shell-exec truncates stdout/stderr beyond this
 	ShellTimeout time.Duration // per shell-exec cap
@@ -57,13 +58,13 @@ func Register(in *scheme.Interp, o Options) error {
 	if o.Root == "" {
 		return os.ErrInvalid
 	}
-	pin := guard.RepoPin{Root: o.Root}
+	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch}
 	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), shellExec(o), indexGrep(o, pin)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -91,12 +92,15 @@ func Register(in *scheme.Interp, o Options) error {
 // the phase-specific checkers — the E3 egress checker from P3 — appended
 // after the core ones.
 func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, extra ...guard.Checker) []guard.Checker {
+	argv := guard.DefaultArgvTrigger(o.Root)
+	argv.Scratch = o.Scratch
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
-		guard.RepoPin{Root: o.Root},
+		guard.RepoPin{Root: o.Root, Scratch: o.Scratch},
 		guard.DefaultDenylist(),
-		guard.DefaultArgvTrigger(o.Root),
+		argv,
 		guard.ProtectedPaths{Root: o.Root},
+		guard.ScratchWrites{Dir: o.Scratch},
 		WritePreview{},
 	}
 	if allow != nil {
@@ -107,4 +111,24 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 	}
 	cs = append(cs, extra...)
 	return cs
+}
+
+// scratchDir builds (scratch-dir): the session's scratch directory, for a
+// prompt or a strategy to name. Files there are outside the repository, so
+// they never reach its diff, and the directory is removed when the session
+// closes.
+func scratchDir(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "scratch-dir",
+		Meta: scheme.Meta{
+			Doc:    "The session's scratch directory: outside the repository, writable without prompts, removed when the session closes; #f when there is none.",
+			Hidden: true,
+		},
+		Handler: func(*scheme.Call) (scheme.Value, error) {
+			if o.Scratch == "" {
+				return scheme.False, nil
+			}
+			return scheme.Str(o.Scratch), nil
+		},
+	}
 }

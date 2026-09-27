@@ -127,7 +127,7 @@ func (pp ProtectedPaths) Check(_ context.Context, p *scheme.Prim, args []scheme.
 		return Decision{Verdict: Allow}
 	}
 	rel := raw
-	if abs := RepoPin(pp).Resolve(raw); abs != "" {
+	if abs := (RepoPin{Root: pp.Root}).Resolve(raw); abs != "" {
 		if r, err := filepath.Rel(resolveExisting(pp.Root), resolveExisting(abs)); err == nil {
 			rel = r
 		}
@@ -184,4 +184,25 @@ func DirPrefix(rel string) string {
 		return rel
 	}
 	return dir + "/"
+}
+
+// ScratchWrites approves, as standing, every write inside the session's
+// scratch directory: it is outside the repository and removed when the
+// session closes, so asking about each throwaway file protects nothing. A
+// security confirm, such as content that looks like a credential, still
+// asks.
+type ScratchWrites struct {
+	Dir string // the scratch directory; "" approves nothing
+}
+
+// Name identifies the checker in the log.
+func (ScratchWrites) Name() string { return "scratch" }
+
+// Check approves an absolute write path that resolves inside Dir.
+func (sw ScratchWrites) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
+	raw, ok := WritePath(p, args)
+	if !ok || sw.Dir == "" || !filepath.IsAbs(raw) || !(RepoPin{Root: sw.Dir}).inside(raw) {
+		return Decision{Verdict: Allow}
+	}
+	return Decision{Verdict: Allow, Standing: true, Reason: "scratch directory " + sw.Dir}
 }

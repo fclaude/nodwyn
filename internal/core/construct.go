@@ -87,6 +87,7 @@ func New(o Options) (*Session, error) {
 		Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools()),
 	}); err != nil {
 		s.logw.Close()
+		removeScratch(s.scratch)
 		return nil, err
 	}
 	return s, nil
@@ -140,6 +141,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	o := s.opts
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
+	po.Scratch = s.scratch
 	po.BindingsPath = o.Paths.Bindings
 	po.ShellTimeout = shellTimeout
 	// P3 egress: the session is the CredentialStore (it owns the keychain,
@@ -223,8 +225,16 @@ func (s *Session) loadInit() error {
 
 // initialize assembles runtime state using today's configuration. It never
 // replays evaluations or approvals from the conversation log.
-func (s *Session) initialize() error {
+func (s *Session) initialize() (err error) {
 	o := s.opts
+	if s.scratch, err = makeScratch(s.id); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			removeScratch(s.scratch)
+		}
+	}()
 	// Interpreter: output becomes an event, never stdout.
 	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}), scheme.WithBaseDir(o.Repo))
 	po := s.primitiveOptions()
