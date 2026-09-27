@@ -62,7 +62,7 @@ func TestCLIBoundedRun(t *testing.T) {
 	var started struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(invoke("--socket", socket, "--repo", dir, "--task", task, "--budget-wall", "1m", "--max-turns", "2"), &started); err != nil || started.ID == "" {
+	if err := json.Unmarshal(invoke("start", "--socket", socket, "--repo", dir, "--task", task, "--budget-wall", "1m", "--max-turns", "2"), &started); err != nil || started.ID == "" {
 		t.Fatalf("start %v %+v", err, started)
 	}
 	// The submitting CLI has exited; a new invocation sees daemon-owned progress.
@@ -81,7 +81,7 @@ func TestCLIBoundedRun(t *testing.T) {
 	}
 }
 func TestRunRejectsImplicitLimits(t *testing.T) {
-	for _, args := range [][]string{{}, {"--task", "missing", "--max-turns", "2"}, {"resume", "--budget-wall", "2h", "id"}} {
+	for _, args := range [][]string{{}, {"start"}, {"--task", "missing", "--max-turns", "2"}, {"start", "--task", "missing", "--max-turns", "2"}, {"resume", "--budget-wall", "2h", "id"}} {
 		if err := runTask(args); err == nil || strings.Contains(err.Error(), "daemon") {
 			t.Fatalf("did not reject invalid request before connecting: %v", err)
 		}

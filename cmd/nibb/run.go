@@ -15,8 +15,9 @@ import (
 )
 
 func runTask(args []string) error {
+	// "nibb run --task ..." and "nibb run start --task ..." both start a run.
 	command := "start"
-	if len(args) > 0 && (args[0] == "status" || args[0] == "stop" || args[0] == "resume") {
+	if len(args) > 0 && (args[0] == "start" || args[0] == "status" || args[0] == "stop" || args[0] == "resume") {
 		command = args[0]
 		args = args[1:]
 	}

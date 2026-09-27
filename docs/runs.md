@@ -8,6 +8,7 @@ permissions, bypasses no checker, and does not change the loop's host interface.
 nibb daemon
 # In another terminal:
 nibb run --task task.txt --repo . --budget-wall 2h --max-turns 20
+# nibb run start ... is the same command, spelled out
 nibb ui
 # Or nibb tui --socket /absolute/path/to/daemon.sock
 ```
