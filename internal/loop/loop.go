@@ -24,12 +24,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/plan"
 	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
 	"github.com/fclaude/nibb/internal/window"
@@ -88,6 +90,9 @@ type Endpoint struct {
 //go:embed strategy.scm
 var defaultStrategy string
 
+//go:embed prompts.scm
+var defaultPrompts string
+
 // New builds a loop and installs its primitives and the default strategy
 // into interp. Call it before loading .nibb/init.scm, so the project may
 // redefine agent-turn, and call Freeze afterwards.
@@ -96,10 +101,90 @@ func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) (*
 	if err := l.install(); err != nil {
 		return nil, err
 	}
-	if _, err := interp.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginHarness), defaultStrategy); err != nil {
+	harness := scheme.WithOrigin(context.Background(), scheme.OriginHarness)
+	if _, err := interp.EvalString(harness, defaultStrategy); err != nil {
 		return nil, fmt.Errorf("loop: default strategy: %w", err)
 	}
+	if _, err := interp.EvalString(harness, defaultPrompts); err != nil {
+		return nil, fmt.Errorf("loop: default prompts: %w", err)
+	}
 	return l, nil
+}
+
+// ReadPrompts evaluates the prompts as defined when it is called: the
+// defaults in prompts.scm, or a project's redefinitions from .nibb/init.scm.
+// It returns the system prompt for repo and the planner's prompts. The
+// planner's procedures are the ones bound now, so a later redefinition does
+// not change a running session.
+func (l *Loop) ReadPrompts(repo string) (string, plan.Prompts, error) {
+	ctx := scheme.WithOrigin(context.Background(), scheme.OriginHarness)
+	lookup := func(name string) (scheme.Value, error) {
+		v, err := l.interp.EvalString(ctx, name)
+		if err != nil {
+			return scheme.Void, fmt.Errorf("loop: prompt %s: %w", name, err)
+		}
+		return v, nil
+	}
+	text := func(name string, v scheme.Value) (string, error) {
+		if v.Kind != scheme.KString || strings.TrimSpace(v.S) == "" {
+			return "", fmt.Errorf("loop: prompt %s must be a non-empty string, got %s", name, scheme.Write(v))
+		}
+		return v.S, nil
+	}
+	call := func(name string, proc scheme.Value, args ...scheme.Value) (string, error) {
+		v, err := l.interp.Apply(ctx, proc, args)
+		if err != nil {
+			return "", fmt.Errorf("loop: prompt %s: %w", name, err)
+		}
+		return text(name, v)
+	}
+	procs := map[string]scheme.Value{}
+	for _, name := range []string{"system-prompt", "plan-draft-prompt", "plan-revise-prompt"} {
+		v, err := lookup(name)
+		if err != nil {
+			return "", plan.Prompts{}, err
+		}
+		if !v.IsProcedure() {
+			return "", plan.Prompts{}, fmt.Errorf("loop: prompt %s must be a procedure", name)
+		}
+		procs[name] = v
+	}
+	system, err := call("system-prompt", procs["system-prompt"], scheme.Str(repo))
+	if err != nil {
+		return "", plan.Prompts{}, err
+	}
+	var ps plan.Prompts
+	for name, dst := range map[string]*string{"plan-needed-question": &ps.Needed, "plan-score-rubric": &ps.ScoreRubric} {
+		v, err := lookup(name)
+		if err != nil {
+			return "", plan.Prompts{}, err
+		}
+		if *dst, err = text(name, v); err != nil {
+			return "", plan.Prompts{}, err
+		}
+	}
+	levels, err := lookup("plan-score-levels")
+	if err != nil {
+		return "", plan.Prompts{}, err
+	}
+	items, ok := levels.Slice()
+	if !ok || len(items) < 2 || len(items) > 10 {
+		return "", plan.Prompts{}, fmt.Errorf("loop: prompt plan-score-levels must be a list of 2 to 10 strings")
+	}
+	for _, item := range items {
+		level, err := text("plan-score-levels", item)
+		if err != nil {
+			return "", plan.Prompts{}, err
+		}
+		ps.ScoreLevels = append(ps.ScoreLevels, level)
+	}
+	ps.Draft = func(request string) (string, error) {
+		return call("plan-draft-prompt", procs["plan-draft-prompt"], scheme.Str(request))
+	}
+	ps.Revise = func(request, plan string, score float64) (string, error) {
+		return call("plan-revise-prompt", procs["plan-revise-prompt"], scheme.Str(request), scheme.Str(plan), scheme.Float(score))
+	}
+	return system, ps, nil
 }
 
 // Freeze fixes the tool list offered to the model. It runs once, after
@@ -121,6 +206,19 @@ func (l *Loop) Freeze() error {
 	l.frozen = true
 	return nil
 }
+
+// SetSystem replaces the system prompt. It is refused once the loop is
+// frozen: the system prompt is fixed for the session (ADR 9).
+func (l *Loop) SetSystem(text string) error {
+	if l.frozen {
+		return errors.New("loop: the system prompt is fixed once the session has started")
+	}
+	l.cfg.System = text
+	return nil
+}
+
+// Frozen reports whether the tool list and system prompt are fixed.
+func (l *Loop) Frozen() bool { return l.frozen }
 
 // Tools returns the tool list offered to the model.
 func (l *Loop) Tools() []llm.Tool { return l.tools }

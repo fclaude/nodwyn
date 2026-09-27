@@ -494,6 +494,38 @@ had called them directly. Whatever the strategy does:
   end the turn with an error no `guard` clause can catch (§4), and so does a
   failure to write the log, which is the source of truth.
 
+### 9.1 Prompts
+
+Every prompt nibb sends is Scheme. The defaults live in
+`internal/loop/prompts.scm`, which loads with the default strategy, before
+`.nibb/init.scm`; a project redefines any of them there, usually with raw
+strings (§1.1):
+
+| | |
+|---|---|
+| `(system-prompt repo)` | the control model's system prompt |
+| `(plan-draft-prompt request)` | the planner's request for a plan |
+| `(plan-revise-prompt request plan score)` | the request for a better plan after the judge scored it `score` (0..1) |
+| `plan-needed-question` | the judge's yes/no question: does this request need a plan? |
+| `plan-score-rubric` | the judge's instruction for scoring a plan |
+| `plan-score-levels` | the rubric's 2–10 levels, worst first |
+
+```scheme
+(define base-system-prompt system-prompt)      ; keep the default to extend it
+(define (system-prompt repo)
+  (string-append (base-system-prompt repo) "\n"
+    """
+    Work unattended: nobody approves your calls.
+    Run the tests of every module you change before you finish.
+    """))
+```
+
+nibb reads them once, after `init.scm` has run: the system prompt is then
+fixed for the session like the tool list (ADR 9), and the planner keeps the
+procedures bound at that moment. A prompt that is not a procedure or a
+non-empty string (a list of strings for the levels) stops the session from
+starting.
+
 ## 10. Not in nibb Scheme
 
 Deliberately absent from v0.

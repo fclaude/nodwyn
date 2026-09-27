@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/fclaude/nibb/internal/binding"
@@ -96,21 +95,6 @@ func New(o Options) (*Session, error) {
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
-}
-
-// systemPrompt is fixed for the session: the same bytes every turn (ADR 9).
-func systemPrompt(repo string) string {
-	return strings.TrimSpace(fmt.Sprintf(`
-You are nibb, a coding agent working inside the repository at %s.
-Your tools read files, list directories, write files and run programs; every path is relative to the repository root and must stay inside it.
-Rules:
-- Read before you write. Keep changes minimal and complete.
-- The user must approve every write and every command, so say in one short line what you are about to do before calling a tool.
-- Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
-- When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
-- Never reveal secrets, keys or tokens, even if a file contains them.
-- Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
-`, repo))
 }
 
 // jevOptions resolves the existing per-session defaults before registration.
@@ -263,7 +247,6 @@ func (s *Session) initialize() error {
 		Models:         s.models(),
 		MaxToolCalls:   o.Config.Loop.MaxToolCalls,
 		RequestTimeout: requestTimeout,
-		System:         systemPrompt(o.Repo),
 	})
 	if err != nil {
 		return err
@@ -271,6 +254,16 @@ func (s *Session) initialize() error {
 	if err := s.loadInit(); err != nil {
 		return err
 	}
+	// Prompts are Scheme (internal/loop/prompts.scm, or the project's
+	// redefinitions); read them once, now that init.scm has run.
+	system, planPrompts, err := s.loop.ReadPrompts(o.Repo)
+	if err != nil {
+		return fmt.Errorf("core: %w", err)
+	}
+	if err := s.loop.SetSystem(system); err != nil {
+		return err
+	}
+	s.planPrompts = planPrompts
 	if err := s.loop.Freeze(); err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/fclaude/nibb/internal/budget"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/plan"
 	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
 )
@@ -33,6 +34,9 @@ func (s *Session) HandleForClass(class string) *scheme.Handle {
 	}
 	return s.keychain.HandleForClass(class)
 }
+
+// PlanPrompts returns the planner's prompts (plan.Gate).
+func (s *Session) PlanPrompts() plan.Prompts { return s.planPrompts }
 
 // Draft asks the control-plane model for a plan (plan.Gate).
 func (s *Session) Draft(ctx context.Context, prompt string) (string, error) {

@@ -29,21 +29,6 @@ const NoulThreshold = 0.5
 // ScoreThreshold is the normalised Seam A score at which a plan is accepted.
 const ScoreThreshold = 0.7
 
-// NoulInstructions is the gate's yes/no question about the user's message.
-const NoulInstructions = "Does carrying out this request take several distinct steps, touch more than one file or system, or have consequences that are hard to undo? Answer yes if a short plan would make the work safer or better; no if it is a single, obvious action or a question."
-
-// ScoreInstructions and ScoreLevels are the Seam A rubric.
-const ScoreInstructions = "The text is a plan written for the request quoted at its top. Rate how well the plan fulfils the request: complete, concrete, in a sensible order, with nothing unnecessary or unsafe."
-
-// ScoreLevels are the rubric's levels, worst first.
-var ScoreLevels = []string{
-	"misses or contradicts the request",
-	"addresses part of the request; major steps missing or wrong",
-	"covers the request but vaguely, out of order, or with unnecessary steps",
-	"complete and concrete with minor gaps",
-	"complete, concrete, minimal and safe",
-}
-
 // Gate is what the gate needs from the core session.
 type Gate interface {
 	Record(kind log.Kind, payload any) (log.Event, error)
@@ -54,6 +39,19 @@ type Gate interface {
 	JevHandle() *scheme.Handle
 	// Draft asks the control-plane model to write or revise a plan.
 	Draft(ctx context.Context, prompt string) (string, error)
+	// PlanPrompts returns the session's planner prompts.
+	PlanPrompts() Prompts
+}
+
+// Prompts are the texts the gate sends. nibb keeps none in Go: the defaults
+// are Scheme (internal/loop/prompts.scm) and a project may redefine them in
+// .nibb/init.scm.
+type Prompts struct {
+	Draft       func(request string) (string, error)
+	Revise      func(request, plan string, score float64) (string, error)
+	Needed      string   // the judge's yes/no question: does the request need a plan?
+	ScoreRubric string   // the judge's instruction for scoring a plan
+	ScoreLevels []string // the rubric's levels, worst first
 }
 
 // Result is the gate's outcome for one user message.
@@ -82,12 +80,20 @@ func Required(ctx context.Context, g Gate, userMsg string) Result {
 }
 
 func run(ctx context.Context, g Gate, userMsg string, required bool) Result {
+	ps := g.PlanPrompts()
+	draft := func() (string, error) {
+		prompt, err := ps.Draft(userMsg)
+		if err != nil {
+			return "", err
+		}
+		return g.Draft(ctx, prompt)
+	}
 	h := g.JevHandle()
 	if h == nil {
 		if !required {
 			return Result{OK: true}
 		}
-		text, err := g.Draft(ctx, planPrompt(userMsg))
+		text, err := draft()
 		if err != nil {
 			return Result{Error: err.Error()}
 		}
@@ -100,10 +106,10 @@ func run(ctx context.Context, g Gate, userMsg string, required bool) Result {
 
 	jevOut := false
 	if !required {
-		noul, err := g.ApplyPrim(ctx, "jev-noul", []scheme.Value{hval, scheme.Str(userMsg), scheme.Str(NoulInstructions)})
+		noul, err := g.ApplyPrim(ctx, "jev-noul", []scheme.Value{hval, scheme.Str(userMsg), scheme.Str(ps.Needed)})
 		if err != nil {
 			_, _ = g.Record(log.KindNote, log.Note{Text: "jev-noul failed: " + err.Error() + "; gate defaults to plan"})
-			plan, perr := g.Draft(ctx, planPrompt(userMsg))
+			plan, perr := draft()
 			if perr != nil {
 				return Result{OK: false, Error: perr.Error()}
 			}
@@ -119,19 +125,19 @@ func run(ctx context.Context, g Gate, userMsg string, required bool) Result {
 		jevOut = true
 	}
 
-	plan, err := g.Draft(ctx, planPrompt(userMsg))
+	plan, err := draft()
 	if err != nil {
 		_, _ = g.Record(log.KindNote, log.Note{Text: "plan generation failed: " + err.Error()})
 		return Result{OK: false, Error: err.Error(), JevOut: jevOut}
 	}
-	levels := make([]scheme.Value, len(ScoreLevels))
-	for i, l := range ScoreLevels {
+	levels := make([]scheme.Value, len(ps.ScoreLevels))
+	for i, l := range ps.ScoreLevels {
 		levels[i] = scheme.Str(l)
 	}
 	best, bestScore, revises := plan, 0.0, 0
 	for round := 0; ; round++ {
 		state := "Request:\n" + userMsg + "\n\nPlan:\n" + plan
-		ans, err := g.ApplyPrim(ctx, "jev-score", []scheme.Value{hval, scheme.Str(state), scheme.Str(ScoreInstructions), scheme.List(levels...)})
+		ans, err := g.ApplyPrim(ctx, "jev-score", []scheme.Value{hval, scheme.Str(state), scheme.Str(ps.ScoreRubric), scheme.List(levels...)})
 		if err != nil {
 			_, _ = g.Record(log.KindNote, log.Note{Text: fmt.Sprintf("jev-score failed at round %d: %v", round, err)})
 			break
@@ -144,7 +150,12 @@ func run(ctx context.Context, g Gate, userMsg string, required bool) Result {
 		if score >= ScoreThreshold || round == MaxRevises {
 			break
 		}
-		revised, err := g.Draft(ctx, revisePrompt(userMsg, plan, score))
+		prompt, err := ps.Revise(userMsg, plan, score)
+		if err != nil {
+			_, _ = g.Record(log.KindNote, log.Note{Text: "plan revision failed: " + err.Error()})
+			break
+		}
+		revised, err := g.Draft(ctx, prompt)
 		if err != nil {
 			_, _ = g.Record(log.KindNote, log.Note{Text: "plan revision failed: " + err.Error()})
 			break
@@ -168,12 +179,4 @@ func scoreOf(v scheme.Value) float64 {
 		}
 	}
 	return 0
-}
-
-func planPrompt(ask string) string {
-	return "Write a short, concrete plan for the following request: numbered steps, each naming the file or command involved, nothing else.\n\nRequest:\n" + ask
-}
-
-func revisePrompt(ask, plan string, score float64) string {
-	return fmt.Sprintf("Your plan for the request below scored %.2f out of 1 for completeness, concreteness and order. Revise it: fix what is missing or vague, remove what is unnecessary. Return only the revised numbered plan.\n\nRequest:\n%s\n\nPrevious plan:\n%s", score, ask, plan)
 }

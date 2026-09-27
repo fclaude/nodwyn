@@ -45,8 +45,10 @@ type Session struct {
 	closeOnce  sync.Once
 	closeErr   error
 
-	prompts  map[string]pendingConfirmation
-	promptMu sync.Mutex
+	// planPrompts are the planner's prompts, read from Scheme at start.
+	planPrompts plan.Prompts
+	prompts     map[string]pendingConfirmation
+	promptMu    sync.Mutex
 
 	allow  *guard.CommandAllow
 	writes *guard.WriteAllow

@@ -64,6 +64,16 @@ func (f *fakeGate) ApplyPrim(ctx context.Context, name string, args []scheme.Val
 
 func (f *fakeGate) JevHandle() *scheme.Handle { return f.handle }
 
+func (f *fakeGate) PlanPrompts() Prompts {
+	return Prompts{
+		Draft:       func(request string) (string, error) { return "plan for: " + request, nil },
+		Revise:      func(request, plan string, _ float64) (string, error) { return "revise: " + plan, nil },
+		Needed:      "needs a plan?",
+		ScoreRubric: "score the plan",
+		ScoreLevels: []string{"bad", "partial", "vague", "good", "excellent"},
+	}
+}
+
 func (f *fakeGate) Draft(ctx context.Context, prompt string) (string, error) {
 	if len(f.models) == 0 {
 		return "fallback-plan", nil
