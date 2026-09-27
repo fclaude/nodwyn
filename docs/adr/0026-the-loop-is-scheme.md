@@ -49,6 +49,10 @@ user.
   fixed for a session (ADR 9). *Update:* every prompt, the system
   prompt included, is now Scheme (internal/loop/prompts.scm, read once and
   fixed by Freeze); the plan gate's control flow is the part still in Go.
+  *Update 2026-09-27:* the plan gate is Scheme too (internal/loop/plan.scm,
+  docs/scheme.md §9.5). Go keeps one invariant for it: a turn that must plan
+  runs nothing irreversible until a plan is recorded, and fails if it
+  records none.
 - Go is left with I/O and invariants. New turn behaviour should be a
   strategy first and a primitive only when it needs an invariant.
 

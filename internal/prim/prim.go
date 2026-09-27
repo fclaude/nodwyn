@@ -64,7 +64,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -129,6 +129,18 @@ func scratchDir(o Options) *scheme.Prim {
 				return scheme.False, nil
 			}
 			return scheme.Str(o.Scratch), nil
+		},
+	}
+}
+
+// repository builds (repository): the repository's root, for a prompt or a
+// strategy to name.
+func repository(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "repository",
+		Meta: scheme.Meta{Doc: "The repository's root directory: every relative path is relative to it.", Hidden: true},
+		Handler: func(*scheme.Call) (scheme.Value, error) {
+			return scheme.Str(o.Root), nil
 		},
 	}
 }

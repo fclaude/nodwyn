@@ -237,11 +237,14 @@ func (s *Session) initialize() (err error) {
 	if err != nil {
 		return err
 	}
-	s.interp.SetGate(turnGate{Gate: g})
+	s.interp.SetGate(turnGate{Gate: g, s: s})
 	if err := s.registerHistory(); err != nil {
 		return err
 	}
 	if err := s.registerReload(); err != nil {
+		return err
+	}
+	if err := s.registerPlanRequired(); err != nil {
 		return err
 	}
 	// The loop installs agent-turn before init.scm loads, so a project can
@@ -261,11 +264,9 @@ func (s *Session) initialize() (err error) {
 	}
 	// Prompts are Scheme (internal/loop/prompts.scm, or the project's
 	// redefinitions); read them once, now that init.scm has run.
-	planPrompts, err := s.loop.ReadPrompts(o.Repo)
-	if err != nil {
+	if err := s.loop.ReadPrompts(o.Repo); err != nil {
 		return fmt.Errorf("core: %w", err)
 	}
-	s.planPrompts = planPrompts
 	if err := s.loop.Freeze(); err != nil {
 		return err
 	}

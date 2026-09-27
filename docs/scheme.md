@@ -525,11 +525,11 @@ strings (§1.1):
     """))
 ```
 
-nibb reads them once, after `init.scm` has run: the system prompt is then
-fixed for the session like the tool list (ADR 9), and the planner keeps the
-procedures bound at that moment. A prompt that is not a procedure or a
-non-empty string (a list of strings for the levels) stops the session from
-starting.
+nibb reads the system prompt once, after `init.scm` has run: it is then
+fixed for the session like the tool list (ADR 9), and a system prompt that
+is not a procedure returning a non-empty string stops the session from
+starting. The others are ordinary Scheme, read when the plan gate (§9.5)
+uses them, so a `(reload)` changes them from the next turn.
 
 ### 9.2 Compaction
 
@@ -633,6 +633,36 @@ restored if the reload fails), and the model tells the user what changed.
 Its prompts are `optimizer-system-prompt` and `(optimizer-task history
 focus)` (§9.1). A strategy that redefines `agent-turn` keeps `/optimize` by
 calling `(optimize-turn request)` when `(optimize-request? request)`.
+
+### 9.5 The plan gate
+
+The plan gate is user code too, `internal/loop/plan.scm`, and the default
+`agent-turn` calls `(plan-gate request)` before its loop. With a judge
+(Jev, §5: its primitives registered and a `jev-key` stored), it asks
+`plan-needed-question`; a request that needs a plan gets one drafted by
+the control model in a narrowed context of its own (§9), folded away
+afterwards, then scored against the request and revised until it scores
+`plan-accept-score` or `plan-max-revisions` run out. The outcome is
+recorded as `gate.plan`, and the window shows the plan to the model for
+the rest of the turn. Without a judge there is no gate. If the judge's
+yes/no question fails, the model plans anyway, unscored ("degraded"); a
+judge the guard refuses (an unbound key) ends the turn, as any denial does.
+
+| | |
+|---|---|
+| `plan-needed-threshold` | the judge's probability of "needs a plan" at which a request gets one (0.5) |
+| `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
+| `plan-max-revisions` | revisions after the first draft (3) |
+| `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded` or `required`), `plan`, `score`, `revisions`, `reason` |
+| `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
+| `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
+
+A turn that must plan (`plan-required?`) always drafts one, scored if there
+is a judge, and fails if the plan is empty. The core keeps that honest
+whatever the strategy: until a non-empty plan is recorded, nothing
+irreversible runs, and a turn that records none fails. So a strategy that
+redefines `agent-turn` and is used for runs calls `(plan-gate request)`
+first, or records a plan of its own.
 
 ## 10. Not in nibb Scheme
 

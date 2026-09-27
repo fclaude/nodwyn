@@ -220,3 +220,12 @@ func (u unconfigured) Chat(context.Context, llm.Request, func(llm.Delta)) (*llm.
 	return nil, u.err
 }
 func (u unconfigured) Ping(context.Context) (string, error) { return "", u.err }
+
+// HandleForClass returns the handle of a stored credential of class, or nil
+// when there is none or no keychain is open (prim.CredentialStore).
+func (s *Session) HandleForClass(class string) *scheme.Handle {
+	if s.keychain == nil {
+		return nil
+	}
+	return s.keychain.HandleForClass(class)
+}

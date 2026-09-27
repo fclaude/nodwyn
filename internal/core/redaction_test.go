@@ -75,18 +75,24 @@ func TestIngressCanary(t *testing.T) {
 	}
 }
 
-func TestDraftAndEphemeralRedaction(t *testing.T) {
+// The plan gate (plan.scm) neither sends a key in the request to the model
+// nor records one the model writes into its plan.
+func TestPlanAndEphemeralRedaction(t *testing.T) {
 	const key = "sk-ant-abcdefgh1234"
-	r := newRig(t, true, fake.Turn{Content: key})
-	result, err := r.s.Draft(context.Background(), key)
-	if err != nil {
+	r := newRig(t, true, fake.Turn{Content: "1. call the API with " + key}, fake.Turn{Content: "done"})
+	if err := r.s.SendPlanned("use " + key + " to call the API"); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(result, key) || strings.Contains(string(r.srv.Requests[0].Raw), key) {
-		t.Fatal("planner bypass")
+	r.drain("n")
+	for i, req := range r.srv.Requests {
+		if strings.Contains(string(req.Raw), key) {
+			t.Fatalf("request %d carried the key", i)
+		}
+	}
+	if !strings.Contains(r.logb.String(), `"kind":"gate.plan"`) || strings.Contains(r.logb.String(), key) {
+		t.Fatal("the plan was not recorded, or was recorded with the key")
 	}
 	r.s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: key}})
-	<-r.s.Events() // session.start
 	ev := <-r.s.Events()
 	if strings.Contains(ev.Payload.(event.ErrorInfo).Err, key) {
 		t.Fatal("error bypass")

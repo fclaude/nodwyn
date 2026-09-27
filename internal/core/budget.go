@@ -56,9 +56,16 @@ func (s *Session) confirmBudget(ctx context.Context, p budget.Checkpoint) (choic
 
 // turnGate leaves authorization with guard, then accounts for actual host
 // actions. A Scheme wrapper cannot hide several host actions behind one tool.
-type turnGate struct{ scheme.Gate }
+// Before either, a turn that must plan may not act until it has (plan.go).
+type turnGate struct {
+	scheme.Gate
+	s *Session
+}
 
 func (g turnGate) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value) error {
+	if err := g.s.unplanned(p); err != nil {
+		return err
+	}
 	if err := g.Gate.Before(ctx, p, args); err != nil {
 		return err
 	}

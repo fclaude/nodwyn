@@ -20,7 +20,7 @@ integrations and front-ends:
 |---|---|
 | `core` | Own a session, assemble dependencies, coordinate its lifetime and prompts. |
 | `budget` | Account for one turn, enforce ceilings, and request additional soft allowance. |
-| `loop`, `plan` | Provide the primitives and default Scheme strategy for a model/tool turn; decide whether to plan and score the plan. |
+| `loop` | Provide the primitives and default Scheme for a turn: the strategy, the plan gate, prompts, compaction, sub-agents. |
 | `event`, `log` | Describe front-end events; persist the history from which context and replay are derived. |
 | `keychain`, `binding` | Hold encrypted credentials and inject them; authorize their destinations, methods and positions. |
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
@@ -30,10 +30,10 @@ integrations and front-ends:
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nibb` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
 **A user message:** the front-end calls `Session.Send`. The session records
-and redacts the message, runs the plan gate, and calls the Scheme procedure
-`agent-turn`. The default asks the model, runs the tools it requested through
-Scheme and repeats until the model answers without tools; a project may
-redefine it in `.nibb/init.scm`. The loop's primitives build each window from
+and redacts the message, and calls the Scheme procedure `agent-turn`. The
+default runs the plan gate, then asks the model, runs the tools it requested
+through Scheme and repeats until the model answers without tools; a project
+may redefine it in `.nibb/init.scm`. The loop's primitives build each window from
 recorded events and record every result before the next model request. The
 front-end consumes events from the session.
 

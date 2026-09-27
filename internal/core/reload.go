@@ -38,7 +38,7 @@ func (s *Session) registerReload() error {
 			if err != nil {
 				return scheme.Void, fmt.Errorf("reload: %w", err)
 			}
-			changed, err := s.loop.PromptChanges(s.opts.Repo, s.planPrompts)
+			changed, err := s.loop.PromptChanges(s.opts.Repo)
 			if err != nil {
 				return scheme.Void, fmt.Errorf("reload: %w", err)
 			}

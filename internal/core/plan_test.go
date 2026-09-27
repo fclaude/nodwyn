@@ -1,0 +1,245 @@
+package core
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/fclaude/nibb/internal/binding"
+	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nibb/internal/keychain"
+	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nibb/internal/log"
+	fake "github.com/fclaude/nibb/test/fakes/ollama"
+)
+
+// The plan gate is Scheme (internal/loop/plan.scm); these tests drive it
+// through a session against a fake judge.
+
+// fakeJudge answers Jev requests in order: a map is the answer to the
+// question, an int is an HTTP status to fail with.
+type fakeJudge struct {
+	*httptest.Server
+	mu        sync.Mutex
+	answers   []any
+	questions []string // the type of each question asked
+}
+
+func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
+	j := &fakeJudge{answers: answers}
+	j.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Questions map[string]struct{ Type string } `json:"questions"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &body)
+		j.mu.Lock()
+		defer j.mu.Unlock()
+		j.questions = append(j.questions, body.Questions["q"].Type)
+		if len(j.answers) == 0 {
+			http.Error(w, "no scripted answer", http.StatusInternalServerError)
+			return
+		}
+		answer := j.answers[0]
+		j.answers = j.answers[1:]
+		if status, ok := answer.(int); ok {
+			http.Error(w, "judge down", status)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"answers": map[string]any{"q": answer}})
+	}))
+	t.Cleanup(j.Close)
+	return j
+}
+
+func (j *fakeJudge) asked() []string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return append([]string(nil), j.questions...)
+}
+
+// judgedRig is a session with a judge: a jev-key in the keychain, bound to
+// the fake judge's host.
+func judgedRig(t *testing.T, judge *fakeJudge, init string, turns ...fake.Turn) *rig {
+	t.Helper()
+	repo := t.TempDir()
+	if init != "" {
+		os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
+		os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(init), 0o644)
+	}
+	srv := fake.New(turns...)
+	t.Cleanup(srv.Close)
+	cfg := config.Default()
+	var kc *keychain.Store
+	if judge != nil {
+		cfg.Jev.URL = judge.URL
+		var err error
+		if kc, err = keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p")); err != nil {
+			t.Fatal(err)
+		}
+		kc.Add("jev-key", []byte("sk-judge-canary-0001"))
+	}
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Config: cfg, Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb, Keychain: kc,
+		Bindings: binding.Table{Bind: []binding.Binding{{Class: "jev-key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return &rig{t: t, s: s, srv: srv, repo: repo, logb: logb}
+}
+
+// gatePlans returns the gate.plan records in the log.
+func (r *rig) gatePlans() []log.GatePlan {
+	r.t.Helper()
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	var out []log.GatePlan
+	for _, ev := range evs {
+		if ev.Kind == log.KindGatePlan {
+			var gp log.GatePlan
+			ev.Decode(&gp)
+			out = append(out, gp)
+		}
+	}
+	return out
+}
+
+// score is a judge's answer on the five-level rubric: raw level n of 0..4.
+func score(n float64) map[string]any { return map[string]any{"score": n, "confidence": 0.9} }
+func noul(p float64) map[string]any  { return map[string]any{"noul": p} }
+
+func TestPlanGateWithoutAJudgeDoesNothing(t *testing.T) {
+	r := judgedRig(t, nil, "", fake.Turn{Content: "done"})
+	if e := r.turn("do a thing"); e != "" {
+		t.Fatal(e)
+	}
+	if plans := r.gatePlans(); len(plans) != 0 || len(r.srv.Requests) != 1 {
+		t.Fatalf("plans %+v, model requests %d", plans, len(r.srv.Requests))
+	}
+}
+
+func TestPlanGateProceedsWhenNoPlanIsNeeded(t *testing.T) {
+	judge := newFakeJudge(t, noul(0.2))
+	r := judgedRig(t, judge, "", fake.Turn{Content: "done"})
+	if e := r.turn("what is this?"); e != "" {
+		t.Fatal(e)
+	}
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Noul != "proceed" || plans[0].Score != 0.2 || plans[0].Plan != "" {
+		t.Fatalf("plans %+v", plans)
+	}
+	if len(r.srv.Requests) != 1 || strings.Join(judge.asked(), " ") != "noul" {
+		t.Fatalf("model requests %d, judge asked %v", len(r.srv.Requests), judge.asked())
+	}
+}
+
+func TestPlanGateAcceptsAGoodPlan(t *testing.T) {
+	judge := newFakeJudge(t, noul(0.9), score(3.6))
+	r := judgedRig(t, judge, "", fake.Turn{Content: "1. the plan"}, fake.Turn{Content: "done"})
+	if e := r.turn("build it"); e != "" {
+		t.Fatal(e)
+	}
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Noul != "plan" || plans[0].Plan != "1. the plan" || plans[0].Score != 0.9 || plans[0].Revisions != 0 {
+		t.Fatalf("plans %+v", plans)
+	}
+	// The plan is in front of the model; the planning conversation is not.
+	main := string(r.srv.Requests[1].Raw)
+	if !strings.Contains(main, "Plan for the current task") || !strings.Contains(main, "1. the plan") ||
+		strings.Contains(main, "Write a short, concrete plan") {
+		t.Fatalf("main request:\n%s", main)
+	}
+	if planner := string(r.srv.Requests[0].Raw); !strings.Contains(planner, "You are nibb's planner") {
+		t.Fatalf("planner request:\n%s", planner)
+	}
+}
+
+func TestPlanGateRevisesUntilThePlanScores(t *testing.T) {
+	judge := newFakeJudge(t, noul(0.9), score(0.8), score(2), score(3.4))
+	r := judgedRig(t, judge, "", fake.Turn{Content: "v1"}, fake.Turn{Content: "v2"}, fake.Turn{Content: "v3"}, fake.Turn{Content: "done"})
+	if e := r.turn("hard task"); e != "" {
+		t.Fatal(e)
+	}
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Plan != "v3" || plans[0].Score != 0.85 || plans[0].Revisions != 2 {
+		t.Fatalf("plans %+v", plans)
+	}
+	if revise := string(r.srv.Requests[1].Raw); !strings.Contains(revise, "scored 0.20 out of 1") || !strings.Contains(revise, `Previous plan:\nv1`) {
+		t.Fatalf("revision request:\n%s", revise)
+	}
+}
+
+func TestPlanGateStopsAtTheRevisionBound(t *testing.T) {
+	judge := newFakeJudge(t, noul(0.9), score(0.4), score(0.4), score(0.4), score(0.4))
+	r := judgedRig(t, judge, "", fake.Turn{Content: "v0"}, fake.Turn{Content: "v1"}, fake.Turn{Content: "v2"}, fake.Turn{Content: "v3"}, fake.Turn{Content: "done"})
+	if e := r.turn("impossible"); e != "" {
+		t.Fatal(e)
+	}
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Revisions != 3 || plans[0].Plan != "v0" {
+		t.Fatalf("plans %+v", plans)
+	}
+	if n := len(judge.asked()); n != 5 {
+		t.Fatalf("the judge was asked %d times", n)
+	}
+}
+
+func TestPlanGateDegradesWhenTheJudgeFails(t *testing.T) {
+	judge := newFakeJudge(t, http.StatusServiceUnavailable)
+	r := judgedRig(t, judge, "", fake.Turn{Content: "1. degraded plan"}, fake.Turn{Content: "done"})
+	if e := r.turn("do it"); e != "" {
+		t.Fatal(e)
+	}
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Noul != "degraded" || plans[0].Plan != "1. degraded plan" || !strings.Contains(plans[0].Reason, "jev-noul failed") {
+		t.Fatalf("plans %+v", plans)
+	}
+}
+
+// A run's turn plans whatever the judge would say, and does not ask it.
+func TestRequiredPlanSkipsTheQuestion(t *testing.T) {
+	judge := newFakeJudge(t, score(3.2))
+	r := judgedRig(t, judge, "", fake.Turn{Content: "1. required plan"}, fake.Turn{Content: "done"})
+	if err := r.s.SendPlanned("work"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Noul != "plan" || plans[0].Plan != "1. required plan" {
+		t.Fatalf("plans %+v", plans)
+	}
+	if got := strings.Join(judge.asked(), " "); got != "score" {
+		t.Fatalf("the judge was asked %q", got)
+	}
+}
+
+// A strategy that skips the gate cannot act in a turn that must plan.
+func TestRequiredPlanBlocksActionUntilRecorded(t *testing.T) {
+	r := judgedRig(t, nil, `(define (agent-turn request) (fs-write "x.txt" "y"))`)
+	if err := r.s.SendPlanned("work"); err != nil {
+		t.Fatal(err)
+	}
+	var errText string
+	for _, ev := range r.drain("n") {
+		if ev.Kind == "error" {
+			errText = fmt.Sprint(ev.Payload)
+		}
+	}
+	if !strings.Contains(errText, "must record a plan") {
+		t.Fatalf("turn error %q", errText)
+	}
+	if _, err := os.Stat(filepath.Join(r.repo, "x.txt")); err == nil {
+		t.Fatal("an unplanned write ran")
+	}
+}

@@ -54,12 +54,19 @@ func TestRequiredPlanPrecedesExecution(t *testing.T) {
 			}
 			events := r.drain("n")
 			planned, responded := false, false
-			outcome := ""
+			outcome, depth := "", 0 // the planner drafts in a narrowed context of its own
 			for _, ev := range events {
 				switch ev.Kind {
 				case string(log.KindGatePlan):
 					planned = true
+				case string(log.KindContextNarrow):
+					depth++
+				case string(log.KindContextFold):
+					depth--
 				case string(log.KindLLMResp):
+					if depth > 0 {
+						continue
+					}
 					if !planned {
 						t.Fatal("execution before plan")
 					}

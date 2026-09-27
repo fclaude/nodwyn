@@ -9,6 +9,7 @@ import (
 
 	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nibb/internal/scheme"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
@@ -33,28 +34,37 @@ func TestDefaultPromptsAreUnchanged(t *testing.T) {
 	if want := strings.NewReplacer("REPO", r.repo, "SCRATCH", r.s.scratch).Replace(goldenSystem); system != want {
 		t.Fatalf("system prompt changed:\n%s", system)
 	}
-	ps := r.s.PlanPrompts()
-	if want := "You are nibb's planner for the repository at " + r.repo + ". Return only the plan text."; ps.System != want {
-		t.Fatalf("plan-system-prompt: %q", ps.System)
+	// The planner's prompts are ordinary Scheme, read when the plan gate
+	// (plan.scm) uses them.
+	if got, want := evalText(t, r, `(plan-system-prompt (repository))`), "You are nibb's planner for the repository at "+r.repo+". Return only the plan text."; got != want {
+		t.Fatalf("plan-system-prompt: %q", got)
 	}
-	draft, err := ps.Draft("fix it")
-	if err != nil || draft != "Write a short, concrete plan for the following request: numbered steps, each naming the file or command involved, nothing else.\n\nRequest:\nfix it" {
-		t.Fatalf("plan-draft: %q %v", draft, err)
+	if got := evalText(t, r, `(plan-draft-prompt "fix it")`); got != "Write a short, concrete plan for the following request: numbered steps, each naming the file or command involved, nothing else.\n\nRequest:\nfix it" {
+		t.Fatalf("plan-draft: %q", got)
 	}
-	revise, err := ps.Revise("fix it", "1. edit", 0.5)
-	if err != nil || revise != "Your plan for the request below scored 0.50 out of 1 for completeness, concreteness and order. Revise it: fix what is missing or vague, remove what is unnecessary. Return only the revised numbered plan.\n\nRequest:\nfix it\n\nPrevious plan:\n1. edit" {
-		t.Fatalf("plan-revise: %q %v", revise, err)
+	if got := evalText(t, r, `(plan-revise-prompt "fix it" "1. edit" 0.5)`); got != "Your plan for the request below scored 0.50 out of 1 for completeness, concreteness and order. Revise it: fix what is missing or vague, remove what is unnecessary. Return only the revised numbered plan.\n\nRequest:\nfix it\n\nPrevious plan:\n1. edit" {
+		t.Fatalf("plan-revise: %q", got)
 	}
-	for score, want := range map[float64]string{0.0: "0.00", 0.07: "0.07", 0.456: "0.46", 1.0: "1.00"} {
-		got, _ := ps.Revise("r", "p", score)
-		if !strings.Contains(got, "scored "+want+" out of 1") {
-			t.Errorf("score %v formatted as %q", score, got)
+	for score, want := range map[string]string{"0.0": "0.00", "0.07": "0.07", "0.456": "0.46", "1.0": "1.00"} {
+		if got := evalText(t, r, `(plan-revise-prompt "r" "p" `+score+`)`); !strings.Contains(got, "scored "+want+" out of 1") {
+			t.Errorf("score %s formatted as %q", score, got)
 		}
 	}
-	if !strings.HasPrefix(ps.Needed, "Does carrying out this request") || !strings.HasPrefix(ps.ScoreRubric, "The text is a plan") ||
-		len(ps.ScoreLevels) != 5 || ps.ScoreLevels[0] != "misses or contradicts the request" {
-		t.Fatalf("judge prompts: %+v", ps)
+	if !strings.HasPrefix(evalText(t, r, "plan-needed-question"), "Does carrying out this request") ||
+		!strings.HasPrefix(evalText(t, r, "plan-score-rubric"), "The text is a plan") ||
+		r.eval("(length plan-score-levels)") != "5" || evalText(t, r, "(car plan-score-levels)") != "misses or contradicts the request" {
+		t.Fatal("judge prompts changed")
 	}
+}
+
+// evalText evaluates src in the session and returns the string it makes.
+func evalText(t *testing.T, r *rig, src string) string {
+	t.Helper()
+	v, err := r.s.Eval(t.Context(), src)
+	if err != nil || v.Kind != scheme.KString {
+		t.Fatalf("%s: %v %v", src, v, err)
+	}
+	return v.S
 }
 
 func TestInitRedefinesPromptsWithRawStrings(t *testing.T) {
@@ -84,15 +94,14 @@ func TestInitRedefinesPromptsWithRawStrings(t *testing.T) {
 	if len(r.srv.Requests) == 0 || !strings.Contains(string(r.srv.Requests[0].Raw), "Work unattended:") {
 		t.Fatal("the model did not receive the project's system prompt")
 	}
-	ps := r.s.PlanPrompts()
-	if draft, _ := ps.Draft("add a flag"); draft != "List every behaviour the request requires, then the steps.\nRequest:\nadd a flag" {
+	if draft := evalText(t, r, `(plan-draft-prompt "add a flag")`); draft != "List every behaviour the request requires, then the steps.\nRequest:\nadd a flag" {
 		t.Fatalf("plan-draft: %q", draft)
 	}
-	if ps.System != "Plan tersely." {
-		t.Fatalf("plan-system-prompt: %q", ps.System)
+	if got := evalText(t, r, `(plan-system-prompt (repository))`); got != "Plan tersely." {
+		t.Fatalf("plan-system-prompt: %q", got)
 	}
-	if len(ps.ScoreLevels) != 2 || ps.ScoreLevels[1] != "right" {
-		t.Fatalf("levels: %v", ps.ScoreLevels)
+	if got := evalText(t, r, `(cadr plan-score-levels)`); got != "right" {
+		t.Fatalf("levels: %q", got)
 	}
 }
 
@@ -103,17 +112,18 @@ func TestPromptsAreFixedOnceTheSessionStarts(t *testing.T) {
 	if r.s.loop.WindowContext().System != before {
 		t.Fatal("redefining system-prompt after start changed the session")
 	}
-	if _, err := r.s.loop.ReadPrompts(r.repo); err == nil {
+	if err := r.s.loop.ReadPrompts(r.repo); err == nil {
 		t.Fatal("reading the prompts again after the session started was accepted")
 	}
 }
 
 func TestMalformedPromptFailsTheSession(t *testing.T) {
+	// Only the system prompt is read at the start; every other prompt is
+	// ordinary Scheme, read when it is used.
 	for name, init := range map[string]string{
 		"not a procedure": `(define system-prompt "just text")`,
-		"not a string":    `(define (plan-draft-prompt request) 42)`,
+		"not a string":    `(define (system-prompt repo) 42)`,
 		"empty":           `(define (system-prompt repo) "  ")`,
-		"levels":          `(define plan-score-levels '("only one"))`,
 	} {
 		repo := t.TempDir()
 		os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
@@ -124,10 +134,6 @@ func TestMalformedPromptFailsTheSession(t *testing.T) {
 			s.Close()
 		}
 		srv.Close()
-		if name == "not a string" {
-			// Procedures are called when a plan is drafted, not at start.
-			continue
-		}
 		if err == nil || !strings.Contains(err.Error(), "prompt") {
 			t.Errorf("%s: session started (err=%v)", name, err)
 		}

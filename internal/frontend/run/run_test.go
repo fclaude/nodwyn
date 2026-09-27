@@ -237,6 +237,7 @@ func TestRunCompletesWhenAFoldedReviewerHasTheLastWord(t *testing.T) {
 	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
 (define (agent-turn request)
+  (plan-gate request) ; a run's turns must plan
   (let ((answer (assoc-ref (model-turn) 'content)))
     (narrow-context "You review work." "reviewer")
     (add-message (string-append "Review this answer: " answer))

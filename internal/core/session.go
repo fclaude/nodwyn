@@ -7,9 +7,9 @@ package core
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/budget"
@@ -19,7 +19,6 @@ import (
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/loop"
-	"github.com/fclaude/nibb/internal/plan"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
@@ -45,10 +44,12 @@ type Session struct {
 	closeOnce  sync.Once
 	closeErr   error
 
-	// planPrompts are the planner's prompts, read from Scheme at start.
-	planPrompts plan.Prompts
-	prompts     map[string]pendingConfirmation
-	promptMu    sync.Mutex
+	// The plan a turn must record before it may do anything irreversible
+	// (SendPlanned; plan.go).
+	planRequired atomic.Bool
+	planned      atomic.Bool
+	prompts      map[string]pendingConfirmation
+	promptMu     sync.Mutex
 
 	allow  *guard.CommandAllow
 	writes *guard.WriteAllow
@@ -90,10 +91,12 @@ func (s *Session) SendPlanned(text string) error { return s.send(text, true) }
 
 func (s *Session) send(text string, required bool) error {
 	return s.startTurn(func(ctx context.Context) error {
-		// P5 plan gate: noul → plan → Seam A score → revise ≤3.
-		// The gate runs under the same guard/binding/redaction policy as a
-		// model tool call (plan §Phase 5). On Jev outage it degrades to a
-		// plain plan and the loop proceeds.
+		// The plan gate is Scheme, the default agent-turn's first step
+		// (internal/loop/plan.scm). What stays here is the invariant a
+		// strategy cannot skip: a turn that must plan does nothing
+		// irreversible before it records one (plan.go).
+		s.planRequired.Store(required)
+		s.planned.Store(false)
 		safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
 		if err != nil {
 			return err
@@ -102,20 +105,13 @@ func (s *Session) send(text string, required bool) error {
 		if err := safe.Decode(&msg); err != nil {
 			return err
 		}
-		text = msg.Text
-		var gres plan.Result
-		if required {
-			gres = plan.Required(ctx, s, text)
-		} else {
-			gres = plan.Run(ctx, s, text)
+		if err := s.loop.Turn(ctx, msg.Text); err != nil {
+			return err
 		}
-		if required && !gres.OK {
-			return fmt.Errorf("required plan: %s", gres.Error)
+		if required && !s.planned.Load() {
+			return errors.New("required plan: the turn recorded no plan")
 		}
-		if gres.Plan != "" {
-			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gres.Score, gres.Revises)}})
-		}
-		return s.loop.Turn(ctx, text)
+		return nil
 	})
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/scheme"
@@ -55,6 +56,16 @@ func (l *Loop) install() error {
 				Origin: "builtin",
 			},
 			Handler: l.addMessage,
+		},
+		{
+			Name: "record-plan",
+			Meta: scheme.Meta{
+				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded or required), plan, score, revisions and reason. The window shows a recorded plan to the model for the rest of the turn.",
+				Params: []scheme.Param{{Name: "outcome", Type: "alist", Doc: "the gate's decision and plan"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.recordPlan,
 		},
 		{
 			Name: "narrow-context",
@@ -247,6 +258,32 @@ func (l *Loop) addMessage(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, fmt.Errorf("%d calls from the latest model-turn are unanswered; run or skip them first", n)
 	}
 	return scheme.Void, l.record(log.KindHarnessMsg, log.HarnessMsg{Text: text})
+}
+
+// recordPlan is (record-plan outcome): the plan gate's outcome, in the log
+// where the window finds the plan and a front-end shows the decision.
+func (l *Loop) recordPlan(c *scheme.Call) (scheme.Value, error) {
+	if _, err := l.active(c); err != nil {
+		return scheme.Void, err
+	}
+	outcome := c.Args[0]
+	gp := log.GatePlan{Origin: "gate", Noul: field(outcome, "decision"), Plan: field(outcome, "plan"), Reason: field(outcome, "reason")}
+	if gp.Noul == "" {
+		return scheme.Void, errors.New("a decision is required: plan, proceed, degraded or required")
+	}
+	if v, ok := lookup(outcome, "score"); ok && v.IsNumber() {
+		gp.Score = v.AsFloat()
+	}
+	if v, ok := lookup(outcome, "revisions"); ok && v.Kind == scheme.KInt {
+		gp.Revisions = int(v.I)
+	}
+	if err := l.record(log.KindGatePlan, gp); err != nil {
+		return scheme.Void, err
+	}
+	if strings.TrimSpace(gp.Plan) != "" {
+		l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gp.Score, gp.Revisions)}})
+	}
+	return scheme.Void, nil
 }
 
 // narrowContext is (narrow-context system). The narrowing is an event in

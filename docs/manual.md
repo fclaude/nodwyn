@@ -53,7 +53,6 @@ This is the spine. Read these in order and you have read the system.
 | `internal/window` | the derived context | `Build` |
 | `internal/loop` | the loop's primitives and default strategy | the package comment's reading order, starting at `loop.go` `Turn` |
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
-| `internal/plan` | the plan gate and bounded revision policy | `gate.go` `Run` |
 | `internal/keychain` | encrypted credentials, opaque handles and injection | `keychain.go` |
 | `internal/binding` | binding loading and authorization lookup | `binding.go` `Lookup`; Scheme call decoding lives in `guard/egress_facts.go` |
 | `internal/redact`, `internal/detect/l1` | text redaction and credential-shape detection | `redact.go`, `l1.go` |
@@ -304,9 +303,12 @@ positions = ["header:Authorization:Bearer"]
 methods = ["POST"]
 ```
 
-Before each user message the gate asks Jev whether the message needs a
-plan; if so the model drafts one, Jev scores it against the ask (up to
-three revisions), and the plan goes into the task block the model sees.
+Before each user message the default strategy's plan gate
+(`internal/loop/plan.scm`, [docs/scheme.md](scheme.md) §9.5) asks Jev
+whether the message needs a plan; if so the model drafts one, Jev scores it
+against the ask (up to three revisions), and the plan goes into the task
+block the model sees. Its thresholds and prompts are Scheme definitions a
+project may redefine.
 Every Jev call is a guarded egress: bound credential, L1 redaction of
 what leaves, a `jev.req` log line with size, hash and the answer. Set
 `jev.content = "none"` in `config.toml` to turn it off. Without a
@@ -367,7 +369,7 @@ say when the model stops with work left. It can reach a keyed judge or model
 API with `(credential class)` and `http-request`. It cannot run a call the
 model did not make, loosen the guard, or keep a turn going past a budget or a
 progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
-(§9.1); the built-in plan gate's control flow and thresholds are still Go.
+(§9.1), and so is the plan gate with its thresholds (§9.5).
 
 nibb can learn how to work in a repository from its own history: send
 `/optimize` (or `/optimize 5`, or `/optimize` with session ids, optionally
