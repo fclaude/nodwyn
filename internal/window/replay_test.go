@@ -66,7 +66,7 @@ func TestReplayRejectsUnverifiableRequests(t *testing.T) {
 			}
 			s.w.Append(log.KindSessionStart, log.SessionStart{Context: context})
 			s.w.Append(log.KindUserMsg, log.UserMsg{Text: "original"})
-			built := Build(s.events(t), "sys", Estimate("[]"), Policy{3000, 1500, 100})
+			built := Build(s.events(t), "sys", Estimate("[]"), Policy{HighWater: 3000, LowWater: 1500, MaxResultTokens: 100})
 			hash, err := RequestHash(llm.Request{Messages: built.Messages, Tools: []llm.Tool{}})
 			if err != nil {
 				t.Fatal(err)

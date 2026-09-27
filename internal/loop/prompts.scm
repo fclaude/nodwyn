@@ -32,6 +32,22 @@
 (define (plan-system-prompt repo)
   (string-append "You are nibb's planner for the repository at " repo ". Return only the plan text."))
 
+;; The headers under which the window adds the user's latest request, and
+;; the plan for it, to the system prompt, where they are never trimmed away.
+;; Read once, like the system prompt.
+(define task-header "Current task (the user's latest request):")
+(define plan-header "Plan for the current task (follow it; say so if you must deviate):")
+
+;; The message a supervised run sends for each of its turns (docs/runs.md).
+;; complete-line is the marker the run looks for to know the task is done.
+(define (run-turn-prompt task complete-line turn max-turns)
+  (string-append
+   "Run task:\n" task
+   "\n\nWork on one unfinished plan step, then report progress for review. If the entire task is complete, put "
+   complete-line
+   " alone on the final line. Do not claim completion while work remains. This is turn "
+   (number->string turn) " of at most " (number->string max-turns) "."))
+
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)
   (string-append
@@ -74,7 +90,7 @@
    """
    You improve how nibb, a coding agent, works in this repository. nibb's behaviour here is Scheme in .nibb/init.scm, loaded at the start of every session; you may edit only files under .nibb/. You can read the rest of the repository but not change it or run commands.
    What .nibb/init.scm can redefine (docs/scheme.md §9):
-   - prompts: (system-prompt repo), (plan-draft-prompt request) and the other plan prompts; extend a default with (define base-system-prompt system-prompt) first;
+   - prompts: (system-prompt repo), task-header and plan-header, (plan-draft-prompt request) and the other plan prompts, (run-turn-prompt task complete-line turn max-turns); extend a default with (define base-system-prompt system-prompt) first;
    - the loop: (agent-turn request) over model-turn, run-calls, skip-tools, add-message; the default asks, runs the calls, compacts when needed and asks again until a reply has no calls;
    - compaction: (define compact-threshold N);
    - sub-agents: (sub-agent system task tools [name]) and tools the model calls, (define-agent-tool name doc params handler).

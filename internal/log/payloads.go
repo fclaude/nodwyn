@@ -236,6 +236,10 @@ type WindowContext struct {
 	MaxResultTokens int             `json:"max_result_tokens"`
 	NumCtx          int             `json:"num_ctx"`
 	KeepAlive       string          `json:"keep_alive"`
+	// The headers of the task and its plan in the system prompt (window
+	// recipe v6); absent means the defaults.
+	TaskHeader string `json:"task_header,omitempty"`
+	PlanHeader string `json:"plan_header,omitempty"`
 }
 
 // Summary is a user-authored, revocable replacement for a closed conversation

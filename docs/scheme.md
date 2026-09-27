@@ -508,6 +508,8 @@ strings (§1.1):
 | | |
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt |
+| `task-header` `plan-header` | the headers under which the window adds the user's latest request and its plan to the system prompt, where they are never trimmed away |
+| `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for |
 | `(plan-system-prompt repo)` | the planner's system prompt |
 | `(plan-draft-prompt request)` | the planner's request for a plan |
 | `(plan-revise-prompt request plan score)` | the request for a better plan after the judge scored it `score` (0..1) |
@@ -525,10 +527,12 @@ strings (§1.1):
     """))
 ```
 
-nibb reads the system prompt once, after `init.scm` has run: it is then
-fixed for the session like the tool list (ADR 9), and a system prompt that
-is not a procedure returning a non-empty string stops the session from
-starting. The others are ordinary Scheme, read when the plan gate (§9.5)
+nibb reads the system prompt and the two headers once, after `init.scm` has
+run: they are then fixed for the session like the tool list (ADR 9), and
+recorded with the window's recipe so a replay rebuilds requests that used a
+project's own. A system prompt that is not a procedure returning a
+non-empty string, or a header that is not a non-empty string, stops the
+session from starting. The others are ordinary Scheme, read when the plan gate (§9.5)
 uses them, so a `(reload)` changes them from the next turn.
 
 ### 9.2 Compaction

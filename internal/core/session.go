@@ -89,30 +89,47 @@ func (s *Session) Send(text string) error { return s.send(text, false) }
 // Long-run drivers use this without changing the ordinary one-turn loop.
 func (s *Session) SendPlanned(text string) error { return s.send(text, true) }
 
-func (s *Session) send(text string, required bool) error {
+// SendRunTurn starts a supervised run's turn with the message
+// (run-turn-prompt task complete-line turn max-turns), which is Scheme like
+// every other prompt; the turn must plan, as with SendPlanned.
+func (s *Session) SendRunTurn(task, completeLine string, turn, maxTurns int) error {
 	return s.startTurn(func(ctx context.Context) error {
-		// The plan gate is Scheme, the default agent-turn's first step
-		// (internal/loop/plan.scm). What stays here is the invariant a
-		// strategy cannot skip: a turn that must plan does nothing
-		// irreversible before it records one (plan.go).
-		s.planRequired.Store(required)
-		s.planned.Store(false)
-		safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
+		// Evaluated here, inside the turn, where the interpreter is the
+		// turn's alone.
+		text, err := s.loop.RunTurnPrompt(task, completeLine, turn, maxTurns)
 		if err != nil {
 			return err
 		}
-		var msg log.UserMsg
-		if err := safe.Decode(&msg); err != nil {
-			return err
-		}
-		if err := s.loop.Turn(ctx, msg.Text); err != nil {
-			return err
-		}
-		if required && !s.planned.Load() {
-			return errors.New("required plan: the turn recorded no plan")
-		}
-		return nil
+		return s.turn(ctx, text, true)
 	})
+}
+
+func (s *Session) send(text string, required bool) error {
+	return s.startTurn(func(ctx context.Context) error { return s.turn(ctx, text, required) })
+}
+
+// turn records the user's message and runs agent-turn on it. The plan gate
+// is Scheme, the default agent-turn's first step (internal/loop/plan.scm);
+// what stays here is the invariant a strategy cannot skip: a turn that must
+// plan does nothing irreversible before it records one (plan.go).
+func (s *Session) turn(ctx context.Context, text string, required bool) error {
+	s.planRequired.Store(required)
+	s.planned.Store(false)
+	safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
+	if err != nil {
+		return err
+	}
+	var msg log.UserMsg
+	if err := safe.Decode(&msg); err != nil {
+		return err
+	}
+	if err := s.loop.Turn(ctx, msg.Text); err != nil {
+		return err
+	}
+	if required && !s.planned.Load() {
+		return errors.New("required plan: the turn recorded no plan")
+	}
+	return nil
 }
 
 // startTurn serializes model turns and user evaluations under one cancellation

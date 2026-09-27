@@ -10,6 +10,7 @@ import (
 	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nibb/internal/window"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
@@ -54,6 +55,29 @@ func TestDefaultPromptsAreUnchanged(t *testing.T) {
 		!strings.HasPrefix(evalText(t, r, "plan-score-rubric"), "The text is a plan") ||
 		r.eval("(length plan-score-levels)") != "5" || evalText(t, r, "(car plan-score-levels)") != "misses or contradicts the request" {
 		t.Fatal("judge prompts changed")
+	}
+	if evalText(t, r, "task-header") != window.DefaultTaskHeader || evalText(t, r, "plan-header") != window.DefaultPlanHeader {
+		t.Fatal("the window's headers changed")
+	}
+	// The run prompt reproduces what the run driver formatted in Go.
+	if got := evalText(t, r, `(run-turn-prompt "T" "DONE" 2 5)`); got != "Run task:\nT\n\nWork on one unfinished plan step, then report progress for review. If the entire task is complete, put DONE alone on the final line. Do not claim completion while work remains. This is turn 2 of at most 5." {
+		t.Fatalf("run-turn-prompt: %q", got)
+	}
+}
+
+// The headers of the task and its plan are Scheme, fixed for the session
+// like the system prompt, and recorded so a replay rebuilds requests that
+// used a project's own.
+func TestTaskHeaderIsSchemeAndReplays(t *testing.T) {
+	r := strategyRig(t, `(define task-header "THE ASK:")`, 0, fake.Turn{Content: "done"})
+	if e := r.turn("add a flag"); e != "" {
+		t.Fatal(e)
+	}
+	if raw := string(r.srv.Requests[0].Raw); !strings.Contains(raw, `THE ASK:\nadd a flag`) || strings.Contains(raw, window.DefaultTaskHeader) {
+		t.Fatalf("request:\n%s", raw)
+	}
+	if n := replayAll(t, r.logb); n != 1 {
+		t.Fatalf("replayed %d requests", n)
 	}
 }
 

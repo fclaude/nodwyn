@@ -13,9 +13,10 @@ import (
 
 // RecipeVersion names how windows are built. It is recorded with the window
 // recipe, so a replay can refuse a recipe it does not know. v3 added
-// harness messages, v4 narrowed contexts and v5 folded ones; an older log has
-// none of them, so Build rebuilds it unchanged.
-const RecipeVersion = "window-v5"
+// harness messages, v4 narrowed contexts, v5 folded ones, and v6 records
+// the task and plan headers (default when absent); an older log has none
+// of them, so Build rebuilds it unchanged.
+const RecipeVersion = "window-v6"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas
 // and model options. It verifies reconstruction; it is not a tamper-proof seal.
@@ -56,7 +57,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 				return zero, fmt.Errorf("window replay: this legacy request lacks recorded context or a request hash")
 			}
 			switch c.Version {
-			case "window-v1", "window-v2", "window-v3", "window-v4", RecipeVersion:
+			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", RecipeVersion:
 			default:
 				return zero, fmt.Errorf("window replay: unsupported recipe %q", c.Version)
 			}
@@ -72,7 +73,8 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			if c.Version == "window-v1" {
 				build = buildV1
 			}
-			built := build(prefix, c.System, Estimate(string(canonical)), Policy{HighWater: c.HighWater, LowWater: c.LowWater, MaxResultTokens: c.MaxResultTokens})
+			built := build(prefix, c.System, Estimate(string(canonical)), Policy{HighWater: c.HighWater, LowWater: c.LowWater, MaxResultTokens: c.MaxResultTokens,
+				TaskHeader: c.TaskHeader, PlanHeader: c.PlanHeader})
 			req := llm.Request{Model: rec.Model, Messages: built.Messages, Tools: tools, NumCtx: c.NumCtx, KeepAlive: c.KeepAlive}
 			if rec.Endpoint != "" {
 				req.NumCtx, req.KeepAlive = rec.NumCtx, rec.KeepAlive

@@ -5,7 +5,6 @@ package run
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -165,8 +164,9 @@ func (d *Driver) execute(actor string) {
 		d.current = completion{}
 		d.waiting = true
 		d.mu.Unlock()
-		prompt := fmt.Sprintf("Run task:\n%s\n\nWork on one unfinished plan step, then report progress for review. If the entire task is complete, put %s alone on the final line. Do not claim completion while work remains. This is turn %d of at most %d.", state.Task, CompleteLine, next, state.MaxTurns)
-		if err := d.session.SendPlanned(prompt); err != nil {
+		// The message is Scheme (run-turn-prompt in prompts.scm); the marker
+		// it names is the one Complete looks for.
+		if err := d.session.SendRunTurn(state.Task, CompleteLine, next, state.MaxTurns); err != nil {
 			d.mu.Lock()
 			d.waiting = false
 			d.mu.Unlock()

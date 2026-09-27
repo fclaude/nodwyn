@@ -140,52 +140,104 @@ func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
 	return l, nil
 }
 
-// ReadPrompts evaluates the system prompt as defined when it is called: the
-// default in prompts.scm, or a project's redefinition from .nibb/init.scm.
-// Freeze then fixes it (ADR 9). Every other prompt, the planner's included,
-// is ordinary Scheme, read when it is used.
+// ReadPrompts evaluates, as defined when it is called, what every request
+// starts with: the system prompt, and the headers under which the window
+// adds the user's request and its plan (task-header, plan-header). They are
+// the defaults in prompts.scm or a project's redefinitions from
+// .nibb/init.scm, and Freeze then fixes them (ADR 9). Every other prompt,
+// the planner's included, is ordinary Scheme, read when it is used.
 func (l *Loop) ReadPrompts(repo string) error {
 	if l.frozen {
 		return errors.New("loop: the system prompt is fixed once the session has started")
 	}
-	system, err := l.readSystemPrompt(repo)
+	fixed, err := l.readFixedPrompts(repo)
 	if err != nil {
 		return err
 	}
-	l.system = system
+	l.system = fixed.system
+	l.cfg.Window.TaskHeader, l.cfg.Window.PlanHeader = fixed.taskHeader, fixed.planHeader
 	return nil
 }
 
-// PromptChanges reads the system prompt as now defined, after a reload, and
-// names it if it differs from what the session runs with: it is fixed for
-// the session (ADR 9) and applies from the next one.
+// PromptChanges reads those prompts as now defined, after a reload, and
+// names each that differs from what the session runs with: they are fixed
+// for the session (ADR 9) and apply from the next one.
 func (l *Loop) PromptChanges(repo string) ([]string, error) {
-	system, err := l.readSystemPrompt(repo)
+	fixed, err := l.readFixedPrompts(repo)
 	if err != nil {
 		return nil, err
 	}
-	if redact.Redact(system, nil).Text != l.system {
-		return []string{"system-prompt"}, nil
+	var changed []string
+	if redact.Redact(fixed.system, nil).Text != l.system {
+		changed = append(changed, "system-prompt")
 	}
-	return nil, nil
+	if fixed.taskHeader != l.cfg.Window.TaskHeader {
+		changed = append(changed, "task-header")
+	}
+	if fixed.planHeader != l.cfg.Window.PlanHeader {
+		changed = append(changed, "plan-header")
+	}
+	return changed, nil
 }
 
-// readSystemPrompt applies system-prompt to repo.
-func (l *Loop) readSystemPrompt(repo string) (string, error) {
-	ctx := scheme.WithOrigin(context.Background(), scheme.OriginHarness)
-	proc, err := l.interp.EvalString(ctx, "system-prompt")
+type fixedPrompts struct{ system, taskHeader, planHeader string }
+
+// readFixedPrompts applies system-prompt to repo and reads the headers.
+func (l *Loop) readFixedPrompts(repo string) (fixedPrompts, error) {
+	var out fixedPrompts
+	proc, err := l.evalPrompt("system-prompt")
 	if err != nil {
-		return "", fmt.Errorf("loop: prompt system-prompt: %w", err)
+		return out, err
 	}
 	if !proc.IsProcedure() {
-		return "", errors.New("loop: prompt system-prompt must be a procedure")
+		return out, errors.New("loop: prompt system-prompt must be a procedure")
 	}
-	v, err := l.interp.Apply(ctx, proc, []scheme.Value{scheme.Str(repo)})
+	if out.system, err = l.callPrompt("system-prompt", proc, scheme.Str(repo)); err != nil {
+		return out, err
+	}
+	for name, dst := range map[string]*string{"task-header": &out.taskHeader, "plan-header": &out.planHeader} {
+		v, err := l.evalPrompt(name)
+		if err != nil {
+			return out, err
+		}
+		if *dst, err = promptText(name, v); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+// RunTurnPrompt is the message for a supervised run's turn:
+// (run-turn-prompt task complete-line turn max-turns), read when it is used.
+// completeLine is what the driver looks for, so the prompt names the marker
+// the driver will recognise.
+func (l *Loop) RunTurnPrompt(task, completeLine string, turn, maxTurns int) (string, error) {
+	proc, err := l.evalPrompt("run-turn-prompt")
 	if err != nil {
-		return "", fmt.Errorf("loop: prompt system-prompt: %w", err)
+		return "", err
 	}
+	return l.callPrompt("run-turn-prompt", proc, scheme.Str(task), scheme.Str(completeLine), scheme.Int(int64(turn)), scheme.Int(int64(maxTurns)))
+}
+
+func (l *Loop) evalPrompt(name string) (scheme.Value, error) {
+	v, err := l.interp.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginHarness), name)
+	if err != nil {
+		return scheme.Void, fmt.Errorf("loop: prompt %s: %w", name, err)
+	}
+	return v, nil
+}
+
+func (l *Loop) callPrompt(name string, proc scheme.Value, args ...scheme.Value) (string, error) {
+	v, err := l.interp.Apply(scheme.WithOrigin(context.Background(), scheme.OriginHarness), proc, args)
+	if err != nil {
+		return "", fmt.Errorf("loop: prompt %s: %w", name, err)
+	}
+	return promptText(name, v)
+}
+
+func promptText(name string, v scheme.Value) (string, error) {
 	if v.Kind != scheme.KString || strings.TrimSpace(v.S) == "" {
-		return "", fmt.Errorf("loop: prompt system-prompt must be a non-empty string, got %s", scheme.Write(v))
+		return "", fmt.Errorf("loop: prompt %s must be a non-empty string, got %s", name, scheme.Write(v))
 	}
 	return v.S, nil
 }
@@ -303,5 +355,6 @@ func (l *Loop) record(kind log.Kind, payload any) error {
 func (l *Loop) WindowContext() *log.WindowContext {
 	tools, _ := json.Marshal(l.tools)
 	control := l.cfg.Models[ControlModel]
-	return &log.WindowContext{Version: window.RecipeVersion, System: l.system, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: control.NumCtx, KeepAlive: control.KeepAlive}
+	return &log.WindowContext{Version: window.RecipeVersion, System: l.system, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: control.NumCtx, KeepAlive: control.KeepAlive,
+		TaskHeader: l.cfg.Window.TaskHeader, PlanHeader: l.cfg.Window.PlanHeader}
 }

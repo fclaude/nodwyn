@@ -1172,7 +1172,13 @@
         "num_ctx": {
           "type": "integer"
         },
+        "plan_header": {
+          "type": "string"
+        },
         "system": {
+          "type": "string"
+        },
+        "task_header": {
           "type": "string"
         },
         "tools": {},

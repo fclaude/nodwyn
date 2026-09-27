@@ -31,12 +31,24 @@ import (
 	"github.com/fclaude/nibb/internal/log"
 )
 
-// Policy is the window's tuning (config [window]).
+// Policy is the window's tuning (config [window]), and the headers under
+// which the user's latest request and its plan enter the system prompt.
 type Policy struct {
 	HighWater       int
 	LowWater        int
 	MaxResultTokens int
+	// TaskHeader and PlanHeader are Scheme (task-header and plan-header in
+	// prompts.scm). Empty means the defaults, which are also the headers
+	// every window had before recipe v6.
+	TaskHeader string
+	PlanHeader string
 }
+
+// The default headers for the task and its plan.
+const (
+	DefaultTaskHeader = "Current task (the user's latest request):"
+	DefaultPlanHeader = "Plan for the current task (follow it; say so if you must deviate):"
+)
 
 // Result is the built window.
 type Result struct {
@@ -136,12 +148,19 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		}
 	}
 
+	taskHeader, planHeader := pol.TaskHeader, pol.PlanHeader
+	if taskHeader == "" {
+		taskHeader = DefaultTaskHeader
+	}
+	if planHeader == "" {
+		planHeader = DefaultPlanHeader
+	}
 	sys := system
 	if task != "" {
-		sys = system + "\n\nCurrent task (the user's latest request):\n" + task
+		sys = system + "\n\n" + taskHeader + "\n" + task
 	}
 	if plan != "" {
-		sys += "\n\nPlan for the current task (follow it; say so if you must deviate):\n" + plan
+		sys += "\n\n" + planHeader + "\n" + plan
 	}
 	if n := len(frames); n > 0 {
 		// The strategy's system prompt replaces the session's, task and plan

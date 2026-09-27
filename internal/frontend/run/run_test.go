@@ -252,3 +252,26 @@ func TestRunCompletesWhenAFoldedReviewerHasTheLastWord(t *testing.T) {
 		t.Fatalf("run ended %+v, want completed", state)
 	}
 }
+
+// The message each run turn sends is Scheme: a project's run-turn-prompt is
+// what the model gets.
+func TestRunTurnPromptIsScheme(t *testing.T) {
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+(define (run-turn-prompt task complete-line turn max-turns)
+  (string-append "Turn " (number->string turn) ": " task ". Say " complete-line " when done."))`), 0o644)
+	_, history := driveIn(t, repo, config.Default(), time.Minute, 1, "y",
+		fake.Turn{Content: "1. Do it."}, fake.Turn{Content: "done\n" + CompleteLine})
+	for _, ev := range history {
+		if ev.Kind == log.KindUserMsg {
+			var p log.UserMsg
+			ev.Decode(&p)
+			if p.Text != "Turn 1: perform test task. Say "+CompleteLine+" when done." {
+				t.Fatalf("run turn message %q", p.Text)
+			}
+			return
+		}
+	}
+	t.Fatal("no run turn was sent")
+}

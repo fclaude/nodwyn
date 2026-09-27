@@ -13,6 +13,10 @@ nibb ui
 # Or nibb tui --socket /absolute/path/to/daemon.sock
 ```
 
+Each turn sends the message `(run-turn-prompt task complete-line turn
+max-turns)` makes, a Scheme prompt a project may redefine
+([docs/scheme.md](scheme.md) §9.1); the turn must plan before it acts (§9.5).
+
 The task is UTF-8 text, at most 64 KiB. Both limits are required; the turn limit
 is 1–10000. `--budget-wall` is the total run lifetime, including model waits,
 approval waits and time spent stopped. The daemon's configured per-turn budgets
