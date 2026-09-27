@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fclaude/nibb/internal/binding"
+	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/detect/l1"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/llm"
@@ -153,7 +154,7 @@ func (s *Session) authorize(class string) func(*http.Request) error {
 	return func(req *http.Request) error {
 		h := s.HandleForClass(class)
 		if h == nil {
-			return fmt.Errorf("no %s credential in the keychain", class)
+			return llm.Permanent(fmt.Errorf("no %s credential in the keychain", class))
 		}
 		if err := s.bindings.Refresh(); err != nil {
 			return err
@@ -164,30 +165,58 @@ func (s *Session) authorize(class string) func(*http.Request) error {
 			return err
 		}
 		if !bound {
-			return errors.New(reason)
+			return llm.Permanent(errors.New(reason))
 		}
 		_, name, prefix := binding.Position(modelKeyPosition)
 		return s.keychain.InjectHeader(h.ID, name, prefix, req)
 	}
 }
 
-// models builds the model registry ([models.NAME]) a strategy can ask by
-// name.
+// models builds the model registry a strategy asks by name: the [control]
+// model and every [models.NAME], each built the same way. The control
+// model's provider may come with the options instead (tests, embedders);
+// it is also the one the session reports and the planner uses.
 func (s *Session) models() map[string]loop.Endpoint {
-	out := make(map[string]loop.Endpoint, len(s.opts.Config.Models))
+	out := make(map[string]loop.Endpoint, len(s.opts.Config.Models)+1)
 	for name, m := range s.opts.Config.Models {
-		var p llm.Provider
-		switch m.Provider {
-		case "ollama":
-			p = llm.NewOllama(m.URL)
-		case "openai":
-			var auth func(*http.Request) error
-			if m.Credential != "" {
-				auth = s.authorize(m.Credential)
-			}
-			p = llm.NewOpenAI(m.URL, auth)
-		}
-		out[name] = loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive}
+		out[name] = s.endpoint(m)
 	}
+	control := s.endpoint(s.opts.Config.Control)
+	switch {
+	case s.opts.Provider != nil:
+		control.Provider = s.opts.Provider
+	case s.opts.Config.Control.URL == "" || s.opts.Config.Control.Model == "":
+		// A session opens without one, to replay or evaluate; its first
+		// model request says what to add.
+		control.Provider = unconfigured{llm.Permanent(config.MissingControl(s.opts.Paths.ConfigFile))}
+	}
+	s.opts.Provider = control.Provider
+	out[loop.ControlModel] = control
 	return out
 }
+
+// endpoint builds one configured model. A keyed one gets its key per
+// request, after its binding is checked (authorize).
+func (s *Session) endpoint(m config.Model) loop.Endpoint {
+	var p llm.Provider
+	switch m.Provider {
+	case "openai":
+		var auth func(*http.Request) error
+		if m.Credential != "" {
+			auth = s.authorize(m.Credential)
+		}
+		p = llm.NewOpenAI(m.URL, auth)
+	default: // "ollama", which validation guarantees for any other value
+		p = llm.NewOllama(m.URL)
+	}
+	return loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive}
+}
+
+// unconfigured stands in for a [control] model config.toml does not name.
+type unconfigured struct{ err error }
+
+func (unconfigured) Name() string { return "unconfigured" }
+func (u unconfigured) Chat(context.Context, llm.Request, func(llm.Delta)) (*llm.Response, error) {
+	return nil, u.err
+}
+func (u unconfigured) Ping(context.Context) (string, error) { return "", u.err }

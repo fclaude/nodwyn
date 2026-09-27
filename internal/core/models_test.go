@@ -134,7 +134,7 @@ func TestModelTurnByName(t *testing.T) {
 func TestModelTurnUnknownName(t *testing.T) {
 	r := modelRig(t, `(define (agent-turn request) (model-turn "gpt-9"))`,
 		map[string]config.Model{"impl": {Provider: "ollama", URL: "http://127.0.0.1:1", Model: "m"}}, Options{})
-	if err := r.turn("hi"); !strings.Contains(err, `no model "gpt-9" is configured; [models] has: impl`) {
+	if err := r.turn("hi"); !strings.Contains(err, `no model "gpt-9" is configured; configured models: control, impl`) {
 		t.Fatalf("turn error %q", err)
 	}
 }
@@ -175,3 +175,56 @@ func TestKeyedModelNeedsItsBinding(t *testing.T) {
 }
 
 func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }
+
+// Without a [control] model a session still opens, to replay or evaluate;
+// its first model request says what to add, and is not retried.
+func TestMissingControlFailsAtTheFirstModelRequest(t *testing.T) {
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Config: config.Default(), Repo: t.TempDir(), NoConfirm: true, LogWriter: logb})
+	if err != nil {
+		t.Fatalf("a session without a control model did not open: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	r := &rig{t: t, s: s, logb: logb}
+	if e := r.turn("hi"); !strings.Contains(e, "no control model is configured") || !strings.Contains(e, "[control]") {
+		t.Fatalf("turn error %q", e)
+	}
+	if strings.Contains(logb.String(), "request failed, retrying") {
+		t.Fatal("a missing control model was retried")
+	}
+}
+
+// The control model is built like any configured model, so it may be a
+// keyed chat-completions server whose key is bound.
+func TestKeyedControlModel(t *testing.T) {
+	const secret = "sk-control-canary-7788"
+	ctl := newFakeOpenAI(t, oaiText("hello from a keyed control model"))
+	kc, err := keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kc.Add("control-key", []byte(secret))
+	cfg := config.Default()
+	cfg.Control = config.Model{Provider: "openai", URL: ctl.URL + "/v1", Model: "coder", NumCtx: 128000, Credential: "control-key"}
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Config: cfg, Repo: t.TempDir(), NoConfirm: true, LogWriter: logb, Keychain: kc,
+		Bindings: binding.Table{Bind: []binding.Binding{{Class: "control-key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	r := &rig{t: t, s: s, logb: logb}
+	if e := r.turn("hi"); e != "" {
+		t.Fatal(e)
+	}
+	seen := ctl.seen()
+	if len(seen) != 1 || seen[0].auth != "Bearer "+secret || !strings.Contains(seen[0].body, `"model":"coder"`) {
+		t.Fatalf("control requests: %+v", seen)
+	}
+	if !strings.Contains(logb.String(), `"provider":"openai"`) || strings.Contains(logb.String(), secret) {
+		t.Fatal("session.start should name the provider, and the log must not hold the key")
+	}
+	if n := replayAll(t, logb); n != 1 {
+		t.Fatalf("replayed %d requests", n)
+	}
+}

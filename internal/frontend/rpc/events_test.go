@@ -197,6 +197,7 @@ func TestPromptSurvivesReconnectAndAbortDoesNotApprove(t *testing.T) {
 	defer model.Close()
 	o := options(t)
 	o.Config.Control.URL = model.URL
+	o.Config.Control.Model = "test-model"
 	path, _ := start(t, o)
 	c := connect(t, path)
 	c.hello()

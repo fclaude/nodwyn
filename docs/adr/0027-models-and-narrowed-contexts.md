@@ -51,9 +51,8 @@ whole anyway (ADR 25).
   machine. ADR 19 said the only content leaving in v0 was Jev's; that is no
   longer so once a remote model is configured. Narrowing is what keeps that
   to a task and a plan.
-- `[control]` is still Ollama-only, so a user with only a keyed provider
-  cannot yet make it the default model. Making the control model an entry
-  of the same registry is the next step.
+- `[control]` was still Ollama-only, so a user with only a keyed provider
+  could not make it the default model. Amended below.
 
 ## Amendment: folded contexts and sub-agents
 
@@ -79,3 +78,15 @@ context, and a tool the model calls could not be answered by one.
 A sub-agent (`sub-agent`) and a tool the model calls that a sub-agent
 answers (`define-agent-tool`, dispatched by `run-calls`) are user code over
 these primitives, in `internal/loop/agents.scm` (docs/scheme.md §9.3).
+
+## Amendment: the control model is a configured model (2026-09-27)
+
+`[control]` has the registry's shape and is built by the same code: it may
+be a keyed chat-completions server whose key is bound, and it is the entry
+`control`, which `(model-turn)` asks; no `[models.NAME]` may take that
+name, and the loop has no special case for it. There is no built-in
+default: the default had been one user's own server, unreachable for
+anyone else. A session opens without `[control]`, so logs can still be
+replayed and Scheme evaluated, and its first model request fails with the
+table to add. That failure, like a key that is missing or not bound, is a
+permanent error the request retry does not repeat.

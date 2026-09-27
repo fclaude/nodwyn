@@ -14,7 +14,7 @@ read [docs/adr/](adr/).
 A **front-end** sends the user's text to a **core session**, which calls the
 **loop**: a Scheme procedure, `agent-turn`, over a few Go primitives. They
 build a context **window** from the session **log**, send it to the
-control-plane **model** (Ollama on workshop) and display the redacted answer after
+control **model** (`[control]` in `config.toml`) and display the redacted answer after
 generation. When the model asks for a tool, the loop turns the request into a
 Scheme application `(tool-name arg …)` and evaluates it in the embedded
 **Scheme** interpreter.
@@ -126,10 +126,12 @@ make promote TAG=v0.1-bootstrap  # accept + selfcheck, then ~/.local/bin/nibb-st
 Use `nibb-stable` for real work and `bin/nibb` only to test a change to
 nibb itself. Never run the binary you are editing (ADR 12).
 
-Requires Go 1.27, `staticcheck`, ripgrep (`rg`) for text retrieval, and a reachable control plane: by default
-the Ollama server on workshop over the tailnet (`bin/nibb paths` shows where
-`config.toml` lives; a missing file means the defaults in
-[internal/config/config.go](../internal/config/config.go)).
+Requires Go 1.27, `staticcheck`, ripgrep (`rg`) for text retrieval, and a
+model to talk to: the `[control]` table in `config.toml` (`bin/nibb paths`
+shows where it lives; everything else has defaults in
+[internal/config/config.go](../internal/config/config.go)). There is no
+built-in model; without one, nibb prints the table to add. See "Choosing
+models".
 
 ### A session
 
@@ -419,7 +421,22 @@ unbound key is never sent. Configuring a model is consenting that what a
 strategy sends it leaves the machine: with `narrow-context` that can be just
 a task and a plan, but a strategy that asks a model over the whole
 conversation sends the whole conversation. Only you configure models; the
-model cannot. `[control]` is Ollama-only for now.
+model cannot.
+
+`[control]` has the same shape and is required: it is the model `(model-turn)`
+asks, and a keyed chat-completions server works there too.
+
+```toml
+[control]
+provider = "ollama"               # the default; or "openai"
+url = "http://localhost:11434"
+model = "qwen3:8b"
+num_ctx = 32768                   # optional; when set, the window must fit in it
+```
+
+A session opens without it, to replay or evaluate; its first model request
+fails with that table, and is not retried. A key that is missing or not
+bound fails the same way.
 
 ### Ingress redaction and the remaining boundaries
 
@@ -465,7 +482,8 @@ stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 
 | Symptom | Look at |
 |---|---|
-| `control plane … unreachable` | tailscale up? `curl http://workshop.example:11434/api/version` |
+| `no control model is configured` | add the `[control]` table it prints to `config.toml` ("Choosing models") |
+| `control model … unreachable` | is the `[control]` URL right and the server up? For Ollama, `curl <url>/api/version` |
 | first turn takes 10–60 s | another client holds workshop's single slot, or the prefix is cold; later turns are sub-second |
 | every request takes 30–50 s | the prefix cache is missing: check `:log` for `llm.req` — a trim (elided count jumped) or a new user turn re-prefills once; if it is every request, another client is evicting workshop's single slot between your requests |
 | the model loops on a denied call | the progress guard stops repeated denials; inspect the log before continuing. Budgets also bound each turn, and `--max-tool-calls N` sets a hard call ceiling |

@@ -29,7 +29,7 @@ type Options struct {
 	Paths    config.Paths
 	Repo     string // repository root; every path is pinned under it
 	Version  string
-	Provider llm.Provider // nil: built from Config.Control
+	Provider llm.Provider // the control model's provider; nil: built from Config.Control
 	// NoConfirm answers every confirm with "no" (non-interactive runs).
 	NoConfirm bool
 	// AutoApprove answers ordinary confirms with "yes" and security
@@ -83,7 +83,7 @@ func New(o Options) (*Session, error) {
 	s.flushOutput()
 	if _, err := s.Record(log.KindSessionStart, log.SessionStart{
 		Context: s.loop.WindowContext(),
-		Version: o.Version, Repo: o.Repo, Provider: o.Provider.Name(),
+		Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(),
 		Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools()),
 	}); err != nil {
 		s.logw.Close()
@@ -125,14 +125,6 @@ func resolveOptions(o Options) (Options, error) {
 	o.Repo = filepath.Clean(repo)
 	if o.EventBuffer == 0 {
 		o.EventBuffer = 256
-	}
-	if o.Provider == nil {
-		switch o.Config.Control.Provider {
-		case "ollama":
-			o.Provider = llm.NewOllama(o.Config.Control.URL)
-		default:
-			return Options{}, fmt.Errorf("core: unsupported provider %q", o.Config.Control.Provider)
-		}
 	}
 	return o, nil
 }
@@ -255,12 +247,10 @@ func (s *Session) initialize() (err error) {
 	// The loop installs agent-turn before init.scm loads, so a project can
 	// redefine it; the tool list is frozen once init.scm has run.
 	requestTimeout, _ := o.Config.Loop.Durations()
-	s.loop, err = loop.New(s, o.Provider, s.interp, loop.Config{
-		Model:          o.Config.Control.Model,
-		NumCtx:         o.Config.Control.NumCtx,
-		KeepAlive:      o.Config.Control.KeepAlive,
+	models := s.models()
+	s.loop, err = loop.New(s, s.interp, loop.Config{
 		Window:         window.Policy{HighWater: o.Config.Window.HighWater, LowWater: o.Config.Window.LowWater, MaxResultTokens: o.Config.Window.MaxResultTokens},
-		Models:         s.models(),
+		Models:         models,
 		RequestTimeout: requestTimeout,
 	})
 	if err != nil {

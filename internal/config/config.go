@@ -65,23 +65,31 @@ func PathsUnder(configDir, dataDir string) Paths {
 
 // Config is config.toml.
 type Config struct {
-	Control Control `toml:"control"`
-	Window  Window  `toml:"window"`
-	Policy  Policy  `toml:"policy"`
-	Loop    Loop    `toml:"loop"`
-	Budget  Budget  `toml:"budget"`
-	Jev     Jev     `toml:"jev"`
+	// Control is the model a session talks to unless a strategy asks for
+	// another: an entry of the same shape as Models, required once a session
+	// needs a model (MissingControl). There is no built-in default.
+	Control Model  `toml:"control"`
+	Window  Window `toml:"window"`
+	Policy  Policy `toml:"policy"`
+	Loop    Loop   `toml:"loop"`
+	Budget  Budget `toml:"budget"`
+	Jev     Jev    `toml:"jev"`
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].
 	Models map[string]Model `toml:"models"`
 }
 
-// Model is one entry of the model registry. Configuring a model is
-// consenting that what a strategy sends it leaves the machine. A keyed model
-// also needs its key bound to the URL's host (bindings.toml, POST at
-// header:Authorization:Bearer); that is checked on every request.
+// ControlModel is the registry name of the [control] model: (model-turn)
+// asks it, and no [models.NAME] may take the name.
+const ControlModel = "control"
+
+// Model is one entry of the model registry, or the [control] model.
+// Configuring a model is consenting that what a strategy sends it leaves
+// the machine. A keyed model also needs its key bound to the URL's host
+// (bindings.toml, POST at header:Authorization:Bearer); that is checked on
+// every request.
 type Model struct {
-	Provider   string `toml:"provider"`   // "ollama", or "openai" for any chat-completions server
+	Provider   string `toml:"provider"`   // "ollama" (the default when unset), or "openai" for any chat-completions server
 	URL        string `toml:"url"`        // base URL; for openai including the version, e.g. https://api.openai.com/v1
 	Model      string `toml:"model"`      // model id as the provider names it
 	NumCtx     int    `toml:"num_ctx"`    // context length; sent to ollama, informational otherwise
@@ -120,16 +128,6 @@ type Loop struct {
 	MaxToolCalls   int    `toml:"max_tool_calls"`  // legacy hard override; zero when absent, --max-tool-calls overrides
 	RequestTimeout string `toml:"request_timeout"` // per model request, e.g. "30m"
 	ShellTimeout   string `toml:"shell_timeout"`   // per shell-exec, e.g. "10m"
-}
-
-// Control describes the control-plane model (ADR 8). It is configured, not
-// keyed: the workshop endpoint is reachable only inside the tailnet.
-type Control struct {
-	Provider  string `toml:"provider"`   // "ollama" (bootstrap); others behind the same interface later
-	URL       string `toml:"url"`        // base URL, no trailing path
-	Model     string `toml:"model"`      // model id as the provider names it
-	NumCtx    int    `toml:"num_ctx"`    // backend context length to request
-	KeepAlive string `toml:"keep_alive"` // provider keep-alive, e.g. "30m"
 }
 
 // Window is the context policy (ADR 9, amended): hysteresis instead of a
@@ -201,13 +199,6 @@ func ParseRepoAllow(raw []byte) (RepoAllow, error) {
 // Default is the configuration nibb runs with when no config.toml exists.
 func Default() Config {
 	return Config{
-		Control: Control{
-			Provider:  "ollama",
-			URL:       "http://workshop.example:11434",
-			Model:     "qwen3.8-27b-96k:latest",
-			NumCtx:    98304,
-			KeepAlive: "30m",
-		},
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 8 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
 		Loop:   Loop{MaxToolCalls: 0, RequestTimeout: "30m", ShellTimeout: "10m"},
@@ -246,16 +237,19 @@ func Load(path string) (Config, error) {
 
 // Validate rejects configurations the harness must not run with.
 func (c Config) Validate() error {
-	switch c.Control.Provider {
-	case "ollama":
-	default:
-		return fmt.Errorf("control.provider %q is not supported", c.Control.Provider)
+	if c.Control != (Model{}) {
+		if err := c.Control.validate(); err != nil {
+			return fmt.Errorf("control: %w", err)
+		}
+		// Unset, the model's context length is unknown; set, the window
+		// must fit in it.
+		if n := c.Control.NumCtx; n > 0 && c.Window.HighWater+c.Window.OutputReserve > n {
+			return fmt.Errorf("window.high_water + window.output_reserve (%d) exceeds control.num_ctx (%d)",
+				c.Window.HighWater+c.Window.OutputReserve, c.Control.NumCtx)
+		}
 	}
-	if c.Control.URL == "" || c.Control.Model == "" {
-		return errors.New("control.url and control.model are required")
-	}
-	if c.Control.NumCtx <= 0 {
-		return errors.New("control.num_ctx must be positive")
+	if _, ok := c.Models[ControlModel]; ok {
+		return fmt.Errorf("models.%s: the name %q is the [control] model", ControlModel, ControlModel)
 	}
 	for name, m := range c.Models {
 		if err := m.validate(); err != nil {
@@ -267,10 +261,6 @@ func (c Config) Validate() error {
 	}
 	if c.Window.LowWater >= c.Window.HighWater {
 		return fmt.Errorf("window.low_water (%d) must be below window.high_water (%d)", c.Window.LowWater, c.Window.HighWater)
-	}
-	if c.Window.HighWater+c.Window.OutputReserve > c.Control.NumCtx {
-		return fmt.Errorf("window.high_water + window.output_reserve (%d) exceeds control.num_ctx (%d)",
-			c.Window.HighWater+c.Window.OutputReserve, c.Control.NumCtx)
 	}
 	switch c.Policy.Unbound {
 	case "deny", "confirm":
@@ -320,7 +310,7 @@ func (l Loop) Durations() (request, shell time.Duration) {
 
 func (m Model) validate() error {
 	switch m.Provider {
-	case "ollama", "openai":
+	case "", "ollama", "openai": // unset is ollama
 	default:
 		return fmt.Errorf("provider %q is not supported (ollama, openai)", m.Provider)
 	}
@@ -334,8 +324,25 @@ func (m Model) validate() error {
 	if m.NumCtx < 0 {
 		return errors.New("num_ctx must not be negative")
 	}
-	if m.Provider == "ollama" && m.Credential != "" {
+	if m.Provider != "openai" && m.Credential != "" {
 		return errors.New("credential is not supported for ollama")
 	}
 	return nil
+}
+
+// MissingControl is the error for a session that needs a model when
+// config.toml has no [control]: it says what to add, and where.
+func MissingControl(configFile string) error {
+	where := "config.toml"
+	if configFile != "" {
+		where = configFile
+	}
+	return fmt.Errorf(`no control model is configured; add a [control] table to %s, for example:
+
+[control]
+provider = "ollama"               # or "openai" for any chat-completions server
+url = "http://localhost:11434"    # for openai, the base URL including /v1
+model = "qwen3:8b"
+num_ctx = 32768
+# credential = "openai-key"       # keychain class of the API key, bound in bindings.toml`, where)
 }

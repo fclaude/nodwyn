@@ -13,8 +13,9 @@ reachable control plane.
 
 \section{config.toml}
 
-\file{\textasciitilde/.config/nibb/config.toml}; a missing file means these
-defaults:
+\file{\textasciitilde/.config/nibb/config.toml}. There is no built-in model:
+\code{[control]} names the one \nibb{} talks to (here, the author's), and
+without it \nibb{} prints the table to add. The rest shows the defaults:
 
 \begin{txt}
 [control]
@@ -58,7 +59,7 @@ wall_hard       = "4h"
 \begin{sh}
 $ cd ~/src/your-repo
 $ nibb-stable
-control plane: http://workshop...:11434 qwen3.8-27b-96k:latest (ollama 0.34.2)
+control model: http://workshop...:11434 qwen3.8-27b-96k:latest (ollama 0.34.2)
 log: /Users/you/.local/share/nibb/sessions/20260921T143846Z-beba937b.jsonl
 nibb session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
@@ -169,7 +170,8 @@ writes.
 \toprule
 Symptom & Look at \\
 \midrule
-\code{control plane ... unreachable} & tailscale up? \code{curl http://workshop...:11434/api/version} \\
+\code{no control model is configured} & add the \code{[control]} table it prints to \file{config.toml} \\
+\code{control model ... unreachable} & is the server up? For Ollama, \code{curl <url>/api/version} \\
 first turn takes 10--60\,s & another client holds workshop's single slot, or the prefix is cold; later turns are sub-second \\
 the model loops on a denied call & it was told; say so in the next message; the hard stop is 50 tool calls \\
 \code{hard stop: too many tool calls} & the turn ended; the log has everything; rephrase smaller \\

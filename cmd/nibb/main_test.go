@@ -43,7 +43,7 @@ func TestCLIResume(t *testing.T) {
 		}
 		return string(out)
 	}
-	flags := []string{"--url", srv.URL, "--no-keychain", "--no-confirm"}
+	flags := []string{"--url", srv.URL, "--model", "test-model", "--no-keychain", "--no-confirm"}
 	run("first ask\n:q\n", append(flags, "--repo", repo)...)
 	// Test subprocess adds its PASS line after main returns.
 	ids := strings.Fields(run("", "sessions", "--ids"))
@@ -70,7 +70,7 @@ func TestCLIBudgetCheckpoint(t *testing.T) {
 	configDir := filepath.Join(dir, "config", "nibb")
 	os.MkdirAll(configDir, 0700)
 	os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("[budget]\ntool_calls_soft=1\ntool_calls_hard=3\n"), 0600)
-	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--url", srv.URL, "--no-keychain", "--budget-wall", "2h", "--budget-actions", "10")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--url", srv.URL, "--model", "test-model", "--no-keychain", "--budget-wall", "2h", "--budget-actions", "10")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 	cmd.Stdin = strings.NewReader("list twice\n4\n3\n:q\n")

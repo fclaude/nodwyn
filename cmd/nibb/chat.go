@@ -86,16 +86,25 @@ func (c *cli) applyBudgets(cfg *config.Config) error {
 // session opens or resumes a session and runs the line-mode front-end over
 // it until the reader quits.
 func (c *cli) session(cfg config.Config, repo string) error {
-	provider := llm.NewOllama(cfg.Control.URL)
-	ctx := context.Background()
-	version, err := provider.Ping(ctx)
-	if err != nil {
-		return fmt.Errorf("control plane %s unreachable: %w", cfg.Control.URL, err)
+	ctl := cfg.Control
+	if ctl.URL == "" || ctl.Model == "" {
+		return config.MissingControl(c.paths.ConfigFile)
 	}
-	fmt.Fprintf(os.Stderr, "control plane: %s %s (ollama %s)\n", cfg.Control.URL, cfg.Control.Model, version)
+	if ctl.Provider == "openai" {
+		// Its key is opened with the keychain below; the first request
+		// reports a server that cannot be reached.
+		fmt.Fprintf(os.Stderr, "control model: %s %s (openai-compatible)\n", ctl.URL, ctl.Model)
+	} else {
+		version, err := llm.NewOllama(ctl.URL).Ping(context.Background())
+		if err != nil {
+			return fmt.Errorf("control model %s unreachable: %w", ctl.URL, err)
+		}
+		fmt.Fprintf(os.Stderr, "control model: %s %s (ollama %s)\n", ctl.URL, ctl.Model, version)
+	}
 
 	var kc *keychain.Store
 	var bindings binding.Table
+	var err error
 	if !c.noKeychain {
 		if kc, bindings, err = openKeychain(c.paths); err != nil {
 			return err
@@ -107,7 +116,7 @@ func (c *cli) session(cfg config.Config, repo string) error {
 	}
 	options := core.Options{
 		Config: cfg, Paths: c.paths, Repo: repo, Version: versionString(),
-		Provider: provider, NoConfirm: c.noConfirm, AutoApprove: c.yolo,
+		NoConfirm: c.noConfirm, AutoApprove: c.yolo,
 		Keychain: kc, Bindings: bindings,
 	}
 	var s *core.Session
@@ -125,7 +134,7 @@ func (c *cli) session(cfg config.Config, repo string) error {
 		Session: s, In: os.Stdin, Out: os.Stdout,
 		ShowThinking: c.thinking, Interrupt: watchInterrupts(s), ReplayHistory: c.resume != "",
 	}
-	runErr := chat.Run(ctx)
+	runErr := chat.Run(context.Background())
 	if err := s.Close(); err != nil {
 		fmt.Fprintln(os.Stderr, "nibb: close:", err)
 	}

@@ -10,6 +10,7 @@ import (
 type flaky struct {
 	failures int
 	calls    int
+	err      error // the failure to return; a transient parse error when nil
 }
 
 func (f *flaky) Name() string                         { return "flaky" }
@@ -17,6 +18,9 @@ func (f *flaky) Ping(context.Context) (string, error) { return "", nil }
 func (f *flaky) Chat(ctx context.Context, _ Request, _ func(Delta)) (*Response, error) {
 	f.calls++
 	if f.calls <= f.failures {
+		if f.err != nil {
+			return nil, f.err
+		}
 		return nil, errors.New("expected element type <function> but have <parameter>")
 	}
 	return &Response{Message: Message{Content: "ok"}}, nil
@@ -53,5 +57,17 @@ func TestChatRetryingStopsWhenCallerIsDone(t *testing.T) {
 	p := &flaky{failures: 1}
 	if _, err := ChatRetrying(ctx, p, Request{}, withTimeout, nil); err == nil || p.calls != 1 {
 		t.Fatalf("err=%v calls=%d", err, p.calls)
+	}
+}
+
+// A permanent failure, such as a model nobody configured, is not sent
+// again: the same request cannot succeed.
+func TestChatRetryingStopsAtPermanentFailures(t *testing.T) {
+	defer func(d time.Duration) { RetryDelay = d }(RetryDelay)
+	RetryDelay = time.Millisecond
+	p := &flaky{failures: 5, err: Permanent(errors.New("no control model is configured"))}
+	_, err := ChatRetrying(context.Background(), p, Request{}, withTimeout, func(int, error) { t.Fatal("retried a permanent failure") })
+	if err == nil || p.calls != 1 {
+		t.Fatalf("calls %d, err %v", p.calls, err)
 	}
 }

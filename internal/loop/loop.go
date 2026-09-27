@@ -54,23 +54,23 @@ type Host interface {
 
 // Config bounds the loop.
 type Config struct {
-	Model     string        // control-plane model name
-	NumCtx    int           // context size requested from the model server
-	KeepAlive string        // how long the server keeps the model loaded
-	Window    window.Policy // when and how older context is elided
-	// Models are the other models a strategy may ask by name, with
-	// (model-turn "NAME"): the configured model registry.
+	Window window.Policy // when and how older context is elided
+	// Models are the models a strategy may ask by name: the [control] model
+	// as ControlModel, which (model-turn) asks, and the configured registry
+	// with (model-turn "NAME").
 	Models         map[string]Endpoint
 	RequestTimeout time.Duration // per model request
 }
 
+// ControlModel is the registry name of the [control] model.
+const ControlModel = "control"
+
 // Loop runs a session's turns. Build it with New before .nibb/init.scm
 // loads and Freeze it after.
 type Loop struct {
-	host     Host
-	provider llm.Provider
-	interp   *scheme.Interp
-	cfg      Config
+	host   Host
+	interp *scheme.Interp
+	cfg    Config
 
 	tools    []llm.Tool // offered to the model; fixed by Freeze
 	toolsLen int        // estimated tokens of tools, for the window
@@ -107,9 +107,13 @@ var defaultOptimizer string
 
 // New builds a loop and installs its primitives and the default strategy
 // into interp. Call it before loading .nibb/init.scm, so the project may
-// redefine agent-turn, and call Freeze afterwards.
-func New(host Host, provider llm.Provider, interp *scheme.Interp, cfg Config) (*Loop, error) {
-	l := &Loop{host: host, provider: provider, interp: interp, cfg: cfg}
+// redefine agent-turn, and call Freeze afterwards. cfg.Models must hold the
+// control model.
+func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
+	if _, ok := cfg.Models[ControlModel]; !ok {
+		return nil, errors.New("loop: no control model")
+	}
+	l := &Loop{host: host, interp: interp, cfg: cfg}
 	if err := l.install(); err != nil {
 		return nil, err
 	}
@@ -372,5 +376,6 @@ func (l *Loop) record(kind log.Kind, payload any) error {
 // Tool schema marshaling already succeeded in Freeze.
 func (l *Loop) WindowContext() *log.WindowContext {
 	tools, _ := json.Marshal(l.tools)
-	return &log.WindowContext{Version: window.RecipeVersion, System: l.system, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}
+	control := l.cfg.Models[ControlModel]
+	return &log.WindowContext{Version: window.RecipeVersion, System: l.system, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: control.NumCtx, KeepAlive: control.KeepAlive}
 }

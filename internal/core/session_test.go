@@ -32,6 +32,7 @@ func newRig(t *testing.T, noConfirm bool, turns ...fake.Turn) *rig {
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL = srv.URL
+	cfg.Control.Model = "test-model"
 	cfg.Loop.MaxToolCalls = 3
 	logb := &bytes.Buffer{}
 	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: noConfirm, LogWriter: logb})

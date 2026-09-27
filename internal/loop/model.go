@@ -37,7 +37,9 @@ func (l *Loop) ask(ctx context.Context, name string) (*llm.Response, error) {
 		RequestHash: digest,
 		Model:       ep.Model, Messages: len(w.Messages), Tools: len(l.tools), EstTokens: w.EstTokens, Elided: w.Elided,
 	}
-	if name != "" {
+	if name != ControlModel {
+		// The session's recipe carries the control model's settings; any
+		// other model's go with its request, for replay.
 		rec.Endpoint, rec.NumCtx, rec.KeepAlive = name, ep.NumCtx, ep.KeepAlive
 	}
 	if err := l.record(log.KindLLMReq, rec); err != nil {
@@ -71,11 +73,8 @@ func hasUserMessage(msgs []llm.Message) bool {
 	return false
 }
 
-// endpoint resolves a model name: "" is the control model.
+// endpoint resolves a model name in the registry.
 func (l *Loop) endpoint(name string) (Endpoint, error) {
-	if name == "" {
-		return Endpoint{Provider: l.provider, Model: l.cfg.Model, NumCtx: l.cfg.NumCtx, KeepAlive: l.cfg.KeepAlive}, nil
-	}
 	if ep, ok := l.cfg.Models[name]; ok {
 		return ep, nil
 	}
@@ -84,7 +83,7 @@ func (l *Loop) endpoint(name string) (Endpoint, error) {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	return Endpoint{}, fmt.Errorf("no model %q is configured; [models] has: %s", name, strings.Join(names, ", "))
+	return Endpoint{}, fmt.Errorf("no model %q is configured; configured models: %s", name, strings.Join(names, ", "))
 }
 
 // show displays a complete response. It is not streamed: a credential can

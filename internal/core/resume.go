@@ -83,7 +83,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 			return nil, err
 		}
 	}
-	if _, err = s.Record(log.KindSessionResume, log.SessionStart{Context: s.loop.WindowContext(), Version: o.Version, Repo: o.Repo, Provider: o.Provider.Name(), Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools())}); err != nil {
+	if _, err = s.Record(log.KindSessionResume, log.SessionStart{Context: s.loop.WindowContext(), Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(), Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools())}); err != nil {
 		return nil, err
 	}
 	if _, err = s.Record(log.KindNote, log.Note{Text: "Session resumed; session-only approvals and Scheme state were reset. No interrupted tool was rerun."}); err != nil {

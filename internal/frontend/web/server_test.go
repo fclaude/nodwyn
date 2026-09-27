@@ -88,6 +88,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	defer model.Close()
 	cfg := config.Default()
 	cfg.Control.URL = model.URL
+	cfg.Control.Model = "test-model"
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
 	done := make(chan error, 1)
 	go func() {
@@ -205,6 +206,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	defer model.Close()
 	cfg := config.Default()
 	cfg.Control.URL = model.URL
+	cfg.Control.Model = "test-model"
 	cfg.Policy.Unbound = "confirm"
 	cfg.Budget.ToolCallsSoft = 1
 	cfg.Budget.ToolCallsHard = 3

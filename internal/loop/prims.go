@@ -133,7 +133,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
-	var name string
+	name := ControlModel
 	switch len(c.Args) {
 	case 0:
 	case 1:

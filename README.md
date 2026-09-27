@@ -98,8 +98,10 @@ bin/nibb --resume <session-id> # continue in the recorded repository
 bin/nibb repl                 # Scheme REPL
 ```
 
-The control plane is the Ollama server in `~/.config/nibb/config.toml`
-(default: Qwen on workshop over the tailnet; no key). Model requests honor
+The control model is the `[control]` table in `~/.config/nibb/config.toml`:
+an Ollama server, or any chat-completions server with a key bound in
+`bindings.toml`. There is no built-in default; when it is missing, nibb says
+what to add. Model requests honor
 `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, so a sandbox whose only egress is
 an allowlist proxy can still reach the model. Every write and every
 command is confirmed by you, with a diff for writes and edits; standing

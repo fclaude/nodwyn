@@ -22,3 +22,5 @@ control plane and unused while workshop is the control plane.
 - No secret exists on the build machine until P5 registers the Jev key.
 - Swapping the control plane later is a config change behind the interface.
 - Tests run against a fake Ollama; `make smoke` is a manual run against workshop.
+- *Amended 2026-09-27 (ADR 27):* `[control]` may be any configured model,
+  including a keyed chat-completions server, and has no built-in default.
