@@ -571,7 +571,7 @@ code, in `internal/loop/agents.scm`:
 
 | | |
 |---|---|
-| `(sub-agent system task tools [name])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (other calls are skipped) or is `#f` for all; `name` labels it in the log (default: the agent tool being answered, else `sub-agent`); returns its final answer, after `fold-context` |
+| `(sub-agent system task tools [name])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (other calls are skipped), is a procedure that takes a call and says whether it may run, or is `#f` for all; `name` labels it in the log (default: the agent tool being answered, else `sub-agent`); returns its final answer, after `fold-context` |
 | `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40) |
 | `(define-agent-tool name doc params handler)` | register a tool the model calls like any other, answered by `(handler call args)`, `args` parsed from the model's JSON; define it in `.nibb/init.scm` |
 | `(run-calls calls)` | run a reply's calls: agent tools through their handlers and `answer-call`, the rest with `run-tools`; returns one result alist per call. The default `agent-turn` uses it |
@@ -599,6 +599,39 @@ A strategy can also run one itself, such as a review when the model stops:
 sub-agent is asked on the same model unless its loop routes elsewhere
 (`(model-turn name)`), and each fold costs the server one re-read of the
 caller's context: the prefix it had cached was the sub-agent's (ADR 9).
+
+### 9.4 History, reload and the optimizer
+
+A strategy can read this repository's past sessions and change how nibb
+works here, while the session runs:
+
+| | |
+|---|---|
+| `(session-list [n])` | this repository's sessions, newest first (all, or the latest `n`); each an alist with `id`, `first-message`, `last-event`, `current`, `in-flight` and `truncated`. Other repositories' sessions are not listed |
+| `(session-events id [kinds])` | one of those sessions as its log events, optionally only the kinds listed (`'("user.msg" "tool.result")`); each an alist with `seq`, `ts`, `kind` and `payload`, the event's JSON redacted and parsed as `json-parse` does. The values carry the `external:log` taint, like a tool's output |
+| `(reload)` | run `.nibb/init.scm` again, with the caller's origin. The strategy, compaction settings, agent-tool handlers and anything else read when used apply from the next turn; a tool keeps its schema and takes a changed body. What a session is fixed with (ADR 9) does not change: new or changed tools, guard checks (`register-check`) and prompts are returned as notes and apply from the next session or a resume |
+
+The optimizer (`internal/loop/optimize.scm`) is user code over these. The
+user starts it with a message; the default `agent-turn` runs it instead of
+the loop:
+
+```
+/optimize                 every earlier session of this repository
+/optimize 5               the latest five
+/optimize ID ID ...       the sessions named (ids from session-list)
+/optimize 5 test runs     any other words are a focus
+```
+
+It digests the sessions (requests, answers, the calls made, failures and
+refusals, judges' verdicts, sub-agents, notes) within
+`optimize-session-chars` per session and `optimize-total-chars` in all, and
+hands them to a sub-agent labelled `optimizer`. That agent may read the
+repository and write only under `.nibb/`, a protected path, so every write
+asks the user and shows the diff. When it is done `init.scm` is reloaded (and
+restored if the reload fails), and the model tells the user what changed.
+Its prompts are `optimizer-system-prompt` and `(optimizer-task history
+focus)` (§9.1). A strategy that redefines `agent-turn` keeps `/optimize` by
+calling `(optimize-turn request)` when `(optimize-request? request)`.
 
 ## 10. Not in nibb Scheme
 

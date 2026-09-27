@@ -40,6 +40,29 @@ type Interp struct {
 	out     io.Writer
 	isSF    map[string]bool
 	baseDir string
+
+	// reloading is set while a session re-runs its init file: what would
+	// change the tool list or the guard it started with is noted in
+	// reloadNotes instead of applied (ADR 9).
+	reloading   bool
+	reloadNotes []string
+}
+
+// BeginReload starts re-running an init file over this interpreter:
+// register-tool replaces the body of a tool whose name, description and
+// parameters are unchanged, and notes any other registration instead of
+// applying it; register-check is noted, not applied.
+func (in *Interp) BeginReload() { in.reloading, in.reloadNotes = true, nil }
+
+// EndReload ends it and returns what could not change in this session.
+func (in *Interp) EndReload() []string {
+	notes := in.reloadNotes
+	in.reloading, in.reloadNotes = false, nil
+	return notes
+}
+
+func (in *Interp) noteReload(format string, args ...any) {
+	in.reloadNotes = append(in.reloadNotes, fmt.Sprintf(format, args...))
 }
 
 // Option configures New.

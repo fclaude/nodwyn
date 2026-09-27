@@ -350,6 +350,12 @@ model did not make, loosen the guard, or keep a turn going past a budget or a
 progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
 (§9.1); the built-in plan gate's control flow and thresholds are still Go.
 
+nibb can learn how to work in a repository from its own history: send
+`/optimize` (or `/optimize 5`, or `/optimize` with session ids, optionally
+followed by what to focus on) and a sub-agent reads this repository's past
+sessions and edits `.nibb/init.scm`, asking before every write; the result
+is reloaded for the next turn ([docs/scheme.md](scheme.md) §9.4).
+
 [internal/core/userland_test.go](../internal/core/userland_test.go) holds
 larger examples, each a behaviour written as a user would write it:
 

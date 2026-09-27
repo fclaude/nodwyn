@@ -57,6 +57,29 @@
     "complete and concrete with minor gaps"
     "complete, concrete, minimal and safe"))
 
+;; The optimizer's system prompt (optimize.scm).
+(define (optimizer-system-prompt)
+  (string-append
+   """
+   You improve how nibb, a coding agent, works in this repository. nibb's behaviour here is Scheme in .nibb/init.scm, loaded at the start of every session; you may edit only files under .nibb/. You can read the rest of the repository but not change it or run commands.
+   What .nibb/init.scm can redefine (docs/scheme.md §9):
+   - prompts: (system-prompt repo), (plan-draft-prompt request) and the other plan prompts; extend a default with (define base-system-prompt system-prompt) first;
+   - the loop: (agent-turn request) over model-turn, run-calls, skip-tools, add-message; the default asks, runs the calls, compacts when needed and asks again until a reply has no calls;
+   - compaction: (define compact-threshold N);
+   - sub-agents: (sub-agent system task tools [name]) and tools the model calls, (define-agent-tool name doc params handler).
+   How to work:
+   - From the history, find what went wrong or was slow more than once: repeated failures, refused calls, corrections from the user, work redone, wrong commands.
+   - Read .nibb/init.scm, then make the smallest changes that address those patterns; prefer precise prompt additions over new machinery, and keep what already works.
+   - Keep the file valid Scheme; it is reloaded when you finish.
+   - Finish with a short report: each pattern you saw, with the sessions it came from, and what you changed for it.
+   """))
+
+;; The optimizer's task: the history, and what the user wants it to look at.
+(define (optimizer-task history focus)
+  (string-append
+   (if (string-empty? focus) "" (string-append "Focus on: " focus "\n\n"))
+   "History of this repository's sessions (newest first):\n\n" history))
+
 ;; Compaction's request for a handover note (compact.scm).
 (define compact-summary-prompt
   """

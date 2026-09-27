@@ -1,5 +1,7 @@
 package scheme
 
+import "reflect"
+
 func (in *Interp) registerMeta() {
 	in.mustRegister("primitives", "Sorted list of primitive names.", nil, false, func(c *Call) (Value, error) {
 		ps := c.In.Prims()
@@ -51,6 +53,16 @@ func (in *Interp) registerMeta() {
 			Handler: func(call *Call) (Value, error) {
 				return call.In.Apply(call.Ctx, proc, call.Args)
 			},
+		}
+		if c.In.reloading {
+			// The tool list is fixed for the session: a tool keeps its
+			// schema and takes its new body; anything else waits.
+			if old, ok := c.In.prims[name]; ok && old.Meta.Origin == "scheme" && reflect.DeepEqual(old.Meta, meta) {
+				old.Handler = p.Handler
+			} else {
+				c.In.noteReload("tool %s is new, or its description or parameters changed: the tool list is fixed for this session, so it applies from the next one", name)
+			}
+			return Void, nil
 		}
 		if err := c.In.Register(p); err != nil {
 			return Value{}, errorf(c.Name, "%v", err)
@@ -105,6 +117,10 @@ user-originated Scheme.`,
 			Origin: "builtin",
 		},
 		Handler: func(c *Call) (Value, error) {
+			if c.In.reloading {
+				c.In.noteReload("register-check: the guard's checks are fixed for this session; changes apply from the next one")
+				return Void, nil
+			}
 			if OriginFrom(c.Ctx) != OriginUser {
 				return Value{}, errorf(c.Name, "register-check is restricted to user-originated Scheme")
 			}

@@ -50,7 +50,8 @@
 
 ;; Run task in a sub-agent: a narrowed context with system as its system
 ;; prompt. tools lists the tool names it may use (the others are skipped
-;; with a reason), or #f for all of them; an optional name labels its
+;; with a reason), is a procedure that takes a call and says whether it may
+;; run, or is #f for all of them; an optional name labels its
 ;; context in the log. Returns its final answer; the context is folded, so
 ;; the caller's context never sees the sub-agent's work, only what the
 ;; caller does with the answer. The log keeps all of it.
@@ -64,7 +65,9 @@
                    (skip-tools calls "this agent is out of rounds"))
                  (fold-context)
                  (string-trim (assoc-ref reply 'content "")))
-          (let ((allowed (if tools (filter (lambda (c) (member (assoc-ref c 'name) tools)) calls) calls)))
+          (let ((allowed (cond ((procedure? tools) (filter tools calls))
+                               (tools (filter (lambda (c) (member (assoc-ref c 'name) tools)) calls))
+                               (else calls))))
             (unless (= (length allowed) (length calls))
               (skip-tools (filter (lambda (c) (not (member c allowed))) calls)
                           "not available to this agent"))

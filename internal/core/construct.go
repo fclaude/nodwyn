@@ -236,6 +236,12 @@ func (s *Session) initialize() error {
 		return err
 	}
 	s.interp.SetGate(turnGate{Gate: g})
+	if err := s.registerHistory(); err != nil {
+		return err
+	}
+	if err := s.registerReload(); err != nil {
+		return err
+	}
 	// The loop installs agent-turn before init.scm loads, so a project can
 	// redefine it; the tool list is frozen once init.scm has run.
 	requestTimeout, _ := o.Config.Loop.Durations()
