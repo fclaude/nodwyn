@@ -37,6 +37,9 @@ A successful plain model response whose exact final line is
 `NIBB_RUN_COMPLETE` ends the run as **model-reported completion**. This is not
 proof that the task is correct or complete. Tool results, responses containing
 tool calls, truncated responses, and marker substrings do not signal completion.
+The final reply is the last one the conversation still shows: a reply inside a
+folded context, such as a reviewer sub-agent's verdict, is not the model's
+answer, so it neither completes a run nor hides the model's completion line.
 Review the transcript and normal project checks. A hard turn budget permits a
 checkpoint and another turn; user refusal, cancellation, progress stops and
 provider failures stop continuation.

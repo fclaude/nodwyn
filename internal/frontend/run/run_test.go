@@ -3,6 +3,8 @@ package run
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -33,11 +35,18 @@ func drive(t *testing.T, wall time.Duration, max int, answer string, turns ...fa
 }
 func driveConfigured(t *testing.T, cfg config.Config, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
 	t.Helper()
+	return driveIn(t, t.TempDir(), cfg, wall, max, answer, turns...)
+}
+
+// driveIn runs a driver over a session in repo, which may hold a
+// .nibb/init.scm.
+func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
+	t.Helper()
 	srv := fake.New(turns...)
 	defer srv.Close()
 	cfg.Budget.TokensSoft = 100000
 	cfg.Budget.TokensHard = 100000
-	s, err := core.New(core.Options{Repo: t.TempDir(), Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL)})
+	s, err := core.New(core.Options{Repo: repo, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,5 +227,27 @@ func TestHardTurnBudgetCanContinueOnlyAfterCheckpoint(t *testing.T) {
 	}
 	if !hard || !checkpoint {
 		t.Fatalf("hard=%v checkpoint=%v", hard, checkpoint)
+	}
+}
+
+// A turn's answer is the model's, not a sub-agent's: a reviewer that reads
+// the answer in its own, folded, context does not replace it.
+func TestRunCompletesWhenAFoldedReviewerHasTheLastWord(t *testing.T) {
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+(define (agent-turn request)
+  (let ((answer (assoc-ref (model-turn) 'content)))
+    (narrow-context "You review work." "reviewer")
+    (add-message (string-append "Review this answer: " answer))
+    (model-turn)
+    (fold-context)))`), 0o644)
+	state, _ := driveIn(t, repo, config.Default(), time.Minute, 1, "y",
+		fake.Turn{Content: "1. Do the task."},
+		fake.Turn{Content: "task done\n" + CompleteLine},
+		fake.Turn{Content: "VERDICT: done"},
+	)
+	if state.Status != "completed" {
+		t.Fatalf("run ended %+v, want completed", state)
 	}
 }

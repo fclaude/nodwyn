@@ -4,6 +4,7 @@ import (
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nibb/internal/window"
 )
 
 // Record appends to the log, keeps the event for the window, and forwards
@@ -40,6 +41,11 @@ func (s *Session) EventsSoFar() []log.Event {
 	defer s.evmu.Unlock()
 	return append([]log.Event(nil), s.events...)
 }
+
+// FinalReply returns the model's last reply of the latest turn that the
+// conversation still shows (window.LastReply): a folded sub-agent's reply is
+// not the turn's answer.
+func (s *Session) FinalReply() (log.LLMResp, bool) { return window.LastReply(s.EventsSoFar()) }
 
 // Emit delivers an event to the front-end (loop.Host). It blocks if the
 // front-end is not draining; that is backpressure, not a bug.

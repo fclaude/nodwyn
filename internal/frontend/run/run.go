@@ -48,10 +48,9 @@ func (s State) Validate() error {
 	return nil
 }
 
-// completion is how one turn ended, and its final answer if it gave one.
+// completion is how one turn ended.
 type completion struct {
-	end    log.TurnEnd
-	answer string
+	end log.TurnEnd
 }
 
 // Driver runs one run: it sends a planned turn, waits for it to end, stops
@@ -115,14 +114,6 @@ func (d *Driver) Observe(ev event.Event) {
 		return
 	}
 	switch ev.Kind {
-	case string(log.KindLLMResp):
-		p, ok := ev.Payload.(log.LLMResp)
-		if ok {
-			d.current.answer = ""
-			if len(p.ToolCalls) == 0 && p.DoneReason == "stop" {
-				d.current.answer = p.Content
-			}
-		}
 	case string(log.KindTurnEnd):
 		d.current.end, _ = ev.Payload.(log.TurnEnd)
 	case event.Status:
@@ -193,11 +184,18 @@ func (d *Driver) execute(actor string) {
 			d.finish("stopped", d.ctx.Err().Error())
 			return
 		}
+		// The turn's answer is the last reply the conversation still shows,
+		// not the last one in the log: a sub-agent's reply, such as a
+		// reviewer's verdict, is folded away and is not the model's word.
+		answer := ""
+		if reply, ok := d.session.FinalReply(); ok && len(reply.ToolCalls) == 0 && reply.DoneReason == "stop" {
+			answer = reply.Content
+		}
 		if result.end.Outcome != "completed" && result.end.Outcome != "hard_budget" {
 			d.finish("stopped", "turn ended: "+result.end.Outcome+": "+result.end.Error)
 			return
 		}
-		if result.end.Outcome == "completed" && Complete(result.answer) {
+		if result.end.Outcome == "completed" && Complete(answer) {
 			d.finish("completed", "model reported completion")
 			return
 		}
@@ -205,7 +203,7 @@ func (d *Driver) execute(actor string) {
 			d.finish("limited", "maximum turn count reached")
 			return
 		}
-		approval, err := d.session.ConfirmApproval(d.ctx, guard.Prompt{Prim: "run checkpoint", Reasons: []string{"Continue with another planned turn? This grants no tool permission."}, Detail: result.answer})
+		approval, err := d.session.ConfirmApproval(d.ctx, guard.Prompt{Prim: "run checkpoint", Reasons: []string{"Continue with another planned turn? This grants no tool permission."}, Detail: answer})
 		_, recordErr := d.session.Record(log.KindRunCheckpoint, log.RunCheckpoint{Number: next, Allowed: approval.Allowed && err == nil, Actor: approval.Actor, PromptID: approval.PromptID})
 		if recordErr != nil {
 			d.finish("error", recordErr.Error())
