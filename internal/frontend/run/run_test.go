@@ -39,7 +39,10 @@ func driveConfigured(t *testing.T, cfg config.Config, wall time.Duration, max in
 }
 
 // driveIn runs a driver over a session in repo, which may hold a
-// .nibb/init.scm.
+// .nibb/init.scm. answer is how the operator answers prompts: "y", "n",
+// "wait" (never), or "expire", where the run's time runs out the moment a
+// prompt appears — the deadline passing while the operator is away, without
+// racing a real clock against the turns before it.
 func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
 	t.Helper()
 	srv := fake.New(turns...)
@@ -54,12 +57,22 @@ func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, m
 	if err != nil {
 		t.Fatal(err)
 	}
+	expire := func() {}
+	if answer == "expire" {
+		d.cancel()
+		ctx, cancel := context.WithCancelCause(context.Background())
+		d.ctx, d.cancel = ctx, func() { cancel(context.Canceled) }
+		expire = func() { cancel(context.DeadlineExceeded) }
+	}
 	drained := make(chan struct{})
 	go func() {
 		defer close(drained)
 		for ev := range s.Events() {
 			d.Observe(ev)
-			if ev.Kind == event.PromptConfirm && answer != "wait" {
+			if ev.Kind == event.PromptConfirm && answer == "expire" {
+				expire()
+			}
+			if ev.Kind == event.PromptConfirm && answer != "wait" && answer != "expire" {
 				p := ev.Payload.(event.Confirm)
 				_ = s.AnswerFrom(p.ID, answer, "test-operator")
 			}
@@ -121,7 +134,7 @@ func TestRunStops(t *testing.T) {
 		{"ceiling", "y", 1, time.Minute, []fake.Turn{{Content: "1. work"}, {Content: "step"}}, "limited"},
 		{"empty-plan", "y", 3, time.Minute, []fake.Turn{{Content: " "}}, "stopped"},
 		{"provider-error", "y", 3, time.Minute, []fake.Turn{{Content: "1. work"}, {Error: "outage"}}, "stopped"},
-		{"deadline-at-checkpoint", "wait", 3, 100 * time.Millisecond, []fake.Turn{{Content: "1. work"}, {Content: "step"}}, "stopped"},
+		{"deadline-at-checkpoint", "expire", 3, time.Minute, []fake.Turn{{Content: "1. work"}, {Content: "step"}}, "stopped"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			state, _ := drive(t, tc.wall, tc.max, tc.answer, tc.turns...)
