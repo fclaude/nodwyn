@@ -106,8 +106,10 @@ command is confirmed by you, with a diff for writes and edits; standing
 approvals for read-only commands live in `.nibb/allow.toml` (ADR 17).
 Session logs live in `~/.local/share/nibb/sessions/`.
 Resume restores the conversation and appends to that same log. It reloads current
-configuration, bindings, standing approvals from files, and repository `init.scm`;
-session-only approvals and interactive Scheme definitions are reset. An explicit
+configuration, bindings, standing approvals from files, and repository `init.scm`,
+so its prompts and tools as they are now apply, which `(reload)` leaves fixed
+until then; requests made before still replay under the recipe they used.
+Session-only approvals and interactive Scheme definitions are reset. An explicit
 `--repo` must match the recorded repository. Only one process may append to a
 session at a time. Interrupted tool calls are never rerun automatically: a call
 without a durable result is marked "outcome unknown" so the next turn can inspect

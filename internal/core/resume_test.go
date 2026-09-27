@@ -19,6 +19,7 @@ import (
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/window"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
@@ -280,5 +281,68 @@ func TestUnfinishedToolsWithReusedIDs(t *testing.T) {
 	pending, err = unfinishedTools(events)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("already repaired: %+v %v", pending, err)
+	}
+}
+
+// Resuming is a full reload: .nibb/init.scm runs again, so the prompts and
+// tools it defines now apply, and a request made before the resume still
+// replays under the recipe it was made with.
+func TestResumeRereadsInit(t *testing.T) {
+	srv := fake.New(fake.Turn{Content: "first"}, fake.Turn{Content: "second"})
+	defer srv.Close()
+	o := diskOptions(t)
+	o.Provider = llm.NewOllama(srv.URL)
+	writeInit := func(version string) {
+		os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0o755)
+		os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`
+(define (system-prompt repo) "PROMPT `+version+`")
+(register-tool "tool-`+version+`" (lambda () "ok") '((doc . "a tool") (params . ())))`), 0o644)
+	}
+	writeInit("one")
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Send("hi"); err != nil {
+		t.Fatal(err)
+	}
+	(&rig{t: t, s: s}).drain("n")
+	id := s.ID()
+	s.Close()
+
+	writeInit("two")
+	o.Repo = ""
+	resumed, err := Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumed.Close()
+	var names []string
+	for _, tl := range resumed.Tools() {
+		names = append(names, tl.Name)
+	}
+	if got := strings.Join(names, " "); !strings.Contains(got, "tool-two") || strings.Contains(got, "tool-one") {
+		t.Fatalf("resumed tools: %s", got)
+	}
+	if err := resumed.Send("again"); err != nil {
+		t.Fatal(err)
+	}
+	(&rig{t: t, s: resumed}).drain("n")
+	if first, second := string(srv.Requests[0].Raw), string(srv.Requests[1].Raw); !strings.Contains(first, "PROMPT one") ||
+		!strings.Contains(second, "PROMPT two") || strings.Contains(second, "PROMPT one") {
+		t.Fatalf("system prompts: before %q, after %q", first[:120], second[:120])
+	}
+	events := resumed.EventsSoFar()
+	replayed := 0
+	for _, ev := range events {
+		if ev.Kind == log.KindLLMReq {
+			if _, err := window.ReplayRequest(events, ev.Seq); err != nil {
+				t.Fatalf("replay of seq %d: %v", ev.Seq, err)
+			}
+			replayed++
+		}
+	}
+	if replayed != 2 {
+		t.Fatalf("replayed %d requests", replayed)
 	}
 }
