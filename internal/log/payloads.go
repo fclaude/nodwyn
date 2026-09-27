@@ -43,6 +43,11 @@ type HarnessMsg struct {
 // after this event.
 type ContextNarrow struct {
 	System string `json:"system"`
+	// Agent names who works in this context, such as a sub-agent's tool
+	// name; Answers lists the model's calls waiting for it to fold. Neither
+	// changes the window: they let a log be read agent by agent.
+	Agent   string   `json:"agent,omitempty"`
+	Answers []string `json:"answers,omitempty"`
 }
 
 // ContextWiden ends a narrowed context.

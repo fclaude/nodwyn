@@ -9,6 +9,10 @@
 ;; and returns the text the model reads.
 (define agent-tools '())
 
+;; The name a sub-agent's context gets in the log: the agent tool being
+;; answered while run-calls runs its handler, else "sub-agent".
+(define agent-label #f)
+
 ;; Register a tool the model can call, answered by (handler call args). It is
 ;; offered like any tool, so define it in .nibb/init.scm, before the tool
 ;; list is fixed. The body the guard would run only says who answers.
@@ -31,7 +35,10 @@
             (reverse out)
             (let* ((c (car cs)) (handler (agent-tool c)))
               (if handler
-                  (let ((text (handler c (json-parse (assoc-ref c 'args "{}")))))
+                  (let ((text (begin (set! agent-label (assoc-ref c 'name))
+                                     (let ((t (handler c (json-parse (assoc-ref c 'args "{}")))))
+                                       (set! agent-label #f)
+                                       t))))
                     (answer-call c text)
                     (loop (cdr cs) (cons (list (cons 'id (assoc-ref c 'id)) (cons 'name (assoc-ref c 'name))
                                                (cons 'ok #t) (cons 'value text))
@@ -43,11 +50,12 @@
 
 ;; Run task in a sub-agent: a narrowed context with system as its system
 ;; prompt. tools lists the tool names it may use (the others are skipped
-;; with a reason), or #f for all of them. Returns its final answer; the
-;; context is folded, so the caller's context never sees the sub-agent's
-;; work, only what the caller does with the answer.
-(define (sub-agent system task tools)
-  (narrow-context system)
+;; with a reason), or #f for all of them; an optional name labels its
+;; context in the log. Returns its final answer; the context is folded, so
+;; the caller's context never sees the sub-agent's work, only what the
+;; caller does with the answer. The log keeps all of it.
+(define (sub-agent system task tools . name)
+  (narrow-context system (cond ((pair? name) (car name)) (agent-label agent-label) (else "sub-agent")))
   (add-message task)
   (let loop ((reply (model-turn)) (rounds 0))
     (let ((calls (assoc-ref reply 'tool-calls '())))

@@ -510,6 +510,18 @@
     },
     "log.ContextNarrow": {
       "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "answers": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "system": {
           "type": "string"
         }

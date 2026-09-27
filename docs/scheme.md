@@ -467,7 +467,7 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
-| `(narrow-context system)` | Start a fresh context, like Emacs's narrowing: until `fold-context`, `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Contexts nest. Calls from the latest `model-turn` that are still unanswered wait for this context to fold; its own `model-turn`s start with none pending. |
+| `(narrow-context system [agent])` | Start a fresh context, like Emacs's narrowing: until `fold-context`, `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Contexts nest. Calls from the latest `model-turn` that are still unanswered wait for this context to fold; its own `model-turn`s start with none pending. |
 | `(fold-context)` | End the innermost narrowed context and fold it away: later windows skip everything since its `narrow-context` and see the enclosing context again; the log keeps it all. The calls that waited for it are the latest `model-turn`'s again. Refused while calls are unanswered. |
 | `(widen)` | End every narrowed context. Models see the whole conversation again, including what happened while it was narrowed. A new user message widens too. Refused while a context holds calls waiting for an answer: fold it. |
 | `(answer-call call text)` | Answer one of the model's calls with `text`, as a successful result, without running the tool: how a tool the strategy handles itself answers. Counts against the tool-call budget. |
@@ -571,7 +571,7 @@ code, in `internal/loop/agents.scm`:
 
 | | |
 |---|---|
-| `(sub-agent system task tools)` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (other calls are skipped) or is `#f` for all; returns its final answer, after `fold-context` |
+| `(sub-agent system task tools [name])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (other calls are skipped) or is `#f` for all; `name` labels it in the log (default: the agent tool being answered, else `sub-agent`); returns its final answer, after `fold-context` |
 | `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40) |
 | `(define-agent-tool name doc params handler)` | register a tool the model calls like any other, answered by `(handler call args)`, `args` parsed from the model's JSON; define it in `.nibb/init.scm` |
 | `(run-calls calls)` | run a reply's calls: agent tools through their handlers and `answer-call`, the rest with `run-tools`; returns one result alist per call. The default `agent-turn` uses it |
@@ -586,6 +586,13 @@ code, in `internal/loop/agents.scm`:
                (assoc-ref args "change")
                '("fs-read" "fs-list" "index-grep"))))
 ```
+
+Every sub-agent leaves its whole transcript in the session log: its
+`context.narrow` names the agent and lists the model's calls it answers,
+then come its task, requests, replies, tool calls and guard decisions, up to
+its `context.fold`; the calls it answered follow as `tool.result`. Folding
+hides the span from later windows, never from the log, so an agent's work
+can be read, replayed (`nibb replay --window`) and learned from on its own.
 
 A strategy can also run one itself, such as a review when the model stops:
 `(sub-agent reviewer-system (string-append issue diff tests) '())`. A

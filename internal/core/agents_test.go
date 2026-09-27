@@ -1,9 +1,12 @@
 package core
 
 import (
+	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nibb/internal/log"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
@@ -13,7 +16,7 @@ func TestSubAgentFoldsAway(t *testing.T) {
 	r := strategyRig(t, `
 (define (agent-turn request)
   (let ((reply (model-turn)))
-    (let ((verdict (sub-agent "You review changes." "Review: the change adds a flag." '())))
+    (let ((verdict (sub-agent "You review changes." "Review: the change adds a flag." '() "reviewer")))
       (add-message (string-append "A reviewer says: " verdict))
       (model-turn))))`, 10,
 		fake.Turn{Content: "I added the flag."},
@@ -67,6 +70,23 @@ func TestAgentToolAnswersFromSubAgent(t *testing.T) {
 	main := requestMessages(t, r.srv.Requests[3])
 	if len(main) != 4 || main[2].Role != "assistant" || main[3].Role != "tool" || main[3].Content != "It only declares package main." {
 		t.Fatalf("the model's context after its call was answered: %+v", main)
+	}
+	// The log names the agent and the call it answered, so its transcript
+	// can be read on its own later.
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var narrow log.ContextNarrow
+	for _, ev := range evs {
+		if ev.Kind == log.KindContextNarrow {
+			if err := ev.Decode(&narrow); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if narrow.Agent != "ask-expert" || !slices.Equal(narrow.Answers, []string{"q"}) {
+		t.Fatalf("the sub-agent's context is not labelled: %+v", narrow)
 	}
 }
 

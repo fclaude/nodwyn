@@ -59,8 +59,9 @@ func (l *Loop) install() error {
 		{
 			Name: "narrow-context",
 			Meta: scheme.Meta{
-				Doc:    "Start a fresh context: until fold-context, widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Contexts nest; calls pending when it opens wait until it folds.",
-				Params: []scheme.Param{{Name: "system", Type: "string", Doc: "the system prompt of the new context"}},
+				Doc:      "Start a fresh context: until fold-context, widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Contexts nest; calls pending when it opens wait until it folds. An optional agent name labels the context in the log.",
+				Params:   []scheme.Param{{Name: "system", Type: "string", Doc: "the system prompt of the new context"}},
+				Variadic: true, // (narrow-context system) or (narrow-context system agent)
 				Hidden: true,
 				Origin: "builtin",
 			},
@@ -262,7 +263,22 @@ func (l *Loop) narrowContext(c *scheme.Call) (scheme.Value, error) {
 	if strings.TrimSpace(system) == "" {
 		return scheme.Void, errors.New("a system prompt is required")
 	}
-	if err := l.record(log.KindContextNarrow, log.ContextNarrow{System: system}); err != nil {
+	rec := log.ContextNarrow{System: system}
+	switch len(c.Args) {
+	case 1:
+	case 2:
+		if rec.Agent, err = c.String(1); err != nil {
+			return scheme.Void, err
+		}
+	default:
+		return scheme.Void, errors.New("expected a system prompt and, optionally, an agent name")
+	}
+	for _, p := range t.pending {
+		if !p.answered {
+			rec.Answers = append(rec.Answers, p.call.ID)
+		}
+	}
+	if err := l.record(log.KindContextNarrow, rec); err != nil {
 		return scheme.Void, err
 	}
 	// The latest model-turn's calls wait for this context to fold; its own
