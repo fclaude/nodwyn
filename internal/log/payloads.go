@@ -243,6 +243,9 @@ type WindowContext struct {
 	// recipe v6); absent means the defaults.
 	TaskHeader string `json:"task_header,omitempty"`
 	PlanHeader string `json:"plan_header,omitempty"`
+	// MaxOutput caps each request's generated tokens (window recipe v8);
+	// absent, requests carried no cap.
+	MaxOutput int `json:"max_output,omitempty"`
 }
 
 // Summary is a user-authored, revocable replacement for a closed conversation

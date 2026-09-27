@@ -29,7 +29,7 @@ func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response,
 	if !hasUserMessage(w.Messages) {
 		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
 	}
-	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive}
+	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: l.cfg.MaxOutput}
 	if tools {
 		request.Tools = l.tools
 	}
@@ -65,6 +65,11 @@ func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response,
 	l.show(resp)
 	if err := l.record(log.KindLLMResp, responseRecord(resp)); err != nil {
 		return nil, err
+	}
+	if resp.DoneReason == "length" {
+		// The reply is cut short; a strategy decides what to do about it
+		// (ask-model continues one, strategy.scm), the log says it happened.
+		_ = l.record(log.KindNote, log.Note{Text: fmt.Sprintf("the reply stopped at the output limit (%d tokens, window.output_reserve)", l.cfg.MaxOutput)})
 	}
 	return resp, nil
 }

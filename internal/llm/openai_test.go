@@ -33,7 +33,8 @@ func TestOpenAIRoundTrip(t *testing.T) {
 			{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "c1", Name: "fs-list", Args: json.RawMessage(`{"path":"."}`)}}},
 			{Role: RoleTool, Content: "a.go", ToolName: "fs-list", ToolCallID: "c1"},
 		},
-		Tools: []Tool{{Name: "fs-read", Description: "read", Parameters: map[string]any{"type": "object"}}},
+		Tools:     []Tool{{Name: "fs-read", Description: "read", Parameters: map[string]any{"type": "object"}}},
+		MaxTokens: 16384,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +45,7 @@ func TestOpenAIRoundTrip(t *testing.T) {
 	if call["arguments"] != `{"path":"."}` {
 		t.Fatalf("arguments sent as %v", call["arguments"])
 	}
-	if msgs[2].(map[string]any)["tool_call_id"] != "c1" || got["stream"] != false {
+	if msgs[2].(map[string]any)["tool_call_id"] != "c1" || got["stream"] != false || got["max_completion_tokens"] != float64(16384) || got["max_tokens"] != nil {
 		t.Fatalf("request: %v", got)
 	}
 	if resp.Message.Content != "reading" || resp.Message.Thinking != "need it" || resp.DoneReason != "tool_calls" {

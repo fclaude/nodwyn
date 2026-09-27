@@ -54,6 +54,9 @@ type Host interface {
 // Config bounds the loop.
 type Config struct {
 	Window window.Policy // when and how older context is elided
+	// MaxOutput caps the tokens a model generates per request, thinking
+	// included (window.output_reserve), so prompt and output fit num_ctx.
+	MaxOutput int
 	// Models are the models a strategy may ask by name: the [control] model
 	// as ControlModel, which (model-turn) asks, and the configured registry
 	// with (model-turn "NAME").
@@ -357,5 +360,5 @@ func (l *Loop) WindowContext() *log.WindowContext {
 	tools, _ := json.Marshal(l.tools)
 	control := l.cfg.Models[ControlModel]
 	return &log.WindowContext{Version: window.RecipeVersion, System: l.system, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: control.NumCtx, KeepAlive: control.KeepAlive,
-		TaskHeader: l.cfg.Window.TaskHeader, PlanHeader: l.cfg.Window.PlanHeader}
+		TaskHeader: l.cfg.Window.TaskHeader, PlanHeader: l.cfg.Window.PlanHeader, MaxOutput: l.cfg.MaxOutput}
 }

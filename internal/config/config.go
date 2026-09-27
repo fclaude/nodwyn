@@ -140,7 +140,7 @@ type Window struct {
 	HighWater       int `toml:"high_water"`        // trim when the estimate exceeds this
 	LowWater        int `toml:"low_water"`         // trim down to this
 	MaxResultTokens int `toml:"max_result_tokens"` // a tool result larger than this is shown head+tail
-	OutputReserve   int `toml:"output_reserve"`    // tokens reserved for generation
+	OutputReserve   int `toml:"output_reserve"`    // tokens reserved for generation, and the cap on each reply's (thinking included)
 }
 
 // Policy holds the guard's user-settable defaults (ADR 6).
@@ -200,7 +200,7 @@ func ParseRepoAllow(raw []byte) (RepoAllow, error) {
 // Default is the configuration nibb runs with when no config.toml exists.
 func Default() Config {
 	return Config{
-		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 8 * 1024},
+		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 16 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
 		Loop:   Loop{MaxToolCalls: 0, RequestTimeout: "30m", ShellTimeout: "10m"},
 		Budget: Budget{ToolCallsSoft: 50, ToolCallsHard: 500, TokensSoft: 1_000_000, TokensHard: 10_000_000, ActionsSoft: 25, ActionsHard: 200, WallSoft: "20m", WallHard: "4h"},
@@ -365,6 +365,6 @@ func MissingControl(configFile string) error {
 provider = "ollama"               # or "openai" for any chat-completions server
 url = "http://localhost:11434"    # for openai, the base URL including /v1
 model = "qwen3:8b"
-num_ctx = 81920                   # at least window.high_water + window.output_reserve (69632 by default)
+num_ctx = 81920                   # at least window.high_water + window.output_reserve (77824 by default)
 # credential = "openai-key"       # keychain class of the API key, bound in bindings.toml`, where)
 }

@@ -438,10 +438,19 @@ num_ctx = 81920                   # at least window.high_water + window.output_r
 
 `url` and `model` are required; nibb has no built-in control model. Unset,
 `num_ctx` asks an ollama model for exactly the window's size
-(`window.high_water + window.output_reserve`, 69632 by default) rather than
+(`window.high_water + window.output_reserve`, 77824 by default) rather than
 leaving Ollama at its own, usually smaller, default, which would cut the
 prompt silently; a chat-completions server decides its own. Set, the window
 must fit in it.
+
+`window.output_reserve` (16384 by default) is also the cap on each reply,
+thinking included: ollama gets it as `num_predict`, a chat-completions server
+as `max_completion_tokens`, so a prompt at the window's high water and its
+reply always fit the context. A reply that reaches the cap is noted in the
+log; the default loop, the planner and sub-agents ask again, telling the
+model to be briefer, at most twice (`ask-model`, docs/scheme.md §9). On the
+SWE-bench dev set, 99.8% of Qwen replies stayed under 8192 tokens and the
+longest was about 17k, a thinking burst.
 
 A session opens without it, to replay or evaluate; its first model request
 fails with that table, and is not retried. A key that is missing or not

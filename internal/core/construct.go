@@ -253,6 +253,7 @@ func (s *Session) initialize() (err error) {
 	models := s.models()
 	s.loop, err = loop.New(s, s.interp, loop.Config{
 		Window:         window.Policy{HighWater: o.Config.Window.HighWater, LowWater: o.Config.Window.LowWater, MaxResultTokens: o.Config.Window.MaxResultTokens},
+		MaxOutput:      o.Config.Window.OutputReserve,
 		Models:         models,
 		RequestTimeout: requestTimeout,
 	})

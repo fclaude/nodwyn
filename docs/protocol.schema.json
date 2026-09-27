@@ -1169,6 +1169,9 @@
         "low_water": {
           "type": "integer"
         },
+        "max_output": {
+          "type": "integer"
+        },
         "max_result_tokens": {
           "type": "integer"
         },

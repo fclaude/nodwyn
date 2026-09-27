@@ -31,7 +31,7 @@
   (let ask ((attempt 0))
     (narrow-context (plan-system-prompt (repository)) "planner")
     (add-message prompt)
-    (let* ((reply (model-turn "control" '((tools . #f))))
+    (let* ((reply (ask-model "control" '((tools . #f))))
            (text (assoc-ref reply 'content "")))
       (skip-tools (assoc-ref reply 'tool-calls '())
                   "Plan only: reply with the plan as text; the work comes after it.")

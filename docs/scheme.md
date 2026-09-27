@@ -473,6 +473,13 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
 | `(answer-call call text)` | Answer one of the model's calls with `text`, as a successful result, without running the tool: how a tool the strategy handles itself answers. Counts against the tool-call budget. |
 | `(session-system-prompt)` | The system prompt the session started with (§9.1), fixed for its life: what a narrowed context passes to `narrow-context` to keep the model's standing instructions. |
 
+A reply's `done` is `"length"` when the model reached the output cap
+(`window.output_reserve`); the core notes it in the log. What to do is the
+strategy's: `(ask-model …)` is `model-turn`, asked again with
+`output-cut-message` when the reply was cut with no tool call to answer, at
+most `output-cut-retries` (2) times. The default loop, the planner and
+`sub-agent` use it.
+
 A strategy talks to the model through tools: a tool's description is an
 instruction, its result and a skip reason are feedback. `add-message` is for
 when there is no call to answer, such as a model that stopped with work left.

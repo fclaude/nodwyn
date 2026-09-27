@@ -74,6 +74,9 @@ type oaiRequest struct {
 	Messages []oaiMessage `json:"messages"`
 	Tools    []wireTool   `json:"tools,omitempty"`
 	Stream   bool         `json:"stream"`
+	// The chat-completions cap on generated tokens, reasoning included;
+	// reasoning models refuse the older max_tokens.
+	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
 }
 
 type oaiResponse struct {
@@ -88,7 +91,7 @@ type oaiResponse struct {
 }
 
 func toOpenAI(req Request) oaiRequest {
-	w := oaiRequest{Model: req.Model}
+	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens}
 	for _, m := range req.Messages {
 		om := oaiMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
 		for _, tc := range m.ToolCalls {

@@ -22,6 +22,9 @@ type Turn struct {
 	Error string
 	// Status, if non-zero, is returned as a plain HTTP error.
 	Status int
+	// DoneReason, if set, replaces the stop reason ("stop" or "tool_calls"),
+	// such as "length" for a reply cut at the output limit.
+	DoneReason string
 }
 
 // ToolCall is a scripted tool request.
@@ -142,6 +145,9 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	reason := "stop"
 	if len(t.ToolCalls) > 0 {
 		reason = "tool_calls"
+	}
+	if t.DoneReason != "" {
+		reason = t.DoneReason
 	}
 	_ = enc.Encode(map[string]any{
 		"model": req.Model, "message": msg("", ""), "done": true, "done_reason": reason,

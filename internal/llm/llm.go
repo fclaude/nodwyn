@@ -48,6 +48,10 @@ type Request struct {
 	Tools     []Tool
 	NumCtx    int
 	KeepAlive string
+	// MaxTokens caps the tokens the model generates, thinking included, so
+	// prompt and output fit the context (window.output_reserve); 0 leaves it
+	// to the server. Omitted when 0, so older requests hash as before.
+	MaxTokens int `json:",omitempty"`
 }
 
 // Delta is a streamed fragment.
