@@ -122,11 +122,11 @@ func TestFalsePositives(t *testing.T) {
 	}
 }
 
-// TestDottedNamesAreNotJWTs: test labels and module paths have the JWT's
-// three-part shape but no encoded JSON header. They may still be reported
-// as the unknown-entropy residual, which never produces a guard verdict,
-// but never as a named class: that denied benchmark test commands.
-func TestDottedNamesAreNotJWTs(t *testing.T) {
+// TestDottedNamesAreNotSecrets: test labels, module paths and file paths
+// have the JWT's three-part shape and are long, but they are short words
+// joined. Reported as a named class they denied benchmark test commands;
+// they are not even the unknown-entropy residual.
+func TestDottedNamesAreNotSecrets(t *testing.T) {
 	s := New()
 	for _, name := range []string{
 		"model_fields.test_jsonfield.TestQuerying",
@@ -134,11 +134,19 @@ func TestDottedNamesAreNotJWTs(t *testing.T) {
 		"migrations.test_operations.OperationTests",
 		"xarray.tests.test_computation",
 		"com.example.MyApplicationTests",
+		"test_serialization.TestJsonSerializer.test_roundtrip_unicode",
+		"tests/model_fields/test_jsonfield.py",
+		"test_roundtrip_unicode_characters_in_nested_keys",
 	} {
-		for _, f := range s.Scan("python tests/runtests.py -v 2 " + name) {
-			if f.Class != ClassUnknownEntropy {
-				t.Errorf("%q reported as %s", name, f.Class)
-			}
+		if fs := s.Scan("python tests/runtests.py -v 2 " + name); len(fs) != 0 {
+			t.Errorf("%q reported: %+v", name, fs)
+		}
+	}
+	// A random key is still the residual, alone or at the end of a path.
+	for _, key := range []string{"A1b2-C3d4_E5f6-G7h8I9j0-kLmN0oPq", "vault/A1b2-C3d4_E5f6-G7h8I9j0-kLmN0oPq"} {
+		fs := s.Scan(key)
+		if len(fs) != 1 || fs[0].Class != ClassUnknownEntropy {
+			t.Errorf("%q: %+v", key, fs)
 		}
 	}
 }

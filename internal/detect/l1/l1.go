@@ -219,11 +219,13 @@ func (s *Scanner) classify(t string) string {
 	return ""
 }
 
-// isUnknownEntropy is the L3 residual hook: long, high-entropy, and with at
-// least one word-joiner (dash or underscore). The joiner requirement is
-// what keeps ordinary base64 (e.g. embedded images) and pure-alnum hashes
-// from tripping, while still catching random-looking keys and JWTs that
-// slipped past the prefix rules.
+// isUnknownEntropy is the L3 residual hook: a long, high-entropy run with
+// a word-joiner (dash or underscore) and a digit. The joiner keeps ordinary
+// base64 (e.g. embedded images) and pure-alnum hashes from tripping; the
+// digit keeps out long identifiers, which random keys almost never
+// resemble. Dotted names and paths are judged a segment at a time:
+// model_fields.test_jsonfield.TestQuerying or tests/model_fields/x.py are
+// short words joined, not one long random run.
 func (s *Scanner) isUnknownEntropy(t string) bool {
 	minLen := s.MinLen
 	if minLen <= 0 {
@@ -233,13 +235,12 @@ func (s *Scanner) isUnknownEntropy(t string) bool {
 	if th <= 0 {
 		th = DefEntropy
 	}
-	if len(t) < minLen {
-		return false
+	for _, seg := range strings.FieldsFunc(t, func(r rune) bool { return r == '.' || r == '/' }) {
+		if len(seg) >= minLen && strings.ContainsAny(seg, "-_") && strings.ContainsAny(seg, "0123456789") && entropy(seg) >= th {
+			return true
+		}
 	}
-	if !strings.ContainsAny(t, "-_") {
-		return false
-	}
-	return entropy(t) >= th
+	return false
 }
 
 // Redact replaces each finding in text with "[REDACTED <class>]". Findings
