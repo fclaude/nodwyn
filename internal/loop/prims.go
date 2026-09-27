@@ -62,8 +62,8 @@ func (l *Loop) install() error {
 				Doc:      "Start a fresh context: until fold-context, widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Contexts nest; calls pending when it opens wait until it folds. An optional agent name labels the context in the log.",
 				Params:   []scheme.Param{{Name: "system", Type: "string", Doc: "the system prompt of the new context"}},
 				Variadic: true, // (narrow-context system) or (narrow-context system agent)
-				Hidden: true,
-				Origin: "builtin",
+				Hidden:   true,
+				Origin:   "builtin",
 			},
 			Handler: l.narrowContext,
 		},
