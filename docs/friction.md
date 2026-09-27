@@ -6,6 +6,7 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-09-26 · SWE-bench harness · L1 took any three dot-joined words of 8+ characters for a JWT, so Django test labels such as `model_fields.test_jsonfield.TestQuerying` were secrets: shell-exec denied the test runs, and a judge request quoting one was refused as an unbound secret, which ended the turn · two of fifteen Jev-verify tasks lost outright, and denied test commands in two other variants · **resolved: a JWT must start with an encoded JSON header and payload (`eyJ…` `.ey…`)**
 - 2026-09-26 · SWE-bench harness · the model sent whole command lines as shell-exec's cmd ("python3 -m pip", "cd /testbed && git log"), and exec answered only "not found" · about 4% of shell calls failed and cost the model a turn to recover · **resolved: such a failure now says how to split cmd and args, and names sh -c for pipes**
 - 2026-09-26 · SWE-bench harness · the manual said `nibb run start`, but only status/stop/resume were subcommands, so the documented command failed with a usage error · a harness wired from the manual could not start runs · **resolved: `nibb run start` is accepted as the explicit form of `nibb run`**
 - 2026-09-26 · SWE-bench harness · Qwen occasionally wrote tool-call markup the server's parser rejected, even in the planner's tool-less request, and one failed request ended the whole turn · whole benchmark tasks lost to one bad sample · **resolved: a failed model request is retried twice with backoff, each failure logged as a note**

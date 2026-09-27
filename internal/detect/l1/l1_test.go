@@ -20,6 +20,7 @@ var sampleSecrets = []struct {
 	{"AKIAIOSFODNN7EXAMPLE", ClassAWS},
 	{"xoxb-1234567890-abcdefghijklmnop", ClassSlack},
 	{"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dozjgNryP4J3j3c8sxYm3d", ClassJWT},
+	{"eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0.", ClassJWT}, // unsigned
 }
 
 func TestKnownClasses(t *testing.T) {
@@ -117,6 +118,27 @@ func TestFalsePositives(t *testing.T) {
 	for _, ts := range notSecrets {
 		if fs := s.Scan(ts); len(fs) != 0 {
 			t.Errorf("false positive on %q: %+v", ts, fs)
+		}
+	}
+}
+
+// TestDottedNamesAreNotJWTs: test labels and module paths have the JWT's
+// three-part shape but no encoded JSON header. They may still be reported
+// as the unknown-entropy residual, which never produces a guard verdict,
+// but never as a named class: that denied benchmark test commands.
+func TestDottedNamesAreNotJWTs(t *testing.T) {
+	s := New()
+	for _, name := range []string{
+		"model_fields.test_jsonfield.TestQuerying",
+		"invalid_models_tests.test_models.OtherModelTests",
+		"migrations.test_operations.OperationTests",
+		"xarray.tests.test_computation",
+		"com.example.MyApplicationTests",
+	} {
+		for _, f := range s.Scan("python tests/runtests.py -v 2 " + name) {
+			if f.Class != ClassUnknownEntropy {
+				t.Errorf("%q reported as %s", name, f.Class)
+			}
 		}
 	}
 }

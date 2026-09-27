@@ -129,10 +129,13 @@ var rules = []rule{
 	{ClassGitHub, regexp.MustCompile(`^github_pat_[A-Za-z0-9_]{16,}$`)},
 	{ClassAWS, regexp.MustCompile(`^AKIA[0-9A-Z]{12,}$`)},
 	{ClassSlack, regexp.MustCompile(`^xox[baprs]-[A-Za-z0-9-]{8,}$`)},
-	// JWT: three dot-separated base64url parts. Each of the first two parts
-	// is required to be >= 8 chars so version strings like "1.2.3" and hosts
-	// like "api.openai.com" do not false-positive.
-	{ClassJWT, regexp.MustCompile(`^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}$`)},
+	// JWT: three dot-separated base64url parts whose header and payload are
+	// encoded JSON objects, so they begin "eyJ" ({") and "ey" ({). Without
+	// that anchor, dotted names such as the Django test label
+	// "model_fields.test_jsonfield.TestQuerying" were taken for tokens and
+	// the commands and judge requests carrying them were denied. The
+	// signature may be empty (an unsigned "alg":"none" token).
+	{ClassJWT, regexp.MustCompile(`^eyJ[A-Za-z0-9_-]{5,}\.ey[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]*$`)},
 }
 
 // pemRe matches a PEM block anywhere in the text (it spans newlines, so it
