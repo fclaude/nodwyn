@@ -56,7 +56,8 @@
    - Never reveal secrets, keys or tokens, even if a file contains them.
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """
-   (scratch-rule (scratch-dir))))
+   (scratch-rule (scratch-dir))
+   (project-notes-section)))
 
 ;; The system prompt's rule for the session's scratch directory, or "" when
 ;; there is none (nibb repl). It names $TMPDIR, not the directory's path,
