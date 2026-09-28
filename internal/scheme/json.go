@@ -61,14 +61,18 @@ func (p *Prim) Schema() ToolSchema {
 			prop.Type = "object"
 		}
 		s.Properties[pa.Name] = prop
-		s.Required = append(s.Required, pa.Name)
+		if !pa.Optional {
+			s.Required = append(s.Required, pa.Name)
+		}
 	}
 	return s
 }
 
 // ArgsFromJSON orders a JSON object of named arguments into p's positional
 // parameters. Unknown or missing names are errors so the model gets a
-// precise correction.
+// precise correction. An optional parameter that is missing or null ends
+// the argument list; one given after a missing optional one is an error,
+// since positions would shift.
 func (p *Prim) ArgsFromJSON(raw []byte) ([]Value, error) {
 	var named map[string]json.RawMessage
 	if len(bytes.TrimSpace(raw)) == 0 {
@@ -76,11 +80,25 @@ func (p *Prim) ArgsFromJSON(raw []byte) ([]Value, error) {
 	} else if err := json.Unmarshal(raw, &named); err != nil {
 		return nil, errorf(p.Name, "arguments must be a JSON object: %v", err)
 	}
-	args := make([]Value, len(p.Meta.Params))
-	for i, pa := range p.Meta.Params {
+	args := make([]Value, 0, len(p.Meta.Params))
+	gap := ""
+	for _, pa := range p.Meta.Params {
 		r, ok := named[pa.Name]
+		if ok && pa.Optional && bytes.Equal(bytes.TrimSpace(r), []byte("null")) {
+			ok = false
+			delete(named, pa.Name)
+		}
 		if !ok {
-			return nil, errorf(p.Name, "missing argument %q", pa.Name)
+			if !pa.Optional {
+				return nil, errorf(p.Name, "missing argument %q", pa.Name)
+			}
+			if gap == "" {
+				gap = pa.Name
+			}
+			continue
+		}
+		if gap != "" {
+			return nil, errorf(p.Name, "argument %q needs %q too", pa.Name, gap)
 		}
 		v, err := FromJSON(r)
 		if err != nil {
@@ -89,7 +107,7 @@ func (p *Prim) ArgsFromJSON(raw []byte) ([]Value, error) {
 		if err := checkParamType(pa, v); err != nil {
 			return nil, errorf(p.Name, "argument %q: %v", pa.Name, err)
 		}
-		args[i] = v
+		args = append(args, v)
 		delete(named, pa.Name)
 	}
 	if len(named) > 0 {

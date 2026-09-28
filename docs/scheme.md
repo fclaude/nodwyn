@@ -367,7 +367,7 @@ Every primitive declares:
 | Field | Meaning |
 |---|---|
 | `doc` | one line, shown to the model as the tool description |
-| `params` | ordered list of `(name type doc)`; `type` is one of `string integer number boolean list alist vector any` |
+| `params` | ordered list of `(name type doc)`; `type` is one of `string integer number boolean list alist vector any`. A Go primitive may mark trailing parameters optional (ADR 29): a call may stop before any of them, and the handler sees fewer arguments |
 | `variadic` | extra arguments allowed after the declared ones |
 | `egress` | may send bytes off-machine |
 | `irreversible` | cannot be undone by the harness |
