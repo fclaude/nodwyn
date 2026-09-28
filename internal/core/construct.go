@@ -134,6 +134,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
 	po.Scratch = s.scratch
+	po.NotesFile = notesFile(o.Paths.DataDir, o.Repo)
 	// A ranged fs-read stays under the window's cut for one tool result
 	// (window.Estimate is bytes/3), with room for its header.
 	po.MaxRangeBytes = o.Config.Window.MaxResultTokens*3 - 256

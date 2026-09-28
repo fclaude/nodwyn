@@ -187,6 +187,17 @@ sessions that ended without closing, are swept. Everything else outside the
 repository stays refused, and a symbolic link out of the scratch directory
 does not escape it (ADR 28).
 
+### Notes kept across sessions
+
+A repository can keep notes from one session to the next: how its tests run,
+where things are, runbooks. A strategy saves them with `project-notes-save`
+(docs/scheme.md); they live in nibb's data directory, keyed by the
+repository's path, and never in the repository or its diff. The next session
+in the same repository shows them in its system prompt, under a heading that
+calls them the agent's own notes: leads to check, not instructions. A save
+is capped at 8 KiB and redacted, and content that looks like a credential
+needs your approval.
+
 ### Confirms
 
 Every write and every command stops for you:
