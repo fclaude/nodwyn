@@ -177,6 +177,9 @@ func TestIndexGrepGlobContextAndLargerTrees(t *testing.T) {
 		strings.Join(got.Matches[0].Before, "|") != "one|two" || strings.Join(got.Matches[0].After, "|") != "four|five" {
 		t.Fatalf("glob and context: %+v", got)
 	}
+	if got := grepResult(t, h.mustEval(t, `(index-grep "pkg" "needle" "*.py" 9)`)); len(got.Matches[0].Before) != 2 || len(got.Matches[0].After) != 2 {
+		t.Fatalf("context over 5 is capped, not refused: %+v", got)
+	}
 	if got := grepResult(t, h.mustEval(t, `(index-grep "pkg" "^$")`)); len(got.Matches) != 0 {
 		t.Fatalf("an empty file matched: %+v", got)
 	}
@@ -184,8 +187,8 @@ func TestIndexGrepGlobContextAndLargerTrees(t *testing.T) {
 		t.Fatalf("empty glob is every file: %+v", got)
 	}
 	for src, want := range map[string]string{
-		`(index-grep "pkg" "needle" "*.py" 6)`: "context is 0 to 5 lines",
-		`(index-grep "pkg" "(")`:               "invalid regular expression",
+		`(index-grep "pkg" "needle" "*.py" -1)`: "context is 0 to 5 lines",
+		`(index-grep "pkg" "(")`:                "invalid regular expression",
 	} {
 		if _, err := h.eval(t, src); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v", src, err)
