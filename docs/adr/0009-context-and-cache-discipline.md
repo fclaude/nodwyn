@@ -98,4 +98,4 @@ offers the same subset of the catalog. The window's size budget still counts
 the whole catalog, so the window, and the recipe, are unchanged by it. Every request also caps the model's output at
 `window.output_reserve` (window-v8: `max_output` in the recipe), so the
 prompt and the reply fit `num_ctx`. Recipes v1 to v7 still replay under their
-own rules.
+own rules. A strategy may also fold a tool result (`fold-result`): later windows show its text instead, recorded as `result.fold` (window-v9), so what the model no longer needs (a failed attempt, a stale or old read) stops taking room while the log keeps it.

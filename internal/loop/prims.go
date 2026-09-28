@@ -58,6 +58,16 @@ func (l *Loop) install() error {
 			Handler: l.addMessage,
 		},
 		{
+			Name: "fold-result",
+			Meta: scheme.Meta{
+				Doc:    "Show a tool result as text in later windows, such as an outline or a line saying what it was, once its details stopped mattering. The result stays in the log, for replay, audit and recall.",
+				Params: []scheme.Param{{Name: "result", Type: "any", Doc: "the tool.result event's seq, or the id of the call it answers"}, {Name: "text", Type: "string", Doc: "what later windows show instead"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.foldResult,
+		},
+		{
 			Name: "log-note",
 			Meta: scheme.Meta{
 				Doc:    "Add a note to the session log, for the record and the transcript; the model never sees it.",
@@ -296,6 +306,47 @@ func (l *Loop) logNote(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, errors.New("text is required")
 	}
 	return scheme.Void, l.record(log.KindNote, log.Note{Text: text})
+}
+
+// foldResult is (fold-result result text): later windows show a tool result
+// as text. result is the tool.result's seq, or the id of the call it
+// answers (its latest result); either must be of this session.
+func (l *Loop) foldResult(c *scheme.Call) (scheme.Value, error) {
+	if _, err := l.active(c); err != nil {
+		return scheme.Void, err
+	}
+	text, err := c.String(1)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return scheme.Void, errors.New("text is required: it is what later windows show")
+	}
+	events := l.host.EventsSoFar()
+	switch arg := c.Args[0]; arg.Kind {
+	case scheme.KInt:
+		for _, ev := range events {
+			if ev.Seq == uint64(arg.I) {
+				if ev.Kind != log.KindToolResult {
+					return scheme.Void, fmt.Errorf("seq %d is a %s, not a tool.result", arg.I, ev.Kind)
+				}
+				return scheme.Void, l.record(log.KindResultFold, log.ResultFold{Seq: ev.Seq, Text: text})
+			}
+		}
+		return scheme.Void, fmt.Errorf("no event at seq %d", arg.I)
+	case scheme.KString:
+		for i := len(events) - 1; i >= 0; i-- {
+			if events[i].Kind != log.KindToolResult {
+				continue
+			}
+			var p log.ToolResult
+			if events[i].Decode(&p) == nil && p.ID == arg.S {
+				return scheme.Void, l.record(log.KindResultFold, log.ResultFold{Seq: events[i].Seq, Text: text})
+			}
+		}
+		return scheme.Void, fmt.Errorf("no result for call %q", arg.S)
+	}
+	return scheme.Void, fmt.Errorf("result is a seq or a call id, got %s", scheme.Write(c.Args[0]))
 }
 
 // recordPlan is (record-plan outcome): the plan gate's outcome, in the log

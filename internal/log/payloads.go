@@ -58,6 +58,14 @@ type ContextWiden struct{}
 // again.
 type ContextFold struct{}
 
+// ResultFold replaces what later windows show for one tool result (Seq)
+// with Text: an outline, or a line saying what it was, once the details
+// stopped mattering (fold-result). The result itself stays in the log.
+type ResultFold struct {
+	Seq  uint64 `json:"seq"`
+	Text string `json:"text"`
+}
+
 // LLMReq describes a request to the control-plane model. The messages are
 // not repeated: they are rebuilt from the log by the window.
 type LLMReq struct {

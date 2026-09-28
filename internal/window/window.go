@@ -18,6 +18,8 @@
 //   - User messages are never elided; they are small and they are the ask.
 //     Neither are harness messages (add-message): they are the loop's
 //     instructions to the model, and it reads them as user messages.
+//   - A strategy may fold a tool result (fold-result): later windows show
+//     its text instead of the result, and the result stays in the log.
 //   - A strategy may narrow the context (narrow-context): until it widens or
 //     the user speaks again, the window is only what came after the
 //     narrowing, under the strategy's own system prompt. This is how a model
@@ -87,6 +89,15 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		system string
 	}
 	var frames []frame
+	folded := map[uint64]string{}
+	for _, ev := range events {
+		if ev.Kind == log.KindResultFold {
+			var p log.ResultFold
+			if ev.Decode(&p) == nil {
+				folded[p.Seq] = p.Text
+			}
+		}
+	}
 	for _, ev := range events {
 		switch ev.Kind {
 		case log.KindUserMsg:
@@ -134,6 +145,9 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 				content := p.Value
 				if !p.OK {
 					content = fmt.Sprintf(`{"error":%q}`, p.Error)
+				}
+				if text, ok := folded[ev.Seq]; ok {
+					content = text
 				}
 				content = capResult(content, pol.MaxResultTokens)
 				entries = append(entries, entry{seq: ev.Seq, kind: "tool", msg: llm.Message{Role: llm.RoleTool, Content: content, ToolName: p.Name, ToolCallID: p.ID}})

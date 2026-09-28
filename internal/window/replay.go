@@ -18,7 +18,7 @@ import (
 // task and plan headers (default when absent), v7 requests that offer no
 // tools (llm.req no_tools), and v8 the cap on generated tokens (max_output);
 // an older log has none of them, so Build rebuilds it unchanged.
-const RecipeVersion = "window-v8"
+const RecipeVersion = "window-v9"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas
 // and model options. It verifies reconstruction; it is not a tamper-proof seal.
@@ -59,7 +59,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 				return zero, fmt.Errorf("window replay: this legacy request lacks recorded context or a request hash")
 			}
 			switch c.Version {
-			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", RecipeVersion:
+			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", "window-v8", RecipeVersion:
 			default:
 				return zero, fmt.Errorf("window replay: unsupported recipe %q", c.Version)
 			}
