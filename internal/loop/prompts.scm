@@ -21,7 +21,17 @@
    - Never reveal secrets, keys or tokens, even if a file contains them.
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """
-   (scratch-rule (scratch-dir))))
+   (scratch-rule (scratch-dir))
+   (project-notes-section)))
+
+;; The repository's notes from earlier sessions, or "" when there are none.
+;; They are the agent's own notes (how tests run, where things are,
+;; runbooks), so the prompt says to check them, not to obey them.
+(define (project-notes-section)
+  (let ((notes (guard (e (else "")) (string-trim (project-notes)))))
+    (if (string-empty? notes)
+        ""
+        (string-append "\n\nNotes kept from earlier sessions in this repository, written by the agent: useful leads, but check them before relying on them.\n" notes))))
 
 ;; With nobody watching, how to work matters more than what to say before a
 ;; call: understand the request, set up a check that runs, make the whole

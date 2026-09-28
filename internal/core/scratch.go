@@ -1,6 +1,8 @@
 package core
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -114,4 +116,19 @@ func sweepScratch(root string) {
 			_ = os.RemoveAll(filepath.Join(root, e.Name()))
 		}
 	}
+}
+
+// notesFile is where a repository's notes kept across sessions live:
+// dataDir/projects/<hash of the repository's path>/notes.md, outside the
+// repository so they never reach its diff; "" without a data directory.
+func notesFile(dataDir, repo string) string {
+	if dataDir == "" || repo == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(repo)
+	if err != nil {
+		abs = repo
+	}
+	sum := sha256.Sum256([]byte(filepath.Clean(abs)))
+	return filepath.Join(dataDir, "projects", hex.EncodeToString(sum[:8]), "notes.md")
 }

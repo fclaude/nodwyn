@@ -5,11 +5,14 @@
 package prim
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/fclaude/nibb/internal/guard"
+	"github.com/fclaude/nibb/internal/redact"
 	"github.com/fclaude/nibb/internal/scheme"
 )
 
@@ -17,6 +20,7 @@ import (
 type Options struct {
 	Root         string // repository root; every path is pinned under it
 	Scratch      string // the session's scratch directory, outside Root; "" for none
+	NotesFile    string // this repository\'s notes kept across sessions, outside Root; "" for none
 	MaxReadBytes int64  // fs-read refuses larger files, unless it reads a line range
 	// MaxRangeBytes caps what a ranged fs-read returns: whole lines up to
 	// this many bytes, so the window never cuts a ranged read (the core
@@ -69,7 +73,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), projectNotes(o), projectNotesSave(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -146,6 +150,79 @@ func repository(o Options) *scheme.Prim {
 		Meta: scheme.Meta{Doc: "The repository's root directory: every relative path is relative to it.", Hidden: true},
 		Handler: func(*scheme.Call) (scheme.Value, error) {
 			return scheme.Str(o.Root), nil
+		},
+	}
+}
+
+// maxProjectNotes caps a repository's notes: they ride in every session's
+// system prompt.
+const maxProjectNotes = 8 << 10
+
+// projectNotes builds (project-notes): this repository's notes kept across
+// sessions, "" when there are none. They live beside nibb's data, not in
+// the repository, so they never reach its diff.
+func projectNotes(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "project-notes",
+		Meta: scheme.Meta{Doc: "This repository's notes kept across sessions (how tests run, where things are, runbooks), \"\" when there are none.", Hidden: true},
+		Handler: func(*scheme.Call) (scheme.Value, error) {
+			if o.NotesFile == "" {
+				return scheme.Str(""), nil
+			}
+			b, err := os.ReadFile(o.NotesFile)
+			if errors.Is(err, os.ErrNotExist) {
+				return scheme.Str(""), nil
+			}
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			return scheme.Str(string(b)), nil
+		},
+	}
+}
+
+// projectNotesSave builds (project-notes-save text): replace this
+// repository's notes. Secrets are redacted before they are written, and the
+// notes are capped, since later sessions read them as part of their prompt.
+func projectNotesSave(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "project-notes-save",
+		Meta: scheme.Meta{
+			Doc:     "Replace this repository's notes kept across sessions (at most 8 KiB; secrets are redacted).",
+			Params:  []scheme.Param{{Name: "text", Type: "string", Doc: "the notes", Role: "payload"}},
+			Hidden:  true,
+			Audited: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			if o.NotesFile == "" {
+				return scheme.Value{}, errors.New("this session keeps no project notes (no data directory)")
+			}
+			text, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			text = redact.Redact(text, nil).Text
+			if len(text) > maxProjectNotes {
+				return scheme.Value{}, fmt.Errorf("project notes are %d bytes; at most %d: keep what later sessions need", len(text), maxProjectNotes)
+			}
+			if err := os.MkdirAll(filepath.Dir(o.NotesFile), 0o700); err != nil {
+				return scheme.Value{}, err
+			}
+			tmp, err := os.CreateTemp(filepath.Dir(o.NotesFile), ".notes-*")
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			_, werr := tmp.WriteString(text)
+			cerr := tmp.Close()
+			if werr != nil || cerr != nil {
+				os.Remove(tmp.Name())
+				return scheme.Value{}, errors.Join(werr, cerr)
+			}
+			if err := os.Rename(tmp.Name(), o.NotesFile); err != nil {
+				os.Remove(tmp.Name())
+				return scheme.Value{}, err
+			}
+			return scheme.Void, nil
 		},
 	}
 }

@@ -161,3 +161,57 @@ func TestTmpdirNamesTheScratchDirectoryInEveryTool(t *testing.T) {
 		t.Fatalf("a command argument naming $TMPDIR: %q %v", v.S, err)
 	}
 }
+
+// A repository's notes are kept across sessions, beside nibb's data rather
+// than in the repository: redacted, capped, and shown in later sessions'
+// system prompts as leads to check. Another repository does not see them.
+func TestProjectNotesCarryAcrossSessions(t *testing.T) {
+	o := diskOptions(t)
+	o.Provider = llm.NewOllama("http://127.0.0.1:1")
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(s.loop.WindowContext().System, "Notes kept from earlier sessions") {
+		t.Fatal("a repository without notes shows a notes section")
+	}
+	// Content that looks like a credential is refused by the guard before
+	// the primitive's own redaction would matter.
+	const canary = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"
+	if _, err := s.Eval(t.Context(), `(project-notes-save "- key: `+canary+`")`); err == nil {
+		t.Fatal("notes holding a credential were saved")
+	}
+	if _, err := s.Eval(t.Context(), `(project-notes-save "- tests: python -m pytest tests/")`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Eval(t.Context(), `(project-notes-save "`+strings.Repeat("x", 9000)+`")`); err == nil || !strings.Contains(err.Error(), "at most 8192") {
+		t.Fatalf("oversized notes: %v", err)
+	}
+	s.Close()
+	file := notesFile(o.Paths.DataDir, o.Repo)
+	if strings.HasPrefix(file, o.Repo) {
+		t.Fatalf("notes inside the repository: %s", file)
+	}
+	b, err := os.ReadFile(file)
+	if err != nil || strings.Contains(string(b), canary) || !strings.Contains(string(b), "python -m pytest tests/") {
+		t.Fatalf("stored notes %q %v", b, err)
+	}
+	next, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close()
+	if sys := next.loop.WindowContext().System; !strings.Contains(sys, "Notes kept from earlier sessions in this repository") || !strings.Contains(sys, "- tests: python -m pytest tests/") {
+		t.Fatalf("the next session's prompt lacks the notes:\n%s", sys)
+	}
+	other := o
+	other.Repo = t.TempDir()
+	elsewhere, err := New(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer elsewhere.Close()
+	if strings.Contains(elsewhere.loop.WindowContext().System, "python -m pytest tests/") {
+		t.Fatal("another repository sees these notes")
+	}
+}
