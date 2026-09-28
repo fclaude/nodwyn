@@ -64,7 +64,7 @@ func Register(in *scheme.Interp, o Options) error {
 		return os.ErrInvalid
 	}
 	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch}
-	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), shellExec(o), indexGrep(o, pin)} {
+	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), shellExec(o), indexGrep(o, pin), fsFind(o, pin)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}

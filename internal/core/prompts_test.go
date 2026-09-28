@@ -20,7 +20,7 @@ import (
 // gained the scratch directory's rule, which names $TMPDIR rather than the
 // per-session path so the prompt is the same across sessions.
 const goldenSystem = `You are nibb, a coding agent working inside the repository at REPO.
-Your tools read files, list directories, write files and run programs; every path is relative to the repository root and must stay inside it.
+Your tools read files (in line ranges for large ones), search their contents, find files by name, list directories, write and edit files, and run programs; every path is relative to the repository root and must stay inside it.
 Rules:
 - Read before you write. Keep changes minimal and complete.
 - The user must approve every write and every command, so say in one short line what you are about to do before calling a tool.
