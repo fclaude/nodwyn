@@ -70,9 +70,11 @@ func (p *Prim) Schema() ToolSchema {
 
 // ArgsFromJSON orders a JSON object of named arguments into p's positional
 // parameters. Unknown or missing names are errors so the model gets a
-// precise correction. An optional parameter that is missing or null ends
-// the argument list; one given after a missing optional one is an error,
-// since positions would shift.
+// precise correction. Optional parameters that are missing or null at the
+// end are left off; one skipped before a later one that is given gets its
+// type's empty value ("" for string, 0 for integer and number, #f for
+// boolean, () for list and alist, #f otherwise), since models pass options
+// by name, not position.
 func (p *Prim) ArgsFromJSON(raw []byte) ([]Value, error) {
 	var named map[string]json.RawMessage
 	if len(bytes.TrimSpace(raw)) == 0 {
@@ -81,7 +83,7 @@ func (p *Prim) ArgsFromJSON(raw []byte) ([]Value, error) {
 		return nil, errorf(p.Name, "arguments must be a JSON object: %v", err)
 	}
 	args := make([]Value, 0, len(p.Meta.Params))
-	gap := ""
+	var skipped []Param // optional parameters not given, since the last one given
 	for _, pa := range p.Meta.Params {
 		r, ok := named[pa.Name]
 		if ok && pa.Optional && bytes.Equal(bytes.TrimSpace(r), []byte("null")) {
@@ -92,14 +94,13 @@ func (p *Prim) ArgsFromJSON(raw []byte) ([]Value, error) {
 			if !pa.Optional {
 				return nil, errorf(p.Name, "missing argument %q", pa.Name)
 			}
-			if gap == "" {
-				gap = pa.Name
-			}
+			skipped = append(skipped, pa)
 			continue
 		}
-		if gap != "" {
-			return nil, errorf(p.Name, "argument %q needs %q too", pa.Name, gap)
+		for _, s := range skipped {
+			args = append(args, emptyValue(s.Type))
 		}
+		skipped = nil
 		v, err := FromJSON(r)
 		if err != nil {
 			return nil, errorf(p.Name, "argument %q: %v", pa.Name, err)
@@ -118,6 +119,20 @@ func (p *Prim) ArgsFromJSON(raw []byte) ([]Value, error) {
 		return nil, errorf(p.Name, "unknown argument(s): %s", strings.Join(keys, ", "))
 	}
 	return args, nil
+}
+
+// emptyValue stands in for an optional argument skipped before one given.
+func emptyValue(typ string) Value {
+	switch typ {
+	case "string":
+		return Str("")
+	case "integer", "number":
+		return Int(0)
+	case "list", "alist", "vector":
+		return Nil
+	default:
+		return False
+	}
 }
 
 func checkParamType(pa Param, v Value) error {

@@ -38,6 +38,10 @@ func TestReadRanges(t *testing.T) {
 			t.Errorf("%s:\n%q\nwant\n%q", src, got, want)
 		}
 	}
+	// start 0, as when count is given alone, reads from the top.
+	if got := h.mustEval(t, `(fs-read "big.txt" 0 2)`).S; got != "[lines 1-2 of 1000]\nline 0001\nline 0002\n" {
+		t.Errorf("start 0: %q", got)
+	}
 	// The default count is 200 lines, within the budget here (2 KB).
 	if got := h.mustEval(t, `(fs-read "big.txt" 101)`).S; !strings.HasPrefix(got, "[lines 101-300 of 1000]\nline 0101\n") {
 		t.Errorf("default count: %.40q", got)
@@ -56,7 +60,7 @@ func TestReadRanges(t *testing.T) {
 	}
 	for src, want := range map[string]string{
 		`(fs-read "big.txt" 1001)`: "start 1001 is past the end of big.txt (1000 lines)",
-		`(fs-read "big.txt" 0)`:    "start is a 1-based line number",
+		`(fs-read "big.txt" -1)`:   "start is a 1-based line number",
 		`(fs-read "big.txt" 1 0)`:  "count must be at least 1",
 		`(fs-read "empty.txt" 1)`:  "empty.txt is empty",
 		`(fs-read "big.txt" "1")`:  "expected integer",

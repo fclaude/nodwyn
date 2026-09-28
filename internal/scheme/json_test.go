@@ -65,8 +65,8 @@ func TestToolsExcludeBuiltinsAndHidden(t *testing.T) {
 
 // Optional parameters come last, are left out of the schema's required list,
 // and a call may stop before any of them: the handler gets fewer arguments,
-// never placeholders. One given after a missing optional one is an error,
-// since positions would shift.
+// never placeholders at the end. One skipped before a later one that is
+// given gets its type's empty value, since models pass options by name.
 func TestOptionalParameters(t *testing.T) {
 	in := New()
 	var got []Value
@@ -88,6 +88,8 @@ func TestOptionalParameters(t *testing.T) {
 		`{"path":"p","start":3,"count":4}`:       3,
 		`{"path":"p","start":null,"count":null}`: 1,
 		`{"path":"p","start":3,"count":null}`:    2,
+		`{"path":"p","count":4}`:                 3,
+		`{"path":"p","start":null,"count":4}`:    3,
 	} {
 		args, err := p.ArgsFromJSON([]byte(raw))
 		if err != nil || len(args) != n {
@@ -95,14 +97,15 @@ func TestOptionalParameters(t *testing.T) {
 		}
 	}
 	for raw, want := range map[string]string{
-		`{"path":"p","count":4}`:              `argument "count" needs "start" too`,
-		`{"path":"p","start":null,"count":4}`: `argument "count" needs "start" too`,
-		`{"path":"p","start":"3"}`:            `argument "start": type: expected integer`,
-		`{"start":3}`:                         `missing argument "path"`,
+		`{"path":"p","start":"3"}`: `argument "start": type: expected integer`,
+		`{"start":3}`:              `missing argument "path"`,
 	} {
 		if _, err := p.ArgsFromJSON([]byte(raw)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: got %v, want %q", raw, err, want)
 		}
+	}
+	if args, _ := p.ArgsFromJSON([]byte(`{"path":"p","count":4}`)); Write(args[1]) != "0" {
+		t.Errorf("a skipped integer is %s, want 0", Write(args[1]))
 	}
 	for src, n := range map[string]int{`(ranged "p")`: 1, `(ranged "p" 3)`: 2, `(ranged "p" 3 4)`: 3} {
 		if _, err := in.EvalString(t.Context(), src); err != nil || len(got) != n {

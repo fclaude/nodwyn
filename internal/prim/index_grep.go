@@ -51,7 +51,7 @@ func indexGrep(o Options, pin guard.RepoPin) *scheme.Prim {
 				{Name: "path", Type: "string", Doc: "repository file or directory", Role: "path"},
 				{Name: "pattern", Type: "string", Doc: "regular expression, not command-line options"},
 				{Name: "glob", Type: "string", Doc: "only files whose path matches this glob, such as *.py or tests/**/*.py; \"\" for all", Optional: true},
-				{Name: "context", Type: "integer", Doc: "lines of context before and after each match, 0 to 5", Optional: true},
+				{Name: "context", Type: "integer", Doc: "lines of context before and after each match, at most 5", Optional: true},
 			},
 			Host: true, TaintSource: scheme.TagFile,
 		},
@@ -84,10 +84,10 @@ func indexGrep(o Options, pin guard.RepoPin) *scheme.Prim {
 				if err != nil {
 					return scheme.Value{}, err
 				}
-				if n < 0 || n > searchContextLimit {
+				if n < 0 {
 					return scheme.Value{}, fmt.Errorf("context is 0 to %d lines, got %d", searchContextLimit, n)
 				}
-				around = int(n)
+				around = int(min(n, searchContextLimit)) // more is capped, not refused
 			}
 			rg, err := exec.LookPath("rg")
 			if err != nil {

@@ -40,7 +40,7 @@ func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
 			Doc: "Read a UTF-8 text file inside the repository. Without start, returns the whole file. With start (a 1-based line number) and count (default 200), returns a header [lines A-B of N] and those lines exactly as in the file, without line numbers. Read files over about 9 KB in ranges: a whole read that large is shortened in your context. index-grep gives line numbers to start from.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
-				{Name: "start", Type: "integer", Doc: "first line to read, 1-based; omit to read the whole file", Optional: true},
+				{Name: "start", Type: "integer", Doc: "first line to read, 1-based; omit both start and count to read the whole file", Optional: true},
 				{Name: "count", Type: "integer", Doc: "how many lines to read from start (default 200)", Optional: true},
 			},
 			Host:        true,
@@ -94,6 +94,9 @@ func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
 // says where it stopped; a first line longer than budget is cut and the
 // header says so. The file is streamed, so its size is not limited.
 func readLines(abs, name string, start, count int64, budget int) (string, error) {
+	if start == 0 {
+		start = 1 // start skipped (count given alone) or 0: from the top
+	}
 	if start < 1 {
 		return "", fmt.Errorf("start is a 1-based line number, got %d", start)
 	}
