@@ -155,8 +155,9 @@ func TestModelTurnRejectsUnknownToolNames(t *testing.T) {
 	}
 }
 
-// A sub-agent that repeats the same call is skipped once, then ended with
-// what it has, before the core's progress stop would end the whole turn.
+// A sub-agent that repeats the same call is skipped once, then asked for its
+// answer without tools, before the core's progress stop would end the whole
+// turn.
 func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
 	read := func(id string) fake.Turn { return fake.Turn{ToolCalls: []fake.ToolCall{readCall(id)}} }
 	r := strategyRig(t, `
@@ -167,23 +168,60 @@ func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
 		read("r1"), read("r2"), // run (results record only failures)
 		read("r3"), // skipped: the result is above
-		read("r4"), // still repeating: the expert is ended
+		read("r4"), // still repeating: the expert is asked for its answer
+		fake.Turn{Content: "It declares package main."},
 		fake.Turn{Content: "done"},
 	)
 	if err := r.turn("what does main.go do?"); err != "" {
 		t.Fatal(err)
 	}
-	if len(r.srv.Requests) != 6 {
-		t.Fatalf("%d requests, want 6", len(r.srv.Requests))
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7", len(r.srv.Requests))
+	}
+	if len(r.srv.Requests[5].Tools) != 0 || !strings.Contains(lastMessage(r, 5), "no tool rounds left") {
+		t.Fatalf("the wrap-up request: %d tools, last message %q", len(r.srv.Requests[5].Tools), lastMessage(r, 5))
 	}
 	results := r.results()
 	if results["r1"] != "" || results["r2"] != "" || !strings.Contains(results["r3"], "you already ran this exact call") ||
 		!strings.Contains(results["r4"], "stopped for repeating") {
 		t.Fatalf("the expert's calls: %+v", results)
 	}
-	main := requestMessages(t, r.srv.Requests[5])
-	if answer := main[len(main)-1]; answer.Role != "tool" || !strings.Contains(answer.Content, "stopped for repeating the same call") {
+	main := requestMessages(t, r.srv.Requests[6])
+	if answer := main[len(main)-1]; answer.Role != "tool" || !strings.HasPrefix(answer.Content, "It declares package main.") ||
+		!strings.Contains(answer.Content, "stopped for repeating the same call") {
 		t.Fatalf("the model's answer from the expert: %+v", answer)
+	}
+}
+
+// A sub-agent out of rounds is asked, without tools, for what it found, so
+// its work is not lost with its last tool calls.
+func TestSubAgentOutOfRoundsStillAnswers(t *testing.T) {
+	r := strategyRig(t, `
+(define sub-agent-max-rounds 1)
+(define-agent-tool "ask-expert" "Ask an expert who can read files."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You are an expert." (assoc-ref args "question") '("fs-read" "fs-list"))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("r1")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "l", Name: "fs-list", Args: map[string]any{"path": "."}}}}, // out of rounds
+		fake.Turn{Content: "main.go declares package main; I did not get to list the directory."},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5", len(r.srv.Requests))
+	}
+	if results := r.results(); !strings.Contains(results["l"], "out of rounds") {
+		t.Fatalf("the expert's last call: %+v", results)
+	}
+	if len(r.srv.Requests[3].Tools) != 0 || !strings.Contains(lastMessage(r, 3), "no tool rounds left") {
+		t.Fatalf("the wrap-up request: %d tools, last message %q", len(r.srv.Requests[3].Tools), lastMessage(r, 3))
+	}
+	if got := lastMessage(r, 4); got != "main.go declares package main; I did not get to list the directory." {
+		t.Fatalf("the model got %q from the expert", got)
 	}
 }
 

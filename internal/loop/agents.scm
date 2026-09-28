@@ -62,6 +62,20 @@
 (define sub-agent-stopped-note
   "[This agent was stopped for repeating the same call; its answer may be incomplete.]")
 
+;; A sub-agent that must stop while it still asks for tools (out of rounds,
+;; or repeating itself) is asked once more, with no tools, for its answer, so
+;; the work it did is not lost with its last tool calls.
+(define sub-agent-wrap-up-message
+  "You have no tool rounds left. Answer now with what you have found: your answer or report, and anything you could not finish or check.")
+
+;; Skip calls with reason, ask for the answer without tools, fold: the answer.
+(define (sub-agent-wrap-up calls reason)
+  (skip-tools calls reason)
+  (add-message sub-agent-wrap-up-message)
+  (let ((said (string-trim (assoc-ref (ask-model "control" '((tools . #f))) 'content ""))))
+    (fold-context)
+    said))
+
 (define (call-key call)
   (string-append (format "~a" (assoc-ref call 'name "")) " " (format "~a" (assoc-ref call 'args ""))))
 
@@ -81,11 +95,13 @@
   ;; warned: a repeat was already skipped.
   (let loop ((reply (ask)) (rounds 0) (last "") (runs 0) (warned #f))
     (let ((calls (assoc-ref reply 'tool-calls '())))
-      (if (or (null? calls) (>= rounds sub-agent-max-rounds))
-          (begin (unless (null? calls)
-                   (skip-tools calls "this agent is out of rounds"))
-                 (fold-context)
-                 (string-trim (assoc-ref reply 'content "")))
+      (cond
+       ((null? calls)
+        (fold-context)
+        (string-trim (assoc-ref reply 'content "")))
+       ((>= rounds sub-agent-max-rounds)
+        (sub-agent-wrap-up calls "this agent is out of rounds"))
+       (else
           (let ((allowed (cond ((procedure? tools) (filter tools calls))
                                (tools (filter (lambda (c) (member (assoc-ref c 'name) tools)) calls))
                                (else calls))))
@@ -101,13 +117,11 @@
                              ((< runs sub-agent-repeat-limit) (walk (cdr cs) (cons (car cs) run) repeats key (+ runs 1)))
                              (else (walk (cdr cs) run (cons (car cs) repeats) last runs)))))
                     ((and (pair? repeats) warned)
-                     (skip-tools allowed "this agent was stopped for repeating the same call")
-                     (fold-context)
-                     (let ((said (string-trim (assoc-ref reply 'content ""))))
+                     (let ((said (sub-agent-wrap-up allowed "this agent was stopped for repeating the same call")))
                        (if (string-empty? said)
                            sub-agent-stopped-note
                            (string-append said "\n\n" sub-agent-stopped-note))))
                     (else
                      (unless (null? repeats) (skip-tools (reverse repeats) sub-agent-repeat-reason))
                      (unless (null? run) (run-calls (reverse run)))
-                     (loop (ask) (+ rounds 1) last runs (or warned (pair? repeats)))))))))))
+                     (loop (ask) (+ rounds 1) last runs (or warned (pair? repeats))))))))))))
