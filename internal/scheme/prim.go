@@ -15,6 +15,21 @@ type Param struct {
 	Type string
 	Doc  string
 	Role string
+	// Optional parameters come last (checked at Register). A call may stop
+	// before any of them: the handler sees fewer arguments, never a
+	// placeholder, and branches on len(c.Args). Go-only for now.
+	Optional bool
+}
+
+// required is how many of p's parameters every call must give.
+func required(p *Prim) int {
+	n := 0
+	for _, pa := range p.Meta.Params {
+		if !pa.Optional {
+			n++
+		}
+	}
+	return n
 }
 
 // Meta is a primitive's declaration (ADR 4). The guard reads only this.
@@ -103,6 +118,17 @@ func (in *Interp) Register(p *Prim) error {
 	}
 	if _, dup := in.prims[p.Name]; dup {
 		return fmt.Errorf("scheme: primitive %q already registered", p.Name)
+	}
+	optional := false
+	for _, pa := range p.Meta.Params {
+		if pa.Optional {
+			optional = true
+		} else if optional {
+			return fmt.Errorf("scheme: primitive %q: required parameter %q follows an optional one", p.Name, pa.Name)
+		}
+	}
+	if optional && p.Meta.Variadic {
+		return fmt.Errorf("scheme: primitive %q: a variadic primitive cannot have optional parameters", p.Name)
 	}
 	in.prims[p.Name] = p
 	in.global.Define(p.Name, Value{Kind: KPrim, Prim: p})
@@ -231,6 +257,12 @@ func taintResult(p *Prim, args []Value, v Value) Value {
 func checkArity(p *Prim, args []Value) error {
 	want := len(p.Meta.Params)
 	got := len(args)
+	if min := required(p); min < want {
+		if got < min || got > want {
+			return errorf(p.Name, "expected %d to %d argument(s), got %d", min, want, got)
+		}
+		return nil
+	}
 	switch {
 	case got == want:
 		return nil

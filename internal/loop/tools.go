@@ -63,6 +63,9 @@ func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (log.ToolResult, sc
 func (l *Loop) apply(ctx context.Context, tc llm.ToolCall) (scheme.Value, error) {
 	p, ok := l.interp.Lookup(tc.Name)
 	if !ok || !p.Tool() {
+		if s := l.suggestTool(tc.Name); s != "" {
+			return scheme.Void, fmt.Errorf("unknown tool %q; did you mean %s? available: %s", tc.Name, s, l.toolNames())
+		}
 		return scheme.Void, fmt.Errorf("unknown tool %q; available: %s", tc.Name, l.toolNames())
 	}
 	args, err := p.ArgsFromJSON(tc.Args)
@@ -85,6 +88,28 @@ func render(v scheme.Value) string {
 		return string(b)
 	}
 	return scheme.Write(v)
+}
+
+// suggestTool names the tool a mistyped name most likely meant: the same
+// name with - for _, or the one tool whose last word matches (fs-grep,
+// index-grep); "" when there is no single candidate. Models invent names
+// in the family's style (fs-grep for index-grep, fs_edit for fs-edit).
+func (l *Loop) suggestTool(name string) string {
+	norm := strings.ReplaceAll(strings.ToLower(name), "_", "-")
+	last := norm[strings.LastIndex(norm, "-")+1:]
+	var same []string
+	for _, t := range l.tools {
+		if t.Name == norm {
+			return t.Name
+		}
+		if t.Name[strings.LastIndex(t.Name, "-")+1:] == last {
+			same = append(same, t.Name)
+		}
+	}
+	if len(same) == 1 {
+		return same[0]
+	}
+	return ""
 }
 
 func (l *Loop) toolNames() string {

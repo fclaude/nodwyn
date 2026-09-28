@@ -386,3 +386,19 @@ func TestModelTurnToolsOptionIsStrict(t *testing.T) {
 		t.Fatalf("error %q", err)
 	}
 }
+
+// A mistyped tool name gets the likely one: models invent names in the
+// family's style (fs-grep for index-grep, fs_edit for fs-edit).
+func TestUnknownToolSuggestsTheLikelyOne(t *testing.T) {
+	r := strategyRig(t, "", 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "g", Name: "fs-grep", Args: map[string]any{"path": ".", "pattern": "x"}}, {ID: "e", Name: "fs_edit", Args: map[string]any{}}, {ID: "z", Name: "zap", Args: map[string]any{}}}},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("go"); err != "" {
+		t.Fatal(err)
+	}
+	res := r.results()
+	if !strings.Contains(res["g"], "did you mean index-grep?") || !strings.Contains(res["e"], "did you mean fs-edit?") || strings.Contains(res["z"], "did you mean") {
+		t.Fatalf("%+v", res)
+	}
+}

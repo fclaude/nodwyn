@@ -15,12 +15,16 @@ import (
 
 // Options configure the host primitives.
 type Options struct {
-	Root         string        // repository root; every path is pinned under it
-	Scratch      string        // the session's scratch directory, outside Root; "" for none
-	MaxReadBytes int64         // fs-read refuses larger files
-	MaxOutput    int           // shell-exec truncates stdout/stderr beyond this
-	ShellTimeout time.Duration // per shell-exec cap
-	EnvAllow     []string      // environment variables children may see
+	Root         string // repository root; every path is pinned under it
+	Scratch      string // the session's scratch directory, outside Root; "" for none
+	MaxReadBytes int64  // fs-read refuses larger files, unless it reads a line range
+	// MaxRangeBytes caps what a ranged fs-read returns: whole lines up to
+	// this many bytes, so the window never cuts a ranged read (the core
+	// sets it from window.max_result_tokens).
+	MaxRangeBytes int
+	MaxOutput     int           // shell-exec truncates stdout/stderr beyond this
+	ShellTimeout  time.Duration // per shell-exec cap
+	EnvAllow      []string      // environment variables children may see
 
 	// P3 egress (all optional; nil disables the egress primitives — bootstrap
 	// has none). The guard's E3 checker enforces the binding table before any
@@ -43,11 +47,12 @@ func DefaultOptions(root string) Options {
 		abs = root
 	}
 	return Options{
-		Root:         filepath.Clean(abs),
-		MaxReadBytes: 1 << 20,
-		MaxOutput:    256 << 10,
-		ShellTimeout: 10 * time.Minute,
-		EnvAllow:     []string{"PATH", "HOME", "GOPATH", "GOCACHE", "GOFLAGS", "GOMODCACHE", "GOTOOLCHAIN", "TERM", "LANG", "LC_ALL", "TMPDIR", "USER", "SHELL"},
+		Root:          filepath.Clean(abs),
+		MaxReadBytes:  1 << 20,
+		MaxRangeBytes: 3*3072 - 256,
+		MaxOutput:     256 << 10,
+		ShellTimeout:  10 * time.Minute,
+		EnvAllow:      []string{"PATH", "HOME", "GOPATH", "GOCACHE", "GOFLAGS", "GOMODCACHE", "GOTOOLCHAIN", "TERM", "LANG", "LC_ALL", "TMPDIR", "USER", "SHELL"},
 	}
 }
 
@@ -59,7 +64,7 @@ func Register(in *scheme.Interp, o Options) error {
 		return os.ErrInvalid
 	}
 	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch}
-	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), shellExec(o), indexGrep(o, pin)} {
+	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), shellExec(o), indexGrep(o, pin), fsFind(o, pin)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}

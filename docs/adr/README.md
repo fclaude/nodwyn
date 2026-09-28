@@ -30,3 +30,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0026](./0026-the-loop-is-scheme.md) — The agent loop is a Scheme procedure
 - [0027](./0027-models-and-narrowed-contexts.md) — Configured models and narrowed contexts
 - [0028](./0028-scratch-directory.md) — A scratch directory beside the repository
+- [0029](./0029-optional-tool-parameters.md) — Optional tool parameters

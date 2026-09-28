@@ -122,6 +122,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.CloseNow()
+	conn.SetReadLimit(1 << 20) // as the server's; a browser has no limit, the library's default is 32 KiB
 	send := func(id uint64, method string, params any) {
 		t.Helper()
 		if err := wsjson.Write(ctx, conn, map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
@@ -236,6 +237,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.CloseNow()
+	conn.SetReadLimit(1 << 20) // as the server's; a browser has no limit, the library's default is 32 KiB
 	var id uint64
 	var events []rpc.ClientEvent
 	read := func() map[string]json.RawMessage {

@@ -161,3 +161,77 @@ func TestIndexGrepBoundsAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Contents are matched in Go on the guarded reads: a glob narrows the
+// candidates, context adds the lines around a match, and a large tree
+// that the old 128-file limit refused is searched.
+func TestIndexGrepGlobContextAndLargerTrees(t *testing.T) {
+	requireRipgrep(t)
+	h := newHarness(t)
+	os.MkdirAll(filepath.Join(h.root, "pkg"), 0o755)
+	os.WriteFile(filepath.Join(h.root, "pkg", "a.py"), []byte("one\ntwo\nneedle here\nfour\nfive\n"), 0o600)
+	os.WriteFile(filepath.Join(h.root, "pkg", "b.txt"), []byte("needle in text\n"), 0o600)
+	os.WriteFile(filepath.Join(h.root, "pkg", "empty.py"), nil, 0o600)
+	got := grepResult(t, h.mustEval(t, `(index-grep "pkg" "needle" "*.py" 2)`))
+	if len(got.Matches) != 1 || got.Matches[0].Path != "pkg/a.py" || got.Matches[0].Line != 3 ||
+		strings.Join(got.Matches[0].Before, "|") != "one|two" || strings.Join(got.Matches[0].After, "|") != "four|five" {
+		t.Fatalf("glob and context: %+v", got)
+	}
+	if got := grepResult(t, h.mustEval(t, `(index-grep "pkg" "^$")`)); len(got.Matches) != 0 {
+		t.Fatalf("an empty file matched: %+v", got)
+	}
+	if got := grepResult(t, h.mustEval(t, `(index-grep "pkg" "needle" "")`)); len(got.Matches) != 2 {
+		t.Fatalf("empty glob is every file: %+v", got)
+	}
+	for src, want := range map[string]string{
+		`(index-grep "pkg" "needle" "*.py" 6)`: "context is 0 to 5 lines",
+		`(index-grep "pkg" "(")`:               "invalid regular expression",
+	} {
+		if _, err := h.eval(t, src); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v", src, err)
+		}
+	}
+	os.MkdirAll(filepath.Join(h.root, "tree"), 0o755)
+	for i := 0; i < 400; i++ {
+		os.WriteFile(filepath.Join(h.root, "tree", fmt.Sprintf("m%03d.py", i)), []byte(fmt.Sprintf("x = %d\n", i)), 0o600)
+	}
+	got = grepResult(t, h.mustEval(t, `(index-grep "tree" "= 399$" "*.py")`))
+	if len(got.Matches) != 1 || got.Files != 400 {
+		t.Fatalf("400-file tree: %+v", got)
+	}
+}
+
+// fs-find lists names by glob, sorted, without protected or credential
+// names, and never escapes the repository.
+func TestFsFind(t *testing.T) {
+	requireRipgrep(t)
+	h := newHarness(t)
+	os.MkdirAll(filepath.Join(h.root, "src", "deep"), 0o755)
+	for _, name := range []string{"src/b.py", "src/a.py", "src/deep/c.py", "src/notes.txt", "src/key.pem", "src/.hidden.py", "src/.git/x.py"} {
+		os.MkdirAll(filepath.Dir(filepath.Join(h.root, name)), 0o755)
+		os.WriteFile(filepath.Join(h.root, name), []byte("x"), 0o600)
+	}
+	raw, err := scheme.ToJSON(h.mustEval(t, `(fs-find "src" "*.py")`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got findResult
+	json.Unmarshal(raw, &got)
+	if strings.Join(got.Files, ",") != "src/a.py,src/b.py,src/deep/c.py" || got.Count != 3 || got.Truncated {
+		t.Fatalf("%+v", got)
+	}
+	raw, _ = scheme.ToJSON(h.mustEval(t, `(fs-find "src" "*")`))
+	json.Unmarshal(raw, &got)
+	if all := strings.Join(got.Files, ","); strings.Contains(all, "key.pem") || strings.Contains(all, ".git") || strings.Contains(all, ".hidden") {
+		t.Fatalf("a credential-looking name was listed: %+v", got)
+	}
+	if _, err := h.eval(t, `(fs-find ".." "*")`); err == nil {
+		t.Fatal("fs-find escaped the repository")
+	}
+	if _, err := h.eval(t, `(fs-find "README.md" "*")`); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("file path: %v", err)
+	}
+	if len(h.prompts) != 0 {
+		t.Fatal("fs-find prompted")
+	}
+}
