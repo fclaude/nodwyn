@@ -44,10 +44,14 @@ func TestTurnOutcome(t *testing.T) {
 func TestRequiredPlanPrecedesExecution(t *testing.T) {
 	for _, empty := range []bool{false, true} {
 		t.Run(fmt.Sprint(empty), func(t *testing.T) {
-			turns := []fake.Turn{{Content: "1. Read main.go."}, {Content: "done"}}
+			// The explorer looks first, then the planner drafts; a run's turn
+			// that ends with nothing changed is reminded twice (the default
+			// evidence loop) before it ends.
+			explored := fake.Turn{Content: "main.go declares package main."}
+			turns := []fake.Turn{explored, {Content: "1. Read main.go."}, {Content: "done"}, {Content: "done"}, {Content: "done"}}
 			if empty {
 				// Asked three times, and empty every time.
-				turns = []fake.Turn{{Content: "   "}, {Content: ""}, {Content: "\n"}}
+				turns = []fake.Turn{explored, {Content: "   "}, {Content: ""}, {Content: "\n"}}
 			}
 			r := newRig(t, true, turns...)
 			if err := r.s.SendPlanned("read main.go"); err != nil {

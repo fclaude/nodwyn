@@ -41,9 +41,75 @@
 
 (define (default-agent-turn request)
   (plan-gate request)
-  (let loop ((reply (ask-model)))
+  (if (or (unattended?) (plan-required?))
+      (evidence-loop request)
+      (let loop ((reply (ask-model)))
+        (let ((calls (assoc-ref reply 'tool-calls '())))
+          (unless (null? calls)
+            (run-calls calls)
+            (maybe-compact request reply)
+            (loop (ask-model)))))))
+
+;; When nobody reviews the work as it happens (unattended, or a supervised
+;; run), a turn ends on evidence, not on the model's word: something changed,
+;; and a test ran after the last edit. A reply that stops without that gets a
+;; reminder, at most finish-reminders times. Test commands that keep failing
+;; to run get finish-unrunnable-message once, so a broken environment ends
+;; in an honest report rather than a spent budget.
+(define finish-reminders 2)
+(define unrunnable-after 6) ; failed test commands in a row before the way out is offered
+
+;; Words that mark a command as running tests, across ecosystems; a project
+;; may redefine the list.
+(define test-command-words
+  '("pytest" "unittest" "runtests" "tox" "nox" "bin/test" "go test" "cargo test"
+    "npm test" "npm run test" "yarn test" "pnpm test" "jest" "vitest" "mocha"
+    "mvn test" "gradle test" "gradlew test" "ctest" "make test" "make check"
+    "rspec" "rake test" "phpunit" "dotnet test" "mix test" "swift test"))
+
+;; A shell-exec call's command line, cmd and args joined.
+(define (command-line call)
+  (let ((args (guard (e (else '())) (json-parse (assoc-ref call 'args "{}")))))
+    (if (pair? args)
+        (string-join (cons (format "~a" (assoc-ref args "cmd" ""))
+                           (map (lambda (a) (format "~a" a)) (let ((l (assoc-ref args "args" '()))) (if (list? l) l '()))))
+                     " ")
+        "")))
+
+(define (test-call? call)
+  (and (equal? (assoc-ref call 'name) "shell-exec")
+       (let ((line (command-line call)))
+         (let any ((ws test-command-words))
+           (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws))))))))
+
+(define (edit-call? call) (member (assoc-ref call 'name) '("fs-write" "fs-edit")))
+
+;; Whether a test command ran successfully: exit status 0.
+(define (ran-ok? result)
+  (and (assoc-ref result 'ok #f)
+       (let ((v (guard (e (else #f)) (json-parse (format "~a" (assoc-ref result 'value ""))))))
+         (and (pair? v) (equal? (assoc-ref v "status" 1) 0)))))
+
+(define (evidence-loop request)
+  (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0))
     (let ((calls (assoc-ref reply 'tool-calls '())))
-      (unless (null? calls)
-        (run-calls calls)
-        (maybe-compact request reply)
-        (loop (ask-model))))))
+      (if (pair? calls)
+          (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs))
+            (cond ((pair? cs)
+                   (let ((c (car cs)) (r (car rs)))
+                     (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
+                            (walk (cdr cs) (cdr rs) #t #f failed))
+                           ((test-call? c)
+                            (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1))))
+                           (else (walk (cdr cs) (cdr rs) edited tested failed)))))
+                  (else
+                   (maybe-compact request reply)
+                   (let ((stuck (and (not offered) (>= failed unrunnable-after))))
+                     (when stuck (add-message (finish-unrunnable-message failed)))
+                     (loop (ask-model) edited tested failed (or offered stuck) reminders)))))
+          (let ((gap (cond ((not edited) finish-no-change-message)
+                           ((and (not tested) (not offered)) finish-untested-message)
+                           (else #f))))
+            (when (and gap (< reminders finish-reminders))
+              (add-message gap)
+              (loop (ask-model) edited tested failed-runs offered (+ reminders 1))))))))

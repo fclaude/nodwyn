@@ -473,6 +473,22 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
 | `(answer-call call text)` | Answer one of the model's calls with `text`, as a successful result, without running the tool: how a tool the strategy handles itself answers. Counts against the tool-call budget. |
 | `(session-system-prompt)` | The system prompt the session started with (§9.1), fixed for its life: what a narrowed context passes to `narrow-context` to keep the model's standing instructions. |
 
+When nobody reviews the work as it happens — `(unattended?)` (`--yolo`, a
+run's `auto_approve`) or a supervised run's turn (`plan-required?`) — the
+default `agent-turn` ends a turn on evidence, not on the model's word
+(`evidence-loop`): a reply that stops before anything changed, or with a
+change and no test run after it, gets `finish-no-change-message` or
+`finish-untested-message`, at most `finish-reminders` (2) times. A command is
+a test run when its command line contains one of `test-command-words`
+(pytest, go test, cargo test, npm test, make test, …; a project may redefine
+the list). After `unrunnable-after` (6) test commands in a row fail to run,
+the model gets `(finish-unrunnable-message n)` once: finish and report the
+change as unverified rather than spend the budget on a broken environment.
+
+| | |
+|---|---|
+| `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`) |
+
 A reply's `done` is `"length"` when the model reached the output cap
 (`window.output_reserve`); the core notes it in the log. What to do is the
 strategy's: `(ask-model …)` is `model-turn`, asked again with
@@ -514,7 +530,9 @@ strings (§1.1):
 
 | | |
 |---|---|
-| `(system-prompt repo)` | the control model's system prompt |
+| `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver |
+| `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5), and the draft request that carries what it found |
+| `finish-no-change-message`, `finish-untested-message`, `(finish-unrunnable-message n)` | what the evidence loop tells the model (§9) |
 | `task-header` `plan-header` | the headers under which the window adds the user's latest request and its plan to the system prompt, where they are never trimmed away |
 | `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for |
 | `(plan-system-prompt repo)` | the planner's system prompt |
@@ -677,6 +695,7 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
 | `plan-max-revisions` | revisions after the first draft (3) |
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
+| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded` or `required`), `plan`, `score`, `revisions`, `reason` |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |

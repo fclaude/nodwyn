@@ -24,6 +24,12 @@ still apply, including planning tokens reported by the control provider. A
 provider response can exceed its token ceiling; no further operation then starts.
 Judge token usage remains unavailable.
 
+A run's turn ends on evidence (docs/scheme.md §9): the default loop reminds a
+model that stops before changing anything, or without a test run after its
+last change, and offers an honest way out when the tests cannot run at all.
+Before the plan, a read-only explorer looks at the repository, so the plan
+names real files.
+
 Each turn requires a nonempty, durably recorded plan before execution. The
 Scheme `turn` runs the plan gate first in every run turn, whatever `agent-turn`
 a project defines ([docs/scheme.md](scheme.md) §9.5): the control model drafts

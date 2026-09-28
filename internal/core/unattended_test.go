@@ -20,7 +20,10 @@ func TestUnattendedRunNeverWritesProtectedPaths(t *testing.T) {
 	write := func(id, path string) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-write", Args: map[string]any{"path": path, "content": "x\n"}}}}
 	}
-	srv := fake.New(write("n", ".nibb/init.scm"), write("g", ".git/hooks/pre-commit"), write("s", "src/ok.txt"), fake.Turn{Content: "done"})
+	// Unattended, a turn that ends with its change untested is reminded twice
+	// (the default evidence loop) before it ends.
+	done := fake.Turn{Content: "done"}
+	srv := fake.New(write("n", ".nibb/init.scm"), write("g", ".git/hooks/pre-commit"), write("s", "src/ok.txt"), done, done, done)
 	t.Cleanup(srv.Close)
 	logb := &bytes.Buffer{}
 	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: logb})
