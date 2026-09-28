@@ -48,6 +48,23 @@
 ;; Replies a sub-agent may make with tool calls before it must answer.
 (define sub-agent-max-rounds 40)
 
+;; Identical calls (same tool and arguments) a sub-agent may run in a row.
+;; The core stops the whole turn when a call repeats four times in a row
+;; (a progress stop, which no strategy can catch), so a sub-agent that loops
+;; would end its caller's work too. Instead, a further identical call is
+;; skipped with sub-agent-repeat-reason, and the sub-agent is ended, with
+;; what it has, if it keeps repeating after that.
+(define sub-agent-repeat-limit 2)
+
+(define sub-agent-repeat-reason
+  "you already ran this exact call, and its result is above; use it, or answer with what you have")
+
+(define sub-agent-stopped-note
+  "[This agent was stopped for repeating the same call; its answer may be incomplete.]")
+
+(define (call-key call)
+  (string-append (format "~a" (assoc-ref call 'name "")) " " (format "~a" (assoc-ref call 'args ""))))
+
 ;; Run task in a sub-agent: a narrowed context with system as its system
 ;; prompt. tools lists the tool names it may use (the others are skipped
 ;; with a reason), is a procedure that takes a call and says whether it may
@@ -58,7 +75,9 @@
 (define (sub-agent system task tools . name)
   (narrow-context system (cond ((pair? name) (car name)) (agent-label agent-label) (else "sub-agent")))
   (add-message task)
-  (let loop ((reply (ask-model)) (rounds 0))
+  ;; last and runs: the latest call run and how many times in a row;
+  ;; warned: a repeat was already skipped.
+  (let loop ((reply (ask-model)) (rounds 0) (last "") (runs 0) (warned #f))
     (let ((calls (assoc-ref reply 'tool-calls '())))
       (if (or (null? calls) (>= rounds sub-agent-max-rounds))
           (begin (unless (null? calls)
@@ -71,5 +90,22 @@
             (unless (= (length allowed) (length calls))
               (skip-tools (filter (lambda (c) (not (member c allowed))) calls)
                           "not available to this agent"))
-            (unless (null? allowed) (run-calls allowed))
-            (loop (ask-model) (+ rounds 1)))))))
+            ;; Split the allowed calls, in order, into those to run and the
+            ;; repeats past the limit.
+            (let walk ((cs allowed) (run '()) (repeats '()) (last last) (runs runs))
+              (cond ((pair? cs)
+                     (let ((key (call-key (car cs))))
+                       (cond ((not (equal? key last)) (walk (cdr cs) (cons (car cs) run) repeats key 1))
+                             ((< runs sub-agent-repeat-limit) (walk (cdr cs) (cons (car cs) run) repeats key (+ runs 1)))
+                             (else (walk (cdr cs) run (cons (car cs) repeats) last runs)))))
+                    ((and (pair? repeats) warned)
+                     (skip-tools allowed "this agent was stopped for repeating the same call")
+                     (fold-context)
+                     (let ((said (string-trim (assoc-ref reply 'content ""))))
+                       (if (string-empty? said)
+                           sub-agent-stopped-note
+                           (string-append said "\n\n" sub-agent-stopped-note))))
+                    (else
+                     (unless (null? repeats) (skip-tools (reverse repeats) sub-agent-repeat-reason))
+                     (unless (null? run) (run-calls (reverse run)))
+                     (loop (ask-model) (+ rounds 1) last runs (or warned (pair? repeats)))))))))))

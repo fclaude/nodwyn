@@ -90,6 +90,38 @@ func TestAgentToolAnswersFromSubAgent(t *testing.T) {
 	}
 }
 
+// A sub-agent that repeats the same call is skipped once, then ended with
+// what it has, before the core's progress stop would end the whole turn.
+func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
+	read := func(id string) fake.Turn { return fake.Turn{ToolCalls: []fake.ToolCall{readCall(id)}} }
+	r := strategyRig(t, `
+(define-agent-tool "ask-expert" "Ask an expert who can read files."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You are an expert." (assoc-ref args "question") '("fs-read"))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
+		read("r1"), read("r2"), // run (results record only failures)
+		read("r3"), // skipped: the result is above
+		read("r4"), // still repeating: the expert is ended
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6", len(r.srv.Requests))
+	}
+	results := r.results()
+	if results["r1"] != "" || results["r2"] != "" || !strings.Contains(results["r3"], "you already ran this exact call") ||
+		!strings.Contains(results["r4"], "stopped for repeating") {
+		t.Fatalf("the expert's calls: %+v", results)
+	}
+	main := requestMessages(t, r.srv.Requests[5])
+	if answer := main[len(main)-1]; answer.Role != "tool" || !strings.Contains(answer.Content, "stopped for repeating the same call") {
+		t.Fatalf("the model's answer from the expert: %+v", answer)
+	}
+}
+
 // A turn that ends inside a sub-agent's context folds it, so the call that
 // waits for it is answered right after the call and the transcript stays
 // well-formed for the next turn.
