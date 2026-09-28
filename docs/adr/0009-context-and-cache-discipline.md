@@ -92,7 +92,10 @@ system prompt; the recipe records them (window-v6), and an absent header
 means the default text, so older logs rebuild byte for byte. A model turn may
 offer no tools (`(model-turn name '((tools . #f)))`, the planner's); its
 `llm.req` records `no_tools` and replay omits the catalog for it
-(window-v7). Every request also caps the model's output at
+(window-v7). A turn may also offer only some tools (`'((tools "fs-read"))`, a
+sub-agent's); `llm.req` records their names as `offered_tools` and replay
+offers the same subset of the catalog. The window's size budget still counts
+the whole catalog, so the window, and the recipe, are unchanged by it. Every request also caps the model's output at
 `window.output_reserve` (window-v8: `max_output` in the recipe), so the
 prompt and the reply fit `num_ctx`. Recipes v1 to v7 still replay under their
 own rules.

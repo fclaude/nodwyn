@@ -2,11 +2,13 @@ package core
 
 import (
 	"bytes"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/window"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
@@ -87,6 +89,69 @@ func TestAgentToolAnswersFromSubAgent(t *testing.T) {
 	}
 	if narrow.Agent != "ask-expert" || !slices.Equal(narrow.Answers, []string{"q"}) {
 		t.Fatalf("the sub-agent's context is not labelled: %+v", narrow)
+	}
+}
+
+// A sub-agent given a list of tools is offered only those, and the log
+// records the offer, so replay rebuilds the same request.
+func TestSubAgentIsOfferedOnlyItsTools(t *testing.T) {
+	r := strategyRig(t, `
+(define-agent-tool "ask-expert" "Ask an expert who can read files."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You are an expert." (assoc-ref args "question") '("fs-read" "fs-list"))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
+		fake.Turn{Content: "It only declares package main."},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	names := func(i int) []string {
+		var out []string
+		for _, raw := range r.srv.Requests[i].Tools {
+			var tool struct {
+				Function struct{ Name string } `json:"function"`
+			}
+			if err := json.Unmarshal(raw, &tool); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, tool.Function.Name)
+		}
+		return out
+	}
+	if main := names(0); len(main) <= 2 || !slices.Contains(main, "ask-expert") {
+		t.Fatalf("the model's own request offered %v", main)
+	}
+	if expert := names(1); !slices.Equal(expert, []string{"fs-read", "fs-list"}) && !slices.Equal(expert, []string{"fs-list", "fs-read"}) {
+		t.Fatalf("the expert was offered %v, want fs-read and fs-list", expert)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range evs {
+		if ev.Kind != log.KindLLMReq {
+			continue
+		}
+		req, err := window.ReplayRequest(evs, ev.Seq)
+		if err != nil {
+			t.Fatalf("replay of seq %d: %v", ev.Seq, err)
+		}
+		if n := len(req.Tools); n == 2 {
+			return // the expert's request replays with its two tools
+		}
+	}
+	t.Fatal("no replayed request offered the expert's two tools")
+}
+
+// A tools option naming a tool that does not exist is an error that lists
+// the tools there are.
+func TestModelTurnRejectsUnknownToolNames(t *testing.T) {
+	r := strategyRig(t, `(define (agent-turn request) (model-turn "control" '((tools "no-such-tool"))))`, 10,
+		fake.Turn{Content: "done"})
+	if err := r.turn("hello"); !strings.Contains(err, `no tool named "no-such-tool"`) || !strings.Contains(err, "fs-read") {
+		t.Fatalf("error %q", err)
 	}
 }
 

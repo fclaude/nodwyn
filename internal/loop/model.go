@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -11,16 +12,71 @@ import (
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nibb/internal/scheme"
 	"github.com/fclaude/nibb/internal/window"
 )
 
+// toolOffer is which of the session's tools a request offers: all of them
+// (the zero value), none, or only the named ones.
+type toolOffer struct {
+	none bool
+	only []string
+}
+
+// parseToolOffer reads model-turn's tools option: #f offers no tools, a
+// list of tool names only those, anything else all of them.
+func (l *Loop) parseToolOffer(v scheme.Value) (toolOffer, error) {
+	if scheme.Equal(v, scheme.False) {
+		return toolOffer{none: true}, nil
+	}
+	items, ok := v.Slice()
+	if !ok {
+		return toolOffer{}, nil
+	}
+	if len(items) == 0 {
+		return toolOffer{none: true}, nil
+	}
+	known := make(map[string]bool, len(l.tools))
+	for _, t := range l.tools {
+		known[t.Name] = true
+	}
+	only := make([]string, 0, len(items))
+	for _, it := range items {
+		if it.Kind != scheme.KString {
+			return toolOffer{}, fmt.Errorf("the tools option lists tool names as strings, got %s", scheme.Write(it))
+		}
+		if !known[it.S] {
+			return toolOffer{}, fmt.Errorf("no tool named %q; the tools are %s", it.S, l.toolNames())
+		}
+		only = append(only, it.S)
+	}
+	return toolOffer{only: only}, nil
+}
+
+// offered is the part of the session's tool catalog an offer names, in
+// catalog order.
+func offered(catalog []llm.Tool, offer toolOffer) []llm.Tool {
+	switch {
+	case offer.none:
+		return nil
+	case offer.only == nil:
+		return catalog
+	}
+	var out []llm.Tool
+	for _, t := range catalog {
+		if slices.Contains(offer.only, t.Name) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // ask sends one request to a model and records both sides: the registry's
 // model of that name (ControlModel for the control model), offering the
-// session's tools unless tools is false. The
-// window is rebuilt from the log every time, so the model sees exactly what
-// has been recorded, and the request's hash lets nibb replay --window prove
-// it.
-func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response, error) {
+// session's tools that offer names. The window is rebuilt from the log
+// every time, so the model sees exactly what has been recorded, and the
+// request's hash lets nibb replay --window prove it.
+func (l *Loop) ask(ctx context.Context, name string, offer toolOffer) (*llm.Response, error) {
 	ep, err := l.endpoint(name)
 	if err != nil {
 		return nil, err
@@ -30,9 +86,7 @@ func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response,
 		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
 	}
 	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: l.cfg.MaxOutput}
-	if tools {
-		request.Tools = l.tools
-	}
+	request.Tools = offered(l.tools, offer)
 	digest, err := window.RequestHash(request)
 	if err != nil {
 		return nil, err
@@ -40,7 +94,7 @@ func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response,
 	rec := log.LLMReq{
 		RequestHash: digest,
 		Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
-		NoTools: !tools,
+		NoTools: offer.none, OfferedTools: offer.only,
 	}
 	if name != ControlModel {
 		// The session's recipe carries the control model's settings; any

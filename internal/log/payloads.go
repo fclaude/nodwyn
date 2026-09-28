@@ -76,6 +76,10 @@ type LLMReq struct {
 	// NoTools is set when the request offered the model no tools, as the
 	// planner's does ((model-turn name '((tools . #f)))).
 	NoTools bool `json:"no_tools,omitempty"`
+	// OfferedTools names the tools offered when a request offered only
+	// some of them ((model-turn name '((tools "fs-read" ...)))), as a
+	// sub-agent's requests do; empty when it offered all or none.
+	OfferedTools []string `json:"offered_tools,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.

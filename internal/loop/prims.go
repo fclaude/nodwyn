@@ -154,7 +154,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
-	name, tools := ControlModel, true
+	name, offer := ControlModel, toolOffer{}
 	if len(c.Args) > 2 {
 		return scheme.Void, errors.New("expected at most a model name and an options alist")
 	}
@@ -172,7 +172,9 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			if o.Kind != scheme.KPair || o.P.Car.Kind != scheme.KSymbol || o.P.Car.S != "tools" {
 				return scheme.Void, fmt.Errorf("unknown model-turn option %s; the only one is tools", scheme.Write(o))
 			}
-			tools = !scheme.Equal(o.P.Cdr, scheme.False) // only #f is false
+			if offer, err = l.parseToolOffer(o.P.Cdr); err != nil {
+				return scheme.Void, err
+			}
 		}
 	}
 	if err := l.skipPending("the strategy asked the model again before running this call"); err != nil {
@@ -183,7 +185,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, halt(err)
 		}
 	}
-	resp, err := l.ask(c.Ctx, name, tools)
+	resp, err := l.ask(c.Ctx, name, offer)
 	if err != nil {
 		return scheme.Void, err
 	}

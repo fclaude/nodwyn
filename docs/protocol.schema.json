@@ -795,6 +795,15 @@
         "num_ctx": {
           "type": "integer"
         },
+        "offered_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "request_hash": {
           "type": "string"
         },

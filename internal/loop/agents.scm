@@ -66,18 +66,20 @@
   (string-append (format "~a" (assoc-ref call 'name "")) " " (format "~a" (assoc-ref call 'args ""))))
 
 ;; Run task in a sub-agent: a narrowed context with system as its system
-;; prompt. tools lists the tool names it may use (the others are skipped
-;; with a reason), is a procedure that takes a call and says whether it may
-;; run, or is #f for all of them; an optional name labels its
+;; prompt. tools lists the tool names it may use: the model is offered only
+;; those, and any other call is skipped with a reason. It may instead be a
+;; procedure that takes a call and says whether it may run (the model is then
+;; offered every tool), or #f for all of them. An optional name labels its
 ;; context in the log. Returns its final answer; the context is folded, so
 ;; the caller's context never sees the sub-agent's work, only what the
 ;; caller does with the answer. The log keeps all of it.
 (define (sub-agent system task tools . name)
+  (define (ask) (if (pair? tools) (ask-model "control" (list (cons 'tools tools))) (ask-model)))
   (narrow-context system (cond ((pair? name) (car name)) (agent-label agent-label) (else "sub-agent")))
   (add-message task)
   ;; last and runs: the latest call run and how many times in a row;
   ;; warned: a repeat was already skipped.
-  (let loop ((reply (ask-model)) (rounds 0) (last "") (runs 0) (warned #f))
+  (let loop ((reply (ask)) (rounds 0) (last "") (runs 0) (warned #f))
     (let ((calls (assoc-ref reply 'tool-calls '())))
       (if (or (null? calls) (>= rounds sub-agent-max-rounds))
           (begin (unless (null? calls)
@@ -108,4 +110,4 @@
                     (else
                      (unless (null? repeats) (skip-tools (reverse repeats) sub-agent-repeat-reason))
                      (unless (null? run) (run-calls (reverse run)))
-                     (loop (ask-model) (+ rounds 1) last runs (or warned (pair? repeats)))))))))))
+                     (loop (ask) (+ rounds 1) last runs (or warned (pair? repeats)))))))))))

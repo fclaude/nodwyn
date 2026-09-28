@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
@@ -79,6 +80,13 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			req := llm.Request{Model: rec.Model, Messages: built.Messages, Tools: tools, NumCtx: c.NumCtx, KeepAlive: c.KeepAlive, MaxTokens: c.MaxOutput}
 			if rec.NoTools {
 				req.Tools = nil
+			} else if len(rec.OfferedTools) > 0 {
+				req.Tools = nil
+				for _, t := range tools {
+					if slices.Contains(rec.OfferedTools, t.Name) {
+						req.Tools = append(req.Tools, t)
+					}
+				}
 			}
 			if rec.Endpoint != "" {
 				req.NumCtx, req.KeepAlive = rec.NumCtx, rec.KeepAlive
