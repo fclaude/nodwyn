@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nibb/internal/llm"
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/window"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
@@ -60,5 +61,41 @@ func TestCutRepliesAreRetriedAtMostTwice(t *testing.T) {
 	}
 	if len(r.srv.Requests) != 3 {
 		t.Fatalf("%d requests, want 3", len(r.srv.Requests))
+	}
+}
+
+// A model's own max_output caps its replies instead of the window's, which a
+// remote reasoning model may need; the request records it, so it replays.
+func TestAModelMayCapItsOwnReplies(t *testing.T) {
+	srv := fake.New(fake.Turn{Thinking: "long thinking", DoneReason: "length"}, fake.Turn{Content: "done"})
+	defer srv.Close()
+	cfg := config.Default()
+	cfg.Control.MaxOutput = 2048
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Config: cfg, Repo: t.TempDir(), Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	r := &rig{t: t, s: s, srv: srv, logb: logb}
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if !strings.Contains(string(srv.Requests[0].Raw), `"num_predict":2048`) {
+		t.Fatalf("request does not cap its output at the model's max_output:\n%s", srv.Requests[0].Raw)
+	}
+	if !strings.Contains(logb.String(), "the reply stopped at the output limit (2048 tokens, max_output of model control)") {
+		t.Fatal("the cut's note does not name the model's cap")
+	}
+	evs, err := log.Read(bytes.NewReader(logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range evs {
+		if ev.Kind == log.KindLLMReq {
+			if _, err := window.ReplayRequest(evs, ev.Seq); err != nil {
+				t.Fatalf("request %d: %v", ev.Seq, err)
+			}
+		}
 	}
 }

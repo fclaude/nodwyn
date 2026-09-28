@@ -173,15 +173,19 @@ larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
 ### The scratch directory
 
-Each session gets a scratch directory outside the repository,
-`$TMPDIR/nibb-scratch/<session-id>`, for throwaway files: a script that
-reproduces a bug, notes, temporary output. The default system prompt names
-it. The file primitives take absolute paths inside it, and writes there need
-no approval; commands run with `TMPDIR` set to it. Nothing in it reaches the
-repository or its diff, and a clean close removes it; a resumed session gets
-the same directory back. Everything else outside the repository stays
-refused, and a symbolic link out of the scratch directory does not escape it
-(ADR 28).
+Each session gets a scratch directory outside the repository, a private
+directory (mode 0700) under nibb's data directory, for throwaway files: a
+script that reproduces a bug, notes, temporary output. The default system
+prompt names it as `$TMPDIR`, so the prompt is the same in every session, and
+`$TMPDIR` means it everywhere: commands run with `TMPDIR` set to it, and a
+file primitive's path or a command's argument that starts with `$TMPDIR/`
+(or `${TMPDIR}/`) is rewritten to it before the guard sees it. Writes there
+need no approval. Nothing in it reaches the repository or its diff; a clean
+close removes it, and a resumed session gets a new, empty one. A session
+touches it at every turn, and directories untouched for a week, left by
+sessions that ended without closing, are swept. Everything else outside the
+repository stays refused, and a symbolic link out of the scratch directory
+does not escape it (ADR 28).
 
 ### Confirms
 
@@ -446,7 +450,22 @@ must fit in it.
 `window.output_reserve` (16384 by default) is also the cap on each reply,
 thinking included: ollama gets it as `num_predict`, a chat-completions server
 as `max_completion_tokens`, so a prompt at the window's high water and its
-reply always fit the context. A reply that reaches the cap is noted in the
+reply always fit the context. A model may set its own cap with `max_output`,
+for a remote reasoning model whose thinking needs more room (keep an ollama
+model's at most `output_reserve`, or raise its `num_ctx` to match); a
+chat-completions server that only knows the older field takes
+`output_field = "max_tokens"`:
+
+```toml
+[models.reasoner]
+provider = "openai"
+url = "https://api.example.com/v1"
+model = "big-reasoner"
+credential = "example-key"
+max_output = 65536
+output_field = "max_tokens"       # only for servers without max_completion_tokens
+```
+ A reply that reaches the cap is noted in the
 log; the default loop, the planner and sub-agents ask again, telling the
 model to be briefer, at most twice (`ask-model`, docs/scheme.md §9). On the
 SWE-bench dev set, 99.8% of Qwen replies stayed under 8192 tokens and the

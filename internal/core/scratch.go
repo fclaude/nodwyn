@@ -57,6 +57,39 @@ func makeScratch(dataDir, id string) (string, error) {
 	return resolved, nil
 }
 
+// expandScratch rewrites a leading $TMPDIR (or ${TMPDIR}) in a tool's path
+// or command argument to the scratch directory. The prompt names the
+// directory as $TMPDIR, which shell-exec's environment defines, so the
+// same name must work in the file tools and in a command's arguments, which
+// run without a shell; without it, "$TMPDIR/repro.py" would be a directory
+// of that name inside the repository.
+func expandScratch(dir string) func(string) string {
+	if dir == "" {
+		return nil
+	}
+	return func(s string) string {
+		for _, v := range []string{"$TMPDIR", "${TMPDIR}"} {
+			if s == v {
+				return dir
+			}
+			if strings.HasPrefix(s, v+"/") {
+				return dir + s[len(v):]
+			}
+		}
+		return s
+	}
+}
+
+// touchScratch marks the scratch directory as in use, so the sweep, which
+// goes by its modification time, never removes a live session's directory,
+// however long the session stays open.
+func touchScratch(dir string) {
+	if dir != "" {
+		now := time.Now()
+		_ = os.Chtimes(dir, now, now)
+	}
+}
+
 // removeScratch deletes a scratch directory made by makeScratch, and
 // nothing else.
 func removeScratch(dir string) {
@@ -66,7 +99,8 @@ func removeScratch(dir string) {
 }
 
 // sweepScratch removes scratch directories older than scratchMaxAge: those
-// of sessions that ended without closing.
+// of sessions that ended without closing. A session touches its directory
+// at every turn (touchScratch), so an open one is never this old.
 func sweepScratch(root string) {
 	entries, err := os.ReadDir(root)
 	if err != nil {

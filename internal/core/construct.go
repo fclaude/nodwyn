@@ -238,6 +238,7 @@ func (s *Session) initialize() (err error) {
 		return err
 	}
 	s.interp.SetGate(turnGate{Gate: g, s: s})
+	s.interp.SetExpand(expandScratch(s.scratch))
 	if err := s.registerHistory(); err != nil {
 		return err
 	}

@@ -783,6 +783,9 @@
         "keep_alive": {
           "type": "string"
         },
+        "max_output": {
+          "type": "integer"
+        },
         "messages": {
           "type": "integer"
         },

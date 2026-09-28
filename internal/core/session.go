@@ -130,6 +130,7 @@ func (s *Session) turn(ctx context.Context, text string, required bool) error {
 	if err := safe.Decode(&msg); err != nil {
 		return err
 	}
+	touchScratch(s.scratch)
 	if err := s.loop.Turn(ctx, msg.Text); err != nil {
 		return err
 	}

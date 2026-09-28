@@ -23,6 +23,10 @@ type OpenAI struct {
 	// the core injects it from the keychain after checking its binding.
 	// nil sends no credentials (a local server).
 	Authorize func(*http.Request) error
+	// MaxTokensField names the request field for the reply cap:
+	// "max_tokens" for servers that only know the older field; anything
+	// else sends max_completion_tokens.
+	MaxTokensField string
 }
 
 // NewOpenAI returns a client for base. Like NewOllama, requests are bounded
@@ -75,8 +79,10 @@ type oaiRequest struct {
 	Tools    []wireTool   `json:"tools,omitempty"`
 	Stream   bool         `json:"stream"`
 	// The chat-completions cap on generated tokens, reasoning included;
-	// reasoning models refuse the older max_tokens.
+	// reasoning models refuse the older max_tokens, which some other
+	// servers need instead (OpenAI.MaxTokensField). One is set, never both.
 	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
+	MaxTokens           int `json:"max_tokens,omitempty"`
 }
 
 type oaiResponse struct {
@@ -120,7 +126,11 @@ func toOpenAI(req Request) oaiRequest {
 // Chat sends one chat completion. onDelta is called once with the whole
 // output, since the request is not streamed.
 func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*Response, error) {
-	body, err := json.Marshal(toOpenAI(req))
+	wire := toOpenAI(req)
+	if o.MaxTokensField == "max_tokens" {
+		wire.MaxTokens, wire.MaxCompletionTokens = wire.MaxCompletionTokens, 0
+	}
+	body, err := json.Marshal(wire)
 	if err != nil {
 		return nil, err
 	}

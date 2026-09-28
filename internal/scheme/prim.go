@@ -128,6 +128,61 @@ func (in *Interp) Prims() []*Prim {
 // SetGate installs the guard. nil allows everything (bootstrap tests only).
 func (in *Interp) SetGate(g Gate) { in.gate = g }
 
+// SetExpand installs a rewrite of path and command arguments (parameters
+// with Role "path" or "argv", and the strings of an argv list), applied
+// before the guard, so the guard and the handler judge and use the same
+// value. The session uses it to give $TMPDIR one meaning in every tool.
+func (in *Interp) SetExpand(f func(string) string) { in.expand = f }
+
+// expandArgs applies the rewrite to p's path and argv arguments.
+func (in *Interp) expandArgs(p *Prim, args []Value) []Value {
+	if in.expand == nil {
+		return args
+	}
+	out := args
+	copied := false
+	set := func(i int, v Value) {
+		if !copied {
+			out = append([]Value(nil), args...)
+			copied = true
+		}
+		out[i] = v
+	}
+	for i, pa := range p.Meta.Params {
+		if i >= len(args) || (pa.Role != "path" && pa.Role != "argv") {
+			continue
+		}
+		switch a := args[i]; a.Kind {
+		case KString:
+			if s := in.expand(a.S); s != a.S {
+				a.S = s
+				set(i, a)
+			}
+		default:
+			items, ok := a.Slice()
+			if pa.Role != "argv" || !ok {
+				continue
+			}
+			changed := false
+			for j, it := range items {
+				if it.Kind == KString {
+					if s := in.expand(it.S); s != it.S {
+						it.S = s
+						items[j] = it
+						changed = true
+					}
+				}
+			}
+			if changed {
+				l := List(items...)
+				l.Taint = a.Taint
+				set(i, l)
+			}
+		}
+	}
+	return out
+}
+
 // applyPrim is the single Scheme→Go exit. Every primitive application —
 // from the model, the prelude, a .scm file or the REPL — passes through
 // here: arity check, guard, handler. Nothing else calls p.Handler.
@@ -138,6 +193,7 @@ func (in *Interp) applyPrim(ctx context.Context, p *Prim, args []Value) (Value, 
 	if err := checkArity(p, args); err != nil {
 		return Value{}, err
 	}
+	args = in.expandArgs(p, args)
 	if in.gate != nil {
 		if err := in.gate.Before(ctx, p, args); err != nil {
 			return Value{}, wrap(p.Name, err)

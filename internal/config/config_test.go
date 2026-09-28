@@ -122,6 +122,8 @@ provider = "openai"
 url = "https://api.example.test/v1"
 model = "coder-large"
 credential = "example-key"
+max_output = 32768
+output_field = "max_tokens"
 
 [models.local]
 provider = "ollama"
@@ -133,7 +135,7 @@ num_ctx = 32768
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m := c.Models["impl"]; m.Provider != "openai" || m.Credential != "example-key" || m.Model != "coder-large" {
+	if m := c.Models["impl"]; m.Provider != "openai" || m.Credential != "example-key" || m.Model != "coder-large" || m.MaxOutput != 32768 || m.OutputField != "max_tokens" {
 		t.Fatalf("impl: %+v", m)
 	}
 	if c.Models["local"].NumCtx != 32768 {
@@ -143,6 +145,9 @@ num_ctx = 32768
 		"[models.x]\nprovider = \"gpt\"\nurl = \"https://a.test\"\nmodel = \"m\"\n",
 		"[models.x]\nprovider = \"openai\"\nurl = \"ftp://a.test\"\nmodel = \"m\"\n",
 		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\n",
+		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\nmodel = \"m\"\noutput_field = \"n_predict\"\n",
+		"[models.x]\nprovider = \"ollama\"\nurl = \"http://a.test\"\nmodel = \"m\"\noutput_field = \"max_tokens\"\n",
+		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\nmodel = \"m\"\nmax_output = -1\n",
 	} {
 		os.WriteFile(path, []byte(bad), 0o600)
 		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "models.x") {

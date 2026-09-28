@@ -83,6 +83,9 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			if rec.Endpoint != "" {
 				req.NumCtx, req.KeepAlive = rec.NumCtx, rec.KeepAlive
 			}
+			if rec.MaxOutput > 0 {
+				req.MaxTokens = rec.MaxOutput
+			}
 			digest, err := RequestHash(req)
 			if err != nil {
 				return zero, err

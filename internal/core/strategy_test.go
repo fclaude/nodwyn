@@ -368,3 +368,21 @@ func TestAddMessageRefusedWhileCallsAreUnanswered(t *testing.T) {
 		t.Fatal("a harness message was logged between a call and its result")
 	}
 }
+
+// The host calls nibb-turn, so a project's own turn, even one that is not a
+// procedure, does not break every turn.
+func TestAProjectMayDefineTurn(t *testing.T) {
+	r := strategyRig(t, `(define turn 0)`, 10, fake.Turn{Content: "hello"})
+	if err := r.turn("hi"); err != "" {
+		t.Fatal(err)
+	}
+}
+
+// '((tools #f)) is a list, not #f: it is an error, where it used to leave
+// the tools on silently.
+func TestModelTurnToolsOptionIsStrict(t *testing.T) {
+	r := strategyRig(t, `(define (agent-turn request) (model-turn "control" '((tools #f))))`, 10, fake.Turn{Content: "x"})
+	if err := r.turn("hi"); !strings.Contains(err, "the tools option is #f (no tools) or #t") {
+		t.Fatalf("error %q", err)
+	}
+}

@@ -172,7 +172,16 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			if o.Kind != scheme.KPair || o.P.Car.Kind != scheme.KSymbol || o.P.Car.S != "tools" {
 				return scheme.Void, fmt.Errorf("unknown model-turn option %s; the only one is tools", scheme.Write(o))
 			}
-			tools = !scheme.Equal(o.P.Cdr, scheme.False) // only #f is false
+			switch {
+			case scheme.Equal(o.P.Cdr, scheme.False):
+				tools = false
+			case scheme.Equal(o.P.Cdr, scheme.True):
+				tools = true
+			default:
+				// '((tools #f)) is (tools . (#f)): a list, not #f, which
+				// would silently leave the tools on.
+				return scheme.Void, fmt.Errorf("the tools option is #f (no tools) or #t, written '((tools . #f)); got %s", scheme.Write(o))
+			}
 		}
 	}
 	if err := l.skipPending("the strategy asked the model again before running this call"); err != nil {

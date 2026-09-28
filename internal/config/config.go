@@ -96,6 +96,15 @@ type Model struct {
 	NumCtx     int    `toml:"num_ctx"`    // context length; sent to ollama, informational otherwise
 	KeepAlive  string `toml:"keep_alive"` // ollama only
 	Credential string `toml:"credential"` // keychain class of the API key; empty for none
+	// MaxOutput caps this model's replies, thinking included, instead of
+	// window.output_reserve: a remote reasoning model may need more. 0 uses
+	// the window's.
+	MaxOutput int `toml:"max_output"`
+	// OutputField is the request field a chat-completions server reads the
+	// cap from: "max_completion_tokens" (the default; reasoning models
+	// refuse the older field) or "max_tokens", for servers that only know
+	// that one. openai only.
+	OutputField string `toml:"output_field"`
 }
 
 // Jev is the judge's configuration (ADR 19/20). Jev is keyed: it runs only
@@ -342,6 +351,17 @@ func (m Model) validate() error {
 	}
 	if m.Provider != "openai" && m.Credential != "" {
 		return errors.New("credential is not supported for ollama")
+	}
+	if m.MaxOutput < 0 {
+		return errors.New("max_output must not be negative")
+	}
+	switch m.OutputField {
+	case "", "max_completion_tokens", "max_tokens":
+	default:
+		return fmt.Errorf("output_field %q is not supported (max_completion_tokens, max_tokens)", m.OutputField)
+	}
+	if m.Provider != "openai" && m.OutputField != "" {
+		return errors.New("output_field is for openai servers; ollama takes num_predict")
 	}
 	return nil
 }

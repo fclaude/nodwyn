@@ -29,7 +29,11 @@ func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response,
 	if !hasUserMessage(w.Messages) {
 		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
 	}
-	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: l.cfg.MaxOutput}
+	maxOutput, capFrom := l.cfg.MaxOutput, "window.output_reserve"
+	if ep.MaxOutput > 0 {
+		maxOutput, capFrom = ep.MaxOutput, "max_output of model "+name
+	}
+	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: maxOutput}
 	if tools {
 		request.Tools = l.tools
 	}
@@ -40,7 +44,8 @@ func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response,
 	rec := log.LLMReq{
 		RequestHash: digest,
 		Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
-		NoTools: !tools,
+		NoTools:   !tools,
+		MaxOutput: ep.MaxOutput,
 	}
 	if name != ControlModel {
 		// The session's recipe carries the control model's settings; any
@@ -69,7 +74,11 @@ func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response,
 	if resp.DoneReason == "length" {
 		// The reply is cut short; a strategy decides what to do about it
 		// (ask-model continues one, strategy.scm), the log says it happened.
-		_ = l.record(log.KindNote, log.Note{Text: fmt.Sprintf("the reply stopped at the output limit (%d tokens, window.output_reserve)", l.cfg.MaxOutput)})
+		note := fmt.Sprintf("the reply stopped at the output limit (%d tokens, %s)", maxOutput, capFrom)
+		if maxOutput == 0 {
+			note = "the reply stopped at the server's own output limit (nibb sets no cap: window.output_reserve is 0)"
+		}
+		_ = l.record(log.KindNote, log.Note{Text: note})
 	}
 	return resp, nil
 }

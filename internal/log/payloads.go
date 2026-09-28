@@ -76,6 +76,9 @@ type LLMReq struct {
 	// NoTools is set when the request offered the model no tools, as the
 	// planner's does ((model-turn name '((tools . #f)))).
 	NoTools bool `json:"no_tools,omitempty"`
+	// MaxOutput is the request's reply cap when its model sets its own
+	// (max_output), instead of the recipe's window.output_reserve.
+	MaxOutput int `json:"max_output,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.

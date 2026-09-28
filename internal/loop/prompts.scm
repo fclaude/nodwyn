@@ -24,7 +24,7 @@
 ;; repository's sessions.
 (define (scratch-rule dir)
   (if dir
-      "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: its path is $TMPDIR in commands, writes there need no approval, and it is deleted when the session ends."
+      "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends."
       ""))
 
 ;; The planner's system prompt.
