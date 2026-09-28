@@ -68,13 +68,27 @@
 (define sub-agent-wrap-up-message
   "You have no tool rounds left. Answer now with what you have found: your answer or report, and anything you could not finish or check.")
 
+;; A model offered no tools may still answer with a tool call (a local
+;; server parses them from the model's text): such calls are skipped with
+;; this reason and the model is asked again, at most twice in all, since the
+;; context cannot fold while a call is unanswered.
+(define sub-agent-text-only-reason
+  "tools are off now: write your answer as text")
+
 ;; Skip calls with reason, ask for the answer without tools, fold: the answer.
 (define (sub-agent-wrap-up calls reason)
   (skip-tools calls reason)
   (add-message sub-agent-wrap-up-message)
-  (let ((said (string-trim (assoc-ref (ask-model "control" '((tools . #f))) 'content ""))))
-    (fold-context)
-    said))
+  (let ask ((left 2))
+    (let* ((reply (ask-model "control" '((tools . #f))))
+           (stray (assoc-ref reply 'tool-calls '()))
+           (said (string-trim (assoc-ref reply 'content ""))))
+      (if (null? stray)
+          (begin (fold-context) said)
+          (begin (skip-tools stray sub-agent-text-only-reason)
+                 (if (and (> left 1) (string-empty? said))
+                     (ask (- left 1))
+                     (begin (fold-context) said)))))))
 
 (define (call-key call)
   (string-append (format "~a" (assoc-ref call 'name "")) " " (format "~a" (assoc-ref call 'args ""))))

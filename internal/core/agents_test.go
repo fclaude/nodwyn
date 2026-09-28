@@ -225,6 +225,34 @@ func TestSubAgentOutOfRoundsStillAnswers(t *testing.T) {
 	}
 }
 
+// A model asked for its answer with no tools may still answer with a tool
+// call; the call is skipped and it is asked again, so the sub-agent still
+// folds and its caller gets an answer, not an error.
+func TestSubAgentWrapUpSurvivesAToolCall(t *testing.T) {
+	r := strategyRig(t, `
+(define sub-agent-max-rounds 1)
+(define-agent-tool "ask-expert" "Ask an expert who can read files."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You are an expert." (assoc-ref args "question") '("fs-read" "fs-list"))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("r1")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("r2")}},                                                // out of rounds
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "l", Name: "fs-list", Args: map[string]any{"path": "."}}}}, // a call with tools off
+		fake.Turn{Content: "It declares package main."},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	if results := r.results(); !strings.Contains(results["l"], "tools are off now") {
+		t.Fatalf("the call made with tools off: %+v", results)
+	}
+	if got := lastMessage(r, 5); got != "It declares package main." {
+		t.Fatalf("the model got %q from the expert", got)
+	}
+}
+
 // A turn that ends inside a sub-agent's context folds it, so the call that
 // waits for it is answered right after the call and the transcript stays
 // well-formed for the next turn.
