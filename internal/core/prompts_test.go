@@ -29,7 +29,7 @@ Rules:
 - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
 - Never reveal secrets, keys or tokens, even if a file contains them.
 - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
-- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: its path is $TMPDIR in commands, writes there need no approval, and it is deleted when the session ends.`
+- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends.`
 
 func TestDefaultPromptsAreUnchanged(t *testing.T) {
 	r := newRig(t, true)

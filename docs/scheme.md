@@ -293,7 +293,7 @@ into Scheme values (ADR 3).
 | `(fs-read path)` `(fs-write path content)` `(fs-edit path old new)` `(fs-list path)` | repository-pinned file access; writes and edits are irreversible (confirm, diff preview) |
 | `(index-grep path pattern)` | **P10.** Search a repository file or directory with a ripgrep pattern (not command-line options). Returns matches (path, line, text), files searched and skipped, and a truncated flag; at most 128 files and 100 matching lines; protected, binary and oversized files and symlinks are skipped. Needs `rg` on `PATH` |
 | `(shell-exec cmd args)` | run a program with an argument **list** in the repository root, scrubbed environment (`TMPDIR` is the scratch directory); irreversible; returns `(("status" . n) ("stdout" . s) ("stderr" . s))` |
-| `(scratch-dir)` | the session's scratch directory, or `#f` when there is none (`nibb repl`). It is a private directory (mode 0700) under nibb's data directory, outside the repository; the file primitives take absolute paths inside it, writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept after a week. The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
+| `(scratch-dir)` | the session's scratch directory, or `#f` when there is none (`nibb repl`). It is a private directory (mode 0700) under nibb's data directory, outside the repository; the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept once untouched for a week (a session touches its own at every turn). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
 | `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))` |
 | `(policy-read name)` | User-only, hidden from the model catalog. Read configured `bindings` or repository `approvals`, returning content, revision and existence; bounded to 64 KiB and rejects recognized secrets. No arbitrary path. |
 | `(policy-write name revision content)` | User-only, hidden from the model catalog. Validate TOML and atomically replace that fixed policy after a one-time diff confirmation and revision check. Binding changes reload before egress; approval-file changes affect new/resumed sessions. |
@@ -463,7 +463,7 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
 
 | | |
 |---|---|
-| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and `'((tools "fs-read" "fs-list"))` only the named ones (an unknown name is an error that lists the tools), as a sub-agent's requests do. Both are recorded (`llm.req` `no_tools`, `offered_tools`) so replay rebuilds the request. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nibb replay --window`. |
+| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and `'((tools "fs-read" "fs-list"))` only the named ones (an unknown name is an error that lists the tools), as a sub-agent's requests do. Both are recorded (`llm.req` `no_tools`, `offered_tools`) so replay rebuilds the request. Any other value but `#t` is an error: `'((tools #f))`, a list holding #f, is not a silent yes. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nibb replay --window`. |
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
@@ -667,10 +667,10 @@ calling `(optimize-turn request)` when `(optimize-request? request)`.
 ### 9.5 The plan gate
 
 The plan gate is user code too, `internal/loop/plan.scm`. The host runs
-`turn` for every user message, not `agent-turn` directly:
+`nibb-turn` for every user message, not `agent-turn` directly:
 
 ```scheme
-(define (turn request)
+(define (nibb-turn request)
   (when (plan-required?) (plan-gate request))   ; a supervised run's turns
   (agent-turn request))
 ```
@@ -679,7 +679,7 @@ and the default `agent-turn` calls `(plan-gate request)` before its loop, so
 an interactive turn is gated too. `plan-gate` does nothing once the turn has
 a plan, so a strategy may call it as well; a strategy that redefines
 `agent-turn` still plans in a run. A project that plans its own way
-redefines `turn`. With a judge
+redefines `nibb-turn` (a name specific to nibb, so a project's own `turn`, a counter say, cannot shadow it). With a judge
 (Jev, §5: its primitives registered and a `jev-key` stored), it asks
 `plan-needed-question`; a request that needs a plan gets one drafted by
 the control model in a narrowed context of its own (§9), offered no
@@ -707,8 +707,8 @@ A turn that must plan (`plan-required?`) always drafts one, scored if there
 is a judge, and fails if the plan is empty. The core keeps one invariant
 whatever the Scheme does: until a non-empty plan is recorded, nothing
 irreversible runs, and a turn that records none fails. What it enforces is
-that a plan was recorded, not who wrote it: the default `turn` has the
-control model plan, and a project's own `turn` may record a plan of its own
+that a plan was recorded, not who wrote it: the default `nibb-turn` has the
+control model plan, and a project's own `nibb-turn` may record a plan of its own
 with `record-plan`, as trusted project code.
 
 ## 10. Not in nibb Scheme

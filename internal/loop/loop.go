@@ -90,6 +90,7 @@ type Endpoint struct {
 	Model     string // model id as the provider names it
 	NumCtx    int
 	KeepAlive string
+	MaxOutput int // this model's reply cap; 0 uses Config.MaxOutput
 }
 
 //go:embed strategy.scm
@@ -269,7 +270,12 @@ func (l *Loop) Freeze() error {
 // Tools returns the tool list offered to the model.
 func (l *Loop) Tools() []llm.Tool { return l.tools }
 
-// Turn runs one turn: the Scheme turn applied to request, the user message
+// TurnProcedure is the Scheme procedure the host applies to every user
+// message (strategy.scm). Its name is specific to nibb, so a project's own
+// definitions in init.scm, a counter called turn say, cannot shadow it.
+const TurnProcedure = "nibb-turn"
+
+// Turn runs one turn: the Scheme nibb-turn applied to request, the user message
 // the session has already recorded. The strategy runs with harness origin; the
 // tools it runs on the model's behalf run with model origin.
 //
@@ -281,9 +287,9 @@ func (l *Loop) Turn(ctx context.Context, request string) error {
 	if !l.frozen {
 		return errors.New("loop: Freeze was not called")
 	}
-	strategy, ok := l.interp.Global().Lookup("turn")
+	strategy, ok := l.interp.Global().Lookup(TurnProcedure)
 	if !ok || !strategy.IsProcedure() {
-		return errors.New("loop: turn is not defined as a procedure")
+		return fmt.Errorf("loop: %s is not defined as a procedure; nibb calls (%s request) for every message", TurnProcedure, TurnProcedure)
 	}
 	l.turn = &turnState{budget: budget.From(ctx)}
 	defer func() { l.turn = nil }()

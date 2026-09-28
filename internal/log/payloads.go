@@ -80,6 +80,9 @@ type LLMReq struct {
 	// some of them ((model-turn name '((tools "fs-read" ...)))), as a
 	// sub-agent's requests do; empty when it offered all or none.
 	OfferedTools []string `json:"offered_tools,omitempty"`
+	// MaxOutput is the request's reply cap when its model sets its own
+	// (max_output), instead of the recipe's window.output_reserve.
+	MaxOutput int `json:"max_output,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.

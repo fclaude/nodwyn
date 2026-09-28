@@ -229,7 +229,7 @@ func TestRequiredPlanSkipsTheQuestion(t *testing.T) {
 // A project that replaces turn, the only way past the gate, still cannot act
 // in a turn that must plan until it records a plan.
 func TestRequiredPlanBlocksActionUntilRecorded(t *testing.T) {
-	r := judgedRig(t, nil, `(define (turn request) (fs-write "x.txt" "y"))`)
+	r := judgedRig(t, nil, `(define (nibb-turn request) (fs-write "x.txt" "y"))`)
 	if err := r.s.SendPlanned("work"); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestCustomStrategyIsPlannedInARun(t *testing.T) {
 // The turn's plan flags end with it: an evaluation after a required turn that
 // failed unplanned is not held to that turn's plan.
 func TestPlanFlagsEndWithTheTurn(t *testing.T) {
-	r := judgedRig(t, nil, `(define (turn request) (fs-write "x.txt" "y"))`)
+	r := judgedRig(t, nil, `(define (nibb-turn request) (fs-write "x.txt" "y"))`)
 	if err := r.s.SendPlanned("work"); err != nil {
 		t.Fatal(err)
 	}

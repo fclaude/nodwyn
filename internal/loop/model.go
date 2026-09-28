@@ -23,15 +23,18 @@ type toolOffer struct {
 	only []string
 }
 
-// parseToolOffer reads model-turn's tools option: #f offers no tools, a
-// list of tool names only those, anything else all of them.
+// parseToolOffer reads model-turn's tools option: #f offers no tools, #t
+// all of them, a list of tool names only those; anything else is an error.
 func (l *Loop) parseToolOffer(v scheme.Value) (toolOffer, error) {
 	if scheme.Equal(v, scheme.False) {
 		return toolOffer{none: true}, nil
 	}
+	if scheme.Equal(v, scheme.True) {
+		return toolOffer{}, nil
+	}
 	items, ok := v.Slice()
 	if !ok {
-		return toolOffer{}, nil
+		return toolOffer{}, fmt.Errorf("the tools option is #f (no tools), #t (all) or a list of tool names; got %s", scheme.Write(v))
 	}
 	if len(items) == 0 {
 		return toolOffer{none: true}, nil
@@ -43,7 +46,7 @@ func (l *Loop) parseToolOffer(v scheme.Value) (toolOffer, error) {
 	only := make([]string, 0, len(items))
 	for _, it := range items {
 		if it.Kind != scheme.KString {
-			return toolOffer{}, fmt.Errorf("the tools option lists tool names as strings, got %s", scheme.Write(it))
+			return toolOffer{}, fmt.Errorf("the tools option is #f (no tools), #t (all) or a list of tool names as strings; got %s", scheme.Write(v))
 		}
 		if !known[it.S] {
 			return toolOffer{}, fmt.Errorf("no tool named %q; the tools are %s", it.S, l.toolNames())
@@ -85,7 +88,11 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer) (*llm.Resp
 	if !hasUserMessage(w.Messages) {
 		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
 	}
-	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: l.cfg.MaxOutput}
+	maxOutput, capFrom := l.cfg.MaxOutput, "window.output_reserve"
+	if ep.MaxOutput > 0 {
+		maxOutput, capFrom = ep.MaxOutput, "max_output of model "+name
+	}
+	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: maxOutput}
 	request.Tools = offered(l.tools, offer)
 	digest, err := window.RequestHash(request)
 	if err != nil {
@@ -94,7 +101,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer) (*llm.Resp
 	rec := log.LLMReq{
 		RequestHash: digest,
 		Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
-		NoTools: offer.none, OfferedTools: offer.only,
+		NoTools: offer.none, OfferedTools: offer.only, MaxOutput: ep.MaxOutput,
 	}
 	if name != ControlModel {
 		// The session's recipe carries the control model's settings; any
@@ -123,7 +130,11 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer) (*llm.Resp
 	if resp.DoneReason == "length" {
 		// The reply is cut short; a strategy decides what to do about it
 		// (ask-model continues one, strategy.scm), the log says it happened.
-		_ = l.record(log.KindNote, log.Note{Text: fmt.Sprintf("the reply stopped at the output limit (%d tokens, window.output_reserve)", l.cfg.MaxOutput)})
+		note := fmt.Sprintf("the reply stopped at the output limit (%d tokens, %s)", maxOutput, capFrom)
+		if maxOutput == 0 {
+			note = "the reply stopped at the server's own output limit (nibb sets no cap: window.output_reserve is 0)"
+		}
+		_ = l.record(log.KindNote, log.Note{Text: note})
 	}
 	return resp, nil
 }

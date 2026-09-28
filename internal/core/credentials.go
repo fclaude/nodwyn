@@ -205,14 +205,16 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 		if m.Credential != "" {
 			auth = s.authorize(m.Credential)
 		}
-		p = llm.NewOpenAI(m.URL, auth)
+		oai := llm.NewOpenAI(m.URL, auth)
+		oai.MaxTokensField = m.OutputField
+		p = oai
 	default: // "ollama", which validation guarantees for any other value
 		p = llm.NewOllama(m.URL)
 		if m.NumCtx == 0 {
 			m.NumCtx = s.opts.Config.WindowNumCtx()
 		}
 	}
-	return loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive}
+	return loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput}
 }
 
 // unconfigured stands in for a [control] model config.toml does not name.

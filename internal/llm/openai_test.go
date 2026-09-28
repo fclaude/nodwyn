@@ -81,3 +81,23 @@ func TestOpenAIErrorStatus(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// A server that only knows the older field gets the cap as max_tokens, and
+// never both fields.
+func TestOpenAIMaxTokensField(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		json.Unmarshal(b, &got)
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+	o := NewOpenAI(srv.URL+"/v1", nil)
+	o.MaxTokensField = "max_tokens"
+	if _, err := o.Chat(context.Background(), Request{Model: "m", Messages: []Message{{Role: RoleUser, Content: "hi"}}, MaxTokens: 4096}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got["max_tokens"] != float64(4096) || got["max_completion_tokens"] != nil {
+		t.Fatalf("request: %v", got)
+	}
+}

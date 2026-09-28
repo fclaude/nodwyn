@@ -98,4 +98,66 @@ func TestScratchSweep(t *testing.T) {
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatal("removeScratch left the directory")
 	}
+	// A session touches its directory every turn, so however long it stays
+	// open, the sweep keeps it.
+	live := filepath.Join(root, "nibb-scratch-live-1")
+	os.MkdirAll(live, 0o700)
+	os.Chtimes(live, week, week)
+	touchScratch(live)
+	sweepScratch(root)
+	if _, err := os.Stat(live); err != nil {
+		t.Fatalf("the sweep removed a directory touched just now: %v", err)
+	}
+}
+
+// $TMPDIR names the scratch directory in every tool, not only in a shell:
+// a file tool or a command argument that starts with it gets the directory,
+// so a throwaway file never lands in the repository as a directory named
+// $TMPDIR, and a write there needs no approval. A turn marks the directory
+// in use for the sweep.
+func TestTmpdirNamesTheScratchDirectoryInEveryTool(t *testing.T) {
+	srv := fake.New(fake.Turn{Content: "ok"})
+	defer srv.Close()
+	o := diskOptions(t) // NoConfirm: any prompt would be refused
+	o.Provider = llm.NewOllama(srv.URL)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Eval(t.Context(), `(fs-write "$TMPDIR/repro.py" "print(1)\n")`); err != nil {
+		t.Fatalf("a write to $TMPDIR was refused: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(s.scratch, "repro.py")); err != nil || string(b) != "print(1)\n" {
+		t.Fatalf("the file is not in the scratch directory: %q %v", b, err)
+	}
+	for _, stray := range []string{"$TMPDIR", "${TMPDIR}"} {
+		if _, err := os.Stat(filepath.Join(o.Repo, stray)); !os.IsNotExist(err) {
+			t.Fatalf("%s was created in the repository", stray)
+		}
+	}
+	if v, err := s.Eval(t.Context(), `(fs-read "${TMPDIR}/repro.py")`); err != nil || v.S != "print(1)\n" {
+		t.Fatalf("read back %q %v", v.S, err)
+	}
+	old := time.Now().Add(-8 * 24 * time.Hour)
+	os.Chtimes(s.scratch, old, old)
+	r := &rig{t: t, s: s, srv: srv}
+	if e := r.turn("go"); e != "" {
+		t.Fatal(e)
+	}
+	if info, err := os.Stat(s.scratch); err != nil || time.Since(info.ModTime()) > time.Minute {
+		t.Fatalf("a turn did not mark the scratch directory in use: %v %v", info, err)
+	}
+	s.Close()
+
+	o.Repo, o.NoConfirm, o.AutoApprove = t.TempDir(), false, true
+	c, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	os.WriteFile(filepath.Join(c.scratch, "note.txt"), []byte("kept out"), 0o600)
+	v, err := c.Eval(t.Context(), `(assoc-ref (shell-exec "cat" '("$TMPDIR/note.txt")) "stdout")`)
+	if err != nil || v.S != "kept out" {
+		t.Fatalf("a command argument naming $TMPDIR: %q %v", v.S, err)
+	}
 }

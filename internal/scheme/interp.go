@@ -37,6 +37,7 @@ type Interp struct {
 	global  *Env
 	prims   map[string]*Prim
 	gate    Gate
+	expand  func(string) string // rewrites path and argv arguments before the guard; nil for none
 	out     io.Writer
 	isSF    map[string]bool
 	baseDir string

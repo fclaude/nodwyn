@@ -31,14 +31,14 @@ Before the plan, a read-only explorer looks at the repository, so the plan
 names real files.
 
 Each turn requires a nonempty, durably recorded plan before execution. The
-Scheme `turn` runs the plan gate first in every run turn, whatever `agent-turn`
+Scheme `nibb-turn` runs the plan gate first in every run turn, whatever `agent-turn`
 a project defines ([docs/scheme.md](scheme.md) §9.5): the control model drafts
 the plan in a context of its own, offered no tools, and with a Jev credential
 the score/revise path runs through the guard; the noul decision cannot skip a
 required plan. Without a judge the model still drafts a plan. Judge outages
 retain the plain-plan fallback. The core refuses anything irreversible until a
 plan is recorded and fails a turn that records none; a project that redefines
-`turn` to plan its own way is held to the same rule. Planner or plan-recording
+`nibb-turn` to plan its own way is held to the same rule. Planner or plan-recording
 failure prevents execution.
 
 The continuation asks for one unfinished plan step and a progress report. This
