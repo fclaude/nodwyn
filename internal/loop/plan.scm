@@ -29,7 +29,7 @@
         (set! sub-agent-max-rounds plan-explore-rounds)
         (let ((found (guard (e (else (set! sub-agent-max-rounds rounds) ""))
                        (sub-agent plan-explore-system (plan-explore-task request)
-                                  '("fs-read" "fs-list" "index-grep") "explorer"))))
+                                  '("fs-read" "fs-list" "index-grep" "fs-find") "explorer"))))
           (set! sub-agent-max-rounds rounds)
           found))))
 
