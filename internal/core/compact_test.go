@@ -76,7 +76,9 @@ func TestCompactionHandsOverInANarrowedContext(t *testing.T) {
 	}
 }
 
-func TestCompactionIsOffByDefault(t *testing.T) {
+// Compaction is on by default, late: just under the window's high water
+// (ADR 32), so a short turn never compacts.
+func TestCompactionDefaultsUnderTheHighWater(t *testing.T) {
 	r := strategyRig(t, "", 10,
 		fake.Turn{ToolCalls: []fake.ToolCall{readCall("a")}},
 		fake.Turn{ToolCalls: []fake.ToolCall{readCall("b")}},
@@ -86,10 +88,10 @@ func TestCompactionIsOffByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(r.srv.Requests) != 3 || r.narrowings() != 0 {
-		t.Fatalf("%d requests and %d narrowings without a threshold", len(r.srv.Requests), r.narrowings())
+		t.Fatalf("%d requests and %d narrowings in a short turn", len(r.srv.Requests), r.narrowings())
 	}
-	if got := r.eval("compact-threshold"); got != "#f" {
-		t.Fatalf("compact-threshold defaults to %s", got)
+	if got := r.eval("compact-threshold"); got != "58983" {
+		t.Fatalf("compact-threshold defaults to %s, want 61440 less a twenty-fifth", got)
 	}
 }
 

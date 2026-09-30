@@ -3,6 +3,7 @@ package loop
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/fclaude/nodwyn/internal/event"
@@ -125,6 +126,34 @@ func (l *Loop) install() error {
 				Origin: "builtin",
 			},
 			Handler: l.sessionSystemPrompt,
+		},
+		{
+			Name: "model-info",
+			Meta: scheme.Meta{
+				Doc:      "What is known about a model before asking it: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys name, model (the provider's id), provider, num-ctx (its context length; 0 when unset) and max-output (the reply cap its requests carry).",
+				Variadic: true, // (model-info) or (model-info name)
+				Hidden:   true,
+				Origin:   "builtin",
+			},
+			Handler: l.modelInfo,
+		},
+		{
+			Name: "model-names",
+			Meta: scheme.Meta{
+				Doc:    "The names model-turn and model-info accept: \"control\" and each configured [models.NAME], sorted.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.modelNames,
+		},
+		{
+			Name: "window-limits",
+			Meta: scheme.Meta{
+				Doc:    "The window's sizes, in tokens as the window estimates them: an alist with keys high-water (past it older context is trimmed), low-water (what trimming goes down to), max-result-tokens (a longer tool result is shortened) and output-reserve (the default reply cap).",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.windowLimits,
 		},
 		{
 			Name: "widen",
@@ -568,4 +597,62 @@ func field(alist scheme.Value, key string) string {
 		return ""
 	}
 	return v.S
+}
+
+// modelInfo is (model-info [name]).
+func (l *Loop) modelInfo(c *scheme.Call) (scheme.Value, error) {
+	name := ControlModel
+	if len(c.Args) > 1 {
+		return scheme.Void, errors.New("expected at most a model name")
+	}
+	if len(c.Args) == 1 {
+		var err error
+		if name, err = c.String(0); err != nil {
+			return scheme.Void, err
+		}
+	}
+	ep, err := l.endpoint(name)
+	if err != nil {
+		return scheme.Void, err
+	}
+	provider := ""
+	if ep.Provider != nil {
+		provider = ep.Provider.Name()
+	}
+	maxOutput := l.cfg.MaxOutput
+	if ep.MaxOutput > 0 {
+		maxOutput = ep.MaxOutput
+	}
+	return scheme.List(
+		scheme.Cons(scheme.Sym("name"), scheme.Str(name)),
+		scheme.Cons(scheme.Sym("model"), scheme.Str(ep.Model)),
+		scheme.Cons(scheme.Sym("provider"), scheme.Str(provider)),
+		scheme.Cons(scheme.Sym("num-ctx"), scheme.Int(int64(ep.NumCtx))),
+		scheme.Cons(scheme.Sym("max-output"), scheme.Int(int64(maxOutput))),
+	), nil
+}
+
+// modelNames is (model-names).
+func (l *Loop) modelNames(*scheme.Call) (scheme.Value, error) {
+	names := make([]string, 0, len(l.cfg.Models))
+	for n := range l.cfg.Models {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	vs := make([]scheme.Value, len(names))
+	for i, n := range names {
+		vs[i] = scheme.Str(n)
+	}
+	return scheme.List(vs...), nil
+}
+
+// windowLimits is (window-limits).
+func (l *Loop) windowLimits(*scheme.Call) (scheme.Value, error) {
+	w := l.cfg.Window
+	return scheme.List(
+		scheme.Cons(scheme.Sym("high-water"), scheme.Int(int64(w.HighWater))),
+		scheme.Cons(scheme.Sym("low-water"), scheme.Int(int64(w.LowWater))),
+		scheme.Cons(scheme.Sym("max-result-tokens"), scheme.Int(int64(w.MaxResultTokens))),
+		scheme.Cons(scheme.Sym("output-reserve"), scheme.Int(int64(l.cfg.MaxOutput))),
+	), nil
 }

@@ -111,6 +111,28 @@ var defaultOptimizer string
 //go:embed plan.scm
 var defaultPlanGate string
 
+// The working habits (ADR 32), loaded after the defaults they wrap, in this
+// order: shell.scm wraps run-calls and fold-result innermost, readdef.scm
+// feeds hygiene.scm's reads, and checkloop.scm wraps nodwyn-turn.
+var (
+	//go:embed shell.scm
+	habitShell string
+	//go:embed hygiene.scm
+	habitHygiene string
+	//go:embed readdef.scm
+	habitReadDef string
+	//go:embed envhint.scm
+	habitEnvHint string
+	//go:embed checkloop.scm
+	habitCheckLoop string
+)
+
+// defaultHabits names each habit for load errors.
+var defaultHabits = []struct{ name, src string }{
+	{"shell", habitShell}, {"hygiene", habitHygiene}, {"read-definition", habitReadDef},
+	{"environment hint", habitEnvHint}, {"check loop", habitCheckLoop},
+}
+
 // New builds a loop and installs its primitives and the default strategy
 // into interp. Call it before loading .nodwyn/init.scm, so the project may
 // redefine agent-turn, and call Freeze afterwards. cfg.Models must hold the
@@ -141,6 +163,11 @@ func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
 	}
 	if _, err := interp.EvalString(harness, defaultPlanGate); err != nil {
 		return nil, fmt.Errorf("loop: default plan gate: %w", err)
+	}
+	for _, h := range defaultHabits {
+		if _, err := interp.EvalString(harness, h.src); err != nil {
+			return nil, fmt.Errorf("loop: default habit %s: %w", h.name, err)
+		}
 	}
 	return l, nil
 }

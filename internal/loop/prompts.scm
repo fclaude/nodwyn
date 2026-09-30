@@ -22,8 +22,14 @@
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """
    (scratch-rule (scratch-dir))
+   (if (code-workspace?) working-rules "")
    (workspace-section)
    (project-notes-section)))
+
+;; Whether this session works on code: every session but a docs workspace
+;; (ADR 22), which runs no programs and defines no tools.
+(define (code-workspace?)
+  (equal? (assoc-ref (guard (e (else '())) (workspace)) "kind" "code") "code"))
 
 ;; What the workspace adds to the system prompt (ADR 22): nothing for a
 ;; code repository with no mounted folders, so its prompt is unchanged.
@@ -78,6 +84,7 @@
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """
    (scratch-rule (scratch-dir))
+   (if (code-workspace?) working-rules "")
    (project-notes-section)))
 
 ;; The system prompt's rule for the session's scratch directory, or "" when
@@ -88,6 +95,28 @@
   (if dir
       "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends."
       ""))
+
+;; How to work, in both system prompts (ADR 32): the habits that held up
+;; on the benchmark, each from a failure seen in its logs. The loop's
+;; working habits (shell.scm, hygiene.scm, readdef.scm, envhint.scm,
+;; checkloop.scm) back several of them.
+(define working-rules
+  (string-append
+   ;; shell.scm: a command line through cmd/args is answered with the call
+   ;; that runs it; say so up front.
+   "\n- shell-exec runs one program with its arguments. For pipes, redirects, cd or chained commands, run cmd \"bash\" with args [\"-c\", \"<command line>\"], and keep long output short with | tail -n 40 or | grep."
+   "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; ls /opt/*/envs .venv venv 2>/dev/null; conda env list)."
+   "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
+   "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
+   ;; plan.scm writes its plan without running anything; on one task the
+   ;; model reverted a right edit to follow it.
+   "\n- A plan may be given before you start. It was written by someone who read the code but could not run it: treat it as a first guess, and when your own checks contradict it, follow the evidence and say so."
+   "\n- Your check loop: before changing code, write one script in $TMPDIR (for example $TMPDIR/check.sh) that runs everything you use to judge your work, with the project's own interpreter or build: the example from the request exactly as written, the nearby cases it implies (other inputs of the same kind, the edges), and the existing tests that cover the code you will touch. Run it and see it show what is wrong or missing. If the request reports something broken, reproducing it is the first step: before you change anything, the check must fail on the current code the way the request describes; if it passes, you have not reproduced the problem yet, so compare your input with the request's, character for character, until you find one that fails. If reproducing the whole scenario needs something the repository does not have (another project, a service, real data), reproduce the smallest part you can: call the function or class that makes the wrong output directly, with inputs like the request's. After every change, run that same script, never a retyped variant, and extend it when you learn a new case. It lives on disk, so it survives when older context is cleared. When the request shows outputs (printed results, errors) rather than the inputs behind them, work out which input produces the wrong output it shows, not one that produces the right output, and put that input in the check. If your check still does not show a reported problem and you cannot see why, call second-look with your check script: a helper compares it with the request word for word and suggests what you may have read differently."
+   "\n- When the request weighs more than one way to do something, follow the way it concludes for. When it asks for behaviour to change, change it, and update the existing tests that encode the old behaviour, instead of keeping the old behaviour behind a narrower special case."
+   "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
+   "\n- Run the whole test module (or package) of each file you changed, not a selection of its tests; when you change how something is rendered or printed, include the tests that compare output."
+   "\n- When tests fail after your change, run the same command on the unchanged code and compare, in one command so your change comes back (for example: git stash; <command>; git stash pop): a test that passes before and fails after is yours to fix; one that fails both times is not."
+   "\n- When your changes break tests and the cause is not clear, find regressions by applying changes one file at a time."))
 
 ;; The explorer's system prompt and task: before a plan is drafted, a
 ;; read-only sub-agent looks at the repository so the plan is not written
@@ -197,26 +226,33 @@
    (if (string-empty? focus) "" (string-append "Focus on: " focus "\n\n"))
    "History of this repository's sessions (newest first):\n\n" history))
 
-;; Compaction's request for a handover note (compact.scm).
+;; Compaction's request for a handover note (compact.scm). A note that
+;; kept a conclusion and dropped what it rested on ("the bug does not
+;; reproduce", from a check that used a different input than the request's)
+;; misled a benchmark run for twenty minutes after the context was cleared,
+;; so each finding keeps its evidence and marks what is unsure (ADR 32).
 (define compact-summary-prompt
   """
   The conversation is getting long and will be cleared to make room. Before that, write a handover note for yourself; it is all you will keep. Do not call tools. Include:
-  - the task in one or two sentences, and what done looks like;
-  - what you found: the root cause, and the files, functions and line areas involved;
+  - the task in one or two sentences, what done looks like, and the task's own example exactly as given;
+  - what you found, each finding with its evidence: the exact command or code you ran and what it printed (`command` -> output), marked verified or unsure;
   - what you changed so far, file by file, and why;
   - the commands that run the tests and reproduce the problem, and their latest results;
-  - what is left to do, in order, and anything you ruled out.
+  - open questions, including any conclusion that surprised you (such as "it does not reproduce"), with what you tested to reach it;
+  - what is left to do, in order, and what you ruled out and on what evidence.
   Be specific: names, paths and commands, not descriptions of them.
+  Name your check script (its path) and what its latest run showed; the script itself is still on disk.
   """)
 
-;; What a compacted context starts with: the task and the handover note.
+;; What a compacted context starts with: the task and the handover note,
+;; which is re-checked before it is built on.
 (define (compact-handover-prompt request note)
   (string-append
    request
    """
 
 
-   The conversation so far was cleared to make room; this is your own handover note from before it was cleared. The repository still holds every change you made. Continue the task from here; re-read files when you need their exact content.
+   The conversation so far was cleared to make room; this is your own handover note from before it was cleared. The repository still holds every change you made. The note may contain mistakes: before building on it, re-run its reproduction with the task's own example exactly as given, and check that the findings you rely on still hold. Then continue the task; re-read files when you need their exact content.
 
    Handover note:
    """

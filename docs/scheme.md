@@ -475,6 +475,9 @@ installed before `.nodwyn/init.scm` loads, so a project can redefine it:
 | `(widen)` | End every narrowed context. Models see the whole conversation again, including what happened while it was narrowed. A new user message widens too. Refused while a context holds calls waiting for an answer: fold it. |
 | `(answer-call call text)` | Answer one of the model's calls with `text`, as a successful result, without running the tool: how a tool the strategy handles itself answers. Counts against the tool-call budget. |
 | `(session-system-prompt)` | The system prompt the session started with (§9.1), fixed for its life: what a narrowed context passes to `narrow-context` to keep the model's standing instructions. |
+| `(model-info)` `(model-info name)` | What is known about a model before asking it: the control model, or the configured model `[models.NAME]`. An alist: `name`, `model` (the provider's id), `provider`, `num-ctx` (its context length; 0 when unset) and `max-output` (the reply cap its requests carry: its `max_output`, else `window.output_reserve`). An unknown name is an error that lists the configured ones. |
+| `(model-names)` | The names `model-turn` and `model-info` accept: `"control"` and each configured `[models.NAME]`, sorted. |
+| `(window-limits)` | The window's sizes, in tokens as the window estimates them: an alist of `high-water` (past it older context is trimmed), `low-water` (what trimming goes down to), `max-result-tokens` (a longer tool result is shortened) and `output-reserve` (the default reply cap). Compaction's default threshold is read from it (§9.2). |
 
 When nobody reviews the work as it happens — `(unattended?)` (`--yolo`, a
 run's `auto_approve`) or a supervised run's turn (`plan-required?`) — the
@@ -544,6 +547,8 @@ strings (§1.1):
 | `plan-needed-question` | the judge's yes/no question: does this request need a plan? |
 | `plan-score-rubric` | the judge's instruction for scoring a plan |
 | `plan-score-levels` | the rubric's 2–10 levels, worst first |
+| `working-rules` | how to work, added to both system prompts in a code workspace (§9.6): shell command lines, the project's environment, reading with the file tools, a plan as a first guess, the check loop, following the request's conclusion, widening in general form, whole test modules, comparing failures with the unchanged code, finding regressions file by file |
+| `(code-workspace?)` | true unless this is a `docs` workspace (ADR 22); the working rules and the habits' tools apply only when it is |
 
 ```scheme
 (define base-system-prompt system-prompt)      ; keep the default to extend it
@@ -570,17 +575,19 @@ nodwyn elides the oldest ones past `[window] high_water` on its own; compaction
 goes further, as user code over the primitives above, in
 `internal/loop/compact.scm`. When a reply's `prompt-tokens` passes
 `compact-threshold`, `maybe-compact` asks the model for a handover note (the
-task, what it found and changed, how to test, what is left), then narrows the
+task and its example as given, what it found with the evidence for each
+finding, what it changed, how to test, what is unsure or left, and its check
+script), then narrows the
 context to the session's system prompt, the request and that note. The
 repository keeps the model's changes, and the log keeps the whole
 conversation, so replay and audit see everything the note replaced.
 
 | | |
 |---|---|
-| `compact-threshold` | prompt tokens past which the context is compacted; `#f` (the default) never compacts |
+| `compact-threshold` | prompt tokens past which the context is compacted; `#f` never compacts. The default is just under the window's high water, a twenty-fifth below it (`(window-limits)`: 58983 at the default 61440), so only work that really runs long compacts (ADR 32) |
 | `compact-attempts` | replies to the note request that may be tool calls (they are skipped) before compaction gives up; after giving up it waits for the context to grow another quarter of the threshold |
 | `compact-summary-prompt` | the request for the note (a prompt, §9.1) |
-| `(compact-handover-prompt request note)` | what the compacted context starts with |
+| `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to re-run its reproduction and re-check its findings before building on them |
 | `(maybe-compact request reply)` | compact if `reply` passed the threshold; call it once the reply's calls are answered |
 | `(compact-context request)` | compact now; `#t` if the turn continues in the narrowed context |
 
@@ -591,8 +598,8 @@ conversation, so replay and audit see everything the note replaced.
 A strategy that redefines `agent-turn` calls `maybe-compact` itself, where the
 default does: after running the calls, before the next `model-turn`. Compacting
 rewrites the start of the context, so the server re-reads the new, short
-prompt once instead of reusing its cache (ADR 9); a threshold well below
-`high_water` compacts rarely and keeps the prefix stable in between.
+prompt once instead of reusing its cache (ADR 9); a late threshold compacts
+rarely and keeps the prefix stable in between.
 
 ### 9.3 Sub-agents
 
@@ -714,6 +721,44 @@ irreversible runs, and a turn that records none fails. What it enforces is
 that a plan was recorded, not who wrote it: the default `nodwyn-turn` has the
 control model plan, and a project's own `nodwyn-turn` may record a plan of its own
 with `record-plan`, as trusted project code.
+
+### 9.6 Working habits
+
+Beside the prompts' `working-rules`, the default loop carries the habits that
+held up on a coding benchmark (ADR 32), as user code in `internal/loop/`,
+loaded after the files above in this order. Each wraps `run-calls` (and
+`fold-result`, `sub-agent` or `nodwyn-turn` where it says), so a project's
+`init.scm` can wrap them again or redefine them away.
+
+- `shell.scm`: a command line sent through `shell-exec`'s `cmd`/`args` (a
+  program with its arguments in `cmd`, shell operators such as `|` or `&&`
+  in `args`) is answered, unrun, with the `bash -c` call that runs it as
+  meant; shell results read as plain text, the exit status then the output,
+  long output keeping its start and its end (`shell-head-chars`,
+  `shell-tail-chars`); and `(ran-ok? result)` counts a test run with failures
+  as a run, so the evidence loop's way out is offered only for commands that
+  never got that far.
+- `hygiene.scm`: in the main context (not in sub-agents), a test command
+  that never ran a test is folded to one line once a later one does; a read
+  of a file edited since is folded to its outline after `hygiene-stale-age`
+  rounds; a read `hygiene-age` rounds old is folded to its outline. Reads
+  fold in batches of at least `hygiene-min-bytes`, so the server re-reads
+  the prompt rarely.
+- `readdef.scm`: the tool `read-definition` (path, name) reads a function,
+  method or class by name, its whole definition and line range, or the start
+  and members of a long class; a shell script that only reads a file to print
+  it gets a hint naming the file tools, `readdef-hints` times a session.
+- `envhint.scm`: a command that fails for a missing module gets a hint to
+  find the project's own environment, `envhint-hints` times a session.
+- `checkloop.scm`: the tool `second-look` (check, saw): when the model's check
+  script does not show the problem a request reports, one read-only helper
+  reads the request alone and another compares that reading with the check,
+  listing what may have been read differently. A history search (`git log`,
+  `git blame`) before any code edit gets a hint to use it,
+  `second-look-hints` times a session.
+
+In a `docs` workspace, which defines no tools, `read-definition` and
+`second-look` are not registered and the prompts leave the rules out.
 
 ## 10. Not in nodwyn Scheme
 

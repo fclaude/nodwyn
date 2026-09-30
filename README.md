@@ -20,7 +20,7 @@ integrations and front-ends:
 |---|---|
 | `core` | Own a session, assemble dependencies, coordinate its lifetime and prompts. |
 | `budget` | Account for one turn, enforce ceilings, and request additional soft allowance. |
-| `loop` | Provide the primitives and default Scheme for a turn: the strategy, the plan gate, prompts, compaction, sub-agents. |
+| `loop` | Provide the primitives and default Scheme for a turn: the strategy, the plan gate, prompts, compaction, sub-agents, working habits. |
 | `event`, `log` | Describe front-end events; persist the history from which context and replay are derived. |
 | `keychain`, `binding` | Hold encrypted credentials and inject them; authorize their destinations, methods and positions. |
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |

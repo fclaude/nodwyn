@@ -3,11 +3,18 @@
 ;; compact-threshold tokens, the model writes a handover note, and the turn
 ;; goes on in a narrowed context holding only the task and that note. The
 ;; log keeps the whole conversation, so replay and audit see everything.
-;; Off by default: a project turns it on with, say,
-;; (define compact-threshold 40000) in .nodwyn/init.scm.
+;; On by default, late: just under the window's high water, so only work
+;; that really runs long compacts (ADR 32). Compacting at half that, runs
+;; that would have finished normally stopped to write notes and spent
+;; minutes re-orienting from them. A project sets its own with, say,
+;; (define compact-threshold 40000) in .nodwyn/init.scm, or #f for never.
 
 ;; Prompt tokens past which the context is compacted; #f never compacts.
-(define compact-threshold #f)
+;; The default leaves a twenty-fifth of the high water: 58983 at the
+;; default 61440, and the note still fits in the reply reserve.
+(define compact-threshold
+  (let ((high (assoc-ref (window-limits) 'high-water 0)))
+    (and (> high 0) (- high (quotient high 25)))))
 
 ;; Replies to the note request that may be tool calls before compaction
 ;; gives up for now.
