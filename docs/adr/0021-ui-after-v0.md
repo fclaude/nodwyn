@@ -466,3 +466,23 @@ its draft. Optional desktop notifications require an explicit browser permission
 request and use generic text while the page is hidden; no prompt content enters
 OS notification text. Reconnect establishes a new baseline without repeating old
 notifications. The ADR 18 bounded run driver remains unfinished U4 work.
+
+## General-purpose UI design — 2026-09-30
+
+A redesign of the browser console for nibb as a general helper (coding first,
+with MCP tools and document workspaces from ADR 22) is sketched on a design
+canvas: [link removed]. It is private to
+the maintainer's claude.ai account: a session signed in to that account can
+open and edit it; nothing else can until it is shared. The canvas is the source
+of truth for the design; its files are not in this repository.
+
+It is a proposal, not an implementation. The console is organized around tasks
+instead of inspector tabs: a home page to start any task and see what needs an
+answer across sessions; a task view with the approval (diff and the four
+answers) inline in the conversation, and the plan, budget, changes and project
+notes beside it; a task using MCP tools, where an undeclared tool's send-out
+names its destination and credential and offers no standing answer; a
+Connections page for tool sources, per-tool capability profiles and
+credentials; and a phone approval view, which assumes the optional
+token-authenticated transport above. Home, the coding task and the phone view
+also have dark versions.
