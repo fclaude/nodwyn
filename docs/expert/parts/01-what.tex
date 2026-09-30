@@ -1,0 +1,179 @@
+\chapter{What nodwyn is}
+\label{ch:what}
+
+\section{The one-paragraph picture}
+
+You type a message. A \textbf{front-end} (the app, a browser tab, the
+terminal) hands it to a \textbf{session}. The session writes it to the
+session's \textbf{log} and runs a \textbf{turn}: a Scheme procedure that asks
+the \textbf{model} what to do. The model answers with text, or with
+\textbf{tool calls} such as ``read \file{main.go}'' or ``run \code{go test}''.
+Each tool call becomes a Scheme application, \code{(fs-read "main.go")}, and
+is evaluated by the embedded Scheme interpreter. The interpreter has exactly
+one way out to your computer: a \textbf{primitive}, a Go function in a table.
+Every primitive application, whoever makes it, passes through one Go
+function where the \textbf{guard} decides \emph{allow}, \emph{confirm} (ask
+you) or \emph{deny}. Only then does the primitive run. Everything, including
+the guard's decision, is appended to the log before anything else looks at
+it, and the context the model sees next is rebuilt from that log.
+
+That is the whole machine. The rest of the book is detail.
+
+\begin{txt}
+   you --> front-end --> session --> log
+                            |
+                            v
+                  (nodwyn-turn request)            Scheme: yours to change
+                            |
+             +--------------+--------------+
+             v                             v
+       (model-turn) --> model        (run-tools calls)
+                                           |
+                                  (fs-read "main.go")
+                                           |
+                                   +-------v-------+
+                                   |     GUARD     |   allow / confirm / deny
+                                   +-------+-------+
+                                           v
+                              a Go primitive: the file, the program
+\end{txt}
+
+\section{Three ideas that explain everything}
+
+\subsection{One door}
+
+A program that wants to protect you usually sprinkles checks where it
+thinks danger lives: here before deleting, there before sending. \nodwyn{}
+does the opposite. There is \emph{one} door between the Scheme world and your
+computer, the primitive dispatch, and the guard stands in it. A call from
+the model, from your own \code{init.scm}, from the loop's strategy, from you
+typing at the prompt, even a call made from inside \code{map} or
+\code{sort}: all of them cross the same door. The test suite records every
+crossing to prove there is no other way out.
+
+Because the door is single, the guard can be simple and strict. Its
+checkers look at \emph{what an argument is} (a path, a destination, a
+payload, a credential) rather than guessing from the text, and the strictest
+verdict wins: one \emph{deny} beats any number of \emph{allow}s.
+
+\subsection{The log is the truth}
+
+The model's context window is not memory; it is a \emph{view}. Every
+request is rebuilt from the session log, an append-only file with one JSON
+line per event, written and flushed before anything else happens. That buys
+three things you will use as an expert:
+
+\begin{itemize}
+  \item \textbf{Replay.} \code{nodwyn replay SESSION} prints the whole
+    conversation from the file alone, and \code{nodwyn replay SESSION -{}-window
+    SEQ} rebuilds, byte for byte, the exact request the model saw at that
+    moment, and checks its hash.
+  \item \textbf{Audit.} Every guard decision is a line: who asked (you, the
+    model, or the loop), what, which checker decided, why, and what you
+    answered.
+  \item \textbf{Freedom to fold.} Because nothing is ever lost from the log,
+    a strategy can hide old tool output from the model, summarise a long
+    conversation or run a sub-agent in a private context, and still keep
+    everything for you.
+\end{itemize}
+
+\subsection{Credentials, not content}
+
+Most agents try to protect secrets by recognising them in text. \nodwyn{}
+turns the problem around. A secret you give it (an API key, say) is a
+\textbf{credential}: you type it once into a masked prompt, it goes into an
+encrypted keychain, and Scheme only ever holds an opaque \textbf{handle},
+\code{\#<cred:openai-key:1>}, that no builtin can turn into text. A
+\textbf{binding} says where that credential may go: which host, which HTTP
+methods, which position in the request (a header, a query parameter). The
+key is injected at the last moment, on the way out, and only if the binding
+table allows that exact destination.
+
+Recognising secret-looking text still happens, as a second line:
+\textbf{redaction} replaces recognised credentials with
+\code{[REDACTED class]} in everything that enters the log or the model's
+context, and a write whose content looks like a key needs your explicit
+yes. But the first line is structural: the model never sees a key, so it
+cannot leak one.
+
+\section{Who is asking?}
+
+Every primitive call carries an \textbf{origin}, and the guard treats them
+differently:
+
+\begin{center}
+\begin{tabularx}{0.95\linewidth}{lX}
+\toprule
+\textbf{origin} & \textbf{who} \\
+\midrule
+\code{user} & you: \code{:eval} at the prompt, your \code{init.scm}, the REPL \\
+\code{model} & the model's tool calls, and anything a tool it called does in turn \\
+\code{harness} & the loop's own strategy: the planner, compaction, sub-agent plumbing \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Some primitives are \emph{user-only}. Registering a guard check, writing a
+policy file, registering a credential, removing provenance from a value:
+the model can never do these, and neither can the loop's strategy. You will
+meet each of them later.
+
+\section{The promise, precisely}
+
+It is worth being exact about what the guard promises, because an expert
+knows where the edges are.
+
+\begin{itemize}
+  \item \textbf{Everything outside the folder is refused.} Files are pinned
+    to the task's folder (plus a private scratch directory and any folders
+    you \emph{mount} into a workspace). Symbolic links that point outside do
+    not escape.
+  \item \textbf{Credential-looking files are refused}: \file{.env*},
+    \file{*.pem}, \file{id\_*}, \file{\textasciitilde/.ssh},
+    \file{\textasciitilde/.aws}, \nodwyn's own config and data directories,
+    and more.
+  \item \textbf{Every write and every command asks}, unless you have given a
+    standing approval for it, and a few paths always ask: \file{.nodwyn/},
+    \file{.git/}, \file{.github/}, \file{.gitea/}, \file{scripts/} and the
+    \file{Makefile}, because what is written there later runs with your
+    authority.
+  \item \textbf{No key leaves unless a binding says where it may go}, and
+    content that came from your files or from a command's output is refused
+    on its way to a destination no binding names.
+\end{itemize}
+
+And what it does \emph{not} promise: that a command you approve is safe. If
+you say yes to \code{bash -c "rm -rf build"}, it runs; if you say yes to
+\code{curl}, it reaches the network with your access (the guard flags network
+tools by name so you notice). The guard makes you
+the decision-maker; it does not make decisions wise. Read the reason lines
+it shows you. They are written to tell you what a yes would do.
+
+\begin{tip}
+The fastest way to become good with \nodwyn{} is to read its log. Every
+surprise (``why did it ask me that?'', ``why didn't it ask?'') has a
+\code{guard.decision} line with a checker name and a reason. Chapter~\ref{ch:log}
+shows how.
+\end{tip}
+
+\section{Why Scheme?}
+
+Because the interesting parts of an agent are \emph{policy}: when to ask the
+model again, what to do with a failed test, when to plan, what to forget.
+Policy changes from project to project and week to week. \nodwyn{} keeps the
+dangerous parts (files, processes, network, the keychain, the log) in Go,
+small and fixed, and puts the policy in Scheme, where you can change it in
+a file in your repository without rebuilding anything.
+
+Scheme is a good fit for that job. It is tiny (you will learn all of the
+dialect in Part~II), it treats code and data the same way, and a loop
+written as a recursive function runs in constant space. It also cannot hurt
+you by accident: the language has no file or network access of its own, so
+the \emph{only} effects a Scheme program can have are primitive calls, and
+every one of those meets the guard.
+
+One more guarantee: loading Scheme can grow the table of primitives and
+define new procedures, but it cannot change how Scheme itself evaluates.
+\code{eval} and \code{apply} are two fixed Go functions, and the kernel has
+a fingerprint the test suite checks before and after loading arbitrary
+code. Your \code{init.scm} can rewire the loop. It cannot rewire the door.

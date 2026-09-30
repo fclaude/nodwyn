@@ -1,0 +1,227 @@
+\chapter{Contexts, sub-agents and other models}
+\label{ch:contexts}
+
+The model sees a \emph{window} rebuilt from the log for every request. This
+chapter is about shaping that window on purpose: hiding what no longer
+matters, giving a helper a clean desk of its own, and handing work to a
+different model.
+
+\section{The window, briefly}
+
+By default the window holds the system prompt (with your latest request
+and its plan pinned into it, where they are never trimmed away), then the
+conversation. When it grows past the \emph{high water} mark, the oldest
+tool results are elided in place, down to the \emph{low water} mark. A tool
+result longer than a cap is shortened. The sizes are in the config, and
+readable from Scheme:
+
+\begin{txt}
+you> :eval (window-limits)
+((high-water . 61440) (low-water . 30720) (max-result-tokens . 3072) (output-reserve . 16384))
+\end{txt}
+
+\code{output-reserve} is also the cap on each reply. Trimming never touches
+the log; it only changes what the next request contains.
+
+\begin{tip}
+The model server caches the start of the prompt between requests, and a
+cached prefix is what makes the second request in a turn fast. Everything
+in this chapter that changes \emph{old} parts of the window (folding an
+early result, narrowing, compacting) makes the server re-read from that
+point once. Do it in batches, or near the end, not on every round.
+\end{tip}
+
+\section{Folding a result}
+
+\code{(fold-result result text)} shows a tool result as \code{text} in
+every later window: an outline instead of a whole file, a line saying what
+a failed command was. The result stays in the log, so you (and
+\code{nodwyn replay}) still see all of it. \code{result} is the call's id,
+or the \code{tool.result} event's number.
+
+\begin{scm}
+;; After a successful build, the model never needs the old build errors.
+(fold-result "c7" "[folded: build errors from before the fix]")
+\end{scm}
+
+The hygiene habit (Chapter~\ref{ch:habits}) is built entirely on this.
+
+\section{Narrowing: a clean desk}
+
+\code{(narrow-context system [name])} starts a fresh context, like
+narrowing a buffer in Emacs: until it is folded, models see \code{system}
+as their system prompt and only what comes after this point. Follow it
+with \code{add-message} to hand over a task.
+
+\code{(fold-context)} ends the innermost narrowed context and folds it
+away: later windows skip everything since the narrow and see the enclosing
+conversation again. \code{(widen)} ends every narrowed context and shows
+everything, including what happened inside them. A new user message widens
+too.
+
+\begin{txt}
+   main conversation ..........................   (narrow-context "You review...")
+                                                   | harness.msg: the task
+                                                   | llm.req / llm.resp
+                                                   | tool calls and results
+   main conversation continues  <------------------(fold-context)
+   (the reviewer's work is in the log, not in the window)
+\end{txt}
+
+Contexts nest, and calls the model made just before a narrow wait for it
+to fold. You rarely need these primitives directly, because
+\code{sub-agent} wraps them.
+
+\section{Sub-agents}
+
+\begin{txt}
+(sub-agent system task tools [name])        ; [name] is optional
+\end{txt}
+
+runs \code{task} in a narrowed context under \code{system}, lets the model
+use \code{tools}, and returns its final answer after folding the context
+away. Whoever asked sees only the answer. \code{tools} is one of:
+
+\begin{itemize}
+  \item a list of names: the model is offered only those, and any other
+    call is skipped;
+  \item a procedure that takes a call and says whether it may run (the
+    model is then offered every tool);
+  \item \code{\#f} for all tools.
+\end{itemize}
+
+\subsection{A reviewer at the end of every turn}
+
+\begin{scm}
+(define review-base-agent-turn agent-turn)
+(define (agent-turn request)
+  (review-base-agent-turn request)
+  (let ((verdict (sub-agent "You review a summary of a folder. Reply OK or name what is missing."
+                            (string-append "The request was: " request)
+                            '("fs-list" "fs-read")
+                            "reviewer")))
+    (log-note (string-append "reviewer: " verdict))))
+\end{scm}
+
+And its trail in the log:
+
+\begin{txt}
+   13 context.narrow  {System:You review a summary ... Agent:reviewer Answers:[]}
+   14 harness.msg     {Text:The request was: Summarize this folder}
+   15 llm.req         {... Messages:2 Tools:2 ...}
+   16 llm.resp        {Content:OK ... DoneReason:stop ...}
+   17 context.fold    {}
+   18 note            {Text:reviewer: OK}
+\end{txt}
+
+\code{Messages:2 Tools:2}: the reviewer saw its own system prompt and task,
+and was offered exactly two tools. None of the main conversation.
+
+\subsection{Agent tools: a sub-agent the model can call}
+
+\begin{scm}
+(define-agent-tool "ask-gardener"
+  "Ask an experienced gardener, who can read the garden's files, a question."
+  '(("question" "string" "what you want to know"))
+  (lambda (call args)
+    (sub-agent "You are an experienced gardener. Read what you need, then answer in two sentences."
+               (assoc-ref args "question")
+               '("fs-read" "fs-list"))))
+\end{scm}
+
+The model sees \code{ask-gardener} among its tools. When it calls it,
+\code{run-calls} runs your handler instead of a tool body and answers the
+call with \code{answer-call}. Define agent tools in \code{init.scm}, before
+the tool list is fixed.
+
+\subsection{Sub-agents stop themselves, not you}
+
+A sub-agent that loops would trip the core's progress stop and end your
+whole turn. So \code{sub-agent} stops short of it on its own: an identical
+call more than \code{sub-agent-repeat-limit} (2) times in a row is skipped,
+and if it repeats again the sub-agent is asked for its answer without
+tools, which comes back with a note that it may be incomplete. After
+\code{sub-agent-max-rounds} (40) rounds it is likewise asked to wrap up. Its
+caller's work goes on either way.
+
+\section{Compaction}
+
+A long task fills the window with tool output the model no longer needs.
+Past \code{compact-threshold} prompt tokens (by default just under the
+high water: 58,983 of 61,440), \code{maybe-compact} asks the model for a
+\textbf{handover note}: the task and its example as given, what it found
+with the evidence for each finding, what it changed, how to test, what is
+unsure, and its check script. Then it narrows the context to the system
+prompt, the request and that note, and the work continues, from a clean
+window, with the changes already in the files.
+
+\begin{scm}
+(define compact-threshold 40000)   ; compact earlier
+(define compact-threshold #f)      ; never compact; only trim
+\end{scm}
+
+A strategy that replaces \code{agent-turn} should call
+\code{(maybe-compact request reply)} where the default does: after a
+reply's calls are answered, before asking again.
+
+\begin{careful}
+Compaction is a trade. Measured on a coding benchmark, compacting at
+\emph{half} the window stopped runs that would have finished, to write
+notes and re-orient from them (\adr{32}). The late default compacts only
+work that really runs long.
+\end{careful}
+
+\section{Other models}
+
+Any model you configure can be asked by name:
+
+\begin{toml}
+# config.toml
+[models.coder]
+provider = "openai"
+url = "https://api.openai.com/v1"
+model = "gpt-5.1-codex"
+credential = "openai-key"          # a keychain class, bound to api.openai.com
+
+[models.local]
+provider = "ollama"
+url = "http://localhost:11434"
+model = "qwen3:8b"
+\end{toml}
+
+\begin{scm}
+(model-names)                ;=> ("coder" "control" "local")
+(model-info "local")         ;=> ((name . "local") (model . "qwen3:8b") (provider . "ollama")
+                             ;    (num-ctx . 77824) (max-output . 16384))
+(model-turn "coder")         ; inside a turn: ask the coder
+\end{scm}
+
+\textbf{Routing} is narrowing plus naming: give a model a context you
+built, and let it work.
+
+\begin{scm}
+;; The control model plans; the coder implements from the plan alone.
+(define (implement-with-coder plan)
+  (narrow-context (session-system-prompt) "coder")
+  (add-message (string-append "Implement this plan, then report what you did:\n" plan))
+  (let loop ((reply (model-turn "coder")))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (if (null? calls)
+          (begin (fold-context) (assoc-ref reply 'content ""))
+          (begin (run-calls calls)
+                 (loop (model-turn "coder")))))))
+\end{scm}
+
+\begin{careful}
+Configuring a model is consenting that what a strategy sends it leaves
+your machine. With \code{narrow-context} that can be just a task and a
+plan; a strategy that asks a remote model over the whole conversation sends
+the whole conversation. The key goes only where its binding says, and only
+you configure models: the model cannot.
+\end{careful}
+
+\begin{puzzle}[ 16: second opinion]
+Write an agent tool \code{second-opinion} that asks the model named
+\code{"local"} the same question with no tools at all, in a narrowed
+context, and returns its answer. (Hint: \code{model-turn} takes options.)\ans{16}
+\end{puzzle}

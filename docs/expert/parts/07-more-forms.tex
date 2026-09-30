@@ -1,0 +1,199 @@
+\chapter{The rest of the language}
+\label{ch:forms}
+
+Five more ideas and you know all of \nodwyn{} Scheme: functions that take
+any number of arguments, errors you can catch, templates for building lists,
+vectors, and closures that remember.
+
+\section{Any number of arguments}
+
+A parameter list with a dot collects the extra arguments into a list:
+
+\begin{scm}
+(define (describe . plants) (length plants))
+(describe "a" "b" "c")                        ;=> 3
+
+(define (greet name . rest)
+  (if (null? rest) name (string-append name " & " (car rest))))
+(greet "basil" "mint")                        ;=> "basil & mint"
+
+((lambda args args) 1 2 3)                    ;=> (1 2 3)
+\end{scm}
+
+\nodwyn's own \code{(sub-agent system task tools . name)} uses this for its
+optional last argument.
+
+\section{Errors and \texttt{guard}}
+
+\code{(error message irritant \ldots)} raises an error. \code{guard} catches
+one: it binds the error to a name and tries clauses like \code{cond}:
+
+\begin{scm}
+(define (safe-div a b)
+  (guard (e (#t "cannot divide"))
+    (/ a b)))
+(safe-div 1 0)                                ;=> "cannot divide"
+\end{scm}
+
+The error is an association list with a \code{message} and the
+\code{irritants}:
+
+\begin{scm}
+(guard (e ((string-contains? (assoc-ref e 'message) "boom") 'caught)
+          (else (assoc-ref e 'irritants)))
+  (error "boom" 1 2))                         ;=> caught
+
+(guard (e ((assoc-ref e 'message) => string-upcase))
+  (error "loud"))                             ;=> "LOUD"
+\end{scm}
+
+If no clause matches, the error keeps going up, as if the \code{guard} was
+not there:
+
+\begin{scm}
+(guard (e ((string? e) e))    ; e is an alist, never a string
+  (error "fizz"))             ; error: fizz
+\end{scm}
+
+\begin{careful}
+Two things pass straight through every \code{guard}, whatever its clauses
+say: a \textbf{denial} by the guard (a primitive the guard refused) and a
+\textbf{cancellation} (you pressed Ctrl-C, or a timeout fired). So do the
+loop's hard stops: a spent budget, the tool-call limit, a progress stop.
+A program cannot hide that it was refused, and an abort always unwinds.
+That is why a strategy with a \code{guard (e (else \ldots))} around
+everything still cannot keep a runaway turn alive.
+\end{careful}
+
+\section{Quasiquote: templates for lists}
+
+Quote gives you a list exactly as written. \textbf{Quasiquote}, a
+backquote, gives you a list \emph{template}: a comma evaluates one piece,
+and comma-at splices a list in:
+
+\begin{scm}
+(define n 3)
+`(n is ,n and doubled ,(* 2 n))          ;=> (n is 3 and doubled 6)
+`(plants ,@(list "basil" "mint") end)    ;=> (plants "basil" "mint" end)
+\end{scm}
+
+It is perfect for the metadata \nodwyn{} asks for when you register a tool:
+
+\begin{scm}
+(define doc "Water a plant.")
+`((doc . ,doc) (params . ()))            ;=> ((doc . "Water a plant.") (params))
+\end{scm}
+
+(Only one level of quasiquote is supported; you will not miss the second.)
+
+\section{Vectors}
+
+A vector is a fixed-length, indexed collection, and the one thing in the
+language you can change in place:
+
+\begin{scm}
+(define v (vector "a" "b" "c"))
+(vector-set! v 1 "B")
+v                                        ;=> #("a" "B" "c")
+(vector-length v)                        ;=> 3
+(vector->list #(1 2 3))                  ;=> (1 2 3)
+(list->vector '(1 2))                    ;=> #(1 2)
+(vector-ref #(1 2 3) 5)    ; error: index 5 out of range for vector of length 3
+\end{scm}
+
+Reach for a vector when you need to jump to the \emph{n}th element quickly
+or fill a table as you go; reach for a list otherwise.
+
+\section{Closures: functions that remember}
+
+A \code{lambda} remembers the variables around it when it was made. Combine
+that with \code{set!} and you get private state:
+
+\begin{scm}
+(define (make-counter)
+  (let ((n 0))
+    (lambda ()
+      (set! n (+ n 1))
+      n)))
+
+(define a (make-counter))
+(define b (make-counter))
+(a) (a)
+(list (a) (b))                           ;=> (3 1)
+\end{scm}
+
+\code{a} and \code{b} each have their own \code{n}, and nothing else in the
+program can touch it. This is the pattern behind every \nodwyn{} habit that
+wraps a loop function: it keeps the original in a variable of its own, and
+its new version closes over it (Chapter~\ref{ch:strategies}).
+
+\section{The smaller forms}
+
+\begin{scm}
+(case 'tomato
+  ((basil mint) "herb")
+  ((tomato bean) "vegetable")
+  (else "unknown"))                      ;=> "vegetable"
+
+(when (> 2 1) "ran")                     ;=> "ran"
+(unless (> 2 1) "ran")                   ; nothing: returns void
+
+(begin (define a 1) (define b 2) (+ a b));=> 3
+
+(define (hyp a b)
+  (define (sq x) (* x x))                ; a definition inside a body
+  (sqrt (+ (sq a) (sq b))))
+(hyp 3 4)                                ;=> 5.0
+
+(letrec ((even? (lambda (n) (if (= n 0) #t (odd? (- n 1)))))
+         (odd?  (lambda (n) (if (= n 0) #f (even? (- n 1))))))
+  (even? 100001))                        ;=> #f
+\end{scm}
+
+\code{case} compares with \code{equal?}, so strings work as keys too.
+\code{letrec} lets its functions call each other; notice that
+\code{even?} and \code{odd?} call each other in tail position, so the
+hundred thousand hops take no stack at all.
+
+\section{Sameness}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\code{equal?} & same shape and contents. Use this one. \\
+\code{eq?}, \code{eqv?} & the same object, for pairs, vectors and procedures; the same value for everything else, including strings \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{scm}
+(equal? '(1 (2 3)) (list 1 (list 2 3)))  ;=> #t
+(eq? (list 1) (list 1))                  ;=> #f   two different pairs
+(eq? 'a 'a)                              ;=> #t
+(equal? #(1 2) #(1 2))                   ;=> #t
+\end{scm}
+
+\section{What is deliberately missing}
+
+No \code{call/cc}, no macros (\code{define-syntax}), no \code{eval}, no
+characters, no string mutation, no \code{set-car!}, no fractions or
+bignums, no nested quasiquote. The language is small on purpose: it is
+there to express policy, and a small language is one you can hold in your
+head and one whose every program the guard can reason about. There is
+also, deliberately, no way for a Scheme program to reach the kernel's
+evaluator: loading code can add functions and primitives, never new
+special forms.
+
+\begin{puzzle}[ 8: a safe number parser]
+Write \code{(parse-ml text)} that turns \code{"250 ml"} into \code{250},
+and returns \code{\#f} for text that does not start with a number. Then
+write \code{(must-parse-ml text)} that raises an error naming the text
+when parsing fails, and show how a caller catches it with
+\code{guard}.\ans{8}
+\end{puzzle}
+
+\begin{puzzle}[ 9: a watering log]
+Write \code{(make-log)} that returns a function. Called with a string, it
+remembers it; called with no arguments, it returns everything remembered,
+oldest first. Use a closure and \code{set!}.\ans{9}
+\end{puzzle}

@@ -1,0 +1,110 @@
+\chapter{The ways in}
+\label{ch:ways}
+
+\nodwyn{} has one core and several faces. They all speak to the same
+sessions, through the same guard, into the same logs, so you can start a
+task in one and answer it from another.
+
+\section{The daemon underneath}
+
+\code{nodwyn daemon} is a small server that owns sessions and speaks a
+JSON-RPC protocol over a private Unix socket. The browser console, the
+terminal client and supervised runs are all clients of it. You rarely start
+it by hand: the app starts one inside itself when none is running.
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{command} & \textbf{what you get} \\
+\midrule
+\code{nodwyn} & a line-mode session in the current folder (no daemon) \\
+\code{nodwyn app} & a window (or your browser) with the console; attaches to a running daemon or runs its own \\
+\code{nodwyn ui} & the console in your browser, attached to a running daemon \\
+\code{nodwyn tui} & a full-screen terminal client, local or attached to a daemon \\
+\code{nodwyn daemon} & the session server in the foreground \\
+\code{nodwyn run \ldots} & submit a bounded, supervised task to the daemon \\
+\code{nodwyn repl}, \code{nodwyn eval} & the Scheme interpreter on its own, no session \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{The console}
+
+The console, in the app's window or a browser tab, is organised around
+tasks. \textbf{Home} starts a task in a folder and lists what needs your
+answer, what is running and what finished. A \textbf{task} shows its
+conversation with the approval inline (the diff, the reasons, the buttons
+from Chapter~\ref{ch:first}), and beside it the plan, this turn's budget,
+the changes it made, the project notes and the workspace.
+\textbf{Connections} holds keys and MCP servers, \textbf{Workspaces} your
+named folders, and \textbf{Settings} the model and the keychain.
+
+\begin{tip}
+The console never invents state. Budgets are counted from the log, the plan
+is the recorded plan, ``changes'' are recorded writes. If a panel has no
+source for something, it says so instead of guessing.
+\end{tip}
+
+\section{The terminal client}
+
+\code{nodwyn tui} shows the same conversation full-screen, with a multi-line
+composer (\key{Alt+Enter} or \key{Ctrl+J} for a newline, \key{Enter} to
+send), and inspectors behind colon commands: \code{:plan}, \code{:budget},
+\code{:tools NAME} (a tool's input schema), \code{:bindings},
+\code{:replay}, \code{:log [n] [kind]}. \key{Ctrl+C} aborts busy work,
+\key{Ctrl+Q} detaches, \key{Ctrl+R} reconnects.
+
+\section{Supervised runs}
+
+A run is a task that goes on for several turns without you typing each
+message:
+
+\begin{sh}
+nodwyn run --task task.md --repo . --max-turns 20 --budget-wall 2h
+nodwyn run status SESSION
+nodwyn run stop SESSION
+nodwyn run resume SESSION
+\end{sh}
+
+Every turn of a run must record a plan before anything irreversible
+happens, and between turns you get a \textbf{run checkpoint}: a yes
+continues, and grants nothing else. The run ends when the model's final line
+is exactly \code{NODWYN\_RUN\_COMPLETE}, which is the model's claim, not a
+proof; or when the turn or time limit runs out. Chapter~\ref{ch:plans}
+shows the Scheme that makes this work.
+
+\section{From another device}
+
+The console can also serve other machines, typically your phone over a
+tailnet (Tailscale or similar):
+
+\begin{sh}
+nodwyn ui --listen 100.101.102.103:7777      # this machine's tailnet address
+nodwyn devices                               # who is paired
+nodwyn devices revoke phone
+\end{sh}
+
+The phone opens the address, enters the pairing code the command printed
+\emph{and a device name}, and gets a cookie that keeps it paired for 180
+days. Only a hash of its token is stored. Every answer from it is recorded
+with its name, \code{via web:phone}, so the log says which screen said yes.
+
+There is no relay in between: the phone talks straight to your computer, so
+your computer must be on and reachable, and the network path (a tailnet, or
+your home Wi-Fi) is yours to provide.
+
+\begin{careful}
+A paired device can answer approvals, and approving a command \emph{is}
+running a command as you. Pair only devices you would hand a terminal. A
+remote device can never change settings, keys, policy files or the
+workspace registry: those need a console on the computer itself.
+\end{careful}
+
+\section{Sharing with people who will never open a terminal}
+
+\file{Nodwyn.app} is built for that. It starts its own daemon, pairs its own
+window with a one-time ticket in the address's fragment (never sent to a
+server, valid for a minute), and walks a first-time user through choosing a
+model and creating a keychain. Each person's tasks, keys and settings stay
+in their own account. \file{docs/app.md} has the steps for sending it to
+someone.

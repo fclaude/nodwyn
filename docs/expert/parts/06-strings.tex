@@ -1,0 +1,184 @@
+\chapter{Strings, formats and JSON}
+\label{ch:strings}
+
+An agent's life is text: prompts, tool output, file contents, the model's
+JSON. This chapter covers the string toolkit, the two ways to print, a
+string literal made for prompts, and how Scheme and JSON map onto each
+other.
+
+\section{The string toolkit}
+
+\begin{scm}
+(string-append "tom" "ato")                  ;=> "tomato"
+(string-length "ñandú")                      ;=> 5      characters, not bytes
+(substring "watering can" 0 8)               ;=> "watering"
+(string-upcase "basil")                      ;=> "BASIL"
+(string-trim "  mint \n")                    ;=> "mint"
+(string-split "tomato,basil,mint" ",")       ;=> ("tomato" "basil" "mint")
+(string-join '("a" "b" "c") ", ")            ;=> "a, b, c"
+(string-contains? "raised bed" "bed")        ;=> #t
+(string-prefix? "go " "go test ./...")       ;=> #t
+(string-suffix? ".scm" "init.scm")           ;=> #t
+(string-replace "slug slug" "slug" "snail")  ;=> "snail snail"
+(string<? "apple" "banana")                  ;=> #t
+(string->symbol "basil")                     ;=> basil
+(string->number "3.5")                       ;=> 3.5
+(string->number "12abc")                     ;=> #f
+\end{scm}
+
+Two things to notice. Indices and lengths count \emph{characters}, so
+accented text behaves. And \code{string-split} splits on a literal
+separator, not a pattern: there are no regular expressions in the
+language. When you need one, the \code{index-grep} primitive runs a real
+one over files (Chapter~\ref{ch:primitives}).
+
+\begin{careful}
+Look at the argument order of \code{string-prefix?} and
+\code{string-suffix?}: the \emph{prefix comes first}, then the string. It
+reads as ``is \code{"go "} a prefix of \code{"go test ./..."}?''.
+\code{string-contains?} is the other way round: the haystack, then the
+needle.
+\end{careful}
+
+\section{\texttt{display} and \texttt{write}}
+
+There are two ways to turn a value into text. \code{display} is for
+people: strings without their quotes. \code{write} is for machines:
+strings quoted and escaped, so the text reads back as the same value.
+
+\begin{scm}
+(with-output-to-string
+  (display "basil") (newline) (write "basil"))
+                                ;=> "basil\n\"basil\""
+\end{scm}
+
+\code{with-output-to-string} runs its body and returns everything the body
+printed, instead of printing it. It is the language's one string port, and
+it is surprisingly handy for building reports piece by piece.
+
+\section{\texttt{format}}
+
+\code{format} fills a template. It knows four directives:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\code{\textasciitilde a} & the next argument, as \code{display} shows it \\
+\code{\textasciitilde s} & the next argument, as \code{write} shows it \\
+\code{\textasciitilde\%} & a newline \\
+\code{\textasciitilde\textasciitilde} & a tilde \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{scm}
+(format "~a has ~a leaves" "basil" 12)       ;=> "basil has 12 leaves"
+(format "~s" "quoted")                       ;=> "\"quoted\""
+(format "~a" '(1 "two" three))               ;=> "(1 two three)"
+(format "~s" '(1 "two" three))               ;=> "(1 \"two\" three)"
+(format "~a ~a" 1)       ; error: format: too few arguments for "~a ~a"
+\end{scm}
+
+Too few or too many arguments is an error, which catches a lot of bugs in
+prompt templates. \code{(format "\textasciitilde a" x)} is also the quickest way to turn
+\emph{anything} into a string, which \nodwyn's own Scheme does all the time
+when a value might be a number, a string or a symbol.
+
+\section{Raw strings: prompts without backslashes}
+
+Prompts are long, full of quotes and backticks, and written by people. For
+them, \nodwyn{} Scheme has a \textbf{raw string}: three double quotes, no
+escapes at all.
+
+\begin{scm}
+(define pattern """\d+\.\d+""")
+pattern                              ;=> "\\d+\\.\\d+"
+"""a "b" c"""                        ;=> "a \"b\" c"
+\end{scm}
+
+When the opening \code{"""} is followed directly by a newline, the block is
+read as \textbf{indented text}: the shared indentation is removed, along
+with the first and last newlines. So you can indent a prompt with your code
+and get text with no indentation at all:
+
+\begin{scm}
+(define instructions
+  """
+  Prefer table-driven tests.
+    Indented further keeps the difference.
+  Run `make accept` before saying a change is done.
+  """)
+\end{scm}
+
+\code{instructions} is exactly:
+
+\begin{txt}
+Prefer table-driven tests.
+  Indented further keeps the difference.
+Run `make accept` before saying a change is done.
+\end{txt}
+
+You will use this in Chapter~\ref{ch:checks} to extend the system prompt.
+
+\section{JSON}
+
+Two builtins cross between JSON text and Scheme values:
+
+\begin{scm}
+(json-parse "{\"plant\": \"basil\", \"height\": 12.5,
+              \"tags\": [\"herb\", \"sun\"], \"watered\": true, \"note\": null}")
+;=> (("plant" . "basil") ("height" . 12.5) ("tags" "herb" "sun")
+;    ("watered" . #t) ("note" . null))
+
+(json-emit (list (cons "plant" "basil")
+                 (cons "tags" (list "herb" "sun"))))
+;=> "{\"plant\":\"basil\",\"tags\":[\"herb\",\"sun\"]}"
+\end{scm}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{JSON} & \textbf{Scheme} \\
+\midrule
+object & association list with \emph{string} keys, in order \\
+array & list \\
+string, number & string, integer or float \\
+\code{true}, \code{false} & \code{\#t}, \code{\#f} \\
+\code{null} & the symbol \code{null} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Why does \code{("tags" "herb" "sun")} have no dot? Because it \emph{is}
+\code{("tags" . ("herb" "sun"))}: a pair whose \code{cdr} is a list prints
+as one longer list. \code{(assoc-ref parsed "tags")} still gives you
+\code{("herb" "sun")}.
+
+Going the other way, \code{json-emit} treats a list whose elements are all
+pairs with string keys as an object, and any other list as an array. One
+consequence: \code{'()} emits \code{[]}, and there is no way to write an
+empty object \code{\{\}}.
+
+This mapping matters because it is exactly how a model's tool-call
+arguments reach Scheme. When the model calls
+\code{fs-read} with \code{\{"path": "plants.txt"\}}, \nodwyn{} parses the
+JSON with these rules and applies \code{fs-read} to the values in the order
+the tool declares.
+
+\begin{puzzle}[ 6: a label maker]
+Write \code{(label plant days)} that returns \code{"BASIL: water every 2
+days"}, and \code{"MINT: water every day"} when \code{days} is 1. Use
+\code{format} and \code{string-upcase}.\ans{6}
+\end{puzzle}
+
+\begin{puzzle}[ 7: CSV to JSON]
+Write \code{(csv->json text)} that turns
+
+\code{"plant,water\textbackslash nbasil,daily\textbackslash ntomato,weekly"}
+
+into the JSON text
+\begin{txt}
+[{"plant":"basil","water":"daily"},{"plant":"tomato","water":"weekly"}]
+\end{txt}
+The first line holds the keys.\ans{7}
+\end{puzzle}

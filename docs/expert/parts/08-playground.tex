@@ -1,0 +1,269 @@
+\chapter{The playground}
+\label{ch:playground}
+
+Before Scheme meets files, models and guards, let's play. Every program in
+this chapter runs in \code{nodwyn repl} or with \code{nodwyn eval FILE}, and
+each one shows off a technique you will use later on real work.
+
+\section{FizzBuzz, the traditional warm-up}
+
+\begin{scm}
+(define (fizzbuzz n)
+  (cond ((= 0 (remainder n 15)) "FizzBuzz")
+        ((= 0 (remainder n 3)) "Fizz")
+        ((= 0 (remainder n 5)) "Buzz")
+        (else (number->string n))))
+
+(display (string-join (map fizzbuzz (cdr (iota 16))) " "))
+\end{scm}
+
+\begin{txt}
+1 2 Fizz 4 Buzz Fizz 7 8 Fizz Buzz 11 Fizz 13 14 FizzBuzz
+\end{txt}
+
+Technique: \code{map} over \code{iota} instead of a loop, and
+\code{string-join} to glue the results.
+
+\section{The Towers of Hanoi}
+
+Move a stack of discs from peg \code{a} to peg \code{c}, one at a time, never
+putting a bigger disc on a smaller one. The recursive answer is famously
+short: move all but the bottom disc out of the way, move the bottom one,
+move the rest back on top.
+
+\begin{scm}
+(define (hanoi n from to via)
+  (if (= n 0)
+      '()
+      (append (hanoi (- n 1) from via to)
+              (list (list from to))
+              (hanoi (- n 1) via to from))))
+
+(hanoi 3 'a 'c 'b)
+;=> ((a c) (a b) (c b) (a c) (b a) (b c) (a c))
+(length (hanoi 10 'a 'c 'b))      ;=> 1023
+\end{scm}
+
+Technique: the answer is \emph{data}, a list of moves, rather than
+printing. Data can be counted, checked and turned into text later. That is
+the habit that makes strategies testable.
+
+\section{The sieve of Eratosthenes}
+
+A vector of flags, crossed off in multiples:
+
+\begin{scm}
+(define (primes-up-to n)
+  (let ((sieve (list->vector (map (lambda (i) #t) (iota (+ n 1))))))
+    (let mark ((i 2))
+      (when (<= (* i i) n)
+        (when (vector-ref sieve i)
+          (do ((j (* i i) (+ j i))) ((> j n))
+            (vector-set! sieve j #f)))
+        (mark (+ i 1))))
+    (filter (lambda (i) (and (>= i 2) (vector-ref sieve i)))
+            (iota (+ n 1)))))
+
+(primes-up-to 50)
+;=> (2 3 5 7 11 13 17 19 23 29 31 37 41 43 47)
+\end{scm}
+
+Technique: a vector for random access, \code{do} for a counting loop, a
+named \code{let} for the outer loop, and a list for the answer.
+
+\section{Counting words}
+
+Which words does a text use most? Build an association list of counts with
+\code{fold}, then sort it:
+
+\begin{scm}
+(define (count-words text)
+  (fold (lambda (counts word)
+          (if (assoc word counts)
+              (map (lambda (p)
+                     (if (equal? (car p) word) (cons word (+ 1 (cdr p))) p))
+                   counts)
+              (cons (cons word 1) counts)))
+        '()
+        (filter (lambda (w) (not (string-empty? w)))
+                (string-split (string-downcase text) " "))))
+
+(define (take l n)
+  (if (or (null? l) (= n 0)) '() (cons (car l) (take (cdr l) (- n 1)))))
+
+(define (top-words text n)
+  (take (sort (count-words text) (lambda (a b) (> (cdr a) (cdr b)))) n))
+
+(top-words "the basil and the tomato and the bee" 2)
+;=> (("the" . 3) ("and" . 2))
+\end{scm}
+
+Technique: an association list as a small dictionary, rebuilt rather than
+changed. \nodwyn's optimizer (Chapter~\ref{ch:habits}) digests a session's
+log with exactly this kind of code.
+
+\section{Roman numerals}
+
+\begin{scm}
+(define roman-table
+  '((1000 . "M") (900 . "CM") (500 . "D") (400 . "CD") (100 . "C")
+    (90 . "XC") (50 . "L") (40 . "XL") (10 . "X") (9 . "IX")
+    (5 . "V") (4 . "IV") (1 . "I")))
+
+(define (roman n)
+  (let loop ((n n) (table roman-table) (out ""))
+    (cond ((= n 0) out)
+          ((>= n (caar table))
+           (loop (- n (caar table)) table (string-append out (cdar table))))
+          (else (loop n (cdr table) out)))))
+
+(map roman '(4 9 14 1990 2026))
+;=> ("IV" "IX" "XIV" "MCMXC" "MMXXVI")
+\end{scm}
+
+Technique: a table as data and a tail-recursive loop that carries three
+things at once. \code{caar} is ``the car of the car'': the number of the
+first pair in the table.
+
+\section{A calculator: Scheme reading Scheme}
+
+Because code is lists, a program can read a quoted expression and
+evaluate it. Here is a calculator for arithmetic with variables:
+
+\begin{scm}
+(define (calc expr env)
+  (cond ((number? expr) expr)
+        ((symbol? expr)
+         (let ((b (assq expr env)))
+           (if b (cdr b) (error "calc: unknown variable" expr))))
+        ((pair? expr)
+         (let ((op (car expr))
+               (args (map (lambda (e) (calc e env)) (cdr expr))))
+           (case op
+             ((+) (apply + args))
+             ((-) (apply - args))
+             ((*) (apply * args))
+             ((/) (apply / args))
+             ((max) (apply max args))
+             (else (error "calc: unknown operator" op)))))
+        (else (error "calc: cannot evaluate" expr))))
+
+(calc '(+ 1 (* 2 3)) '())                           ;=> 7
+(calc '(* price (+ 1 tax)) '((price . 20) (tax . 0.25)))  ;=> 25.0
+(guard (e (#t (assoc-ref e 'message)))
+  (calc '(sqrt 2) '()))                             ;=> "calc: unknown operator"
+\end{scm}
+
+Look at what \code{calc} does: it decides \emph{what each operator is
+allowed to do}, and refuses the rest. That is a guard in miniature. Keep it
+in mind for Chapter~\ref{ch:primitives}.
+
+\section{Memory: Fibonacci without the wait}
+
+The naive Fibonacci recomputes the same values exponentially often. Keep
+each answer in a vector the first time:
+
+\begin{scm}
+(define (make-memo size) (list->vector (map (lambda (i) #f) (iota size))))
+
+(define (fib n)
+  (let ((memo (make-memo (+ n 1))))
+    (let f ((k n))
+      (cond ((< k 2) k)
+            ((vector-ref memo k) => (lambda (v) v))
+            (else (let ((v (+ (f (- k 1)) (f (- k 2)))))
+                    (vector-set! memo k v)
+                    v))))))
+
+(fib 90)                        ;=> 2880067194370816120
+\end{scm}
+
+Technique: \code{cond}'s \code{=>} passes the test's value on, so ``if we
+have it, return it'' is one clause.
+
+\section{Rolling dice without a random number}
+
+There is no \code{random} in the language, and that is on purpose:
+strategies should be reproducible from the log. But a closure and some
+arithmetic make a perfectly good repeatable die:
+
+\begin{scm}
+(define (make-dice seed)
+  (lambda (sides)
+    (set! seed (modulo (+ (* seed 1103515245) 12345) 2147483648))
+    (+ 1 (remainder seed sides))))
+
+(define d6 (make-dice 42))
+(map (lambda (i) (d6 6)) (iota 8))     ;=> (4 3 6 5 2 1 6 1)
+\end{scm}
+
+The same seed gives the same rolls every time: a linear congruential
+generator, the kind early computers used.
+
+\section{Drawing a tree}
+
+\begin{scm}
+(define garden
+  '("garden" ("herbs" ("basil") ("mint")) ("veg" ("tomato") ("bean"))))
+
+(define (show-tree tree depth)
+  (display (string-append (substring "            " 0 (* 2 depth)) (car tree)))
+  (newline)
+  (for-each (lambda (child) (show-tree child (+ depth 1))) (cdr tree)))
+
+(show-tree garden 0)
+\end{scm}
+
+\begin{txt}
+garden
+  herbs
+    basil
+    mint
+  veg
+    tomato
+    bean
+\end{txt}
+
+\section{A Markdown table}
+
+Models read Markdown well, and a tool that answers with a table is easier
+for a model to use than raw data:
+
+\begin{scm}
+(define (md-table header rows)
+  (define (row cells) (string-append "| " (string-join cells " | ") " |"))
+  (string-join
+   (append (list (row header) (row (map (lambda (h) "---") header)))
+           (map (lambda (r) (row (map (lambda (x) (format "~a" x)) r))) rows))
+   "\n"))
+
+(display (md-table '("plant" "water") '(("basil" "daily") ("tomato" "2 days"))))
+\end{scm}
+
+\begin{txt}
+| plant | water |
+| --- | --- |
+| basil | daily |
+| tomato | 2 days |
+\end{txt}
+
+You will register a tool built on this in Chapter~\ref{ch:tools}.
+
+\begin{puzzle}[ 10: extend the calculator]
+Teach \code{calc} two new forms: \code{(if test then else)} where
+\code{test} is true when it is not zero, and \code{(let ((name expr))
+body)} with one binding. \code{(calc '(let ((x 4)) (if (- x 4) 1 2)) '())}
+should be \code{2}.\ans{10}
+\end{puzzle}
+
+\begin{puzzle}[ 11: Hanoi, counted]
+Without building the list of moves, write \code{(hanoi-count n)} that
+returns how many moves \code{n} discs need, in tail position. Check it
+against \code{(length (hanoi 10 'a 'c 'b))}.\ans{11}
+\end{puzzle}
+
+\begin{puzzle}[ 12: Roman numerals back]
+Write \code{(unroman s)} so that \code{(unroman "MMXXVI")} is
+\code{2026}. Hint: walk the same table, eating matching prefixes with
+\code{string-prefix?} and \code{substring}.\ans{12}
+\end{puzzle}

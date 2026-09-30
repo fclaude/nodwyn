@@ -1,0 +1,163 @@
+\chapter{Keys, bindings and the network}
+\label{ch:keys}
+
+This chapter is about everything that leaves your machine on purpose: model
+requests, keyed APIs your tools call, and MCP servers.
+
+\section{The keychain}
+
+Keys live in an encrypted file, the keychain, unlocked with a passphrase
+you choose (at least 8 characters, and not recoverable). Create it once:
+
+\begin{sh}
+nodwyn keychain init          # or: the app's Settings page
+\end{sh}
+
+Then store a key from a session. The input is masked, never logged, never
+echoed:
+
+\begin{txt}
+you> :eval (credential-register "weather-key")
+\end{txt}
+
+The front-end asks for the key in a masked prompt, stores it, and returns a
+handle such as \code{\#<cred:weather-key:\ldots>}.
+
+What comes back is a \textbf{handle}. It prints as
+\code{\#<cred:class:id>} and nothing in the language can turn it into the
+key: not \code{display}, not \code{format}, not \code{json-emit}, not
+string concatenation. \code{credential-register} is user-only; so is
+\code{(credential "weather-key")}, which looks up the handle of a key
+already stored, or returns \code{\#f}.
+
+\section{Bindings: where a key may go}
+
+A handle alone opens nothing. \file{bindings.toml} says where each class of
+key may be sent, and how:
+
+\begin{toml}
+# ~/.config/nodwyn/bindings.toml
+[[bind]]
+class = "weather-key"
+dest = "api.weather.example"
+positions = ["query:appid"]
+methods = ["GET"]
+
+[[bind]]
+class = "openai-key"
+dest = "api.openai.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["POST"]
+\end{toml}
+
+A position is where the key is injected:
+
+\begin{itemize}
+  \item \code{header:NAME}, optionally with a scheme:
+    \code{header:Authorization:Bearer};
+  \item \code{query:NAME}, a query parameter;
+  \item \code{body}.
+\end{itemize}
+
+The binding table is checked on every
+request, before anything is sent; an unbound combination is never sent.
+Only you edit it: the file is policy, and \code{policy-write} is user-only
+and shows you a diff first.
+
+\section{\texttt{http-request}}
+
+\begin{scm}
+(http-request cred url method position headers body)
+;=> (("status" . 200) ("body" . "..."))
+\end{scm}
+
+The key is injected at \code{position} on the way out, if the binding table
+allows exactly (class, host, method, position). Handles cannot come from
+JSON, so the model can never call \code{http-request} directly. You reach
+it through a tool you register:
+
+\begin{scm}
+;; Look the key up once, while init.scm runs with your origin. The tool
+;; closes over the handle; the model's calls could not look it up.
+(define weather-key (credential "weather-key"))
+
+(register-tool "weather"
+  (lambda (city)
+    (if (not weather-key)
+        (error "no weather-key was stored when this session started")
+        (let ((r (http-request weather-key
+                               (string-append "https://api.weather.example/v1/now?q=" city)
+                               "GET" "query:appid" '() "")))
+          (if (= (assoc-ref r "status") 200)
+              (assoc-ref r "body")
+              (format "weather service answered ~a" (assoc-ref r "status"))))))
+  '((doc . "Current weather for a city, as JSON from the weather service.")
+    (params . (("city" "string" "a city name, e.g. Lisbon")))
+    (egress . #t)))
+\end{scm}
+
+\begin{careful}
+A registered tool's body runs with the origin of whoever called it. When
+the model calls \code{weather}, the body runs as the model, and
+\code{(credential \ldots)} is refused to model-originated code. That is why
+the handle is looked up at the top of the file, at load time, and captured
+by the closure (Chapter~\ref{ch:forms}). Holding a handle grants nothing by
+itself: every use is still checked against the binding table.
+\end{careful}
+
+What comes back is tagged \code{external:http}, and it passes the same
+redaction as every tool result before the model reads it.
+
+\subsection{What the guard checks on the way out}
+
+\begin{itemize}
+  \item \textbf{The binding} for the handle: class, host, method, position.
+  \item \textbf{L1}: the payload (URL, headers, body) must not contain
+    anything that looks like a credential. A key typed into a URL by hand
+    is refused, even to an allowed host.
+  \item \textbf{L2}: content that came from your files or command output may
+    not go to a destination no binding names.
+\end{itemize}
+
+In the console, a network request that no binding covers yet offers
+\key{B}: save this exact binding and allow. The binding is then in the
+file, where you can read it and remove it.
+
+\section{Models are egress too}
+
+A model with a \code{credential} is a keyed destination like any other, and
+the same binding must allow its host. Every request is checked and logged
+as \code{egress.check}. When the app sets up a model for you, it writes
+exactly that binding: the server's host, \code{POST}, a bearer
+\code{Authorization} header.
+
+\section{MCP servers}
+
+MCP servers offer tools over the network. \nodwyn{} treats a server as a
+destination it does not trust. In the console, \textbf{Connections \(\rightarrow\)
+Tools} adds one (HTTPS only; a key goes to the keychain, bound to that host
+only), lists its tools for review, and records what you decided in
+\file{mcp.toml}:
+
+\begin{itemize}
+  \item \textbf{A pinned manifest.} You approve the exact tool list: every
+    name, description and schema is hashed. If the server later changes
+    any of it, new tasks withhold its tools and say why, until you review
+    again.
+  \item \textbf{Declared effects.} For each tool you say whether it
+    \emph{reads} or \emph{changes things}. A tool with no declaration is
+    treated as both: it asks every call and offers no standing answer.
+  \item \textbf{Nothing on by default.} A new server offers nothing, and a
+    new tool is off until you turn it on.
+\end{itemize}
+
+The model sees an MCP tool as \code{server\_\_tool} (model APIs refuse
+slashes in tool names); the console shows \code{server/tool}. Arguments are
+egress to the server's host, results are ingress: redacted, tagged, and
+never instructions.
+
+\begin{tip}
+The confirm for an MCP call is not really ``is this argument safe?''. It
+is ``do I want this third party to see this?''. The prompt names the
+server, the host and what is being sent, so you can answer that question.
+\end{tip}

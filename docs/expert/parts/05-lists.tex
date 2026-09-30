@@ -1,0 +1,223 @@
+\chapter{Lists, and thinking recursively}
+\label{ch:lists}
+
+Lisp stands for \emph{list processing}, and Scheme is a Lisp. Nearly every
+value \nodwyn{} hands your code is a list: the model's reply, a batch of tool
+calls, a tool's result, a session's events. Learn lists well and the rest of
+the book reads easily.
+
+\section{Pairs all the way down}
+
+A \textbf{pair} glues two values together. \code{cons} builds one,
+\code{car} takes the first half and \code{cdr} the second (the names are
+from a 1950s computer; everyone just says ``car'' and ``could-er''):
+
+\begin{scm}
+(cons 1 2)                  ;=> (1 . 2)
+(car (cons 1 2))            ;=> 1
+(cdr (cons 1 2))            ;=> 2
+\end{scm}
+
+A \textbf{list} is a chain of pairs whose last \code{cdr} is the empty
+list, \code{'()}:
+
+\begin{txt}
+   (basil mint sage)
+
+   [basil| ]--->[mint| ]--->[sage| ]---> ()
+\end{txt}
+
+\begin{scm}
+(cons 1 '(2 3))             ;=> (1 2 3)
+(car '(basil mint sage))    ;=> basil
+(cdr '(basil mint sage))    ;=> (mint sage)
+(cadr '(basil mint sage))   ;=> mint        the car of the cdr
+(null? '())                 ;=> #t
+(pair? '(1 . 2))            ;=> #t
+(list? '(1 . 2))            ;=> #f          no () at the end
+\end{scm}
+
+Lists in \nodwyn{} Scheme never change once made: there is no
+\code{set-car!}. You build new lists instead, which turns out to be exactly
+what you want when a strategy wraps another strategy: nobody can pull the
+rug from under anybody.
+
+\section{The everyday toolkit}
+
+\begin{scm}
+(list 1 (+ 1 1) 3)                   ;=> (1 2 3)
+(append '(1 2) '(3) '() '(4 5))      ;=> (1 2 3 4 5)
+(reverse '(1 2 3))                   ;=> (3 2 1)
+(length '(a b c))                    ;=> 3
+(list-ref '(a b c) 2)                ;=> c          counting from 0
+(list-tail '(a b c d) 2)             ;=> (c d)
+(iota 5)                             ;=> (0 1 2 3 4)
+(member "mint" '("basil" "mint" "sage"))   ;=> ("mint" "sage")
+(memq 'x '(a b))                     ;=> #f
+\end{scm}
+
+\section{Functions that eat lists}
+
+These four will carry most of your code:
+
+\begin{scm}
+(map (lambda (p) (string-append p "!")) '("basil" "mint"))
+                                     ;=> ("basil!" "mint!")
+(map + '(1 2 3) '(10 20 30))         ;=> (11 22 33)
+(filter odd? (iota 10))              ;=> (1 3 5 7 9)
+(fold + 0 '(1 2 3 4))                ;=> 10
+(sort '("mint" "basil" "sage") string<?)
+                                     ;=> ("basil" "mint" "sage")
+\end{scm}
+
+\code{fold} walks a list left to right carrying an \emph{accumulator}:
+\code{(fold f init list)} calls \code{(f acc x)} for each element. Folding
+with \code{cons} reverses a list, which is a nice way to see it working:
+
+\begin{scm}
+(fold (lambda (acc x) (cons x acc)) '() '(1 2 3))   ;=> (3 2 1)
+\end{scm}
+
+\code{for-each} is \code{map} for effects: it calls the function on each
+element and throws the results away. \code{apply} calls a function with a
+list as its arguments:
+
+\begin{scm}
+(apply max '(3 9 4))                 ;=> 9
+(apply + 1 2 '(3 4))                 ;=> 10    loose arguments, then a list
+\end{scm}
+
+\section{Thinking recursively}
+
+To handle a list, handle the empty list, and handle ``the first element and
+the rest''. The rest is a smaller list, so the same function handles it:
+
+\begin{scm}
+(define (sum l)
+  (if (null? l)
+      0
+      (+ (car l) (sum (cdr l)))))
+(sum '(1 2 3 4))                     ;=> 10
+\end{scm}
+
+That is how \code{map} itself could be written:
+
+\begin{scm}
+(define (my-map f l)
+  (if (null? l)
+      '()
+      (cons (f (car l)) (my-map f (cdr l)))))
+(my-map (lambda (x) (* 10 x)) '(1 2 3))    ;=> (10 20 30)
+\end{scm}
+
+And recursion handles shapes that loops find awkward, like lists inside
+lists:
+
+\begin{scm}
+(define (flatten x)
+  (cond ((null? x) '())
+        ((pair? x) (append (flatten (car x)) (flatten (cdr x))))
+        (else (list x))))
+(flatten '(1 (2 (3 4)) ((5))))       ;=> (1 2 3 4 5)
+\end{scm}
+
+\section{Tail calls: loops for free}
+
+Look at \code{sum} again. After the recursive call returns, there is still
+work to do: add \code{(car l)}. Each call waits for the next, so a list a
+million long needs a million waiting calls.
+
+Now look at this:
+
+\begin{scm}
+(define (count-up n)
+  (let loop ((i 0) (acc 0))
+    (if (> i n)
+        acc
+        (loop (+ i 1) (+ acc i)))))
+(count-up 1000000)                   ;=> 500000500000
+\end{scm}
+
+The recursive call to \code{loop} is the \emph{last thing} the function
+does: it is in \textbf{tail position}. Nothing waits for it, so Scheme
+reuses the current call instead of stacking a new one. This is a
+\textbf{proper tail call}, and it is guaranteed: a loop written this way
+runs in constant space, whether it goes around ten times or ten billion.
+The last expression of a \code{lambda}, a \code{begin}, a \code{let}
+body, a \code{cond} clause, \code{and}/\code{or} and both branches of
+\code{if} are all tail positions.
+
+\code{(let loop ((i 0) (acc 0)) \ldots)} is a \textbf{named let}. It
+defines a local function \code{loop} with those parameters and calls it
+straight away with those starting values. It is the idiom for loops in
+Scheme, and you will see it on almost every page of \nodwyn's own
+\file{internal/loop/*.scm}.
+
+\begin{careful}
+Non-tail recursion is fine for trees and short lists, but it uses the Go
+stack, and a recursion several hundred thousand calls deep exhausts it
+and ends the whole process rather than raising an error you can catch. When
+a list could be long (a log, a file's lines, a directory listing), write the
+loop in tail position with an accumulator, as \code{count-up} does.
+\end{careful}
+
+\section{Association lists: little dictionaries}
+
+A list of pairs is the simplest dictionary there is, and \nodwyn{} uses it
+everywhere: tool calls, results, a model's reply, tool metadata, parsed
+JSON.
+
+\begin{scm}
+(define plants '(("basil" . "daily") ("mint" . "weekly")))
+(assoc "mint" plants)                ;=> ("mint" . "weekly")
+(assoc-ref plants "mint")            ;=> "weekly"
+(assoc-ref plants "rose" "unknown")  ;=> "unknown"
+(assq 'b '((a . 1) (b . 2)))         ;=> (b . 2)
+\end{scm}
+
+\code{assoc-ref} is the one you will use most. It takes the list, the key
+and an optional default. \code{assoc} compares keys with \code{equal?}
+(good for strings), \code{assq} with \code{eq?} (fine for symbols).
+
+\begin{tip}
+A model's reply comes to your strategy as an association list with
+\emph{symbol} keys: \code{(assoc-ref reply 'tool-calls '())}. A parsed JSON
+object has \emph{string} keys: \code{(assoc-ref args "path")}. Mixing them
+up is the most common bug in a first strategy, and the symptom is a
+default value where you expected data.
+\end{tip}
+
+\section{Loops with \texttt{do}}
+
+For the occasional counting loop, \code{do} names its variables, their
+starting values and how each steps, then the test that ends it and what to
+return:
+
+\begin{scm}
+(do ((i 0 (+ i 1))
+     (acc '() (cons i acc)))
+    ((= i 3) acc))                   ;=> (2 1 0)
+\end{scm}
+
+Anything after the test clause runs once per round, before the step.
+Named \code{let} is usually clearer; \code{do} shines when you fill a
+vector (Chapter~\ref{ch:playground}).
+
+\begin{puzzle}[ 3: the harvest]
+Given \code{(define harvest '(("tomato" . 12) ("basil" . 3) ("bean" .
+40)))}, write \code{(total harvest)} that adds up the counts with
+\code{fold}, and \code{(biggest harvest)} that returns the name with the
+largest count. Then write \code{total} again with a named \code{let}.\ans{3}
+\end{puzzle}
+
+\begin{puzzle}[ 4: your own filter]
+Write \code{(keep pred l)} that behaves like \code{filter}, first with plain
+recursion, then in tail position with an accumulator (you will need
+\code{reverse} at the end). Why the \code{reverse}?\ans{4}
+\end{puzzle}
+
+\begin{puzzle}[ 5: zip]
+Write \code{(zip a b)} so that \code{(zip '(1 2 3) '(x y z))} is
+\code{((1 . x) (2 . y) (3 . z))}. There is a one-line answer using
+\code{map}.\ans{5}
+\end{puzzle}

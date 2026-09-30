@@ -1,0 +1,217 @@
+\chapter{Giving the model tools}
+\label{ch:tools}
+
+The fastest way to make \nodwyn{} better at \emph{your} project is to give
+the model tools that fit it: run the tests the way this project runs them,
+read a design record by number, summarise the build output. A tool is a
+Scheme procedure with a description, registered from your folder's
+\file{.nodwyn/init.scm}.
+
+\section{\texttt{init.scm}}
+
+When a session starts in a folder, \nodwyn{} loads its prelude, then the
+default loop, then \file{<folder>/.nodwyn/init.scm} if it exists.
+Everything that file defines lives in the session's global environment, and
+every tool it registers is offered to the model.
+
+A good \code{init.scm} registers and defines; it does not \emph{do}. The
+\nodwyn{} repository's own is five lines:
+
+\begin{scm}
+;; Loaded after the prelude when nodwyn starts in this repository (ADR 14).
+;; Everything here registers tools; nothing here performs an action.
+(load "dev/go.scm")
+(load "dev/git.scm")
+(load "dev/repo.scm")
+\end{scm}
+
+\code{load} evaluates a file's forms. It is a host primitive, so it goes
+through the guard like a read, and a relative path starts at the folder.
+
+\begin{careful}
+\file{.nodwyn/} is a protected path: every write to it is a security
+confirm, so no standing approval, turn approval or \code{-{}-yolo} can let
+the model change your \code{init.scm} behind your back. Files you
+\code{load} from elsewhere (\file{dev/} above) are ordinary files; if you
+keep tools there, review changes to them as you would review code, because
+they run with your authority in the next session.
+\end{careful}
+
+\section{\texttt{register-tool}}
+
+\begin{scm}
+(register-tool "plant-list"
+  (lambda () (lines (fs-read "plants.txt")))
+  '((doc . "List the plants growing in the garden.")
+    (params . ())))
+\end{scm}
+
+Three arguments: a name, a procedure, and metadata. The rules:
+
+\begin{itemize}
+  \item \code{doc} and \code{params} are required. The doc is the model's
+    only instruction about the tool, so write it for the model: what it
+    does, what it returns, when to prefer it.
+  \item Each parameter is \code{(name type doc)}. The model sends JSON; the
+    arguments are parsed as Chapter~\ref{ch:strings} described and passed
+    in the order you declared.
+  \item The name must be new. A builtin cannot be shadowed, and a tool
+    cannot be registered twice: the tool list is fixed for the whole
+    session, so the model's view of its tools never shifts under it (and
+    the model server can keep the start of the prompt cached).
+  \item \code{irreversible}, \code{egress} and \code{variadic} default to
+    \code{\#f}.
+\end{itemize}
+
+\begin{txt}
+you> :eval (register-tool "plant-list" (lambda () 1) '((doc . "x") (params . ())))
+error: register-tool: scheme: primitive "plant-list" already registered
+you> :eval (register-tool "fs-read" (lambda () 1) '((doc . "x") (params . ())))
+error: register-tool: scheme: primitive "fs-read" already registered
+you> :eval (register-tool "nodoc" (lambda () 1) '((params . ())))
+error: register-tool: doc and params are required
+\end{txt}
+
+\section{A garden toolkit}
+
+Put this in \file{.nodwyn/garden.scm} and load it from \code{init.scm}:
+
+\begin{scm}
+;; Garden tools: named, documented wrappers the model can call.
+
+(define (lines text)
+  (filter (lambda (l) (not (string-empty? (string-trim l))))
+          (string-split text "\n")))
+
+(register-tool "plant-list"
+  (lambda () (lines (fs-read "plants.txt")))
+  '((doc . "List the plants growing in the garden.")
+    (params . ())))
+
+(register-tool "plant-table"
+  (lambda (plants)
+    (md-table '("plant" "letters")
+              (map (lambda (p) (list p (string-length p))) plants)))
+  '((doc . "Show plant names as a Markdown table with their lengths.")
+    (params . (("plants" "list" "plant names, e.g. [\"basil\", \"mint\"]")))))
+
+(register-tool "count-lines"
+  (lambda (path)
+    (string-trim (assoc-ref (shell-exec "wc" (list "-l" path)) "stdout")))
+  '((doc . "Count the lines of a file in the garden.")
+    (params . (("path" "string" "a file relative to the garden")))))
+\end{scm}
+
+(\code{md-table} is the one from Chapter~\ref{ch:playground}.) The session
+banner now lists them, and \code{:tools} shows what the model reads:
+
+\begin{txt}
+tools count-lines fs-edit fs-find fs-list fs-read fs-write index-grep
+      plant-list plant-table read-definition second-look shell-exec
+
+you> :eval (display (plant-table (plant-list)))
+| plant | letters |
+| --- | --- |
+| tomatoes | 8 |
+| basil | 5 |
+you> :eval (count-lines "plants.txt")
+⚑ guard confirm shell-exec: shell-exec is irreversible → yes
+"2 plants.txt"
+\end{txt}
+
+Notice the last one. \code{count-lines} was registered as reversible, and
+it still asked, because the guard sees \emph{both} the call to your tool
+and the \code{shell-exec} inside it. A tool is never a way around the
+guard; it is a way to give an action a good name and a good description.
+Pair a tool that runs a command with a standing approval for exactly that
+command (\code{commands = ["wc -l"]} in \file{.nodwyn/allow.toml}), and it
+will run without asking.
+
+\section{The pattern that wins: \texttt{run}}
+
+\nodwyn's own \file{dev/go.scm} shows the pattern for command tools. One
+helper renders a command's result the way a person would want to read it:
+
+\begin{scm}
+;; run: execute and render for the model: exit status, then stdout and
+;; stderr as they were produced.
+(define (run cmd args)
+  (let ((r (shell-exec cmd args)))
+    (format "exit ~a~%~a~a"
+            (assoc-ref r "status")
+            (assoc-ref r "stdout")
+            (assoc-ref r "stderr"))))
+
+(register-tool "go-test"
+  (lambda (pkg) (run "go" (list "test" "-race" pkg)))
+  '((doc . "Run the Go tests with the race detector for a package pattern such as ./internal/log or ./... . Returns the exit status and output.")
+    (params . (("pkg" "string" "package pattern, e.g. ./internal/log or ./...")))))
+\end{scm}
+
+And one tool does something no shell command can: compose file primitives
+in Scheme, with no process at all:
+
+\begin{scm}
+;; read-adr: find docs/adr/NNNN-*.md by number and read it.
+(define (pad4 n)
+  (let ((s (number->string n)))
+    (string-append (substring "0000" 0 (- 4 (string-length s))) s)))
+
+(define (adr-file n)
+  (let ((prefix (format "~a-" (pad4 n))))
+    (let loop ((names (fs-list "docs/adr")))
+      (cond ((null? names) #f)
+            ((string-prefix? prefix (car names)) (string-append "docs/adr/" (car names)))
+            (else (loop (cdr names)))))))
+
+(register-tool "read-adr"
+  (lambda (n)
+    (let ((f (adr-file n)))
+      (if f (fs-read f) (error "no such ADR" n))))
+  '((doc . "Read architecture decision record number n from docs/adr.")
+    (params . (("n" "integer" "the ADR number, e.g. 10")))))
+\end{scm}
+
+When the tool raises an error, the model reads the error text as the tool
+result and can try again: \code{(error "no such ADR" n)} is a message to
+the model, so make it useful.
+
+\section{Good tools, bad tools}
+
+\begin{tip}
+\begin{itemize}
+  \item \textbf{Name the project's way of doing things.} A model will guess
+    \code{pytest}; your tool knows it is \code{tox -e py312 -{}- -x}.
+  \item \textbf{Return text a model can use}: an exit status first, then the
+    output; a table rather than raw data; the end of a long log, where the
+    summary is.
+  \item \textbf{Prefer list parameters to variadic ones.} The model's tool
+    schema cannot express ``any number of arguments''; a \code{list}
+    parameter it understands.
+  \item \textbf{Keep tools read-only when you can}, and let the model use
+    \code{fs-edit} for changes, so every change still shows you a diff.
+  \item \textbf{Don't mirror every command.} Each tool adds to the prompt
+    of every request. A handful of sharp tools beats thirty blunt ones.
+\end{itemize}
+\end{tip}
+
+\section{Trying things without a model}
+
+You do not need the model to test your tools. \code{:eval} calls them
+directly, with your origin, through the same guard:
+
+\begin{txt}
+you> :eval (plant-list)
+("tomatoes" "basil")
+you> :eval (primitive-info "plant-table")
+((doc . "Show plant names as a Markdown table with their lengths.")
+ (params ("plants" "list" "plant names, e.g. [\"basil\", \"mint\"]"))
+ (variadic . #f) (egress . #f) (irreversible . #f) (host . #f)
+ (origin . "scheme"))
+\end{txt}
+
+\begin{puzzle}[ 13: a harvest tool]
+Register a tool \code{harvest-report} with no parameters that reads
+\file{harvest.csv} (lines like \code{tomato,12}) and returns a Markdown
+table sorted by count, largest first, with a total row at the end.\ans{13}
+\end{puzzle}

@@ -1,0 +1,237 @@
+\chapter{Writing strategies}
+\label{ch:strategies}
+
+A \textbf{strategy} is whatever Scheme decides how a turn goes. The default
+one is a stack of small files; yours can replace it, or, much more often,
+wrap one piece of it. This chapter teaches the wrapping idiom, the one rule
+that keeps wrappers correct, and a set of strategies you can drop into an
+\code{init.scm} today.
+
+\section{How the default loop is layered}
+
+The session loads, in this order:
+
+\begin{enumerate}
+  \item the prelude (\code{assoc-ref}, \code{compose}\ldots);
+  \item \file{prompts.scm}, \file{strategy.scm} (\code{nodwyn-turn},
+    \code{agent-turn}, \code{ask-model}, the evidence loop),
+    \file{agents.scm} (\code{run-calls}, \code{sub-agent}),
+    \file{compact.scm}, \file{optimize.scm}, \file{plan.scm};
+  \item the working habits, each wrapping what came before:
+    \file{shell.scm}, \file{hygiene.scm}, \file{readdef.scm},
+    \file{envhint.scm}, \file{checkloop.scm};
+  \item your \file{.nodwyn/init.scm}.
+\end{enumerate}
+
+Because Scheme looks up a global name when it is \emph{called}, not when
+the calling function was defined, redefining \code{run-calls} in step 4
+changes what the default \code{agent-turn} from step 2 calls. That is the
+whole trick.
+
+\section{The wrapping idiom}
+
+\begin{scm}
+(define my-base-run-calls run-calls)       ; 1. keep what is there now
+(define (run-calls calls)                  ; 2. define the new one
+  ;; ... before ...
+  (let ((results (my-base-run-calls calls)))   ; 3. call the old one
+    ;; ... after ...
+    results))
+\end{scm}
+
+Step 1 saves the \emph{current} \code{run-calls}, which may itself be a
+habit that wraps another habit that wraps the original. Each layer adds one
+behaviour and passes the rest down. \nodwyn's own habits are written
+exactly like this, so yours compose with them.
+
+\begin{tip}
+Give the saved name a prefix that is yours (\code{my-base-},
+\code{tally-base-}). Two layers that both call their saved copy
+\code{base-run-calls} would overwrite each other's, and the second layer
+would call itself forever.
+\end{tip}
+
+\section{The one rule: one result per call, in order}
+
+\code{run-calls} must return exactly one result for each call it was
+given, in the same order. The default \code{agent-turn}, the evidence loop
+and the habits all walk calls and results side by side; a wrapper that
+drops a result shifts every later one onto the wrong call.
+
+So when your wrapper decides \emph{not} to run a call, skip it with a
+reason \emph{and} return a result for it. A helper makes that painless:
+
+\begin{scm}
+;; Skip one call with a reason, and return the result run-calls would.
+(define (skipped call reason)
+  (skip-tools (list call) reason)
+  (list (cons 'id (assoc-ref call 'id))
+        (cons 'name (assoc-ref call 'name))
+        (cons 'ok #f)
+        (cons 'value (string-append "Not executed: " reason))))
+\end{scm}
+
+\section{Strategy: stop a batch at the first failure}
+
+Models often send several calls at once, each assuming the previous one
+worked. This runs them one at a time and skips the rest of the batch after
+a failure, so the model re-plans from the error:
+
+\begin{scm}
+(define stop-base-run-calls run-calls)
+
+(define (run-calls calls)
+  (let loop ((cs calls) (out '()) (failed #f))
+    (cond ((null? cs) (reverse out))
+          (failed
+           (loop (cdr cs)
+                 (cons (skipped (car cs) "an earlier call in this batch failed") out)
+                 #t))
+          (else
+           (let ((r (car (stop-base-run-calls (list (car cs))))))
+             (loop (cdr cs) (cons r out) (not (assoc-ref r 'ok #f))))))))
+\end{scm}
+
+It runs the calls one at a time through the saved \code{stop-base-run-calls}
+(calling \code{run-calls} there would call itself forever), and after the
+first failure answers every remaining call with a skip and a result. In a real session, with
+the first call denied:
+
+\begin{txt}
+▸ fs-list {"path":"."}
+⚑ guard deny fs-list: user checker no-listing
+◂ fs-list error: fs-list: denied: user checker no-listing
+◂ fs-read error: Not executed: an earlier call in this batch failed
+\end{txt}
+
+\section{Strategy: count what each turn used}
+
+\begin{scm}
+(define tally '())
+
+(define (tally-add! name)
+  (let ((seen (assoc name tally)))
+    (set! tally
+          (if seen
+              (map (lambda (p) (if (equal? (car p) name) (cons name (+ 1 (cdr p))) p))
+                   tally)
+              (cons (cons name 1) tally)))))
+
+(define tally-base-run-calls run-calls)
+(define (run-calls calls)
+  (for-each (lambda (c) (tally-add! (assoc-ref c 'name))) calls)
+  (tally-base-run-calls calls))
+
+(define tally-base-agent-turn agent-turn)
+(define (agent-turn request)
+  (set! tally '())
+  (tally-base-agent-turn request)
+  (log-note (string-append "tools this turn: "
+                           (string-join (map (lambda (p) (format "~a x~a" (car p) (cdr p)))
+                                             (reverse tally))
+                                        ", "))))
+\end{scm}
+
+\begin{txt}
+◂ fs-read ok (45 bytes, 6 ms)
+...
+note: tools this turn: fs-list x1, fs-read x1
+\end{txt}
+
+\code{log-note} writes to the log and the transcript; the model never sees
+it. It is the right way for a strategy to leave a trail for you.
+
+\section{Strategy: a look-only switch}
+
+A variable you flip with \code{:eval} mid-session, that makes the model
+read and report but change nothing:
+
+\begin{scm}
+(define look-only #f)
+(define look-only-writers '("fs-write" "fs-edit" "shell-exec"))
+(define look-only-reason "look-only mode: read and report, change nothing")
+
+(define look-base-run-calls run-calls)
+(define (run-calls calls)
+  (if (not look-only)
+      (look-base-run-calls calls)
+      (map (lambda (c)
+             (if (member (assoc-ref c 'name) look-only-writers)
+                 (skipped c look-only-reason)
+                 (car (look-base-run-calls (list c)))))
+           calls)))
+\end{scm}
+
+\begin{txt}
+you> :eval (set! look-only #t)
+you> tidy up the notes folder
+\end{txt}
+
+The model's writes come back as \code{Not executed: look-only mode\ldots},
+which tells it plainly what happened, so it adapts instead of retrying.
+
+\begin{careful}
+Switches like this are conveniences, not security. The guard is the
+security: a strategy runs with harness origin and can only \emph{skip}
+calls. For a rule that must hold, write a \code{register-check} with
+\code{"deny"}.
+\end{careful}
+
+\section{Strategy: don't stop until the tests ran}
+
+The default loop already does this when nobody is watching (the
+\emph{evidence loop}, Chapter~\ref{ch:plans}). Here is a small version for
+an interactive session, to see how \code{add-message} works:
+
+\begin{scm}
+(define (ran-tests? calls)
+  (let any ((cs calls))
+    (and (pair? cs)
+         (or (and (equal? (assoc-ref (car cs) 'name) "shell-exec")
+                  (string-contains? (assoc-ref (car cs) 'args "") "test"))
+             (any (cdr cs))))))
+
+(define (agent-turn request)
+  (let loop ((reply (ask-model)) (tested #f) (nudged #f))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (cond ((pair? calls)
+             (run-calls calls)
+             (maybe-compact request reply)
+             (loop (ask-model) (or tested (ran-tests? calls)) nudged))
+            ((and (not tested) (not nudged))
+             (add-message "Before you finish, run the tests that cover your change and report the result.")
+             (loop (ask-model) tested #t))))))
+\end{scm}
+
+\code{add-message} speaks to the model as a user message and is logged as
+\code{harness.msg}. It is refused while calls from the latest reply are
+still unanswered, because a call must be followed by its result.
+
+This \code{agent-turn} replaces the default one, so it also drops the plan
+gate and \code{/optimize} handling. That is fine for an experiment. For
+keeps, wrap instead:
+
+\begin{scm}
+(define mine-base-agent-turn agent-turn)
+(define (agent-turn request)
+  (if (string-prefix? "/review" request)
+      (review-turn request)              ; your own command
+      (mine-base-agent-turn request)))
+\end{scm}
+
+\section{\texttt{ask-model} and cut-off replies}
+
+A reply that reaches the output limit comes back with \code{done} set to
+\code{"length"}. If it had no tool call to answer, the turn would simply
+end with half an answer. \code{ask-model} is \code{model-turn} with a
+remedy: it adds a note asking the model to be briefer and asks again, at
+most \code{output-cut-retries} (2) times. Use \code{ask-model} wherever you
+would use \code{model-turn}; the default loop, the planner and sub-agents
+all do.
+
+\begin{puzzle}[ 15: read before write]
+Write a \code{run-calls} wrapper that skips an \code{fs-edit} of a file the
+model has not read with \code{fs-read} earlier in the session, with the
+reason \code{"read the file before editing it"}. Keep the set of read paths
+in a variable. Remember the one rule.\ans{15}
+\end{puzzle}

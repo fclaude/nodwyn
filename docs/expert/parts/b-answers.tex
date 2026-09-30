@@ -1,0 +1,357 @@
+\chapter{Answers to the puzzles}
+\label{app:answers}
+
+Every answer here was run against the interpreter (puzzles 1--12) or loaded
+into a real session (13--18). There are other good answers; if yours
+works, it is right.
+
+\section*{1. Temperatures}
+
+\begin{scm}
+(define (c->f c) (+ (/ (* c 9) 5) 32))
+(define (frost? c) (<= c 0))
+(list (c->f 100) (c->f 21) (frost? -2) (frost? 3))   ;=> (212 69.8 #t #f)
+\end{scm}
+
+Multiplying before dividing keeps \code{(c->f 100)} an exact \code{212}:
+\code{/} returns an integer when the division comes out whole.
+
+\section*{2. Seasons}
+
+\begin{scm}
+(define (season month)
+  (cond ((member month '(12 1 2)) "winter")
+        ((member month '(3 4 5)) "spring")
+        ((member month '(6 7 8)) "summer")
+        (else "autumn")))
+
+(define (season month)
+  (case month
+    ((12 1 2) "winter")
+    ((3 4 5) "spring")
+    ((6 7 8) "summer")
+    (else "autumn")))
+
+(map season '(1 4 7 10 12))   ;=> ("winter" "spring" "summer" "autumn" "winter")
+\end{scm}
+
+\section*{3. The harvest}
+
+\begin{scm}
+(define harvest '(("tomato" . 12) ("basil" . 3) ("bean" . 40)))
+
+(define (total h) (fold (lambda (sum p) (+ sum (cdr p))) 0 h))
+
+(define (biggest h)
+  (car (fold (lambda (best p) (if (> (cdr p) (cdr best)) p best))
+             (car h) (cdr h))))
+
+(define (total h)
+  (let loop ((h h) (sum 0))
+    (if (null? h) sum (loop (cdr h) (+ sum (cdar h))))))
+
+(list (total harvest) (biggest harvest))   ;=> (55 "bean")
+\end{scm}
+
+\section*{4. Your own filter}
+
+\begin{scm}
+(define (keep pred l)
+  (cond ((null? l) '())
+        ((pred (car l)) (cons (car l) (keep pred (cdr l))))
+        (else (keep pred (cdr l)))))
+
+(define (keep pred l)
+  (let loop ((l l) (acc '()))
+    (cond ((null? l) (reverse acc))
+          ((pred (car l)) (loop (cdr l) (cons (car l) acc)))
+          (else (loop (cdr l) acc)))))
+
+(keep odd? (iota 10))   ;=> (1 3 5 7 9)
+\end{scm}
+
+The accumulator is built by \code{cons}ing onto its front, so it comes out
+backwards; one \code{reverse} at the end is cheaper than appending to the
+end of a list on every step.
+
+\section*{5. Zip}
+
+\begin{scm}
+(define (zip a b) (map cons a b))
+(zip '(1 2 3) '(x y z))   ;=> ((1 . x) (2 . y) (3 . z))
+\end{scm}
+
+\section*{6. A label maker}
+
+\begin{scm}
+(define (label plant days)
+  (if (= days 1)
+      (format "~a: water every day" (string-upcase plant))
+      (format "~a: water every ~a days" (string-upcase plant) days)))
+(list (label "basil" 2) (label "mint" 1))
+;=> ("BASIL: water every 2 days" "MINT: water every day")
+\end{scm}
+
+\section*{7. CSV to JSON}
+
+\begin{scm}
+(define (csv->json text)
+  (let* ((rows (map (lambda (line) (string-split line ","))
+                    (filter (lambda (l) (not (string-empty? l)))
+                            (string-split text "\n"))))
+         (keys (car rows)))
+    (json-emit (map (lambda (row) (map cons keys row)) (cdr rows)))))
+
+(csv->json "plant,water\nbasil,daily\ntomato,weekly")
+;=> "[{\"plant\":\"basil\",\"water\":\"daily\"},{\"plant\":\"tomato\",\"water\":\"weekly\"}]"
+\end{scm}
+
+\code{(map cons keys row)} is puzzle 5's zip: it turns a row into an
+association list with string keys, which \code{json-emit} writes as an
+object.
+
+\section*{8. A safe number parser}
+
+\begin{scm}
+(define (parse-ml text)
+  (let ((words (string-split (string-trim text) " ")))
+    (and (pair? words) (string->number (car words)))))
+
+(define (must-parse-ml text)
+  (or (parse-ml text) (error "not a quantity:" text)))
+
+(parse-ml "250 ml")                     ;=> 250
+(parse-ml "lots")                       ;=> #f
+(guard (e (#t (format "~a ~s" (assoc-ref e 'message)
+                                (car (assoc-ref e 'irritants)))))
+  (must-parse-ml "lots"))               ;=> "not a quantity: \"lots\""
+\end{scm}
+
+\section*{9. A watering log}
+
+\begin{scm}
+(define (make-log)
+  (let ((entries '()))
+    (lambda args
+      (if (null? args)
+          (reverse entries)
+          (set! entries (cons (car args) entries))))))
+
+(define water-log (make-log))
+(water-log "basil, Monday")
+(water-log "mint, Tuesday")
+(water-log)                 ;=> ("basil, Monday" "mint, Tuesday")
+\end{scm}
+
+\section*{10. Extend the calculator}
+
+Two clauses before the general one, because \code{if} and \code{let} must
+not evaluate all their parts first:
+
+\begin{scm}
+(define (calc expr env)
+  (cond ((number? expr) expr)
+        ((symbol? expr)
+         (let ((b (assq expr env)))
+           (if b (cdr b) (error "calc: unknown variable" expr))))
+        ((and (pair? expr) (eq? (car expr) 'if))
+         (if (not (= 0 (calc (cadr expr) env)))
+             (calc (caddr expr) env)
+             (calc (list-ref expr 3) env)))
+        ((and (pair? expr) (eq? (car expr) 'let))
+         (let* ((binding (car (cadr expr)))
+                (value (calc (cadr binding) env)))
+           (calc (caddr expr) (cons (cons (car binding) value) env))))
+        ((pair? expr)
+         (let ((op (car expr))
+               (args (map (lambda (e) (calc e env)) (cdr expr))))
+           (case op
+             ((+) (apply + args)) ((-) (apply - args))
+             ((*) (apply * args)) ((/) (apply / args))
+             ((max) (apply max args))
+             (else (error "calc: unknown operator" op)))))
+        (else (error "calc: cannot evaluate" expr))))
+
+(calc '(let ((x 4)) (if (- x 4) 1 2)) '())   ;=> 2
+\end{scm}
+
+Adding a binding by \code{cons}ing onto the front of \code{env} means an
+inner \code{let} hides an outer one of the same name, because \code{assq}
+finds the first match. That is lexical scope, in one line.
+
+\section*{11. Hanoi, counted}
+
+\begin{scm}
+(define (hanoi-count n)
+  (let loop ((k 0) (moves 0))
+    (if (= k n) moves (loop (+ k 1) (+ (* 2 moves) 1)))))
+(hanoi-count 10)   ;=> 1023
+\end{scm}
+
+Each extra disc doubles the work and adds one move: the recursion in
+\code{hanoi}, read as arithmetic. (The closed form is $2^n - 1$.)
+
+\section*{12. Roman numerals back}
+
+\begin{scm}
+(define (unroman s)
+  (let loop ((s s) (table roman-table) (n 0))
+    (cond ((string-empty? s) n)
+          ((null? table) (error "not a roman numeral:" s))
+          ((string-prefix? (cdar table) s)
+           (loop (substring s (string-length (cdar table))) table
+                 (+ n (caar table))))
+          (else (loop s (cdr table) n)))))
+
+(map unroman '("MMXXVI" "MCMXC" "XIV" "IV"))   ;=> (2026 1990 14 4)
+\end{scm}
+
+\section*{13. A harvest tool}
+
+\begin{scm}
+(define (harvest-rows)
+  (map (lambda (line)
+         (let ((cells (string-split line ",")))
+           (cons (car cells) (string->number (string-trim (cadr cells))))))
+       (filter (lambda (l) (not (string-empty? (string-trim l))))
+               (string-split (fs-read "harvest.csv") "\n"))))
+
+(register-tool "harvest-report"
+  (lambda ()
+    (let* ((rows (sort (harvest-rows) (lambda (a b) (> (cdr a) (cdr b)))))
+           (total (fold (lambda (sum p) (+ sum (cdr p))) 0 rows)))
+      (md-table '("crop" "count")
+                (append (map (lambda (p) (list (car p) (cdr p))) rows)
+                        (list (list "**total**" total))))))
+  '((doc . "The harvest so far from harvest.csv, as a Markdown table, largest first, with a total.")
+    (params . ())))
+\end{scm}
+
+\begin{txt}
+| crop | count |
+| --- | --- |
+| bean | 40 |
+| tomato | 12 |
+| basil | 3 |
+| **total** | 55 |
+\end{txt}
+
+\section*{14. Tests before commit}
+
+\begin{scm}
+(register-check "tests-before-commit" "deny"
+  (lambda (prim args)
+    (and (equal? prim "shell-exec")
+         (pair? args)
+         (equal? (car args) "git")
+         (pair? (cdr args))
+         (list? (cadr args))
+         (member "commit" (cadr args)))))
+\end{scm}
+
+\begin{txt}
+⚑ guard deny shell-exec: shell-exec is irreversible; user checker tests-before-commit
+\end{txt}
+
+Why it is weaker than it looks: it matches one spelling of one program.
+\code{bash -c "git commit -m x"}, \code{/usr/bin/git commit}, a
+\code{make} target or a registered tool that commits all get past it. A
+check sees a call's arguments, not its intent. For a rule that matters,
+deny the whole family (any \code{shell-exec} whose arguments mention
+\code{commit} anywhere, say), and remember the guard already asks you
+before every command that is not standing-approved.
+
+\section*{15. Read before write}
+
+\begin{scm}
+(define read-paths '())
+
+(define (call-path call)
+  (let ((a (guard (e (else '())) (json-parse (assoc-ref call 'args "{}")))))
+    (if (pair? a) (format "~a" (assoc-ref a "path" "")) "")))
+
+(define rbw-base-run-calls run-calls)
+(define (run-calls calls)
+  (map (lambda (c)
+         (let ((name (assoc-ref c 'name)) (path (call-path c)))
+           (if (and (equal? name "fs-edit") (not (member path read-paths)))
+               (skipped c "read the file before editing it")
+               (let ((r (car (rbw-base-run-calls (list c)))))
+                 (when (and (equal? name "fs-read") (assoc-ref r 'ok #f))
+                   (set! read-paths (cons path read-paths)))
+                 r))))
+       calls))
+\end{scm}
+
+\code{skipped} is the helper from Chapter~\ref{ch:strategies}. The
+\code{map} returns one result per call, in order: the one rule.
+
+\section*{16. Second opinion}
+
+\begin{scm}
+(define-agent-tool "second-opinion"
+  "Ask a second model the same question, without tools, for an independent opinion."
+  '(("question" "string" "the question, with the context the other model needs"))
+  (lambda (call args)
+    (narrow-context "Answer the question briefly and say how sure you are." "second-opinion")
+    (add-message (assoc-ref args "question"))
+    (let ((reply (model-turn "local" '((tools . #f)))))
+      (skip-tools (assoc-ref reply 'tool-calls '()) "tools are off: answer in text")
+      (fold-context)
+      (assoc-ref reply 'content ""))))
+\end{scm}
+
+The \code{skip-tools} matters: a local model offered no tools can still
+answer with a call, and the context cannot fold while a call is
+unanswered.
+
+\section*{17. Plan only for big asks}
+
+\begin{scm}
+(define (big-ask? request)
+  (or (> (string-length request) 200)
+      (string-contains? (string-downcase request) "refactor")))
+
+(define big-base-turn nodwyn-turn)
+(define (nodwyn-turn request)
+  (when (and (big-ask? request) (not (plan-recorded?)))
+    (record-plan (list (cons 'decision "plan") (cons 'plan house-plan)
+                       (cons 'reason "a big ask gets the house plan"))))
+  (big-base-turn request))
+\end{scm}
+
+In a supervised run, a short request still gets a plan: the wrapped
+\code{nodwyn-turn} underneath runs the default plan gate whenever
+\code{(plan-required?)}, so the control model drafts one. And even if you
+replaced \code{nodwyn-turn} entirely, the core would refuse anything
+irreversible until a plan is recorded. You cannot plan less than the run
+requires; you can only plan your own way.
+
+\section*{18. Your own habit}
+
+\begin{scm}
+(define permhint-hints 2)
+(define permhint-given 0)
+(define permhint-hint
+  "\n[hint: Permission denied: check whether the file is executable (ls -l), and run it with its interpreter or chmod +x it]")
+
+(define permhint-base-run-calls run-calls)
+(define (run-calls calls)
+  (let ((results (permhint-base-run-calls calls)))
+    (for-each
+     (lambda (c r)
+       (when (and (< permhint-given permhint-hints)
+                  (equal? (assoc-ref c 'name) "shell-exec")
+                  (string-contains? (format "~a" (assoc-ref r 'value "")) "Permission denied"))
+         (set! permhint-given (+ permhint-given 1))
+         (fold-result (assoc-ref c 'id)
+                      (string-append (format "~a" (assoc-ref r 'value "")) permhint-hint))))
+     calls results)
+    results))
+\end{scm}
+
+\code{for-each} over two lists walks calls and results together, which
+only works because \code{run-calls} keeps the one rule. The hint starts
+with \code{"\textbackslash n[hint:"}, the convention \file{shell.scm}
+recognises, so the shell habit still renders the result as plain text with
+your hint after it.

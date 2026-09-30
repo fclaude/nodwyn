@@ -1,0 +1,74 @@
+\chapter*{Before we start}
+\addcontentsline{toc}{chapter}{Before we start}
+
+\nodwyn{} is an agent that works in your folders: it reads, writes, runs your
+tests and talks to a language model. What makes it different from the other
+agents you may have tried is a promise it keeps no matter what the model says:
+\textbf{nothing happens to your computer without passing one checkpoint}, and
+everything that does happen is written down first. The model proposes; you
+nod. That is where the name comes from.
+
+The second thing that makes it different is that almost everything above that
+checkpoint is written in a small, friendly language, \textbf{Scheme}, and you
+can change it. The loop that asks the model and runs its tools, the prompts
+it sends, the planner, the context compaction, the sub-agents, the habits
+that make it good at fixing bugs: all of it is Scheme you can read, wrap,
+replace or delete, from a file in your project.
+
+This book takes you from ``what is this?'' to ``I rewired how it works in my
+repository this morning.'' It is organised as a walk:
+
+\begin{description}[leftmargin=1.2em,labelindent=0pt]
+  \item[Part I, Meeting nodwyn] what it is, how to start it, and the
+    different ways to reach it: the app, the browser, the terminal, your
+    phone.
+  \item[Part II, Scheme, the Fun Part] the language, from nothing, with
+    puzzles. You do not need to know Lisp. You will by the end.
+  \item[Part III, Scheme Meets the World] how Scheme touches files and
+    programs through \emph{primitives}, why every one of them passes the
+    \emph{guard}, and how to give the model tools of your own.
+  \item[Part IV, Steering the Loop] the agent loop itself: turns,
+    strategies, contexts, sub-agents, plans, runs, and the working habits
+    that ship by default.
+  \item[Part V, Operating Like an Expert] keys and models, workspaces and
+    undo, reading the log, and using \nodwyn{} from anywhere.
+\end{description}
+
+\section*{How to read it}
+
+Every chapter has boxes:
+
+\begin{tryit}
+Something to type. Do it: the book is written to be tried, and every Scheme
+program in it was run against the real interpreter before it was printed.
+\end{tryit}
+
+\begin{tip}
+The kind of thing you would otherwise learn from a year of use.
+\end{tip}
+
+\begin{careful}
+A sharp edge, and how not to cut yourself on it.
+\end{careful}
+
+\begin{puzzle}
+A small problem to solve in Scheme. Answers are in
+Appendix~\ref{app:answers}.
+\end{puzzle}
+
+When the book shows a session, lines starting with \code{you>} are what you
+type; everything else is what \nodwyn{} prints. When it shows Scheme, the
+result appears after a \code{;=>} comment:
+
+\begin{scm}
+(+ 1 2)          ;=> 3
+\end{scm}
+
+\section*{Where the truth lives}
+
+This book was written from the repository: \file{docs/scheme.md} (the
+language contract), \file{docs/manual.md}, the ADRs in \file{docs/adr/}, the
+Scheme files in \file{internal/loop/}, and the source. When the book and the
+repository disagree, the repository is right and the book has a bug. The
+book-sized companion \file{docs/book/nodwyn.pdf} tells the story of how
+\nodwyn{} was designed and built; this one is about using it well.

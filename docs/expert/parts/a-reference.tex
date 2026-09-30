@@ -1,0 +1,85 @@
+\chapter{Scheme quick reference}
+\label{app:reference}
+
+The whole language on a few pages. \file{docs/scheme.md} is the contract;
+this is the summary.
+
+\section*{Syntax}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\code{; comment}, \code{\#| block |\#} & comments \\
+\code{42} \code{-7} \code{3.14} \code{1e3} & integers (64-bit), floats \\
+\code{\#t} \code{\#f} & booleans; only \code{\#f} is false \\
+\code{"text\textbackslash n"} & string with escapes \\
+\code{"""raw"""} & raw string; indented block when \code{"""} is followed by a newline \\
+\code{'x} \code{`x} \code{,x} \code{,@x} & quote, quasiquote, unquote, splice \\
+\code{(a . b)} & a pair \\
+\code{\#(1 2 3)} & a vector \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section*{Special forms}
+
+\code{define}, \code{lambda}, \code{if}, \code{cond} (with \code{=>} and
+\code{else}), \code{case}, \code{and}, \code{or}, \code{when},
+\code{unless}, \code{let}, named \code{let}, \code{let*}, \code{letrec},
+\code{do}, \code{begin}, \code{set!}, \code{quote}, \code{quasiquote},
+\code{guard}, \code{with-output-to-string}.
+
+\section*{Builtins}
+
+\begin{description}[leftmargin=1.2em,labelindent=0pt,itemsep=0.3em]
+  \item[Numbers] \code{+ - * /}, \code{= < > <= >=}, \code{quotient
+    remainder modulo}, \code{abs min max}, \code{floor ceiling round
+    truncate}, \code{exact inexact}, \code{expt sqrt}, \code{number?
+    integer? float? zero? positive? negative? even? odd?},
+    \code{number->string string->number}.
+  \item[Booleans, sameness] \code{not boolean? eq? eqv? equal?}.
+  \item[Pairs and lists] \code{cons car cdr caar cadr cdar cddr caddr
+    cdddr}, \code{list list? pair? null?}, \code{length append reverse},
+    \code{list-ref list-tail iota}, \code{memq member assq assoc},
+    \code{map for-each filter fold sort apply}.
+  \item[Vectors] \code{vector vector? vector-length vector-ref vector-set!
+    vector->list list->vector}.
+  \item[Strings] \code{string? string-length string-append substring},
+    \code{string=? string<?}, \code{string-upcase string-downcase
+    string-trim}, \code{string-split string-join}, \code{string-contains?
+    string-prefix? string-suffix? string-replace}, \code{string->symbol
+    symbol->string symbol?}, \code{format}.
+  \item[Output] \code{display write newline}.
+  \item[Control] \code{procedure? void error}.
+  \item[JSON] \code{json-parse json-emit}.
+  \item[Provenance] \code{taint-of tainted?}; \code{wipe box} (user only).
+  \item[Meta] \code{primitives primitive-info register-tool load handle?};
+    \code{register-check} (user only).
+  \item[Prelude] \code{assoc-ref identity compose string-empty?}.
+\end{description}
+
+\section*{In a session}
+
+\begin{description}[leftmargin=1.2em,labelindent=0pt,itemsep=0.3em]
+  \item[Files] \code{fs-read fs-write fs-edit fs-list fs-find index-grep}.
+  \item[Programs] \code{shell-exec}.
+  \item[Places] \code{scratch-dir repository workspace}.
+  \item[Memory] \code{project-notes project-notes-save session-list
+    session-events}.
+  \item[Keys and network] \code{credential credential-register http-request
+    policy-read policy-write}; the judge: \code{jev-noul jev-score
+    jev-choice}.
+  \item[The loop] \code{model-turn run-tools skip-tools answer-call
+    add-message log-note fold-result narrow-context fold-context widen
+    session-system-prompt model-info model-names window-limits unattended?
+    plan-required? plan-recorded? record-plan reload}.
+  \item[Defined in Scheme by the loop] \code{nodwyn-turn agent-turn
+    ask-model run-calls sub-agent define-agent-tool plan-gate maybe-compact
+    compact-context evidence-loop optimize-turn} and the prompts.
+\end{description}
+
+\section*{Not in the language}
+
+\code{call/cc}, \code{dynamic-wind}, macros, \code{eval}, characters,
+string mutation, \code{set-car!}/\code{set-cdr!}, fractions and bignums,
+nested quasiquote.

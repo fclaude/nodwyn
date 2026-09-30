@@ -1,0 +1,146 @@
+\chapter{Reading the log}
+\label{ch:log}
+
+Experts answer ``what happened?'' from the log, not from memory. Every
+session is one file of JSON lines, and everything you saw (and some things
+you did not) is in it.
+
+\section{Finding a session}
+
+\begin{sh}
+nodwyn sessions                          # id, start, state, folder, first message
+nodwyn replay SESSION                    # the transcript, rebuilt from the file
+nodwyn replay SESSION --show-thinking    # with the model's thinking
+\end{sh}
+
+\begin{txt}
+# session 20260930T201929Z-fd1fbe10 — demo ollama @ /home/you/garden (9 tools)
+
+you> Summarize this folder
+▸ fs-list {"path":"."}
+▸ fs-read {"path":"README.md"}
+◂ fs-list ok (37 bytes)
+◂ fs-read ok (45 bytes)
+## What's here
+...
+# end (2026-09-30T20:19:30Z)
+\end{txt}
+
+The file itself is
+\file{\textasciitilde/.local/share/nodwyn/sessions/SESSION.jsonl}. Each line
+has a \code{seq}, a timestamp, the session id, a \code{kind} and a
+\code{payload}:
+
+\begin{txt}
+{"seq":6,"ts":"2026-09-30T20:19:29.770583Z","session":"20260930T201929Z-fd1fbe10",
+ "kind":"guard.decision",
+ "payload":{"args":"(\".\")","decision":"allow","origin":"model","prim":"fs-list"}}
+\end{txt}
+
+\section{The event kinds}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\code{session.start}, \code{session.resume}, \code{session.end} & lifecycle; no \code{session.end} after a crash \\
+\code{user.msg}, \code{harness.msg} & what you sent; what a strategy added with \code{add-message} \\
+\code{llm.req}, \code{llm.resp} & each model request (with its hash and recipe) and reply \\
+\code{tool.call}, \code{tool.result} & each call and its one result \\
+\code{guard.decision} & every allow, confirm and deny, with checker, reason and answer \\
+\code{egress.check}, \code{jev.req} & keyed requests: binding lookup; judge calls \\
+\code{gate.plan} & the plan gate's outcome \\
+\code{context.narrow}, \code{context.fold}, \code{context.widen}, \code{result.fold} & window shaping \\
+\code{turn.checkpoint}, \code{turn.end} & budget checkpoints; the durable end of a turn, with its outcome \\
+\code{run.state}, \code{run.turn}, \code{run.checkpoint} & supervised runs \\
+\code{eval.req}, \code{eval.result} & your \code{:eval}s \\
+\code{redact.event} & a redaction: where and which class, never the value \\
+\code{cred.register}, \code{binding.change}, \code{approval.change} & keys and policy \\
+\code{file.version}, \code{attach} & kept versions; attachments \\
+\code{summary}, \code{summary.drop} & reviewed summaries \\
+\code{note} & \code{log-note} from a strategy \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{\texttt{jq} recipes}
+
+\begin{sh}
+F=~/.local/share/nodwyn/sessions/SESSION.jsonl
+
+jq -c '[.seq,.kind]' $F                                   # the outline
+jq -c 'select(.kind=="guard.decision") | .payload
+       | {prim,origin,decision,checker,reason}' $F        # every decision
+jq -c 'select(.kind=="guard.decision" and .payload.decision!="allow")
+       | .payload' $F                                     # only what was stopped
+jq -r 'select(.kind=="tool.result" and .payload.ok==false)
+       | "\(.seq) \(.payload.name): \(.payload.error)"' $F # failures
+jq -r 'select(.kind=="note") | .payload.text' $F           # strategy notes
+\end{sh}
+
+\begin{tip}
+A \code{guard.decision} with \code{origin} \code{harness} came from the
+loop's own strategy (the planner, compaction, a sub-agent's plumbing);
+\code{model} is the model's call or something a tool it called did;
+\code{user} is you. When a decision surprises you, \code{checker} tells you
+which rule made it and \code{reason} tells you why.
+\end{tip}
+
+\section{Exactly what the model saw}
+
+\code{llm.req} records a hash and the recipe of the window, not the whole
+prompt. Rebuild the request, byte for byte, from the log before it:
+
+\begin{sh}
+nodwyn replay SESSION --window 3
+\end{sh}
+
+\begin{txt}
+{
+  "Model": "demo",
+  "Messages": [
+    {
+      "role": "system",
+      "content": "You are nodwyn, a coding agent working inside the repository at ...
+\end{txt}
+
+The command checks the rebuilt request against the recorded hash and
+refuses to print a mismatch. It never calls the model or runs a tool. This
+is the tool for ``why did the model do \emph{that}?'': read what it was
+actually shown.
+
+\section{Summaries you write}
+
+For a long conversation you want to keep working in, you can replace a
+finished stretch with a summary you wrote and reviewed:
+
+\begin{sh}
+nodwyn summary --from 12 --through 41 --text summary.txt SESSION   # add
+nodwyn summary SESSION                                              # list
+nodwyn summary --drop SUMMARY_SEQ SESSION                           # revoke
+\end{sh}
+
+The span must start at a \code{user.msg} and end at a finished reply. The
+window then shows the summary, labelled as a revocable summary, in place of
+that span; the original events stay in the log, and dropping the summary
+brings them back. The latest two user turns are never replaced. Close the
+session before editing its summaries.
+
+\section{When something is wrong}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{symptom} & \textbf{look at} \\
+\midrule
+\code{no control model is configured} & add the \code{[control]} table it prints \\
+\code{control model \ldots\ unreachable} & the \code{url}; for Ollama, \code{curl URL/api/version} \\
+first turn takes 10--60 s & a cold prompt cache, or another client holds the model server \\
+every request is slow & the prefix cache misses: look for trims (the \code{elided} count jumping) or folds in \code{:log} \\
+the model loops on a denied call & the progress guard will stop it; read the \code{guard.decision}s first \\
+\code{hard stop: too many tool calls} & the turn ended; ask for something smaller \\
+a tool call errored & \code{:log 20}: the \code{tool.result} has the exact error the model saw \\
+a file changed without a confirm & \code{:allow}: a standing approval covered it; the decision's reason names it \\
+a strategy seems ignored & \code{:eval agent-turn} prints which procedure is installed; \code{(reload)} returns notes \\
+\bottomrule
+\end{tabularx}
+\end{center}

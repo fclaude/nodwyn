@@ -1,0 +1,151 @@
+\chapter{Anatomy of a turn}
+\label{ch:turn}
+
+Everything so far happened \emph{inside} a turn or next to one. Now we look
+at the turn itself, and at the small set of primitives from which the whole
+agent loop is built.
+
+\section{From your message to Scheme}
+
+When you send a message, the session records it (redacted) as a
+\code{user.msg} event and calls one Scheme procedure:
+
+\begin{scm}
+(define (nodwyn-turn request)
+  (when (plan-required?) (plan-gate request))
+  (agent-turn request))
+\end{scm}
+
+That is the real definition, from \file{internal/loop/strategy.scm}. The
+plan gate only runs first when the turn \emph{must} plan (a supervised
+run's turns do), so that a project which redefines \code{agent-turn} still
+plans in a run. Then \code{agent-turn} does the work.
+
+\section{The loop in its simplest form}
+
+Strip away the habits and the default \code{agent-turn} is this:
+
+\begin{scm}
+(define (agent-turn request)
+  (let loop ((reply (model-turn)))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls)
+        (run-tools calls)
+        (loop (model-turn))))))
+\end{scm}
+
+Ask the model. If it asked for tools, run them and ask again. If it did
+not, the turn is over. Everything else in \file{internal/loop/} is
+decoration on this skeleton, and every piece of decoration is Scheme you can
+read.
+
+\section{The loop's primitives}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\code{(model-turn [name [options]])} & ask a model once; returns its reply \\
+\code{(run-tools calls)} & run calls in order, each through the guard; one result per call \\
+\code{(skip-tools calls reason)} & answer calls without running them: the model reads \code{Not executed: reason} \\
+\code{(answer-call call text)} & answer one call with your own text, as a success \\
+\code{(add-message text)} & say something to the model, as a user message \\
+\code{(log-note text)} & write a note into the log; the model never sees it \\
+\code{(unattended?)} & is anybody approving? (\code{-{}-yolo}, a run's auto-approve) \\
+\code{(plan-required?)}, \code{(plan-recorded?)} & must this turn plan; has it? \\
+\code{(repository)}, \code{(workspace)} & where we are \\
+\code{(model-info [name])}, \code{(model-names)}, \code{(window-limits)} & what we are talking to, and how big the window is \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+These are hidden from the model and refused outside a turn:
+
+\begin{txt}
+you> :eval (model-turn)
+error: model-turn: only available while a turn is running
+\end{txt}
+
+\subsection{A reply}
+
+\code{model-turn} returns an association list with symbol keys:
+
+\begin{scm}
+((content . "Here is the plan...")
+ (thinking . "")
+ (done . "tool_calls")         ; why it stopped: "stop", "length", "tool_calls"
+ (tool-calls . (((id . "c1") (name . "fs-list") (args . "{\"path\":\".\"}"))
+                ((id . "c2") (name . "fs-read") (args . "{\"path\":\"README.md\"}"))))
+ (prompt-tokens . 299)
+ (output-tokens . 44))
+\end{scm}
+
+Note that a call's \code{args} is the model's JSON \emph{text}. Parse it
+when you need it: \code{(json-parse (assoc-ref call 'args "\{\}"))}.
+
+\code{options} controls what the model is offered:
+
+\begin{scm}
+(model-turn "control" '((tools . #f)))                 ; offer no tools
+(model-turn "control" '((tools "fs-read" "fs-list")))  ; offer only these
+(model-turn "coder")                                   ; ask another model
+\end{scm}
+
+\subsection{A result}
+
+\code{run-tools} returns one association list per call:
+\code{id}, \code{name}, \code{ok}, \code{value} (the text the model reads,
+carrying the tool's provenance), \code{error} and \code{denied}.
+
+\section{What the core promises, whatever you write}
+
+This is the most important section in Part~IV. A strategy runs with
+\emph{harness} origin: it can decide a lot, but some things are enforced in
+Go, and no Scheme can change them.
+
+\begin{itemize}
+  \item \textbf{Only the model's calls.} A strategy runs or skips calls the
+    model actually made, each at most once, with the arguments the model
+    sent. It cannot fabricate a call or rewrite one.
+  \item \textbf{Every call gets exactly one result.} Calls a strategy leaves
+    unanswered are skipped automatically when it asks the model again or
+    the turn ends. The conversation is never left malformed.
+  \item \textbf{Tools run as the model.} The tools a strategy runs execute
+    with \emph{model} origin, as if the model had called them directly. A
+    strategy cannot launder a call into user origin.
+  \item \textbf{No policy changes.} \code{wipe}, \code{register-check} and
+    \code{policy-write} are user-only.
+  \item \textbf{Stops are final.} Budgets, the tool-call limit, the progress
+    guard, and a log that can no longer be written end the turn with an
+    error no \code{guard} clause can catch.
+\end{itemize}
+
+\begin{tip}
+Because these are guaranteed, you can experiment with strategies freely.
+The worst a buggy strategy can do is waste a turn: it cannot make the guard
+more permissive, and it cannot keep going past a budget.
+\end{tip}
+
+\section{Watching a turn in the log}
+
+Here is a real turn: the model listed the folder and read the README, then
+answered. \code{:log} shows the events:
+
+\begin{txt}
+    3 llm.req         {RequestHash:98a9311e... Model:demo Messages:2 Tools:9 ...}
+    4 llm.resp        {ToolCalls:[{ID:c1 Name:fs-list ...} {ID:c2 Name:fs-read ...}]}
+    5 tool.call       {ToolCall:{ID:c1 Name:fs-list Args:{"path":"."}} Origin:model}
+    6 guard.decision  {Prim:fs-list Origin:model Decision:allow ...}
+    7 tool.result     {ID:c1 Name:fs-list OK:true Value:[".nodwyn/","README.md","plants.txt"]}
+    8 tool.call       {ToolCall:{ID:c2 Name:fs-read Args:{"path":"README.md"}} Origin:model}
+    9 guard.decision  {Prim:fs-read Origin:model Decision:allow ...}
+   10 tool.result     {ID:c2 Name:fs-read OK:true Value:A small garden: ...}
+   11 llm.req         {RequestHash:8d677869... Model:demo Messages:5 Tools:9 ...}
+   12 llm.resp        {Content:## What's here ...}
+   14 turn.end        {Text:turn ended Outcome:completed}
+\end{txt}
+
+Request, reply, and for each call: the call, the guard's decision, the
+result. The second request has five messages because it was rebuilt from
+the log: the system prompt, your message, the model's reply and the two
+results. You will read logs like this all the time in
+Chapter~\ref{ch:log}.

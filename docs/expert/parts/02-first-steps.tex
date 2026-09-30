@@ -1,0 +1,233 @@
+\chapter{First steps}
+\label{ch:first}
+
+\section{Getting nodwyn}
+
+\nodwyn{} is one Go program. From a checkout of the repository:
+
+\begin{sh}
+make build        # bin/nodwyn, for the terminal
+make app          # bin/Nodwyn.app on macOS: the same program with a window
+\end{sh}
+
+You need Go, and \code{rg} (ripgrep) on your \code{PATH} for text search.
+You also need a \textbf{model} to talk to: \nodwyn{} has no built-in model.
+Any Ollama server works, on your machine or another one on your network, and
+so does any server that speaks the OpenAI chat-completions protocol.
+
+\section{The quickest start: the app}
+
+Open \file{Nodwyn.app} (or run \code{nodwyn app}). The first time, Home asks
+which model to use: an Ollama address or an OpenAI-compatible server, and
+for the latter a key. The choice is written to the \code{[control]} table of
+your \file{config.toml}; a key never goes there. It goes into the encrypted
+keychain, which the app asks you to create with a passphrase, and a
+\emph{binding} allows that key only for that server's host.
+
+Then pick a folder, type what you want, and watch. When \nodwyn{} wants to
+change a file or run a command, the task view shows you the diff or the
+command with the guard's reasons, and buttons:
+
+\begin{center}
+\begin{tabular}{cl}
+\toprule
+\textbf{key} & \textbf{meaning} \\
+\midrule
+\key{Y} & allow this once \\
+\key{T} & allow every write until this turn ends \\
+\key{A} & always allow under this folder (or this command prefix), for this task \\
+\key{B} & on a network request: save this binding and allow \\
+\key{N} & deny: the model is told it was refused and carries on \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Not every button appears on every prompt: \key{T} is for writes, \key{B}
+for egress, and some prompts (a write to \file{.nodwyn/}, content that looks
+like a key) offer only \key{Y} and \key{N}. More on why in
+Chapter~\ref{ch:primitives}.
+
+\section{The terminal way}
+
+Tell \nodwyn{} about your model in \file{config.toml}. \code{nodwyn paths}
+prints where it lives:
+
+\begin{txt}
+config:   /home/you/.config/nodwyn/config.toml
+bindings: /home/you/.config/nodwyn/bindings.toml
+keychain: /home/you/.config/nodwyn/keychain
+sessions: /home/you/.local/share/nodwyn/sessions
+\end{txt}
+
+\begin{toml}
+# ~/.config/nodwyn/config.toml
+[control]
+provider = "ollama"               # or "openai" for any chat-completions server
+url = "http://localhost:11434"
+model = "qwen3:8b"
+num_ctx = 81920                   # at least the window plus the reply reserve
+\end{toml}
+
+Then go to a folder and start a session:
+
+\begin{txt}
+$ cd ~/src/garden
+$ nodwyn
+control model: http://localhost:11434 qwen3:8b (ollama)
+nodwyn session 20260930T200043Z-e0550e21
+repo  /home/you/src/garden
+tools fs-edit fs-find fs-list fs-read fs-write index-grep read-definition second-look shell-exec
+:h for commands
+
+you> what grows in this garden?
+\end{txt}
+
+The banner tells you three important things: the \textbf{session id} (the
+name of its log), the \textbf{repo} (every path the model touches is pinned
+under it), and the \textbf{tools} the model is offered. You will learn to
+change that last line in Chapter~\ref{ch:tools}.
+
+\subsection{At the prompt}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\code{:q} & quit (the log gets a \code{session.end}) \\
+\code{:log [n]} & the last \emph{n} log events (default 20) \\
+\code{:tools} & the tools offered to the model, with their descriptions \\
+\code{:eval EXPR} & evaluate Scheme yourself, with \emph{user} origin \\
+\code{:thinking} & show or hide the model's thinking \\
+\code{:allow} & the standing approvals in effect \\
+\key{Ctrl-C} & abort the running turn; at an empty prompt, exit \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Confirms in the terminal}
+
+A write stops and shows you the diff:
+
+\begin{txt}
+─── confirm: fs-edit ("plants.txt" "basil" "basil\nmint")
+  • fs-edit is irreversible
+  • changes plants.txt
+  --- plants.txt
+  +++ plants.txt
+  @@ -1,2 +1,3 @@
+   tomatoes
+   basil
+  +mint
+allow? [y/N/a=always under plants.txt/t=all writes this turn]
+\end{txt}
+
+\code{y} is once; anything else, including just Enter, is no. \code{a}
+gives a \textbf{standing approval} for the rest of the session: for a write,
+the file's directory (a file at the top of the folder is approved on its
+own); for a command, its prefix (\code{go test},
+\code{rg}\ldots). \code{t} approves every further write until the turn ends,
+which is right when you plan to review everything with \code{git diff}
+afterwards; each auto-approved diff is still logged and shown, dimmed.
+
+\begin{tip}
+Read the bullet lines. \emph{``command line names a path outside the
+repository''} or \emph{``uses the network tool curl''} is the guard telling
+you what a yes would do, in plain words. Experts read them every time.
+\end{tip}
+
+\section{Try it: your first garden}
+
+\begin{tryit}
+Make a folder with a file and ask about it:
+\begin{sh}
+mkdir -p ~/garden && cd ~/garden
+printf 'tomatoes\nbasil\n' > plants.txt
+nodwyn
+\end{sh}
+Then, at the prompt, before asking the model anything:
+\begin{txt}
+you> :eval (fs-read "plants.txt")
+"tomatoes\nbasil\n"
+you> :eval (fs-list ".")
+("plants.txt")
+you> :eval (fs-read "../secret.txt")
+⚑ guard deny fs-read: path ../secret.txt is outside the repository ...
+error: fs-read: denied: path ../secret.txt is outside the repository ...
+\end{txt}
+You just called the same primitives the model calls, through the same
+guard. The only difference is the origin: yours is \code{user}.
+\end{tryit}
+
+\section{Budgets: how a turn stops}
+
+A turn runs until the model answers without asking for a tool, or until it
+hits a \textbf{budget}. There are four dimensions, each with a soft limit
+(a checkpoint that asks you whether to continue) and a hard one (a stop):
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{dimension} & \textbf{soft / hard} & \textbf{flag for the hard limit} \\
+\midrule
+tool calls & 50 / 500 & \code{-{}-max-tool-calls N} \\
+wall time & 20 minutes / 4 hours & \code{-{}-budget-wall 2h} \\
+model tokens & 1M / 10M reported & \code{-{}-budget-tokens N} \\
+irreversible actions & 25 / 200 attempts & \code{-{}-budget-actions N} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+At a checkpoint, \code{y} doubles the soft limit, \code{n} stops, and a
+number sets a new soft limit. Approvals and hard ceilings do not change.
+
+Independently of budgets, a \textbf{progress guard} ends a turn that goes in
+circles: the same call four times in a row, a denied call retried three
+times, or ten failures in a row. No Scheme can catch these stops. That is a
+feature: a strategy you write cannot accidentally keep a runaway turn alive.
+
+\section{The scratch directory}
+
+Every session gets a private scratch directory outside your folder, for
+throwaway files: a script that reproduces a bug, notes, temporary output.
+The model knows it as \code{\$TMPDIR}: commands run with \code{TMPDIR} set to
+it, and a path or command argument starting with \code{\$TMPDIR/} is
+rewritten to it before the guard sees it. Writes there need no approval.
+Nothing in it reaches your folder or its diff. A clean exit removes it; a
+resumed session gets a fresh one.
+
+\begin{tryit}
+\begin{txt}
+you> :eval (scratch-dir)
+"/home/you/.local/share/nodwyn/scratch/nodwyn-scratch-2026...-e0550e21-5431"
+\end{txt}
+\end{tryit}
+
+\section{Notes that survive the session}
+
+A project can keep notes from one session to the next: how its tests run,
+where things are. They live in \nodwyn's data directory, keyed by the
+folder's path, \emph{never} in the folder itself:
+
+\begin{scm}
+(project-notes)                         ;=> "" the first time
+(project-notes-save "Tests: go test ./... (needs rg on PATH)")
+\end{scm}
+
+The next session shows them to the model under a heading that calls them
+leads to check, not instructions. A save is capped at 8~KiB and redacted,
+and anything that looks like a credential needs your yes.
+
+\section{Unattended: \texttt{--yolo}}
+
+Sometimes nobody is watching: a benchmark, a CI job, a long task on a
+throwaway checkout. \code{-{}-yolo} answers \emph{ordinary} confirms with yes.
+It does not overrule refusals, and it refuses \emph{security} confirms
+rather than pretending someone said yes: writes to protected paths, content
+that looks like a key, a command line built out of tool output. With nobody
+watching, the default loop also changes its manners: it asks the model to
+work by evidence and ends a turn only when something changed and a test ran
+after it (Chapter~\ref{ch:plans}).
+
+\begin{careful}
+The guard makes \code{-{}-yolo} survivable, not safe. Use it on a copy, set
+budgets for the job, and read the log afterwards.
+\end{careful}

@@ -1,0 +1,178 @@
+\chapter{Plans, evidence and runs}
+\label{ch:plans}
+
+Two questions decide whether an agent is useful on real work: does it think
+before it acts, and does it know when it is actually done? \nodwyn{}
+answers both in Scheme: the \emph{plan gate} and the \emph{evidence loop}.
+Supervised runs are built on top of both.
+
+\section{The plan gate}
+
+Before a turn's work, \code{(plan-gate request)} may have a plan made. With
+a \textbf{judge} configured (Jev: its primitives registered and a
+\code{jev-key} credential stored and bound), it goes like this:
+
+\begin{enumerate}
+  \item The judge is asked \code{plan-needed-question}: does this request
+    need a plan? Below \code{plan-needed-threshold} (0.5), the turn just
+    proceeds.
+  \item A read-only sub-agent labelled \code{explorer} looks at the folder
+    for up to \code{plan-explore-rounds} (12) rounds (\code{fs-read},
+    \code{fs-list}, \code{index-grep}, \code{fs-find}), so the plan is not
+    written blind.
+  \item The control model drafts a plan in a narrowed context, offered no
+    tools, with the explorer's findings.
+  \item The judge scores the plan against the request. Below
+    \code{plan-accept-score} (0.7) the model revises it, at most
+    \code{plan-max-revisions} (3) times; the best plan wins.
+  \item The outcome is recorded as a \code{gate.plan} event, and the window
+    pins the plan into the system prompt under \code{plan-header} for the
+    rest of the turn.
+\end{enumerate}
+
+Without a judge, an ordinary interactive turn has no gate. If the judge's
+question fails, the model plans anyway, unscored (``degraded''). A judge
+that the guard refuses (its key is not bound) ends the turn, like any
+denial.
+
+\begin{txt}
+you> :eval (list plan-needed-threshold plan-accept-score plan-max-revisions
+                 plan-explore-rounds)
+(0.5 0.7 3 12)
+\end{txt}
+
+All of these are plain definitions you can change in \code{init.scm}, as
+are the prompts: \code{plan-system-prompt}, \code{plan-draft-prompt},
+\code{plan-revise-prompt}, \code{plan-explore-system},
+\code{plan-score-rubric} and \code{plan-score-levels}.
+
+\subsection{The one invariant}
+
+Whatever the Scheme does, the core holds one line: \textbf{when a turn
+must plan, nothing irreversible runs until a non-empty plan is recorded,
+and a turn that records none fails.} It enforces that a plan exists, not
+who wrote it. So a project with its own way of planning can record its own
+plan, as trusted project code:
+
+\begin{scm}
+(define house-plan
+  """
+  1. Read the files the request names, and nothing else yet.
+  2. Say what you found before changing anything.
+  3. Change one file at a time; run the checks after each.
+  """)
+
+(define house-base-turn nodwyn-turn)
+(define (nodwyn-turn request)
+  (unless (plan-recorded?)
+    (record-plan (list (cons 'decision "plan") (cons 'plan house-plan)
+                       (cons 'reason "the house plan"))))
+  (house-base-turn request))
+\end{scm}
+
+\begin{txt}
+    3 gate.plan       {Origin:gate Noul:plan Plan:1. Read the files the request names ...
+\end{txt}
+
+Note that this wraps \code{nodwyn-turn}, not \code{agent-turn}: the host
+calls \code{nodwyn-turn} for every message, so this runs even in a
+supervised run, and since a plan is then recorded, the default gate that
+runs next has nothing left to do. It \emph{wraps} rather than replaces,
+because a working habit (\file{checkloop.scm}) already wraps
+\code{nodwyn-turn} to remember the request for its \code{second-look}
+tool; replacing it outright would quietly switch that off. (The name is specific to \nodwyn{} so that a project's own
+\code{turn}, a counter say, can never shadow it by accident.)
+
+\section{The evidence loop}
+
+When nobody reviews the work as it happens, a model's ``I'm done'' is not
+enough. With \code{(unattended?)} (\code{-{}-yolo}) or in a supervised run,
+the default \code{agent-turn} runs the \textbf{evidence loop} instead of the
+plain one. It ends a turn on evidence:
+
+\begin{itemize}
+  \item A reply that stops before anything changed gets
+    \code{finish-no-change-message}.
+  \item A reply that stops after a change, with no test run since the last
+    edit, gets \code{finish-untested-message}.
+  \item At most \code{finish-reminders} (2) such reminders per turn.
+  \item After \code{unrunnable-after} (6) test commands in a row fail to run
+    at all, the model gets \code{(finish-unrunnable-message n)} once: finish
+    and report the change as unverified, rather than spend the budget on a
+    broken environment.
+\end{itemize}
+
+A command counts as a test run when its command line contains one of
+\code{test-command-words}: \code{pytest}, \code{go test},
+\code{cargo test}, \code{npm test}, \code{make test}, \code{rspec} and two
+dozen more. A test run with failures still counts as a run; only commands
+that never got as far as running a test count against
+\code{unrunnable-after}.
+
+\begin{tip}
+If your project runs its tests some other way, teach the loop:
+\begin{scm}
+(define test-command-words
+  (append test-command-words '("./run_tests" "bazel test" "just check")))
+\end{scm}
+Otherwise the evidence loop will keep telling the model it has not tested,
+however many times it runs your test script.
+\end{tip}
+
+\section{The unattended system prompt}
+
+\code{(system-prompt repo)} returns \code{(unattended-system-prompt repo)}
+when nobody approves, and \code{(interactive-system-prompt repo)}
+otherwise. The unattended one is about how to work (understand the
+request, set up a check that runs, make the whole change, validate by
+running it, report honestly), instead of announcing each call to someone
+who approves it. Both include \code{working-rules}
+(Chapter~\ref{ch:habits}).
+
+\section{Supervised runs}
+
+\begin{sh}
+nodwyn daemon                       # in one terminal, or the app
+nodwyn run --task task.md --repo . --max-turns 20 --budget-wall 2h
+\end{sh}
+
+A run is a sequence of turns driven by the daemon, not by you typing. Each
+turn:
+
+\begin{enumerate}
+  \item sends the message \code{(run-turn-prompt task complete-line turn
+    max-turns)} makes: the task, and a request to do one unfinished plan
+    step and report;
+  \item must plan (\code{plan-required?} is true), so \code{nodwyn-turn}
+    runs the plan gate first, with or without a judge;
+  \item runs the evidence loop, since nobody watches each call.
+\end{enumerate}
+
+Between turns you get a \textbf{run checkpoint}: a yes continues and grants
+nothing else, no file, command or network permission. The run ends when:
+
+\begin{itemize}
+  \item the model's final plain reply ends with the exact line
+    \code{NODWYN\_RUN\_COMPLETE}, which is the model's claim, not proof: read
+    the transcript and run your checks;
+  \item \code{-{}-max-turns} or \code{-{}-budget-wall} runs out;
+  \item you stop it (\code{nodwyn run stop}, or Abort in the console), or a
+    refusal, progress stop or provider failure does.
+\end{itemize}
+
+\code{nodwyn run resume SESSION} continues a stopped run with the same
+deadline and turn count, and restores no temporary approvals. A turn that
+was interrupted without a recorded outcome is never assumed to have
+succeeded: the driver refuses to guess.
+
+\begin{careful}
+A run's \code{-{}-yolo} is a property of \emph{that run}. A daemon left
+running never auto-approves a session someone opens later from a browser.
+\end{careful}
+
+\begin{puzzle}[ 17: plan only for big asks]
+Write a \code{nodwyn-turn} that records your house plan only when the
+request is longer than 200 characters or mentions ``refactor'', and
+otherwise goes straight to \code{agent-turn}. What happens in a supervised
+run when the request is short?\ans{17}
+\end{puzzle}

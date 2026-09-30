@@ -1,0 +1,70 @@
+\chapter{Working like an expert}
+\label{ch:expert}
+
+You now know every part of \nodwyn. This last chapter is about habits: how
+people who use it every day set it up, work with it, and keep it honest.
+
+\section{Set up a project once}
+
+\begin{enumerate}
+  \item \textbf{Standing approvals for the boring, safe commands}: tests,
+    build, lint, \code{git status}, \code{git diff}. In
+    \file{.nodwyn/allow.toml}, so they travel with the repository.
+  \item \textbf{A few sharp tools} in \file{.nodwyn/init.scm}: how this
+    project runs its tests, how it builds, one or two readers that know the
+    project's layout (like \code{read-adr}).
+  \item \textbf{Teach the evidence loop your test command}, if it is not a
+    common one (\code{test-command-words}).
+  \item \textbf{Project facts in the system prompt}, by wrapping
+    \code{system-prompt}: what not to touch, how things are done here.
+  \item \textbf{Deny checks for the hard rules}: generated folders, package
+    installs, whatever must never happen here.
+  \item \textbf{Commit it}, so everyone who works in the repository gets the
+    same \nodwyn.
+\end{enumerate}
+
+\section{Work in small, reviewable turns}
+
+\begin{itemize}
+  \item Name the file, the pattern to follow and the test to run. A local
+    model does well with a paragraph and badly with a page.
+  \item Read every diff at the confirm; an \code{fs-write} of a whole
+    existing file deserves suspicion, an \code{fs-edit} is usually small.
+  \item For a larger change: commit first, answer \key{T} for the turn, and
+    review with \code{git diff} after.
+  \item When a turn goes sideways, abort it (\key{Ctrl-C}, or Abort in the
+    console) and say what you want differently. The log keeps what
+    happened.
+\end{itemize}
+
+\section{Keep it honest}
+
+\begin{itemize}
+  \item \textbf{Read the reasons.} Every confirm tells you what a yes would
+    do. The day you stop reading them is the day one matters.
+  \item \textbf{Read the log when surprised.} \code{jq} and a
+    \code{guard.decision} answer most ``why'' questions in a minute.
+  \item \textbf{Prefer deny checks to switches.} A strategy can only skip; a
+    check is enforced.
+  \item \textbf{Run \code{/optimize} now and then}, with a focus, and review
+    its diff like a colleague's.
+  \item \textbf{Pair only devices you would hand a terminal}, and revoke
+    the ones you no longer use: \code{nodwyn devices revoke NAME}.
+\end{itemize}
+
+\section{Where to go from here}
+
+\begin{itemize}
+  \item \file{docs/scheme.md} is the language's contract: every form and
+    primitive, exactly.
+  \item \file{internal/loop/*.scm} is the default loop. Read
+    \file{strategy.scm}, then \file{agents.scm}, then the habits.
+  \item \file{internal/core/userland\_test.go} has larger strategies written
+    the way a user would write them: a plan cycle with a keyed judge, and
+    routing between models.
+  \item \file{docs/adr/} explains why things are the way they are. When you
+    want to change something fundamental, start there.
+\end{itemize}
+
+And when you write something good, a habit, a tool, a check, share it: it
+is a Scheme file, and the next person can \code{load} it.

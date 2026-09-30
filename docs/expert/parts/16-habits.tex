@@ -1,0 +1,186 @@
+\chapter{The working habits, and learning from history}
+\label{ch:habits}
+
+The default loop ships with habits: small Scheme layers, each written
+after a failure seen in real logs, measured on a coding benchmark and kept
+because they paid their way (\adr{32}). Reading them is the best
+advanced Scheme course in the repository, and knowing them tells you what
+your own strategy is wrapping.
+
+\section{The working rules}
+
+\code{working-rules} (in \file{prompts.scm}) is added to both system
+prompts. It is the text form of the habits: run command lines through
+\code{bash -c}; find the project's own interpreter and environment before
+running its code, and never patch the standard library to make tests run;
+read with the file tools, not with scripts; treat a plan written before
+anything ran as a first guess; keep \textbf{one check script} in
+\code{\$TMPDIR} that shows the problem before the fix and is rerun
+unchanged after every change; follow the conclusion of a request that
+weighs options; widen a fix in the general form, not just for the example;
+run whole test modules; compare failures against the unchanged code with
+\code{git stash}; bisect regressions file by file.
+
+If your project has its own rules, add them after these rather than
+replacing them (Chapter~\ref{ch:checks}).
+
+\section{The habit files}
+
+Each file wraps \code{run-calls} (and sometimes \code{fold-result},
+\code{sub-agent} or \code{nodwyn-turn}) with the idiom from
+Chapter~\ref{ch:strategies}, so your \code{init.scm} can wrap them again,
+tune their settings, or redefine them away.
+
+\subsection{\file{shell.scm}: command lines, and results a model can read}
+
+A model used to a bash tool writes \code{cd src \&\& pytest | tail -1}.
+Through \code{shell-exec}'s program-plus-arguments interface that is
+nonsense, and on some tasks a model sent 8 to 15 such malformed calls. So
+a call whose arguments contain shell operators is answered, unrun, with
+the exact \code{bash -c} call that would run it as meant. A strategy may
+skip a model's call but never rewrite it, so this is the honest fix: tell
+the model the right call.
+
+Results are shown as plain text (the exit status, then the output), and
+long output keeps its start and its end, where test runners print their
+summary: \code{shell-head-chars} (1,500) and \code{shell-tail-chars}
+(6,000). And \code{ran-ok?} counts a test run with failures as a run.
+
+\subsection{\file{hygiene.scm}: fold what stopped mattering}
+
+About 70\% of the tool output in the main context was test runs and file
+reads, and 43\% of the bytes read were from files never edited. Three
+rules, main context only:
+
+\begin{enumerate}
+  \item a test command that never ran a test is folded to one line once a
+    later one does;
+  \item a read of a file edited since is \emph{stale}: after
+    \code{hygiene-stale-age} (2) rounds it folds to its outline, noting the
+    file changed;
+  \item a read \code{hygiene-age} (8) rounds old folds to its outline.
+\end{enumerate}
+
+An outline keeps the definition lines (\code{def}, \code{class},
+\code{func}, \code{fn}\ldots) with their line numbers, so the model can
+read any part back with a ranged \code{fs-read}. Reads fold in batches of
+at least \code{hygiene-min-bytes} (24,000), because every fold makes the
+server re-read the prompt from that point.
+
+\subsection{\file{readdef.scm}: \texttt{read-definition}}
+
+Fifteen of sixteen Python scripts that opened a source file were finding a
+definition with a regular expression and printing it. \code{read-definition}
+(path, name) is that, in one call: the whole function, method or class and
+its line range, or for a long class its start and members. And a script
+that only reads a file to print it gets a hint naming the file tools, at
+most \code{readdef-hints} (3) times a session.
+
+\subsection{\file{envhint.scm}: find the project's environment}
+
+A command that fails with \code{No module named \ldots} gets a hint
+appended to its result (with \code{fold-result}): the project most likely
+has its own environment, so look for \file{.venv}, conda, tox or nox, and
+use its interpreter. At most \code{envhint-hints} (2) times a session. It is
+a nice example to read first: twenty lines, one wrapper, one counter.
+
+\subsection{\file{checkloop.scm}: \texttt{second-look}}
+
+When the model's check script does not reproduce a reported problem, the
+tool \code{second-look} gets two read-only helpers. The first reads the
+request \emph{alone}, literally, and works out which inputs would produce
+the outputs it shows. The second compares that reading with the check
+script and lists concrete differences to try. The order matters: a helper
+shown the check first adopted the check's (wrong) reading. A history search
+(\code{git log}, \code{git blame}) before any code edit gets a hint to use
+it instead.
+
+\begin{tip}
+The comments at the top of each habit file cite the log evidence behind
+it, down to task names. When you tune a habit for your project, read those
+comments first: they tell you what you would be trading away.
+\end{tip}
+
+\section{Tuning and removing}
+
+\begin{scm}
+;; Keep reads around longer in a project with big, stable files.
+(define hygiene-age 16)
+
+;; Show more of the start of long outputs.
+(define shell-head-chars 4000)
+
+;; A project whose tests run with ./check.
+(define test-command-words (cons "./check" test-command-words))
+\end{scm}
+
+Most habits have a setting that switches them off cleanly:
+
+\begin{scm}
+(define envhint-hints 0)        ; no environment hints
+(define readdef-hints 0)        ; no hints about scripts that read files
+(define second-look-hints 0)    ; no hints to use second-look
+(define (hygiene-sweep) #f)     ; never fold old reads
+\end{scm}
+
+That last line works because \file{hygiene.scm}'s wrapper calls
+\code{hygiene-sweep} by name on every round, and a global name is looked up
+when it is called.
+
+\begin{careful}
+You can also restore what a habit wrapped, but only for the \emph{last}
+layer: \code{(define run-calls checkloop-base-run-calls)} removes
+\file{checkloop.scm}'s wrapper, the outermost one. Restoring an inner
+layer's base (say \code{envhint-base-run-calls}) would drop every layer
+loaded after it as well. Prefer the settings above.
+\end{careful}
+
+\section{Learning from history}
+
+A strategy can read this folder's past sessions:
+
+\begin{scm}
+(session-list 2)
+;=> (((id . "20260930T200053Z-d5a648e8") (first-message . "") (current . #t) ...)
+;    ((id . "20260930T200043Z-e0550e21") (first-message . "") (current . #f) ...))
+
+(session-events "20260930T200043Z-e0550e21" '("user.msg" "tool.result"))
+;=> each event: ((seq . 2) (ts . "...") (kind . "user.msg") (payload . (...)))
+\end{scm}
+
+Only this folder's sessions are listed, and the events come back redacted
+and tagged \code{external:log}, like any tool output.
+
+\subsection{\texttt{/optimize}}
+
+The optimizer is user code over these primitives, in
+\file{optimize.scm}. Send a message starting with \code{/optimize}:
+
+\begin{txt}
+/optimize                 every earlier session of this folder
+/optimize 5               the latest five
+/optimize ID ID ...       the sessions named
+/optimize 5 test runs     any other words are a focus
+\end{txt}
+
+It digests the sessions (requests, answers, calls, failures and refusals,
+judges' verdicts, sub-agents, notes) with code much like the word counter
+in Chapter~\ref{ch:playground}, and hands the digest to a sub-agent
+labelled \code{optimizer}, which may read the folder and write only under
+\file{.nodwyn/}. Every write asks you, with the diff (a protected path),
+so \code{/optimize} needs a person at the prompt. When it finishes,
+\code{init.scm} is reloaded; if the reload fails, the file is restored.
+
+\begin{tip}
+Run \code{/optimize} after a week of real work in a repository, with a
+focus: \code{/optimize 10 how tests are run}. Review its diff like a
+colleague's pull request. What it writes is ordinary Scheme you now know
+how to read.
+\end{tip}
+
+\begin{puzzle}[ 18: your own habit]
+Write a habit that appends a hint to the result of any \code{shell-exec}
+whose output contains \code{Permission denied}, suggesting the model check
+whether the file is executable, at most twice per session. Model it on
+\file{envhint.scm}.\ans{18}
+\end{puzzle}

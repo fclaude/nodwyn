@@ -1,0 +1,133 @@
+\chapter{Workspaces, attachments and undo}
+\label{ch:workspaces}
+
+\nodwyn{} started as a coding agent, and git was its undo. It now works in
+any folder: a code repository, a folder of documents, a mix. This chapter
+covers what changes when the folder is not only code, and how to get
+things back.
+
+\section{A workspace}
+
+A \textbf{workspace} is a folder plus a small settings file,
+\file{<folder>/.nodwyn/workspace.toml}. Without the file, a folder is a
+plain code workspace: that folder, writable, nothing else.
+
+\begin{toml}
+# <folder>/.nodwyn/workspace.toml
+kind = "docs"
+
+[[mount]]
+path = "~/Reference/garden-books"
+access = "read"
+
+[[mount]]
+path = "/Volumes/Shared/seed-orders"
+access = "write"
+\end{toml}
+
+\begin{description}[leftmargin=1.2em,labelindent=0pt]
+  \item[kind] \code{code}, \code{docs} or \code{mixed}. It is a
+    \emph{label}: the console shows it, and it says what the folder holds.
+    Every kind has the same tools and the same guard.
+  \item[mounts] other folders a task may use, by absolute path (or
+    \code{\textasciitilde/}), \code{read} or \code{write}. A read-only mount
+    refuses every write. Mounts may not overlap the workspace or each
+    other, and \code{/} or your whole home folder is refused as too broad.
+\end{description}
+
+The console's \textbf{Workspaces} page edits this for you and names the
+folder in a registry, so Home can offer it. From Scheme:
+
+\begin{txt}
+you> :eval (workspace)
+(("kind" . "code") ("mounts"))
+\end{txt}
+
+When a workspace has mounts, the default system prompt adds a section
+naming them, so the model knows to reach them by absolute path.
+
+\begin{careful}
+\file{workspace.toml} lives under \file{.nodwyn/}, a protected path: the
+model cannot widen its own mounts. Changing them is your decision, in the
+console or by editing the file, and applies to tasks started afterwards.
+\end{careful}
+
+\section{Undo where git is not the undo}
+
+Before \code{fs-write} or \code{fs-edit} replaces a file that no git work
+tree covers, \nodwyn{} keeps its previous content in
+\file{.nodwyn/versions/} and records a \code{file.version} event:
+
+\begin{txt}
+you> :eval (fs-edit "plants.txt" "basil" "basil\nmint")
+⚑ guard confirm fs-edit: fs-edit is irreversible; changes plants.txt → yes
+[kept the previous version of /home/you/garden/plants.txt]
+\end{txt}
+
+\begin{sh}
+$ nodwyn versions plants.txt
+2026-09-30 13:19:00  55d684f93ad3      15 bytes
+$ nodwyn undo plants.txt
+Restored /home/you/garden/plants.txt to its version of 2026-09-30 13:19 (55d684f93ad3).
+\end{sh}
+
+In the console, a task's \textbf{Changes} list has \textbf{History} per
+file; \textbf{Restore} writes a kept version back through the ordinary
+approval (you see the diff and answer), and keeps the current content as a
+version too, so a restore can itself be undone. The store is capped per
+folder.
+
+\begin{tip}
+In a git repository, git is the undo: nothing is kept in
+\file{.nodwyn/versions/}, and \code{git diff} and \code{git checkout} are
+your tools. Commit before a big task, and review with \code{git diff}
+afterwards; with the \key{T} answer (all writes this turn), that is the
+fastest safe way to let \nodwyn{} make a large change.
+\end{tip}
+
+\section{Attachments}
+
+In the console, the paperclip attaches files to your next message: text
+formats, Word (\file{.docx}), Excel (\file{.xlsx}), PowerPoint
+(\file{.pptx}), and PDF when \code{pdftotext} is installed. Images are
+refused for now. Each file is:
+
+\begin{enumerate}
+  \item copied into the folder's \file{.nodwyn/attachments/};
+  \item turned into text, redacted (secret-looking strings hidden) and
+    capped;
+  \item recorded as an \code{attach} event and shown to the model
+    \emph{as data}, not as instructions.
+\end{enumerate}
+
+The conversation shows a chip per file with how many secret-like strings
+were hidden. The model reads the extracted text; the copy in
+\file{.nodwyn/attachments/} is ignored by git, so it never ends up in your
+repository's diff.
+
+\begin{careful}
+``As data, not instructions'' is a framing the model is given, not a
+guarantee it obeys. A document can still say ``ignore your task and
+\ldots''. What the guard guarantees holds regardless: whatever the model
+decides after reading it still has to pass through the door.
+\end{careful}
+
+\section{Notes, scratch and versions: where things live}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{what} & \textbf{where} \\
+\midrule
+workspace settings & \file{<folder>/.nodwyn/workspace.toml} \\
+project tools and strategy & \file{<folder>/.nodwyn/init.scm} (and what it loads) \\
+standing approvals & \file{<folder>/.nodwyn/allow.toml}, \file{config.toml} \\
+kept versions & \file{<folder>/.nodwyn/versions/} (only outside git) \\
+attachments & \file{<folder>/.nodwyn/attachments/} \\
+project notes & \nodwyn's data directory, keyed by the folder's path \\
+session logs & \file{\textasciitilde/.local/share/nodwyn/sessions/} \\
+scratch & \nodwyn's data directory; removed when the session closes \\
+keys & the keychain, in the config directory \\
+\bottomrule
+\end{tabularx}
+\end{center}

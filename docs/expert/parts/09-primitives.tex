@@ -1,0 +1,209 @@
+\chapter{Primitives and the guard}
+\label{ch:primitives}
+
+Part~II's Scheme could compute anything and touch nothing. This chapter is
+about the door: the primitives that reach your computer, and the guard
+that stands in front of them.
+
+\section{The primitive table}
+
+Every builtin you have used is a \textbf{primitive}: a Go function in a
+table, with metadata. Ask for the list, or for one entry:
+
+\begin{scm}
+(length (primitives))          ;=> 111 in a bare interpreter; more in a session
+(primitive-info "fs-write")
+;=> ((doc . "Create a text file inside the repository or replace its entire
+;            contents. Parent directories are created. For changes to an
+;            existing file prefer fs-edit.")
+;    (params ("path" "string" "path relative to the repository root")
+;            ("content" "string" "the complete new contents"))
+;    (variadic . #f) (egress . #f) (irreversible . #t) (host . #t)
+;    (origin . "builtin"))
+\end{scm}
+
+The metadata is what makes the guard's job possible:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\code{doc} & one line; shown to the model as the tool's description \\
+\code{params} & \code{(name type doc)} for each argument, in order; \code{type} is one of \code{string integer number boolean list alist vector any} \\
+\code{variadic} & extra arguments allowed after the declared ones \\
+\code{host} & touches the operating system: files, processes, network \\
+\code{irreversible} & cannot be undone by \nodwyn{}: every call confirms unless approved \\
+\code{egress} & may send bytes off the machine \\
+\code{origin} & \code{builtin}, or \code{scheme} for a tool you registered \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Host primitives also give each parameter a \textbf{role}: \code{path},
+\code{dest}, \code{payload}, \code{credential}. The guard reads roles, not
+guesses: it knows the first argument of \code{fs-write} is a path because
+the table says so.
+
+\section{The host primitives}
+
+These exist only inside a session (not in \code{nodwyn repl}):
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\code{(fs-read path [start [count]])} & a file, or a range of lines with a \code{[lines A-B of N]} header \\
+\code{(fs-write path content)} & create or replace a file (irreversible, shows a diff) \\
+\code{(fs-edit path old new [all])} & replace exactly one occurrence, or all (irreversible, shows a diff) \\
+\code{(fs-list path)} & a directory's names; directories end with \code{/} \\
+\code{(fs-find path glob)} & file names matching a glob, at most 500 \\
+\code{(index-grep path regex [glob [context]])} & search contents with a regular expression (needs \code{rg}) \\
+\code{(shell-exec cmd args)} & run a program with a list of arguments, no shell, in the folder (irreversible) \\
+\code{(scratch-dir)} & the session's private scratch directory \\
+\code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions \\
+\code{(workspace)} & the folder's kind and mounted folders \\
+\code{(http-request cred url method position headers body)} & a keyed request, checked against the bindings \\
+\code{(credential class)} & the handle of a stored key, or \code{\#f} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+A few more are for you only and never shown to the model:
+\code{credential-register} (masked input into the keychain),
+\code{policy-read} and \code{policy-write} (the bindings and approval
+files, with a diff confirm), \code{register-check} (next chapter) and
+\code{wipe}.
+
+\begin{tryit}
+In a session, try the read side, which needs no approval:
+\begin{txt}
+you> :eval (index-grep "." "bas")
+(("matches" (("path" . "plants.txt") ("line" . 2) ("text" . "basil")))
+ ("files" . 2) ("skipped" . 0) ("truncated" . #f))
+you> :eval (fs-find "." "*.txt")
+(("files" "plants.txt") ("count" . 1) ("truncated" . #f))
+you> :eval (fs-read "plants.txt" 2 1)
+"[lines 2-2 of 2]\nbasil\n"
+\end{txt}
+\end{tryit}
+
+\section{How the guard decides}
+
+Every primitive application goes through one Go function, which does three
+things in order: checks the argument count, asks the guard, and only then
+calls the primitive. The guard runs a list of \textbf{checkers}. Each one
+may say \emph{allow}, \emph{confirm} or \emph{deny}, or have no opinion,
+and the strictest answer wins:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\textbf{checker} & \textbf{what it looks at} \\
+\midrule
+\code{meta} & the primitive's own metadata: irreversible means confirm \\
+\code{repo-pin} & every path role: inside the folder, the scratch directory or a mount \\
+\code{path-denylist} & credential-looking files and directories, even inside the folder \\
+\code{argv-trigger} & command lines: paths outside, network tools, dangerous flags \\
+\code{protected-path} & writes to \file{.nodwyn/}, \file{.git/}, \file{.github/}, \file{scripts/}, \file{Makefile}\ldots \\
+\code{scratch} & writes inside the scratch directory: no need to ask \\
+\code{command-allow}, \code{write-allow} & your standing approvals \\
+\code{l1} & payloads that look like credentials \\
+\code{l2} & provenance: outside content heading to the network or into a command \\
+\code{egress}, \code{bindings} & keyed and outgoing requests against the binding table \\
+your checks & anything you registered with \code{register-check} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Two rules shape how they combine:
+
+\begin{itemize}
+  \item \textbf{A standing approval outranks a confirm, never a deny.}
+    Approving \code{go test} stops the question; it does not let
+    \code{go test} read \file{\textasciitilde/.ssh}.
+  \item \textbf{Some confirms are security confirms}, and no approval waives
+    them: a write to a protected path, content that looks like a key, a
+    command line built out of tool output. They need a person, every time;
+    \code{-{}-yolo} refuses them.
+\end{itemize}
+
+Here is all of that in one real session with \code{-{}-yolo}:
+
+\begin{txt}
+you> :eval (shell-exec "wc" (list "-l" "plants.txt"))
+⚑ guard confirm shell-exec: shell-exec is irreversible → yes
+(("status" . 0) ("stdout" . "       2 plants.txt\n") ("stderr" . ""))
+
+you> :eval (fs-write ".nodwyn/x.scm" "1")
+⚑ guard confirm fs-write: fs-write is irreversible; protected path .nodwyn/x.scm:
+  it holds code that later runs with your authority; changes .nodwyn/x.scm → no
+error: fs-write: denied: not confirmed: ... This needs a person to approve;
+  unattended runs (--yolo) never approve it
+
+you> :eval (fs-write "notes.txt" "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD")
+⚑ guard confirm fs-write: fs-write is irreversible; changes notes.txt; the written
+  content contains what looks like a openai-key → no
+\end{txt}
+
+The ordinary confirm was answered yes by \code{-{}-yolo}; the two security
+confirms were refused, with a reason that says exactly why.
+
+\section{Standing approvals in files}
+
+Commands and writes you never want to be asked about can live in two
+files. Your own, for every folder:
+
+\begin{toml}
+# ~/.config/nodwyn/config.toml
+[policy]
+allow_commands = ["go test", "go build", "git status", "git diff", "rg"]
+\end{toml}
+
+And the folder's, tracked with it:
+
+\begin{toml}
+# <folder>/.nodwyn/allow.toml
+commands = ["make lint", "make test"]
+writes   = ["internal/", "docs/"]      # write prefixes that never prompt
+\end{toml}
+
+Command prefixes match whole words of the argument list: \code{"go test"}
+matches \code{go test ./...} and \code{/usr/local/go/bin/go test}, but not
+\code{go build}. Every use is still logged, as \emph{allow} with the reason
+\code{standing approval: go test}.
+
+\begin{tip}
+Keep standing approvals read-only in spirit: tests, builds, status and
+diff. Nothing that commits, pushes, deletes or reaches the network. The
+point of a confirm is the one time it catches something you did not expect.
+\end{tip}
+
+\section{Provenance: where a value came from}
+
+Every value carries \textbf{provenance tags}: not what it contains, but where
+it came from. File reads are tagged \code{external:file}, command output
+\code{external:shell}, network responses \code{external:http}. Tags flow
+through computation:
+
+\begin{scm}
+(taint-of (fs-read "plants.txt"))                        ;=> ("external:file")
+(taint-of (string-append "x" (fs-read "plants.txt")))    ;=> ("external:file")
+(taint-of (string-length (fs-read "plants.txt")))        ;=> ()
+(tainted? "typed by you")                                ;=> #f
+\end{scm}
+
+A result that \emph{measures} its input rather than being made of it (a
+length, a comparison, a predicate) carries nothing. The guard uses the tags
+to refuse sending file content to a destination no binding authorises, and
+to ask before running a command line built from tool output, the classic
+way a malicious file tries to get itself executed.
+
+\code{wipe} returns the same value without its tags. It is user-only: the
+model can't call it, and neither can the loop's strategy, which handles
+every tool result. Provenance is not a wall against you; it is a way to
+make sure that what \emph{you} did not look at does not travel by itself.
+
+\begin{careful}
+Provenance is honest about its limits: a value rebuilt one character at a
+time through primitives that measure (lengths, comparisons) loses its
+tags. The real lines are the binding table, fail-closed defaults and
+redaction; provenance is a second net under them.
+\end{careful}

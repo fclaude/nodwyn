@@ -1,0 +1,175 @@
+\documentclass[11pt,a4paper,oneside]{book}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{libertine}
+\usepackage[varqu,scaled=0.92]{inconsolata}
+\usepackage{microtype}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{textcomp}
+\usepackage{amsmath}
+\usepackage{needspace}
+\usepackage[htt]{hyphenat}
+\usepackage[most]{tcolorbox}
+\usepackage[hidelinks,pdftitle={Becoming a nodwyn Expert},pdfauthor={the nodwyn project}]{hyperref}
+
+% ---------------------------------------------------------------- colours
+\definecolor{ink}{HTML}{1F2328}
+\definecolor{moss}{HTML}{3D6B4F}
+\definecolor{mossbg}{HTML}{EEF4EF}
+\definecolor{clay}{HTML}{A4502F}
+\definecolor{claybg}{HTML}{FBF0EA}
+\definecolor{sky}{HTML}{2F5E8C}
+\definecolor{skybg}{HTML}{EDF2F8}
+\definecolor{plum}{HTML}{6B3F7A}
+\definecolor{plumbg}{HTML}{F4EEF6}
+\definecolor{codebg}{HTML}{F6F6F3}
+\definecolor{codecomment}{HTML}{5F7A63}
+\definecolor{codekw}{HTML}{2F4F8C}
+\definecolor{codestr}{HTML}{8C3F2F}
+
+% ---------------------------------------------------------------- code
+\lstdefinelanguage{Scheme}{
+  morekeywords={define,lambda,if,let,let*,letrec,begin,set!,quote,quasiquote,unquote,cond,case,else,and,or,do,when,unless,guard,with-output-to-string},
+  alsoletter={-!?*>=<+/},
+  morecomment=[l]{;},
+  morestring=[b]",
+  sensitive=true
+}
+\lstset{
+  basicstyle=\ttfamily\small\color{ink},
+  backgroundcolor=\color{codebg},
+  commentstyle=\color{codecomment},
+  keywordstyle=\color{codekw}\bfseries,
+  stringstyle=\color{codestr},
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  frame=none,
+  xleftmargin=0.7em,
+  framexleftmargin=0.7em,
+  aboveskip=0.9em,
+  belowskip=0.9em,
+  showstringspaces=false,
+  tabsize=2,
+  upquote=true,
+  extendedchars=true,
+  literate={é}{{\'e}}1 {á}{{\'a}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+           {—}{{---}}1 {–}{{--}}1 {…}{{\ldots}}1 {→}{{$\to$}}1 {×}{{$\times$}}1
+           {▸}{{$\triangleright$}}1 {◂}{{$\triangleleft$}}1 {·}{{$\cdot$}}1
+           {⚑}{{\textbf{!}}}1 {─}{{-}}1 {•}{{$\bullet$}}1 {✓}{{$\checkmark$}}1
+}
+\lstnewenvironment{scm}{\lstset{language=Scheme}}{}
+\lstnewenvironment{sh}{\lstset{language=bash,keywordstyle=\ttfamily}}{}
+\lstnewenvironment{txt}{\lstset{language={},keywordstyle=\ttfamily}}{}
+\lstnewenvironment{toml}{\lstset{language={},morecomment=[l]{\#},morestring=[b]"}}{}
+
+% ---------------------------------------------------------------- boxes
+\newtcolorbox{tryit}[1][]{enhanced,breakable,colback=mossbg,colframe=moss,
+  boxrule=0pt,leftrule=3pt,arc=0pt,left=8pt,right=8pt,top=5pt,bottom=5pt,
+  fonttitle=\bfseries\sffamily\small,coltitle=moss,colbacktitle=mossbg,
+  title={Try it#1},attach title to upper={\ \ }}
+\newtcolorbox{tip}[1][]{enhanced,breakable,colback=skybg,colframe=sky,
+  boxrule=0pt,leftrule=3pt,arc=0pt,left=8pt,right=8pt,top=5pt,bottom=5pt,
+  fonttitle=\bfseries\sffamily\small,coltitle=sky,colbacktitle=skybg,
+  title={Expert tip#1},attach title to upper={\ \ }}
+\newtcolorbox{careful}[1][]{enhanced,breakable,colback=claybg,colframe=clay,
+  boxrule=0pt,leftrule=3pt,arc=0pt,left=8pt,right=8pt,top=5pt,bottom=5pt,
+  fonttitle=\bfseries\sffamily\small,coltitle=clay,colbacktitle=claybg,
+  title={Careful#1},attach title to upper={\ \ }}
+\newtcolorbox{puzzle}[1][]{enhanced,breakable,colback=plumbg,colframe=plum,
+  boxrule=0pt,leftrule=3pt,arc=0pt,left=8pt,right=8pt,top=5pt,bottom=5pt,
+  fonttitle=\bfseries\sffamily\small,coltitle=plum,colbacktitle=plumbg,
+  title={Puzzle#1},attach title to upper={\ \ }}
+
+% ---------------------------------------------------------------- words
+\newcommand{\nodwyn}{\textsf{nodwyn}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\file}[1]{\texttt{#1}}
+\newcommand{\key}[1]{\fbox{\footnotesize\sffamily #1}}
+\newcommand{\adr}[1]{ADR~#1}
+\newcommand{\ans}[1]{\hfill\textit{\small (answer in Appendix~\ref{app:answers}, #1)}}
+
+% ---------------------------------------------------------------- layout
+\titleformat{\chapter}[display]
+  {\normalfont\sffamily\color{moss}}
+  {\large\MakeUppercase{\chaptertitlename}\ \thechapter}
+  {6pt}
+  {\Huge\bfseries\color{ink}}
+\titleformat{\section}{\normalfont\sffamily\Large\bfseries\color{ink}}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\normalfont\sffamily\large\bfseries\color{ink}}{\thesubsection}{0.8em}{}
+\titleformat{\part}[display]{\normalfont\sffamily\centering\color{moss}}{\Large\MakeUppercase{\partname}\ \thepart}{12pt}{\Huge\bfseries\color{ink}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\sffamily\color{moss}\leftmark}
+\fancyhead[R]{\small\sffamily\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[C]{\small\sffamily\thepage}}
+\setlength{\parskip}{0.5em}
+\setlength{\emergencystretch}{3em}
+\setlength{\parindent}{0pt}
+\setlist{itemsep=0.15em,topsep=0.3em}
+\renewcommand{\arraystretch}{1.15}
+
+\begin{document}
+\frontmatter
+\begin{titlepage}
+  \centering
+  \vspace*{5cm}
+  {\sffamily\color{moss}\large A FIELD GUIDE\par}
+  \vspace{0.6cm}
+  {\sffamily\bfseries\Huge Becoming a \nodwyn{} Expert\par}
+  \vspace{0.6cm}
+  {\large\itshape Everything it does, why it asks before it acts,\\ and how to make it yours in Scheme\par}
+  \vfill
+  {\sffamily\small written against \code{main}, 30 September 2026\par}
+\end{titlepage}
+
+\input{parts/00-preface}
+\tableofcontents
+
+\mainmatter
+\part{Meeting nodwyn}
+\input{parts/01-what}
+\input{parts/02-first-steps}
+\input{parts/03-ways-in}
+
+\part{Scheme, the Fun Part}
+\input{parts/04-hello}
+\input{parts/05-lists}
+\input{parts/06-strings}
+\input{parts/07-more-forms}
+\input{parts/08-playground}
+
+\part{Scheme Meets the World}
+\input{parts/09-primitives}
+\input{parts/10-tools}
+\input{parts/11-checks-prompts}
+
+\part{Steering the Loop}
+\input{parts/12-turn}
+\input{parts/13-strategies}
+\input{parts/14-contexts}
+\input{parts/15-plans-runs}
+\input{parts/16-habits}
+
+\part{Operating Like an Expert}
+\input{parts/17-keys-models}
+\input{parts/18-workspaces}
+\input{parts/19-log}
+\input{parts/20-everywhere}
+
+\appendix
+\input{parts/a-reference}
+\input{parts/b-answers}
+\input{parts/c-cheatsheet}
+\end{document}

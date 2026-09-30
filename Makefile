@@ -2,7 +2,7 @@ MODULE  := github.com/fclaude/nodwyn
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build app test lint exfil accept promote selfcheck smoke book clean
+.PHONY: build app test lint exfil accept promote selfcheck smoke book expert clean
 
 build:
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
@@ -41,6 +41,10 @@ smoke:
 ## book: docs/book/nodwyn.pdf (needs texlive)
 book:
 	cd docs/book && latexmk -pdf -interaction=nonstopmode -halt-on-error nodwyn.tex >/dev/null && latexmk -c >/dev/null
+
+## expert: docs/expert/expert.pdf, the field guide (needs texlive)
+expert:
+	cd docs/expert && latexmk -pdf -interaction=nonstopmode -halt-on-error expert.tex >/dev/null && latexmk -c >/dev/null
 
 clean:
 	rm -rf bin
