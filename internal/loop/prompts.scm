@@ -76,10 +76,12 @@
    """
    (scratch-rule (scratch-dir))
    working-rules
+   (workspace-section)
    (project-notes-section)))
 
 ;; The system prompt's rule for the session's scratch directory, or "" when
-;; there is none (nodwyn repl). It names $TMPDIR, not the directory's path,
+;; there is none (a session always has one; the check keeps the prompt
+;; buildable without it). It names $TMPDIR, not the directory's path,
 ;; which differs per session: the system prompt stays the same across a
 ;; repository's sessions.
 (define (scratch-rule dir)

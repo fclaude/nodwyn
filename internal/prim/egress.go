@@ -226,10 +226,11 @@ func credential(cs CredentialStore) *scheme.Prim {
 
 func doCredentialRegister(cs CredentialStore, c *scheme.Call) (scheme.Value, error) {
 	// Only the user may start a registration. A model-originated call --
-	// possible through a user tool that wraps this primitive -- would put a
-	// "please enter your key" prompt in front of the user mid-turn.
-	if c.Origin == scheme.OriginModel {
-		return scheme.Void, fmt.Errorf("credential-register: not allowed from a model-originated call")
+	// possible through a user tool that wraps this primitive -- or the
+	// loop's own strategy would put a "please enter your key" prompt in
+	// front of the user mid-turn.
+	if c.Origin != scheme.OriginUser {
+		return scheme.Void, fmt.Errorf("credential-register: only you can register a key (:eval or init.scm), not %s code", c.Origin)
 	}
 	class, err := c.String(0)
 	if err != nil {

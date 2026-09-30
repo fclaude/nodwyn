@@ -288,3 +288,23 @@ func TestTurnEndFoldsContextsWithWaitingCalls(t *testing.T) {
 		}
 	}
 }
+
+// A sub-agent given no tools ('()) is offered none, rather than every tool
+// with each call then skipped.
+func TestSubAgentWithNoToolsIsOfferedNone(t *testing.T) {
+	r := strategyRig(t, `
+(define-agent-tool "ask-reader" "Ask someone who only thinks."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You answer from what you are told." (assoc-ref args "question") '())))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-reader", Args: map[string]any{"question": "Is 7 prime?"}}}},
+		fake.Turn{Content: "Yes."},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("is 7 prime?"); err != "" {
+		t.Fatal(err)
+	}
+	if n := len(r.srv.Requests[1].Tools); n != 0 {
+		t.Fatalf("the tool-less sub-agent was offered %d tools", n)
+	}
+}

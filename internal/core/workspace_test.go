@@ -93,3 +93,27 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
+// Unattended sessions are told about mounted folders too.
+func TestUnattendedPromptNamesMounts(t *testing.T) {
+	repo, ref := t.TempDir(), t.TempDir()
+	if _, err := config.SaveWorkspace(repo, config.Workspace{Mounts: []config.Mount{{Path: ref, Access: "read"}}}); err != nil {
+		t.Fatal(err)
+	}
+	srv := fake.New(fake.Turn{Content: "done"})
+	t.Cleanup(srv.Close)
+	cfg := config.Default()
+	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
+	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: &bytes.Buffer{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	r := &rig{t: t, s: s, srv: srv, repo: repo}
+	s.Send("look")
+	r.drain("y")
+	raw := string(srv.Requests[0].Raw)
+	if !strings.Contains(raw, "You work unattended") || !strings.Contains(raw, ref) {
+		t.Fatal("the unattended prompt does not name the mounted folder")
+	}
+}

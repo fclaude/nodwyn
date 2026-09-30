@@ -102,7 +102,10 @@
 ;; the caller's context never sees the sub-agent's work, only what the
 ;; caller does with the answer. The log keeps all of it.
 (define (sub-agent system task tools . name)
-  (define (ask) (if (pair? tools) (ask-model "control" (list (cons 'tools tools))) (ask-model)))
+  (define (ask)
+    (cond ((null? tools) (ask-model "control" '((tools . #f)))) ; no tools: offer none
+          ((pair? tools) (ask-model "control" (list (cons 'tools tools))))
+          (else (ask-model))))
   (narrow-context system (cond ((pair? name) (car name)) (agent-label agent-label) (else "sub-agent")))
   (add-message task)
   ;; last and runs: the latest call run and how many times in a row;
