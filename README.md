@@ -67,12 +67,13 @@ the credential lifecycle to OAuth. Local RPC and remote MCP servers are implemen
 
 ```
 make build      # bin/nodwyn
+make build-webview  # bin/nodwyn whose `nodwyn app` opens its own window (docs/app.md)
 make test       # go test -race ./...
 make lint       # vet, staticcheck, boundary and ingress lints
 make accept     # everything a candidate must pass before promotion
 make smoke      # manual two-turn session against the real control plane
 make selfcheck  # the candidate proves itself (ADR 13)
-make promote TAG=v0.N-phase   # accept + selfcheck, then ~/.local/bin/nodwyn-stable
+make promote    # accept + selfcheck, then ~/.local/bin/nodwyn-stable (webview build; version = commit)
 ```
 
 Requires Go 1.26 or newer (ADR 33) and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).

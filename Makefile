@@ -1,11 +1,15 @@
 MODULE  := github.com/fclaude/nodwyn
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION := $(shell git describe --always --dirty --abbrev=12 --exclude='*' 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build app test lint exfil accept promote selfcheck smoke book expert clean
+.PHONY: build build-webview app test lint exfil accept promote selfcheck smoke book expert clean
 
 build:
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
+
+## build-webview: bin/nodwyn whose `nodwyn app` opens its own window (cgo; WebKitGTK on Linux, docs/app.md)
+build-webview:
+	CGO_ENABLED=1 scripts/webview-env.sh run go build -trimpath -tags webview -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
 
 ## app: bin/Nodwyn.app, nodwyn with its own window (macOS; needs Xcode's command line tools)
 app:
@@ -26,9 +30,9 @@ exfil:
 ## accept: everything a candidate must pass before promotion (ADR 13)
 accept: lint test exfil
 
-## promote: accept + selfcheck, swap in nodwyn-stable, tag. Usage: make promote TAG=v0.1-bootstrap
+## promote: accept + selfcheck, then swap in nodwyn-stable (the webview build where it can be built); its version is the commit
 promote:
-	scripts/promote.sh $(TAG)
+	scripts/promote.sh
 
 ## selfcheck: the candidate binary proves itself (ADR 13)
 selfcheck: build

@@ -4,7 +4,7 @@
 # Usage: scripts/app-macos.sh [VERSION]
 set -euo pipefail
 cd "$(dirname "$0")/.."
-version=${1:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
+version=${1:-$(git describe --always --dirty --abbrev=12 --exclude='*' 2>/dev/null || echo dev)}
 app=bin/Nodwyn.app
 rm -rf "$app" bin/.app-build
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" bin/.app-build

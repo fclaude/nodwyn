@@ -70,11 +70,35 @@ sessions — lives where the command-line nodwyn keeps it (`nodwyn paths`), per 
 
 Each person's tasks, keys and settings stay in their own account.
 
-### Other systems
+### Linux and other systems
 
-`go build -tags webview ./cmd/nodwyn` needs WebKitGTK on Linux (the
-`libwebkit2gtk-4.1-dev` package) and WebView2 on Windows. Without the tag,
-`nodwyn app` opens the default browser and works the same.
+```sh
+make build-webview   # bin/nodwyn with the webview tag
+```
+
+On Linux it needs cgo and WebKitGTK (`libwebkit2gtk-4.1-dev` on Debian and
+Ubuntu, `webkit2gtk4.1-devel` on Fedora); on Windows the tag needs WebView2.
+Without the tag, `nodwyn app` opens the default browser instead and works the
+same; started from a desktop launcher, with no terminal for its messages, it
+has no window of its own and is easy to take for an app that did not start.
+
+So `make promote` builds `nodwyn-stable` with the tag on Linux and macOS, and
+refuses to install one whose `go version -m` does not show `-tags=webview`.
+On a Linux system without WebKitGTK it builds without the tag and says so,
+before the acceptance run and again at the end.
+
+The webview package asks pkg-config for `webkit2gtk-4.0`, which current
+distributions no longer ship; `webkit2gtk-4.1` has the same API, built on
+libsoup 3. `scripts/webview-env.sh run` bridges the name for the length of
+one build: when only 4.1 is installed, it writes a `webkit2gtk-4.0.pc` that
+requires 4.1 into a temporary directory at the front of `PKG_CONFIG_PATH`. A
+system that has 4.0 builds against 4.0. This keeps the module as published:
+patching its cgo line would mean vendoring it, or keeping a fork, and
+carrying the change through every update. To build by hand:
+
+```sh
+CGO_ENABLED=1 scripts/webview-env.sh run go build -tags webview ./cmd/nodwyn
+```
 
 ## What the window adds
 

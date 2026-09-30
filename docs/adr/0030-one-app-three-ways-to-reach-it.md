@@ -124,3 +124,9 @@ view that has no source says so rather than guessing.
   that name.
 - A secret prompt declined elsewhere left the prompt on other screens; every
   prompt now emits an ephemeral `prompt.closed` when it stops pending.
+- **`nodwyn-stable` is the window build.** A desktop launcher runs
+  `nodwyn-stable app` without a terminal, where the browser fallback reads as
+  an app that did not start. `make promote` builds with the tag
+  (`make build-webview`) on Linux and macOS and checks the installed binary's
+  build tags; only a system without WebKitGTK gets the browser build, with a
+  note. `make build` and CI stay cgo-free.

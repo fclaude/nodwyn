@@ -119,8 +119,12 @@ whose content was replaced in the window.
 
 ```bash
 make build                       # bin/nodwyn from the working tree
-make promote TAG=v0.1-bootstrap  # accept + selfcheck, then ~/.local/bin/nodwyn-stable (ADR 12/13)
+make promote                     # accept + selfcheck, then ~/.local/bin/nodwyn-stable (ADR 12/13)
 ```
+
+`nodwyn-stable version` is the commit it was built from. It is the webview
+build where that can be built, so `nodwyn-stable app` opens a window; on Linux that needs WebKitGTK
+([the app](app.md), "Linux and other systems").
 
 Use `nodwyn-stable` for real work and `bin/nodwyn` only to test a change to
 nodwyn itself. Never run the binary you are editing (ADR 12).
@@ -608,7 +612,7 @@ Unknown entropy remains a residual for P8's optional L3 classifier.
 4. When it gets in the way, hand-edit, and add one line to
    [docs/friction.md](friction.md). That file decides what gets built next.
 5. `make accept` before committing; you commit — there is no commit tool.
-6. `make promote TAG=v0.N-<phase>` when a phase's acceptance is green.
+6. `make promote` when a phase's acceptance is green.
 
 ### When something is wrong
 
