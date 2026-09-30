@@ -247,6 +247,9 @@ func (s *server) open(req request, _ *peer) (any, *rpcError) {
 	if why := s.rootRefusal(p.Repo); why != "" {
 		return nil, failure(-32602, why)
 	}
+	if why := s.lockedKeyRefusal(); why != "" {
+		return nil, failure(-32000, why)
+	}
 	options := s.options
 	options.Repo = p.Repo
 	session, err := core.New(options)
@@ -266,6 +269,9 @@ func (s *server) resume(req request, _ *peer) (any, *rpcError) {
 	}
 	if id == "" {
 		return nil, err
+	}
+	if why := s.lockedKeyRefusal(); why != "" {
+		return nil, failure(-32000, why)
 	}
 	options := s.options
 	options.Repo = ""

@@ -98,6 +98,21 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 	return s.keychainStatus(), nil
 }
 
+// lockedKeyRefusal says why no task may open yet: the keychain exists but is
+// locked, and the model every task talks to needs a key from it. A session
+// gets the keychain only when it is built (its tools and egress checks
+// depend on it), so a task opened now would stay keyless even after an
+// unlock, and fail every model request until it was reopened.
+func (s *server) lockedKeyRefusal() string {
+	if s.options.Keychain != nil || s.options.Config.Control.Credential == "" {
+		return ""
+	}
+	if _, err := os.Stat(s.options.Paths.Keychain); err != nil {
+		return ""
+	}
+	return "Unlock the keychain first: the model's key is in it, and a task opened while it is locked can't use it"
+}
+
 type settingsResult struct {
 	ConfigFile string         `json:"config_file"`
 	Control    config.Model   `json:"control"`

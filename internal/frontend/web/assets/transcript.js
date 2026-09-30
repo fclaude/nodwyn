@@ -86,7 +86,6 @@ function detailsBlock(label, value) {
 
 const auditLabels = {
   "turn.checkpoint": "Budget checkpoint answered",
-  "egress.check": "Checked where a credential may go",
   "approval.change": "Standing answer changed",
   "binding.change": "Credential binding changed",
   summary: "Summary written",
@@ -210,7 +209,10 @@ export class Transcript {
             this.usage = h("div", { class: "usage" });
             turn.append(this.usage);
           } else turn.append(this.usage);
-          this.usage.textContent = `${this.tokens.in.toLocaleString()} → ${this.tokens.out.toLocaleString()} tokens · ${(this.tokens.ms / 1000).toFixed(1)} s with the model`;
+          // Only Ollama reports a duration; a chat-completions server (OpenRouter
+          // among them) reports none, so no time rather than "0.0 s".
+          const time = this.tokens.ms > 0 ? ` · ${(this.tokens.ms / 1000).toFixed(1)} s with the model` : "";
+          this.usage.textContent = `${this.tokens.in.toLocaleString()} → ${this.tokens.out.toLocaleString()} tokens${time}`;
         }
         this.call = null;
         break;
@@ -261,6 +263,11 @@ export class Transcript {
       case "session.resume":
         this.end();
         this.el.append(h("div", { class: "audit" }, "Resumed"));
+        break;
+      case "egress.check":
+        // Every model request checks where its key may go; an allowed check
+        // is routine and stays in the log. Only a refusal is news.
+        if (!p.bound) this.audit(`Refused to send ${p.class || "a credential"} to ${p.host || "that host"}`, p.reason || p, "bad");
         break;
       default:
         if (auditLabels[event.kind]) this.audit(auditLabels[event.kind], p);

@@ -4,21 +4,22 @@ import { h, icon, repoName, shortPath, ago, toast } from "./dom.js";
 import { chooseFolder, kindLabel } from "./home.js";
 import { modelForm, keychainForm } from "./setup.js";
 
-// ---------- theme (a per-browser convenience) ----------
+// ---------- theme (a per-browser convenience; dark unless chosen) ----------
+const themes = ["dark", "light", "system"];
 export function storedTheme() {
   try {
-    return localStorage.getItem("nodwyn-theme") || "";
+    const mode = localStorage.getItem("nodwyn-theme");
+    return themes.includes(mode) ? mode : "dark";
   } catch {
-    return "";
+    return "dark";
   }
 }
 export function applyTheme(mode) {
-  const root = document.documentElement;
-  if (mode === "light" || mode === "dark") root.dataset.theme = mode;
-  else delete root.dataset.theme;
+  if (!themes.includes(mode)) mode = "dark";
+  document.documentElement.dataset.theme = mode;
   try {
-    if (mode) localStorage.setItem("nodwyn-theme", mode);
-    else localStorage.removeItem("nodwyn-theme");
+    if (mode === "dark") localStorage.removeItem("nodwyn-theme");
+    else localStorage.setItem("nodwyn-theme", mode);
   } catch {
     /* a browser that refuses storage still gets the theme for this tab */
   }
@@ -69,7 +70,7 @@ export function renderSettings(root, ctx) {
           "div",
           { class: "settings-grid" },
           h("div", { class: "label" }, "Appearance"),
-          h("div", { class: "value" }, h("div", { class: "row-actions" }, themeButton("", "Match the system"), themeButton("light", "Light"), themeButton("dark", "Dark")), h("p", { class: "hint" }, "Kept in this browser only.")),
+          h("div", { class: "value" }, h("div", { class: "row-actions" }, themeButton("dark", "Dark"), themeButton("light", "Light"), themeButton("system", "Match the system")), h("p", { class: "hint" }, "Dark unless you choose otherwise. Kept in this browser only.")),
           h("div", { class: "label" }, "Desktop notifications"),
           h(
             "div",

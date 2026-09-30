@@ -108,6 +108,12 @@ export class Desk {
     const c = this.settings?.control;
     return !c || !!(c.Model || c.model);
   }
+  // keysLocked: the model needs a key from a keychain that is still locked,
+  // so the daemon refuses to open tasks until this console unlocks it.
+  get keysLocked() {
+    const c = this.settings?.control;
+    return !!(c && (c.Credential || c.credential) && this.keychain?.exists && !this.keychain.unlocked && this.conn.has("keychain.unlock"));
+  }
   async refreshModels() {
     if (!this.conn.has("models.status")) return;
     try {

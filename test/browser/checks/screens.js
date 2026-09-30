@@ -13,8 +13,11 @@ const out = process.argv[2];
   const base = url.split("/#")[0];
   const browser = await chromium.launch();
   const errors = [];
-  const shoot = async (name, viewport, scheme, path, fn) => {
-    const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: 1 });
+  // The browser always reports a light system: dark is the console's default,
+  // and light only a stored choice, so the dark shots check the default too.
+  const shoot = async (name, viewport, theme, path, fn) => {
+    const ctx = await browser.newContext({ viewport, colorScheme: "light", deviceScaleFactor: 1 });
+    if (theme === "light") await ctx.addInitScript(() => localStorage.setItem("nodwyn-theme", "light"));
     const page = await ctx.newPage();
     page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") errors.push(`${name}: ${m.text()}`); });
     page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
@@ -25,6 +28,9 @@ const out = process.argv[2];
     await page.waitForTimeout(3500);
     if (path) { await page.evaluate((p) => (location.hash = p), path); await page.waitForTimeout(1200); }
     if (fn) await fn(page);
+    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const want = theme === "light" ? "rgb(245, 242, 234)" : "rgb(23, 22, 19)";
+    if (bg !== want) throw new Error(`${name}: background ${bg}, want ${want} (${theme})`);
     await page.screenshot({ path: `${out}/${name}.png`, fullPage: false });
     await ctx.close();
   };

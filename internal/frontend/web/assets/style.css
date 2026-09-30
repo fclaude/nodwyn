@@ -29,112 +29,11 @@
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   --serif: "Newsreader", Georgia, serif;
   --sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  --bg: #f5f2ea;
-  --sidebar: #efebe2;
-  --aside: #f0ede5;
-  --surface: #fcfbf8;
-  --surface-2: #ece8de;
-  --selected: #e3ded2;
-  --line: #ddd7ca;
-  --line-strong: #cfc8b8;
-  --line-input: #d6d0c2;
-  --track: #e0dace;
-  --ink: #1c1b18;
-  --ink-2: #3a3731;
-  --muted: #57534a;
-  --faint: #6e695e;
-  --faint-2: #736e62;
-  --ghost: #b5ae9f;
-  --invert-bg: #1c1b18;
-  --invert-fg: #f5f2ea;
-  --invert-faint: #bdb6a7;
-  --accent: #2f4fc4;
-  --accent-ring: rgba(47, 79, 196, 0.14);
-  --accent-link: #2f4fc4;
-  --ok: #1d6b37;
-  --ok-dot: #2e7d4f;
-  --bad: #9a2e1f;
-
-  --warn-bg: #fff8ee;
-  --warn-line: #e8c39b;
-  --warn-line-strong: #e0a56b;
-  --warn-chip: #f6e1c8;
-  --warn-ink: #7a3606;
-  --warn-ink-2: #6b3206;
-  --warn-dot: #c2570c;
-
-  --code-bg: #fffdf9;
-  --code-head: #f7efe3;
-  --code-line: #e6d6c2;
-  --add-bg: #e3efdf;
-  --add-ink: #173f24;
-  --add-sign: #1d4d2b;
-  --add-num: #2f5b3a;
-  --del-bg: #f6e1dc;
-  --del-ink: #6e2317;
-  --del-sign: #862b1e;
-  --del-num: #7e3a2e;
-
-  --shadow: 0 1px 0 rgba(28, 27, 24, 0.04), 0 18px 40px -24px rgba(28, 27, 24, 0.35);
-  --radius: 12px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: #171613;
-    --sidebar: #1d1b18;
-    --aside: #1b1a17;
-    --surface: #22201c;
-    --surface-2: #2a2823;
-    --selected: #2a2823;
-    --line: #34312b;
-    --line-strong: #45413a;
-    --line-input: #3d3a33;
-    --track: #34312b;
-    --ink: #ece7dc;
-    --ink-2: #d6d0c3;
-    --muted: #b5ae9f;
-    --faint: #958e80;
-    --faint-2: #8a8375;
-    --ghost: #5a554c;
-    --invert-bg: #ece7dc;
-    --invert-fg: #171613;
-    --invert-faint: #6e695e;
-    --accent: #4b68d9;
-    --accent-ring: rgba(75, 104, 217, 0.22);
-    --accent-link: #9db0f5;
-    --ok: #7bc48e;
-    --ok-dot: #5fb27a;
-    --bad: #f08a7a;
-    --warn-bg: #2a1f15;
-    --warn-line: #6b4420;
-    --warn-line-strong: #9a5e28;
-    --warn-chip: #4a2f16;
-    --warn-ink: #f5c08e;
-    --warn-ink-2: #f0b27a;
-    --warn-dot: #e08a3c;
-    --code-bg: #1e1c19;
-    --code-head: #2a241c;
-    --code-line: #4a3a2a;
-    --add-bg: #1c3322;
-    --add-ink: #b5e0be;
-    --add-sign: #7bc48e;
-    --add-num: #8fc39c;
-    --del-bg: #3a1f1b;
-    --del-ink: #f2b8ae;
-    --del-sign: #f08a7a;
-    --del-num: #d9978b;
-    --shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 18px 40px -24px rgba(0, 0, 0, 0.7);
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
   --bg: #171613;
   --sidebar: #1d1b18;
   --aside: #1b1a17;
@@ -179,6 +78,106 @@
   --del-sign: #f08a7a;
   --del-num: #d9978b;
   --shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 18px 40px -24px rgba(0, 0, 0, 0.7);
+  --radius: 12px;
+}
+
+/* Dark is the default (docs/friction.md, 2026-09-25). Light is a choice in
+   Settings, or what "Match the system" becomes on a light system. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f2ea;
+  --sidebar: #efebe2;
+  --aside: #f0ede5;
+  --surface: #fcfbf8;
+  --surface-2: #ece8de;
+  --selected: #e3ded2;
+  --line: #ddd7ca;
+  --line-strong: #cfc8b8;
+  --line-input: #d6d0c2;
+  --track: #e0dace;
+  --ink: #1c1b18;
+  --ink-2: #3a3731;
+  --muted: #57534a;
+  --faint: #6e695e;
+  --faint-2: #736e62;
+  --ghost: #b5ae9f;
+  --invert-bg: #1c1b18;
+  --invert-fg: #f5f2ea;
+  --invert-faint: #bdb6a7;
+  --accent: #2f4fc4;
+  --accent-ring: rgba(47, 79, 196, 0.14);
+  --accent-link: #2f4fc4;
+  --ok: #1d6b37;
+  --ok-dot: #2e7d4f;
+  --bad: #9a2e1f;
+  --warn-bg: #fff8ee;
+  --warn-line: #e8c39b;
+  --warn-line-strong: #e0a56b;
+  --warn-chip: #f6e1c8;
+  --warn-ink: #7a3606;
+  --warn-ink-2: #6b3206;
+  --warn-dot: #c2570c;
+  --code-bg: #fffdf9;
+  --code-head: #f7efe3;
+  --code-line: #e6d6c2;
+  --add-bg: #e3efdf;
+  --add-ink: #173f24;
+  --add-sign: #1d4d2b;
+  --add-num: #2f5b3a;
+  --del-bg: #f6e1dc;
+  --del-ink: #6e2317;
+  --del-sign: #862b1e;
+  --del-num: #7e3a2e;
+  --shadow: 0 1px 0 rgba(28, 27, 24, 0.04), 0 18px 40px -24px rgba(28, 27, 24, 0.35);
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --bg: #f5f2ea;
+    --sidebar: #efebe2;
+    --aside: #f0ede5;
+    --surface: #fcfbf8;
+    --surface-2: #ece8de;
+    --selected: #e3ded2;
+    --line: #ddd7ca;
+    --line-strong: #cfc8b8;
+    --line-input: #d6d0c2;
+    --track: #e0dace;
+    --ink: #1c1b18;
+    --ink-2: #3a3731;
+    --muted: #57534a;
+    --faint: #6e695e;
+    --faint-2: #736e62;
+    --ghost: #b5ae9f;
+    --invert-bg: #1c1b18;
+    --invert-fg: #f5f2ea;
+    --invert-faint: #bdb6a7;
+    --accent: #2f4fc4;
+    --accent-ring: rgba(47, 79, 196, 0.14);
+    --accent-link: #2f4fc4;
+    --ok: #1d6b37;
+    --ok-dot: #2e7d4f;
+    --bad: #9a2e1f;
+    --warn-bg: #fff8ee;
+    --warn-line: #e8c39b;
+    --warn-line-strong: #e0a56b;
+    --warn-chip: #f6e1c8;
+    --warn-ink: #7a3606;
+    --warn-ink-2: #6b3206;
+    --warn-dot: #c2570c;
+    --code-bg: #fffdf9;
+    --code-head: #f7efe3;
+    --code-line: #e6d6c2;
+    --add-bg: #e3efdf;
+    --add-ink: #173f24;
+    --add-sign: #1d4d2b;
+    --add-num: #2f5b3a;
+    --del-bg: #f6e1dc;
+    --del-ink: #6e2317;
+    --del-sign: #862b1e;
+    --del-num: #7e3a2e;
+    --shadow: 0 1px 0 rgba(28, 27, 24, 0.04), 0 18px 40px -24px rgba(28, 27, 24, 0.35);
+  }
 }
 
 /* ---------- base ---------- */
@@ -433,6 +432,7 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
   display: flex; align-items: center; gap: 12px; padding: 18px 32px 18px 48px;
   border-bottom: 1px solid var(--line); flex-wrap: wrap;
 }
+.task-head > .callout { flex-basis: 100%; }
 .task-head .titles { display: flex; flex-direction: column; gap: 6px; flex: 1 1 420px; min-width: 0; }
 .task-head h1 {
   margin: 0; font-family: var(--serif); font-size: 26px; font-weight: 500;
