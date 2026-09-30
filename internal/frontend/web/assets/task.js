@@ -462,7 +462,7 @@ export class TaskView {
   aside() {
     if (!this.el || !this.item) return;
     const side = this.el.side;
-    const panels = [this.planPanel(), this.turnPanel(), this.changesPanel(), this.attachmentsPanel(), this.notesPanel(), this.workspacePanel(), this.detailsPanel()];
+    const panels = [this.planPanel(), this.turnPanel(), this.changesPanel(), this.toolsPanel(), this.attachmentsPanel(), this.notesPanel(), this.workspacePanel(), this.detailsPanel()];
     side.replaceChildren(...panels.filter(Boolean));
   }
   planPanel() {
@@ -555,6 +555,21 @@ export class TaskView {
     ];
     const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git is the undo" : this.info ? "previous versions kept" : "writes nibb was allowed";
     return h("section", { class: "panel" }, h("h2", {}, "Changes", h("span", { class: "note" }, note)), rows);
+  }
+  // toolsPanel lists where this task's tools come from, when some come from
+  // MCP servers.
+  toolsPanel() {
+    const servers = this.info?.mcp || [];
+    if (!servers.length) return null;
+    const builtin = (this.info.tools || []).filter((t) => !t.name.includes("__")).length;
+    const words = { ready: (s) => `${s.tools.length} tool${s.tools.length === 1 ? "" : "s"}`, unapproved: () => "not reviewed", changed: () => "changed: off", error: () => "unavailable" };
+    return h(
+      "section",
+      { class: "panel" },
+      h("h2", {}, "Tools in this task", h("a", { href: "#/connections", class: "note" }, "Manage")),
+      h("div", { class: "kv" }, h("span", {}, "nibb · built in"), h("span", {}, `${builtin} tools`)),
+      servers.map((s) => h("div", { class: "kv", title: s.detail || "" }, h("span", {}, `${s.name} · HTTP · ${s.host}`), h("span", {}, (words[s.state] || (() => s.state))(s)))),
+    );
   }
   attachmentsPanel() {
     const attached = this.events().filter((e) => e.kind === "attach").map((e) => e.payload);

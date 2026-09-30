@@ -1,6 +1,6 @@
 # ADR 0022: Cowork — workspaces, attachments, and MCP servers
 
-- Status: **partially implemented** (W1 and W2 text done 2026-09-30; images and W3 in progress)
+- Status: **partially implemented** (W1, W2 text and W3a done 2026-09-30; images, W3b, W4, W5 proposed)
 - Date: 2026-09-22
 
 ## Context

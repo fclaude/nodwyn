@@ -156,3 +156,13 @@ export function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (node.hidden = true), 5000);
 }
+
+// toolLabel shows an MCP tool (server__tool) as server/tool.
+export function toolLabel(name) {
+  const i = String(name || "").indexOf("__");
+  return i > 0 ? `${name.slice(0, i)}/${name.slice(i + 2)}` : name;
+}
+// isMCP reports whether a tool comes from an MCP server.
+export function isMCP(name) {
+  return String(name || "").indexOf("__") > 0;
+}

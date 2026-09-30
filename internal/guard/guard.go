@@ -241,7 +241,9 @@ func (g *Guard) evaluate(ctx context.Context, p *scheme.Prim, args []scheme.Valu
 		if d.Verdict == Confirm && d.Security {
 			r.security = true
 		}
-		r.reasons = append(r.reasons, d.Reason)
+		if d.Reason != "" {
+			r.reasons = append(r.reasons, d.Reason)
+		}
 		if d.Detail != "" {
 			r.details = append(r.details, d.Detail)
 		}

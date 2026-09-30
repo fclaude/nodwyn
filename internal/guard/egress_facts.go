@@ -32,6 +32,12 @@ func egressFactsOf(p *scheme.Prim, args []scheme.Value) egressFacts {
 				f.Class = class
 			}
 		}
+		if !f.HasCredential && p.Meta.EgressClass != "" && credIndex(p, args) < 0 {
+			// A host integration that injects its own credential: the call
+			// carries that class whatever the arguments say.
+			f.HasCredential = true
+			f.Class = p.Meta.EgressClass
+		}
 		f.Host = destHost(p, args)
 		if f.Host == "" && p.Meta.EgressHost != "" {
 			f.Host = strings.ToLower(p.Meta.EgressHost)

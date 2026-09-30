@@ -89,6 +89,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if _, err = s.Record(log.KindNote, log.Note{Text: "Session resumed; session-only approvals and Scheme state were reset. No interrupted tool was rerun."}); err != nil {
 		return nil, err
 	}
+	s.markStarted()
 	s.flushOutput()
 	return s, nil
 }

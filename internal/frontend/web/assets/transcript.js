@@ -2,7 +2,7 @@
 // opens one, and everything the harness does in reply belongs to it. Calls
 // that only look (reads, searches, listings) fold into one line; calls that
 // change or run something stand on their own line with their outcome.
-import { h, icon, oneLine, sizeOf } from "./dom.js";
+import { h, icon, oneLine, sizeOf, toolLabel, isMCP } from "./dom.js";
 import { markdown } from "./markdown.js";
 import { attachmentChip } from "./attach.js";
 
@@ -271,7 +271,7 @@ export class Transcript {
     const summaryText = argSummary(p.args);
     if (kind === "read") {
       if (!this.group) {
-        const label = h("span", { class: "label" }, p.name.includes("/") ? "Gathered" : "Looked around");
+        const label = h("span", { class: "label" }, isMCP(p.name) ? "Gathered" : "Looked around");
         const what = h("span", { class: "what" });
         const names = h("span", { class: "names" });
         const body = h("div", { class: "activity-body" });
@@ -281,14 +281,14 @@ export class Transcript {
       }
       const g = this.group;
       g.counts[lookKind(p.name)] = (g.counts[lookKind(p.name)] || 0) + 1;
-      g.tools.add(p.name);
-      if (p.name.includes("/")) {
-        g.servers.add(p.name.split("/")[0]);
+      g.tools.add(toolLabel(p.name));
+      if (isMCP(p.name)) {
+        g.servers.add(p.name.split("__")[0]);
         g.label.textContent = "Gathered";
       }
       g.what.textContent = g.servers.size ? `${g.servers.size} server${g.servers.size === 1 ? "" : "s"} · ${describe(g.counts)}` : describe(g.counts);
       g.names.textContent = [...g.tools].slice(0, 3).join(" · ");
-      const row = h("details", { class: "call" }, h("summary", {}, h("span", { class: "name" }, p.name), h("span", { class: "args" }, summaryText), h("span", { class: "stat" }, "…")), h("div", { class: "call-body" }, detailsBlock("Arguments", p.args)));
+      const row = h("details", { class: "call" }, h("summary", {}, h("span", { class: "name" }, toolLabel(p.name)), h("span", { class: "args" }, summaryText), h("span", { class: "stat" }, "…")), h("div", { class: "call-body" }, detailsBlock("Arguments", p.args)));
       g.body.append(row);
       this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), group: g };
       return;
@@ -299,7 +299,8 @@ export class Transcript {
     else if (kind === "write") {
       const a = argsObject(p.args);
       line = [icon("file", 15), h("span", {}, p.name === "fs-edit" ? "Edit" : "Write"), h("span", { class: "mono" }, a.path || summaryText)];
-    } else line = [icon("terminal", 15), h("span", { class: "mono" }, `${p.name} ${summaryText}`.trim())];
+    } else if (isMCP(p.name)) line = [icon("plug", 15), h("span", { class: "mono" }, `${toolLabel(p.name)} ${summaryText}`.trim())];
+    else line = [icon("terminal", 15), h("span", { class: "mono" }, `${p.name} ${summaryText}`.trim())];
     const result = h("span", { class: "result" }, "running…");
     const note = h("span", { class: "aside-note" });
     const step = h("div", { class: "step" }, line, result, note);
@@ -334,7 +335,7 @@ export class Transcript {
     let c = this.call;
     if (!c || c.id !== p.id || c.name !== p.name) {
       // A result without its call in view (a skipped or resumed call) stands alone.
-      this.audit(`${p.name} ${p.ok ? "returned" : "failed"}`, p.ok ? p.value : p.error, p.ok ? "" : "bad");
+      this.audit(`${toolLabel(p.name)} ${p.ok ? "returned" : "failed"}`, p.ok ? p.value : p.error, p.ok ? "" : "bad");
       return;
     }
     const body = p.ok ? p.value : p.error;

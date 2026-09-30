@@ -52,6 +52,9 @@ func (MetaPolicy) Name() string { return "meta" }
 
 func (MetaPolicy) Check(_ context.Context, p *scheme.Prim, _ []scheme.Value) Decision {
 	if p.Meta.Irreversible {
+		if p.Meta.ConfirmReason != "" {
+			return Decision{Verdict: Confirm, Reason: p.Meta.ConfirmReason}
+		}
 		return Decision{Verdict: Confirm, Reason: p.Name + " is irreversible"}
 	}
 	return Decision{Verdict: Allow}

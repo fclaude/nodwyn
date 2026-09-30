@@ -262,6 +262,10 @@ export function renderWorkspaces(root, ctx) {
 
 // ---------- connections ----------
 let connectionsTab = "tools";
+let selectedServer = "";
+let adding = false;
+const inspections = new Map(); // server name -> { tools, manifest, approved, changed } or { error }
+
 export async function renderConnections(root, ctx) {
   const { conn, desk, rerender } = ctx;
   const tab = (id, label) => h("button", { type: "button", role: "tab", "aria-selected": String(connectionsTab === id), onclick: () => { connectionsTab = id; rerender(); } }, label);
@@ -274,8 +278,8 @@ export async function renderConnections(root, ctx) {
         "div",
         { class: "page-col" },
         h("h1", {}, "Connections"),
-        h("p", { class: "lede" }, "What nibb can reach and what it may do there. Every tool crosses the same guard, whether it is built in or comes from elsewhere."),
-        h("div", { class: "tabs", role: "tablist" }, tab("tools", "Tools"), tab("credentials", "Credentials"), tab("models", "Models")),
+        h("p", { class: "lede" }, "What nibb can reach and what it may do there. Tools from MCP servers cross the same guard as the built-in ones."),
+        h("div", { class: "tabs", role: "tablist" }, tab("tools", "Tools"), tab("credentials", "Credentials"), tab("workspaces", "Workspaces"), tab("models", "Models")),
         body,
       ),
     ),
@@ -284,50 +288,223 @@ export async function renderConnections(root, ctx) {
     body.append(...modelRows(desk));
     return;
   }
-  // Tools and bindings are a session's: read them from an open task.
-  const open = desk.all().find((s) => s.open);
-  if (!open) {
-    body.append(h("div", { class: "callout plain" }, "Open or resume a task to see the tools and credential bindings it has. Each task loads them when it starts."));
-    return;
-  }
-  body.append(h("p", { class: "hint" }, "Loading…"));
-  let info;
-  try {
-    info = await conn.call("session.info", { id: open.id });
-  } catch (error) {
-    body.replaceChildren(h("p", { class: "error" }, error.message));
-    return;
-  }
-  const source = h("p", { class: "hint" }, `As loaded by the task “${open.title || open.id}” in ${desk.folderName(open.repo)}.`);
-  if (connectionsTab === "credentials") {
-    const rows = (info.bindings || []).map((b) => h("tr", {}, h("td", {}, h("span", { class: "mono" }, b.Class)), h("td", {}, b.Dest), h("td", {}, (b.Methods || []).join(", ")), h("td", {}, (b.Positions || []).join(", "))));
-    body.replaceChildren(
-      source,
-      rows.length
-        ? h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Credential"), h("th", {}, "Only for"), h("th", {}, "Methods"), h("th", {}, "Added as"))), h("tbody", {}, rows))
-        : h("div", { class: "callout plain" }, "No credential bindings. A credential is used only where a binding allows it; nibb adds it at the last step and the model never sees the value."),
-      h("p", { class: "hint" }, "Edit bindings from a task: Details › Policy."),
+  if (connectionsTab === "workspaces") {
+    const rows = desk.workspaces.map((w) =>
+      h("div", { class: "list-row" }, icon("folder", 18), h("div", { class: "main" }, h("strong", {}, w.name), h("span", {}, `${kindLabel(w.kind)} · ${shortPath(w.path, desk.home)}${w.mounts?.length ? ` · ${w.mounts.length} mounted folder${w.mounts.length === 1 ? "" : "s"}` : ""}`))),
+    );
+    body.append(
+      rows.length ? h("div", { class: "list" }, rows) : h("p", { class: "hint" }, "No named workspaces yet."),
+      h("div", { class: "row-actions" }, h("a", { class: "btn", href: "#/workspaces" }, "Manage workspaces")),
     );
     return;
   }
-  const tools = info.tools || [];
-  const external = tools.filter((t) => t.name.includes("/"));
-  const builtin = tools.filter((t) => !t.name.includes("/"));
-  body.replaceChildren(
-    source,
-    h("h2", { class: "section-title" }, "Offered to the model"),
+  const open = desk.all().find((s) => s.open);
+  let info = null;
+  if (open) {
+    try {
+      info = await conn.call("session.info", { id: open.id });
+    } catch {
+      info = null;
+    }
+  }
+  if (connectionsTab === "credentials") return credentials(body, info, open, desk);
+  return tools(body, ctx, info, () => renderConnections(root, ctx));
+}
+
+function credentials(body, info, open, desk) {
+  if (!info) {
+    body.append(h("div", { class: "callout plain" }, "Open or resume a task to see the credential bindings it loaded."));
+    return;
+  }
+  const rows = (info.bindings || []).map((b) => h("tr", {}, h("td", {}, h("span", { class: "mono" }, b.Class)), h("td", {}, b.Dest), h("td", {}, (b.Methods || []).join(", ")), h("td", {}, (b.Positions || []).join(", "))));
+  body.append(
+    h("p", { class: "hint" }, `As loaded by “${open.title || open.id}” in ${desk.folderName(open.repo)}.`),
+    rows.length
+      ? h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Credential"), h("th", {}, "Only for"), h("th", {}, "Methods"), h("th", {}, "Added as"))), h("tbody", {}, rows))
+      : h("div", { class: "callout plain" }, "No credential bindings. A credential is used only where a binding allows it; nibb adds it at the last step and the model never sees the value."),
+    h("p", { class: "hint" }, "Edit bindings from a task: Details › Policy."),
+  );
+}
+
+async function tools(body, ctx, info, redraw) {
+  const { conn, desk } = ctx;
+  let servers = [];
+  if (conn.has("mcp.list")) {
+    try {
+      servers = await conn.call("mcp.list");
+    } catch (error) {
+      body.append(h("p", { class: "error" }, error.message));
+    }
+  }
+  const builtin = (info?.tools || []).filter((t) => !t.name.includes("__"));
+  const canEdit = conn.has("mcp.save");
+  const serverRow = (server) => {
+    const on = Object.values(server.tools || {}).filter((t) => t.on).length;
+    const inspection = inspections.get(server.name);
+    const state = !server.manifest ? ["warn", "not reviewed"] : inspection?.changed ? ["warn", "changed"] : inspection?.error ? ["bad", "unreachable"] : ["ok", "pinned"];
+    return h(
+      "button",
+      { type: "button", class: `list-row server-row${selectedServer === server.name ? " selected" : ""}`, onclick: () => { selectedServer = selectedServer === server.name ? "" : server.name; adding = false; redraw(); } },
+      icon("plug", 18),
+      h("div", { class: "main" }, h("strong", {}, server.name), h("span", {}, `HTTP · ${host(server.url)} · ${on} tool${on === 1 ? "" : "s"} on`)),
+      h("div", { class: "end" }, h("span", { class: `dot ${state[0]}` }), state[1]),
+    );
+  };
+  body.append(
+    h("h2", { class: "section-title" }, "Built in"),
+    h("div", { class: "list" }, h("div", { class: "list-row" }, icon("terminal", 18), h("div", { class: "main" }, h("strong", {}, "nibb"), h("span", {}, info ? `${builtin.length} tools · files, search, notes${builtin.some((t) => t.name === "shell-exec") ? ", commands" : ""}, and the ones a folder defines` : "Open a task to see its tools.")))),
+    h("h2", { class: "section-title" }, "MCP servers"),
+    servers.length ? h("div", { class: "list" }, servers.map(serverRow)) : h("p", { class: "hint" }, "No MCP servers yet. A server's tools stay off until you review them and choose which to offer."),
+    canEdit ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", onclick: () => { adding = !adding; selectedServer = ""; redraw(); } }, icon("plus", 15), "Add a server")) : null,
+  );
+  if (adding && canEdit) body.append(addServer(ctx, redraw));
+  const server = servers.find((s) => s.name === selectedServer);
+  if (server) body.append(await serverDetail(server, ctx, redraw));
+  body.append(h("div", { class: "callout plain" }, "An undeclared tool is treated as sending out and irreversible: every call asks you, and anything its credential isn't allowed to reach is refused."));
+  void desk;
+}
+
+function host(u) {
+  try {
+    return new URL(u).host;
+  } catch {
+    return u;
+  }
+}
+
+function addServer(ctx, redraw) {
+  const { conn, desk } = ctx;
+  const name = h("input", { class: "input", id: "mcp-name", placeholder: "for example linear", required: true, pattern: "[a-z][a-z0-9-]{0,31}" });
+  const url = h("input", { class: "input", id: "mcp-url", placeholder: "https://mcp.example.com/mcp", required: true, spellcheck: false });
+  const key = h("input", { class: "input", id: "mcp-key", type: "password", autocomplete: "off", placeholder: "only if the server needs one" });
+  const error = h("p", { class: "error", role: "alert" });
+  const folders = desk.folders();
+  const chosen = new Set();
+  return h(
+    "form",
+    {
+      class: "card setup-form",
+      onsubmit: async (event) => {
+        event.preventDefault();
+        error.textContent = "";
+        const params = { server: { name: name.value.trim(), url: url.value.trim(), workspaces: [...chosen], tools: {} } };
+        if (key.value) params.api_key = key.value;
+        key.value = "";
+        try {
+          await conn.call("mcp.save", params);
+          adding = false;
+          selectedServer = params.server.name;
+          redraw();
+        } catch (e) {
+          error.textContent = e.message;
+        }
+      },
+    },
+    h("div", { class: "field" }, h("label", { for: "mcp-name" }, "Name"), name, h("p", { class: "hint" }, "Lower-case letters, digits and dashes. Its tools appear as name/tool.")),
+    h("div", { class: "field" }, h("label", { for: "mcp-url" }, "Server address"), url, h("p", { class: "hint" }, "A remote server over HTTPS. nibb runs no server on this computer.")),
+    h("div", { class: "field" }, h("label", { for: "mcp-key" }, "API key"), key, h("p", { class: "hint" }, "Kept in the keychain and sent only to this server's address, as a bearer Authorization header.")),
+    h("div", { class: "field" }, h("label", {}, "Offer it in"), h("div", { class: "row-actions" }, folders.map((f) => h("button", { type: "button", class: "chip", "aria-pressed": "false", onclick: (e) => { const on = e.target.getAttribute("aria-pressed") !== "true"; e.target.setAttribute("aria-pressed", String(on)); if (on) chosen.add(f); else chosen.delete(f); } }, desk.folderName(f))))),
+    error,
+    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, "Add and review its tools"), h("button", { type: "button", class: "btn ghost", onclick: () => { adding = false; redraw(); } }, "Cancel")),
+  );
+}
+
+async function serverDetail(server, ctx, redraw) {
+  const { conn, desk } = ctx;
+  const canEdit = conn.has("mcp.save");
+  const panel = h("section", { class: "card server-detail" }, h("p", { class: "hint" }, `Connecting to ${host(server.url)} to read its tools…`));
+  let inspection = inspections.get(server.name);
+  if (!inspection && conn.has("mcp.inspect")) {
+    try {
+      inspection = await conn.call("mcp.inspect", { name: server.name });
+    } catch (error) {
+      inspection = { error: error.message };
+    }
+    inspections.set(server.name, inspection);
+  }
+  const draft = JSON.parse(JSON.stringify(server));
+  draft.tools ||= {};
+  draft.workspaces ||= [];
+  const liveNames = (inspection?.tools || []).map((t) => t.name);
+  const names = [...new Set([...liveNames, ...Object.keys(draft.tools)])].sort();
+  const effectSelect = (name) =>
+    h(
+      "select",
+      { class: "input", "aria-label": `What ${name} does`, disabled: !canEdit, onchange: (e) => { draft.tools[name] = { ...(draft.tools[name] || {}), effect: e.target.value }; } },
+      h("option", { value: "", selected: !draft.tools[name]?.effect }, "not declared: asks every call"),
+      h("option", { value: "read", selected: draft.tools[name]?.effect === "read" }, "reads"),
+      h("option", { value: "write", selected: draft.tools[name]?.effect === "write" }, "changes things"),
+    );
+  const offered = (name) => {
+    const box = h("input", { type: "checkbox", "aria-label": `Offer ${name}`, checked: !!draft.tools[name]?.on, disabled: !canEdit || !liveNames.includes(name), onchange: (e) => { draft.tools[name] = { ...(draft.tools[name] || {}), on: e.target.checked }; } });
+    return box;
+  };
+  const rows = names.map((name) => {
+    const live = inspection?.tools?.find((t) => t.name === name);
+    return h(
+      "tr",
+      {},
+      h("td", {}, h("span", { class: "mono" }, name), live?.description ? h("div", { class: "hint", style: "max-width:360px" }, live.description.slice(0, 180)) : h("div", { class: "hint" }, liveNames.length ? "no longer offered by the server" : "")),
+      h("td", {}, effectSelect(name)),
+      h("td", {}, offered(name)),
+    );
+  });
+  const banner = inspection?.error
+    ? h("div", { class: "callout" }, `Could not reach it: ${inspection.error}`)
+    : !server.manifest
+      ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "Review these tools before nibb offers any. "), "Approving pins this exact tool list: if the server changes a name, description or schema, its tools stop until you review again."))
+      : inspection?.changed
+        ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "Its tool list changed since you approved it. "), "Its tools are off in new tasks until you review and approve the new list. ", h("span", { class: "mono" }, `${(inspection.approved || "").slice(0, 8)}… → ${(inspection.manifest || "").slice(0, 8)}…`)))
+        : null;
+  const approve = canEdit && inspection?.manifest && (inspection.changed || !server.manifest)
+    ? h(
+        "button",
+        {
+          type: "button",
+          class: "btn dark",
+          onclick: async () => {
+            try {
+              await conn.call("mcp.save", { server: draft });
+              await conn.call("mcp.approve", { name: server.name, manifest: inspection.manifest });
+              inspections.delete(server.name);
+              toast("Approved. New tasks in its workspaces offer the tools you turned on.");
+              redraw();
+            } catch (e) {
+              toast(e.message);
+            }
+          },
+        },
+        "Approve this tool list",
+      )
+    : null;
+  const workspaceChips = h(
+    "div",
+    { class: "row-actions" },
+    desk.folders().map((f) => h("button", { type: "button", class: "chip", "aria-pressed": String(draft.workspaces.includes(f)), disabled: !canEdit, onclick: (e) => { const on = !draft.workspaces.includes(f); draft.workspaces = on ? [...draft.workspaces, f] : draft.workspaces.filter((x) => x !== f); e.target.setAttribute("aria-pressed", String(on)); } }, desk.folderName(f))),
+  );
+  panel.replaceChildren(
     h(
       "div",
-      { class: "list" },
-      h("div", { class: "list-row" }, icon("terminal", 18), h("div", { class: "main" }, h("strong", {}, "nibb"), h("span", {}, `${builtin.length} tools · files, search, commands, notes, and the ones this folder defines`))),
-      external.length ? h("div", { class: "list-row" }, icon("plug", 18), h("div", { class: "main" }, h("strong", {}, "MCP servers"), h("span", {}, `${external.length} tools`))) : null,
+      { class: "card-head" },
+      h("div", { style: "display:flex;flex-direction:column;gap:2px" }, h("strong", { style: "font-size:17px" }, server.name), h("span", { class: "hint mono" }, server.url)),
+      canEdit ? h("button", { type: "button", class: "btn small danger", style: "margin-left:auto", onclick: async () => { try { await conn.call("mcp.remove", { name: server.name }); selectedServer = ""; inspections.delete(server.name); redraw(); } catch (e) { toast(e.message); } } }, "Disconnect") : null,
     ),
-    h(
-      "table",
-      { class: "table" },
-      h("thead", {}, h("tr", {}, h("th", {}, "Tool"), h("th", {}, "What it does"))),
-      h("tbody", {}, tools.map((t) => h("tr", {}, h("td", {}, h("span", { class: "mono" }, t.name)), h("td", {}, t.description || "")))),
-    ),
+    h("p", { class: "hint" }, "A remote server: nibb sends it the arguments of the calls you allow, and runs nothing of it on this computer."),
+    banner,
+    h("div", { class: "field" }, h("label", {}, "Offered in"), workspaceChips),
+    names.length ? h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Tool"), h("th", {}, "What it does to the world"), h("th", {}, "Offered"))), h("tbody", {}, rows)) : null,
+    server.credential
+      ? h("div", { class: "file-row" }, icon("key", 15), h("div", {}, h("span", { class: "mono" }, server.credential), " in the keychain. ", h("span", { class: "hint" }, `Only for ${host(server.url)} · POST · as ${server.position}. nibb adds it at the last step; the model never sees the value.`)))
+      : h("p", { class: "hint" }, "No credential: requests go without one."),
+    canEdit
+      ? h(
+          "div",
+          { class: "row-actions" },
+          h("button", { type: "button", class: "btn", onclick: async () => { try { await conn.call("mcp.save", { server: draft }); toast("Saved. New tasks use it."); inspections.delete(server.name); redraw(); } catch (e) { toast(e.message); } } }, "Save"),
+          approve,
+          h("button", { type: "button", class: "btn ghost", onclick: () => { inspections.delete(server.name); redraw(); } }, "Check again"),
+        )
+      : null,
   );
-  void toast;
+  return panel;
 }

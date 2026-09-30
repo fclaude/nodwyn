@@ -132,6 +132,65 @@
       ],
       "type": "object"
     },
+    "config.MCPServer": {
+      "properties": {
+        "credential": {
+          "type": "string"
+        },
+        "manifest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "position": {
+          "type": "string"
+        },
+        "tools": {
+          "additionalProperties": {
+            "$ref": "#/$defs/config.MCPTool"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "url": {
+          "type": "string"
+        },
+        "workspaces": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "url",
+        "workspaces",
+        "tools"
+      ],
+      "type": "object"
+    },
+    "config.MCPTool": {
+      "properties": {
+        "effect": {
+          "type": "string"
+        },
+        "on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "effect",
+        "on"
+      ],
+      "type": "object"
+    },
     "config.Model": {
       "properties": {
         "Credential": {
@@ -239,6 +298,42 @@
         "through",
         "more",
         "truncated"
+      ],
+      "type": "object"
+    },
+    "core.MCPServer": {
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "manifest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "host",
+        "state",
+        "tools",
+        "manifest"
       ],
       "type": "object"
     },
@@ -1357,6 +1452,70 @@
       ],
       "type": "object"
     },
+    "mcp.Annotations": {
+      "properties": {
+        "destructiveHint": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "openWorldHint": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "readOnlyHint": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "mcp.Tool": {
+      "properties": {
+        "annotations": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/mcp.Annotations"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputSchema": {},
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
     "message": {
       "anyOf": [
         {
@@ -1632,6 +1791,21 @@
         },
         {
           "$ref": "#/$defs/request.log.read"
+        },
+        {
+          "$ref": "#/$defs/request.mcp.approve"
+        },
+        {
+          "$ref": "#/$defs/request.mcp.inspect"
+        },
+        {
+          "$ref": "#/$defs/request.mcp.list"
+        },
+        {
+          "$ref": "#/$defs/request.mcp.remove"
+        },
+        {
+          "$ref": "#/$defs/request.mcp.save"
         },
         {
           "$ref": "#/$defs/request.models.status"
@@ -1910,6 +2084,162 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.readParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.mcp.approve": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "mcp.approve"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.mcpApproveParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.mcp.inspect": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "mcp.inspect"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.mcpNameParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.mcp.list": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "mcp.list"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.mcp.remove": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "mcp.remove"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.mcpNameParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.mcp.save": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "mcp.save"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.mcpSaveParams"
             }
           ],
           "unevaluatedProperties": false
@@ -3019,6 +3349,29 @@
     "result.log.read": {
       "$ref": "#/$defs/core.LogPage"
     },
+    "result.mcp.approve": {
+      "$ref": "#/$defs/config.MCPServer"
+    },
+    "result.mcp.inspect": {
+      "$ref": "#/$defs/rpc.mcpInspection"
+    },
+    "result.mcp.list": {
+      "items": {
+        "$ref": "#/$defs/config.MCPServer"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "result.mcp.remove": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "result.mcp.save": {
+      "$ref": "#/$defs/config.MCPServer"
+    },
     "result.models.status": {
       "items": {
         "$ref": "#/$defs/rpc.modelStatus"
@@ -3412,6 +3765,76 @@
       ],
       "type": "object"
     },
+    "rpc.mcpApproveParams": {
+      "properties": {
+        "manifest": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "manifest"
+      ],
+      "type": "object"
+    },
+    "rpc.mcpInspection": {
+      "properties": {
+        "approved": {
+          "type": "string"
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "manifest": {
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/mcp.Tool"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "tools",
+        "manifest",
+        "approved",
+        "changed"
+      ],
+      "type": "object"
+    },
+    "rpc.mcpNameParams": {
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "rpc.mcpSaveParams": {
+      "properties": {
+        "api_key": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "server": {
+          "$ref": "#/$defs/config.MCPServer"
+        }
+      },
+      "required": [
+        "server"
+      ],
+      "type": "object"
+    },
     "rpc.modelStatus": {
       "properties": {
         "detail": {
@@ -3714,6 +4137,15 @@
         "id": {
           "type": "string"
         },
+        "mcp": {
+          "items": {
+            "$ref": "#/$defs/core.MCPServer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "repo": {
           "type": "string"
         },
@@ -3747,7 +4179,8 @@
         "allowed_writes",
         "turn_writes",
         "workspace",
-        "git"
+        "git",
+        "mcp"
       ],
       "type": "object"
     },

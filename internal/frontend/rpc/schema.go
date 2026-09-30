@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/frontend/run"
@@ -61,6 +62,11 @@ func contracts() map[string]methodContract {
 		"versions.list":           {versionsParams{}, []prim.Version{}},
 		"session.restore":         {restoreParams{}, inspectionStarted{}},
 		"session.attach":          {attachParams{}, log.Attach{}},
+		"mcp.list":                {struct{}{}, []config.MCPServer{}},
+		"mcp.inspect":             {mcpNameParams{}, mcpInspection{}},
+		"mcp.save":                {mcpSaveParams{}, config.MCPServer{}},
+		"mcp.approve":             {mcpApproveParams{}, config.MCPServer{}},
+		"mcp.remove":              {mcpNameParams{}, struct{}{}},
 	}
 }
 
@@ -230,7 +236,7 @@ func (g *schemaBuilder) object(t reflect.Type) map[string]any {
 		if t == reflect.TypeOf(approvalParams{}) && name == "scope" {
 			p["enum"] = []string{"session", "turn"}
 		}
-		if (t == reflect.TypeOf(secretParams{}) && name == "secret") || (t == reflect.TypeOf(passphraseParams{}) && name == "passphrase") || (t == reflect.TypeOf(controlParams{}) && name == "api_key") {
+		if (t == reflect.TypeOf(secretParams{}) && name == "secret") || (t == reflect.TypeOf(passphraseParams{}) && name == "passphrase") || (t == reflect.TypeOf(controlParams{}) && name == "api_key") || (t == reflect.TypeOf(mcpSaveParams{}) && name == "api_key") {
 			p["writeOnly"] = true
 		}
 		props[name] = p

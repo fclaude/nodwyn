@@ -26,6 +26,7 @@ import (
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/frontend/rpc"
 	webui "github.com/fclaude/nibb/internal/frontend/web"
+	fakemcp "github.com/fclaude/nibb/test/fakes/mcp"
 	fake "github.com/fclaude/nibb/test/fakes/ollama"
 )
 
@@ -58,6 +59,8 @@ func run(seed bool, port int) error {
 	defer os.RemoveAll(root)
 	model := fake.NewFunc(respond)
 	defer model.Close()
+	chat := chatServer()
+	defer chat.Close()
 
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
 	cfg := config.Default()
@@ -106,7 +109,7 @@ func run(seed bool, port int) error {
 		return err
 	}
 	url := "http://" + web.Addr().String()
-	fmt.Printf("URL %s/#ticket=%s\nCODE %s\nREPO %s\n", url, ticket, code, repos["console"])
+	fmt.Printf("URL %s/#ticket=%s\nCODE %s\nREPO %s\nMCP %s\n", url, ticket, code, repos["console"], chat.URL)
 	go func() {
 		// More tickets for automated checks: one per line on stdin.
 		buf := make([]byte, 1)
@@ -191,6 +194,20 @@ func seedTasks(ctx context.Context, socket string, repos map[string]string) erro
 	return start(repos["console"], "The session list shows each session's first message, cut short, so two sessions that start the same way look identical. Make them easy to tell apart. Keep the change inside the web console.")
 }
 
+// chatServer is a fake team-chat MCP server: search and list read, posting
+// a message is a tool nobody declared.
+func chatServer() *fakemcp.Server {
+	return fakemcp.New(
+		fakemcp.Tool{Name: "search_messages", Description: "Search messages in the team's channels.", Schema: map[string]any{"type": "object", "properties": map[string]any{"query": map[string]any{"type": "string"}}, "required": []any{"query"}},
+			Reply: func(args map[string]any) (string, bool) {
+				return "3 messages: 'cowork workspaces landed', 'attachments read PDFs', 'phone approvals work'", false
+			}},
+		fakemcp.Tool{Name: "list_channels", Description: "List channels.", Reply: func(map[string]any) (string, bool) { return "#eng-status, #random", false }},
+		fakemcp.Tool{Name: "post_message", Description: "Post a message to a channel.", Schema: map[string]any{"type": "object", "properties": map[string]any{"channel": map[string]any{"type": "string"}, "text": map[string]any{"type": "string"}}, "required": []any{"channel", "text"}},
+			Reply: func(map[string]any) (string, bool) { return "posted", false }},
+	)
+}
+
 // respond is the scripted model. A request offering no tools is the planner;
 // otherwise the reply depends on how many tool rounds this ask has had.
 func respond(req fake.Request) fake.Turn {
@@ -219,6 +236,16 @@ func respond(req fake.Request) fake.Turn {
 			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "c1", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "c2", Name: "fs-read", Args: map[string]any{"path": "README.md"}}}}
 		}
 		return fake.Turn{Content: "## What's here\n\n- **README.md** — a one-line description\n- **app.js** — draws a session row\n- `notes/todo.md` — two open items\n\nNothing needed changing.", Chunk: 16}
+	}
+	if strings.HasPrefix(last, "Draft") {
+		switch rounds {
+		case 0:
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "m1", Name: "chat__search_messages", Args: map[string]any{"query": "shipped this week"}}}}
+		case 1:
+			return fake.Turn{Content: "Here is the draft. I'll post it to #eng-status.", ToolCalls: []fake.ToolCall{{ID: "m2", Name: "chat__post_message", Args: map[string]any{"channel": "#eng-status", "text": "Week of 28 September\n\nShipped: cowork workspaces, attachments that read PDFs, phone approvals."}}}}
+		default:
+			return fake.Turn{Content: "## Week of 28 September\n\n**Shipped**\n\n- Cowork workspaces\n- Attachments that read PDFs\n- Phone approvals\n\nPosted to #eng-status.", Chunk: 20}
+		}
 	}
 	if !strings.HasPrefix(last, "The session list") {
 		return fake.Turn{Content: "Glad that helps. Anything else in this folder?", Chunk: 12}

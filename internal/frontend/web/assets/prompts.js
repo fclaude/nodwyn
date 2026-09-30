@@ -1,6 +1,6 @@
 // Prompt views only describe choices. The daemon validates the live prompt
 // ID, applies the answer, and records the answering connection's actor.
-import { h, icon, basename, diffStats, oneLine, ago } from "./dom.js";
+import { h, icon, basename, diffStats, oneLine, ago, toolLabel, isMCP } from "./dom.js";
 
 const verbs = { "fs-write": "Write", "fs-edit": "Edit", "shell-exec": "Run", "http-get": "Fetch", "http-post": "Send" };
 
@@ -17,6 +17,10 @@ export function summary(event) {
   const prompt = p.Prompt || {};
   const verb = verbs[prompt.Prim];
   let title = prompt.Prim || "An operation";
+  if (isMCP(prompt.Prim)) {
+    const tool = prompt.Prim.split("__").slice(1).join("__").replace(/[_-]+/g, " ");
+    return { kind: prompt.Security ? "Security" : "Approval", tool: toolLabel(prompt.Prim), title: tool.charAt(0).toUpperCase() + tool.slice(1), detail: "", mcp: true };
+  }
   if (prompt.Path) title = `${verb || "Write"} ${basename(prompt.Path)}`;
   else if (prompt.Argv?.length) title = `Run ${oneLine(prompt.Argv.join(" "), 60)}`;
   else if (prompt.Egress?.Host) title = `Send to ${prompt.Egress.Host}`;
@@ -89,6 +93,7 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     { class: "card-head" },
     h("span", { class: "eyebrow" }, "Needs your answer"),
     s.tool ? h("span", { class: "tag" }, s.tool) : null,
+    s.mcp && (p.Prompt?.Reasons || []).some((r) => r.includes("has not said")) ? h("span", { class: "badge plain" }, "undeclared tool") : null,
     s.kind === "Security" ? h("span", { class: "badge bad" }, "security") : null,
     since ? h("span", { class: "when" }, `asked ${ago(since)}`) : null,
   );
@@ -110,6 +115,9 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     else title.append(s.title);
     card.append(h("div", { style: "display:flex;flex-direction:column;gap:6px" }, title, prompt.Reasons?.length ? h("ul", { class: "reasons" }, prompt.Reasons.map((r) => h("li", {}, r))) : null));
     if (prompt.Security) card.append(h("p", { class: "security" }, "Security confirmation: this answer applies to this call only."));
+    if (s.mcp && !prompt.Egress) {
+      card.append(h("dl", { class: "facts" }, h("dt", {}, "Sends to"), h("dd", {}, `the MCP server ${toolLabel(prompt.Prim).split("/")[0]}`), h("dt", {}, "Content"), h("dd", {}, `${(prompt.Detail || prompt.Args || "").length.toLocaleString()} characters, below`)));
+    }
     if (prompt.Egress) {
       const e = prompt.Egress;
       card.append(

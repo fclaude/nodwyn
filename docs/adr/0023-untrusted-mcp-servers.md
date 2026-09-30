@@ -1,6 +1,6 @@
 # ADR 0023: Untrusted MCP servers — isolation, pinning, fail-closed
 
-- Status: **proposed** (posture agreed 2026-09-22; refines ADR 22 §4)
+- Status: **partially implemented** (W3a, remote servers, 2026-09-30; W3b contained servers proposed)
 - Date: 2026-09-22
 
 ## Context
@@ -112,3 +112,39 @@ confirm names class and host.
 - **Descriptions still reach the model.** Pinning makes them stable and
   reviewed; it does not make them true. The guard never reads them, so the
   worst case remains a call the user sees in a confirm.
+
+## W3a implemented — 2026-09-30
+
+Remote servers over MCP's streamable HTTP transport (`internal/mcp`), as
+decided above, with these specifics:
+
+- `mcp.toml` in the config directory lists servers: `url` (https, or http
+  on loopback), optional `credential` and `position`, the approved
+  `manifest`, the `workspaces` where the server is offered, and per tool an
+  `effect` (`read` | `write`, absent = undeclared) and `on`. A new server
+  offers nothing until reviewed; a new tool is off until turned on.
+- The manifest hashes every tool's name, title, description, canonical input
+  schema and annotations. **Deviation:** a changed or unapproved manifest
+  withholds that server's tools for the session and says why (session
+  details, the task's Tools panel), rather than stopping the session: the
+  rest of the task still works, and nothing of the server is offered.
+  Approval re-reads the live manifest and refuses if it changed since review.
+- A tool is a primitive `server__tool` (model APIs refuse `/` in tool names;
+  the console shows `server/tool`). It is always egress to the server's host
+  with a fixed method and position, and a new Go-only `EgressClass` makes it
+  credential-bearing for E3, so the binding table is checked before the call
+  and the confirm names class, host and position. The transport checks the
+  binding again and injects the key on every request (initialize, list,
+  call), as keyed models do; redirects are not followed.
+- `effect = "read"` is not irreversible; `write` and undeclared tools confirm
+  every call, with the integration's own reason, a preview of the named
+  arguments, and no standing answer (none can be derived for them).
+  Results pass the ingress redactor like every tool result.
+- The console's Connections page adds, reviews, approves and disconnects
+  servers; approval and edits are local-console only.
+
+Known gaps: optional arguments the model skips are omitted, so an explicit
+empty or false value for an optional parameter cannot be sent; nested input
+schemas reach the model as `array`/`object` without their inner shape.
+Checks made while connecting at session start are recorded right after
+`session.start`; inspection from Connections has no session log to record in.

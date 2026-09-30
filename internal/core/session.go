@@ -66,6 +66,12 @@ type Session struct {
 	// workspace is the repository's .nibb/workspace.toml as loaded at
 	// construction: its kind and mounted folders (ADR 22).
 	workspace config.Workspace
+	// MCP servers this session connected to (mcp.go); checks made while the
+	// session was being built wait for session.start.
+	mcpMu      sync.Mutex
+	mcp        []MCPServer
+	started    bool
+	heldChecks []log.EgressCheck
 
 	// P3 credential prompts: pending masked-secret prompts.
 	secrets   map[string]pendingSecret

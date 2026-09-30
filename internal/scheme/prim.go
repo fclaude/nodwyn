@@ -64,6 +64,13 @@ type Meta struct {
 	// Go-only: Scheme extensions cannot declare a different host operation.
 	EgressMethod   string
 	EgressPosition string
+	// EgressClass is the fixed credential class a host integration injects
+	// itself (an MCP server's key, ADR 22 §4), for a primitive with no
+	// credential argument: the call is judged as carrying that class. Go-only.
+	EgressClass string
+	// ConfirmReason, when set, is why an irreversible call asks, in the
+	// integration's words (an MCP tool nobody declared). Go-only.
+	ConfirmReason string
 
 	// Preview, for irreversible host primitives, renders what the call
 	// would do (a diff) for the confirm prompt. Go-only; not settable from

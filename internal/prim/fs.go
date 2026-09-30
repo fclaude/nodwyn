@@ -242,8 +242,13 @@ func (WritePreview) Check(_ context.Context, p *scheme.Prim, args []scheme.Value
 		return guard.Decision{Verdict: guard.Allow}
 	}
 	// Confirm so the detail travels with the prompt; MetaPolicy already asks
-	// for one and the guard merges the reasons.
-	return guard.Decision{Verdict: guard.Confirm, Reason: "changes " + args[0].S, Detail: detail}
+	// for one and the guard merges the reasons. Only a write names what it
+	// changes: another integration's preview is its arguments.
+	reason := ""
+	if path, ok := guard.WritePath(p, args); ok {
+		reason = "changes " + path
+	}
+	return guard.Decision{Verdict: guard.Confirm, Reason: reason, Detail: detail}
 }
 
 // previewWrite renders the diff an fs-write would produce.

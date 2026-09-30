@@ -765,3 +765,11 @@ select.input { height: 34px; padding: 0 8px; }
 .reply-body { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .reply-body textarea { width: 100%; }
 .turn.user .attach-list { justify-content: flex-start; }
+
+/* connections */
+button.list-row { width: 100%; border: none; background: transparent; text-align: left; color: inherit; font: inherit; }
+button.list-row:hover, button.list-row.selected { background: var(--selected); }
+.list > button.list-row:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+.server-detail { gap: 16px; }
+.server-detail .table select { max-width: 240px; }
+.server-row .end { gap: 6px; }

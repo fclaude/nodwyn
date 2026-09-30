@@ -70,12 +70,21 @@ type sessionDetails struct {
 	// Git says a git work tree is the undo at the root; otherwise nibb
 	// keeps previous versions of files it replaces.
 	Git bool `json:"git"`
+	// MCP is what the session made of each configured server.
+	MCP []core.MCPServer `json:"mcp"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
 	limits, _ := s.options.Config.Budget.Limits(s.options.Config.Loop.MaxToolCalls)
 	trust, actor := session.TurnApproval()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, Workspace: session.Workspace(), Git: isGit(session.Repo())}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
+}
+
+func orEmpty[T any](list []T) []T {
+	if list == nil {
+		return []T{}
+	}
+	return list
 }
 
 func isGit(root string) bool {
@@ -118,6 +127,11 @@ var methodTable = map[string]handler{
 	"versions.list":           (*server).versions,
 	"session.restore":         (*server).versions,
 	"session.attach":          (*server).attach,
+	"mcp.list":                (*server).mcpMethod,
+	"mcp.inspect":             (*server).mcpMethod,
+	"mcp.save":                (*server).mcpMethod,
+	"mcp.approve":             (*server).mcpMethod,
+	"mcp.remove":              (*server).mcpMethod,
 	"session.open":            (*server).open,
 	"session.resume":          (*server).resume,
 	"session.info":            (*server).info,
