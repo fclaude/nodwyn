@@ -4,6 +4,10 @@ package rpc
 // their JSON names; optional request fields use omitempty to express defaults.
 type helloParams struct {
 	Protocol int `json:"protocol"`
+	// Via names the screen a relaying client answers for, such as a paired
+	// phone behind the browser bridge (ADR 30). It is appended to the kernel
+	// identity as a claim and never replaces it.
+	Via string `json:"via,omitempty"`
 }
 type helloResult struct {
 	Protocol int      `json:"protocol"`

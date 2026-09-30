@@ -34,16 +34,18 @@ func (c *cli) app() error {
 	socket := flags.String("socket", "", "daemon socket path (default: the standard one)")
 	browser := flags.Bool("browser", false, "use the default browser even when a window is available")
 	noOpen := flags.Bool("no-open", false, "print the console's launch address instead of opening it")
+	var remote remoteFlags
+	remote.register(flags)
 	if err := flags.Parse(c.rest()); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("app: unexpected arguments")
 	}
-	return runApp(c.paths, *socket, *browser, *noOpen)
+	return runApp(c.paths, *socket, *browser, *noOpen, remote)
 }
 
-func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool) error {
+func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote remoteFlags) error {
 	if socket == "" {
 		path, err := rpc.DefaultSocket()
 		if err != nil {
@@ -68,6 +70,8 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool) error 
 	if err != nil {
 		return err
 	}
+	// The window always uses its own loopback console; --listen adds a
+	// second one for other devices.
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return err
@@ -78,6 +82,14 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool) error 
 		return err
 	}
 	base := "http://" + listener.Addr().String()
+	if remote.listen != "" || len(remote.hosts) > 0 {
+		shared, options, err := remote.listener(paths, webui.Options{Socket: socket, PairingCode: code})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "app: other devices can pair at", shared.Addr().String(), "with code", code)
+		go func() { _ = webui.New(options).Serve(ctx, shared) }()
+	}
 	fmt.Fprintln(os.Stderr, "app: console at", base, "(pairing code for another browser here:", code+")")
 	webCtx, stopWeb := context.WithCancel(ctx)
 	webDone := make(chan error, 1)

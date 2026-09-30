@@ -213,12 +213,13 @@ export function renderHome(root, ctx) {
   const main = root.querySelector(":scope > main.home");
   const keepTop = main && ctx.keepTop && main.firstChild?.contains(document.activeElement);
   if (keepTop) {
+    main.classList.toggle("urgent", waiting.length > 0);
     main.replaceChild(grid, main.lastChild);
     const label = main.querySelector(".ask-bar .where");
     if (label) label.textContent = where;
     return current;
   }
-  root.replaceChildren(h("main", { class: "home" }, top, grid));
+  root.replaceChildren(h("main", { class: waiting.length ? "home urgent" : "home" }, top, grid));
   if (!draft && canStart && document.activeElement === document.body) task.focus();
   current = { focus: () => task.focus() };
   return current;

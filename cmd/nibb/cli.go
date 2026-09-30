@@ -40,6 +40,7 @@ var commands = map[string]func(*cli) error{
 	"chat":     (*cli).chat,
 	"ui":       (*cli).ui,
 	"app":      (*cli).app,
+	"devices":  (*cli).devices,
 	"tui":      (*cli).tui,
 	"run":      (*cli).runTask,
 	"daemon":   (*cli).daemon,
@@ -136,7 +137,7 @@ func (c *cli) ui() error {
 	if err := c.rejectGlobals("ui: put --%s after ui"); err != nil {
 		return err
 	}
-	return runUI(c.rest())
+	return runUI(c.paths, c.rest())
 }
 
 func (c *cli) tui() error {

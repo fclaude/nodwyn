@@ -115,3 +115,38 @@ func TestModelsStatusProbesWithoutCredentials(t *testing.T) {
 		t.Fatalf("status: %+v (auth sent: %v)", status, sawAuth)
 	}
 }
+
+func TestViaNamesTheScreenAfterTheKernelIdentity(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	for _, bad := range []string{"phone", "web:Phone", "web:a b", "web:" + strings.Repeat("x", 40), "x:y via z"} {
+		if r := c.call("hello", map[string]any{"protocol": 1, "via": bad}); r.Error == nil {
+			t.Fatalf("accepted via %q", bad)
+		}
+	}
+	var hello helloResult
+	json.Unmarshal(c.ok("hello", map[string]any{"protocol": 1, "via": "web:phone"}), &hello)
+	if !strings.HasPrefix(hello.Peer, "unix:uid=") || !strings.HasSuffix(hello.Peer, " via web:phone") {
+		t.Fatalf("peer: %q", hello.Peer)
+	}
+	if r := c.call("hello", map[string]any{"protocol": 1, "via": "web:laptop"}); r.Error == nil {
+		t.Fatal("changed via after hello")
+	}
+	repo := t.TempDir()
+	id := opened(t, c, repo)
+	subscribed(t, c, id, 0, 100)
+	eval(c, id, `(fs-write "a.txt" "a")`)
+	p := prompt[event.Confirm](t, c, event.PromptConfirm)
+	c.ok("session.answer", map[string]any{"id": id, "prompt_id": p.ID, "reply": "y"})
+	finishEval(t, c)
+	found := false
+	for _, e := range page(t, c, id, 0, 0, 1000).Events {
+		if e.Kind == "guard.decision" && strings.Contains(string(e.Payload), p.ID) {
+			found = strings.Contains(string(e.Payload), hello.Peer)
+		}
+	}
+	if !found {
+		t.Fatal("decision does not name the screen")
+	}
+}

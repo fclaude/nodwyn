@@ -2939,6 +2939,9 @@
         "protocol": {
           "const": 1,
           "type": "integer"
+        },
+        "via": {
+          "type": "string"
         }
       },
       "required": [

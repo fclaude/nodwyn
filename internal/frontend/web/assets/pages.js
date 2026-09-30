@@ -89,6 +89,8 @@ export function renderSettings(root, ctx) {
           ),
           conn.has("keychain.status") ? h("div", { class: "label" }, "Keychain") : null,
           conn.has("keychain.status") ? h("div", { class: "value" }, conn.has("keychain.unlock") ? keychainForm(ctx, { onDone: () => renderSettings(root, ctx) }) : h("p", { class: "hint" }, desk.keychain?.unlocked ? "Unlocked." : "Locked.")) : null,
+          conn.has("devices.list") ? h("div", { class: "label" }, "Other devices") : null,
+          conn.has("devices.list") ? h("div", { class: "value", id: "devices" }, h("p", { class: "hint" }, "Loading…")) : null,
           h("div", { class: "label" }, "This connection"),
           h(
             "div",
@@ -100,6 +102,50 @@ export function renderSettings(root, ctx) {
         ),
       ),
     ),
+  );
+  if (conn.has("devices.list")) showDevices(root.querySelector("#devices"), ctx);
+}
+
+async function showDevices(node, ctx) {
+  const { conn } = ctx;
+  let list;
+  try {
+    list = await conn.call("devices.list");
+  } catch (error) {
+    node.replaceChildren(h("p", { class: "error" }, error.message));
+    return;
+  }
+  const rows = list.map((d) =>
+    h(
+      "div",
+      { class: "list-row" },
+      h("div", { class: "main" }, h("strong", {}, d.name), h("span", {}, `paired ${ago(d.paired)} · last seen ${ago(d.last_seen)}`)),
+      h(
+        "div",
+        { class: "end" },
+        h(
+          "button",
+          {
+            type: "button",
+            class: "btn small danger",
+            onclick: async () => {
+              try {
+                await conn.call("devices.revoke", { name: d.name });
+                toast(`${d.name} can no longer reach nibb.`);
+                showDevices(node, ctx);
+              } catch (error) {
+                toast(error.message);
+              }
+            },
+          },
+          "Revoke",
+        ),
+      ),
+    ),
+  );
+  node.replaceChildren(
+    rows.length ? h("div", { class: "list" }, rows) : h("p", { class: "hint" }, "No other device is paired."),
+    h("p", { class: "hint" }, "Paired browsers on other machines, such as your phone. They can answer and send messages, never change settings, keys or policy."),
   );
 }
 

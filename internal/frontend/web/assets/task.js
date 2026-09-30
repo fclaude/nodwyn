@@ -209,8 +209,8 @@ export class TaskView {
       default:
         this.transcript.render(event);
     }
-    this.placePrompt();
-    if (follow) view.scrollTop = view.scrollHeight;
+    const placed = this.placePrompt();
+    if (follow && !placed) view.scrollTop = view.scrollHeight;
   }
   resolve(id) {
     this.resolved.add(id);
@@ -229,10 +229,10 @@ export class TaskView {
     const current = view.querySelector(":scope > .ask-card");
     if (current && current.dataset.prompt === active?.payload.ID) {
       view.append(current);
-      return;
+      return false;
     }
     current?.remove();
-    if (!active) return;
+    if (!active) return false;
     const id = active.payload.ID;
     const card = askCard(active, {
       methods: this.conn.methods,
@@ -242,8 +242,11 @@ export class TaskView {
       reply: (method, params) => this.answer(id, method, params),
     });
     view.append(card);
-    view.scrollTop = view.scrollHeight;
-    if (window.matchMedia("(max-width: 760px)").matches) card.scrollIntoView({ block: "start" });
+    // On a phone the card opens at its title; elsewhere the conversation
+    // follows to its end, where the card is.
+    if (window.matchMedia("(max-width: 760px)").matches) requestAnimationFrame(() => card.scrollIntoView({ block: "start" }));
+    else view.scrollTop = view.scrollHeight;
+    return true;
   }
   who() {
     const peer = this.conn.hello?.peer || "";

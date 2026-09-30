@@ -40,13 +40,15 @@ function gate(content) {
   $("gate").hidden = false;
   $("shell").hidden = true;
 }
+const local = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
 function showPairing(message = "") {
   const input = h("input", { class: "input", id: "pair-code", type: "password", autocomplete: "off", spellcheck: false, required: true });
+  const device = h("input", { class: "input", id: "pair-device", autocomplete: "off", spellcheck: false, required: !local, pattern: "[a-z0-9][a-z0-9._-]{0,31}", placeholder: "for example phone" });
   const error = h("p", { class: "error", role: "alert" }, message);
   gate([
     h("div", { class: "brand" }, "nibb", h("span", {}, ".")),
     h("h1", {}, "Connect this browser"),
-    h("p", {}, "Paste the pairing code nibb printed where it was started. The code stays between this browser and your computer and is never added to a task."),
+    h("p", {}, local ? "Paste the pairing code nibb printed where it was started. The code stays between this browser and your computer and is never added to a task." : "Paste the pairing code nibb printed on its computer, and name this device. Every answer you give from here is recorded with that name."),
     h(
       "form",
       {
@@ -56,7 +58,7 @@ function showPairing(message = "") {
           input.value = "";
           error.textContent = "";
           try {
-            await pair({ code });
+            await pair(local ? { code } : { code, device: device.value.trim().toLowerCase() });
             conn.connect();
           } catch (e) {
             error.textContent = e.message || "Pairing failed. Copy the code again from where nibb is running.";
@@ -64,6 +66,7 @@ function showPairing(message = "") {
         },
       },
       h("div", { class: "field" }, h("label", { for: "pair-code" }, "Pairing code"), input),
+      local ? null : h("div", { class: "field" }, h("label", { for: "pair-device" }, "This device's name"), device, h("p", { class: "hint" }, "Lower-case letters, digits, dots or dashes. It stays paired until revoked on the computer.")),
       h("button", { type: "submit", class: "btn accent big" }, "Connect"),
     ),
     error,

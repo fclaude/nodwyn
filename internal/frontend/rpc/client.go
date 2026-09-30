@@ -46,7 +46,11 @@ type clientReply struct {
 
 // Dial connects to the daemon's socket and checks that it speaks
 // ProtocolVersion.
-func Dial(ctx context.Context, socket string) (*Client, error) {
+func Dial(ctx context.Context, socket string) (*Client, error) { return DialAs(ctx, socket, "") }
+
+// DialAs is Dial for a client relaying for a named screen: via (such as
+// "web:phone") is recorded after this process's identity in every answer.
+func DialAs(ctx context.Context, socket, via string) (*Client, error) {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	if err != nil {
 		return nil, err
@@ -54,7 +58,7 @@ func Dial(ctx context.Context, socket string) (*Client, error) {
 	c := &Client{conn: conn, waiting: map[uint64]chan clientReply{}, events: make(chan ClientEvent, 256), done: make(chan struct{})}
 	go c.read()
 	var hello helloResult
-	if err := c.Call(ctx, "hello", helloParams{ProtocolVersion}, &hello); err != nil {
+	if err := c.Call(ctx, "hello", helloParams{Protocol: ProtocolVersion, Via: via}, &hello); err != nil {
 		c.Close()
 		return nil, err
 	}

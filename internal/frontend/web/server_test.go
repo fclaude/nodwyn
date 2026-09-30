@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,7 +28,8 @@ import (
 const testCode = "test-only-browser-pairing-capability-000000"
 
 func TestBrowserAuthorityBoundary(t *testing.T) {
-	b := &bridge{readOnly: true, ctx: context.Background(), host: "127.0.0.1:34567", code: testCode}
+	b := &bridge{readOnly: true, ctx: context.Background(), code: testCode}
+	b.at("127.0.0.1:34567")
 	for _, tt := range []struct {
 		name, method, path, host, origin, site, body string
 		status                                       int
@@ -43,6 +45,7 @@ func TestBrowserAuthorityBoundary(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			r := httptest.NewRequest(tt.method, "http://"+tt.host+tt.path, strings.NewReader(tt.body))
+			r.RemoteAddr = "127.0.0.1:50000"
 			r.Header.Set("Origin", tt.origin)
 			r.Header.Set("Sec-Fetch-Site", tt.site)
 			r.Header.Set("Content-Type", "application/json")
@@ -65,7 +68,7 @@ func TestBrowserAuthorityBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, method := range []string{"session.open", "session.resume", "session.send", "session.eval", "session.friction", "session.answer", "session.secret", "session.binding.create", "session.approval.create", "session.abort", "session.close"} {
+	for _, method := range []string{"session.open", "session.resume", "session.send", "session.eval", "session.friction", "session.answer", "session.secret", "session.binding.create", "session.approval.create", "session.abort", "session.close", "keychain.unlock", "settings.control.write", "devices.revoke"} {
 		if readOnly(method) {
 			t.Fatal(method)
 		}
@@ -114,11 +117,11 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	}
 	b := &bridge{readOnly: true, ctx: ctx, socket: socket, code: testCode}
 	server := httptest.NewUnstartedServer(b)
-	b.host = server.Listener.Addr().String()
+	b.at(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
 	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testCode}}
-	conn, _, err := websocket.Dial(ctx, "ws://"+b.host+"/socket", &websocket.DialOptions{HTTPHeader: header})
+	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,11 +232,11 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	}()
 	b := &bridge{ctx: ctx, socket: socket, code: testCode}
 	server := httptest.NewUnstartedServer(b)
-	b.host = server.Listener.Addr().String()
+	b.at(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
 	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testCode}}
-	conn, _, err := websocket.Dial(ctx, "ws://"+b.host+"/socket", &websocket.DialOptions{HTTPHeader: header})
+	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +390,8 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 }
 
 func TestEmbeddedAssetsReachable(t *testing.T) {
-	b := &bridge{ctx: context.Background(), host: "127.0.0.1:34567", code: testCode}
+	b := &bridge{ctx: context.Background(), code: testCode}
+	b.at("127.0.0.1:34567")
 	var paths []string
 	err := fs.WalkDir(assets, "assets", func(name string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -402,7 +406,7 @@ func TestEmbeddedAssetsReachable(t *testing.T) {
 		if path == "/index.html" {
 			path = "/"
 		}
-		req := httptest.NewRequest("GET", "http://"+b.host+path, nil)
+		req := httptest.NewRequest("GET", "http://"+b.local+path, nil)
 		response := httptest.NewRecorder()
 		b.ServeHTTP(response, req)
 		if response.Code != http.StatusOK || response.Body.Len() == 0 {
@@ -410,7 +414,7 @@ func TestEmbeddedAssetsReachable(t *testing.T) {
 		}
 	}
 	for _, path := range []string{"/fonts", "/../server.go", "/missing.js", "/fonts/"} {
-		req := httptest.NewRequest("GET", "http://"+b.host+path, nil)
+		req := httptest.NewRequest("GET", "http://"+b.local+path, nil)
 		response := httptest.NewRecorder()
 		b.ServeHTTP(response, req)
 		if response.Code != http.StatusNotFound {
@@ -421,9 +425,11 @@ func TestEmbeddedAssetsReachable(t *testing.T) {
 
 func TestLaunchTicketPairsOnceAndExpires(t *testing.T) {
 	s := New(Options{PairingCode: testCode})
-	s.b.ctx, s.b.host = context.Background(), "127.0.0.1:34567"
+	s.b.ctx = context.Background()
+	s.b.at("127.0.0.1:34567")
 	post := func(body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "http://127.0.0.1:34567/pair", strings.NewReader(body))
+		r.RemoteAddr = "127.0.0.1:50000"
 		r.Header.Set("Origin", "http://127.0.0.1:34567")
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -452,5 +458,91 @@ func TestLaunchTicketPairsOnceAndExpires(t *testing.T) {
 	}
 	if w := post(`{"ticket":"x","extra":1}`); w.Code != http.StatusForbidden {
 		t.Fatalf("unknown field: %d", w.Code)
+	}
+}
+
+// at gives a bridge built by a test the address Serve would give it.
+func (b *bridge) at(addr string) {
+	b.local = addr
+	b.hosts = map[string]bool{addr: true}
+}
+
+func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
+	devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
+	s := New(Options{PairingCode: testCode, Devices: devices, Hosts: []string{"desk.tailnet.ts.net:7777"}})
+	s.b.ctx = context.Background()
+	s.b.at("100.64.0.5:7777")
+	s.b.hosts["desk.tailnet.ts.net:7777"] = true
+	request := func(method, host, path, body, cookie string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(body))
+		r.RemoteAddr = "100.64.0.9:40000"
+		r.Header.Set("Origin", "http://"+host)
+		r.Header.Set("Content-Type", "application/json")
+		if cookie != "" {
+			r.Header.Set("Cookie", cookie)
+		}
+		w := httptest.NewRecorder()
+		s.b.ServeHTTP(w, r)
+		return w
+	}
+	host := "desk.tailnet.ts.net:7777"
+	if w := request("POST", host, "/pair", `{"code":"`+testCode+`"}`, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("unnamed remote pairing: %d %s", w.Code, w.Body)
+	}
+	ticket, _ := s.Ticket()
+	if w := request("POST", host, "/pair", `{"ticket":"`+ticket+`"}`, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("remote ticket: %d", w.Code)
+	}
+	if w := request("POST", host, "/pair", `{"code":"wrong","device":"phone"}`, ""); w.Code != http.StatusForbidden {
+		t.Fatalf("wrong code: %d", w.Code)
+	}
+	if w := request("POST", host, "/pair", `{"code":"`+testCode+`","device":"Phone Of Mine"}`, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("bad name: %d", w.Code)
+	}
+	w := request("POST", host, "/pair", `{"code":"`+testCode+`","device":"phone"}`, "")
+	cookies := w.Result().Cookies()
+	if w.Code != http.StatusNoContent || len(cookies) != 1 || cookies[0].Name != deviceCookie || !cookies[0].HttpOnly || cookies[0].MaxAge <= 0 {
+		t.Fatalf("pairing: %d %v", w.Code, cookies)
+	}
+	raw, _ := os.ReadFile(devices.path)
+	if strings.Contains(string(raw), cookies[0].Value) || !strings.Contains(string(raw), `name = "phone"`) {
+		t.Fatalf("device file:\n%s", raw)
+	}
+	r := httptest.NewRequest("GET", "http://"+host+"/socket", nil)
+	r.RemoteAddr = "100.64.0.9:40000"
+	r.Header.Set("Cookie", deviceCookie+"="+cookies[0].Value)
+	if name, ok := s.b.authenticated(r); !ok || name != "phone" {
+		t.Fatalf("device cookie: %q %v", name, ok)
+	}
+	// The pairing code's local cookie means nothing from another machine.
+	r.Header.Set("Cookie", s.b.cookieName()+"="+testCode)
+	if _, ok := s.b.authenticated(r); ok {
+		t.Fatal("local cookie accepted remotely")
+	}
+	if err := devices.Revoke("phone"); err != nil {
+		t.Fatal(err)
+	}
+	r.Header.Set("Cookie", deviceCookie+"="+cookies[0].Value)
+	if _, ok := s.b.authenticated(r); ok {
+		t.Fatal("revoked device still paired")
+	}
+	for _, method := range []string{"session.binding.create", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "devices.revoke", "devices.list", "session.eval"} {
+		if s.b.allowed(method, true) {
+			t.Fatalf("remote device may call %s", method)
+		}
+	}
+	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list"} {
+		if !s.b.allowed(method, true) {
+			t.Fatalf("remote device may not call %s", method)
+		}
+	}
+	// A non-loopback console without device pairing refuses to start.
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if err := New(Options{PairingCode: testCode, Hosts: []string{"x:1"}}).Serve(context.Background(), listener); err == nil {
+		t.Fatal("served extra hosts without device pairing")
 	}
 }

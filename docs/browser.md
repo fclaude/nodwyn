@@ -1,3 +1,40 @@
+# Browser view
+
+The console is organized around tasks (ADR 21's design canvas): **Home** starts
+a task in a folder and lists what needs an answer, what is running and what
+finished; a **task** shows its conversation with the approval inline, and
+beside it the plan, this turn's budget, the changes, the project notes and the
+workspace. **Connections**, **Workspaces** and **Settings** hold the rest. The
+U3 inspectors described below sit under a task's **Details**. For the app
+window and first-run setup see [app.md](app.md).
+
+## Other devices (ADR 30)
+
+```sh
+nibb ui --listen 100.101.102.103:7777          # a tailnet address
+nibb ui --listen 100.101.102.103:7777 --name desk.tail1234.ts.net:7777
+nibb ui --listen 0.0.0.0:7777 --tls-cert cert.pem --tls-key key.pem
+nibb devices                                   # list paired devices
+nibb devices revoke phone
+```
+
+A browser on another machine pairs with the code **and a device name**. It
+gets a device cookie (HttpOnly, SameSite=Strict, Secure over TLS, 180 days);
+`devices.toml` in the config directory keeps only the token's SHA-256, so the
+file cannot pair anything. Revoking takes effect at the device's next request,
+without a restart. Every answer from a device is recorded as the bridge's
+kernel identity followed by `via web:NAME`.
+
+A device can read tasks, start and steer them, and answer approvals — one-time,
+for this turn, or for the session, as the core offers. It cannot save a
+credential binding, write a policy file, unlock or create the keychain, change
+the model, or list and revoke devices: those stay with the computer nibb runs
+on. A request counts as remote when it comes from another address or names
+this console by anything but its loopback address (a proxy such as
+`tailscale serve` connects from loopback on a phone's behalf). Launch tickets
+pair only local browsers. Without `--tls-cert`, traffic is unencrypted unless
+the network encrypts it; a tailnet does.
+
 # Local browser view
 
 The U3 session desk supports conversations, prompt replies and session lifecycle

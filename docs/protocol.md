@@ -227,6 +227,38 @@ Definitions last for the in-memory session and reset on resume; evaluations and
 host operations are never re-executed from history. A crash before `eval.result`
 can leave an unknown outcome. Inspect current state before retrying.
 
+## Desk, setup and relayed identity (ADR 30)
+
+| Method | Named parameters | Result |
+|---|---|---|
+| `attention.list` | `{}` | Open sessions with pending prompts: `[{id, pending}]`, the same redacted descriptors `session.subscribe` returns |
+| `notes.read` | `{"repo":"/absolute/repository"}` | `{text}`: that repository's project notes; needs no session |
+| `session.notes.write` | `{"id":"SESSION_ID","text":"…"}` | `{operation_id}`; a `policy.result` event named `notes` reports the guarded save |
+| `models.status` | `{}` | Each configured model: `name`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`), `detail` |
+| `keychain.status` | `{}` | `{exists, unlocked, credentials}` |
+| `keychain.create` / `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain |
+| `settings.read` | `{}` | `{config_file, control, models, keychain}` |
+| `settings.control.write` | `{"provider","url","model","api_key"?}` | Settings after replacing `[control]` in `config.toml` |
+
+`session.list` entries also carry `title` (the first sentence of the first
+message, shortened), `started`, `changes` (files the guard allowed the session
+to write, first 50, from `guard.decision` records, which now carry `path`) and
+`run` (the live run, or the last recorded `run.state`). `models.status` sends
+no credential: it asks each server for its model list and reports whether it
+answered. `settings.control.write` keeps every other line of `config.toml`,
+validates the result as the loader would, writes it atomically (0600), and
+applies it to sessions opened afterwards. An `api_key` goes to the unlocked
+keychain under a fresh class, with one binding row: that host, `POST`,
+`header:Authorization:Bearer`. Passphrases and keys are `writeOnly` in the
+schema and never echoed.
+
+`hello` accepts an optional `via` (for example `web:phone`), once per
+connection, matching `^[a-z][a-z0-9]*:[a-z0-9][a-z0-9._-]{0,31}$`. It is
+appended to the kernel identity — `unix:uid=501,gid=20,pid=4242 via web:phone`
+— in `peer` and in every recorded actor. It is a claim by a same-user process,
+not an authentication; the browser bridge makes it only for a device paired by
+name.
+
 ## Generated contract
 
 [protocol.schema.json](protocol.schema.json) is generated from the actual Go

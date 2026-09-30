@@ -707,6 +707,8 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
   .shell.menu-open .sidebar { transform: none; }
   .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 15; }
   .home { padding: 28px 16px 24px; gap: 28px; }
+  /* On a phone, what waits for an answer comes before starting something new. */
+  .home.urgent .home-grid { order: -1; }
   .home h1 { font-size: 34px; }
   .ask { padding: 14px; }
   .ask textarea { font-size: 16px; }
@@ -724,6 +726,7 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
   .ask-card .answers .danger { margin-left: 0; }
   .ask-card .answers kbd { display: none; }
   .diff { font-size: 11px; }
+  .diff-body { max-height: 190px; }
   .page { padding: 24px 16px; }
   .page h1 { font-size: 28px; }
   .inspector-view { padding: 16px; }

@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"os"
+	"regexp"
 	"path/filepath"
 	"sync"
 	"time"
@@ -116,11 +117,17 @@ var methodTable = map[string]handler{
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	if req.Method == "hello" {
 		var p helloParams
-		if err := params(req.Params, &p, "protocol"); err != nil {
+		if err := params(req.Params, &p, "protocol", "via"); err != nil {
 			return nil, err
 		}
 		if p.Protocol != ProtocolVersion {
 			return nil, failure(-32001, "Unsupported protocol version")
+		}
+		if p.Via != "" {
+			if client.ready || !viaName.MatchString(p.Via) {
+				return nil, failure(-32602, "via must be a short name such as web:phone, given once")
+			}
+			client.actor += " via " + p.Via
 		}
 		client.ready = true
 		return helloResult{ProtocolVersion, s.options.Version, methods, client.actor}, nil
@@ -136,6 +143,9 @@ func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
 	defer s.mu.Unlock()
 	return call(s, req, client)
 }
+
+// viaName is what a relaying client may claim: a short lower-case label.
+var viaName = regexp.MustCompile(`^[a-z][a-z0-9]*:[a-z0-9][a-z0-9._-]{0,31}$`)
 
 // store reads session logs from disk, for the methods that answer about
 // sessions this daemon does not have open.
