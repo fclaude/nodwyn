@@ -2,11 +2,20 @@
 
 Companion to [SPEC.md](SPEC.md). The spec says *what* and *why*; this says *in what order, with what proof* — and, from week 5 on, **nodwyn is the tool used to build nodwyn**.
 
-**Constraints:** one developer, 3–6 months, Go single static binary, user-written Scheme interpreter embedded in Go, TUI via bubbletea. No code exists yet; the repo is empty.
+**Constraints, as planned on 2026-09-20 before any code existed:** one developer, 3–6 months, Go single static binary, user-written Scheme interpreter embedded in Go, TUI via bubbletea.
 
-**Control-plane model:** a local Qwen served by Ollama on `workshop` over the tailnet — no API key, no cloud dependency, no secret on the build machine until Phase 3. Details in §3.4.
+**Control-plane model:** at the start, a local Qwen served by Ollama on `workshop` over the tailnet — no API key, no cloud dependency, no secret on the build machine until Phase 3 (§3.4). Since P3 the control model is whatever `[control]` in `config.toml` names, an Ollama server or a keyed chat-completions server.
 
 **Definition of done for v0:** the four I/O edges (E1–E4) are each guarded by the mechanism the spec assigns them, the exfil scenario suite passes, the log replays a session byte-for-byte, and a developer can use nodwyn on a real repo with real keys bound in `bindings.toml`. Proof of the last point: nodwyn built most of itself.
+
+## Status (2026-09-30)
+
+- **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: U1–U3 of the real UI, the task-oriented console, the standalone app, remote devices (D1–D5), workspaces, text attachments and remote MCP servers (D6–D8, the cowork track's W1, W2 text and W3a).
+- **Not done:** P8 (L3, optional); unattended continuation between a run's turns (U4); contained local MCP servers (W3b/D9); OAuth2 credentials (W4); documents out (W5); images as attachments; plan step progress.
+- **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base (ADRs 26–29, 31–33). §5 "Outside the plan" says what drove them.
+- **Next:** §10.
+
+The week numbers below are the original estimate; §6 sets them beside what shipped and when. Promotion stopped creating tags on 2026-09-30 (ADR 13 amended): tags named in the phases below are the plan's, and the ones that exist are in §6.
 
 ---
 
@@ -31,48 +40,51 @@ Two stages:
 
 ## 2. Repository layout
 
+As it is on 2026-09-30 (the plan's first layout had `plan/`, `memory/`, `workspace/`, `attach/`, `detect/l2/` and `ui/` packages; each landed in an existing package instead, as noted):
+
 ```
 nodwyn/
-  cmd/nodwyn/               entrypoint only: parses flags, builds a core.Session, hands it to a front-end
+  cmd/nodwyn/               entrypoint only: flags → core → front-end
+  cmd/nodwyn-schema/        regenerates the documented protocol schema
   internal/
-    core/                 the UI-agnostic façade: Session{Send, Events, Answer, Abort}  (B2)
-    log/                  append-only JSONL, replay, event kinds        (B0)
-    config/               XDG dirs, policy, bindings.toml loader        (B0/P3)
-    scheme/               reader, values, env, eval/apply, prim table   (B1, grown in P1b)
-    scheme/prelude/       *.scm embedded in the binary                  (B1)
-    prim/                 host primitives: fs, shell, http, llm-call, jev (B2+, P5)
-    guard/                the apply→Prim wrapper; Decision; checkers    (B2)
-    llm/                  Provider interface; Ollama native client      (B2)
-    loop/                 ask → tool → feed back → ask                   (B2)
-    window/               naive log-derived window (B2) → memory/ (P10)
-    keychain/             encrypted store, handles, sink injection      (P3)
-                          + oauth2 kind: PKCE acquire, refresh, scopes (W4, ADR 24)
-    binding/              binding table, E3 lookup                      (P3)
-    detect/l1/            shape/entropy/prefix scanner                  (P4)
-    detect/l2/            taint tags + propagation helpers              (P6)
-    detect/l3/            feature classifier (build tag `nol3`)         (P8)
-    plan/                 noul gate, hard triggers, Seam A loop         (P5)
-    redact/               the single context-ingress controller        (P7)
-    memory/               window, summaries, session index             (P10)
-    frontend/plain/       line-mode front-end over core (bootstrap)     (B2)
-    frontend/tui/         bubbletea front-end over core                  (P9)
-    frontend/rpc/         JSON-RPC server over a unix socket (U2, ADR 21)
-    ui/                   assets for the local web client (U3, ADR 21)
-    workspace/            root + mount table, version store (W1, ADR 22)
-    attach/               ingest: copy, extract, redact, log (W2, ADR 22)
-    mcp/                  client, capability profiles, manifest pinning (W3, ADR 23)
-  dev/                    *.scm dev tools nodwyn loads to build itself    (B3)
-  .nodwyn/                  init.scm (loads dev/) and allow.toml (ADR 17) (B3)
-  scripts/                promote.sh, selfcheck.sh
-  test/exfil/             the exfil scenario suite (grows every phase)
-  test/fakes/             fake Ollama + fake Jev servers
-  test/sessions/          curated real build-session logs (from P7 on)
-  tools/l3train/          offline trainer (not in the binary)
-  docs/adr/               decision records
-  docs/scheme.md          the language reference for nodwyn's Scheme subset (B1, doc-first)
-  docs/friction.md        running log of where nodwyn-stable got in the way
-  docs/manual.md          how to read the code and how to use nodwyn
+    core/                   the UI-agnostic façade: Session; attachments, MCP connection, workspaces, resume (B2+)
+    log/                    append-only JSONL, replay, event kinds             (B0)
+    config/                 XDG dirs, config.toml, workspaces, mcp.toml        (B0+)
+    policyfile/             locked, atomic writes of policy files              (U3)
+    scheme/                 reader, values and provenance tags, eval/apply, prim table (B1, P1b, P6)
+    scheme/prelude/         *.scm embedded in the binary                       (B1)
+    prim/                   host primitives: fs, search, git, shell, http-request, jev, policy, versions (B2+)
+    guard/                  the apply→Prim decision; checkers incl. E3, L1, L2  (B2+)
+    budget/                 per-turn accounting, ceilings, checkpoints         (ADR 18)
+    llm/                    Provider interface; Ollama and chat-completions    (B2, P3)
+    loop/                   loop primitives and the default Scheme: strategy, plan gate, prompts, compaction, sub-agents, habits (B2, ADR 26)
+    window/                 the log-derived window, summaries, exact replay    (B2, P10)
+    keychain/               encrypted store, handles, sink injection           (P3)
+    binding/                binding table, E3 lookup                           (P3)
+    detect/l1/              shape/prefix scanner                               (P4)
+    redact/                 the context-ingress redactor                       (P7)
+    extract/                text from attached documents                       (W2)
+    mcp/                    remote MCP client, manifest hashing                (W3a)
+    frontend/plain/         line mode                                          (B2)
+    frontend/tui/           bubbletea client                                   (P9)
+    frontend/rpc/           the daemon: JSON-RPC over a unix socket            (U2)
+    frontend/web/           the browser console, its bridge and assets         (U3, D1–D8)
+    frontend/run/           supervised background runs                         (U4)
+  dev/                      *.scm dev tools nodwyn loads to build itself       (B3)
+  .nodwyn/                  init.scm (loads dev/) and allow.toml (ADR 17)      (B3)
+  scripts/                  promote, selfcheck, smoke, lints, app and webview builds
+  test/exfil/               the exfil scenario suite
+  test/fakes/               fake Ollama, Jev and MCP servers
+  test/sessions/            real session logs kept as replay fixtures
+  test/browser/             browser flows against the console
+  docs/adr/                 decision records
+  docs/scheme.md            the language reference (doc-first)
+  docs/friction.md          where nodwyn-stable got in the way
+  docs/manual.md            how to read the code and how to use nodwyn
+  docs/book/, docs/expert/  the book, and the field guide for users
 ```
+
+Not built: `detect/l3/` and `tools/l3train/` (P8); an OAuth2 kind in `keychain/` (W4).
 
 ---
 
@@ -95,7 +107,7 @@ nodwyn/
 ### 3.2 Self-hosting discipline (compiler-style staging)
 
 12. **Two binaries, always.** `bin/nodwyn` is the working-tree build. `~/.local/bin/nodwyn-stable` is the last promoted build. **All development sessions run `nodwyn-stable`; nodwyn never edits itself through the binary being edited.** A broken working tree can never strand you.
-13. **Promotion.** `scripts/promote.sh` runs `make accept` (unit + exfil suite + structural lints) and `scripts/selfcheck.sh` (the candidate must complete a scripted session: read a file, register a dev tool, run `go test ./internal/log`, replay its own log). Only then: `nodwyn-stable` → `nodwyn-stable.prev`, candidate → `nodwyn-stable`, git tag `v0.N-<phase>`. Rollback is `mv`.
+13. **Promotion.** `scripts/promote.sh` runs `make accept` (unit + exfil suite + structural lints) and `scripts/selfcheck.sh` (the candidate must complete a scripted session: read a file, register a dev tool, run `go test ./internal/log`, replay its own log). Only then: `nodwyn-stable` → `nodwyn-stable.prev`, candidate → `nodwyn-stable`. The stable binary's version is the commit it was built from; until 2026-09-30 promotion also created a git tag `v0.N-<phase>` (ADR 13, amended). `nodwyn-stable` is the webview build wherever WebKit is available, so `nodwyn-stable app` opens a window (ADR 30). Rollback is `mv`.
 14. **`.nodwyn/init.scm` convention.** On start, nodwyn loads `./.nodwyn/init.scm` if present (after `prelude/`). This repo's `init.scm` loads `dev/*.scm`. Nothing in `dev/` bypasses the guard — that is the whole point.
 15. **Friction log.** When nodwyn-stable gets in the way, hand-edit *and* write one line in `docs/friction.md`. That file is the backlog for the line-mode UI, the TUI (P9) and memory (P10) — real data, not guesses.
 16. **Fallback is allowed and honest.** If a task is faster by hand or with another agent, do it that way and note it. The goal is a built nodwyn, not purity. The measure of success is the trend in friction.md, not 100% self-authorship.
@@ -119,6 +131,8 @@ Until the real layers exist, these compensating controls make bootstrap-era nodw
 Known hole, accepted: `shell-exec` can still `cat` a file outside the repo. The argv trigger catches the obvious spellings; the rest is the operator rules until P7.
 
 ### 3.4 Control-plane reference: workshop's Ollama (verified 2026-09-20)
+
+*A record of the bootstrap's control plane. The control model is now configured per machine (`[control]` in `config.toml`); nothing in nodwyn depends on workshop.*
 
 Source of truth: `infra/homelab/hosts/workshop/stacks/ollama/` (compose + Modelfile). Live facts checked against the running server:
 
@@ -218,6 +232,7 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
 - Keychain class `nodwyn-control` defined for a keyed control plane; unused while workshop is the control plane.
 - **With nodwyn:** nodwyn-stable v0.2 writes this code. Tests use canary values, never real keys; nodwyn never touches the real keychain during development because the working tree's binary is not the one running. There is no real key to register at promotion — the first one arrives with Jev in P5 — so this phase is proven entirely by the exfil suite and fakes.
 - **Accept — first exfil scenarios** (each asserts the decision *and* that a canary secret appears nowhere in log, context dump or stdout): bound header ⇒ Allow; other host ⇒ Deny; body instead of header ⇒ Deny; keychain unreadable without passphrase; `(display handle)` prints `#<cred:…>`. Promote `v0.3-creds`.
+- **Done 2026-09-21; promoted as `v0.4-creds`.** No `llm-call` primitive was built and the `nodwyn-control` class is unused: other models are configured and asked by name through `model-turn` (ADR 27), and a keyed control model names its credential in `[control]`; either way the key is bound like any other and checked on every request.
 
 ### Phase 4 — L1 fast path (weeks 10–11)
 
@@ -282,6 +297,7 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
 - `tools/l3train`: public secrets corpus + synthetic negatives + nodwyn's own confirmed events.
 - **With nodwyn:** the confirmed-event file already has weeks of entries from the build sessions — the "own events" training set is real from day one.
 - **Accept:** ECE < 0.05; < 5 ms per 4 KB; exfil suite green under both build tags. Promote `v0.8-l3`.
+- **Not started.** Optional; a secret whose shape L1 does not know stays a residual that only binding covers.
 
 ### Phase 9 — TUI (weeks 20–22; implemented 2026-09-22)
 
@@ -371,15 +387,20 @@ this is additive work, not a refactor. Four phases, each useful alone:
   indicators and opt-in generic desktop notifications are implemented. The bounded
   supervised run driver is implemented with required plans, finite wall/turn limits,
   checkpoint replies, and explicit resume at recorded turn boundaries; see
-  [runs](docs/runs.md). Unattended tool approval exists (`--yolo`, a run's `auto_approve`); unattended continuation between turns remains next. Several sessions (workshop serializes
-  them), the ADR 18 run driver with checkpoints as notifications, desktop
-  notifications for "needs your approval".
+  [runs](docs/runs.md). Unattended tool approval exists (`--yolo`, a run's
+  `auto_approve`). Of the original scope — several sessions at once, the ADR 18
+  run driver with checkpoints as notifications, desktop notifications for
+  "needs your approval" — only unattended continuation between a run's turns
+  remains.
 
 Accepted risk: the socket is an approval surface. 0600 in the runtime dir, no
 TCP by default, client identity in every decision, and creating a standing
 approval over RPC needs its own explicit method.
 
 ### After v0 — cowork: workspaces, attachments, MCP (ADR 22, ADR 23)
+
+Status (2026-09-30): W1, W2 (text) and W3a are implemented, as D6–D8 below.
+Images, W3b, W4 and W5 are not.
 
 The same harness, applied to work that is not only code, for **one person**
 (collaboration is out of scope). The invariants do not change; three
@@ -436,15 +457,16 @@ what the guard reads).
   proves it), docx via pandoc from Markdown or LaTeX, Google Docs through its
   API on an OAuth2 credential.
 
-**One product, two profiles** (agreed 2026-09-22). One core, one binary, one
-protocol (ADR 21). A workspace `kind` selects the tool surface: a `docs`
-workspace registers file, attachment, MCP and document primitives and **does
-not register `shell-exec`, `register-tool` or Scheme evaluation**, so argv
-triggers and command approvals are inert there and the attack surface is much
-smaller. The desktop client and the TUI are two front-ends over the same
-protocol, which does not expose `session.eval` to a `docs` client. Only a
-distribution constraint — a sandboxed bundle that cannot run a daemon or a
-container — would force a second product.
+**One product** (agreed 2026-09-22, amended 2026-09-30). One core, one
+binary, one protocol (ADR 21). A workspace `kind` (code or docs) is a label
+the console shows; every kind has the same tools and the same guard, and
+`session.eval` works in every workspace. (The first version of this decision
+had docs workspaces drop `shell-exec`, `register-tool` and Scheme evaluation;
+ADR 22's amendment removed that, because a self-extending agent defines its
+own tools wherever it works.) The desktop window, the browser, the phone and
+the TUI are front-ends over the same protocol. Only a distribution
+constraint — a sandboxed bundle that cannot run a daemon or a container —
+would force a second product.
 
 Accepted limit (ADR 22): **nodwyn controls where content goes, not what content
 means.** L1/L3 detect credentials; nothing in nodwyn recognises a contract or a
@@ -512,24 +534,55 @@ Status (2026-09-30): **D1–D8 implemented** and merged into `main`, each
 with Go tests and a browser flow (test/browser). D9 is not started: honoring a
 per-host network allowlist inside a container needs an egress proxy, and
 half-isolation would be worse than none. Also open: images as attachments
-(vision plumbing), plan step progress, W4 OAuth2 and W5 documents out.
+(vision plumbing), plan step progress, W4 OAuth2 and W5 documents out. What
+comes next is §10.
+
+### Outside the plan — what running it taught (2026-09-26 to 2026-09-30)
+
+Running nodwyn unattended on a SWE-bench Verified cohort, and daily use,
+produced work no phase had planned. Each item came from a failure recorded in
+friction.md:
+
+- **The loop is a Scheme procedure** (ADR 26): trying a plan cycle, a judge
+  check or a stop-at-first-failure batch meant editing Go; now it is
+  `agent-turn` in `.nodwyn/init.scm`, over primitives that keep the
+  invariants.
+- **Configured models and narrowed contexts** (ADR 27): a strategy can ask
+  another model by name over only the task and the plan.
+- **A scratch directory** (ADR 28): writes to `/tmp` were refused, so throwaway
+  scripts ended up in the repository.
+- **Optional tool parameters** (ADR 29).
+- **Unattended runs**: `--yolo` for ordinary confirms (never security
+  confirms), the keychain held by the daemon, retries of failed model
+  requests, a cap on each reply.
+- **The default loop's working habits** (ADR 32): the combination that
+  resolved 86 of 121 benchmark tasks became the default, with compaction on.
+- **Background processes, read-only git tools, `index-grep` and `fs-find`
+  without ripgrep.**
+- **The rename to nodwyn** (ADR 31) and **Go 1.26 as the base** (ADR 33).
 
 ## 6. Timeline at a glance
 
-| Weeks | Stage / phase | Promotes | Milestone |
-|---|---|---|---|
-| 1–4 | **Bootstrap** B0–B3 (external harness) | `v0.1-bootstrap` | **M0 self-hosting** |
-| 5–6 | P1b Kernel growth | `v0.2-kernel` | |
-| 7–9 | P3 Credentials | `v0.3-creds` | |
-| 10–11 | P4 L1 | `v0.4-l1` | **M2 safe with real keys** |
-| 12–13 | P5 Plan gate | `v0.5-plan` | |
-| 14–15 | P6 L2 taint | `v0.6-taint` | |
-| 16–17 | P7 Redaction | `v0.7-core` | **M3 v0-core (3–4 mo cut)** |
-| 18–19 | P8 L3 (optional) | `v0.8-l3` | |
-| 20–22 | P9 TUI | `v0.9-tui` | |
-| 23–24 | P10 Memory | `v0.10` | **v0 done** |
+The weeks are the original estimate; the last two columns are what happened.
 
-Cut order if time runs short: P10 → P8 → P9 polish (keep `--plain`). Never cut B0–B3 or P3–P7.
+| Planned weeks | Stage / phase | Milestone | Shipped as | Date |
+|---|---|---|---|---|
+| 1–4 | **Bootstrap** B0–B3 (external harness) | **M0 self-hosting** | `v0.1-bootstrap` | 2026-09-21 |
+| 5–6 | P1b Kernel growth | | `v0.3-kernel` | 2026-09-21 |
+| 7–9 | P3 Credentials | | `v0.4-creds` | 2026-09-21 |
+| 10–11 | P4 L1 | **M2 safe with real keys** | `v0.5-l1` | 2026-09-21 |
+| 12–13 | P5 Plan gate | | `v0.6-plan` | 2026-09-22 |
+| 14–15 | P6 L2 taint | | `v0.8-taint` | 2026-09-22 |
+| 16–17 | P7 Redaction | **M3 v0-core** | `v0.9-core` | 2026-09-22 |
+| 18–19 | P8 L3 (optional) | | not started | |
+| 20–22 | P9 TUI | | `v0.17-tui` … `v0.26-tui-parity` | 2026-09-22 |
+| 23–24 | P10 Memory | **v0** (without L3) | `v0.27-window-replay` … `v0.30-memory` | 2026-09-22 |
+| after v0 | U1 resume, U2 daemon | | `v0.11-resume`, `v0.14-daemon` … `v0.16-approvals` | 2026-09-22 |
+| after v0 | U3 browser, U4 attention and runs | | `v0.31-browser-view` … `v0.41-supervised-runs` | 2026-09-22 |
+| after v0 | Console rebuild | | `v0.42-console` | 2026-09-25 |
+| after v0 | D1–D8 (console, app, devices, workspaces, attachments, MCP) | | commits on `main`; promotion no longer tags | 2026-09-30 |
+
+Cut order, as planned: P10 → P8 → P9 polish (keep `--plain`). Never cut B0–B3 or P3–P7. Only P8 was cut.
 
 ---
 
@@ -537,9 +590,9 @@ Cut order if time runs short: P10 → P8 → P9 polish (keep `--plain`). Never c
 
 - **Exfil scenario suite (`test/exfil/`)** is the project's most important artifact: Scheme script + expected `Decision` + post-condition that a seeded canary appears in none of log, context dump, captured Jev payloads, stdout. Grows every phase; required for promotion.
 - **Selfcheck (`scripts/selfcheck.sh`)** is the second gate: the candidate binary must complete a scripted session on this repo before it can become stable.
-- **Structural lints in CI:** kernel-fixed hash after loading `.scm`; single context-ingress; single Scheme→Go exit (the guard call site in `apply` is the only `Prim.Handler` invocation); core/front-end boundary (ADR 10).
+- **Structural checks in CI:** the kernel-fixed hash after loading `.scm` (`TestKernelFixed`); the single context ingress (`scripts/lint-ingress.sh`); the single Scheme→Go exit (`applyPrim` is the only `Prim.Handler` call, held by `TestGateIsTheSingleExit`); the core/front-end boundary (`scripts/lint-boundaries.sh`, ADR 10).
 - **Fuzzing:** reader and L1 from day one.
-- **Fakes, not mocks:** a fake Ollama (`/api/chat` streaming, scripted tool calls) and a fake Jev under `test/fakes/`. `make smoke` runs a two-turn session against real workshop and is manual, not CI.
+- **Fakes, not mocks:** a fake Ollama (`/api/chat` streaming, scripted tool calls), a fake Jev and a fake MCP server under `test/fakes/`. `make smoke` runs a two-turn session against the configured control model and is manual, not CI.
 - **friction.md** is reviewed at every promotion; the top three items are candidates for the next phase's side-work.
 - **ADR per decision**; SPEC.md is amended, not contradicted.
 
@@ -561,17 +614,38 @@ Cut order if time runs short: P10 → P8 → P9 polish (keep `--plain`). Never c
 | 9 | Secret leaks via an unexpected path (error, panic, debug print) | Canary-grep post-condition in every exfil scenario; handles print opaque; keychain value type has no `String()` |
 | 10 | Single developer, hard deadline | Phase gates with promotion; cut order defined |
 
+Rows 1, 1b and 3 describe the bootstrap. The control model is now configured per machine, keyed providers included, so the 27B model and workshop's single slot are one setup among others. The `shell-exec` hole in row 3 is permanent in a narrower form: the guard sees a command line, not what a confirmed program does.
+
 ---
 
 ## 9. Open questions
 
-Resolved: module path is `github.com/fclaude/nodwyn`; no Scheme interpreter exists — B1 writes a minimal, documented subset from scratch (ADR 7).
+Resolved:
 
-Still open (answer before the phase that needs them):
+- Module path: `github.com/fclaude/nodwyn`. No Scheme interpreter existed; B1 wrote a minimal, documented subset from scratch (ADR 7).
+- 3. **Where `nodwyn-stable` lives:** `~/.local/bin`, or `NODWYN_STABLE_DIR`.
+- 4. **Keychain backend:** a passphrase-encrypted file (ADR 5); no OS keyring.
+- 5. **Unbound egress default:** Deny (ADR 6). `policy.unbound = "confirm"` is opt-in, and then the confirm can save the exact binding row.
+- 6. **Jev credential** — *resolved by ADR 20*: bound data-plane credential, guarded and logged like any other egress.
+- 7. **Frontier providers:** an OpenAI-compatible chat-completions provider exists and can be the control model or any `[models.NAME]`, its key bound like any other. No Anthropic Messages provider, and no `nodwyn-control` class.
 
-3. **Where does `nodwyn-stable` live** — `~/.local/bin` (planned) or inside the repo, gitignored?
-4. **Keychain backend** — passphrase file (planned) or macOS Keychain from day one?
-5. **Policy default for unbound egress** — Deny (planned) or Confirm?
-6. **Jev credential** — *resolved by ADR 20*: bound data-plane credential, guarded and logged like any other egress. The control-plane model (the loop's `Chat()`) is the sole Go-only path; Jev is data plane.
-7. **Anthropic / frontier providers in v0 at all?** Planned as "optional in P3, decide on friction.md evidence". If the answer is "never in v0", `nodwyn-control` and the Anthropic provider are dropped from the plan.
+Still open:
+
 8. **Ollama version drift** — the live server is 0.34.2 while the compose file pins 0.34.0 by digest. Not a nodwyn problem, but worth a note in `infra`.
+
+---
+
+## 10. What is next
+
+In this order, each for the reason given:
+
+1. **Close the remaining egress gaps the book audit found (2026-09-30).** Keyed requests (`http-request`, Jev, chat-completions models) follow redirects, so a key at a custom header or in a body can reach a host no binding names; the MCP client already refuses them. The judge's primitives are offered to the model as tools, which it cannot call. Small, and they are security. (The third gap, MCP arguments outside L1 and L2 and untagged MCP results, was closed the same day.)
+2. **W4 — OAuth2 credentials (ADR 24).** MCP's own authorization is OAuth-based, so many remote servers need it, and W5's Google Docs does too.
+3. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
+4. **U4 — unattended continuation between a run's turns.** Tool confirms can already be answered unattended; the turn-to-turn checkpoint still needs a person.
+5. **Plan step progress** in the console.
+6. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
+7. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
+8. **P8 — L3**, optional.
+
+Dated: raise the Go base to 1.27 once Fedora 45 ships it (due 2026-10-20) and a 1.27 feature is worth having (ADR 33).
