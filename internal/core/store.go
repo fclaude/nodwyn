@@ -36,13 +36,21 @@ type SessionInfo struct {
 	Run *log.RunState
 }
 
-// Title is the first line of the first message, which is what a person
-// reads a session by.
+// Title is what a person reads a session by: the first sentence of the
+// first message when it is short, else its first words.
 func (i SessionInfo) Title() string {
 	title, _, _ := strings.Cut(strings.TrimSpace(i.FirstMessage), "\n")
 	title = strings.TrimSpace(title)
-	if r := []rune(title); len(r) > 120 {
-		title = string(r[:119]) + "…"
+	if end := strings.IndexAny(title, ".?!"); end > 0 && end < 90 && (end+1 == len(title) || title[end+1] == ' ') {
+		title = title[:end+1]
+		title = strings.TrimSuffix(title, ".")
+	}
+	if r := []rune(title); len(r) > 80 {
+		cut := string(r[:80])
+		if space := strings.LastIndex(cut, " "); space > 40 {
+			cut = cut[:space]
+		}
+		title = strings.TrimRight(cut, " ,;:") + "…"
 	}
 	return title
 }

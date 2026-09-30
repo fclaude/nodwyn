@@ -49,7 +49,17 @@ type Server struct {
 	mu       sync.Mutex
 	turns    []Turn
 	next     int
+	respond  func(Request) Turn
 	Requests []Request
+}
+
+// NewFunc starts a fake whose every reply is chosen by respond from the
+// request, for demos and tests that do not know how many requests a turn
+// makes (a planner request, for instance).
+func NewFunc(respond func(Request) Turn) *Server {
+	s := New()
+	s.respond = respond
+	return s
 }
 
 // New starts a fake with the given script.
@@ -60,6 +70,9 @@ func New(turns ...Turn) *Server {
 		_ = json.NewEncoder(w).Encode(map[string]string{"version": "fake"})
 	})
 	mux.HandleFunc("/api/chat", s.chat)
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"models": []map[string]string{{"name": "fake"}, {"name": "demo"}}})
+	})
 	s.Server = httptest.NewServer(mux)
 	return s
 }
@@ -84,14 +97,19 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	req.Raw = raw
 	s.mu.Lock()
 	s.Requests = append(s.Requests, req)
-	if s.next >= len(s.turns) {
+	var t Turn
+	if s.respond != nil {
+		s.mu.Unlock()
+		t = s.respond(req)
+	} else if s.next >= len(s.turns) {
 		s.mu.Unlock()
 		http.Error(w, `{"error":"fake ollama: script exhausted"}`, 500)
 		return
+	} else {
+		t = s.turns[s.next]
+		s.next++
+		s.mu.Unlock()
 	}
-	t := s.turns[s.next]
-	s.next++
-	s.mu.Unlock()
 
 	if t.Status != 0 {
 		http.Error(w, "fake ollama: scripted status", t.Status)

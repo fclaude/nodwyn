@@ -1,0 +1,362 @@
+// A transcript is a sequence of turns, not of events: the user's message
+// opens one, and everything the harness does in reply belongs to it. Calls
+// that only look (reads, searches, listings) fold into one line; calls that
+// change or run something stand on their own line with their outcome.
+import { h, icon, oneLine, sizeOf } from "./dom.js";
+import { markdown } from "./markdown.js";
+
+const readName = /(^|[-_/.])(read|list|find|grep|search|get|show|status|outline|log|diff|query|fetch|lookup|view|notes|events|info)([-_.]|$)/;
+const writes = new Set(["fs-write", "fs-edit"]);
+
+function category(name) {
+  if (writes.has(name)) return "write";
+  if (name === "shell-exec") return "command";
+  if (readName.test(name)) return "read";
+  return "other";
+}
+
+// What a folded group says it did, in words.
+function describe(counts) {
+  const parts = [];
+  const n = (count, one, many) => (count === 1 ? one : many.replace("#", count));
+  if (counts.read) parts.push(n(counts.read, "read 1 file", "read # files"));
+  if (counts.search) parts.push(n(counts.search, "searched once", counts.search === 2 ? "searched twice" : "searched # times"));
+  if (counts.list) parts.push(n(counts.list, "listed 1 folder", "listed # folders"));
+  if (counts.other) parts.push(n(counts.other, "1 other look", "# other looks"));
+  if (counts.failed) parts.push(n(counts.failed, "1 failed", "# failed"));
+  return parts.join(" · ");
+}
+function lookKind(name) {
+  if (/grep|search|find|query|lookup/.test(name)) return "search";
+  if (/list/.test(name)) return "list";
+  if (/read|show|view|get|fetch/.test(name)) return "read";
+  return "other";
+}
+
+const targetKeys = ["path", "file", "dir", "pkg", "target", "url", "cmd", "name", "glob", "pattern", "query", "channel"];
+export function argSummary(args) {
+  if (args == null) return "";
+  let parsed = args;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return oneLine(parsed);
+    }
+  }
+  if (typeof parsed !== "object") return oneLine(String(parsed));
+  const entries = Object.entries(parsed);
+  const rank = (key) => {
+    const i = targetKeys.indexOf(key);
+    return i < 0 ? targetKeys.length : i;
+  };
+  entries.sort((a, b) => rank(a[0]) - rank(b[0]));
+  const named = entries.some(([key]) => targetKeys.includes(key));
+  return oneLine(
+    entries
+      .map(([key, v]) => [key, typeof v === "string" ? v : JSON.stringify(v)])
+      .filter(([key, v]) => !named || targetKeys.includes(key) || v.length <= 48)
+      .map(([, v]) => v)
+      .filter((v) => v !== "" && v !== "[]" && v !== "{}" && v !== "null")
+      .join(" "),
+  );
+}
+function argsObject(args) {
+  if (typeof args !== "string") return args || {};
+  try {
+    return JSON.parse(args);
+  } catch {
+    return {};
+  }
+}
+function commandLine(args) {
+  const a = argsObject(args);
+  return [a.cmd, ...(Array.isArray(a.args) ? a.args : [])].filter(Boolean).join(" ");
+}
+// exitStatus reads what a command's result says, not what it means: exit 0
+// is not "the tests passed", so the line shows the status.
+function exitStatus(value) {
+  const m = /^exit (-?\d+)/.exec(value || "") || /"status"\s*(?:\.|:)\s*(-?\d+)/.exec(value || "");
+  return m ? Number(m[1]) : null;
+}
+function detailsBlock(label, value) {
+  return h("details", {}, h("summary", {}, label), h("pre", {}, typeof value === "string" ? value : JSON.stringify(value, null, 2)));
+}
+
+const auditLabels = {
+  "turn.checkpoint": "Budget checkpoint answered",
+  "egress.check": "Checked where a credential may go",
+  "approval.change": "Standing answer changed",
+  "binding.change": "Credential binding changed",
+  summary: "Summary written",
+  "summary.drop": "Summary revoked",
+  "cred.register": "Credential registered",
+  "context.narrow": "Started a focused context",
+  "context.widen": "Back to the whole conversation",
+  "context.fold": "Folded a focused context away",
+  "run.state": "Run state recorded",
+  "run.checkpoint": "Run checkpoint answered",
+  note: "Note",
+};
+
+export class Transcript {
+  constructor(container) {
+    this.el = container;
+    this.reset();
+  }
+  reset() {
+    this.el.replaceChildren();
+    this.turn = null;
+    this.group = null;
+    this.call = null;
+    this.streamText = null;
+    this.streamThinking = null;
+    this.usage = null;
+  }
+  get empty() {
+    return !this.el.querySelector(".turn");
+  }
+  end() {
+    this.turn = null;
+    this.group = null;
+    this.call = null;
+    this.streamText = null;
+    this.streamThinking = null;
+    this.usage = null;
+  }
+  agent() {
+    if (!this.turn) {
+      this.turn = h("div", { class: "turn agent" }, h("div", { class: "who" }, h("span", { class: "dot" }), "nibb"));
+      this.el.append(this.turn);
+    }
+    return this.turn;
+  }
+  audit(label, payload, cls = "") {
+    const node = h("details", { class: `audit ${cls}` }, h("summary", {}, label));
+    if (payload !== undefined) node.append(h("pre", {}, typeof payload === "string" ? payload : JSON.stringify(payload, null, 2)));
+    this.agent().append(node);
+    this.group = null;
+    return node;
+  }
+  // render draws one event; it returns nothing and decides nothing.
+  render(event) {
+    const p = event.payload || {};
+    switch (event.kind) {
+      case "user.msg":
+        this.end();
+        this.el.append(h("div", { class: "turn user" }, h("div", { class: "who" }, "You"), h("div", { class: "you-text" }, p.text)));
+        break;
+      case "harness.msg":
+        this.end();
+        this.el.append(h("details", { class: "harness-note" }, h("summary", {}, "nibb told the model"), h("pre", {}, p.text ?? p.Text)));
+        break;
+      case "stream.text": {
+        if (!this.streamText) {
+          this.streamText = h("div", { class: "prose streaming" });
+          this.agent().append(this.streamText);
+          this.group = null;
+        }
+        this.streamText.textContent += p.Text ?? p.text ?? "";
+        break;
+      }
+      case "stream.thinking": {
+        if (!this.streamThinking) {
+          const pre = h("pre");
+          this.agent().append(h("details", { class: "thinking" }, h("summary", {}, "Thinking…"), pre));
+          this.streamThinking = pre;
+        }
+        this.streamThinking.textContent += p.Text ?? p.text ?? "";
+        break;
+      }
+      case "llm.resp": {
+        // Streamed fragments were provisional; the recorded response is what
+        // the log holds, so it replaces them.
+        this.streamText?.remove();
+        this.streamThinking?.closest("details")?.remove();
+        this.streamText = null;
+        this.streamThinking = null;
+        const turn = this.agent();
+        if (p.thinking) turn.append(h("details", { class: "thinking" }, h("summary", {}, "Thinking"), h("pre", {}, p.thinking)));
+        if (p.content) {
+          turn.append(markdown(p.content));
+          this.group = null;
+        }
+        if (p.usage) {
+          const u = p.usage;
+          this.tokens = (this.usage ? this.tokens : { in: 0, out: 0, ms: 0 }) || { in: 0, out: 0, ms: 0 };
+          this.tokens.in += u.prompt_tokens || 0;
+          this.tokens.out += u.output_tokens || 0;
+          this.tokens.ms += u.total_ms || 0;
+          if (!this.usage) {
+            this.usage = h("div", { class: "usage" });
+            turn.append(this.usage);
+          } else turn.append(this.usage);
+          this.usage.textContent = `${this.tokens.in.toLocaleString()} → ${this.tokens.out.toLocaleString()} tokens · ${(this.tokens.ms / 1000).toFixed(1)} s with the model`;
+        }
+        this.call = null;
+        break;
+      }
+      case "tool.call":
+        this.toolCall(p);
+        break;
+      case "guard.decision":
+        this.decision(p);
+        break;
+      case "tool.result":
+        this.toolResult(p);
+        break;
+      case "gate.plan": {
+        const steps = planSteps(p.plan);
+        const label =
+          p.noul === "plan"
+            ? `Made a plan${steps.length ? ` · ${steps.length} steps` : ""}${p.score ? ` · scored ${Number(p.score).toFixed(2)}` : ""}`
+            : p.noul === "proceed"
+              ? "No plan needed for this"
+              : "Planned without the plan judge";
+        this.audit(label, p.plan || p.reason || undefined);
+        break;
+      }
+      case "run.turn":
+        this.end();
+        this.el.append(h("div", { class: "audit" }, `Run · turn ${p.number}`));
+        break;
+      case "eval.req":
+        this.audit("You evaluated Scheme", p.source ?? p);
+        break;
+      case "eval.result":
+        this.audit(p.error ? "Evaluation failed" : "Evaluation finished", p.error || p.value || "(no value)", p.error ? "bad" : "");
+        break;
+      case "error":
+        this.audit(`Stopped: ${p.Err ?? p.err ?? "an error"}`, undefined, "bad");
+        break;
+      case "output":
+        this.audit("Output", p.Text ?? p.text);
+        break;
+      case "turn.end":
+        if (p.outcome && p.outcome !== "completed") {
+          const words = { stopped: "Stopped", hard_budget: "Stopped at a hard budget limit", canceled: "Stopped: canceled", error: "Stopped by an error" };
+          this.audit(words[p.outcome] || `Turn ended: ${p.outcome}`, p.error || undefined, p.outcome === "error" ? "bad" : "");
+        }
+        this.end();
+        break;
+      case "session.resume":
+        this.end();
+        this.el.append(h("div", { class: "audit" }, "Resumed"));
+        break;
+      default:
+        if (auditLabels[event.kind]) this.audit(auditLabels[event.kind], p);
+    }
+  }
+  toolCall(p) {
+    const kind = category(p.name);
+    const summaryText = argSummary(p.args);
+    if (kind === "read") {
+      if (!this.group) {
+        const label = h("span", { class: "label" }, p.name.includes("/") ? "Gathered" : "Looked around");
+        const what = h("span", { class: "what" });
+        const names = h("span", { class: "names" });
+        const body = h("div", { class: "activity-body" });
+        const el = h("details", { class: "activity" }, h("summary", {}, h("span", { class: "chev" }, icon("right", 14)), label, what, names), body);
+        this.agent().append(el);
+        this.group = { el, body, what, names, label, counts: {}, tools: new Set(), servers: new Set() };
+      }
+      const g = this.group;
+      g.counts[lookKind(p.name)] = (g.counts[lookKind(p.name)] || 0) + 1;
+      g.tools.add(p.name);
+      if (p.name.includes("/")) {
+        g.servers.add(p.name.split("/")[0]);
+        g.label.textContent = "Gathered";
+      }
+      g.what.textContent = g.servers.size ? `${g.servers.size} server${g.servers.size === 1 ? "" : "s"} · ${describe(g.counts)}` : describe(g.counts);
+      g.names.textContent = [...g.tools].slice(0, 3).join(" · ");
+      const row = h("details", { class: "call" }, h("summary", {}, h("span", { class: "name" }, p.name), h("span", { class: "args" }, summaryText), h("span", { class: "stat" }, "…")), h("div", { class: "call-body" }, detailsBlock("Arguments", p.args)));
+      g.body.append(row);
+      this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), group: g };
+      return;
+    }
+    this.group = null;
+    let line;
+    if (kind === "command") line = [icon("terminal", 15), h("span", { class: "mono" }, commandLine(p.args) || summaryText)];
+    else if (kind === "write") {
+      const a = argsObject(p.args);
+      line = [icon("file", 15), h("span", {}, p.name === "fs-edit" ? "Edit" : "Write"), h("span", { class: "mono" }, a.path || summaryText)];
+    } else line = [icon("terminal", 15), h("span", { class: "mono" }, `${p.name} ${summaryText}`.trim())];
+    const result = h("span", { class: "result" }, "running…");
+    const note = h("span", { class: "aside-note" });
+    const step = h("div", { class: "step" }, line, result, note);
+    const detail = h("details", { class: "step-detail" }, h("summary", {}, "Details"), h("pre", {}, typeof p.args === "string" ? p.args : JSON.stringify(p.args, null, 2)));
+    this.agent().append(step, detail);
+    this.call = { id: p.id, name: p.name, kind, step, result, note, detail };
+  }
+  // waiting marks the call in progress as stopped at a question, or not.
+  waiting(on) {
+    const c = this.call;
+    if (!c?.result || c.result.className !== "result") return;
+    c.result.textContent = on ? "waiting for your answer" : "running…";
+  }
+  decision(p) {
+    const c = this.call;
+    let text = "";
+    if (p.decision === "deny") text = "denied";
+    else if (p.checker === "standing") text = "standing approval";
+    else if (p.decision === "confirm") text = p.answer === "yes" ? (p.scope && p.scope !== "once" ? `you allowed · ${p.scope}` : "you allowed once") : p.answer === "turn" ? "allowed for this turn" : "you denied";
+    if (!c || p.origin !== "model") {
+      // A decision outside a tool call (user-origin, a checker's own prompt)
+      // is still audit history.
+      if (p.decision !== "allow" || p.checker) this.audit(`Guard: ${p.prim} ${p.decision}${p.reason ? ` · ${p.reason}` : ""}`, p, p.decision === "deny" ? "bad" : "");
+      return;
+    }
+    if (!text) return;
+    if (c.note) c.note.textContent = text;
+    else c.stat.dataset.decision = text;
+    if (p.decision === "deny" && c.note) c.result.className = "result failed";
+  }
+  toolResult(p) {
+    let c = this.call;
+    if (!c || c.id !== p.id || c.name !== p.name) {
+      // A result without its call in view (a skipped or resumed call) stands alone.
+      this.audit(`${p.name} ${p.ok ? "returned" : "failed"}`, p.ok ? p.value : p.error, p.ok ? "" : "bad");
+      return;
+    }
+    const body = p.ok ? p.value : p.error;
+    const ms = p.ms === undefined ? "" : p.ms >= 1000 ? `${(p.ms / 1000).toFixed(1)} s` : `${p.ms} ms`;
+    if (c.kind === "read") {
+      c.stat.className = `stat ${p.ok ? "ok" : "failed"}`;
+      c.stat.textContent = [p.ok ? sizeOf((body || "").length) : "failed", ms, c.stat.dataset.decision].filter(Boolean).join(" · ");
+      c.body.append(detailsBlock(p.ok ? "Result" : "Error", body));
+      if (!p.ok) {
+        c.group.counts.failed = (c.group.counts.failed || 0) + 1;
+        c.group.what.textContent = describe(c.group.counts);
+      }
+    } else {
+      const status = p.ok ? exitStatus(body) : null;
+      c.result.replaceChildren();
+      if (!p.ok) {
+        c.result.className = "result failed";
+        c.result.append(icon("cross", 14, 2), "failed");
+      } else if (status !== null) {
+        c.result.className = `result ${status === 0 ? "ok" : "failed"}`;
+        c.result.append(status === 0 ? icon("check", 14, 2) : icon("cross", 14, 2), `exit ${status}`);
+      } else {
+        c.result.className = "result ok";
+        c.result.append(icon("check", 14, 2), c.kind === "write" ? "written" : "done");
+      }
+      c.note.textContent = [ms, c.note.textContent].filter(Boolean).join(" · ");
+      c.detail.append(h("pre", {}, body || ""));
+      if (!p.ok) c.detail.open = true;
+    }
+    this.call = null;
+  }
+}
+
+// planSteps reads a recorded plan's numbered or bulleted lines as steps; a
+// plan in prose is one step.
+export function planSteps(plan) {
+  const lines = String(plan || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const steps = lines.filter((l) => /^(\d+[.)]|[-*•])\s+/.test(l)).map((l) => l.replace(/^(\d+[.)]|[-*•])\s+/, ""));
+  if (steps.length) return steps;
+  return lines.length ? [lines.join(" ")] : [];
+}

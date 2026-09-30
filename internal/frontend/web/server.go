@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -45,18 +46,75 @@ type bridge struct {
 	readOnly           bool
 	ctx                context.Context
 	socket, host, code string
+
+	mu      sync.Mutex
+	tickets map[string]time.Time // launch tickets not yet used, by value, with their expiry
+}
+
+// Server is a browser console not yet serving: it can mint launch tickets
+// for the page its launcher opens before Serve starts.
+type Server struct {
+	b *bridge
+}
+
+// New prepares a console for options.
+func New(options Options) *Server {
+	return &Server{b: &bridge{socket: options.Socket, code: options.PairingCode, readOnly: options.ReadOnly, tickets: map[string]time.Time{}}}
+}
+
+// ticketLife bounds how long a launch ticket waits for its page to load.
+const ticketLife = time.Minute
+
+// Ticket mints a single-use launch ticket (ADR 30): the launcher puts it in
+// the URL fragment of the page it opens, which browsers never send to a
+// server; the page posts it to /pair once. It pairs like the code does.
+func (s *Server) Ticket() (string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	ticket := base64.RawURLEncoding.EncodeToString(raw[:])
+	s.b.mu.Lock()
+	defer s.b.mu.Unlock()
+	now := time.Now()
+	for t, expiry := range s.b.tickets {
+		if now.After(expiry) {
+			delete(s.b.tickets, t)
+		}
+	}
+	s.b.tickets[ticket] = now.Add(ticketLife)
+	return ticket, nil
+}
+
+// redeem spends a ticket: true once, for a live ticket.
+func (b *bridge) redeem(ticket string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for t, expiry := range b.tickets {
+		if subtle.ConstantTimeCompare([]byte(t), []byte(ticket)) == 1 {
+			delete(b.tickets, t)
+			return time.Now().Before(expiry)
+		}
+	}
+	return false
 }
 
 // Serve accepts only a 127.0.0.1 listener. The pairing code travels through the
 // local terminal and a same-origin POST, never a URL, script-accessible storage or RPC log.
 func Serve(ctx context.Context, listener net.Listener, options Options) error {
+	return New(options).Serve(ctx, listener)
+}
+
+// Serve runs the console on listener until ctx ends.
+func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
+	b := s.b
 	addr, ok := listener.Addr().(*net.TCPAddr)
-	if !ok || !addr.IP.Equal(net.IPv4(127, 0, 0, 1)) || len(options.PairingCode) < 32 {
+	if !ok || !addr.IP.Equal(net.IPv4(127, 0, 0, 1)) || len(b.code) < 32 {
 		return fmt.Errorf("web: requires 127.0.0.1 and a strong pairing code")
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	b := &bridge{ctx: ctx, socket: options.Socket, host: listener.Addr().String(), code: options.PairingCode, readOnly: options.ReadOnly}
+	b.ctx, b.host = ctx, listener.Addr().String()
 	server := &http.Server{Handler: b, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10}
 	done := make(chan struct{})
 	go func() {
@@ -100,17 +158,39 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		b.connect(w, r)
-	case "/", "/app.js", "/prompts.js", "/inspectors.js", "/policy.js", "/attention.js", "/style.css":
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		files, _ := fs.Sub(assets, "assets")
-		http.FileServerFS(files).ServeHTTP(w, r)
 	default:
-		http.NotFound(w, r)
+		b.asset(w, r)
 	}
 }
+
+// asset serves the embedded console: a fixed file set compiled into the
+// binary, so a path either names one of those files or is not found. There
+// are no directory listings and nothing from the filesystem.
+func (b *bridge) asset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	if name == "" {
+		name = "index.html"
+	}
+	if !fs.ValidPath(name) {
+		http.NotFound(w, r)
+		return
+	}
+	files, _ := fs.Sub(assets, "assets")
+	if info, err := fs.Stat(files, name); err != nil || info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	if strings.HasPrefix(name, "fonts/") {
+		// Fonts never change within a build; everything else stays no-store.
+		w.Header().Set("Cache-Control", "max-age=86400")
+	}
+	http.ServeFileFS(w, r, files, name)
+}
+
 func (b *bridge) cookieName() string { return "nibb_ui_" + strings.ReplaceAll(b.host, ":", "_") }
 func (b *bridge) authenticated(r *http.Request) bool {
 	cookie, err := r.Cookie(b.cookieName())
@@ -122,11 +202,22 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p struct {
-		Code string `json:"code"`
+		Code   string `json:"code"`
+		Ticket string `json:"ticket"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&p); err != nil || subtle.ConstantTimeCompare([]byte(p.Code), []byte(b.code)) != 1 {
+	err := decoder.Decode(&p)
+	switch {
+	case err != nil:
+		http.Error(w, "Invalid pairing request", http.StatusForbidden)
+		return
+	case p.Ticket != "":
+		if !b.redeem(p.Ticket) {
+			http.Error(w, "This launch link was already used or has expired. Paste the pairing code instead.", http.StatusForbidden)
+			return
+		}
+	case subtle.ConstantTimeCompare([]byte(p.Code), []byte(b.code)) != 1:
 		http.Error(w, "Invalid pairing code", http.StatusForbidden)
 		return
 	}

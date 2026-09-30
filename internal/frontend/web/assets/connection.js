@@ -1,0 +1,131 @@
+// The browser's one connection to the bridge. It matches replies to
+// requests and hands notifications to listeners. A dropped connection fails
+// every outstanding request; nothing is ever retried (browser.md).
+
+export class Connection {
+  constructor() {
+    this.socket = null;
+    this.nextID = 0;
+    this.waiting = new Map();
+    this.methods = new Set();
+    this.hello = null;
+    this.listeners = new Set();
+    this.stateListeners = new Set();
+    this.state = "idle"; // idle | connecting | live | down | unpaired
+  }
+  get live() {
+    return this.socket?.readyState === WebSocket.OPEN && this.state === "live";
+  }
+  has(method) {
+    return this.methods.has(method);
+  }
+  onEvent(fn) {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+  onState(fn) {
+    this.stateListeners.add(fn);
+    return () => this.stateListeners.delete(fn);
+  }
+  setState(state, detail = "") {
+    this.state = state;
+    for (const fn of this.stateListeners) fn(state, detail);
+  }
+  fail(message) {
+    for (const wait of this.waiting.values()) {
+      clearTimeout(wait.timer);
+      wait.reject(new Error(message));
+    }
+    this.waiting.clear();
+  }
+  call(method, params = {}, timeout = 35000) {
+    return new Promise((resolve, reject) => {
+      if (this.socket?.readyState !== WebSocket.OPEN) {
+        reject(new Error("Disconnected. Reconnect to reload; nothing was retried."));
+        return;
+      }
+      const id = ++this.nextID;
+      const timer = setTimeout(() => {
+        this.waiting.delete(id);
+        reject(new Error("Request timed out. Nothing was retried."));
+      }, timeout);
+      this.waiting.set(id, { resolve, reject, timer });
+      this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+    });
+  }
+  connect() {
+    if (this.socket) {
+      const old = this.socket;
+      this.socket = null;
+      old.close();
+    }
+    this.fail("Reconnecting; no operation was retried.");
+    this.setState("connecting");
+    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${scheme}://${location.host}/socket`);
+    this.socket = socket;
+    let opened = false;
+    socket.onopen = async () => {
+      if (this.socket !== socket) return;
+      opened = true;
+      try {
+        const hello = await this.call("hello", { protocol: 1 });
+        if (this.socket !== socket) return;
+        this.hello = hello;
+        this.methods = new Set(hello.methods || []);
+        this.setState("live");
+      } catch (error) {
+        this.setState("down", error.message);
+      }
+    };
+    socket.onmessage = (message) => {
+      if (this.socket !== socket) return;
+      let frame;
+      try {
+        frame = JSON.parse(message.data);
+      } catch {
+        return;
+      }
+      if (frame.id !== undefined && frame.id !== null && !frame.method) {
+        const wait = this.waiting.get(frame.id);
+        if (!wait) return;
+        clearTimeout(wait.timer);
+        this.waiting.delete(frame.id);
+        if (frame.error) wait.reject(new Error(frame.error.message));
+        else wait.resolve(frame.result);
+        return;
+      }
+      for (const fn of this.listeners) fn(frame);
+    };
+    socket.onclose = () => {
+      if (this.socket !== socket) return;
+      this.fail("Connection lost; no operation was retried.");
+      // A socket refused before it opened means this browser is not paired
+      // (or the bridge is gone); an established one that drops is "down".
+      this.setState(opened ? "down" : "unpaired");
+    };
+  }
+}
+
+// pair exchanges a pairing code (typed) or a launch ticket (from the URL
+// fragment, which is never sent to a server) for the bridge's cookie.
+export async function pair(body) {
+  const response = await fetch("/pair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    const text = (await response.text()).trim();
+    throw new Error(text || "Pairing failed.");
+  }
+}
+
+// takeTicket removes a launch ticket from the address bar and returns it.
+export function takeTicket() {
+  const match = /(?:^#|&)ticket=([A-Za-z0-9_-]+)/.exec(location.hash);
+  if (!match) return "";
+  history.replaceState(null, "", location.pathname + "#/");
+  return match[1];
+}

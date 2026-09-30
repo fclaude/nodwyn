@@ -86,3 +86,18 @@ func TestStoreRejectsInvalidLogs(t *testing.T) {
 		})
 	}
 }
+
+func TestSessionTitleIsShort(t *testing.T) {
+	for in, want := range map[string]string{
+		"Fix the flaky test":                  "Fix the flaky test",
+		"Fix the flaky test. It fails on CI.": "Fix the flaky test",
+		"What is this? Explain it":            "What is this?",
+		"line one\nline two":                  "line one",
+		"v1.2 is out, update the changelog":   "v1.2 is out, update the changelog",
+		"The session list shows each session's first message, cut short, so two sessions that start the same way look identical. Make them easy to tell apart.": "The session list shows each session's first message, cut short, so two sessions…",
+	} {
+		if got := (SessionInfo{FirstMessage: in}).Title(); got != want {
+			t.Errorf("Title(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

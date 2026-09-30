@@ -7,6 +7,7 @@
 #         directly or transitively, on any github.com/charmbracelet/... or charm.land/... package.
 #
 # The core must be usable by any front-end, including ones that do not exist yet.
+# test/browser/... is exempt too: it is a harness that drives front-ends.
 set -euo pipefail
 
 module=$(go list -m)
@@ -14,7 +15,7 @@ status=0
 
 while read -r pkg; do
 	case "$pkg" in
-	"$module"/internal/frontend/*|"$module"/cmd/*) continue ;;
+	"$module"/internal/frontend/*|"$module"/cmd/*|"$module"/test/browser/*) continue ;;
 	esac
 	bad=$(go list -deps "$pkg" 2>/dev/null | grep -E "^$module/internal/frontend/|^github.com/charmbracelet/|^charm.land/" || true)
 	if [ -n "$bad" ]; then

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -387,13 +388,18 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 
 func TestEmbeddedAssetsReachable(t *testing.T) {
 	b := &bridge{ctx: context.Background(), host: "127.0.0.1:34567", code: testCode}
-	entries, err := assets.ReadDir("assets")
-	if err != nil {
+	var paths []string
+	err := fs.WalkDir(assets, "assets", func(name string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			paths = append(paths, strings.TrimPrefix(name, "assets"))
+		}
+		return err
+	})
+	if err != nil || len(paths) == 0 {
 		t.Fatal(err)
 	}
-	for _, entry := range entries {
-		path := "/" + entry.Name()
-		if entry.Name() == "index.html" {
+	for _, path := range paths {
+		if path == "/index.html" {
 			path = "/"
 		}
 		req := httptest.NewRequest("GET", "http://"+b.host+path, nil)
@@ -402,5 +408,49 @@ func TestEmbeddedAssetsReachable(t *testing.T) {
 		if response.Code != http.StatusOK || response.Body.Len() == 0 {
 			t.Fatalf("embedded asset %s returned %d", path, response.Code)
 		}
+	}
+	for _, path := range []string{"/fonts", "/../server.go", "/missing.js", "/fonts/"} {
+		req := httptest.NewRequest("GET", "http://"+b.host+path, nil)
+		response := httptest.NewRecorder()
+		b.ServeHTTP(response, req)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s returned %d", path, response.Code)
+		}
+	}
+}
+
+func TestLaunchTicketPairsOnceAndExpires(t *testing.T) {
+	s := New(Options{PairingCode: testCode})
+	s.b.ctx, s.b.host = context.Background(), "127.0.0.1:34567"
+	post := func(body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://127.0.0.1:34567/pair", strings.NewReader(body))
+		r.Header.Set("Origin", "http://127.0.0.1:34567")
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		s.b.ServeHTTP(w, r)
+		return w
+	}
+	ticket, err := s.Ticket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := post(`{"ticket":"` + ticket + `"}`); w.Code != http.StatusNoContent || len(w.Result().Cookies()) != 1 {
+		t.Fatalf("first use: %d %s", w.Code, w.Body.String())
+	}
+	if w := post(`{"ticket":"` + ticket + `"}`); w.Code != http.StatusForbidden {
+		t.Fatalf("reused ticket: %d", w.Code)
+	}
+	if w := post(`{"ticket":"forged"}`); w.Code != http.StatusForbidden {
+		t.Fatalf("forged ticket: %d", w.Code)
+	}
+	expired, _ := s.Ticket()
+	s.b.mu.Lock()
+	s.b.tickets[expired] = time.Now().Add(-time.Second)
+	s.b.mu.Unlock()
+	if w := post(`{"ticket":"` + expired + `"}`); w.Code != http.StatusForbidden {
+		t.Fatalf("expired ticket: %d", w.Code)
+	}
+	if w := post(`{"ticket":"x","extra":1}`); w.Code != http.StatusForbidden {
+		t.Fatalf("unknown field: %d", w.Code)
 	}
 }

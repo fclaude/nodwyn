@@ -2,155 +2,31 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>nibb · console</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>nibb</title>
+    <link rel="preload" href="/fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/style.css" />
     <script type="module" src="/app.js"></script>
   </head>
   <body>
-    <header>
-      <strong>nibb<span class="dot">.</span></strong
-      ><span class="subtitle">console</span
-      ><span id="connection" role="status">Connecting…</span
-      ><button id="theme" type="button" title="Switch between dark and light">
-        Light
-      </button
-      ><button id="reconnect" hidden>Reconnect</button>
-    </header>
-    <section id="pairing" class="pairing" hidden>
-      <div class="eyebrow">LOCAL CONNECTION</div>
-      <h1>Your sessions, in view.</h1>
-      <p>
-        Paste the pairing code printed by <code>nibb ui</code>. It stays on this
-        computer and is never added to a session.
-      </p>
-      <form id="pair-form">
-        <label for="pair-code">Pairing code</label
-        ><input
-          id="pair-code"
-          type="password"
-          autocomplete="off"
-          spellcheck="false"
-          required
-        /><button type="submit">Connect this browser</button>
-      </form>
-      <p id="pair-error" role="alert"></p>
-    </section>
-    <main id="workspace" hidden>
-      <aside>
-        <div class="aside-title">
-          <h2>Sessions</h2>
-          <button id="refresh" aria-label="Refresh sessions">Refresh</button>
+    <div id="gate" class="gate">
+      <div class="gate-card"><div class="brand">nibb<span>.</span></div><p>Connecting…</p></div>
+    </div>
+    <div id="shell" class="shell" hidden>
+      <div class="topbar">
+        <button id="menu" type="button" class="icon-btn" aria-label="Open the task list"></button>
+        <div class="brand">nibb<span>.</span></div>
+        <span id="topbar-count" class="pill warn" hidden></span>
+      </div>
+      <nav id="sidebar" class="sidebar" aria-label="nibb"></nav>
+      <div class="content">
+        <div id="offline" class="banner" role="status" hidden>
+          Disconnected. Nothing was retried.
+          <button id="reconnect" type="button" class="btn small">Reconnect</button>
         </div>
-        <p id="mode" class="hint"></p>
-        <p id="attention-summary" class="hint" role="status"></p>
-        <details id="new-session" hidden>
-          <summary>New session</summary>
-          <form id="new-form">
-            <label for="new-repo">Existing repository directory</label>
-            <input
-              id="new-repo"
-              placeholder="/absolute/path/to/project"
-              required
-              autocomplete="off"
-              spellcheck="false"
-            />
-            <button id="create" type="submit">Create session</button>
-          </form>
-        </details>
-        <nav id="sessions" aria-label="Sessions"></nav>
-        <button id="notifications" type="button" disabled>
-          Desktop notifications
-        </button>
-      </aside>
-      <section class="conversation">
-        <div class="conversation-head">
-          <div>
-            <div class="eyebrow">CONVERSATION</div>
-            <h1 id="session-title">Select a session</h1>
-            <p id="repo"></p>
-          </div>
-          <div>
-            <span id="activity"></span>
-            <div class="actions">
-              <button id="resume" hidden>Resume</button
-              ><button id="abort" title="Stop the current turn or active run" hidden>Abort</button>
-              <button
-                id="close-session"
-                hidden
-                title="Close the session, stopping any work; history is kept"
-              >
-                Close session
-              </button>
-            </div>
-          </div>
-        </div>
-        <nav id="view-tabs" aria-label="Session views">
-          <button data-view="conversation" aria-pressed="true">
-            Conversation
-          </button>
-          <button data-view="plan" aria-pressed="false">Plan</button>
-          <button data-view="budget" aria-pressed="false">Budget</button>
-          <button data-view="log" aria-pressed="false">Log</button>
-          <button data-view="policy" aria-pressed="false">Policy</button>
-          <button data-view="tools" aria-pressed="false">Tools</button>
-          <button data-view="friction" aria-pressed="false">Friction</button>
-        </nav>
-        <div id="notice" role="status"></div>
-        <section id="inspector" aria-label="Session inspector" hidden>
-          <div class="inspector-toolbar">
-            <h2 id="inspector-title"></h2>
-            <button id="inspect-refresh">Refresh view</button>
-          </div>
-          <form id="log-filter" hidden>
-            <label for="log-kind">Kind prefix</label
-            ><input
-              id="log-kind"
-              placeholder="e.g. guard."
-              autocomplete="off"
-            />
-            <label for="log-count">Maximum records</label
-            ><input
-              id="log-count"
-              type="number"
-              min="1"
-              max="1000"
-              value="50"
-              required
-            /><button type="submit">Filter records</button>
-          </form>
-          <div id="inspector-content"></div>
-        </section>
-        <div id="transcript" aria-label="Session transcript">
-          <div class="empty">
-            <h2>No session selected</h2>
-            <p>
-              Pick one on the left to read its conversation, tool calls and
-              guard decisions.
-            </p>
-          </div>
-        </div>
-        <section
-          id="prompt-panel"
-          aria-label="Pending approval"
-          aria-live="polite"
-          hidden
-        ></section>
-        <form id="composer" hidden>
-          <label for="message">Message</label>
-          <textarea
-            id="message"
-            rows="3"
-            placeholder="What should nibb work on?"
-            spellcheck="true"
-          ></textarea>
-          <div class="compose-footer">
-            <span class="hint"
-              >Drafts stay in this tab · ⌘↵ to send</span
-            ><button id="send" class="primary" type="submit">Send</button>
-          </div>
-        </form>
-      </section>
-    </main>
+        <div id="view" class="view"></div>
+      </div>
+    </div>
   </body>
 </html>
