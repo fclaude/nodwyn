@@ -116,3 +116,18 @@ func TestUnsafeRootsAreRefused(t *testing.T) {
 		t.Error("listed versions of a folder nodwyn never worked in")
 	}
 }
+
+// A directory that does not exist yet resolves through the links above it,
+// so a root that would hold nodwyn's config is refused whether or not the
+// config directory was created (on macOS /tmp and /var are links).
+func TestEvalOrResolvesMissingDirectoriesThroughLinks(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	resolved, _ := filepath.EvalSymlinks(real)
+	if got, want := evalOr(filepath.Join(link, "config", "nodwyn")), filepath.Join(resolved, "config", "nodwyn"); got != want {
+		t.Fatalf("evalOr = %q, want %q", got, want)
+	}
+}

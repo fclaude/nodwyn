@@ -27,8 +27,10 @@ func TestCLIBoundedRun(t *testing.T) {
 	defer os.RemoveAll(dir)
 	// The conversation is pinned turn by turn; the default loop's explorer and
 	// evidence reminders are off here and tested in internal/core.
-	os.MkdirAll(filepath.Join(dir, ".nodwyn"), 0o755)
-	os.WriteFile(filepath.Join(dir, ".nodwyn", "init.scm"), []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
+	// The task folder sits beside the daemon's config and data, never around them.
+	repo := filepath.Join(dir, "repo")
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
 	socket := filepath.Join(dir, "sock")
 	listener, err := rpc.Listen(socket)
 	if err != nil {
@@ -66,7 +68,7 @@ func TestCLIBoundedRun(t *testing.T) {
 	var started struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(invoke("start", "--socket", socket, "--repo", dir, "--task", task, "--budget-wall", "1m", "--max-turns", "2"), &started); err != nil || started.ID == "" {
+	if err := json.Unmarshal(invoke("start", "--socket", socket, "--repo", repo, "--task", task, "--budget-wall", "1m", "--max-turns", "2"), &started); err != nil || started.ID == "" {
 		t.Fatalf("start %v %+v", err, started)
 	}
 	// The submitting CLI has exited; a new invocation sees daemon-owned progress.

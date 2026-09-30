@@ -229,14 +229,27 @@ func (s *server) rootRefusal(root string) string {
 	return ""
 }
 
+// evalOr resolves p's symbolic links, as far as p exists: a directory that
+// does not exist yet (a fresh config directory) is its nearest existing
+// parent, resolved, joined with the rest. Comparing it with a resolved root
+// must not depend on whether the directory was created (on macOS /var and
+// /tmp are links into /private).
 func evalOr(p string) string {
 	if p == "" {
 		return ""
 	}
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		return real
+	p = filepath.Clean(p)
+	rest := ""
+	for dir := p; ; dir = filepath.Dir(dir) {
+		if real, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return p
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
 	}
-	return filepath.Clean(p)
 }
 
 // knownFolder reports whether root is a named workspace or a folder a task

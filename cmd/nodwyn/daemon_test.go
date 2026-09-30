@@ -80,7 +80,9 @@ func TestCLIDaemonLifecycle(t *testing.T) {
 	var info struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(call("session.open", map[string]string{"repo": dir}), &info); err != nil || info.ID == "" {
+	repo := filepath.Join(dir, "repo") // beside the config and data, as a real task folder is
+	os.Mkdir(repo, 0o700)
+	if err := json.Unmarshal(call("session.open", map[string]string{"repo": repo}), &info); err != nil || info.ID == "" {
 		t.Fatalf("open: %s %v", info.ID, err)
 	}
 	conn.Close()

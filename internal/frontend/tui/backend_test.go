@@ -30,8 +30,14 @@ import (
 
 func testOptions(t *testing.T) core.Options {
 	t.Helper()
+	// The task folder sits beside nodwyn's config and data, never around
+	// them: a daemon refuses a root that holds its own directories.
 	root := t.TempDir()
-	return core.Options{Config: config.Default(), Repo: root, Paths: config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data")), Version: "test"}
+	repo := filepath.Join(root, "repo")
+	if err := os.Mkdir(repo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return core.Options{Config: config.Default(), Repo: repo, Paths: config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data")), Version: "test"}
 }
 func testRemote(t *testing.T, o core.Options) (*remote, string) {
 	t.Helper()
