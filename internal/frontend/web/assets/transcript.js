@@ -209,7 +209,10 @@ export class Transcript {
             this.usage = h("div", { class: "usage" });
             turn.append(this.usage);
           } else turn.append(this.usage);
-          this.usage.textContent = `${this.tokens.in.toLocaleString()} → ${this.tokens.out.toLocaleString()} tokens · ${(this.tokens.ms / 1000).toFixed(1)} s with the model`;
+          // Only Ollama reports a duration; a chat-completions server (OpenRouter
+          // among them) reports none, so no time rather than "0.0 s".
+          const time = this.tokens.ms > 0 ? ` · ${(this.tokens.ms / 1000).toFixed(1)} s with the model` : "";
+          this.usage.textContent = `${this.tokens.in.toLocaleString()} → ${this.tokens.out.toLocaleString()} tokens${time}`;
         }
         this.call = null;
         break;
