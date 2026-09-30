@@ -1,0 +1,8 @@
+{
+  "name": "nibb-browser-checks",
+  "private": true,
+  "description": "Browser acceptance checks for the nibb console (run.sh)",
+  "devDependencies": {
+    "playwright": "^1.56.0"
+  }
+}
