@@ -65,6 +65,7 @@ type bridge struct {
 
 	mu      sync.Mutex
 	tickets map[string]time.Time // launch tickets not yet used, by value, with their expiry
+	recheck time.Duration        // how often an open device console rechecks its pairing; 0 is deviceRecheck
 }
 
 // Server is a browser console not yet serving: it can mint launch tickets
@@ -225,7 +226,11 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Pair this browser first", http.StatusForbidden)
 			return
 		}
-		b.connect(w, r, device)
+		token := ""
+		if c, err := r.Cookie(deviceCookie); err == nil && device != "" {
+			token = c.Value
+		}
+		b.connect(w, r, device, token)
 	default:
 		b.asset(w, r)
 	}
@@ -359,7 +364,12 @@ type request struct {
 	Params  json.RawMessage `json:"params"`
 }
 
-func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device string) {
+// deviceRecheck is how often an open console of a paired device checks that
+// the device is still paired, so a revocation also ends a console that is
+// only watching.
+const deviceRecheck = 5 * time.Second
+
+func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token string) {
 	ctx, cancel := context.WithCancel(b.ctx)
 	defer cancel()
 	// A device token is another machine's authority wherever it arrives
@@ -383,6 +393,41 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device string) 
 	}
 	defer conn.CloseNow()
 	conn.SetReadLimit(1 << 20)
+	// A paired device stays paired only while its token is in devices.toml:
+	// revoking it ends this console within deviceRecheck, and before any
+	// further request is relayed.
+	paired := func() bool {
+		if device == "" {
+			return true
+		}
+		name, ok := b.devices.Check(token)
+		return ok && name == device
+	}
+	revoked := func() {
+		conn.Close(websocket.StatusPolicyViolation, "this device was revoked")
+		cancel()
+	}
+	if device != "" {
+		go func() {
+			every := b.recheck
+			if every <= 0 {
+				every = deviceRecheck
+			}
+			tick := time.NewTicker(every)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+					if !paired() {
+						revoked()
+						return
+					}
+				}
+			}
+		}()
+	}
 	// Browser backpressure cannot block a session: the RPC client and daemon
 	// already enforce bounded queues. A failed connection is never replayed.
 	go func() {
@@ -405,6 +450,10 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device string) 
 	for {
 		var req request
 		if err := wsjson.Read(ctx, conn, &req); err != nil {
+			return
+		}
+		if !paired() {
+			revoked()
 			return
 		}
 		var result json.RawMessage

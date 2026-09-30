@@ -102,7 +102,8 @@ func (d *Devices) Pair(name string) (string, error) {
 }
 
 // Check returns the name of the device token belongs to. The file is read
-// on every check, so a revocation applies to the next request.
+// on every check, so a revocation applies at once: to new requests, and to
+// an open console at its next request or recheck.
 func (d *Devices) Check(token string) (string, bool) {
 	if token == "" {
 		return "", false

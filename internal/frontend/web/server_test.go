@@ -628,3 +628,71 @@ func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 		t.Fatal("session.attach reachable from the page")
 	}
 }
+
+// Revoking a device ends its open console: before its next request, and
+// within deviceRecheck when it is only watching.
+func TestRevokingADeviceClosesItsOpenConsole(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	socket := filepath.Join(root, "run", "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	done := make(chan error, 1)
+	go func() { done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: paths}) }()
+	defer func() { cancel(); <-done }()
+
+	devices := OpenDevices(filepath.Join(root, "devices.toml"))
+	b := &bridge{ctx: ctx, socket: socket, code: testCode, devices: devices, recheck: 50 * time.Millisecond}
+	server := httptest.NewUnstartedServer(b)
+	b.at(server.Listener.Addr().String())
+	server.Start()
+	defer server.Close()
+	open := func(name string) *websocket.Conn {
+		t.Helper()
+		token, err := devices.Pair(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		header := http.Header{"Origin": {server.URL}, "Cookie": {deviceCookie + "=" + token}}
+		conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { conn.CloseNow() })
+		return conn
+	}
+	closed := func(conn *websocket.Conn, send bool) bool {
+		t.Helper()
+		if send {
+			if err := wsjson.Write(ctx, conn, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "attention.list", "params": map[string]any{}}); err != nil {
+				return true
+			}
+		}
+		readCtx, stop := context.WithTimeout(ctx, 2*time.Second)
+		defer stop()
+		var reply map[string]json.RawMessage
+		err := wsjson.Read(readCtx, conn, &reply)
+		return websocket.CloseStatus(err) == websocket.StatusPolicyViolation
+	}
+	asking := open("phone")
+	if closed(asking, true) {
+		t.Fatal("a paired device was refused")
+	}
+	watching := open("tablet")
+	devices.Revoke("phone")
+	devices.Revoke("tablet")
+	if !closed(asking, true) {
+		t.Fatal("a revoked device's request was relayed")
+	}
+	if !closed(watching, false) {
+		t.Fatal("a revoked device's watching console stayed open")
+	}
+}

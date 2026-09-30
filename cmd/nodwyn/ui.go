@@ -47,6 +47,13 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 	address := "127.0.0.1:0"
 	if r.listen != "" {
 		address = r.listen
+		// Browsers name a host, never 0.0.0.0 or ::, and the console answers
+		// only to the names it listens on: a wildcard needs the real ones.
+		if host, _, err := net.SplitHostPort(r.listen); err == nil && len(r.hosts) == 0 {
+			if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+				return nil, options, fmt.Errorf("--listen %s answers on every interface, but the console only accepts the names it is reached by: add --name HOST:PORT (for example --name desk.local%s), or listen on one address", r.listen, r.listen[strings.LastIndex(r.listen, ":"):])
+			}
+		}
 	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
