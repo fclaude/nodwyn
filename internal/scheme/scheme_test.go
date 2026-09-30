@@ -31,6 +31,9 @@ func TestConformance(t *testing.T) {
 		{`'(a . b)`, `(a . b)`}, {`'(1 2 . 3)`, `(1 2 . 3)`}, {`'...`, `...`}, {`'1+`, `1+`},
 		{"; comment\n 1 ; trailing\n", `1`},
 		{"`(1 ,(+ 1 1) ,@(list 3 4))", `(1 2 3 4)`},
+		{"`((doc . ,(string-append \"a\" \"b\")) (n . ,(+ 1 2)))", `((doc . "ab") (n . 3))`},
+		{"`(1 . ,(list 2 3))", `(1 2 3)`},
+		{"`(,@'() . ,(+ 1 1))", `2`},
 		// §2 data types
 		{`'()`, `()`}, {`(null? '())`, `#t`}, {`(boolean? #f)`, `#t`}, {`(integer? 1)`, `#t`}, {`(float? 1.0)`, `#t`},
 		{`(number? 1.5)`, `#t`}, {`(string? "s")`, `#t`}, {`(symbol? 'a)`, `#t`}, {`(pair? '(1))`, `#t`},
@@ -57,6 +60,8 @@ func TestConformance(t *testing.T) {
 		{`(do ((i 1 (+ i 1)) (acc 1 (* acc i))) ((> i 5) acc))`, `120`},
 		{`(do ((i 3 (- i 1))) ((< i 0) i))`, `-1`},
 		{`(do ((i 0 (+ i 1))) ((= i 3)))`, `#<void>`},
+		{`(with-output-to-string (do ((i 0 (+ i 1))) ((= i 3)) (display i)))`, `"012"`},
+		{`(let ((v (vector 0 0 0))) (do ((i 0 (+ i 1))) ((= i 3) v) (vector-set! v i (* i i))))`, `#(0 1 4)`},
 		{`(when #t "yes")`, `"yes"`},
 		{`(when #f "nope")`, `#<void>`},
 		{`(unless #f "runs")`, `"runs"`},

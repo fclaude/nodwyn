@@ -73,6 +73,12 @@ func (in *Interp) evalDo(ctx context.Context, form []Value, env *Env) (Value, er
 			}
 			return in.Eval(ctx, testResult[len(testResult)-1], nenv)
 		}
+		// Commands see this iteration's values, before the steps (R5RS).
+		for _, c := range commands {
+			if _, err := in.Eval(ctx, c, nenv); err != nil {
+				return Value{}, err
+			}
+		}
 		// Steps: evaluate in parallel (all see pre-step values), then assign.
 		newVals := make([]Value, len(inits))
 		for i, s := range steps {
@@ -89,11 +95,6 @@ func (in *Interp) evalDo(ctx context.Context, form []Value, env *Env) (Value, er
 		}
 		for i, nv := range newVals {
 			nenv.Define(names[i], nv)
-		}
-		for _, c := range commands {
-			if _, err := in.Eval(ctx, c, nenv); err != nil {
-				return Value{}, err
-			}
 		}
 	}
 }

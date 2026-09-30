@@ -118,7 +118,7 @@ already does.
 | `(let* ((v e) …) body …)` | bind sequentially |
 | `(letrec ((v e) …) body …)` | mutual bindings: every initializer may reference the other names (a closure resolves them at call time) |
 | `(case key [(datum …) body …] … [(else body …)])` | first clause whose datum list contains a member `equal?` to the key wins; no clause → void |
-| `(do ((v init [step]) …) (test [e …]) cmd …)` | loop: check `test`; on false evaluate the `step`s (in parallel), rebind, evaluate the `cmd`s, repeat. Value is the test clause's last `e` (void if none). A Go loop — constant stack |
+| `(do ((v init [step]) …) (test [e …]) cmd …)` | loop: check `test`; on false evaluate the `cmd`s, then the `step`s (in parallel), rebind, repeat. Value is the test clause's last `e` (void if none). A Go loop — constant stack |
 | `(when test e …)` | `e …` only if `test` is true; yields void otherwise |
 | `(unless test e …)` | `e …` only if `test` is false; yields void otherwise |
 | `(guard (var clause …) body …)` | evaluate `body …`; if it raises a Scheme error, bind `var` to the condition — an alist `((message . "text") (irritants …))` — and try the clauses like `cond` (`(test body …)`, `(test => proc)`, `(else …)`). The first true clause's value is the value of `guard`; no match re-raises. A guard **denial** and a **cancellation** are never catchable |

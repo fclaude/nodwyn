@@ -23,7 +23,12 @@ func (in *Interp) quasi(ctx context.Context, x Value, env *Env) (Value, error) {
 	}
 	var items []Value
 	cur := x
-	for cur.Kind == KPair {
+	for first := true; cur.Kind == KPair; first = false {
+		// (a . ,b) reads as (a unquote b): an unquote in the tail is the
+		// tail's value, not two more elements.
+		if !first && cur.P.Car.Kind == KSymbol && cur.P.Car.S == "unquote" {
+			break
+		}
 		el := cur.P.Car
 		if el.Kind == KPair && el.P.Car.Kind == KSymbol && el.P.Car.S == "unquote-splicing" {
 			args, ok := el.P.Cdr.Slice()
