@@ -138,6 +138,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
 	po.Scratch = s.scratch
+	po.Procs = s.procs
 	po.NotesFile = notesFile(o.Paths.DataDir, o.Repo)
 	po.Kind = s.workspace.Kind
 	for _, m := range s.workspace.Mounts {
@@ -234,6 +235,7 @@ func (s *Session) loadInit() error {
 // replays evaluations or approvals from the conversation log.
 func (s *Session) initialize() (err error) {
 	o := s.opts
+	s.procs = prim.NewProcs()
 	if s.scratch, err = makeScratch(s.opts.Paths.DataDir, s.id); err != nil {
 		return err
 	}

@@ -35,6 +35,9 @@ type Options struct {
 	MaxOutput     int           // shell-exec truncates stdout/stderr beyond this
 	ShellTimeout  time.Duration // per shell-exec cap
 	EnvAllow      []string      // environment variables children may see
+	// Procs holds the session's background processes (shell-start and the
+	// rest); nil offers none, as in nodwyn repl.
+	Procs *Procs
 
 	// P3 egress (all optional; nil disables the egress primitives — bootstrap
 	// has none). The guard's E3 checker enforces the binding table before any
@@ -77,6 +80,9 @@ func Register(in *scheme.Interp, o Options) error {
 	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o)}
 	if isGitWorkTree(o.Root) {
 		prims = append(prims, gitPrims(o, pin)...)
+	}
+	if o.Procs != nil {
+		prims = append(prims, procPrims(o, o.Procs)...)
 	}
 	for _, p := range prims {
 		if err := in.Register(p); err != nil {

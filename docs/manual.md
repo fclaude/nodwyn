@@ -171,6 +171,17 @@ attempts (soft/hard). Legacy `loop.max_tool_calls` remains an explicit override.
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
+### Programs that keep running
+
+`shell-exec` runs a command to completion. For a server, a watcher or a
+program to talk to, the model has `shell-start` (asks, like `shell-exec`),
+`shell-read` to see new output (optionally waiting up to 60 s),
+`shell-send` to type into it (asks every time: typing into a shell is running
+commands), and `shell-stop`. At most four run at once, each keeps its latest
+1 MiB of output, and all of them are stopped when the session closes. They
+run in their own process group; if nodwyn itself is killed, they are not
+cleaned up.
+
 ### Seeing what changed
 
 In a git work tree (a folder with `.git`), the model also gets `git-status`

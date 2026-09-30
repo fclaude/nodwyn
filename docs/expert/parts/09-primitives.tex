@@ -58,6 +58,9 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(index-grep path regex [glob [context]])} & search contents with a regular expression \\
 \code{(git-status)}, \code{(git-diff [path [staged]])} & in a git work tree: what changed, read-only, no approval \\
 \code{(shell-exec cmd args)} & run a program with a list of arguments, no shell, in the folder (irreversible) \\
+\code{(shell-start cmd args)} & start a program that keeps running, in the background (irreversible) \\
+\code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
+\code{(shell-send id text)} & type into it (asks every time) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions \\
 \code{(workspace)} & the folder's kind and mounted folders \\
@@ -85,6 +88,50 @@ you> :eval (fs-read "plants.txt" 2 1)
 "[lines 2-2 of 2]\nbasil\n"
 \end{txt}
 \end{tryit}
+
+\subsection{Programs that keep running}
+
+\code{shell-exec} waits for a command to finish. A server, a watcher or a
+program you talk to never does, so it has four primitives of its own. Here
+is a web server started, used and stopped, with \code{-{}-yolo} answering:
+
+\begin{txt}
+you> :eval (display (shell-start "python3" (list "-u" "-m" "http.server" "8765")))
+⚑ guard confirm shell-start: shell-start is irreversible → yes
+p1: running (python3 -u -m http.server 8765)
+Serving HTTP on :: port 8765 (http://[::]:8765/) ...
+
+you> :eval (display (shell-read "p1" 2))
+p1: running (python3 -u -m http.server 8765)
+::ffff:127.0.0.1 - - [30/Sep/2026 13:47:10] "GET /plants.txt HTTP/1.1" 200 -
+
+you> :eval (display (shell-stop "p1"))
+p1: exited 143 (stopped by SIGTERM) (python3 -u -m http.server 8765)
+\end{txt}
+
+(In between, a \code{curl} through \code{shell-exec} fetched
+\file{plants.txt}; that is the request in the log.) The rules:
+
+\begin{itemize}
+  \item \code{shell-start} is checked exactly like \code{shell-exec}: the
+    same confirm, the same command-line checks, the same scrubbed
+    environment and \code{\$TMPDIR}. It returns the first second of output.
+  \item \code{shell-read} returns what arrived since the last read, after a
+    line with the state (\code{running} or \code{exited N}); with a wait
+    (up to 60 seconds) it first waits for something new. Each process keeps
+    its latest 1~MiB of output, and a read says when some was dropped.
+  \item \code{shell-send} types into the program. It asks every time,
+    because typing into a shell is running commands.
+  \item \code{shell-stop} needs no approval: it only ends what this session
+    started. At most four run at once, and all of them stop when the
+    session closes.
+\end{itemize}
+
+\begin{tip}
+Many programs buffer their output when it is not going to a terminal, so
+nothing seems to happen: Python's \code{-u} above is the cure for Python,
+and \code{stdbuf -oL} for many others.
+\end{tip}
 
 \subsection{Globs}
 

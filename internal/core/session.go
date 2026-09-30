@@ -20,6 +20,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/loop"
+	"github.com/fclaude/nodwyn/internal/prim"
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
@@ -62,7 +63,8 @@ type Session struct {
 	// P3 egress.
 	keychain *keychain.Store
 	bindings *binding.Live
-	scratch  string // the session's scratch directory (scratch.go)
+	scratch  string      // the session's scratch directory (scratch.go)
+	procs    *prim.Procs // background processes; stopped when the session closes
 	// workspace is the repository's .nodwyn/workspace.toml as loaded at
 	// construction: its kind and mounted folders (ADR 22).
 	workspace config.Workspace
@@ -241,6 +243,9 @@ func (s *Session) Close() error {
 		s.mu.Lock()
 		s.closed = true
 		s.mu.Unlock()
+		if s.procs != nil {
+			s.procs.Close()
+		}
 		_, _ = s.logw.Append(log.KindSessionEnd, log.SessionEnd{Reason: "closed"})
 		s.closeErr = s.logw.Close()
 		removeScratch(s.scratch)

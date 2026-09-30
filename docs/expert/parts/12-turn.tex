@@ -131,7 +131,7 @@ Here is a real turn: the model listed the folder and read the README, then
 answered. \code{:log} shows the events:
 
 \begin{txt}
-    3 llm.req         {RequestHash:98a9311e... Model:demo Messages:2 Tools:9 ...}
+    3 llm.req         {RequestHash:98a9311e... Model:demo Messages:2 Tools:13 ...}
     4 llm.resp        {ToolCalls:[{ID:c1 Name:fs-list ...} {ID:c2 Name:fs-read ...}]}
     5 tool.call       {ToolCall:{ID:c1 Name:fs-list Args:{"path":"."}} Origin:model}
     6 guard.decision  {Prim:fs-list Origin:model Decision:allow ...}
@@ -139,7 +139,7 @@ answered. \code{:log} shows the events:
     8 tool.call       {ToolCall:{ID:c2 Name:fs-read Args:{"path":"README.md"}} Origin:model}
     9 guard.decision  {Prim:fs-read Origin:model Decision:allow ...}
    10 tool.result     {ID:c2 Name:fs-read OK:true Value:A small garden: ...}
-   11 llm.req         {RequestHash:8d677869... Model:demo Messages:5 Tools:9 ...}
+   11 llm.req         {RequestHash:8d677869... Model:demo Messages:5 Tools:13 ...}
    12 llm.resp        {Content:## What's here ...}
    14 turn.end        {Text:turn ended Outcome:completed}
 \end{txt}
