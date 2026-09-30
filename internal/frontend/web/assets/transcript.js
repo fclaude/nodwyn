@@ -4,6 +4,7 @@
 // change or run something stand on their own line with their outcome.
 import { h, icon, oneLine, sizeOf } from "./dom.js";
 import { markdown } from "./markdown.js";
+import { attachmentChip } from "./attach.js";
 
 const readName = /(^|[-_/.])(read|list|find|grep|search|get|show|status|outline|log|diff|query|fetch|lookup|view|notes|events|info)([-_.]|$)/;
 const writes = new Set(["fs-write", "fs-edit"]);
@@ -142,10 +143,28 @@ export class Transcript {
   render(event) {
     const p = event.payload || {};
     switch (event.kind) {
-      case "user.msg":
+      case "user.msg": {
         this.end();
-        this.el.append(h("div", { class: "turn user" }, h("div", { class: "who" }, "You"), h("div", { class: "you-text" }, p.text)));
+        const turn = h("div", { class: "turn user" }, h("div", { class: "who" }, "You"), h("div", { class: "you-text" }, p.text));
+        // Files attached just before belong to this message.
+        const last = this.el.lastElementChild;
+        if (last?.classList.contains("attached")) {
+          turn.append(last.querySelector(".attach-list"));
+          last.remove();
+        }
+        this.el.append(turn);
         break;
+      }
+      case "attach": {
+        this.end();
+        let holder = this.el.lastElementChild;
+        if (!holder?.classList.contains("attached")) {
+          holder = h("div", { class: "turn user attached" }, h("div", { class: "who" }, "You attached"), h("div", { class: "attach-list" }));
+          this.el.append(holder);
+        }
+        holder.querySelector(".attach-list").append(attachmentChip(p));
+        break;
+      }
       case "harness.msg":
         this.end();
         this.el.append(h("details", { class: "harness-note" }, h("summary", {}, "nibb told the model"), h("pre", {}, p.text ?? p.Text)));

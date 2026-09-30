@@ -2,10 +2,12 @@
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, basename } from "./dom.js";
 import { summary } from "./prompts.js";
 import { modelForm, keychainForm } from "./setup.js";
+import { Attachments } from "./attach.js";
 
 let chosen = ""; // the folder the next task starts in, for this tab
 let draft = "";
 let current = null;
+let files = null; // the files chosen for the next task, kept across redraws
 
 export function kindLabel(kind) {
   return { docs: "documents", code: "code", mixed: "code and documents" }[kind] || kind || "";
@@ -41,6 +43,7 @@ export function renderHome(root, ctx) {
   task.value = draft;
   const ready = () => canStart && conn.live && !!chosen && !!task.value.trim();
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: !ready() }, icon("up", 18, 2));
+  files ||= new Attachments();
   const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
   const form = h(
     "form",
@@ -52,6 +55,7 @@ export function renderHome(root, ctx) {
         submit.disabled = true;
         try {
           const info = await conn.call("session.open", { repo: chosen });
+          if (files.files.length) await files.upload(info.id);
           await conn.call("session.send", { id: info.id, text: task.value });
           draft = "";
           await desk.refresh();
@@ -64,10 +68,12 @@ export function renderHome(root, ctx) {
     },
     h("label", { class: "sr-only", for: "task" }, "Describe the task"),
     task,
+    files.list,
     h(
       "div",
       { class: "ask-bar" },
       h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder"), chosen && desk.workspace(chosen) ? h("span", { class: "muted" }, kindLabel(desk.workspace(chosen).kind)) : null),
+      files.button("Attach"),
       h("span", { class: "where" }, where),
       submit,
     ),

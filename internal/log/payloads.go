@@ -311,3 +311,20 @@ type FileVersion struct {
 	Hash  string `json:"hash"`
 	Bytes int    `json:"bytes"`
 }
+
+// Attach is a file the person attached (ADR 22 §3). Text is what the model
+// reads: extracted by type, redacted at ingest and capped. It is data, never
+// instructions; Stored is the copy under the workspace's .nibb/attachments.
+type Attach struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Type       string   `json:"type"`  // text | pdf | docx | xlsx | pptx
+	Bytes      int64    `json:"bytes"` // the file's size
+	SHA256     string   `json:"sha256"`
+	Stored     string   `json:"stored"` // path relative to the workspace root
+	Pages      int      `json:"pages,omitempty"`
+	Text       string   `json:"text"`
+	Omitted    int      `json:"omitted,omitempty"` // bytes of extracted text left out by the cap
+	Redactions []string `json:"redactions,omitempty"`
+	Actor      string   `json:"actor,omitempty"`
+}

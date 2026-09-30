@@ -80,6 +80,10 @@ func (v *Versions) Keep(abs string) error {
 	if err := os.MkdirAll(objects, 0o700); err != nil {
 		return err
 	}
+	// Keep nibb's copies out of a repository's commits.
+	if ignore := filepath.Join(v.Dir, ".gitignore"); !exists(ignore) {
+		_ = os.WriteFile(ignore, []byte("# nibb's kept versions of files\n*\n"), 0o600)
+	}
 	object := filepath.Join(objects, version.Hash)
 	if _, err := os.Stat(object); errors.Is(err, os.ErrNotExist) {
 		if err := os.WriteFile(object, content, 0o600); err != nil {
@@ -202,6 +206,11 @@ func ReadVersion(dir, hash string) ([]byte, error) {
 		return nil, fmt.Errorf("versions: object %s is damaged", hash[:12])
 	}
 	return content, nil
+}
+
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }
 
 // InGitWorkTree reports whether path is inside a git work tree whose top

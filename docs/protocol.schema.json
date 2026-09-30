@@ -552,6 +552,59 @@
       ],
       "type": "object"
     },
+    "log.Attach": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "omitted": {
+          "type": "integer"
+        },
+        "pages": {
+          "type": "integer"
+        },
+        "redactions": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "stored": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "bytes",
+        "sha256",
+        "stored",
+        "text"
+      ],
+      "type": "object"
+    },
     "log.BindingChange": {
       "properties": {
         "actor": {
@@ -1372,6 +1425,9 @@
     "payload.approval.change": {
       "$ref": "#/$defs/log.ApprovalChange"
     },
+    "payload.attach": {
+      "$ref": "#/$defs/log.Attach"
+    },
     "payload.binding.change": {
       "$ref": "#/$defs/log.BindingChange"
     },
@@ -1603,6 +1659,9 @@
         },
         {
           "$ref": "#/$defs/request.session.approval.create"
+        },
+        {
+          "$ref": "#/$defs/request.session.attach"
         },
         {
           "$ref": "#/$defs/request.session.binding.create"
@@ -2131,6 +2190,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.approvalParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.session.attach": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.attach"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.attachParams"
             }
           ],
           "unevaluatedProperties": false
@@ -2970,6 +3060,9 @@
       "required": [],
       "type": "object"
     },
+    "result.session.attach": {
+      "$ref": "#/$defs/log.Attach"
+    },
     "result.session.binding.create": {
       "properties": {},
       "required": [],
@@ -3116,6 +3209,24 @@
         "id",
         "prompt_id",
         "scope"
+      ],
+      "type": "object"
+    },
+    "rpc.attachParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path"
       ],
       "type": "object"
     },
@@ -3965,6 +4076,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.ApprovalChange"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "attach"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.Attach"
             },
             "seq": {
               "minimum": 0,

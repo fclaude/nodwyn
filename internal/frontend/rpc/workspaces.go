@@ -161,3 +161,34 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 	}
 	return inspectionStarted{operation}, nil
 }
+
+type attachParams struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+	Name string `json:"name,omitempty"`
+}
+
+// attach adds a local file to an idle session's conversation. The path is
+// read with the daemon's authority, which is the connecting user's; the
+// browser bridge never forwards a path a page chose (it stages uploads).
+func (s *server) attach(req request, client *peer) (any, *rpcError) {
+	var p attachParams
+	if err := params(req.Params, &p, "id", "path", "name"); err != nil {
+		return nil, err
+	}
+	if !filepath.IsAbs(p.Path) {
+		return nil, failure(-32602, "path must be absolute")
+	}
+	owned, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before attaching")
+	}
+	receipt, err := owned.session.Attach(p.Path, p.Name, client.actor)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return receipt, nil
+}

@@ -60,6 +60,7 @@ func contracts() map[string]methodContract {
 		"workspace.remove":        {workspacePathParams{}, struct{}{}},
 		"versions.list":           {versionsParams{}, []prim.Version{}},
 		"session.restore":         {restoreParams{}, inspectionStarted{}},
+		"session.attach":          {attachParams{}, log.Attach{}},
 	}
 }
 
@@ -118,7 +119,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindEgressCheck): log.EgressCheck{}, string(log.KindGatePlan): log.GatePlan{}, string(log.KindJevReq): log.JevReq{},
 		string(log.KindCredRegister): log.CredRegister{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
 		string(log.KindRunState): log.RunState{}, string(log.KindRunTurn): log.RunTurn{}, string(log.KindRunCheckpoint): log.RunCheckpoint{},
-		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{},
+		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{}, string(log.KindAttach): log.Attach{},
 		string(log.KindRedact): struct {
 			Source uint64         `json:"source_seq"`
 			Events []redact.Event `json:"events"`

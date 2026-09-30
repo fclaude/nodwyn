@@ -1,6 +1,6 @@
 # ADR 0022: Cowork — workspaces, attachments, and MCP servers
 
-- Status: **partially implemented** (W1 done 2026-09-30; W2, W3 in progress)
+- Status: **partially implemented** (W1 and W2 text done 2026-09-30; images and W3 in progress)
 - Date: 2026-09-22
 
 ## Context
@@ -212,3 +212,29 @@ Workspaces as decided above, with these specifics:
   a restore shows its diff, asks, and is itself undoable.
 - Named workspaces live in `workspaces.toml` in the config directory
   (`workspace.list/save/remove`, local consoles only).
+
+## W2 (text) implemented — 2026-09-30
+
+Attachments as decided above, except images:
+
+- `session.attach {id, path, name}` (daemon clients) and `POST /attach` on the
+  browser bridge, which stages the upload privately (20 MB at most), asks the
+  daemon to attach that path and deletes it: a page never names a path the
+  daemon reads. The session must be idle.
+- `internal/extract` decodes by extension: text formats as UTF-8, `.docx`,
+  `.xlsx` (sheets as tab-separated rows) and `.pptx` from their XML with a
+  64 MB unpack bound, PDF through `pdftotext` when installed. Images are
+  refused with a clear message until they can be sent as images; nothing is
+  OCRed.
+- The copy goes to `.nibb/attachments/<id>/<name>` (with a `.gitignore`);
+  the text is redacted at ingest, capped at 48 KB (head and tail kept, the
+  omission said), and recorded as an `attach` record with the file's hash,
+  type, pages and redaction classes. The window renders it as a user-role
+  message framed as data; unlike the person's words it may be trimmed,
+  oldest first. Old logs have no such records, so request replay is unchanged.
+- The console attaches from both composers; the conversation shows a chip per
+  file ("2 pages · 1 hidden") and the task an Attachments panel.
+
+Not done: an `attach` confirm for images, per-image token accounting, and the
+`external` taint tag (L2 applies to Scheme values, and an attachment never
+becomes one).

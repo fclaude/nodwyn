@@ -6,6 +6,7 @@ import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } fr
 import { Transcript, planSteps } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
 import { kindLabel } from "./home.js";
+import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
 
@@ -297,7 +298,15 @@ export class TaskView {
       },
     });
     const send = h("button", { type: "submit", class: "send-round", "aria-label": "Send" }, icon("up", 16, 2));
-    const form = h("form", { class: "reply", onsubmit: (event) => { event.preventDefault(); this.send(); } }, h("label", { class: "sr-only", for: "reply" }, "Reply to nibb"), reply, send);
+    this.files = new Attachments(() => this.controls());
+    const form = h(
+      "form",
+      { class: "reply", onsubmit: (event) => { event.preventDefault(); this.send(); } },
+      h("label", { class: "sr-only", for: "reply" }, "Reply to nibb"),
+      h("div", { class: "reply-body" }, this.files.list, reply),
+      this.files.button(),
+      send,
+    );
     const main = h("div", { class: "task-main" }, transcript, form);
     const inspector = h("div", { class: "inspector-view", hidden: true });
     main.append(inspector);
@@ -322,6 +331,7 @@ export class TaskView {
           ? "Working… stop it to steer."
           : "Steer it, or answer in words…";
     this.el.send.disabled = !canSend || this.busy || prompt || !this.el.reply.value.trim();
+    for (const b of this.el.form.querySelectorAll("[aria-label='Attach a file']")) b.disabled = !canSend || this.busy || prompt;
     for (const control of this.el.transcript.querySelectorAll(".ask-card button, .ask-card input")) control.disabled = this.acting || !this.conn.live;
   }
   async send() {
@@ -333,6 +343,7 @@ export class TaskView {
     this.busy = true;
     this.controls();
     try {
+      if (this.files.files.length) await this.files.upload(item.id);
       await this.conn.call("session.send", { id: item.id, text });
       if (drafts.get(item.id) === text) drafts.delete(item.id);
       if (version === this.version && this.el.reply.value === text) {
@@ -451,7 +462,7 @@ export class TaskView {
   aside() {
     if (!this.el || !this.item) return;
     const side = this.el.side;
-    const panels = [this.planPanel(), this.turnPanel(), this.changesPanel(), this.notesPanel(), this.workspacePanel(), this.detailsPanel()];
+    const panels = [this.planPanel(), this.turnPanel(), this.changesPanel(), this.attachmentsPanel(), this.notesPanel(), this.workspacePanel(), this.detailsPanel()];
     side.replaceChildren(...panels.filter(Boolean));
   }
   planPanel() {
@@ -544,6 +555,17 @@ export class TaskView {
     ];
     const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git is the undo" : this.info ? "previous versions kept" : "writes nibb was allowed";
     return h("section", { class: "panel" }, h("h2", {}, "Changes", h("span", { class: "note" }, note)), rows);
+  }
+  attachmentsPanel() {
+    const attached = this.events().filter((e) => e.kind === "attach").map((e) => e.payload);
+    if (!attached.length) return null;
+    return h(
+      "section",
+      { class: "panel" },
+      h("h2", {}, "Attachments"),
+      h("div", { class: "attach-list" }, attached.map((a) => attachmentChip(a))),
+      h("p", { class: "hint" }, "Read as data. Nothing inside an attachment can grant a permission."),
+    );
   }
   notesPanel() {
     if (this.notes === null) return null;

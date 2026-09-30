@@ -750,3 +750,18 @@ details.box > summary { cursor: pointer; font-weight: 500; margin-bottom: 8px; }
 select.input { height: 34px; padding: 0 8px; }
 .versions { display: flex; flex-direction: column; gap: 6px; padding: 0 4px; }
 .versions:empty { display: none; }
+
+/* attachments */
+.attach-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.attach-list:empty { display: none; }
+.attach-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 30px; padding: 0 6px 0 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12.5px;
+}
+.attach-chip.done { padding-right: 10px; }
+.attach-chip .name { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-chip .size { color: var(--faint); white-space: nowrap; }
+.attach-chip .icon-btn { width: 22px; height: 22px; }
+.reply-body { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.reply-body textarea { width: 100%; }
+.turn.user .attach-list { justify-content: flex-start; }

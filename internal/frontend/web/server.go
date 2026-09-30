@@ -11,9 +11,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -203,6 +206,13 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/pair":
 		b.pair(w, r)
+	case "/attach":
+		device, ok := b.authenticated(r)
+		if r.Method != http.MethodPost || r.Header.Get("Origin") != origin || !ok || b.readOnly {
+			http.Error(w, "Pair this browser first", http.StatusForbidden)
+			return
+		}
+		b.attach(w, r, device)
 	case "/socket":
 		device, ok := b.authenticated(r)
 		if r.Method != http.MethodGet || r.Header.Get("Origin") != origin || !ok {
@@ -462,6 +472,62 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		return !remote && b.devices != nil
 	}
 	return false
+}
+
+// maxUpload bounds one attached file.
+const maxUpload = 20 << 20
+
+// attach receives one file for a session (POST /attach?id=SESSION&name=NAME,
+// the file as the body). The bridge stages it in a private directory, asks
+// the daemon to attach that path, and removes it: a page never names a path
+// the daemon reads.
+func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device string) {
+	id, name := r.URL.Query().Get("id"), r.URL.Query().Get("name")
+	if id == "" || name == "" || len(name) > 255 {
+		http.Error(w, "id and name are required", http.StatusBadRequest)
+		return
+	}
+	dir, err := os.MkdirTemp("", "nibb-upload-")
+	if err != nil {
+		http.Error(w, "Could not receive the file", http.StatusInternalServerError)
+		return
+	}
+	defer os.RemoveAll(dir)
+	staged := filepath.Join(dir, "upload")
+	f, err := os.OpenFile(staged, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		http.Error(w, "Could not receive the file", http.StatusInternalServerError)
+		return
+	}
+	_, err = io.Copy(f, http.MaxBytesReader(w, r.Body, maxUpload))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf("The file is larger than %d MB or did not arrive whole", maxUpload>>20), http.StatusRequestEntityTooLarge)
+		return
+	}
+	via := ""
+	if device != "" {
+		via = "web:" + device
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, 90*time.Second)
+	defer cancel()
+	client, err := rpc.DialAs(ctx, b.socket, via)
+	if err != nil {
+		http.Error(w, "Daemon unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	defer client.Close()
+	var receipt json.RawMessage
+	if err := client.Call(ctx, "session.attach", map[string]string{"id": id, "path": staged, "name": name}, &receipt); err != nil {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = io.WriteString(w, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(receipt)
 }
 
 // deviceMethod answers the console's own methods, which the daemon does

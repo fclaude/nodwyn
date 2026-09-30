@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -544,5 +545,77 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	defer listener.Close()
 	if err := New(Options{PairingCode: testCode, Hosts: []string{"x:1"}}).Serve(context.Background(), listener); err == nil {
 		t.Fatal("served extra hosts without device pairing")
+	}
+}
+
+func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	root, err := os.MkdirTemp("/tmp", "nibb-web-attach-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	socket := filepath.Join(root, "run", "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	done := make(chan error, 1)
+	go func() { done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: paths}) }()
+	defer func() {
+		cancel()
+		<-done
+	}()
+	repo := filepath.Join(root, "work")
+	os.MkdirAll(repo, 0o755)
+	client, err := rpc.Dial(ctx, socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var details struct {
+		ID string `json:"id"`
+	}
+	if err := client.Call(ctx, "session.open", map[string]string{"repo": repo}, &details); err != nil {
+		t.Fatal(err)
+	}
+	client.Close()
+	b := &bridge{ctx: ctx, socket: socket, code: testCode}
+	server := httptest.NewUnstartedServer(b)
+	b.at(server.Listener.Addr().String())
+	server.Start()
+	defer server.Close()
+	upload := func(name, body string, cookie bool) (int, string) {
+		req, _ := http.NewRequest("POST", server.URL+"/attach?id="+details.ID+"&name="+name, strings.NewReader(body))
+		req.Header.Set("Origin", server.URL)
+		if cookie {
+			req.Header.Set("Cookie", b.cookieName()+"="+testCode)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(raw)
+	}
+	if code, _ := upload("notes.md", "# Notes", false); code != http.StatusForbidden {
+		t.Fatalf("unpaired upload: %d", code)
+	}
+	code, body := upload("notes.md", "# Notes\nhello", true)
+	if code != http.StatusOK || !strings.Contains(body, `"name":"notes.md"`) || strings.Contains(body, "hello") {
+		t.Fatalf("upload: %d %s", code, body)
+	}
+	if code, body := upload("photo.png", "\x89PNG", true); code != http.StatusUnprocessableEntity || !strings.Contains(body, "images") {
+		t.Fatalf("image upload: %d %s", code, body)
+	}
+	matches, _ := filepath.Glob(filepath.Join(repo, ".nibb", "attachments", "*", "notes.md"))
+	if len(matches) != 1 {
+		t.Fatalf("stored copies: %v", matches)
+	}
+	// A page cannot name a path for the daemon to read.
+	if b.allowed("session.attach", false) {
+		t.Fatal("session.attach reachable from the page")
 	}
 }
