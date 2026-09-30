@@ -57,7 +57,7 @@ func TestShellStartReadSendStop(t *testing.T) {
 
 func TestShellReadWaitsForOutputOrExit(t *testing.T) {
 	in, _ := procInterp(t)
-	evalStr(t, in, `(shell-start "sh" (list "-c" "sleep 1.5; echo late; exit 3"))`)
+	evalStr(t, in, `(shell-start "sh" (list "-c" "sleep 1; echo late; exit 3"))`)
 	start := time.Now()
 	out := evalStr(t, in, `(shell-read "p1" 10)`)
 	if !strings.Contains(out, "late") || time.Since(start) > 8*time.Second {
@@ -84,7 +84,7 @@ func TestShellProcessLimitBufferAndClose(t *testing.T) {
 	}
 	evalStr(t, in, `(shell-stop "p1")`)
 	// Output past the buffer is dropped from the front, and the read says so.
-	evalStr(t, in, `(shell-start "sh" (list "-c" "head -c 1500000 /dev/zero | tr '\\0' x; echo; echo end"))`)
+	evalStr(t, in, `(shell-start "sh" (list "-c" "yes x | head -c 1500000; echo end"))`)
 	p5, _ := ps.get("p5")
 	for i := 0; i < 500; i++ {
 		p5.mu.Lock()
