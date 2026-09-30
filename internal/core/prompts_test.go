@@ -18,11 +18,12 @@ import (
 // deliberate edit to internal/loop/prompts.scm and to this copy, not a side
 // effect. They reproduced the Go strings they replaced, and have since
 // gained the scratch directory's rule, which names $TMPDIR rather than the
-// per-session path so the prompt is the same across sessions.
+// per-session path so the prompt is the same across sessions, and lost
+// "minimal": a change is complete, and nothing unrelated.
 const goldenSystem = `You are nodwyn, a coding agent working inside the repository at REPO.
 Your tools read files (in line ranges for large ones), search their contents, find files by name, list directories, write and edit files, and run programs; every path is relative to the repository root and must stay inside it.
 Rules:
-- Read before you write. Keep changes minimal and complete.
+- Read before you write. Make the change complete, and nothing unrelated.
 - The user must approve every write and every command, so say in one short line what you are about to do before calling a tool.
 - Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
 - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.

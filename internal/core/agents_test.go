@@ -2,11 +2,13 @@ package core
 
 import (
 	"bytes"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -87,6 +89,167 @@ func TestAgentToolAnswersFromSubAgent(t *testing.T) {
 	}
 	if narrow.Agent != "ask-expert" || !slices.Equal(narrow.Answers, []string{"q"}) {
 		t.Fatalf("the sub-agent's context is not labelled: %+v", narrow)
+	}
+}
+
+// A sub-agent given a list of tools is offered only those, and the log
+// records the offer, so replay rebuilds the same request.
+func TestSubAgentIsOfferedOnlyItsTools(t *testing.T) {
+	r := strategyRig(t, `
+(define-agent-tool "ask-expert" "Ask an expert who can read files."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You are an expert." (assoc-ref args "question") '("fs-read" "fs-list"))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
+		fake.Turn{Content: "It only declares package main."},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	names := func(i int) []string {
+		var out []string
+		for _, raw := range r.srv.Requests[i].Tools {
+			var tool struct {
+				Function struct{ Name string } `json:"function"`
+			}
+			if err := json.Unmarshal(raw, &tool); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, tool.Function.Name)
+		}
+		return out
+	}
+	if main := names(0); len(main) <= 2 || !slices.Contains(main, "ask-expert") {
+		t.Fatalf("the model's own request offered %v", main)
+	}
+	if expert := names(1); !slices.Equal(expert, []string{"fs-read", "fs-list"}) && !slices.Equal(expert, []string{"fs-list", "fs-read"}) {
+		t.Fatalf("the expert was offered %v, want fs-read and fs-list", expert)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range evs {
+		if ev.Kind != log.KindLLMReq {
+			continue
+		}
+		req, err := window.ReplayRequest(evs, ev.Seq)
+		if err != nil {
+			t.Fatalf("replay of seq %d: %v", ev.Seq, err)
+		}
+		if n := len(req.Tools); n == 2 {
+			return // the expert's request replays with its two tools
+		}
+	}
+	t.Fatal("no replayed request offered the expert's two tools")
+}
+
+// A tools option naming a tool that does not exist is an error that lists
+// the tools there are.
+func TestModelTurnRejectsUnknownToolNames(t *testing.T) {
+	r := strategyRig(t, `(define (agent-turn request) (model-turn "control" '((tools "no-such-tool"))))`, 10,
+		fake.Turn{Content: "done"})
+	if err := r.turn("hello"); !strings.Contains(err, `no tool named "no-such-tool"`) || !strings.Contains(err, "fs-read") {
+		t.Fatalf("error %q", err)
+	}
+}
+
+// A sub-agent that repeats the same call is skipped once, then asked for its
+// answer without tools, before the core's progress stop would end the whole
+// turn.
+func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
+	read := func(id string) fake.Turn { return fake.Turn{ToolCalls: []fake.ToolCall{readCall(id)}} }
+	r := strategyRig(t, `
+(define-agent-tool "ask-expert" "Ask an expert who can read files."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You are an expert." (assoc-ref args "question") '("fs-read"))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
+		read("r1"), read("r2"), // run (results record only failures)
+		read("r3"), // skipped: the result is above
+		read("r4"), // still repeating: the expert is asked for its answer
+		fake.Turn{Content: "It declares package main."},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7", len(r.srv.Requests))
+	}
+	if len(r.srv.Requests[5].Tools) != 0 || !strings.Contains(lastMessage(r, 5), "no tool rounds left") {
+		t.Fatalf("the wrap-up request: %d tools, last message %q", len(r.srv.Requests[5].Tools), lastMessage(r, 5))
+	}
+	results := r.results()
+	if results["r1"] != "" || results["r2"] != "" || !strings.Contains(results["r3"], "you already ran this exact call") ||
+		!strings.Contains(results["r4"], "stopped for repeating") {
+		t.Fatalf("the expert's calls: %+v", results)
+	}
+	main := requestMessages(t, r.srv.Requests[6])
+	if answer := main[len(main)-1]; answer.Role != "tool" || !strings.HasPrefix(answer.Content, "It declares package main.") ||
+		!strings.Contains(answer.Content, "stopped for repeating the same call") {
+		t.Fatalf("the model's answer from the expert: %+v", answer)
+	}
+}
+
+// A sub-agent out of rounds is asked, without tools, for what it found, so
+// its work is not lost with its last tool calls.
+func TestSubAgentOutOfRoundsStillAnswers(t *testing.T) {
+	r := strategyRig(t, `
+(define sub-agent-max-rounds 1)
+(define-agent-tool "ask-expert" "Ask an expert who can read files."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You are an expert." (assoc-ref args "question") '("fs-read" "fs-list"))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("r1")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "l", Name: "fs-list", Args: map[string]any{"path": "."}}}}, // out of rounds
+		fake.Turn{Content: "main.go declares package main; I did not get to list the directory."},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5", len(r.srv.Requests))
+	}
+	if results := r.results(); !strings.Contains(results["l"], "out of rounds") {
+		t.Fatalf("the expert's last call: %+v", results)
+	}
+	if len(r.srv.Requests[3].Tools) != 0 || !strings.Contains(lastMessage(r, 3), "no tool rounds left") {
+		t.Fatalf("the wrap-up request: %d tools, last message %q", len(r.srv.Requests[3].Tools), lastMessage(r, 3))
+	}
+	if got := lastMessage(r, 4); got != "main.go declares package main; I did not get to list the directory." {
+		t.Fatalf("the model got %q from the expert", got)
+	}
+}
+
+// A model asked for its answer with no tools may still answer with a tool
+// call; the call is skipped and it is asked again, so the sub-agent still
+// folds and its caller gets an answer, not an error.
+func TestSubAgentWrapUpSurvivesAToolCall(t *testing.T) {
+	r := strategyRig(t, `
+(define sub-agent-max-rounds 1)
+(define-agent-tool "ask-expert" "Ask an expert who can read files."
+  '(("question" "string" "what to ask"))
+  (lambda (call args)
+    (sub-agent "You are an expert." (assoc-ref args "question") '("fs-read" "fs-list"))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "q", Name: "ask-expert", Args: map[string]any{"question": "What is in main.go?"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("r1")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("r2")}},                                                // out of rounds
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "l", Name: "fs-list", Args: map[string]any{"path": "."}}}}, // a call with tools off
+		fake.Turn{Content: "It declares package main."},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	if results := r.results(); !strings.Contains(results["l"], "tools are off now") {
+		t.Fatalf("the call made with tools off: %+v", results)
+	}
+	if got := lastMessage(r, 5); got != "It declares package main." {
+		t.Fatalf("the model got %q from the expert", got)
 	}
 }
 

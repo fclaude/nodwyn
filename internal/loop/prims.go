@@ -58,6 +58,16 @@ func (l *Loop) install() error {
 			Handler: l.addMessage,
 		},
 		{
+			Name: "fold-result",
+			Meta: scheme.Meta{
+				Doc:    "Show a tool result as text in later windows, such as an outline or a line saying what it was, once its details stopped mattering. The result stays in the log, for replay, audit and recall.",
+				Params: []scheme.Param{{Name: "result", Type: "any", Doc: "the tool.result event's seq, or the id of the call it answers"}, {Name: "text", Type: "string", Doc: "what later windows show instead"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.foldResult,
+		},
+		{
 			Name: "log-note",
 			Meta: scheme.Meta{
 				Doc:    "Add a note to the session log, for the record and the transcript; the model never sees it.",
@@ -154,7 +164,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
-	name, tools := ControlModel, true
+	name, offer := ControlModel, toolOffer{}
 	if len(c.Args) > 2 {
 		return scheme.Void, errors.New("expected at most a model name and an options alist")
 	}
@@ -172,15 +182,8 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			if o.Kind != scheme.KPair || o.P.Car.Kind != scheme.KSymbol || o.P.Car.S != "tools" {
 				return scheme.Void, fmt.Errorf("unknown model-turn option %s; the only one is tools", scheme.Write(o))
 			}
-			switch {
-			case scheme.Equal(o.P.Cdr, scheme.False):
-				tools = false
-			case scheme.Equal(o.P.Cdr, scheme.True):
-				tools = true
-			default:
-				// '((tools #f)) is (tools . (#f)): a list, not #f, which
-				// would silently leave the tools on.
-				return scheme.Void, fmt.Errorf("the tools option is #f (no tools) or #t, written '((tools . #f)); got %s", scheme.Write(o))
+			if offer, err = l.parseToolOffer(o.P.Cdr); err != nil {
+				return scheme.Void, err
 			}
 		}
 	}
@@ -192,7 +195,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, halt(err)
 		}
 	}
-	resp, err := l.ask(c.Ctx, name, tools)
+	resp, err := l.ask(c.Ctx, name, offer)
 	if err != nil {
 		return scheme.Void, err
 	}
@@ -303,6 +306,47 @@ func (l *Loop) logNote(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, errors.New("text is required")
 	}
 	return scheme.Void, l.record(log.KindNote, log.Note{Text: text})
+}
+
+// foldResult is (fold-result result text): later windows show a tool result
+// as text. result is the tool.result's seq, or the id of the call it
+// answers (its latest result); either must be of this session.
+func (l *Loop) foldResult(c *scheme.Call) (scheme.Value, error) {
+	if _, err := l.active(c); err != nil {
+		return scheme.Void, err
+	}
+	text, err := c.String(1)
+	if err != nil {
+		return scheme.Void, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return scheme.Void, errors.New("text is required: it is what later windows show")
+	}
+	events := l.host.EventsSoFar()
+	switch arg := c.Args[0]; arg.Kind {
+	case scheme.KInt:
+		for _, ev := range events {
+			if ev.Seq == uint64(arg.I) {
+				if ev.Kind != log.KindToolResult {
+					return scheme.Void, fmt.Errorf("seq %d is a %s, not a tool.result", arg.I, ev.Kind)
+				}
+				return scheme.Void, l.record(log.KindResultFold, log.ResultFold{Seq: ev.Seq, Text: text})
+			}
+		}
+		return scheme.Void, fmt.Errorf("no event at seq %d", arg.I)
+	case scheme.KString:
+		for i := len(events) - 1; i >= 0; i-- {
+			if events[i].Kind != log.KindToolResult {
+				continue
+			}
+			var p log.ToolResult
+			if events[i].Decode(&p) == nil && p.ID == arg.S {
+				return scheme.Void, l.record(log.KindResultFold, log.ResultFold{Seq: events[i].Seq, Text: text})
+			}
+		}
+		return scheme.Void, fmt.Errorf("no result for call %q", arg.S)
+	}
+	return scheme.Void, fmt.Errorf("result is a seq or a call id, got %s", scheme.Write(c.Args[0]))
 }
 
 // recordPlan is (record-plan outcome): the plan gate's outcome, in the log

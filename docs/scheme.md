@@ -465,15 +465,32 @@ installed before `.nodwyn/init.scm` loads, so a project can redefine it:
 
 | | |
 |---|---|
-| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and is recorded (`llm.req` `no_tools`) so replay rebuilds it. The value must be `#f` or `#t`: `'((tools #f))`, a list, is an error rather than a silent yes. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nodwyn replay --window`. |
+| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and `'((tools "fs-read" "fs-list"))` only the named ones (an unknown name is an error that lists the tools), as a sub-agent's requests do. Both are recorded (`llm.req` `no_tools`, `offered_tools`) so replay rebuilds the request. Any other value but `#t` is an error: `'((tools #f))`, a list holding #f, is not a silent yes. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nodwyn replay --window`. |
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
+| `(fold-result result text)` | Show a tool result as `text` in later windows, such as an outline or a line saying what it was, once its details stopped mattering; `result` is the `tool.result` event's seq or the id of the call it answers. Recorded as `result.fold`, so replay rebuilds the same window (recipe window-v9); the result itself stays in the log for audit and `recall`. Folding an old result changes the prompt from that point on, so the server re-reads what follows it: fold in batches, or results near the end |
 | `(narrow-context system [agent])` | Start a fresh context, like Emacs's narrowing: until `fold-context`, `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Contexts nest. Calls from the latest `model-turn` that are still unanswered wait for this context to fold; its own `model-turn`s start with none pending. |
 | `(fold-context)` | End the innermost narrowed context and fold it away: later windows skip everything since its `narrow-context` and see the enclosing context again; the log keeps it all. The calls that waited for it are the latest `model-turn`'s again. Refused while calls are unanswered. |
 | `(widen)` | End every narrowed context. Models see the whole conversation again, including what happened while it was narrowed. A new user message widens too. Refused while a context holds calls waiting for an answer: fold it. |
 | `(answer-call call text)` | Answer one of the model's calls with `text`, as a successful result, without running the tool: how a tool the strategy handles itself answers. Counts against the tool-call budget. |
 | `(session-system-prompt)` | The system prompt the session started with (§9.1), fixed for its life: what a narrowed context passes to `narrow-context` to keep the model's standing instructions. |
+
+When nobody reviews the work as it happens — `(unattended?)` (`--yolo`, a
+run's `auto_approve`) or a supervised run's turn (`plan-required?`) — the
+default `agent-turn` ends a turn on evidence, not on the model's word
+(`evidence-loop`): a reply that stops before anything changed, or with a
+change and no test run after it, gets `finish-no-change-message` or
+`finish-untested-message`, at most `finish-reminders` (2) times. A command is
+a test run when its command line contains one of `test-command-words`
+(pytest, go test, cargo test, npm test, make test, …; a project may redefine
+the list). After `unrunnable-after` (6) test commands in a row fail to run,
+the model gets `(finish-unrunnable-message n)` once: finish and report the
+change as unverified rather than spend the budget on a broken environment.
+
+| | |
+|---|---|
+| `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`) |
 
 A reply's `done` is `"length"` when the model reached the output cap
 (`window.output_reserve`); the core notes it in the log. What to do is the
@@ -516,7 +533,9 @@ strings (§1.1):
 
 | | |
 |---|---|
-| `(system-prompt repo)` | the control model's system prompt |
+| `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver |
+| `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5), and the draft request that carries what it found |
+| `finish-no-change-message`, `finish-untested-message`, `(finish-unrunnable-message n)` | what the evidence loop tells the model (§9) |
 | `task-header` `plan-header` | the headers under which the window adds the user's latest request and its plan to the system prompt, where they are never trimmed away |
 | `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for |
 | `(plan-system-prompt repo)` | the planner's system prompt |
@@ -584,8 +603,9 @@ code, in `internal/loop/agents.scm`:
 
 | | |
 |---|---|
-| `(sub-agent system task tools [name])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (other calls are skipped), is a procedure that takes a call and says whether it may run, or is `#f` for all; `name` labels it in the log (default: the agent tool being answered, else `sub-agent`); returns its final answer, after `fold-context` |
-| `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40) |
+| `(sub-agent system task tools [name])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (its model is offered only those, and other calls are skipped), is a procedure that takes a call and says whether it may run (its model is then offered every tool), or is `#f` for all; `name` labels it in the log (default: the agent tool being answered, else `sub-agent`); returns its final answer, after `fold-context` |
+| `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40); its last calls are then skipped and it is asked for its answer with no tools (`sub-agent-wrap-up-message`), so its work is not lost |
+| `sub-agent-repeat-limit` | identical calls (same tool and arguments) a sub-agent may run in a row (2). The core's progress stop, at four in a row, ends the whole turn and cannot be caught, so a sub-agent stops short of it: the next identical call is skipped with `sub-agent-repeat-reason`, and if it repeats again it is asked for its answer with no tools, which it returns with `sub-agent-stopped-note`. Its caller's work goes on |
 | `(define-agent-tool name doc params handler)` | register a tool the model calls like any other, answered by `(handler call args)`, `args` parsed from the model's JSON; define it in `.nodwyn/init.scm` |
 | `(run-calls calls)` | run a reply's calls: agent tools through their handlers and `answer-call`, the rest with `run-tools`; returns one result alist per call. The default `agent-turn` uses it |
 
@@ -679,6 +699,7 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
 | `plan-max-revisions` | revisions after the first draft (3) |
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
+| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded` or `required`), `plan`, `score`, `revisions`, `reason` |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |

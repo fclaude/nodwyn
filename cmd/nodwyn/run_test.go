@@ -25,6 +25,10 @@ func TestCLIBoundedRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
+	// The conversation is pinned turn by turn; the default loop's explorer and
+	// evidence reminders are off here and tested in internal/core.
+	os.MkdirAll(filepath.Join(dir, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(dir, ".nodwyn", "init.scm"), []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
 	socket := filepath.Join(dir, "sock")
 	listener, err := rpc.Listen(socket)
 	if err != nil {

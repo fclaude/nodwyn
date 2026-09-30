@@ -58,6 +58,14 @@ type ContextWiden struct{}
 // again.
 type ContextFold struct{}
 
+// ResultFold replaces what later windows show for one tool result (Seq)
+// with Text: an outline, or a line saying what it was, once the details
+// stopped mattering (fold-result). The result itself stays in the log.
+type ResultFold struct {
+	Seq  uint64 `json:"seq"`
+	Text string `json:"text"`
+}
+
 // LLMReq describes a request to the control-plane model. The messages are
 // not repeated: they are rebuilt from the log by the window.
 type LLMReq struct {
@@ -76,6 +84,10 @@ type LLMReq struct {
 	// NoTools is set when the request offered the model no tools, as the
 	// planner's does ((model-turn name '((tools . #f)))).
 	NoTools bool `json:"no_tools,omitempty"`
+	// OfferedTools names the tools offered when a request offered only
+	// some of them ((model-turn name '((tools "fs-read" ...)))), as a
+	// sub-agent's requests do; empty when it offered all or none.
+	OfferedTools []string `json:"offered_tools,omitempty"`
 	// MaxOutput is the request's reply cap when its model sets its own
 	// (max_output), instead of the recipe's window.output_reserve.
 	MaxOutput int `json:"max_output,omitempty"`

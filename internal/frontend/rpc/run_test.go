@@ -2,6 +2,8 @@ package rpc
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,7 +16,13 @@ import (
 func beginRun(t *testing.T, c *client) runResult {
 	t.Helper()
 	var result runResult
-	if err := json.Unmarshal(c.ok("run.start", runParams{Repo: t.TempDir(), Task: "test task", Wall: "1m", MaxTurns: 3}), &result); err != nil {
+	// These tests pin the run's conversation turn by turn; the default loop's
+	// explorer and evidence reminders (docs/scheme.md §9) are off here and
+	// tested in internal/core.
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
+	if err := json.Unmarshal(c.ok("run.start", runParams{Repo: repo, Task: "test task", Wall: "1m", MaxTurns: 3}), &result); err != nil {
 		t.Fatal(err)
 	}
 	return result

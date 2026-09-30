@@ -16,6 +16,22 @@
 (define plan-accept-score 0.7)     ; the normalised score at which a plan is accepted
 (define plan-max-revisions 3)      ; revisions after the first draft (SPEC: at most 3)
 (define plan-empty-retries 2)      ; more times the planner is asked when it gives no plan
+(define plan-explore-rounds 12)    ; the explorer's tool rounds before a plan is drafted; 0 skips it
+
+;; What a read-only look at the repository finds for request, from a
+;; sub-agent labelled "explorer" (agents.scm), so the plan is not written
+;; blind; "" when exploring is off or finds nothing. Its reads happen before
+;; any plan is recorded, which the core allows: none is irreversible.
+(define (plan-explore request)
+  (if (<= plan-explore-rounds 0)
+      ""
+      (let ((rounds sub-agent-max-rounds))
+        (set! sub-agent-max-rounds plan-explore-rounds)
+        (let ((found (guard (e (else (set! sub-agent-max-rounds rounds) ""))
+                       (sub-agent plan-explore-system (plan-explore-task request)
+                                  '("fs-read" "fs-list" "index-grep" "fs-find") "explorer"))))
+          (set! sub-agent-max-rounds rounds)
+          found))))
 
 ;; The judge's key when a judge is configured, or #f.
 (define (plan-judge)
@@ -61,7 +77,7 @@
     (record-plan (list (cons 'decision decision) (cons 'plan best) (cons 'score best-score)
                        (cons 'revisions revisions) (cons 'reason reason)))
     best)
-  (let loop ((plan (plan-ask (plan-draft-prompt request)))
+  (let loop ((plan (plan-ask (plan-draft-with-findings request (plan-explore request))))
              (round 0) (best #f) (best-score 0) (revisions 0))
     (let* ((score (if judge (plan-score judge request plan) #f))
            (scored (number? score))

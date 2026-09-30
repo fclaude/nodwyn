@@ -72,10 +72,11 @@ func (j *fakeJudge) asked() []string {
 func judgedRig(t *testing.T, judge *fakeJudge, init string, turns ...fake.Turn) *rig {
 	t.Helper()
 	repo := t.TempDir()
-	if init != "" {
-		os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
-		os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
-	}
+	// These tests pin the gate's own turns; exploring before a draft has its
+	// own test (TestPlannerExploresFirst).
+	init = "(define plan-explore-rounds 0)\n" + init
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
 	srv := fake.New(turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()

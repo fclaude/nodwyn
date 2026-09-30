@@ -2,14 +2,19 @@
 ;; redefine any of them (docs/scheme.md §9). The host reads them once, after
 ;; init.scm has run: the system prompt is then fixed for the session (ADR 9).
 
-;; The control model's system prompt.
+;; The control model's system prompt: interactive-system-prompt when a
+;; person approves the calls, unattended-system-prompt when nobody does
+;; ((unattended?): --yolo, a run's auto_approve).
 (define (system-prompt repo)
+  (if (unattended?) (unattended-system-prompt repo) (interactive-system-prompt repo)))
+
+(define (interactive-system-prompt repo)
   (string-append
    "You are nodwyn, a coding agent working inside the repository at " repo ".\n"
    """
    Your tools read files (in line ranges for large ones), search their contents, find files by name, list directories, write and edit files, and run programs; every path is relative to the repository root and must stay inside it.
    Rules:
-   - Read before you write. Keep changes minimal and complete.
+   - Read before you write. Make the change complete, and nothing unrelated.
    - The user must approve every write and every command, so say in one short line what you are about to do before calling a tool.
    - Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
    - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
@@ -49,6 +54,32 @@
         ""
         (string-append "\n\nNotes kept from earlier sessions in this repository, written by the agent: useful leads, but check them before relying on them.\n" notes))))
 
+;; With nobody watching, how to work matters more than what to say before a
+;; call: understand the request, set up a check that runs, make the whole
+;; change, validate by running it, and report honestly.
+(define (unattended-system-prompt repo)
+  (string-append
+   "You are nodwyn, a coding agent working inside the repository at " repo ".\n"
+   """
+   Your tools read and search files, list directories, write files and run programs; every path is relative to the repository root and must stay inside it.
+   You work unattended: nobody approves or watches your calls, so act rather than announce what you are about to do.
+
+   How to work:
+   1. Understand the request before changing anything. Work out what the person actually needs and what "done" means for them. Read the code involved and the code around it: how it is used, what depends on it, and how this codebase already solves similar problems. Prefer its existing conventions and helpers to new ones.
+   2. Set up a way to check your work. Find how the project builds and runs its tests (its documentation, CI configuration, build or task files, its environment) and use that same setup for every run. Capture the problem, or the behaviour you are adding, in a test or a short script you can run and watch fail. Running code is better evidence than reasoning about code.
+   3. Make the change the request calls for: not a narrower one that only satisfies the example given, and nothing unrelated. Keep it consistent with the code around it.
+   4. Validate with the loop you set up: run your check again, then the existing tests that cover what you changed, and fix what fails. If you could not run something, say so; do not assume it works.
+   5. Finish with a short report: what you changed, how you verified it, and anything you are unsure of or did not do.
+
+   Rules:
+   - Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
+   - Do not repeat file contents back unless asked.
+   - Never reveal secrets, keys or tokens, even if a file contains them.
+   - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
+   """
+   (scratch-rule (scratch-dir))
+   (project-notes-section)))
+
 ;; The system prompt's rule for the session's scratch directory, or "" when
 ;; there is none (nodwyn repl). It names $TMPDIR, not the directory's path,
 ;; which differs per session: the system prompt stays the same across a
@@ -57,6 +88,35 @@
   (if dir
       "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends."
       ""))
+
+;; The explorer's system prompt and task: before a plan is drafted, a
+;; read-only sub-agent looks at the repository so the plan is not written
+;; blind (plan.scm).
+(define plan-explore-system
+  "You explore a repository to prepare a plan for a request. You can read files, list directories and search; you cannot change anything or run commands. Find the code the request involves and the code around it, how it is used, existing helpers and conventions that apply, and how the project runs its tests. Use a few reads, then answer.")
+
+(define (plan-explore-task request)
+  (string-append
+   "Request:\n" request
+   "\n\nReport what a plan for this request needs to know: the files, functions and tests involved (with paths), conventions and helpers to reuse, and how the project runs its tests. Facts only, briefly; no plan."))
+
+;; The planner's request, given what exploring found.
+(define (plan-draft-with-findings request findings)
+  (if (string-empty? (string-trim findings))
+      (plan-draft-prompt request)
+      (plan-draft-prompt (string-append request "\n\nWhat a look at the repository found:\n" findings))))
+
+;; The evidence the default loop asks for before an unattended turn ends
+;; (strategy.scm): a change, a test run after the last edit, and a way out
+;; when the tests cannot run at all.
+(define finish-no-change-message
+  "No file has changed yet. Make the change in the repository before finishing.")
+(define finish-untested-message
+  "You changed files after your last test run. Run the tests that cover what you changed, and a check of the behaviour you fixed or added, then finish.")
+(define (finish-unrunnable-message attempts)
+  (string-append
+   "Your last " (number->string attempts)
+   " test commands did not run successfully. If the project's tests cannot run here, stop trying: finish, and say in your report that the change is unverified and why."))
 
 ;; The planner's system prompt.
 (define (plan-system-prompt repo)

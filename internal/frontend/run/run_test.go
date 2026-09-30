@@ -45,6 +45,13 @@ func driveConfigured(t *testing.T, cfg config.Config, wall time.Duration, max in
 // racing a real clock against the turns before it.
 func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, max int, answer string, turns ...fake.Turn) (State, []log.Event) {
 	t.Helper()
+	// These tests pin the run's conversation turn by turn; the default loop's
+	// explorer and evidence reminders (docs/scheme.md §9) are off here, ahead
+	// of any init.scm the test brings, and tested in internal/core.
+	init := filepath.Join(repo, ".nodwyn", "init.scm")
+	own, _ := os.ReadFile(init)
+	os.MkdirAll(filepath.Dir(init), 0o755)
+	os.WriteFile(init, append([]byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), own...), 0o644)
 	srv := fake.New(turns...)
 	defer srv.Close()
 	cfg.Budget.TokensSoft = 100000

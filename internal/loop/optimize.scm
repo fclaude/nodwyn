@@ -84,7 +84,7 @@
 ;; .nodwyn/.
 (define (optimizer-may-call? call)
   (let ((name (assoc-ref call 'name)))
-    (cond ((member name '("fs-read" "fs-list" "index-grep")) #t)
+    (cond ((member name '("fs-read" "fs-list" "index-grep" "fs-find")) #t)
           ((member name '("fs-write" "fs-edit"))
            (string-prefix? ".nodwyn/" (format "~a" (assoc-ref (json-parse (assoc-ref call 'args "{}")) "path" ""))))
           (else #f))))

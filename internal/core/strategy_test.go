@@ -14,6 +14,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/window"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -382,7 +383,7 @@ func TestAProjectMayDefineTurn(t *testing.T) {
 // the tools on silently.
 func TestModelTurnToolsOptionIsStrict(t *testing.T) {
 	r := strategyRig(t, `(define (agent-turn request) (model-turn "control" '((tools #f))))`, 10, fake.Turn{Content: "x"})
-	if err := r.turn("hi"); !strings.Contains(err, "the tools option is #f (no tools) or #t") {
+	if err := r.turn("hi"); !strings.Contains(err, "the tools option is #f (no tools)") {
 		t.Fatalf("error %q", err)
 	}
 }
@@ -400,5 +401,64 @@ func TestUnknownToolSuggestsTheLikelyOne(t *testing.T) {
 	res := r.results()
 	if !strings.Contains(res["g"], "did you mean index-grep?") || !strings.Contains(res["e"], "did you mean fs-edit?") || strings.Contains(res["z"], "did you mean") {
 		t.Fatalf("%+v", res)
+	}
+}
+
+// A strategy may fold a tool result: later windows show its text instead,
+// the log keeps the result, and the folded request replays byte for byte.
+func TestFoldResultShowsTextInLaterWindows(t *testing.T) {
+	r := strategyRig(t, `
+(define errors '())
+(define (try thunk)
+  (guard (e (else (set! errors (cons (format "~a" (assoc-ref e 'message "")) errors)))) (thunk)))
+(define (agent-turn request)
+  (let loop ((reply (model-turn)) (n 0))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls)
+        (run-tools calls)
+        (when (= n 0)
+          (fold-result (assoc-ref (car calls) 'id) "[folded: main.go declares package main]")
+          (try (lambda () (fold-result "no-such-call" "x")))
+          (try (lambda () (fold-result 1 "x")))
+          (try (lambda () (fold-result 99999 "x"))))
+        (loop (model-turn) (+ n 1))))))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("r")}},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("what is in main.go?"); err != "" {
+		t.Fatal(err)
+	}
+	msgs := requestMessages(t, r.srv.Requests[1])
+	if got := msgs[len(msgs)-1]; got.Role != "tool" || got.Content != "[folded: main.go declares package main]" {
+		t.Fatalf("the folded result: %+v", got)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept bool
+	for _, ev := range evs {
+		if ev.Kind == log.KindToolResult {
+			var p log.ToolResult
+			ev.Decode(&p)
+			kept = kept || strings.Contains(p.Value, "package main")
+		}
+		if ev.Kind == log.KindLLMReq {
+			if _, err := window.ReplayRequest(evs, ev.Seq); err != nil {
+				t.Fatalf("replay of seq %d: %v", ev.Seq, err)
+			}
+		}
+	}
+	if !kept {
+		t.Fatal("the log lost the folded result")
+	}
+	v, err := r.s.Eval(t.Context(), "errors")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`no result for call \"no-such-call\"`, "not a tool.result", "no event at seq 99999"} {
+		if !strings.Contains(scheme.Write(v), want) {
+			t.Errorf("errors %s lack %q", scheme.Write(v), want)
+		}
 	}
 }
