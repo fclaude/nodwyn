@@ -45,6 +45,10 @@ func contracts() map[string]methodContract {
 		"session.secret":          {secretParams{}, struct{}{}},
 		"session.approval.create": {approvalParams{}, struct{}{}},
 		"session.binding.create":  {bindingParams{}, struct{}{}},
+		"attention.list":          {struct{}{}, []attentionItem{}},
+		"notes.read":              {notesParams{}, notesResult{}},
+		"session.notes.write":     {notesWriteParams{}, inspectionStarted{}},
+		"models.status":           {struct{}{}, []modelStatus{}},
 	}
 }
 

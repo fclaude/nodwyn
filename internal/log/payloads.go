@@ -137,6 +137,9 @@ type GuardDecision struct {
 	Answer   string `json:"answer,omitempty"` // for confirm: yes | no | turn
 	Args     string `json:"args,omitempty"`   // short written form of the arguments
 	Detail   string `json:"detail,omitempty"` // the diff, when the user did not see it (standing approvals)
+	// Path is the file a write names, as the call wrote it, so a reader can
+	// list a session's changes from its decisions. Older logs lack it.
+	Path string `json:"path,omitempty"`
 }
 
 // EgressCheck records a binding lookup for a secret-bearing egress (E3).

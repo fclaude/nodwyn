@@ -138,7 +138,8 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 
 func readOnly(method string) bool {
 	switch method {
-	case "hello", "session.list", "session.watch", "session.info", "session.subscribe", "session.unsubscribe", "log.read":
+	case "hello", "session.list", "session.watch", "session.info", "session.subscribe", "session.unsubscribe", "log.read",
+		"attention.list", "notes.read", "models.status", "run.info":
 		return true
 	}
 	return false
@@ -249,7 +250,8 @@ func (b *bridge) allowed(method string) bool {
 		return false
 	}
 	switch method {
-	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.friction", "session.policy.read", "session.policy.write":
+	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.friction", "session.policy.read", "session.policy.write",
+		"session.notes.write", "run.stop", "run.resume":
 		return true
 	}
 	return false

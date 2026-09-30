@@ -38,6 +38,13 @@ type sessionInfo struct {
 	LastEvent    time.Time `json:"last_event"`
 	InFlight     bool      `json:"in_flight"`
 	Truncated    bool      `json:"truncated"`
+	// Additive (ADR 30): what a task list shows. Changes are files the guard
+	// allowed this session to write; Run is the live run when this daemon
+	// drives one, else the last recorded run.state.
+	Title   string     `json:"title"`
+	Started time.Time  `json:"started"`
+	Changes []string   `json:"changes"`
+	Run     *run.State `json:"run,omitempty"`
 }
 type budgetInfo struct {
 	ToolCalls budget.Limit `json:"tool_calls"`
@@ -84,6 +91,10 @@ var methodTable = map[string]handler{
 	"session.binding.create":  (*server).answer,
 	"session.watch":           (*server).subscribeState,
 	"session.list":            (*server).list,
+	"attention.list":          (*server).attentionList,
+	"notes.read":              (*server).notesRead,
+	"session.notes.write":     (*server).notesWrite,
+	"models.status":           (*server).modelsStatus,
 	"session.open":            (*server).open,
 	"session.resume":          (*server).resume,
 	"session.info":            (*server).info,
@@ -160,7 +171,18 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 	for _, i := range infos {
 		owned, open := s.sessions[i.ID]
 		busy := open && (owned.session.Busy() || owned.driver.Active())
-		result = append(result, sessionInfo{i.ID, i.Repo, open, busy, i.FirstMessage, i.LastEvent, i.InFlight, i.Truncated})
+		entry := sessionInfo{ID: i.ID, Repo: i.Repo, Open: open, Busy: busy, FirstMessage: i.FirstMessage, LastEvent: i.LastEvent, InFlight: i.InFlight, Truncated: i.Truncated,
+			Title: i.Title(), Started: i.Started, Changes: i.Changes}
+		if entry.Changes == nil {
+			entry.Changes = []string{}
+		}
+		if open && owned.driver != nil {
+			state := owned.driver.Info()
+			entry.Run = &state
+		} else if i.Run != nil {
+			entry.Run = &run.State{Task: i.Run.Task, Deadline: i.Run.Deadline, MaxTurns: i.Run.MaxTurns, Turns: i.Run.Turns, Status: i.Run.Status, Reason: i.Run.Reason}
+		}
+		result = append(result, entry)
 	}
 	return result, nil
 }

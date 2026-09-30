@@ -278,6 +278,8 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		Reason:   strings.Join(result.reasons, "; "),
 		Args:     summarizeArgs(args),
 	}
+	writePath, _ := WritePath(p, args)
+	rec.Path = writePath
 	if final.Standing {
 		rec.Detail = detail
 	}
@@ -299,7 +301,6 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		return &scheme.Denied{Prim: p.Name, Reason: final.Reason}
 	}
 	// Confirm.
-	writePath, _ := WritePath(p, args)
 	approval, err := g.confirm(ctx, Prompt{
 		Binding:  result.binding,
 		Egress:   egressScopeOf(p, args),

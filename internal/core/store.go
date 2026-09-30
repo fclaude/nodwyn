@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fclaude/nibb/internal/log"
@@ -22,10 +23,32 @@ type SessionInfo struct {
 	ID           string
 	Repo         string
 	FirstMessage string
+	Started      time.Time
 	LastEvent    time.Time
 	InFlight     bool
 	Truncated    bool
+	// Changes are the files the guard let this session write, in the order
+	// first written, from guard.decision records (older logs record none).
+	// An allowed write is not proof the write succeeded.
+	Changes []string
+	// Run is the last recorded run.state, nil for a session that never ran
+	// as a supervised run.
+	Run *log.RunState
 }
+
+// Title is the first line of the first message, which is what a person
+// reads a session by.
+func (i SessionInfo) Title() string {
+	title, _, _ := strings.Cut(strings.TrimSpace(i.FirstMessage), "\n")
+	title = strings.TrimSpace(title)
+	if r := []rune(title); len(r) > 120 {
+		title = string(r[:119]) + "…"
+	}
+	return title
+}
+
+// maxChanges bounds SessionInfo.Changes: a list, not an audit.
+const maxChanges = 50
 
 var sessionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
@@ -77,12 +100,28 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 	}
 	info.Repo = start.Repo
 	first := false
-	for _, ev := range events {
+	written := map[string]bool{}
+	for i, ev := range events {
 		if ev.Session != id {
 			return info, nil, fmt.Errorf("core: mixed session ids in %s", id)
 		}
+		if i == 0 {
+			info.Started = ev.TS
+		}
 		info.LastEvent = ev.TS
 		switch ev.Kind {
+		case log.KindGuardDecision:
+			var d log.GuardDecision
+			if ev.Decode(&d) == nil && d.Path != "" && !written[d.Path] && len(info.Changes) < maxChanges &&
+				(d.Decision == "allow" || (d.Decision == "confirm" && (d.Answer == "yes" || d.Answer == "turn"))) {
+				written[d.Path] = true
+				info.Changes = append(info.Changes, d.Path)
+			}
+		case log.KindRunState:
+			var r log.RunState
+			if ev.Decode(&r) == nil {
+				info.Run = &r
+			}
 		case log.KindUserMsg:
 			var msg log.UserMsg
 			if err := ev.Decode(&msg); err != nil {
@@ -110,8 +149,52 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 	return info, events, nil
 }
 
-// Info reads one session's metadata without opening it for append.
-func (s Store) Info(id string) (SessionInfo, error) { info, _, err := s.read(id); return info, err }
+// Info reads one session's metadata without opening it for append. A log
+// whose size and modification time are unchanged since the last read is
+// answered from memory: listing sessions should not reparse every log.
+func (s Store) Info(id string) (SessionInfo, error) {
+	path, err := s.path(id)
+	if err != nil {
+		return SessionInfo{ID: id}, err
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		return SessionInfo{ID: id}, err
+	}
+	key := infoKey{stat.Size(), stat.ModTime()}
+	infoCache.mu.Lock()
+	cached, ok := infoCache.entries[path]
+	infoCache.mu.Unlock()
+	if ok && cached.key == key {
+		return cached.info, nil
+	}
+	info, _, err := s.read(id)
+	if err == nil {
+		infoCache.mu.Lock()
+		if infoCache.entries == nil {
+			infoCache.entries = make(map[string]cachedInfo)
+		}
+		infoCache.entries[path] = cachedInfo{key, info}
+		infoCache.mu.Unlock()
+	}
+	return info, err
+}
+
+type infoKey struct {
+	size int64
+	mod  time.Time
+}
+type cachedInfo struct {
+	key  infoKey
+	info SessionInfo
+}
+
+// infoCache is process-wide: every Store over the same directory reads the
+// same files. Entries are keyed by path and invalidated by size or mtime.
+var infoCache struct {
+	mu      sync.Mutex
+	entries map[string]cachedInfo
+}
 
 // List returns sessions in sortable ID order. Corruption is reported rather
 // than quietly hiding a conversation. A missing directory is an empty store.

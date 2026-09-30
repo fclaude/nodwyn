@@ -687,6 +687,9 @@
         "origin": {
           "type": "string"
         },
+        "path": {
+          "type": "string"
+        },
         "prim": {
           "type": "string"
         },
@@ -1436,10 +1439,19 @@
     "request": {
       "anyOf": [
         {
+          "$ref": "#/$defs/request.attention.list"
+        },
+        {
           "$ref": "#/$defs/request.hello"
         },
         {
           "$ref": "#/$defs/request.log.read"
+        },
+        {
+          "$ref": "#/$defs/request.models.status"
+        },
+        {
+          "$ref": "#/$defs/request.notes.read"
         },
         {
           "$ref": "#/$defs/request.run.info"
@@ -1481,6 +1493,9 @@
           "$ref": "#/$defs/request.session.list"
         },
         {
+          "$ref": "#/$defs/request.session.notes.write"
+        },
+        {
           "$ref": "#/$defs/request.session.open"
         },
         {
@@ -1508,6 +1523,38 @@
           "$ref": "#/$defs/request.session.watch"
         }
       ]
+    },
+    "request.attention.list": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "attention.list"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
     },
     "request.hello": {
       "properties": {
@@ -1559,6 +1606,69 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.readParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.models.status": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "models.status"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.notes.read": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "notes.read"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.notesParams"
             }
           ],
           "unevaluatedProperties": false
@@ -1975,6 +2085,37 @@
       ],
       "type": "object"
     },
+    "request.session.notes.write": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.notes.write"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.notesWriteParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.open": {
       "properties": {
         "id": {
@@ -2300,11 +2441,32 @@
       ],
       "type": "object"
     },
+    "result.attention.list": {
+      "items": {
+        "$ref": "#/$defs/rpc.attentionItem"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
     "result.hello": {
       "$ref": "#/$defs/rpc.helloResult"
     },
     "result.log.read": {
       "$ref": "#/$defs/core.LogPage"
+    },
+    "result.models.status": {
+      "items": {
+        "$ref": "#/$defs/rpc.modelStatus"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "result.notes.read": {
+      "$ref": "#/$defs/rpc.notesResult"
     },
     "result.run.info": {
       "$ref": "#/$defs/run.State"
@@ -2364,6 +2526,9 @@
         "array",
         "null"
       ]
+    },
+    "result.session.notes.write": {
+      "$ref": "#/$defs/rpc.inspectionStarted"
     },
     "result.session.open": {
       "$ref": "#/$defs/rpc.sessionDetails"
@@ -2443,6 +2608,27 @@
         "id",
         "prompt_id",
         "scope"
+      ],
+      "type": "object"
+    },
+    "rpc.attentionItem": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "pending": {
+          "items": {
+            "$ref": "#/$defs/rpc.sessionEvent"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "pending"
       ],
       "type": "object"
     },
@@ -2559,6 +2745,73 @@
       },
       "required": [
         "operation_id"
+      ],
+      "type": "object"
+    },
+    "rpc.modelStatus": {
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "provider",
+        "model",
+        "host",
+        "state"
+      ],
+      "type": "object"
+    },
+    "rpc.notesParams": {
+      "properties": {
+        "repo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo"
+      ],
+      "type": "object"
+    },
+    "rpc.notesResult": {
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "rpc.notesWriteParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
       ],
       "type": "object"
     },
@@ -2822,6 +3075,15 @@
         "busy": {
           "type": "boolean"
         },
+        "changes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "first_message": {
           "type": "string"
         },
@@ -2841,6 +3103,23 @@
         "repo": {
           "type": "string"
         },
+        "run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/run.State"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
         "truncated": {
           "type": "boolean"
         }
@@ -2853,7 +3132,10 @@
         "first_message",
         "last_event",
         "in_flight",
-        "truncated"
+        "truncated",
+        "title",
+        "started",
+        "changes"
       ],
       "type": "object"
     },
