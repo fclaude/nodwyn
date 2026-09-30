@@ -31,3 +31,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0027](./0027-models-and-narrowed-contexts.md) — Configured models and narrowed contexts
 - [0028](./0028-scratch-directory.md) — A scratch directory beside the repository
 - [0029](./0029-optional-tool-parameters.md) — Optional tool parameters
+- [0030](./0030-one-app-three-ways-to-reach-it.md) — One app, three ways to reach it: desktop, browser, phone

@@ -451,6 +451,63 @@ means.** L1/L3 detect credentials; nothing in nibb recognises a contract or a
 medical letter. The protections that apply to those are the mount table, the
 confirm, the binding table and the Jev content level.
 
+### After v0 — converging on the design canvas (ADR 21 amendment, ADR 30)
+
+The canvas linked from ADR 21 is the target. Requirements added on
+2026-09-30: remote work stays a browser, and a **standalone app** must run
+without anyone managing a daemon, because nibb will be shared with family.
+Each step is independently useful and lands with tests and docs.
+
+- **D1 — console foundation.** New design tokens (canvas palette, light and
+  dark), embedded OFL fonts, a hash router, the task-oriented shell: sidebar
+  with New task / Needs you / Running / Recent, Connections / Workspaces /
+  Settings, model status footer. Phone width is a first-class layout.
+- **D2 — data the views need, from sources that exist.** `attention.list`
+  (redacted pending prompts across open sessions, for Home cards);
+  session titles, change counts and workspace names in `session.list`
+  (with a list cache keyed by file size and mtime, since List rereads every
+  log); `models.status` (reachability of configured models); project notes
+  read/edit through a fixed user-origin guarded operation; run progress in
+  the list. Live budgets are counted from the log, not invented.
+- **D3 — Home and Task views.** Home: composer with workspace chips,
+  Needs-you cards with one-tap Allow once, Running cards with run progress,
+  Recently finished. Task: grouped read-only tool calls ("Looked around"),
+  command chips, safe Markdown for replies (DOM nodes, never innerHTML),
+  the approval inline with a line-numbered diff and Y/T/A/N keys, and the
+  aside (plan, this turn, changes, project notes, workspace). U3
+  inspectors move under a task's Details.
+- **D4 — the standalone app.** `nibb app`: attach to a running daemon or
+  own one in-process; launch-ticket pairing; keychain status/create/unlock
+  and model settings over the protocol (local bridges only); first-run
+  setup screen; native window with the `webview` tag and `make app` for
+  `Nibb.app`; browser fallback without it.
+- **D5 — remote devices.** `nibb ui --listen ADDR`, named device pairing
+  with hashed revocable tokens (`nibb devices`), `via` in hello so audit
+  names the device, policy writes refused from remote devices, optional
+  TLS. The phone approval view.
+- **D6 — workspaces (W1).** Named workspace registry, `kind`, mount table
+  in `.nibb/workspace.toml` enforced by the pin, version store before
+  writes where there is no git, `nibb versions`/`nibb undo` and restore
+  from the UI; a `docs` workspace registers no `shell-exec`,
+  `register-tool` or Scheme evaluation. Home's "Work in" chips and
+  "Add a folder" (native chooser in the app).
+- **D7 — attachments (W2, text first).** Composer attach → daemon
+  `session.attach`: copy into `.nibb/attachments/`, deterministic
+  extraction (text formats; docx/xlsx/pptx in Go; PDF via `pdftotext` when
+  installed), redact at ingest, cap, log `attach`, enter the next message as
+  data. Images wait for vision plumbing.
+- **D8 — MCP servers over HTTP (W3a).** Capability profiles, undeclared =
+  egress + irreversible with no standing answer, manifest pinning, tools as
+  `server/tool` primitives frozen per session, credentials through the
+  binding table; the Connections page with per-tool profiles, manifest
+  review and per-workspace enablement.
+- **D9 — contained local MCP servers (W3b), stretch.** Docker-backed, per
+  ADR 23.
+
+Order: D1–D3 make the design real on today's capabilities; D4 is the family
+requirement and comes next; D5 is small once D4's pairing exists; D6–D8
+are the cowork track the canvas assumes.
+
 ## 6. Timeline at a glance
 
 | Weeks | Stage / phase | Promotes | Milestone |
