@@ -11,7 +11,7 @@
 package redact
 
 import (
-	"github.com/fclaude/nibb/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
 )
 
 // Placeholder is what a redacted secret is replaced by. It names the class so

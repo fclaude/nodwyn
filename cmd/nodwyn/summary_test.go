@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/window"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 func TestCLISummaryLifecycle(t *testing.T) {
 	dir := t.TempDir()
-	paths := config.PathsUnder(filepath.Join(dir, "config", "nibb"), filepath.Join(dir, "data", "nibb"))
+	paths := config.PathsUnder(filepath.Join(dir, "config", "nodwyn"), filepath.Join(dir, "data", "nodwyn"))
 	id := "summary-test"
 	writer, err := log.Create(log.SessionPath(paths.SessionsDir, id), id)
 	if err != nil {
@@ -34,7 +34,7 @@ func TestCLISummaryLifecycle(t *testing.T) {
 	run := func(success bool, args ...string) string {
 		t.Helper()
 		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--", "summary"}, args...)...)
-		cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 		raw, err := cmd.CombinedOutput()
 		if (err == nil) != success {
 			t.Fatalf("args=%v err=%v output=%s", args, err, raw)

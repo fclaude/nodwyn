@@ -10,11 +10,11 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/frontend/plain"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 const frictionSource = `(fs-read "docs/friction.md")`

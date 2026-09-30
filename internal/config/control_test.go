@@ -7,7 +7,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// The table MissingControl suggests must be one nibb accepts as written.
+// The table MissingControl suggests must be one nodwyn accepts as written.
 func TestMissingControlExampleIsValid(t *testing.T) {
 	msg := MissingControl("").Error()
 	table := msg[strings.Index(msg, "\n[control]"):]
@@ -25,7 +25,7 @@ func TestControlNeedsItsFields(t *testing.T) {
 		control Model
 		want    string
 	}{
-		"model only (the old default url)": {Model{Model: "qwen3:8b", NumCtx: 81920}, "url is required: nibb has no built-in control model"},
+		"model only (the old default url)": {Model{Model: "qwen3:8b", NumCtx: 81920}, "url is required: nodwyn has no built-in control model"},
 		"url only (a --url flag)":          {Model{URL: "http://localhost:11434", NumCtx: 81920}, "model is required"},
 	} {
 		c := Default()

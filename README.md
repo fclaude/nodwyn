@@ -1,4 +1,4 @@
-# nibb
+# nodwyn
 
 A minimal, self-extending coding-agent harness: a Go host, a small Scheme
 embedded in it for orchestration, one guard at the only Scheme→Go exit, and
@@ -6,14 +6,14 @@ a binding table as the sole authority over where a secret may go.
 
 - [SPEC.md](SPEC.md) — the architecture and its invariants
 - [plan.md](plan.md) — the bootstrap-then-self-host build plan
-- [docs/manual.md](docs/manual.md) — how to read the code and how to use nibb
+- [docs/manual.md](docs/manual.md) — how to read the code and how to use nodwyn
 - [docs/adr/](docs/adr/) — decision records
 - [docs/scheme.md](docs/scheme.md) — the language reference
-- [docs/friction.md](docs/friction.md) — where nibb got in the way of building nibb
+- [docs/friction.md](docs/friction.md) — where nodwyn got in the way of building nodwyn
 
 ## Maintainer map
 
-The packages follow responsibilities that remain useful as nibb gains more
+The packages follow responsibilities that remain useful as nodwyn gains more
 integrations and front-ends:
 
 | Packages | Responsibility |
@@ -27,13 +27,13 @@ integrations and front-ends:
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible); derive their context; redact text; detect credential shapes. |
 | `frontend/run` | Chain planned turns under a finite deadline and turn count; ask for continuation without granting tool authority. |
-| `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nibb` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
+| `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nodwyn` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
 **A user message:** the front-end calls `Session.Send`. The session records
 and redacts the message, and calls the Scheme procedure `agent-turn`. The
 default runs the plan gate, then asks the model, runs the tools it requested
 through Scheme and repeats until the model answers without tools; a project
-may redefine it in `.nibb/init.scm`. The loop's primitives build each window from
+may redefine it in `.nodwyn/init.scm`. The loop's primitives build each window from
 recorded events and record every result before the next model request. The
 front-end consumes events from the session.
 
@@ -64,13 +64,13 @@ the credential lifecycle to OAuth. Local RPC is implemented; MCP and OAuth remai
 ## Build
 
 ```
-make build      # bin/nibb
+make build      # bin/nodwyn
 make test       # go test -race ./...
 make lint       # vet, staticcheck, boundary lint
 make accept     # everything a candidate must pass before promotion
 make smoke      # manual two-turn session against the real control plane
 make selfcheck  # the candidate proves itself (ADR 13)
-make promote TAG=v0.N-phase   # accept + selfcheck, then ~/.local/bin/nibb-stable
+make promote TAG=v0.N-phase   # accept + selfcheck, then ~/.local/bin/nodwyn-stable
 ```
 
 Requires Go 1.27, ripgrep (`rg`, used by retrieval and its tests), and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
@@ -81,35 +81,35 @@ results. See [memory and retrieval](docs/memory.md) for its limits.
 ## Run
 
 ```
-bin/nibb daemon               # local sessions, turns and event delivery (U2)
-bin/nibb tui                  # opt-in full-screen terminal client (P9)
-bin/nibb app                  # the whole thing in one program: a window, and a daemon if none runs
-bin/nibb ui                   # the browser console for a running daemon
-bin/nibb ui --listen IP:7777  # also for other devices (a phone on your tailnet)
-make app                      # bin/Nibb.app for macOS (to share with people who never open a terminal)
-bin/nibb                      # chat in the current repository (plain front-end)
-bin/nibb --repo ~/src/x       # pin to another repository
-bin/nibb --show-thinking      # show the model's redacted thinking too
+bin/nodwyn daemon               # local sessions, turns and event delivery (U2)
+bin/nodwyn tui                  # opt-in full-screen terminal client (P9)
+bin/nodwyn app                  # the whole thing in one program: a window, and a daemon if none runs
+bin/nodwyn ui                   # the browser console for a running daemon
+bin/nodwyn ui --listen IP:7777  # also for other devices (a phone on your tailnet)
+make app                      # bin/Nodwyn.app for macOS (to share with people who never open a terminal)
+bin/nodwyn                      # chat in the current repository (plain front-end)
+bin/nodwyn --repo ~/src/x       # pin to another repository
+bin/nodwyn --show-thinking      # show the model's redacted thinking too
 # Exact request replay (new logs with recorded context):
-# bin/nibb replay SESSION_ID --window REQUEST_SEQ
-bin/nibb --no-confirm         # non-interactive: every confirm is a no
-bin/nibb replay <session-id>  # print a session log as a transcript
-bin/nibb sessions             # id, last activity, state, repo, first ask
-bin/nibb summary SESSION      # inspect user-authored, revocable summaries
-bin/nibb sessions --ids       # IDs only (scripts)
-bin/nibb --resume <session-id> # continue in the recorded repository
-bin/nibb repl                 # Scheme REPL
+# bin/nodwyn replay SESSION_ID --window REQUEST_SEQ
+bin/nodwyn --no-confirm         # non-interactive: every confirm is a no
+bin/nodwyn replay <session-id>  # print a session log as a transcript
+bin/nodwyn sessions             # id, last activity, state, repo, first ask
+bin/nodwyn summary SESSION      # inspect user-authored, revocable summaries
+bin/nodwyn sessions --ids       # IDs only (scripts)
+bin/nodwyn --resume <session-id> # continue in the recorded repository
+bin/nodwyn repl                 # Scheme REPL
 ```
 
-The control model is the `[control]` table in `~/.config/nibb/config.toml`:
+The control model is the `[control]` table in `~/.config/nodwyn/config.toml`:
 an Ollama server, or any chat-completions server with a key bound in
-`bindings.toml`. There is no built-in default; when it is missing, nibb says
+`bindings.toml`. There is no built-in default; when it is missing, nodwyn says
 what to add. Model requests honor
 `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, so a sandbox whose only egress is
 an allowlist proxy can still reach the model. Every write and every
 command is confirmed by you, with a diff for writes and edits; standing
-approvals for read-only commands live in `.nibb/allow.toml` (ADR 17).
-Session logs live in `~/.local/share/nibb/sessions/`.
+approvals for read-only commands live in `.nodwyn/allow.toml` (ADR 17).
+Session logs live in `~/.local/share/nodwyn/sessions/`.
 Resume restores the conversation and appends to that same log. It reloads current
 configuration, bindings, standing approvals from files, and repository `init.scm`,
 so its prompts and tools as they are now apply, which `(reload)` leaves fixed
@@ -140,7 +140,7 @@ selfcheck remains a local promotion gate; CI needs no model or credentials.
 The same Linux runner can produce release archives for those four targets.
 Cross-compilation does not test macOS behavior or provide Developer ID signing
 and notarization. Publishing downloadable releases is separate from the local
-`nibb-stable` promotion; this workflow validates builds without publishing them.
+`nodwyn-stable` promotion; this workflow validates builds without publishing them.
 
 Turns also stop when the model repeats an identical tool call four times in a
 row, retries a denied call three times, or gets ten consecutive tool errors
@@ -184,7 +184,7 @@ usage is not included because it is not reported through the control provider.
 
 ### Local daemon (U2)
 
-`nibb daemon` serves a versioned local session protocol over a private Unix
+`nodwyn daemon` serves a versioned local session protocol over a private Unix
 socket. Clients can manage sessions, send and abort turns, subscribe to events,
 and page through durable history after reconnecting. Sessions belong to the
 daemon and survive client disconnects; shutting down the daemon releases their
@@ -202,8 +202,8 @@ queue limits and ownership.
 
 ### Terminal client (P9)
 
-`nibb tui --repo /path/to/project` starts the full-screen client locally;
-`nibb tui --socket /path/to/sock` attaches to a daemon. Choose or resume a
+`nodwyn tui --repo /path/to/project` starts the full-screen client locally;
+`nodwyn tui --socket /path/to/sock` attaches to a daemon. Choose or resume a
 session, follow the conversation, inspect scrollable approval diffs, and reply
 to budget or masked credential prompts. Tool calls group their arguments,
 recorded guard decisions and full results or errors. Ctrl+C aborts busy work;
@@ -231,18 +231,18 @@ it the plan, this turn's budget, changes with their history, attachments,
 project notes and the workspace. Connections adds and reviews MCP servers;
 Workspaces names folders, their kind (documents or code) and mounted
 folders; Settings chooses the model and unlocks the keychain. It runs as
-`nibb ui` for a daemon, as `nibb app` without one (see [the app](docs/app.md)),
+`nodwyn ui` for a daemon, as `nodwyn app` without one (see [the app](docs/app.md)),
 and on a phone paired by name. See [the browser guide](docs/browser.md).
 
 ### Supervised background runs
 
-Start `nibb daemon`, then submit a bounded task:
+Start `nodwyn daemon`, then submit a bounded task:
 
 ```sh
-nibb run --task task.txt --repo . --budget-wall 2h --max-turns 20
-nibb run status SESSION
-nibb run stop SESSION
-nibb run resume SESSION
+nodwyn run --task task.txt --repo . --budget-wall 2h --max-turns 20
+nodwyn run status SESSION
+nodwyn run stop SESSION
+nodwyn run resume SESSION
 ```
 
 Attach the browser or terminal client to the daemon to answer tool prompts and

@@ -9,8 +9,8 @@
 # Deterministic steps use :eval (user origin); only step 4 needs the model.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-CAND=${1:-bin/nibb}
-OUT=$(mktemp -t nibb-selfcheck.XXXXXX)
+CAND=${1:-bin/nodwyn}
+OUT=$(mktemp -t nodwyn-selfcheck.XXXXXX)
 trap 'rm -f "$OUT"' EXIT
 
 echo "selfcheck: $CAND ($("$CAND" version))"
@@ -25,12 +25,12 @@ printf '%s\n' \
 	| "$CAND" --no-confirm --repo . >"$OUT" 2>&1
 
 grep -q '^go-test ' "$OUT" || { echo "selfcheck: dev tools not registered"; cat "$OUT"; exit 1; }
-grep -q 'ok  \\tgithub.com/fclaude/nibb/internal/log' "$OUT" || { echo "selfcheck: go-test through the dev tool did not pass"; cat "$OUT"; exit 1; }
+grep -q 'ok  \\tgithub.com/fclaude/nodwyn/internal/log' "$OUT" || { echo "selfcheck: go-test through the dev tool did not pass"; cat "$OUT"; exit 1; }
 grep -q 'READY' "$OUT" || { echo "selfcheck: model turn did not complete"; cat "$OUT"; exit 1; }
 
 # Other clients may open sessions during the model turn. Replay this run's
 # banner ID, never whichever session happens to be newest in the shared store.
-SESSION=$(awk '$1 == "nibb" && $2 == "session" { print $3; exit }' "$OUT")
+SESSION=$(awk '$1 == "nodwyn" && $2 == "session" { print $3; exit }' "$OUT")
 test -n "$SESSION" || { echo "selfcheck: session banner missing"; exit 1; }
 "$CAND" replay "$SESSION" | grep 'READY' >/dev/null || { echo "selfcheck: replay of $SESSION failed"; exit 1; }
 echo "selfcheck: ok (session $SESSION)"

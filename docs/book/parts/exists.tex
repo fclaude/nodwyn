@@ -21,8 +21,8 @@ Package & Owns \\
 \code{internal/log} & the append-only log and typed payloads \\
 \code{internal/config} & XDG paths, \file{config.toml}, \file{bindings.toml}, \file{allow.toml} \\
 \code{internal/frontend/plain} & line mode, the Scheme REPL, replay \\
-\code{cmd/nibb} & flags $\to$ core $\to$ front-end; nothing else \\
-\code{dev/}, \code{.nibb/} & this repository's own tools and standing approvals \\
+\code{cmd/nodwyn} & flags $\to$ core $\to$ front-end; nothing else \\
+\code{dev/}, \code{.nodwyn/} & this repository's own tools and standing approvals \\
 \code{test/exfil} & the exfiltration scenario suite (eight scenarios) \\
 \code{test/fakes/ollama} & a scriptable fake of the model server \\
 \bottomrule
@@ -32,15 +32,15 @@ Package & Owns \\
 \section{Commands}
 
 \begin{txt}
-nibb                       chat in the current repository
-nibb --repo DIR            pin to another repository
-nibb --show-thinking       stream the model's thinking
-nibb --no-confirm          every confirm is a no (scripts, CI)
-nibb replay ID|PATH        print a session log as a transcript
-nibb sessions              list sessions
-nibb repl                  Scheme REPL
-nibb eval -e EXPR | FILE   evaluate Scheme
-nibb paths                 config and data locations
+nodwyn                       chat in the current repository
+nodwyn --repo DIR            pin to another repository
+nodwyn --show-thinking       stream the model's thinking
+nodwyn --no-confirm          every confirm is a no (scripts, CI)
+nodwyn replay ID|PATH        print a session log as a transcript
+nodwyn sessions              list sessions
+nodwyn repl                  Scheme REPL
+nodwyn eval -e EXPR | FILE   evaluate Scheme
+nodwyn paths                 config and data locations
 \end{txt}
 
 \section{Tools the model sees}
@@ -59,7 +59,7 @@ Host primitives: \code{fs-read}, \code{fs-write}, \code{fs-edit}, \code{fs-list}
 \toprule
 Claim & Held by \\
 \midrule
-The log is the single source of truth & \code{nibb replay} reproduces a transcript from the file alone; the window takes only events; \code{log\_test.go} round-trips 10k events and repairs a truncated tail \\
+The log is the single source of truth & \code{nodwyn replay} reproduces a transcript from the file alone; the window takes only events; \code{log\_test.go} round-trips 10k events and repairs a truncated tail \\
 One Scheme$\to$Go exit, the guard on it & \code{applyPrim} is the only caller of \code{Prim.Handler}; \code{TestGateIsTheSingleExit} records every crossing, including through \code{map}, \code{apply}, \code{sort} and a registered tool \\
 Loading \code{.scm} cannot change evaluation & \code{TestKernelFixed}: fingerprint unchanged, only the table grew \\
 Proper tail calls & \code{TestTailCalls}: 200k iterations in nine tail positions under an 8\,MB stack cap (non-tail recursion at that depth overflows) \\
@@ -79,7 +79,7 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
   file through the guard and answered correctly (13\,s cold prompt
   evaluation, 1.3\,s warm on the next request).
 \item Two tool calls issued in one response, both executed.
-\item \code{kill -9} mid-session; \code{nibb replay} reproduced the transcript,
+\item \code{kill -9} mid-session; \code{nodwyn replay} reproduced the transcript,
   with no \code{session.end}.
 \item An \code{fs-write} announced, confirmed with a diff, written.
 \item The self-hosting acceptance: ``add a \code{string-reverse} builtin with

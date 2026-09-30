@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 func policyDone(t *testing.T, s *Session, answer func(event.Confirm)) event.Policy {
@@ -68,7 +68,7 @@ func TestPolicyWritesRequireOneTimeReviewAndCurrentRevision(t *testing.T) {
 				path := o.Paths.Bindings
 				content := "[[bind]]\nclass='service'\ndest='example.test'\nmethods=['POST']\npositions=['body']\n"
 				if name == "approvals" {
-					path = filepath.Join(o.Repo, ".nibb", "allow.toml")
+					path = filepath.Join(o.Repo, ".nodwyn", "allow.toml")
 					content = "commands=['go test']\nwrites=['notes/']\n"
 				}
 				// An environment definition cannot replace the host primitive used by core.
@@ -194,7 +194,7 @@ func TestPolicyApprovalsCannotFollowRepositoryEscape(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(outside, "allow.toml"), []byte("commands=[]"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(o.Repo, ".nibb")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(o.Repo, ".nodwyn")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.ReadPolicy("approvals", "test"); err != nil {

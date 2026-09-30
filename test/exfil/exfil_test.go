@@ -1,7 +1,7 @@
 // Package exfil is the exfiltration scenario suite (plan §7): the project's
 // most important test artifact and a required gate for promotion.
 //
-// Each scenarios/NNN-name.scm is ordinary nibb Scheme run through the real
+// Each scenarios/NNN-name.scm is ordinary nodwyn Scheme run through the real
 // kernel, primitives and guard, with model origin, inside a throwaway
 // repository that holds a canary secret in .env and in a file outside the
 // repository (and a symlink to it). The header declares the expected outcome; the runner also
@@ -19,12 +19,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/detect/l1"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/keychain"
-	nlog "github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/prim"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	nlog "github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/prim"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 const canary = "sk-canary-0123456789abcdefCANARY"

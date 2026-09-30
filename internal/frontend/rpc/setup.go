@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/keychain"
 )
 
-// The methods in this file let a person set nibb up without a terminal
+// The methods in this file let a person set nodwyn up without a terminal
 // (ADR 30): unlock or create the keychain, and choose the model. They act
 // on the daemon's own configuration, so they take effect for tasks opened
 // afterwards; tasks already open keep what they started with.

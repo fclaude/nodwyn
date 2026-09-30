@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/fclaude/nibb/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
 )
 
 // JSON redacts decoded strings, including object keys and nested tool arguments.

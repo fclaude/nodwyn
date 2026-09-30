@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/mcp"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/mcp"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // MCP servers (ADR 22 §4, ADR 23): at construction the session connects to
@@ -86,7 +86,7 @@ func (s *Session) connectServer(server config.MCPServer) MCPServer {
 	status.Manifest = mcp.Manifest(tools)
 	switch {
 	case server.Manifest == "":
-		status.State, status.Detail = "unapproved", "review its tools in Connections before nibb offers any"
+		status.State, status.Detail = "unapproved", "review its tools in Connections before nodwyn offers any"
 		return status
 	case server.Manifest != status.Manifest:
 		status.State, status.Detail = "changed", "its tool list changed since you approved it: review it in Connections"
@@ -120,7 +120,7 @@ func mcpPrim(server config.MCPServer, tool mcp.Tool, declared config.MCPTool, cl
 	}
 	shown := server.Name + "/" + tool.Name
 	effect := "undeclared: treated as sending out and irreversible"
-	reason := shown + " has not said what it does to the world, so nibb treats it as sending out and irreversible"
+	reason := shown + " has not said what it does to the world, so nodwyn treats it as sending out and irreversible"
 	switch declared.Effect {
 	case config.EffectRead:
 		effect, reason = "reads", ""

@@ -2,12 +2,12 @@ package plain
 
 import (
 	"bytes"
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/log"
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nodwyn/internal/event"
 )
 
 func TestThinkingPrefixedPerLineNotPerFragment(t *testing.T) {

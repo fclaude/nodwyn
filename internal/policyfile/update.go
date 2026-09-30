@@ -16,7 +16,7 @@ import (
 
 // Update holds a sibling advisory lock while deriving and publishing new bytes.
 // The callback receives nil for a missing file; returning nil leaves it unchanged.
-// Other nibb writers must use this lock. A final comparison detects intervening
+// Other nodwyn writers must use this lock. A final comparison detects intervening
 // non-cooperating edits, but cannot make an external editor honor the lock.
 func Update(ctx context.Context, path string, change func([]byte) ([]byte, error)) error {
 	if path == "" {

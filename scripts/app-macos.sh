@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Builds bin/Nibb.app: the nibb binary with a native window (webview tag),
+# Builds bin/Nodwyn.app: the nodwyn binary with a native window (webview tag),
 # for Apple silicon and Intel in one universal executable, ad-hoc signed.
 # Usage: scripts/app-macos.sh [VERSION]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 version=${1:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}
-app=bin/Nibb.app
+app=bin/Nodwyn.app
 rm -rf "$app" bin/.app-build
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" bin/.app-build
 # webview.h trips a clang deprecation warning that is not ours to fix.
@@ -15,11 +15,11 @@ for arch in arm64 amd64; do
 	clang_arch=$arch
 	[ "$arch" = amd64 ] && clang_arch=x86_64
 	GOOS=darwin GOARCH=$arch CC="clang -arch $clang_arch" CXX="clang++ -arch $clang_arch" \
-		go build -trimpath -tags webview -ldflags "$ldflags" -o "bin/.app-build/nibb-$arch" ./cmd/nibb
+		go build -trimpath -tags webview -ldflags "$ldflags" -o "bin/.app-build/nodwyn-$arch" ./cmd/nodwyn
 done
-lipo -create -output "$app/Contents/MacOS/nibb" bin/.app-build/nibb-arm64 bin/.app-build/nibb-amd64
+lipo -create -output "$app/Contents/MacOS/nodwyn" bin/.app-build/nodwyn-arm64 bin/.app-build/nodwyn-amd64
 rm -rf bin/.app-build
 sed "s/@VERSION@/${version#v}/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
-cp packaging/macos/Nibb.icns "$app/Contents/Resources/Nibb.icns"
+cp packaging/macos/Nodwyn.icns "$app/Contents/Resources/Nodwyn.icns"
 codesign --force --deep --sign - "$app"
 echo "built $app ($version)"

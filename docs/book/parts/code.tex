@@ -2,7 +2,7 @@
 
 \chapter{The spine: one tool call, end to end}
 
-The fastest way into \nibb{} is to follow a single tool call from the
+The fastest way into \nodwyn{} is to follow a single tool call from the
 keyboard to the disk and back. Eleven files, in order. The excerpts below
 are the real code, lightly abridged; line numbers refer to \code{v0.1}.
 
@@ -383,7 +383,7 @@ trip.
 
 \chapter{The log as truth}
 
-A session log lives under \file{\textasciitilde/.local/share/nibb/sessions/}, one \file{<id>.jsonl} per session. The
+A session log lives under \file{\textasciitilde/.local/share/nodwyn/sessions/}, one \file{<id>.jsonl} per session. The
 kinds are fixed in \file{internal/log/log.go}; a reader rejects any other,
 and rejects a gap in \code{seq}. Three lines from a real session:
 
@@ -425,8 +425,8 @@ optional \code{Cause} for host errors (a \code{*Denied}, a cancelled
 context). Runtime failures read \code{who: what}. A tool's failure is a
 result for the model; only cancellation is an error for the loop.
 
-\paragraph{Two binaries.} \file{bin/nibb} is what you are editing;
-\code{nibb-stable} is what edits it. \code{make promote} is the only bridge.
+\paragraph{Two binaries.} \file{bin/nodwyn} is what you are editing;
+\code{nodwyn-stable} is what edits it. \code{make promote} is the only bridge.
 
 \paragraph{One ingress, one exit.} There is one function that writes the
 log, one that appends to the model's context (the window), one that calls a

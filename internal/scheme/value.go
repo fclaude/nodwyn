@@ -1,4 +1,4 @@
-// Package scheme is nibb's embedded Scheme: the orchestration language and
+// Package scheme is nodwyn's embedded Scheme: the orchestration language and
 // the only surface through which Scheme code reaches the Go host.
 //
 // The language is specified in docs/scheme.md; this package implements that

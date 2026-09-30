@@ -1,4 +1,4 @@
-// Command nibb is the entrypoint. It parses flags, resolves configuration,
+// Command nodwyn is the entrypoint. It parses flags, resolves configuration,
 // and hands a core session to a front-end (ADR 10). It contains no
 // behaviour of its own: every command is a method on cli, in its own file.
 package main
@@ -6,17 +6,18 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 
-	"github.com/fclaude/nibb/internal/config"
-	webui "github.com/fclaude/nibb/internal/frontend/web"
+	"github.com/fclaude/nodwyn/internal/config"
+	webui "github.com/fclaude/nodwyn/internal/frontend/web"
 )
 
 // version is set by the Makefile via -ldflags; "dev" builds fall back to VCS
 // info from the build.
 var version = "dev"
 
-const usage = `usage: nibb [flags] [command]
+const usage = `usage: nodwyn [flags] [command]
 
 commands:
   (none) | chat        start a session in the plain front-end
@@ -29,7 +30,7 @@ commands:
   run [flags]          submit a bounded supervised task to the daemon
   run status|stop|resume [--socket PATH] SESSION
   daemon [--socket PATH] serve local sessions, turns and events
-  app [--browser]      nibb as one program: a window, and a daemon if none runs
+  app [--browser]      nodwyn as one program: a window, and a daemon if none runs
   ui [--socket PATH]    interactive browser view (optional --read-only)
   ui --listen ADDR     also serve other machines; devices pair by name
   devices [revoke NAME] list or revoke browsers paired from other machines
@@ -50,7 +51,7 @@ func main() {
 	// Finder and the Dock start a bundle's executable with no arguments:
 	// that is the app.
 	if launchedFromBundle(args) {
-		if paths, err := config.DefaultPaths(); err == nil {
+		if paths, err := defaultPaths(); err == nil {
 			prepareBundleLaunch(paths)
 		}
 		args = []string{"app"}
@@ -58,6 +59,23 @@ func main() {
 	if err := newCLI(args).run(); err != nil {
 		fail(err)
 	}
+}
+
+// defaultPaths resolves the config and data directories, first moving
+// ones kept under nodwyn's former name (ADR 31).
+func defaultPaths() (config.Paths, error) {
+	paths, err := config.DefaultPaths()
+	if err != nil {
+		return config.Paths{}, err
+	}
+	moved, err := config.MigrateLegacy(paths)
+	for _, dir := range moved {
+		fmt.Fprintf(os.Stderr, "nodwyn: moved %s to %s (nodwyn was called %s)\n", filepath.Join(filepath.Dir(dir), config.LegacyName), dir, config.LegacyName)
+	}
+	if err != nil {
+		return config.Paths{}, fmt.Errorf("moving %s's folders: %w", config.LegacyName, err)
+	}
+	return paths, nil
 }
 
 func licenseText() string { return webui.Licenses() }
@@ -90,6 +108,6 @@ func versionString() string {
 }
 
 func fail(err error) {
-	fmt.Fprintln(os.Stderr, "nibb:", err)
+	fmt.Fprintln(os.Stderr, "nodwyn:", err)
 	os.Exit(1)
 }

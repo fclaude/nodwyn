@@ -7,18 +7,18 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/window"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 // ask sends one request to a model and records both sides: the registry's
 // model of that name (ControlModel for the control model), offering the
 // session's tools unless tools is false. The
 // window is rebuilt from the log every time, so the model sees exactly what
-// has been recorded, and the request's hash lets nibb replay --window prove
+// has been recorded, and the request's hash lets nodwyn replay --window prove
 // it.
 func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response, error) {
 	ep, err := l.endpoint(name)
@@ -76,7 +76,7 @@ func (l *Loop) ask(ctx context.Context, name string, tools bool) (*llm.Response,
 		// (ask-model continues one, strategy.scm), the log says it happened.
 		note := fmt.Sprintf("the reply stopped at the output limit (%d tokens, %s)", maxOutput, capFrom)
 		if maxOutput == 0 {
-			note = "the reply stopped at the server's own output limit (nibb sets no cap: window.output_reserve is 0)"
+			note = "the reply stopped at the server's own output limit (nodwyn sets no cap: window.output_reserve is 0)"
 		}
 		_ = l.record(log.KindNote, log.Note{Text: note})
 	}

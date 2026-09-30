@@ -15,9 +15,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Verdict is the outcome class of a Decision.
@@ -102,7 +102,7 @@ var DenyAll = ConfirmFunc(func(context.Context, Prompt) (bool, error) { return f
 // line and tainted content heading somewhere unbound all still deny, and
 // budgets still stop a runaway turn. Security confirms — a write whose
 // content looks like a credential, a command line built out of tool
-// output, a write to a protected path such as .nibb/ or .git/ — stay
+// output, a write to a protected path such as .nodwyn/ or .git/ — stay
 // refused, because those are exactly the cases where a human was the
 // control.
 var AutoAllow = ConfirmFunc(func(_ context.Context, p Prompt) (bool, error) {
@@ -128,7 +128,7 @@ type Guard struct {
 }
 
 // New builds a guard. A nil confirmer denies every confirm; a nil logger
-// discards decisions (tests only — nibb always logs).
+// discards decisions (tests only — nodwyn always logs).
 func New(confirmer Confirmer, logger Logger, checkers ...Checker) *Guard {
 	if confirmer == nil {
 		confirmer = DenyAll

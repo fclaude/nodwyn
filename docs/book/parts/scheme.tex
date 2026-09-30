@@ -1,8 +1,8 @@
-\part{\nibb{} Scheme}
+\part{\nodwyn{} Scheme}
 
 \chapter{Why a Scheme, and which one}
 
-\nibb{} embeds a small Scheme for \emph{orchestration only}. Scheme code
+\nodwyn{} embeds a small Scheme for \emph{orchestration only}. Scheme code
 decides what to do; every effect\,---\,a file, a process, a model call\,---\,is a
 Go primitive, and every primitive application crosses the guard. Scheme
 never touches the network or the filesystem on its own. That gives the
@@ -29,20 +29,20 @@ bootstrap code knows where the kernel grew.
 \section{The REPL}
 
 \begin{sh}
-$ nibb repl
-nibb> (+ 1 2)
+$ nodwyn repl
+nodwyn> (+ 1 2)
 3
-nibb> (define (square x) (* x x))
-nibb> (map square (iota 5))
+nodwyn> (define (square x) (* x x))
+nodwyn> (map square (iota 5))
 (0 1 4 9 16)
-nibb> (car 1)
+nodwyn> (car 1)
 error: car: argument 1: expected pair, got integer 1
 \end{sh}
 
 Unbalanced input continues on the next line with a \code{...>} prompt. A
 value of \emph{void}\,---\,the result of \code{define}, \code{set!},
-\code{display}\,---\,is not printed. \code{nibb eval -e EXPR} evaluates one
-expression; \code{nibb eval FILE} loads files. Inside a session,
+\code{display}\,---\,is not printed. \code{nodwyn eval -e EXPR} evaluates one
+expression; \code{nodwyn eval FILE} loads files. Inside a session,
 \code{:eval EXPR} evaluates with \emph{user} origin, and the guard sees it
 like anything else.
 
@@ -227,7 +227,7 @@ it'':
 (iota 4)                   ; (0 1 2 3)
 \end{scm}
 
-Lists are not mutated in \nibb{} Scheme: there is no \code{set-car!}. Build
+Lists are not mutated in \nodwyn{} Scheme: there is no \code{set-car!}. Build
 new ones.
 
 \section{Higher-order}
@@ -258,7 +258,7 @@ structural.
 (assoc "k" '(("k" . 1)))             ; ("k" . 1)
 \end{scm}
 
-Association lists are \nibb's record type\,---\,JSON objects become alists,
+Association lists are \nodwyn's record type\,---\,JSON objects become alists,
 tool metadata is an alist, \code{shell-exec} returns one. The prelude adds
 \code{assoc-ref}:
 
@@ -301,8 +301,8 @@ lists, \code{null} the symbol \code{null}:
 (json-parse "{\"a\":1,\"b\":[true,null,2.5]}")
 ; (("a" . 1) ("b" #t null 2.5))
 
-(json-emit '(("name" . "nibb") ("tags" "go" "scheme")))
-; "{\"name\":\"nibb\",\"tags\":[\"go\",\"scheme\"]}"
+(json-emit '(("name" . "nodwyn") ("tags" "go" "scheme")))
+; "{\"name\":\"nodwyn\",\"tags\":[\"go\",\"scheme\"]}"
 \end{scm}
 
 \code{json-emit} treats a proper list whose elements are all pairs with
@@ -475,7 +475,7 @@ number by listing a directory and reading a file.
 
 \section{init.scm and allow.toml}
 
-\file{<repo>/.nibb/init.scm} is loaded at start, after the prelude, with
+\file{<repo>/.nodwyn/init.scm} is loaded at start, after the prelude, with
 user origin and with confirms denied (nobody is listening yet), so it may
 register tools and must not act. \code{load} resolves relative paths against
 the repository root:
@@ -487,7 +487,7 @@ the repository root:
 \end{scm}
 
 Pair each command-wrapping tool with a \emph{standing approval} in
-\file{.nibb/allow.toml}, or every call prompts:
+\file{.nodwyn/allow.toml}, or every call prompts:
 
 \begin{txt}
 commands = ["go test", "go build", "git status", "git diff", "git grep"]
@@ -555,7 +555,7 @@ Prelude      assoc-ref identity compose string-empty?        (Scheme)
 Host         fs-read fs-write fs-edit fs-list shell-exec     (bootstrap)
 \end{txt}
 
-\section{Not in \nibb{} Scheme}
+\section{Not in \nodwyn{} Scheme}
 
 \code{set-car!}/\code{set-cdr!} and string mutation; nested quasiquote;
 hygienic macros; \code{call/cc}; \code{dynamic-wind}; an \code{eval}

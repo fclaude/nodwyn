@@ -41,9 +41,9 @@ custom provider is declared in config.
 
 ### 2. Acquisition is Authorization Code + PKCE, over a loopback redirect
 ```
-nibb credential add --oauth2 google --scopes drive.file,documents
+nodwyn credential add --oauth2 google --scopes drive.file,documents
 ```
-nibb generates a PKCE verifier and a `state` nonce, starts a **single-shot
+nodwyn generates a PKCE verifier and a `state` nonce, starts a **single-shot
 listener on 127.0.0.1 with a random port, serving only `/callback`, with a
 five-minute deadline**, opens the authorization URL, verifies `state` on the
 redirect, exchanges the code with the verifier, stores the token set, and
@@ -74,7 +74,7 @@ keychain refreshes first, then injects. Rules:
   through the existing atomic write-then-rename.
 - **Failure is terminal, not interactive.** A revoked or expired refresh
   token marks the credential `needs_reauth`; every use then denies with a
-  message naming the command to re-authorize. nibb never opens a browser
+  message naming the command to re-authorize. nodwyn never opens a browser
   mid-turn.
 
 ### 4. Scopes are part of the authority the user sees
@@ -87,7 +87,7 @@ Drive, files this app created" are the difference the user actually needs to
 see, and class alone does not carry it (SPEC Risk 2).
 
 ### 5. Revocation
-`nibb credential revoke <id>` calls the provider's revocation endpoint when
+`nodwyn credential revoke <id>` calls the provider's revocation endpoint when
 the profile has one, then deletes locally. Deleting locally without revoking
 leaves a live token at the provider; the command says so when no revocation
 endpoint exists.
@@ -109,7 +109,7 @@ endpoint exists.
 - **A refresh has no confirm.** Making it interactive would mean a browser
   or a prompt in the middle of a turn; the alternative chosen is binding
   plus logging.
-- **Scope enforcement is the provider's.** nibb refuses to *use* a token
+- **Scope enforcement is the provider's.** nodwyn refuses to *use* a token
   outside its declared scopes, but a token that was minted too broadly is
   broad at the provider. Narrow defaults are the mitigation.
 - **Tokens at rest are as safe as the passphrase**, exactly as in ADR 5.

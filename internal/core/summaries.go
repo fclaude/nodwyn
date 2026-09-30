@@ -5,9 +5,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/window"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 // Summaries inspects revocable memory from a validated session log.

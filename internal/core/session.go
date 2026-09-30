@@ -7,20 +7,20 @@ package core
 import (
 	"context"
 	"errors"
-	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nodwyn/internal/config"
 	"strings"
 	"sync"
 	"sync/atomic"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/loop"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/loop"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Session is one conversation with one log.
@@ -63,7 +63,7 @@ type Session struct {
 	keychain *keychain.Store
 	bindings *binding.Live
 	scratch  string // the session's scratch directory (scratch.go)
-	// workspace is the repository's .nibb/workspace.toml as loaded at
+	// workspace is the repository's .nodwyn/workspace.toml as loaded at
 	// construction: its kind and mounted folders (ADR 22).
 	workspace config.Workspace
 	// MCP servers this session connected to (mcp.go); checks made while the

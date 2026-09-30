@@ -3,7 +3,7 @@ package redact
 import (
 	"testing"
 
-	"github.com/fclaude/nibb/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
 )
 
 func TestRedactKnownClasses(t *testing.T) {

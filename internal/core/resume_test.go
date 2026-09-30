@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/window"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func diskOptions(t *testing.T) Options {
@@ -156,11 +156,11 @@ func TestResumeRejectsWrongRepoAndUnsafeIDs(t *testing.T) {
 
 // This helper is killed while waiting on a model request, without Close.
 func TestResumeCrashHelper(t *testing.T) {
-	dir := os.Getenv("NIBB_TEST_CRASH_DIR")
+	dir := os.Getenv("NODWYN_TEST_CRASH_DIR")
 	if dir == "" {
 		return
 	}
-	o := Options{Repo: dir, Paths: config.PathsUnder(dir, dir), Config: config.Default(), Provider: llm.NewOllama(os.Getenv("NIBB_TEST_CRASH_URL"))}
+	o := Options{Repo: dir, Paths: config.PathsUnder(dir, dir), Config: config.Default(), Provider: llm.NewOllama(os.Getenv("NODWYN_TEST_CRASH_URL"))}
 	s, err := New(o)
 	if err != nil {
 		t.Fatal(err)
@@ -201,7 +201,7 @@ func TestResumeAfterProcessKilled(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 	child := exec.Command(os.Args[0], "-test.run=^TestResumeCrashHelper$")
-	child.Env = append(os.Environ(), "NIBB_TEST_CRASH_DIR="+dir, "NIBB_TEST_CRASH_URL="+srv.URL)
+	child.Env = append(os.Environ(), "NODWYN_TEST_CRASH_DIR="+dir, "NODWYN_TEST_CRASH_URL="+srv.URL)
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestUnfinishedToolsWithReusedIDs(t *testing.T) {
 	}
 }
 
-// Resuming is a full reload: .nibb/init.scm runs again, so the prompts and
+// Resuming is a full reload: .nodwyn/init.scm runs again, so the prompts and
 // tools it defines now apply, and a request made before the resume still
 // replays under the recipe it was made with.
 func TestResumeRereadsInit(t *testing.T) {
@@ -293,8 +293,8 @@ func TestResumeRereadsInit(t *testing.T) {
 	o := diskOptions(t)
 	o.Provider = llm.NewOllama(srv.URL)
 	writeInit := func(version string) {
-		os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0o755)
-		os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`
+		os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0o755)
+		os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
 (define (system-prompt repo) "PROMPT `+version+`")
 (register-tool "tool-`+version+`" (lambda () "ok") '((doc . "a tool") (params . ())))`), 0o644)
 	}

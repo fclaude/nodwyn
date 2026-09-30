@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/frontend/run"
-	"github.com/fclaude/nibb/internal/llm"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/frontend/run"
+	"github.com/fclaude/nodwyn/internal/llm"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func beginRun(t *testing.T, c *client) runResult {

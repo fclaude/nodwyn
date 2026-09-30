@@ -10,10 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/window"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 type captureRequests struct {
@@ -56,10 +56,10 @@ func TestRequestReplayMatchesActualProviderAcrossResume(t *testing.T) {
 	s.Close()
 	// A resumed runtime may use a different catalog and window policy. Replay
 	// must select the recorded recipe, never the current configuration/init file.
-	if err := os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`(register-tool "replay-test" (lambda (name) "ok") '((doc . "Replay test") (params . (("name" "string" "name")))))`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-tool "replay-test" (lambda (name) "ok") '((doc . "Replay test") (params . (("name" "string" "name")))))`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Both model options and the tool catalog change on resume.

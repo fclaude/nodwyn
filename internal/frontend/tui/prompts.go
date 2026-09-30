@@ -8,10 +8,10 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/frontend/plain"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 type pendingPrompt struct {

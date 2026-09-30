@@ -6,7 +6,7 @@
 ## Context
 ADR 22 modelled an MCP server as a primitive provider with a declared
 capability profile, written for servers the user wrote or vetted. The
-operating assumption is now the opposite: **nibb must be safe with servers
+operating assumption is now the opposite: **nodwyn must be safe with servers
 it cannot write and cannot review**, installed from a registry, updated by
 someone else, possibly hostile.
 
@@ -16,25 +16,25 @@ exist before any tool is called:
 
 1. **The process.** `npx -y @someone/server` downloads and executes code on
    the machine, with the user's privileges, at session start. A capability
-   profile does not constrain it: it constrains what nibb will *ask* it to
+   profile does not constrain it: it constrains what nodwyn will *ask* it to
    do, not what it does on its own.
 2. **The manifest.** Tool names, descriptions and schemas are text the
    server chooses, and they land in the model's context. A server can
    redescribe a tool after it has been approved.
-3. **The arguments.** Whatever nibb sends a tool leaves the machine (or
+3. **The arguments.** Whatever nodwyn sends a tool leaves the machine (or
    reaches a local process that can send it on).
 4. **The results.** Whatever comes back enters the model's context.
 
 ## Decision
 
-### 1. No untrusted server runs in nibb's process tree
-nibb does not `npx`, `uvx` or otherwise spawn a third-party server as a
+### 1. No untrusted server runs in nodwyn's process tree
+nodwyn does not `npx`, `uvx` or otherwise spawn a third-party server as a
 child on the host. Two shapes are supported:
 
 - **Remote (HTTP/SSE).** The server is a network service. It is then exactly
   what the binding table already models: a destination, a credential class,
   positions and methods. Nothing new is needed.
-- **Contained (local).** nibb starts the server inside a container
+- **Contained (local).** nodwyn starts the server inside a container
   (`podman` or `docker`, chosen in config) and talks to it over HTTP on a
   loopback port. The container is created from the server's declared
   isolation policy:
@@ -62,9 +62,9 @@ A user who insists on a host process gets an explicit
 `policy.allow_host_mcp = true`. It is not the default and not recommended.
 
 ### 2. The manifest is pinned
-On connect, nibb hashes the server's tool manifest — every name,
+On connect, nodwyn hashes the server's tool manifest — every name,
 description and schema — and compares it with the hash recorded in
-`.nibb/mcp.toml` when the server was approved. A mismatch **stops the
+`.nodwyn/mcp.toml` when the server was approved. A mismatch **stops the
 session before the first message** and shows a diff of what changed;
 continuing requires re-approval, which is an ordinary confirmed write to
 the profile.

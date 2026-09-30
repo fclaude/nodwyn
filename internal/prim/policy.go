@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/policyfile"
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/policyfile"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // MaxPolicyBytes bounds a policy file read or written through
@@ -32,7 +32,7 @@ func policyPath(o Options, name string) (string, error) {
 			return o.BindingsPath, nil
 		}
 	case "approvals":
-		path := (guard.RepoPin{Root: o.Root}).Resolve(filepath.Join(".nibb", "allow.toml"))
+		path := (guard.RepoPin{Root: o.Root}).Resolve(filepath.Join(".nodwyn", "allow.toml"))
 		if path != "" {
 			return path, nil
 		}

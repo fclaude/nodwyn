@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/prim"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/prim"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // ReadPolicy returns a fixed configured policy file (bindings or approvals)

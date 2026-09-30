@@ -12,15 +12,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 func shortDir(t *testing.T) string {
 	t.Helper()
 	// macOS limits Unix socket paths to 104 bytes; testing.T's temp path is longer.
-	dir, err := os.MkdirTemp("/tmp", "nibb-rpc-")
+	dir, err := os.MkdirTemp("/tmp", "nodwyn-rpc-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +315,7 @@ func TestSocketPermissionsAndExistingPaths(t *testing.T) {
 
 func TestDefaultSocket(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", "/private/runtime")
-	if path, err := DefaultSocket(); err != nil || path != "/private/runtime/nibb/sock" {
+	if path, err := DefaultSocket(); err != nil || path != "/private/runtime/nodwyn/sock" {
 		t.Fatal(path, err)
 	}
 	t.Setenv("XDG_RUNTIME_DIR", "relative")
@@ -327,7 +327,7 @@ func TestDefaultSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path, err := DefaultSocket(); err != nil || path != filepath.Join(root, "nibb", "run", "sock") {
+	if path, err := DefaultSocket(); err != nil || path != filepath.Join(root, "nodwyn", "run", "sock") {
 		t.Fatal(path, err)
 	}
 }

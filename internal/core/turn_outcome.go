@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 func turnOutcome(ctx context.Context, err error) log.TurnEnd {

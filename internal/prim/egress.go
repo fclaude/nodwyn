@@ -21,8 +21,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // CredentialStore is what the egress primitives need from the core session.

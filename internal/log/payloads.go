@@ -2,8 +2,8 @@ package log
 
 import (
 	"encoding/json"
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/budget"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/budget"
 	"time"
 )
 
@@ -303,9 +303,9 @@ type RunCheckpoint struct {
 	PromptID string `json:"prompt_id"`
 }
 
-// FileVersion records that a file's previous content was kept before nibb
+// FileVersion records that a file's previous content was kept before nodwyn
 // replaced it, where git is not the undo: the path, and the content's hash
-// in the workspace's version store (.nibb/versions).
+// in the workspace's version store (.nodwyn/versions).
 type FileVersion struct {
 	Path  string `json:"path"`
 	Hash  string `json:"hash"`
@@ -314,7 +314,7 @@ type FileVersion struct {
 
 // Attach is a file the person attached (ADR 22 §3). Text is what the model
 // reads: extracted by type, redacted at ingest and capped. It is data, never
-// instructions; Stored is the copy under the workspace's .nibb/attachments.
+// instructions; Stored is the copy under the workspace's .nodwyn/attachments.
 type Attach struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`

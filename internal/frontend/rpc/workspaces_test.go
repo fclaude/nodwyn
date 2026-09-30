@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/prim"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/prim"
 )
 
 func TestWorkspaceSaveListAndDocsSessions(t *testing.T) {
@@ -18,7 +18,7 @@ func TestWorkspaceSaveListAndDocsSessions(t *testing.T) {
 	c.hello()
 	code, docs, ref := t.TempDir(), t.TempDir(), t.TempDir()
 	var info workspaceInfo
-	json.Unmarshal(c.ok("workspace.save", map[string]any{"path": code, "name": "nibb", "kind": "code", "mounts": []any{}}), &info)
+	json.Unmarshal(c.ok("workspace.save", map[string]any{"path": code, "name": "nodwyn", "kind": "code", "mounts": []any{}}), &info)
 	if _, err := os.Stat(config.WorkspaceFile(code)); err == nil {
 		t.Fatal("naming a code repository wrote a workspace file into it")
 	}
@@ -62,7 +62,7 @@ func TestRestoreAKeptVersionAsksFirst(t *testing.T) {
 	path, _ := start(t, o)
 	c := connect(t, path)
 	c.hello()
-	repo := t.TempDir() // no .git: nibb keeps versions
+	repo := t.TempDir() // no .git: nodwyn keeps versions
 	id := opened(t, c, repo)
 	subscribed(t, c, id, 0, 100)
 	for _, content := range []string{"first", "second"} {
@@ -111,6 +111,6 @@ func TestUnsafeRootsAreRefused(t *testing.T) {
 		}
 	}
 	if r := c.call("versions.list", map[string]any{"repo": t.TempDir(), "path": "a"}); r.Error == nil {
-		t.Error("listed versions of a folder nibb never worked in")
+		t.Error("listed versions of a folder nodwyn never worked in")
 	}
 }

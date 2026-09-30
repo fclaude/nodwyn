@@ -29,15 +29,15 @@ func openWindow(ctx context.Context, address string, forceBrowser bool) error {
 	}
 	w := webview.New(false)
 	if w == nil {
-		return errors.New("app: no window available; try nibb app --browser")
+		return errors.New("app: no window available; try nodwyn app --browser")
 	}
 	defer w.Destroy()
-	w.SetTitle("nibb")
+	w.SetTitle("nodwyn")
 	w.SetSize(1280, 860, webview.HintNone)
 	w.SetSize(760, 560, webview.HintMin)
-	_ = w.Bind("nibbPickFolder", pickFolder)
-	_ = w.Bind("nibbNotify", notify)
-	_ = w.Bind("nibbOpenExternal", openExternal)
+	_ = w.Bind("nodwynPickFolder", pickFolder)
+	_ = w.Bind("nodwynNotify", notify)
+	_ = w.Bind("nodwynOpenExternal", openExternal)
 	closed := make(chan struct{})
 	defer close(closed)
 	go func() {
@@ -58,9 +58,9 @@ func pickFolder() (string, error) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("osascript", "-e", `POSIX path of (choose folder with prompt "Choose a folder for nibb to work in")`)
+		cmd = exec.Command("osascript", "-e", `POSIX path of (choose folder with prompt "Choose a folder for nodwyn to work in")`)
 	case "linux":
-		cmd = exec.Command("zenity", "--file-selection", "--directory", "--title=Choose a folder for nibb to work in")
+		cmd = exec.Command("zenity", "--file-selection", "--directory", "--title=Choose a folder for nodwyn to work in")
 	default:
 		return "", errors.New("no folder chooser on this system; type the path instead")
 	}
@@ -95,7 +95,7 @@ func notify(title, body string) error {
 func openExternal(link string) error {
 	u, err := url.Parse(link)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return errors.New("only web links open outside nibb")
+		return errors.New("only web links open outside nodwyn")
 	}
 	return openBrowser(context.Background(), u.String())
 }

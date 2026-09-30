@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/detect/l1"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 const anthropicKey = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv"

@@ -4,9 +4,9 @@
 package event
 
 import (
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 // Event is one item on a session's event stream. For log-backed events

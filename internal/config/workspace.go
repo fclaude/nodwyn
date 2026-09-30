@@ -12,7 +12,7 @@ import (
 )
 
 // A workspace (ADR 22 §1) is a root directory plus a user-owned mount table,
-// kept in <root>/.nibb/workspace.toml. Without the file a workspace is
+// kept in <root>/.nodwyn/workspace.toml. Without the file a workspace is
 // today's repository: kind "code", the root writable, nothing else.
 
 // Workspace kinds. The kind selects tools and framing, never a security
@@ -29,14 +29,14 @@ type Mount struct {
 	Access string `toml:"access" json:"access"` // "read" or "write"
 }
 
-// Workspace is .nibb/workspace.toml.
+// Workspace is .nodwyn/workspace.toml.
 type Workspace struct {
 	Kind   string  `toml:"kind" json:"kind"`
 	Mounts []Mount `toml:"mount" json:"mounts"`
 }
 
 // WorkspaceFile is where a root's workspace settings live.
-func WorkspaceFile(root string) string { return filepath.Join(root, ".nibb", "workspace.toml") }
+func WorkspaceFile(root string) string { return filepath.Join(root, ".nodwyn", "workspace.toml") }
 
 // LoadWorkspace reads root's workspace settings; a missing file is the
 // default code workspace. Mount paths come back absolute and cleaned.
@@ -117,7 +117,7 @@ func SaveWorkspace(root string, ws Workspace) (Workspace, error) {
 		return Workspace{}, err
 	}
 	var b strings.Builder
-	b.WriteString("# This workspace's kind and the folders outside it nibb may use (ADR 22).\n")
+	b.WriteString("# This workspace's kind and the folders outside it nodwyn may use (ADR 22).\n")
 	fmt.Fprintf(&b, "kind = %s\n", quote(ws.Kind))
 	for _, m := range ws.Mounts {
 		fmt.Fprintf(&b, "\n[[mount]]\npath = %s\naccess = %s\n", quote(m.Path), quote(m.Access))
@@ -189,7 +189,7 @@ func RemoveRegistered(path, root string) error {
 
 func writeRegistry(path string, list []Registered) error {
 	var b strings.Builder
-	b.WriteString("# Workspaces nibb lists by name. Removing one here forgets the name, not the folder.\n")
+	b.WriteString("# Workspaces nodwyn lists by name. Removing one here forgets the name, not the folder.\n")
 	for _, r := range list {
 		fmt.Fprintf(&b, "\n[[workspace]]\nname = %s\npath = %s\n", quote(r.Name), quote(r.Path))
 	}

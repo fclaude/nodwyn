@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 type snapshot struct {

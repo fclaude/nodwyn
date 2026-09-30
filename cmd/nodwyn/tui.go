@@ -7,14 +7,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/frontend/tui"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/tui"
 	"golang.org/x/term"
 )
 
 func runTUI(paths config.Paths, args []string) error {
-	flags := flag.NewFlagSet("nibb tui", flag.ContinueOnError)
+	flags := flag.NewFlagSet("nodwyn tui", flag.ContinueOnError)
 	socket := flags.String("socket", "", "attach to a running daemon's Unix socket")
 	repo := flags.String("repo", ".", "repository for new sessions")
 	resume := flags.String("resume", "", "open this session directly")

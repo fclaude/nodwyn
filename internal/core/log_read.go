@@ -3,8 +3,8 @@ package core
 import (
 	"fmt"
 
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // LogPage is a bounded response over a fixed durable prefix. Through is the

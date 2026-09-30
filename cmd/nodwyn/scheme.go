@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fclaude/nibb/internal/frontend/plain"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // repl evaluates Scheme from stdin. It has no host primitives and no

@@ -309,7 +309,7 @@ export class TaskView {
     const form = h(
       "form",
       { class: "reply", onsubmit: (event) => { event.preventDefault(); this.send(); } },
-      h("label", { class: "sr-only", for: "reply" }, "Reply to nibb"),
+      h("label", { class: "sr-only", for: "reply" }, "Reply to nodwyn"),
       h("div", { class: "reply-body" }, this.files.list, reply),
       this.files.button(),
       send,
@@ -563,7 +563,7 @@ export class TaskView {
         return [row, versions];
       }),
     ];
-    const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git is the undo" : this.info ? "previous versions kept" : "writes nibb was allowed";
+    const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git is the undo" : this.info ? "previous versions kept" : "writes nodwyn was allowed";
     return h("section", { class: "panel" }, h("h2", {}, "Changes", h("span", { class: "note" }, note)), rows);
   }
   // toolsPanel lists where this task's tools come from, when some come from
@@ -577,7 +577,7 @@ export class TaskView {
       "section",
       { class: "panel" },
       h("h2", {}, "Tools in this task", h("a", { href: "#/connections", class: "note" }, "Manage")),
-      h("div", { class: "kv" }, h("span", {}, "nibb · built in"), h("span", {}, `${builtin} tools`)),
+      h("div", { class: "kv" }, h("span", {}, "nodwyn · built in"), h("span", {}, `${builtin} tools`)),
       servers.map((s) => h("div", { class: "kv", title: s.detail || "" }, h("span", {}, `${s.name} · HTTP · ${s.host}`), h("span", {}, (words[s.state] || (() => s.state))(s)))),
     );
   }
@@ -596,7 +596,7 @@ export class TaskView {
     if (this.notes === null) return null;
     const canEdit = this.item.open && this.conn.has("session.notes.write") && !this.busy;
     const edit = canEdit && !this.notesEditing ? h("button", { type: "button", onclick: () => { this.notesEditing = true; this.aside(); } }, "Edit") : null;
-    const panel = h("section", { class: "panel" }, h("h2", {}, "What nibb knows here", edit));
+    const panel = h("section", { class: "panel" }, h("h2", {}, "What nodwyn knows here", edit));
     if (this.notesEditing) {
       const area = h("textarea", { class: "input", rows: 8, spellcheck: true, "aria-label": "Project notes" });
       area.value = this.notes;
@@ -610,8 +610,8 @@ export class TaskView {
         ),
       );
     } else if (this.notes.trim()) panel.append(h("div", { class: "box" }, h("pre", {}, this.notes.trim())));
-    else panel.append(h("p", { class: "hint" }, "No notes yet. nibb keeps notes about this folder across tasks when it learns something worth keeping."));
-    panel.append(h("p", { class: "hint" }, "Notes nibb kept from earlier tasks. It checks them; it doesn't take them as instructions."));
+    else panel.append(h("p", { class: "hint" }, "No notes yet. nodwyn keeps notes about this folder across tasks when it learns something worth keeping."));
+    panel.append(h("p", { class: "hint" }, "Notes nodwyn kept from earlier tasks. It checks them; it doesn't take them as instructions."));
     return panel;
   }
   async saveNotes(text) {
@@ -641,7 +641,7 @@ export class TaskView {
     if (tools) rows.push(h("div", { class: "kv" }, h("span", {}, "Tools"), h("span", {}, kind === "docs" ? `${tools} · no programs` : `${tools} offered to the model`)));
     if (this.info?.allowed_writes?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Writes without asking"), h("span", { class: "mono" }, this.info.allowed_writes.join(", "))));
     if (this.info?.allowed_commands?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Commands without asking"), h("span", {}, `${this.info.allowed_commands.length} prefixes`)));
-    const undo = this.info ? (this.info.git ? "A git repository: git is the undo." : "Not a git repository, so nibb keeps the previous version of a file before it writes. Restore it from Changes.") : "";
+    const undo = this.info ? (this.info.git ? "A git repository: git is the undo." : "Not a git repository, so nodwyn keeps the previous version of a file before it writes. Restore it from Changes.") : "";
     return h("section", { class: "panel" }, h("h2", {}, "Workspace", kind ? h("span", { class: "note" }, kindLabel(kind)) : null), rows, undo ? h("p", { class: "hint" }, undo) : null);
   }
   async history(path, node) {

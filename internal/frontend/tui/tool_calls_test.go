@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func toolCards(m *model) []*toolCallView {
@@ -101,10 +101,10 @@ func TestToolCardsFromLocalAndRPCEvents(t *testing.T) {
 	for _, mode := range []string{"local", "rpc"} {
 		t.Run(mode, func(t *testing.T) {
 			o := testOptions(t)
-			if err := os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0700); err != nil {
+			if err := os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`(register-tool "read-note" (lambda () (fs-read "note")) '((doc . "Read note") (params . ())))`), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-tool "read-note" (lambda () (fs-read "note")) '((doc . "Read note") (params . ())))`), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(filepath.Join(o.Repo, "note"), []byte("visible result\nsk-ant-abcdefgh1234"), 0600); err != nil {
@@ -249,15 +249,15 @@ func TestArgSummaryLeadsWithTheTargetAndDropsProse(t *testing.T) {
 // when the first message is long enough to fill the terminal.
 func TestSessionRowKeepsTheMetaColumn(t *testing.T) {
 	long := strings.Repeat("a long first message ", 10)
-	row := twoColumn(long, "nibb · 4d", 60, false)
-	if !strings.HasSuffix(ansiStrip(row), "nibb · 4d") {
+	row := twoColumn(long, "nodwyn · 4d", 60, false)
+	if !strings.HasSuffix(ansiStrip(row), "nodwyn · 4d") {
 		t.Fatalf("meta must survive clipping: %q", row)
 	}
 	if width := lipglossWidth(row); width != 60 {
 		t.Fatalf("row width %d, want 60: %q", width, row)
 	}
-	short := ansiStrip(twoColumn("untitled", "nibb · 4d", 60, false))
-	if !strings.HasPrefix(short, "untitled  ") || !strings.HasSuffix(short, "nibb · 4d") {
+	short := ansiStrip(twoColumn("untitled", "nodwyn · 4d", 60, false))
+	if !strings.HasPrefix(short, "untitled  ") || !strings.HasSuffix(short, "nodwyn · 4d") {
 		t.Fatalf("short label should be padded to the meta column: %q", short)
 	}
 }

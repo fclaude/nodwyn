@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/window"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 func summaryCommand(paths config.Paths, args []string) error {
@@ -22,7 +22,7 @@ func summaryCommand(paths config.Paths, args []string) error {
 		return err
 	}
 	if flags.NArg() != 1 {
-		return fmt.Errorf("usage: nibb summary [--from N --through N --text FILE | --drop N] SESSION")
+		return fmt.Errorf("usage: nodwyn summary [--from N --through N --text FILE | --drop N] SESSION")
 	}
 	id := flags.Arg(0)
 	store := core.Store{Dir: paths.SessionsDir}

@@ -1,11 +1,11 @@
 package core
 
 import (
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/guard"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/guard"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/binding"
+	"github.com/fclaude/nodwyn/internal/binding"
 )
 
 func TestBindingInspectionCannotMutateAuthorization(t *testing.T) {

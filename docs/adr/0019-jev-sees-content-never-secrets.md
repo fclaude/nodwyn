@@ -37,7 +37,7 @@ to the judge.
    - `plan+summaries` — plus the model's own summaries of tool results it
      cites in the plan (never raw results);
    - `full` — plus raw tool results and file contents referenced by the
-     plan; opt-in per repository in `.nibb/allow.toml` (`jev = "full"`),
+     plan; opt-in per repository in `.nodwyn/allow.toml` (`jev = "full"`),
      because it is the level at which proprietary code is retained
      elsewhere.
 

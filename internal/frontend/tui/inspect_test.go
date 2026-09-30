@@ -10,12 +10,12 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 func TestInspectorsWorkLocallyAndOverRPC(t *testing.T) {
@@ -183,8 +183,8 @@ func TestFrictionInspectorHonorsGuardAndRepositoryBoundary(t *testing.T) {
 				target := filepath.Join(o.Repo, "docs", "friction.md")
 				if denial == "checker" {
 					os.WriteFile(target, []byte("must-not-read"), 0600)
-					os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0700)
-					os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`(register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0600)
+					os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
+					os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0600)
 				} else {
 					outside := filepath.Join(t.TempDir(), "outside.md")
 					os.WriteFile(outside, []byte("must-not-read"), 0600)

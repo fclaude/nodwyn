@@ -7,7 +7,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nodwyn/internal/core"
 )
 
 // Serve owns the listener and all sessions until shutdown. A client disconnect

@@ -3,8 +3,8 @@ package window
 import (
 	"testing"
 
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 // LastReply agrees with Build: it is the last assistant message the next
@@ -19,12 +19,12 @@ func TestLastReplyIsWhatTheWindowShows(t *testing.T) {
 			s.w.Append(log.KindLLMResp, log.LLMResp{Content: "answer"})
 		}, "answer"},
 		{"folded sub-agent", func(s *session) {
-			s.w.Append(log.KindLLMResp, log.LLMResp{Content: "answer\nNIBB_RUN_COMPLETE"})
+			s.w.Append(log.KindLLMResp, log.LLMResp{Content: "answer\nNODWYN_RUN_COMPLETE"})
 			s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "You review."})
 			s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "Review it."})
 			s.w.Append(log.KindLLMResp, log.LLMResp{Content: "VERDICT: done"})
 			s.w.Append(log.KindContextFold, log.ContextFold{})
-		}, "answer\nNIBB_RUN_COMPLETE"},
+		}, "answer\nNODWYN_RUN_COMPLETE"},
 		{"open narrowed context", func(s *session) {
 			s.w.Append(log.KindLLMResp, log.LLMResp{Content: "before"})
 			s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "Continue from the note."})

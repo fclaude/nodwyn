@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
 )
 
 func TestCLIDaemonLifecycle(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "nibb-daemon-")
+	dir, err := os.MkdirTemp("/tmp", "nodwyn-daemon-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestCLIDaemonLifecycle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCLIHelper$", "--", "daemon", "--no-keychain", "--socket", socket)
-	cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+	cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 	cmd.Stdout = output
 	cmd.Stderr = output
 	if err := cmd.Start(); err != nil {
@@ -102,7 +102,7 @@ func TestCLIDaemonLifecycle(t *testing.T) {
 	if _, err := os.Stat(socket); !os.IsNotExist(err) {
 		t.Fatal("socket survived shutdown", err)
 	}
-	paths := config.PathsUnder(filepath.Join(dir, "config", "nibb"), filepath.Join(dir, "data", "nibb"))
+	paths := config.PathsUnder(filepath.Join(dir, "config", "nodwyn"), filepath.Join(dir, "data", "nodwyn"))
 	session, err := core.Resume(core.Options{Config: config.Default(), Paths: paths}, info.ID)
 	if err != nil {
 		t.Fatal("CLI did not release session", err)

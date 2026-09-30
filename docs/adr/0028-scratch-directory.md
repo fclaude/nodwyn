@@ -11,7 +11,7 @@ they wrote such files into the repository, where they reach its diff
 (for SWE-bench, the submitted patch), or wrote them through the shell.
 
 ## Decision
-Each session gets a scratch directory, `$TMPDIR/nibb-scratch/<session-id>`,
+Each session gets a scratch directory, `$TMPDIR/nodwyn-scratch/<session-id>`,
 created when the session starts or resumes and removed when it closes
 cleanly.
 

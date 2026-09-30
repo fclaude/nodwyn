@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/window"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestIngressCanary(t *testing.T) {

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/window"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 func TestCLIReplayWindow(t *testing.T) {
@@ -36,7 +36,7 @@ func TestCLIReplayWindow(t *testing.T) {
 	w.Close()
 	for _, seq := range []string{"3", "2", "0", "bad"} {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "replay", path, "--window", seq)
-		cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 		raw, err := cmd.CombinedOutput()
 		if seq != "3" {
 			if err == nil {

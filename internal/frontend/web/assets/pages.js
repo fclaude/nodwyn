@@ -7,7 +7,7 @@ import { modelForm, keychainForm } from "./setup.js";
 // ---------- theme (a per-browser convenience) ----------
 export function storedTheme() {
   try {
-    return localStorage.getItem("nibb-theme") || "";
+    return localStorage.getItem("nodwyn-theme") || "";
   } catch {
     return "";
   }
@@ -17,8 +17,8 @@ export function applyTheme(mode) {
   if (mode === "light" || mode === "dark") root.dataset.theme = mode;
   else delete root.dataset.theme;
   try {
-    if (mode) localStorage.setItem("nibb-theme", mode);
-    else localStorage.removeItem("nibb-theme");
+    if (mode) localStorage.setItem("nodwyn-theme", mode);
+    else localStorage.removeItem("nodwyn-theme");
   } catch {
     /* a browser that refuses storage still gets the theme for this tab */
   }
@@ -41,7 +41,7 @@ function modelRows(desk) {
         ),
       ),
     ),
-    h("p", { class: "hint" }, "A reachability check: nibb asks each model server for its list of models and sends no credential."),
+    h("p", { class: "hint" }, "A reachability check: nodwyn asks each model server for its list of models and sends no credential."),
   ];
 }
 
@@ -55,7 +55,7 @@ export function renderSettings(root, ctx) {
     ? "This browser can't show desktop notifications here (they need a secure page)."
     : typeof Notification !== "undefined" && Notification.permission === "denied"
       ? "Notifications are blocked for this page in the browser's settings."
-      : "Only “nibb needs your answer”: never the task, the arguments or a diff.";
+      : "Only “nodwyn needs your answer”: never the task, the arguments or a diff.";
   const peer = conn.hello?.peer || "";
   root.replaceChildren(
     h(
@@ -95,7 +95,7 @@ export function renderSettings(root, ctx) {
           h(
             "div",
             { class: "value" },
-            h("div", { class: "kv" }, h("span", {}, "nibb"), h("span", { class: "mono" }, conn.hello?.version || "—")),
+            h("div", { class: "kv" }, h("span", {}, "nodwyn"), h("span", { class: "mono" }, conn.hello?.version || "—")),
             h("div", { class: "kv" }, h("span", {}, "Answers are logged as"), h("span", { class: "mono", title: peer }, peer || "—")),
             h("div", { class: "kv" }, h("span", {}, "Mode"), h("span", {}, conn.has("session.send") ? "interactive" : "read-only")),
           ),
@@ -131,7 +131,7 @@ async function showDevices(node, ctx) {
             onclick: async () => {
               try {
                 await conn.call("devices.revoke", { name: d.name });
-                toast(`${d.name} can no longer reach nibb.`);
+                toast(`${d.name} can no longer reach nodwyn.`);
                 showDevices(node, ctx);
               } catch (error) {
                 toast(error.message);
@@ -174,7 +174,7 @@ export function renderWorkspaces(root, ctx) {
         h("span", { class: "mono", title: folder }, shortPath(folder, desk.home)),
         mounts.length ? h("span", {}, mounts.map((m) => `${shortPath(m.path, desk.home)} (${m.access === "write" ? "read and write" : "read only"})`).join(" · ")) : null,
         ws?.error ? h("span", { class: "error" }, ws.error) : null,
-        ws ? h("span", {}, ws.git ? "A git repository: git is the undo." : "Not a git repository: nibb keeps the previous version of a file before it changes it.") : null,
+        ws ? h("span", {}, ws.git ? "A git repository: git is the undo." : "Not a git repository: nodwyn keeps the previous version of a file before it changes it.") : null,
       ),
       h(
         "div",
@@ -227,8 +227,8 @@ export function renderWorkspaces(root, ctx) {
       },
       h("div", { class: "field" }, h("label", { for: "ws-name" }, "Name"), name),
       h("div", { class: "field" }, h("label", {}, "What's in it"), h("div", { class: "row-actions" }, kindChoice("docs", "Documents"), kindChoice("code", "Code"), kindChoice("mixed", "Both"))),
-      h("div", { class: "field" }, h("label", {}, "Other folders nibb may use here"), list, h("div", { class: "row-actions" }, mountPath, ctx.pickFolder ? h("button", { type: "button", class: "btn small", onclick: async () => { const p = await ctx.pickFolder(); if (p) mountPath.value = p; } }, "Choose…") : null, h("button", { type: "button", class: "btn small", onclick: () => { const p = mountPath.value.trim(); if (p) { mounts.push({ path: p, access: "read" }); mountPath.value = ""; drawMounts(); } } }, "Add"))),
-      h("p", { class: "hint" }, "Kept in this folder's .nibb/workspace.toml, which nibb itself never writes. A read-only folder can be read but never changed."),
+      h("div", { class: "field" }, h("label", {}, "Other folders nodwyn may use here"), list, h("div", { class: "row-actions" }, mountPath, ctx.pickFolder ? h("button", { type: "button", class: "btn small", onclick: async () => { const p = await ctx.pickFolder(); if (p) mountPath.value = p; } }, "Choose…") : null, h("button", { type: "button", class: "btn small", onclick: () => { const p = mountPath.value.trim(); if (p) { mounts.push({ path: p, access: "read" }); mountPath.value = ""; drawMounts(); } } }, "Add"))),
+      h("p", { class: "hint" }, "Kept in this folder's .nodwyn/workspace.toml, which nodwyn itself never writes. A read-only folder can be read but never changed."),
       error,
       h(
         "div",
@@ -250,7 +250,7 @@ export function renderWorkspaces(root, ctx) {
         "div",
         { class: "page-col" },
         h("h1", {}, "Workspaces"),
-        h("p", { class: "lede" }, "The folders nibb works in. A task is pinned to its folder and the folders mounted there: it reads and writes inside them and nowhere else."),
+        h("p", { class: "lede" }, "The folders nodwyn works in. A task is pinned to its folder and the folders mounted there: it reads and writes inside them and nowhere else."),
         named.length ? h("div", { class: "list" }, named) : null,
         others.length ? h("h2", { class: "section-title" }, named.length ? "Other folders tasks used" : "Folders tasks used") : null,
         others.length ? h("div", { class: "list" }, others) : null,
@@ -278,7 +278,7 @@ export async function renderConnections(root, ctx) {
         "div",
         { class: "page-col" },
         h("h1", {}, "Connections"),
-        h("p", { class: "lede" }, "What nibb can reach and what it may do there. Tools from MCP servers cross the same guard as the built-in ones."),
+        h("p", { class: "lede" }, "What nodwyn can reach and what it may do there. Tools from MCP servers cross the same guard as the built-in ones."),
         h("div", { class: "tabs", role: "tablist" }, tab("tools", "Tools"), tab("credentials", "Credentials"), tab("workspaces", "Workspaces"), tab("models", "Models")),
         body,
       ),
@@ -321,7 +321,7 @@ function credentials(body, info, open, desk) {
     h("p", { class: "hint" }, `As loaded by “${open.title || open.id}” in ${desk.folderName(open.repo)}.`),
     rows.length
       ? h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Credential"), h("th", {}, "Only for"), h("th", {}, "Methods"), h("th", {}, "Added as"))), h("tbody", {}, rows))
-      : h("div", { class: "callout plain" }, "No credential bindings. A credential is used only where a binding allows it; nibb adds it at the last step and the model never sees the value."),
+      : h("div", { class: "callout plain" }, "No credential bindings. A credential is used only where a binding allows it; nodwyn adds it at the last step and the model never sees the value."),
     h("p", { class: "hint" }, "Edit bindings from a task: Details › Policy."),
   );
 }
@@ -353,7 +353,7 @@ async function tools(body, ctx, info, redraw) {
   body.append(
     ...[
     h("h2", { class: "section-title" }, "Built in"),
-    h("div", { class: "list" }, h("div", { class: "list-row" }, icon("terminal", 18), h("div", { class: "main" }, h("strong", {}, "nibb"), h("span", {}, info ? `${builtin.length} tools · files, search, notes${builtin.some((t) => t.name === "shell-exec") ? ", commands" : ""}, and the ones a folder defines` : "Open a task to see its tools.")))),
+    h("div", { class: "list" }, h("div", { class: "list-row" }, icon("terminal", 18), h("div", { class: "main" }, h("strong", {}, "nodwyn"), h("span", {}, info ? `${builtin.length} tools · files, search, notes${builtin.some((t) => t.name === "shell-exec") ? ", commands" : ""}, and the ones a folder defines` : "Open a task to see its tools.")))),
     h("h2", { class: "section-title" }, "MCP servers"),
     servers.length ? h("div", { class: "list" }, servers.map(serverRow)) : h("p", { class: "hint" }, "No MCP servers yet. A server's tools stay off until you review them and choose which to offer."),
     canEdit ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", onclick: () => { adding = !adding; selectedServer = ""; redraw(); } }, icon("plus", 15), "Add a server")) : null,
@@ -403,7 +403,7 @@ function addServer(ctx, redraw) {
       },
     },
     h("div", { class: "field" }, h("label", { for: "mcp-name" }, "Name"), name, h("p", { class: "hint" }, "Lower-case letters, digits and dashes. Its tools appear as name/tool.")),
-    h("div", { class: "field" }, h("label", { for: "mcp-url" }, "Server address"), url, h("p", { class: "hint" }, "A remote server over HTTPS. nibb runs no server on this computer.")),
+    h("div", { class: "field" }, h("label", { for: "mcp-url" }, "Server address"), url, h("p", { class: "hint" }, "A remote server over HTTPS. nodwyn runs no server on this computer.")),
     h("div", { class: "field" }, h("label", { for: "mcp-key" }, "API key"), key, h("p", { class: "hint" }, "Kept in the keychain and sent only to this server's address, as a bearer Authorization header.")),
     h("div", { class: "field" }, h("label", {}, "Offer it in"), h("div", { class: "row-actions" }, folders.map((f) => h("button", { type: "button", class: "chip", "aria-pressed": "false", onclick: (e) => { const on = e.target.getAttribute("aria-pressed") !== "true"; e.target.setAttribute("aria-pressed", String(on)); if (on) chosen.add(f); else chosen.delete(f); } }, desk.folderName(f))))),
     error,
@@ -454,7 +454,7 @@ async function serverDetail(server, ctx, redraw) {
   const banner = inspection?.error
     ? h("div", { class: "callout" }, `Could not reach it: ${inspection.error}`)
     : !server.manifest
-      ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "Review these tools before nibb offers any. "), "Approving pins this exact tool list: if the server changes a name, description or schema, its tools stop until you review again."))
+      ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "Review these tools before nodwyn offers any. "), "Approving pins this exact tool list: if the server changes a name, description or schema, its tools stop until you review again."))
       : inspection?.changed
         ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "Its tool list changed since you approved it. "), "Its tools are off in new tasks until you review and approve the new list. ", h("span", { class: "mono" }, `${(inspection.approved || "").slice(0, 8)}… → ${(inspection.manifest || "").slice(0, 8)}…`)))
         : null;
@@ -492,12 +492,12 @@ async function serverDetail(server, ctx, redraw) {
       h("div", { style: "display:flex;flex-direction:column;gap:2px" }, h("strong", { style: "font-size:17px" }, server.name), h("span", { class: "hint mono" }, server.url)),
       canEdit ? h("button", { type: "button", class: "btn small danger", style: "margin-left:auto", onclick: async () => { try { await conn.call("mcp.remove", { name: server.name }); selectedServer = ""; inspections.delete(server.name); redraw(); } catch (e) { toast(e.message); } } }, "Disconnect") : null,
     ),
-    h("p", { class: "hint" }, "A remote server: nibb sends it the arguments of the calls you allow, and runs nothing of it on this computer."),
+    h("p", { class: "hint" }, "A remote server: nodwyn sends it the arguments of the calls you allow, and runs nothing of it on this computer."),
     banner,
     h("div", { class: "field" }, h("label", {}, "Offered in"), workspaceChips),
     names.length ? h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Tool"), h("th", {}, "What it does to the world"), h("th", {}, "Offered"))), h("tbody", {}, rows)) : null,
     server.credential
-      ? h("div", { class: "file-row" }, icon("key", 15), h("div", {}, h("span", { class: "mono" }, server.credential), " in the keychain. ", h("span", { class: "hint" }, `Only for ${host(server.url)} · POST · as ${server.position}. nibb adds it at the last step; the model never sees the value.`)))
+      ? h("div", { class: "file-row" }, icon("key", 15), h("div", {}, h("span", { class: "mono" }, server.credential), " in the keychain. ", h("span", { class: "hint" }, `Only for ${host(server.url)} · POST · as ${server.position}. nodwyn adds it at the last step; the model never sees the value.`)))
       : h("p", { class: "hint" }, "No credential: requests go without one."),
     canEdit
       ? h(

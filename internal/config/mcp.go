@@ -19,7 +19,7 @@ import (
 // it, which tools are on, the manifest the person approved, and the
 // workspaces where the server is offered. Nothing is on until chosen.
 
-// Tool effects. A tool without one is undeclared: nibb treats it as sending
+// Tool effects. A tool without one is undeclared: nodwyn treats it as sending
 // out and irreversible, and asks every call.
 const (
 	EffectRead  = "read"  // reads from the server; still sends its arguments there
@@ -151,7 +151,7 @@ func RemoveMCPServer(path, name string) error {
 
 func writeMCP(path string, list []MCPServer) error {
 	var b strings.Builder
-	b.WriteString("# MCP servers nibb may use (ADR 22, 23). A tool without an effect is treated as\n")
+	b.WriteString("# MCP servers nodwyn may use (ADR 22, 23). A tool without an effect is treated as\n")
 	b.WriteString("# sending out and irreversible. manifest is the tool list you approved.\n")
 	for _, s := range list {
 		fmt.Fprintf(&b, "\n[[server]]\nname = %s\nurl = %s\n", quote(s.Name), quote(s.URL))

@@ -1,7 +1,7 @@
 # Exfil scenarios
 
 One file per scenario, `NNN-short-name.scm`: a header comment declaring the
-expected guard outcome, then ordinary nibb Scheme run with model origin
+expected guard outcome, then ordinary nodwyn Scheme run with model origin
 through the real kernel, primitives and guard.
 
 ```scheme

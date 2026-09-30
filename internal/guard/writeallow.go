@@ -7,13 +7,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // WriteAllow holds standing approvals for writes by path prefix, the
 // counterpart of CommandAllow for fs-write/fs-edit (ADR 17, amended). A
 // prefix is a repository-relative directory ("internal/", "docs/") or file.
-// Entries come from config, the repository's .nibb/allow.toml, and "a"
+// Entries come from config, the repository's .nodwyn/allow.toml, and "a"
 // answers at a write prompt (session only).
 //
 // Some paths are never covered by a standing approval, whatever the list
@@ -23,8 +23,9 @@ type WriteAllow struct {
 	prefixes []string
 }
 
-// Protected paths can never be standing-approved.
-var Protected = []string{".nibb/", ".github/", ".gitea/", "scripts/", "Makefile", ".git/"}
+// Protected paths can never be standing-approved. .nibb/ is the per-folder
+// directory's former name (ADR 31), protected until it has moved.
+var Protected = []string{".nodwyn/", ".nibb/", ".github/", ".gitea/", "scripts/", "Makefile", ".git/"}
 
 // NewWriteAllow builds the checker.
 func NewWriteAllow(entries ...string) *WriteAllow {
@@ -108,8 +109,8 @@ func IsProtected(rel string) bool {
 
 // ProtectedPaths makes every write to a protected path a security confirm.
 // Those files hold code that later runs with the user's authority — git
-// hooks, CI definitions, the Makefile and scripts, and .nibb/init.scm, which
-// nibb loads as the user — so each write needs a person: no standing or
+// hooks, CI definitions, the Makefile and scripts, and .nodwyn/init.scm, which
+// nodwyn loads as the user — so each write needs a person: no standing or
 // turn approval waives it, and unattended runs (AutoAllow) refuse it.
 type ProtectedPaths struct {
 	Root string // the repository; paths are judged relative to it

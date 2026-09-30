@@ -5,14 +5,14 @@
 
 ## Context
 `shell-exec` is irreversible, so every command needs a confirm. The dev
-tools nibb uses to build itself (`go-test`, `git-diff`, `grep-repo`) wrap
+tools nodwyn uses to build itself (`go-test`, `git-diff`, `grep-repo`) wrap
 `shell-exec`, which would mean a prompt for every test run — confirm fatigue
 turns "y" into a reflex, which is worse than no prompt.
 
 ## Decision
 The user may approve command lines ahead of time, by argv prefix ("go test",
 "git status", "rg"). Approvals live in three places: `policy.allow_commands`
-in `config.toml` (global), `<repo>/.nibb/allow.toml` (per repository,
+in `config.toml` (global), `<repo>/.nodwyn/allow.toml` (per repository,
 tracked), and "a" answers to a confirm prompt (this session only, not
 persisted). The guard checker `CommandAllow` turns a match into a *standing*
 Allow, which outranks any Confirm from another checker and never outranks a
@@ -25,12 +25,12 @@ per-call confirms.
 ## Amendment 2026-09-21: writes
 
 The same shape applies to writes. `writes = ["internal/", "docs/"]` in
-`.nibb/allow.toml` (or `policy.allow_writes`) and "a" at a write prompt
+`.nodwyn/allow.toml` (or `policy.allow_writes`) and "a" at a write prompt
 (the file's directory, session only) make `fs-write`/`fs-edit` under those
 prefixes a standing Allow; "t" at a write prompt approves every further
 write until the turn ends. A standing-approved write is not silent: its diff
 goes into the `guard.decision` record (`detail`) and the front-end shows it
-dimmed. Paths that change policy or run in CI — `.nibb/`, `.github/`,
+dimmed. Paths that change policy or run in CI — `.nodwyn/`, `.github/`,
 `.gitea/`, `scripts/`, `Makefile` — can never be standing-approved and
 always prompt. git remains the undo: review `git diff` before committing.
 
@@ -44,7 +44,7 @@ before this, it could.
 ## Consequences
 - This is the command-line analogue of the binding table (SPEC): the user
   authorizes ahead of time, the harness applies silently and logs.
-- The model can edit `.nibb/allow.toml` through `fs-write`/`fs-edit`; that
+- The model can edit `.nodwyn/allow.toml` through `fs-write`/`fs-edit`; that
   is a confirmed write whose diff shows the new entry, and it takes effect
   only at the next session start.
 - "a" persists nothing: standing approvals that should outlive a session are

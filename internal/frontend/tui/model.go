@@ -9,7 +9,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 type entry struct {
@@ -450,10 +450,10 @@ func (m *model) View() tea.View {
 	if m.disconnected {
 		state = "disconnected"
 	}
-	title := "nibb · " + state
+	title := "nodwyn · " + state
 	var body string
 	if !m.active {
-		title = "nibb · choose a session"
+		title = "nodwyn · choose a session"
 		// A list row is two columns: what the session is about on the left,
 		// which project and how long ago on the right. The right column is
 		// reserved first, so a long first message is clipped instead of
@@ -491,10 +491,10 @@ func (m *model) View() tea.View {
 	} else {
 		title += " · " + safe(m.id)
 		if m.inspector != nil {
-			title = "nibb · " + m.inspector.title + " · read-only"
+			title = "nodwyn · " + m.inspector.title + " · read-only"
 		}
 		if m.prompt != nil {
-			title = "nibb · NEEDS YOUR ANSWER · " + m.prompt.title
+			title = "nodwyn · NEEDS YOUR ANSWER · " + m.prompt.title
 		}
 		editor := m.composer.View()
 		if m.prompt != nil {
@@ -550,7 +550,7 @@ func (m *model) refresh(bottom bool) {
 		content += "\nthinking> " + safe(m.liveThinking)
 	}
 	if m.liveText != "" {
-		content += "\nnibb> " + safe(m.liveText)
+		content += "\nnodwyn> " + safe(m.liveText)
 	}
 	if m.inspector != nil {
 		content = m.inspector.content

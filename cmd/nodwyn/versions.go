@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fclaude/nibb/internal/prim"
+	"github.com/fclaude/nodwyn/internal/prim"
 )
 
 // versions lists the kept previous versions of a file (ADR 22 §2).

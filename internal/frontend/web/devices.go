@@ -63,7 +63,7 @@ func (d *Devices) save(devices []Device) error {
 	if err != nil {
 		return err
 	}
-	_, _ = tmp.WriteString("# Browsers paired with nibb from other machines. Revoke with: nibb devices revoke NAME\n")
+	_, _ = tmp.WriteString("# Browsers paired with nodwyn from other machines. Revoke with: nodwyn devices revoke NAME\n")
 	werr := toml.NewEncoder(tmp).Encode(deviceFile{devices})
 	cerr := tmp.Close()
 	if err := errors.Join(werr, cerr, os.Chmod(tmp.Name(), 0o600)); err != nil {

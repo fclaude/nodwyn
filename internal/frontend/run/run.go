@@ -10,15 +10,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 // CompleteLine, alone on the last line of an answer, is how the model says
 // the whole task is done.
-const CompleteLine = "NIBB_RUN_COMPLETE"
+const CompleteLine = "NODWYN_RUN_COMPLETE"
 
 // State is a run as recorded in its session log, from which it resumes.
 type State struct {

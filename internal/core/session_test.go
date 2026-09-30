@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 type rig struct {
@@ -240,8 +240,8 @@ func TestSendWhileBusyAndEval(t *testing.T) {
 
 func TestInitFileRegistersTools(t *testing.T) {
 	repo := t.TempDir()
-	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (register-tool "greet" (lambda (name) (string-append "hello " name))
   '((doc . "Greet someone") (params . (("name" "string" "who")))))`), 0o644)
 	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "g", Name: "greet", Args: map[string]any{"name": "fc"}}}}, fake.Turn{Content: "done"})
@@ -273,7 +273,7 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 	}
 	r := newRig(t, false,
 		w("1", "a/one.txt", "1"), w("2", "a/two.txt", "2"), w("3", "b/three.txt", "3"), fake.Turn{Content: "turn one done"},
-		w("4", "a/four.txt", "4"), w("5", ".nibb/allow.toml", "x"), fake.Turn{Content: "turn two done"},
+		w("4", "a/four.txt", "4"), w("5", ".nodwyn/allow.toml", "x"), fake.Turn{Content: "turn two done"},
 	)
 	// Turn 1: answer "t" at the first prompt; the next two writes must not prompt.
 	r.s.Send("write three files")
@@ -307,7 +307,7 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 		t.Fatalf("expected 2 turn-trust notes carrying diffs, got %d", notes)
 	}
 	// Turn 2: trust has expired; "a" at the a/ prompt makes a/ standing; the
-	// protected .nibb/ path still prompts.
+	// protected .nodwyn/ path still prompts.
 	r.s.Send("two more")
 	prompts = 0
 	for ev := range r.s.Events() {
@@ -320,7 +320,7 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 		}
 	}
 	if prompts != 2 {
-		t.Fatalf("turn two: %d prompts, want 2 (a/ then protected .nibb/)", prompts)
+		t.Fatalf("turn two: %d prompts, want 2 (a/ then protected .nodwyn/)", prompts)
 	}
 	if got := strings.Join(r.s.AllowedWrites(), ","); got != "a/" {
 		t.Fatalf("standing writes: %q", got)
@@ -329,9 +329,9 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 
 func TestInitRegisterCheckSurvivesGuardSetup(t *testing.T) {
 	repo := t.TempDir()
-	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, "x.txt"), []byte("x"), 0o644)
-	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0o644)
 	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": "x.txt"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // pathArgs yields the (index, value) of every parameter with Role "path".
@@ -209,7 +209,7 @@ func DefaultDenylist() PathDenylist {
 	home, _ := os.UserHomeDir()
 	d := PathDenylist{Globs: []string{".env", ".env.*", "*.pem", "*.key", "id_*", "*.kdbx", "*.p12", "*.pfx", "*.jks", "credentials", "credentials.*", ".netrc", ".npmrc", ".pypirc"}}
 	if home != "" {
-		for _, sub := range []string{".ssh", ".aws", ".gnupg", ".config/nibb", ".local/share/nibb", ".config/gcloud", ".azure", ".kube"} {
+		for _, sub := range []string{".ssh", ".aws", ".gnupg", ".config/nodwyn", ".local/share/nodwyn", ".config/nibb", ".local/share/nibb", ".config/gcloud", ".azure", ".kube"} {
 			d.Dirs = append(d.Dirs, filepath.Join(home, sub))
 		}
 	}

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 func formatPlan(events []log.Event) (string, error) {

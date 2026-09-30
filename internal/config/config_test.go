@@ -71,14 +71,14 @@ func TestLoadRejectsBadValues(t *testing.T) {
 }
 
 func TestPathsUnder(t *testing.T) {
-	p := PathsUnder("/c/nibb", "/d/nibb")
-	if p.SessionsDir != "/d/nibb/sessions" || p.Keychain != "/c/nibb/keychain" {
+	p := PathsUnder("/c/nodwyn", "/d/nodwyn")
+	if p.SessionsDir != "/d/nodwyn/sessions" || p.Keychain != "/c/nodwyn/keychain" {
 		t.Fatalf("%+v", p)
 	}
 	t.Setenv("XDG_CONFIG_HOME", "/xc")
 	t.Setenv("XDG_DATA_HOME", "/xd")
 	dp, err := DefaultPaths()
-	if err != nil || dp.ConfigFile != "/xc/nibb/config.toml" || dp.SessionsDir != "/xd/nibb/sessions" {
+	if err != nil || dp.ConfigFile != "/xc/nodwyn/config.toml" || dp.SessionsDir != "/xd/nodwyn/sessions" {
 		t.Fatalf("%v %+v", err, dp)
 	}
 }
@@ -156,14 +156,14 @@ num_ctx = 32768
 	}
 }
 
-// There is no built-in control model: nibb names the model it talks to only
+// There is no built-in control model: nodwyn names the model it talks to only
 // once the user has, and a keyed provider may be the control model.
 func TestControlIsConfiguredNotBuiltIn(t *testing.T) {
 	if Default().Control != (Model{}) {
 		t.Fatalf("a built-in control model: %+v", Default().Control)
 	}
-	err := MissingControl("/home/u/.config/nibb/config.toml")
-	if !strings.Contains(err.Error(), "/home/u/.config/nibb/config.toml") || !strings.Contains(err.Error(), "[control]") {
+	err := MissingControl("/home/u/.config/nodwyn/config.toml")
+	if !strings.Contains(err.Error(), "/home/u/.config/nodwyn/config.toml") || !strings.Contains(err.Error(), "[control]") {
 		t.Fatalf("the error does not say what to add where: %v", err)
 	}
 	p := filepath.Join(t.TempDir(), "config.toml")

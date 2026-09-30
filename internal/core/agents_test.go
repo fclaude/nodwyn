@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/log"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // A strategy's sub-agent works in its own context; once it answers, the

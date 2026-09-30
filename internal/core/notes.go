@@ -10,10 +10,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/prim"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/prim"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // ProjectNotes reads a repository's notes kept across sessions, the text

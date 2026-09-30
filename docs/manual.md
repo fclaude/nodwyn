@@ -1,4 +1,4 @@
-# nibb manual
+# nodwyn manual
 
 Two parts: how to **read the code**, and how to **use** the bootstrap-era
 binary. For *why* things are shaped this way read [SPEC.md](../SPEC.md);
@@ -61,8 +61,8 @@ This is the spine. Read these in order and you have read the system.
 | `internal/config` | XDG paths, config.toml and allow.toml | `Default`, `Validate` |
 | `internal/frontend/plain` | line mode and replay | `chat.go` `show` |
 | `internal/frontend/rpc` | local daemon sessions, turns and events | `server.go`, `sessions.go`, `events.go` |
-| `cmd/nibb` | flags → core → front-end; nothing else | `main.go` |
-| `dev/`, `.nibb/` | this repository's own tools and standing approvals | `dev/go.scm` |
+| `cmd/nodwyn` | flags → core → front-end; nothing else | `main.go` |
+| `dev/`, `.nodwyn/` | this repository's own tools and standing approvals | `dev/go.scm` |
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
 | `test/fakes/ollama` | scriptable fake of the model server | `ollama.go` |
 
@@ -72,7 +72,7 @@ Read a test when you want to know what a claim actually means.
 
 | Claim (SPEC) | Enforced by |
 |---|---|
-| The log is the single source of truth | `nibb replay` reproduces a transcript from the file alone; `window.Build` takes only events; [log_test.go](../internal/log/log_test.go) round-trips and repairs |
+| The log is the single source of truth | `nodwyn replay` reproduces a transcript from the file alone; `window.Build` takes only events; [log_test.go](../internal/log/log_test.go) round-trips and repairs |
 | The interpreter is the only Scheme→Go surface; the guard sits on it | `applyPrim` is the only caller of `Prim.Handler`; [scheme_test.go](../internal/scheme/scheme_test.go) `TestGateIsTheSingleExit` records every crossing including through `map`/`apply`/`sort` |
 | Loading `.scm` cannot change evaluation | `TestKernelFixed`: fingerprint unchanged, only the primitive table grew |
 | Proper tail calls | `TestTailCalls`: 200k iterations in nine tail positions under an 8 MB stack cap |
@@ -87,10 +87,10 @@ Read a test when you want to know what a claim actually means.
 ### Reading a session log
 
 ```
-bin/nibb sessions                      # ids, oldest first
-bin/nibb replay <id>                   # transcript
-bin/nibb replay <id> --show-thinking   # with the model's thinking
-jq -c '[.seq,.kind]' ~/.local/share/nibb/sessions/<id>.jsonl
+bin/nodwyn sessions                      # ids, oldest first
+bin/nodwyn replay <id>                   # transcript
+bin/nodwyn replay <id> --show-thinking   # with the model's thinking
+jq -c '[.seq,.kind]' ~/.local/share/nodwyn/sessions/<id>.jsonl
 ```
 
 Event kinds are listed in [internal/log/log.go](../internal/log/log.go).
@@ -113,34 +113,34 @@ whose content was replaced in the window.
 
 ---
 
-## Part 2 — Using nibb
+## Part 2 — Using nodwyn
 
 ### Install
 
 ```bash
-make build                       # bin/nibb from the working tree
-make promote TAG=v0.1-bootstrap  # accept + selfcheck, then ~/.local/bin/nibb-stable (ADR 12/13)
+make build                       # bin/nodwyn from the working tree
+make promote TAG=v0.1-bootstrap  # accept + selfcheck, then ~/.local/bin/nodwyn-stable (ADR 12/13)
 ```
 
-Use `nibb-stable` for real work and `bin/nibb` only to test a change to
-nibb itself. Never run the binary you are editing (ADR 12).
+Use `nodwyn-stable` for real work and `bin/nodwyn` only to test a change to
+nodwyn itself. Never run the binary you are editing (ADR 12).
 
 Requires Go 1.27, `staticcheck`, ripgrep (`rg`) for text retrieval, and a
-model to talk to: the `[control]` table in `config.toml` (`bin/nibb paths`
+model to talk to: the `[control]` table in `config.toml` (`bin/nodwyn paths`
 shows where it lives; everything else has defaults in
 [internal/config/config.go](../internal/config/config.go)). There is no
-built-in model; without one, nibb prints the table to add. See "Choosing
+built-in model; without one, nodwyn prints the table to add. See "Choosing
 models".
 
 ### A session
 
 ```bash
 cd ~/src/your-repo
-nibb-stable                       # pins every path to this directory
+nodwyn-stable                       # pins every path to this directory
 ```
 
 ```
-nibb session 20260921T143846Z-beba937b
+nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
 tools fs-edit fs-list fs-read fs-write index-grep shell-exec
 :h for commands
@@ -174,7 +174,7 @@ larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 ### The scratch directory
 
 Each session gets a scratch directory outside the repository, a private
-directory (mode 0700) under nibb's data directory, for throwaway files: a
+directory (mode 0700) under nodwyn's data directory, for throwaway files: a
 script that reproduces a bug, notes, temporary output. The default system
 prompt names it as `$TMPDIR`, so the prompt is the same in every session, and
 `$TMPDIR` means it everywhere: commands run with `TMPDIR` set to it, and a
@@ -191,7 +191,7 @@ does not escape it (ADR 28).
 
 A repository can keep notes from one session to the next: how its tests run,
 where things are, runbooks. A strategy saves them with `project-notes-save`
-(docs/scheme.md); they live in nibb's data directory, keyed by the
+(docs/scheme.md); they live in nodwyn's data directory, keyed by the
 repository's path, and never in the repository or its diff. The next session
 in the same repository shows them in its system prompt, under a heading that
 calls them the agent's own notes: leads to check, not instructions. A save
@@ -239,14 +239,14 @@ overrule its refusals. Still denied, exactly as with a human at the prompt:
   names;
 - **security confirms** — a write whose content looks like a credential, a
   command line built out of tool output, a write to a protected path
-  (`.nibb/`, `.git/`, `.github/`, `.gitea/`, `scripts/`, `Makefile`). Those
+  (`.nodwyn/`, `.git/`, `.github/`, `.gitea/`, `scripts/`, `Makefile`). Those
   exist for the case where a human was the control, so yolo refuses them
-  rather than pretending, and so `/optimize`, which edits `.nibb/`, needs a
+  rather than pretending, and so `/optimize`, which edits `.nodwyn/`, needs a
   person at the prompt.
 
 Budgets are what stop a runaway turn when nobody is watching, so set
 `--max-tool-calls`, `--budget-wall` and `--budget-actions` for the job.
-Every decision is logged with its verdict and `nibb replay` shows exactly
+Every decision is logged with its verdict and `nodwyn replay` shows exactly
 what the run did.
 
 Use it on a throwaway checkout. The guard makes yolo survivable, not safe.
@@ -258,15 +258,15 @@ to have keys — measuring how the model uses a bound tool, for instance —
 put the keychain in the daemon and submit runs to it:
 
 ```bash
-nibb daemon                      # unlock once, interactively, and leave it
-nibb run start --repo /path/to/checkout --task task.md   --max-turns 40 --budget-wall 20m --yolo
+nodwyn daemon                      # unlock once, interactively, and leave it
+nodwyn run start --repo /path/to/checkout --task task.md   --max-turns 40 --budget-wall 20m --yolo
 ```
 
 The daemon holds the keychain and the binding table; every session it opens
 inherits them, so the run has exactly the credentials you bound and no way
 to acquire others. `--yolo` there is a property of **that run**, not of the
 daemon: a daemon left running never auto-approves a session someone opens
-later from the browser. `nibb run status|stop` follow the run, and its
+later from the browser. `nodwyn run status|stop` follow the run, and its
 turns are bounded by `--max-turns` and `--budget-wall` rather than by
 anyone watching.
 
@@ -275,18 +275,18 @@ anyone watching.
 Commands you never want to be asked about go in one of two files:
 
 ```toml
-# ~/.config/nibb/config.toml
+# ~/.config/nodwyn/config.toml
 [policy]
 allow_commands = ["go test", "go build", "git status", "git diff", "rg"]
 ```
 
 ```toml
-# <repo>/.nibb/allow.toml   (tracked with the repository)
+# <repo>/.nodwyn/allow.toml   (tracked with the repository)
 commands = ["make lint", "make test"]
 writes   = ["internal/", "docs/"]     # write prefixes that never prompt
 ```
 
-`.nibb/`, `.git/`, `.github/`, `.gitea/`, `scripts/` and `Makefile` always
+`.nodwyn/`, `.git/`, `.github/`, `.gitea/`, `scripts/` and `Makefile` always
 prompt, whatever the list says: they hold code that later runs with your
 authority (`init.scm`, git hooks, CI, build scripts). Each write there is a
 security confirm, so no standing or turn approval waives it and an
@@ -304,13 +304,13 @@ read-only: nothing that commits, pushes, deletes or reaches the network.
 The plan gate runs once a `jev-key` credential exists and is bound:
 
 ```bash
-nibb keychain init                       # once
-nibb-stable                              # then, at the prompt:
+nodwyn keychain init                       # once
+nodwyn-stable                              # then, at the prompt:
 :eval (credential-register "jev-key")    # masked input
 ```
 
 ```toml
-# ~/.config/nibb/bindings.toml
+# ~/.config/nodwyn/bindings.toml
 [[bind]]
 class = "jev-key"
 dest = "api.typesafe.ai"
@@ -329,12 +329,12 @@ what leaves, a `jev.req` log line with size, hash and the answer. Set
 `jev.content = "none"` in `config.toml` to turn it off. Without a
 `jev-key` credential nothing is sent and the loop runs without a gate.
 
-`register-check` in `.nibb/init.scm` adds your own tightening-only guard
+`register-check` in `.nodwyn/init.scm` adds your own tightening-only guard
 checkers (deny or confirm, never allow); see `docs/scheme.md` §7.
 
 ### Giving the model tools of its own
 
-`<repo>/.nibb/init.scm` is loaded at start (after the prelude). Anything it
+`<repo>/.nodwyn/init.scm` is loaded at start (after the prelude). Anything it
 registers becomes a tool the model can call; nothing it does can bypass the
 guard. This repository's [dev/go.scm](../dev/go.scm) is the pattern:
 
@@ -353,12 +353,12 @@ Rules that matter: `doc` and `params` are required; declare list parameters
 rather than variadic ones (the model's tool schema cannot express rest
 arguments); the inner `shell-exec` is still irreversible, so pair the tool
 with a standing approval. The language is in [docs/scheme.md](scheme.md);
-try things in `nibb repl` or with `:eval`.
+try things in `nodwyn repl` or with `:eval`.
 
 ### Changing the loop
 
 A turn is the Scheme procedure `agent-turn`; redefine it in
-`.nibb/init.scm` to change how turns go. This one runs a batch of tool calls
+`.nodwyn/init.scm` to change how turns go. This one runs a batch of tool calls
 in order but stops at the first failure, so the model re-plans from the
 error instead of running calls that assumed success:
 
@@ -386,10 +386,10 @@ model did not make, loosen the guard, or keep a turn going past a budget or a
 progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
 (§9.1), and so is the plan gate with its thresholds (§9.5).
 
-nibb can learn how to work in a repository from its own history: send
+nodwyn can learn how to work in a repository from its own history: send
 `/optimize` (or `/optimize 5`, or `/optimize` with session ids, optionally
 followed by what to focus on) and a sub-agent reads this repository's past
-sessions and edits `.nibb/init.scm`, asking before every write; the result
+sessions and edits `.nodwyn/init.scm`, asking before every write; the result
 is reloaded for the next turn ([docs/scheme.md](scheme.md) §9.4).
 
 [internal/core/userland_test.go](../internal/core/userland_test.go) holds
@@ -451,7 +451,7 @@ model = "qwen3:8b"
 num_ctx = 81920                   # at least window.high_water + window.output_reserve
 ```
 
-`url` and `model` are required; nibb has no built-in control model. Unset,
+`url` and `model` are required; nodwyn has no built-in control model. Unset,
 `num_ctx` asks an ollama model for exactly the window's size
 (`window.high_water + window.output_reserve`, 77824 by default) rather than
 leaving Ollama at its own, usually smaller, default, which would cut the
@@ -513,9 +513,9 @@ shapes are covered, not arbitrary passwords, encodings, or confidential prose.
 Unknown entropy remains a residual for P8's optional L3 classifier. Older
 stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 
-### Building nibb with nibb
+### Building nodwyn with nodwyn
 
-1. `nibb-stable` in this repository; `:tools` should list `go-test`,
+1. `nodwyn-stable` in this repository; `:tools` should list `go-test`,
    `git-diff`, `grep-repo`, `read-adr`, … from `dev/`.
 2. Give it small, explicit tasks: name the file, the pattern to follow, the
    test to add, and ask it to run `go-test` on the package. A 27B model does
@@ -542,8 +542,8 @@ stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 
 ## Local daemon
 
-`nibb daemon` starts the U2 session server in the foreground. Use
-`nibb daemon --no-keychain` to skip credential-store startup, and
+`nodwyn daemon` starts the U2 session server in the foreground. Use
+`nodwyn daemon --no-keychain` to skip credential-store startup, and
 `--socket /absolute/private/directory/sock` to override its socket path.
 The protocol supports session lifecycle, send/abort, subscriptions and paged
 log catch-up. Approval replies remain unimplemented; turns waiting for one can

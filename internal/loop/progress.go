@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nodwyn/internal/llm"
 )
 
 // turnProgress notices a turn going in circles (ADR 18): the same call four

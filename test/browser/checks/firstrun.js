@@ -1,4 +1,4 @@
-// First run of `nibb app`: no config, no keychain. Set up a model from the
+// First run of `nodwyn app`: no config, no keychain. Set up a model from the
 // page, create a keychain, start a task in a folder, and answer it.
 const { chromium } = require("playwright");
 const { spawn } = require("child_process");
@@ -6,7 +6,7 @@ const fs = require("fs");
 const out = process.argv[2];
 const env = { ...process.env };
 (async () => {
-  const root = fs.mkdtempSync("/tmp/nibb-first-");
+  const root = fs.mkdtempSync("/tmp/nodwyn-first-");
   for (const d of ["config", "data", "run", "work"]) fs.mkdirSync(`${root}/${d}`, { mode: 0o700 });
   fs.writeFileSync(`${root}/work/hello.txt`, "hello\n");
   const original = 'function sessionRow(session) {\n  const row = node("button", "", "session");\n  row.append(node("span", session.first, "title"));\n  row.append(node("span", session.repo, "meta"));\n  return row;\n}\n';
@@ -16,7 +16,7 @@ const env = { ...process.env };
   const line = (proc, re, stream = "stdout") => new Promise((resolve) => { let b = ""; proc[stream].on("data", (d) => { b += d; const m = re.exec(b); if (m) resolve(m[1]); }); });
   const model = spawn(env.DEMO, ["-model-only"]); kids.push(model);
   const modelURL = await line(model, /MODEL (\S+)/);
-  const app = spawn(env.NIBB, ["app", "--no-open"], { env: { ...env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: `${root}/run` } }); kids.push(app);
+  const app = spawn(env.NODWYN, ["app", "--no-open"], { env: { ...env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: `${root}/run` } }); kids.push(app);
   let log = ""; app.stderr.on("data", (d) => (log += d));
   const url = await line(app, /app: open (\S+)/, "stderr");
   const browser = await chromium.launch();
@@ -34,7 +34,7 @@ const env = { ...process.env };
   await page.click("text=Save and check");
   await page.waitForSelector("#task", { timeout: 10000 });
   step("model saved; composer shown");
-  const cfg = fs.readFileSync(`${root}/config/nibb/config.toml`, "utf8");
+  const cfg = fs.readFileSync(`${root}/config/nodwyn/config.toml`, "utf8");
   if (!cfg.includes(modelURL)) throw new Error("config not written: " + cfg);
   // Settings: create a keychain.
   await page.evaluate(() => (location.hash = "#/settings"));
@@ -55,7 +55,7 @@ const env = { ...process.env };
   await page.click("button:has-text('Add this folder')");
   await page.waitForSelector("#work-in button[aria-pressed=true]:has-text('Family papers')");
   step("documents workspace added");
-  if (!fs.readFileSync(`${root}/work/.nibb/workspace.toml`, "utf8").includes('kind = "docs"')) throw new Error("workspace.toml");
+  if (!fs.readFileSync(`${root}/work/.nodwyn/workspace.toml`, "utf8").includes('kind = "docs"')) throw new Error("workspace.toml");
   fs.writeFileSync(`${root}/roadmap.md`, "# Roadmap\nShip cowork.\ntoken: ghp_" + "A1b2C3d4".repeat(5) + "\n");
   await page.setInputFiles(".ask input[type=file]", `${root}/roadmap.md`);
   await page.waitForSelector(".ask .attach-chip");

@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/mcp"
-	fakemcp "github.com/fclaude/nibb/test/fakes/mcp"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/mcp"
+	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func mcpTools() []fakemcp.Tool {

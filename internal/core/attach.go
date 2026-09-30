@@ -14,9 +14,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/fclaude/nibb/internal/extract"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/extract"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // Attachment text is capped: the head and the tail of a long document are
@@ -28,7 +28,7 @@ const (
 )
 
 // Attach adds a file the person chose to the conversation (ADR 22 §3): it
-// is copied into the workspace's .nibb/attachments, its text extracted by
+// is copied into the workspace's .nodwyn/attachments, its text extracted by
 // type, redacted at ingest and capped, and recorded as an attach record the
 // next model request reads as data. The session must be idle; the file at
 // path is only read. Images are refused until images can be sent.
@@ -44,13 +44,13 @@ func (s *Session) Attach(path, name, actor string) (log.Attach, error) {
 		return log.Attach{}, err
 	}
 	id := strings.ToLower(rand.Text()[:10])
-	rel := filepath.Join(".nibb", "attachments", id, name)
+	rel := filepath.Join(".nodwyn", "attachments", id, name)
 	dest := filepath.Join(s.opts.Repo, rel)
 	size, sum, err := copyFile(path, dest)
 	if err != nil {
 		return log.Attach{}, fmt.Errorf("attach: keeping a copy: %w", err)
 	}
-	ignoreDir(filepath.Join(s.opts.Repo, ".nibb", "attachments"))
+	ignoreDir(filepath.Join(s.opts.Repo, ".nodwyn", "attachments"))
 	clean := redact.Redact(result.Text, nil)
 	var classes []string
 	for _, e := range clean.Events {
@@ -125,11 +125,11 @@ func copyFile(src, dest string) (int64, string, error) {
 	return n, hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// ignoreDir keeps nibb's own copies out of a repository's commits.
+// ignoreDir keeps nodwyn's own copies out of a repository's commits.
 func ignoreDir(dir string) {
 	path := filepath.Join(dir, ".gitignore")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		_ = os.WriteFile(path, []byte("# nibb's copies of attached files\n*\n"), 0o600)
+		_ = os.WriteFile(path, []byte("# nodwyn's copies of attached files\n*\n"), 0o600)
 	}
 }
 

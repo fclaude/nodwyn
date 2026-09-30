@@ -14,7 +14,7 @@
 \usepackage{fancyhdr}
 \usepackage{textcomp}
 \usepackage{amsmath}
-\usepackage[hidelinks,pdftitle={nibb},pdfauthor={nibb project}]{hyperref}
+\usepackage[hidelinks,pdftitle={nodwyn},pdfauthor={nodwyn project}]{hyperref}
 
 \definecolor{codebg}{gray}{0.96}
 \definecolor{codecomment}{rgb}{0.35,0.45,0.35}
@@ -52,7 +52,7 @@
 \lstnewenvironment{sh}{\lstset{language=bash,keywordstyle=\ttfamily}}{}
 \lstnewenvironment{txt}{\lstset{language={}}}{}
 
-\newcommand{\nibb}{\textsf{nibb}}
+\newcommand{\nodwyn}{\textsf{nodwyn}}
 \newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\file}[1]{\texttt{#1}}
 \newcommand{\adr}[1]{ADR~#1}
@@ -70,7 +70,7 @@
 \setlength{\parindent}{0pt}
 \setlist{nosep}
 
-\title{\Huge\textbf{\nibb}\\[0.6em]\Large a minimal, self-extending coding-agent harness\\[0.4em]\large the idea, the plan, the code, and the language}
+\title{\Huge\textbf{\nodwyn}\\[0.6em]\Large a minimal, self-extending coding-agent harness\\[0.4em]\large the idea, the plan, the code, and the language}
 \author{v0.1-bootstrap edition}
 \date{September 2026}
 
@@ -82,7 +82,7 @@
 \addcontentsline{toc}{chapter}{Preface}
 
 This book is written for one reader at three moments: the person who wants
-to understand what \nibb{} is trying to be, the person who has to change its
+to understand what \nodwyn{} is trying to be, the person who has to change its
 code, and the person sitting at the prompt. It is organised accordingly.
 
 \textbf{Part I} states the idea: why a coding agent's secrets should be
@@ -94,8 +94,8 @@ builds itself, phase by phase, each phase retiring one of the temporary
 protections the bootstrap runs under. \textbf{Part III} is an inventory of
 what exists as of \code{v0.1-bootstrap}. \textbf{Part IV} walks the code: one
 tool call followed through eleven files, with the actual source. \textbf{Part V}
-is a tutorial and reference for \nibb{} Scheme, the small language in which
-\nibb's own tools are written. \textbf{Part VI} is the operator's manual.
+is a tutorial and reference for \nodwyn{} Scheme, the small language in which
+\nodwyn's own tools are written. \textbf{Part VI} is the operator's manual.
 
 Everything in this book is derived from the repository: \file{SPEC.md},
 \file{plan.md}, \file{docs/scheme.md}, \file{docs/adr/}, and the source.

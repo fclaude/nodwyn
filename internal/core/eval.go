@@ -3,11 +3,11 @@ package core
 import (
 	"context"
 	"errors"
-	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nodwyn/internal/config"
 
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // StartEval is the asynchronous, serialized frontend entrypoint for user

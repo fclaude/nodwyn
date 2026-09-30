@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nodwyn/internal/event"
 )
 
 func TestWatchReportsAttentionWithoutTranscriptOrPromptContent(t *testing.T) {

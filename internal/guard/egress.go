@@ -3,9 +3,9 @@ package guard
 import (
 	"context"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Egress is the E3 binding check: the egress authority (SPEC). It runs on

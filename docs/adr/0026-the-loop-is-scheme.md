@@ -15,7 +15,7 @@ a release.
 ## Decision
 A turn is the Scheme procedure `agent-turn`, applied to the recorded
 (redacted) user message. The default is `internal/loop/strategy.scm`,
-installed before `.nibb/init.scm` loads so a project can redefine it
+installed before `.nodwyn/init.scm` loads so a project can redefine it
 (ADR 14). It is built from three primitives (docs/scheme.md §9):
 `model-turn`, `run-tools` and `skip-tools`.
 

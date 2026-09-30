@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestCompletionLine(t *testing.T) {
@@ -39,7 +39,7 @@ func driveConfigured(t *testing.T, cfg config.Config, wall time.Duration, max in
 }
 
 // driveIn runs a driver over a session in repo, which may hold a
-// .nibb/init.scm. answer is how the operator answers prompts: "y", "n",
+// .nodwyn/init.scm. answer is how the operator answers prompts: "y", "n",
 // "wait" (never), or "expire", where the run's time runs out the moment a
 // prompt appears — the deadline passing while the operator is away, without
 // racing a real clock against the turns before it.
@@ -247,8 +247,8 @@ func TestHardTurnBudgetCanContinueOnlyAfterCheckpoint(t *testing.T) {
 // the answer in its own, folded, context does not replace it.
 func TestRunCompletesWhenAFoldedReviewerHasTheLastWord(t *testing.T) {
 	repo := t.TempDir()
-	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (define (agent-turn request)
   (plan-gate request) ; a run's turns must plan
   (let ((answer (assoc-ref (model-turn) 'content)))
@@ -270,8 +270,8 @@ func TestRunCompletesWhenAFoldedReviewerHasTheLastWord(t *testing.T) {
 // what the model gets.
 func TestRunTurnPromptIsScheme(t *testing.T) {
 	repo := t.TempDir()
-	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (define (run-turn-prompt task complete-line turn max-turns)
   (string-append "Turn " (number->string turn) ": " task ". Say " complete-line " when done."))`), 0o644)
 	_, history := driveIn(t, repo, config.Default(), time.Minute, 1, "y",

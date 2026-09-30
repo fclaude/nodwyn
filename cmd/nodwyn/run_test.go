@@ -11,16 +11,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	"github.com/fclaude/nibb/internal/frontend/run"
-	"github.com/fclaude/nibb/internal/llm"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/frontend/run"
+	"github.com/fclaude/nodwyn/internal/llm"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestCLIBoundedRun(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "nibb-run-cli-")
+	dir, err := os.MkdirTemp("/tmp", "nodwyn-run-cli-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestCLIBoundedRun(t *testing.T) {
 		callCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
 		cmd := exec.CommandContext(callCtx, os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--", "run"}, args...)...)
-		cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "cli-config"), "XDG_DATA_HOME="+filepath.Join(dir, "cli-data"))
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "cli-config"), "XDG_DATA_HOME="+filepath.Join(dir, "cli-data"))
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		out, err := cmd.Output()

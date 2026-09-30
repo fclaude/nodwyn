@@ -8,11 +8,11 @@ ADR 21's design canvas (2026-09-30) reorganizes the console around tasks: a
 home page, a task view with the approval inline, a Connections page and a
 phone view. Two requirements sit outside that canvas:
 
-1. **Remote work stays a browser.** The maintainer runs nibb on one machine
-   and answers from another (or a phone). Today `nibb ui` binds 127.0.0.1
+1. **Remote work stays a browser.** The maintainer runs nodwyn on one machine
+   and answers from another (or a phone). Today `nodwyn ui` binds 127.0.0.1
    only, and every browser tab answers as the bridge process: a phone cannot
    be told apart from the desk.
-2. **A standalone app for people who will never run a daemon.** nibb is to
+2. **A standalone app for people who will never run a daemon.** nodwyn is to
    be shared with family. They launch an app; they do not open a terminal,
    read a pairing code, unlock a keychain at a TTY prompt or edit
    `config.toml`. Today all four are required.
@@ -20,23 +20,23 @@ phone view. Two requirements sit outside that canvas:
 ## Decision
 
 ### 1. One process shape: daemon + bridge, owned or attached
-`nibb app` is the whole product in one process:
+`nodwyn app` is the whole product in one process:
 
 - if a daemon already answers on the default socket, **attach** to it (the
   maintainer's setup; closing the app leaves sessions running);
 - otherwise **own** one: `rpc.Serve` in-process on a private socket, so the
   wire contract, peer identity and every guard path are exactly those of
-  `nibb daemon`. Closing the app closes its sessions; their logs remain and
+  `nodwyn daemon`. Closing the app closes its sessions; their logs remain and
   resume later, as after any daemon shutdown.
 
 No second code path: the app is a daemon, a bridge and a window glued
-together in `cmd/nibb/app.go`.
+together in `cmd/nodwyn/app.go`.
 
 ### 2. The window
 With the `webview` build tag (cgo; WebKit on macOS, WebKitGTK on Linux,
-WebView2 on Windows) `nibb app` opens a native window on the bridge's
+WebView2 on Windows) `nodwyn app` opens a native window on the bridge's
 loopback URL. Without it — the default, cgo-free build — it opens the
-default browser. `make app` builds `Nibb.app` for macOS with the tag. A
+default browser. `make app` builds `Nodwyn.app` for macOS with the tag. A
 native shell is a packaging decision, not an architecture (ADR 21 U3).
 
 ### 3. Pairing without a terminal: a one-time launch ticket
@@ -49,11 +49,11 @@ stays for anything that did not launch the page (another browser, a
 phone). Tickets and codes never enter a session log.
 
 ### 4. Remote devices are named, and answers name them
-`nibb ui --listen ADDR` binds a non-loopback address (a tailnet address is
+`nodwyn ui --listen ADDR` binds a non-loopback address (a tailnet address is
 the intended use). It prints a warning naming what a connection can do.
 Pairing a remote browser requires the code **and a device name**; the
 bridge issues a device token (stored hashed in `devices.toml`, mode 0600,
-revocable with `nibb devices`), so a phone stays paired across restarts.
+revocable with `nodwyn devices`), so a phone stays paired across restarts.
 
 The bridge forwards the device name in `hello` as `via`. The daemon records
 the actor as the kernel identity **followed by** the claim:
@@ -99,7 +99,7 @@ view that has no source says so rather than guessing.
   hashed at rest and revocable; it cannot widen policy files.
 - The app build needs cgo and a platform webview; the default binary does
   not, and CI keeps building without the tag.
-- An unsigned `Nibb.app` needs a right-click → Open on first launch;
+- An unsigned `Nodwyn.app` needs a right-click → Open on first launch;
   signing is a distribution step outside this ADR.
 
 ## Review amendments — 2026-09-30
@@ -110,7 +110,7 @@ view that has no source says so rather than guessing.
   local). Only this machine's pairing grants local powers.
 - **Task roots are limited.** `session.open`, `run.start` and
   `workspace.save` refuse `/`, the home directory itself, and any folder that
-  is inside or contains nibb's config or data directory or a credential
+  is inside or contains nodwyn's config or data directory or a credential
   directory the guard denies. The path denylist now resolves relative paths
   against the root and follows links; protected paths apply inside mounted
   folders; the innermost mount decides access and nested mounts are refused.

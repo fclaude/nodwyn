@@ -1,14 +1,14 @@
 \part{The idea}
 
-\chapter{What \nibb{} is}
+\chapter{What \nodwyn{} is}
 
-\nibb{} is a coding agent's \emph{harness}: the program that sits between a
+\nodwyn{} is a coding agent's \emph{harness}: the program that sits between a
 language model and your machine. It holds the conversation, offers the model
 tools, runs the tools the model asks for, and feeds the results back. Every
-such harness answers three questions, and \nibb{} exists because it answers
+such harness answers three questions, and \nodwyn{} exists because it answers
 them differently.
 
-\paragraph{Who decides what the model may do?} In \nibb{}, one function. Every
+\paragraph{Who decides what the model may do?} In \nodwyn{}, one function. Every
 tool the model can call is a \emph{primitive} in an embedded Scheme
 interpreter, and every primitive application, whoever asks for it, passes
 through a single Go function where a \emph{guard} decides: allow, ask the
@@ -31,11 +31,11 @@ summaries a later phase will add\,---\,all are derived from the log and can
 be recomputed from it. A crash loses nothing; a replay reproduces a session
 byte for byte.
 
-\paragraph{And one more thing.} \nibb{} extends itself. The tools it uses to
+\paragraph{And one more thing.} \nodwyn{} extends itself. The tools it uses to
 build itself\,---\,run the tests, show a diff, search the tree\,---\,are written in
 its own Scheme, loaded from the repository, and cross the same guard as
-everything else. From the fourth week of its life, \nibb{} has been the tool
-used to build \nibb{}.
+everything else. From the fourth week of its life, \nodwyn{} has been the tool
+used to build \nodwyn{}.
 
 \section*{Shape}
 

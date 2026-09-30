@@ -22,12 +22,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	webui "github.com/fclaude/nibb/internal/frontend/web"
-	fakemcp "github.com/fclaude/nibb/test/fakes/mcp"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	webui "github.com/fclaude/nodwyn/internal/frontend/web"
+	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func main() {
@@ -52,7 +52,7 @@ func main() {
 }
 
 func run(seed bool, port int) error {
-	root, err := os.MkdirTemp("/tmp", "nibb-demo-")
+	root, err := os.MkdirTemp("/tmp", "nodwyn-demo-")
 	if err != nil {
 		return err
 	}

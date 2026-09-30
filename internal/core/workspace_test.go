@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // A docs workspace (ADR 22): no programs, no user Scheme, mounted folders

@@ -15,7 +15,7 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0011](./0011-terminal-stack.md) — Terminal stack
 - [0012](./0012-two-binaries.md) — Two binaries, always
 - [0013](./0013-promotion.md) — Promotion
-- [0014](./0014-init-scm-convention.md) — `.nibb/init.scm` convention
+- [0014](./0014-init-scm-convention.md) — `.nodwyn/init.scm` convention
 - [0015](./0015-friction-log.md) — Friction log
 - [0016](./0016-fallback-is-allowed.md) — Fallback is allowed and honest
 - [0017](./0017-standing-command-approvals.md) — Standing command approvals
@@ -32,3 +32,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0028](./0028-scratch-directory.md) — A scratch directory beside the repository
 - [0029](./0029-optional-tool-parameters.md) — Optional tool parameters
 - [0030](./0030-one-app-three-ways-to-reach-it.md) — One app, three ways to reach it: desktop, browser, phone
+- [0031](./0031-renamed-to-nodwyn.md) — The project is renamed nodwyn

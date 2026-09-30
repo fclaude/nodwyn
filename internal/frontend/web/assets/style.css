@@ -1,4 +1,4 @@
-/* nibb console — the design canvas's system (ADR 21, 2026-09-30).
+/* nodwyn console — the design canvas's system (ADR 21, 2026-09-30).
    Tokens first; every component reads them, so dark mode is one block. */
 
 @font-face {

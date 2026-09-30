@@ -8,13 +8,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/frontend/plain"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 // chat is the default command: one session in the line-mode front-end.
@@ -136,7 +136,7 @@ func (c *cli) session(cfg config.Config, repo string) error {
 	}
 	runErr := chat.Run(context.Background())
 	if err := s.Close(); err != nil {
-		fmt.Fprintln(os.Stderr, "nibb: close:", err)
+		fmt.Fprintln(os.Stderr, "nodwyn: close:", err)
 	}
 	return runErr
 }

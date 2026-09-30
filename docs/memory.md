@@ -10,7 +10,7 @@ For logs recorded since v0.27, find an `llm.req` sequence in the transcript/log
 and run:
 
 ```sh
-nibb replay SESSION --window REQUEST_SEQ
+nodwyn replay SESSION --window REQUEST_SEQ
 ```
 
 The command rebuilds the provider-neutral request from its preceding log prefix
@@ -33,9 +33,9 @@ Select a span beginning at a `user.msg` event and ending at a completed
 (maximum 16 KiB). For example:
 
 ```sh
-nibb summary --from 12 --through 41 --text summary.txt SESSION
-nibb summary SESSION
-nibb summary --drop SUMMARY_SEQ SESSION
+nodwyn summary --from 12 --through 41 --text summary.txt SESSION
+nodwyn summary SESSION
+nodwyn summary --drop SUMMARY_SEQ SESSION
 ```
 
 Flags precede the session ID. Creation prints the new summary event sequence;
@@ -82,7 +82,7 @@ every call observes current files under that session's repository root.
 Install [ripgrep](https://github.com/BurntSushi/ripgrep#installation) (`rg`) on the
 host running the session, including a daemon host. The binary still builds with
 cgo disabled on Linux and macOS. Missing ripgrep produces an actionable tool
-error and does not prevent nibb from starting. CI installs it to exercise real
+error and does not prevent nodwyn from starting. CI installs it to exercise real
 searches, rather than skipping those tests.
 
 Discovery skips hidden paths and symlinks. It does not load ignore files or

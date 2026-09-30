@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nodwyn/internal/event"
 )
 
 func TestPolicyRPCRequiresReviewAndRejectsCallerAuthority(t *testing.T) {
@@ -31,7 +31,7 @@ func TestPolicyRPCRequiresReviewAndRejectsCallerAuthority(t *testing.T) {
 	}
 	c.ok("session.policy.write", map[string]any{"id": id, "name": "approvals", "revision": doc.Revision, "content": content})
 	confirm := prompt[event.Confirm](t, c, event.PromptConfirm)
-	if _, err := os.Stat(filepath.Join(repo, ".nibb", "allow.toml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".nodwyn", "allow.toml")); !os.IsNotExist(err) {
 		t.Fatal("wrote before review")
 	}
 	c.ok("session.answer", map[string]any{"id": id, "prompt_id": confirm.ID, "reply": "y"})
@@ -40,7 +40,7 @@ func TestPolicyRPCRequiresReviewAndRejectsCallerAuthority(t *testing.T) {
 	if !result.Saved || result.Err != "" {
 		t.Fatal(result)
 	}
-	got, err := os.ReadFile(filepath.Join(repo, ".nibb", "allow.toml"))
+	got, err := os.ReadFile(filepath.Join(repo, ".nodwyn", "allow.toml"))
 	if err != nil || string(got) != content {
 		t.Fatal(string(got), err)
 	}

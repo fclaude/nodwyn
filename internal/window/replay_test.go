@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 func TestReplayKeepsHistoricalWindowAcrossLaterTurns(t *testing.T) {

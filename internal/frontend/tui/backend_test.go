@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/fclaude/nibb/internal/binding"
+	"github.com/fclaude/nodwyn/internal/binding"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,14 +18,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func testOptions(t *testing.T) core.Options {
@@ -35,7 +35,7 @@ func testOptions(t *testing.T) core.Options {
 }
 func testRemote(t *testing.T, o core.Options) (*remote, string) {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "nibb-tui-")
+	dir, err := os.MkdirTemp("/tmp", "nodwyn-tui-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestBothBackendsStandingAndTurnApprovalFlows(t *testing.T) {
 	for _, mode := range []string{"local", "rpc"} {
 		t.Run(mode, func(t *testing.T) {
 			o := testOptions(t)
-			for _, dir := range []string{"notes", "drafts", ".nibb"} {
+			for _, dir := range []string{"notes", "drafts", ".nodwyn"} {
 				if err := os.MkdirAll(filepath.Join(o.Repo, dir), 0o700); err != nil {
 					t.Fatal(err)
 				}
@@ -650,7 +650,7 @@ func TestBothBackendsStandingAndTurnApprovalFlows(t *testing.T) {
 				t.Fatal("turn authority persisted")
 			}
 			// Protected paths still require one-time consent.
-			send(`(fs-write ".nibb/init.scm" "; deny")`)
+			send(`(fs-write ".nodwyn/init.scm" "; deny")`)
 			p = prompt()
 			for _, scope := range []string{"session", "turn"} {
 				if b.Grant(ctx, snap.ID, p.ID, scope) == nil {

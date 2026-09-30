@@ -13,13 +13,13 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out="$here/out"
 mkdir -p "$out"
-(cd "$root" && go build -o "$out/nibb" ./cmd/nibb && go build -o "$out/demo" ./test/browser/demo)
+(cd "$root" && go build -o "$out/nodwyn" ./cmd/nodwyn && go build -o "$out/demo" ./test/browser/demo)
 [ -d "$here/node_modules/playwright" ] || (cd "$here" && npm install --silent)
 checks=${*:-screens approve firstrun remote mcp}
 status=0
 for check in $checks; do
 	echo "== $check"
-	if ! (cd "$here" && DEMO="$out/demo" NIBB="$out/nibb" timeout 180 node "checks/$check.js" "$out"); then
+	if ! (cd "$here" && DEMO="$out/demo" NODWYN="$out/nodwyn" timeout 180 node "checks/$check.js" "$out"); then
 		status=1
 	fi
 done

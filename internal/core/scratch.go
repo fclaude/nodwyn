@@ -18,7 +18,7 @@ import (
 // a new, empty one.
 //
 // Each directory is made by os.MkdirTemp (unpredictable name, mode 0700)
-// under nibb's own data directory, so no other user can plant or share it;
+// under nodwyn's own data directory, so no other user can plant or share it;
 // only a session without a data directory (tests, embedders) falls back to
 // the system's temporary directory. Directories a crashed session left
 // behind are swept once they are a week old.
@@ -47,7 +47,7 @@ func makeScratch(dataDir, id string) (string, error) {
 		return "", fmt.Errorf("core: scratch: %w", err)
 	}
 	sweepScratch(root)
-	dir, err := os.MkdirTemp(root, "nibb-scratch-"+id+"-")
+	dir, err := os.MkdirTemp(root, "nodwyn-scratch-"+id+"-")
 	if err != nil {
 		return "", fmt.Errorf("core: scratch: %w", err)
 	}
@@ -95,7 +95,7 @@ func touchScratch(dir string) {
 // removeScratch deletes a scratch directory made by makeScratch, and
 // nothing else.
 func removeScratch(dir string) {
-	if dir != "" && strings.HasPrefix(filepath.Base(dir), "nibb-scratch-") {
+	if dir != "" && strings.HasPrefix(filepath.Base(dir), "nodwyn-scratch-") {
 		_ = os.RemoveAll(dir)
 	}
 }
@@ -109,7 +109,7 @@ func sweepScratch(root string) {
 		return
 	}
 	for _, e := range entries {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), "nibb-scratch-") {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "nodwyn-scratch-") {
 			continue
 		}
 		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > scratchMaxAge {

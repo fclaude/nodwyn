@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/guard"
-	nlog "github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/guard"
+	nlog "github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 type harness struct {
@@ -185,8 +185,8 @@ func TestShellExec(t *testing.T) {
 		t.Fatalf("cwd: %s", scheme.Write(v))
 	}
 	// environment is scrubbed
-	t.Setenv("NIBB_TEST_SECRET", "sk-canary-env")
-	v = h.mustEval(t, `(shell-exec "sh" '("-c" "echo $NIBB_TEST_SECRET; echo $HOME"))`)
+	t.Setenv("NODWYN_TEST_SECRET", "sk-canary-env")
+	v = h.mustEval(t, `(shell-exec "sh" '("-c" "echo $NODWYN_TEST_SECRET; echo $HOME"))`)
 	out := scheme.Write(v)
 	if strings.Contains(out, "sk-canary-env") {
 		t.Fatal("secret env var leaked to child")

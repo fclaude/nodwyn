@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestOllamaChatStreamsAndAssembles(t *testing.T) {

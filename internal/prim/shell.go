@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 func shellExec(o Options) *scheme.Prim {

@@ -8,13 +8,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 func runDaemon(paths config.Paths, args []string, noKeychain bool) error {
-	flags := flag.NewFlagSet("nibb daemon", flag.ContinueOnError)
+	flags := flag.NewFlagSet("nodwyn daemon", flag.ContinueOnError)
 	flags.BoolVar(&noKeychain, "no-keychain", noKeychain, "start without opening the keychain")
 	socket := flags.String("socket", "", "absolute socket path (parent must be private, mode 0700)")
 	if err := flags.Parse(args); err != nil {

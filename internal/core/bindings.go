@@ -3,10 +3,10 @@ package core
 import (
 	"context"
 	"fmt"
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
 	"reflect"
 )
 

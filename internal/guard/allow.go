@@ -7,14 +7,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // CommandAllow holds the user's standing approvals for command lines: a
 // list of argv prefixes ("go test", "git status", "rg") that may run without
 // a confirm. It is the command-line analogue of the binding table — the
 // user authorizes ahead of time, the guard applies it silently and logs it.
-// Entries come from config, from the repository's .nibb/allow.toml, and from
+// Entries come from config, from the repository's .nodwyn/allow.toml, and from
 // "a" answers during a session (not persisted).
 type CommandAllow struct {
 	mu       sync.RWMutex

@@ -110,7 +110,7 @@ export function renderHome(root, ctx) {
     h("div", { class: "field" }, h("label", { for: "add-path" }, "Folder"), h("div", { class: "row-actions" }, pathInput, pickFolder ? h("button", { type: "button", class: "btn", onclick: async () => { const p = await pickFolder(); if (p) { pathInput.value = p; if (!nameInput.value) nameInput.value = p.split("/").pop(); } } }, "Choose…") : null)),
     canSave ? h("div", { class: "field" }, h("label", { for: "add-name" }, "Name"), nameInput) : null,
     canSave ? h("div", { class: "field" }, h("label", {}, "What's in it"), h("div", { class: "row-actions" }, kindChoice("docs", "Documents"), kindChoice("code", "Code"), kindChoice("mixed", "Both"))) : null,
-    canSave ? h("p", { class: "hint" }, "Documents: nibb reads, writes and organizes files, runs no programs, and keeps the previous version of a file before changing it. Code: nibb can also run programs; git is the undo.") : null,
+    canSave ? h("p", { class: "hint" }, "Documents: nodwyn reads, writes and organizes files, runs no programs, and keeps the previous version of a file before changing it. Code: nodwyn can also run programs; git is the undo.") : null,
     addError,
     h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, canSave ? "Add this folder" : "Use this folder"), h("button", { type: "button", class: "btn ghost", onclick: () => (adding.hidden = true) }, "Cancel")),
   );
@@ -162,8 +162,8 @@ export function renderHome(root, ctx) {
     ? h(
         "div",
         { class: "home-col" },
-        h("h1", {}, "Let's connect nibb to a model"),
-        h("p", { class: "lede" }, "nibb thinks with a language model you choose: one running on this computer or your network, or a service you have a key for. Nothing is sent anywhere until you set this up."),
+        h("h1", {}, "Let's connect nodwyn to a model"),
+        h("p", { class: "lede" }, "nodwyn thinks with a language model you choose: one running on this computer or your network, or a service you have a key for. Nothing is sent anywhere until you set this up."),
         h("div", { class: "card" }, modelForm(ctx, { onSaved: () => renderHome(root, { ...ctx, keepTop: false }) })),
       )
     : h(

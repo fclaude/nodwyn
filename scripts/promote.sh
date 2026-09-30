@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Promote the working-tree build to nibb-stable (ADR 12/13).
+# Promote the working-tree build to nodwyn-stable (ADR 12/13).
 #   scripts/promote.sh v0.N-<phase>
 # Refuses a dirty tree: the tag must point at what was built. Runs the
 # acceptance suite and the selfcheck, then swaps the binaries and tags.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 TAG=${1:?usage: promote.sh vX.Y-phase}
-STABLE_DIR=${NIBB_STABLE_DIR:-$HOME/.local/bin}
-STABLE=$STABLE_DIR/nibb-stable
+STABLE_DIR=${NODWYN_STABLE_DIR:-$HOME/.local/bin}
+STABLE=$STABLE_DIR/nodwyn-stable
 
 if [ -n "$(git status --porcelain)" ]; then
 	echo "promote: working tree is not clean; commit first" >&2
@@ -20,15 +20,15 @@ fi
 
 make accept
 make build VERSION="$TAG"
-scripts/selfcheck.sh bin/nibb
+scripts/selfcheck.sh bin/nodwyn
 
 mkdir -p "$STABLE_DIR"
 if [ -x "$STABLE" ]; then
 	mv -f "$STABLE" "$STABLE.prev"
 	echo "promote: previous stable kept at $STABLE.prev"
 fi
-cp bin/nibb "$STABLE"
-git tag -a "$TAG" -m "promoted to nibb-stable: $TAG"
+cp bin/nodwyn "$STABLE"
+git tag -a "$TAG" -m "promoted to nodwyn-stable: $TAG"
 echo "promote: $TAG -> $STABLE ($("$STABLE" version))"
 case ":$PATH:" in
 *":$STABLE_DIR:"*) ;;

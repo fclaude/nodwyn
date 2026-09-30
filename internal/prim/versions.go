@@ -17,12 +17,12 @@ import (
 	"time"
 )
 
-// Versions keeps a file's previous content before nibb replaces it, where
+// Versions keeps a file's previous content before nodwyn replaces it, where
 // git is not the undo (ADR 22 §2): content-addressed objects under
-// <root>/.nibb/versions/objects and an append-only index. It is capped per
+// <root>/.nodwyn/versions/objects and an append-only index. It is capped per
 // file and in total; the oldest versions go first.
 type Versions struct {
-	Dir string // <root>/.nibb/versions
+	Dir string // <root>/.nodwyn/versions
 	// Skip reports paths another undo already covers (a git work tree).
 	Skip func(abs string) bool
 	// Record is told of every kept version, for the session log.
@@ -49,7 +49,7 @@ const (
 var hashName = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // VersionsDir is where root's versions live.
-func VersionsDir(root string) string { return filepath.Join(root, ".nibb", "versions") }
+func VersionsDir(root string) string { return filepath.Join(root, ".nodwyn", "versions") }
 
 // Keep saves abs's current content, if it has any and it is not covered by
 // another undo. A failure to keep a version fails the write: a workspace
@@ -80,9 +80,9 @@ func (v *Versions) Keep(abs string) error {
 	if err := os.MkdirAll(objects, 0o700); err != nil {
 		return err
 	}
-	// Keep nibb's copies out of a repository's commits.
+	// Keep nodwyn's copies out of a repository's commits.
 	if ignore := filepath.Join(v.Dir, ".gitignore"); !exists(ignore) {
-		_ = os.WriteFile(ignore, []byte("# nibb's kept versions of files\n*\n"), 0o600)
+		_ = os.WriteFile(ignore, []byte("# nodwyn's kept versions of files\n*\n"), 0o600)
 	}
 	object := filepath.Join(objects, version.Hash)
 	if _, err := os.Stat(object); errors.Is(err, os.ErrNotExist) {

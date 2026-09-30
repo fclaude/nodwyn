@@ -1,6 +1,6 @@
-;; Go toolchain tools for building nibb with nibb. Each one is a named,
+;; Go toolchain tools for building nodwyn with nodwyn. Each one is a named,
 ;; documented wrapper over shell-exec; the guard sees both the wrapper and
-;; the shell-exec inside it, and .nibb/allow.toml holds the standing
+;; the shell-exec inside it, and .nodwyn/allow.toml holds the standing
 ;; approvals that let these run without a prompt.
 
 ;; run: execute and render for the model — exit status, then stdout and

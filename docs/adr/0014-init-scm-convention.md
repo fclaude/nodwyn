@@ -1,14 +1,14 @@
-# ADR 0014: `.nibb/init.scm` convention
+# ADR 0014: `.nodwyn/init.scm` convention
 
 - Status: accepted
 - Date: 2026-09-20
 
 ## Context
-This repo needs dev tools (`go-test`, `git-diff`, …) that nibb's model can
+This repo needs dev tools (`go-test`, `git-diff`, …) that nodwyn's model can
 call, and they must cross the guard like everything else.
 
 ## Decision
-On start, after `prelude/`, nibb loads `./.nibb/init.scm` if present. This
+On start, after `prelude/`, nodwyn loads `./.nodwyn/init.scm` if present. This
 repo's `init.scm` loads `dev/*.scm`, which register tools composed from host
 primitives via `register-tool`. Nothing in `dev/` bypasses the guard.
 

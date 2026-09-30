@@ -16,21 +16,21 @@ app window, opens the system's folder chooser. A documents workspace runs no
 programs; see [ADR 22](adr/0022-cowork-workspaces-attachments-mcp.md). The
 Workspaces page edits a folder's name, kind and **mounted folders** (other
 folders a task may read, or read and write, by absolute path). These settings
-live in the folder's `.nibb/workspace.toml` and apply to tasks started
+live in the folder's `.nodwyn/workspace.toml` and apply to tasks started
 afterwards.
 
 **Attaching.** The paperclip in either composer attaches files to the next
 message: text formats, `.docx`, `.xlsx`, `.pptx`, and PDF when `pdftotext`
 is installed; images are refused for now. Each file is copied into the
-folder's `.nibb/attachments/`, its text redacted and capped, and shown to the
+folder's `.nodwyn/attachments/`, its text redacted and capped, and shown to the
 model as data. The conversation shows a chip per file with how many
 secret-like strings were hidden.
 
-**Undo.** Where git is not the undo, nibb keeps a file's previous content
+**Undo.** Where git is not the undo, nodwyn keeps a file's previous content
 before changing it. A task's **Changes** list offers **History** per file;
 **Restore** writes a kept version back through the ordinary approval (the
 diff, then your answer), and keeps the current content too. From a terminal:
-`nibb versions FILE` and `nibb undo FILE`.
+`nodwyn versions FILE` and `nodwyn undo FILE`.
 
 **Tools from MCP servers.** Connections › Tools adds a remote server (HTTPS;
 a key goes to the keychain, bound to that host only), lists its tools for
@@ -43,11 +43,11 @@ tasks withhold its tools until you review again.
 ## Other devices (ADR 30)
 
 ```sh
-nibb ui --listen 100.101.102.103:7777          # a tailnet address
-nibb ui --listen 100.101.102.103:7777 --name desk.tail1234.ts.net:7777
-nibb ui --listen 0.0.0.0:7777 --tls-cert cert.pem --tls-key key.pem
-nibb devices                                   # list paired devices
-nibb devices revoke phone
+nodwyn ui --listen 100.101.102.103:7777          # a tailnet address
+nodwyn ui --listen 100.101.102.103:7777 --name desk.tail1234.ts.net:7777
+nodwyn ui --listen 0.0.0.0:7777 --tls-cert cert.pem --tls-key key.pem
+nodwyn devices                                   # list paired devices
+nodwyn devices revoke phone
 ```
 
 A browser on another machine pairs with the code **and a device name**. It
@@ -60,7 +60,7 @@ kernel identity followed by `via web:NAME`.
 A device can read tasks, start and steer them, and answer approvals — one-time,
 for this turn, or for the session, as the core offers. It cannot save a
 credential binding, write a policy file, unlock or create the keychain, change
-the model, or list and revoke devices: those stay with the computer nibb runs
+the model, or list and revoke devices: those stay with the computer nodwyn runs
 on. A request counts as remote when it comes from another address or names
 this console by anything but its loopback address (a proxy such as
 `tailscale serve` connects from loopback on a phone's behalf). Launch tickets
@@ -73,13 +73,13 @@ The U3 session desk supports conversations, prompt replies and session lifecycle
 controls. Run a daemon, then attach the browser bridge in another terminal:
 
 ```sh
-nibb daemon
-nibb ui                         # opens the local browser page
-nibb ui --read-only             # view only; no replies or lifecycle changes
-nibb ui --socket /absolute/private/sock --no-open
+nodwyn daemon
+nodwyn ui                         # opens the local browser page
+nodwyn ui --read-only             # view only; no replies or lifecycle changes
+nodwyn ui --socket /absolute/private/sock --no-open
 ```
 
-`nibb ui` connects to an existing daemon. It prints a loopback URL and a random
+`nodwyn ui` connects to an existing daemon. It prints a loopback URL and a random
 pairing code; paste that code into the page. The code is never put in a URL or
 session log. Keep it in the terminal rather than sharing it. The browser receives
 an HttpOnly, SameSite=Strict session cookie; no credential is written to browser
@@ -133,7 +133,7 @@ reconnect; stale/replayed answers are rejected by core. Resolution in another
 client clears the panel. Browser replies retain the Unix peer identity of the
 bridge in audit receipts; individual tabs are not separate security principals.
 
-Closing a browser tab or stopping `nibb ui` does not close sessions in the separately running daemon. Stopping the daemon still closes its
+Closing a browser tab or stopping `nodwyn ui` does not close sessions in the separately running daemon. Stopping the daemon still closes its
 sessions normally. The session list's titles and history metadata are snapshots; use Refresh to
 update them. Open/running/needs-answer state updates live across the daemon's
 sessions, including sessions opened by another client. These updates do not
@@ -176,7 +176,7 @@ client for session data. There is no JavaScript build system, second history sto
 selection, `prompts.js` renders review choices, and `inspectors.js` renders fixed
 snapshots from the same redacted records; `policy.js` renders policy drafts and
 review controls. A pinned WebSocket library avoids a
-homegrown frame parser; its license is embedded in `nibb licenses`.
+homegrown frame parser; its license is embedded in `nodwyn licenses`.
 
 ## Verification and remaining U3 work
 
@@ -205,7 +205,7 @@ allow/deny/custom-confirm/cancellation, concurrent-operation rejection and canar
 redaction. Browser checks also cover prompt priority, cached result reopening,
 explicit guarded refresh and denial replacing the previous result.
 The policy editor completes the current U3 scope. Its two targets are shared
-`bindings.toml` and repository `.nibb/allow.toml`. Reads and writes use fixed host
+`bindings.toml` and repository `.nodwyn/allow.toml`. Reads and writes use fixed host
 primitives through the interpreter and guard, with no arbitrary path or browser
 Scheme evaluation. The editor is unavailable through read-only bridges.
 
@@ -258,6 +258,6 @@ RPC/WebSocket tests cover content-free snapshots and live transitions. Browser
 acceptance verifies another session's prompt and resolution without disturbing a
 draft, and notification mocks verify opt-in, generic text, revision ordering,
 deduplication and reconnect behavior. Native OS notification delivery was not
-exercised by those mocks. The supervised run driver is now available through `nibb run`; the browser
+exercised by those mocks. The supervised run driver is now available through `nodwyn run`; the browser
 receives its ordinary checkpoint prompts and Abort stops the whole run. See
 [runs](runs.md). Unattended continuation remains the next U4 slice.

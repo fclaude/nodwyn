@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	fake "github.com/fclaude/nibb/test/fakes/mcp"
+	fake "github.com/fclaude/nodwyn/test/fakes/mcp"
 )
 
 func TestClientOverJSONAndSSE(t *testing.T) {

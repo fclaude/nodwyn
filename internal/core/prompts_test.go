@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/scheme"
-	"github.com/fclaude/nibb/internal/window"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/window"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // The Scheme defaults are pinned byte for byte: changing a default is a
@@ -19,7 +19,7 @@ import (
 // effect. They reproduced the Go strings they replaced, and have since
 // gained the scratch directory's rule, which names $TMPDIR rather than the
 // per-session path so the prompt is the same across sessions.
-const goldenSystem = `You are nibb, a coding agent working inside the repository at REPO.
+const goldenSystem = `You are nodwyn, a coding agent working inside the repository at REPO.
 Your tools read files (in line ranges for large ones), search their contents, find files by name, list directories, write and edit files, and run programs; every path is relative to the repository root and must stay inside it.
 Rules:
 - Read before you write. Keep changes minimal and complete.
@@ -38,7 +38,7 @@ func TestDefaultPromptsAreUnchanged(t *testing.T) {
 	}
 	// The planner's prompts are ordinary Scheme, read when the plan gate
 	// (plan.scm) uses them.
-	if got, want := evalText(t, r, `(plan-system-prompt (repository))`), "You are nibb's planner for the repository at "+r.repo+". Return only the plan text."; got != want {
+	if got, want := evalText(t, r, `(plan-system-prompt (repository))`), "You are nodwyn's planner for the repository at "+r.repo+". Return only the plan text."; got != want {
 		t.Fatalf("plan-system-prompt: %q", got)
 	}
 	if got := evalText(t, r, `(plan-draft-prompt "fix it")`); got != "Write a short, concrete plan for the following request: numbered steps, each naming the file or command involved, nothing else.\n\nRequest:\nfix it" {
@@ -110,7 +110,7 @@ func TestInitRedefinesPromptsWithRawStrings(t *testing.T) {
 (define (plan-system-prompt repo) "Plan tersely.")
 `, 0, fake.Turn{Content: "done"})
 	system := r.s.loop.WindowContext().System
-	if !strings.HasPrefix(system, "You are nibb") || !strings.HasSuffix(system, "\nWork unattended:\n- run the tests you touch.") {
+	if !strings.HasPrefix(system, "You are nodwyn") || !strings.HasSuffix(system, "\nWork unattended:\n- run the tests you touch.") {
 		t.Fatalf("system prompt:\n%s", system)
 	}
 	if r.turn("hello") != "" {
@@ -151,8 +151,8 @@ func TestMalformedPromptFailsTheSession(t *testing.T) {
 		"empty":           `(define (system-prompt repo) "  ")`,
 	} {
 		repo := t.TempDir()
-		os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-		os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(init), 0o644)
+		os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+		os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
 		srv := fake.New()
 		s, err := New(Options{Config: config.Default(), Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
 		if s != nil {

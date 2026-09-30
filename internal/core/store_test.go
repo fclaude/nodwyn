@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 func TestResumeRedactsLegacyHistory(t *testing.T) {

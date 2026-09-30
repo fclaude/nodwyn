@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // ProtocolVersion is checked at hello; a client and daemon that differ

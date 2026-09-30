@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/detect/l1"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/keychain"
-	nlog "github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/prim"
-	"github.com/fclaude/nibb/internal/scheme"
-	fakejev "github.com/fclaude/nibb/test/fakes/jev"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	nlog "github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/prim"
+	"github.com/fclaude/nodwyn/internal/scheme"
+	fakejev "github.com/fclaude/nodwyn/test/fakes/jev"
 )
 
 // jevStore implements prim.JevClient for the Jev exfil harness.

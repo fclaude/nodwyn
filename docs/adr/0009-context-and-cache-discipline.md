@@ -52,7 +52,7 @@ size, keep-alive and algorithm version. Each loop `llm.req` records a SHA-256 of
 the provider-neutral request immediately before sending it. Conversation text is
 still derived from the log rather than copied into every request record.
 
-`nibb replay SESSION --window SEQ` folds only the prefix preceding that request,
+`nodwyn replay SESSION --window SEQ` folds only the prefix preceding that request,
 using the latest recorded runtime recipe. It outputs the reconstructed request
 only if its canonical JSON digest matches. Current configuration and init files
 are never consulted for reconstruction; no model or tool runs. Tests compare

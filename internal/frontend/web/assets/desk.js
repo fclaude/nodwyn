@@ -180,7 +180,7 @@ class Notifier {
     this.onOpen = null;
   }
   get native() {
-    return typeof window.nibbNotify === "function";
+    return typeof window.nodwynNotify === "function";
   }
   get available() {
     return this.native || (typeof Notification !== "undefined" && window.isSecureContext);
@@ -211,12 +211,12 @@ class Notifier {
     if (!notify || previous?.needs_answer || !this.enabled) return;
     if (this.native) {
       if (document.hasFocus()) return;
-      window.nibbNotify("nibb needs your answer", "Open nibb to review what it asks.").catch(() => {});
+      window.nodwynNotify("nodwyn needs your answer", "Open nodwyn to review what it asks.").catch(() => {});
       return;
     }
     if (!document.hidden || Notification.permission !== "granted") return;
     try {
-      const n = new Notification("nibb needs your answer", { body: "Open nibb to review what it asks.", tag: `nibb-${state.id}` });
+      const n = new Notification("nodwyn needs your answer", { body: "Open nodwyn to review what it asks.", tag: `nodwyn-${state.id}` });
       n.onclick = () => {
         window.focus();
         this.onOpen?.(state.id);

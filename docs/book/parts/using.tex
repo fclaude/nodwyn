@@ -1,21 +1,21 @@
-\part{Using \nibb}
+\part{Using \nodwyn}
 
 \chapter{Install and configure}
 
 \begin{sh}
-make build                        # bin/nibb from the working tree
-make promote TAG=v0.1-bootstrap   # accept + selfcheck, then ~/.local/bin/nibb-stable
+make build                        # bin/nodwyn from the working tree
+make promote TAG=v0.1-bootstrap   # accept + selfcheck, then ~/.local/bin/nodwyn-stable
 \end{sh}
 
-Use \code{nibb-stable} for real work and \file{bin/nibb} only to test a
-change to \nibb{} itself. Requires Go~1.27, \code{staticcheck}, and a
+Use \code{nodwyn-stable} for real work and \file{bin/nodwyn} only to test a
+change to \nodwyn{} itself. Requires Go~1.27, \code{staticcheck}, and a
 reachable control plane.
 
 \section{config.toml}
 
-\file{\textasciitilde/.config/nibb/config.toml}. There is no built-in model:
-\code{[control]} names the one \nibb{} talks to (here, the author's), and
-without it \nibb{} prints the table to add. The rest shows the defaults:
+\file{\textasciitilde/.config/nodwyn/config.toml}. There is no built-in model:
+\code{[control]} names the one \nodwyn{} talks to (here, the author's), and
+without it \nodwyn{} prints the table to add. The rest shows the defaults:
 
 \begin{txt}
 [control]
@@ -51,17 +51,17 @@ wall_soft       = "20m"
 wall_hard       = "4h"
 \end{txt}
 
-\code{nibb paths} prints where everything lives. Session logs are under
-\file{\textasciitilde/.local/share/nibb/sessions/}.
+\code{nodwyn paths} prints where everything lives. Session logs are under
+\file{\textasciitilde/.local/share/nodwyn/sessions/}.
 
 \chapter{A session}
 
 \begin{sh}
 $ cd ~/src/your-repo
-$ nibb-stable
+$ nodwyn-stable
 control model: http://workshop...:11434 qwen3.8-27b-96k:latest (ollama 0.34.2)
-log: /Users/you/.local/share/nibb/sessions/20260921T143846Z-beba937b.jsonl
-nibb session 20260921T143846Z-beba937b
+log: /Users/you/.local/share/nodwyn/sessions/20260921T143846Z-beba937b.jsonl
+nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
 tools fs-edit fs-list fs-read fs-write shell-exec
 :h for commands
@@ -124,12 +124,12 @@ and ``uses the network tool curl'' are the guard telling you what a
 \section{Standing approvals}
 
 \begin{txt}
-# ~/.config/nibb/config.toml           (global)
+# ~/.config/nodwyn/config.toml           (global)
 [policy]
 allow_commands = ["go test", "go build", "git status", "git diff", "rg"]
 allow_writes   = []
 
-# <repo>/.nibb/allow.toml              (per repository, tracked)
+# <repo>/.nodwyn/allow.toml              (per repository, tracked)
 commands = ["make lint", "make test"]
 writes   = ["internal/", "docs/"]
 \end{txt}
@@ -137,15 +137,15 @@ writes   = ["internal/", "docs/"]
 Prefixes match argv tokens: \code{"go test"} matches \code{go test ./...}
 and \code{/usr/local/go/bin/go test}, not \code{go build}. Denies still
 apply\,---\,only the confirm is waived\,---\,and every use is logged with the
-prefix as reason. \code{.nibb/}, \code{.github/}, \code{.gitea/},
+prefix as reason. \code{.nodwyn/}, \code{.github/}, \code{.gitea/},
 \code{scripts/} and \code{Makefile} always prompt, whatever the list says.
 Keep the lists read-only and test-only for commands; git is the undo for
 writes.
 
-\chapter{Building \nibb{} with \nibb}
+\chapter{Building \nodwyn{} with \nodwyn}
 
 \begin{enumerate}[leftmargin=2em]
-\item \code{nibb-stable} in this repository; \code{:tools} lists
+\item \code{nodwyn-stable} in this repository; \code{:tools} lists
   \code{go-test}, \code{git-diff}, \code{grep-repo}, \code{read-adr}, \ldots
 \item Give it small, explicit tasks: name the file, the pattern to follow,
   the test to add, and ask it to run \code{go-test} on the package. A
@@ -159,7 +159,7 @@ writes.
   tool.
 \item \code{make promote TAG=v0.N-phase} when a phase's acceptance is green.
   Promotion refuses a dirty tree, runs the suite and the self-check, swaps
-  \code{nibb-stable} (keeping \code{.prev}) and tags.
+  \code{nodwyn-stable} (keeping \code{.prev}) and tags.
 \end{enumerate}
 
 \chapter{When something is wrong}
@@ -177,7 +177,7 @@ the model loops on a denied call & it was told; say so in the next message; the 
 \code{hard stop: too many tool calls} & the turn ended; the log has everything; rephrase smaller \\
 a tool call errored & \code{:log 20}: the \code{tool.result} line has the exact error the model saw \\
 a file changed without a prompt & \code{:allow}: a standing approval covered it; the \code{guard.decision} line names which and carries the diff \\
-a session died & \code{nibb replay <id>}: everything up to the last fsync is there \\
+a session died & \code{nodwyn replay <id>}: everything up to the last fsync is there \\
 \bottomrule
 \end{tabular}
 \end{center}

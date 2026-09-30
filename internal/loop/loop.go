@@ -3,7 +3,7 @@
 // The loop itself — ask the model, run the tools it asked for, feed the
 // results back, stop on a plain answer — is a Scheme procedure, agent-turn,
 // which turn applies after planning when the turn must plan. Their defaults
-// are strategy.scm, and a project may redefine either in .nibb/init.scm
+// are strategy.scm, and a project may redefine either in .nodwyn/init.scm
 // (ADR 26). This package keeps what a strategy must not be
 // able to skip, and gives the strategy the primitives to work with:
 // model-turn, run-tools, skip-tools, answer-call, add-message,
@@ -15,7 +15,7 @@
 //   - strategy.scm: the default agent-turn
 //   - compact.scm: context compaction, as user code over the primitives
 //   - agents.scm: sub-agents and agent tools, as user code over the primitives
-//   - optimize.scm: the optimizer, a sub-agent that improves .nibb/init.scm
+//   - optimize.scm: the optimizer, a sub-agent that improves .nodwyn/init.scm
 //   - prims.go: the primitives and the Scheme values they exchange
 //   - model.go: one request to the model
 //   - tools.go: one tool call, run or skipped
@@ -32,13 +32,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/scheme"
-	"github.com/fclaude/nibb/internal/window"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 // Host is what the loop needs from its owner, the core session.
@@ -67,7 +67,7 @@ type Config struct {
 // ControlModel is the registry name of the [control] model.
 const ControlModel = "control"
 
-// Loop runs a session's turns. Build it with New before .nibb/init.scm
+// Loop runs a session's turns. Build it with New before .nodwyn/init.scm
 // loads and Freeze it after.
 type Loop struct {
 	host   Host
@@ -112,7 +112,7 @@ var defaultOptimizer string
 var defaultPlanGate string
 
 // New builds a loop and installs its primitives and the default strategy
-// into interp. Call it before loading .nibb/init.scm, so the project may
+// into interp. Call it before loading .nodwyn/init.scm, so the project may
 // redefine agent-turn, and call Freeze afterwards. cfg.Models must hold the
 // control model.
 func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
@@ -149,7 +149,7 @@ func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
 // starts with: the system prompt, and the headers under which the window
 // adds the user's request and its plan (task-header, plan-header). They are
 // the defaults in prompts.scm or a project's redefinitions from
-// .nibb/init.scm, and Freeze then fixes them (ADR 9). Every other prompt,
+// .nodwyn/init.scm, and Freeze then fixes them (ADR 9). Every other prompt,
 // the planner's included, is ordinary Scheme, read when it is used.
 func (l *Loop) ReadPrompts(repo string) error {
 	if l.frozen {
@@ -248,7 +248,7 @@ func promptText(name string, v scheme.Value) (string, error) {
 }
 
 // Freeze fixes the tool list offered to the model. It runs once, after
-// .nibb/init.scm has registered its tools; the list must not change
+// .nodwyn/init.scm has registered its tools; the list must not change
 // mid-session (ADR 9).
 func (l *Loop) Freeze() error {
 	l.tools = nil
@@ -271,11 +271,11 @@ func (l *Loop) Freeze() error {
 func (l *Loop) Tools() []llm.Tool { return l.tools }
 
 // TurnProcedure is the Scheme procedure the host applies to every user
-// message (strategy.scm). Its name is specific to nibb, so a project's own
+// message (strategy.scm). Its name is specific to nodwyn, so a project's own
 // definitions in init.scm, a counter called turn say, cannot shadow it.
-const TurnProcedure = "nibb-turn"
+const TurnProcedure = "nodwyn-turn"
 
-// Turn runs one turn: the Scheme nibb-turn applied to request, the user message
+// Turn runs one turn: the Scheme nodwyn-turn applied to request, the user message
 // the session has already recorded. The strategy runs with harness origin; the
 // tools it runs on the model's behalf run with model origin.
 //
@@ -289,7 +289,7 @@ func (l *Loop) Turn(ctx context.Context, request string) error {
 	}
 	strategy, ok := l.interp.Global().Lookup(TurnProcedure)
 	if !ok || !strategy.IsProcedure() {
-		return fmt.Errorf("loop: %s is not defined as a procedure; nibb calls (%s request) for every message", TurnProcedure, TurnProcedure)
+		return fmt.Errorf("loop: %s is not defined as a procedure; nodwyn calls (%s request) for every message", TurnProcedure, TurnProcedure)
 	}
 	l.turn = &turnState{budget: budget.From(ctx)}
 	defer func() { l.turn = nil }()

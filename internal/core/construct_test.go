@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nodwyn/internal/config"
 )
 
 func TestJevOptionsPreserveDefaults(t *testing.T) {

@@ -11,17 +11,17 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 func runTask(args []string) error {
-	// "nibb run --task ..." and "nibb run start --task ..." both start a run.
+	// "nodwyn run --task ..." and "nodwyn run start --task ..." both start a run.
 	command := "start"
 	if len(args) > 0 && (args[0] == "start" || args[0] == "status" || args[0] == "stop" || args[0] == "resume") {
 		command = args[0]
 		args = args[1:]
 	}
-	flags := flag.NewFlagSet("nibb run "+command, flag.ContinueOnError)
+	flags := flag.NewFlagSet("nodwyn run "+command, flag.ContinueOnError)
 	socket := flags.String("socket", "", "daemon socket")
 	repo := flags.String("repo", ".", "repository directory")
 	task := flags.String("task", "", "UTF-8 task file (at most 64 KiB)")
@@ -86,7 +86,7 @@ func runTask(args []string) error {
 	defer cancel()
 	client, err := rpc.Dial(ctx, *socket)
 	if err != nil {
-		return fmt.Errorf("run requires a running nibb daemon: %w", err)
+		return fmt.Errorf("run requires a running nodwyn daemon: %w", err)
 	}
 	defer client.Close()
 	method := command
@@ -99,7 +99,7 @@ func runTask(args []string) error {
 	}
 	fmt.Println(string(result))
 	if command == "start" || command == "resume" {
-		fmt.Fprintln(os.Stderr, "Run submitted. Attach with nibb tui --socket", *socket, "or nibb ui --socket", *socket, "to answer checkpoints. Disconnecting does not stop the run.")
+		fmt.Fprintln(os.Stderr, "Run submitted. Attach with nodwyn tui --socket", *socket, "or nodwyn ui --socket", *socket, "to answer checkpoints. Disconnecting does not stop the run.")
 	}
 	return nil
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Taint is the L2 checker (SPEC E3, Phase 6). It reads the provenance tags

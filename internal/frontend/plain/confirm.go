@@ -2,8 +2,8 @@ package plain
 
 import (
 	"fmt"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 // EgressSummary names the guard's call facts without inferring missing scope.

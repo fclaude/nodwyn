@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Chat is the line-mode agent front-end: one goroutine reads the user's
@@ -86,7 +86,7 @@ func (c *Chat) banner() {
 	for _, t := range s.Tools() {
 		names = append(names, t.Name)
 	}
-	fmt.Fprintf(c.Out, "nibb session %s\nrepo  %s\ntools %s\n:h for commands\n", s.ID(), s.Repo(), strings.Join(names, " "))
+	fmt.Fprintf(c.Out, "nodwyn session %s\nrepo  %s\ntools %s\n:h for commands\n", s.ID(), s.Repo(), strings.Join(names, " "))
 }
 
 // evalFollowing evaluates src while rendering the session's events, so a
@@ -468,7 +468,7 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 		case log.KindHarnessMsg:
 			var p log.HarnessMsg
 			_ = ev.Decode(&p)
-			fmt.Fprintf(w, "nibb> %s\n", p.Text)
+			fmt.Fprintf(w, "nodwyn> %s\n", p.Text)
 		case log.KindContextNarrow:
 			var p log.ContextNarrow
 			_ = ev.Decode(&p)

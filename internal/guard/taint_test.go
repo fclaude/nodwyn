@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 var fileTaint = scheme.TaintOf(scheme.TagFile)

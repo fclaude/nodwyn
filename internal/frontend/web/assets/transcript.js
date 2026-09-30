@@ -127,7 +127,7 @@ export class Transcript {
   }
   agent() {
     if (!this.turn) {
-      this.turn = h("div", { class: "turn agent" }, h("div", { class: "who" }, h("span", { class: "dot" }), "nibb"));
+      this.turn = h("div", { class: "turn agent" }, h("div", { class: "who" }, h("span", { class: "dot" }), "nodwyn"));
       this.el.append(this.turn);
     }
     return this.turn;
@@ -167,7 +167,7 @@ export class Transcript {
       }
       case "harness.msg":
         this.end();
-        this.el.append(h("details", { class: "harness-note" }, h("summary", {}, "nibb told the model"), h("pre", {}, p.text ?? p.Text)));
+        this.el.append(h("details", { class: "harness-note" }, h("summary", {}, "nodwyn told the model"), h("pre", {}, p.text ?? p.Text)));
         break;
       case "stream.text": {
         if (!this.streamText) {

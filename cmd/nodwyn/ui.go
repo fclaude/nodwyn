@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	webui "github.com/fclaude/nibb/internal/frontend/web"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	webui "github.com/fclaude/nodwyn/internal/frontend/web"
 )
 
 // names collects a repeatable flag.
@@ -25,7 +25,7 @@ func (n *names) String() string     { return strings.Join(*n, ",") }
 func (n *names) Set(v string) error { *n = append(*n, v); return nil }
 
 // remoteFlags are the options that make a console reachable from other
-// machines (ADR 30); nibb ui and nibb app share them.
+// machines (ADR 30); nodwyn ui and nodwyn app share them.
 type remoteFlags struct {
 	listen, cert, key string
 	hosts             names
@@ -68,7 +68,7 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 			fmt.Fprintln(os.Stderr, "Other devices can pair by name and read tasks.")
 		} else {
 			fmt.Fprintln(os.Stderr, "WARNING: a device paired with the code can read every task, send messages and answer approvals")
-			fmt.Fprintln(os.Stderr, "(never settings, keys or policy files). Revoke one with: nibb devices revoke NAME")
+			fmt.Fprintln(os.Stderr, "(never settings, keys or policy files). Revoke one with: nodwyn devices revoke NAME")
 		}
 		if !options.TLS {
 			fmt.Fprintln(os.Stderr, "Without --tls-cert traffic is unencrypted unless the network encrypts it (a tailnet does).")
@@ -80,7 +80,7 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 func devicesFile(paths config.Paths) string { return filepath.Join(paths.ConfigDir, "devices.toml") }
 
 func runUI(paths config.Paths, args []string) error {
-	flags := flag.NewFlagSet("nibb ui", flag.ContinueOnError)
+	flags := flag.NewFlagSet("nodwyn ui", flag.ContinueOnError)
 	socket := flags.String("socket", "", "daemon socket path")
 	readOnly := flags.Bool("read-only", false, "view sessions without messages, prompt replies, or lifecycle changes")
 	noOpen := flags.Bool("no-open", false, "print the local URL without opening a browser")
@@ -105,7 +105,7 @@ func runUI(paths config.Paths, args []string) error {
 	client, err := rpc.Dial(checkCtx, *socket)
 	cancel()
 	if err != nil {
-		return fmt.Errorf("ui: start nibb daemon first (or pass its --socket): %w", err)
+		return fmt.Errorf("ui: start nodwyn daemon first (or pass its --socket): %w", err)
 	}
 	client.Close()
 	code, err := webui.PairingCode()

@@ -9,18 +9,18 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/detect/l1"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/loop"
-	"github.com/fclaude/nibb/internal/prim"
-	"github.com/fclaude/nibb/internal/scheme"
-	"github.com/fclaude/nibb/internal/window"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/loop"
+	"github.com/fclaude/nodwyn/internal/prim"
+	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 // Options build a Session.
@@ -37,7 +37,7 @@ type Options struct {
 	// answers the guard's questions, it does not overrule its refusals.
 	AutoApprove bool
 	// InitFile is loaded after the prelude with user origin; "" disables.
-	// Default: <Repo>/.nibb/init.scm if it exists.
+	// Default: <Repo>/.nodwyn/init.scm if it exists.
 	InitFile string
 	// EventBuffer is the events channel capacity (default 256).
 	EventBuffer int
@@ -124,6 +124,9 @@ func resolveOptions(o Options) (Options, error) {
 		return Options{}, err
 	}
 	o.Repo = filepath.Clean(repo)
+	if _, err := config.MigrateFolder(o.Repo); err != nil {
+		return Options{}, fmt.Errorf("core: moving .%s to %s: %w", config.LegacyName, config.FolderDir, err)
+	}
 	if o.EventBuffer == 0 {
 		o.EventBuffer = 256
 	}
@@ -172,9 +175,9 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Standing approvals: config, then the repository's .nibb/allow.toml.
+	// Standing approvals: config, then the repository's .nodwyn/allow.toml.
 	s.allow = guard.NewCommandAllow(o.Config.Policy.AllowCommands...)
-	repoAllow, err := config.LoadRepoAllow(filepath.Join(o.Repo, ".nibb", "allow.toml"))
+	repoAllow, err := config.LoadRepoAllow(filepath.Join(o.Repo, ".nodwyn", "allow.toml"))
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +218,7 @@ func (s *Session) loadInit() error {
 	o := s.opts
 	init := o.InitFile
 	if init == "" {
-		if p := filepath.Join(o.Repo, ".nibb", "init.scm"); fileExists(p) {
+		if p := filepath.Join(o.Repo, ".nodwyn", "init.scm"); fileExists(p) {
 			init = p
 		}
 	}

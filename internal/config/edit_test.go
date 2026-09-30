@@ -57,7 +57,7 @@ func TestSetControlAppendsAndValidates(t *testing.T) {
 }
 
 func TestWriteFileIsPrivateAndAtomic(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nibb", "config.toml")
+	path := filepath.Join(t.TempDir(), "nodwyn", "config.toml")
 	if err := WriteFile(path, []byte("[control]\n")); err != nil {
 		t.Fatal(err)
 	}

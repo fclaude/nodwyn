@@ -4,7 +4,7 @@
 - Date: 2026-09-22
 
 ## Context
-nibb assumes its work is a **code repository**: one pinned root, git as the
+nodwyn assumes its work is a **code repository**: one pinned root, git as the
 undo, files the agent reads with `fs-read`, tools written in Scheme over
 `shell-exec`. A *cowork* application is the same harness applied to work
 that is not only code — a working folder of documents, files the user
@@ -17,11 +17,11 @@ Three assumptions break, and each breaks a different invariant:
    (ADR 17 leans on `git diff` explicitly). A working folder may be no
    repository at all, and may need reference material that must never be
    written.
-2. **Ingress.** Everything the model sees today was produced by a tool nibb
+2. **Ingress.** Everything the model sees today was produced by a tool nodwyn
    ran. An attachment is content from outside, chosen by the user, of a
-   type nibb must decode.
+   type nodwyn must decode.
 3. **The metadata contract.** The guard reads a primitive's declared
-   `Egress`, `Irreversible` and parameter *roles* (ADR 4). MCP gives nibb a
+   `Egress`, `Irreversible` and parameter *roles* (ADR 4). MCP gives nodwyn a
    name, a description and a JSON schema — and none of those three.
 
 The invariants themselves do not change. The log is still the truth, the
@@ -36,7 +36,7 @@ The repository pin generalizes to a **workspace**: a root directory and a
 user-owned **mount table**, the filesystem counterpart of the binding table.
 
 ```toml
-# <workspace>/.nibb/workspace.toml
+# <workspace>/.nodwyn/workspace.toml
 kind = "docs"                 # code | docs | mixed — framing and default tools
 [[mount]] path = "."                    access = "write"
 [[mount]] path = "~/Reference/contracts" access = "read"
@@ -45,7 +45,7 @@ kind = "docs"                 # code | docs | mixed — framing and default tool
 
 `RepoPin` becomes `WorkspacePin`: a path is resolved (symlinks first, as
 today) and matched against the mounts; no match is a deny, `read` makes
-every write a deny, and `.nibb/` stays protected (ADR 17). A workspace with
+every write a deny, and `.nodwyn/` stays protected (ADR 17). A workspace with
 no mount table is exactly today's behaviour: `. → write`.
 
 `kind` selects the default tool set and how the system prompt frames the
@@ -53,18 +53,18 @@ work. It does **not** select a security model — there is one.
 
 ### 2. Undo is a workspace service, not git
 Standing write approvals (ADR 17) were justified by "git is the undo".
-Where there is no git, nibb provides its own: before any irreversible write
-the previous content is copied into `.nibb/versions/` (content-addressed,
-capped by total size and age) and a `file.version` event is logged. `nibb
-undo <path>`, `nibb versions <path>`, and the UI's restore read it.
+Where there is no git, nodwyn provides its own: before any irreversible write
+the previous content is copied into `.nodwyn/versions/` (content-addressed,
+capped by total size and age) and a `file.version` event is logged. `nodwyn
+undo <path>`, `nodwyn versions <path>`, and the UI's restore read it.
 
 A workspace that *is* a git repository keeps git as the primary undo; the
 version store is then a convenience, not the safety net.
 
 ### 3. Attachments are ingress, and their content is data
-`nibb attach FILE` (and drag-and-drop in the UI) does five things:
+`nodwyn attach FILE` (and drag-and-drop in the UI) does five things:
 
-1. **copies** the file into `.nibb/attachments/<id>/` so the pin holds and
+1. **copies** the file into `.nodwyn/attachments/<id>/` so the pin holds and
    the artifact is reproducible from the workspace alone;
 2. **extracts** text deterministically by type (plain text as-is; PDF, docx,
    xlsx, pptx through an extractor). An **image is not extracted**: the
@@ -107,7 +107,7 @@ exactly like `fs-read` (invariant 4 holds, unchanged).
 
 The hard part is metadata. MCP describes what a tool *takes*, not what it
 *does to the world*, so a server carries a **capability profile** in
-`.nibb/mcp.toml` — transport, credential class, destination, and per-tool
+`.nodwyn/mcp.toml` — transport, credential class, destination, and per-tool
 `egress`/`irreversible`/role mapping — and **an undeclared tool is treated
 as `egress` *and* `irreversible`**: every call confirms, any egress the
 binding table does not authorise is denied. Fail closed, the same posture as
@@ -121,9 +121,9 @@ through the attachment path. Servers connect before the first message and
 the tool list is frozen for the session (ADR 9); a server that dies makes
 its tools return errors rather than disappearing.
 
-**The isolation, pinning and trust posture for servers nibb cannot review
+**The isolation, pinning and trust posture for servers nodwyn cannot review
 is [ADR 23](./0023-untrusted-mcp-servers.md)**, which refines this section:
-no untrusted server runs in nibb's process tree, manifests are hashed and
+no untrusted server runs in nodwyn's process tree, manifests are hashed and
 re-approved on change, and a contained server's network and filesystem are
 declared rather than inherited.
 
@@ -140,7 +140,7 @@ mounts and their access, the attachments in play, and the servers
 available — still one string, still byte-stable within a turn.
 
 ## Consequences
-- **P7 is a hard prerequisite** for attachments and MCP resources: nibb must
+- **P7 is a hard prerequisite** for attachments and MCP resources: nodwyn must
   not ingest a file it did not produce before the ingress redactor exists.
   W2 and W3 therefore cannot start before P7 lands.
 - **P3 is a hard prerequisite** for MCP servers with credentials.
@@ -152,13 +152,13 @@ available — still one string, still byte-stable within a turn.
   canary must be redacted at ingest, and an MCP tool must not reach a
   destination its class is not bound to.
 
-## Accepted limit: nibb does not classify personal data
+## Accepted limit: nodwyn does not classify personal data
 L1/L3 detect *credentials*. A cowork workspace holds documents whose
 sensitivity has nothing to do with shape — a contract, a medical letter, a
-salary list. Nothing in nibb recognises those. The protections that do apply
+salary list. Nothing in nodwyn recognises those. The protections that do apply
 are the mount table (what can be read at all), the confirm (what leaves),
 the binding table (where it may go), and the Jev content level (ADR 19).
-The honest statement is: **nibb controls where content goes, not what
+The honest statement is: **nodwyn controls where content goes, not what
 content means.**
 
 ## Answers (2026-09-22)
@@ -169,7 +169,7 @@ content means.**
    reviewed by us. See [ADR 23](./0023-untrusted-mcp-servers.md).
 3. **All attachment types**, images included: the control plane reports
    `vision` and reads images (verified). See §3 for what that costs.
-4. **nibb produces documents**: docx, Google Docs and LaTeX. LaTeX is a
+4. **nodwyn produces documents**: docx, Google Docs and LaTeX. LaTeX is a
    `shell-exec` tool over an installed toolchain, docx is pandoc from
    Markdown or LaTeX, and Google Docs needs OAuth — designed in
    [ADR 24](./0024-oauth2-credentials.md), which W5 depends on.
@@ -185,19 +185,19 @@ content means.**
    cannot run a daemon or a container — would force a second product; that
    is revisited if and when it appears.
 6. **A workspace is a plain folder.** If the user syncs it, that is their
-   business: nibb makes no assumption about sync, locking or conflicts, and
+   business: nodwyn makes no assumption about sync, locking or conflicts, and
    the version store is per-machine.
 
 ## W1 implemented — 2026-09-30
 
 Workspaces as decided above, with these specifics:
 
-- `<root>/.nibb/workspace.toml` holds `kind` and `[[mount]]` rows (`path`
+- `<root>/.nodwyn/workspace.toml` holds `kind` and `[[mount]]` rows (`path`
   absolute or `~/…`, `access` read|write). A mount may not be `/`, the home
   directory itself, or overlap the root. Without the file a folder is a code
   workspace, exactly as before. The console writes the file only for a kind
   other than code or when there are mounts, so naming a repository adds
-  nothing to its diff; `.nibb/` stays protected from the model.
+  nothing to its diff; `.nodwyn/` stays protected from the model.
 - The pin takes mounts by absolute path; a read-only mount refuses every
   irreversible call. A `docs` workspace registers no `shell-exec`, and a
   guard checker refuses `shell-exec` and `register-tool` there whoever asks;
@@ -205,10 +205,10 @@ Workspaces as decided above, with these specifics:
   only for docs or mounted workspaces.
 - Before `fs-write`/`fs-edit` replaces a file that no git work tree at the
   root covers (mounts are never covered), its content goes to
-  `.nibb/versions/objects/<sha256>` with an index line, and a `file.version`
+  `.nodwyn/versions/objects/<sha256>` with an index line, and a `file.version`
   record names it. 20 versions per file, 256 MiB in all, oldest first; a
-  failure to keep a version fails the write. `nibb versions FILE` and
-  `nibb undo FILE`; the console restores through a user-origin `fs-write`, so
+  failure to keep a version fails the write. `nodwyn versions FILE` and
+  `nodwyn undo FILE`; the console restores through a user-origin `fs-write`, so
   a restore shows its diff, asks, and is itself undoable.
 - Named workspaces live in `workspaces.toml` in the config directory
   (`workspace.list/save/remove`, local consoles only).
@@ -226,7 +226,7 @@ Attachments as decided above, except images:
   64 MB unpack bound, PDF through `pdftotext` when installed. Images are
   refused with a clear message until they can be sent as images; nothing is
   OCRed.
-- The copy goes to `.nibb/attachments/<id>/<name>` (with a `.gitignore`);
+- The copy goes to `.nodwyn/attachments/<id>/<name>` (with a `.gitignore`);
   the text is redacted at ingest, capped at 48 KB (head and tail kept, the
   omission said), and recorded as an `attach` record with the file's hash,
   type, pages and redaction classes. The window renders it as a user-role

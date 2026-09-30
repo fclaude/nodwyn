@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nodwyn/internal/core"
 )
 
 // sessions lists what is on disk. --ids prints only identifiers, which is

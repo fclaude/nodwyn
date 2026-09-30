@@ -3,9 +3,9 @@
 \chapter{Bootstrap, then self-host}
 
 The plan has two stages. \textbf{Stage 0} (weeks 1--4) is hand-written: the
-smallest \nibb{} that can do real work on its own repository. \textbf{Stage
+smallest \nodwyn{} that can do real work on its own repository. \textbf{Stage
 1+} (weeks 5--24) is every remaining phase of the spec's build order, executed
-as \nibb{} sessions driving a promoted binary. The spec's ordering is kept;
+as \nodwyn{} sessions driving a promoted binary. The spec's ordering is kept;
 only the entry point changed.
 
 \section{Why this order}
@@ -19,16 +19,16 @@ Three deliberate deviations from the spec's numbered build order:
 \item \textbf{A walking-skeleton loop right after the guard.} The security
   phases are then tested against a real loop, not a mock. The TUI stays at
   its spec position as a second front-end over the same events.
-\item \textbf{A minimal kernel, grown later by \nibb{} itself.} To self-host
+\item \textbf{A minimal kernel, grown later by \nodwyn{} itself.} To self-host
   you need a working loop before a complete interpreter. Growing the
   language is the ideal first dogfood task: pure Go, crisp tests.
 \end{itemize}
 
 \section{Two binaries, always}
 
-\file{bin/nibb} is the working-tree build. \file{\textasciitilde/.local/bin/nibb-stable}
-is the last \emph{promoted} build. All development runs \code{nibb-stable};
-\nibb{} never edits itself through the binary being edited, so a broken tree
+\file{bin/nodwyn} is the working-tree build. \file{\textasciitilde/.local/bin/nodwyn-stable}
+is the last \emph{promoted} build. All development runs \code{nodwyn-stable};
+\nodwyn{} never edits itself through the binary being edited, so a broken tree
 can never strand you. Promotion (\code{make promote TAG=v0.N-phase})
 refuses a dirty tree, runs the acceptance suite and a self-check\,---\,the
 candidate completes a scripted session and replays its own log\,---\,then swaps
@@ -36,7 +36,7 @@ the binaries, keeps the previous one as \code{.prev}, and tags.
 
 \section{The safety envelope}
 
-Using \nibb{} before the keychain, L1 and redaction exist requires
+Using \nodwyn{} before the keychain, L1 and redaction exist requires
 compensating controls. Each is retired by the phase that builds the real
 thing; some stay as defense in depth.
 
@@ -53,8 +53,8 @@ Paths pinned to the repository root, symlinks resolved & --- & never (per-projec
 Path denylist: \code{.env*}, \code{*.pem}, \code{*.key}, \code{id\_*}, \code{\textasciitilde/.ssh}, \code{\textasciitilde/.aws}, \ldots & L1 / E2 & never\,---\,defense in depth \\
 Command-line trigger: \code{curl wget nc ssh scp rsync}, \code{git push}, \code{rm -rf}, absolute paths outside the repo $\Rightarrow$ confirm & L1 on argv, P5 hard triggers & P5 \\
 Irreversible primitives $\Rightarrow$ confirm, with a diff for writes & --- & permanent \\
-Operator rule: no secrets in the repo; never paste one into \nibb{} & E4 redaction & P7 \\
-Operator rule: bootstrap-era \nibb{} only on trusted repositories & everything & P7 \\
+Operator rule: no secrets in the repo; never paste one into \nodwyn{} & E4 redaction & P7 \\
+Operator rule: bootstrap-era \nodwyn{} only on trusted repositories & everything & P7 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -84,17 +84,17 @@ If time runs short, cut in this order: P10, P8, P9 polish. Never P3--P7.
 
 \section{The friction log}
 
-When \code{nibb-stable} gets in the way, the rule is: hand-edit, and write
+When \code{nodwyn-stable} gets in the way, the rule is: hand-edit, and write
 one line in \file{docs/friction.md}. That file is the backlog for the
 front-ends and for memory, and it already paid for itself: the first
 self-hosting run showed the model rewriting a 400-line file to change one
 line; the entry became \code{fs-edit} the same afternoon, and the second run
 took a third of the tool calls. Fallback is allowed and honest: the goal is a
-built \nibb{}, not purity.
+built \nodwyn{}, not purity.
 
 \chapter{The phases}
 
-Each phase is a set of \nibb{} sessions plus a promotion. The ``with \nibb{}''
+Each phase is a set of \nodwyn{} sessions plus a promotion. The ``with \nodwyn{}''
 note says what the tool can do at that point and what its promotion unlocks.
 
 \paragraph{P1b\,---\,grow the kernel (weeks 5--6).} \code{letrec}, \code{case},
@@ -115,7 +115,7 @@ denied; the value appears nowhere.
 
 \paragraph{P4\,---\,L1 (weeks 10--11).} The shape catalog (prefixes, entropy,
 structure), the egress allowlist, a checker over text arguments. Sub-millisecond
-at p99 on 64\,KB; a false-positive sweep over real repositories. \nibb{} runs
+at p99 on 64\,KB; a false-positive sweep over real repositories. \nodwyn{} runs
 the sweep on itself.
 
 \paragraph{P5\,---\,plan gate and Jev (weeks 12--13).} The System One client,
@@ -135,11 +135,11 @@ only because of the two-binary rule.
 \paragraph{P7\,---\,ingress redaction (weeks 16--17).} One context-ingress
 function, enforced by lint; \code{[REDACTED class]} at E2 and E4; the same
 redactor in front of the log writer. This retires the last operator rules.
-\nibb{} is now safe on other repositories with real keys, and
+\nodwyn{} is now safe on other repositories with real keys, and
 \textbf{M3 v0-core} is reached.
 
 \paragraph{P8\,---\,L3 (weeks 18--19, optional).} Features to logistic regression
-with calibration; trained on a public corpus plus \nibb's own confirmed
+with calibration; trained on a public corpus plus \nodwyn's own confirmed
 events; invoked only on the residual; excluded with a build tag.
 
 \paragraph{P9\,---\,TUI (weeks 20--22).} A bubbletea front-end over the same
@@ -147,8 +147,8 @@ events; invoked only on the residual; excluded with a build tag.
 
 \paragraph{P10\,---\,memory (weeks 23--24).} The spec's window: summaries as
 revocable log events, a grep index exposed as a primitive,
-byte-for-byte replay of the window. Designed against real logs of \nibb{}
-building \nibb{}.
+byte-for-byte replay of the window. Designed against real logs of \nodwyn{}
+building \nodwyn{}.
 
 \chapter{The control plane}
 
@@ -187,7 +187,7 @@ it that way.
   a session from its log --- the window is already a fold over events --- and
   a store lists sessions from the sessions directory. One day's work, the top
   item in the friction log, and everything later assumes it.
-\item[U2 --- \code{nibbd} and the protocol] A daemon owning sessions, speaking
+\item[U2 --- \code{nodwynd} and the protocol] A daemon owning sessions, speaking
   JSON-RPC 2.0 over a 0600 Unix socket:
   \code{session.\{list,open,resume,send,abort,answer,secret,eval,info\}} and
   \code{log.read}, with every \code{event.Event} delivered as a notification.
@@ -197,7 +197,7 @@ it that way.
   \code{guard.decision} never loses who said yes. Best landed \emph{before}
   P9, so the TUI becomes the protocol's first client and proves it.
 \item[U3 --- the desktop client] A local web UI served by the daemon
-  (\code{nibb ui}), assets embedded in the binary. Views in the order they
+  (\code{nodwyn ui}), assets embedded in the binary. Views in the order they
   earn their place: session list; transcript; \textbf{approvals} --- the
   confirm as a panel with its reasons and its diff, which is the thing a
   terminal renders worst and a UI renders best; plan and budgets;
@@ -225,7 +225,7 @@ not change; three assumptions do.
 undo, becomes a \textbf{workspace}: a root plus a user-owned \emph{mount
 table} mapping paths to \code{read} or \code{write} --- the filesystem
 counterpart of the binding table. No match denies; a \code{read} mount makes
-every write a deny; \file{.nibb/} stays protected. And because a working
+every write a deny; \file{.nodwyn/} stays protected. And because a working
 folder may be no repository at all, a \textbf{version store} is written
 before every irreversible write, so \adr{17}'s standing write approvals keep
 their justification without git.
@@ -257,7 +257,7 @@ every call confirms, unbound egress is denied.
 \paragraph{And the servers are untrusted.} The operating assumption is that
 a server can be neither written nor reviewed by us, which moves the risk off
 the tool call and onto the process, the manifest, the arguments and the
-results. \adr{23}: no untrusted server runs in nibb's process tree --- a
+results. \adr{23}: no untrusted server runs in nodwyn's process tree --- a
 remote server is simply a destination the binding table already models, and
 a local one runs in a digest-pinned container with a declared network
 (empty means none) and declared workspace mounts (default none), reached
@@ -292,10 +292,10 @@ would force two binaries.
 
 \paragraph{The accepted limit.} L1 and L3 detect \emph{credentials}. A cowork
 workspace holds documents whose sensitivity has nothing to do with shape: a
-contract, a medical letter, a salary list. Nothing in nibb recognises those.
+contract, a medical letter, a salary list. Nothing in nodwyn recognises those.
 What applies to them is the mount table (what can be read at all), the
 confirm (what leaves), the binding table (where it may go) and the judge's
-content level. Stated plainly: \textbf{nibb controls where content goes, not
+content level. Stated plainly: \textbf{nodwyn controls where content goes, not
 what content means.}
 
 \chapter{Long-running turns}

@@ -1,13 +1,13 @@
-MODULE  := github.com/fclaude/nibb
+MODULE  := github.com/fclaude/nodwyn
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .PHONY: build app test lint exfil accept promote selfcheck smoke book clean
 
 build:
-	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nibb ./cmd/nibb
+	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
 
-## app: bin/Nibb.app, nibb with its own window (macOS; needs Xcode's command line tools)
+## app: bin/Nodwyn.app, nodwyn with its own window (macOS; needs Xcode's command line tools)
 app:
 	scripts/app-macos.sh $(VERSION)
 
@@ -26,21 +26,21 @@ exfil:
 ## accept: everything a candidate must pass before promotion (ADR 13)
 accept: lint test exfil
 
-## promote: accept + selfcheck, swap in nibb-stable, tag. Usage: make promote TAG=v0.1-bootstrap
+## promote: accept + selfcheck, swap in nodwyn-stable, tag. Usage: make promote TAG=v0.1-bootstrap
 promote:
 	scripts/promote.sh $(TAG)
 
 ## selfcheck: the candidate binary proves itself (ADR 13)
 selfcheck: build
-	scripts/selfcheck.sh bin/nibb
+	scripts/selfcheck.sh bin/nodwyn
 
 ## smoke: manual two-turn session against the real control plane (not CI)
 smoke:
 	scripts/smoke.sh
 
-## book: docs/book/nibb.pdf (needs texlive)
+## book: docs/book/nodwyn.pdf (needs texlive)
 book:
-	cd docs/book && latexmk -pdf -interaction=nonstopmode -halt-on-error nibb.tex >/dev/null && latexmk -c >/dev/null
+	cd docs/book && latexmk -pdf -interaction=nonstopmode -halt-on-error nodwyn.tex >/dev/null && latexmk -c >/dev/null
 
 clean:
 	rm -rf bin

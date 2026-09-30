@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nodwyn/internal/llm"
 )
 
 func formatTools(catalog []llm.Tool, name string) (string, error) {

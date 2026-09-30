@@ -1,11 +1,11 @@
-// Package config locates nibb's files and loads its configuration.
+// Package config locates nodwyn's files and loads its configuration.
 //
-// Layout (XDG, also on macOS — nibb is a developer tool):
+// Layout (XDG, also on macOS — nodwyn is a developer tool):
 //
-//	$XDG_CONFIG_HOME/nibb/config.toml     control plane, window budget, policy
-//	$XDG_CONFIG_HOME/nibb/bindings.toml   the user-owned binding table (P3)
-//	$XDG_CONFIG_HOME/nibb/keychain        encrypted credential store (P3) — never in the log
-//	$XDG_DATA_HOME/nibb/sessions/         one .jsonl per session (the log)
+//	$XDG_CONFIG_HOME/nodwyn/config.toml     control plane, window budget, policy
+//	$XDG_CONFIG_HOME/nodwyn/bindings.toml   the user-owned binding table (P3)
+//	$XDG_CONFIG_HOME/nodwyn/keychain        encrypted credential store (P3) — never in the log
+//	$XDG_DATA_HOME/nodwyn/sessions/         one .jsonl per session (the log)
 //
 // Missing files mean defaults; a present file is parsed over the defaults and
 // validated. There is no secret in any of the files this package reads.
@@ -22,10 +22,10 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/fclaude/nibb/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
 )
 
-// Paths are the directories and files nibb uses.
+// Paths are the directories and files nodwyn uses.
 type Paths struct {
 	ConfigDir   string
 	DataDir     string
@@ -49,7 +49,7 @@ func DefaultPaths() (Paths, error) {
 	if data == "" {
 		data = filepath.Join(home, ".local", "share")
 	}
-	return PathsUnder(filepath.Join(cfg, "nibb"), filepath.Join(data, "nibb")), nil
+	return PathsUnder(filepath.Join(cfg, "nodwyn"), filepath.Join(data, "nodwyn")), nil
 }
 
 // PathsUnder builds Paths from explicit config and data directories.
@@ -174,7 +174,7 @@ type L1 struct {
 	AllowValues []string `toml:"allow_values"`
 }
 
-// RepoAllow is <repo>/.nibb/allow.toml: standing approvals for one
+// RepoAllow is <repo>/.nodwyn/allow.toml: standing approvals for one
 // repository, merged with policy.allow_commands.
 type RepoAllow struct {
 	Commands []string `toml:"commands"`
@@ -206,14 +206,14 @@ func ParseRepoAllow(raw []byte) (RepoAllow, error) {
 	return r, nil
 }
 
-// Default is the configuration nibb runs with when no config.toml exists.
+// Default is the configuration nodwyn runs with when no config.toml exists.
 func Default() Config {
 	return Config{
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 16 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
 		Loop:   Loop{MaxToolCalls: 0, RequestTimeout: "30m", ShellTimeout: "10m"},
 		Budget: Budget{ToolCallsSoft: 50, ToolCallsHard: 500, TokensSoft: 1_000_000, TokensHard: 10_000_000, ActionsSoft: 25, ActionsHard: 200, WallSoft: "20m", WallHard: "4h"},
-		// Jev defaults: no service (nibb runs file-only, gate is "plan"), full
+		// Jev defaults: no service (nodwyn runs file-only, gate is "plan"), full
 		// content when one is configured. A developer points jev.url at their
 		// instance to enable the gate (ADR 19).
 		Jev: Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan},
@@ -275,7 +275,7 @@ func (c Config) Validate() error {
 			if len(missing) > 1 {
 				verb = "are"
 			}
-			return fmt.Errorf("control: %s %s required: nibb has no built-in control model (it no longer assumes ollama at http://localhost:11434); set provider, url, model and num_ctx in [control]",
+			return fmt.Errorf("control: %s %s required: nodwyn has no built-in control model (it no longer assumes ollama at http://localhost:11434); set provider, url, model and num_ctx in [control]",
 				strings.Join(missing, " and "), verb)
 		}
 		if err := c.Control.validate(); err != nil {

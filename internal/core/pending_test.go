@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/guard"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
 )
 
 func TestPendingPromptsUseCurrentStateAndRedact(t *testing.T) {

@@ -32,10 +32,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fclaude/nibb/internal/detect/l1"
-	nlog "github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
+	nlog "github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // JevOptions are fixed for the session, separate from the host services.

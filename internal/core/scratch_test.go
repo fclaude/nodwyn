@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/llm"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/llm"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // A session's scratch directory takes throwaway files without a prompt, is
-// the TMPDIR of its commands, lives under nibb's data directory, and is gone
+// the TMPDIR of its commands, lives under nodwyn's data directory, and is gone
 // when the session closes; a resumed session gets a new, empty one. The
 // system prompt names $TMPDIR, not the per-session path.
 func TestScratchDirectory(t *testing.T) {
@@ -20,8 +20,8 @@ func TestScratchDirectory(t *testing.T) {
 	defer srv.Close()
 	o := diskOptions(t) // NoConfirm: any prompt would be refused
 	o.Provider = llm.NewOllama(srv.URL)
-	os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0o755)
-	os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`
+	os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
 (define seen #f)
 (define (agent-turn request)
   (let ((file (string-append (scratch-dir) "/repro.py")))
@@ -79,17 +79,17 @@ func TestScratchDirectory(t *testing.T) {
 func TestScratchSweep(t *testing.T) {
 	data := t.TempDir()
 	root := scratchRoot(data)
-	os.MkdirAll(filepath.Join(root, "nibb-scratch-old-1"), 0o700)
-	os.MkdirAll(filepath.Join(root, "nibb-scratch-new-1"), 0o700)
+	os.MkdirAll(filepath.Join(root, "nodwyn-scratch-old-1"), 0o700)
+	os.MkdirAll(filepath.Join(root, "nodwyn-scratch-new-1"), 0o700)
 	os.MkdirAll(filepath.Join(root, "unrelated"), 0o700)
 	week := time.Now().Add(-8 * 24 * time.Hour)
-	os.Chtimes(filepath.Join(root, "nibb-scratch-old-1"), week, week)
+	os.Chtimes(filepath.Join(root, "nodwyn-scratch-old-1"), week, week)
 	os.Chtimes(filepath.Join(root, "unrelated"), week, week)
 	dir, err := makeScratch(data, "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, want := range map[string]bool{"nibb-scratch-old-1": false, "nibb-scratch-new-1": true, "unrelated": true} {
+	for name, want := range map[string]bool{"nodwyn-scratch-old-1": false, "nodwyn-scratch-new-1": true, "unrelated": true} {
 		if _, err := os.Stat(filepath.Join(root, name)); (err == nil) != want {
 			t.Errorf("%s: exists=%v, want %v", name, err == nil, want)
 		}
@@ -100,7 +100,7 @@ func TestScratchSweep(t *testing.T) {
 	}
 	// A session touches its directory every turn, so however long it stays
 	// open, the sweep keeps it.
-	live := filepath.Join(root, "nibb-scratch-live-1")
+	live := filepath.Join(root, "nodwyn-scratch-live-1")
 	os.MkdirAll(live, 0o700)
 	os.Chtimes(live, week, week)
 	touchScratch(live)
@@ -162,7 +162,7 @@ func TestTmpdirNamesTheScratchDirectoryInEveryTool(t *testing.T) {
 	}
 }
 
-// A repository's notes are kept across sessions, beside nibb's data rather
+// A repository's notes are kept across sessions, beside nodwyn's data rather
 // than in the repository: redacted, capped, and shown in later sessions'
 // system prompts as leads to check. Another repository does not see them.
 func TestProjectNotesCarryAcrossSessions(t *testing.T) {

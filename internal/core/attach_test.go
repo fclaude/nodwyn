@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestAttachmentReachesTheModelAsRedactedData(t *testing.T) {
@@ -25,7 +25,7 @@ func TestAttachmentReachesTheModelAsRedactedData(t *testing.T) {
 	if err != nil || !strings.Contains(string(stored), "Ship cowork") {
 		t.Fatalf("stored copy: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(r.repo, ".nibb", "attachments", ".gitignore")); err != nil {
+	if _, err := os.Stat(filepath.Join(r.repo, ".nodwyn", "attachments", ".gitignore")); err != nil {
 		t.Fatal("attachments are not kept out of git")
 	}
 	r.s.Send("What is this?")

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/scheme"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/scheme"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // diskSession starts a file-backed session over o with the given init file
@@ -19,8 +19,8 @@ import (
 func diskSession(t *testing.T, o Options, init string, turns ...fake.Turn) *rig {
 	t.Helper()
 	if init != "" {
-		os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0o755)
-		os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(init), 0o644)
+		os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0o755)
+		os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
 	}
 	srv := fake.New(turns...)
 	t.Cleanup(srv.Close)
@@ -80,7 +80,7 @@ func TestReloadAppliesWhatTheSessionAllows(t *testing.T) {
 (register-tool "greet" (lambda (who) "hi") '((doc . "Greet someone") (params . (("who" "string" "whom")))))
 (define marker "v1")`)
 	tools := len(r.s.loop.Tools())
-	os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`
+	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
 (register-tool "greet" (lambda (who) "hello") '((doc . "Greet someone") (params . (("who" "string" "whom")))))
 (register-tool "extra" (lambda () "x") '((doc . "Something new") (params . ())))
 (define marker "v2")
@@ -99,11 +99,11 @@ func TestReloadAppliesWhatTheSessionAllows(t *testing.T) {
 	if len(r.s.loop.Tools()) != tools {
 		t.Fatal("reload changed the tool list offered to the model")
 	}
-	if !strings.HasPrefix(r.s.loop.WindowContext().System, "You are nibb") {
+	if !strings.HasPrefix(r.s.loop.WindowContext().System, "You are nodwyn") {
 		t.Fatal("reload changed the running system prompt")
 	}
 
-	os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`(define marker`), 0o644)
+	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(define marker`), 0o644)
 	if _, err := evalValue(t, r, `(reload)`); err == nil || !strings.Contains(err.Error(), "reload") {
 		t.Fatalf("a broken init file reloaded: %v", err)
 	}
@@ -113,9 +113,9 @@ func TestOptimizeImprovesInitFromHistory(t *testing.T) {
 	o := diskOptions(t)
 	o.NoConfirm = false
 	past(t, o, "run the tests", "I ran pytest with the system python; the imports failed.")
-	write := map[string]any{"path": ".nibb/init.scm", "content": "(define marker \"tests use the venv\")\n"}
+	write := map[string]any{"path": ".nodwyn/init.scm", "content": "(define marker \"tests use the venv\")\n"}
 	r := diskSession(t, o, `(define marker "old")`,
-		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": ".nibb/init.scm"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": ".nodwyn/init.scm"}}}},
 		fake.Turn{ToolCalls: []fake.ToolCall{
 			{ID: "w", Name: "fs-write", Args: write},
 			{ID: "x", Name: "fs-write", Args: map[string]any{"path": "main.go", "content": "package main\n"}},
@@ -137,14 +137,14 @@ func TestOptimizeImprovesInitFromHistory(t *testing.T) {
 		t.Fatalf("the optimized init file was not reloaded: %s", got)
 	}
 	optimizer := requestMessages(t, r.srv.Requests[0])
-	if !strings.HasPrefix(optimizer[0].Content, "You improve how nibb") ||
+	if !strings.HasPrefix(optimizer[0].Content, "You improve how nodwyn") ||
 		!strings.HasPrefix(optimizer[1].Content, "Focus on: test runs") ||
 		!strings.Contains(optimizer[1].Content, "USER: run the tests") ||
 		!strings.Contains(optimizer[1].Content, "ANSWER: I ran pytest with the system python") {
 		t.Fatalf("the optimizer's context: %+v", optimizer)
 	}
 	if !strings.Contains(r.results()["x"], "not available to this agent") {
-		t.Fatalf("the optimizer wrote outside .nibb/: %q", r.results()["x"])
+		t.Fatalf("the optimizer wrote outside .nodwyn/: %q", r.results()["x"])
 	}
 	final := requestMessages(t, r.srv.Requests[3])
 	last := final[len(final)-1].Content

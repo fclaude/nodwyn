@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/keychain"
-	nlog "github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/prim"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	nlog "github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/prim"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // credSecret is the test credential value, deliberately distinct from the

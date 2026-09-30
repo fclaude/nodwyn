@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // MaxSummaryBytes bounds a summary's text.

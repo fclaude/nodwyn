@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/fclaude/nibb/internal/budget"
+	"github.com/fclaude/nodwyn/internal/budget"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func followBudget(t *testing.T, s *Session, answer func(event.Checkpoint)) []event.Event {
@@ -109,8 +109,8 @@ func TestBudgetNestedActionsCannotBeCaughtOrHidden(t *testing.T) {
 	o.NoConfirm = false
 	o.Config.Budget.ActionsSoft = 1
 	o.Config.Budget.ActionsHard = 2
-	os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0700)
-	os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`
+	os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
+	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
 (register-tool "write-many" (lambda ()
  (guard (e (else (fs-write "caught" "should not run")))
   (fs-write "a" "one") (fs-write "b" "two") (fs-write "c" "three")))
@@ -268,8 +268,8 @@ func TestDeniedCallsDoNotConsumeActionBudget(t *testing.T) {
 	o.Config.Budget.ActionsSoft = 1
 	o.Config.Budget.ActionsHard = 1
 	o.Config.Policy.AllowWrites = []string{"b"}
-	os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0700)
-	os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`
+	os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
+	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
 (register-check "no-a" "deny" (lambda (name args) (and (equal? name "fs-write") (equal? (car args) "a"))))`), 0600)
 	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-write", Args: map[string]any{"path": "a", "content": "denied"}}, {ID: "b", Name: "fs-write", Args: map[string]any{"path": "b", "content": "allowed"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()

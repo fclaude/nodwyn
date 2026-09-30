@@ -74,7 +74,7 @@ func File(ctx context.Context, path, name string) (Result, error) {
 	case ext == ".pptx":
 		return pptx(path)
 	case imageTypes[ext]:
-		return Result{}, fmt.Errorf("%w: images need a model that sees them, which nibb does not send yet", ErrUnsupported)
+		return Result{}, fmt.Errorf("%w: images need a model that sees them, which nodwyn does not send yet", ErrUnsupported)
 	case textTypes[ext] || ext == "":
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -89,7 +89,7 @@ func File(ctx context.Context, path, name string) (Result, error) {
 	return Result{}, fmt.Errorf("%w: %s (%s)", ErrUnsupported, name, ext)
 }
 
-// pdf runs pdftotext (poppler), which nibb does not bundle.
+// pdf runs pdftotext (poppler), which nodwyn does not bundle.
 func pdf(ctx context.Context, path string) (Result, error) {
 	tool, err := exec.LookPath("pdftotext")
 	if err != nil {

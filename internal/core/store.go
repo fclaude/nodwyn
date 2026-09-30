@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // Store is a view of the session logs, not a second database.

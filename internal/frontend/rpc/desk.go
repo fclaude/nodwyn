@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
 )
 
 // The methods in this file serve the task desk (ADR 30): what a home page
@@ -60,7 +60,7 @@ type notesWriteParams struct {
 	Text string `json:"text"`
 }
 
-// notesRead returns a repository's project notes: nibb's own data, the text
+// notesRead returns a repository's project notes: nodwyn's own data, the text
 // every session there is shown, so reading needs no session.
 func (s *server) notesRead(req request, _ *peer) (any, *rpcError) {
 	var p notesParams

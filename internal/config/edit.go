@@ -17,7 +17,7 @@ var tableHeader = regexp.MustCompile(`^\s*\[\[?\s*([A-Za-z0-9_."-]+)\s*\]\]?\s*(
 // SetControl returns raw (config.toml's contents) with its [control] table
 // replaced by m, keeping every other line — comments included — as written.
 // A file without [control] gains one at the end. The result is parsed and
-// validated before it is returned, so a caller never writes a file nibb
+// validated before it is returned, so a caller never writes a file nodwyn
 // would refuse to load.
 func SetControl(raw []byte, m Model) ([]byte, Config, error) {
 	block := controlBlock(m)

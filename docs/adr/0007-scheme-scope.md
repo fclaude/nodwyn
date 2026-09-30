@@ -5,12 +5,12 @@
 
 ## Context
 No interpreter exists. The kernel is the surface everything else sits on, and
-the model will read its documentation when writing `.scm` for nibb in P1b.
+the model will read its documentation when writing `.scm` for nodwyn in P1b.
 
 ## Decision
 `docs/scheme.md` is written before the code and is the contract: syntax, data
 types, special forms, builtins, the error model, the primitive-table contract,
-and an explicit list of what is *not* in nibb Scheme. A builtin without a doc
+and an explicit list of what is *not* in nodwyn Scheme. A builtin without a doc
 entry and a conformance snippet fails the suite.
 
 Bootstrap kernel: `define lambda if let let* begin set! quote quasiquote cond

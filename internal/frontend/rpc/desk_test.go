@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
 )
 
 func TestAttentionListCarriesPendingPromptsAndListCarriesChanges(t *testing.T) {
@@ -83,7 +83,7 @@ func TestNotesReadAndGuardedWrite(t *testing.T) {
 	if notes.Text != "Build with make build." {
 		t.Fatalf("notes after save: %q", notes.Text)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".nibb")); err == nil {
+	if _, err := os.Stat(filepath.Join(repo, ".nodwyn")); err == nil {
 		t.Fatal("notes must not be written into the repository")
 	}
 }

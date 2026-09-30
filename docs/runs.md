@@ -1,16 +1,16 @@
 # Bounded supervised runs
 
-`nibb run` submits a task to a running daemon. The driver is frontend policy
+`nodwyn run` submits a task to a running daemon. The driver is frontend policy
 above the existing core session, plan gate and turn loop. It adds no tool
 permissions, bypasses no checker, and does not change the loop's host interface.
 
 ```sh
-nibb daemon
+nodwyn daemon
 # In another terminal:
-nibb run --task task.txt --repo . --budget-wall 2h --max-turns 20
-# nibb run start ... is the same command, spelled out
-nibb ui
-# Or nibb tui --socket /absolute/path/to/daemon.sock
+nodwyn run --task task.txt --repo . --budget-wall 2h --max-turns 20
+# nodwyn run start ... is the same command, spelled out
+nodwyn ui
+# Or nodwyn tui --socket /absolute/path/to/daemon.sock
 ```
 
 Each turn sends the message `(run-turn-prompt task complete-line turn
@@ -25,14 +25,14 @@ provider response can exceed its token ceiling; no further operation then starts
 Judge token usage remains unavailable.
 
 Each turn requires a nonempty, durably recorded plan before execution. The
-Scheme `nibb-turn` runs the plan gate first in every run turn, whatever `agent-turn`
+Scheme `nodwyn-turn` runs the plan gate first in every run turn, whatever `agent-turn`
 a project defines ([docs/scheme.md](scheme.md) §9.5): the control model drafts
 the plan in a context of its own, offered no tools, and with a Jev credential
 the score/revise path runs through the guard; the noul decision cannot skip a
 required plan. Without a judge the model still drafts a plan. Judge outages
 retain the plain-plan fallback. The core refuses anything irreversible until a
 plan is recorded and fails a turn that records none; a project that redefines
-`nibb-turn` to plan its own way is held to the same rule. Planner or plan-recording
+`nodwyn-turn` to plan its own way is held to the same rule. Planner or plan-recording
 failure prevents execution.
 
 The continuation asks for one unfinished plan step and a progress report. This
@@ -43,7 +43,7 @@ permission. The checkpoint's prompt ID and answering peer are recorded.
 Tool prompts and soft-budget checkpoints remain separate.
 
 A successful plain model response whose exact final line is
-`NIBB_RUN_COMPLETE` ends the run as **model-reported completion**. This is not
+`NODWYN_RUN_COMPLETE` ends the run as **model-reported completion**. This is not
 proof that the task is correct or complete. Tool results, responses containing
 tool calls, truncated responses, and marker substrings do not signal completion.
 The final reply is the last one the conversation still shows: a reply inside a
@@ -56,9 +56,9 @@ provider failures stop continuation.
 ## Stop, inspect and resume
 
 ```sh
-nibb run status SESSION
-nibb run stop SESSION
-nibb run resume SESSION
+nodwyn run status SESSION
+nodwyn run stop SESSION
+nodwyn run resume SESSION
 ```
 
 Each command accepts `--socket PATH` before the session ID. Browser/terminal

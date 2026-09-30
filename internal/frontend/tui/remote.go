@@ -3,8 +3,8 @@ package tui
 import (
 	"context"
 
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 type remote struct{ client *rpc.Client }

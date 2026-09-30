@@ -1,4 +1,4 @@
-// Package log is nibb's append-only session log: the single source of truth
+// Package log is nodwyn's append-only session log: the single source of truth
 // (SPEC invariant 1, ADR 2).
 //
 // One JSON object per line, one file per session. Everything else the harness
@@ -25,7 +25,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // Kind is an event kind. The set is fixed (ADR 2); a reader rejects any other.

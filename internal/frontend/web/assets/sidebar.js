@@ -50,7 +50,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     h(
       "div",
       { class: "sidebar-top" },
-      h("div", { class: "brand" }, "nibb", h("span", {}, ".")),
+      h("div", { class: "brand" }, "nodwyn", h("span", {}, ".")),
       h("button", { type: "button", class: "icon-btn", "aria-label": "Search tasks", "aria-expanded": String(searching), onclick: () => { searching = !searching; if (!searching) filter = ""; rerender(); if (searching) nav.querySelector("input[type=search]")?.focus(); } }, icon("search")),
     ),
     searching ? h("div", { class: "search" }, search) : null,

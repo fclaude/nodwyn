@@ -1,6 +1,6 @@
 package window
 
-import "github.com/fclaude/nibb/internal/log"
+import "github.com/fclaude/nodwyn/internal/log"
 
 // LastReply returns the model's last reply of the current turn, the one
 // since the latest user message, that a window built now would still show.

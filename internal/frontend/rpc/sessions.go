@@ -7,13 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/budget"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/frontend/run"
-	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/frontend/run"
+	"github.com/fclaude/nodwyn/internal/llm"
 )
 
 type ownedSession struct {
@@ -65,9 +65,9 @@ type sessionDetails struct {
 	Writes     []string          `json:"allowed_writes"`
 	TurnWrites bool              `json:"turn_writes"`
 	TurnActor  string            `json:"turn_actor,omitempty"`
-	// Workspace is what the session loaded from .nibb/workspace.toml.
+	// Workspace is what the session loaded from .nodwyn/workspace.toml.
 	Workspace config.Workspace `json:"workspace"`
-	// Git says a git work tree is the undo at the root; otherwise nibb
+	// Git says a git work tree is the undo at the root; otherwise nodwyn
 	// keeps previous versions of files it replaces.
 	Git bool `json:"git"`
 	// MCP is what the session made of each configured server.

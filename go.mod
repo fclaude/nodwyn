@@ -1,4 +1,4 @@
-module github.com/fclaude/nibb
+module github.com/fclaude/nodwyn
 
 go 1.27.1
 

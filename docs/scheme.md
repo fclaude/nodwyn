@@ -1,6 +1,6 @@
-# nibb Scheme — language reference
+# nodwyn Scheme — language reference
 
-nibb embeds a small Scheme for **orchestration only**. Scheme code decides
+nodwyn embeds a small Scheme for **orchestration only**. Scheme code decides
 *what to do*; every effect — reading a file, running a command, calling a
 model — is a Go **primitive**, and every primitive application crosses the
 guard. Scheme never touches the network or the filesystem on its own.
@@ -286,7 +286,7 @@ Procedures, handles and symbols other than `null` cannot be emitted.
 This mapping is also how the agent loop turns a model's tool-call arguments
 into Scheme values (ADR 3).
 
-### Host primitives (registered by the session, not by `nibb repl`)
+### Host primitives (registered by the session, not by `nodwyn repl`)
 
 | | |
 |---|---|
@@ -294,8 +294,8 @@ into Scheme values (ADR 3).
 | `(index-grep path pattern [glob [context]])` | **P10.** Search a repository file or directory with a regular expression (RE2 syntax, as in ripgrep; not command-line options). `rg` lists the candidate files, `glob` narrows them (`*.py`), and each is read through the guarded `fs-read` and matched in Go. Returns matches (path, line, text, and with `context` 0 to 5 the lines before and after), files searched and skipped, and a truncated flag; at most 3000 candidate files (each read's guard decision is logged, so the limit also bounds the log) and 100 matching lines; protected, hidden, binary and oversized files and symlinks are skipped. Needs `rg` on `PATH` |
 | `(fs-find path glob)` | file names under a repository directory whose path matches `glob`: sorted, relative to the root, at most 500, with their count and a truncated flag. Names only, listed as `index-grep` lists candidates; hidden and credential-looking names are left out |
 | `(shell-exec cmd args)` | run a program with an argument **list** in the repository root, scrubbed environment (`TMPDIR` is the scratch directory); irreversible; returns `(("status" . n) ("stdout" . s) ("stderr" . s))` |
-| `(scratch-dir)` | the session's scratch directory, or `#f` when there is none (`nibb repl`). It is a private directory (mode 0700) under nibb's data directory, outside the repository; the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept once untouched for a week (a session touches its own at every turn). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
-| `(project-notes)` `(project-notes-save text)` | this repository's notes kept across sessions (how tests run, where things are, runbooks), `""` when there are none; and replacing them. They live in nibb's data directory, keyed by the repository's path, never in the repository. A save is capped at 8 KiB and redacted, and its text is a payload the guard checks, so content that looks like a credential needs a person's approval. The default system prompt shows the notes under a heading that calls them leads to check, not instructions |
+| `(scratch-dir)` | the session's scratch directory, or `#f` when there is none (`nodwyn repl`). It is a private directory (mode 0700) under nodwyn's data directory, outside the repository; the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept once untouched for a week (a session touches its own at every turn). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
+| `(project-notes)` `(project-notes-save text)` | this repository's notes kept across sessions (how tests run, where things are, runbooks), `""` when there are none; and replacing them. They live in nodwyn's data directory, keyed by the repository's path, never in the repository. A save is capped at 8 KiB and redacted, and its text is a payload the guard checks, so content that looks like a credential needs a person's approval. The default system prompt shows the notes under a heading that calls them leads to check, not instructions |
 | `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))` |
 | `(policy-read name)` | User-only, hidden from the model catalog. Read configured `bindings` or repository `approvals`, returning content, revision and existence; bounded to 64 KiB and rejects recognized secrets. No arbitrary path. |
 | `(policy-write name revision content)` | User-only, hidden from the model catalog. Validate TOML and atomically replace that fixed policy after a one-time diff confirmation and revision check. Binding changes reload before egress; approval-file changes affect new/resumed sessions. |
@@ -357,7 +357,7 @@ environment before anything else. It defines, in Scheme:
 | `(compose f g)` | `(lambda args (f (apply g args)))` |
 | `(string-empty? s)` | |
 
-After the prelude, nibb loads `./.nibb/init.scm` if present (ADR 14).
+After the prelude, nodwyn loads `./.nodwyn/init.scm` if present (ADR 14).
 
 ## 7. Primitives and the guard
 
@@ -451,7 +451,7 @@ returns the context's error.
 
 A turn is a Scheme procedure. The session records the user's message and
 calls `(agent-turn request)` with the recorded (redacted) text. The default is
-installed before `.nibb/init.scm` loads, so a project can redefine it:
+installed before `.nodwyn/init.scm` loads, so a project can redefine it:
 
 ```scheme
 (define (agent-turn request)
@@ -465,7 +465,7 @@ installed before `.nibb/init.scm` loads, so a project can redefine it:
 
 | | |
 |---|---|
-| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and is recorded (`llm.req` `no_tools`) so replay rebuilds it. The value must be `#f` or `#t`: `'((tools #f))`, a list, is an error rather than a silent yes. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nibb replay --window`. |
+| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and is recorded (`llm.req` `no_tools`) so replay rebuilds it. The value must be `#f` or `#t`: `'((tools #f))`, a list, is an error rather than a silent yes. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nodwyn replay --window`. |
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
@@ -509,9 +509,9 @@ had called them directly. Whatever the strategy does:
 
 ### 9.1 Prompts
 
-Every prompt nibb sends is Scheme. The defaults live in
+Every prompt nodwyn sends is Scheme. The defaults live in
 `internal/loop/prompts.scm`, which loads with the default strategy, before
-`.nibb/init.scm`; a project redefines any of them there, usually with raw
+`.nodwyn/init.scm`; a project redefines any of them there, usually with raw
 strings (§1.1):
 
 | | |
@@ -536,7 +536,7 @@ strings (§1.1):
     """))
 ```
 
-nibb reads the system prompt and the two headers once, after `init.scm` has
+nodwyn reads the system prompt and the two headers once, after `init.scm` has
 run: they are then fixed for the session like the tool list (ADR 9), and
 recorded with the window's recipe so a replay rebuilds requests that used a
 project's own. A system prompt that is not a procedure returning a
@@ -547,7 +547,7 @@ uses them, so a `(reload)` changes them from the next turn.
 ### 9.2 Compaction
 
 A long turn fills the context with tool results the model no longer needs.
-nibb elides the oldest ones past `[window] high_water` on its own; compaction
+nodwyn elides the oldest ones past `[window] high_water` on its own; compaction
 goes further, as user code over the primitives above, in
 `internal/loop/compact.scm`. When a reply's `prompt-tokens` passes
 `compact-threshold`, `maybe-compact` asks the model for a handover note (the
@@ -566,7 +566,7 @@ conversation, so replay and audit see everything the note replaced.
 | `(compact-context request)` | compact now; `#t` if the turn continues in the narrowed context |
 
 ```scheme
-(define compact-threshold 40000)    ; in .nibb/init.scm
+(define compact-threshold 40000)    ; in .nodwyn/init.scm
 ```
 
 A strategy that redefines `agent-turn` calls `maybe-compact` itself, where the
@@ -586,11 +586,11 @@ code, in `internal/loop/agents.scm`:
 |---|---|
 | `(sub-agent system task tools [name])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (other calls are skipped), is a procedure that takes a call and says whether it may run, or is `#f` for all; `name` labels it in the log (default: the agent tool being answered, else `sub-agent`); returns its final answer, after `fold-context` |
 | `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40) |
-| `(define-agent-tool name doc params handler)` | register a tool the model calls like any other, answered by `(handler call args)`, `args` parsed from the model's JSON; define it in `.nibb/init.scm` |
+| `(define-agent-tool name doc params handler)` | register a tool the model calls like any other, answered by `(handler call args)`, `args` parsed from the model's JSON; define it in `.nodwyn/init.scm` |
 | `(run-calls calls)` | run a reply's calls: agent tools through their handlers and `answer-call`, the rest with `run-tools`; returns one result alist per call. The default `agent-turn` uses it |
 
 ```scheme
-;; .nibb/init.scm: a reviewer the model can consult, reading but not writing
+;; .nodwyn/init.scm: a reviewer the model can consult, reading but not writing
 (define-agent-tool "ask-reviewer"
   "Ask a reviewer who can read the repository whether a change is finished."
   '(("change" "string" "what you changed and why, and how you tested it"))
@@ -605,7 +605,7 @@ Every sub-agent leaves its whole transcript in the session log: its
 then come its task, requests, replies, tool calls and guard decisions, up to
 its `context.fold`; the calls it answered follow as `tool.result`. Folding
 hides the span from later windows, never from the log, so an agent's work
-can be read, replayed (`nibb replay --window`) and learned from on its own.
+can be read, replayed (`nodwyn replay --window`) and learned from on its own.
 
 A strategy can also run one itself, such as a review when the model stops:
 `(sub-agent reviewer-system (string-append issue diff tests) '())`. A
@@ -615,14 +615,14 @@ caller's context: the prefix it had cached was the sub-agent's (ADR 9).
 
 ### 9.4 History, reload and the optimizer
 
-A strategy can read this repository's past sessions and change how nibb
+A strategy can read this repository's past sessions and change how nodwyn
 works here, while the session runs:
 
 | | |
 |---|---|
 | `(session-list [n])` | this repository's sessions, newest first (all, or the latest `n`); each an alist with `id`, `first-message`, `last-event`, `current`, `in-flight` and `truncated`. Other repositories' sessions are not listed |
 | `(session-events id [kinds])` | one of those sessions as its log events, optionally only the kinds listed (`'("user.msg" "tool.result")`); each an alist with `seq`, `ts`, `kind` and `payload`, the event's JSON redacted and parsed as `json-parse` does. The values carry the `external:log` taint, like a tool's output |
-| `(reload)` | run `.nibb/init.scm` again, with the caller's origin. The strategy, compaction settings, agent-tool handlers and anything else read when used apply from the next turn; a tool keeps its schema and takes a changed body. What a session is fixed with (ADR 9) does not change: new or changed tools, guard checks (`register-check`) and prompts are returned as notes and apply from the next session or a resume |
+| `(reload)` | run `.nodwyn/init.scm` again, with the caller's origin. The strategy, compaction settings, agent-tool handlers and anything else read when used apply from the next turn; a tool keeps its schema and takes a changed body. What a session is fixed with (ADR 9) does not change: new or changed tools, guard checks (`register-check`) and prompts are returned as notes and apply from the next session or a resume |
 
 The optimizer (`internal/loop/optimize.scm`) is user code over these. The
 user starts it with a message; the default `agent-turn` runs it instead of
@@ -639,7 +639,7 @@ It digests the sessions (requests, answers, the calls made, failures and
 refusals, judges' verdicts, sub-agents, notes) within
 `optimize-session-chars` per session and `optimize-total-chars` in all, and
 hands them to a sub-agent labelled `optimizer`. That agent may read the
-repository and write only under `.nibb/`, a protected path, so every write
+repository and write only under `.nodwyn/`, a protected path, so every write
 asks the user and shows the diff; an unattended run (`--yolo`) refuses those
 writes, so `/optimize` needs a person at the prompt. When it is done `init.scm` is reloaded (and
 restored if the reload fails), and the model tells the user what changed.
@@ -650,10 +650,10 @@ calling `(optimize-turn request)` when `(optimize-request? request)`.
 ### 9.5 The plan gate
 
 The plan gate is user code too, `internal/loop/plan.scm`. The host runs
-`nibb-turn` for every user message, not `agent-turn` directly:
+`nodwyn-turn` for every user message, not `agent-turn` directly:
 
 ```scheme
-(define (nibb-turn request)
+(define (nodwyn-turn request)
   (when (plan-required?) (plan-gate request))   ; a supervised run's turns
   (agent-turn request))
 ```
@@ -662,7 +662,7 @@ and the default `agent-turn` calls `(plan-gate request)` before its loop, so
 an interactive turn is gated too. `plan-gate` does nothing once the turn has
 a plan, so a strategy may call it as well; a strategy that redefines
 `agent-turn` still plans in a run. A project that plans its own way
-redefines `nibb-turn` (a name specific to nibb, so a project's own `turn`, a counter say, cannot shadow it). With a judge
+redefines `nodwyn-turn` (a name specific to nodwyn, so a project's own `turn`, a counter say, cannot shadow it). With a judge
 (Jev, §5: its primitives registered and a `jev-key` stored), it asks
 `plan-needed-question`; a request that needs a plan gets one drafted by
 the control model in a narrowed context of its own (§9), offered no
@@ -683,18 +683,18 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
-| `(workspace)` | the workspace's kind and mounted folders from `.nibb/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The default system prompt adds a section from it only for a `docs` workspace or one with mounts, so a plain repository's prompt is unchanged. A `docs` workspace offers no `shell-exec`, and the guard refuses `shell-exec` and `register-tool` there whoever asks; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file that no git work tree at the root covers, its previous content is kept in `.nibb/versions/` and a `file.version` record names it |
+| `(workspace)` | the workspace's kind and mounted folders from `.nodwyn/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The default system prompt adds a section from it only for a `docs` workspace or one with mounts, so a plain repository's prompt is unchanged. A `docs` workspace offers no `shell-exec`, and the guard refuses `shell-exec` and `register-tool` there whoever asks; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file that no git work tree at the root covers, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it |
 | `(log-note text)` | add a note to the session log, for the record and the transcript; the model never sees it |
 
 A turn that must plan (`plan-required?`) always drafts one, scored if there
 is a judge, and fails if the plan is empty. The core keeps one invariant
 whatever the Scheme does: until a non-empty plan is recorded, nothing
 irreversible runs, and a turn that records none fails. What it enforces is
-that a plan was recorded, not who wrote it: the default `nibb-turn` has the
-control model plan, and a project's own `nibb-turn` may record a plan of its own
+that a plan was recorded, not who wrote it: the default `nodwyn-turn` has the
+control model plan, and a project's own `nodwyn-turn` may record a plan of its own
 with `record-plan`, as trusted project code.
 
-## 10. Not in nibb Scheme
+## 10. Not in nodwyn Scheme
 
 Deliberately absent from v0.
 

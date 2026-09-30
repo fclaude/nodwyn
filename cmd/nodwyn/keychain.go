@@ -7,9 +7,9 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/keychain"
 )
 
 // keychain creates the encrypted credential store. It exists only as

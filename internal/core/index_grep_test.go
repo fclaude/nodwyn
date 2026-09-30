@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/log"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestIndexGrepSessionRedactionAndReadGuard(t *testing.T) {

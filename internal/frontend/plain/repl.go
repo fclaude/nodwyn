@@ -1,6 +1,6 @@
 // Package plain is the line-mode front-end: a plain reader/writer pair over
 // the core, with no terminal control. It is what CI, selfcheck and
-// `nibb --plain` use. The agent loop front-end arrives in B2; this file is
+// `nodwyn --plain` use. The agent loop front-end arrives in B2; this file is
 // the Scheme REPL used to try the language directly.
 package plain
 
@@ -12,7 +12,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // SchemeREPL reads forms from r, evaluates them in in, and writes results
@@ -27,7 +27,7 @@ func SchemeREPL(ctx context.Context, in *scheme.Interp, r io.Reader, w io.Writer
 			fmt.Fprint(w, p)
 		}
 	}
-	show("nibb> ")
+	show("nodwyn> ")
 	for sc.Scan() {
 		if pending.Len() > 0 {
 			pending.WriteByte('\n')
@@ -42,7 +42,7 @@ func SchemeREPL(ctx context.Context, in *scheme.Interp, r io.Reader, w io.Writer
 		pending.Reset()
 		if err != nil {
 			fmt.Fprintf(w, "error: %v\n", err)
-			show("nibb> ")
+			show("nodwyn> ")
 			continue
 		}
 		for _, f := range forms {
@@ -55,7 +55,7 @@ func SchemeREPL(ctx context.Context, in *scheme.Interp, r io.Reader, w io.Writer
 				fmt.Fprintln(w, scheme.Write(v))
 			}
 		}
-		show("nibb> ")
+		show("nodwyn> ")
 	}
 	if prompt {
 		fmt.Fprintln(w)

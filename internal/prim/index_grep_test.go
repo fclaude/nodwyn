@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 func requireRipgrep(t *testing.T) {

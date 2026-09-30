@@ -23,7 +23,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 //go:embed assets/*
@@ -259,11 +259,11 @@ func (b *bridge) asset(w http.ResponseWriter, r *http.Request) {
 	http.ServeFileFS(w, r, files, name)
 }
 
-func (b *bridge) cookieName() string { return "nibb_ui_" + strings.ReplaceAll(b.local, ":", "_") }
+func (b *bridge) cookieName() string { return "nodwyn_ui_" + strings.ReplaceAll(b.local, ":", "_") }
 
 // deviceCookie is shared by every name this console answers to: a device
 // stays paired across restarts, which change the pairing code and port.
-const deviceCookie = "nibb_device"
+const deviceCookie = "nodwyn_device"
 
 // authenticated returns the paired device's name, "" for this machine's
 // browser, and whether the request is paired at all. This machine's pairing
@@ -417,7 +417,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device string) 
 			if b.readOnly {
 				callErr = errors.New("this browser view is read-only; use the terminal client for this operation")
 			} else if remote {
-				callErr = errors.New("this is not available from another device; use nibb on its own computer")
+				callErr = errors.New("this is not available from another device; use nodwyn on its own computer")
 			}
 		case strings.HasPrefix(req.Method, "devices."):
 			result, callErr = b.deviceMethod(req)
@@ -461,7 +461,7 @@ func write(ctx context.Context, c *websocket.Conn, v any) error {
 // Only operations with a complete browser view join this allowlist.
 // Core remains authoritative for every answer and its live prompt ID.
 // Another device answers and steers, but never widens policy or changes
-// nibb's setup (ADR 30): those stay with the computer nibb runs on.
+// nodwyn's setup (ADR 30): those stay with the computer nodwyn runs on.
 func (b *bridge) allowed(method string, remote bool) bool {
 	if readOnly(method) {
 		return true
@@ -495,7 +495,7 @@ func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device string) {
 		http.Error(w, "id and name are required", http.StatusBadRequest)
 		return
 	}
-	dir, err := os.MkdirTemp("", "nibb-upload-")
+	dir, err := os.MkdirTemp("", "nodwyn-upload-")
 	if err != nil {
 		http.Error(w, "Could not receive the file", http.StatusInternalServerError)
 		return

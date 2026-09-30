@@ -13,6 +13,6 @@ it in friction.md. The measure of success is the trend in friction.md, not
 100% self-authorship.
 
 ## Consequences
-- Nobody wastes a day forcing nibb through a task it cannot do yet.
+- Nobody wastes a day forcing nodwyn through a task it cannot do yet.
 - If the evidence says the model is the bottleneck on hard phases, switching
   the control plane (ADR 8) is a config decision made on that evidence.

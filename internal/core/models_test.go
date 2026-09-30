@@ -13,13 +13,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/window"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // fakeOpenAI is a chat-completions server that answers with its replies in
@@ -69,8 +69,8 @@ func (f *fakeOpenAI) seen() []seenRequest {
 func modelRig(t *testing.T, init string, models map[string]config.Model, o Options, turns ...fake.Turn) *rig {
 	t.Helper()
 	repo := t.TempDir()
-	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(init), 0o644)
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
 	srv := fake.New(turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 // Tool calls execute serially. Keep one open interval, not a map keyed by

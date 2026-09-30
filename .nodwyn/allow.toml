@@ -22,7 +22,7 @@ commands = [
 
 # Standing write approvals: repository-relative prefixes the model may
 # write under without a prompt. The diff is logged and shown dimmed instead.
-# .nibb/, .github/, scripts/ and Makefile can never be listed here (guard
+# .nodwyn/, .github/, scripts/ and Makefile can never be listed here (guard
 # Protected). Review with git diff before committing; git is the undo.
 writes = [
   "internal/",

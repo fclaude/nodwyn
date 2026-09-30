@@ -39,15 +39,15 @@ jobs:
         run: make accept GO_TEST_FLAGS=-count=1
       - name: Cross-compile release targets
         run: |
-          mkdir -p "$RUNNER_TEMP/nibb-builds"
+          mkdir -p "$RUNNER_TEMP/nodwyn-builds"
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             os=${target%/*}
             arch=${target#*/}
             echo "Building $os/$arch without cgo"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
-              -o "$RUNNER_TEMP/nibb-builds/nibb-$os-$arch" ./cmd/nibb
+              -o "$RUNNER_TEMP/nodwyn-builds/nodwyn-$os-$arch" ./cmd/nodwyn
           done
-          "$RUNNER_TEMP/nibb-builds/nibb-linux-amd64" version
-          test "$("$RUNNER_TEMP/nibb-builds/nibb-linux-amd64" eval -e '(+ 1 2)')" = 3
+          "$RUNNER_TEMP/nodwyn-builds/nodwyn-linux-amd64" version
+          test "$("$RUNNER_TEMP/nodwyn-builds/nodwyn-linux-amd64" eval -e '(+ 1 2)')" = 3
       - name: Check source stayed clean
         run: git diff --exit-code

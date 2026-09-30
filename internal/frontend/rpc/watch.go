@@ -4,7 +4,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/fclaude/nibb/internal/core"
+	"github.com/fclaude/nodwyn/internal/core"
 )
 
 // sessionState is deliberately content-free: watching all sessions does not

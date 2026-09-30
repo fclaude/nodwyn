@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/log"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // The fake server reports 279 + 10 prompt tokens per message, so a

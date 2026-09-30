@@ -7,11 +7,11 @@ import (
 	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/frontend/plain"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // Daemon and repository text is content, never terminal control sequences.
@@ -68,7 +68,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 			m.transcript = append(m.transcript, entry{text: safe("thinking> " + p.Thinking), thinking: true})
 		}
 		if p.Content != "" {
-			m.append("nibb> " + p.Content)
+			m.append("nodwyn> " + p.Content)
 		}
 		m.append(fmt.Sprintf("      %d→%d tok · %.1fs", p.Usage.PromptTokens, p.Usage.OutputTokens,
 			float64(p.Usage.TotalMS)/1000))
@@ -168,7 +168,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 		m.endToolInterval()
 		var p log.HarnessMsg
 		p, err = decode[log.HarnessMsg](e.Payload)
-		m.append("nibb> " + p.Text)
+		m.append("nodwyn> " + p.Text)
 	case string(log.KindContextNarrow):
 		m.endToolInterval()
 		var p log.ContextNarrow

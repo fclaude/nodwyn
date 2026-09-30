@@ -97,7 +97,7 @@ including absence; the daemon cannot resurrect its startup table after deletion.
 Inspectors report the last validated snapshot and cannot mutate it.
 
 Persistence appends TOML without reformatting existing content, uses a sibling
-advisory lock for nibb writers, and syncs a private temporary file before atomic
+advisory lock for nodwyn writers, and syncs a private temporary file before atomic
 rename and directory sync. External editors should honor the same lock; a
 content comparison detects edits during preparation but is not a compare-and-swap
 against an uncooperative writer. Symlink/non-regular write targets are refused.

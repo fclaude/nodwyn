@@ -1,21 +1,21 @@
 # Local session protocol (U2)
 
-Start the daemon in the foreground with `nibb daemon`. It is the `nibbd` role
-from ADR 21, shipped in the existing binary. `nibb daemon --no-keychain` skips
+Start the daemon in the foreground with `nodwyn daemon`. It is the `nodwynd` role
+from ADR 21, shipped in the existing binary. `nodwyn daemon --no-keychain` skips
 keychain startup; otherwise it uses the same masked terminal unlock as chat.
 Configuration is loaded once at startup. No model connection is needed to list
 or open sessions. `SIGINT` and `SIGTERM` close clients and session writers.
 
-The endpoint is `$XDG_RUNTIME_DIR/nibb/sock`. When `XDG_RUNTIME_DIR` is absent,
-it is `<user cache directory>/nibb/run/sock` (on macOS,
-`~/Library/Caches/nibb/run/sock`). `--socket /absolute/private/directory/sock`
+The endpoint is `$XDG_RUNTIME_DIR/nodwyn/sock`. When `XDG_RUNTIME_DIR` is absent,
+it is `<user cache directory>/nodwyn/run/sock` (on macOS,
+`~/Library/Caches/nodwyn/run/sock`). `--socket /absolute/private/directory/sock`
 overrides it. The immediate parent must be owned by the current user, mode
 0700, and not a symlink; missing directories are created privately. The socket
 is mode 0600. Existing paths are never replaced. After a crash, verify that no
 daemon owns the endpoint before removing a stale socket and restarting.
 
 A connection has the authority of the local user. Opening or resuming a
-repository loads its current `.nibb/init.scm` and policy, just as the plain
+repository loads its current `.nodwyn/init.scm` and policy, just as the plain
 frontend does; initialization confirmations remain denied. Turns and explicit
 user Scheme evaluations use the same guard and budget path as chat. Connecting
 or subscribing never approves a pending operation. The transport is local-only;
@@ -271,7 +271,7 @@ grow additively. Secret input is annotated `writeOnly`. Runtime checks still
 own prompt validity, policy, cursor ranges, limits and session ownership.
 
 Regenerate with `go generate ./internal/frontend/rpc` (or
-`go run ./cmd/nibb-schema -out docs/protocol.schema.json`). The normal Go test
+`go run ./cmd/nodwyn-schema -out docs/protocol.schema.json`). The normal Go test
 suite checks generated-file drift, method coverage and schema references, so
 Gitea's per-commit acceptance job enforces the contract.
 
@@ -318,14 +318,14 @@ outcome. This method and the optional proposal field are additive extensions.
 New `session.start` / `session.resume` payloads may include `context`, the
 redacted window recipe for that runtime. New turn `llm.req` payloads include
 `request_hash`, covering the provider-neutral request. These additive fields
-support offline `nibb replay SESSION --window SEQ`; no new RPC operation is
+support offline `nodwyn replay SESSION --window SEQ`; no new RPC operation is
 required. Old records remain readable but cannot provide verified exact request
 reconstruction. The generated schema documents the fields.
 
 
 Summary records now have typed `from`, `through`, `source_hash` and `text`
 payloads. `summary.drop` names `summary_seq`. These are durable history, not
-permission or mutation RPCs. The first editing surface is the local `nibb
+permission or mutation RPCs. The first editing surface is the local `nodwyn
 summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
 New runtimes use the summary-aware `window-v2` recipe; exact replay still supports
 `window-v1`.

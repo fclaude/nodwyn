@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fclaude/nibb/internal/budget"
+	"github.com/fclaude/nodwyn/internal/budget"
 )
 
 // Budget uses explicit TOML names; wall durations stay human-readable on disk.

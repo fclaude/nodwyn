@@ -19,9 +19,9 @@ func DefaultSocket() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		root = filepath.Join(root, "nibb", "run")
+		root = filepath.Join(root, "nodwyn", "run")
 	} else {
-		root = filepath.Join(root, "nibb")
+		root = filepath.Join(root, "nodwyn")
 	}
 	if !filepath.IsAbs(root) {
 		return "", fmt.Errorf("rpc: runtime directory must be absolute")

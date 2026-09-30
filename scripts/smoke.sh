@@ -9,7 +9,7 @@ printf '%s\n' \
 	'List the repository root and tell me in one line what this project is.' \
 	'Read docs/scheme.md and name three special forms it documents.' \
 	':q' \
-	| ./bin/nibb --no-confirm --repo . "$@"
+	| ./bin/nodwyn --no-confirm --repo . "$@"
 echo
 echo "=== replay ==="
-./bin/nibb replay "$(./bin/nibb sessions --ids | tail -1)"
+./bin/nodwyn replay "$(./bin/nodwyn sessions --ids | tail -1)"

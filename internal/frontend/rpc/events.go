@@ -3,8 +3,8 @@ package rpc
 import (
 	"sync"
 
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
 )
 
 // eventStream owns only live subscriptions. Durable catch-up comes from the

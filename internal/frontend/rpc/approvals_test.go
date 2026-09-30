@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 func decodePayload[T any](t *testing.T, value any) T {
@@ -167,7 +167,7 @@ func TestSecurityAndProtectedPromptsCannotCreateStandingApproval(t *testing.T) {
 	}{
 		// Protected paths hold code that later runs as the user, so their
 		// writes are security prompts too (guard.ProtectedPaths).
-		{"protected", `(fs-write ".nibb/allow.toml" "test")`, true},
+		{"protected", `(fs-write ".nodwyn/allow.toml" "test")`, true},
 		{"security", `(fs-write "secret.txt" "sk-ant-abcdefgh1234")`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -175,7 +175,7 @@ func TestSecurityAndProtectedPromptsCannotCreateStandingApproval(t *testing.T) {
 			c := connect(t, path)
 			c.hello()
 			repo := t.TempDir()
-			os.MkdirAll(filepath.Join(repo, ".nibb"), 0700)
+			os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0700)
 			id := opened(t, c, repo)
 			subscribed(t, c, id, 0, 100)
 			eval(c, id, tc.source)
@@ -364,7 +364,7 @@ func TestEvalCancellationAndRedaction(t *testing.T) {
 }
 
 func TestPeerIdentityFromDifferentProcess(t *testing.T) {
-	if path := os.Getenv("NIBB_TEST_PEER_SOCKET"); path != "" {
+	if path := os.Getenv("NODWYN_TEST_PEER_SOCKET"); path != "" {
 		c := connect(t, path)
 		identity(t, c) // Must name this child, not the daemon process.
 		return
@@ -375,7 +375,7 @@ func TestPeerIdentityFromDifferentProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(binary, "-test.run=^TestPeerIdentityFromDifferentProcess$")
-	cmd.Env = append(os.Environ(), "NIBB_TEST_PEER_SOCKET="+path)
+	cmd.Env = append(os.Environ(), "NODWYN_TEST_PEER_SOCKET="+path)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("peer process: %v\n%s", err, out)
 	}

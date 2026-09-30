@@ -1,13 +1,13 @@
 ;; The optimizer, written as user code (docs/scheme.md §9.4): a sub-agent
-;; that reads this repository's past sessions and improves how nibb works
-;; here by editing .nibb/init.scm. The user starts it with a message:
+;; that reads this repository's past sessions and improves how nodwyn works
+;; here by editing .nodwyn/init.scm. The user starts it with a message:
 ;;
 ;;   /optimize                 every session of this repository
 ;;   /optimize 5               the latest five
 ;;   /optimize ID ID ...       the sessions named
 ;;
 ;; and any other words after it are a focus ("/optimize 5 test runs"). Its
-;; writes are limited to .nibb/, and every one prompts (a protected path), so
+;; writes are limited to .nodwyn/, and every one prompts (a protected path), so
 ;; it needs a person: an unattended run (--yolo) refuses those writes.
 ;; Once it is done the init file is reloaded; if the reload fails, the file is
 ;; restored. The model then tells the user what changed.
@@ -81,16 +81,16 @@
               (loop (cdr ids) (cons d out) (+ used (string-length d))))))))
 
 ;; The optimizer may read anything in the repository and write only under
-;; .nibb/.
+;; .nodwyn/.
 (define (optimizer-may-call? call)
   (let ((name (assoc-ref call 'name)))
     (cond ((member name '("fs-read" "fs-list" "index-grep")) #t)
           ((member name '("fs-write" "fs-edit"))
-           (string-prefix? ".nibb/" (format "~a" (assoc-ref (json-parse (assoc-ref call 'args "{}")) "path" ""))))
+           (string-prefix? ".nodwyn/" (format "~a" (assoc-ref (json-parse (assoc-ref call 'args "{}")) "path" ""))))
           (else #f))))
 
 (define (read-init)
-  (guard (e (else #f)) (fs-read ".nibb/init.scm")))
+  (guard (e (else #f)) (fs-read ".nodwyn/init.scm")))
 
 ;; Run the optimizer over the selected sessions with an optional focus, then
 ;; reload. Returns the text the model reports from.
@@ -105,14 +105,14 @@
                (after (read-init)))
           (string-append
            "The optimizer read " (number->string (length ids)) " sessions and reported:\n" answer "\n\n"
-           (cond ((equal? before after) "It did not change .nibb/init.scm.")
+           (cond ((equal? before after) "It did not change .nodwyn/init.scm.")
                  (else
                   (guard (e (else
-                             (if before (fs-write ".nibb/init.scm" before) (fs-write ".nibb/init.scm" ""))
-                             (string-append "Reloading .nibb/init.scm failed, so it was restored: "
+                             (if before (fs-write ".nodwyn/init.scm" before) (fs-write ".nodwyn/init.scm" ""))
+                             (string-append "Reloading .nodwyn/init.scm failed, so it was restored: "
                                             (format "~a" (assoc-ref e 'message "")))))
                     (let ((notes (reload)))
-                      (string-append ".nibb/init.scm was changed and reloaded; the new strategy applies from the next turn."
+                      (string-append ".nodwyn/init.scm was changed and reloaded; the new strategy applies from the next turn."
                                      (if (null? notes) "" (string-append "\nFixed for this session, applying from the next one:\n- "
                                                                            (string-join notes "\n- ")))))))))))))
 

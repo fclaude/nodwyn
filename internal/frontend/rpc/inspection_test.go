@@ -2,7 +2,7 @@ package rpc
 
 import (
 	"encoding/json"
-	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nodwyn/internal/event"
 	"os"
 	"path/filepath"
 	"testing"

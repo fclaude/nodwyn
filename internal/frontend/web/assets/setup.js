@@ -1,4 +1,4 @@
-// Setting nibb up without a terminal (ADR 30): choose the model, and unlock
+// Setting nodwyn up without a terminal (ADR 30): choose the model, and unlock
 // or create the keychain that holds keys. The daemon validates and writes;
 // these forms only describe the choice.
 import { h, toast } from "./dom.js";
@@ -111,7 +111,7 @@ export function keychainForm(ctx, { onDone } = {}) {
         }
       },
     },
-    h("p", { class: "hint" }, creating ? "Keys for model servers and tools are kept in an encrypted keychain. Choose a passphrase you'll remember: nibb can't recover it." : "Your saved keys are locked. Enter the keychain's passphrase to use them in new tasks."),
+    h("p", { class: "hint" }, creating ? "Keys for model servers and tools are kept in an encrypted keychain. Choose a passphrase you'll remember: nodwyn can't recover it." : "Your saved keys are locked. Enter the keychain's passphrase to use them in new tasks."),
     h("div", { class: "field" }, h("label", { for: "keychain-pass" }, "Passphrase"), pass),
     creating ? h("div", { class: "field" }, h("label", { for: "keychain-again" }, "The same passphrase again"), again) : null,
     error,

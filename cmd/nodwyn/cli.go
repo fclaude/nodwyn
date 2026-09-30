@@ -4,11 +4,11 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nodwyn/internal/config"
 )
 
 // cli is one parsed command line: the shared flag set, the values it
-// carries, and where nibb keeps its files. Every command is a method on it
+// carries, and where nodwyn keeps its files. Every command is a method on it
 // and returns an error; main prints and exits, so a command never has to.
 type cli struct {
 	fs    *flag.FlagSet
@@ -56,7 +56,7 @@ var commands = map[string]func(*cli) error{
 }
 
 func newCLI(args []string) *cli {
-	c := &cli{fs: flag.NewFlagSet("nibb", flag.ExitOnError)}
+	c := &cli{fs: flag.NewFlagSet("nodwyn", flag.ExitOnError)}
 	c.fs.BoolVar(&c.showVersion, "version", false, "print version and exit")
 	c.fs.StringVar(&c.resume, "resume", "", "resume a session by id")
 	c.fs.StringVar(&c.repo, "repo", ".", "repository root; every path the model touches is pinned under it")
@@ -110,12 +110,12 @@ func (c *cli) rejectGlobals(format string, allowed ...string) error {
 }
 
 // run dispatches. version and licenses answer before configuration is
-// resolved, so they work even where nibb has no home directory.
+// resolved, so they work even where nodwyn has no home directory.
 func (c *cli) run() error {
 	name := c.fs.Arg(0)
 	switch {
 	case c.showVersion || name == "version":
-		fmt.Println("nibb", versionString())
+		fmt.Println("nodwyn", versionString())
 		return nil
 	case name == "licenses":
 		fmt.Print(licenseText())
@@ -125,7 +125,7 @@ func (c *cli) run() error {
 	if !ok {
 		return fmt.Errorf("unknown command %q", name)
 	}
-	paths, err := config.DefaultPaths()
+	paths, err := defaultPaths()
 	if err != nil {
 		return err
 	}

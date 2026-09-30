@@ -9,22 +9,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/scheme"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/scheme"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
-// strategyRig is a session whose .nibb/init.scm is init: the way a project
+// strategyRig is a session whose .nodwyn/init.scm is init: the way a project
 // replaces the agent loop.
 func strategyRig(t *testing.T, init string, maxToolCalls int, turns ...fake.Turn) *rig {
 	t.Helper()
 	repo := t.TempDir()
 	os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
-	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(init), 0o644)
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
 	srv := fake.New(turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
@@ -304,8 +304,8 @@ func (w *failAfterUserMsg) Write(p []byte) (int, error) {
 // A strategy cannot catch a log failure and carry on unrecorded.
 func TestStrategyCannotCatchLogFailure(t *testing.T) {
 	repo := t.TempDir()
-	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(`
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (define (agent-turn request)
   (let retry ((n 0))
     (guard (e (else (if (< n 100) (retry (+ n 1)) 'gave-up)))
@@ -369,7 +369,7 @@ func TestAddMessageRefusedWhileCallsAreUnanswered(t *testing.T) {
 	}
 }
 
-// The host calls nibb-turn, so a project's own turn, even one that is not a
+// The host calls nodwyn-turn, so a project's own turn, even one that is not a
 // procedure, does not break every turn.
 func TestAProjectMayDefineTurn(t *testing.T) {
 	r := strategyRig(t, `(define turn 0)`, 10, fake.Turn{Content: "hello"})

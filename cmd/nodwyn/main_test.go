@@ -7,18 +7,18 @@ import (
 	"strings"
 	"testing"
 
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // Invoke the real CLI entry point in a subprocess, including flag parsing and
 // configuration discovery, while retaining the test binary's race instrumentation.
 func TestCLIHelper(t *testing.T) {
-	if os.Getenv("NIBB_TEST_CLI") != "1" {
+	if os.Getenv("NODWYN_TEST_CLI") != "1" {
 		return
 	}
 	for i, arg := range os.Args {
 		if arg == "--" {
-			os.Args = append([]string{"nibb"}, os.Args[i+1:]...)
+			os.Args = append([]string{"nodwyn"}, os.Args[i+1:]...)
 			main()
 			return
 		}
@@ -35,7 +35,7 @@ func TestCLIResume(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--"}, args...)...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 		cmd.Stdin = strings.NewReader(input)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -67,12 +67,12 @@ func TestCLIBudgetCheckpoint(t *testing.T) {
 	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}}, fake.Turn{Content: "finished"})
 	defer srv.Close()
 	dir := t.TempDir()
-	configDir := filepath.Join(dir, "config", "nibb")
+	configDir := filepath.Join(dir, "config", "nodwyn")
 	os.MkdirAll(configDir, 0700)
 	os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("[budget]\ntool_calls_soft=1\ntool_calls_hard=3\n"), 0600)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--url", srv.URL, "--model", "test-model", "--no-keychain", "--budget-wall", "2h", "--budget-actions", "10")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "NIBB_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+	cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 	cmd.Stdin = strings.NewReader("list twice\n4\n3\n:q\n")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

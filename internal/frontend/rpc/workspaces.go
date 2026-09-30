@@ -3,18 +3,18 @@ package rpc
 import (
 	"os"
 
-	"github.com/fclaude/nibb/internal/guard"
+	"github.com/fclaude/nodwyn/internal/guard"
 	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/prim"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/prim"
 )
 
 // Workspaces (ADR 22 W1) as the console manages them: the named list in
 // workspaces.toml, and each folder's kind and mounts in its own
-// .nibb/workspace.toml. Tasks opened afterwards load them.
+// .nodwyn/workspace.toml. Tasks opened afterwards load them.
 
 type workspaceInfo struct {
 	Name   string         `json:"name"`
@@ -47,6 +47,7 @@ func describeWorkspace(name, path string) workspaceInfo {
 	info := workspaceInfo{Name: name, Path: path, Mounts: []config.Mount{}}
 	_, err := os.Stat(filepath.Join(path, ".git"))
 	info.Git = err == nil
+	_, _ = config.MigrateFolder(path) // a folder named before ADR 31 keeps its settings
 	ws, err := config.LoadWorkspace(path)
 	if err != nil {
 		info.Kind, info.Error = config.KindCode, err.Error()
@@ -104,7 +105,10 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 	}
 	// A plain code repository keeps no workspace file: naming it must not
 	// add a file to its diff. Anything else is written to the folder's
-	// .nibb/workspace.toml, which the model cannot write (.nibb/ is protected).
+	// .nodwyn/workspace.toml, which the model cannot write (.nodwyn/ is protected).
+	if _, err := config.MigrateFolder(p.Path); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
 	current, err := config.LoadWorkspace(p.Path)
 	if err != nil {
 		return nil, failure(-32000, err.Error())
@@ -134,7 +138,7 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 			return nil, err
 		}
 		if !filepath.IsAbs(p.Repo) || !s.knownFolder(filepath.Clean(p.Repo)) {
-			return nil, failure(-32602, "repo must be a folder nibb works in")
+			return nil, failure(-32602, "repo must be a folder nodwyn works in")
 		}
 		abs := p.Path
 		if !filepath.IsAbs(abs) {
@@ -200,7 +204,7 @@ func (s *server) attach(req request, client *peer) (any, *rpcError) {
 
 // rootRefusal says why a folder cannot be a task's root, or "". A root is
 // where every relative path points and what a task may write: never the
-// whole disk, the home directory itself, nibb's own configuration and data
+// whole disk, the home directory itself, nodwyn's own configuration and data
 // (config, keys, bindings, logs) or the credential directories the guard
 // denies, nor a folder that contains any of them.
 func (s *server) rootRefusal(root string) string {
@@ -219,7 +223,7 @@ func (s *server) rootRefusal(root string) string {
 			continue
 		}
 		if real == dir || strings.HasPrefix(real, dir+string(filepath.Separator)) || strings.HasPrefix(dir, real+string(filepath.Separator)) {
-			return "that folder holds (or is inside) " + dir + ", which nibb never works in"
+			return "that folder holds (or is inside) " + dir + ", which nodwyn never works in"
 		}
 	}
 	return ""

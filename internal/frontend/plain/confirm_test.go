@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/guard"
+	"github.com/fclaude/nodwyn/internal/guard"
 )
 
 func TestEgressSummary(t *testing.T) {

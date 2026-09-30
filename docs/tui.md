@@ -4,9 +4,9 @@ The TUI is opt-in. Plain chat and `--plain` remain the default and the path
 used by scripts and promotion selfchecks.
 
 ```sh
-nibb tui --repo /path/to/project
-nibb tui --resume SESSION_ID
-nibb tui --socket /absolute/private/directory/sock --repo /path/to/project
+nodwyn tui --repo /path/to/project
+nodwyn tui --resume SESSION_ID
+nodwyn tui --socket /absolute/private/directory/sock --repo /path/to/project
 ```
 
 Without `--socket`, the TUI uses core directly and owns the selected session.
@@ -15,7 +15,7 @@ as plain chat. Keychain unlock happens before entering the full-screen view;
 `--no-keychain` skips it. Quitting aborts local work, drains events and closes
 the session log.
 
-With `--socket`, the TUI attaches to an already running `nibb daemon`. The
+With `--socket`, the TUI attaches to an already running `nodwyn daemon`. The
 daemon owns configuration and credentials, so `--no-keychain` is rejected in
 this mode. Quitting detaches; the session and any turn continue in the daemon.
 Use Ctrl+C to abort before detaching if that is what you want. The UI shows
@@ -217,7 +217,7 @@ text is redacted and stripped of terminal control sequences before rendering.
 - `tools.go`: model-facing tool list and input-schema presentation.
 - `tool_calls.go`: serial call/result grouping and guard/result presentation.
 - `plan_budget.go`: recorded gate outcomes, checkpoint history and budget display.
-- `run.go` and `cmd/nibb/tui.go`: lifecycle and command startup.
+- `run.go` and `cmd/nodwyn/tui.go`: lifecycle and command startup.
 
 Core now exposes a copied binding-metadata snapshot (ADR 10 amendment). Scheme,
 guard, keychain and log ownership are unchanged. Bubble Tea v2

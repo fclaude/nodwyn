@@ -34,10 +34,12 @@ import (
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/chacha20poly1305"
 
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 var (
+	// The format marker keeps nodwyn's former name (ADR 31): renaming it
+	// would make every existing keychain unreadable.
 	magic       = []byte("NIBBKC01")
 	errNotFound = errors.New("keychain: no such credential")
 )

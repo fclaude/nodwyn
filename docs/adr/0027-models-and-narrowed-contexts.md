@@ -37,7 +37,7 @@ including what happened while it was narrowed.
 **Replay.** Narrowing is a log event, so window recipe v4 rebuilds it. An
 `llm.req` sent to a configured model records the model's name and its
 context length and keep-alive, which differ from the session's recipe; with
-them `nibb replay --window` proves every request whichever model it went to.
+them `nodwyn replay --window` proves every request whichever model it went to.
 
 **The adapter** for `openai` is not streamed: output is shown only once
 whole anyway (ADR 25).

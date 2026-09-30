@@ -46,9 +46,9 @@ function showPairing(message = "") {
   const device = h("input", { class: "input", id: "pair-device", autocomplete: "off", spellcheck: false, required: !local, pattern: "[a-z0-9][a-z0-9._-]{0,31}", placeholder: "for example phone" });
   const error = h("p", { class: "error", role: "alert" }, message);
   gate([
-    h("div", { class: "brand" }, "nibb", h("span", {}, ".")),
+    h("div", { class: "brand" }, "nodwyn", h("span", {}, ".")),
     h("h1", {}, "Connect this browser"),
-    h("p", {}, local ? "Paste the pairing code nibb printed where it was started. The code stays between this browser and your computer and is never added to a task." : "Paste the pairing code nibb printed on its computer, and name this device. Every answer you give from here is recorded with that name."),
+    h("p", {}, local ? "Paste the pairing code nodwyn printed where it was started. The code stays between this browser and your computer and is never added to a task." : "Paste the pairing code nodwyn printed on its computer, and name this device. Every answer you give from here is recorded with that name."),
     h(
       "form",
       {
@@ -61,7 +61,7 @@ function showPairing(message = "") {
             await pair(local ? { code } : { code, device: device.value.trim().toLowerCase() });
             conn.connect();
           } catch (e) {
-            error.textContent = e.message || "Pairing failed. Copy the code again from where nibb is running.";
+            error.textContent = e.message || "Pairing failed. Copy the code again from where nodwyn is running.";
           }
         },
       },
@@ -75,9 +75,9 @@ function showPairing(message = "") {
 }
 function showDown(detail) {
   gate([
-    h("div", { class: "brand" }, "nibb", h("span", {}, ".")),
+    h("div", { class: "brand" }, "nodwyn", h("span", {}, ".")),
     h("h1", {}, "Connection lost"),
-    h("p", {}, "nibb isn't answering. Nothing was retried: when it's back, reconnect and the conversation reloads from its record."),
+    h("p", {}, "nodwyn isn't answering. Nothing was retried: when it's back, reconnect and the conversation reloads from its record."),
     detail ? h("p", { class: "error" }, detail) : null,
     h("button", { type: "button", class: "btn accent big", onclick: () => conn.connect() }, "Reconnect"),
   ]);
@@ -103,10 +103,10 @@ function render(routeChanged = false) {
   const attention = desk.needsYou().length;
   $("topbar-count").textContent = attention ? `${attention} need${attention === 1 ? "s" : ""} you` : "";
   $("topbar-count").hidden = !attention;
-  document.title = attention ? `(${attention}) nibb` : "nibb";
+  document.title = attention ? `(${attention}) nodwyn` : "nodwyn";
   const view = $("view");
   const key = route.name === "task" ? `task:${route.id}` : route.name;
-  const ctx = { conn, desk, navigate, rerender: () => render(), pickFolder: window.nibbPickFolder };
+  const ctx = { conn, desk, navigate, rerender: () => render(), pickFolder: window.nodwynPickFolder };
   if (route.name === "task") {
     if (key !== lastRoute || routeChanged) {
       view.replaceChildren(task.root);
@@ -167,16 +167,16 @@ document.addEventListener("keydown", (event) => {
 // second window of its own.
 document.addEventListener("click", (event) => {
   const link = event.target.closest?.("a[target=_blank]");
-  if (!link || typeof window.nibbOpenExternal !== "function") return;
+  if (!link || typeof window.nodwynOpenExternal !== "function") return;
   event.preventDefault();
-  window.nibbOpenExternal(link.href).catch((error) => toast(String(error)));
+  window.nodwynOpenExternal(link.href).catch((error) => toast(String(error)));
 });
 
 $("menu").append(icon("menu", 20));
 $("menu").addEventListener("click", openMenu);
 $("reconnect").addEventListener("click", () => conn.connect());
 
-// A launch ticket (from nibb app or nibb ui) pairs this browser without a
+// A launch ticket (from nodwyn app or nodwyn ui) pairs this browser without a
 // typed code. It is used once, and removed from the address bar first.
 (async () => {
   const ticket = takeTicket();

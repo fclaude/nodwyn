@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 var writePrim = &scheme.Prim{Name: "fs-edit", Meta: scheme.Meta{Doc: "d", Irreversible: true, Params: []scheme.Param{
@@ -19,19 +19,19 @@ func writeArgs(path string) []scheme.Value {
 }
 
 func TestWriteAllowPrefixesAndProtected(t *testing.T) {
-	w := NewWriteAllow("internal/", "docs/scheme.md", ".nibb/", "")
-	if got := strings.Join(w.List(), ","); got != ".nibb/,docs/scheme.md,internal/" {
+	w := NewWriteAllow("internal/", "docs/scheme.md", ".nodwyn/", "")
+	if got := strings.Join(w.List(), ","); got != ".nodwyn/,docs/scheme.md,internal/" {
 		t.Fatalf("list: %s", got)
 	}
 	for rel, want := range map[string]string{
-		"internal/scheme/x.go": "internal/",
-		"internal":             "",
-		"docs/scheme.md":       "docs/scheme.md",
-		"docs/other.md":        "",
-		".nibb/allow.toml":     "", // protected even though listed
-		"scripts/promote.sh":   "",
-		"Makefile":             "",
-		"internal/../.nibb/x":  "",
+		"internal/scheme/x.go":  "internal/",
+		"internal":              "",
+		"docs/scheme.md":        "docs/scheme.md",
+		"docs/other.md":         "",
+		".nodwyn/allow.toml":    "", // protected even though listed
+		"scripts/promote.sh":    "",
+		"Makefile":              "",
+		"internal/../.nodwyn/x": "",
 	} {
 		if got := w.Match(rel); got != want {
 			t.Errorf("Match(%q) = %q, want %q", rel, got, want)
@@ -54,7 +54,7 @@ func TestStandingWriteOutranksConfirmAndLogsDetail(t *testing.T) {
 	if err := g.Before(context.Background(), writePrim, writeArgs("cmd/main.go")); err == nil || asked != 1 {
 		t.Fatalf("unapproved write should prompt: %v asked=%d", err, asked)
 	}
-	if err := g.Before(context.Background(), writePrim, writeArgs(".nibb/allow.toml")); err == nil || asked != 2 {
+	if err := g.Before(context.Background(), writePrim, writeArgs(".nodwyn/allow.toml")); err == nil || asked != 2 {
 		t.Fatalf("protected path must prompt even if listed: %v asked=%d", err, asked)
 	}
 }
@@ -71,8 +71,8 @@ func TestProtectedPathsAreSecurityConfirms(t *testing.T) {
 	}
 	pp := ProtectedPaths{Root: root}
 	for _, path := range []string{
-		".nibb/init.scm",
-		"./.nibb/init.scm",
+		".nodwyn/init.scm",
+		"./.nodwyn/init.scm",
 		filepath.Join(root, ".git", "hooks", "pre-commit"),
 		"src/../.git/hooks/pre-commit",
 		".GIT/hooks/pre-commit",

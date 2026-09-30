@@ -1,4 +1,4 @@
-;; nibb prelude — loaded into the global environment before anything else.
+;; nodwyn prelude — loaded into the global environment before anything else.
 ;; Documented in docs/scheme.md §6. Keep it small: anything here is part of
 ;; the language contract.
 

@@ -9,21 +9,21 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/llm"
 )
 
 func TestToolInspectionThroughBothBackends(t *testing.T) {
 	for _, mode := range []string{"local", "rpc"} {
 		t.Run(mode, func(t *testing.T) {
 			o := testOptions(t)
-			if err := os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0700); err != nil {
+			if err := os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700); err != nil {
 				t.Fatal(err)
 			}
 			init := `(register-tool "greet" (lambda (name) (error "must not execute"))
   '((doc . "Greet a person") (params . (("name" "string" "who")))))`
-			if err := os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(init), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(init), 0600); err != nil {
 				t.Fatal(err)
 			}
 			var b backend
@@ -46,7 +46,7 @@ func TestToolInspectionThroughBothBackends(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Disk edits must not misrepresent the catalog already sent to the model.
-			if err := os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), nil, 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), nil, 0600); err != nil {
 				t.Fatal(err)
 			}
 			for _, tc := range []struct{ command, want string }{

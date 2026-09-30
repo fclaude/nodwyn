@@ -9,7 +9,7 @@ import (
 	"unicode"
 
 	"github.com/BurntSushi/toml"
-	"github.com/fclaude/nibb/internal/policyfile"
+	"github.com/fclaude/nodwyn/internal/policyfile"
 )
 
 // Exact constructs a single-call proposal. It accepts no wildcard, missing
@@ -63,7 +63,7 @@ func token(s string) bool {
 }
 
 // AppendExact preserves the user's bytes and appends one TOML row. A sibling
-// advisory lock coordinates nibb writers across processes; edits by other
+// advisory lock coordinates nodwyn writers across processes; edits by other
 // programs should use the same lock. No partial policy is ever published.
 func AppendExact(ctx context.Context, path string, row Binding) error {
 	if len(row.Methods) != 1 || len(row.Positions) != 1 {

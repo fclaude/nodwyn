@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/llm"
+	"github.com/fclaude/nodwyn/internal/llm"
 )
 
 func call(name, args string) llm.ToolCall {

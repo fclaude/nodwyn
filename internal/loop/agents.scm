@@ -14,7 +14,7 @@
 (define agent-label #f)
 
 ;; Register a tool the model can call, answered by (handler call args). It is
-;; offered like any tool, so define it in .nibb/init.scm, before the tool
+;; offered like any tool, so define it in .nodwyn/init.scm, before the tool
 ;; list is fixed. The body the guard would run only says who answers.
 (define (define-agent-tool name doc params handler)
   (register-tool name

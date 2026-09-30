@@ -4,7 +4,7 @@
 ;; goes on in a narrowed context holding only the task and that note. The
 ;; log keeps the whole conversation, so replay and audit see everything.
 ;; Off by default: a project turns it on with, say,
-;; (define compact-threshold 40000) in .nibb/init.scm.
+;; (define compact-threshold 40000) in .nodwyn/init.scm.
 
 ;; Prompt tokens past which the context is compacted; #f never compacts.
 (define compact-threshold #f)

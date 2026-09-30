@@ -13,13 +13,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/window"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // The plan gate is Scheme (internal/loop/plan.scm); these tests drive it
@@ -73,8 +73,8 @@ func judgedRig(t *testing.T, judge *fakeJudge, init string, turns ...fake.Turn) 
 	t.Helper()
 	repo := t.TempDir()
 	if init != "" {
-		os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-		os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(init), 0o644)
+		os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+		os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
 	}
 	srv := fake.New(turns...)
 	t.Cleanup(srv.Close)
@@ -161,7 +161,7 @@ func TestPlanGateAcceptsAGoodPlan(t *testing.T) {
 		strings.Contains(main, "Write a short, concrete plan") {
 		t.Fatalf("main request:\n%s", main)
 	}
-	if planner := string(r.srv.Requests[0].Raw); !strings.Contains(planner, "You are nibb's planner") {
+	if planner := string(r.srv.Requests[0].Raw); !strings.Contains(planner, "You are nodwyn's planner") {
 		t.Fatalf("planner request:\n%s", planner)
 	}
 }
@@ -228,7 +228,7 @@ func TestRequiredPlanSkipsTheQuestion(t *testing.T) {
 // A project that replaces turn, the only way past the gate, still cannot act
 // in a turn that must plan until it records a plan.
 func TestRequiredPlanBlocksActionUntilRecorded(t *testing.T) {
-	r := judgedRig(t, nil, `(define (nibb-turn request) (fs-write "x.txt" "y"))`)
+	r := judgedRig(t, nil, `(define (nodwyn-turn request) (fs-write "x.txt" "y"))`)
 	if err := r.s.SendPlanned("work"); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestCustomStrategyIsPlannedInARun(t *testing.T) {
 // The turn's plan flags end with it: an evaluation after a required turn that
 // failed unplanned is not held to that turn's plan.
 func TestPlanFlagsEndWithTheTurn(t *testing.T) {
-	r := judgedRig(t, nil, `(define (nibb-turn request) (fs-write "x.txt" "y"))`)
+	r := judgedRig(t, nil, `(define (nodwyn-turn request) (fs-write "x.txt" "y"))`)
 	if err := r.s.SendPlanned("work"); err != nil {
 		t.Fatal(err)
 	}

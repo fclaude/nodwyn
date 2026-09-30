@@ -28,8 +28,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 // Policy is the window's tuning (config [window]), and the headers under

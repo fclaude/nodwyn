@@ -17,7 +17,7 @@ version) echo 'test candidate' ;;
 eval) echo 3 ;;
 --no-confirm)
   cat >/dev/null
-  printf '%s\n' 'nibb session own-session' 'go-test tool' 'ok  \tgithub.com/fclaude/nibb/internal/log' 'READY'
+  printf '%s\n' 'nodwyn session own-session' 'go-test tool' 'ok  \tgithub.com/fclaude/nodwyn/internal/log' 'READY'
   ;;
 sessions) printf '%s\n' own-session unrelated-newer-session ;;
 replay)

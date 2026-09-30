@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/frontend/plain"
-	"github.com/fclaude/nibb/internal/log"
-	"github.com/fclaude/nibb/internal/window"
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
+	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 // replay prints a session log as a transcript, or with --window SEQ
@@ -27,7 +27,7 @@ func (c *cli) replay() error {
 	}
 	if c.fs.NArg() > 2 {
 		if c.fs.NArg() != 4 || c.fs.Arg(2) != "--window" {
-			return fmt.Errorf("usage: nibb replay SESSION [--window SEQ]")
+			return fmt.Errorf("usage: nodwyn replay SESSION [--window SEQ]")
 		}
 		// A reconstruction of a damaged log would not be the request that
 		// was sent, so the read error is fatal here even though the
@@ -39,7 +39,7 @@ func (c *cli) replay() error {
 	}
 	plain.Replay(events, os.Stdout, c.thinking)
 	if readErr != nil {
-		fmt.Fprintln(os.Stderr, "nibb: note:", readErr)
+		fmt.Fprintln(os.Stderr, "nodwyn: note:", readErr)
 	}
 	return nil
 }

@@ -33,14 +33,14 @@ changes the guard, the log, or the Scheme surface.
 a fold over events (ADR 9), so resume is `Build` over an existing file plus
 a writer that appends. A `core.Store` lists sessions from the sessions
 directory (id, repo, first user message, last event time, whether a turn was
-in flight). `nibb --resume <id>` and `nibb sessions` grow accordingly.
+in flight). `nodwyn --resume <id>` and `nodwyn sessions` grow accordingly.
 
 *Why first:* it is the smallest piece, it is already the top item in
 `docs/friction.md`, and every later phase assumes it.
 
-### U2 — `nibbd` and the protocol
+### U2 — `nodwynd` and the protocol
 A daemon owning zero or more sessions, speaking **JSON-RPC 2.0 over a Unix
-socket** (`$XDG_RUNTIME_DIR/nibb/sock`, mode 0600), with an optional
+socket** (`$XDG_RUNTIME_DIR/nodwyn/sock`, mode 0600), with an optional
 `--listen` for a TCP port behind a token.
 
 Methods (request/response):
@@ -75,7 +75,7 @@ loses who said yes.
 
 ### U3 — The desktop client
 One GUI over the protocol. The recommendation is a **local web UI served by
-`nibbd`** (`nibb ui` opens a browser at `127.0.0.1`): it reuses the
+`nodwynd`** (`nodwyn ui` opens a browser at `127.0.0.1`): it reuses the
 protocol over a WebSocket, needs no toolchain beyond the Go binary plus
 static assets embedded with `go:embed`, and runs on every platform the
 binary does. A native shell (Tauri/Electron) is a later packaging decision,
@@ -115,7 +115,7 @@ a daemon or a container) would force two binaries.
   week) and should land *before* P9, because a TUI over the RPC protocol is
   the protocol's first client and proves it. U3 follows v0. U4 depends on
   ADR 18.
-- **P9 changes shape:** the TUI becomes a client of `nibbd` when a socket is
+- **P9 changes shape:** the TUI becomes a client of `nodwynd` when a socket is
   given and an in-process front-end otherwise. Same package, same views.
 - **The plain front-end stays** as the CI and `selfcheck.sh` path, and as
   the fallback when no daemon is running.
@@ -133,8 +133,8 @@ a daemon or a container) would force two binaries.
 U1 is implemented; U2–U4 remain proposed. The constructor is
 `core.Resume(options, id)`, returning a new `Session`, rather than mutating an
 existing session. `core.Store` derives metadata directly from JSONL logs.
-`nibb --resume ID` restores the conversation in the recorded repository, and
-`nibb sessions` shows id, last event time, unfinished-turn state, repo and first
+`nodwyn --resume ID` restores the conversation in the recorded repository, and
+`nodwyn sessions` shows id, last event time, unfinished-turn state, repo and first
 ask (`--ids` retains an ID-only scripting form).
 
 A resumed session loads current configuration, bindings, file-backed approvals
@@ -153,7 +153,7 @@ This adds no daemon, index, background work or RPC surface.
 
 ## U2 lifecycle implementation — 2026-09-22
 
-The first U2 slice is implemented as `nibb daemon` in the existing binary.
+The first U2 slice is implemented as `nodwyn daemon` in the existing binary.
 It provides `hello`, `session.list`, `session.open`, `session.resume`,
 `session.info` and `session.close` over a private Unix socket. The daemon owns
 sessions independently of connections; lifecycle operations are serialized and
@@ -219,7 +219,7 @@ transport is still deferred; U3/U4 remain proposed. P9 is the next client step.
 
 ## P9 first protocol client — 2026-09-22
 
-The opt-in `nibb tui` now implements the initial client slice: session selection,
+The opt-in `nodwyn tui` now implements the initial client slice: session selection,
 conversation/guard output, approval and budget prompts, masked credentials,
 user Scheme, abort and reconnect. With `--socket` it uses the local protocol;
 without one it owns a core session through the same small view-facing adapter.
@@ -340,10 +340,10 @@ counters are not claimed, and U3/U4 are still separate future phases.
 
 ## U3 read-only browser slice — 2026-09-22
 
-`nibb ui` serves embedded assets on a random 127.0.0.1 port and bridges a
+`nodwyn ui` serves embedded assets on a random 127.0.0.1 port and bridges a
 WebSocket to an existing Unix-socket daemon. The serving process is a frontend
 attachment, so closing it does not take the daemon's sessions down. This refines
-"served by nibbd" above: the same binary/protocol serves the UI, while ownership
+"served by nodwynd" above: the same binary/protocol serves the UI, while ownership
 stays in the separately running daemon. No general TCP RPC listener is exposed.
 
 Pairing uses a random code shown in the local terminal, a same-origin POST and
@@ -469,7 +469,7 @@ notifications. The ADR 18 bounded run driver remains unfinished U4 work.
 
 ## General-purpose UI design — 2026-09-30
 
-A redesign of the browser console for nibb as a general helper (coding first,
+A redesign of the browser console for nodwyn as a general helper (coding first,
 with MCP tools and document workspaces from ADR 22) is sketched on a design
 canvas: [link removed]. It is private to
 the maintainer's claude.ai account: a session signed in to that account can
@@ -493,9 +493,9 @@ The console now follows the design canvas above: Home, the task view with the
 approval inline and its aside, Connections (MCP servers), Workspaces,
 Settings, a phone layout and the dark palette, with the canvas's tokens and
 embedded typefaces. How it is reached changed with [ADR 30](./0030-one-app-three-ways-to-reach-it.md):
-`nibb app` (one program, no daemon to manage, a native window on macOS),
-`nibb ui` for a running daemon, and other devices paired by name with
-`nibb ui --listen`, whose answers record the device. The "optional TCP"
+`nodwyn app` (one program, no daemon to manage, a native window on macOS),
+`nodwyn ui` for a running daemon, and other devices paired by name with
+`nodwyn ui --listen`, whose answers record the device. The "optional TCP"
 transport of U2 is realized as that bridge, not as a raw RPC listener.
 The cowork pieces the canvas assumes (workspaces, attachments, remote MCP
 servers) are ADR 22 W1, W2 (text) and ADR 23 W3a. Not yet in the design's

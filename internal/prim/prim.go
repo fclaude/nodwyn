@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fclaude/nibb/internal/guard"
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // Options configure the host primitives.
@@ -200,7 +200,7 @@ func workspace(o Options) *scheme.Prim {
 const maxProjectNotes = 8 << 10
 
 // projectNotes builds (project-notes): this repository's notes kept across
-// sessions, "" when there are none. They live beside nibb's data, not in
+// sessions, "" when there are none. They live beside nodwyn's data, not in
 // the repository, so they never reach its diff.
 func projectNotes(o Options) *scheme.Prim {
 	return &scheme.Prim{

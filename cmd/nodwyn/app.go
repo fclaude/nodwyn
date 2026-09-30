@@ -15,13 +15,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	webui "github.com/fclaude/nibb/internal/frontend/web"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	webui "github.com/fclaude/nodwyn/internal/frontend/web"
 )
 
-// app is nibb as one program (ADR 30): it attaches to a daemon already
+// app is nodwyn as one program (ADR 30): it attaches to a daemon already
 // answering on the socket, or owns one in this process, and shows the
 // console in a window of its own (with the webview build tag) or in the
 // default browser. No terminal is needed: the keychain is unlocked and the
@@ -30,7 +30,7 @@ func (c *cli) app() error {
 	if err := c.rejectGlobals("app: put %s after the command"); err != nil {
 		return err
 	}
-	flags := flag.NewFlagSet("nibb app", flag.ContinueOnError)
+	flags := flag.NewFlagSet("nodwyn app", flag.ContinueOnError)
 	socket := flags.String("socket", "", "daemon socket path (default: the standard one)")
 	browser := flags.Bool("browser", false, "use the default browser even when a window is available")
 	noOpen := flags.Bool("no-open", false, "print the console's launch address instead of opening it")
@@ -186,7 +186,7 @@ func prepareBundleLaunch(paths config.Paths) {
 	}
 	if err := os.MkdirAll(paths.DataDir, 0o700); err == nil {
 		if f, err := os.OpenFile(filepath.Join(paths.DataDir, "app.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
-			fmt.Fprintf(f, "\n--- %s nibb %s\n", time.Now().Format(time.RFC3339), versionString())
+			fmt.Fprintf(f, "\n--- %s nodwyn %s\n", time.Now().Format(time.RFC3339), versionString())
 			os.Stderr = f
 		}
 	}

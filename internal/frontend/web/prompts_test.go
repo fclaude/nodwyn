@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	"github.com/fclaude/nibb/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/keychain"
 )
 
 // Exercise prompt replies over the actual authenticated WebSocket, with the
@@ -137,10 +137,10 @@ func checkBrowserScopes(t *testing.T, repo, id string, evaluate func(string), fi
 	p = confirm()
 	call("session.answer", map[string]any{"id": id, "prompt_id": p.ID, "reply": "n"}, nil, false)
 	finish()
-	if err := os.MkdirAll(filepath.Join(repo, ".nibb"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, source := range []string{`(fs-write ".nibb/allow.toml" "test")`, `(fs-write "security.txt" "sk-ant-abcdefgh1234")`} {
+	for _, source := range []string{`(fs-write ".nodwyn/allow.toml" "test")`, `(fs-write "security.txt" "sk-ant-abcdefgh1234")`} {
 		evaluate(source)
 		p = confirm()
 		if p.Options == nil || p.Options.Session || p.Options.Turn || p.Options.Binding {
@@ -157,7 +157,7 @@ func checkBrowserScopes(t *testing.T, repo, id string, evaluate func(string), fi
 			t.Fatal(err)
 		}
 	}
-	for _, path := range []string{"turn-c", "security.txt", ".nibb/allow.toml"} {
+	for _, path := range []string{"turn-c", "security.txt", ".nodwyn/allow.toml"} {
 		if _, err := os.Stat(filepath.Join(repo, path)); !os.IsNotExist(err) {
 			t.Fatal("denied scope wrote a file")
 		}

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
-// registerReload adds (reload): run .nibb/init.scm again in this session, so
+// registerReload adds (reload): run .nodwyn/init.scm again in this session, so
 // a changed strategy, compaction setting or agent-tool handler applies from
 // the next turn. What a session is fixed with does not change (ADR 9): the
 // tool list, the guard's checks and the prompts. reload returns what
@@ -17,7 +17,7 @@ func (s *Session) registerReload() error {
 	return s.interp.Register(&scheme.Prim{
 		Name: "reload",
 		Meta: scheme.Meta{
-			Doc:    "Run .nibb/init.scm again in this session, with the caller's origin. The strategy, compaction settings and agent-tool handlers apply from the next turn; a tool keeps its schema and takes a changed body. Returns a list of notes on what is fixed for the session and applies from the next one: new or changed tools, guard checks, prompts.",
+			Doc:    "Run .nodwyn/init.scm again in this session, with the caller's origin. The strategy, compaction settings and agent-tool handlers apply from the next turn; a tool keeps its schema and takes a changed body. Returns a list of notes on what is fixed for the session and applies from the next one: new or changed tools, guard checks, prompts.",
 			Hidden: true,
 			Origin: "builtin",
 		},
@@ -27,7 +27,7 @@ func (s *Session) registerReload() error {
 			}
 			init := s.opts.InitFile
 			if init == "" {
-				init = filepath.Join(s.opts.Repo, ".nibb", "init.scm")
+				init = filepath.Join(s.opts.Repo, ".nodwyn", "init.scm")
 			}
 			if !fileExists(init) {
 				return scheme.Void, fmt.Errorf("no init file at %s", init)

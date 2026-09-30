@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/config"
+	"github.com/fclaude/nodwyn/internal/config"
 )
 
 func TestKeychainCreateUnlockOverTheSocket(t *testing.T) {

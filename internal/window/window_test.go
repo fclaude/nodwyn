@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/llm"
-	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 var pol = Policy{HighWater: 3000, LowWater: 1500, MaxResultTokens: 100000}

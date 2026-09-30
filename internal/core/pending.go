@@ -3,8 +3,8 @@ package core
 import (
 	"slices"
 
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/redact"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // PendingPrompts returns a redacted display snapshot for a reconnecting

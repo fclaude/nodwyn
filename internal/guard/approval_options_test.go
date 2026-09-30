@@ -1,7 +1,7 @@
 package guard
 
 import (
-	"github.com/fclaude/nibb/internal/binding"
+	"github.com/fclaude/nodwyn/internal/binding"
 	"testing"
 )
 
@@ -16,7 +16,7 @@ func TestApprovalOptionsMatchSupportedScopes(t *testing.T) {
 		{"nested write", Prompt{Path: "notes/a.md"}, ApprovalOptions{Session: true, Target: "notes/", Kind: "write", Turn: true}},
 		{"root write", Prompt{Path: "a.md"}, ApprovalOptions{Session: true, Target: "a.md", Kind: "write", Turn: true}},
 		{"command", Prompt{Argv: []string{"/usr/bin/go", "test", "./..."}}, ApprovalOptions{Session: true, Target: "go test", Kind: "command"}},
-		{"protected", Prompt{Path: ".nibb/allow.toml"}, ApprovalOptions{}},
+		{"protected", Prompt{Path: ".nodwyn/allow.toml"}, ApprovalOptions{}},
 		{"security", Prompt{Path: "notes/a.md", Security: true, Binding: row}, ApprovalOptions{}},
 		{"binding", Prompt{Binding: row}, ApprovalOptions{Binding: true}},
 	} {

@@ -6,8 +6,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/fclaude/nibb/internal/redact"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // registerHistory adds session-list and session-events: read-only views of

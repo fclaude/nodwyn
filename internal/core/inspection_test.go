@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fclaude/nibb/internal/event"
+	"github.com/fclaude/nodwyn/internal/event"
 )
 
 func TestFrictionReadUsesGuardAndRedactedEvents(t *testing.T) {
@@ -24,8 +24,8 @@ func TestFrictionReadUsesGuardAndRedactedEvents(t *testing.T) {
 				if mode == "cancel" {
 					verdict = "confirm"
 				}
-				os.MkdirAll(filepath.Join(o.Repo, ".nibb"), 0700)
-				os.WriteFile(filepath.Join(o.Repo, ".nibb", "init.scm"), []byte(`(register-check "read-test" "`+verdict+`" (lambda (name args) (equal? name "fs-read")))`), 0600)
+				os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
+				os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-check "read-test" "`+verdict+`" (lambda (name args) (equal? name "fs-read")))`), 0600)
 			}
 			s, err := New(o)
 			if err != nil {

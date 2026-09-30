@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/detect/l1"
-	"github.com/fclaude/nibb/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // TextSecret is the L1 checker (Phase 4): it scans the text a primitive is

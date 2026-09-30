@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/config"
-	fakemcp "github.com/fclaude/nibb/test/fakes/mcp"
+	"github.com/fclaude/nodwyn/internal/config"
+	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
 )
 
 func TestMCPReviewApproveAndOffer(t *testing.T) {

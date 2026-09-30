@@ -39,7 +39,7 @@ type Tool struct {
 	Annotations *Annotations    `json:"annotations,omitempty"`
 }
 
-// Annotations are the server's own hints. nibb shows them and never trusts
+// Annotations are the server's own hints. nodwyn shows them and never trusts
 // them: what a tool may do is the person's declaration, not the server's.
 type Annotations struct {
 	ReadOnlyHint    *bool `json:"readOnlyHint,omitempty"`
@@ -97,7 +97,7 @@ func (c *Client) Initialize(ctx context.Context) (ServerInfo, error) {
 	params := map[string]any{
 		"protocolVersion": ProtocolVersion,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]string{"name": "nibb", "version": "1"},
+		"clientInfo":      map[string]string{"name": "nodwyn", "version": "1"},
 	}
 	if err := c.call(ctx, "initialize", params, &result); err != nil {
 		return ServerInfo{}, err

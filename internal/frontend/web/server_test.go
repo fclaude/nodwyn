@@ -17,13 +17,13 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/core"
-	"github.com/fclaude/nibb/internal/event"
-	"github.com/fclaude/nibb/internal/frontend/rpc"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 const testCode = "test-only-browser-pairing-capability-000000"
@@ -79,7 +79,7 @@ func TestBrowserAuthorityBoundary(t *testing.T) {
 func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	root, err := os.MkdirTemp("/tmp", "nibb-web-")
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	root, err := os.MkdirTemp("/tmp", "nibb-web-chat-")
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-chat-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,7 +560,7 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	root, err := os.MkdirTemp("/tmp", "nibb-web-attach-")
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-attach-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -619,7 +619,7 @@ func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 	if code, body := upload("photo.png", "\x89PNG", true); code != http.StatusUnprocessableEntity || !strings.Contains(body, "images") {
 		t.Fatalf("image upload: %d %s", code, body)
 	}
-	matches, _ := filepath.Glob(filepath.Join(repo, ".nibb", "attachments", "*", "notes.md"))
+	matches, _ := filepath.Glob(filepath.Join(repo, ".nodwyn", "attachments", "*", "notes.md"))
 	if len(matches) != 1 {
 		t.Fatalf("stored copies: %v", matches)
 	}

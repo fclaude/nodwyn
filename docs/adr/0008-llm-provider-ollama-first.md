@@ -15,7 +15,7 @@ OpenAI shim: it streams, returns `thinking` as a separate field, returns
 tool-call arguments as JSON objects, and accepts `options.num_ctx` and
 `keep_alive`. The control plane is configured in `config.toml`
 (`[control] provider url model num_ctx keep_alive`), not keyed; authorization
-is the tailnet ACL. Keychain class `nibb-control` is reserved for a keyed
+is the tailnet ACL. Keychain class `nodwyn-control` is reserved for a keyed
 control plane and unused while workshop is the control plane.
 
 ## Consequences

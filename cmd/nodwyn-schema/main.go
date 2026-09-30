@@ -1,4 +1,4 @@
-// Command nibb-schema regenerates the documented local protocol contract.
+// Command nodwyn-schema regenerates the documented local protocol contract.
 package main
 
 import (
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fclaude/nibb/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 )
 
 func main() {

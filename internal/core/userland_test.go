@@ -11,15 +11,15 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fclaude/nibb/internal/binding"
-	"github.com/fclaude/nibb/internal/config"
-	"github.com/fclaude/nibb/internal/keychain"
-	"github.com/fclaude/nibb/internal/llm"
-	fake "github.com/fclaude/nibb/test/fakes/ollama"
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 // The userland tests hold the core to one standard: the behaviours we want
-// from the agent can be written by a user in .nibb/init.scm, with nothing
+// from the agent can be written by a user in .nodwyn/init.scm, with nothing
 // added to Go. Each test is a behaviour, written the way a user would write
 // it. When one of these needs a new primitive, the core was not yet enough.
 
@@ -104,8 +104,8 @@ func TestUserlandPlanCycle(t *testing.T) {
 	t.Cleanup(oracle.Close)
 
 	repo := t.TempDir()
-	os.MkdirAll(filepath.Join(repo, ".nibb"), 0o755)
-	os.WriteFile(filepath.Join(repo, ".nibb", "init.scm"), []byte(strings.ReplaceAll(planCycle, "ORACLE_URL", oracle.URL)), 0o644)
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(strings.ReplaceAll(planCycle, "ORACLE_URL", oracle.URL)), 0o644)
 	kc, err := keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p"))
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +233,7 @@ func TestUserlandRouteImplementation(t *testing.T) {
 	// The implementer got the task and the plan under its own system
 	// prompt, not the conversation.
 	first := impl.seen()[0].body
-	if !strings.Contains(first, `Plan:\n1. write hello.txt saying hi`) || strings.Contains(first, "You are nibb") ||
+	if !strings.Contains(first, `Plan:\n1. write hello.txt saying hi`) || strings.Contains(first, "You are nodwyn") ||
 		strings.Count(first, `"role":`) != 2 {
 		t.Fatalf("implementer's first request:\n%s", first)
 	}
