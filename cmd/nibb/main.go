@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime/debug"
 
+	"github.com/fclaude/nibb/internal/config"
 	webui "github.com/fclaude/nibb/internal/frontend/web"
 )
 
@@ -26,6 +27,7 @@ commands:
   run [flags]          submit a bounded supervised task to the daemon
   run status|stop|resume [--socket PATH] SESSION
   daemon [--socket PATH] serve local sessions, turns and events
+  app [--browser]      nibb as one program: a window, and a daemon if none runs
   ui [--socket PATH]    interactive browser view (optional --read-only)
   tui [--socket PATH]   interactive terminal client (local or daemon)
   repl                 interactive Scheme REPL (reads stdin)
@@ -40,7 +42,16 @@ flags:
 `
 
 func main() {
-	if err := newCLI(os.Args[1:]).run(); err != nil {
+	args := os.Args[1:]
+	// Finder and the Dock start a bundle's executable with no arguments:
+	// that is the app.
+	if launchedFromBundle(args) {
+		if paths, err := config.DefaultPaths(); err == nil {
+			prepareBundleLaunch(paths)
+		}
+		args = []string{"app"}
+	}
+	if err := newCLI(args).run(); err != nil {
 		fail(err)
 	}
 }

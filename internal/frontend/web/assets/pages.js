@@ -2,6 +2,7 @@
 // show what the daemon reports; where it reports nothing yet, they say so.
 import { h, icon, repoName, shortPath, ago, toast } from "./dom.js";
 import { chooseFolder } from "./home.js";
+import { modelForm, keychainForm } from "./setup.js";
 
 // ---------- theme (a per-browser convenience) ----------
 export function storedTheme() {
@@ -77,7 +78,17 @@ export function renderSettings(root, ctx) {
             h("p", { class: "hint" }, notifyNote),
           ),
           h("div", { class: "label" }, "Models"),
-          h("div", { class: "value" }, modelRows(desk), h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => desk.refreshModels() }, "Check again"))),
+          h(
+            "div",
+            { class: "value" },
+            modelRows(desk),
+            h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => desk.refreshModels() }, "Check again")),
+            conn.has("settings.control.write")
+              ? h("details", { class: "box" }, h("summary", {}, "Change the main model"), modelForm(ctx, { onSaved: () => renderSettings(root, ctx) }), h("p", { class: "hint" }, `Saved in ${desk.settings?.config_file || "config.toml"}; other settings there are kept. Tasks already open keep the model they started with.`))
+              : null,
+          ),
+          conn.has("keychain.status") ? h("div", { class: "label" }, "Keychain") : null,
+          conn.has("keychain.status") ? h("div", { class: "value" }, conn.has("keychain.unlock") ? keychainForm(ctx, { onDone: () => renderSettings(root, ctx) }) : h("p", { class: "hint" }, desk.keychain?.unlocked ? "Unlocked." : "Locked.")) : null,
           h("div", { class: "label" }, "This connection"),
           h(
             "div",

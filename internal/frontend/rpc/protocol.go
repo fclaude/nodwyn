@@ -18,7 +18,7 @@ const ProtocolVersion = 1
 
 const maxFrame = 1 << 20 // bytes per JSON-RPC frame, either direction
 
-var methods = []string{"run.start", "run.info", "run.stop", "run.resume", "session.list", "session.watch", "session.open", "session.resume", "session.info", "session.close", "session.send", "session.abort", "session.subscribe", "session.unsubscribe", "log.read", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.eval", "session.friction", "session.policy.read", "session.policy.write", "attention.list", "notes.read", "session.notes.write", "models.status"}
+var methods = []string{"run.start", "run.info", "run.stop", "run.resume", "session.list", "session.watch", "session.open", "session.resume", "session.info", "session.close", "session.send", "session.abort", "session.subscribe", "session.unsubscribe", "log.read", "session.answer", "session.secret", "session.approval.create", "session.binding.create", "session.eval", "session.friction", "session.policy.read", "session.policy.write", "attention.list", "notes.read", "session.notes.write", "models.status", "keychain.status", "keychain.create", "keychain.unlock", "settings.read", "settings.control.write"}
 
 type request struct {
 	JSONRPC string          `json:"jsonrpc"`

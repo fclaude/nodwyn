@@ -160,6 +160,15 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+// In the app window, links leave through the host: a web view opens no
+// second window of its own.
+document.addEventListener("click", (event) => {
+  const link = event.target.closest?.("a[target=_blank]");
+  if (!link || typeof window.nibbOpenExternal !== "function") return;
+  event.preventDefault();
+  window.nibbOpenExternal(link.href).catch((error) => toast(String(error)));
+});
+
 $("menu").append(icon("menu", 20));
 $("menu").addEventListener("click", openMenu);
 $("reconnect").addEventListener("click", () => conn.connect());

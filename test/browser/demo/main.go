@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -31,7 +32,18 @@ import (
 func main() {
 	seed := flag.Bool("seed", false, "start demo tasks so every view has content")
 	port := flag.Int("port", 0, "loopback port for the console (0 picks one)")
+	modelOnly := flag.Bool("model-only", false, "run only the scripted model server and print its URL")
 	flag.Parse()
+	if *modelOnly {
+		model := fake.NewFunc(respond)
+		fmt.Printf("MODEL %s\n", model.URL)
+		model.Config.Handler = logged(model.Config.Handler)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		<-ctx.Done()
+		stop()
+		model.Close()
+		return
+	}
 	if err := run(*seed, *port); err != nil {
 		fmt.Fprintln(os.Stderr, "demo:", err)
 		os.Exit(1)
@@ -112,6 +124,15 @@ func run(seed bool, port int) error {
 	err = console.Serve(ctx, web)
 	stop()
 	return errorsJoin(err, <-daemonDone)
+}
+
+// logged prints each request's path, so a check can see a page reach the
+// model through the daemon.
+func logged(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("REQUEST %s %s\n", r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func errorsJoin(a, b error) error {

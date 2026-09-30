@@ -1,6 +1,7 @@
 // Home: start anything, and see what needs you across every task.
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, basename } from "./dom.js";
 import { summary } from "./prompts.js";
+import { modelForm, keychainForm } from "./setup.js";
 
 let chosen = ""; // the folder the next task starts in, for this tab
 let draft = "";
@@ -104,14 +105,25 @@ export function renderHome(root, ctx) {
     ),
   );
 
-  const top = h(
-    "div",
-    { class: "home-col" },
-    h("h1", {}, "What should we get done?"),
-    canStart ? form : h("div", { class: "callout plain" }, "This view can't start tasks. Use an interactive view or the terminal."),
-    canStart ? chips : null,
-    canStart ? adding : null,
-  );
+  const settingUp = !desk.configured && conn.has("settings.control.write");
+  const locked = desk.keychain?.exists && !desk.keychain.unlocked && conn.has("keychain.unlock");
+  const top = settingUp
+    ? h(
+        "div",
+        { class: "home-col" },
+        h("h1", {}, "Let's connect nibb to a model"),
+        h("p", { class: "lede" }, "nibb thinks with a language model you choose: one running on this computer or your network, or a service you have a key for. Nothing is sent anywhere until you set this up."),
+        h("div", { class: "card" }, modelForm(ctx, { onSaved: () => renderHome(root, { ...ctx, keepTop: false }) })),
+      )
+    : h(
+        "div",
+        { class: "home-col" },
+        h("h1", {}, "What should we get done?"),
+        locked ? h("details", { class: "callout" }, h("summary", {}, "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(ctx, { onDone: () => renderHome(root, { ...ctx, keepTop: false }) })) : null,
+        canStart ? form : h("div", { class: "callout plain" }, "This view can't start tasks. Use an interactive view or the terminal."),
+        canStart ? chips : null,
+        canStart ? adding : null,
+      );
 
   // Needs you: each waiting task says what it asks.
   const needs = h("section", { class: "home-section", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));

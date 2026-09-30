@@ -733,3 +733,11 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* setup forms */
+.setup-form { display: flex; flex-direction: column; gap: 14px; max-width: 560px; }
+.setup-form .input { width: 100%; }
+.lede { margin: 0; color: var(--muted); max-width: 680px; }
+details.callout { flex-direction: column; }
+details.callout > summary { cursor: pointer; font-weight: 500; }
+details.box > summary { cursor: pointer; font-weight: 500; margin-bottom: 8px; }

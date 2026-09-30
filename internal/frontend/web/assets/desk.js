@@ -11,6 +11,8 @@ export class Desk {
     this.pending = new Map(); // id -> pending prompt events (attention.list)
     this.firstSeen = new Map(); // prompt id -> when this page first saw it
     this.models = null;
+    this.settings = null; // settings.read: the daemon's model configuration
+    this.keychain = null; // keychain.status
     this.listeners = new Set();
     this.version = 0;
     this.notifier = new Notifier();
@@ -34,6 +36,7 @@ export class Desk {
     this.changed("reset");
   }
   async start() {
+    await this.refreshSetup();
     await this.refresh();
     if (this.conn.has("session.watch")) {
       const states = await this.conn.call("session.watch");
@@ -68,12 +71,28 @@ export class Desk {
     clearTimeout(this.attentionTimer);
     this.attentionTimer = setTimeout(() => this.refreshAttention().catch(() => {}), 150);
   }
+  async refreshSetup() {
+    try {
+      if (this.conn.has("settings.read")) this.settings = await this.conn.call("settings.read");
+      if (this.conn.has("keychain.status")) this.keychain = await this.conn.call("keychain.status");
+    } catch {
+      /* an older daemon: setup happens in config.toml */
+    }
+    this.changed("setup");
+  }
+  // configured says whether a model is set up, when the daemon can say.
+  get configured() {
+    const c = this.settings?.control;
+    return !c || !!(c.Model || c.model);
+  }
   async refreshModels() {
     if (!this.conn.has("models.status")) return;
     try {
       this.models = await this.conn.call("models.status");
     } catch {
       this.models = null;
+    this.settings = null; // settings.read: the daemon's model configuration
+    this.keychain = null; // keychain.status
     }
     this.changed("models");
   }
@@ -134,8 +153,11 @@ class Notifier {
     this.open = new Map();
     this.onOpen = null;
   }
+  get native() {
+    return typeof window.nibbNotify === "function";
+  }
   get available() {
-    return typeof Notification !== "undefined" && window.isSecureContext;
+    return this.native || (typeof Notification !== "undefined" && window.isSecureContext);
   }
   reset() {
     for (const n of this.open.values()) n.close();
@@ -143,6 +165,7 @@ class Notifier {
   }
   async toggle() {
     if (this.enabled) this.enabled = false;
+    else if (this.native) this.enabled = true;
     else {
       try {
         this.enabled = (await Notification.requestPermission()) === "granted";
@@ -159,7 +182,13 @@ class Notifier {
       this.open.delete(state.id);
       return;
     }
-    if (!notify || previous?.needs_answer || !this.enabled || !document.hidden || Notification.permission !== "granted") return;
+    if (!notify || previous?.needs_answer || !this.enabled) return;
+    if (this.native) {
+      if (document.hasFocus()) return;
+      window.nibbNotify("nibb needs your answer", "Open nibb to review what it asks.").catch(() => {});
+      return;
+    }
+    if (!document.hidden || Notification.permission !== "granted") return;
     try {
       const n = new Notification("nibb needs your answer", { body: "Open nibb to review what it asks.", tag: `nibb-${state.id}` });
       n.onclick = () => {

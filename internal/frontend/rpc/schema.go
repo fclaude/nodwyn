@@ -49,6 +49,11 @@ func contracts() map[string]methodContract {
 		"notes.read":              {notesParams{}, notesResult{}},
 		"session.notes.write":     {notesWriteParams{}, inspectionStarted{}},
 		"models.status":           {struct{}{}, []modelStatus{}},
+		"keychain.status":         {struct{}{}, keychainStatus{}},
+		"keychain.create":         {passphraseParams{}, keychainStatus{}},
+		"keychain.unlock":         {passphraseParams{}, keychainStatus{}},
+		"settings.read":           {struct{}{}, settingsResult{}},
+		"settings.control.write":  {controlParams{}, settingsResult{}},
 	}
 }
 
@@ -218,7 +223,7 @@ func (g *schemaBuilder) object(t reflect.Type) map[string]any {
 		if t == reflect.TypeOf(approvalParams{}) && name == "scope" {
 			p["enum"] = []string{"session", "turn"}
 		}
-		if t == reflect.TypeOf(secretParams{}) && name == "secret" {
+		if (t == reflect.TypeOf(secretParams{}) && name == "secret") || (t == reflect.TypeOf(passphraseParams{}) && name == "passphrase") || (t == reflect.TypeOf(controlParams{}) && name == "api_key") {
 			p["writeOnly"] = true
 		}
 		props[name] = p

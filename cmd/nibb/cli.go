@@ -39,6 +39,7 @@ var commands = map[string]func(*cli) error{
 	"":         (*cli).chat,
 	"chat":     (*cli).chat,
 	"ui":       (*cli).ui,
+	"app":      (*cli).app,
 	"tui":      (*cli).tui,
 	"run":      (*cli).runTask,
 	"daemon":   (*cli).daemon,

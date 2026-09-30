@@ -222,16 +222,30 @@ func Default() Config {
 
 // Load reads path over Default. A missing file is not an error.
 func Load(path string) (Config, error) {
-	c := Default()
-	md, err := toml.DecodeFile(path, &c)
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return Default(), nil
+	}
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return c, nil
-		}
 		return Config{}, fmt.Errorf("config: %s: %w", path, err)
 	}
+	c, err := Parse(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("config: %s: %w", path, err)
+	}
+	return c, nil
+}
+
+// Parse reads config.toml's contents over the defaults and validates them,
+// as Load does for the file.
+func Parse(raw []byte) (Config, error) {
+	c := Default()
+	md, err := toml.Decode(string(raw), &c)
+	if err != nil {
+		return Config{}, err
+	}
 	if undec := md.Undecoded(); len(undec) > 0 {
-		return Config{}, fmt.Errorf("config: %s: unknown keys: %v", path, undec)
+		return Config{}, fmt.Errorf("unknown keys: %v", undec)
 	}
 	if md.IsDefined("loop", "max_tool_calls") && c.Loop.MaxToolCalls <= 0 {
 		return Config{}, fmt.Errorf("loop.max_tool_calls must be positive when set")
@@ -240,7 +254,7 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("set budget.tool_calls_hard or legacy loop.max_tool_calls, not both")
 	}
 	if err := c.Validate(); err != nil {
-		return Config{}, fmt.Errorf("config: %s: %w", path, err)
+		return Config{}, err
 	}
 	return c, nil
 }

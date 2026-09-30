@@ -132,6 +132,45 @@
       ],
       "type": "object"
     },
+    "config.Model": {
+      "properties": {
+        "Credential": {
+          "type": "string"
+        },
+        "KeepAlive": {
+          "type": "string"
+        },
+        "MaxOutput": {
+          "type": "integer"
+        },
+        "Model": {
+          "type": "string"
+        },
+        "NumCtx": {
+          "type": "integer"
+        },
+        "OutputField": {
+          "type": "string"
+        },
+        "Provider": {
+          "type": "string"
+        },
+        "URL": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "Provider",
+        "URL",
+        "Model",
+        "NumCtx",
+        "KeepAlive",
+        "Credential",
+        "MaxOutput",
+        "OutputField"
+      ],
+      "type": "object"
+    },
     "core.LogPage": {
       "properties": {
         "events": {
@@ -1445,6 +1484,15 @@
           "$ref": "#/$defs/request.hello"
         },
         {
+          "$ref": "#/$defs/request.keychain.create"
+        },
+        {
+          "$ref": "#/$defs/request.keychain.status"
+        },
+        {
+          "$ref": "#/$defs/request.keychain.unlock"
+        },
+        {
           "$ref": "#/$defs/request.log.read"
         },
         {
@@ -1521,6 +1569,12 @@
         },
         {
           "$ref": "#/$defs/request.session.watch"
+        },
+        {
+          "$ref": "#/$defs/request.settings.control.write"
+        },
+        {
+          "$ref": "#/$defs/request.settings.read"
         }
       ]
     },
@@ -1575,6 +1629,100 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.helloParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.keychain.create": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "keychain.create"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.passphraseParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.keychain.status": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "keychain.status"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.keychain.unlock": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "keychain.unlock"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.passphraseParams"
             }
           ],
           "unevaluatedProperties": false
@@ -2396,6 +2544,69 @@
       ],
       "type": "object"
     },
+    "request.settings.control.write": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "settings.control.write"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.controlParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.settings.read": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "settings.read"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
     "response": {
       "oneOf": [
         {
@@ -2452,6 +2663,15 @@
     },
     "result.hello": {
       "$ref": "#/$defs/rpc.helloResult"
+    },
+    "result.keychain.create": {
+      "$ref": "#/$defs/rpc.keychainStatus"
+    },
+    "result.keychain.status": {
+      "$ref": "#/$defs/rpc.keychainStatus"
+    },
+    "result.keychain.unlock": {
+      "$ref": "#/$defs/rpc.keychainStatus"
     },
     "result.log.read": {
       "$ref": "#/$defs/core.LogPage"
@@ -2569,6 +2789,12 @@
         "null"
       ]
     },
+    "result.settings.control.write": {
+      "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.settings.read": {
+      "$ref": "#/$defs/rpc.settingsResult"
+    },
     "rpc.answerParams": {
       "properties": {
         "id": {
@@ -2670,6 +2896,29 @@
       ],
       "type": "object"
     },
+    "rpc.controlParams": {
+      "properties": {
+        "api_key": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "url",
+        "model"
+      ],
+      "type": "object"
+    },
     "rpc.evalParams": {
       "properties": {
         "id": {
@@ -2748,6 +2997,25 @@
       ],
       "type": "object"
     },
+    "rpc.keychainStatus": {
+      "properties": {
+        "credentials": {
+          "type": "integer"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "unlocked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "exists",
+        "unlocked",
+        "credentials"
+      ],
+      "type": "object"
+    },
     "rpc.modelStatus": {
       "properties": {
         "detail": {
@@ -2823,6 +3091,18 @@
       },
       "required": [
         "repo"
+      ],
+      "type": "object"
+    },
+    "rpc.passphraseParams": {
+      "properties": {
+        "passphrase": {
+          "type": "string",
+          "writeOnly": true
+        }
+      },
+      "required": [
+        "passphrase"
       ],
       "type": "object"
     },
@@ -3164,6 +3444,35 @@
         "open",
         "busy",
         "needs_answer"
+      ],
+      "type": "object"
+    },
+    "rpc.settingsResult": {
+      "properties": {
+        "config_file": {
+          "type": "string"
+        },
+        "control": {
+          "$ref": "#/$defs/config.Model"
+        },
+        "keychain": {
+          "$ref": "#/$defs/rpc.keychainStatus"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "config_file",
+        "control",
+        "models",
+        "keychain"
       ],
       "type": "object"
     },

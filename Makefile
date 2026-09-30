@@ -2,10 +2,14 @@ MODULE  := github.com/fclaude/nibb
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build test lint exfil accept promote selfcheck smoke book clean
+.PHONY: build app test lint exfil accept promote selfcheck smoke book clean
 
 build:
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nibb ./cmd/nibb
+
+## app: bin/Nibb.app, nibb with its own window (macOS; needs Xcode's command line tools)
+app:
+	scripts/app-macos.sh $(VERSION)
 
 test:
 	go test -race $(GO_TEST_FLAGS) ./...
