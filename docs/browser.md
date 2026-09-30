@@ -12,8 +12,9 @@ window and first-run setup see [app.md](app.md).
 
 **Starting.** Home's composer starts a task in the chosen folder. **Add a
 folder** names one and says what it holds — documents or code — and, in the
-app window, opens the system's folder chooser. A documents workspace runs no
-programs; see [ADR 22](adr/0022-cowork-workspaces-attachments-mcp.md). The
+app window, opens the system's folder chooser. The kind is a label: every
+kind has the same tools and the same guard (see
+[ADR 22](adr/0022-cowork-workspaces-attachments-mcp.md), amended). The
 Workspaces page edits a folder's name, kind and **mounted folders** (other
 folders a task may read, or read and write, by absolute path). These settings
 live in the folder's `.nodwyn/workspace.toml` and apply to tasks started
