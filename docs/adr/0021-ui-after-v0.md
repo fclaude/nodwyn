@@ -1,6 +1,6 @@
 # ADR 0021: A real UI after v0 — the daemon, the protocol, the clients
 
-- Status: **partially implemented** (U1, local U2, P9 and U3 complete; optional TCP proposed; U4 in progress)
+- Status: **partially implemented** (U1, U2, P9 and U3 complete; the canvas design implemented 2026-09-30; U4 in progress)
 - Date: 2026-09-22
 
 ## Context
@@ -486,3 +486,18 @@ Connections page for tool sources, per-tool capability profiles and
 credentials; and a phone approval view, which assumes the optional
 token-authenticated transport above. Home, the coding task and the phone view
 also have dark versions.
+
+## The canvas design implemented — 2026-09-30
+
+The console now follows the design canvas above: Home, the task view with the
+approval inline and its aside, Connections (MCP servers), Workspaces,
+Settings, a phone layout and the dark palette, with the canvas's tokens and
+embedded typefaces. How it is reached changed with [ADR 30](./0030-one-app-three-ways-to-reach-it.md):
+`nibb app` (one program, no daemon to manage, a native window on macOS),
+`nibb ui` for a running daemon, and other devices paired by name with
+`nibb ui --listen`, whose answers record the device. The "optional TCP"
+transport of U2 is realized as that bridge, not as a raw RPC listener.
+The cowork pieces the canvas assumes (workspaces, attachments, remote MCP
+servers) are ADR 22 W1, W2 (text) and ADR 23 W3a. Not yet in the design's
+views: per-step plan progress (the log records the plan, not its steps'
+completion) and commit hashes under finished tasks.

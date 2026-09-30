@@ -508,6 +508,12 @@ Order: D1–D3 make the design real on today's capabilities; D4 is the family
 requirement and comes next; D5 is small once D4's pairing exists; D6–D8
 are the cowork track the canvas assumes.
 
+Status (2026-09-30): **D1–D8 implemented** on branch `ui-convergence`, each
+with Go tests and a browser flow (test/browser). D9 is not started: honoring a
+per-host network allowlist inside a container needs an egress proxy, and
+half-isolation would be worse than none. Also open: images as attachments
+(vision plumbing), plan step progress, W4 OAuth2 and W5 documents out.
+
 ## 6. Timeline at a glance
 
 | Weeks | Stage / phase | Promotes | Milestone |

@@ -83,7 +83,10 @@ results. See [memory and retrieval](docs/memory.md) for its limits.
 ```
 bin/nibb daemon               # local sessions, turns and event delivery (U2)
 bin/nibb tui                  # opt-in full-screen terminal client (P9)
-bin/nibb ui                   # paired browser session desk (requires daemon)
+bin/nibb app                  # the whole thing in one program: a window, and a daemon if none runs
+bin/nibb ui                   # the browser console for a running daemon
+bin/nibb ui --listen IP:7777  # also for other devices (a phone on your tailnet)
+make app                      # bin/Nibb.app for macOS (to share with people who never open a terminal)
 bin/nibb                      # chat in the current repository (plain front-end)
 bin/nibb --repo ~/src/x       # pin to another repository
 bin/nibb --show-thinking      # show the model's redacted thinking too
@@ -219,8 +222,17 @@ See [the TUI guide](docs/tui.md) for controls, ownership and the acceptance cove
 See [session memory](docs/memory.md) for exact request replay, summary creation
 and revocation, and the remaining structural-retrieval work.
 
-The [browser guide](docs/browser.md) describes the U3 session/transcript
-view, pairing, and the interactive features still to come.
+### The console (ADR 21, ADR 30)
+
+The browser console is organized around tasks: Home starts one in a folder
+and shows what needs an answer, what runs and what finished; a task shows
+its conversation with the approval inline (the diff, and Y/T/A/N), and beside
+it the plan, this turn's budget, changes with their history, attachments,
+project notes and the workspace. Connections adds and reviews MCP servers;
+Workspaces names folders, their kind (documents or code) and mounted
+folders; Settings chooses the model and unlocks the keychain. It runs as
+`nibb ui` for a daemon, as `nibb app` without one (see [the app](docs/app.md)),
+and on a phone paired by name. See [the browser guide](docs/browser.md).
 
 ### Supervised background runs
 
