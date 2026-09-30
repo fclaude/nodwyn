@@ -74,7 +74,7 @@ make selfcheck  # the candidate proves itself (ADR 13)
 make promote TAG=v0.N-phase   # accept + selfcheck, then ~/.local/bin/nodwyn-stable
 ```
 
-Requires Go 1.27, ripgrep (`rg`, used by retrieval and its tests), and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
+Requires Go 1.27 and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
 
 Text search (`index-grep`) uses the shared guard and produces session-scoped
 results. See [memory and retrieval](docs/memory.md) for its limits.

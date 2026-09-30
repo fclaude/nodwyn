@@ -79,33 +79,41 @@ line. An empty match list is an ordinary no-match result. A truncated result is
 explicitly incomplete: narrow the path or pattern. There is no persistent index;
 every call observes current files under that session's repository root.
 
-Install [ripgrep](https://github.com/BurntSushi/ripgrep#installation) (`rg`) on the
-host running the session, including a daemon host. The binary still builds with
-cgo disabled on Linux and macOS. Missing ripgrep produces an actionable tool
-error and does not prevent nodwyn from starting. CI installs it to exercise real
-searches, rather than skipping those tests.
+`fs-find` lists file names the same way, without reading them.
 
-Discovery skips hidden paths and symlinks. It does not load ignore files or
-ripgrep configuration: an ignore file could itself link to protected content.
-Non-hidden ignored files are therefore candidates; select a narrower directory
-to exclude build/vendor output. Explicit file paths may select hidden files,
-subject to the same guard. Nonregular,
-protected, oversized, binary and non-UTF-8 candidates are skipped. The `skipped`
-count excludes paths that discovery never selected (for example hidden files).
-Each selected content read goes through `fs-read` and the full shared guard,
-including extension checkers. A denial stops the search; it is never treated as
-an empty file. Results carry file provenance and pass ordinary tool-result
-redaction before logging or entering a model request.
+Search runs entirely in Go and needs no program on `PATH` (before 2026-09-30
+it needed ripgrep, `rg`, which an app on a machine without developer tools
+lacked). Discovery walks the directory in path order and lists regular files
+only: it skips hidden entries below the path searched (a name starting with a
+dot, `.git` included) and symbolic links, follows no link, and loads no
+ignore file, since an ignore file could itself link to protected content.
+Non-hidden ignored files are therefore candidates; select a narrower
+directory, or pass a glob, to leave out build and vendor output. An explicit
+file path may name a hidden file, subject to the same guard.
 
-Searches accept no arbitrary command flags, invoke no shell or preprocessors,
-and inherit no host credential environment. Ripgrep matches text supplied on
-stdin after its guarded read. Limits are 128 discovered files, 100 matching
-lines, a 4 KiB pattern, the existing per-file read/output caps, and 30 seconds
-for the whole query. Oversized discovery or raw structured output returns an
-error asking for a narrower search; it never reports a partial JSON prefix as
-complete. Cancellation stops the active child process. File edits concurrent
-with a query retain the ordinary filesystem read semantics; this is not a
-transactional repository snapshot.
+A glob follows ripgrep's `--glob`: `*`, `?` and `[...]` match within a path
+component, `**` spans directories and `{a,b}` is either alternative; a glob
+without a slash matches any component (`*.py` at any depth, `tests` for every
+file under a `tests` directory); one with a slash matches from the start of
+the path, relative to the directory searched or to the repository root, and
+matching a directory matches the files under it; a leading `!` keeps every
+path the rest does not match.
+
+Nonregular, protected, oversized, binary and non-UTF-8 candidates are
+skipped; the `skipped` count excludes paths discovery never listed (hidden
+files, for example). Each selected read goes through `fs-read` and the full
+shared guard, including extension checkers. A denial stops the search; it is
+never treated as an empty file. Results carry file provenance and pass
+ordinary tool-result redaction before logging or entering a model request.
+
+A pattern is a Go regular expression (RE2, the syntax ripgrep also uses), at
+most 4 KiB; it is never a command-line option. Limits are 3000 candidate
+files (each read's guard decision is logged, so this also bounds the log),
+100 matching lines, the per-file read and output caps, and 30 seconds for the
+whole query; more candidates is an error asking for a narrower path or a
+glob, never a partial list. Cancellation stops the walk. File edits
+concurrent with a query have ordinary filesystem read semantics; this is not
+a transactional snapshot.
 
 ## Source outlines (removed)
 

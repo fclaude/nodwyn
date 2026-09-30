@@ -6,22 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
-func requireRipgrep(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("rg"); err != nil {
-		t.Fatal("retrieval tests require ripgrep (rg) on PATH")
-	}
-}
 func grepResult(t *testing.T, v scheme.Value) searchResult {
 	t.Helper()
 	raw, err := scheme.ToJSON(v)
@@ -36,7 +28,6 @@ func grepResult(t *testing.T, v scheme.Value) searchResult {
 }
 
 func TestIndexGrepGuardedSearch(t *testing.T) {
-	requireRipgrep(t)
 	h := newHarness(t)
 	for name, text := range map[string]string{"alpha.txt": "hello one\nother\nhello two\n", "key.pem": "hello protected", "credentials": "hello credential", "binary": "hello\x00hidden", ".hidden": "hello hidden", ".ignore": "*\n"} {
 		if err := os.WriteFile(filepath.Join(h.root, name), []byte(text), 0600); err != nil {
@@ -81,13 +72,8 @@ func TestIndexGrepGuardedSearch(t *testing.T) {
 }
 
 func TestIndexGrepRejectsBypassAndInvalidQueries(t *testing.T) {
-	requireRipgrep(t)
 	h := newHarness(t)
-	// Neither user configuration nor a regex that looks like an option can turn
-	// a fixed search into a preprocessor invocation or filesystem write.
-	config := filepath.Join(t.TempDir(), "rg-config")
-	os.WriteFile(config, []byte("--pre=touch\n--hidden\n"), 0600)
-	t.Setenv("RIPGREP_CONFIG_PATH", config)
+	// A regex that looks like an option is only a pattern.
 	if got := grepResult(t, h.mustEval(t, `(index-grep "." "--pre=touch")`)); len(got.Matches) != 0 {
 		t.Fatal(got)
 	}
@@ -102,14 +88,15 @@ func TestIndexGrepRejectsBypassAndInvalidQueries(t *testing.T) {
 	}
 	_, err = h.eval(t, `(index-grep "README.md" "hello")`)
 	denied(t, err, "no-read")
+	// Search runs in Go: no program on PATH is needed.
+	h.in.SetGate(nil)
 	t.Setenv("PATH", t.TempDir())
-	if _, err = h.eval(t, `(index-grep "README.md" "hello")`); err == nil || !strings.Contains(err.Error(), "install ripgrep") {
-		t.Fatal(err)
+	if got := grepResult(t, h.mustEval(t, `(index-grep "README.md" "hello")`)); len(got.Matches) != 1 {
+		t.Fatalf("search without PATH: %+v", got)
 	}
 }
 
 func TestIndexGrepBoundsAndCancellation(t *testing.T) {
-	requireRipgrep(t)
 	h := newHarness(t)
 	o := DefaultOptions(h.root)
 	o.MaxOutput = 1 << 20
@@ -137,36 +124,12 @@ func TestIndexGrepBoundsAndCancellation(t *testing.T) {
 	if _, err = in.EvalString(ctx, `(index-grep "." "hello")`); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
-	// A subprocess already running also obeys cancellation and retains no partial
-	// result. This helper stands in for rg; it is not an exposed command option.
-	sleeper := filepath.Join(t.TempDir(), "wait")
-	os.WriteFile(sleeper, []byte("#!/bin/sh\nexec /bin/sleep 10\n"), 0700)
-	ctx, cancel = context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	start := time.Now()
-	_, err = runRipgrep(ctx, sleeper, h.root, "", 1024)
-	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 2*time.Second {
-		t.Fatal(err, time.Since(start))
-	}
-	// Structured output never silently accepts a prefix, including exact-boundary
-	// writes followed by another chunk.
-	b := searchOutput{limit: 3}
-	b.Write([]byte("abc"))
-	b.Write([]byte("d"))
-	if !b.overflow || b.buffer.String() != "abc" {
-		t.Fatal(b)
-	}
-	rg, _ := exec.LookPath("rg")
-	if _, err := runRipgrep(context.Background(), rg, h.root, "hello\n", 3, "--json", "hello", "-"); err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Fatal(err)
-	}
 }
 
 // Contents are matched in Go on the guarded reads: a glob narrows the
 // candidates, context adds the lines around a match, and a large tree
 // that the old 128-file limit refused is searched.
 func TestIndexGrepGlobContextAndLargerTrees(t *testing.T) {
-	requireRipgrep(t)
 	h := newHarness(t)
 	os.MkdirAll(filepath.Join(h.root, "pkg"), 0o755)
 	os.WriteFile(filepath.Join(h.root, "pkg", "a.py"), []byte("one\ntwo\nneedle here\nfour\nfive\n"), 0o600)
@@ -207,7 +170,6 @@ func TestIndexGrepGlobContextAndLargerTrees(t *testing.T) {
 // fs-find lists names by glob, sorted, without protected or credential
 // names, and never escapes the repository.
 func TestFsFind(t *testing.T) {
-	requireRipgrep(t)
 	h := newHarness(t)
 	os.MkdirAll(filepath.Join(h.root, "src", "deep"), 0o755)
 	for _, name := range []string{"src/b.py", "src/a.py", "src/deep/c.py", "src/notes.txt", "src/key.pem", "src/.hidden.py", "src/.git/x.py"} {
@@ -236,5 +198,66 @@ func TestFsFind(t *testing.T) {
 	}
 	if len(h.prompts) != 0 {
 		t.Fatal("fs-find prompted")
+	}
+}
+
+// Globs follow ripgrep's --glob: without a slash a glob matches any path
+// component, with one it matches from the start of the path searched or of
+// the repository, ** spans directories, {a,b} is either, ! inverts.
+func TestGlobs(t *testing.T) {
+	for _, c := range []struct {
+		glob, path string
+		want       bool
+	}{
+		{"*.py", "a.py", true},
+		{"*.py", "pkg/deep/a.py", true},
+		{"*.py", "a.pyc", false},
+		{"test_*.py", "tests/test_x.py", true},
+		{"tests", "tests/unit/a.py", true},
+		{"tests", "src/tests.py", false},
+		{"django/**/migrations/*.py", "django/contrib/auth/migrations/0001.py", true},
+		{"django/**/migrations/*.py", "django/migrations/0001.py", true},
+		{"django/**/migrations/*.py", "other/django/x/migrations/1.py", false},
+		{"/docs/*.md", "docs/a.md", true},
+		{"docs/*.md", "docs/sub/a.md", false},
+		{"src/**", "src/a/b/c.go", true},
+		{"*.{go,md}", "a/b.md", true},
+		{"*.{go,md}", "a/b.txt", false},
+		{"file?.txt", "file1.txt", true},
+		{"[ab].go", "b.go", true},
+		{"[!ab].go", "c.go", true},
+		{"[!ab].go", "a.go", false},
+		{"!*.txt", "a.go", true},
+		{"!*.txt", "a.txt", false},
+	} {
+		match, err := compileGlob(c.glob)
+		if err != nil {
+			t.Fatalf("%s: %v", c.glob, err)
+		}
+		if got := match(c.path); got != c.want {
+			t.Errorf("%q on %q = %v, want %v", c.glob, c.path, got, c.want)
+		}
+	}
+	for _, bad := range []string{"[ab", "{a,b", "!"} {
+		if _, err := compileGlob(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
+// A glob can name the path from the directory searched or from the root.
+func TestFsFindGlobFromEitherBase(t *testing.T) {
+	h := newHarness(t)
+	for _, name := range []string{"django/contrib/migrations/0001.py", "django/views.py"} {
+		os.MkdirAll(filepath.Dir(filepath.Join(h.root, name)), 0o755)
+		os.WriteFile(filepath.Join(h.root, name), []byte("x"), 0o600)
+	}
+	for _, src := range []string{`(fs-find "." "django/**/migrations/*.py")`, `(fs-find "django" "**/migrations/*.py")`, `(fs-find "django" "contrib/migrations/*.py")`} {
+		raw, _ := scheme.ToJSON(h.mustEval(t, src))
+		var got findResult
+		json.Unmarshal(raw, &got)
+		if strings.Join(got.Files, ",") != "django/contrib/migrations/0001.py" {
+			t.Errorf("%s: %+v", src, got)
+		}
 	}
 }

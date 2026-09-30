@@ -55,7 +55,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(fs-edit path old new [all])} & replace exactly one occurrence, or all (irreversible, shows a diff) \\
 \code{(fs-list path)} & a directory's names; directories end with \code{/} \\
 \code{(fs-find path glob)} & file names matching a glob, at most 500 \\
-\code{(index-grep path regex [glob [context]])} & search contents with a regular expression (needs \code{rg}) \\
+\code{(index-grep path regex [glob [context]])} & search contents with a regular expression \\
 \code{(shell-exec cmd args)} & run a program with a list of arguments, no shell, in the folder (irreversible) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions \\
@@ -84,6 +84,30 @@ you> :eval (fs-read "plants.txt" 2 1)
 "[lines 2-2 of 2]\nbasil\n"
 \end{txt}
 \end{tryit}
+
+\subsection{Globs}
+
+\code{index-grep} and \code{fs-find} walk the folder themselves, in Go:
+hidden entries (\file{.git}, \file{.venv}\ldots) and symbolic links are
+skipped, and no ignore file is read. A glob narrows what they look at, with
+the rules ripgrep uses:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\code{*.py} & no slash: matches any path component, so \code{.py} files at any depth \\
+\code{tests} & every file under a \file{tests} directory, wherever it is \\
+\code{src/*.go} & a slash: matches from the start of the path, one level only \\
+\code{django/**/migrations/*.py} & \code{**} spans any number of directories \\
+\code{*.\{go,md\}} & either alternative \\
+\code{!*.txt} & everything the rest does not match \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+A glob with a slash is tried from the directory you searched and from the
+folder's root, so \code{(fs-find "django" "**/migrations/*.py")} and
+\code{(fs-find "." "django/**/migrations/*.py")} find the same files.
 
 \section{How the guard decides}
 

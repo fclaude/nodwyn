@@ -10,8 +10,8 @@ make build        # bin/nodwyn, for the terminal
 make app          # bin/Nodwyn.app on macOS: the same program with a window
 \end{sh}
 
-You need Go, and \code{rg} (ripgrep) on your \code{PATH} for text search.
-You also need a \textbf{model} to talk to: \nodwyn{} has no built-in model.
+To build it you need Go; to run it, nothing else: search, the console and
+the keychain are all built in. You also need a \textbf{model} to talk to: \nodwyn{} has no built-in model.
 Any Ollama server works, on your machine or another one on your network, and
 so does any server that speaks the OpenAI chat-completions protocol.
 
@@ -209,7 +209,7 @@ folder's path, \emph{never} in the folder itself:
 
 \begin{scm}
 (project-notes)                         ;=> "" the first time
-(project-notes-save "Tests: go test ./... (needs rg on PATH)")
+(project-notes-save "Tests: go test ./... ; the fixtures live in testdata/")
 \end{scm}
 
 The next session shows them to the model under a heading that calls them

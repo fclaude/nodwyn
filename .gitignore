@@ -16,3 +16,4 @@ coverage.out
 /test/browser/node_modules
 /test/browser/out/
 /test/browser/package-lock.json
+/demo

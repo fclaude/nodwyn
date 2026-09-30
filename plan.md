@@ -321,7 +321,8 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
   summaries now have validated source spans, inspection and append-only
   revocation; versioned windows retain historical replay and recent turns stay
   outside summary replacement. Existing token caps remain. Session-scoped
-  ripgrep retrieval is exposed through guarded `index-grep`, an on-demand,
+  retrieval is exposed through guarded `index-grep` (ripgrep listed its
+  files until 2026-09-30; a Go walk does now), an on-demand,
   bounded view with no persistent index; see [memory controls](docs/memory.md)
   for explicit scope. Tree-sitter outlines (`index-symbols`) shipped here and
   were removed on 2026-09-27: unused by models, and dependent on vendored

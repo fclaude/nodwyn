@@ -125,7 +125,7 @@ make promote TAG=v0.1-bootstrap  # accept + selfcheck, then ~/.local/bin/nodwyn-
 Use `nodwyn-stable` for real work and `bin/nodwyn` only to test a change to
 nodwyn itself. Never run the binary you are editing (ADR 12).
 
-Requires Go 1.27, `staticcheck`, ripgrep (`rg`) for text retrieval, and a
+Requires Go 1.27, `staticcheck`, and a
 model to talk to: the `[control]` table in `config.toml` (`bin/nodwyn paths`
 shows where it lives; everything else has defaults in
 [internal/config/config.go](../internal/config/config.go)). There is no

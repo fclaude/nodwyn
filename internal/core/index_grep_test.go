@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,9 +12,6 @@ import (
 )
 
 func TestIndexGrepSessionRedactionAndReadGuard(t *testing.T) {
-	if _, err := exec.LookPath("rg"); err != nil {
-		t.Fatal("retrieval tests require ripgrep")
-	}
 	r := newRig(t, false, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "search", Name: "index-grep", Args: map[string]any{"path": ".", "pattern": "needle"}}}}, fake.Turn{Content: "done"})
 	const canary = "sk-ant-abcdefgh1234"
 	os.WriteFile(filepath.Join(r.repo, "note.txt"), []byte("needle "+canary+"\n"), 0600)
