@@ -174,7 +174,7 @@ func (g *Guard) RegisterChecker(name, verdict string, predicate scheme.Value) er
 
 type schemeChecker struct {
 	name      string
-	predicate scheme.Value // (prim-name args) → boolean
+	predicate scheme.Value // (prim-name args) → any value; everything but #f matches
 	decision  Decision     // returned when predicate is true
 	ev        SchemeEval
 }
@@ -196,7 +196,9 @@ func (sc *schemeChecker) Check(ctx context.Context, p *scheme.Prim, args []schem
 		// A checker that errors is a policy error; fail closed.
 		return Decision{Verdict: Deny, Reason: fmt.Sprintf("checker %q errored: %v", sc.name, err)}
 	}
-	if out.Kind == scheme.KBool && out.I != 0 {
+	// Any true value matches, as in Scheme: a predicate ending in (member …)
+	// returns a list, and treating that as no opinion would fail open.
+	if out.IsTrue() {
 		return sc.decision
 	}
 	return Decision{Verdict: Allow, Reason: fmt.Sprintf("checker %q: no match", sc.name)}

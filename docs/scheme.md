@@ -418,9 +418,9 @@ turn.
 - `verdict` is fixed to `"deny"` or `"confirm"` at registration time.
   It can never be `"allow"` — the guard merges decisions
   strictest-wins, so a user checker can only tighten, never relax.
-- `predicate` is a procedure `(prim-name args) → boolean`. When it
-  returns `#t` the checker returns its fixed verdict; otherwise it has
-  no opinion (allow). A predicate that raises an error fails closed
+- `predicate` is a procedure `(prim-name args)`. When it returns a
+  true value (anything but `#f`, as everywhere in Scheme) the checker
+  returns its fixed verdict; otherwise it has no opinion (allow). A predicate that raises an error fails closed
   as a denial.
 
 The builtin is **hidden** (never offered to the model as a tool) and
