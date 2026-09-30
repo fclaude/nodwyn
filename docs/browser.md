@@ -8,6 +8,38 @@ workspace. **Connections**, **Workspaces** and **Settings** hold the rest. The
 U3 inspectors described below sit under a task's **Details**. For the app
 window and first-run setup see [app.md](app.md).
 
+## Tasks, folders and files
+
+**Starting.** Home's composer starts a task in the chosen folder. **Add a
+folder** names one and says what it holds — documents or code — and, in the
+app window, opens the system's folder chooser. A documents workspace runs no
+programs; see [ADR 22](adr/0022-cowork-workspaces-attachments-mcp.md). The
+Workspaces page edits a folder's name, kind and **mounted folders** (other
+folders a task may read, or read and write, by absolute path). These settings
+live in the folder's `.nibb/workspace.toml` and apply to tasks started
+afterwards.
+
+**Attaching.** The paperclip in either composer attaches files to the next
+message: text formats, `.docx`, `.xlsx`, `.pptx`, and PDF when `pdftotext`
+is installed; images are refused for now. Each file is copied into the
+folder's `.nibb/attachments/`, its text redacted and capped, and shown to the
+model as data. The conversation shows a chip per file with how many
+secret-like strings were hidden.
+
+**Undo.** Where git is not the undo, nibb keeps a file's previous content
+before changing it. A task's **Changes** list offers **History** per file;
+**Restore** writes a kept version back through the ordinary approval (the
+diff, then your answer), and keeps the current content too. From a terminal:
+`nibb versions FILE` and `nibb undo FILE`.
+
+**Tools from MCP servers.** Connections › Tools adds a remote server (HTTPS;
+a key goes to the keychain, bound to that host only), lists its tools for
+review, and approves that exact tool list. For each tool you say what it does
+— reads, changes things, or leave it undeclared — and whether it is offered;
+nothing is offered until you choose. An undeclared tool asks every call and
+offers no standing answer. If the server later changes its tool list, new
+tasks withhold its tools until you review again.
+
 ## Other devices (ADR 30)
 
 ```sh
