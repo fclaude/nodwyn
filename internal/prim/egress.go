@@ -230,7 +230,7 @@ func doCredentialRegister(cs CredentialStore, c *scheme.Call) (scheme.Value, err
 	// loop's own strategy would put a "please enter your key" prompt in
 	// front of the user mid-turn.
 	if c.Origin != scheme.OriginUser {
-		return scheme.Void, fmt.Errorf("credential-register: only you can register a key (:eval or init.scm), not %s code", c.Origin)
+		return scheme.Void, fmt.Errorf("credential-register: only you can register a key (:eval or init.scm), not %s-originated code", c.Origin)
 	}
 	class, err := c.String(0)
 	if err != nil {

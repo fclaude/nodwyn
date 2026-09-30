@@ -221,6 +221,10 @@ func TestCredentialRegisterRefusesModelOrigin(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "model-originated") {
 		t.Fatalf("model-origin registration should be refused: %v", err)
 	}
+	_, err = in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginHarness), `(credential-register "x")`)
+	if err == nil || !strings.Contains(err.Error(), "harness-originated") {
+		t.Fatalf("the loop's strategy should not register a key: %v", err)
+	}
 	if kc.Count() != 0 {
 		t.Fatal("a credential was stored")
 	}
