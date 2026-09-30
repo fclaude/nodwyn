@@ -152,6 +152,18 @@ func (m *model) consume(e rpc.ClientEvent) {
 		var p log.Note
 		p, err = decode[log.Note](e.Payload)
 		m.append("note: " + p.Text)
+	case string(log.KindAttach):
+		var p log.Attach
+		p, err = decode[log.Attach](e.Payload)
+		if err == nil {
+			m.append(plain.AttachSummary(p))
+		}
+	case string(log.KindFileVersion):
+		var p log.FileVersion
+		p, err = decode[log.FileVersion](e.Payload)
+		if err == nil {
+			m.append("kept the previous version of " + p.Path)
+		}
 	case string(log.KindHarnessMsg):
 		m.endToolInterval()
 		var p log.HarnessMsg

@@ -273,7 +273,25 @@ func (c *Chat) show(ev event.Event) {
 	case string(log.KindNote):
 		endStream()
 		fmt.Fprintf(c.Out, "note: %s\n", ev.Payload.(log.Note).Text)
+	case string(log.KindAttach):
+		endStream()
+		fmt.Fprintln(c.Out, AttachSummary(ev.Payload.(log.Attach)))
+	case string(log.KindFileVersion):
+		endStream()
+		fmt.Fprintf(c.Out, "[kept the previous version of %s]\n", ev.Payload.(log.FileVersion).Path)
 	}
+}
+
+// AttachSummary is the one line a transcript shows for an attached file.
+func AttachSummary(a log.Attach) string {
+	line := fmt.Sprintf("[attached %s · %s · %d bytes", a.Name, a.Type, a.Bytes)
+	if a.Pages > 0 {
+		line += fmt.Sprintf(" · %d pages", a.Pages)
+	}
+	if n := len(a.Redactions); n > 0 {
+		line += fmt.Sprintf(" · %d secret-like string(s) hidden", n)
+	}
+	return line + "]"
 }
 
 func (c *Chat) confirm(p event.Confirm) {
@@ -487,6 +505,14 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.Note
 			_ = ev.Decode(&p)
 			fmt.Fprintf(w, "note: %s\n", p.Text)
+		case log.KindAttach:
+			var p log.Attach
+			_ = ev.Decode(&p)
+			fmt.Fprintln(w, AttachSummary(p))
+		case log.KindFileVersion:
+			var p log.FileVersion
+			_ = ev.Decode(&p)
+			fmt.Fprintf(w, "[kept the previous version of %s]\n", p.Path)
 		case log.KindTurnCheckpoint:
 			var p log.TurnCheckpoint
 			ev.Decode(&p)
