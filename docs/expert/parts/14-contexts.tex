@@ -12,13 +12,18 @@ By default the window holds the system prompt (with your latest request
 and its plan pinned into it, where they are never trimmed away), then the
 conversation. When it grows past the \emph{high water} mark, the oldest
 tool results are elided in place, down to the \emph{low water} mark. A tool
-result longer than a cap is shortened. The sizes are in the config, and
+result longer than a cap is shortened. The sizes are in the config, grow
+with a model whose context is larger than the defaults assume, and are
 readable from Scheme:
 
 \begin{txt}
 you> :eval (window-limits)
-((high-water . 61440) (low-water . 30720) (max-result-tokens . 3072) (output-reserve . 16384))
+((high-water . 61440) (low-water . 30720) (ceiling . 61440) (max-result-tokens . 3072) (output-reserve . 16384))
 \end{txt}
+
+The \code{ceiling} is the most a request may carry; above the high water it
+is room kept for compaction's note. \code{(context-tokens)} is the size of
+the next request, counted as the window counts.
 
 \code{output-reserve} is also the cap on each reply. Trimming never touches
 the log; it only changes what the next request contains.
@@ -147,8 +152,8 @@ caller's work goes on either way.
 \section{Compaction}
 
 A long task fills the window with tool output the model no longer needs.
-Past \code{compact-threshold} prompt tokens (by default just under the
-high water: 58,983 of 61,440), \code{maybe-compact} asks the model for a
+Past \code{compact-threshold} tokens of \code{(context-tokens)} (by default
+just under the high water: 58,983 of 61,440), \code{maybe-compact} asks the model for a
 \textbf{handover note}: the task and its example as given, what it found
 with the evidence for each finding, what it changed, how to test, what is
 unsure, and its check script. Then it narrows the context to the system

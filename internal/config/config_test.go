@@ -182,3 +182,37 @@ credential = "example-key"
 		t.Fatalf("keyed control: %+v %v", c.Control, err)
 	}
 }
+
+// The window grows with a large context, unless config.toml sets its water
+// marks, and the room above the high water is the ceiling.
+func TestWindowSizedForTheContext(t *testing.T) {
+	parse := func(src string) Window {
+		t.Helper()
+		c, err := Parse([]byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.Window
+	}
+	def := Default().Window
+	for _, tc := range []struct {
+		name               string
+		w                  Window
+		context, reserve   int
+		high, low, ceiling int
+	}{
+		{"unknown context", def, 0, 16384, 61440, 30720, 61440},
+		{"ollama sized by the window", def, def.HighWater + def.OutputReserve, 16384, 61440, 30720, 61440},
+		{"a little room", def, 81920, 16384, 61440, 30720, 65536},
+		{"1M", def, 1048576, 16384, 774144, 387072, 1032192},
+		{"1M, a larger reply cap", def, 1048576, 65536, 737280, 368640, 983040},
+		{"1M, high water set", parse("[window]\nhigh_water = 100000\n"), 1048576, 16384, 100000, 30720, 1032192},
+		{"1M, low water set", parse("[window]\nlow_water = 20000\n"), 1048576, 16384, 61440, 20000, 1032192},
+		{"1M, other window keys", parse("[window]\nmax_result_tokens = 4096\n"), 1048576, 16384, 774144, 387072, 1032192},
+	} {
+		w, ceiling := tc.w.Sized(tc.context, tc.reserve)
+		if w.HighWater != tc.high || w.LowWater != tc.low || ceiling != tc.ceiling {
+			t.Errorf("%s: high %d, low %d, ceiling %d; want %d, %d, %d", tc.name, w.HighWater, w.LowWater, ceiling, tc.high, tc.low, tc.ceiling)
+		}
+	}
+}

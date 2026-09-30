@@ -16,9 +16,11 @@ import (
 // recipe, so a replay can refuse a recipe it does not know. v3 added
 // harness messages, v4 narrowed contexts, v5 folded ones, v6 records the
 // task and plan headers (default when absent), v7 requests that offer no
-// tools (llm.req no_tools), and v8 the cap on generated tokens (max_output);
-// an older log has none of them, so Build rebuilds it unchanged.
-const RecipeVersion = "window-v9"
+// tools (llm.req no_tools), v8 the cap on generated tokens (max_output),
+// v9 folded results (result.fold), and v10 a request's own trim line
+// (llm.req high_water); an older log has
+// none of them, so Build rebuilds it unchanged.
+const RecipeVersion = "window-v10"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas
 // and model options. It verifies reconstruction; it is not a tamper-proof seal.
@@ -59,7 +61,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 				return zero, fmt.Errorf("window replay: this legacy request lacks recorded context or a request hash")
 			}
 			switch c.Version {
-			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", "window-v8", RecipeVersion:
+			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", "window-v8", "window-v9", RecipeVersion:
 			default:
 				return zero, fmt.Errorf("window replay: unsupported recipe %q", c.Version)
 			}
@@ -75,8 +77,12 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			if c.Version == "window-v1" {
 				build = buildV1
 			}
-			built := build(prefix, c.System, Estimate(string(canonical)), Policy{HighWater: c.HighWater, LowWater: c.LowWater, MaxResultTokens: c.MaxResultTokens,
-				TaskHeader: c.TaskHeader, PlanHeader: c.PlanHeader})
+			pol := Policy{HighWater: c.HighWater, LowWater: c.LowWater, MaxResultTokens: c.MaxResultTokens,
+				TaskHeader: c.TaskHeader, PlanHeader: c.PlanHeader}
+			if rec.HighWater > 0 {
+				pol.HighWater = rec.HighWater
+			}
+			built := build(prefix, c.System, Estimate(string(canonical)), pol)
 			req := llm.Request{Model: rec.Model, Messages: built.Messages, Tools: tools, NumCtx: c.NumCtx, KeepAlive: c.KeepAlive, MaxTokens: c.MaxOutput}
 			if rec.NoTools {
 				req.Tools = nil

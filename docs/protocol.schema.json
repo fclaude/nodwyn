@@ -1058,6 +1058,9 @@
         "est_tokens": {
           "type": "integer"
         },
+        "high_water": {
+          "type": "integer"
+        },
         "keep_alive": {
           "type": "string"
         },

@@ -95,6 +95,11 @@ type LLMReq struct {
 	// model sets them.
 	Temperature *float64 `json:"temperature,omitempty"`
 	Seed        *int64   `json:"seed,omitempty"`
+	// HighWater is the size past which this request's window was trimmed,
+	// when it was not the recipe's: a request that may use the room above
+	// the high water ((model-turn name '((headroom . #t))), as the handover
+	// note's does) is trimmed only past the ceiling (window recipe v10).
+	HighWater int `json:"high_water,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.

@@ -3,6 +3,7 @@ package loop
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/scheme"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 // install registers the primitives a strategy is written with. They are
@@ -21,7 +23,7 @@ func (l *Loop) install() error {
 		{
 			Name: "model-turn",
 			Meta: scheme.Meta{
-				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]; an options alist may follow the name, where (tools . #f) offers the model no tools. Returns an alist with keys content, thinking, done (the stop reason), tool-calls, prompt-tokens and output-tokens (the server's counts; 0 when it gives none); each call is an alist with keys id, name and args (the model's JSON text).",
+				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]; an options alist may follow the name, where (tools . #f) offers the model no tools and (headroom . #t) lets the request run past the window's high water, up to its ceiling, before older context is trimmed. Returns an alist with keys content, thinking, done (the stop reason), tool-calls, prompt-tokens and output-tokens (the server's counts; 0 when it gives none); each call is an alist with keys id, name and args (the model's JSON text).",
 				Variadic: true, // (model-turn), (model-turn name) or (model-turn name options)
 				Hidden:   true,
 				Origin:   "builtin",
@@ -149,11 +151,20 @@ func (l *Loop) install() error {
 		{
 			Name: "window-limits",
 			Meta: scheme.Meta{
-				Doc:    "The window's sizes, in tokens as the window estimates them: an alist with keys high-water (past it older context is trimmed), low-water (what trimming goes down to), max-result-tokens (a longer tool result is shortened) and output-reserve (the default reply cap).",
+				Doc:    "The window's sizes, in tokens as the window estimates them: an alist with keys high-water (past it older context is trimmed), low-water (what trimming goes down to), ceiling (the most a request with headroom may carry; the high water when nothing is known above it), max-result-tokens (a longer tool result is shortened) and output-reserve (the default reply cap).",
 				Hidden: true,
 				Origin: "builtin",
 			},
 			Handler: l.windowLimits,
+		},
+		{
+			Name: "context-tokens",
+			Meta: scheme.Meta{
+				Doc:    "The size of the context the next model-turn would send, in tokens as the window estimates them (the unit of window-limits), before any trimming.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.contextTokens,
 		},
 		{
 			Name: "widen",
@@ -193,7 +204,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
-	name, offer := ControlModel, toolOffer{}
+	name, offer, headroom := ControlModel, toolOffer{}, false
 	if len(c.Args) > 2 {
 		return scheme.Void, errors.New("expected at most a model name and an options alist")
 	}
@@ -208,11 +219,21 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, errors.New("options must be an alist, such as '((tools . #f))")
 		}
 		for _, o := range opts {
-			if o.Kind != scheme.KPair || o.P.Car.Kind != scheme.KSymbol || o.P.Car.S != "tools" {
-				return scheme.Void, fmt.Errorf("unknown model-turn option %s; the only one is tools", scheme.Write(o))
+			if o.Kind != scheme.KPair || o.P.Car.Kind != scheme.KSymbol {
+				return scheme.Void, fmt.Errorf("unknown model-turn option %s; the options are tools and headroom", scheme.Write(o))
 			}
-			if offer, err = l.parseToolOffer(o.P.Cdr); err != nil {
-				return scheme.Void, err
+			switch o.P.Car.S {
+			case "tools":
+				if offer, err = l.parseToolOffer(o.P.Cdr); err != nil {
+					return scheme.Void, err
+				}
+			case "headroom":
+				if o.P.Cdr.Kind != scheme.KBool {
+					return scheme.Void, fmt.Errorf("the headroom option is #t or #f; got %s", scheme.Write(o.P.Cdr))
+				}
+				headroom = scheme.Equal(o.P.Cdr, scheme.True)
+			default:
+				return scheme.Void, fmt.Errorf("unknown model-turn option %s; the options are tools and headroom", scheme.Write(o))
 			}
 		}
 	}
@@ -224,7 +245,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, halt(err)
 		}
 	}
-	resp, err := l.ask(c.Ctx, name, offer)
+	resp, err := l.ask(c.Ctx, name, offer, headroom)
 	if err != nil {
 		return scheme.Void, err
 	}
@@ -661,7 +682,24 @@ func (l *Loop) windowLimits(*scheme.Call) (scheme.Value, error) {
 	return scheme.List(
 		scheme.Cons(scheme.Sym("high-water"), scheme.Int(int64(w.HighWater))),
 		scheme.Cons(scheme.Sym("low-water"), scheme.Int(int64(w.LowWater))),
+		scheme.Cons(scheme.Sym("ceiling"), scheme.Int(int64(max(l.cfg.Ceiling, w.HighWater)))),
 		scheme.Cons(scheme.Sym("max-result-tokens"), scheme.Int(int64(w.MaxResultTokens))),
 		scheme.Cons(scheme.Sym("output-reserve"), scheme.Int(int64(l.cfg.MaxOutput))),
 	), nil
+}
+
+// contextTokens is (context-tokens): the window the next model-turn would
+// build, before it trims anything. Compaction compares it with a threshold
+// derived from the high water, so both count the same way, and it measures
+// the tool results just added, which the last reply's prompt-tokens cannot.
+func (l *Loop) contextTokens(c *scheme.Call) (scheme.Value, error) {
+	if c.Origin == scheme.OriginModel {
+		return scheme.Void, errors.New("not callable from a model-originated evaluation")
+	}
+	if !l.frozen {
+		return scheme.Void, errors.New("the window is not fixed until the session has started")
+	}
+	pol := l.cfg.Window
+	pol.HighWater = math.MaxInt
+	return scheme.Int(int64(window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, pol).EstTokens)), nil
 }

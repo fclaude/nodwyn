@@ -54,6 +54,13 @@ type Host interface {
 // Config bounds the loop.
 type Config struct {
 	Window window.Policy // when and how older context is elided
+	// Ceiling is the most context a control-model request can carry: its
+	// context length less the output reserve, in the window's estimate. The
+	// room between the high water and the ceiling is for a request that may
+	// run past the high water ((model-turn name '((headroom . #t))), the
+	// handover note's). Not above the high water when the context length is
+	// unknown, or when the reply reserve takes all the rest.
+	Ceiling int
 	// MaxOutput caps the tokens a model generates per request, thinking
 	// included (window.output_reserve), so prompt and output fit num_ctx.
 	MaxOutput int

@@ -242,3 +242,58 @@ func TestOllamaIsAskedForTheWindowsContext(t *testing.T) {
 		t.Fatalf("request does not ask for %s:\n%s", want, r.srv.Requests[0].Raw)
 	}
 }
+
+// A chat-completions control model without num_ctx is sized by what the
+// server's model list says of its context; a model the list does not give
+// a length for keeps the default window, and the log says why.
+func TestWindowSizedFromTheModelList(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Write([]byte(`{"data":[{"id":"long","context_length":1048576},{"id":"quiet"}]}`))
+		case "/v1/chat/completions":
+			w.Write([]byte(`{"choices":[{"message":` + oaiText("done") + `,"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	for _, tc := range []struct {
+		model            string
+		high, ceiling, n int
+		note             string
+	}{
+		{"long", 774144, 1032192, 1048576, "sized for long's context of 1048576 tokens"},
+		{"quiet", 61440, 61440, 0, "set num_ctx in [control]"},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Control = config.Model{Provider: "openai", URL: srv.URL + "/v1", Model: tc.model}
+			logb := &bytes.Buffer{}
+			s, err := New(Options{Config: cfg, Repo: t.TempDir(), NoConfirm: true, LogWriter: logb})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { s.Close() })
+			r := &rig{t: t, s: s, logb: logb}
+			if got := r.evalInt("(assoc-ref (window-limits) 'high-water)"); got != tc.high {
+				t.Errorf("high water %d, want %d", got, tc.high)
+			}
+			if got := r.evalInt("(assoc-ref (window-limits) 'ceiling)"); got != tc.ceiling {
+				t.Errorf("ceiling %d, want %d", got, tc.ceiling)
+			}
+			if got := r.evalInt("(assoc-ref (model-info) 'num-ctx)"); got != tc.n {
+				t.Errorf("num-ctx %d, want %d", got, tc.n)
+			}
+			if !strings.Contains(logb.String(), tc.note) {
+				t.Errorf("the log does not say %q", tc.note)
+			}
+			if e := r.turn("hi"); e != "" {
+				t.Fatal(e)
+			}
+			if n := replayAll(t, logb); n != 1 {
+				t.Fatalf("replayed %d requests", n)
+			}
+		})
+	}
+}

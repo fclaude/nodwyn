@@ -78,13 +78,18 @@ func offered(catalog []llm.Tool, offer toolOffer) []llm.Tool {
 // model of that name (ControlModel for the control model), offering the
 // session's tools that offer names. The window is rebuilt from the log
 // every time, so the model sees exactly what has been recorded, and the
-// request's hash lets nodwyn replay --window prove it.
-func (l *Loop) ask(ctx context.Context, name string, offer toolOffer) (*llm.Response, error) {
+// request's hash lets nodwyn replay --window prove it. With headroom the
+// window is trimmed only past the ceiling instead of the high water.
+func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom bool) (*llm.Response, error) {
 	ep, err := l.endpoint(name)
 	if err != nil {
 		return nil, err
 	}
-	w := window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, l.cfg.Window)
+	pol := l.cfg.Window
+	if headroom && l.cfg.Ceiling > pol.HighWater {
+		pol.HighWater = l.cfg.Ceiling
+	}
+	w := window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, pol)
 	if !hasUserMessage(w.Messages) {
 		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
 	}
@@ -104,6 +109,9 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer) (*llm.Resp
 		Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
 		NoTools: offer.none, OfferedTools: offer.only, MaxOutput: ep.MaxOutput,
 		Temperature: ep.Temperature, Seed: ep.Seed,
+	}
+	if pol.HighWater != l.cfg.Window.HighWater {
+		rec.HighWater = pol.HighWater
 	}
 	if name != ControlModel {
 		// The session's recipe carries the control model's settings; any

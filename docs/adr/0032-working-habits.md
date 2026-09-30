@@ -62,3 +62,36 @@ pil becomes nodwyn's default, for every session, interactive or unattended:
   and wraps the habits as they wrap the defaults.
 - A leave-one-out ablation of pil's parts on the same tasks is queued; a
   part that does not pay its way there is a candidate for removal.
+
+## Amendment 2026-09-30: compaction measures what the window trims by
+
+Compaction compared the server's `prompt-tokens` for the last request with a
+threshold taken from the high water, which is in the window's own estimate
+(bytes/3). The two differ: on meta/muse-spark-1.3 through OpenRouter the
+estimate ran about a quarter above the server's count (53,339 against
+42,661 for one request), so the window crossed its high water and elided 20
+messages while the server's count was near 43k, far under the 58,983
+threshold. Compaction never ran, and old reads were dropped rather than
+summarized. The last request's size also lacks the tool results just added:
+that request was already under the threshold in the window's own units, and
+one round of reads took the next one past the high water.
+
+Now `maybe-compact` measures `(context-tokens)`: the window's estimate of
+the context the next `model-turn` would send, before any trim, in the units
+of `(window-limits)`, whatever the provider's tokenizer. The handover note's
+request is asked with `'((headroom . #t))`, so it may run past the high
+water up to the window's ceiling, the room the model's context has left
+above it, and a round that jumps past the high water is still compacted
+rather than trimmed (`llm.req` `high_water` records that request's trim line;
+window-v10).
+
+The window is also sized for the model: a 60k window on a 1M-token model
+compacted long before the model needed it. When `[control]` gives
+`num_ctx`, or a chat-completions server's model list gives the context
+length (OpenRouter's `context_length`, vLLM's `max_model_len`), the high
+water grows to three quarters of the context less the reply cap, the low
+water to half that, and the last quarter is the ceiling's room for the
+note. `[window]` water marks set in config.toml are kept as set. A context no
+bigger than the window, such as a local model sized by it, has no such room:
+there a round that jumps past the high water still trims before the note is
+written, unless the reply reserve is given up for it.

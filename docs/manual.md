@@ -487,6 +487,22 @@ leaving Ollama at its own, usually smaller, default, which would cut the
 prompt silently; a chat-completions server decides its own. Set, the window
 must fit in it.
 
+The window is sized for the control model's context. Its defaults
+(`window.high_water` 61440 and `low_water` 30720, in the window's estimate of
+bytes/3) suit a small local context. When the context is larger, as
+`num_ctx` says or, for a chat-completions server that leaves it unset, as the
+server's model list says (OpenRouter's `context_length`, vLLM's
+`max_model_len`; asked once per process, without a key), the high water grows
+to three quarters of the context less the reply cap, and the low water to
+half of that: a 1M-token model trims past 774144 and compacts just under it.
+The last quarter is room for compaction's handover note (docs/scheme.md §9.2),
+so a long task is summarized before anything is trimmed. The session log
+notes the size it chose, or that the server did not say; set `num_ctx` then.
+Setting `high_water` or `low_water` in `[window]` keeps the window at your
+size. A larger window sends more with every request: on a paid model, a
+request near the high water costs that many prompt tokens, less what the
+provider caches.
+
 `window.output_reserve` (16384 by default) is also the cap on each reply,
 thinking included: ollama gets it as `num_predict`, a chat-completions server
 as `max_completion_tokens`, so a prompt at the window's high water and its

@@ -93,7 +93,7 @@ type Model struct {
 	Provider   string `toml:"provider"`   // "ollama" (the default when unset), or "openai" for any chat-completions server
 	URL        string `toml:"url"`        // base URL; for openai including the version, e.g. https://api.openai.com/v1
 	Model      string `toml:"model"`      // model id as the provider names it
-	NumCtx     int    `toml:"num_ctx"`    // context length; sent to ollama, informational otherwise
+	NumCtx     int    `toml:"num_ctx"`    // context length; sent to ollama; for [control] it also sizes the window (Window.Sized)
 	KeepAlive  string `toml:"keep_alive"` // ollama only
 	Credential string `toml:"credential"` // keychain class of the API key; empty for none
 	// MaxOutput caps this model's replies, thinking included, instead of
@@ -156,6 +156,30 @@ type Window struct {
 	LowWater        int `toml:"low_water"`         // trim down to this
 	MaxResultTokens int `toml:"max_result_tokens"` // a tool result larger than this is shown head+tail
 	OutputReserve   int `toml:"output_reserve"`    // tokens reserved for generation, and the cap on each reply's (thinking included)
+	// Fixed is set when config.toml sets high_water or low_water: the water
+	// marks then stay as set, instead of growing with the model's context
+	// (Sized).
+	Fixed bool `toml:"-"`
+}
+
+// Sized is the window for a control model whose context holds context
+// tokens (0 when unknown), reserve of them kept for its reply, and the
+// ceiling: the most a request may carry, context less reserve. The
+// defaults are for a small local context; a larger one raises the high
+// water to three quarters of the ceiling and the low water to half of
+// that, unless config.toml sets them (Fixed). The quarter left above the
+// high water is room for the request that compacts the context, so a long
+// task is summarized before anything is trimmed (compact.scm). With the
+// context unknown, or no bigger than the window, the ceiling is the high
+// water. The window's estimate counts bytes/3, usually more than a
+// server's tokenizer, so the ceiling rarely overfills the context.
+func (w Window) Sized(context, reserve int) (Window, int) {
+	room := context - reserve
+	if !w.Fixed && room*3/4 > w.HighWater {
+		w.HighWater = room * 3 / 4
+		w.LowWater = max(w.LowWater, w.HighWater/2)
+	}
+	return w, max(room, w.HighWater)
 }
 
 // Policy holds the guard's user-settable defaults (ADR 6).
@@ -253,6 +277,7 @@ func Parse(raw []byte) (Config, error) {
 	if undec := md.Undecoded(); len(undec) > 0 {
 		return Config{}, fmt.Errorf("unknown keys: %v", undec)
 	}
+	c.Window.Fixed = md.IsDefined("window", "high_water") || md.IsDefined("window", "low_water")
 	if md.IsDefined("loop", "max_tool_calls") && c.Loop.MaxToolCalls <= 0 {
 		return Config{}, fmt.Errorf("loop.max_tool_calls must be positive when set")
 	}

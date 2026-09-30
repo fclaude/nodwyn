@@ -273,8 +273,10 @@ func (s *Session) initialize() (err error) {
 	// redefine it; the tool list is frozen once init.scm has run.
 	requestTimeout, _ := o.Config.Loop.Durations()
 	models := s.models()
+	win, ceiling := s.sizeWindow(models)
 	s.loop, err = loop.New(s, s.interp, loop.Config{
-		Window:         window.Policy{HighWater: o.Config.Window.HighWater, LowWater: o.Config.Window.LowWater, MaxResultTokens: o.Config.Window.MaxResultTokens},
+		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens},
+		Ceiling:        ceiling,
 		MaxOutput:      o.Config.Window.OutputReserve,
 		Models:         models,
 		RequestTimeout: requestTimeout,

@@ -484,7 +484,7 @@ of cut replies and the evidence loop for unattended turns (all below, and in
 
 | | |
 |---|---|
-| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and `'((tools "fs-read" "fs-list"))` only the named ones (an unknown name is an error that lists the tools), as a sub-agent's requests do. Both are recorded (`llm.req` `no_tools`, `offered_tools`) so replay rebuilds the request. Any other value but `#t` is an error: `'((tools #f))`, a list holding #f, is not a silent yes. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nodwyn replay --window`. |
+| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and `'((tools "fs-read" "fs-list"))` only the named ones (an unknown name is an error that lists the tools), as a sub-agent's requests do. Both are recorded (`llm.req` `no_tools`, `offered_tools`) so replay rebuilds the request. Any other value but `#t` is an error: `'((tools #f))`, a list holding #f, is not a silent yes. `'((headroom . #t))` lets the request run past the window's high water, up to its ceiling (`(window-limits)`), before older context is trimmed, as compaction's note request does; `llm.req` records that trim line as `high_water`. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nodwyn replay --window`. |
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
@@ -496,7 +496,8 @@ of cut replies and the evidence loop for unattended turns (all below, and in
 | `(session-system-prompt)` | The system prompt the session started with (§9.1), fixed for its life: what a narrowed context passes to `narrow-context` to keep the model's standing instructions. |
 | `(model-info)` `(model-info name)` | What is known about a model before asking it: the control model, or the configured model `[models.NAME]`. An alist: `name`, `model` (the provider's id), `provider`, `num-ctx` (its context length; 0 when unset), `max-output` (the reply cap its requests carry: its `max_output`, else `window.output_reserve`), and `temperature` and `seed` (its sampling settings, `#f` when the server decides). An unknown name is an error that lists the configured ones. |
 | `(model-names)` | The names `model-turn` and `model-info` accept: `"control"` and each configured `[models.NAME]`, sorted. |
-| `(window-limits)` | The window's sizes, in tokens as the window estimates them: an alist of `high-water` (past it older context is trimmed), `low-water` (what trimming goes down to), `max-result-tokens` (a longer tool result is shortened) and `output-reserve` (the default reply cap). Compaction's default threshold is read from it (§9.2). |
+| `(window-limits)` | The window's sizes, in tokens as the window estimates them: an alist of `high-water` (past it older context is trimmed), `low-water` (what trimming goes down to), `ceiling` (the most a request with headroom may carry: the control model's context less the reply cap, or the high water when nothing is known above it), `max-result-tokens` (a longer tool result is shortened) and `output-reserve` (the default reply cap). The water marks grow with a large context unless config.toml sets them (manual, "Choosing models"). Compaction's default threshold is read from it (§9.2). |
+| `(context-tokens)` | The size of the context the next `model-turn` would send, in the units of `(window-limits)`, before any trimming. Unlike a reply's `prompt-tokens` it counts as the window does, whatever the server's tokenizer, and includes the tool results added since the last request. Compaction measures it (§9.2). |
 
 When nobody reviews the work as it happens — `(unattended?)` (`--yolo`, a
 run's `auto_approve`) or a supervised run's turn (`plan-required?`) — the
@@ -599,22 +600,27 @@ uses them, so a `(reload)` changes them from the next turn.
 A long turn fills the context with tool results the model no longer needs.
 nodwyn elides the oldest ones past `[window] high_water` on its own; compaction
 goes further, as user code over the primitives above, in
-`internal/loop/compact.scm`. When a reply's `prompt-tokens` passes
-`compact-threshold`, `maybe-compact` asks the model for a handover note (the
+`internal/loop/compact.scm`. When the context passes `compact-threshold`,
+measured as the window measures it (`(context-tokens)`, not a reply's
+`prompt-tokens`, which a server counts its own way and which lacks the latest
+tool results), `maybe-compact` asks the model for a handover note (the
 task and its example as given, what it found with the evidence for each
 finding, what it changed, how to test, what is unsure or left, and its check
 script), then narrows the
 context to the session's system prompt, the request and that note. The
 repository keeps the model's changes, and the log keeps the whole
-conversation, so replay and audit see everything the note replaced.
+conversation, so replay and audit see everything the note replaced. The
+note request may use the room between the window's high water and its
+ceiling, so a round that jumps past the high water is still compacted rather
+than trimmed; a context no bigger than the window has no such room.
 
 | | |
 |---|---|
-| `compact-threshold` | prompt tokens past which the context is compacted; `#f` never compacts. The default is just under the window's high water, a twenty-fifth below it (`(window-limits)`: 58983 at the default 61440), so only work that really runs long compacts (ADR 32) |
+| `compact-threshold` | context tokens, as `(context-tokens)` counts them, past which the context is compacted; `#f` never compacts. The default is just under the window's high water, a twenty-fifth below it (`(window-limits)`: 58983 at the default 61440), so only work that really runs long compacts (ADR 32) |
 | `compact-attempts` | replies to the note request that may be tool calls (they are skipped) before compaction gives up; after giving up it waits for the context to grow another quarter of the threshold |
 | `compact-summary-prompt` | the request for the note (a prompt, §9.1) |
 | `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to re-run its reproduction and re-check its findings before building on them |
-| `(maybe-compact request reply)` | compact if `reply` passed the threshold; call it once the reply's calls are answered |
+| `(maybe-compact request reply)` | compact if the context the next `model-turn` would send passed the threshold; call it once the reply's calls are answered (`reply` itself is not read) |
 | `(compact-context request)` | compact now; `#t` if the turn continues in the narrowed context |
 
 ```scheme

@@ -128,3 +128,34 @@ func TestOpenAISampling(t *testing.T) {
 		t.Fatalf("unset temperature sent: %v", got)
 	}
 }
+
+func TestOpenAIContextLength(t *testing.T) {
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		auth = r.Header.Get("Authorization")
+		w.Write([]byte(`{"data":[
+			{"id":"routed","context_length":1048576,"top_provider":{"context_length":262144}},
+			{"id":"listed","context_length":1048576},
+			{"id":"vllm","max_model_len":32768},
+			{"id":"silent"}]}`))
+	}))
+	defer srv.Close()
+	o := NewOpenAI(srv.URL+"/v1", func(r *http.Request) error { r.Header.Set("Authorization", "Bearer k"); return nil })
+	for model, want := range map[string]int{"routed": 262144, "listed": 1048576, "vllm": 32768} {
+		if n, err := o.ContextLength(context.Background(), model); err != nil || n != want {
+			t.Errorf("%s: %d, %v; want %d", model, n, err, want)
+		}
+	}
+	for _, model := range []string{"silent", "absent"} {
+		if n, err := o.ContextLength(context.Background(), model); err == nil || n != 0 {
+			t.Errorf("%s: %d, %v; want an error", model, n, err)
+		}
+	}
+	if auth != "" {
+		t.Fatalf("the model list was asked with a key: %q", auth)
+	}
+}
