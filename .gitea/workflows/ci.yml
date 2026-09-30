@@ -29,7 +29,9 @@ jobs:
           apk --repositories-file "$RUNNER_TEMP/apk-repositories" add --no-cache python3
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          # The newest patch of go.mod's base release (ADR 33); go-version-file
+          # would install go.mod's 1.26.0 itself.
+          go-version: '1.26.x'
           # Host jobs reuse local Go caches. Archive restore cannot overwrite
           # read-only module files with the runner's dropped capabilities.
           cache: false
