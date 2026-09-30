@@ -161,6 +161,14 @@ Commands at the `you>` prompt:
 | `:thinking` | toggle showing the model's redacted thinking |
 | Ctrl-C | abort the running turn; at the prompt, exit |
 
+Two messages run a command instead of a turn, in every client (the
+terminal, the TUI, the console and a paired phone):
+
+| | |
+|---|---|
+| `/compact [what to keep]` | compact the conversation now, whatever its size: the model writes a handover note for your latest request, and your next message goes on from the note instead of the whole conversation. Words after it are what the note must keep (`/compact the failing test names`). The log keeps everything |
+| `/optimize [n \| ids] [focus]` | learn from this repository's past sessions and improve `.nodwyn/init.scm` ("Changing the loop" below) |
+
 Flags: `--repo DIR`, `--model`, `--url`, `--show-thinking`, `--no-confirm`
 (every confirm is a no — for scripts and CI), `--yolo` (every ordinary
 confirm is a yes — for work nobody is watching), `--no-keychain`,
@@ -414,6 +422,12 @@ API with `(credential class)` and `http-request`. It cannot run a call the
 model did not make, loosen the guard, or keep a turn going past a budget or a
 progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
 (§9.1), and so is the plan gate with its thresholds (§9.5).
+
+Long work is compacted on its own just under the window's high water: the
+model writes a handover note and goes on from it, in that turn and the next
+ones. Set `(define compact-threshold 40000)` to compact earlier, `#f` to
+only trim, and send `/compact` to compact whenever you like
+([docs/scheme.md](scheme.md) §9.2).
 
 nodwyn can learn how to work in a repository from its own history: send
 `/optimize` (or `/optimize 5`, or `/optimize` with session ids, optionally

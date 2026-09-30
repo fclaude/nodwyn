@@ -489,11 +489,12 @@ of cut replies and the evidence loop for unattended turns (all below, and in
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
 | `(fold-result result text)` | Show a tool result as `text` in later windows, such as an outline or a line saying what it was, once its details stopped mattering; `result` is the `tool.result` event's seq or the id of the call it answers. Recorded as `result.fold`, so replay rebuilds the same window (recipe window-v9); the result itself stays in the log for audit and `recall`. Folding an old result changes the prompt from that point on, so the server re-reads what follows it: fold in batches, or results near the end |
-| `(narrow-context system [agent])` | Start a fresh context, like Emacs's narrowing: until `fold-context`, `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Contexts nest. Calls from the latest `model-turn` that are still unanswered wait for this context to fold; its own `model-turn`s start with none pending. |
+| `(narrow-context system [agent [options]])` | Start a fresh context, like Emacs's narrowing: until `fold-context`, `widen` or the user's next message, models see `system` as their system prompt and only what comes after this point. Follow it with `add-message` to hand over the task. This is how a model gets a task and a plan without the conversation that led to them. Contexts nest. Calls from the latest `model-turn` that are still unanswered wait for this context to fold; its own `model-turn`s start with none pending. `agent` labels the context in the log. `options` is an alist; `'((lasting . #t))` makes the narrowing outlast the turn, as compaction's does (§9.2): if it is still open at the user's next message, the conversation starts there from then on, under the session's system prompt with the new task and plan, and what came before stays in the log only. Recorded as `context.narrow` `lasting` (recipe window-v11). Any other value but `#t` or `#f` is an error. |
 | `(fold-context)` | End the innermost narrowed context and fold it away: later windows skip everything since its `narrow-context` and see the enclosing context again; the log keeps it all. The calls that waited for it are the latest `model-turn`'s again. Refused while calls are unanswered. |
-| `(widen)` | End every narrowed context. Models see the whole conversation again, including what happened while it was narrowed. A new user message widens too. Refused while a context holds calls waiting for an answer: fold it. |
+| `(widen)` | End every narrowed context. Models see the whole conversation again, including what happened while it was narrowed, from where the latest lasting narrowing of an earlier turn started it. A new user message widens too, except that a lasting narrowing still open becomes where the conversation starts. Refused while a context holds calls waiting for an answer: fold it. |
 | `(answer-call call text)` | Answer one of the model's calls with `text`, as a successful result, without running the tool: how a tool the strategy handles itself answers. Counts against the tool-call budget. |
 | `(session-system-prompt)` | The system prompt the session started with (§9.1), fixed for its life: what a narrowed context passes to `narrow-context` to keep the model's standing instructions. |
+| `(session-requests)` | The user's messages in this session so far, oldest first, as the log recorded them (redacted); the running turn's request is the last. Read from the log, so it holds across a resume: how `/compact` finds the request it hands over (§9.2). |
 | `(model-info)` `(model-info name)` | What is known about a model before asking it: the control model, or the configured model `[models.NAME]`. An alist: `name`, `model` (the provider's id), `provider`, `num-ctx` (its context length; 0 when unset), `max-output` (the reply cap its requests carry: its `max_output`, else `window.output_reserve`), and `temperature` and `seed` (its sampling settings, `#f` when the server decides). An unknown name is an error that lists the configured ones. |
 | `(model-names)` | The names `model-turn` and `model-info` accept: `"control"` and each configured `[models.NAME]`, sorted. |
 | `(window-limits)` | The window's sizes, in tokens as the window estimates them: an alist of `high-water` (past it older context is trimmed), `low-water` (what trimming goes down to), `ceiling` (the most a request with headroom may carry: the control model's context less the reply cap, or the high water when nothing is known above it), `max-result-tokens` (a longer tool result is shortened) and `output-reserve` (the default reply cap). The water marks grow with a large context unless config.toml sets them (manual, "Choosing models"). Compaction's default threshold is read from it (§9.2). |
@@ -608,30 +609,65 @@ task and its example as given, what it found with the evidence for each
 finding, what it changed, how to test, what is unsure or left, and its check
 script), then narrows the
 context to the session's system prompt, the request and that note. The
+narrowing lasts (`narrow-context` with `'((lasting . #t))`, labelled
+`compaction`): the rest of the turn goes on from the note, and so do later
+turns, each under the session's system prompt with its own request, rather
+than from the whole conversation again. The
 repository keeps the model's changes, and the log keeps the whole
-conversation, so replay and audit see everything the note replaced. The
-note request may use the room between the window's high water and its
-ceiling, so a round that jumps past the high water is still compacted rather
-than trimmed; a context no bigger than the window has no such room.
+conversation, as `context.narrow` with `lasting` and the note before it, so
+replay and audit see everything the note replaced. The note request may use
+the room between the window's high water and its ceiling, so a round that
+jumps past the high water is still compacted rather than trimmed; a context
+no bigger than the window has no such room.
+
+The user compacts whenever they like, whatever the context's size, with a
+message; it works in every client, like `/optimize` (§9.4):
+
+```
+/compact                     compact now
+/compact the failing tests   any words after it are what the note must keep
+```
+
+The default `agent-turn` runs `compact-turn` for it instead of the loop. It
+hands over the user's latest request before it, not counting other
+`/compact`s (`session-requests`), so a note written between turns keeps the
+task that was being worked on; the words after `/compact` are added to the
+note request with `compact-focus-prompt`. The turn ends once the note is
+handed over: the model is not asked to go on, so it does not start on what
+the note says is left, and the user's next message goes on from the note.
+A session with no request before the `/compact` has nothing to compact, and
+the model is not asked. Each outcome is a `note` in the log, which the
+clients show.
+
+A strategy asks for compaction at the next round, whatever the size, with
+`(compact-next-round [focus])`: `maybe-compact` runs it where the loop next
+calls it, in this turn or the next, and the request is used once.
 
 | | |
 |---|---|
-| `compact-threshold` | context tokens, as `(context-tokens)` counts them, past which the context is compacted; `#f` never compacts. The default is just under the window's high water, a twenty-fifth below it (`(window-limits)`: 58983 at the default 61440), so only work that really runs long compacts (ADR 32) |
+| `compact-threshold` | context tokens, as `(context-tokens)` counts them, past which the context is compacted; `#f` never compacts on its own (`/compact` and `compact-next-round` still do). The default is just under the window's high water, a twenty-fifth below it (`(window-limits)`: 58983 at the default 61440), so only work that really runs long compacts (ADR 32) |
 | `compact-attempts` | replies to the note request that may be tool calls (they are skipped) before compaction gives up; after giving up it waits for the context to grow another quarter of the threshold |
 | `compact-summary-prompt` | the request for the note (a prompt, §9.1) |
+| `(compact-focus-prompt focus)` | what the note must keep, as the user put it after `/compact` or a strategy gave `compact-next-round`, added after `compact-summary-prompt` |
 | `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to re-run its reproduction and re-check its findings before building on them |
-| `(maybe-compact request reply)` | compact if the context the next `model-turn` would send passed the threshold; call it once the reply's calls are answered (`reply` itself is not read) |
-| `(compact-context request)` | compact now; `#t` if the turn continues in the narrowed context |
+| `(maybe-compact request reply)` | compact if a strategy asked for it with `compact-next-round`, or if the context the next `model-turn` would send passed the threshold; call it once the reply's calls are answered (`reply` itself is not read) |
+| `(compact-context request [focus])` | compact now, handing over `request`; `#t` if the turn continues in the narrowed context |
+| `(compact-next-round [focus])` | compact at the next `maybe-compact`, whatever the size; `compact-requested` holds the request (`#f` when there is none) |
+| `(compact-request? request)` `(compact-turn request)` | whether a message is a `/compact`, and what the default `agent-turn` does with one |
 
 ```scheme
 (define compact-threshold 40000)    ; in .nodwyn/init.scm
 ```
 
 A strategy that redefines `agent-turn` calls `maybe-compact` itself, where the
-default does: after running the calls, before the next `model-turn`. Compacting
+default does: after running the calls, before the next `model-turn`; it keeps
+`/compact` by calling `(compact-turn request)` when `(compact-request?
+request)`. Compacting
 rewrites the start of the context, so the server re-reads the new, short
 prompt once instead of reusing its cache (ADR 9); a late threshold compacts
-rarely and keeps the prefix stable in between.
+rarely and keeps the prefix stable in between. A note that the model will
+not write (it keeps calling tools, or writes nothing) leaves the context as
+it was, and the model is told to go on.
 
 ### 9.3 Sub-agents
 

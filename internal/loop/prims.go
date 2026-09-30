@@ -93,9 +93,9 @@ func (l *Loop) install() error {
 		{
 			Name: "narrow-context",
 			Meta: scheme.Meta{
-				Doc:      "Start a fresh context: until fold-context, widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Contexts nest; calls pending when it opens wait until it folds. An optional agent name labels the context in the log.",
+				Doc:      "Start a fresh context: until fold-context, widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Contexts nest; calls pending when it opens wait until it folds. An optional agent name labels the context in the log; an options alist may follow it, where (lasting . #t) makes the narrowing outlast the turn, as a compaction's does: if it is still open at the user's next message, the conversation starts here from then on, under the session's system prompt.",
 				Params:   []scheme.Param{{Name: "system", Type: "string", Doc: "the system prompt of the new context"}},
-				Variadic: true, // (narrow-context system) or (narrow-context system agent)
+				Variadic: true, // (narrow-context system), (narrow-context system agent) or (narrow-context system agent options)
 				Hidden:   true,
 				Origin:   "builtin",
 			},
@@ -119,6 +119,15 @@ func (l *Loop) install() error {
 				Origin: "builtin",
 			},
 			Handler: l.answerCall,
+		},
+		{
+			Name: "session-requests",
+			Meta: scheme.Meta{
+				Doc:    "The user's messages in this session so far, oldest first, as recorded (redacted); the running turn's request is the last. What a strategy reads to know what was asked before this turn, such as the request a compaction between turns hands over.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.sessionRequests,
 		},
 		{
 			Name: "session-system-prompt",
@@ -440,14 +449,18 @@ func (l *Loop) narrowContext(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, errors.New("a system prompt is required")
 	}
 	rec := log.ContextNarrow{System: system}
-	switch len(c.Args) {
-	case 1:
-	case 2:
+	if len(c.Args) > 3 {
+		return scheme.Void, errors.New("expected a system prompt and, optionally, an agent name and an options alist")
+	}
+	if len(c.Args) > 1 {
 		if rec.Agent, err = c.String(1); err != nil {
 			return scheme.Void, err
 		}
-	default:
-		return scheme.Void, errors.New("expected a system prompt and, optionally, an agent name")
+	}
+	if len(c.Args) == 3 {
+		if rec.Lasting, err = narrowOptions(c.Args[2]); err != nil {
+			return scheme.Void, err
+		}
 	}
 	for _, p := range t.pending {
 		if !p.answered {
@@ -462,6 +475,30 @@ func (l *Loop) narrowContext(c *scheme.Call) (scheme.Value, error) {
 	t.contexts = append(t.contexts, t.pending)
 	t.pending = nil
 	return scheme.Void, nil
+}
+
+// narrowOptions reads narrow-context's options alist: whether the
+// narrowing lasts past the turn. Only #t or #f is accepted, so a slip such
+// as '((lasting #t)) is an error rather than a silent no.
+func narrowOptions(v scheme.Value) (lasting bool, err error) {
+	opts, ok := v.Slice()
+	if !ok {
+		return false, errors.New("options must be an alist, such as '((lasting . #t))")
+	}
+	for _, o := range opts {
+		if o.Kind != scheme.KPair || o.P.Car.Kind != scheme.KSymbol || o.P.Car.S != "lasting" {
+			return false, fmt.Errorf("unknown narrow-context option %s; the only one is lasting", scheme.Write(o))
+		}
+		switch {
+		case scheme.Equal(o.P.Cdr, scheme.True):
+			lasting = true
+		case scheme.Equal(o.P.Cdr, scheme.False):
+			lasting = false
+		default:
+			return false, fmt.Errorf("the lasting option is #t or #f; got %s", scheme.Write(o.P.Cdr))
+		}
+	}
+	return lasting, nil
 }
 
 // foldContext is (fold-context).
@@ -511,6 +548,26 @@ func (l *Loop) answerCall(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, l.stop(err, calls)
 	}
 	return scheme.Void, l.record(log.KindToolResult, log.ToolResult{ID: calls[0].ID, Name: calls[0].Name, OK: true, Value: text})
+}
+
+// sessionRequests is (session-requests), read from the log like every
+// window, so it holds across a resume.
+func (l *Loop) sessionRequests(c *scheme.Call) (scheme.Value, error) {
+	if c.Origin == scheme.OriginModel {
+		return scheme.Void, errors.New("not callable from a model-originated evaluation")
+	}
+	var out []scheme.Value
+	for _, ev := range l.host.EventsSoFar() {
+		if ev.Kind != log.KindUserMsg {
+			continue
+		}
+		var p log.UserMsg
+		if err := ev.Decode(&p); err != nil {
+			return scheme.Void, err
+		}
+		out = append(out, scheme.Str(p.Text))
+	}
+	return scheme.List(out...), nil
 }
 
 // sessionSystemPrompt is (session-system-prompt). It needs no turn: the

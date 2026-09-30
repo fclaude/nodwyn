@@ -7,7 +7,8 @@
 // (ADR 26). This package keeps what a strategy must not be
 // able to skip, and gives the strategy the primitives to work with:
 // model-turn, run-tools, skip-tools, answer-call, add-message,
-// narrow-context, fold-context, widen and session-system-prompt.
+// narrow-context, fold-context, widen, session-system-prompt and
+// session-requests.
 //
 // Reading order:
 //

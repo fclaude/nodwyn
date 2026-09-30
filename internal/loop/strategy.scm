@@ -32,13 +32,14 @@
 ;; sub-agents, agents.scm) and ask again; a reply without tool calls ends the
 ;; turn. Between rounds the context is compacted once it passes
 ;; compact-threshold (compact.scm; just under the window's high water by
-;; default). A request starting with /optimize runs the optimizer instead
+;; default). A request starting with /compact compacts the conversation now
+;; instead (compact.scm), and one starting with /optimize runs the optimizer
 ;; (optimize.scm). A project may redefine agent-turn in .nodwyn/init.scm
 ;; (docs/scheme.md §9).
 (define (agent-turn request)
-  (if (optimize-request? request)
-      (optimize-turn request)
-      (default-agent-turn request)))
+  (cond ((compact-request? request) (compact-turn request))
+        ((optimize-request? request) (optimize-turn request))
+        (else (default-agent-turn request))))
 
 (define (default-agent-turn request)
   (plan-gate request)

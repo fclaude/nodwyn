@@ -98,3 +98,31 @@ other model turn, in a narrowed context that folds away, offered no tools;
 its requests are recorded and replay (window-v7 for the tool-less request).
 `[control]` is a configured model like `[models.NAME]`, registered as
 `"control"`, with no built-in default.
+
+## Amendment: lasting narrowings and compaction on request (2026-09-30)
+
+A narrowing ended at the user's next message, and compaction (ADR 32) is a
+narrowing, so a compaction lasted only for the rest of its turn: the next
+message brought the whole conversation back, trimmed at the high water, and
+the handover note was thrown away. In a long interactive session the note
+was written again each time the conversation grew past the threshold, and a
+user who asked for a compaction between turns would have had it undone by
+their very next message.
+
+- `narrow-context` takes an options alist after the agent name;
+  `'((lasting . #t))` makes a narrowing outlast its turn. If it is still
+  open at the user's next message, the conversation starts there from then
+  on, under the session's system prompt with the new task and plan. A fold
+  or widen in its own turn ends it like any other. It is recorded as
+  `context.narrow` `lasting`, and window recipe v11 rebuilds it; a log
+  without the field builds as before.
+- Compaction narrows lasting, labelled `compaction`, so later turns go on
+  from the note. The log keeps what came before, for replay, audit and the
+  optimizer.
+- The user compacts whenever they like with a `/compact` message, optionally
+  followed by what the note must keep. Between turns it hands over the
+  user's latest request before it, read with a new primitive,
+  `(session-requests)`, and ends the turn without asking the model to go on.
+  A strategy asks for a compaction at its next round with
+  `(compact-next-round)`. Both are user code in `compact.scm`
+  (docs/scheme.md §9.2).

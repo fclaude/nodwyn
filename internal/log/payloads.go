@@ -48,6 +48,11 @@ type ContextNarrow struct {
 	// changes the window: they let a log be read agent by agent.
 	Agent   string   `json:"agent,omitempty"`
 	Answers []string `json:"answers,omitempty"`
+	// Lasting marks a narrowing that outlasts its turn, such as a
+	// compaction's: if it is still open at the next user message, the
+	// conversation starts here from then on, under the session's system
+	// prompt (window recipe v11).
+	Lasting bool `json:"lasting,omitempty"`
 }
 
 // ContextWiden ends a narrowed context.

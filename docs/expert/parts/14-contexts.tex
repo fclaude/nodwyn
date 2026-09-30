@@ -62,7 +62,10 @@ with \code{add-message} to hand over a task.
 away: later windows skip everything since the narrow and see the enclosing
 conversation again. \code{(widen)} ends every narrowed context and shows
 everything, including what happened inside them. A new user message widens
-too.
+too, except for a \emph{lasting} narrowing, \code{(narrow-context system
+name '((lasting . \#t)))}: if it is still open when the user speaks again,
+the conversation starts there from then on. That is how a compaction
+outlasts its turn.
 
 \begin{txt}
    main conversation ..........................   (narrow-context "You review...")
@@ -158,7 +161,20 @@ just under the high water: 58,983 of 61,440), \code{maybe-compact} asks the mode
 with the evidence for each finding, what it changed, how to test, what is
 unsure, and its check script. Then it narrows the context to the system
 prompt, the request and that note, and the work continues, from a clean
-window, with the changes already in the files.
+window, with the changes already in the files. The narrowing lasts: the
+next turns start from the note too, not from the whole conversation.
+
+You can compact whenever you like, whatever the size, by sending a message:
+
+\begin{txt}
+/compact                     compact now
+/compact the failing tests   and keep these in particular
+\end{txt}
+
+The note is written for your latest request before the \code{/compact},
+and the turn ends there: your next message goes on from the note. A
+strategy asks for the same at its next round with
+\code{(compact-next-round)}.
 
 \begin{scm}
 (define compact-threshold 40000)   ; compact earlier

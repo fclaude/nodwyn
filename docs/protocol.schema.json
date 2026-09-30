@@ -778,6 +778,9 @@
             "null"
           ]
         },
+        "lasting": {
+          "type": "boolean"
+        },
         "system": {
           "type": "string"
         }

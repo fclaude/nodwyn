@@ -71,11 +71,13 @@ this is the summary.
     jev-choice}.
   \item[The loop] \code{model-turn run-tools skip-tools answer-call
     add-message log-note fold-result narrow-context fold-context widen
-    session-system-prompt model-info model-names window-limits unattended?
+    session-system-prompt session-requests model-info model-names
+    window-limits unattended?
     plan-required? plan-recorded? record-plan reload}.
   \item[Defined in Scheme by the loop] \code{nodwyn-turn agent-turn
     ask-model run-calls sub-agent define-agent-tool plan-gate maybe-compact
-    compact-context evidence-loop optimize-turn} and the prompts.
+    compact-context compact-next-round compact-turn evidence-loop
+    optimize-turn} and the prompts.
 \end{description}
 
 \section*{Not in the language}

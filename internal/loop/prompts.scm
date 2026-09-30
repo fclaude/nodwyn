@@ -237,6 +237,11 @@
   Name your check script (its path) and what its latest run showed; the script itself is still on disk.
   """)
 
+;; What the user asked the handover note to keep ("/compact" followed by
+;; words), added after compact-summary-prompt.
+(define (compact-focus-prompt focus)
+  (string-append "The user asks the note to keep in particular: " focus))
+
 ;; What a compacted context starts with: the task and the handover note,
 ;; which is re-checked before it is built on.
 (define (compact-handover-prompt request note)

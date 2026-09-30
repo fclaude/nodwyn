@@ -94,19 +94,49 @@ func requestMessages(t *testing.T, req fake.Request) []sent {
 	return out
 }
 
-func (r *rig) narrowings() int {
+func (r *rig) logged() []log.Event {
 	r.t.Helper()
 	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
 	if err != nil {
 		r.t.Fatal(err)
 	}
+	return evs
+}
+
+func (r *rig) narrowings() int {
+	r.t.Helper()
 	n := 0
-	for _, ev := range evs {
+	for _, ev := range r.logged() {
 		if ev.Kind == log.KindContextNarrow {
 			n++
 		}
 	}
 	return n
+}
+
+// notes returns the text of every note in the log.
+func (r *rig) notes() []string {
+	r.t.Helper()
+	var out []string
+	for _, ev := range r.logged() {
+		if ev.Kind == log.KindNote {
+			var p log.Note
+			if err := ev.Decode(&p); err != nil {
+				r.t.Fatal(err)
+			}
+			out = append(out, p.Text)
+		}
+	}
+	return out
+}
+
+// replaysAll checks that every recorded request rebuilds from the log, so a
+// compacted window replays like any other.
+func (r *rig) replaysAll() {
+	r.t.Helper()
+	if n := replayAll(r.t, r.logb); n != len(r.srv.Requests) {
+		r.t.Fatalf("%d requests replayed, %d sent", n, len(r.srv.Requests))
+	}
 }
 
 func TestCompactionHandsOverInANarrowedContext(t *testing.T) {
@@ -338,5 +368,184 @@ func TestCompactionUsesTheRoomAboveTheHighWater(t *testing.T) {
 				t.Fatalf("replayed %d requests", n)
 			}
 		})
+	}
+}
+
+// A compaction lasts: the next turn goes on from the handover note, under
+// the session's system prompt with its own request, not from the whole
+// conversation again.
+func TestCompactionLastsIntoTheNextTurn(t *testing.T) {
+	r := strategyRig(t, "", 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "big.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
+		fake.Turn{Content: "NOTE: main.go only declares package main; nothing changed yet."},
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "It prints nothing yet."},
+	)
+	writeTokens(t, r.repo, "big.txt", 1000)
+	r.compactAfter(1500) // passed by the second read
+	if err := r.turn("make main.go print hello"); err != "" {
+		t.Fatal(err)
+	}
+	if err := r.turn("what does it print?"); err != "" {
+		t.Fatal(err)
+	}
+	next := requestMessages(t, r.srv.Requests[4])
+	system := r.s.loop.WindowContext().System
+	if len(next) != 4 || !strings.HasPrefix(next[0].Content, system) || !strings.HasSuffix(next[0].Content, "\nwhat does it print?") ||
+		!strings.HasPrefix(next[1].Content, "make main.go print hello") || next[2].Content != "done" || next[3].Content != "what does it print?" {
+		t.Fatalf("the turn after a compaction: %+v", next)
+	}
+	if strings.Contains(string(r.srv.Requests[4].Raw), strings.TrimSuffix(bigLine, "\n")) {
+		t.Fatal("the next turn brought back the old tool results")
+	}
+	r.replaysAll()
+}
+
+// The user compacts whenever they like with /compact: whatever the size, the
+// model writes a handover note for the latest request before it, the turn
+// ends there, and the next message goes on from the note.
+func TestCompactOnRequest(t *testing.T) {
+	r := strategyRig(t, "", 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("a")}},
+		fake.Turn{Content: "main.go declares package main."},
+		fake.Turn{Content: "NOTE: main.go only declares package main."},
+		fake.Turn{Content: "It prints nothing."},
+	)
+	if err := r.turn("what does main.go do?"); err != "" {
+		t.Fatal(err)
+	}
+	if err := r.turn("/compact the package name"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 3 {
+		t.Fatalf("%d requests after /compact, want 3: only the note is asked for", len(r.srv.Requests))
+	}
+	ask := requestMessages(t, r.srv.Requests[2])
+	if last := ask[len(ask)-1].Content; !strings.Contains(last, "write a handover note") ||
+		!strings.HasSuffix(last, "keep in particular: the package name") {
+		t.Fatalf("the note request: %s", last)
+	}
+	var narrow log.ContextNarrow
+	for _, ev := range r.logged() {
+		if ev.Kind == log.KindContextNarrow {
+			if err := ev.Decode(&narrow); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if !narrow.Lasting || narrow.Agent != "compaction" || r.narrowings() != 1 {
+		t.Fatalf("compaction's narrowing: %+v", narrow)
+	}
+	if notes := r.notes(); len(notes) == 0 || !strings.HasPrefix(notes[len(notes)-1], "Compacted") {
+		t.Fatalf("the user is not told: %q", notes)
+	}
+
+	if err := r.turn("does it print anything?"); err != "" {
+		t.Fatal(err)
+	}
+	after := requestMessages(t, r.srv.Requests[3])
+	system := r.s.loop.WindowContext().System
+	if len(after) != 3 || !strings.HasPrefix(after[0].Content, system) || !strings.HasSuffix(after[0].Content, "\ndoes it print anything?") ||
+		after[2].Content != "does it print anything?" {
+		t.Fatalf("the turn after /compact: %+v", after)
+	}
+	if handover := after[1].Content; !strings.HasPrefix(handover, "what does main.go do?") ||
+		!strings.HasSuffix(handover, "Handover note:\nNOTE: main.go only declares package main.") {
+		t.Fatalf("hand-over:\n%s", handover)
+	}
+	if raw := string(r.srv.Requests[3].Raw); strings.Contains(raw, `package main\n`) || strings.Contains(raw, "/compact") {
+		t.Fatal("the compacted conversation still carries what came before the note")
+	}
+	r.replaysAll()
+}
+
+// /compact with nothing before it asks the model nothing; one after another
+// hands over the latest request that is not a /compact, and the new note is
+// written from the old.
+func TestCompactOnRequestHandsOverTheLatestRequest(t *testing.T) {
+	r := strategyRig(t, "", 10,
+		fake.Turn{Content: "hello"},
+		fake.Turn{Content: "NOTE 1"},
+		fake.Turn{Content: "NOTE 2"},
+		fake.Turn{Content: "bye"},
+	)
+	if err := r.turn("/compact"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 0 || r.narrowings() != 0 {
+		t.Fatal("compacted an empty conversation")
+	}
+	if notes := r.notes(); len(notes) != 1 || !strings.HasPrefix(notes[0], "Nothing to compact") {
+		t.Fatalf("notes: %q", notes)
+	}
+	for _, text := range []string{"say hello", "/compact", "/compact"} {
+		if err := r.turn(text); err != "" {
+			t.Fatal(err)
+		}
+	}
+	if ask := requestMessages(t, r.srv.Requests[2]); !strings.HasSuffix(ask[1].Content, "Handover note:\nNOTE 1") {
+		t.Fatalf("the second note was not written from the first: %+v", ask)
+	}
+	if err := r.turn("say bye"); err != "" {
+		t.Fatal(err)
+	}
+	last := requestMessages(t, r.srv.Requests[3])
+	if len(last) != 3 || !strings.HasPrefix(last[1].Content, "say hello") || !strings.HasSuffix(last[1].Content, "Handover note:\nNOTE 2") {
+		t.Fatalf("after two compactions: %+v", last)
+	}
+	r.replaysAll()
+}
+
+// A strategy asks for compaction at the next round with compact-next-round,
+// whatever the context's size; the request is used once.
+func TestCompactNextRound(t *testing.T) {
+	r := strategyRig(t, `
+(define base-run-calls run-calls)
+(define (run-calls calls)
+  (when (equal? (assoc-ref (car calls) 'id) "a") (compact-next-round "what the read showed"))
+  (base-run-calls calls))`, 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("a")}},
+		fake.Turn{Content: "NOTE: main.go declares package main."},
+		fake.Turn{ToolCalls: []fake.ToolCall{readCall("b")}},
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("make main.go print hello"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 4 || r.narrowings() != 1 {
+		t.Fatalf("%d requests and %d narrowings, want 4 and 1", len(r.srv.Requests), r.narrowings())
+	}
+	if ask := requestMessages(t, r.srv.Requests[1]); !strings.HasSuffix(ask[len(ask)-1].Content, "keep in particular: what the read showed") {
+		t.Fatalf("the note request: %+v", ask[len(ask)-1])
+	}
+	if after := requestMessages(t, r.srv.Requests[2]); len(after) != 2 || !strings.HasPrefix(after[1].Content, "make main.go print hello") {
+		t.Fatalf("the round after: %+v", after)
+	}
+	if got := r.eval("compact-requested"); got != "#f" {
+		t.Fatalf("the request was not used up: %s", got)
+	}
+}
+
+// narrow-context's options are strict: a slip is an error, not a silent no.
+func TestNarrowContextOptions(t *testing.T) {
+	r := strategyRig(t, `
+(define refusals '())
+(define (agent-turn request)
+  (for-each (lambda (options)
+              (guard (e (else (set! refusals (cons (assoc-ref e 'message "") refusals))))
+                (narrow-context "x" "y" options)))
+            '(((lasting #t)) ((kept . #t)) 5)))`, 10)
+	if err := r.turn("go"); err != "" {
+		t.Fatal(err)
+	}
+	got := r.eval("refusals")
+	for _, want := range []string{"the lasting option is #t or #f", "unknown narrow-context option", "options must be an alist"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("no refusal %q in %s", want, got)
+		}
+	}
+	if r.narrowings() != 0 {
+		t.Fatal("a refused narrowing was recorded")
 	}
 }

@@ -264,6 +264,11 @@ export class Transcript {
         this.end();
         this.el.append(h("div", { class: "audit" }, "Resumed"));
         break;
+      case "context.narrow":
+        // A lasting narrowing, such as a compaction's, is where later turns
+        // start; any other ends with its turn.
+        this.audit(p.lasting ? `The conversation goes on from here${p.agent ? ` (${p.agent})` : ""}` : auditLabels[event.kind], p);
+        break;
       case "egress.check":
         // Every model request checks where its key may go; an allowed check
         // is routine and stays in the log. Only a refusal is news.

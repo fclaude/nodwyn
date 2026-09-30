@@ -24,6 +24,10 @@
 //     the user speaks again, the window is only what came after the
 //     narrowing, under the strategy's own system prompt. This is how a model
 //     is handed a task without the conversation that led to it.
+//   - A lasting narrowing, such as a compaction's, outlasts its turn: if it
+//     is still open when the user speaks again, the conversation starts
+//     there from then on, under the session's system prompt with the task
+//     and plan. What came before stays in the log, never in the window.
 package window
 
 import (
@@ -107,8 +111,9 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	// Narrowed contexts, innermost last: each starts at an entry index with
 	// its own system prompt. A fold drops the innermost and its entries.
 	type frame struct {
-		at     int
-		system string
+		at      int
+		system  string
+		lasting bool
 	}
 	var frames []frame
 	folded := map[uint64]string{}
@@ -125,14 +130,22 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		case log.KindUserMsg:
 			var p log.UserMsg
 			if ev.Decode(&p) == nil {
+				// A new turn sees the whole conversation, which starts at
+				// the innermost lasting narrowing still open, if any.
+				for i := len(frames) - 1; i >= 0; i-- {
+					if frames[i].lasting {
+						entries = entries[frames[i].at:]
+						break
+					}
+				}
+				frames = nil
 				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
 				task, plan = p.Text, ""
-				frames = nil // a new turn sees the whole conversation
 			}
 		case log.KindContextNarrow:
 			var p log.ContextNarrow
 			if ev.Decode(&p) == nil {
-				frames = append(frames, frame{at: len(entries), system: p.System})
+				frames = append(frames, frame{at: len(entries), system: p.System, lasting: p.Lasting})
 			}
 		case log.KindContextWiden:
 			frames = nil

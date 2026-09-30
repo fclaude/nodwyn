@@ -294,6 +294,17 @@ func AttachSummary(a log.Attach) string {
 	return line + "]"
 }
 
+// LastingNarrowLine is the line a transcript shows for a lasting
+// narrowing, such as a compaction's, in place of its system prompt, which is
+// the session's own: later turns start here.
+func LastingNarrowLine(p log.ContextNarrow) string {
+	name := p.Agent
+	if name == "" {
+		name = "context narrowed"
+	}
+	return "── " + name + ": the conversation goes on from here ──"
+}
+
 func (c *Chat) confirm(p event.Confirm) {
 	fmt.Fprintf(c.Out, "\n─── confirm: %s %s\n", p.Prompt.Prim, p.Prompt.Args)
 	if scope := EgressSummary(p.Prompt.Egress); scope != "" {
@@ -472,7 +483,11 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 		case log.KindContextNarrow:
 			var p log.ContextNarrow
 			_ = ev.Decode(&p)
-			fmt.Fprintf(w, "── context narrowed ──\n%s\n", dim(p.System))
+			if p.Lasting {
+				fmt.Fprintln(w, LastingNarrowLine(p))
+			} else {
+				fmt.Fprintf(w, "── context narrowed ──\n%s\n", dim(p.System))
+			}
 		case log.KindContextWiden:
 			fmt.Fprintln(w, "── context widened ──")
 		case log.KindLLMResp:

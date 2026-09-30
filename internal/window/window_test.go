@@ -269,3 +269,54 @@ func TestFoldedContext(t *testing.T) {
 		t.Fatalf("whole conversation after folding everything: %+v", wide)
 	}
 }
+
+// A lasting narrowing, such as a compaction's, outlasts its turn: from the
+// user's next message the conversation starts there, under the session's
+// system prompt with the new task. Within its turn a fold or widen ends it
+// like any other narrowing.
+func TestLastingNarrowing(t *testing.T) {
+	s := newSession()
+	s.turn(10)
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "/compact"})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "write a note"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: "the note"})
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "SESSION PROMPT", Agent: "compaction", Lasting: true})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "handover"})
+
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "next"})
+	next := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages
+	if len(next) != 3 || next[0].Content != "SESSION PROMPT\n\n"+DefaultTaskHeader+"\nnext" ||
+		next[1].Content != "handover" || next[2].Content != "next" {
+		t.Fatalf("the turn after a lasting narrowing: %+v", next)
+	}
+
+	// It lasts through later turns; a narrowing that does not last still
+	// ends at the next message.
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: "answer"})
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "side task"})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "side work"})
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "again"})
+	again := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages
+	if len(again) != 6 || again[1].Content != "handover" || again[4].Content != "side work" || again[5].Content != "again" {
+		t.Fatalf("two turns after a lasting narrowing: %+v", again)
+	}
+
+	// Folded or widened in its own turn, a lasting narrowing is gone by the
+	// next message.
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "folded", Lasting: true})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "folded away"})
+	s.w.Append(log.KindContextFold, log.ContextFold{})
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "widened", Lasting: true})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "widened again"})
+	s.w.Append(log.KindContextWiden, log.ContextWiden{})
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "last"})
+	last := Build(s.events(t), "SESSION PROMPT", 0, pol).Messages
+	if len(last) != 8 || last[1].Content != "handover" || last[6].Content != "widened again" || last[7].Content != "last" {
+		t.Fatalf("after a folded and a widened lasting narrowing: %+v", last)
+	}
+	for _, m := range last {
+		if m.Content == "folded away" || m.Content == "answer 0" || m.Content == "the note" {
+			t.Fatalf("the window reached past the compaction or into a folded context: %+v", last)
+		}
+	}
+}

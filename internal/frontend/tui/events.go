@@ -173,7 +173,11 @@ func (m *model) consume(e rpc.ClientEvent) {
 		m.endToolInterval()
 		var p log.ContextNarrow
 		p, err = decode[log.ContextNarrow](e.Payload)
-		m.append("── context narrowed ──\n" + p.System)
+		if p.Lasting {
+			m.append(plain.LastingNarrowLine(p))
+		} else {
+			m.append("── context narrowed ──\n" + p.System)
+		}
 	case string(log.KindContextWiden):
 		m.endToolInterval()
 		m.append("── context widened ──")
