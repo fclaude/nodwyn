@@ -30,6 +30,7 @@ const (
 	Status           = "status"            // Payload: StatusInfo
 	Error            = "error"             // Payload: ErrorInfo
 	Output           = "output"            // Payload: Text — Scheme display/write output
+	PromptClosed     = "prompt.closed"     // Payload: Closed; a prompt is no longer pending, however it ended
 )
 
 // Text is a fragment of streamed text or output.
@@ -55,6 +56,12 @@ func NewConfirm(id string, prompt guard.Prompt) Confirm {
 type SecretPrompt struct {
 	ID    string
 	Class string
+}
+
+// Closed names a prompt that stopped waiting: answered, declined, failed or
+// canceled. Clients clear it; the durable record, if any, says how it ended.
+type Closed struct {
+	ID string
 }
 
 // StatusInfo says what the session is doing.

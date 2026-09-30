@@ -43,7 +43,12 @@ func (s *Session) confirmBudget(ctx context.Context, p budget.Checkpoint) (choic
 	ch := make(chan checkpointReply, 1)
 	s.prompts[id] = pendingConfirmation{ctx: ctx, checkpoint: &pendingCheckpoint{info: p, reply: ch}}
 	s.promptMu.Unlock()
-	defer func() { s.promptMu.Lock(); delete(s.prompts, id); s.promptMu.Unlock() }()
+	defer func() {
+		s.promptMu.Lock()
+		delete(s.prompts, id)
+		s.promptMu.Unlock()
+		s.Emit(event.Event{Kind: event.PromptClosed, Payload: event.Closed{ID: id}})
+	}()
 	s.Emit(event.Event{Kind: event.PromptCheckpoint, Payload: event.Checkpoint{ID: id, Checkpoint: p}})
 	select {
 	case reply := <-ch:

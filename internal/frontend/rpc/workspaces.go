@@ -2,6 +2,8 @@ package rpc
 
 import (
 	"os"
+
+	"github.com/fclaude/nibb/internal/guard"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -94,6 +96,9 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 	if info, err := os.Stat(p.Path); err != nil || !info.IsDir() {
 		return nil, failure(-32602, "path must be an existing folder")
 	}
+	if why := s.rootRefusal(p.Path); why != "" {
+		return nil, failure(-32602, why)
+	}
 	if p.Kind == "" {
 		p.Kind = config.KindCode
 	}
@@ -128,8 +133,8 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 		if err := params(req.Params, &p, "repo", "path"); err != nil {
 			return nil, err
 		}
-		if !filepath.IsAbs(p.Repo) {
-			return nil, failure(-32602, "repo must be absolute")
+		if !filepath.IsAbs(p.Repo) || !s.knownFolder(filepath.Clean(p.Repo)) {
+			return nil, failure(-32602, "repo must be a folder nibb works in")
 		}
 		abs := p.Path
 		if !filepath.IsAbs(abs) {
@@ -191,4 +196,60 @@ func (s *server) attach(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	return receipt, nil
+}
+
+// rootRefusal says why a folder cannot be a task's root, or "". A root is
+// where every relative path points and what a task may write: never the
+// whole disk, the home directory itself, nibb's own configuration and data
+// (config, keys, bindings, logs) or the credential directories the guard
+// denies, nor a folder that contains any of them.
+func (s *server) rootRefusal(root string) string {
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "the folder does not exist"
+	}
+	home, _ := os.UserHomeDir()
+	if real == "/" || (home != "" && real == evalOr(home)) {
+		return "choose a folder inside your home directory, not the whole of it"
+	}
+	protected := append([]string{s.options.Paths.ConfigDir, s.options.Paths.DataDir}, guard.DefaultDenylist().Dirs...)
+	for _, dir := range protected {
+		dir = evalOr(dir)
+		if dir == "" {
+			continue
+		}
+		if real == dir || strings.HasPrefix(real, dir+string(filepath.Separator)) || strings.HasPrefix(dir, real+string(filepath.Separator)) {
+			return "that folder holds (or is inside) " + dir + ", which nibb never works in"
+		}
+	}
+	return ""
+}
+
+func evalOr(p string) string {
+	if p == "" {
+		return ""
+	}
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
+	}
+	return filepath.Clean(p)
+}
+
+// knownFolder reports whether root is a named workspace or a folder a task
+// used: what versions.list may read.
+func (s *server) knownFolder(root string) bool {
+	if list, err := config.LoadRegistry(config.RegistryFile(s.options.Paths)); err == nil {
+		for _, r := range list {
+			if r.Path == root {
+				return true
+			}
+		}
+	}
+	infos, _ := s.store().List()
+	for _, i := range infos {
+		if i.Repo == root {
+			return true
+		}
+	}
+	return false
 }

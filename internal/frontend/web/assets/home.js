@@ -7,7 +7,8 @@ import { Attachments } from "./attach.js";
 let chosen = ""; // the folder the next task starts in, for this tab
 let draft = "";
 let current = null;
-let files = null; // the files chosen for the next task, kept across redraws
+let files = null;
+let starting = false; // a start is in flight: one task per ask // the files chosen for the next task, kept across redraws
 
 export function kindLabel(kind) {
   return { docs: "documents", code: "code", mixed: "code and documents" }[kind] || kind || "";
@@ -41,7 +42,7 @@ export function renderHome(root, ctx) {
     },
   });
   task.value = draft;
-  const ready = () => canStart && conn.live && !!chosen && !!task.value.trim();
+  const ready = () => !starting && canStart && conn.live && !!chosen && !!task.value.trim();
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: !ready() }, icon("up", 18, 2));
   files ||= new Attachments();
   const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
@@ -52,6 +53,7 @@ export function renderHome(root, ctx) {
       onsubmit: async (event) => {
         event.preventDefault();
         if (!ready()) return;
+        starting = true;
         submit.disabled = true;
         try {
           const info = await conn.call("session.open", { repo: chosen });
@@ -61,7 +63,10 @@ export function renderHome(root, ctx) {
           await desk.refresh();
           navigate(`#/task/${info.id}`);
         } catch (error) {
-          toast(`${error.message} Nothing was retried.`);
+          toast(`${error.message} Nothing was retried; check the task list before starting again.`);
+          desk.refresh().catch(() => {});
+        } finally {
+          starting = false;
           submit.disabled = !ready();
         }
       },

@@ -278,3 +278,34 @@ func TestDocsWorkspaceRunsNoPrograms(t *testing.T) {
 		t.Fatal("code workspace refused a program")
 	}
 }
+
+func TestDenylistResolvesAgainstTheRoot(t *testing.T) {
+	config := t.TempDir()
+	d := PathDenylist{Dirs: []string{config}, Root: config}
+	write := &scheme.Prim{Name: "fs-write", Meta: scheme.Meta{Irreversible: true, Params: []scheme.Param{{Name: "path", Role: "path"}, {Name: "content", Role: "payload"}}}}
+	if d.Check(context.Background(), write, []scheme.Value{scheme.Str("bindings.toml"), scheme.Str("x")}).Verdict != Deny {
+		t.Fatal("a relative path into a denied directory was allowed")
+	}
+	other := t.TempDir()
+	os.Symlink(config, filepath.Join(other, "cfg"))
+	d.Root = other
+	if d.Check(context.Background(), write, []scheme.Value{scheme.Str("cfg/bindings.toml"), scheme.Str("x")}).Verdict != Deny {
+		t.Fatal("a link into a denied directory was allowed")
+	}
+}
+
+func TestMountsKeepProtectedPathsAndInnermostAccess(t *testing.T) {
+	root, outer := t.TempDir(), t.TempDir()
+	inner := filepath.Join(outer, "ref")
+	os.MkdirAll(inner, 0o755)
+	write := &scheme.Prim{Name: "fs-write", Meta: scheme.Meta{Irreversible: true, Params: []scheme.Param{{Name: "path", Role: "path"}, {Name: "content", Role: "payload"}}}}
+	pp := ProtectedPaths{Root: root, Mounts: []Mount{{Path: outer, Write: true}}}
+	d := pp.Check(context.Background(), write, []scheme.Value{scheme.Str(filepath.Join(outer, ".git", "hooks", "pre-commit")), scheme.Str("x")})
+	if d.Verdict != Confirm || !d.Security {
+		t.Fatalf("a mounted repository's hook: %+v", d)
+	}
+	pin := RepoPin{Root: root, Mounts: []Mount{{Path: outer, Write: true}, {Path: inner}}}
+	if pin.Check(context.Background(), write, []scheme.Value{scheme.Str(filepath.Join(inner, "x")), scheme.Str("x")}).Verdict != Deny {
+		t.Fatal("a read-only mount inside a writable one was writable")
+	}
+}

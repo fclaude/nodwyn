@@ -36,6 +36,9 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if !filepath.IsAbs(p.Repo) || err != nil || !info.IsDir() {
 			return nil, failure(-32602, "repo must be an existing absolute directory")
 		}
+		if why := s.rootRefusal(p.Repo); why != "" {
+			return nil, failure(-32602, why)
+		}
 		wall, err := time.ParseDuration(p.Wall)
 		if err != nil || wall <= 0 {
 			return nil, failure(-32602, "wall must be a positive duration")

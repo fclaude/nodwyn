@@ -352,6 +352,17 @@
       ],
       "type": "object"
     },
+    "event.Closed": {
+      "properties": {
+        "ID": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ID"
+      ],
+      "type": "object"
+    },
     "event.Confirm": {
       "properties": {
         "ID": {
@@ -1649,6 +1660,9 @@
     },
     "payload.prompt.checkpoint": {
       "$ref": "#/$defs/event.Checkpoint"
+    },
+    "payload.prompt.closed": {
+      "$ref": "#/$defs/event.Closed"
     },
     "payload.prompt.confirm": {
       "$ref": "#/$defs/event.Confirm"
@@ -5037,6 +5051,30 @@
             },
             "payload": {
               "$ref": "#/$defs/event.Checkpoint"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "prompt.closed"
+            },
+            "payload": {
+              "$ref": "#/$defs/event.Closed"
             },
             "seq": {
               "minimum": 0,

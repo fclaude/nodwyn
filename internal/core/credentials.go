@@ -55,6 +55,7 @@ func (s *Session) PromptAndAdd(ctx context.Context, class string) (*scheme.Handl
 		default:
 		}
 		s.secretsMu.Unlock()
+		s.Emit(event.Event{Kind: event.PromptClosed, Payload: event.Closed{ID: id}})
 	}()
 	s.Emit(event.Event{Kind: event.PromptSecret, Payload: event.SecretPrompt{ID: id, Class: class}})
 

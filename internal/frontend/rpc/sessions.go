@@ -244,6 +244,9 @@ func (s *server) open(req request, _ *peer) (any, *rpcError) {
 	if info, err := os.Stat(p.Repo); err != nil || !info.IsDir() {
 		return nil, failure(-32602, "repo must be an existing directory")
 	}
+	if why := s.rootRefusal(p.Repo); why != "" {
+		return nil, failure(-32602, why)
+	}
 	options := s.options
 	options.Repo = p.Repo
 	session, err := core.New(options)

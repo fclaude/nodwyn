@@ -113,6 +113,9 @@ func IsProtected(rel string) bool {
 // turn approval waives it, and unattended runs (AutoAllow) refuse it.
 type ProtectedPaths struct {
 	Root string // the repository; paths are judged relative to it
+	// Mounts are judged relative to their own folder: a mounted repository's
+	// .git/hooks is as protected as the root's.
+	Mounts []Mount
 }
 
 // Name identifies the checker in the log.
@@ -127,7 +130,9 @@ func (pp ProtectedPaths) Check(_ context.Context, p *scheme.Prim, args []scheme.
 		return Decision{Verdict: Allow}
 	}
 	rel := raw
-	if abs := (RepoPin{Root: pp.Root}).Resolve(raw); abs != "" {
+	if r, ok := (RepoPin{Root: pp.Root, Mounts: pp.Mounts}).MountRel(raw); ok {
+		rel = r
+	} else if abs := (RepoPin{Root: pp.Root}).Resolve(raw); abs != "" {
 		if r, err := filepath.Rel(resolveExisting(pp.Root), resolveExisting(abs)); err == nil {
 			rel = r
 		}

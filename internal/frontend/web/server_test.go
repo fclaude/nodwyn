@@ -520,6 +520,15 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	if _, ok := s.b.authenticated(r); ok {
 		t.Fatal("local cookie accepted remotely")
 	}
+	// Even arriving from loopback with this console's own address (a proxy
+	// that keeps the Host header), a device is remote.
+	local := httptest.NewRequest("GET", "http://100.64.0.5:7777/socket", nil)
+	local.RemoteAddr = "127.0.0.1:40000"
+	local.Host = "100.64.0.5:7777"
+	local.Header.Set("Cookie", deviceCookie+"="+cookies[0].Value)
+	if name, ok := s.b.authenticated(local); !ok || !s.b.remoteFor(local, name) {
+		t.Fatal("a device counted as this machine")
+	}
 	if err := devices.Revoke("phone"); err != nil {
 		t.Fatal(err)
 	}

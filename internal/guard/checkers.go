@@ -99,8 +99,8 @@ func (r RepoPin) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) D
 	return Decision{Verdict: Allow}
 }
 
-// mountOf returns the mount raw resolves into, or nil for the root, the
-// scratch directory and anything else.
+// mountOf returns the mount raw resolves into — the innermost one, when
+// mounts nest — or nil for the root, the scratch directory and anything else.
 func (r RepoPin) mountOf(raw string) *Mount {
 	if !filepath.IsAbs(raw) {
 		return nil
@@ -109,12 +109,26 @@ func (r RepoPin) mountOf(raw string) *Mount {
 	if within(resolved, resolveExisting(r.Root)) {
 		return nil
 	}
+	var best *Mount
+	bestLen := -1
 	for i := range r.Mounts {
-		if within(resolved, resolveExisting(r.Mounts[i].Path)) {
-			return &r.Mounts[i]
+		dir := resolveExisting(r.Mounts[i].Path)
+		if within(resolved, dir) && len(dir) > bestLen {
+			best, bestLen = &r.Mounts[i], len(dir)
 		}
 	}
-	return nil
+	return best
+}
+
+// MountRel returns raw relative to the mount it is in, for rules judged
+// within a folder (protected paths), and whether it is in one.
+func (r RepoPin) MountRel(raw string) (string, bool) {
+	m := r.mountOf(raw)
+	if m == nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(resolveExisting(m.Path), resolveExisting(filepath.Clean(raw)))
+	return rel, err == nil
 }
 
 // Resolve returns the absolute path for raw under the root, or "" if it
@@ -187,6 +201,7 @@ func resolveExisting(p string) string {
 type PathDenylist struct {
 	Globs []string // matched against the base name
 	Dirs  []string // absolute directories that are entirely off limits
+	Root  string   // what relative paths are relative to (the repository)
 }
 
 // DefaultDenylist is the bootstrap list.
@@ -194,7 +209,7 @@ func DefaultDenylist() PathDenylist {
 	home, _ := os.UserHomeDir()
 	d := PathDenylist{Globs: []string{".env", ".env.*", "*.pem", "*.key", "id_*", "*.kdbx", "*.p12", "*.pfx", "*.jks", "credentials", "credentials.*", ".netrc", ".npmrc", ".pypirc"}}
 	if home != "" {
-		for _, sub := range []string{".ssh", ".aws", ".gnupg", ".config/nibb", ".config/gcloud", ".azure", ".kube"} {
+		for _, sub := range []string{".ssh", ".aws", ".gnupg", ".config/nibb", ".local/share/nibb", ".config/gcloud", ".azure", ".kube"} {
 			d.Dirs = append(d.Dirs, filepath.Join(home, sub))
 		}
 	}
@@ -211,9 +226,18 @@ func (d PathDenylist) Check(_ context.Context, p *scheme.Prim, args []scheme.Val
 				return Decision{Verdict: Deny, Reason: "path " + raw + " matches the credential-file denylist (" + g + ")"}
 			}
 		}
-		abs, _ := filepath.Abs(raw)
+		// Relative paths are the repository's, as the pin reads them, and
+		// links are followed: neither may reach a denied directory by
+		// another name.
+		abs := raw
+		if !filepath.IsAbs(abs) && d.Root != "" {
+			abs = filepath.Join(d.Root, abs)
+		}
+		abs, _ = filepath.Abs(abs)
+		real := resolveExisting(abs)
 		for _, dir := range d.Dirs {
-			if abs == dir || strings.HasPrefix(abs, dir+string(filepath.Separator)) {
+			rdir := resolveExisting(dir)
+			if within(abs, dir) || within(real, rdir) {
 				return Decision{Verdict: Deny, Reason: "path " + raw + " is under the protected directory " + dir}
 			}
 		}

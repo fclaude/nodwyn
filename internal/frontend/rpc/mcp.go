@@ -117,6 +117,15 @@ func (s *server) mcpMethod(req request, _ *peer) (any, *rpcError) {
 	key := []byte(p.APIKey)
 	defer clear(key)
 	server := p.Server
+	// Approval is mcp.approve's alone, after a live re-read: a save keeps
+	// the approved manifest only for the same address.
+	server.Manifest = ""
+	if old, err := s.mcpFind(server.Name); err == nil && old.URL == server.URL {
+		server.Manifest = old.Manifest
+		if server.Credential == "" && len(key) == 0 {
+			server.Credential, server.Position = old.Credential, old.Position
+		}
+	}
 	if server.Tools == nil {
 		server.Tools = map[string]config.MCPTool{}
 	}

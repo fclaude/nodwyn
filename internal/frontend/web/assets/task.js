@@ -36,7 +36,7 @@ export class TaskView {
     this.root = h("div", { class: "task" });
     conn.onEvent((frame) => this.onFrame(frame));
     document.addEventListener("keydown", (event) => {
-      if (!this.root.isConnected || this.inspecting) return;
+      if (!this.root.isConnected || this.inspecting || !this.item || this.loading) return;
       shortcut(this.el?.transcript.querySelector(".ask-card"), event);
     });
   }
@@ -208,6 +208,9 @@ export class TaskView {
       case "inspection.result":
         this.operationResult(p);
         break;
+      case "prompt.closed":
+        this.resolve(p.ID);
+        break;
       default:
         this.transcript.render(event);
     }
@@ -256,7 +259,7 @@ export class TaskView {
     return via ? via[1].replace(/^web:/, "") : "";
   }
   async answer(promptID, method, params) {
-    if (this.acting) return;
+    if (this.acting || !this.item) return;
     const item = this.item,
       version = this.version;
     this.acting = true;
@@ -298,7 +301,11 @@ export class TaskView {
       },
     });
     const send = h("button", { type: "submit", class: "send-round", "aria-label": "Send" }, icon("up", 16, 2));
+    // Files chosen but not yet sent survive a reload of the same task.
+    const kept = this.files?.task === this.item?.id ? this.files.files : [];
     this.files = new Attachments(() => this.controls());
+    this.files.task = this.item?.id;
+    this.files.files = kept;
     const form = h(
       "form",
       { class: "reply", onsubmit: (event) => { event.preventDefault(); this.send(); } },
@@ -416,14 +423,15 @@ export class TaskView {
     );
   }
   async act(method, message) {
-    const item = this.item;
+    const item = this.item,
+      version = this.version;
     this.acting = true;
     this.controls();
     try {
       toast(message);
       await this.conn.call(method, { id: item.id });
       if (method === "session.close" || method.startsWith("run.")) await this.desk.refresh();
-      if (method === "run.resume") {
+      if (method === "run.resume" && version === this.version) {
         this.item = this.desk.sessions.get(item.id) || item;
       }
     } catch (error) {
@@ -434,14 +442,16 @@ export class TaskView {
     }
   }
   async resume() {
-    const item = this.item;
+    const item = this.item,
+      version = this.version;
     this.acting = true;
     this.controls();
     try {
       await this.conn.call("session.resume", { id: item.id });
       await this.desk.refresh();
       this.acting = false;
-      await this.open(item.id);
+      // Another task may have been opened meanwhile: never replace it.
+      if (version === this.version) await this.open(item.id);
     } catch (error) {
       toast(error.message);
     } finally {
@@ -692,7 +702,7 @@ export class TaskView {
     const filter = h("input", { class: "input", placeholder: "kind prefix, e.g. guard.", "aria-label": "Kind prefix" });
     const count = h("input", { class: "input", type: "number", min: 1, max: 1000, value: "50", "aria-label": "Maximum records", style: "width:110px" });
     const form = kind === "log" ? h("form", { onsubmit: (e) => { e.preventDefault(); draw(); } }, filter, count, h("button", { class: "btn small", type: "submit" }, "Filter")) : null;
-    view.replaceChildren(h("div", { class: "bar" }, back, h("h2", {}, title), refresh), form, content);
+    view.replaceChildren(...[h("div", { class: "bar" }, back, h("h2", {}, title), refresh), form, content].filter(Boolean));
     if (kind === "friction") return this.friction(content, version);
     if (kind === "policy" && this.policy && !reread) return this.showPolicy(content);
     const snapshot = { events: this.events(), info: null, infoError: "This task is not open. Resume it to see its current configuration.", truncated: this.truncated };

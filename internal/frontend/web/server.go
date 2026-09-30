@@ -180,6 +180,12 @@ func (b *bridge) remote(r *http.Request) bool {
 	return !net.ParseIP(listener).IsLoopback()
 }
 
+// remoteFor is remote for a paired request: a device token is another
+// machine's authority wherever the request comes from.
+func (b *bridge) remoteFor(r *http.Request, device string) bool {
+	return device != "" || b.remote(r)
+}
+
 func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -356,7 +362,9 @@ type request struct {
 func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device string) {
 	ctx, cancel := context.WithCancel(b.ctx)
 	defer cancel()
-	remote := b.remote(r)
+	// A device token is another machine's authority wherever it arrives
+	// from: only this machine's pairing grants local powers.
+	remote := b.remoteFor(r, device)
 	via := ""
 	if device != "" {
 		via = "web:" + device

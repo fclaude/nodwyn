@@ -79,8 +79,11 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 		store, err = keychain.Open(path, pass)
 		if err != nil {
 			// A wrong passphrase costs a moment, so guessing over the
-			// socket is no faster than at the terminal.
+			// socket is no faster than at the terminal; other methods do
+			// not wait for it.
+			s.mu.Unlock()
 			time.Sleep(time.Second)
+			s.mu.Lock()
 			return nil, failure(-32000, "That passphrase does not open the keychain")
 		}
 	}
@@ -144,6 +147,12 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 	m := config.Model{Provider: p.Provider, URL: strings.TrimRight(p.URL, "/"), Model: strings.TrimSpace(p.Model)}
 	// Keep a credential already configured for the same host, unless a new
 	// key replaces it.
+	// A key goes only over https, except to this computer.
+	if (len(key) > 0 || s.options.Config.Control.Credential != "") && parsed.Scheme != "https" && !loopback(parsed.Hostname()) {
+		if len(key) > 0 || sameHost(s.options.Config.Control.URL, m.URL) {
+			return nil, failure(-32602, "a model with a key must be reached over https")
+		}
+	}
 	if old := s.options.Config.Control; old.Credential != "" && sameHost(old.URL, m.URL) && len(key) == 0 {
 		m.Credential = old.Credential
 	}
@@ -196,8 +205,10 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 func sameHost(a, b string) bool {
 	ua, errA := url.Parse(a)
 	ub, errB := url.Parse(b)
-	return errA == nil && errB == nil && ua.Host == ub.Host
+	return errA == nil && errB == nil && ua.Host == ub.Host && ua.Scheme == ub.Scheme
 }
+
+func loopback(host string) bool { return host == "localhost" || host == "127.0.0.1" || host == "::1" }
 
 var notClass = regexp.MustCompile(`[^a-z0-9]+`)
 

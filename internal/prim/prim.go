@@ -117,9 +117,9 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 		guard.MetaPolicy{},
 		guard.WorkspaceKind{Kind: o.Kind},
 		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts},
-		guard.DefaultDenylist(),
+		denylist(o.Root),
 		argv,
-		guard.ProtectedPaths{Root: o.Root},
+		guard.ProtectedPaths{Root: o.Root, Mounts: o.Mounts},
 		guard.ScratchWrites{Dir: o.Scratch},
 		WritePreview{},
 	}
@@ -131,6 +131,12 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 	}
 	cs = append(cs, extra...)
 	return cs
+}
+
+func denylist(root string) guard.PathDenylist {
+	d := guard.DefaultDenylist()
+	d.Root = root
+	return d
 }
 
 // scratchDir builds (scratch-dir): the session's scratch directory, for a

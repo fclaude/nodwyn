@@ -267,8 +267,8 @@ let adding = false;
 const inspections = new Map(); // server name -> { tools, manifest, approved, changed } or { error }
 
 export async function renderConnections(root, ctx) {
-  const { conn, desk, rerender } = ctx;
-  const tab = (id, label) => h("button", { type: "button", role: "tab", "aria-selected": String(connectionsTab === id), onclick: () => { connectionsTab = id; rerender(); } }, label);
+  const { conn, desk } = ctx;
+  const tab = (id, label) => h("button", { type: "button", role: "tab", "aria-selected": String(connectionsTab === id), onclick: () => { connectionsTab = id; renderConnections(root, ctx); } }, label);
   const body = h("div", { style: "display:flex;flex-direction:column;gap:24px" });
   root.replaceChildren(
     h(
@@ -351,11 +351,13 @@ async function tools(body, ctx, info, redraw) {
     );
   };
   body.append(
+    ...[
     h("h2", { class: "section-title" }, "Built in"),
     h("div", { class: "list" }, h("div", { class: "list-row" }, icon("terminal", 18), h("div", { class: "main" }, h("strong", {}, "nibb"), h("span", {}, info ? `${builtin.length} tools · files, search, notes${builtin.some((t) => t.name === "shell-exec") ? ", commands" : ""}, and the ones a folder defines` : "Open a task to see its tools.")))),
     h("h2", { class: "section-title" }, "MCP servers"),
     servers.length ? h("div", { class: "list" }, servers.map(serverRow)) : h("p", { class: "hint" }, "No MCP servers yet. A server's tools stay off until you review them and choose which to offer."),
     canEdit ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", onclick: () => { adding = !adding; selectedServer = ""; redraw(); } }, icon("plus", 15), "Add a server")) : null,
+    ].filter(Boolean),
   );
   if (adding && canEdit) body.append(addServer(ctx, redraw));
   const server = servers.find((s) => s.name === selectedServer);
@@ -483,6 +485,7 @@ async function serverDetail(server, ctx, redraw) {
     desk.folders().map((f) => h("button", { type: "button", class: "chip", "aria-pressed": String(draft.workspaces.includes(f)), disabled: !canEdit, onclick: (e) => { const on = !draft.workspaces.includes(f); draft.workspaces = on ? [...draft.workspaces, f] : draft.workspaces.filter((x) => x !== f); e.target.setAttribute("aria-pressed", String(on)); } }, desk.folderName(f))),
   );
   panel.replaceChildren(
+    ...[
     h(
       "div",
       { class: "card-head" },
@@ -505,6 +508,7 @@ async function serverDetail(server, ctx, redraw) {
           h("button", { type: "button", class: "btn ghost", onclick: () => { inspections.delete(server.name); redraw(); } }, "Check again"),
         )
       : null,
+    ].filter(Boolean),
   );
   return panel;
 }

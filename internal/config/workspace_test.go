@@ -72,3 +72,10 @@ func TestRegistry(t *testing.T) {
 		t.Fatal("removed twice")
 	}
 }
+
+func TestNestedMountsRefused(t *testing.T) {
+	root, outer := t.TempDir(), t.TempDir()
+	if _, err := SaveWorkspace(root, Workspace{Mounts: []Mount{{Path: outer, Access: "write"}, {Path: filepath.Join(outer, "ref"), Access: "read"}}}); err == nil {
+		t.Fatal("nested mounts accepted")
+	}
+}

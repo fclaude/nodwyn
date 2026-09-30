@@ -114,9 +114,6 @@ export class Desk {
       this.models = await this.conn.call("models.status");
     } catch {
       this.models = null;
-    this.settings = null; // settings.read: the daemon's model configuration
-    this.keychain = null; // keychain.status
-    this.workspaces = []; // workspace.list: folders the person named
     }
     this.changed("models");
   }

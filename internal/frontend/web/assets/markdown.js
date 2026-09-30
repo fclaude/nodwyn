@@ -14,11 +14,12 @@ export function markdown(source) {
       i++;
       continue;
     }
-    const fence = /^\s*(```|~~~)\s*([\w+-]*)\s*$/.exec(line);
+    const fence = /^\s*(`{3,}|~{3,})([^`]*)$/.exec(line);
     if (fence) {
       const body = [];
+      const close = new RegExp("^\\s*" + fence[1] + "\\s*$");
       i++;
-      while (i < lines.length && !lines[i].trim().startsWith(fence[1])) body.push(lines[i++]);
+      while (i < lines.length && !close.test(lines[i])) body.push(lines[i++]);
       i++;
       root.append(h("pre", {}, h("code", {}, body.join("\n"))));
       continue;
@@ -70,7 +71,7 @@ export function markdown(source) {
 
 function startsBlock(lines, i) {
   const line = lines[i];
-  return /^\s*(```|~~~)/.test(line) || /^#{1,6}\s/.test(line) || /^\s*>/.test(line) || !!listItem(line) || isTableStart(lines, i);
+  return /^\s*(`{3,}|~{3,})/.test(line) || /^#{1,6}\s/.test(line) || /^\s*>/.test(line) || !!listItem(line) || isTableStart(lines, i);
 }
 function indent(line) {
   return /^\s*/.exec(line)[0].replace(/\t/g, "    ").length;

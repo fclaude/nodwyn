@@ -115,7 +115,7 @@ func WireSchema() ([]byte, error) {
 		event.PolicyResult:     event.Policy{},
 		event.StreamText:       event.Text{}, event.StreamThinking: event.Text{}, event.Output: event.Text{},
 		event.Status: event.StatusInfo{}, event.Error: event.ErrorInfo{}, event.PromptConfirm: event.Confirm{},
-		event.PromptCheckpoint: event.Checkpoint{}, event.PromptSecret: event.SecretPrompt{},
+		event.PromptCheckpoint: event.Checkpoint{}, event.PromptSecret: event.SecretPrompt{}, event.PromptClosed: event.Closed{},
 		string(log.KindSessionStart): log.SessionStart{}, string(log.KindSessionResume): log.SessionStart{}, string(log.KindSessionEnd): log.SessionEnd{},
 		string(log.KindEvalReq): log.EvalRequest{}, string(log.KindEvalResult): log.EvalResult{},
 		string(log.KindUserMsg): log.UserMsg{}, string(log.KindHarnessMsg): log.HarnessMsg{},

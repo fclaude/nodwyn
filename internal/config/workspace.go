@@ -98,6 +98,11 @@ func (ws Workspace) normalize(root string) (Workspace, error) {
 		if seen[path] {
 			continue
 		}
+		for _, o := range out {
+			if strings.HasPrefix(path, o.Path+string(filepath.Separator)) || strings.HasPrefix(o.Path, path+string(filepath.Separator)) {
+				return Workspace{}, fmt.Errorf("workspace: mounts %s and %s overlap: mount one of them", o.Path, path)
+			}
+		}
 		seen[path] = true
 		out = append(out, Mount{Path: path, Access: m.Access})
 	}

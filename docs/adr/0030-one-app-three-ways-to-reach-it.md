@@ -101,3 +101,26 @@ view that has no source says so rather than guessing.
   not, and CI keeps building without the tag.
 - An unsigned `Nibb.app` needs a right-click → Open on first launch;
   signing is a distribution step outside this ADR.
+
+## Review amendments — 2026-09-30
+
+- **A device is remote wherever it connects from.** Any request carrying a
+  device token gets a remote device's methods, even from loopback with the
+  console's own Host (a proxy that preserves Host could otherwise pass as
+  local). Only this machine's pairing grants local powers.
+- **Task roots are limited.** `session.open`, `run.start` and
+  `workspace.save` refuse `/`, the home directory itself, and any folder that
+  is inside or contains nibb's config or data directory or a credential
+  directory the guard denies. The path denylist now resolves relative paths
+  against the root and follows links; protected paths apply inside mounted
+  folders; the innermost mount decides access and nested mounts are refused.
+- **"Answers, not policy" is a limit on the console, not on authority.** A
+  device that may approve `shell-exec` can run commands as the user, and
+  security confirmations can be answered from it. Pair only devices you
+  would hand a terminal; prefer documents workspaces for devices you share.
+- **Without TLS the device cookie is not `Secure`,** and cookies are not
+  scoped to a port: another plain-HTTP service on the same host name would
+  receive it. Use a tailnet or `--tls-cert`, and no other HTTP service on
+  that name.
+- A secret prompt declined elsewhere left the prompt on other screens; every
+  prompt now emits an ephemeral `prompt.closed` when it stops pending.

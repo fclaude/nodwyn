@@ -97,3 +97,20 @@ func TestRestoreAKeptVersionAsksFirst(t *testing.T) {
 		t.Fatalf("the restore itself was not undoable: %+v", versions)
 	}
 }
+
+func TestUnsafeRootsAreRefused(t *testing.T) {
+	o := options(t)
+	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	home, _ := os.UserHomeDir()
+	for _, root := range []string{"/", home, o.Paths.ConfigDir, filepath.Dir(o.Paths.ConfigDir)} {
+		if r := c.call("session.open", map[string]any{"repo": root}); r.Error == nil {
+			t.Errorf("opened a task rooted at %s", root)
+		}
+	}
+	if r := c.call("versions.list", map[string]any{"repo": t.TempDir(), "path": "a"}); r.Error == nil {
+		t.Error("listed versions of a folder nibb never worked in")
+	}
+}

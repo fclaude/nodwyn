@@ -143,7 +143,12 @@ func (s *Session) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Ap
 	ch := make(chan guard.Approval, 1)
 	s.prompts[id] = pendingConfirmation{ctx: ctx, prompt: p, reply: ch}
 	s.promptMu.Unlock()
-	defer func() { s.promptMu.Lock(); delete(s.prompts, id); s.promptMu.Unlock() }()
+	defer func() {
+		s.promptMu.Lock()
+		delete(s.prompts, id)
+		s.promptMu.Unlock()
+		s.Emit(event.Event{Kind: event.PromptClosed, Payload: event.Closed{ID: id}})
+	}()
 	s.Emit(event.Event{Kind: event.PromptConfirm, Payload: event.NewConfirm(id, p)})
 	select {
 	case a := <-ch:
