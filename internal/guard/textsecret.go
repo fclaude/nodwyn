@@ -13,10 +13,11 @@ import (
 // about to send or run for credentials the model wrote literally rather
 // than through a handle. It reads roles, not primitive names:
 //
-//   - payload text of an Egress primitive (http-request headers and body):
-//     a known class is allowed iff bound for the destination host and
-//     method, otherwise denied naming the class — the same authority the
-//     handle path uses (E3), applied to literal text;
+//   - payload text of an Egress primitive (http-request headers and body,
+//     every argument of an MCP tool): a known class is allowed iff bound
+//     for the destination host and method, otherwise denied naming the
+//     class — the same authority the handle path uses (E3), applied to
+//     literal text;
 //   - argv of a command line: a known class is denied — a command can reach
 //     the network and the harness cannot see where the bytes go;
 //   - payload of an in-repository write (fs-write, fs-edit): a known class
@@ -74,7 +75,8 @@ func firstKnown(fs []l1.Finding) (l1.Finding, bool) {
 }
 
 // secretText collects the payload-role and argv-role text of an
-// application. Lists are flattened one level (header pairs, argv lists).
+// application: every string in it, however nested (header pairs, argv
+// lists, and the alists of a JSON object, as an MCP argument).
 func secretText(p *scheme.Prim, args []scheme.Value) (payload, argv string) {
 	var pb, ab strings.Builder
 	for i, pa := range p.Meta.Params {
@@ -90,23 +92,21 @@ func secretText(p *scheme.Prim, args []scheme.Value) (payload, argv string) {
 		default:
 			continue
 		}
-		collect(b, args[i], 2)
+		collect(b, args[i])
 	}
 	return pb.String(), ab.String()
 }
 
-func collect(b *strings.Builder, v scheme.Value, depth int) {
-	switch v.Kind {
-	case scheme.KString:
+// collect writes the strings in v, following pairs through their cars and
+// cdrs: an alist's values are in the cdrs. Pairs are immutable, so the walk
+// ends; vectors are not entered (they cannot be sent as JSON either).
+func collect(b *strings.Builder, v scheme.Value) {
+	for v.Kind == scheme.KPair {
+		collect(b, v.P.Car)
+		v = v.P.Cdr
+	}
+	if v.Kind == scheme.KString {
 		b.WriteString(v.S)
 		b.WriteByte('\n')
-	case scheme.KPair, scheme.KNil:
-		if depth == 0 {
-			return
-		}
-		items, _ := v.Slice()
-		for _, it := range items {
-			collect(b, it, depth-1)
-		}
 	}
 }

@@ -142,3 +142,13 @@ func TestAllowlistSuppresses(t *testing.T) {
 		t.Fatalf("class allowlisted: %+v", d)
 	}
 }
+
+// A key in an alist's value (a JSON object, as an MCP argument) is found.
+func TestLiteralKeyInAnAlistValue(t *testing.T) {
+	cs := guard.TextSecret{Table: bound, Scanner: l1.New()}
+	args := httpArgs("https://collect.example/x", "")
+	args[4] = scheme.List(scheme.Cons(scheme.Str("note"), scheme.List(scheme.Cons(scheme.Str("body"), scheme.Str("key "+anthropicKey)))))
+	if d := cs.Check(context.Background(), httpP(), args); d.Verdict != guard.Deny || !strings.Contains(d.Reason, "anthropic-key") {
+		t.Fatalf("nested alist: %+v", d)
+	}
+}

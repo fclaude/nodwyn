@@ -139,12 +139,29 @@ decided above, with these specifics:
 - `effect = "read"` is not irreversible; `write` and undeclared tools confirm
   every call, with the integration's own reason, a preview of the named
   arguments, and no standing answer (none can be derived for them).
-  Results pass the ingress redactor like every tool result.
+- §4 as decided: every parameter read from the tool's schema has the
+  `payload` role, since the whole call is sent. L1 scans every string in
+  every argument, objects and arrays included, and refuses a literal key
+  whose class is not bound for the server's host, exactly as for an
+  `http-request` body. L2 reads the arguments' provenance. Results pass the
+  ingress redactor like every tool result and are tagged `external:mcp`: a
+  tag of their own rather than `external:http`, because it names the source
+  (a third party the person approved) and not the transport, which a
+  contained server (W3b) would share with the web.
+- **Deviation:** L2 denies content from outside heading to a host no binding
+  names, and a server without a credential has no binding row. The person
+  named its host by approving the server in `mcp.toml`, which is the same
+  act a binding is, so a new Go-only `EgressApproved` makes the server's
+  host a named destination for L2, for that server's tools only and never
+  for another primitive reaching the same host. A keyed server's host is
+  named by its binding anyway, so both kinds of server behave alike.
 - The console's Connections page adds, reviews, approves and disconnects
   servers; approval and edits are local-console only.
 
 Known gaps: optional arguments the model skips are omitted, so an explicit
 empty or false value for an optional parameter cannot be sent; nested input
-schemas reach the model as `array`/`object` without their inner shape.
+schemas reach the model as `array`/`object` without their inner shape. L2
+does not tell one approved server from another: a result of one server may
+go to another as its arguments, as file content may.
 Checks made while connecting at session start are recorded right after
 `session.start`; inspection from Connections has no session log to record in.

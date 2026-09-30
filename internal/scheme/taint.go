@@ -23,12 +23,15 @@ type Taint struct {
 	names []string
 }
 
-// Tag names for the sources the harness itself mints.
+// Tag names for the sources the harness itself mints. TagMCP names the
+// source, not the transport: an MCP server is a third party the person
+// approved (ADR 23), whatever carries its replies.
 const (
 	TagFile  = "external:file"
 	TagShell = "external:shell"
 	TagHTTP  = "external:http"
 	TagEnv   = "external:env"
+	TagMCP   = "external:mcp"
 )
 
 // CredTag is the tag a credential handle of the given class carries.

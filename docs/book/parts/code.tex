@@ -938,6 +938,8 @@ return &scheme.Prim{
         EgressMethod:   http.MethodPost,
         EgressPosition: server.Position,
         EgressClass:    server.Credential,
+        EgressApproved: true,
+        TaintSource:    scheme.TagMCP,
         ConfirmReason:  reason,
         Preview:        func(args []scheme.Value) string { return previewArgs(params, args) },
     },
@@ -953,8 +955,10 @@ a read. \code{Audited} records every decision on it, an allow included.
 The call has no URL, method or credential among its arguments, so
 \code{EgressHost}, \code{EgressMethod} and \code{EgressPosition} state them
 as fixed facts, and \code{EgressClass} names the credential the transport
-will inject. \code{ConfirmReason} and \code{Preview} are what the person
-reads at the confirm.
+will inject. \code{EgressApproved} says the person named that host by
+approving the server, which L2 reads below, and \code{TaintSource} tags
+every result \code{external:mcp}. \code{ConfirmReason} and \code{Preview}
+are what the person reads at the confirm.
 
 The parameters come from the tool's JSON schema, in
 \code{schemaParams}: required ones first, each with a type, a description
@@ -962,10 +966,11 @@ The parameters come from the tool's JSON schema, in
 that function is the whole of what a parameter carries:
 
 \begin{go}
-params = append(params, scheme.Param{Name: name, Type: typ, Doc: doc, Optional: !required[name]})
+params = append(params, scheme.Param{Name: name, Type: typ, Doc: doc, Role: "payload", Optional: !required[name]})
 \end{go}
 
-There is no \code{Role}. That matters below.
+The server declares no roles, but every argument is sent, so every one is a
+\code{payload}. That matters below.
 
 \section{What the guard checks, before the handler}
 
@@ -1013,8 +1018,10 @@ f.Position = positionArg(p, args)
   asks, with \code{policy.unbound = "confirm"}).
 \end{itemize}
 
-The checkers that read paths and command lines have nothing to read, and
-for the same reason no standing answer can be derived: the confirm offers
+L1 and L2 read the title, a payload, and have nothing to say about it: it
+holds no key shape, and an argument the model wrote arrives from JSON with
+no provenance. The checkers that read paths and command lines have nothing
+to read, and for the same reason no standing answer can be derived: the confirm offers
 yes or no, never ``always''. The confirm names the credential class, host,
 method and position, the reason and the arguments. After a yes, the gate
 charges an action to the budget, as for any irreversible host primitive.
@@ -1023,7 +1030,7 @@ For \code{search\_issues}, declared a read, \code{MetaPolicy} and
 \code{WritePreview} have no opinion: the call runs without asking. The
 binding check still runs, and its arguments still leave.
 
-\section{What the guard does not check}
+\section{What L1 and L2 read}
 
 Two checkers read roles. L1 (\code{TextSecret}, \file{textsecret.go})
 scans the text of \code{payload} and \code{argv} parameters for
@@ -1041,28 +1048,55 @@ for i, pa := range p.Meta.Params {
     default:
         continue
     }
-    collect(b, args[i], 2)
+    collect(b, args[i])
 }
 \end{go}
 
-MCP tool parameters come from the server's JSON schema and carry no role,
-so neither L1 nor L2 inspects the arguments of an MCP call. And
-\code{mcpPrim} declares no \code{TaintSource}, so \code{taintResult} gives
-an MCP result no \code{external:} tag of its own. The model's own
-arguments arrive from JSON and carry no provenance in any case; the
-difference shows in Scheme code. A tool body in \file{init.scm} that passes a file's content
-to an MCP tool is not judged by L2, and a strategy that builds a command
-line out of an MCP result gets the ordinary confirm for a command, which a
-standing approval or \code{--yolo} can answer, not the security confirm it
-would get for a file's or a command's output. \adr{23} \S4 says MCP
-arguments pass L1 on the way out and results are tagged \code{external}
-for L2 on the way in; today's code does neither.
+Every MCP parameter is a \code{payload}, so both read every argument of an
+MCP call. An argument may be a JSON object, which arrives as an alist whose
+values sit in the cdrs of its pairs, so \code{collect} (and
+\code{deepTaint}, for L2) follows a pair's cdr as well as its car:
+
+\begin{go}
+func collect(b *strings.Builder, v scheme.Value) {
+    for v.Kind == scheme.KPair {
+        collect(b, v.P.Car)
+        v = v.P.Cdr
+    }
+    if v.Kind == scheme.KString {
+        b.WriteString(v.S)
+        b.WriteByte('\n')
+    }
+}
+\end{go}
+
+A recognised key anywhere in the arguments is refused unless its class is
+bound for the server's host, exactly as in an \code{http-request} body.
+The model's own arguments arrive from JSON and carry no provenance in any
+case; the difference shows in Scheme code. A tool body in \file{init.scm}
+that passes a file's content to an MCP tool is judged by L2, and a
+strategy that builds a command line out of an MCP result gets the security
+confirm it would get for a file's or a command's output, which no standing
+approval and no \code{--yolo} can answer.
 
 A server configured without a credential has no class for E3 to look up
 and no transport hook: nothing consults the binding table for it. What
 authorises its traffic is \file{mcp.toml} itself (the URL, the approved
 manifest, the tools turned on, the workspaces) and, for tools that are not
-declared reads, the confirm.
+declared reads, the confirm. L2 would deny content from outside heading to
+a host no binding names, and no binding names this one, so
+\code{EgressApproved} makes the approval count:
+
+\begin{go}
+func approvedDest(p *scheme.Prim, host string) bool {
+    return p.Meta.EgressApproved && host != "" && host == strings.ToLower(p.Meta.EgressHost)
+}
+\end{go}
+
+It names the primitive's own fixed host and nothing else: another primitive
+reaching the same host, or one with a destination argument, gains nothing
+by it. A keyed server's host is named by its binding anyway, so the two
+kinds of server are judged alike.
 
 \section{Where the arguments leave}
 
@@ -1204,7 +1238,8 @@ if b.Len() == 0 && len(result.StructuredContent) > 0 {
 An error the server reports (\code{isError}) becomes a Go error, so the
 model reads \code{tracker\_\_create\_issue: tracker says: \ldots} as a
 failed result. Otherwise the handler returns a string, \code{taintResult}
-adds nothing to it, and from there the path is the spine's:
+tags it \code{external:mcp} (with whatever its arguments carried), and from
+there the path is the spine's:
 \code{runTool} renders it into a \code{tool.result}, \code{Session.Record}
 redacts it, the log writer redacts it again, \code{remember} adds it to the
 history, and the next window shows it as a tool message, head and tail if
@@ -1235,7 +1270,12 @@ this path against a fake server and a canary key: a read runs without a
 confirm, an undeclared tool confirms with its class and no standing
 answer, the key reaches the server's \code{Authorization} header and
 appears in neither the log nor the model's requests, and a tool that is
-off is never offered. \code{TestAuthorizeRefusalSendsNothing} in
+off is never offered. \code{TestMCPArgumentsAreScannedForKeys} sends a
+key in a string and in an object and sees both refused by L1 until its
+class is bound for the server's host; \code{TestMCPResultsAreExternal} and
+\code{TestMCPWithoutAKeyIsANamedDestination} check the tag and that a
+file's content may reach an approved server with a key or without.
+\code{TestAuthorizeRefusalSendsNothing} in
 \file{internal/mcp/client\_test.go} checks that a refused request never
 reaches the server.
 
@@ -1276,9 +1316,9 @@ with \code{"prim":"model-turn"}. The control model and every model in
 Called by & Scheme only & a strategy, through \code{model-turn} & the model, or Scheme \\
 Binding checked & by the guard (E3), per call & by the transport, per HTTP request & by the guard (E3) per call, and by the transport per HTTP request \\
 \code{egress.check} prim & \code{http-request} & \code{model-turn} & \code{tracker\_\_create\_issue}, then \code{tracker\_\_*} \\
-L1 on what leaves & headers and body & none (the window is built from redacted events) & none \\
-L2 on what leaves & headers and body & none & none \\
-Result tagged & \code{external:http} & not tagged & not tagged \\
+L1 on what leaves & headers and body & none (the window is built from redacted events) & every argument \\
+L2 on what leaves & headers and body & none & every argument; an approved server's host counts as named \\
+Result tagged & \code{external:http} & not tagged & \code{external:mcp} \\
 Redirects & followed (Go's default) & followed (Go's default) & refused \\
 \bottomrule
 \end{longtable}}
@@ -1418,11 +1458,12 @@ Field & What it means, and who reads it \\
 \code{Egress} & may send bytes off the machine; the binding table is consulted, and L1 and L2 judge its payload against it \\
 \code{Irreversible} & \code{MetaPolicy} asks; a host primitive is charged to the budget as an action; a turn that must plan is refused it until it has a plan \\
 \code{Audited} & the guard records even an allow \\
-\code{TaintSource} & the tag the result carries (\code{external:file}, \code{external:shell}, \code{external:http}, \code{external:log}) \\
+\code{TaintSource} & the tag the result carries (\code{external:file}, \code{external:shell}, \code{external:http}, \code{external:mcp}, \code{external:log}) \\
 \code{TaintOpaque} & the result is a measurement of the arguments and inherits none of their taint \\
 \code{TaintStrip} & removes taint; L2 refuses it to model and harness origin \\
 \code{EgressHost}, \code{EgressMethod}, \code{EgressPosition} & fixed egress facts for a primitive whose arguments do not carry them (the judge, MCP) \\
 \code{EgressClass} & the credential class a host integration injects itself; makes the call credential-bearing for E3 (MCP) \\
+\code{EgressApproved} & the person named \code{EgressHost} outside the binding table; L2 counts it as a named destination for this primitive (MCP) \\
 \code{ConfirmReason} & why an irreversible call asks, in the integration's words \\
 \code{Preview} & renders what the call would do (a diff, the arguments) for the confirm \\
 \code{Origin} & \code{builtin}, or \code{scheme} for a tool registered from Scheme \\

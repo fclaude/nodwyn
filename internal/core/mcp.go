@@ -109,9 +109,13 @@ func (s *Session) connectServer(server config.MCPServer) MCPServer {
 }
 
 // mcpPrim makes one MCP tool a primitive. Every call sends its arguments to
-// the server's host, so it is egress; it is irreversible unless the person
+// the server's host, so it is egress and every argument is a payload (L1
+// scans it, L2 reads its provenance); it is irreversible unless the person
 // declared it a read. Its credential, if any, is a fixed class the guard
-// checks against the binding table like any other.
+// checks against the binding table like any other. The person approved
+// the server in mcp.toml, so its host is a named destination for L2 even
+// when there is no credential and so no binding row. Results are tagged
+// external:mcp.
 func mcpPrim(server config.MCPServer, tool mcp.Tool, declared config.MCPTool, client *mcp.Client) *scheme.Prim {
 	params := schemaParams(tool.InputSchema)
 	doc := strings.TrimSpace(tool.Description)
@@ -141,6 +145,8 @@ func mcpPrim(server config.MCPServer, tool mcp.Tool, declared config.MCPTool, cl
 			EgressMethod:   http.MethodPost,
 			EgressPosition: server.Position,
 			EgressClass:    server.Credential,
+			EgressApproved: true,
+			TaintSource:    scheme.TagMCP,
 			ConfirmReason:  reason,
 			Preview:        func(args []scheme.Value) string { return previewArgs(params, args) },
 		},
@@ -218,6 +224,7 @@ func isEmpty(v scheme.Value) bool {
 
 // schemaParams reads a tool's input schema into parameters: required ones
 // first, in the schema's order where it has one, then the rest by name.
+// Every one is a payload: the whole call is sent to the server.
 func schemaParams(raw json.RawMessage) []scheme.Param {
 	var schema struct {
 		Properties map[string]struct {
@@ -262,7 +269,7 @@ func schemaParams(raw json.RawMessage) []scheme.Param {
 			enum, _ := json.Marshal(prop.Enum)
 			doc = strings.TrimSpace(doc + " One of " + string(enum) + ".")
 		}
-		params = append(params, scheme.Param{Name: name, Type: typ, Doc: doc, Optional: !required[name]})
+		params = append(params, scheme.Param{Name: name, Type: typ, Doc: doc, Role: "payload", Optional: !required[name]})
 	}
 	return params
 }

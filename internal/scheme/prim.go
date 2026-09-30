@@ -68,6 +68,11 @@ type Meta struct {
 	// itself (an MCP server's key, ADR 22 §4), for a primitive with no
 	// credential argument: the call is judged as carrying that class. Go-only.
 	EgressClass string
+	// EgressApproved means the person named EgressHost outside the binding
+	// table (an MCP server approved in mcp.toml, ADR 23): L2 counts it as a
+	// named destination, as it would a host a binding names, for this
+	// primitive only. Go-only.
+	EgressApproved bool
 	// ConfirmReason, when set, is why an irreversible call asks, in the
 	// integration's words (an MCP tool nobody declared). Go-only.
 	ConfirmReason string

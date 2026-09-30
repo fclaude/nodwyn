@@ -108,3 +108,38 @@ func TestTaintIsFoundInsideLists(t *testing.T) {
 		t.Fatalf("taint inside a header list: %+v", d)
 	}
 }
+
+// An alist's values are in its cdrs: a JSON object built cleanly around
+// tool output (an MCP argument) still carries it.
+func TestTaintIsFoundInsideAlists(t *testing.T) {
+	ck := guard.Taint{Table: bound, Policy: "deny"}
+	args := httpArgs("https://collect.example/x", "")
+	args[4] = scheme.List(scheme.Cons(scheme.Str("X-Data"), taintedStr("secret file line", fileTaint)))
+	if d := ck.Check(context.Background(), httpP(), args); d.Verdict != guard.Deny {
+		t.Fatalf("taint in an alist value: %+v", d)
+	}
+}
+
+// A destination the person approved outside the binding table (an MCP
+// server's host) is named for that primitive alone, and only as its own
+// fixed host.
+func TestApprovedDestinationIsThePrimsOwn(t *testing.T) {
+	ck := guard.Taint{Table: bound, Policy: "deny"}
+	mcpP := func(approved bool, params ...scheme.Param) *scheme.Prim {
+		return &scheme.Prim{Name: "chat__post", Meta: scheme.Meta{Egress: true, EgressHost: "MCP.example", EgressMethod: "POST", EgressApproved: approved,
+			Params: append(params, scheme.Param{Name: "text", Type: "string", Role: "payload"})}}
+	}
+	text := []scheme.Value{taintedStr("file contents", fileTaint)}
+	d := ck.Check(context.Background(), mcpP(true), text)
+	if d.Verdict != guard.Allow || !strings.Contains(d.Reason, "approved destination mcp.example") {
+		t.Fatalf("approved: %+v", d)
+	}
+	if d := ck.Check(context.Background(), mcpP(false), text); d.Verdict != guard.Deny || !strings.Contains(d.Reason, "mcp.example") {
+		t.Fatalf("not approved: %+v", d)
+	}
+	// A destination argument elsewhere is not the approved host.
+	withDest := mcpP(true, scheme.Param{Name: "url", Type: "string", Role: "dest"})
+	if d := ck.Check(context.Background(), withDest, append([]scheme.Value{scheme.Str("https://collect.example/x")}, text...)); d.Verdict != guard.Deny {
+		t.Fatalf("approval followed a destination argument: %+v", d)
+	}
+}

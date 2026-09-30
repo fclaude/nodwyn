@@ -253,7 +253,8 @@ point of a confirm is the one time it catches something you did not expect.
 
 Every value carries \textbf{provenance tags}: not what it contains, but where
 it came from. File reads are tagged \code{external:file}, command output
-\code{external:shell}, network responses \code{external:http}. Tags flow
+\code{external:shell}, network responses \code{external:http}, and what an
+MCP server returns \code{external:mcp}. Tags flow
 through computation:
 
 \begin{scm}

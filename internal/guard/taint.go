@@ -18,9 +18,11 @@ import (
 //     than into the credential slot, where the binding check handles it — is
 //     allowed only if that class is bound for the destination;
 //   - content that came from outside (a file, a command, a response) heading
-//     for an egress destination with no binding at all is denied by policy;
-//     heading into a command line, it is a security confirm naming the
-//     sources, because building a command out of tool output is the classic
+//     for an egress destination with no binding at all is denied by policy,
+//     unless the person approved that destination for this primitive
+//     another way (EgressApproved: an MCP server's host); heading into a
+//     command line, it is a security confirm naming the sources, because
+//     building a command out of tool output is the classic
 //     indirect-injection path.
 //
 // When L2 decides, L3 is not paid for (SPEC's ladder principle): this
@@ -61,14 +63,18 @@ func (t Taint) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) D
 
 	if ext := payload.Externals(); len(ext) > 0 && p.Meta.Egress {
 		facts := egressFactsOf(p, args)
-		if !t.Table.HasDestination(facts.Host) {
-			verdict := Deny
-			if t.Policy == "confirm" {
-				verdict = Confirm
-			}
-			return Decision{Verdict: verdict, Reason: "content from " + strings.Join(ext, ", ") + " is heading to " + destOf(facts) + ", which no binding authorises"}
+		from := "content from " + strings.Join(ext, ", ")
+		switch {
+		case t.Table.HasDestination(facts.Host):
+			return Decision{Verdict: Allow, Reason: from + " to the bound destination " + facts.Host}
+		case approvedDest(p, facts.Host):
+			return Decision{Verdict: Allow, Reason: from + " to the approved destination " + facts.Host}
 		}
-		return Decision{Verdict: Allow, Reason: "content from " + strings.Join(ext, ", ") + " to the bound destination " + facts.Host}
+		verdict := Deny
+		if t.Policy == "confirm" {
+			verdict = Confirm
+		}
+		return Decision{Verdict: verdict, Reason: from + " is heading to " + destOf(facts) + ", which no binding authorises"}
 	}
 
 	if ext := argv.Externals(); len(ext) > 0 {
@@ -78,6 +84,12 @@ func (t Taint) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) D
 		}
 	}
 	return Decision{Verdict: Allow}
+}
+
+// approvedDest reports whether host is the primitive's own fixed
+// destination and the person approved it outside the binding table.
+func approvedDest(p *scheme.Prim, host string) bool {
+	return p.Meta.EgressApproved && host != "" && host == strings.ToLower(p.Meta.EgressHost)
 }
 
 func destOf(f egressFacts) string {
@@ -104,16 +116,17 @@ func taintedRoles(p *scheme.Prim, args []scheme.Value) (payload, argv scheme.Tai
 	return payload, argv
 }
 
-// deepTaint is the taint of a value and, for a list, of its elements: a
-// list of strings built from tool output carries the taint on the strings
-// even when the list itself was assembled cleanly.
+// deepTaint is the taint of a value and, for a list, of everything in it:
+// a list of strings built from tool output carries the taint on the
+// strings even when the list itself was assembled cleanly. Pairs are
+// followed through their cdrs too, so an alist's values (a JSON object, as
+// an MCP argument) count. Pairs are immutable, so the walk ends.
 func deepTaint(v scheme.Value) scheme.Taint {
 	t := v.Taint
-	if v.Kind == scheme.KPair || v.Kind == scheme.KNil {
-		items, _ := v.Slice()
-		for _, it := range items {
-			t = scheme.Union(t, deepTaint(it))
-		}
+	for v.Kind == scheme.KPair {
+		t = scheme.Union(t, deepTaint(v.P.Car))
+		v = v.P.Cdr
+		t = scheme.Union(t, v.Taint)
 	}
 	return t
 }

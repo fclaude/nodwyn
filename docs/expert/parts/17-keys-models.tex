@@ -158,8 +158,11 @@ only), lists its tools for review, and records what you decided in
 
 The model sees an MCP tool as \code{server\_\_tool} (model APIs refuse
 slashes in tool names); the console shows \code{server/tool}. Arguments are
-egress to the server's host, results are ingress: redacted, tagged, and
-never instructions.
+egress to the server's host, and every one is a payload: L1 refuses a
+recognized key in any of them, however deeply nested, unless its class is
+bound for that host, and L2 lets content from your files or command output
+go there because you approved the server, with a key or without. Results
+are ingress: redacted, tagged \code{external:mcp}, and never instructions.
 
 \begin{tip}
 The confirm for an MCP call is not really ``is this argument safe?''. It

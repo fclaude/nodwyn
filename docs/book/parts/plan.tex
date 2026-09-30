@@ -116,7 +116,8 @@ rather than tags: the loop as Scheme (\adr{26}), model routing and narrowed
 contexts (\adr{27}), the scratch directory (\adr{28}), optional tool
 parameters (\adr{29}), the standalone app, remote devices and the
 task-oriented console (\adr{30}), workspaces with mounts and a version store, text
-attachments, and remote MCP servers (\adr{22}, \adr{23}), background
+attachments, and remote MCP servers with L1 and L2 on their arguments
+(\adr{22}, \adr{23}), background
 processes, read-only git tools, the rename from \code{nibb} (\adr{31}), and
 the working habits of the default loop (\adr{32}), and Go~1.26 as the
 base (\adr{33}).
@@ -131,10 +132,6 @@ base (\adr{33}).
   reached over loopback. Not started: enforcing a per-host network allowlist
   inside a container needs an egress proxy, and half the isolation would be
   worse than none.
-\item[MCP arguments and results under L1 and L2.] \adr{23} says an MCP
-  tool's arguments are scanned for key shapes on the way out and its results
-  are tagged \code{external} on the way in. The code does neither yet
-  (Chapter~\ref{ch:limits}).
 \item[OAuth2 credentials] (\adr{24}). A credential gains a kind; an
   \code{oauth2} entry holds a token set acquired with Authorization Code and
   PKCE over a single-shot loopback listener, as a user action. Refresh

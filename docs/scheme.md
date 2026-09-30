@@ -312,9 +312,12 @@ into Scheme values (ADR 3).
 
 MCP servers you approve in the console (ADR 23) add one primitive per tool
 you turned on, named `server__tool` (model APIs refuse `/`; the console shows
-`server/tool`). Each is egress to that server's host, with the server's key
-bound to it, and a tool you did not declare as reading only confirms every
-call. They are offered to the model like the tools above.
+`server/tool`). Each is egress to that server's host, with the server's key,
+if it has one, bound to it, and a tool you did not declare as reading only confirms every
+call. Every argument is a payload: a literal key in it is refused unless its
+class is bound for that host (L1), and content from outside may go there
+because you approved the server, key or not (L2). Results are tagged
+`external:mcp`. They are offered to the model like the tools above.
 
 ### Provenance (L2)
 
@@ -322,8 +325,9 @@ Every value carries **provenance tags**: where it came from, not what it
 contains. A host primitive tags its result (`fs-read`, `fs-list`, `fs-find`,
 `index-grep`, `git-status`, `git-diff` and `policy-read` mint
 `external:file`; `shell-exec` and the background-process primitives mint
-`external:shell`; `http-request`, the Jev primitives and MCP tools mint
-`external:http`; `session-list` and `session-events` mint `external:log`), a credential
+`external:shell`; `http-request` and the Jev primitives mint `external:http`;
+MCP tools mint `external:mcp`; `session-list` and `session-events` mint
+`external:log`), a credential
 handle carries `cred:<class>`, and the tags of a call's arguments flow into
 its result.
 

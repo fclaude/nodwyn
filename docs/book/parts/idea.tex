@@ -210,9 +210,16 @@ name. A server without a credential has no binding to check: what
 authorises its traffic is \file{mcp.toml} itself and, for tools not
 declared reads, the confirm.
 
+Every argument is a \code{payload}, since the whole call is sent: L1 refuses
+a recognised key in any of them, however deeply nested, unless its class is
+bound for the server's host, and L2 reads where each came from. Content from
+your files or programs may go to the server, because approving it named its
+host, as a binding names one, with a key or without.
+
 \paragraph{The result} comes back as text (content that is not text is
-described, not decoded), becomes the tool result the model reads, and is
-redacted on its way into the log and the context like every other result.
+described, not decoded), tagged \code{external:mcp}, becomes the tool result
+the model reads, and is redacted on its way into the log and the context
+like every other result.
 An error the server reports is an error result. The tool's description
 tells the model that results are data, never instructions; nothing a
 server returns can grant a permission, because permissions come from the
@@ -537,10 +544,11 @@ What \nodwyn{} does not protect against, or does not yet:
 \item A model provider, and an MCP server, sees what it is sent.
   Configuring a model is consenting that the window leaves for it;
   approving an MCP tool is consenting that its arguments leave for the
-  server. MCP tool parameters come from the server's schema and carry no
-  roles, so the role-reading checkers (L1 on payloads, L2 on provenance) do
-  not inspect them, and an MCP result carries no \code{external} tag;
-  \adr{23} calls for both. Their results are still redacted on the way in.
+  server. L1 scans them for key shapes and L2 reads their provenance, but
+  approving a server names its host for L2, so tool output may go to any
+  server you approved, and L2 does not tell one server's result from
+  another's. What stands between a file and a server is the confirm, for
+  every tool not declared a read.
 \item \nodwyn{} controls where content goes, not what content means. L1
   detects credentials; nothing recognises a contract, a medical letter or a
   salary list. What applies to those is the pin and the mounts (what can be
