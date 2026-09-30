@@ -171,6 +171,15 @@ attempts (soft/hard). Legacy `loop.max_tool_calls` remains an explicit override.
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
+### Seeing what changed
+
+In a git work tree (a folder with `.git`), the model also gets `git-status`
+and `git-diff` (optionally a path, and `staged` for the index against the
+last commit). They are read-only and need no approval: git runs with fixed
+arguments, with external diff drivers, text conversion, the file system
+monitor and the pager switched off, and credential-looking files left out.
+Outside git, kept versions are the undo (`nodwyn versions`, `nodwyn undo`).
+
 ### The scratch directory
 
 Each session gets a scratch directory outside the repository, a private

@@ -80,7 +80,11 @@ folder.
 \begin{tip}
 In a git repository, git is the undo: nothing is kept in
 \file{.nodwyn/versions/}, and \code{git diff} and \code{git checkout} are
-your tools. Commit before a big task, and review with \code{git diff}
+your tools. The model gets two of its own there, \code{git-status} and
+\code{git-diff}: read-only, so they need no approval, and run with
+everything in git that could start another program switched off (external
+diff drivers, text conversion, the pager), with credential-looking files
+left out. Commit before a big task, and review with \code{git diff}
 afterwards; with the \key{T} answer (all writes this turn), that is the
 fastest safe way to let \nodwyn{} make a large change.
 \end{tip}

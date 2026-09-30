@@ -75,6 +75,9 @@ func Register(in *scheme.Interp, o Options) error {
 	}
 	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts}
 	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o)}
+	if isGitWorkTree(o.Root) {
+		prims = append(prims, gitPrims(o, pin)...)
+	}
 	for _, p := range prims {
 		if err := in.Register(p); err != nil {
 			return err

@@ -56,6 +56,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(fs-list path)} & a directory's names; directories end with \code{/} \\
 \code{(fs-find path glob)} & file names matching a glob, at most 500 \\
 \code{(index-grep path regex [glob [context]])} & search contents with a regular expression \\
+\code{(git-status)}, \code{(git-diff [path [staged]])} & in a git work tree: what changed, read-only, no approval \\
 \code{(shell-exec cmd args)} & run a program with a list of arguments, no shell, in the folder (irreversible) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions \\
