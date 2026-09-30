@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -89,9 +90,11 @@ func TestNotesReadAndGuardedWrite(t *testing.T) {
 }
 
 func TestModelsStatusProbesWithoutCredentials(t *testing.T) {
-	var sawAuth bool
+	var sawAuth atomic.Bool // the probes run in parallel
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sawAuth = sawAuth || r.Header.Get("Authorization") != ""
+		if r.Header.Get("Authorization") != "" {
+			sawAuth.Store(true)
+		}
 		if r.URL.Path == "/api/tags" {
 			w.Write([]byte(`{"models":[{"name":"qwen:latest"}]}`))
 			return
@@ -111,8 +114,8 @@ func TestModelsStatusProbesWithoutCredentials(t *testing.T) {
 	for _, s := range status {
 		states[s.Name] = s.State
 	}
-	if states["control"] != "ready" || states["other"] != "missing" || states["gone"] != "unreachable" || sawAuth {
-		t.Fatalf("status: %+v (auth sent: %v)", status, sawAuth)
+	if states["control"] != "ready" || states["other"] != "missing" || states["gone"] != "unreachable" || sawAuth.Load() {
+		t.Fatalf("status: %+v (auth sent: %v)", status, sawAuth.Load())
 	}
 }
 
