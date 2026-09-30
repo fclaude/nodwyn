@@ -30,11 +30,14 @@ type OpenAI struct {
 }
 
 // NewOpenAI returns a client for base. Like NewOllama, requests are bounded
-// by ctx, not by an overall client timeout.
+// by ctx, not by an overall client timeout, and no redirect is followed.
 func NewOpenAI(base string, authorize func(*http.Request) error) *OpenAI {
 	return &OpenAI{
-		URL:       strings.TrimRight(base, "/"),
-		Client:    &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, IdleConnTimeout: 90 * time.Second}},
+		URL: strings.TrimRight(base, "/"),
+		Client: &http.Client{
+			Transport:     &http.Transport{Proxy: http.ProxyFromEnvironment, IdleConnTimeout: 90 * time.Second},
+			CheckRedirect: NoRedirect,
+		},
 		Authorize: authorize,
 	}
 }
@@ -221,7 +224,9 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 	return out, nil
 }
 
-// send makes one authorized request and returns a 200 response.
+// send makes one authorized request and returns a 200 response. A redirect
+// is an error (NoRedirect), and a permanent one: asking again gets the same
+// answer.
 func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
 	hreq, err := http.NewRequestWithContext(ctx, method, o.URL+path, bytes.NewReader(body))
 	if err != nil {
@@ -238,6 +243,10 @@ func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*h
 	resp, err := o.Client.Do(hreq)
 	if err != nil {
 		return nil, fmt.Errorf("openai: %w", err)
+	}
+	if err := Redirected(resp, "model requests"); err != nil {
+		resp.Body.Close()
+		return nil, Permanent(fmt.Errorf("openai: %w", err))
 	}
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))

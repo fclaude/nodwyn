@@ -119,18 +119,15 @@ task-oriented console (\adr{30}), workspaces with mounts and a version store, te
 attachments, and remote MCP servers with L1 and L2 on their arguments
 (\adr{22}, \adr{23}), background
 processes, read-only git tools, the rename from \code{nibb} (\adr{31}), and
-the working habits of the default loop (\adr{32}), and Go~1.26 as the
-base (\adr{33}).
+the working habits of the default loop (\adr{32}), Go~1.26 as the
+base (\adr{33}), and keyed and model requests that follow no redirect.
 
 \chapter{What is next}
 
 In the order \file{plan.md} gives them:
 
 \begin{description}[leftmargin=1.6em]
-\item[Close the remaining egress gaps.] Keyed requests (\code{http-request},
-  the judge, chat-completions models) follow HTTP redirects, so a key at a
-  custom header or in a body can reach a host no binding names; the MCP
-  client already refuses redirects. And the judge's primitives are offered
+\item[Close the remaining egress gap.] The judge's primitives are offered
   to the model as tools, which it cannot call without a handle.
 \item[OAuth2 credentials] (\adr{24}). MCP's own authorization is built on
   OAuth, so many remote servers need it, and so does Google Docs. A

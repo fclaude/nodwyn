@@ -1319,16 +1319,23 @@ Binding checked & by the guard (E3), per call & by the transport, per HTTP reque
 L1 on what leaves & headers and body & none (the window is built from redacted events) & every argument \\
 L2 on what leaves & headers and body & none & every argument; an approved server's host counts as named \\
 Result tagged & \code{external:http} & not tagged & \code{external:mcp} \\
-Redirects & followed (Go's default) & followed (Go's default) & refused \\
+Redirects & refused & refused & refused \\
 \bottomrule
 \end{longtable}}
 
-Only the MCP client refuses redirects. \code{http-request} and the judge
-send through one client in \file{internal/core/credentials.go}, and the
-chat-completions client is \file{internal/llm/openai.go}; both use Go's
-default policy, which follows up to ten redirects and drops the
-\code{Authorization} and cookie headers when the new host is neither the
-old one nor a subdomain of it, but copies other headers.
+No client follows a redirect. \code{http-request} and the judge send
+through one client in \file{internal/core/credentials.go}, the model
+clients are in \file{internal/llm}, and each is built with
+\code{CheckRedirect: llm.NoRedirect}, as the MCP client is with its own
+\code{noRedirect}. Go's default policy would follow up to ten redirects,
+dropping the \code{Authorization} and cookie headers when the new host is
+neither the old one nor a subdomain of it but copying the others: a key at
+a custom header would go along, and a 307 or 308 would send the body, or a
+model's whole window, again. A keyed or model request that gets a redirect
+fails instead with \emph{the server redirected to HOST; nodwyn does not
+follow redirects for keyed requests} (or \emph{for model requests}, which
+are not retried), naming the host but not the address, which could repeat a
+key sent in the query. An MCP call fails with the redirect's status.
 
 \chapter{The log as truth}
 

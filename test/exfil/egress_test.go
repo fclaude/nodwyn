@@ -4,11 +4,17 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	nlog "github.com/fclaude/nodwyn/internal/log"
@@ -273,5 +279,105 @@ func TestCredentialLookupRefusesModelOrigin(t *testing.T) {
 	}
 	if v, err := bare.EvalString(context.Background(), `(credential "judge-key")`); err != nil || v.IsTrue() {
 		t.Fatalf("no keychain: %v %v", v, err)
+	}
+}
+
+// TestEgressRedirectNotFollowed: a bound host that answers with a redirect
+// does not get the request passed on. The binding covers the host the request
+// was sent to, not the one the server names; following a redirect to another
+// domain, Go's client drops only Authorization and Cookie, so a key at
+// header:X-Api-Key would go along, and a 307 sends the body again. The
+// credential store is the core session, so the request goes out on the
+// client every keyed request uses.
+func TestEgressRedirectNotFollowed(t *testing.T) {
+	const bodyCanary = "redirect-body-canary-2718"
+	var mu sync.Mutex
+	var elsewhere []string // every request the other host got, as sent
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dump, _ := httputil.DumpRequest(r, true)
+		mu.Lock()
+		elsewhere = append(elsewhere, string(dump))
+		mu.Unlock()
+	}))
+	defer other.Close()
+	otherHost := "localhost:" + other.URL[strings.LastIndex(other.URL, ":")+1:]
+	var keyed atomic.Bool
+	bound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keyed.Store(r.Header.Get("X-Api-Key") == credSecret)
+		http.Redirect(w, r, "http://"+otherHost+"/collect", http.StatusTemporaryRedirect)
+	}))
+	defer bound.Close()
+
+	repo := t.TempDir() + "/repo"
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(repo+"/.env", []byte("API_KEY="+canary+"\n"), 0o600)
+	t.Setenv("CANARY_SECRET", canary)
+	kc, err := keychain.Create(t.TempDir()+"/kc", keychain.FastKDF, []byte("test-pass"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kc.Add("svc-key", []byte(credSecret)); err != nil {
+		t.Fatal(err)
+	}
+	tbl := binding.Table{Bind: []binding.Binding{{Class: "svc-key", Dest: "127.0.0.1",
+		Positions: []string{"header:X-Api-Key"}, Methods: []string{"POST"}}}}
+	var sessLog, logBuf, outBuf strings.Builder
+	sess, err := core.New(core.Options{Config: config.Default(), Repo: repo, NoConfirm: true, LogWriter: &sessLog, Keychain: kc, Bindings: tbl})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	in := scheme.New(scheme.WithOutput(&outBuf))
+	o := prim.DefaultOptions(repo)
+	o.Credentials = sess
+	if err := prim.Register(in, o); err != nil {
+		t.Fatal(err)
+	}
+	rec := recorder{nlog.New(&logBuf, "egress-test")}
+	in.SetGate(guard.New(guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { return false, nil }), rec,
+		guard.MetaPolicy{},
+		guard.RepoPin{Root: repo},
+		guard.DefaultArgvTrigger(repo),
+		guard.Egress{Table: tbl, Policy: "deny", Recorder: rec},
+	))
+	userCtx := scheme.WithOrigin(context.Background(), scheme.OriginUser)
+	if _, err := in.EvalString(userCtx, `(define cred (credential "svc-key"))`); err != nil {
+		t.Fatalf("credential: %v", err)
+	}
+	src := `(http-request cred "` + bound.URL + `/v1/items" "POST" "header:X-Api-Key" '() "` + bodyCanary + `")`
+	v, err := in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginModel), src)
+
+	if want := "http-request: the server redirected to " + otherHost + "; nodwyn does not follow redirects for keyed requests"; err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err %v, want it to say %q", err, want)
+	}
+	var d *scheme.Denied
+	if errors.As(err, &d) || !keyed.Load() {
+		t.Fatalf("the bound host should have been sent the keyed request: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, req := range elsewhere {
+		for what, s := range map[string]string{"key": credSecret, "body": bodyCanary, "canary": canary} {
+			if strings.Contains(req, s) {
+				t.Errorf("the %s reached %s:\n%s", what, otherHost, req)
+			}
+		}
+	}
+	if len(elsewhere) != 0 {
+		t.Fatalf("the redirect was followed: %s got %d requests", otherHost, len(elsewhere))
+	}
+	for what, text := range map[string]string{
+		"log":         logBuf.String(),
+		"session log": sessLog.String(),
+		"output":      outBuf.String(),
+		"result":      scheme.Write(v),
+		"error":       err.Error(),
+	} {
+		if strings.Contains(text, canary) || strings.Contains(text, credSecret) {
+			t.Errorf("the canary or the key leaked into the %s", what)
+		}
 	}
 }

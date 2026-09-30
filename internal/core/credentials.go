@@ -106,11 +106,22 @@ func (s *Session) InjectBody(id string, req *http.Request) error {
 
 // Do implements prim.CredentialStore: sends the HTTP request. The request
 // carries the turn's context; the client adds a bound on a silent server.
+// A redirect is an error, not followed: the binding was checked for the
+// host the request went to, and the key and body would go along to the
+// next one (llm.NoRedirect).
 func (s *Session) Do(req *http.Request) (*http.Response, error) {
-	return egressClient.Do(req)
+	resp, err := egressClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if err := llm.Redirected(resp, "keyed requests"); err != nil {
+		resp.Body.Close()
+		return nil, err
+	}
+	return resp, nil
 }
 
-var egressClient = &http.Client{Timeout: 2 * time.Minute}
+var egressClient = &http.Client{Timeout: 2 * time.Minute, CheckRedirect: llm.NoRedirect}
 
 // Redactor returns the L1 scanner used to redact Jev payloads (ADR 19).
 func (s *Session) Redactor() *l1.Scanner {

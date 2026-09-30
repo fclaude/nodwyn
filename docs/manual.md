@@ -489,6 +489,16 @@ a task and a plan, but a strategy that asks a model over the whole
 conversation sends the whole conversation. Only you configure models; the
 model cannot.
 
+No keyed request follows a redirect (`http-request`, Jev, MCP), and no model
+request does, keyed or not: the binding was checked for the host the request
+went to, and a redirect would take the key and the body (for a model, the
+whole window) to wherever the server points. The request fails instead and
+names that host, `the server redirected to HOST; nodwyn does not follow
+redirects for keyed requests` (or `for model requests`, which are not
+retried); an MCP call fails with the redirect's status. If that host is
+where the request belongs, send it there: set the model's `url`, or the
+address your tool sends to, and bind the key to that host.
+
 `[control]` has the same shape and is required: it is the model `(model-turn)`
 asks, and a keyed chat-completions server works there too.
 

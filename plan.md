@@ -639,7 +639,7 @@ Still open:
 
 In this order, each for the reason given:
 
-1. **Close the remaining egress gaps the book audit found (2026-09-30).** Keyed requests (`http-request`, Jev, chat-completions models) follow redirects, so a key at a custom header or in a body can reach a host no binding names; the MCP client already refuses them. The judge's primitives are offered to the model as tools, which it cannot call. Small, and they are security. (The third gap, MCP arguments outside L1 and L2 and untagged MCP results, was closed the same day.)
+1. **Close the remaining egress gap the book audit found (2026-09-30).** The judge's primitives are offered to the model as tools, which it cannot call. Small. (The other two gaps were closed the same day: MCP arguments outside L1 and L2 and untagged MCP results; and keyed and model requests that followed redirects, so a key at a custom header or in a body could reach a host no binding names.)
 2. **W4 — OAuth2 credentials (ADR 24).** MCP's own authorization is OAuth-based, so many remote servers need it, and W5's Google Docs does too.
 3. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
 4. **U4 — unattended continuation between a run's turns.** Tool confirms can already be answered unattended; the turn-to-turn checkpoint still needs a person.

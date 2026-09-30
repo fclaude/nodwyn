@@ -6,11 +6,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/binding"
@@ -172,6 +174,58 @@ func TestKeyedModelNeedsItsBinding(t *testing.T) {
 		if strings.Contains(r.logb.String(), secret) {
 			t.Fatal("the model's key reached the log")
 		}
+	}
+}
+
+// A keyed model whose bound host redirects is not followed to the host it
+// names, which no binding covers: the turn fails saying where the server
+// pointed, the request is not sent again, and neither the key nor the
+// window reaches the other host.
+func TestKeyedModelRedirectIsNotFollowed(t *testing.T) {
+	const secret, window = "sk-model-redirect-canary-3141", "window-redirect-canary-3141"
+	var mu sync.Mutex
+	var elsewhere []string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dump, _ := httputil.DumpRequest(r, true)
+		mu.Lock()
+		elsewhere = append(elsewhere, string(dump))
+		mu.Unlock()
+	}))
+	t.Cleanup(other.Close)
+	otherHost := "localhost:" + other.URL[strings.LastIndex(other.URL, ":")+1:]
+	var sent atomic.Int32
+	bound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sent.Add(1)
+		http.Redirect(w, r, "http://"+otherHost+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(bound.Close)
+	kc, err := keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kc.Add("impl-key", []byte(secret))
+	r := modelRig(t, `(define (agent-turn request) (model-turn "impl"))`,
+		map[string]config.Model{"impl": {Provider: "openai", URL: bound.URL + "/v1", Model: "m", Credential: "impl-key"}},
+		Options{Keychain: kc, Bindings: binding.Table{Bind: []binding.Binding{{Class: "impl-key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}}})
+	e := r.turn(window)
+	if want := "redirected to " + otherHost + "; nodwyn does not follow redirects for model requests"; !strings.Contains(e, want) {
+		t.Fatalf("turn error %q, want it to say %q", e, want)
+	}
+	if n := sent.Load(); n != 1 {
+		t.Fatalf("the bound host got %d requests; a redirect is not asked again", n)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, req := range elsewhere {
+		if strings.Contains(req, secret) || strings.Contains(req, window) {
+			t.Errorf("the key or the window reached %s:\n%s", otherHost, req)
+		}
+	}
+	if len(elsewhere) != 0 {
+		t.Fatalf("the redirect was followed: %s got %d requests", otherHost, len(elsewhere))
+	}
+	if strings.Contains(r.logb.String(), secret) {
+		t.Fatal("the model's key reached the log")
 	}
 }
 

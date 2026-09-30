@@ -248,6 +248,11 @@ credential, a fixed host, the payload redacted before it is sent, and a
 redactions of every call. The default plan gate uses them only when a
 \code{jev-key} credential exists; without one, nothing is sent.
 
+Neither follows a redirect, any more than the MCP client or a model
+request does: the binding was checked for the host the request went to, and
+a redirect would carry the key and the body to another. The request fails
+instead, naming the host the server pointed at.
+
 \section{Files}
 
 \code{fs-read}, \code{fs-list}, \code{fs-find}, \code{index-grep},

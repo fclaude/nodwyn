@@ -21,7 +21,9 @@ type Ollama struct {
 
 // NewOllama returns a client for base. The HTTP client has no overall
 // timeout: requests are bounded by ctx, and a large cold prompt on a busy
-// single-slot server can legitimately take minutes (plan §3.4).
+// single-slot server can legitimately take minutes (plan §3.4). It follows
+// no redirect: the window goes to the server the user configured, not to
+// wherever that server points (NoRedirect).
 func NewOllama(base string) *Ollama {
 	return &Ollama{
 		URL: strings.TrimRight(base, "/"),
@@ -31,6 +33,7 @@ func NewOllama(base string) *Ollama {
 				ResponseHeaderTimeout: 0,
 				IdleConnTimeout:       90 * time.Second,
 			},
+			CheckRedirect: NoRedirect,
 		},
 	}
 }
@@ -169,6 +172,9 @@ func (o *Ollama) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 		return nil, fmt.Errorf("ollama: %w", err)
 	}
 	defer resp.Body.Close()
+	if err := Redirected(resp, "model requests"); err != nil {
+		return nil, Permanent(fmt.Errorf("ollama: %w", err))
+	}
 	if resp.StatusCode != 200 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("ollama: %s: %s", resp.Status, strings.TrimSpace(string(b)))
