@@ -20,9 +20,21 @@ it was a git tag `v0.N-<phase>`).
 - Promotion is the only path to `nodwyn-stable`; copying a binary by hand is a
   process violation worth a friction.md line.
 
-## Amendment — 2026-09-30
+## Amendment — 2026-09-30 (tags)
 Promotion no longer tags. `make promote` takes no argument; the stable
 binary's version (`nodwyn-stable version`) is the commit's 12-character id,
 and `git log` says what that commit holds. A phase name added nothing the
 commit does not, and a tag to invent stood between a green tree and a
 promotion. The tags `v0.1-bootstrap` to `v0.42-console` stay as history.
+
+## Amendment — 2026-09-30 (the model turn)
+The selfcheck's model turn goes to a fake model, `test/fakes/ollama/serve`,
+started by the selfcheck on loopback, and the candidate runs on a temporary
+config and session store with no keychain. Building nodwyn must cost
+nothing and depend on nothing outside the checkout: the turn had gone to
+whatever `[control]` named, which meant a paid model, a passphrase typed at
+every promotion, or a particular machine being reachable. What the turn
+proves is unchanged — the candidate's model client, window, log and replay
+work end to end — and what it cannot prove, that a real model still
+understands the prompts, was never a promotion gate: `scripts/smoke.sh`
+remains the manual check against a real model.

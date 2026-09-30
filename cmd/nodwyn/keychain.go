@@ -66,7 +66,7 @@ func readPassphraseFrom(tty *os.File, out io.Writer, prompt string) ([]byte, err
 // openKeychain opens the store if one exists and stdin is a terminal, or,
 // with controllingTTY, when the process has a controlling terminal
 // (/dev/tty) — as ssh and sudo ask — so a session whose input is a script
-// can still be unlocked by the person who started it (the selfcheck).
+// can still be unlocked by the person who started it.
 // Without either the session simply has no credential primitives, which is
 // the bootstrap posture, so a missing keychain is not an error.
 func openKeychain(paths config.Paths, controllingTTY bool) (*keychain.Store, binding.Table, error) {

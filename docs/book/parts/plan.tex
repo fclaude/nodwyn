@@ -40,7 +40,7 @@ build. Development runs \code{nodwyn-stable}; \nodwyn{} never edits itself
 through the binary being edited, so a broken tree can never strand you.
 Promotion (\code{make promote}) refuses a dirty tree, runs the acceptance
 suite and a self-check\,---\,the candidate completes a scripted session
-against a real model and replays its own log\,---\,then swaps the binaries
+against a fake model and replays its own log\,---\,then swaps the binaries
 and keeps the previous one as \code{.prev}. The stable binary's version is
 the commit it was built from. Until 2026-09-30 each promotion also created
 a tag, \code{v0.N-name}; \adr{13} was amended to drop them, because a

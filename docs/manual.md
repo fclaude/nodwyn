@@ -177,7 +177,7 @@ Flags: `--repo DIR`, `--model`, `--url`, `--show-thinking`, `--no-confirm`
 (every confirm is a no — for scripts and CI), `--yolo` (every ordinary
 confirm is a yes — for work nobody is watching), `--no-keychain`,
 `--keychain-tty` (ask for the keychain passphrase on the terminal even when
-input is a script, as the selfcheck does),
+input is a script),
 `--max-tool-calls N` (hard call override), `--budget-wall 2h`,
 `--budget-tokens N`, and `--budget-actions N`. The `[budget]` settings and
 checkpoint behavior are described in the README. Defaults are 50/500 calls,

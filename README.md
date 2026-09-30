@@ -136,8 +136,9 @@ not guaranteed to be detected; L3 remains P8.
 Gitea runs `.gitea/workflows/ci.yml` on every push and pull request using the
 isolated `self-hosted` runner. It executes `make accept` with fresh race tests,
 then cross-compiles Linux and macOS binaries for amd64 and arm64 with cgo
-disabled. Only the Linux amd64 binary is executed on that runner. The real-model
-selfcheck remains a local promotion gate; CI needs no model or credentials.
+disabled. Only the Linux amd64 binary is executed on that runner. The selfcheck is a
+local promotion gate; its model turn goes to a fake model, so neither it nor CI
+needs a model or credentials.
 
 Cross-compilation does not test macOS behavior or provide Developer ID signing
 and notarization. Publishing downloadable releases is separate from the local
