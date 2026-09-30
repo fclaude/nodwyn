@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -52,31 +53,51 @@ func readPassphrase(prompt string) ([]byte, error) {
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return nil, fmt.Errorf("a passphrase needs a terminal")
 	}
-	fmt.Fprint(os.Stderr, prompt)
-	secret, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
+	return readPassphraseFrom(os.Stdin, os.Stderr, prompt)
+}
+
+func readPassphraseFrom(tty *os.File, out io.Writer, prompt string) ([]byte, error) {
+	fmt.Fprint(out, prompt)
+	secret, err := term.ReadPassword(int(tty.Fd()))
+	fmt.Fprintln(out)
 	return secret, err
 }
 
-// openKeychain opens the store if one exists and stdin is a terminal.
-// Without one the session simply has no credential primitives, which is the
-// bootstrap posture, so a missing keychain is not an error.
-func openKeychain(paths config.Paths) (*keychain.Store, binding.Table, error) {
+// openKeychain opens the store if one exists and stdin is a terminal, or,
+// with controllingTTY, when the process has a controlling terminal
+// (/dev/tty) — as ssh and sudo ask — so a session whose input is a script
+// can still be unlocked by the person who started it (the selfcheck).
+// Without either the session simply has no credential primitives, which is
+// the bootstrap posture, so a missing keychain is not an error.
+func openKeychain(paths config.Paths, controllingTTY bool) (*keychain.Store, binding.Table, error) {
 	if _, err := os.Stat(paths.Keychain); err != nil {
 		return nil, binding.Table{}, nil
 	}
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		fmt.Fprintln(os.Stderr, "keychain: not a terminal; starting without credentials (use --no-keychain to silence)")
-		return nil, binding.Table{}, nil
+	tty, out := os.Stdin, io.Writer(os.Stderr)
+	if !term.IsTerminal(int(tty.Fd())) {
+		var err error
+		tty = nil
+		if controllingTTY {
+			if tty, err = os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil && !term.IsTerminal(int(tty.Fd())) {
+				tty.Close()
+				tty = nil
+			}
+		}
+		if tty == nil {
+			fmt.Fprintln(os.Stderr, "keychain: not a terminal; starting without credentials (use --no-keychain to silence)")
+			return nil, binding.Table{}, nil
+		}
+		defer tty.Close()
+		out = tty // stderr may be a log; the prompt is for the person at the terminal
 	}
 	for attempt := 0; attempt < 3; attempt++ {
-		pass, err := readPassphrase("keychain passphrase: ")
+		pass, err := readPassphraseFrom(tty, out, "keychain passphrase: ")
 		if err != nil {
 			return nil, binding.Table{}, err
 		}
 		store, err := keychain.Open(paths.Keychain, pass)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "keychain:", err)
+			fmt.Fprintln(out, "keychain:", err)
 			continue
 		}
 		table, err := binding.Load(paths.Bindings)

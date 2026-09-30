@@ -106,7 +106,7 @@ func (c *cli) session(cfg config.Config, repo string) error {
 	var bindings binding.Table
 	var err error
 	if !c.noKeychain {
-		if kc, bindings, err = openKeychain(c.paths); err != nil {
+		if kc, bindings, err = openKeychain(c.paths, c.keychainTTY); err != nil {
 			return err
 		}
 	}

@@ -36,7 +36,7 @@ func runDaemon(paths config.Paths, args []string, noKeychain bool) error {
 	}
 	options := core.Options{Config: cfg, Paths: paths, Version: versionString()}
 	if !noKeychain {
-		if options.Keychain, options.Bindings, err = openKeychain(paths); err != nil {
+		if options.Keychain, options.Bindings, err = openKeychain(paths, false); err != nil {
 			return err
 		}
 	}

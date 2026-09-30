@@ -19,6 +19,7 @@ type cli struct {
 	noConfirm   bool
 	yolo        bool
 	noKeychain  bool
+	keychainTTY bool
 	resume      string
 	repo        string
 	model       string
@@ -66,6 +67,7 @@ func newCLI(args []string) *cli {
 	c.fs.BoolVar(&c.noConfirm, "no-confirm", false, "answer every confirm with no (non-interactive runs)")
 	c.fs.BoolVar(&c.yolo, "yolo", false, "answer ordinary confirms with yes (unattended runs); denials and security confirms are unaffected")
 	c.fs.BoolVar(&c.noKeychain, "no-keychain", false, "start without opening the keychain (no credential primitives)")
+	c.fs.BoolVar(&c.keychainTTY, "keychain-tty", false, "ask for the keychain passphrase on the controlling terminal even when stdin is a script (selfcheck)")
 	c.fs.StringVar(&c.budgetWall, "budget-wall", "", "hard turn wall limit, e.g. 2h")
 	c.fs.Int64Var(&c.budgetTokens, "budget-tokens", 0, "hard reported model token limit per turn")
 	c.fs.Int64Var(&c.budgetActions, "budget-actions", 0, "hard irreversible host-action limit per turn")

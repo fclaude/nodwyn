@@ -43,7 +43,7 @@ func runTUI(paths config.Paths, args []string) error {
 			return err
 		}
 		if !*noKeychain {
-			if o.Keychain, o.Bindings, err = openKeychain(paths); err != nil {
+			if o.Keychain, o.Bindings, err = openKeychain(paths, false); err != nil {
 				return err
 			}
 		}
