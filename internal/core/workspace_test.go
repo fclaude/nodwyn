@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,13 +12,15 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/scheme"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
-// A docs workspace (ADR 22): no programs, no user Scheme, mounted folders
-// by absolute path, read-only ones refusing writes, and the previous content
-// of a replaced file kept where git is not the undo.
-func TestDocsWorkspaceProfile(t *testing.T) {
+// A docs workspace (ADR 22) has every tool a code workspace has, the
+// defaults' own included, and evaluates Scheme; mounted folders are reached
+// by absolute path, read-only ones refuse writes, and the previous content
+// of a replaced file is kept where git is not the undo.
+func TestDocsWorkspaceHasEveryTool(t *testing.T) {
 	repo, ref := t.TempDir(), t.TempDir()
 	os.WriteFile(filepath.Join(repo, "status.md"), []byte("old status\n"), 0o644)
 	os.WriteFile(filepath.Join(ref, "contract.txt"), []byte("terms\n"), 0o644)
@@ -40,13 +43,17 @@ func TestDocsWorkspaceProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
+	offered := map[string]bool{}
 	for _, tool := range s.Tools() {
-		if tool.Name == "shell-exec" {
-			t.Fatal("a docs workspace offers shell-exec")
+		offered[tool.Name] = true
+	}
+	for _, name := range []string{"shell-exec", "read-definition", "second-look"} {
+		if !offered[name] {
+			t.Fatalf("a docs workspace does not offer %s", name)
 		}
 	}
-	if err := s.StartEval(`(+ 1 2)`, "unix:test"); err == nil {
-		t.Fatal("a docs workspace evaluated Scheme")
+	if v, err := s.Eval(context.Background(), `(+ 1 2)`); err != nil || scheme.Write(v) != "3" {
+		t.Fatalf("a docs workspace did not evaluate Scheme: %v %v", v, err)
 	}
 	r := &rig{t: t, s: s, srv: srv, repo: repo}
 	s.Send("update the status")
@@ -72,8 +79,8 @@ func TestDocsWorkspaceProfile(t *testing.T) {
 		t.Fatalf("version %v, mounted read %v, read-only denial %v; events: %s", version, readOK, denied, kinds(evs))
 	}
 	raw := string(srv.Requests[0].Raw)
-	if !strings.Contains(raw, "folder of documents") || !strings.Contains(raw, ref) {
-		t.Fatal("system prompt does not describe the workspace")
+	if !strings.Contains(raw, "Folders outside it you may also use") || !strings.Contains(raw, ref) {
+		t.Fatal("system prompt does not name the mounted folder")
 	}
 	_ = event.Status
 }

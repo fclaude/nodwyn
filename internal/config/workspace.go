@@ -15,8 +15,8 @@ import (
 // kept in <root>/.nodwyn/workspace.toml. Without the file a workspace is
 // today's repository: kind "code", the root writable, nothing else.
 
-// Workspace kinds. The kind selects tools and framing, never a security
-// model: a docs workspace runs no programs and defines no tools.
+// Workspace kinds. The kind describes what a folder holds, for the person
+// choosing it; every kind has the same tools and the same guard.
 const (
 	KindCode  = "code"
 	KindDocs  = "docs"

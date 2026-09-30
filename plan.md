@@ -488,8 +488,8 @@ Each step is independently useful and lands with tests and docs.
 - **D6 — workspaces (W1).** Named workspace registry, `kind`, mount table
   in `.nodwyn/workspace.toml` enforced by the pin, version store before
   writes where there is no git, `nodwyn versions`/`nodwyn undo` and restore
-  from the UI; a `docs` workspace registers no `shell-exec`,
-  `register-tool` or Scheme evaluation. Home's "Work in" chips and
+  from the UI; every kind has the same tools (ADR 22, amended
+  2026-09-30). Home's "Work in" chips and
   "Add a folder" (native chooser in the app).
 - **D7 — attachments (W2, text first).** Composer attach → daemon
   `session.attach`: copy into `.nodwyn/attachments/`, deterministic

@@ -89,27 +89,25 @@
              (and root (string-prefix? (string-append root "/") p)))
          p)))
 
-;; Not in a docs workspace, which defines no tools.
-(when (code-workspace?)
-  (define-agent-tool "second-look"
-    "When your check does not show the problem the request reports, get a second look: one helper reads the request on its own, without your check, and a second compares that reading with your check script and suggests what you may have read differently and what to try. They read; they do not run anything."
-    '(("check" "string" "the path of your check script, such as $TMPDIR/check.sh")
-      ("saw" "string" "what you ran and what it showed"))
-    (lambda (call args)
-      (let* ((path (format "~a" (assoc-ref args "check" "")))
-             (readable (checkloop-readable-path path))
-             (script (if readable
-                         (guard (e (else (string-append "(could not read " path ")"))) (fs-read readable))
-                         (string-append "(not shown: " path " is outside the repository and $TMPDIR; judge from what they ran and saw)")))
-             (reading (second-look-ask second-look-read-system
-                                       (string-append "The request, word for word:\n" checkloop-request)))
-             (compared (second-look-ask second-look-compare-system
-                                        (string-append "The request, word for word:\n" checkloop-request
-                                                       "\n\nAn independent reading of it:\n" reading
-                                                       "\n\nTheir check script (" path "):\n" script
-                                                       "\n\nWhat they ran and saw:\n" (format "~a" (assoc-ref args "saw" ""))))))
-        (string-append "Independent reading of the request:\n" reading "\n\nCompared with your check:\n" compared
-                       (if readable "" (string-append "\n\n(Your check at " path " could not be shown to the helpers: keep it in $TMPDIR, such as $TMPDIR/check.sh, where it can be read.)")))))))
+(define-agent-tool "second-look"
+  "When your check does not show the problem the request reports, get a second look: one helper reads the request on its own, without your check, and a second compares that reading with your check script and suggests what you may have read differently and what to try. They read; they do not run anything."
+  '(("check" "string" "the path of your check script, such as $TMPDIR/check.sh")
+    ("saw" "string" "what you ran and what it showed"))
+  (lambda (call args)
+    (let* ((path (format "~a" (assoc-ref args "check" "")))
+           (readable (checkloop-readable-path path))
+           (script (if readable
+                       (guard (e (else (string-append "(could not read " path ")"))) (fs-read readable))
+                       (string-append "(not shown: " path " is outside the repository and $TMPDIR; judge from what they ran and saw)")))
+           (reading (second-look-ask second-look-read-system
+                                     (string-append "The request, word for word:\n" checkloop-request)))
+           (compared (second-look-ask second-look-compare-system
+                                      (string-append "The request, word for word:\n" checkloop-request
+                                                     "\n\nAn independent reading of it:\n" reading
+                                                     "\n\nTheir check script (" path "):\n" script
+                                                     "\n\nWhat they ran and saw:\n" (format "~a" (assoc-ref args "saw" ""))))))
+      (string-append "Independent reading of the request:\n" reading "\n\nCompared with your check:\n" compared
+                     (if readable "" (string-append "\n\n(Your check at " path " could not be shown to the helpers: keep it in $TMPDIR, such as $TMPDIR/check.sh, where it can be read.)"))))))
 
 ;; The model did not call second-look on its own (hrcel-1, try 3): with a
 ;; check that passed on the current code it went through the repository's

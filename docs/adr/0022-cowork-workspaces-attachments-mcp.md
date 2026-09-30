@@ -238,3 +238,14 @@ Attachments as decided above, except images:
 Not done: an `attach` confirm for images, per-image token accounting, and the
 `external` taint tag (L2 applies to Scheme values, and an attachment never
 becomes one).
+
+## Amendment 2026-09-30: docs is not a special case
+
+The restriction in answer 5 (no `shell-exec`, no `register-tool`, no Scheme
+evaluation in a `docs` workspace) was an elaboration recorded with the
+answer to "one product or two?", not part of it. A self-extending agent
+defines its own tools wherever it works, so it is dropped: every kind has
+the same tools and the same guard, `session.eval` works in every
+workspace, and the system prompt no longer describes a docs workspace as
+one that runs no programs. The kind stays as a label the console shows.
+Mounts, the pin and the version store are unchanged.

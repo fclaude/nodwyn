@@ -154,21 +154,6 @@ func (r RepoPin) Resolve(raw string) string {
 	return ""
 }
 
-// WorkspaceKind refuses what a workspace's kind leaves out (ADR 22): a
-// docs workspace runs no programs and defines no tools, whoever asks.
-type WorkspaceKind struct {
-	Kind string
-}
-
-func (WorkspaceKind) Name() string { return "workspace-kind" }
-
-func (w WorkspaceKind) Check(_ context.Context, p *scheme.Prim, _ []scheme.Value) Decision {
-	if w.Kind == "docs" && (p.Name == "shell-exec" || p.Name == "register-tool") {
-		return Decision{Verdict: Deny, Reason: "a docs workspace runs no programs and defines no tools (" + p.Name + ")"}
-	}
-	return Decision{Verdict: Allow}
-}
-
 // within reports whether path is dir or below it.
 func within(path, dir string) bool {
 	return path == dir || strings.HasPrefix(path, dir+string(filepath.Separator))

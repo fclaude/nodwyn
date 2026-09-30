@@ -42,13 +42,15 @@ func TestWorkspaceSaveListAndDocsSessions(t *testing.T) {
 	if details.Workspace.Kind != "docs" || len(details.Workspace.Mounts) != 1 {
 		t.Fatalf("session workspace: %+v", details.Workspace)
 	}
+	shell := false
 	for _, tool := range details.Tools {
-		if tool.Name == "shell-exec" {
-			t.Fatal("docs session offers shell-exec")
-		}
+		shell = shell || tool.Name == "shell-exec"
 	}
-	if r := c.call("session.eval", map[string]any{"id": details.ID, "source": "(+ 1 2)"}); r.Error == nil {
-		t.Fatal("docs session evaluated Scheme")
+	if !shell {
+		t.Fatal("a docs session does not offer shell-exec")
+	}
+	if r := c.call("session.eval", map[string]any{"id": details.ID, "source": "(+ 1 2)"}); r.Error != nil {
+		t.Fatalf("a docs session refused Scheme: %+v", r.Error)
 	}
 	c.ok("workspace.remove", map[string]any{"path": code})
 	json.Unmarshal(c.ok("workspace.list", map[string]any{}), &list)

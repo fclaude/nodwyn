@@ -21,8 +21,8 @@ type Options struct {
 	Root      string // repository root; every path is pinned under it
 	Scratch   string // the session's scratch directory, outside Root; "" for none
 	NotesFile string // this repository\'s notes kept across sessions, outside Root; "" for none
-	// Workspace (ADR 22): its kind ("docs" registers no shell-exec), the
-	// folders outside Root it may use, and the version store that keeps a
+	// Workspace (ADR 22): its kind (a label: every kind has the same tools),
+	// the folders outside Root it may use, and the version store that keeps a
 	// file's previous content before a write where git is not the undo.
 	Kind         string
 	Mounts       []guard.Mount
@@ -74,10 +74,7 @@ func Register(in *scheme.Interp, o Options) error {
 		return os.ErrInvalid
 	}
 	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts}
-	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin)}
-	if o.Kind != "docs" {
-		prims = append(prims, shellExec(o))
-	}
+	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o)}
 	for _, p := range prims {
 		if err := in.Register(p); err != nil {
 			return err
@@ -115,7 +112,6 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 	argv.Scratch = o.Scratch
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
-		guard.WorkspaceKind{Kind: o.Kind},
 		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts},
 		denylist(o.Root),
 		argv,

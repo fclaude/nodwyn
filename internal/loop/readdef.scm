@@ -198,15 +198,13 @@
                                   (if (> (length (cdr found)) 10) ", ..." "")
                                   "]"))))))))
 
-;; Not in a docs workspace, which defines no tools.
-(when (code-workspace?)
-  (define-agent-tool "read-definition"
-    "Read a function, method or class by name: its whole definition and line range, found with index-grep and read with fs-read, in one call. For a long class it shows the start and the members. Use it instead of a script that searches a file for a definition and prints it."
-    '(("path" "string" "a repository file, or a directory to search")
-      ("name" "string" "the name, such as parse_args, or owner and name, such as Figure.subfigures"))
-    (lambda (call args)
-      (guard (e (else (string-append "read-definition failed: " (format "~a" (assoc-ref e 'message "")))))
-        (readdef-find (format "~a" (assoc-ref args "path" ".")) (string-trim (format "~a" (assoc-ref args "name" ""))))))))
+(define-agent-tool "read-definition"
+  "Read a function, method or class by name: its whole definition and line range, found with index-grep and read with fs-read, in one call. For a long class it shows the start and the members. Use it instead of a script that searches a file for a definition and prints it."
+  '(("path" "string" "a repository file, or a directory to search")
+    ("name" "string" "the name, such as parse_args, or owner and name, such as Figure.subfigures"))
+  (lambda (call args)
+    (guard (e (else (string-append "read-definition failed: " (format "~a" (assoc-ref e 'message "")))))
+      (readdef-find (format "~a" (assoc-ref args "path" ".")) (string-trim (format "~a" (assoc-ref args "name" "")))))))
 
 ;; A shell command that reads a repository file only to print it: a Python
 ;; script that opens a file and prints, importing only text and path modules

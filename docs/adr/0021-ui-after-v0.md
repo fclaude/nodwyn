@@ -110,6 +110,10 @@ and the desktop client of U3 is the same client either way, showing fewer
 panels. Only a distribution constraint (a sandboxed bundle that cannot run
 a daemon or a container) would force two binaries.
 
+Amended 2026-09-30: a workspace's kind no longer selects the tool surface.
+A `docs` workspace has `shell-exec`, `register-tool` and Scheme evaluation
+like any other, and `session.eval` is exposed to every client (ADR 22).
+
 ## Consequences
 - **Ordering.** U1 fits anywhere (a day). U2 is the real work (about a
   week) and should land *before* P9, because a TUI over the RPC protocol is

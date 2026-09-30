@@ -37,8 +37,7 @@ pil becomes nodwyn's default, for every session, interactive or unattended:
 - The unattended-defaults branch is merged: the unattended prompt, evidence
   to finish on, sub-agents that end only themselves, tool offers per
   request, and `fold-result`.
-- `working-rules` (prompts.scm) joins both system prompts in a code
-  workspace: shell command lines, the project's environment, reading with
+- `working-rules` (prompts.scm) joins both system prompts: shell command lines, the project's environment, reading with
   the file tools, a plan as a first guess, the check loop, following the
   request's conclusion, widening in general form, whole test modules,
   comparing failures with the unchanged code, and finding regressions file
@@ -52,12 +51,9 @@ pil becomes nodwyn's default, for every session, interactive or unattended:
   read through a new primitive, `(window-limits)`; `(model-info [name])` and
   `(model-names)` give strategies the configured models' properties too.
 
-In a `docs` workspace (ADR 22), which defines no tools, the two tools are
-not registered and the prompts leave the rules out.
-
 ## Consequences
-- The system prompts are longer by about 3,900 characters in a code
-  workspace, whose sessions also offer two more tools.
+- The system prompts are longer by about 3,900 characters, and every
+  session offers two more tools.
 - The interactive prompt gains rules measured only unattended; the check
   loop in particular asks for a script before changing code.
 - Long interactive sessions now compact instead of only trimming; a project

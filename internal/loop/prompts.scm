@@ -22,34 +22,25 @@
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """
    (scratch-rule (scratch-dir))
-   (if (code-workspace?) working-rules "")
+   working-rules
    (workspace-section)
    (project-notes-section)))
 
-;; Whether this session works on code: every session but a docs workspace
-;; (ADR 22), which runs no programs and defines no tools.
-(define (code-workspace?)
-  (equal? (assoc-ref (guard (e (else '())) (workspace)) "kind" "code") "code"))
-
-;; What the workspace adds to the system prompt (ADR 22): nothing for a
-;; code repository with no mounted folders, so its prompt is unchanged.
+;; What the workspace adds to the system prompt (ADR 22): the folders
+;; outside it the session may use, or nothing without mounted folders, so a
+;; plain repository's prompt is unchanged.
 (define (workspace-section)
   (let* ((ws (guard (e (else '())) (workspace)))
-         (kind (assoc-ref ws "kind" "code"))
          (mounts (assoc-ref ws "mounts" '())))
-    (string-append
-     (if (equal? kind "docs")
-         "\n\nThis is a folder of documents, not a code repository: you read, write, organize and summarize files in it. You cannot run programs here. Before nodwyn replaces a file it keeps the previous version, so the person can restore it."
-         "")
-     (if (null? mounts)
-         ""
-         (string-append
-          "\n\nFolders outside it you may also use, by absolute path:"
-          (apply string-append
-                 (map (lambda (m)
-                        (string-append "\n- " (assoc-ref m "path")
-                                       (if (equal? (assoc-ref m "access") "write") " (read and write)" " (read only: never write there)")))
-                      mounts)))))))
+    (if (null? mounts)
+        ""
+        (string-append
+         "\n\nFolders outside it you may also use, by absolute path:"
+         (apply string-append
+                (map (lambda (m)
+                       (string-append "\n- " (assoc-ref m "path")
+                                      (if (equal? (assoc-ref m "access") "write") " (read and write)" " (read only: never write there)")))
+                     mounts))))))
 
 ;; The repository's notes from earlier sessions, or "" when there are none.
 ;; They are the agent's own notes (how tests run, where things are,
@@ -84,7 +75,7 @@
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """
    (scratch-rule (scratch-dir))
-   (if (code-workspace?) working-rules "")
+   working-rules
    (project-notes-section)))
 
 ;; The system prompt's rule for the session's scratch directory, or "" when

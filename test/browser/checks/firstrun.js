@@ -69,8 +69,6 @@ const env = { ...process.env };
   }
   step("edit approved; task answered");
   console.log("attachment chip:", await page.textContent(".turn.user .attach-chip"));
-  const shell = await page.evaluate(() => document.querySelector(".transcript").innerText.includes("unknown tool") || document.querySelector(".transcript").innerText.includes("shell-exec"));
-  console.log("docs workspace offered no shell-exec to run:", shell);
   if (fs.readFileSync(`${root}/work/app.js`, "utf8") === original) throw new Error("edit not written");
   await page.screenshot({ path: `${out}/firstrun-task.png` });
   await page.click(".file-row button:has-text('History')");

@@ -267,18 +267,6 @@ func TestRepoPinMounts(t *testing.T) {
 	}
 }
 
-func TestDocsWorkspaceRunsNoPrograms(t *testing.T) {
-	kind := WorkspaceKind{Kind: "docs"}
-	for _, name := range []string{"shell-exec", "register-tool"} {
-		if kind.Check(context.Background(), &scheme.Prim{Name: name}, nil).Verdict != Deny {
-			t.Fatalf("%s allowed in docs", name)
-		}
-	}
-	if (WorkspaceKind{Kind: "code"}).Check(context.Background(), &scheme.Prim{Name: "shell-exec"}, nil).Verdict != Allow {
-		t.Fatal("code workspace refused a program")
-	}
-}
-
 func TestDenylistResolvesAgainstTheRoot(t *testing.T) {
 	config := t.TempDir()
 	d := PathDenylist{Dirs: []string{config}, Root: config}
