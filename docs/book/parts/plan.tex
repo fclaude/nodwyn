@@ -1,12 +1,21 @@
-\part{Where things are going}
+\part{How it was built, and what is next}
 
 \chapter{Bootstrap, then self-host}
 
-The plan has two stages. \textbf{Stage 0} (weeks 1--4) is hand-written: the
-smallest \nodwyn{} that can do real work on its own repository. \textbf{Stage
-1+} (weeks 5--24) is every remaining phase of the spec's build order, executed
-as \nodwyn{} sessions driving a promoted binary. The spec's ordering is kept;
-only the entry point changed.
+\nodwyn{} was not bootstrapped by hand. The first version was built with
+another coding-agent harness, which this book does not name, working from
+\file{SPEC.md} and \file{plan.md}. Its job was the smallest \nodwyn{} that
+could do real work on its own repository: an append-only log, a minimal
+Scheme kernel, the guard with the first checkers, file and shell
+primitives, a model client, the loop, a line-mode front-end, and a few
+repository tools written in Scheme. That was promoted as
+\code{v0.1-bootstrap} on 2026-09-21, the day after the first commit.
+
+From then on \nodwyn{} took over: development runs the last promoted
+binary, \code{nodwyn-stable}, against this repository. The external harness
+did not disappear. \adr{16} allows a fallback when a task is faster another
+way, provided it is said, and \file{plan.md} records the phases where it was
+used.
 
 \section{Why this order}
 
@@ -14,308 +23,132 @@ Three deliberate deviations from the spec's numbered build order:
 
 \begin{itemize}
 \item \textbf{The log first, not last.} Invariant~1 makes it the source of
-  truth and every later phase says ``logged''. A 200-line JSONL writer on day
+  truth and every later phase says ``logged''. A small JSONL writer on day
   one beats retrofitting six phases.
 \item \textbf{A walking-skeleton loop right after the guard.} The security
-  phases are then tested against a real loop, not a mock. The TUI stays at
-  its spec position as a second front-end over the same events.
-\item \textbf{A minimal kernel, grown later by \nodwyn{} itself.} To self-host
-  you need a working loop before a complete interpreter. Growing the
-  language is the ideal first dogfood task: pure Go, crisp tests.
+  phases are then tested against a real loop, not a mock.
+\item \textbf{A minimal kernel, grown later.} To self-host you need a
+  working loop before a complete interpreter; the language grew afterwards,
+  behind a conformance suite.
 \end{itemize}
 
 \section{Two binaries, always}
 
-\file{bin/nodwyn} is the working-tree build. \file{\textasciitilde/.local/bin/nodwyn-stable}
-is the last \emph{promoted} build. All development runs \code{nodwyn-stable};
-\nodwyn{} never edits itself through the binary being edited, so a broken tree
-can never strand you. Promotion (\code{make promote TAG=v0.N-phase})
-refuses a dirty tree, runs the acceptance suite and a self-check\,---\,the
-candidate completes a scripted session and replays its own log\,---\,then swaps
-the binaries, keeps the previous one as \code{.prev}, and tags.
+\file{bin/nodwyn} is the working-tree build.
+\file{\textasciitilde/.local/bin/nodwyn-stable} is the last \emph{promoted}
+build. Development runs \code{nodwyn-stable}; \nodwyn{} never edits itself
+through the binary being edited, so a broken tree can never strand you.
+Promotion (\code{make promote}) refuses a dirty tree, runs the acceptance
+suite and a self-check\,---\,the candidate completes a scripted session
+against a real model and replays its own log\,---\,then swaps the binaries
+and keeps the previous one as \code{.prev}. The stable binary's version is
+the commit it was built from. Until 2026-09-30 each promotion also created
+a tag, \code{v0.N-name}; \adr{13} was amended to drop them, because a
+phase name added nothing the commit did not say.
 
 \section{The safety envelope}
 
-Using \nodwyn{} before the keychain, L1 and redaction exist requires
-compensating controls. Each is retired by the phase that builds the real
-thing; some stay as defense in depth.
+Using \nodwyn{} before the keychain, L1 and redaction existed required
+compensating controls. Each was retired by the phase that built the real
+thing, or kept as defense in depth:
 
 \begin{center}
 \small
-\begin{tabular}{@{}p{6.4cm}p{3.4cm}p{4.6cm}@{}}
+\begin{tabular}{@{}p{6.4cm}p{3.2cm}p{4.8cm}@{}}
 \toprule
-Bootstrap control & Stands in for & Retired by \\
+Bootstrap control & Stood in for & Now \\
 \midrule
-No credential of any kind on the build machine; the control plane needs none & keychain, bindings & P3 builds the keychain; P5 registers the first real credential \\
-Child processes get an allowlisted environment only & E2 redaction of \code{env} & never\,---\,defense in depth \\
-No \code{http-request} primitive & binding table / E3 & P3 \\
-Paths pinned to the repository root, symlinks resolved & --- & never (per-project cwd is the model) \\
-Path denylist: \code{.env*}, \code{*.pem}, \code{*.key}, \code{id\_*}, \code{\textasciitilde/.ssh}, \code{\textasciitilde/.aws}, \ldots & L1 / E2 & never\,---\,defense in depth \\
-Command-line trigger: \code{curl wget nc ssh scp rsync}, \code{git push}, \code{rm -rf}, absolute paths outside the repo $\Rightarrow$ confirm & L1 on argv, P5 hard triggers & P5 \\
-Irreversible primitives $\Rightarrow$ confirm, with a diff for writes & --- & permanent \\
-Operator rule: no secrets in the repo; never paste one into \nodwyn{} & E4 redaction & P7 \\
-Operator rule: bootstrap-era \nodwyn{} only on trusted repositories & everything & P7 \\
+No credential of any kind on the build machine & keychain, bindings & retired: the keychain and binding table exist (P3) \\
+Child processes get an allowlisted environment only & redaction of \code{env} & kept \\
+No \code{http-request} primitive & binding table / E3 & retired: \code{http-request} needs a bound handle (P3) \\
+Paths pinned to the repository root, symlinks resolved & --- & kept, generalised to workspaces with mounts \\
+Path denylist: \code{.env*}, \code{*.pem}, \code{*.key}, \code{id\_*}, \code{\textasciitilde/.ssh}, \code{\textasciitilde/.aws}, \ldots & L1 / E2 & kept \\
+Command-line trigger: network tools, \code{git push}, \code{rm -rf}, paths outside the root $\Rightarrow$ confirm & L1 on argv, hard triggers & kept, with L1 and L2 on argv added \\
+Irreversible primitives $\Rightarrow$ confirm, with a diff for writes & --- & kept \\
+Operator rule: no secrets in the repository; never paste one into \nodwyn{} & E4 redaction & retired by P7 \\
+Operator rule: only on trusted repositories & everything & retired by P7 \\
 \bottomrule
 \end{tabular}
 \end{center}
-
-\section{Milestones}
-
-\begin{center}
-\begin{tabular}{@{}llll@{}}
-\toprule
-Weeks & Phase & Promotes & Milestone \\
-\midrule
-1--4 & Bootstrap B0--B3 (hand-written) & \code{v0.1-bootstrap} & \textbf{M0 self-hosting} (done 2026-09-21) \\
-5--6 & P1b kernel growth & \code{v0.2-kernel} & committed 2026-09-21; promotion pending \\
-7--9 & P3 credentials & \code{v0.3-creds} & \\
-10--11 & P4 L1 & \code{v0.4-l1} & \textbf{M2 safe with real keys} \\
-12--13 & P5 plan gate + Jev & \code{v0.5-plan} & \\
-14--15 & P6 L2 taint & \code{v0.6-taint} & \\
-16--17 & P7 redaction & \code{v0.7-core} & \textbf{M3 v0-core} (3--4 month cut) \\
-18--19 & P8 L3 (optional) & \code{v0.8-l3} & \\
-20--22 & P9 TUI & \code{v0.9-tui} & \\
-23--24 & P10 memory & \code{v0.10} & \textbf{v0} \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-If time runs short, cut in this order: P10, P8, P9 polish. Never P3--P7.
 
 \section{The friction log}
 
 When \code{nodwyn-stable} gets in the way, the rule is: hand-edit, and write
-one line in \file{docs/friction.md}. That file is the backlog for the
-front-ends and for memory, and it already paid for itself: the first
+one line in the friction log, \file{docs/friction.md}. That file is the backlog for the
+front-ends and for memory, and it paid for itself early: the first
 self-hosting run showed the model rewriting a 400-line file to change one
 line; the entry became \code{fs-edit} the same afternoon, and the second run
-took a third of the tool calls. Fallback is allowed and honest: the goal is a
-built \nodwyn{}, not purity.
+took a third of the tool calls.
 
-\chapter{The phases}
+\chapter{What was built}
 
-Each phase is a set of \nodwyn{} sessions plus a promotion. The ``with \nodwyn{}''
-note says what the tool can do at that point and what its promotion unlocks.
+The spec's build order was followed, except for the optional L3, with the
+phase names of \file{plan.md}. The promotion tags record what shipped;
+their numbers drifted from the plan's names.
 
-\paragraph{P1b\,---\,grow the kernel (weeks 5--6).} \code{letrec}, \code{case},
-\code{do}, \code{when}/\code{unless}, vectors, a string port, \code{guard} for
-catching errors, block comments. Done 2026-09-21 by an external agent as a
-hand-coded fallback (\adr{16}), then reviewed: the review found a crash
-(\code{(when)}), a \code{guard} that could swallow denials and aborts, and a
-nonstandard \code{guard} shape; all fixed before commit. The conformance
-suite roughly doubled.
+\begin{center}
+\small
+\begin{tabular}{@{}p{3.4cm}p{3.6cm}p{7.2cm}@{}}
+\toprule
+Phase & Tags & What it added \\
+\midrule
+B0--B3 bootstrap & \code{v0.1-bootstrap} & log, kernel, guard, file and shell primitives, loop, line mode, repository tools, promotion \\
+P1b kernel & \code{v0.3-kernel} & \code{letrec}, \code{case}, \code{do}, \code{when}/\code{unless}, \code{guard}, vectors, string output \\
+P3 credentials & \code{v0.4-creds} & encrypted keychain, handles, the binding table, E3, \code{http-request} \\
+P4 L1 & \code{v0.5-l1} & credential-shape detection on payloads, command lines and writes \\
+P5 plan gate & \code{v0.6-plan} & Jev as egress primitives, the plan gate, \code{register-check} \\
+P6 L2 & \code{v0.8-taint} & provenance tags on every value, checked at egress \\
+P7 redaction & \code{v0.9-core} & ingress redaction at every door into the context and the log \\
+U1 resume & \code{v0.11-resume} & sessions resume from their logs \\
+\adr{18} budgets & \code{v0.12}, \code{v0.13} & the progress guard; budgets with checkpoints \\
+U2 daemon & \code{v0.14}--\code{v0.16} & \code{nodwyn daemon}, the JSON-RPC protocol, attributed approvals \\
+P9 TUI & \code{v0.17}--\code{v0.26} & the full-screen terminal client, at parity with line mode \\
+P10 memory & \code{v0.27}--\code{v0.30} & exact request replay, user summaries, \code{index-grep} \\
+U3 browser & \code{v0.31}--\code{v0.39} & the browser console over the daemon \\
+U4 runs & \code{v0.40}, \code{v0.41} & attention across sessions; supervised background runs \\
+Console & \code{v0.42-console} & a rebuilt browser console and a restyled terminal client \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\paragraph{P3\,---\,credentials (weeks 7--9).} The encrypted keychain
-(XChaCha20-Poly1305, argon2id), \code{credential-register} with masked input
-returning an opaque handle, the binding table, the E3 check in the guard,
-\code{http-request} injecting handles only at bound positions, and a second
-provider for data-plane \code{llm-call}. Proven by the first real exfil
-scenarios: bound header passes; other host, or body instead of header,
-denied; the value appears nowhere.
+All of that is dated 2026-09-21 to 2026-09-25. Merged since, in commits
+rather than tags: the loop as Scheme (\adr{26}), model routing and narrowed
+contexts (\adr{27}), the scratch directory (\adr{28}), optional tool
+parameters (\adr{29}), the standalone app, remote devices and the
+task-oriented console (\adr{30}), workspaces with mounts and a version store, text
+attachments, and remote MCP servers (\adr{22}, \adr{23}), background
+processes, read-only git tools, the rename from \code{nibb} (\adr{31}), and
+the working habits of the default loop (\adr{32}), and Go~1.26 as the
+base (\adr{33}).
 
-\paragraph{P4\,---\,L1 (weeks 10--11).} The shape catalog (prefixes, entropy,
-structure), the egress allowlist, a checker over text arguments. Sub-millisecond
-at p99 on 64\,KB; a false-positive sweep over real repositories. \nodwyn{} runs
-the sweep on itself.
+\chapter{What is next}
 
-\paragraph{P5\,---\,plan gate and Jev (weeks 12--13).} The System One client,
-the noul gate, Seam A scoring with revision rounds, the hard-trigger list.
-Jev is an egress edge (\adr{19}): its credential is bound, its payload\,---\,the
-ask and the plan, by default\,---\,is redacted by the same controller the
-model context gets, and every call is logged with what left. The Jev key is
-the first real secret on the machine. After promotion, every later build
-session is planned.
-
-\paragraph{P6\,---\,L2 taint (weeks 14--15).} The reserved \code{Taint} field is
-populated at E1, propagated once in the dispatch path, checked at E3; when
-L2 knows, L3 is not invoked. \code{box}/\code{wipe} strip a tag only from
-user-originated evaluation. This phase edits the interpreter's own dispatch\,---\,safe
-only because of the two-binary rule.
-
-\paragraph{P7\,---\,ingress redaction (weeks 16--17).} One context-ingress
-function, enforced by lint; \code{[REDACTED class]} at E2 and E4; the same
-redactor in front of the log writer. This retires the last operator rules.
-\nodwyn{} is now safe on other repositories with real keys, and
-\textbf{M3 v0-core} is reached.
-
-\paragraph{P8\,---\,L3 (weeks 18--19, optional).} Features to logistic regression
-with calibration; trained on a public corpus plus \nodwyn's own confirmed
-events; invoked only on the residual; excluded with a build tag.
-
-\paragraph{P9\,---\,TUI (weeks 20--22).} A bubbletea front-end over the same
-\code{core.Session}, with no core change; the friction log is its backlog.
-
-\paragraph{P10\,---\,memory (weeks 23--24).} The spec's window: summaries as
-revocable log events, a grep index exposed as a primitive,
-byte-for-byte replay of the window. Designed against real logs of \nodwyn{}
-building \nodwyn{}.
-
-\chapter{The control plane}
-
-The model is \code{qwen3.8-27b-96k} served by Ollama~0.34 on \code{workshop},
-reachable only inside the tailnet, with a 98,304-token context, one loaded
-model and one request slot. Verified facts and their consequences:
-
-\begin{itemize}
-\item \textbf{One slot}, shared with other clients. The loop tolerates queueing:
-  long per-request timeouts, streaming keeps the front-end alive, abort
-  cancels the HTTP request so the slot frees.
-\item \textbf{Prefix stability is a performance feature.} A cold prompt
-  evaluation of a large prefix costs tens of seconds; a warm one is free.
-  So: system prompt, then tool schemas in stable order, then messages in
-  append-only order; elide in place; load tools before the first message.
-  The native API reports evaluation time, not cached tokens; sub-second
-  \code{prompt\_eval\_ms} is the cache signal.
-\item \textbf{Thinking is data, not context.} Logged, shown dimmed, never fed
-  back.
-\item \textbf{A 27B model is the dogfood ceiling.} It does well with a
-  paragraph and badly with a page; tasks are small and explicit; the plan
-  gate does more work here than it would for a frontier model.
-\item \textbf{Swapping the control plane is a config change} once P3 exists\,---\,a
-  decision to be made on friction-log evidence, not up front.
-\end{itemize}
-
-\chapter{A real UI, after v0}
-
-v0 ships one front-end and plans a second (the TUI, P9). A \emph{real} UI
-needs four things the core does not yet provide, and \adr{21} schedules them
-as additive work: the core stays UI-agnostic (\adr{10}) and a CI lint keeps
-it that way.
-
-\begin{description}[leftmargin=1.8em]
-\item[U1 --- resume and the session store] \code{Session.Resume(id)} rebuilds
-  a session from its log --- the window is already a fold over events --- and
-  a store lists sessions from the sessions directory. One day's work, the top
-  item in the friction log, and everything later assumes it.
-\item[U2 --- \code{nodwynd} and the protocol] A daemon owning sessions, speaking
-  JSON-RPC 2.0 over a 0600 Unix socket:
-  \code{session.\{list,open,resume,send,abort,answer,secret,eval,info\}} and
-  \code{log.read}, with every \code{event.Event} delivered as a notification.
-  A client that reconnects names the last sequence number it saw and the gap
-  comes from the log --- catch-up is a read, because the log is the truth. A
-  confirm answered over RPC records the client's identity, so a
-  \code{guard.decision} never loses who said yes. Best landed \emph{before}
-  P9, so the TUI becomes the protocol's first client and proves it.
-\item[U3 --- the desktop client] A local web UI served by the daemon
-  (\code{nodwyn ui}), assets embedded in the binary. Views in the order they
-  earn their place: session list; transcript; \textbf{approvals} --- the
-  confirm as a panel with its reasons and its diff, which is the thing a
-  terminal renders worst and a UI renders best; plan and budgets;
-  inspectors for the log, the bindings and the standing approvals.
-\item[U4 --- multi-session and background runs] Several sessions at once (the
-  model server serializes them; the UI shows the queue), the \adr{18} run
-  driver with checkpoints surfaced as notifications, and a desktop
-  notification when something needs approval.
+\begin{description}[leftmargin=1.6em]
+\item[Contained local MCP servers] (\adr{23}, W3b). Many MCP servers are
+  programs meant to run on your machine. \nodwyn{} will not start one in its
+  own process tree; the design runs it in a digest-pinned container with a
+  declared network (empty meaning none) and declared mounts (default none),
+  reached over loopback. Not started: enforcing a per-host network allowlist
+  inside a container needs an egress proxy, and half the isolation would be
+  worse than none.
+\item[MCP arguments and results under L1 and L2.] \adr{23} says an MCP
+  tool's arguments are scanned for key shapes on the way out and its results
+  are tagged \code{external} on the way in. The code does neither yet
+  (Chapter~\ref{ch:limits}).
+\item[OAuth2 credentials] (\adr{24}). A credential gains a kind; an
+  \code{oauth2} entry holds a token set acquired with Authorization Code and
+  PKCE over a single-shot loopback listener, as a user action. Refresh
+  happens inside the keychain, authorised by the same binding row that
+  authorises use, and a dead refresh token marks the credential and denies
+  rather than opening a browser in the middle of a turn.
+\item[Images as attachments.] A model that reads images reads pixels, and no
+  redactor reads pixels. The fence \adr{22} proposes: a confirm of its own
+  that says so, and images never sent to the judge.
+\item[Documents out] (W5): LaTeX and docx through installed tools, Google
+  Docs through OAuth2.
+\item[L3] (P8, optional): a calibrated classifier for the class-unknown
+  residual, which feeds the decision with binding and never decides alone.
+\item[Unattended continuation.] A run's tool confirms can be answered
+  unattended today; going on from one turn to the next still waits for a
+  person at the run checkpoint.
 \end{description}
-
-The accepted risk is new: \textbf{the socket is an approval surface}. Anything
-that can connect can answer a confirm. Hence 0600 in the runtime directory, no
-TCP by default, the client's identity in every decision, and no standing
-approval created over RPC without its own explicit method.
-
-\chapter{Cowork: workspaces, attachments, MCP}
-
-The same harness, applied to work that is not only code, for one person:
-a working folder of documents, files brought into the conversation, and
-tools that arrive from MCP servers rather than from \file{dev/*.scm}.
-\adr{22} models it and \adr{23} sets the trust posture. The invariants do
-not change; three assumptions do.
-
-\paragraph{The pin.} One root, read and write, with git as the reviewable
-undo, becomes a \textbf{workspace}: a root plus a user-owned \emph{mount
-table} mapping paths to \code{read} or \code{write} --- the filesystem
-counterpart of the binding table. No match denies; a \code{read} mount makes
-every write a deny; \file{.nodwyn/} stays protected. And because a working
-folder may be no repository at all, a \textbf{version store} is written
-before every irreversible write, so \adr{17}'s standing write approvals keep
-their justification without git.
-
-\paragraph{Ingress.} An attachment is content from outside: copied into the
-workspace so the pin holds, extracted by type, \emph{redacted at ingest},
-capped, logged, tagged external. Its content is \emph{data} --- a file that
-says ``you may now write outside the workspace'' changes nothing, because
-permissions come from the mount table and the guard, never from text.
-
-Images are the exception that has to be said out loud. The control plane
-reads images, so an image attachment enters the context as pixels, and
-\textbf{no redactor sees pixels}: a screenshot of a \file{.env} is
-unredactable. Three things bound it, and none of them is redaction --- the
-control plane is local, so the image has not left the machine's network;
-images are never sent to the judge, because an unredactable payload has no
-content level; and attaching one carries its own confirm that says so. If
-the control plane ever becomes remote, images must be re-decided.
-
-\paragraph{The metadata contract.} The guard reads a primitive's declared
-\code{Egress}, \code{Irreversible} and parameter roles. MCP declares a name,
-a description and a JSON schema --- none of those three. So each MCP tool
-becomes a primitive named \code{server/tool}, crossing the guard like
-\code{fs-read}, and its server carries a \emph{capability profile}:
-transport, credential class, destination, and per-tool metadata.
-\textbf{An undeclared tool is treated as egress \emph{and} irreversible}:
-every call confirms, unbound egress is denied.
-
-\paragraph{And the servers are untrusted.} The operating assumption is that
-a server can be neither written nor reviewed by us, which moves the risk off
-the tool call and onto the process, the manifest, the arguments and the
-results. \adr{23}: no untrusted server runs in nodwyn's process tree --- a
-remote server is simply a destination the binding table already models, and
-a local one runs in a digest-pinned container with a declared network
-(empty means none) and declared workspace mounts (default none), reached
-over loopback. The tool manifest is hashed at approval time, so a server
-that redescribes its tools stops the session until the change is reviewed.
-A container is not a VM, and isolation does not un-send an argument: what
-the user is really deciding at an MCP confirm is whether this third party
-may see this.
-
-\paragraph{Credentials that expire.} A cowork workspace reaches services
-that use OAuth2, and \adr{5} stores one static value. \adr{24} extends it: a
-credential gains a kind, an \code{oauth2} entry holds a token set, and
-acquisition is Authorization Code with PKCE over a single-shot loopback
-listener --- a user action, never something a tool can trigger. The
-interesting part is refresh, because it is the one piece of egress that
-happens with no confirm: it is done \emph{inside} the keychain, so no token
-becomes a value; it is authorized by the same binding row that authorizes
-use, because refreshing a credential is part of that credential's lifecycle;
-it is serialized per credential and logged every time; and when a refresh
-token dies the credential is marked and denies, rather than opening a
-browser in the middle of a turn. Scopes join class and destination in every
-confirm, because ``Google Drive, full account'' and ``Google Drive, files
-this app created'' are the difference the user actually needs to see.
-
-\paragraph{One product, two profiles.} The cowork application is not a
-second product: one core, one binary, one protocol. A workspace's \code{kind}
-selects the tool surface, and a \code{docs} workspace registers no
-\code{shell-exec}, no \code{register-tool} and no Scheme evaluation --- so
-the argv triggers and command approvals are inert there and the surface is
-much smaller. Two front-ends, one protocol. Only a distribution constraint
-would force two binaries.
-
-\paragraph{The accepted limit.} L1 and L3 detect \emph{credentials}. A cowork
-workspace holds documents whose sensitivity has nothing to do with shape: a
-contract, a medical letter, a salary list. Nothing in nodwyn recognises those.
-What applies to them is the mount table (what can be read at all), the
-confirm (what leaves), the binding table (where it may go) and the judge's
-content level. Stated plainly: \textbf{nodwyn controls where content goes, not
-what content means.}
-
-\chapter{Long-running turns}
-
-Today a turn stops after fifty tool calls. That is the right \emph{kind} of
-guard and the wrong \emph{unit}. \adr{18} (proposed) replaces it with:
-
-\begin{itemize}
-\item \textbf{Budgets, not a count}: tool calls, wall clock, model tokens and
-  irreversible actions, each with a soft limit that raises a
-  \emph{checkpoint} and a hard limit that stops.
-\item \textbf{Checkpoints through the confirmer}: the same channel as a guard
-  prompt, so any front-end can answer and an unattended run gets a policy
-  answer; each is a log event.
-\item \textbf{A progress guard}: the same call four times in a row, a denied
-  call retried, ten consecutive tool errors\,---\,stop early, say why.
-\item \textbf{Long runs are chained turns}: the loop stays one turn; a driver
-  in the front-end sends ``continue'' while the run budget allows. Because
-  the log is the truth, a run stops and resumes at any turn boundary.
-\item \textbf{Unattended means more guards}: no interactive confirms (so every
-  write needs a standing approval), the progress guard on, hard budgets, a
-  plan whose steps are checkpoint boundaries, and the same envelope.
-\end{itemize}

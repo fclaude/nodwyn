@@ -1,30 +1,39 @@
 \part{What exists today}
 
-\chapter{Inventory at \code{v0.1-bootstrap} + P1b}
+\chapter{Inventory}
 
 \section{Packages}
 
 \begin{center}
 \small
-\begin{tabular}{@{}lp{9.2cm}@{}}
+\begin{tabular}{@{}L{4.8cm}L{10.2cm}@{}}
 \toprule
 Package & Owns \\
 \midrule
-\code{internal/scheme} & the language: values, reader, \code{eval}/\code{apply}, builtins, the primitive table, \code{applyPrim} \\
-\code{internal/guard} & the decision pipeline and the bootstrap checkers: \code{MetaPolicy}, \code{RepoPin}, \code{PathDenylist}, \code{ArgvTrigger}, \code{CommandAllow}, \code{WriteAllow} \\
-\code{internal/prim} & host primitives \code{fs-read}, \code{fs-write}, \code{fs-edit}, \code{fs-list}, \code{shell-exec}; a Myers diff for previews \\
-\code{internal/llm} & the \code{Provider} interface; the Ollama native client \\
-\code{internal/window} & the naive log-derived window \\
-\code{internal/loop} & the agent loop; tool calls as Scheme applications \\
-\code{internal/core} & \code{Session}: the UI-agnostic fa\c{c}ade \\
-\code{internal/event} & what a front-end sees \\
-\code{internal/log} & the append-only log and typed payloads \\
-\code{internal/config} & XDG paths, \file{config.toml}, \file{bindings.toml}, \file{allow.toml} \\
+\code{internal/scheme} & the language: values and their provenance tags, reader, \code{eval}/\code{apply}, builtins, the primitive table, \code{applyPrim} \\
+\code{internal/guard} & the decision pipeline and its checkers: metadata, the pin and mounts, the path denylist, command-line triggers, standing approvals, E3, L1, L2, user checkers \\
+\code{internal/prim} & host primitives: files, search, git, programs, \code{http-request}, the judge, policy files, the version store \\
+\code{internal/keychain}, \code{internal/binding} & encrypted credentials and their injection; the binding table \\
+\code{internal/detect/l1}, \code{internal/redact} & credential-shape detection; redaction of text \\
+\code{internal/llm} & the \code{Provider} interface; Ollama and chat-completions clients \\
+\code{internal/mcp} & a client for remote MCP servers; manifest hashing \\
+\code{internal/extract} & text from attached documents \\
+\code{internal/window} & the context window, derived from the log \\
+\code{internal/loop} & the loop's primitives and its default Scheme: the strategy, the plan gate, prompts, compaction, sub-agents, working habits \\
+\code{internal/budget} & per-turn accounting, ceilings and checkpoints \\
+\code{internal/core} & \code{Session}: the UI-agnostic fa\c{c}ade that assembles the rest \\
+\code{internal/event}, \code{internal/log} & what a front-end sees; the append-only log and its typed payloads \\
+\code{internal/config}, \code{internal/policyfile} & paths and settings files; locked, atomic policy-file writes \\
 \code{internal/frontend/plain} & line mode, the Scheme REPL, replay \\
+\code{internal/frontend/tui} & the full-screen terminal client \\
+\code{internal/frontend/rpc} & the daemon, its protocol and sessions \\
+\code{internal/frontend/web} & the browser console and its bridge \\
+\code{internal/frontend/run} & supervised background runs \\
 \code{cmd/nodwyn} & flags $\to$ core $\to$ front-end; nothing else \\
 \code{dev/}, \code{.nodwyn/} & this repository's own tools and standing approvals \\
-\code{test/exfil} & the exfiltration scenario suite (eight scenarios) \\
-\code{test/fakes/ollama} & a scriptable fake of the model server \\
+\code{test/exfil} & the exfiltration scenario suite \\
+\code{test/fakes} & scriptable fakes of a model server, the judge and an MCP server \\
+\code{test/browser} & browser flows against the console \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -32,81 +41,86 @@ Package & Owns \\
 \section{Commands}
 
 \begin{txt}
-nodwyn                       chat in the current repository
-nodwyn --repo DIR            pin to another repository
-nodwyn --show-thinking       stream the model's thinking
-nodwyn --no-confirm          every confirm is a no (scripts, CI)
-nodwyn replay ID|PATH        print a session log as a transcript
-nodwyn sessions              list sessions
-nodwyn repl                  Scheme REPL
-nodwyn eval -e EXPR | FILE   evaluate Scheme
-nodwyn paths                 config and data locations
+nodwyn                        chat in the current directory (line mode)
+nodwyn --repo DIR             pin to another directory
+nodwyn --resume ID            continue a session in its recorded directory
+nodwyn tui                    full-screen terminal client (local or daemon)
+nodwyn daemon                 serve sessions over a private Unix socket
+nodwyn ui                     the browser console for a running daemon
+nodwyn ui --listen ADDR       also for other devices, paired by name
+nodwyn app                    daemon, console and window in one program
+nodwyn devices [revoke NAME]  list or revoke paired devices
+nodwyn run ...                submit and follow a supervised run
+nodwyn sessions               list sessions
+nodwyn replay ID              print a session log as a transcript
+nodwyn replay ID --window SEQ rebuild and verify one model request
+nodwyn summary ... ID         add, list or revoke a summary
+nodwyn versions FILE          a file's kept previous versions
+nodwyn undo FILE              put back the newest kept version
+nodwyn keychain init          create the encrypted keychain
+nodwyn repl | eval            Scheme, outside any session
+nodwyn paths                  config and data locations
 \end{txt}
 
 \section{Tools the model sees}
 
-Host primitives: \code{fs-read}, \code{fs-write}, \code{fs-edit}, \code{fs-list},
-\code{shell-exec}. From \file{dev/} in this repository: \code{go-test},
-\code{go-build}, \code{go-vet}, \code{go-fmt-check}, \code{run-make},
-\code{git-status}, \code{git-diff}, \code{git-log}, \code{grep-repo},
-\code{find-files}, \code{read-adr}. No commit, no push, no network.
+Every session offers \code{fs-read}, \code{fs-write}, \code{fs-edit},
+\code{fs-list}, \code{fs-find}, \code{index-grep}, \code{shell-exec},
+\code{shell-start}, \code{shell-read}, \code{shell-send} and
+\code{shell-stop}; in a git work tree also \code{git-status} and
+\code{git-diff}. The default loop adds two tools of its own, written in
+Scheme: \code{read-definition} and \code{second-look}. A repository adds
+more in \file{.nodwyn/init.scm}; this one loads \file{dev/}, which offers
+\code{go-test}, \code{go-build}, \code{go-vet}, \code{go-fmt-check},
+\code{run-make}, \code{git-log}, \code{grep-repo}, \code{find-files} and
+\code{read-adr}. Each MCP tool you turned on, on a server whose manifest you
+approved and that is offered in this workspace, appears as
+\code{server\_\_tool}. \code{:tools} lists what a session offers.
+
+\begin{sloppypar}
+Hidden from the model, callable from Scheme: \code{http-request},
+\code{credential}, \code{credential-register}, the loop's primitives, the
+policy-file primitives, \code{wipe} and \code{box}.
+\end{sloppypar}
 
 \section{Guarantees, and the tests that hold them}
 
-\begin{center}
-\small
-\begin{tabular}{@{}p{5.6cm}p{8.6cm}@{}}
+{\small
+\begin{longtable}{@{}L{5.2cm}L{9.8cm}@{}}
 \toprule
 Claim & Held by \\
 \midrule
-The log is the single source of truth & \code{nodwyn replay} reproduces a transcript from the file alone; the window takes only events; \code{log\_test.go} round-trips 10k events and repairs a truncated tail \\
+\endhead
+The log is the single source of truth & \code{nodwyn replay} reproduces a transcript from the file alone; the window takes only events; \code{log\_test.go} round-trips and repairs a truncated tail; \code{replay --window} verifies a request against its recorded digest \\
 One Scheme$\to$Go exit, the guard on it & \code{applyPrim} is the only caller of \code{Prim.Handler}; \code{TestGateIsTheSingleExit} records every crossing, including through \code{map}, \code{apply}, \code{sort} and a registered tool \\
+MCP tools cross the guard & \code{TestMCPToolsCrossTheGuard}: an undeclared tool confirms with no standing answer, the key reaches the server and neither the log nor the model, the checks are recorded; \code{TestMCPManifestChangeOffersNothing} \\
 Loading \code{.scm} cannot change evaluation & \code{TestKernelFixed}: fingerprint unchanged, only the table grew \\
-Proper tail calls & \code{TestTailCalls}: 200k iterations in nine tail positions under an 8\,MB stack cap (non-tail recursion at that depth overflows) \\
-Every builtin is documented & \code{TestDocCoverage} \\
+A strategy cannot skip the invariants & \code{strategy\_test.go}: fabricated or rewritten calls refused, unanswered calls answered, stops uncatchable, provenance kept \\
+Proper tail calls & \code{TestTailCalls}: 200k iterations in nine tail positions under an 8\,MB stack cap \\
+Every primitive is documented & \code{TestDocCoverage}, \code{TestSessionPrimitivesAreDocumented} \\
 A handle never becomes text & \code{TestHandlePrintsOpaque} \\
+What enters the context is redacted & \code{TestIngressCanary} and the redaction tests in \file{internal/core} \\
 The core knows nothing about terminals & \file{scripts/lint-boundaries.sh} in \code{make lint} \\
-No path for the canary to leak & \code{test/exfil}: decision asserted and the canary grepped out of log, output and result \\
+No path for the canary to leak & \code{test/exfil}: twelve scenarios, plus Go tests for bindings and the judge; each asserts the decision and greps the canary out of the log, the output and the result \\
 Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive requests \\
 \bottomrule
-\end{tabular}
-\end{center}
-
-\section{Verified against the real control plane}
-
-\begin{itemize}
-\item ``Read \file{internal/log/log.go} and explain it'': the model read the
-  file through the guard and answered correctly (13\,s cold prompt
-  evaluation, 1.3\,s warm on the next request).
-\item Two tool calls issued in one response, both executed.
-\item \code{kill -9} mid-session; \code{nodwyn replay} reproduced the transcript,
-  with no \code{session.end}.
-\item An \code{fs-write} announced, confirmed with a diff, written.
-\item The self-hosting acceptance: ``add a \code{string-reverse} builtin with
-  a doc row and a conformance snippet, run the tests''\,---\,twice. Without
-  \code{fs-edit}: 28 tool calls, 15 confirms, one mangled line repaired
-  with ten shell calls, correct in the end. With it: 10 calls, 4 confirms,
-  a clean nine-line diff.
-\end{itemize}
+\end{longtable}}
 
 \chapter{What is not there yet}
 
 \begin{itemize}
-\item No credential handling: no keychain, no bindings, no network primitive.
-  The \code{KHandle} kind, the \code{credential} parameter role and the
-  \file{bindings.toml} loader exist as seams.
-\item No L3, and no ingress redaction yet (P7). \code{log.Writer.Filter} is
-  the hook the redactor will occupy. L1 and L2 are built: shapes are
-  detected on the way out, and every value carries a provenance tag that
-  the guard reads at the egress edge.
-\item No Jev, no plan gate. \code{gate.plan} is a declared event kind with
-  no writer.
-\item No session resume; the log has everything, the window is not yet
-  rebuilt from a previous session's file.
-\item No TUI; the plain front-end is the only one. The boundary lint keeps
-  the core ready for another.
-\item The window is naive by design; summaries and the structural index
-  are P10.
-\item A turn stops at fifty tool calls; budgets and checkpoints are
-  \adr{18}, proposed.
+\item No L3. Known key shapes are detected; unknown ones are not.
+\item \nodwyn{} starts no MCP server, in a container or otherwise; it
+  connects to servers over HTTP (\code{https}, or plain \code{http} on this
+  computer). MCP arguments are not scanned by L1 and MCP results carry no
+  provenance tag.
+\item No OAuth2: a credential is one static value.
+\item No images as attachments, and no built-in document output (docx,
+  Google Docs); a tool you register can run an installed toolchain.
+\item No embedding index and no structural outline; retrieval is text
+  search.
+\item One person. A workspace is not shared, and the socket and the paired
+  devices are one user's.
+\item A supervised run continues from one turn to the next only when a
+  person says yes.
 \end{itemize}

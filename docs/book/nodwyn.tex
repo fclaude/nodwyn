@@ -52,6 +52,7 @@
 \lstnewenvironment{sh}{\lstset{language=bash,keywordstyle=\ttfamily}}{}
 \lstnewenvironment{txt}{\lstset{language={}}}{}
 
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcommand{\nodwyn}{\textsf{nodwyn}}
 \newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\file}[1]{\texttt{#1}}
@@ -68,10 +69,11 @@
 \renewcommand{\headrulewidth}{0.3pt}
 \setlength{\parskip}{0.45em}
 \setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em}
 \setlist{nosep}
 
-\title{\Huge\textbf{\nodwyn}\\[0.6em]\Large a minimal, self-extending coding-agent harness\\[0.4em]\large the idea, the plan, the code, and the language}
-\author{v0.1-bootstrap edition}
+\title{\Huge\textbf{\nodwyn}\\[0.6em]\Large a minimal, self-extending coding-agent harness\\[0.4em]\large the idea, the history, the code, and the language}
+\author{the \nodwyn{} project}
 \date{September 2026}
 
 \begin{document}
@@ -88,23 +90,29 @@ code, and the person sitting at the prompt. It is organised accordingly.
 \textbf{Part I} states the idea: why a coding agent's secrets should be
 \emph{credentials} the harness never sees rather than \emph{content} it tries
 to recognise; why one guard at one boundary is worth more than many checks
-in many places; why the log, not the model's context, is the truth.
-\textbf{Part II} is the plan: a hand-written bootstrap, then a harness that
-builds itself, phase by phase, each phase retiring one of the temporary
-protections the bootstrap runs under. \textbf{Part III} is an inventory of
-what exists as of \code{v0.1-bootstrap}. \textbf{Part IV} walks the code: one
-tool call followed through eleven files, with the actual source. \textbf{Part V}
-is a tutorial and reference for \nodwyn{} Scheme, the small language in which
-\nodwyn's own tools are written. \textbf{Part VI} is the operator's manual.
+in many places; why the log, not the model's context, is the truth; and
+every channel through which bytes enter or leave a session\,---\,models, MCP
+servers, keyed APIs, the judge, files, programs, you, and the documents you
+attach. \textbf{Part II} is how \nodwyn{} was built: bootstrapped with
+another coding-agent harness until it could take over its own development,
+then grown phase by phase; and what is still to come. \textbf{Part III} is
+an inventory of what exists. \textbf{Part IV} walks the code: one tool call
+followed from the keyboard to the disk and back, then one that leaves the
+machine. \textbf{Part V} is a tutorial and reference for \nodwyn{} Scheme,
+the small language in which \nodwyn's own tools, and its agent loop, are
+written. \textbf{Part VI} is the operator's manual. For a slower
+introduction aimed at users, see \emph{Becoming a \nodwyn{} Expert}
+(\file{docs/expert/}).
 
 Everything in this book is derived from the repository: \file{SPEC.md},
-\file{plan.md}, \file{docs/scheme.md}, \file{docs/adr/}, and the source.
-Where the book and the repository disagree, the repository is right and the
-book has a bug.
+\file{plan.md}, \file{docs/}, \file{docs/adr/}, and the source. Where the
+book and the repository disagree, the repository is right and the book has
+a bug.
 
-\paragraph{Status.} The code described is tag \code{v0.1-bootstrap}
-(2026-09-21) plus the standing-approval amendment and Phase~1b\,---\,the full
-v0 kernel\,---\,committed the same day.
+\paragraph{Status.} The code described is the main branch as of
+2026-09-30: the last promotion tag, \code{v0.42-console}, and what has been
+merged since. Promotions no longer create tags; a stable binary's version is
+the commit it was built from.
 
 \tableofcontents
 

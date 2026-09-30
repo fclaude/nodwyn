@@ -3,38 +3,54 @@
 \chapter{Install and configure}
 
 \begin{sh}
-make build                        # bin/nodwyn from the working tree
-make promote TAG=v0.1-bootstrap   # accept + selfcheck, then ~/.local/bin/nodwyn-stable
+make build                       # bin/nodwyn from the working tree
+make build-webview               # the same, with a native window for nodwyn app
+make app                         # bin/Nodwyn.app for macOS
+make promote                     # accept + selfcheck, then ~/.local/bin/nodwyn-stable
 \end{sh}
 
-Use \code{nodwyn-stable} for real work and \file{bin/nodwyn} only to test a
-change to \nodwyn{} itself. Requires Go~1.27, \code{staticcheck}, and a
-reachable control plane.
+Building needs Go~1.26 or newer (\adr{33}). Working on \nodwyn{} itself
+also needs \code{staticcheck}, and you should use \code{nodwyn-stable} for
+real work and \file{bin/nodwyn} only to test a change to \nodwyn{}.
+\code{nodwyn app} opens a native window only in a build with the
+\code{webview} tag, which needs cgo and the platform's web view (WebKitGTK
+on Linux); \code{make build} leaves it out and \code{nodwyn app} then
+opens your browser. \code{make promote} builds \code{nodwyn-stable} with
+the tag wherever it can, and its version is the commit it was built from.
+
+\code{nodwyn paths} prints where everything lives: \file{config.toml},
+\file{bindings.toml}, \file{mcp.toml} and the keychain in the configuration
+directory; session logs, notes and scratch directories in the data
+directory.
 
 \section{config.toml}
 
-\file{\textasciitilde/.config/nodwyn/config.toml}. There is no built-in model:
-\code{[control]} names the one \nodwyn{} talks to (here, the author's), and
-without it \nodwyn{} prints the table to add. The rest shows the defaults:
+There is no built-in model: \code{[control]} names the one \nodwyn{} talks
+to, and without it \nodwyn{} prints the table to add. The first run of
+\code{nodwyn app} asks for it and writes it for you. The rest has defaults:
 
 \begin{txt}
 [control]
-provider   = "ollama"
-url        = "http://workshop.example:11434"
-model      = "qwen3.8-27b-96k:latest"
-num_ctx    = 98304
-keep_alive = "30m"
+provider = "ollama"                 # or "openai": any chat-completions server
+url      = "http://localhost:11434"
+model    = "qwen3:8b"
+# credential = "openai-key"         # a keychain class, for a keyed server
+
+[models.coder]                      # another model a strategy may ask by name
+provider   = "openai"
+url        = "https://api.openai.com/v1"
+model      = "gpt-5.1-codex"
+credential = "openai-key"
 
 [window]
-high_water        = 61440  # trim above this (tokens; validated against num_ctx;
-                           # unset, grows with a larger control context)
-low_water         = 30720  # trim down to this, then hold
-max_result_tokens = 3072   # larger tool results are shown head+tail
-output_reserve    = 8192
+high_water        = 61440   # trim above this (estimated tokens); grows with
+low_water         = 30720   #   a larger control context unless you set it
+max_result_tokens = 3072    # larger tool results are shown head and tail
+output_reserve    = 16384   # also the cap on each reply
 
 [policy]
-unbound        = "deny"    # or "confirm" (P3)
-allow_commands = []        # standing approvals, global
+unbound        = "deny"     # or "confirm" for keyed egress no binding covers
+allow_commands = []         # standing approvals, global
 allow_writes   = []
 
 [loop]
@@ -50,45 +66,81 @@ actions_soft    = 25
 actions_hard    = 200
 wall_soft       = "20m"
 wall_hard       = "4h"
+
+[jev]
+content = "plan"            # none | plan | plan+summaries | full
 \end{txt}
 
-\code{nodwyn paths} prints where everything lives. Session logs are under
-\file{\textasciitilde/.local/share/nodwyn/sessions/}.
+A model may also set \code{num\_ctx} and \code{keep\_alive} (Ollama),
+\code{max\_output} and \code{output\_field} (servers that need them),
+\code{temperature} and \code{seed}. Each request records the settings it was
+sent with, so \code{nodwyn replay --window} can rebuild it.
+
+\chapter{Ways in}
+
+\begin{description}[leftmargin=2.2em]
+\item[\code{nodwyn}] Line mode in the current directory: the session runs
+  in this process, and ends with it. Scriptable; \code{--no-confirm}
+  answers every confirm with no.
+\item[\code{nodwyn tui}] The full-screen terminal client, in its own
+  process or attached to a daemon with \code{--socket}.
+\item[\code{nodwyn daemon}] Owns sessions over a private Unix socket, so
+  they outlive the client that started them. Everything below talks to it.
+\item[\code{nodwyn ui}] The browser console for a running daemon: tasks,
+  approvals inline with their diffs, plans, budgets, changes and their
+  history, attachments, notes; Connections for MCP servers, Workspaces for
+  folders, Settings for the model and the keychain.
+\item[\code{nodwyn app}] The daemon, the console and a window in one
+  program. It attaches to a daemon if one is running, and otherwise serves
+  one itself until you close it.
+\item[A phone] \code{nodwyn ui --listen ADDR} serves other devices as well.
+  Each pairs with the printed code and a name, may send messages and answer
+  prompts, and may not change settings, policy files, the keychain,
+  workspaces or MCP servers. \code{nodwyn devices revoke NAME} unpairs one.
+\end{description}
 
 \chapter{A session}
 
 \begin{sh}
 $ cd ~/src/your-repo
 $ nodwyn-stable
-control model: http://workshop...:11434 qwen3.8-27b-96k:latest (ollama 0.34.2)
-log: /Users/you/.local/share/nodwyn/sessions/20260921T143846Z-beba937b.jsonl
-nodwyn session 20260921T143846Z-beba937b
-repo  /Users/you/src/your-repo
-tools fs-edit fs-list fs-read fs-write shell-exec
+nodwyn session 20260930T101500Z-1c2d3e4f
+repo  /home/you/src/your-repo
+tools fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep
+      read-definition second-look shell-exec shell-read shell-send
+      shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence
 \end{sh}
 
-Commands at the prompt:
+At the prompt:
 
 \begin{center}
 \begin{tabular}{@{}ll@{}}
 \toprule
-\code{:q} & quit \\
+\code{:q} & quit (writes \code{session.end}) \\
 \code{:log [n]} & last $n$ log events \\
 \code{:tools} & tools offered to the model \\
 \code{:allow} & standing command and write approvals in effect \\
 \code{:eval EXPR} & evaluate Scheme yourself (user origin) \\
-\code{:thinking} & toggle streaming the model's thinking \\
+\code{:thinking} & toggle showing the model's redacted thinking \\
+\code{/compact [what to keep]} & compact the conversation into a handover note now \\
+\code{/optimize [n | ids] [focus]} & learn from past sessions; improve \file{.nodwyn/init.scm} \\
 Ctrl-C & abort the running turn; at the prompt, exit \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-While a turn runs the front-end prints streamed text, a card per tool call
-(\code{> fs-read \{"path":...\}} then \code{< fs-read ok (10398 bytes, 5 ms)}),
-guard flags, and a usage line per model request.
+The two slash commands work in every client. While a turn runs, line mode
+prints the reply once it is complete, a card per tool call, guard flags, and
+a usage line per model request.
+
+\code{nodwyn --resume ID} continues a session in the same log, with the
+configuration, bindings, approvals files and \file{init.scm} as they are
+now. Session-only approvals are not restored, and a tool call that was
+running when the process died is never rerun: it is marked ``outcome
+unknown'' so the next turn can look before it retries.
 
 \chapter{Confirms}
 
@@ -116,11 +168,16 @@ allow? [y/N/a=always under internal//t=all writes this turn]
 \item[\code{t}] writes only: yes, and every further write \emph{until this
   turn ends}. For a task you intend to review with \code{git diff}
   afterwards. Each auto-approved write's diff is logged and shown dimmed.
+\item[\code{b}] keyed requests only, when \code{policy.unbound =
+  "confirm"}: yes, and save this exact binding row to \file{bindings.toml}.
 \end{description}
 
 Read the reason lines. ``command line names a path outside the repository''
 and ``uses the network tool curl'' are the guard telling you what a
-\code{y} would do.
+\code{y} would do. A \emph{security} confirm\,---\,a write to \file{.nodwyn/},
+\file{.git/}, CI configuration, \file{scripts/} or the \file{Makefile},
+content that looks like a key, a command line built from tool
+output\,---\,offers only \code{y} and \code{N}.
 
 \section{Standing approvals}
 
@@ -128,7 +185,6 @@ and ``uses the network tool curl'' are the guard telling you what a
 # ~/.config/nodwyn/config.toml           (global)
 [policy]
 allow_commands = ["go test", "go build", "git status", "git diff", "rg"]
-allow_writes   = []
 
 # <repo>/.nodwyn/allow.toml              (per repository, tracked)
 commands = ["make lint", "make test"]
@@ -138,19 +194,121 @@ writes   = ["internal/", "docs/"]
 Prefixes match argv tokens: \code{"go test"} matches \code{go test ./...}
 and \code{/usr/local/go/bin/go test}, not \code{go build}. Denies still
 apply\,---\,only the confirm is waived\,---\,and every use is logged with the
-prefix as reason. \code{.nodwyn/}, \code{.github/}, \code{.gitea/},
-\code{scripts/} and \code{Makefile} always prompt, whatever the list says.
-Keep the lists read-only and test-only for commands; git is the undo for
-writes.
+prefix as reason. Keep command approvals to commands that only read or
+test: nothing that commits, pushes, deletes or reaches the network.
+
+\chapter{Keys, models and the judge}
+
+\begin{sh}
+nodwyn keychain init                       # once; asks for a passphrase
+nodwyn-stable                              # then, at the prompt:
+:eval (credential-register "openai-key")   # masked input
+\end{sh}
+
+The console's Settings page does the same without a terminal. A key is
+stored under a class you name, and it goes nowhere until a row in
+\file{bindings.toml} allows it:
+
+\begin{txt}
+[[bind]]
+class = "openai-key"
+dest = "api.openai.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["POST"]
+\end{txt}
+
+A keyed model names the class as its \code{credential}; the binding is
+checked on every request and recorded as \code{egress.check}. The judge
+works the same way with the class \code{jev-key}, bound to its host: once
+that key exists, the default loop's plan gate runs before each message.
+Set \code{jev.content = "none"} to send it nothing. A daemon holds the
+keychain for every session it opens: unlock it once, from its terminal or
+the console, and sessions opened afterwards can use it.
+
+\chapter{Connecting an MCP server}
+
+Connections, in the console, adds a remote server: its address
+(\code{https}, or plain \code{http} to this computer only), and, if it needs
+one, a key, which goes into the keychain with a binding for that host only.
+Then:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Review} the tools the server offers: names, descriptions,
+  input schemas and the server's own hints.
+\item \textbf{Declare} what each tool you want does: \emph{reads}, or
+  \emph{changes things}. Leave it undeclared and every call asks, as if it
+  both sent data out and could not be undone.
+\item \textbf{Turn on} the tools the model should see. Nothing is on until
+  you choose.
+\item \textbf{Approve} the tool list, which records its hash, and choose the
+  workspaces where the server is offered.
+\end{enumerate}
+
+The result is \file{mcp.toml} in the configuration directory (Chapter
+\ref{ch:io} shows one). New sessions in those workspaces offer the tools as
+\code{server\_\_tool}; a session already open keeps its tool list. If the
+server's tool list changes, new sessions withhold all of its tools until you
+review it again. Approval, edits and removal are refused from a paired
+remote device.
+
+\chapter{Workspaces, attachments and undo}
+
+A session's root is the directory it was started in. A workspace can also
+\emph{mount} other folders, read-only or writable, in
+\file{.nodwyn/workspace.toml}:
+
+\begin{txt}
+kind = "docs"                          # a label: every kind has the same tools
+[[mount]]
+path = "~/Reference/contracts"
+access = "read"
+\end{txt}
+
+The console's Workspaces page names folders and edits their mounts.
+Attachments come in through the console's composers (or
+\code{session.attach} over the protocol); Chapter~\ref{ch:io} says what
+happens to them. Where git is not the undo, \nodwyn{} keeps a file's
+previous content before replacing it: \code{nodwyn versions FILE} lists
+them, \code{nodwyn undo FILE} puts back the newest, and the console restores
+any of them through an ordinary, confirmed write.
+
+\chapter{Budgets and runs}
+
+A turn has soft and hard limits on tool calls, reported model tokens,
+irreversible actions and wall time (\code{[budget]}). At a soft limit it
+stops at a \emph{checkpoint}: \code{y} doubles the soft limit up to the hard
+one, \code{n} stops, a number or a duration sets a new soft limit. A
+checkpoint never approves a tool. The flags \code{--max-tool-calls},
+\code{--budget-wall}, \code{--budget-tokens} and \code{--budget-actions}
+set the hard limits for one invocation. A turn also stops if the model
+repeats an identical call four times in a row, retries a denied call three
+times, or gets ten tool errors in a row.
+
+Longer work is a \emph{supervised run}, submitted to a daemon:
+
+\begin{sh}
+nodwyn run --task task.txt --repo . --budget-wall 2h --max-turns 20
+nodwyn run status SESSION
+nodwyn run stop SESSION
+nodwyn run resume SESSION
+\end{sh}
+
+Each turn of a run must record a plan before it may do anything
+irreversible, and a person says yes at a checkpoint between turns. A run
+ends when the model's reply ends with the line \code{NODWYN\_RUN\_COMPLETE},
+which is its claim, not proof. \code{--yolo} answers a run's ordinary tool
+confirms with yes; it does not answer security confirms, and it does not
+continue the run between turns. Use it on a throwaway checkout: the guard
+makes an unattended run survivable, not safe.
 
 \chapter{Building \nodwyn{} with \nodwyn}
 
 \begin{enumerate}[leftmargin=2em]
 \item \code{nodwyn-stable} in this repository; \code{:tools} lists
-  \code{go-test}, \code{git-diff}, \code{grep-repo}, \code{read-adr}, \ldots
-\item Give it small, explicit tasks: name the file, the pattern to follow,
-  the test to add, and ask it to run \code{go-test} on the package. A
-  paragraph works; a page does not.
+  \code{go-test}, \code{git-log}, \code{grep-repo}, \code{read-adr},
+  \ldots
+\item Give it tasks that name the file, the pattern to follow and the test
+  to add, and ask it to run \code{go-test} on the package.
 \item Review every diff at the confirm, or \code{t} and review with
   \code{git diff} at the end. An \code{fs-write} of a whole existing file
   deserves suspicion; an \code{fs-edit} rarely does.
@@ -158,27 +316,27 @@ writes.
   \file{docs/friction.md}.
 \item \code{make accept} before committing. You commit; there is no commit
   tool.
-\item \code{make promote TAG=v0.N-phase} when a phase's acceptance is green.
-  Promotion refuses a dirty tree, runs the suite and the self-check, swaps
-  \code{nodwyn-stable} (keeping \code{.prev}) and tags.
+\item \code{make promote} when a change's acceptance is green.
 \end{enumerate}
 
 \chapter{When something is wrong}
 
-\begin{center}
-\small
-\begin{tabular}{@{}p{5.6cm}p{8.6cm}@{}}
+{\small
+\begin{longtable}{@{}L{5.2cm}L{9.8cm}@{}}
 \toprule
 Symptom & Look at \\
 \midrule
-\code{no control model is configured} & add the \code{[control]} table it prints to \file{config.toml} \\
-\code{control model ... unreachable} & is the server up? For Ollama, \code{curl <url>/api/version} \\
-first turn takes 10--60\,s & another client holds workshop's single slot, or the prefix is cold; later turns are sub-second \\
-the model loops on a denied call & it was told; say so in the next message; the hard stop is 50 tool calls \\
-\code{hard stop: too many tool calls} & the turn ended; the log has everything; rephrase smaller \\
+\endhead
+\code{no control model is configured} & add the \code{[control]} table it prints to \file{config.toml}, or choose a model in the app \\
+\code{control model ... unreachable} & is the URL right and the server up? For Ollama, \code{curl <url>/api/version} \\
+first turn takes 10--60\,s & the model server is busy with another client, or the prefix is cold; later requests reuse it \\
+every request is slow & \code{:log}: if the elided count in \code{llm.req} jumps, a trim re-sent the prefix once; if every request is slow, another client is evicting the server's cache between requests \\
+a keyed model or MCP server fails with a binding reason & the key's class has no row for that host, method and position in \file{bindings.toml} \\
+an MCP server offers no tools & its tool list changed or was never approved: review it in Connections \\
+the model loops on a denied call & the progress guard stops it; read the reason and say what to do instead \\
+\code{hard stop: tool\_calls budget reached} & the turn ended; the log has everything; rephrase smaller, or raise \code{--max-tool-calls} \\
 a tool call errored & \code{:log 20}: the \code{tool.result} line has the exact error the model saw \\
-a file changed without a prompt & \code{:allow}: a standing approval covered it; the \code{guard.decision} line names which and carries the diff \\
-a session died & \code{nodwyn replay <id>}: everything up to the last fsync is there \\
+a file changed without a prompt & \code{:allow}: a standing approval covered it; the \code{guard.decision} line names which \\
+a session died & \code{nodwyn --resume <id>}; everything up to the last fsync is in the log \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{longtable}}

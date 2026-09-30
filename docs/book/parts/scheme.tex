@@ -10,19 +10,16 @@ harness one place to look (\adr{3}, invariant~4) and gives the user a way to
 extend it without touching Go: a tool is a documented Scheme procedure
 registered into the primitive table.
 
+The same language runs the harness itself. The agent loop, the plan gate,
+compaction, sub-agents and every prompt \nodwyn{} sends are written in
+Scheme, in files loaded before a project's own code, so a project can read
+them and redefine them (Section~\ref{sch:loop}).
+
 The language is deliberately small. It is specified in
 \file{docs/scheme.md} and the interpreter implements that document and
-nothing else; the conformance suite has a snippet for every form and
-builtin, and a builtin that is not documented fails the suite. What follows
-is a tutorial over that reference.
-
-\begin{aside}
-\textbf{On P1b.} The forms \code{letrec}, \code{case}, \code{do},
-\code{when}, \code{unless}, \code{guard}, \code{with-output-to-string},
-vectors and block comments arrived in Phase 1b, the first phase after the
-bootstrap. Their sections are marked \textbf{[P1b]} so a reader of the
-bootstrap code knows where the kernel grew.
-\end{aside}
+nothing else: the tests have a snippet for every form and builtin, and a
+primitive the document does not name, whether a builtin or one a session
+registers, fails them. What follows is a tutorial over that reference.
 
 \chapter{First steps}
 
@@ -39,18 +36,82 @@ nodwyn> (car 1)
 error: car: argument 1: expected pair, got integer 1
 \end{sh}
 
-Unbalanced input continues on the next line with a \code{...>} prompt. A
-value of \emph{void}\,---\,the result of \code{define}, \code{set!},
+Unbalanced input continues on the next line with a \code{...>} prompt. The
+REPL prints each value the way \code{write} does; a value of
+\emph{void}\,---\,the result of \code{define}, \code{set!},
 \code{display}\,---\,is not printed. \code{nodwyn eval -e EXPR} evaluates one
-expression; \code{nodwyn eval FILE} loads files. Inside a session,
-\code{:eval EXPR} evaluates with \emph{user} origin, and the guard sees it
-like anything else.
+expression and prints its value; \code{nodwyn eval FILE...} evaluates files.
+
+The REPL and \code{eval} hold the builtins only: no host primitives, and no
+guard, since apart from \code{load} nothing in them reaches the host. Inside
+a session, \code{:eval EXPR} evaluates in the session's interpreter with
+\emph{user} origin: the host primitives are there, and the guard sees every
+call like any other.
+
+\section{Syntax}
+
+\begin{txt}
+; to the end of the line     a comment
+#| ... |#                    a block comment; may span lines; does not nest
+( )                          a list; [ ] and { } are errors
+#( )                         a vector: #(1 2 "x")
+'x  `x  ,x  ,@x              (quote x) (quasiquote x) (unquote x) (unquote-splicing x)
+"..."                        a string; may span lines
+"""..."""                    a raw string: no escapes
+42  -7  +3                   integers
+3.14  1e3  -0.5  .5          floats
+#t  #f                       booleans
+(a . b)                      a dotted pair
+anything else                a symbol: + - ... 1+ are symbols
+\end{txt}
+
+A token Go reads as a base-10 integer is an integer; failing that, one Go
+reads as a float and made only of digits, signs, a point and an exponent is
+a float; anything else is a symbol, so \code{inf}, \code{nan} and
+\code{1\_000} are symbols. An integer literal too large for 64 bits reads as
+a float.
+
+Strings take the escapes \code{\textbackslash"} \code{\textbackslash\textbackslash}
+\code{\textbackslash n} \code{\textbackslash t} \code{\textbackslash r},
+\code{\textbackslash xHH} (one byte), and \code{\textbackslash uHHHH} and
+\code{\textbackslash UHHHHHHHH} (one code point). A \emph{raw string},
+between \code{"""} and the next \code{"""}, has no escapes at all, which is
+what a regular expression, a Windows path or a prompt with quotes in it
+wants:
+
+\begin{scm}
+"caf\u00e9 \x41"          ; "café A"
+"""C:\temp\new"""         ; "C:\\temp\\new"
+"""a "b" c"""             ; "a \"b\" c"
+\end{scm}
+
+When the opening \code{"""} is followed by a newline, the block is read as
+indented text: that newline is dropped, the indentation shared by every
+non-blank line and by the closing delimiter's line is removed, and the
+newline before the closing delimiter is dropped. A block reads at the
+indentation it is written at and produces text with none; lines indented
+further keep the difference:
+
+\begin{scm}
+(define rules
+  """
+  Prefer table-driven tests.
+    Indented further.
+  Run make accept before saying a change is done.
+  """)
+rules
+; "Prefer table-driven tests.\n  Indented further.\nRun make accept before saying a change is done."
+\end{scm}
+
+Because \code{"""} always starts a raw string, an empty string written
+directly before another (\code{"""x"}) is read as a raw string. Separate
+them with a space.
 
 \section{Values}
 
 \begin{center}
 \small
-\begin{tabular}{@{}llll@{}}
+\begin{tabular}{@{}lll>{\raggedright\arraybackslash}p{6.8cm}@{}}
 \toprule
 Type & Written & Predicate & Notes \\
 \midrule
@@ -61,38 +122,58 @@ float & \code{2.5} \code{1.0} & \code{float?} & float64; always printed with a d
 string & \code{"hi"} & \code{string?} & immutable UTF-8; lengths and indices count runes \\
 symbol & \code{foo} & \code{symbol?} & case-sensitive \\
 pair / list & \code{(1 2 3)} \code{(a . b)} & \code{pair?} \code{list?} & no mutation \\
-vector [P1b] & \code{\#(1 2)} & \code{vector?} & \code{vector-set!} mutates \\
-procedure & \code{\#<procedure f>} & \code{procedure?} & closures and primitives alike \\
-handle & \code{\#<cred:class:id>} & \code{handle?} & opaque; no builtin turns it into text \\
+vector & \code{\#(1 2)} & \code{vector?} & \code{vector-set!} mutates \\
+procedure & \code{\#<procedure f>} & \code{procedure?} & closures and primitives alike; a primitive prints as \code{\#<primitive car>} \\
+handle & \code{\#<cred:class:id>} & \code{handle?} & a stored key, by reference \\
 void & \code{\#<void>} & --- & the unspecified value \\
 \bottomrule
 \end{tabular}
 \end{center}
 
+There is no character type: one-character strings serve. A handle prints as
+its class and id, and nothing in the language turns it into the key it
+stands for (Section~\ref{sch:keys}). Every value also carries
+\emph{provenance tags}, where it came from, which printing does not show
+(Section~\ref{sch:provenance}).
+
 \code{number?} is true for both numeric kinds. Two integers divide exactly
 when the result is integral, otherwise the result is a float:
 
 \begin{scm}
-(/ 6 3)      ; 2
-(/ 7 2)      ; 3.5
-(/ 1.0 4)    ; 0.25
-(expt 2 10)  ; 1024
-(sqrt 16)    ; 4.0
-(exact 2.9)  ; 2   (truncates toward zero)
-(inexact 2)  ; 2.0
+(/ 6 3)            ; 2
+(/ 7 2)            ; 3.5
+(/ 1.0 4)          ; 0.25
+(= 1 1.0)          ; #t    integers and floats compare by value
+(expt 2 10)        ; 1024
+(expt 2 -1)        ; 0.5
+(sqrt 16)          ; 4.0   always a float
+(floor 2.5)        ; 2.0   integers pass through; floats stay floats
+(round 2.5)        ; 2.0   half to even
+(quotient -7 2)    ; -3
+(remainder -7 2)   ; -1    the sign of the dividend
+(modulo -7 2)      ; 1     the sign of the divisor
+(exact 2.9)        ; 2     truncates toward zero
+(inexact 2)        ; 2.0
+(+ 9223372036854775807 1)   ; -9223372036854775808
+(/ 1 0)            ; error: /: division by zero
 \end{scm}
 
 \section{Printing}
 
 \code{display} shows a value for humans (strings without quotes);
 \code{write} shows it for machines (strings quoted and escaped so that the
-reader can read them back). Both go to the interpreter's output writer,
-which the host provides: stdout in the REPL, an \emph{output} event in a
-session. \code{format} builds a string with \code{\textasciitilde a}
-(display), \code{\textasciitilde s} (write), \code{\textasciitilde\%}
-(newline) and \code{\textasciitilde\textasciitilde}:
+reader can read them back; a control character other than newline, tab and
+return is written as \code{\textbackslash xHH}). Both go to the
+interpreter's output writer, which the host provides: stdout in the REPL,
+an \emph{output} event in a session. \code{format} builds a string with
+\code{\textasciitilde a} (display), \code{\textasciitilde s} (write),
+\code{\textasciitilde\%} (newline) and
+\code{\textasciitilde\textasciitilde}; too few or too many arguments is an
+error:
 
 \begin{scm}
+(display '(a "b" 1.0))           ; prints (a b 1.0)
+(write '(a "b" 1.0))             ; prints (a "b" 1.0)
 (format "~a and ~s~%" "x" "y")   ; "x and \"y\"\n"
 \end{scm}
 
@@ -146,12 +227,15 @@ body.
 
 \section{Tail calls}
 
-The last expression of a body, of \code{begin}, of a \code{let} body, of a
-\code{cond} clause, of \code{and}/\code{or}, and either branch of \code{if}
-is in \emph{tail position}. A call there does not grow the stack: a loop
-written as a tail-recursive procedure runs in constant space, for a
-million iterations or a billion. The test suite proves this with a
-200,000-iteration loop under an 8\,MB stack cap in nine positions.
+The last expression of a procedure body, of \code{begin}, of a \code{let},
+\code{let*}, \code{letrec} or named-let body, of a \code{cond} or
+\code{case} clause, of \code{when} and \code{unless}, of \code{and} and
+\code{or}, and either branch of \code{if} is in \emph{tail position}. A
+call there does not grow the stack: a loop written as a tail-recursive
+procedure runs in constant space, for a million iterations or a billion.
+The test suite runs a 200,000-iteration loop under an 8\,MB stack cap in
+nine shapes: through \code{if}, \code{cond}, \code{and}, \code{or},
+\code{let}, \code{let*}, \code{begin}, a named let and mutual recursion.
 
 \begin{scm}
 (define (count-down n)
@@ -167,16 +251,30 @@ Mutual recursion works the same way:
 (even2? 1000000)        ; #t
 \end{scm}
 
-\section{letrec [P1b]}
+\section{letrec}
 
 \code{letrec} binds names that may refer to each other, for local mutual
-recursion. Initialisers should be lambdas; a plain value must not depend on
-a sibling that has not been evaluated yet.
+recursion. Every initialiser sees all the names, and a closure resolves
+them when it is called; so initialisers should be lambdas, and a plain value
+must not depend on a sibling that has not been evaluated yet.
 
 \begin{scm}
 (letrec ((ev? (lambda (n) (if (= n 0) #t (od? (- n 1)))))
          (od? (lambda (n) (if (= n 0) #f (ev? (- n 1))))))
   (ev? 10))   ; #t
+\end{scm}
+
+\section{do}
+
+\code{do} binds variables to initial values; then, until the test is true,
+it evaluates the body and steps every variable in parallel. Its value is
+the last expression after the test (void if there is none). It is a loop in
+Go, so it runs in constant stack.
+
+\begin{scm}
+(do ((i 0 (+ i 1))
+     (acc '() (cons i acc)))
+    ((= i 3) acc))           ; (2 1 0)
 \end{scm}
 
 \chapter{Conditionals}
@@ -186,7 +284,7 @@ a sibling that has not been evaluated yet.
 (if test then else)
 (cond (test body ...)
       (test => proc)           ; pass the test's value to proc
-      (else body ...))
+      (else body ...))         ; no true clause and no else yields void
 (and a b c)                    ; short-circuit; (and) is #t
 (or a b c)                     ; short-circuit; (or) is #f
 \end{scm}
@@ -199,14 +297,18 @@ it'':
       (else 0))    ; 2
 \end{scm}
 
-\textbf{[P1b]} \code{when} and \code{unless} evaluate a body for effect;
-\code{case} dispatches on a key against lists of datums:
+\code{when} and \code{unless} evaluate a body for effect and yield void when
+they do not run it. \code{case} dispatches on a key: the first clause whose
+list of datums holds a member \code{equal?} to the key wins, so strings work
+as well as numbers and symbols.
 
 \begin{scm}
 (when (> x 0) (display "positive") (newline))
 (unless done? (display "still going"))
 (case 2 ((1 2 3) 'small) ((4 5) 'medium) (else 'large))   ; small
-(case 'Foo ((foo) 'lower) (else 'exact))                 ; exact -- symbols compare by name
+(case "hi" (("hi" "there") 'greeting))                    ; greeting
+(case 'Foo ((foo) 'lower) (else 'exact))                 ; exact -- symbols are case-sensitive
+(case 7 ((1) 'one))                                      ; void: no clause matched
 \end{scm}
 
 \chapter{Lists and association lists}
@@ -227,8 +329,10 @@ it'':
 (iota 4)                   ; (0 1 2 3)
 \end{scm}
 
-Lists are not mutated in \nodwyn{} Scheme: there is no \code{set-car!}. Build
-new ones.
+\code{list?} is true only for proper lists; \code{list-ref} and
+\code{list-tail} count from 0, and an index out of range is an error. Lists
+are not mutated in \nodwyn{} Scheme: there is no \code{set-car!}. Build new
+ones.
 
 \section{Higher-order}
 
@@ -246,10 +350,10 @@ new ones.
 \section{Membership and association lists}
 
 \code{memq} and \code{assq} compare with \code{eq?}; \code{member} and
-\code{assoc} with \code{equal?}. \code{eq?} is identity for pairs and
-procedures and \emph{value} for everything else, including strings\,---\,so
-\code{(eq? "a" "a")} is true, unlike in most Schemes. \code{equal?} is
-structural.
+\code{assoc} with \code{equal?}. \code{eq?} (and its alias \code{eqv?}) is
+identity for pairs, vectors, procedures and handles and \emph{value} for
+everything else, including strings\,---\,so \code{(eq? "a" "a")} is true,
+unlike in most Schemes. \code{equal?} is structural.
 
 \begin{scm}
 (memq 'b '(a b c))                   ; (b c)
@@ -265,9 +369,14 @@ tool metadata is an alist, \code{shell-exec} returns one. The prelude adds
 \begin{scm}
 (define r '(("status" . 0) ("stdout" . "ok\n") ("stderr" . "")))
 (assoc-ref r "status")          ; 0
-(assoc-ref r "missing")         ; #<void>
+(assoc-ref r "missing")         ; void (the REPL prints nothing)
 (assoc-ref r "missing" 'none)   ; none
 \end{scm}
+
+The rest of the prelude is \code{identity}, \code{compose}
+(\code{((compose car cdr) '(1 2))} is \code{2}) and \code{string-empty?}.
+It is Scheme, loaded before anything else, in
+\file{internal/scheme/prelude/}.
 
 \chapter{Strings, JSON and quasiquote}
 
@@ -277,19 +386,27 @@ tool metadata is an alist, \code{shell-exec} returns one. The prelude adds
 (string-length "héllo")                  ; 5   (runes)
 (string-append "a" "b" "c")              ; "abc"
 (substring "héllo" 1 3)                  ; "él"
+(substring "hello" 1)                    ; "ello"   end defaults to the length
+(string=? "a" "a" "a")                   ; #t
+(string<? "a" "b" "c")                   ; #t
 (string-upcase "aé")                     ; "AÉ"
-(string-trim "  x \n")                   ; "x"
+(string-downcase "AB")                   ; "ab"
+(string-trim "  x \n")                   ; "x"   Unicode whitespace at both ends
 (string-split "a,b,,c" ",")              ; ("a" "b" "" "c")   literal separator
 (string-join '("a" "b") "-")             ; "a-b"
 (string-contains? "hello" "ell")         ; #t
 (string-prefix? "he" "hello")            ; #t
-(string-replace "a-b-c" "-" "+")         ; "a+b+c"
+(string-suffix? "lo" "hello")            ; #t
+(string-replace "a-b-c" "-" "+")         ; "a+b+c"   every occurrence
 (string->number "42")                    ; 42       #f if not a number
 (number->string 1.5)                     ; "1.5"
-(string->symbol "ab") (symbol->string 'ab)
+(string->symbol "ab")                    ; ab
+(symbol->string 'ab)                     ; "ab"
 \end{scm}
 
-There is no character type; one-character strings serve.
+Strings are immutable; the procedures that change text return a new
+string. The separator of \code{string-split} is literal text, not a regular
+expression, and an empty separator is an error.
 
 \section{JSON}
 
@@ -307,15 +424,36 @@ lists, \code{null} the symbol \code{null}:
 
 \code{json-emit} treats a proper list whose elements are all pairs with
 string cars as an object, and any other proper list as an array. So
-\code{'()} emits \code{[]}, and there is no way to emit \code{\{\}} in v0.
-This same mapping is how a model's tool-call arguments become Scheme values.
+\code{'()} emits \code{[]}, and there is no way to emit \code{\{\}}: an empty
+object parses to \code{()} and comes back as \code{[]}. Keys must be
+strings: \code{'((a . 1))}, keyed by a symbol, is not an object, and emitting
+it fails on the improper list \code{(a . 1)}. Procedures, handles, vectors,
+void, symbols other than \code{null}, and a NaN or infinite float cannot be
+emitted either.
+
+This same mapping is how a model's tool-call arguments become Scheme values
+(Section~\ref{sch:register}).
 
 \section{Quasiquote}
 
-One level, with \code{,} to evaluate and \code{,@} to splice:
+One level, with \code{,} to evaluate and \code{,@} to splice. An unquote in
+the tail of a dotted list is the tail's value:
 
 \begin{scm}
 `(1 ,(+ 1 1) ,@(list 3 4))   ; (1 2 3 4)
+`(1 . ,(list 2 3))           ; (1 2 3)
+\end{scm}
+
+\begin{sloppypar}
+A quasiquote inside a quasiquote is an error: \code{nested quasiquote is
+not supported}. Quasiquote is the easy way to build the alists that become JSON
+and tool metadata:
+\end{sloppypar}
+
+\begin{scm}
+(define m "some-model")
+(json-emit `(("model" . ,m) ("stream" . #f) ("options" . (("seed" . 7)))))
+; "{\"model\":\"some-model\",\"stream\":false,\"options\":{\"seed\":7}}"
 \end{scm}
 
 \chapter{Errors, output capture and vectors}
@@ -327,19 +465,19 @@ message followed by the written irritants. Runtime failures use the same
 kind of error with a \code{who: what} message. An error that is not caught
 unwinds to the host: the REPL prints it; in a session, the model receives it
 as the tool result. A primitive the guard refuses raises
-\code{denied: <reason>}.
+\code{<name>: denied: <reason>}.
 
 \begin{scm}
 (error "boom" 1 "two")    ; error: boom 1 "two"
 \end{scm}
 
-\section{Catching [P1b]}
+\section{Catching}
 
 \code{guard} has the R7RS shape: a variable, \code{cond}-style clauses, and
-a body. If the body raises, the variable is bound to the \emph{condition}\,---\,an
-alist with the message and the irritants\,---\,and the clauses are tried in
-order; the first true clause's value is the value of the form. No match
-re-raises the original error.
+a body. If the body raises, the variable is bound to the
+\emph{condition}\,---\,an alist \code{((message . "text") (irritants
+...))}\,---\,and the clauses are tried in order; the first true clause's value
+is the value of the form. No match re-raises the original error.
 
 \begin{scm}
 (guard (e ((string-contains? (assoc-ref e 'message) "boom") 'caught)
@@ -351,19 +489,37 @@ re-raises the original error.
 
 (guard (e ((assoc-ref e 'message) => string-length))
   (error "four"))                            ; 4
+
+(guard (e (#t e))
+  (error "boom" 1 "two"))                    ; ((message . "boom") (irritants 1 "two"))
 \end{scm}
 
-Two things are never catchable, whatever the clauses say: a guard
-\emph{denial} and a \emph{cancellation}. A tool cannot hide that it was
-refused, and an abort always unwinds. The test suite checks both.
+Some things are never catchable, whatever the clauses say: a guard
+\emph{denial}, a \emph{cancellation} (an abort or a timeout), and the
+harness's stops of a turn (a spent budget, the tool-call limit, a progress
+stop, and a log that can no longer be written). A tool cannot hide that it
+was refused, an abort always unwinds, and a strategy cannot run on past the
+limits that bound it. The tests check all three.
 
-\section{Capturing output [P1b]}
+\section{Capturing output}
+
+\code{with-output-to-string} is a special form: it evaluates its body with
+\code{display}, \code{write} and \code{newline} captured, and returns the
+text. The body's own value is dropped. A capture inside a capture keeps its
+text to itself.
 
 \begin{scm}
 (with-output-to-string (display "hi") (newline))   ; "hi\n"
+(with-output-to-string
+  (display "A")
+  (with-output-to-string (display "inner"))
+  (display "B"))                                   ; "AB"
 \end{scm}
 
-\section{Vectors [P1b]}
+\section{Vectors}
+
+A vector is an indexed array, and the only data structure that can be
+changed in place. A vector literal evaluates to itself.
 
 \begin{scm}
 (vector 1 "a" #t)                 ; #(1 "a" #t)
@@ -371,49 +527,203 @@ refused, and an abort always unwinds. The test suite checks both.
 (let ((v (vector 1 2 3)))
   (vector-set! v 1 99)
   (vector->list v))               ; (1 99 3)
-(equal? #(1 2) #(1 2))            ; #t   eq? compares identity
+(equal? #(1 2) #(1 2))            ; #t
+(eq? #(1) #(1))                   ; #f   eq? compares vectors by identity
 \end{scm}
 
+Vectors do not cross into JSON: \code{json-emit} refuses one, and a JSON
+array always parses to a list. Convert with \code{vector->list} and
+\code{list->vector}.
+
 \chapter{Primitives and the guard, from Scheme}
+
+\section{The primitive table}
 
 Every builtin, every host primitive and every registered tool is an entry in
 the \emph{primitive table}. You can inspect it:
 
 \begin{scm}
-(length (primitives))                        ; ~130
-(primitive-info "fs-edit")
-; ((doc . "Edit a text file ...") (params . (("path" "string" "...") ...))
-;  (variadic . #f) (egress . #f) (irreversible . #t) (host . #t) (origin . "builtin"))
+(length (primitives))           ; 111 in nodwyn repl
+(primitive-info "string-split")
+; ((doc . "Split s on a literal separator.")
+;  (params ("s" "string" "") ("sep" "string" ""))
+;  (variadic . #f) (egress . #f) (irreversible . #f) (host . #f) (origin . "builtin"))
 \end{scm}
 
-The host primitives in the bootstrap are \code{fs-read}, \code{fs-write},
-\code{fs-edit}, \code{fs-list} and \code{shell-exec}. Calling one from
-Scheme is calling it: the guard runs, and if it says no you get an error.
+\code{primitive-info} returns those seven keys; \code{params} lists
+\code{(name type doc)} for each parameter in order, and \code{origin} is
+\code{"builtin"} or \code{"scheme"} (a registered tool). The declaration
+has more than it shows: whether the primitive is hidden from the model,
+which parameters are optional, and each parameter's \emph{role}
+(\code{path}, \code{dest}, \code{payload}, \code{credential}, \code{argv},
+\ldots), which tells the guard what an argument is.
+
+\code{nodwyn repl} has the 111 builtins. A session adds its host
+primitives, the loop's own primitives and the two tools the default loop
+registers (\code{read-definition} and \code{second-look}): 157 in a git
+repository opened without a keychain. A keychain adds \code{http-request}
+and \code{credential-register}; a judge, which needs the keychain too, adds
+the three \code{jev} primitives; every approved MCP tool and every tool a
+project registers adds one more. Section~\ref{sch:reference} lists them by
+group.
+
+\section{The host primitives}
+
+These exist only in a session.
+
+\begin{center}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{6.4cm}>{\raggedright\arraybackslash}p{8.4cm}@{}}
+\toprule
+Primitive & What it does \\
+\midrule
+\code{(fs-read path [start [count]])} & a whole file (at most 1\,MiB), or \code{count} lines (default 200) from line \code{start} under a \code{[lines A-B of N]} header \\
+\code{(fs-write path content)} & create or replace a file; irreversible, the confirm shows a diff \\
+\code{(fs-edit path old new [replace\_all])} & replace exactly one occurrence of \code{old}, or with \code{\#t} every one; irreversible \\
+\code{(fs-list path)} & a directory's names, sorted; directories end in \code{/} \\
+\code{(fs-find path glob)} & file names under a directory matching a glob, at most 500 \\
+\code{(index-grep path pattern [glob [context]])} & search contents with an RE2 regular expression, walked and matched in Go \\
+\code{(git-status)}, \code{(git-diff [path [staged]])} & in a git work tree only: status and uncommitted changes; read-only, no approval \\
+\code{(shell-exec cmd args)} & run a program and wait for it; irreversible \\
+\code{(shell-start cmd args)} & start a program that keeps running, in the background; irreversible \\
+\code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
+\code{(shell-send id text)} & type into it; asks every time \\
+\code{(scratch-dir)}, \code{(repository)}, \code{(workspace)} & the session's scratch directory; the repository's root; its kind and mounted folders \\
+\code{(project-notes)}, \code{(project-notes-save text)} & this repository's notes kept across sessions \\
+\code{(credential class)}, \code{(credential-register class)} & the handle of a stored key, or \code{\#f}; store a new key (Section~\ref{sch:keys}) \\
+\code{(http-request cred url method position headers body)} & a keyed request, checked against the binding table \\
+\code{(jev-noul ...)}, \code{(jev-score ...)}, \code{(jev-choice ...)} & ask the configured judge a question about a text \\
+\code{(policy-read name)}, \code{(policy-write name revision content)} & read or replace the bindings or approvals file; user only \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The model is offered the file, git and process primitives, the tools the
+default loop and the project register, and approved MCP tools, each named
+\code{server\_\_tool}. \code{load}, the session primitives, the key and
+policy primitives and the loop's own are \emph{hidden}: never offered to the
+model, there for Scheme code. \file{docs/scheme.md} gives every primitive's
+full contract.
+
+Calling a host primitive from Scheme is calling it: the guard runs, and if
+it says no you get an error.
 
 \begin{scm}
-(fs-read "README.md")                   ; the contents
-(fs-list ".")                           ; ("Makefile" "cmd/" ...)   dirs end in /
-(fs-read ".env")                        ; error: fs-read: denied: path .env matches the credential-file denylist (.env)
-(shell-exec "go" '("version"))          ; (("status" . 0) ("stdout" . "go version ...") ("stderr" . ""))
+(fs-read "README.md")         ; the contents, as a string
+(fs-list "dev")               ; ("git.scm" "go.scm" "repo.scm")   in nodwyn's repository
+(fs-read ".env")              ; error: fs-read: denied: path .env matches the credential-file denylist (.env)
+(shell-exec "go" '("version"))
+; (("status" . 0) ("stdout" . "go version ...\n") ("stderr" . ""))
 \end{scm}
 
-\code{shell-exec} takes the program and a \emph{list} of arguments\,---\,there is
-no shell, no globbing, no \code{\$VAR}. The child runs in the repository
-root with an allowlisted environment; its output is capped; cancellation
-kills the whole process group.
+\section{shell-exec}
+
+\code{shell-exec} takes the program and a \emph{list} of arguments. There is
+no shell: no globbing, no pipes, no \code{\$VAR} expansion (the one
+rewrite, \code{\$TMPDIR}, is \nodwyn's own; see below). A command line that
+needs a shell says so: \code{(shell-exec "sh" '("-c" "..."))}. A \code{cmd}
+that holds a whole command line and names no program is an error that says
+how to split it. Otherwise:
+
+\begin{itemize}
+  \item The child runs in the repository root, with no standard input.
+  \item Its environment is an allowlist taken from \nodwyn's own:
+    \code{PATH}, \code{HOME}, \code{GOPATH}, \code{GOCACHE},
+    \code{GOFLAGS}, \code{GOMODCACHE}, \code{GOTOOLCHAIN}, \code{TERM},
+    \code{LANG}, \code{LC\_ALL}, \code{USER} and \code{SHELL}, with
+    \code{TMPDIR} set to the session's scratch directory. Nothing else
+    reaches it, so a secret in \nodwyn's environment does not.
+  \item Standard output and standard error are each capped at 256\,KiB,
+    past which the text ends with \code{[output truncated at 256 KiB]}.
+  \item It has its own process group. A cancellation or the timeout
+    (\code{shell\_timeout} in the \code{[loop]} table of
+    \file{config.toml}, 10 minutes by default) kills the whole group, not
+    only the parent.
+  \item The result is \code{(("status" . n) ("stdout" . s) ("stderr" .
+    s))}; a child killed by a signal has status 128.
+\end{itemize}
+
+\code{shell-exec} is irreversible, so every call confirms unless a standing
+approval covers it (Section~\ref{sch:init}). \code{shell-start} starts a
+program the same way\,---\,no shell, the same environment and scratch
+directory, a process group of its own\,---\,and is checked like
+\code{shell-exec}; the process runs until it exits, \code{shell-stop} ends
+it or the session closes, and at most four run at once.
+
+\section{The scratch directory}
+
+Each session has a private scratch directory outside the repository, for
+throwaway files: a reproduction script, notes, temporary output.
+\code{(scratch-dir)} names it, but a program rarely needs to: in every
+path argument and every command argument, a value that is \code{\$TMPDIR}
+or starts with \code{\$TMPDIR/} (or \code{\$\{TMPDIR\}/}) is rewritten to
+it before the guard sees the call, and commands get it as \code{TMPDIR}.
+Writes there need no approval. It is removed when the session closes, and
+nothing in it reaches the repository or its diff.
+
+\begin{scm}
+(fs-write "$TMPDIR/x.txt" "hi")   ; no confirm
+(fs-read "$TMPDIR/x.txt")         ; "hi"
+(shell-exec "echo" '("$TMPDIR/a" "x$TMPDIR"))
+; the first argument is rewritten; the second, which does not start with $TMPDIR, is not
+\end{scm}
+
+\section{Provenance}\label{sch:provenance}
+
+Every value carries \emph{provenance tags}: where it came from, not what it
+contains. A host primitive tags its result: \code{fs-read}, \code{fs-list},
+\code{fs-find}, \code{index-grep}, \code{git-status}, \code{git-diff} and
+\code{policy-read} with \code{external:file}; \code{shell-exec} and the
+background-process primitives with \code{external:shell};
+\code{http-request} and the \code{jev} primitives with
+\code{external:http}; \code{session-list} and \code{session-events} with
+\code{external:log}. A handle carries \code{cred:<class>}. The tags of a
+call's arguments flow into its result, in one place, the primitive
+dispatch. A result that \emph{measures} its arguments rather than being made
+of them carries nothing: \code{length}, \code{string-length},
+\code{vector-length}, the predicates, the comparisons, \code{not} and
+\code{taint-of} itself.
+
+\begin{scm}
+(taint-of (fs-read "README.md"))                          ; ("external:file")
+(taint-of (string-append "x" (fs-read "README.md")))      ; ("external:file")
+(taint-of (string-length (fs-read "README.md")))          ; ()
+(taint-of (assoc-ref (shell-exec "true" '()) "stdout"))   ; ("external:shell")
+(tainted? "typed by you")                                 ; #f
+(taint-of (wipe (fs-read "README.md")))                   ; ()
+\end{scm}
+
+The guard reads the tags. It refuses to send content that came from outside
+to a destination no binding authorises, and it asks, as a security confirm
+that no standing approval waives, before running a command line built from
+tool output.
+
+\code{wipe}, and its synonym \code{box}, return the same value with its
+tags removed. They are for user-originated Scheme only: the guard refuses
+them to model-originated code and to the loop's strategy, which handles
+every tool result, and every use is logged. From a tool the model called,
+\code{wipe} fails with \code{wipe: denied: wipe is user-only:
+model-originated code may not strip provenance}.
+
+Provenance is not a boundary against the user, who may \code{wipe}, and it
+does not survive a value being rebuilt one character at a time through the
+measuring primitives. The real egress lines are the binding table,
+fail-closed defaults and the redaction of what comes in; provenance is a
+second net under them.
 
 \chapter{Writing tools}
 
-\section{register-tool}
+\section{register-tool}\label{sch:register}
 
 A tool is a Scheme procedure plus metadata, registered into the primitive
 table. From then on it is indistinguishable from a builtin at the dispatch
-site, and the model sees it in its tool list.
+site, and the model sees it in its tool list. This one is from
+\file{dev/go.scm}:
 
 \begin{scm}
 (register-tool "go-test"
   (lambda (pkg) (run "go" (list "test" "-race" pkg)))
-  '((doc . "Run the Go tests with the race detector for a package pattern.")
+  '((doc . "Run the Go tests with the race detector for a package pattern such as ./internal/log or ./... . Returns the exit status and output.")
     (params . (("pkg" "string" "package pattern, e.g. ./internal/log or ./...")))))
 \end{scm}
 
@@ -421,23 +731,57 @@ The metadata alist:
 
 \begin{center}
 \small
-\begin{tabular}{@{}lp{9.5cm}@{}}
+\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{10.5cm}@{}}
 \toprule
 Key & Meaning \\
 \midrule
-\code{doc} & one line; required; shown to the model as the tool description \\
-\code{params} & list of \code{("name" "type" "doc")}; required; type is one of \code{string integer number boolean list alist vector any} \\
+\code{doc} & required; the model's only description of the tool: what it does, what it returns, when to use it \\
+\code{params} & required; a list of \code{("name" "type" "doc")}; type is one of \code{string integer number boolean list alist vector any} \\
 \code{variadic} & extra arguments allowed after \code{params}; default \code{\#f}. Prefer a list parameter: the model's schema cannot express rest arguments \\
-\code{egress}, \code{irreversible} & default \code{\#f}; declare them honestly, the guard reads them \\
+\code{egress}, \code{irreversible} & default \code{\#f}; declare them honestly. \code{irreversible} makes every call of the tool itself a confirm \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-Rules: the name must be new\,---\,builtins cannot be shadowed and a tool
-cannot be re-registered, because the tool list must stay stable for the
-whole session (\adr{9}). A registered tool's own primitive calls are guarded
-in turn: a wrapper over \code{shell-exec} does not make \code{shell-exec}
-less irreversible.
+Any other key is an error. A tool's parameters are all required: optional
+parameters are for Go primitives only (\adr{29}). A tool's parameters have
+no roles either, and none is needed: the guard judges the primitive calls
+the body makes, with their roles.
+
+When the model calls a tool, its JSON arguments are matched to
+\code{params} by name, converted with the JSON mapping, checked against the
+declared types and passed in the declared order; a missing or unknown name,
+or a value of the wrong type, is an error the model reads. A JSON array
+always arrives as a list, so declare \code{list} for one: a \code{vector}
+parameter cannot be satisfied from JSON.
+
+The rules:
+
+\begin{itemize}
+  \item The name must be new. Builtins cannot be shadowed and a tool cannot
+    be re-registered, because the tool list must stay stable for the whole
+    session (\adr{9}). The one exception is \code{(reload)}, which runs
+    \file{init.scm} again: a tool whose metadata is unchanged takes its new
+    body; a new or changed tool waits for the next session.
+  \item A registered tool's own primitive calls are guarded in turn: a
+    wrapper over \code{shell-exec} does not make \code{shell-exec} less
+    irreversible.
+  \item The body runs with the origin of its caller. When the model calls
+    the tool, the body runs as the model, so whatever is refused to
+    model-originated code (\code{wipe}, \code{credential}) is refused inside
+    it too.
+  \item An error the body raises is the tool's result: the model reads the
+    message and can try again, so make it useful.
+\end{itemize}
+
+\begin{scm}
+(register-tool "fs-read" (lambda () 1) '((doc . "x") (params . ())))
+; error: register-tool: scheme: primitive "fs-read" already registered
+(register-tool "t" car '((params . ())))
+; error: register-tool: doc and params are required
+(register-tool "t" car '((doc . "d") (params . (("a" "blob" "x")))))
+; error: register-tool: unknown param type "blob"
+\end{scm}
 
 \section{The dev tools, read closely}
 
@@ -461,9 +805,12 @@ number by listing a directory and reading a file.
   (let ((prefix (format "~a-" (pad4 n))))
     (let loop ((names (fs-list "docs/adr")))
       (cond ((null? names) #f)
-            ((string-prefix? prefix (car names))
-             (string-append "docs/adr/" (car names)))
+            ((string-prefix? prefix (car names)) (string-append "docs/adr/" (car names)))
             (else (loop (cdr names)))))))
+
+(define (pad4 n)
+  (let ((s (number->string n)))
+    (string-append (substring "0000" 0 (- 4 (string-length s))) s)))
 
 (register-tool "read-adr"
   (lambda (n)
@@ -473,12 +820,20 @@ number by listing a directory and reading a file.
     (params . (("n" "integer" "the ADR number, e.g. 10")))))
 \end{scm}
 
-\section{init.scm and allow.toml}
+\code{pad4} is defined after \code{adr-file} uses it, which is fine: a name
+in a procedure body is looked up when the procedure runs. The same holds
+across files, which share one global environment: the other tools in
+\file{dev/repo.scm} call \code{run} from \file{dev/go.scm}.
 
-\file{<repo>/.nodwyn/init.scm} is loaded at start, after the prelude, with
-user origin and with confirms denied (nobody is listening yet), so it may
-register tools and must not act. \code{load} resolves relative paths against
-the repository root:
+\section{init.scm and allow.toml}\label{sch:init}
+
+\file{<repo>/.nodwyn/init.scm} is loaded when a session starts, after the
+prelude and after the default loop's Scheme, so it may redefine the loop,
+its settings and its prompts. It runs with user origin and with confirms
+denied (nobody is listening yet), so it may register tools and must not
+act. \code{load} is a host primitive, guarded like a read, and resolves
+relative paths against the repository root. \nodwyn's own \file{init.scm}
+loads three files:
 
 \begin{scm}
 (load "dev/go.scm")
@@ -486,51 +841,201 @@ the repository root:
 (load "dev/repo.scm")
 \end{scm}
 
+After \file{init.scm} the tool list and the system prompt are fixed for the
+session. \file{.nodwyn/} is a protected path: every write to it is a
+security confirm, which no standing approval and no \code{-{}-yolo} run can
+answer, so the model cannot change \file{init.scm} behind your back. Files
+loaded from elsewhere, such as \file{dev/}, are ordinary files: review
+changes to them as code, since the next session runs them with your
+authority.
+
 Pair each command-wrapping tool with a \emph{standing approval} in
-\file{.nodwyn/allow.toml}, or every call prompts:
+\file{.nodwyn/allow.toml}, or every call prompts. A command entry matches a
+command line that starts with its words (\code{"go test"} matches
+\code{go test -race ./...}, not \code{go build}); a write entry is a
+repository-relative prefix. An excerpt of \nodwyn's own:
 
 \begin{txt}
-commands = ["go test", "go build", "git status", "git diff", "git grep"]
-writes   = ["internal/", "docs/"]
+commands = ["go test", "go build", "go vet", "gofmt -l",
+            "git status", "git diff", "git log", "git grep"]
+writes   = ["internal/", "docs/", "test/", "dev/", "cmd/"]
 \end{txt}
 
-\chapter{Reference}
+\section{Keys: credential and http-request}\label{sch:keys}
+
+A key enters the keychain once, from you. In a session with a keychain
+(\code{nodwyn keychain init} creates one), \code{:eval (credential-register
+"status-key")} asks for the key in a masked prompt, stores it and returns a
+handle such as \code{\#<cred:status-key:\ldots>}. \code{credential-register} is refused to
+the model and to the loop's strategy. After that, \code{(credential
+"status-key")} returns the handle of the stored key, or \code{\#f}; it is
+refused to model-originated code.
+
+A handle is opaque. It prints as its class and id; no builtin turns it into
+the key, and \code{json-emit} refuses it. What it is good for is being passed
+to a primitive that injects the key itself, such as \code{http-request},
+which puts it at a named position on the way out (the \code{jev} primitives
+take a handle too):
+
+\begin{scm}
+(http-request cred url method position headers body)
+; (("status" . 200) ("body" . "..."))    the body read up to 1 MiB, tagged external:http
+\end{scm}
+
+\code{position} is \code{header:NAME}, \code{header:NAME:SCHEME} (such as
+\code{header:Authorization:Bearer}), \code{query:NAME} or \code{body};
+\code{headers} is a list of \code{(name value)} pairs or \code{()}. Before
+anything is sent the guard looks up the binding table for the handle's
+class, the URL's host, the method and the position, and an unbound
+combination is refused by default. The table is \file{bindings.toml}:
+
+\begin{txt}
+[[bind]]
+class     = "status-key"
+dest      = "status.example.com"
+positions = ["header:Authorization:Bearer"]
+methods   = ["GET"]
+\end{txt}
+
+\code{http-request} is hidden from the model: a handle cannot come from
+JSON. The model reaches a keyed service through a tool, and since the tool's
+body runs as the model and \code{credential} is refused there, the tool
+looks its handle up once, while \file{init.scm} runs with your origin, and
+closes over it:
+
+\begin{scm}
+(define status-key (credential "status-key"))
+
+(register-tool "service-status"
+  (lambda ()
+    (if (not status-key)
+        (error "no status-key was stored when this session started")
+        (let ((r (http-request status-key "https://status.example.com/v1/summary"
+                               "GET" "header:Authorization:Bearer" '() "")))
+          (format "HTTP ~a~%~a" (assoc-ref r "status") (assoc-ref r "body")))))
+  '((doc . "The service's current status summary, as the status API returns it.")
+    (params . ())
+    (egress . #t)))
+\end{scm}
+
+Holding a handle grants nothing by itself: every use is checked against the
+binding table.
+
+\section{Guard checks: register-check}
+
+\code{register-check} (\adr{20}) adds a guard checker written in Scheme:
+
+\begin{scm}
+(register-check "no-downloads" "deny"
+  (lambda (prim args)
+    (and (equal? prim "shell-exec")
+         (pair? args)
+         (member (car args) '("curl" "wget")))))
+
+(shell-exec "curl" '("--version"))   ; error: shell-exec: denied: user checker no-downloads
+\end{scm}
+
+A check has a name, which the log's guard decisions carry; a verdict, fixed
+at registration, of \code{"deny"} or \code{"confirm"}; and a predicate of the
+primitive's name and its argument list. When the predicate returns any true
+value the check answers its verdict; otherwise it has no opinion. The rules
+make checks safe to write:
+
+\begin{itemize}
+  \item There is no \code{"allow"} verdict, and the strictest decision wins,
+    so a check can only make the guard stricter.
+  \item The predicate sees every primitive application, pure builtins
+    included, so keep it cheap and write it defensively
+    (\code{(pair? args)} before \code{(car args)}). A predicate that raises
+    an error fails closed: the call is denied.
+  \item \code{register-check} is hidden from the model and refused to
+    anything but user-originated Scheme: to model-originated code and to
+    the loop's strategy alike. Checks run after the built-in ones.
+  \item A check registered in \file{init.scm} holds from the start of the
+    session; \code{(reload)} does not change the session's checks.
+  \item A \code{"confirm"} check is an ordinary confirm, which a standing
+    approval or an unattended run answers. A rule that must hold with
+    nobody watching is a \code{"deny"}.
+\end{itemize}
+
+\section{The loop is Scheme too}\label{sch:loop}
+
+A turn is a Scheme procedure. For each user message the session calls
+\code{(nodwyn-turn request)}, which runs the plan gate when the turn must
+plan and then \code{(agent-turn request)}. Both are defined before
+\file{init.scm} loads, so a project can redefine either. Stripped of the
+plan gate, \code{/compact}, \code{/optimize}, the retry of cut replies and
+the evidence loop of unattended turns, the default \code{agent-turn} is this
+loop:
+
+\begin{scm}
+(define (agent-turn request)
+  (let loop ((reply (model-turn)))
+    (let ((calls (assoc-ref reply 'tool-calls '())))
+      (unless (null? calls)
+        (run-calls calls)
+        (maybe-compact request reply)
+        (loop (model-turn))))))
+\end{scm}
+
+\code{model-turn}, \code{run-tools}, \code{skip-tools},
+\code{answer-call}, \code{add-message}, \code{narrow-context} and the rest
+are loop primitives: hidden from the model, and the ones that act on the
+conversation are refused outside a turn and to model-originated code. The
+strategy runs with \emph{harness} origin, so it cannot strip provenance or
+change policy, and the tools it runs execute with model origin. Whatever it
+does, every call the model made gets exactly one result, and the budgets
+and progress stops end the turn with an error no \code{guard} can catch.
+\file{docs/scheme.md} \S9 documents the loop primitives and the default
+loop's procedures (compaction, sub-agents, the plan gate, the prompts);
+Part~IV and the field guide in \file{docs/expert/} walk through them.
+
+\chapter{Reference}\label{sch:reference}
 
 \section{Special forms}
 
 \begin{center}
 \small
-\begin{tabular}{@{}p{7.6cm}p{6.2cm}@{}}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{7.6cm}>{\raggedright\arraybackslash}p{7cm}@{}}
 \toprule
 Form & Meaning \\
 \midrule
 \code{(define name expr)} & bind in the current environment \\
-\code{(define (name p ... [. rest]) body ...)} & named lambda \\
-\code{(lambda (p ... [. rest]) body ...)}, \code{(lambda args body ...)} & closure \\
+\code{(define (name p ... [. rest]) body ...)} & shorthand for a named lambda \\
+\code{(lambda (p ... [. rest]) body ...)}, \code{(lambda args body ...)} & closure; \code{rest} and \code{args} receive a list \\
 \code{(if test then [else])} & missing else yields void \\
-\code{(let ((v e) ...) body ...)} & parallel bindings \\
-\code{(let name ((v e) ...) body ...)} & named let \\
-\code{(let* ((v e) ...) body ...)} & sequential bindings \\
-\code{(letrec ((v e) ...) body ...)} [P1b] & mutually recursive bindings \\
-\code{(begin e ...)} & sequence \\
-\code{(set! name expr)} & assign an existing binding \\
+\code{(let ((v e) ...) body ...)} & bind in parallel \\
+\code{(let name ((v e) ...) body ...)} & named let: \code{name} is the loop procedure inside the body \\
+\code{(let* ((v e) ...) body ...)} & bind sequentially \\
+\code{(letrec ((v e) ...) body ...)} & mutual bindings: every initialiser may refer to the other names \\
+\code{(case key [(d ...) body ...] ... [(else body ...)])} & first clause whose datums hold a member \code{equal?} to the key; no clause yields void \\
+\code{(do ((v init [step]) ...) (test [e ...]) cmd ...)} & loop: on a false test run the \code{cmd}s, then the steps in parallel; value is the last \code{e} (void if none); constant stack \\
+\code{(when test e ...)}, \code{(unless test e ...)} & conditional body; void when it does not run \\
+\code{(guard (var clause ...) body ...)} & catch errors; \code{var} is bound to \code{((message . "text") (irritants ...))}; denials, cancellations and the harness's stops pass through \\
+\code{(with-output-to-string e ...)} & capture \code{display}, \code{write} and \code{newline}; return the text \\
+\code{(begin e ...)} & evaluate in order, yield the last \\
+\code{(set! name expr)} & assign an existing binding; error if unbound \\
 \code{(quote d)}, \code{'d} & the datum \\
-\code{(quasiquote d)}, \code{`d} with \code{,e} \code{,@l} & one level \\
-\code{(cond (test body ...) ...} \code{(test => proc) (else ...))} & first true clause \\
-\code{(case key ((d ...) body ...) ... (else ...))} [P1b] & dispatch on datums \\
-\code{(and e ...)}, \code{(or e ...)} & short-circuit \\
-\code{(when test e ...)}, \code{(unless test e ...)} [P1b] & conditional effect \\
-\code{(do ((v init [step]) ...)} \code{(test [e ...]) cmd ...)} [P1b] & loop, constant stack \\
-\code{(guard (var clause ...) body ...)} [P1b] & catch errors; denials and cancellation excepted \\
-\code{(with-output-to-string e ...)} [P1b] & capture output \\
+\code{(quasiquote d)}, \code{`d} with \code{,e} \code{,@l} & one level only \\
+\code{(cond (test body ...) ... [(test => proc)] [(else body ...)])} & first true clause; \code{=>} passes the test's value to \code{proc}; no clause yields void \\
+\code{(and e ...)}, \code{(or e ...)} & short-circuit; \code{(and)} is \code{\#t}, \code{(or)} is \code{\#f} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 Special-form names are reserved: binding one as a variable does not change
-how the form is parsed.
+how the form is parsed. They are \code{define}, \code{lambda}, \code{if},
+\code{let}, \code{let*}, \code{letrec}, \code{begin}, \code{set!},
+\code{quote}, \code{quasiquote}, \code{unquote}, \code{unquote-splicing},
+\code{cond}, \code{case}, \code{else}, \code{=>}, \code{and}, \code{or},
+\code{do}, \code{when}, \code{unless}, \code{guard} and
+\code{with-output-to-string}. Loading Scheme code can grow
+the primitive table and the global environment, but it cannot add a special
+form or change evaluation.
 
 \section{Builtins by group}
+
+These are in every interpreter, \code{nodwyn repl} included:
 
 \begin{txt}
 Numbers      + - * / = < > <= >= quotient remainder modulo abs min max
@@ -542,22 +1047,50 @@ Lists        cons car cdr caar cadr cdar cddr caddr cdddr list list? pair?
              null? length append reverse list-ref list-tail iota memq member
              assq assoc map for-each filter fold sort apply
 Vectors      vector vector? vector-length vector-ref vector-set!
-[P1b]        vector->list list->vector
+             vector->list list->vector
 Strings      string? string-length string-append substring string=? string<?
              string-upcase string-downcase string-trim string-split string-join
              string-contains? string-prefix? string-suffix? string-replace
              string->symbol symbol->string symbol? format
-Output       display write newline
+Output       display write newline         (and the form with-output-to-string)
 Control      procedure? apply void error
 JSON         json-parse json-emit
-Meta         primitives primitive-info register-tool load handle?
-Prelude      assoc-ref identity compose string-empty?        (Scheme)
-Host         fs-read fs-write fs-edit fs-list shell-exec     (bootstrap)
+Provenance   taint-of tainted? wipe box    (wipe and box: user only)
+Meta         primitives primitive-info register-tool register-check load handle?
+Prelude      assoc-ref identity compose string-empty?        (written in Scheme)
 \end{txt}
+
+A session adds these:
+
+\begin{txt}
+Files        fs-read fs-write fs-edit fs-list fs-find index-grep
+Git          git-status git-diff                   (in a git work tree)
+Processes    shell-exec shell-start shell-read shell-send shell-stop
+Session      scratch-dir repository workspace project-notes project-notes-save
+Keys         credential; with a keychain, credential-register http-request
+Judge        jev-noul jev-score jev-choice         (with a judge configured)
+Policy       policy-read policy-write
+MCP          server__tool, one per tool you turned on
+Loop         model-turn run-tools skip-tools answer-call add-message log-note
+             fold-result narrow-context fold-context widen record-plan
+             session-requests session-system-prompt session-list session-events
+             model-info model-names window-limits context-tokens
+             unattended? plan-required? plan-recorded? reload
+\end{txt}
+
+\begin{sloppypar}
+The default loop's own procedures (\code{nodwyn-turn}, \code{agent-turn},
+\code{run-calls}, \code{sub-agent}, \code{define-agent-tool},
+\code{maybe-compact}, the prompts and their settings) are Scheme
+definitions, not primitives; \file{docs/scheme.md} \S9 lists them.
+\end{sloppypar}
 
 \section{Not in \nodwyn{} Scheme}
 
-\code{set-car!}/\code{set-cdr!} and string mutation; nested quasiquote;
-hygienic macros; \code{call/cc}; \code{dynamic-wind}; an \code{eval}
-primitive (the kernel surface is not exposed to programs); characters;
-exact rationals and bignums; source positions in runtime errors.
+Characters, and the string-port API beyond \code{with-output-to-string};
+source positions in runtime errors (reader errors carry a line and column);
+\code{define-macro}; \code{set-car!}/\code{set-cdr!} and string mutation;
+nested quasiquote; hygienic macros (\code{define-syntax},
+\code{syntax-rules}); \code{call/cc}; \code{dynamic-wind}; an \code{eval}
+primitive (the kernel surface is not exposed to programs); exact rationals
+and bignums.

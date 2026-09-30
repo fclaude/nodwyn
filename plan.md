@@ -14,14 +14,14 @@ Companion to [SPEC.md](SPEC.md). The spec says *what* and *why*; this says *in w
 
 Two stages:
 
-- **Stage 0 — Bootstrap (weeks 1–4), hand-written.** The smallest nodwyn that can do real work on this repo: read/write files, run `go build`/`go test`/`git`, talk to the model, log everything, and refuse the obviously dangerous. Deliberately tiny, deliberately hand-tested. Ends with the first promoted binary, `nodwyn-stable v0.1`.
+- **Stage 0 — Bootstrap (weeks 1–4), built with an external coding-agent harness.** The smallest nodwyn that can do real work on this repo: read/write files, run `go build`/`go test`/`git`, talk to the model, log everything, and refuse the obviously dangerous. Deliberately tiny, deliberately hand-tested. Ends with the first promoted binary, `nodwyn-stable v0.1`.
 - **Stage 1+ — Self-hosted (weeks 5–24).** Every remaining phase of the spec's build order is executed as nodwyn sessions driving `nodwyn-stable`. Each phase ends by promoting a new stable. The spec's ordering is preserved; only the entry point changed.
 
 ### Deviations from the spec's build order
 
 | Change | Why |
 |---|---|
-| **Bootstrap compresses spec steps 1, 2 and the unlisted loop/LLM client into one hand-written stage, with a *minimal* kernel.** | To self-host you need a working loop before you need a complete interpreter. The kernel is grown to full scope afterwards, *by nodwyn*, as the first dogfood task (Phase 1b). |
+| **Bootstrap compresses spec steps 1, 2 and the unlisted loop/LLM client into one bootstrap stage, built with an external harness, with a *minimal* kernel.** | To self-host you need a working loop before you need a complete interpreter. The kernel is grown to full scope afterwards, *by nodwyn*, as the first dogfood task (Phase 1b). |
 | **The append-only log is built on day one, not at step 10.** | Invariant 1 makes the log the source of truth and every later phase says "logged". Phase 10 then only adds the derived views (window, summaries, index) — using real logs of nodwyn building nodwyn as its corpus. |
 | **A naive log-derived context window ships in bootstrap.** | Self-building sessions are long; without *some* window policy the context overflows in week 5. The policy is dumb (drop oldest tool results first) but it is derived from the log on every turn, so invariant 1 holds from the start. Full memory remains Phase 10. |
 | **The `Value` struct reserves its taint field in bootstrap.** | L2 (Phase 6) is cheap if planned for and expensive if not. Reserve the field now, leave it unset. |
@@ -143,7 +143,7 @@ Consequences for the plan:
 
 ---
 
-## 4. Stage 0 — Bootstrap (weeks 1–4, hand-written)
+## 4. Stage 0 — Bootstrap (weeks 1–4, built with an external harness)
 
 ### B0 — Skeleton + log (week 1)
 
@@ -518,7 +518,7 @@ half-isolation would be worse than none. Also open: images as attachments
 
 | Weeks | Stage / phase | Promotes | Milestone |
 |---|---|---|---|
-| 1–4 | **Bootstrap** B0–B3 (hand-written) | `v0.1-bootstrap` | **M0 self-hosting** |
+| 1–4 | **Bootstrap** B0–B3 (external harness) | `v0.1-bootstrap` | **M0 self-hosting** |
 | 5–6 | P1b Kernel growth | `v0.2-kernel` | |
 | 7–9 | P3 Credentials | `v0.3-creds` | |
 | 10–11 | P4 L1 | `v0.4-l1` | **M2 safe with real keys** |

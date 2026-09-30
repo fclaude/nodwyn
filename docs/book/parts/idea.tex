@@ -5,15 +5,16 @@
 \nodwyn{} is a coding agent's \emph{harness}: the program that sits between a
 language model and your machine. It holds the conversation, offers the model
 tools, runs the tools the model asks for, and feeds the results back. Every
-such harness answers three questions, and \nodwyn{} exists because it answers
-them differently.
+such harness answers a handful of questions, and \nodwyn{} exists because it
+answers them differently.
 
 \paragraph{Who decides what the model may do?} In \nodwyn{}, one function. Every
 tool the model can call is a \emph{primitive} in an embedded Scheme
 interpreter, and every primitive application, whoever asks for it, passes
 through a single Go function where a \emph{guard} decides: allow, ask the
-user, or deny. There is no second path. The Scheme interpreter is the only
-surface through which anything reaches the host, and the guard sits on it.
+user, or deny. There is no second path. A file read, a command, a request to
+an MCP server and a keyed HTTP call are all primitives, and all of them
+cross the guard.
 
 \paragraph{How are secrets protected?} By never being content. A key is not
 a string the harness tries to spot in a request; it is a \emph{credential}
@@ -22,40 +23,37 @@ and injected only at a destination the user has \emph{bound} it to. The
 question ``is this egress safe?'' is not ``does this look like a secret?''
 but ``is this class of credential authorised for this destination, in this
 position, with this method?''\,---\,a table lookup, owned by the user. Content
-detection exists too (a cheap deterministic layer, a taint layer, an optional
-learned layer), but it is the residual, not the authority.
+detection exists too (a cheap deterministic layer and a provenance layer;
+a learned layer is planned), but it is the residual, not the authority.
 
 \paragraph{What is the source of truth?} An append-only log. One JSON line
 per event, fsynced. The model's context window, the transcript you see, the
-summaries a later phase will add\,---\,all are derived from the log and can
-be recomputed from it. A crash loses nothing; a replay reproduces a session
-byte for byte.
+summaries you add\,---\,all are derived from the log and can be recomputed
+from it. A crash loses nothing; a session resumes from its log, and a
+request sent to the model can be rebuilt exactly from the log and checked
+against the digest recorded with it.
 
-\paragraph{And one more thing.} \nodwyn{} extends itself. The tools it uses to
-build itself\,---\,run the tests, show a diff, search the tree\,---\,are written in
-its own Scheme, loaded from the repository, and cross the same guard as
-everything else. From the fourth week of its life, \nodwyn{} has been the tool
-used to build \nodwyn{}.
+\paragraph{What does it talk to?} More than a model. A session reads and
+writes files, runs programs, talks to the models you configured, calls
+tools on the MCP servers you connected, sends keyed requests to APIs you
+bound, and asks a judge about plans. You reach it from a terminal, a
+full-screen terminal client, a browser, a desktop window or a paired phone,
+and you can attach documents to a conversation. Chapter~\ref{ch:io} lists
+every one of these channels, what crosses it, and what decides whether it
+may.
 
-\section*{Shape}
-
-\begin{itemize}
-\item \textbf{Stack.} Go host; a user-written Scheme interpreter embedded in
-  it; a single static binary; a line-mode front-end now, a TUI later, and a
-  core that knows nothing about either.
-\item \textbf{Model.} A local Qwen served by Ollama on a workstation on the
-  tailnet. No API key, no cloud dependency, and\,---\,until credentials exist\,---\,no
-  secret anywhere on the build machine.
-\item \textbf{Scope.} One developer, three to six months, v0. No sub-agents,
-  no GUI, no embeddings, no cross-session memory. Those are decisions, not
-  omissions.
-\end{itemize}
+\paragraph{And one more thing.} \nodwyn{} extends itself. The tools a
+repository needs\,---\,run the tests, show a diff, read a decision
+record\,---\,are written in its own Scheme, loaded from the repository, and
+cross the same guard as everything else. So is the agent loop itself: how a
+turn goes is a Scheme procedure a project may redefine. \nodwyn{} has been
+used to build \nodwyn{} since its first promoted binary.
 
 \chapter{Invariants}
 
 Five statements are load-bearing. Everything else in the design is a
-consequence of them, and every phase of the plan is judged by whether it
-preserves them.
+consequence of them, and every change is judged by whether it preserves
+them.
 
 \begin{enumerate}[leftmargin=2em]
 \item \textbf{The log is the single source of truth.} Index and window are
@@ -64,8 +62,7 @@ preserves them.
   local stack judges \emph{what}.} Jev\,---\,the external calibrated judge used
   at two seams\,---\,sees the ask, the plan, and egress \emph{situations}
   (class, destination, scope), after redaction. It never sees a secret
-  value. It is never audited for the harness's own control-plane key.
-  (Wording amended by \adr{19}.)
+  value. (Wording amended by \adr{19}.)
 \item \textbf{Secrets are credentials, not content.} The harness holds opaque
   handles into a log-excluded encrypted keychain, uses them only at a bound
   destination, and never sees the value.
@@ -80,7 +77,278 @@ Invariant~4 is the one you will meet first in the code: \code{applyPrim} in
 \file{internal/scheme/prim.go} is the only caller of any primitive's handler,
 and a test records every crossing to prove it. Invariant~1 is the one that
 shapes everything you will not see: there is no ``conversation state'' object
-anywhere; there are events, and functions that fold them.
+anywhere; there are events, and functions that fold them. Invariant~5 is the
+subject of the next chapter.
+
+\chapter{Input and output}\label{ch:io}
+
+This chapter lists every channel through which bytes enter or leave a
+\nodwyn{} session, and for each one says what crosses it, who starts it, and
+what decides whether it may.
+
+\section{Two rules that cover every channel}
+
+\paragraph{Out: everything the model or Scheme does to the world is a
+primitive application.} Reading a file, running a program, calling an MCP
+tool, sending a keyed request, asking the judge, asking a model: each is a
+primitive, applied through \code{applyPrim}, where the guard runs its
+checkers before the handler. The handler is Go code that does the actual
+I/O. A keyed call to \code{http-request}, the judge or an MCP tool is
+checked against the binding table by the guard before its handler runs; an
+MCP server's transport checks it again on every HTTP request, and a keyed
+model's transport checks it there, on every request, just before the key
+is injected. The one outbound
+exchange that is not a primitive application is the MCP handshake when a
+session starts, which sends no conversation content and checks the binding
+the same way before a key goes out.
+
+\paragraph{In: what reaches the model passes one door.} Tool results, your
+messages, attachments, the plan and the model's own replies enter the
+model's context only as recorded events. \code{Session.Record} redacts each
+one, the log writer redacts again, and the window is built from what was
+written. Nothing is appended to the conversation by any other route, and a
+lint in CI checks it. The two parts of a request that are not events, the
+system prompt and the tool list, are assembled when the session starts;
+the tool descriptions, including those an MCP server wrote, pass the same
+redactor, and a repository's notes were redacted when they were saved.
+
+\section{The channels}
+
+{\small
+\begin{longtable}{@{}L{2.3cm}L{4.3cm}L{4.5cm}L{3.3cm}@{}}
+\toprule
+Channel & What crosses & Who decides & Recorded as \\
+\midrule
+\endhead
+Models & out: the window (the conversation, or a narrowed part of it); in: text, thinking, tool calls & you, by configuring the model; for a keyed model, the binding table, on every request & \code{llm.req}, \code{llm.resp}, \code{egress.check} \\
+MCP servers & at session start: the server's tool list; per call: arguments out, a result in & you, in \file{mcp.toml}: which servers, which tools, in which workspaces; the pinned manifest; the guard, per call & \code{egress.check}, \code{guard.decision}, \code{tool.call}, \code{tool.result} \\
+Keyed HTTP & a request with a credential injected at a bound position, and its response & the binding table; the guard's L1 and L2 checkers & \code{egress.check}, \code{guard.decision} \\
+The judge & the ask and the plan (more at a higher content level), redacted & the binding table; the content level \code{jev.content} & \code{jev.req}, \code{gate.plan} \\
+Files & file contents in; writes out to disk & the pin, the path denylist, the confirm & \code{guard.decision}, \code{tool.result}, \code{file.version} \\
+Programs & a command line out; its output in; anything the program itself does & the confirm, or a standing approval; the guard sees the command line only & \code{guard.decision}, \code{tool.result} \\
+You & messages, answers to prompts, secrets typed into a masked prompt, Scheme you evaluate & you & \code{user.msg}, \code{guard.decision}, \code{cred.register}, \code{eval.req} \\
+Attachments & a document's extracted text & you, by attaching it & \code{attach} \\
+\bottomrule
+\end{longtable}}
+
+\section{Models}
+
+The control model answers \code{(model-turn)}; any other model you configure
+under \code{[models.NAME]} answers \code{(model-turn "NAME")}. Each request
+sends the window built from the log: by default the whole conversation, or,
+when a strategy has called \code{narrow-context}, only the task and the plan
+it chose. What comes back is text, the model's thinking, and tool calls.
+
+A model that needs a key names a credential class in its configuration. On
+every request the transport looks the class up in the binding table for the
+model's host, method and the position \code{header:Authorization:Bearer},
+records the lookup as \code{egress.check}, and injects the key only if it is
+bound. A model that needs no key\,---\,a server on your own machine or
+network\,---\,has no such check. In both cases the decision that the window
+may go to that model is yours, made when you configured it: \nodwyn{} does
+not judge the content of a model request, because the whole point of the
+request is to send the conversation.
+
+The reply is buffered until it is complete, then redacted, then shown and
+recorded, so a key split across two streamed chunks is still caught. Thinking
+is recorded and may be shown, but is never sent back to a model.
+
+\section{MCP servers}
+
+An MCP server offers tools over the network. \nodwyn{} speaks MCP's
+streamable HTTP transport to remote servers; it starts no server process of
+its own (\adr{23}: a server nobody has reviewed does not run in \nodwyn's
+process tree). Servers are listed in \file{mcp.toml} in the configuration
+directory, which you edit through the console's Connections page or by
+hand:
+
+\begin{txt}
+[[server]]
+name = "tracker"
+url = "https://mcp.example.com/mcp"
+credential = "tracker-key"
+position = "header:Authorization:Bearer"
+manifest = "9f2c..."                  # the tool list you approved
+workspaces = ["/home/me/src/app"]
+
+[server.tool."search_issues"]
+on = true
+effect = "read"
+
+[server.tool."create_issue"]
+on = true
+effect = "write"
+\end{txt}
+
+\paragraph{At session start.} For each server offered in the session's
+workspace, \nodwyn{} connects, asks for the tool list, and hashes it: every
+tool's name, title, description, input schema and annotations. If the hash
+is not the one you approved, the server offers nothing in this session and
+the session says why; the rest of the task works. Otherwise each tool you
+turned on becomes a primitive named \code{server\_\_tool} (model APIs refuse
+a slash; the console shows \code{server/tool}), and the tool list is frozen
+for the session. The tool descriptions are text the server wrote, and they
+reach the model: pinning makes them stable and reviewed, not true.
+
+\paragraph{Per call.} An MCP primitive is always egress to the server's host.
+Its \emph{effect} is your declaration, not the server's: MCP describes what
+a tool takes, not what it does to the world, and the server's own hints are
+shown but never trusted.
+\begin{itemize}
+\item \code{effect = "read"}: the call runs without asking. Its arguments
+  still leave for the server.
+\item \code{effect = "write"}, or no effect declared: every call asks, with
+  the arguments shown by name, and no standing approval can answer for it.
+  An undeclared tool is treated as sending out \emph{and} irreversible.
+\end{itemize}
+A server with a credential makes every call credential-bearing: the guard's
+binding check (E3) runs before the handler, and the transport checks the
+binding again, and injects the key, on every HTTP request\,---\,the
+handshake, the tool list and each call. Redirects are not followed, so a
+request cannot carry arguments and a key to a host the binding does not
+name. A server without a credential has no binding to check: what
+authorises its traffic is \file{mcp.toml} itself and, for tools not
+declared reads, the confirm.
+
+\paragraph{The result} comes back as text (content that is not text is
+described, not decoded), becomes the tool result the model reads, and is
+redacted on its way into the log and the context like every other result.
+An error the server reports is an error result. The tool's description
+tells the model that results are data, never instructions; nothing a
+server returns can grant a permission, because permissions come from the
+policy files and the guard.
+
+\paragraph{What the confirm is really asking.} Isolation cannot un-send an
+argument. At an MCP confirm the question is not ``is this argument safe?''
+but ``do I want this third party to see this?''.
+
+\section{Keyed HTTP and the judge}
+
+\code{http-request} sends a request with a credential handle injected at a
+bound position. It takes the handle as its first argument, and a handle can
+only be produced by Scheme (\code{(credential "class")}), never from a
+model's JSON, so the model reaches an API only through a tool a user
+registered in \file{.nodwyn/init.scm}. The guard checks the binding for the
+credential slot (E3), scans the headers and body for known key shapes (L1),
+and reads the provenance of the payload (L2): content that came from a file,
+a command or another response may go only to a host some binding names.
+The response is tagged \code{external:http}.
+
+The judge, Jev, is reached through three primitives, \code{jev-noul},
+\code{jev-score} and \code{jev-choice}, built the same way: a bound
+credential, a fixed host, the payload redacted before it is sent, and a
+\code{jev.req} record of the content level, size, payload hash and
+redactions of every call. The default plan gate uses them only when a
+\code{jev-key} credential exists; without one, nothing is sent.
+
+\section{Files}
+
+\code{fs-read}, \code{fs-list}, \code{fs-find}, \code{index-grep},
+\code{git-status} and \code{git-diff} read; \code{fs-write} and
+\code{fs-edit} write. Every path argument is resolved, symbolic links
+included, and must land under the session's root, its scratch directory, or
+a folder the workspace mounts; a read-only mount refuses every write.
+Credential-shaped files (\file{.env*}, \file{*.pem}, \file{*.key},
+\file{id\_*}, \file{.netrc} and others) are refused wherever they are.
+Writes ask, with a diff, unless a standing approval covers the path; a write
+to \file{.nodwyn/}, \file{.git/}, CI configuration, \file{scripts/} or the
+\file{Makefile} always asks, because what is written there later runs with
+your authority. Outside a git work tree, a file's previous content is kept
+before it is replaced (\code{nodwyn versions}, \code{nodwyn undo}). What is
+read enters the context redacted, and as a Scheme value it carries the tag
+\code{external:file}.
+
+\section{Programs}
+
+\code{shell-exec} runs a command to completion; \code{shell-start},
+\code{shell-read}, \code{shell-send} and \code{shell-stop} run one that
+keeps going. This is the widest channel, and the one the guard sees least
+of: it sees the command line, and nothing after the program starts.
+
+What it does with the command line: asks, unless a standing approval covers
+the command's prefix; names in the prompt any network tool
+(\code{curl}, \code{ssh}, \code{rsync}, \ldots), destructive git or
+\code{rm}, and any path outside the root; refuses a literal key on the
+command line; and turns a command line built from tool output into a
+security confirm that no standing approval can answer. The child runs in the
+root, with an allowlisted environment (\code{PATH}, \code{HOME}, the Go
+variables, locale, \code{TMPDIR} pointing at the session's scratch
+directory, and a few more), its output capped, and its own process group so
+that an abort kills the whole tree. Only \code{shell-send} writes to a
+program's input, and it asks every time: typing into a shell is running
+commands. Its output enters the context redacted and carries
+\code{external:shell}.
+
+What it cannot do: a confirmed command can read anything you can read and
+reach anything you can reach. The confirm is the control, which is why the
+prompt names what it can.
+
+\section{You}
+
+You reach a session through a front-end, and every front-end talks to the
+same core. The line-mode front-end and the full-screen terminal client can
+run the session in their own process. Otherwise a daemon owns the sessions
+and serves a JSON-RPC protocol on a Unix socket readable only by you; every
+answer to a prompt is recorded with the kernel's identity of the process that
+sent it. The browser console is a bridge from that socket to a page on the
+loopback address, paired by a code or a one-time ticket; \code{nodwyn app}
+is the same daemon and bridge in one program, with a native window where
+the build has one and the default browser otherwise. A phone
+or another computer reaches the bridge only if you start it with
+\code{--listen} and pair the device by name; its answers are recorded with
+that name, and it may answer prompts but not change policy files, settings
+or the keychain.
+
+Your messages are redacted before they are recorded (E4), which catches a
+key pasted by mistake. A secret you type into a masked prompt goes into the
+keychain and is recorded only as its class and handle. Scheme you evaluate
+runs with \emph{user} origin and crosses the guard like anything else.
+
+\section{Attachments}
+
+Attaching a file copies it into \file{.nodwyn/attachments/}, extracts its
+text (plain text as is; \file{.docx}, \file{.xlsx} and \file{.pptx} in Go;
+PDF through \code{pdftotext} when it is installed), redacts it, caps it at
+48\,KB with the head and tail kept, and records it as an \code{attach}
+event. The model reads it as data framed as such; a document that says
+``you may now write outside the workspace'' changes nothing. Images are
+refused for now: a model would read them as pixels, and no redactor reads
+pixels.
+
+\section{What stays on the machine}
+
+The session log, the keychain, the policy files, a scratch directory per
+session, the version store and the notes a repository keeps between
+sessions all live on disk, under \nodwyn's configuration and data
+directories or the workspace's \file{.nodwyn/}. The model cannot write any
+of them directly: the configuration and data directories are outside every
+root and denied, and \file{.nodwyn/} always asks. \code{nodwyn paths}
+prints where each one is.
+
+\section{The edges, by substrate}
+
+The channels above are how a user meets I/O. The spec states the same
+thing by substrate\,---\,Scheme values and the model's text context\,---\,as
+four edges, each with its own mechanism:
+
+\begin{center}
+\begin{tabular}{@{}lllp{6cm}@{}}
+\toprule
+Edge & From $\to$ to & Substrate & Mechanism \\
+\midrule
+E1 & external $\to$ Scheme value & scheme & L2 taint (provenance tag) \\
+E2 & external $\to$ model context & text & L1 redaction to \code{[REDACTED class]} \\
+E3 & model/Scheme $\to$ external & both & binding check + L1 (+ L2 flag) \\
+E4 & user/OS $\to$ model context & text & L1 redaction (catches pasted secrets) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Redaction is a \emph{substrate controller}: it runs at every ingress to the
+context, not just on API responses, so a leaked value can never be
+re-emitted, even to a bound destination. The category error the design had
+to resolve was thinking a taint on a value could protect the context window;
+it cannot (a window is text, not a value), so the text layers run there.
 
 \chapter{Secrets are credentials}
 
@@ -96,70 +364,56 @@ Pass a secret-bearing egress \emph{iff} its class is authorised for
 (destination, positions, methods).
 \end{quote}
 
-The binding table is user-owned: rows of \code{(class $\to$ destination,
-positions, methods)}. A bound egress passes silently and is logged. An
-unbound or unknown one is denied by default (a confirm is opt-in policy)\,---\,it
+The binding table is user-owned. It lives in \file{bindings.toml}, and
+each row names a class, a destination, and the positions and methods
+allowed there. A bound egress passes
+silently and is logged. An unbound or unknown one is denied by default (a
+confirm is opt-in policy, and then the prompt can save the exact row)\,---\,it
 never fails open. The harness does not \emph{classify} a secret; the user
 \emph{binds} one, and the class is a name the user chose when registering it.
 
-\section{Two planes}
+\begin{txt}
+[[bind]]
+class = "openai-key"
+dest = "api.openai.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["POST"]
+\end{txt}
 
-The harness's own model key\,---\,when it has one\,---\,is \emph{control plane}:
-its identity, its standing; not something it can grant or revoke, and not
-something the judge audits. Every \emph{other} credential the user registers
-is \emph{data plane}: bound like any other, injected only at its destination.
-Under this split, other LLM providers become tools among tools: an OpenAI or
-Anthropic call is an egress with a bound credential, judged exactly like an
-HTTP request to anywhere else. In the bootstrap, the control plane is a local
-model that needs no key at all, so the first real secret on the machine will
-be the judge's own API key, in Phase~5.
+\section{One table for every key}
+
+The same table authorises every key \nodwyn{} holds: a model's, an MCP
+server's, the judge's, and any API a user tool calls through
+\code{http-request}. The spec distinguishes the harness's own model key,
+\emph{control plane}, from every other credential, \emph{data plane}, so
+that other providers become tools among tools. In the code the distinction
+is narrower than that: a keyed control model is stored in the keychain and
+bound like any other key, and what remains special about it is only that
+its requests carry the conversation by design, so their content is not
+judged. The judge is never asked about the control model.
 
 \section{The content-detection ladder}
 
-Binding is the authority, but three local, zero-retention layers watch
-content, in a fixed order, each cheaper than the next and each able to stop
-the escalation:
+Binding is the authority, but local, zero-retention layers watch content, in
+a fixed order, each cheaper than the next and each able to stop the
+escalation:
 
 \begin{center}
 \begin{tabular}{@{}lp{2.2cm}p{7.2cm}p{2.6cm}@{}}
 \toprule
-Layer & Acts on & Fires when & Cost \\
+Layer & Acts on & Fires when & Status \\
 \midrule
-L1 & text I/O & a known secret \emph{shape}: regex, entropy, prefix. Fails closed. & sub-millisecond \\
-L2 & Scheme values & a value tagged at ingress as a known class heads for egress. O(1) flag at the FFI. & nothing \\
-L3 & text I/O & only the class-unknown residual L1/L2 did not decide. A calibrated $P(\text{secret})$ that feeds the decision with binding, never alone. & learned; optional \\
+L1 & text I/O & a known secret \emph{shape}: prefix, structure, PEM. Fails closed. & built \\
+L2 & Scheme values & a value tagged at ingress as coming from outside, or from a credential, heads for egress. & built \\
+L3 & text I/O & only the class-unknown residual L1/L2 did not decide. A calibrated $P(\text{secret})$ that feeds the decision with binding, never alone. & planned, optional \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 The deterministic layers early-terminate the learned one: if L1 or L2 already
 \emph{knows}, L3 is not paid for. L2 is scoped honestly\,---\,it stops the
-\emph{model's} indirect leak, not a user who can strip a tag on purpose, and
-the spec rates it accordingly (0.54).
-
-\section{The four edges}
-
-Every path between the outside world and the two substrates\,---\,Scheme values
-and the model's text context\,---\,is an edge with its own mechanism:
-
-\begin{center}
-\begin{tabular}{@{}lllp{6cm}@{}}
-\toprule
-Edge & From $\to$ to & Substrate & Mechanism \\
-\midrule
-E1 & external $\to$ Scheme value & scheme & L2 taint (provenance tag) \\
-E2 & external $\to$ model context & text & L1+L3 redaction to \code{[REDACTED class]} \\
-E3 & model/Scheme $\to$ external & both & binding check + L1/L3 (+ L2 flag) \\
-E4 & user/OS $\to$ model context & text & L1+L3 redaction (catches pasted secrets) \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-Redaction is a \emph{substrate controller}: it runs at every ingress to the
-context, not just on API responses, so a leaked value can never be
-re-emitted, even to a bound destination. The category error the design had
-to resolve was thinking a taint on a value could protect the context window;
-it cannot (a window is text, not a value), so the text layers run there.
+\emph{model's} indirect leak, not a user who can strip a tag on purpose with
+\code{wipe} or \code{box}, which only user-originated code may call.
 
 \section{The judge: where it is allowed}
 
@@ -170,85 +424,97 @@ this plan good enough for the user's ask?}\,---\,has no answer without the ask
 and the plan, and both are content.
 
 So Jev is treated as what it is: an \emph{egress edge}. Its credential is a
-bound data-plane credential (E3), and its payload passes the same
-redaction controller as the model context (E2/E4) before it leaves. No
-bespoke sanitiser; two existing mechanisms composed. What may go beyond
-the ask and the plan is a user policy\,---\,\code{jev.content}: \code{none},
-\code{plan} (default), \code{plan+summaries}, or \code{full}, the last
-opt-in per repository because it is the level at which proprietary code is
-retained elsewhere\,---\,and every call is logged with its level, size, payload
-hash and the redactions it triggered.
+bound credential (E3), and its payload passes the same redaction controller
+as the model context (E2/E4) before it leaves. What may go beyond the ask
+and the plan is a user policy\,---\,\code{jev.content}: \code{none},
+\code{plan} (default), \code{plan+summaries}, or \code{full}\,---\,and every
+call is logged with its level, size, payload hash and the redactions it
+triggered.
 
 Two seams:
 
 \begin{description}[leftmargin=1.6em]
 \item[Seam A] score a draft \emph{plan} against the \emph{ask} for quality,
   coherence and fulfilment; the model revises on a low score, at most three
-  rounds.
+  rounds. The default plan gate does this.
 \item[Seam C] score an ambiguous egress \emph{situation}\,---\,class,
-  destination, scope\,---\,never the value.
+  destination, scope\,---\,never the value. \code{jev-choice} makes it
+  possible; nothing in the default loop or the guard calls it.
 \end{description}
 
 Never: a secret value (enforced by redaction, not by withholding content),
-control flow, its own loop, or the harness's control-plane credential. The
-principle, restated: the judge judges intent and plans over \emph{redacted}
-content; the local stack judges provenance and secret shape, and is the
-only thing that ever sees a value.
+control flow, its own loop, or the harness's control model. The local stack
+judges provenance and secret shape, and is the only thing that ever sees a
+value.
 
 \chapter{The loop and the guard}
 
-The agent loop is the plain one: ask the model; run the tool it asks for,
-through the guard; feed the result back; ask again. Stop on a plain answer or
-a hard stop. No sub-agents in the core loop.
+The agent loop is the plain one: ask the model; run the tools it asks for,
+through the guard; feed the results back; ask again. Stop on a plain answer
+or a hard stop.
 
 The loop is itself a Scheme procedure, \code{agent-turn}, so how a turn goes
 can change without changing Go: plan first, check with the judge, stop a
-batch of calls at the first failure. What a turn must not skip stays in Go,
-behind a few primitives: windows built from the log, only the model's own
-calls run, exactly one result per call, and budgets and a progress guard
-that the procedure cannot catch (\adr{26}). The same procedure can route
-work: narrow the context to a task and a plan, and hand it to another model
-the user configured (\adr{27}).
+batch of calls at the first failure, hand part of the work to a sub-agent in
+a narrowed context of its own. What a turn must not skip stays in Go, behind
+a few primitives: windows built from the log, only the model's own calls
+run, exactly one result per call, and budgets and a progress guard that the
+procedure cannot catch (\adr{26}). The same procedure can route work: narrow
+the context to a task and a plan, and hand it to another model the user
+configured (\adr{27}).
 
-Before each message, a plan gate: a yes/no from the judge on the abstract
-intent (``is this multi-step?''), logged per message, plus a code-enforced
-hard trigger for irreversible or high-stakes actions (force pushes,
-recursive deletes, writes outside the tree, any unbound egress). The gate is
-chosen over a pure pull model because it is auditable per message and
-improves as the judge improves.
+The default procedure runs a plan gate first. With a judge configured, the
+judge says whether the request needs a plan; if it does, a read-only
+sub-agent looks around, the model drafts a plan, the judge scores it against
+the ask, and the model revises it at most three times. The outcome is
+recorded per message, and the plan stays in the model's view for the rest
+of the turn. A supervised run's turns always plan, and until a plan is
+recorded the core refuses anything irreversible.
 
 The guard is a pipeline of \emph{checkers}. Each looks at the primitive's
 declared metadata and its actual arguments and returns a verdict; the
 strictest wins (deny over confirm over allow). A confirm is put to the user
 through a \emph{confirmer} the core implements as an event plus a wait, so
 the guard never knows what a terminal is. A \emph{standing approval}\,---\,a
-command prefix or a write path the user authorised ahead of time\,---\,turns a
-confirm into an allow and never turns a deny into anything. Every decision
-that reaches the host, and every non-allow, is logged with who asked (the
-user, the model or the harness) and why.
+command prefix or a write path the user authorised ahead of time\,---\,turns an
+ordinary confirm into an allow and never turns a deny into anything. A
+\emph{security} confirm\,---\,a write to a protected path, content that looks
+like a key, a command line built from tool output\,---\,cannot be answered by
+a standing approval, and an unattended run refuses it. A project may add
+its own checkers in Scheme (\code{register-check}); they can deny or ask,
+never allow. Every decision that reaches the host, and every non-allow, is
+logged with who asked (the user, the model or the harness) and why.
 
 \chapter{Memory}
 
 Three tiers, one truth:
 
 \begin{itemize}
-\item \textbf{Disk}: the lossless log plus a session-scoped structural index.
-  Source of truth.
-\item \textbf{Cache}: summaries, written \emph{as log entries}, rebuildable and
-  revocable, possibly stale.
-\item \textbf{RAM}: the token-budgeted window, with surgical pull on demand.
+\item \textbf{Disk}: the lossless log. Source of truth.
+\item \textbf{Cache}: summaries and handover notes, written \emph{as log
+  entries}, rebuildable and revocable, possibly stale.
+\item \textbf{RAM}: the token-budgeted window, rebuilt from the log for every
+  request.
 \end{itemize}
 
-v0 has no cross-session memory and no embedding index; retrieval is text
-search (grep). The bootstrap ships a deliberately naive
-window\,---\,elide the oldest tool results, then the oldest turns\,---\,but even it is
-rebuilt from the log on every request, and it elides \emph{in place} so the
-request prefix never changes and the model server's cache keeps hitting.
+The window keeps the request prefix byte-stable so that the model server's
+prefix cache keeps hitting: elision is sticky, and it happens in bursts,
+from a high-water mark down to a low-water mark, oldest tool results first,
+the user's words never. Before trimming would begin, the default loop
+\emph{compacts}: the model writes a handover note and the conversation goes
+on from it, while the log keeps everything. A user may also write a summary
+of a span by hand and revoke it later.
 
-\chapter{Honest limits}
+Retrieval is text search over the current tree (\code{index-grep}); there
+is no embedding index. One thing crosses sessions: a repository's
+\emph{notes}, which a strategy saves and the next session in the same
+repository shows as the agent's own leads, not as instructions. And
+\code{/optimize} reads a repository's past session logs to improve its
+\file{.nodwyn/init.scm}, asking before every write.
 
-The spec records its own confidence, and the low numbers are the useful
-ones.
+\chapter{Honest limits}\label{ch:limits}
+
+What \nodwyn{} does not protect against, or does not yet:
 
 \begin{enumerate}[leftmargin=2em]
 \item L2 is scoped, not a security boundary. It stops the model's
@@ -257,15 +523,31 @@ ones.
 \item A bare ``confirm'' can be uninformed consent. If the class is also
   unknown, the prompt is a rubber stamp. Mitigation: always name class and
   destination; prefer requiring a binding to a bare yes.
-\item L3's value is its training data: strong for known shapes, weak for a
-  novel internal token\,---\,exactly the residue binding catches.
-\item ``The egress surface is closed'' stands at 0.30 until redaction is a
-  substrate controller and E4 is covered. Once all four edges are guarded,
-  the honest statement is: no path exists for a secret \emph{value} to egress
-  unless bound or explicitly re-confirmed\,---\,but ``closed'' is the user's
-  affirmation, not something the harness can prove of itself.
+\item L3 does not exist yet. L1 recognises known key shapes; a novel
+  internal token, a password or an encoded key passes it. Binding still
+  governs every key \nodwyn{} holds, but a secret that is only content is
+  not recognised.
+\item ``The egress surface is closed'' is not something the harness can
+  prove of itself. With all four edges guarded, the honest statement is: no
+  path exists for a secret \emph{value} to egress unless bound or explicitly
+  confirmed\,---\,and ``closed'' is the user's affirmation.
+\item A confirmed command is a confirmed command. The guard sees a command
+  line, not what the program does; a \code{y} to a script is a \code{y} to
+  everything the script does.
+\item A model provider, and an MCP server, sees what it is sent.
+  Configuring a model is consenting that the window leaves for it;
+  approving an MCP tool is consenting that its arguments leave for the
+  server. MCP tool parameters come from the server's schema and carry no
+  roles, so the role-reading checkers (L1 on payloads, L2 on provenance) do
+  not inspect them, and an MCP result carries no \code{external} tag;
+  \adr{23} calls for both. Their results are still redacted on the way in.
+\item \nodwyn{} controls where content goes, not what content means. L1
+  detects credentials; nothing recognises a contract, a medical letter or a
+  salary list. What applies to those is the pin and the mounts (what can be
+  read at all), the confirm (what leaves), the binding table (where it may
+  go) and the judge's content level.
+\item A paired device that may approve \code{shell-exec} can run commands as
+  you. ``Answers, not policy'' limits what the console lets a device change,
+  not what its answers authorise. Pair only devices you would hand a
+  terminal.
 \end{enumerate}
-
-And in the bootstrap, before any of P3--P7 exist, there is a fifth: the
-\code{shell-exec} hole. A \code{y} to \code{cat \textasciitilde/.ssh/id\_rsa}
-is a \code{y}. The prompt names the path; the operator reads it.

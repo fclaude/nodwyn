@@ -1,91 +1,130 @@
 \chapter{Event kinds}
 
-\begin{center}
-\small
-\begin{tabular}{@{}lp{9.6cm}@{}}
-\toprule
-Kind & Payload \\
-\midrule
-\code{session.start} & version, repo, provider, model, url, tools \\
-\code{session.end} & reason; absent after a crash \\
-\code{user.msg} & text \\
-\code{llm.req} & model, messages, tools, est\_tokens, elided seqs \\
-\code{llm.resp} & content, thinking, tool\_calls, done\_reason, usage \\
-\code{tool.call} & id, name, args, origin \\
-\code{tool.result} & id, name, ok, value or error, ms \\
-\code{guard.decision} & prim, origin, decision, checker, reason, answer, args, detail \\
-\code{egress.check} & (P3) binding lookup for a secret-bearing egress \\
-\code{gate.plan} & (P5) noul gate and Seam A outcome \\
-\code{cred.register} & (P3) class and handle id only \\
-\code{redact.event} & (P7) a \code{[REDACTED class]} substitution \\
-\code{summary} & (P10) a rebuildable summary over a seq range \\
-\code{note} & free-form text: hard stops, standing approvals, turn trust \\
-\bottomrule
-\end{tabular}
-\end{center}
+The log's kinds are fixed in \file{internal/log/log.go}; a reader rejects any
+other, and rejects a gap in \code{seq}.
 
-Ephemeral events (never logged): \code{stream.text}, \code{stream.thinking},
-\code{prompt.confirm}, \code{status}, \code{error}, \code{output}.
+{\small
+\begin{longtable}{@{}L{4.8cm}L{10.2cm}@{}}
+\toprule
+Kind & What it records \\
+\midrule
+\endhead
+\code{session.start} & version, root, the control model, how many tools, the window recipe \\
+\code{session.resume} & a new process continuing the same conversation \\
+\code{session.end} & clean shutdown; absent after a crash \\
+\code{user.msg} & text you sent, redacted \\
+\code{harness.msg} & text the loop's strategy added for the model \\
+\code{attach} & an attached file: name, type, hash, extracted and redacted text \\
+\code{llm.req} & a request to a model: which model, what was elided, settings, a digest \\
+\code{llm.resp} & the model's reply: content, thinking, tool calls, stop reason, usage \\
+\code{tool.call} & a tool application about to be evaluated, with its origin \\
+\code{tool.result} & its result or error, redacted \\
+\code{guard.decision} & primitive, origin, verdict, checker, reason, answer and who answered \\
+\code{egress.check} & a binding lookup for a keyed request: class, host, method, outcome \\
+\code{gate.plan} & the plan gate's outcome for a message \\
+\code{jev.req} & a call to the judge: content level, size, payload hash, redactions, answer \\
+\code{cred.register} & a credential stored: class and handle id only \\
+\code{redact.event} & a \code{[REDACTED class]} substitution and where it happened \\
+\code{binding.change} & a binding row requested, applied or refused \\
+\code{approval.change} & a standing approval granted explicitly \\
+\code{turn.checkpoint} & a budget checkpoint and its answer \\
+\code{turn.end} & the durable end of a turn \\
+\code{run.state}, \code{run.turn}, \code{run.checkpoint} & a supervised run's progress \\
+\code{context.narrow}, \code{context.widen}, \code{context.fold}, \code{result.fold} & changes to what later windows show \\
+\code{summary}, \code{summary.drop} & a revocable summary over a span, and its revocation \\
+\code{file.version} & a file's previous content, kept before a write \\
+\code{eval.req}, \code{eval.result} & Scheme you evaluated, and its redacted result \\
+\code{note} & free-form: hard stops, standing approvals, turn trust \\
+\bottomrule
+\end{longtable}}
+
+\begin{sloppypar}
+Ephemeral events reach a front-end but are never logged:
+\code{stream.text}, \code{stream.thinking}, \code{prompt.confirm},
+\code{prompt.secret}, \code{prompt.checkpoint}, \code{prompt.closed},
+\code{status}, \code{error}, \code{output}, \code{policy.result},
+\code{inspection.result}.
+\end{sloppypar}
 
 \chapter{Decision records}
 
-\begin{center}
-\small
-\begin{tabular}{@{}lp{10.4cm}@{}}
+{\small
+\begin{longtable}{@{}lp{9.4cm}l@{}}
 \toprule
-ADR & Title \\
+ADR & Title & Status \\
 \midrule
-1 & Value representation: one tagged struct with a reserved taint field \\
-2 & Log format and event kinds \\
-3 & Model tool calls are Scheme applications \\
-4 & Primitive metadata \\
-5 & Keychain crypto \\
-6 & Unbound egress defaults to deny \\
-7 & Scheme scope: written from scratch, documented first \\
-8 & LLM client is a Provider interface, Ollama first \\
-9 & Context and cache discipline \\
-10 & Core/front-end boundary \\
-11 & Terminal stack \\
-12 & Two binaries, always \\
-13 & Promotion \\
-14 & \file{.nodwyn/init.scm} convention \\
-15 & Friction log \\
-16 & Fallback is allowed and honest \\
-17 & Standing command approvals (amended: writes) \\
-18 & Turn budgets and long-running turns (proposed) \\
-19 & Jev sees content, never secrets (amends the spec) \\
-20 & Jev as egress primitives; register-check (proposed) \\
-21 & A real UI after v0: daemon, protocol, clients (proposed) \\
-22 & Cowork: workspaces, attachments, MCP servers (proposed) \\
-23 & Untrusted MCP servers: isolation, pinning, fail-closed (proposed) \\
-24 & OAuth2 credentials: acquisition, refresh, scopes (proposed) \\
+\endhead
+1 & Value representation: one tagged struct with a reserved taint field & accepted \\
+2 & Log format and event kinds & accepted \\
+3 & Model tool calls are Scheme applications & accepted \\
+4 & Primitive metadata & accepted \\
+5 & Keychain crypto & accepted \\
+6 & Unbound egress defaults to deny & accepted \\
+7 & Scheme scope: written from scratch, documented first & accepted \\
+8 & LLM client is a Provider interface, Ollama first & accepted \\
+9 & Context and cache discipline & accepted \\
+10 & Core/front-end boundary & accepted \\
+11 & Terminal stack & accepted \\
+12 & Two binaries, always & accepted \\
+13 & Promotion (amended: no tags) & accepted \\
+14 & \file{.nodwyn/init.scm} convention & accepted \\
+15 & Friction log & accepted \\
+16 & Fallback is allowed and honest & accepted \\
+17 & Standing command approvals (amended: writes) & accepted \\
+18 & Turn budgets and long-running turns & partly built \\
+19 & Jev sees content, never secrets (amends the spec) & accepted \\
+20 & Jev as egress primitives; \code{register-check} & built \\
+21 & A real UI after v0: daemon, protocol, clients & partly built \\
+22 & Cowork: workspaces, attachments, MCP servers & partly built \\
+23 & Untrusted MCP servers: isolation, pinning, fail-closed & partly built \\
+24 & OAuth2 credentials: acquisition, refresh, scopes & proposed \\
+25 & Log-derived ingress redaction and buffered model output & accepted \\
+26 & The agent loop is a Scheme procedure & accepted \\
+27 & Configured models and narrowed contexts & accepted \\
+28 & A scratch directory beside the repository & accepted \\
+29 & Optional tool parameters & accepted \\
+30 & One app, three ways to reach it: desktop, browser, phone & accepted \\
+31 & The project is renamed \nodwyn{} & accepted \\
+32 & The default loop works the way pil did & accepted \\
+33 & Go 1.26 is the base & accepted \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{longtable}}
 
 \chapter{Glossary}
 
 \begin{description}[leftmargin=2.2em]
+\item[attachment] a file you brought into a conversation: copied into the
+  workspace, its text extracted, redacted and capped, and shown to the model
+  as data.
 \item[binding] a user-owned row authorising a credential class for a
   destination, positions and methods; the egress authority.
 \item[checker] one stage of the guard; reads a primitive's metadata and
   arguments, returns a verdict.
-\item[control plane] the harness's own model; configured, and in the
-  bootstrap unkeyed.
-\item[data plane] every credential the user registers; bound and injected
-  only at its destination.
-\item[envelope] the bootstrap-era compensating controls, each retired by
-  the phase that builds the real layer.
+\item[control model] the model \code{(model-turn)} asks, configured as
+  \code{[control]}.
+\item[effect] your declaration of what an MCP tool does: \code{read} or
+  \code{write}; undeclared is treated as egress and irreversible.
 \item[handle] an opaque reference to a keychain entry; a Scheme value that
   can never become text.
 \item[Jev] the external calibrated judge, admitted at Seam A (plans against
   asks) and Seam C (egress situations), over redacted content, never a
   secret value.
-\item[origin] who initiated an evaluation: user or model.
+\item[manifest] an MCP server's tool list; its hash is what you approve.
+\item[mount] a folder outside a workspace's root that its sessions may
+  read, or read and write.
+\item[origin] who initiated an evaluation: the user, the model, or the
+  harness (the loop's strategy).
 \item[primitive] a Go handler in the table; the only way Scheme reaches the
   host.
 \item[promotion] the gated copy of a candidate binary to \code{nodwyn-stable}.
+\item[provenance tag] where a Scheme value came from (\code{external:file},
+  \code{cred:openai-key}, \ldots); the union of a call's arguments flows into
+  its result.
+\item[security confirm] a confirm no standing approval can answer and an
+  unattended run refuses.
 \item[standing approval] a command prefix or write path the user authorised
-  ahead of time; converts a confirm to an allow, never a deny.
+  ahead of time; converts an ordinary confirm to an allow, never a deny.
+\item[strategy] the Scheme procedure that runs a turn, \code{agent-turn}.
 \item[window] the model's context, rebuilt from the log on every request.
+\item[workspace] a session's root plus its mounts.
 \end{description}
