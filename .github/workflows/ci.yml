@@ -1,4 +1,7 @@
 # Optional GitHub mirror. The primary Gitea workflow is .gitea/workflows/ci.yml.
+# For now this runs on the build host's repository-scoped self-hosted runner
+# (nodwyn-runner) because GitHub-hosted jobs are blocked by account billing;
+# return to ubuntu-latest once they run again.
 name: ci
 
 on:
@@ -8,7 +11,8 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, nodwyn]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -16,6 +20,9 @@ jobs:
           # The newest patch of go.mod's base release (ADR 33); go-version-file
           # would install go.mod's 1.26.0 itself.
           go-version: '1.26.x'
+          # The runner keeps its Go module cache between jobs, and its
+          # unprivileged user cannot restore an archive over read-only modules.
+          cache: false
       - name: tools
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@latest
