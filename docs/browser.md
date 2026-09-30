@@ -16,9 +16,10 @@ app window, opens the system's folder chooser. The kind is a label: every
 kind has the same tools and the same guard (see
 [ADR 22](adr/0022-cowork-workspaces-attachments-mcp.md), amended). The
 Workspaces page edits a folder's name, kind and **mounted folders** (other
-folders a task may read, or read and write, by absolute path). These settings
-live in the folder's `.nodwyn/workspace.toml` and apply to tasks started
-afterwards.
+folders a task may read, or read and write, by absolute path). The name is
+kept in `workspaces.toml` in the config directory; the kind and mounts in the
+folder's `.nodwyn/workspace.toml` (a code folder with no mounts needs none).
+They apply to tasks started afterwards.
 
 **Attaching.** The paperclip in either composer attaches files to the next
 message: text formats, `.docx`, `.xlsx`, `.pptx`, and PDF when `pdftotext`
@@ -33,8 +34,8 @@ before changing it. A task's **Changes** list offers **History** per file;
 diff, then your answer), and keeps the current content too. From a terminal:
 `nodwyn versions FILE` and `nodwyn undo FILE`.
 
-**Tools from MCP servers.** Connections › Tools adds a remote server (HTTPS;
-a key goes to the keychain, bound to that host only), lists its tools for
+**Tools from MCP servers.** Connections › Tools adds a remote server (HTTPS, or
+plain HTTP to this computer only; a key goes to the keychain, bound to that host only), lists its tools for
 review, and approves that exact tool list. For each tool you say what it does
 — reads, changes things, or leave it undeclared — and whether it is offered;
 nothing is offered until you choose. An undeclared tool asks every call and
@@ -46,7 +47,7 @@ tasks withhold its tools until you review again.
 ```sh
 nodwyn ui --listen 100.101.102.103:7777          # a tailnet address
 nodwyn ui --listen 100.101.102.103:7777 --name desk.tail1234.ts.net:7777
-nodwyn ui --listen 0.0.0.0:7777 --tls-cert cert.pem --tls-key key.pem
+nodwyn ui --listen 0.0.0.0:7777 --name desk.local:7777 --tls-cert cert.pem --tls-key key.pem
 nodwyn devices                                   # list paired devices
 nodwyn devices revoke phone
 ```
@@ -54,15 +55,20 @@ nodwyn devices revoke phone
 A browser on another machine pairs with the code **and a device name**. It
 gets a device cookie (HttpOnly, SameSite=Strict, Secure over TLS, 180 days);
 `devices.toml` in the config directory keeps only the token's SHA-256, so the
-file cannot pair anything. Revoking takes effect at the device's next request,
-without a restart. Every answer from a device is recorded as the bridge's
+file cannot pair anything. Revoking takes effect without a restart: new
+requests are refused at once, and a console the device already has open is
+closed before its next request, or within five seconds if it is only
+watching. The console answers only to the names it listens on, so a wildcard
+`--listen` (`0.0.0.0`, `::`) needs `--name` with the name browsers use. Every answer from a device is recorded as the bridge's
 kernel identity followed by `via web:NAME`.
 
 A device can read tasks, start and steer them, and answer approvals — one-time,
-for this turn, or for the session, as the core offers. It cannot save a
-credential binding, write a policy file, unlock or create the keychain, change
-the model, or list and revoke devices: those stay with the computer nodwyn runs
-on. A request counts as remote when it comes from another address or names
+for this turn, or for the session, as the core offers; it can also restore a
+kept file version (through the usual approval), save project notes, read the
+policy files, and stop or resume a run. It cannot save a credential binding,
+write a policy file, unlock or create the keychain, change the model, edit
+workspaces, add, review, approve or remove MCP servers, evaluate Scheme, or
+list and revoke devices: those stay with the computer nodwyn runs on. A request counts as remote when it comes from another address or names
 this console by anything but its loopback address (a proxy such as
 `tailscale serve` connects from loopback on a phone's behalf). Launch tickets
 pair only local browsers. Without `--tls-cert`, traffic is unencrypted unless
@@ -80,11 +86,15 @@ nodwyn ui --read-only             # view only; no replies or lifecycle changes
 nodwyn ui --socket /absolute/private/sock --no-open
 ```
 
-`nodwyn ui` connects to an existing daemon. It prints a loopback URL and a random
-pairing code; paste that code into the page. The code is never put in a URL or
-session log. Keep it in the terminal rather than sharing it. The browser receives
-an HttpOnly, SameSite=Strict session cookie; no credential is written to browser
-local/session storage. Restarting the bridge creates a new port and code.
+`nodwyn ui` connects to an existing daemon and opens the page with a one-time
+launch ticket in the address's fragment, so that browser pairs itself. It
+also prints a random pairing code for another browser on this computer;
+paste that code into its page. The code is never put in a URL or session log.
+Keep it in the terminal rather than sharing it. The browser receives an
+HttpOnly, SameSite=Strict session cookie; no credential is written to browser
+local/session storage. Without `--listen`, restarting the bridge creates a new
+port and code; with it, the port is yours and a device's cookie survives
+restarts.
 
 The desk shows saved and open sessions, their repository and last activity,
 recorded conversations, streamed text, collapsed thinking, tool arguments and
@@ -165,18 +175,24 @@ retain plan/log views; current limits, policy and tools require an open session.
 Pending prompts take priority over inspector navigation. Read-only mode has the
 same snapshot inspectors; it cannot start a friction read. It retains its server-side mutation restrictions.
 
-The bridge binds only `127.0.0.1` on a random port. Every request checks its exact
-Host; pairing and WebSocket upgrades also require the exact browser origin.
-Cross-site fetches and framing are refused. Neither the optional general TCP RPC
-transport nor a remotely accessible UI is enabled. The existing Unix socket
-remains private, and kernel peer identity still identifies the bridge process.
+Without `--listen` the bridge binds only `127.0.0.1` on a random port; with it,
+the address you give, for paired devices (above). Every request checks its
+exact Host; pairing and WebSocket upgrades also require the exact browser
+origin. Cross-site fetches and framing are refused. There is no general TCP
+RPC transport: the daemon's Unix socket remains private, and kernel peer
+identity still identifies the bridge process.
 
 Implementation is deliberately small: embedded HTML/CSS/plain JavaScript,
 `internal/frontend/web` for the HTTP/WebSocket boundary, and the existing RPC
-client for session data. There is no JavaScript build system, second history store or policy evaluator. `app.js` owns connection and session
-selection, `prompts.js` renders review choices, and `inspectors.js` renders fixed
-snapshots from the same redacted records; `policy.js` renders policy drafts and
-review controls. A pinned WebSocket library avoids a
+client for session data. There is no JavaScript build system, second history store or policy evaluator.
+`app.js` is the entry point (pairing, router, shell); `connection.js` is the one
+connection to the bridge; `desk.js` holds what every page reads (tasks, what
+needs you); `sidebar.js`, `home.js`, `task.js`, `transcript.js` and `pages.js`
+draw the views; `prompts.js` renders review choices; `setup.js` the first-run
+model and keychain setup; `attach.js` attachments; `markdown.js` model replies;
+`inspectors.js` fixed snapshots from the same redacted records; `policy.js`
+policy drafts and review controls; `dom.js` the helpers that keep every string
+text. A pinned WebSocket library avoids a
 homegrown frame parser; its license is embedded in `nodwyn licenses`.
 
 ## Verification and remaining U3 work
@@ -245,8 +261,10 @@ it does not subscribe the browser to other sessions' transcripts or prompt text.
 Late snapshots cannot replace a newer state. Closed/resolved sessions clear their
 attention indicator, and disconnect clears the live-state claim.
 
-Desktop notifications are optional. Use **Enable desktop notifications** to ask
-this browser for permission; the choice is held only in this tab. When the page
+Desktop notifications are optional. In Settings › Desktop notifications, **Turn
+on for this tab** asks this browser for permission; the choice is held only in
+this tab. In the app window the system's notifications are used instead, with
+no browser permission to grant. When the page
 is hidden, a new needs-answer transition can produce a generic notification.
 It never includes task text, prompt arguments, diffs, credential classes or
 values. Clicking it opens the corresponding session for review. Resolution

@@ -11,6 +11,10 @@ nodwyn app --browser    # the default browser even in the webview build
 nodwyn app --no-open    # print the launch address instead of opening it
 ```
 
+It also takes `--socket PATH` (the daemon socket to attach to or serve on),
+and the remote-device flags of `nodwyn ui`: `--listen ADDR`, `--name
+HOST:PORT` and `--tls-cert`/`--tls-key` (browser.md, "Other devices").
+
 - **A daemon is running** (your usual `nodwyn daemon`): the app attaches to it.
   Closing the app leaves its tasks running, as closing `nodwyn ui` does.
 - **No daemon is running**: the app serves tasks itself on the standard
@@ -35,8 +39,9 @@ host, `POST`, as a bearer `Authorization` header. A keychain is created from
 Settings with a passphrase (at least 8 characters, not recoverable).
 
 When a keychain exists, a new app starts with it locked; Home offers to unlock
-it. Tasks opened after unlocking can use its keys; tasks opened before keep
-running without them. Settings and keychain changes are available only to a
+it. While the model's own key is in a locked keychain, no task can be opened,
+resumed or run: the app asks you to unlock first, so no task starts without
+the key it needs. Tasks opened after unlocking can use every key in it. Settings and keychain changes are available only to a
 console on this computer, never to a paired remote device.
 
 ## The macOS app

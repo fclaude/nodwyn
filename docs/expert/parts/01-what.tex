@@ -68,9 +68,11 @@ three things you will use as an expert:
     conversation from the file alone, and \code{nodwyn replay SESSION -{}-window
     SEQ} rebuilds, byte for byte, the exact request the model saw at that
     moment, and checks its hash.
-  \item \textbf{Audit.} Every guard decision is a line: who asked (you, the
-    model, or the loop), what, which checker decided, why, and what you
-    answered.
+  \item \textbf{Audit.} Every guard decision that matters is a line: every
+    confirm and deny, and every allow of a tool or of anything that touches
+    your computer or the network (pure builtins like \code{+} are allowed
+    silently). Each says who asked (you, the model, or the loop), what,
+    which checker decided, why, and what you answered.
   \item \textbf{Freedom to fold.} Because nothing is ever lost from the log,
     a strategy can hide old tool output from the model, summarise a long
     conversation or run a sub-agent in a private context, and still keep
@@ -128,7 +130,7 @@ knows where the edges are.
     to the task's folder (plus a private scratch directory and any folders
     you \emph{mount} into a workspace). Symbolic links that point outside do
     not escape.
-  \item \textbf{Credential-looking files are refused}: \file{.env*},
+  \item \textbf{Credential-looking files are refused}: \file{.env} and \file{.env.*},
     \file{*.pem}, \file{id\_*}, \file{\textasciitilde/.ssh},
     \file{\textasciitilde/.aws}, \nodwyn's own config and data directories,
     and more.

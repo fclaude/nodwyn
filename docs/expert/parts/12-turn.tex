@@ -58,7 +58,14 @@ read.
 \end{tabularx}
 \end{center}
 
-These are hidden from the model and refused outside a turn:
+All of these are hidden from the model. The ones that act on the
+conversation (\code{model-turn}, \code{run-tools}, \code{skip-tools},
+\code{answer-call}, \code{add-message}, \code{log-note},
+\code{record-plan}, and the context primitives of
+Chapter~\ref{ch:contexts}) are refused outside a turn; the ones that only
+describe the session (\code{model-info}, \code{window-limits},
+\code{unattended?}, \code{repository}, \code{workspace}\ldots) answer at
+any time, which is why you can \code{:eval} them at the prompt:
 
 \begin{txt}
 you> :eval (model-turn)

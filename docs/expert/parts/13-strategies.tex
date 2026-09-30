@@ -13,10 +13,10 @@ The session loads, in this order:
 
 \begin{enumerate}
   \item the prelude (\code{assoc-ref}, \code{compose}\ldots);
-  \item \file{prompts.scm}, \file{strategy.scm} (\code{nodwyn-turn},
-    \code{agent-turn}, \code{ask-model}, the evidence loop),
-    \file{agents.scm} (\code{run-calls}, \code{sub-agent}),
-    \file{compact.scm}, \file{optimize.scm}, \file{plan.scm};
+  \item \file{strategy.scm} (\code{nodwyn-turn}, \code{agent-turn},
+    \code{ask-model}, the evidence loop), \file{prompts.scm},
+    \file{compact.scm}, \file{agents.scm} (\code{run-calls},
+    \code{sub-agent}), \file{optimize.scm}, \file{plan.scm};
   \item the working habits, each wrapping what came before:
     \file{shell.scm}, \file{hygiene.scm}, \file{readdef.scm},
     \file{envhint.scm}, \file{checkloop.scm};

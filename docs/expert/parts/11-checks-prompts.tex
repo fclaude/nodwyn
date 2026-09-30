@@ -41,8 +41,9 @@ error: register-check: register-check: verdict must be "deny" or "confirm", got 
 \end{txt}
   \item Only you can register a check: the primitive is hidden from the
     model and refused to model-originated code and to the loop's strategy.
-  \item Checks are fixed when the session starts, like the tool list.
-    Changing them in \code{init.scm} applies from the next session.
+  \item A check you add with \code{:eval} applies at once. One you add or
+    change in \code{init.scm} applies from the next session: a
+    \code{(reload)} does not re-register checks, and says so.
 \end{itemize}
 
 \begin{careful}

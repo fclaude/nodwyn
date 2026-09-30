@@ -29,17 +29,17 @@ change a file or run a command, the task view shows you the diff or the
 command with the guard's reasons, and buttons:
 
 \begin{center}
-\begin{tabular}{cl}
+\begin{tabularx}{0.92\linewidth}{cX}
 \toprule
 \textbf{key} & \textbf{meaning} \\
 \midrule
 \key{Y} & allow this once \\
 \key{T} & allow every write until this turn ends \\
 \key{A} & always allow under this folder (or this command prefix), for this task \\
-\key{B} & on a network request: save this binding and allow \\
+\key{B} & on a keyed request no binding covers: save that binding and allow (only with \code{policy.unbound = "confirm"}) \\
 \key{N} & deny: the model is told it was refused and carries on \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 Not every button appears on every prompt: \key{T} is for writes, \key{B}

@@ -12,7 +12,8 @@ it is `<user cache directory>/nodwyn/run/sock` (on macOS,
 overrides it. The immediate parent must be owned by the current user, mode
 0700, and not a symlink; missing directories are created privately. The socket
 is mode 0600. Existing paths are never replaced. After a crash, verify that no
-daemon owns the endpoint before removing a stale socket and restarting.
+daemon owns the endpoint before removing a stale socket and restarting;
+`nodwyn app` does this itself, removing a socket nothing answers on.
 
 A connection has the authority of the local user. Opening or resuming a
 repository loads its current `.nodwyn/init.scm` and policy, just as the plain
@@ -79,6 +80,10 @@ with `Class`, `Dest`, `Positions` and `Methods` fields. No credential values are
 included; configuration edits reload before egress. Inspection reports the
 last validated snapshot; invalid reloads deny egress. Older daemons may
 omit this additive field, which clients must distinguish from an empty array.
+Details also contain `workspace` (the folder's kind and mounts, from
+`.nodwyn/workspace.toml`), `git` (whether the root is a git work tree) and
+`mcp` (each MCP server offered in this workspace, with whether its tools are
+offered or why they are withheld).
 The approval fields report current effective prefix lists and turn-wide write approval;
 file-backed and session-only prefixes share the lists. They are not setters.
 
@@ -259,6 +264,26 @@ appended to the kernel identity — `unix:uid=501,gid=20,pid=4242 via web:phone`
 not an authentication; the browser bridge makes it only for a device paired by
 name.
 
+## Workspaces, file history, attachments and MCP servers (ADR 22, 23, 30)
+
+| Method | Params | Result |
+|---|---|---|
+| `workspace.list` | `{}` | Named workspaces: `[{name, path, kind, mounts, git, error?}]` |
+| `workspace.save` | `{"path","name","kind","mounts"}` (all required; `mounts` may be `[]`) | The saved workspace. The name goes to `workspaces.toml` in the config directory; a `code` folder with no mounts keeps no `.nodwyn/workspace.toml`, anything else is written there |
+| `workspace.remove` | `{"path"}` | `{}`; forgets the name, never the folder |
+| `versions.list` | `{"repo","path"}` | A file's kept previous versions (outside git); `repo` must be a named workspace or a folder a task has used |
+| `session.restore` | `{"id","path","hash"}` | `{operation_id}`; writes a kept version back through the ordinary approval, keeping the current content as a version too |
+| `session.attach` | `{"id","path","name"?}` | The attachment's receipt; `path` is absolute (the web console stages uploads itself) |
+| `mcp.list` | `{}` | The configured MCP servers and their state |
+| `mcp.inspect` | `{"name"}` | `{tools, manifest, approved, changed}`: the server's live tools and whether they differ from what was approved |
+| `mcp.save` | `{"server", "api_key"?}` | The saved server; a key goes to the keychain with one binding row for that host |
+| `mcp.approve` | `{"name","manifest"}` | The server with its manifest pinned; refused if the live manifest changed since it was inspected |
+| `mcp.remove` | `{"name"}` | `{}` |
+
+Settings, keychain, `workspace.save`, `workspace.remove` and the `mcp.inspect`,
+`mcp.save`, `mcp.approve` and `mcp.remove` methods are refused to a paired
+remote device in the web console (browser.md).
+
 ## Generated contract
 
 [protocol.schema.json](protocol.schema.json) is generated from the actual Go
@@ -382,8 +407,10 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
 
 ## Supervised run methods
 
-- `run.start {repo, task, wall, max_turns}` creates a new daemon-owned session
-  and returns `{id, state}`. `wall` is a positive duration; `max_turns` is 1–10000.
+- `run.start {repo, task, wall, max_turns, auto_approve}` creates a new daemon-owned session
+  and returns `{id, state}`. `wall` is a positive duration; `max_turns` is 1–10000;
+  `auto_approve` (required, true or false) answers the run's ordinary tool
+  confirms, as `--yolo` does.
 - `run.info {id}` returns task, original deadline, maximum and consumed turns,
   status and reason. A saved formerly running run is reported paused.
 - `run.stop {id}` cancels the driver and its active turn or checkpoint.
@@ -391,7 +418,8 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
   preserving its original deadline and turn count. No transient grants survive.
 
 Run methods are available through local RPC/CLI; the browser can follow the
-session, answer its existing prompts and stop it with `session.abort`. While a
+session, answer its existing prompts, and stop (`run.stop` or `session.abort`)
+or resume (`run.resume`) it. While a
 run is active, session `busy` includes the between-turn wait. Manual send/eval
 and policy/friction operations are rejected until it stops. New `run.state`,
 `run.turn` and `run.checkpoint` records and optional `turn.end.outcome/error`

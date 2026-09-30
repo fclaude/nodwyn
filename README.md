@@ -27,6 +27,7 @@ integrations and front-ends:
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible); derive their context; redact text; detect credential shapes. |
+| `mcp`, `extract` | Talk to remote MCP servers (pinned manifests, bound keys); turn attached documents into redacted text. |
 | `frontend/run` | Chain planned turns under a finite deadline and turn count; ask for continuation without granting tool authority. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nodwyn` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
@@ -59,7 +60,7 @@ Integration-specific settings should not become getters on `Session`.
 
 The roadmap extends these boundaries: ADR 21 uses events for RPC clients;
 ADRs 22–23 bring MCP tools through the primitive/guard path; ADR 24 extends
-the credential lifecycle to OAuth. Local RPC is implemented; MCP and OAuth remain planned extensions. Keep `loop`, `plan`, and
+the credential lifecycle to OAuth. Local RPC and remote MCP servers are implemented (contained local MCP servers and OAuth remain planned). Keep `loop`, `plan`, and
 `event` separate, and keep credential management shared across integrations.
 
 ## Build
@@ -67,7 +68,7 @@ the credential lifecycle to OAuth. Local RPC is implemented; MCP and OAuth remai
 ```
 make build      # bin/nodwyn
 make test       # go test -race ./...
-make lint       # vet, staticcheck, boundary lint
+make lint       # vet, staticcheck, boundary and ingress lints
 make accept     # everything a candidate must pass before promotion
 make smoke      # manual two-turn session against the real control plane
 make selfcheck  # the candidate proves itself (ADR 13)
@@ -129,8 +130,7 @@ command line need confirmation, and child processes get a scrubbed
 environment. P7 redacts recognized credential shapes from user messages,
 tool results, logs, and frontend events. Responses are buffered until complete
 so split stream chunks cannot expose a key. Unknown or encoded secrets are
-not guaranteed to be detected; L3 remains P8. The old operator restrictions
-remain in force for older stable binaries until P7 promotion.
+not guaranteed to be detected; L3 remains P8.
 
 Gitea runs `.gitea/workflows/ci.yml` on every push and pull request using the
 isolated `self-hosted` runner. It executes `make accept` with fresh race tests,
@@ -138,7 +138,6 @@ then cross-compiles Linux and macOS binaries for amd64 and arm64 with cgo
 disabled. Only the Linux amd64 binary is executed on that runner. The real-model
 selfcheck remains a local promotion gate; CI needs no model or credentials.
 
-The same Linux runner can produce release archives for those four targets.
 Cross-compilation does not test macOS behavior or provide Developer ID signing
 and notarization. Publishing downloadable releases is separate from the local
 `nodwyn-stable` promotion; this workflow validates builds without publishing them.
@@ -146,7 +145,7 @@ and notarization. Publishing downloadable releases is separate from the local
 Turns also stop when the model repeats an identical tool call four times in a
 row, retries a denied call three times, or gets ten consecutive tool errors
 (ADR 18). The reason is shown and logged. Any remaining calls in that response
-are marked not executed; a new user message starts a fresh turn. Budgets and checkpoint prompts are implemented; the automatic long-run driver remains planned.
+are marked not executed; a new user message starts a fresh turn. Budgets and checkpoint prompts are implemented, and so is the bounded run driver (`nodwyn run`, below).
 
 Turn limits live under `[budget]` in `config.toml`:
 
@@ -250,4 +249,4 @@ Attach the browser or terminal client to the daemon to answer tool prompts and
 between-turn checkpoints. Disconnecting the client leaves the run owned by the
 daemon. Resume preserves the original deadline and consumed turn count; it never
 replays an interrupted tool or restores temporary approvals. See [runs](docs/runs.md)
-for completion semantics and recovery. Unattended continuation is not enabled yet.
+for completion semantics and recovery. `--yolo` answers a run's tool confirms, but continuing from one turn to the next still waits for a person's yes at the run checkpoint.

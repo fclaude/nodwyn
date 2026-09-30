@@ -38,17 +38,17 @@ no), \code{-{}-max-tool-calls N}, \code{-{}-budget-wall 2h},
 \section*{Answering a confirm}
 
 \begin{center}
-\begin{tabular}{lll}
+\begin{tabularx}{\linewidth}{llX}
 \toprule
 \textbf{terminal} & \textbf{console} & \textbf{meaning} \\
 \midrule
 \code{y} & \key{Y} & once \\
 \code{t} & \key{T} & every write until the turn ends \\
 \code{a} & \key{A} & always, for this directory or command prefix, this session \\
-\code{b} & \key{B} & save this binding and allow (network requests) \\
+\code{b} & \key{B} & save this binding and allow (keyed requests, with \code{policy.unbound = "confirm"}) \\
 anything else & \key{N} & no \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{center}
 
 \section*{Files}

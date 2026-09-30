@@ -205,7 +205,7 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
 
 **Done 2026-09-21 (fallback, ADR 16 — hand-coded by an external agent, not a nodwyn-stable session; reviewed and fixed before commit):** `letrec` (shared frame, mutual closure bindings), `case` (`equal?` on datums), `do` (R5RS steps, Go loop = constant stack), `when`/`unless`, `guard` (R7RS shape `(guard (var clause …) body …)`, `var` bound to `((message . …) (irritants …))`; denials and cancellation are never catchable), `with-output-to-string` (minimal string port), vectors (`#(…)` reader, `vector*` builtins, `equal?`/`eq?` by identity) and block comments `#| … |#`. `define-macro` omitted — the prelude does not need it (ADR 7). Conformance suite roughly doubled (target was ~100); `docs/scheme.md` updated (reader, §2, §3, §4, §5, §9). Kernel version bumped `b1` → `b2`. **Not done (deferred to a follow-up):** source positions in *runtime* errors, characters, full string-port objects — all still listed in §9.
 - **Review fixes (2026-09-21):** `(when)`/`(unless)` no longer panic; `guard` re-shaped to R7RS and made unable to catch `*Denied` or context errors; `case` compares symbols exactly; vectors are a shared `*Vector` (identity, mutation) and `vector` is a declared parameter type; an unterminated `#|` is incomplete input; `with-output-to-string` is reserved like every other form.
-- **Pending:** promote `v0.2-kernel` (`make accept` is green; promotion runs `selfcheck.sh` + needs the control plane — an operator step).
+- **Promoted** as `v0.3-kernel`.
 
 ### Phase 3 — Credentials: keychain, handles, binding table (weeks 7–9)
 
@@ -263,7 +263,7 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
 - **With nodwyn:** promotion retires the last two operator rules in §3.3. nodwyn is now safe to use on *other* repos with real keys. From here, curated session logs go into `test/sessions/` as replay fixtures for P10.
 - **Accept:** canary paste ⇒ context and log show `[REDACTED anthropic-key]`; `cat .env` ⇒ redacted before the model sees it; "repeat the key" ⇒ placeholder only; full exfil suite green. Promote `v0.7-core`.
 
-- **Implemented 2026-09-22; promotion pending.** `Session.Record` is the existing
+- **Implemented 2026-09-22; promoted as `v0.9-core`.** `Session.Record` is the existing
   log-derived context ingress (no separate mutable context store). It sanitizes
   typed payloads, emits substitution metadata, and retains only written events;
   the log writer independently redacts after custom filters. User input is
@@ -272,8 +272,7 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
   split across chunks (ADR 25). Tests cover paste, `cat .env`, repeat-key context,
   replay, JSON escaping, and planner/output bypasses. `make accept` and the live
   candidate selfcheck passed. The selfcheck log in `test/sessions/` is genuine
-  acceptance evidence, not a nodwyn-authored build session. No stable swap or tag
-  has been made; operator-rule retirement remains tied to promotion.
+  acceptance evidence, not a nodwyn-authored build session.
 
 **Milestone M3 (end of week 17): all four edges guarded — v0-core. The 3–4-month cut.** If the budget ends here nodwyn is usable in line mode with the full security model, and has been building itself for 13 weeks.
 
@@ -372,7 +371,7 @@ this is additive work, not a refactor. Four phases, each useful alone:
   indicators and opt-in generic desktop notifications are implemented. The bounded
   supervised run driver is implemented with required plans, finite wall/turn limits,
   checkpoint replies, and explicit resume at recorded turn boundaries; see
-  [runs](docs/runs.md). Unattended policy remains next. Several sessions (workshop serializes
+  [runs](docs/runs.md). Unattended tool approval exists (`--yolo`, a run's `auto_approve`); unattended continuation between turns remains next. Several sessions (workshop serializes
   them), the ADR 18 run driver with checkpoints as notifications, desktop
   notifications for "needs your approval".
 
@@ -509,7 +508,7 @@ Order: D1–D3 make the design real on today's capabilities; D4 is the family
 requirement and comes next; D5 is small once D4's pairing exists; D6–D8
 are the cowork track the canvas assumes.
 
-Status (2026-09-30): **D1–D8 implemented** on branch `ui-convergence`, each
+Status (2026-09-30): **D1–D8 implemented** and merged into `main`, each
 with Go tests and a browser flow (test/browser). D9 is not started: honoring a
 per-host network allowlist inside a container needs an egress proxy, and
 half-isolation would be worse than none. Also open: images as attachments

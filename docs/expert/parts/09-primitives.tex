@@ -39,7 +39,8 @@ The metadata is what makes the guard's job possible:
 \end{center}
 
 Host primitives also give each parameter a \textbf{role}: \code{path},
-\code{dest}, \code{payload}, \code{credential}. The guard reads roles, not
+\code{dest}, \code{payload}, \code{credential}, \code{argv} (a command
+line), \code{method} and \code{position}. The guard reads roles, not
 guesses: it knows the first argument of \code{fs-write} is a path because
 the table says so.
 

@@ -8,9 +8,9 @@ you did not) is in it.
 \section{Finding a session}
 
 \begin{sh}
-nodwyn sessions                          # id, start, state, folder, first message
+nodwyn sessions                          # id, last event, state, folder, first message
 nodwyn replay SESSION                    # the transcript, rebuilt from the file
-nodwyn replay SESSION --show-thinking    # with the model's thinking
+nodwyn --show-thinking replay SESSION    # with the model's thinking
 \end{sh}
 
 \begin{txt}
@@ -46,7 +46,7 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
 \code{user.msg}, \code{harness.msg} & what you sent; what a strategy added with \code{add-message} \\
 \code{llm.req}, \code{llm.resp} & each model request (with its hash and recipe) and reply \\
 \code{tool.call}, \code{tool.result} & each call and its one result \\
-\code{guard.decision} & every allow, confirm and deny, with checker, reason and answer \\
+\code{guard.decision} & every confirm and deny, and every allow of a tool or a host primitive, with checker, reason and answer \\
 \code{egress.check}, \code{jev.req} & keyed requests: binding lookup; judge calls \\
 \code{gate.plan} & the plan gate's outcome \\
 \code{context.narrow}, \code{context.fold}, \code{context.widen}, \code{result.fold} & window shaping \\
@@ -137,7 +137,7 @@ session before editing its summaries.
 first turn takes 10--60 s & a cold prompt cache, or another client holds the model server \\
 every request is slow & the prefix cache misses: look for trims (the \code{elided} count jumping) or folds in \code{:log} \\
 the model loops on a denied call & the progress guard will stop it; read the \code{guard.decision}s first \\
-\code{hard stop: too many tool calls} & the turn ended; ask for something smaller \\
+\code{hard stop: tool\_calls budget reached} & the turn ended; ask for something smaller, or raise \code{-{}-max-tool-calls} \\
 a tool call errored & \code{:log 20}: the \code{tool.result} has the exact error the model saw \\
 a file changed without a confirm & \code{:allow}: a standing approval covered it; the decision's reason names it \\
 a strategy seems ignored & \code{:eval agent-turn} prints which procedure is installed; \code{(reload)} returns notes \\

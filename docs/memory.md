@@ -124,5 +124,5 @@ carried about 1.1 MB of vendored grammar binaries plus a WebAssembly runtime:
 the binding's Go module embeds only JavaScript and JSON, so Go and Python
 could not come from it. `index-grep` and `fs-read` cover retrieval.
 
-There is no cross-session memory, semantic index or automatic summary generator.
+Across sessions, a repository keeps only its project notes (`project-notes`, docs/scheme.md); there is no semantic index or automatic summary generator.
 Those are not claims made by this P10 implementation.

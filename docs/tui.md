@@ -22,7 +22,8 @@ Use Ctrl+C to abort before detaching if that is what you want. The UI shows
 this difference in its footer. A connection never silently falls back to a
 local session.
 
-Flags belong after `tui`. Both standard input and output must be terminals;
+`--show-thinking` starts with the model's thinking shown, as `:thinking`
+would. Flags belong after `tui`. Both standard input and output must be terminals;
 use plain mode for pipes. No daemon is started automatically.
 
 ## Everyday use
@@ -57,6 +58,7 @@ of truth; scrollback is a display derived from it.
 | `:friction` | Read `docs/friction.md` through the existing guarded Scheme path |
 | `:plan` | Inspect the latest user message’s recorded planning outcome |
 | `:budget` | Inspect configured limits and the latest submitted turn’s checkpoints |
+| `:details` | Expand or collapse tool-call groups (see below) |
 | `:tools [name]` | List model-facing tools; an exact name shows the input schema |
 | `:allow` | Open the bindings/current approvals inspector |
 | `:help`, `:h` | Show available controls in a scrollable view |
@@ -79,8 +81,10 @@ and plain mode remain available.
 
 ## Tool-call groups
 
-Each model tool call has one transcript group with its name, call ID, formatted
-arguments, guard decisions and full result or error. The header reports the
+Each model tool call has one transcript group. By default it is one line: the
+tool's name, a summary of its arguments, the guard's verdict and its state.
+`:details` expands every group to the call ID, formatted arguments, guard
+decisions and the full result or error, and collapses them again. The header reports the
 recorded result status and elapsed milliseconds. While awaiting a result it
 says so; if the interval ends without one, it says `no result recorded`.
 PgUp/PgDn scroll through long arguments, results and standing-approval diffs.

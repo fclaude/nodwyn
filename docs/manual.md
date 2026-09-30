@@ -49,7 +49,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/scheme` | the language: values, reader, eval/apply, builtins, primitive table | [docs/scheme.md](scheme.md) then `interp.go` `Eval` |
 | `internal/guard` | the one decision point and its checkers | `guard.go` `Before` |
 | `internal/prim` | host primitives and the diff | `prim.go` `Register`, `Checkers` |
-| `internal/llm` | the provider seam and the Ollama client | `llm.go` `Provider` |
+| `internal/llm` | the provider seam, the Ollama and OpenAI-compatible clients | `llm.go` `Provider` |
 | `internal/window` | the derived context | `Build` |
 | `internal/loop` | the loop's primitives and default strategy | the package comment's reading order, starting at `loop.go` `Turn` |
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
@@ -89,7 +89,7 @@ Read a test when you want to know what a claim actually means.
 ```
 bin/nodwyn sessions                      # ids, oldest first
 bin/nodwyn replay <id>                   # transcript
-bin/nodwyn replay <id> --show-thinking   # with the model's thinking
+bin/nodwyn --show-thinking replay <id>   # with the model's thinking (flags go before the command)
 jq -c '[.seq,.kind]' ~/.local/share/nodwyn/sessions/<id>.jsonl
 ```
 
@@ -103,7 +103,7 @@ whose content was replaced in the window.
 
 | Phase | Seam already in place |
 |---|---|
-| P3 credentials | `scheme.KHandle`; `Param.Role = "credential"`; `config.Bindings`; `MetaPolicy` denies `Egress` today |
+| P3 credentials | `scheme.KHandle`; `Param.Role = "credential"`; `config.Bindings`; `guard.Egress` checks the binding table (done) |
 | P4 L1 | a checker over `Role: payload`/`argv` text; `log.Writer.Filter` |
 | P5 Jev + plan gate | `log.KindGatePlan`; `ArgvTrigger` becomes the hard-trigger list |
 | P6 taint | `Value.Taint` (reserved), `Call.Origin` |
@@ -142,7 +142,8 @@ nodwyn-stable                       # pins every path to this directory
 ```
 nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
-tools fs-edit fs-list fs-read fs-write index-grep shell-exec
+tools fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep read-definition
+      second-look shell-exec shell-read shell-send shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence
@@ -155,7 +156,7 @@ Commands at the `you>` prompt:
 | `:q` | quit (writes `session.end`) |
 | `:log [n]` | last n log events |
 | `:tools` | tools offered to the model |
-| `:allow` | standing command approvals in effect |
+| `:allow` | standing command and write approvals in effect |
 | `:eval EXPR` | evaluate Scheme yourself (user origin) |
 | `:thinking` | toggle showing the model's redacted thinking |
 | Ctrl-C | abort the running turn; at the prompt, exit |
@@ -242,6 +243,10 @@ allow? [y/N]
   turn ends**. Use it when you gave a task you intend to review with
   `git diff` afterwards. The diff of each auto-approved write is logged and
   shown dimmed as it happens.
+- `b` — keyed requests only: yes, and save this exact binding (class, host,
+  method, position) to `bindings.toml`. It is offered only with
+  `policy.unbound = "confirm"`; by default a keyed request no binding covers
+  is denied outright.
 - Read the reason lines. `command line names a path outside the
   repository` and `uses the network tool curl` are the guard telling you
   what a `y` would do.
@@ -290,8 +295,9 @@ inherits them, so the run has exactly the credentials you bound and no way
 to acquire others. `--yolo` there is a property of **that run**, not of the
 daemon: a daemon left running never auto-approves a session someone opens
 later from the browser. `nodwyn run status|stop` follow the run, and its
-turns are bounded by `--max-turns` and `--budget-wall` rather than by
-anyone watching.
+turns are bounded by `--max-turns` and `--budget-wall`. `--yolo` answers the
+tool confirms inside each turn; going on to the next turn still waits for a
+yes at the run checkpoint, from the browser or the terminal client.
 
 ### Standing approvals
 
@@ -527,8 +533,10 @@ on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
 `max_output`, `output_field`, `temperature`, `seed`); choosing another model
 starts from its defaults.
 
-A session opens without it, to replay or evaluate; its first model request
-fails with that table, and is not retried. A key that is missing or not
+The line-mode `nodwyn` refuses to start without it, printing the table to
+add, and checks at start that an Ollama control server answers. A daemon
+session (console, TUI, runs) opens without it, to replay or evaluate; its
+first model request fails with that table, and is not retried. A key that is missing or not
 bound fails the same way.
 
 ### Ingress redaction and the remaining boundaries
@@ -555,13 +563,13 @@ tools, outside the conversational context boundary.
 Paths remain pinned; credential-shaped files stay denied; child environments
 remain allowlisted; shell commands still require approval. Recognized secret
 shapes are covered, not arbitrary passwords, encodings, or confidential prose.
-Unknown entropy remains a residual for P8's optional L3 classifier. Older
-stable binaries keep the bootstrap operator restrictions until P7 is promoted.
+Unknown entropy remains a residual for P8's optional L3 classifier.
 
 ### Building nodwyn with nodwyn
 
 1. `nodwyn-stable` in this repository; `:tools` should list `go-test`,
-   `git-diff`, `grep-repo`, `read-adr`, … from `dev/`.
+   `grep-repo`, `read-adr`, `git-log`, … from `dev/` (and the builtin
+   `git-status` and `git-diff`).
 2. Give it small, explicit tasks: name the file, the pattern to follow, the
    test to add, and ask it to run `go-test` on the package. A 27B model does
    well with a paragraph and badly with a page (plan §3.4).
@@ -581,7 +589,7 @@ stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 | first turn takes 10–60 s | another client holds the model server's slot, or the prefix is cold; later turns are sub-second |
 | every request takes 30–50 s | the prefix cache is missing: check `:log` for `llm.req` — a trim (elided count jumped) or a new user turn re-prefills once; if it is every request, another client is evicting the server's slot between your requests (a single-slot Ollama, for example) |
 | the model loops on a denied call | the progress guard stops repeated denials; inspect the log before continuing. Budgets also bound each turn, and `--max-tool-calls N` sets a hard call ceiling |
-| `hard stop: too many tool calls` | the turn ended; the log has everything; rephrase smaller |
+| `hard stop: tool_calls budget reached` | the turn ended; the log has everything; rephrase smaller, or raise `--max-tool-calls` |
 | a tool call errored | `:log 20` — the `tool.result` line has the exact error the model saw |
 | a confirm never appeared but a file changed | `:allow` — a standing approval covered it; the `guard.decision` line names which |
 
@@ -590,7 +598,7 @@ stable binaries keep the bootstrap operator restrictions until P7 is promoted.
 `nodwyn daemon` starts the U2 session server in the foreground. Use
 `nodwyn daemon --no-keychain` to skip credential-store startup, and
 `--socket /absolute/private/directory/sock` to override its socket path.
-The protocol supports session lifecycle, send/abort, subscriptions and paged
-log catch-up. Approval replies remain unimplemented; turns waiting for one can
-be aborted. See [the protocol guide](protocol.md) for the handshake, methods,
+The protocol supports session lifecycle, send/abort, subscriptions, paged
+log catch-up, and answering prompts (`session.answer`, `session.secret`,
+`session.approval.create`, `session.binding.create`). See [the protocol guide](protocol.md) for the handshake, methods,
 permissions and reconnect semantics.

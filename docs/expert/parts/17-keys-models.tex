@@ -7,7 +7,7 @@ requests, keyed APIs your tools call, and MCP servers.
 \section{The keychain}
 
 Keys live in an encrypted file, the keychain, unlocked with a passphrase
-you choose (at least 8 characters, and not recoverable). Create it once:
+you choose (not recoverable; the console asks for at least 8 characters). Create it once:
 
 \begin{sh}
 nodwyn keychain init          # or: the app's Settings page
@@ -26,9 +26,11 @@ handle such as \code{\#<cred:weather-key:\ldots>}.
 What comes back is a \textbf{handle}. It prints as
 \code{\#<cred:class:id>} and nothing in the language can turn it into the
 key: not \code{display}, not \code{format}, not \code{json-emit}, not
-string concatenation. \code{credential-register} is user-only; so is
-\code{(credential "weather-key")}, which looks up the handle of a key
-already stored, or returns \code{\#f}.
+string concatenation. \code{credential-register} is user-only: neither the
+model nor the loop's strategy can put a key prompt in front of you.
+\code{(credential "weather-key")} looks up the handle of a key already
+stored, or returns \code{\#f}; it is refused to the model, while the loop's
+strategy may use it (the plan gate looks up the judge's key that way).
 
 \section{Bindings: where a key may go}
 
@@ -112,15 +114,18 @@ redaction as every tool result before the model reads it.
 
 \begin{itemize}
   \item \textbf{The binding} for the handle: class, host, method, position.
-  \item \textbf{L1}: the payload (URL, headers, body) must not contain
-    anything that looks like a credential. A key typed into a URL by hand
-    is refused, even to an allowed host.
+  \item \textbf{L1}: the headers and body are scanned for anything that
+    looks like a credential. A recognized key there is refused unless its
+    class is bound for that host and method (then the binding says it may
+    go). Command lines are scanned the same way. The URL is the
+    destination: its host is checked against the bindings, not scanned.
   \item \textbf{L2}: content that came from your files or command output may
     not go to a destination no binding names.
 \end{itemize}
 
-In the console, a network request that no binding covers yet offers
-\key{B}: save this exact binding and allow. The binding is then in the
+By default a keyed request that no binding covers is denied outright. With
+\code{policy.unbound = "confirm"} in \file{config.toml}, it asks instead,
+and the answer offers \key{B}: save this exact binding and allow. The binding is then in the
 file, where you can read it and remove it.
 
 \section{Models are egress too}

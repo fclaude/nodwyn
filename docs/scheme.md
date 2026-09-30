@@ -153,7 +153,7 @@ Errors may be caught with `guard` (§3):
 An error not caught by any clause unwinds to the host, which reports it (the
 REPL prints it, the agent loop feeds it back to the model as the tool result).
 
-A primitive the guard denies raises `denied: <reason>`. Denials and
+A primitive the guard denies raises `<name>: denied: <reason>` (`fs-read: denied: …`). Denials and
 cancellations (an abort, a timeout) pass through `guard` untouched: a program
 cannot hide that it was refused, and an abort always unwinds. So do the agent
 loop's stops (§9): a spent budget, the tool-call limit, a progress stop and a
@@ -290,32 +290,40 @@ into Scheme values (ADR 3).
 
 | | |
 |---|---|
-| `(fs-read path [start [count]])` `(fs-write path content)` `(fs-edit path old new [replace-all])` `(fs-list path)` | repository-pinned file access; writes and edits are irreversible (confirm, diff preview). `fs-read` returns the whole file, or with `start` (a 1-based line) and `count` (default 200) a header `[lines A-B of N]` and those lines exactly as in the file; a ranged read is streamed, so file size does not limit it, and stops at a whole line within `window.max_result_tokens × 3 − 256` bytes, so the window never cuts it. `fs-edit` replaces exactly one occurrence of `old`, or with `replace_all` (`#t`) every one; when `old` is not found but matches one place with whitespace ignored, the error names those lines and quotes them exactly |
-| `(index-grep path pattern [glob [context]])` | **P10.** Search a repository file or directory with a regular expression (RE2 syntax, as in Go and ripgrep; not command-line options). The directory is walked in Go (hidden entries and symbolic links skipped, no ignore files), `glob` narrows the candidates (`*.py`, `tests/**/*.py`, `*.{go,md}`; docs/memory.md has the rules), and each is read through the guarded `fs-read` and matched in Go. Returns matches (path, line, text, and with `context` 0 to 5 the lines before and after), files searched and skipped, and a truncated flag; at most 3000 candidate files (each read's guard decision is logged, so the limit also bounds the log) and 100 matching lines; protected, hidden, binary and oversized files and symlinks are skipped. Needs no program on `PATH` |
+| `(fs-read path [start [count]])` `(fs-write path content)` `(fs-edit path old new [replace_all])` `(fs-list path)` | repository-pinned file access; writes and edits are irreversible (confirm, diff preview). `fs-read` returns the whole file (at most 1 MiB; a larger one must be read in ranges), or with `start` (a 1-based line) and `count` (default 200) a header `[lines A-B of N]` and those lines exactly as in the file; a ranged read is streamed, so file size does not limit it, and stops at a whole line within `window.max_result_tokens × 3 − 256` bytes, so the window never cuts it; a single line longer than that comes back cut, under a `[line N of M, cut at B bytes]` header. `fs-edit` replaces exactly one occurrence of `old`, or with `replace_all` (`#t`) every one; when `old` is not found but matches one place with whitespace ignored, the error names those lines and quotes them exactly |
+| `(index-grep path pattern [glob [context]])` | **P10.** Search a repository file or directory with a regular expression (RE2 syntax, as in Go and ripgrep; not command-line options). The directory is walked in Go (hidden entries and symbolic links skipped, no ignore files), `glob` narrows the candidates (`*.py`, `tests/**/*.py`, `*.{go,md}`; docs/memory.md has the rules), and each is read through the guarded `fs-read` and matched in Go. Returns matches (path, line, text, and with `context` the lines before and after: 0 to 5, more is capped), files searched and skipped, and a truncated flag, set when the matches reach 100 or the output cap (`MaxOutput`, 256 KiB). More than 3000 candidate files is an error asking for a narrower path or a glob (each read's guard decision is logged, so the limit also bounds the log); the whole query has 30 seconds; protected, hidden, binary and oversized files and symlinks are skipped. Needs no program on `PATH` |
 | `(fs-find path glob)` | file names under a repository directory whose path matches `glob`: sorted, relative to the root, at most 500, with their count and a truncated flag. Names only, listed as `index-grep` lists candidates, with the same glob rules; hidden and credential-looking names are left out |
 | `(git-status)` `(git-diff [path [staged]])` | only when the root holds `.git`: the working tree's status (branch, changed, staged and untracked files, short format), and the uncommitted changes as a unified diff, the working tree against the index or with `staged` (`#t`) the index against the last commit; `path` narrows it. Read-only, so no approval: git runs with fixed arguments and everything that would run another program switched off (external diff drivers, text conversion, the file system monitor, the pager), and credential-looking files are left out as `fs-read` refuses them. Untracked files are not in a diff |
 | `(shell-exec cmd args)` | run a program with an argument **list** in the repository root, scrubbed environment (`TMPDIR` is the scratch directory); irreversible; returns `(("status" . n) ("stdout" . s) ("stderr" . s))` |
-| `(shell-start cmd args)` | start a program that keeps running (a server, a watcher, a program to talk to) in the repository root, in the background: no shell, the same scrubbed environment and `TMPDIR` as `shell-exec`, its own process group. Irreversible, and checked like `shell-exec` (its `cmd` and `args` are the command line). Returns text: `p1: running (the command line)` and the output of its first second. At most 4 run at once; every one is stopped when the session closes |
+| `(shell-start cmd args)` | start a program that keeps running (a server, a watcher, a program to talk to) in the repository root, in the background: no shell, the same scrubbed environment and `TMPDIR` as `shell-exec`, its own process group. Irreversible, and checked like `shell-exec` (its `cmd` and `args` are the command line). Returns text: `p1: running (the command line)` and its first output (as soon as there is some, waiting at most a second). At most 4 run at once; every one is stopped when the session closes |
 | `(shell-read id [wait])` | what process `id` printed since the last read (stdout and stderr together), after a first line with its state: `running` or `exited N`. With `wait` (0 to 60 seconds) it first waits for new output or an exit. The latest 1 MiB of output is kept, and a read says how much was dropped before it, or how much is left past the output cap. Read-only, so no approval |
-| `(shell-send id text)` | type `text` into the process's input (end a line with `\n`), and return what it printed in the next second. Irreversible, with the reason that what it does depends on the program: it asks every time; `text` is a payload the credential checks read |
+| `(shell-send id text)` | type `text` into the process's input (end a line with `\n`), and return what it printed next (as soon as there is output, waiting at most a second). Irreversible, with the reason that what it does depends on the program: it asks every time; `text` is a payload the credential checks read |
 | `(shell-stop id)` | stop the process (SIGTERM to its group, SIGKILL after 2 seconds) and return its last output and exit status. Needs no approval: it ends only what this session started |
-| `(scratch-dir)` | the session's scratch directory, or `#f` when there is none (`nodwyn repl`). It is a private directory (mode 0700) under nodwyn's data directory, outside the repository; the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept once untouched for a week (a session touches its own at every turn). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
+| `(scratch-dir)` | the session's scratch directory (a session always has one; `nodwyn repl` and `eval` have no host primitives at all). It is a private directory (mode 0700) under nodwyn's data directory, outside the repository; the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept once untouched for a week (a session touches its own at every turn). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
 | `(project-notes)` `(project-notes-save text)` | this repository's notes kept across sessions (how tests run, where things are, runbooks), `""` when there are none; and replacing them. They live in nodwyn's data directory, keyed by the repository's path, never in the repository. A save is capped at 8 KiB and redacted, and its text is a payload the guard checks, so content that looks like a credential needs a person's approval. The default system prompt shows the notes under a heading that calls them leads to check, not instructions |
-| `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))` |
+| `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `header:NAME:SCHEME` such as `header:Authorization:Bearer`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))`, the body read up to 1 MiB |
 | `(policy-read name)` | User-only, hidden from the model catalog. Read configured `bindings` or repository `approvals`, returning content, revision and existence; bounded to 64 KiB and rejects recognized secrets. No arbitrary path. |
 | `(policy-write name revision content)` | User-only, hidden from the model catalog. Validate TOML and atomically replace that fixed policy after a one-time diff confirmation and revision check. Binding changes reload before egress; approval-file changes affect new/resumed sessions. |
-| `(credential-register class)` | **P3.** Masked input through the front-end, stored in the keychain, returns `#<cred:class:id>`. User origin only; never a model tool |
+| `(credential-register class)` | **P3.** Masked input through the front-end, stored in the keychain, returns `#<cred:class:id>`. User origin only: refused to the model and to the loop's strategy; never a model tool |
 | `(credential class)` | The handle of a key already in the keychain, or `#f` if there is none (or no keychain is open). This is how Scheme reaches a keyed service — `(jev-noul (credential "jev-key") …)`, or `http-request` to a judge or a model API — without asking for the key again. Looking a handle up grants nothing: every use is checked against the binding table. Refused to model-originated code |
 | `(jev-noul cred state instructions)` | **P5.** Ask the judge a yes/no question about a text; returns the probability of yes (0..1). Egress to the configured Jev host; `state` and `instructions` are redacted (L1) before they leave; logged as `jev.req` |
 | `(jev-score cred state instructions levels)` | **P5.** Rate a text on an ordered rubric of 2–10 level strings; returns `(("score" . 0..1) ("raw" . n) ("levels" . k) ("confidence" . c))` |
 | `(jev-choice cred state instructions options)` | **P5.** Pick one of the options (an alist name → description); returns `(("choice" . name) ("confidence" . c) ("probabilities" . ((name . p) …)))` |
 
+MCP servers you approve in the console (ADR 23) add one primitive per tool
+you turned on, named `server__tool` (model APIs refuse `/`; the console shows
+`server/tool`). Each is egress to that server's host, with the server's key
+bound to it, and a tool you did not declare as reading only confirms every
+call. They are offered to the model like the tools above.
+
 ### Provenance (L2)
 
 Every value carries **provenance tags**: where it came from, not what it
-contains. A host primitive tags its result (`fs-read`, `fs-list` and
-`index-grep` mint `external:file`, `shell-exec` mints `external:shell`,
-`http-request` and the Jev primitives mint `external:http`), a credential
+contains. A host primitive tags its result (`fs-read`, `fs-list`, `fs-find`,
+`index-grep`, `git-status`, `git-diff` and `policy-read` mint
+`external:file`; `shell-exec` and the background-process primitives mint
+`external:shell`; `http-request`, the Jev primitives and MCP tools mint
+`external:http`; `session-list` and `session-events` mint `external:log`), a credential
 handle carries `cred:<class>`, and the tags of a call's arguments flow into
 its result.
 
@@ -374,12 +382,14 @@ Every primitive declares:
 | Field | Meaning |
 |---|---|
 | `doc` | one line, shown to the model as the tool description |
-| `params` | ordered list of `(name type doc)`; `type` is one of `string integer number boolean list alist vector any`. A Go primitive may mark trailing parameters optional (ADR 29): a call may stop before any of them, and the handler sees fewer arguments; one skipped before a later one that is given gets its type's empty value |
+| `params` | ordered list of `(name type doc)`; `type` is one of `string integer number boolean list alist vector any`. A Go primitive may mark trailing parameters optional (ADR 29): a call may stop before any of them, and the handler sees fewer arguments; one skipped before a later one that is given gets its type's empty value. A variadic primitive cannot also have optional parameters |
 | `variadic` | extra arguments allowed after the declared ones |
 | `egress` | may send bytes off-machine |
 | `irreversible` | cannot be undone by the harness |
 | `host` | touches the OS (filesystem, processes, network) |
 | `origin` | `builtin` or `scheme` |
+| `hidden` | never offered to the model as a tool (`load`, `register-check`, the loop's primitives) |
+| `audited` | its guard decision is logged even when it is an allow of a pure builtin |
 | `preview` | Go-only, for irreversible host primitives: renders what the call would do (a diff) for the confirm prompt |
 
 Parameter **roles** (`path`, `dest`, `payload`, `credential`) tell the guard
@@ -397,7 +407,7 @@ what an argument *is*; they are declared by host primitives from B2 on.
 
 ```scheme
 (register-tool "go-test"
-  (lambda (pkg) (shell-exec "go" "test" "-race" pkg))
+  (lambda (pkg) (shell-exec "go" (list "test" "-race" pkg)))
   '((doc . "Run the Go tests for a package pattern")
     (params . (("pkg" "string" "package pattern, e.g. ./internal/log")))
     (irreversible . #f)))
@@ -455,8 +465,12 @@ returns the context's error.
 ## 9. The agent loop
 
 A turn is a Scheme procedure. The session records the user's message and
-calls `(agent-turn request)` with the recorded (redacted) text. The default is
-installed before `.nodwyn/init.scm` loads, so a project can redefine it:
+calls `(nodwyn-turn request)` with the recorded (redacted) text, which runs
+the plan gate when the turn must plan and then `(agent-turn request)` (§9.5).
+The defaults are installed before `.nodwyn/init.scm` loads, so a project can
+redefine either. Stripped of `/optimize`, the plan gate, `ask-model`'s retry
+of cut replies and the evidence loop for unattended turns (all below, and in
+`internal/loop/strategy.scm`), the default `agent-turn` is this loop:
 
 ```scheme
 (define (agent-turn request)
@@ -500,8 +514,8 @@ change as unverified rather than spend the budget on a broken environment.
 |---|---|
 | `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`) |
 
-A reply's `done` is `"length"` when the model reached the output cap
-(`window.output_reserve`); the core notes it in the log. What to do is the
+A reply's `done` is `"length"` when the model reached the output cap (the
+model's `max_output`, else `window.output_reserve`); the core notes it in the log. What to do is the
 strategy's: `(ask-model …)` is `model-turn`, asked again with
 `output-cut-message` when the reply was cut with no tool call to answer, at
 most `output-cut-retries` (2) times. The default loop, the planner and
@@ -517,8 +531,14 @@ built, and its tool calls run like any model's. Narrowing and routing are
 events in the log, so replay rebuilds every request whichever model it went
 to.
 
-These primitives are hidden from the model and refused outside a turn and
-from model-originated code. The strategy runs with harness origin, so it cannot
+These primitives are hidden from the model. The ones that act on the
+conversation (`model-turn`, `run-tools`, `skip-tools`, `answer-call`,
+`add-message`, `log-note`, `fold-result`, `record-plan`, `narrow-context`,
+`fold-context`, `widen`) are refused outside a turn and from model-originated
+code; the ones that only describe the session (`model-info`, `model-names`,
+`window-limits`, `session-system-prompt`, `unattended?`, `plan-required?`,
+`plan-recorded?`, `session-list`, `session-events`) answer at any time, which
+is how `compact.scm` reads `(window-limits)` as it loads. The strategy runs with harness origin, so it cannot
 strip provenance or change policy (`wipe`, `register-check` and `policy-write`
 are user-only); the tools it runs execute with model origin, as if the model
 had called them directly. Whatever the strategy does:
@@ -550,6 +570,8 @@ strings (§1.1):
 | `(plan-draft-prompt request)` | the planner's request for a plan |
 | `(plan-revise-prompt request plan score)` | the request for a better plan after the judge scored it `score` (0..1) |
 | `plan-needed-question` | the judge's yes/no question: does this request need a plan? |
+| `compact-summary-prompt`, `(compact-handover-prompt request note)` | compaction's request for a handover note and the start of the compacted context (§9.2) |
+| `(optimizer-system-prompt)`, `(optimizer-task history focus)` | the optimizer's system prompt and task (§9.4) |
 | `plan-score-rubric` | the judge's instruction for scoring a plan |
 | `plan-score-levels` | the rubric's 2–10 levels, worst first |
 | `working-rules` | how to work, added to both system prompts (§9.6): shell command lines, the project's environment, reading with the file tools, a plan as a first guess, the check loop, following the request's conclusion, widening in general form, whole test modules, comparing failures with the unchanged code, finding regressions file by file |
@@ -614,7 +636,7 @@ code, in `internal/loop/agents.scm`:
 
 | | |
 |---|---|
-| `(sub-agent system task tools [name])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (its model is offered only those, and other calls are skipped), is a procedure that takes a call and says whether it may run (its model is then offered every tool), or is `#f` for all; `name` labels it in the log (default: the agent tool being answered, else `sub-agent`); returns its final answer, after `fold-context` |
+| `(sub-agent system task tools [name])` | run `task` in a narrowed context under `system`; `tools` lists the tool names it may use (its model is offered only those, and other calls are skipped; `'()` offers none), is a procedure that takes a call and says whether it may run (its model is then offered every tool), or is `#f` for all; `name` labels it in the log (default: the agent tool being answered, else `sub-agent`); returns its final answer, after `fold-context` |
 | `sub-agent-max-rounds` | replies with tool calls a sub-agent may make before it must answer (40); its last calls are then skipped and it is asked for its answer with no tools (`sub-agent-wrap-up-message`), so its work is not lost |
 | `sub-agent-repeat-limit` | identical calls (same tool and arguments) a sub-agent may run in a row (2). The core's progress stop, at four in a row, ends the whole turn and cannot be caught, so a sub-agent stops short of it: the next identical call is skipped with `sub-agent-repeat-reason`, and if it repeats again it is asked for its answer with no tools, which it returns with `sub-agent-stopped-note`. Its caller's work goes on |
 | `(define-agent-tool name doc params handler)` | register a tool the model calls like any other, answered by `(handler call args)`, `args` parsed from the model's JSON; define it in `.nodwyn/init.scm` |
@@ -640,8 +662,9 @@ can be read, replayed (`nodwyn replay --window`) and learned from on its own.
 
 A strategy can also run one itself, such as a review when the model stops:
 `(sub-agent reviewer-system (string-append issue diff tests) '())`. A
-sub-agent is asked on the same model unless its loop routes elsewhere
-(`(model-turn name)`), and each fold costs the server one re-read of the
+sub-agent always asks the control model (whichever model its caller was
+routed to); a strategy that wants another writes its own loop with
+`(model-turn name)`. Each fold costs the server one re-read of the
 caller's context: the prefix it had cached was the sub-agent's (ADR 9).
 
 ### 9.4 History, reload and the optimizer
@@ -674,8 +697,8 @@ repository and write only under `.nodwyn/`, a protected path, so every write
 asks the user and shows the diff; an unattended run (`--yolo`) refuses those
 writes, so `/optimize` needs a person at the prompt. When it is done `init.scm` is reloaded (and
 restored if the reload fails), and the model tells the user what changed.
-Its prompts are `optimizer-system-prompt` and `(optimizer-task history
-focus)` (§9.1). A strategy that redefines `agent-turn` keeps `/optimize` by
+Its prompts are `(optimizer-system-prompt)` and `(optimizer-task history
+focus)`, in `prompts.scm` with the others. A strategy that redefines `agent-turn` keeps `/optimize` by
 calling `(optimize-turn request)` when `(optimize-request? request)`.
 
 ### 9.5 The plan gate
@@ -710,12 +733,12 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
 | `plan-max-revisions` | revisions after the first draft (3) |
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
-| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
+| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded` or `required`), `plan`, `score`, `revisions`, `reason` |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
-| `(workspace)` | the workspace's kind and mounted folders from `.nodwyn/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The kind is a label: every kind has the same tools. The default system prompt adds a section naming the mounted folders, so a plain repository's prompt is unchanged; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file that no git work tree at the root covers, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it |
+| `(workspace)` | the workspace's kind and mounted folders from `.nodwyn/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The kind is a label: every kind has the same tools. Both default system prompts add a section naming the mounted folders, so a plain repository's prompt is unchanged; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file that no git work tree at the root covers, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it |
 | `(log-note text)` | add a note to the session log, for the record and the transcript; the model never sees it |
 
 A turn that must plan (`plan-required?`) always drafts one, scored if there
