@@ -13,6 +13,7 @@ export class Desk {
     this.models = null;
     this.settings = null; // settings.read: the daemon's model configuration
     this.keychain = null; // keychain.status
+    this.workspaces = []; // workspace.list: folders the person named
     this.listeners = new Set();
     this.version = 0;
     this.notifier = new Notifier();
@@ -75,10 +76,32 @@ export class Desk {
     try {
       if (this.conn.has("settings.read")) this.settings = await this.conn.call("settings.read");
       if (this.conn.has("keychain.status")) this.keychain = await this.conn.call("keychain.status");
+      await this.refreshWorkspaces();
     } catch {
       /* an older daemon: setup happens in config.toml */
     }
     this.changed("setup");
+  }
+  async refreshWorkspaces() {
+    if (!this.conn.has("workspace.list")) return;
+    try {
+      this.workspaces = (await this.conn.call("workspace.list")) || [];
+    } catch {
+      this.workspaces = [];
+    }
+    this.changed("workspaces");
+  }
+  // workspace returns the named workspace at path, if any.
+  workspace(path) {
+    return this.workspaces.find((w) => w.path === path) || null;
+  }
+  // folderName is what a folder is called: its workspace name, or its last
+  // path element.
+  folderName(path) {
+    const ws = this.workspace(path);
+    if (ws) return ws.name;
+    const parts = String(path || "").replace(/\/+$/, "").split("/");
+    return parts[parts.length - 1] || path || "—";
   }
   // configured says whether a model is set up, when the daemon can say.
   get configured() {
@@ -93,6 +116,7 @@ export class Desk {
       this.models = null;
     this.settings = null; // settings.read: the daemon's model configuration
     this.keychain = null; // keychain.status
+    this.workspaces = []; // workspace.list: folders the person named
     }
     this.changed("models");
   }
@@ -125,11 +149,16 @@ export class Desk {
   recent() {
     return this.all().filter((s) => !(s.open && (s.needs_answer || s.busy || s.run?.status === "running")));
   }
-  // Folders the person has worked in, most recent first.
+  // Folders to work in: named workspaces first, then folders tasks used,
+  // most recent first.
   folders() {
-    const seen = new Map();
-    for (const s of this.all()) if (s.repo && !seen.has(s.repo)) seen.set(s.repo, s);
-    return [...seen.keys()];
+    const seen = new Set(this.workspaces.map((w) => w.path));
+    const out = this.workspaces.map((w) => w.path);
+    for (const s of this.all()) if (s.repo && !seen.has(s.repo)) {
+      seen.add(s.repo);
+      out.push(s.repo);
+    }
+    return out;
   }
   // home is the user's home directory as the task folders suggest it, so
   // paths can be shown as ~/…; the protocol does not report it.

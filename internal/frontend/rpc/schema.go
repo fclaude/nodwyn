@@ -14,6 +14,7 @@ import (
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/frontend/run"
 	"github.com/fclaude/nibb/internal/log"
+	"github.com/fclaude/nibb/internal/prim"
 	"github.com/fclaude/nibb/internal/redact"
 )
 
@@ -54,6 +55,11 @@ func contracts() map[string]methodContract {
 		"keychain.unlock":         {passphraseParams{}, keychainStatus{}},
 		"settings.read":           {struct{}{}, settingsResult{}},
 		"settings.control.write":  {controlParams{}, settingsResult{}},
+		"workspace.list":          {struct{}{}, []workspaceInfo{}},
+		"workspace.save":          {workspaceSaveParams{}, workspaceInfo{}},
+		"workspace.remove":        {workspacePathParams{}, struct{}{}},
+		"versions.list":           {versionsParams{}, []prim.Version{}},
+		"session.restore":         {restoreParams{}, inspectionStarted{}},
 	}
 }
 
@@ -112,7 +118,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindEgressCheck): log.EgressCheck{}, string(log.KindGatePlan): log.GatePlan{}, string(log.KindJevReq): log.JevReq{},
 		string(log.KindCredRegister): log.CredRegister{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
 		string(log.KindRunState): log.RunState{}, string(log.KindRunTurn): log.RunTurn{}, string(log.KindRunCheckpoint): log.RunCheckpoint{},
-		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{},
+		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{},
 		string(log.KindRedact): struct {
 			Source uint64         `json:"source_seq"`
 			Events []redact.Event `json:"events"`

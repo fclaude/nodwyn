@@ -1,6 +1,6 @@
 # ADR 0022: Cowork — workspaces, attachments, and MCP servers
 
-- Status: **proposed** (model agreed; scheduled after v0 as the W track)
+- Status: **partially implemented** (W1 done 2026-09-30; W2, W3 in progress)
 - Date: 2026-09-22
 
 ## Context
@@ -187,3 +187,28 @@ content means.**
 6. **A workspace is a plain folder.** If the user syncs it, that is their
    business: nibb makes no assumption about sync, locking or conflicts, and
    the version store is per-machine.
+
+## W1 implemented — 2026-09-30
+
+Workspaces as decided above, with these specifics:
+
+- `<root>/.nibb/workspace.toml` holds `kind` and `[[mount]]` rows (`path`
+  absolute or `~/…`, `access` read|write). A mount may not be `/`, the home
+  directory itself, or overlap the root. Without the file a folder is a code
+  workspace, exactly as before. The console writes the file only for a kind
+  other than code or when there are mounts, so naming a repository adds
+  nothing to its diff; `.nibb/` stays protected from the model.
+- The pin takes mounts by absolute path; a read-only mount refuses every
+  irreversible call. A `docs` workspace registers no `shell-exec`, and a
+  guard checker refuses `shell-exec` and `register-tool` there whoever asks;
+  `session.eval` is refused too. The system prompt gains a workspace section
+  only for docs or mounted workspaces.
+- Before `fs-write`/`fs-edit` replaces a file that no git work tree at the
+  root covers (mounts are never covered), its content goes to
+  `.nibb/versions/objects/<sha256>` with an index line, and a `file.version`
+  record names it. 20 versions per file, 256 MiB in all, oldest first; a
+  failure to keep a version fails the write. `nibb versions FILE` and
+  `nibb undo FILE`; the console restores through a user-origin `fs-write`, so
+  a restore shows its diff, asks, and is itself undoable.
+- Named workspaces live in `workspaces.toml` in the config directory
+  (`workspace.list/save/remove`, local consoles only).

@@ -7,6 +7,7 @@ package core
 import (
 	"context"
 	"errors"
+	"github.com/fclaude/nibb/internal/config"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -62,6 +63,9 @@ type Session struct {
 	keychain *keychain.Store
 	bindings *binding.Live
 	scratch  string // the session's scratch directory (scratch.go)
+	// workspace is the repository's .nibb/workspace.toml as loaded at
+	// construction: its kind and mounted folders (ADR 22).
+	workspace config.Workspace
 
 	// P3 credential prompts: pending masked-secret prompts.
 	secrets   map[string]pendingSecret

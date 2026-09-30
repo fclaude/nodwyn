@@ -135,6 +135,13 @@ func (s *Session) primitiveOptions() prim.Options {
 	po := prim.DefaultOptions(o.Repo)
 	po.Scratch = s.scratch
 	po.NotesFile = notesFile(o.Paths.DataDir, o.Repo)
+	po.Kind = s.workspace.Kind
+	for _, m := range s.workspace.Mounts {
+		po.Mounts = append(po.Mounts, guard.Mount{Path: m.Path, Write: m.Access == "write"})
+	}
+	po.Versions = &prim.Versions{Dir: prim.VersionsDir(o.Repo), Skip: prim.InGitWorkTree(o.Repo), Record: func(v prim.Version) {
+		_, _ = s.Record(log.KindFileVersion, log.FileVersion{Path: v.Path, Hash: v.Hash, Bytes: v.Bytes})
+	}}
 	// A ranged fs-read stays under the window's cut for one tool result
 	// (window.Estimate is bytes/3), with room for its header.
 	po.MaxRangeBytes = o.Config.Window.MaxResultTokens*3 - 256
@@ -231,6 +238,9 @@ func (s *Session) initialize() (err error) {
 			removeScratch(s.scratch)
 		}
 	}()
+	if s.workspace, err = config.LoadWorkspace(o.Repo); err != nil {
+		return fmt.Errorf("core: %w", err)
+	}
 	// Interpreter: output becomes an event, never stdout.
 	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}), scheme.WithBaseDir(o.Repo))
 	po := s.primitiveOptions()

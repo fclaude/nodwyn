@@ -387,8 +387,9 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 }
 .work-in { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 .work-in > span:first-child { margin-right: 4px; }
-.add-folder { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.add-folder .input { width: min(420px, 100%); height: 34px; font-family: var(--mono); font-size: 13px; }
+.add-folder { gap: 14px; max-width: 640px; }
+.add-folder .input { width: min(460px, 100%); }
+.add-folder #add-path { font-family: var(--mono); font-size: 13px; }
 .home-grid { width: min(880px, 100%); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; align-items: start; }
 .home-grid > div { display: flex; flex-direction: column; gap: 28px; }
 .home-section { display: flex; flex-direction: column; gap: 12px; }
@@ -744,3 +745,8 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 details.callout { flex-direction: column; }
 details.callout > summary { cursor: pointer; font-weight: 500; }
 details.box > summary { cursor: pointer; font-weight: 500; margin-bottom: 8px; }
+.ws-row { align-items: flex-start; }
+.ws-row .main span { white-space: normal; }
+select.input { height: 34px; padding: 0 8px; }
+.versions { display: flex; flex-direction: column; gap: 6px; padding: 0 4px; }
+.versions:empty { display: none; }

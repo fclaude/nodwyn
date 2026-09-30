@@ -1,7 +1,7 @@
 // The pages that are not tasks: Connections, Workspaces and Settings. They
 // show what the daemon reports; where it reports nothing yet, they say so.
 import { h, icon, repoName, shortPath, ago, toast } from "./dom.js";
-import { chooseFolder } from "./home.js";
+import { chooseFolder, kindLabel } from "./home.js";
 import { modelForm, keychainForm } from "./setup.js";
 
 // ---------- theme (a per-browser convenience) ----------
@@ -150,24 +150,98 @@ async function showDevices(node, ctx) {
 }
 
 // ---------- workspaces ----------
+let editing = ""; // the folder whose editor is open
 export function renderWorkspaces(root, ctx) {
-  const { desk, navigate } = ctx;
-  const byFolder = new Map();
+  const { desk, navigate, conn } = ctx;
+  const counts = new Map();
   for (const item of desk.all()) {
-    const entry = byFolder.get(item.repo) || { tasks: 0, last: item.last_event, open: 0 };
+    const entry = counts.get(item.repo) || { tasks: 0, last: item.last_event };
     entry.tasks++;
-    if (item.open) entry.open++;
-    byFolder.set(item.repo, entry);
+    counts.set(item.repo, entry);
   }
-  const rows = [...byFolder.entries()].map(([folder, entry]) =>
-    h(
+  const canEdit = conn.has("workspace.save");
+  const row = (folder, ws) => {
+    const count = counts.get(folder);
+    const mounts = ws?.mounts || [];
+    const node = h(
       "div",
-      { class: "list-row" },
+      { class: "list-row ws-row" },
       icon("folder", 18),
-      h("div", { class: "main" }, h("strong", {}, repoName(folder)), h("span", { class: "mono", title: folder }, shortPath(folder, desk.home))),
-      h("div", { class: "end" }, `${entry.tasks} task${entry.tasks === 1 ? "" : "s"} · ${ago(entry.last)}`, h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder); navigate("#/"); } }, "New task here")),
-    ),
-  );
+      h(
+        "div",
+        { class: "main" },
+        h("strong", {}, ws ? ws.name : desk.folderName(folder), ws ? h("span", { class: "badge plain", style: "margin-left:8px" }, kindLabel(ws.kind)) : null),
+        h("span", { class: "mono", title: folder }, shortPath(folder, desk.home)),
+        mounts.length ? h("span", {}, mounts.map((m) => `${shortPath(m.path, desk.home)} (${m.access === "write" ? "read and write" : "read only"})`).join(" · ")) : null,
+        ws?.error ? h("span", { class: "error" }, ws.error) : null,
+        ws ? h("span", {}, ws.git ? "A git repository: git is the undo." : "Not a git repository: nibb keeps the previous version of a file before it changes it.") : null,
+      ),
+      h(
+        "div",
+        { class: "end" },
+        count ? `${count.tasks} task${count.tasks === 1 ? "" : "s"} · ${ago(count.last)}` : "no tasks yet",
+        h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder); navigate("#/"); } }, "New task here"),
+        canEdit ? h("button", { type: "button", class: "btn small ghost", onclick: () => { editing = editing === folder ? "" : folder; renderWorkspaces(root, ctx); } }, ws ? "Edit" : "Name it") : null,
+      ),
+    );
+    return editing === folder ? [node, editor(folder, ws)] : [node];
+  };
+  const editor = (folder, ws) => {
+    let kind = ws?.kind || "code";
+    const mounts = (ws?.mounts || []).map((m) => ({ ...m }));
+    const name = h("input", { class: "input", id: "ws-name", value: ws?.name || desk.folderName(folder) });
+    const error = h("p", { class: "error", role: "alert" });
+    const list = h("div", { style: "display:flex;flex-direction:column;gap:8px" });
+    const drawMounts = () =>
+      list.replaceChildren(
+        ...mounts.map((m, i) =>
+          h(
+            "div",
+            { class: "row-actions" },
+            h("span", { class: "mono", style: "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis" }, m.path),
+            h("select", { class: "input", "aria-label": "Access", onchange: (e) => (m.access = e.target.value) }, h("option", { value: "read", selected: m.access !== "write" }, "read only"), h("option", { value: "write", selected: m.access === "write" }, "read and write")),
+            h("button", { type: "button", class: "btn small ghost", onclick: () => { mounts.splice(i, 1); drawMounts(); } }, "Remove"),
+          ),
+        ),
+      );
+    drawMounts();
+    const mountPath = h("input", { class: "input", placeholder: "/absolute/path or ~/folder", "aria-label": "Folder to mount", spellcheck: false });
+    const kindChoice = (id, label) => h("button", { type: "button", class: "chip", "aria-pressed": String(kind === id), onclick: (e) => { kind = id; for (const b of e.target.parentElement.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b === e.target)); } }, label);
+    const form = h(
+      "form",
+      {
+        class: "card setup-form",
+        style: "margin: 0 16px 16px",
+        onsubmit: async (event) => {
+          event.preventDefault();
+          try {
+            await conn.call("workspace.save", { path: folder, name: name.value.trim(), kind, mounts });
+            editing = "";
+            await desk.refreshWorkspaces();
+            toast("Saved. Tasks you start here from now on use it.");
+            renderWorkspaces(root, ctx);
+          } catch (e) {
+            error.textContent = e.message;
+          }
+        },
+      },
+      h("div", { class: "field" }, h("label", { for: "ws-name" }, "Name"), name),
+      h("div", { class: "field" }, h("label", {}, "What's in it"), h("div", { class: "row-actions" }, kindChoice("docs", "Documents"), kindChoice("code", "Code"), kindChoice("mixed", "Both"))),
+      h("div", { class: "field" }, h("label", {}, "Other folders nibb may use here"), list, h("div", { class: "row-actions" }, mountPath, ctx.pickFolder ? h("button", { type: "button", class: "btn small", onclick: async () => { const p = await ctx.pickFolder(); if (p) mountPath.value = p; } }, "Choose…") : null, h("button", { type: "button", class: "btn small", onclick: () => { const p = mountPath.value.trim(); if (p) { mounts.push({ path: p, access: "read" }); mountPath.value = ""; drawMounts(); } } }, "Add"))),
+      h("p", { class: "hint" }, "Kept in this folder's .nibb/workspace.toml, which nibb itself never writes. A read-only folder can be read but never changed."),
+      error,
+      h(
+        "div",
+        { class: "row-actions" },
+        h("button", { type: "submit", class: "btn dark" }, "Save"),
+        h("button", { type: "button", class: "btn ghost", onclick: () => { editing = ""; renderWorkspaces(root, ctx); } }, "Cancel"),
+        ws ? h("button", { type: "button", class: "btn danger", style: "margin-left:auto", onclick: async () => { try { await conn.call("workspace.remove", { path: folder }); editing = ""; await desk.refreshWorkspaces(); renderWorkspaces(root, ctx); } catch (e) { error.textContent = e.message; } } }, "Forget the name") : null,
+      ),
+    );
+    return form;
+  };
+  const named = desk.workspaces.flatMap((ws) => row(ws.path, ws));
+  const others = desk.folders().filter((f) => !desk.workspace(f)).flatMap((f) => row(f, null));
   root.replaceChildren(
     h(
       "main",
@@ -176,8 +250,11 @@ export function renderWorkspaces(root, ctx) {
         "div",
         { class: "page-col" },
         h("h1", {}, "Workspaces"),
-        h("p", { class: "lede" }, "The folders nibb has worked in. Each task is pinned to its folder: it can read and write there and nowhere else."),
-        rows.length ? h("div", { class: "list" }, rows) : h("div", { class: "callout plain" }, "No folders yet. Start a task from Home and choose a folder."),
+        h("p", { class: "lede" }, "The folders nibb works in. A task is pinned to its folder and the folders mounted there: it reads and writes inside them and nowhere else."),
+        named.length ? h("div", { class: "list" }, named) : null,
+        others.length ? h("h2", { class: "section-title" }, named.length ? "Other folders tasks used" : "Folders tasks used") : null,
+        others.length ? h("div", { class: "list" }, others) : null,
+        !named.length && !others.length ? h("div", { class: "callout plain" }, "No folders yet. On Home, choose Add a folder.") : null,
       ),
     ),
   );
@@ -221,7 +298,7 @@ export async function renderConnections(root, ctx) {
     body.replaceChildren(h("p", { class: "error" }, error.message));
     return;
   }
-  const source = h("p", { class: "hint" }, `As loaded by the task “${open.title || open.id}” in ${repoName(open.repo)}.`);
+  const source = h("p", { class: "hint" }, `As loaded by the task “${open.title || open.id}” in ${desk.folderName(open.repo)}.`);
   if (connectionsTab === "credentials") {
     const rows = (info.bindings || []).map((b) => h("tr", {}, h("td", {}, h("span", { class: "mono" }, b.Class)), h("td", {}, b.Dest), h("td", {}, (b.Methods || []).join(", ")), h("td", {}, (b.Positions || []).join(", "))));
     body.replaceChildren(

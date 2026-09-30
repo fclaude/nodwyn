@@ -24,6 +24,8 @@ commands:
   replay SESSION --window SEQ  reconstruct and verify a recorded model request
   summary [flags] SESSION  inspect, add or revoke a conversation summary
   sessions             list sessions
+  versions FILE        list a file's kept previous versions (--repo sets the workspace)
+  undo FILE            put back a file's newest kept version
   run [flags]          submit a bounded supervised task to the daemon
   run status|stop|resume [--socket PATH] SESSION
   daemon [--socket PATH] serve local sessions, turns and events

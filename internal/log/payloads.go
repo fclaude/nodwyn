@@ -302,3 +302,12 @@ type RunCheckpoint struct {
 	Actor    string `json:"actor,omitempty"`
 	PromptID string `json:"prompt_id"`
 }
+
+// FileVersion records that a file's previous content was kept before nibb
+// replaced it, where git is not the undo: the path, and the content's hash
+// in the workspace's version store (.nibb/versions).
+type FileVersion struct {
+	Path  string `json:"path"`
+	Hash  string `json:"hash"`
+	Bytes int    `json:"bytes"`
+}

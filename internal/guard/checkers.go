@@ -64,6 +64,15 @@ func (MetaPolicy) Check(_ context.Context, p *scheme.Prim, _ []scheme.Value) Dec
 type RepoPin struct {
 	Root    string // absolute, cleaned
 	Scratch string // the session's scratch directory; "" for none
+	// Mounts are the workspace's folders outside the root (ADR 22 §1),
+	// reached by absolute path. A read-only mount refuses every write.
+	Mounts []Mount
+}
+
+// Mount is a folder outside the root a workspace may use.
+type Mount struct {
+	Path  string // absolute, cleaned
+	Write bool
 }
 
 func (RepoPin) Name() string { return "repo-pin" }
@@ -75,10 +84,34 @@ func (r RepoPin) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) D
 			if r.Scratch != "" {
 				where += " and the scratch directory " + r.Scratch
 			}
+			if len(r.Mounts) > 0 {
+				where += " and the workspace's mounted folders"
+			}
 			return Decision{Verdict: Deny, Reason: "path " + raw + " is outside " + where}
+		}
+		if m := r.mountOf(raw); m != nil && !m.Write && p.Meta.Irreversible {
+			return Decision{Verdict: Deny, Reason: "path " + raw + " is in " + m.Path + ", which this workspace mounts read-only"}
 		}
 	}
 	return Decision{Verdict: Allow}
+}
+
+// mountOf returns the mount raw resolves into, or nil for the root, the
+// scratch directory and anything else.
+func (r RepoPin) mountOf(raw string) *Mount {
+	if !filepath.IsAbs(raw) {
+		return nil
+	}
+	resolved := resolveExisting(filepath.Clean(raw))
+	if within(resolved, resolveExisting(r.Root)) {
+		return nil
+	}
+	for i := range r.Mounts {
+		if within(resolved, resolveExisting(r.Mounts[i].Path)) {
+			return &r.Mounts[i]
+		}
+	}
+	return nil
 }
 
 // Resolve returns the absolute path for raw under the root, or "" if it
@@ -98,7 +131,25 @@ func (r RepoPin) Resolve(raw string) string {
 	if r.Scratch != "" && filepath.IsAbs(raw) && within(resolved, resolveExisting(r.Scratch)) {
 		return abs
 	}
+	if filepath.IsAbs(raw) && r.mountOf(raw) != nil {
+		return abs
+	}
 	return ""
+}
+
+// WorkspaceKind refuses what a workspace's kind leaves out (ADR 22): a
+// docs workspace runs no programs and defines no tools, whoever asks.
+type WorkspaceKind struct {
+	Kind string
+}
+
+func (WorkspaceKind) Name() string { return "workspace-kind" }
+
+func (w WorkspaceKind) Check(_ context.Context, p *scheme.Prim, _ []scheme.Value) Decision {
+	if w.Kind == "docs" && (p.Name == "shell-exec" || p.Name == "register-tool") {
+		return Decision{Verdict: Deny, Reason: "a docs workspace runs no programs and defines no tools (" + p.Name + ")"}
+	}
+	return Decision{Verdict: Allow}
 }
 
 // within reports whether path is dir or below it.

@@ -62,6 +62,7 @@ const (
 	KindSummaryDrop    Kind = "summary.drop"    // revoke a summary without deleting history
 	KindSummary        Kind = "summary"         // a rebuildable summary covering a seq range (P10)
 	KindNote           Kind = "note"            // free-form operator annotation
+	KindFileVersion    Kind = "file.version"    // a file's previous content kept before a write (ADR 22)
 )
 
 var kinds = map[Kind]bool{
@@ -70,7 +71,7 @@ var kinds = map[Kind]bool{
 	KindUserMsg: true, KindHarnessMsg: true, KindContextNarrow: true, KindContextWiden: true, KindContextFold: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true,
-	KindJevReq: true, KindCredRegister: true, KindRedact: true, KindSummary: true, KindNote: true,
+	KindJevReq: true, KindCredRegister: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true,
 }
 
 // Known reports whether k is one of the fixed event kinds.

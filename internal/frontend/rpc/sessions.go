@@ -2,13 +2,14 @@ package rpc
 
 import (
 	"os"
-	"regexp"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
 	"github.com/fclaude/nibb/internal/binding"
 	"github.com/fclaude/nibb/internal/budget"
+	"github.com/fclaude/nibb/internal/config"
 	"github.com/fclaude/nibb/internal/core"
 	"github.com/fclaude/nibb/internal/event"
 	"github.com/fclaude/nibb/internal/frontend/run"
@@ -64,12 +65,22 @@ type sessionDetails struct {
 	Writes     []string          `json:"allowed_writes"`
 	TurnWrites bool              `json:"turn_writes"`
 	TurnActor  string            `json:"turn_actor,omitempty"`
+	// Workspace is what the session loaded from .nibb/workspace.toml.
+	Workspace config.Workspace `json:"workspace"`
+	// Git says a git work tree is the undo at the root; otherwise nibb
+	// keeps previous versions of files it replaces.
+	Git bool `json:"git"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
 	limits, _ := s.options.Config.Budget.Limits(s.options.Config.Loop.MaxToolCalls)
 	trust, actor := session.TurnApproval()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, Workspace: session.Workspace(), Git: isGit(session.Repo())}
+}
+
+func isGit(root string) bool {
+	_, err := os.Stat(filepath.Join(root, ".git"))
+	return err == nil
 }
 
 // handler is one RPC method. Every handler runs with s.mu held and with
@@ -101,6 +112,11 @@ var methodTable = map[string]handler{
 	"keychain.unlock":         (*server).keychain,
 	"settings.read":           (*server).settingsMethod,
 	"settings.control.write":  (*server).settingsMethod,
+	"workspace.list":          (*server).workspaces,
+	"workspace.save":          (*server).workspaces,
+	"workspace.remove":        (*server).workspaces,
+	"versions.list":           (*server).versions,
+	"session.restore":         (*server).versions,
 	"session.open":            (*server).open,
 	"session.resume":          (*server).resume,
 	"session.info":            (*server).info,

@@ -20,14 +20,14 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
 
   const needs = desk.needsYou().filter(matches).map((item) => {
     const first = desk.pending.get(item.id)?.[0];
-    return row(item, `${first ? summary(first).title : "Waiting for your answer"} · ${repoName(item.repo)}`, "warn");
+    return row(item, `${first ? summary(first).title : "Waiting for your answer"} · ${desk.folderName(item.repo)}`, "warn");
   });
   const running = desk.running().filter(matches).map((item) => {
     const run = item.run?.status === "running" ? item.run : null;
     const left = run ? new Date(run.deadline).getTime() - Date.now() : 0;
-    return row(item, run ? `Turn ${run.turns} of ${run.max_turns} · ${left > 0 ? minutes(left) + " left" : "time up"}` : `Working · ${repoName(item.repo)}`, "run");
+    return row(item, run ? `Turn ${run.turns} of ${run.max_turns} · ${left > 0 ? minutes(left) + " left" : "time up"}` : `Working · ${desk.folderName(item.repo)}`, "run");
   });
-  const recent = desk.recent().filter(matches).slice(0, filter ? 30 : 8).map((item) => row(item, `${repoName(item.repo)} · ${ago(item.last_event)}`, ""));
+  const recent = desk.recent().filter(matches).slice(0, filter ? 30 : 8).map((item) => row(item, `${desk.folderName(item.repo)} · ${ago(item.last_event)}`, ""));
 
   const search = h("input", {
     class: "input",

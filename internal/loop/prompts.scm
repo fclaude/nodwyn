@@ -17,7 +17,28 @@
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """
    (scratch-rule (scratch-dir))
+   (workspace-section)
    (project-notes-section)))
+
+;; What the workspace adds to the system prompt (ADR 22): nothing for a
+;; code repository with no mounted folders, so its prompt is unchanged.
+(define (workspace-section)
+  (let* ((ws (guard (e (else '())) (workspace)))
+         (kind (assoc-ref ws "kind" "code"))
+         (mounts (assoc-ref ws "mounts" '())))
+    (string-append
+     (if (equal? kind "docs")
+         "\n\nThis is a folder of documents, not a code repository: you read, write, organize and summarize files in it. You cannot run programs here. Before nibb replaces a file it keeps the previous version, so the person can restore it."
+         "")
+     (if (null? mounts)
+         ""
+         (string-append
+          "\n\nFolders outside it you may also use, by absolute path:"
+          (apply string-append
+                 (map (lambda (m)
+                        (string-append "\n- " (assoc-ref m "path")
+                                       (if (equal? (assoc-ref m "access") "write") " (read and write)" " (read only: never write there)")))
+                      mounts)))))))
 
 ;; The repository's notes from earlier sessions, or "" when there are none.
 ;; They are the agent's own notes (how tests run, where things are,

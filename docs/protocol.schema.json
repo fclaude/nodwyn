@@ -171,6 +171,42 @@
       ],
       "type": "object"
     },
+    "config.Mount": {
+      "properties": {
+        "access": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "access"
+      ],
+      "type": "object"
+    },
+    "config.Workspace": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "mounts": {
+          "items": {
+            "$ref": "#/$defs/config.Mount"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "mounts"
+      ],
+      "type": "object"
+    },
     "core.LogPage": {
       "properties": {
         "events": {
@@ -673,6 +709,25 @@
         "ts",
         "session",
         "kind"
+      ],
+      "type": "object"
+    },
+    "log.FileVersion": {
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "hash",
+        "bytes"
       ],
       "type": "object"
     },
@@ -1344,6 +1399,9 @@
     "payload.eval.result": {
       "$ref": "#/$defs/log.EvalResult"
     },
+    "payload.file.version": {
+      "$ref": "#/$defs/log.FileVersion"
+    },
     "payload.gate.plan": {
       "$ref": "#/$defs/log.GatePlan"
     },
@@ -1456,6 +1514,30 @@
     "payload.user.msg": {
       "$ref": "#/$defs/log.UserMsg"
     },
+    "prim.Version": {
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "time": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "hash",
+        "bytes",
+        "time"
+      ],
+      "type": "object"
+    },
     "redact.Event": {
       "properties": {
         "Class": {
@@ -1553,6 +1635,9 @@
           "$ref": "#/$defs/request.session.policy.write"
         },
         {
+          "$ref": "#/$defs/request.session.restore"
+        },
+        {
           "$ref": "#/$defs/request.session.resume"
         },
         {
@@ -1575,6 +1660,18 @@
         },
         {
           "$ref": "#/$defs/request.settings.read"
+        },
+        {
+          "$ref": "#/$defs/request.versions.list"
+        },
+        {
+          "$ref": "#/$defs/request.workspace.list"
+        },
+        {
+          "$ref": "#/$defs/request.workspace.remove"
+        },
+        {
+          "$ref": "#/$defs/request.workspace.save"
         }
       ]
     },
@@ -2357,6 +2454,37 @@
       ],
       "type": "object"
     },
+    "request.session.restore": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.restore"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.restoreParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.resume": {
       "properties": {
         "id": {
@@ -2607,6 +2735,131 @@
       ],
       "type": "object"
     },
+    "request.versions.list": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "versions.list"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.versionsParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.workspace.list": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workspace.list"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.workspace.remove": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workspace.remove"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.workspacePathParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.workspace.save": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workspace.save"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.workspaceSaveParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "response": {
       "oneOf": [
         {
@@ -2759,6 +3012,9 @@
     "result.session.policy.write": {
       "$ref": "#/$defs/rpc.inspectionStarted"
     },
+    "result.session.restore": {
+      "$ref": "#/$defs/rpc.inspectionStarted"
+    },
     "result.session.resume": {
       "$ref": "#/$defs/rpc.sessionDetails"
     },
@@ -2794,6 +3050,32 @@
     },
     "result.settings.read": {
       "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.versions.list": {
+      "items": {
+        "$ref": "#/$defs/prim.Version"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "result.workspace.list": {
+      "items": {
+        "$ref": "#/$defs/rpc.workspaceInfo"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "result.workspace.remove": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "result.workspace.save": {
+      "$ref": "#/$defs/rpc.workspaceInfo"
     },
     "rpc.answerParams": {
       "properties": {
@@ -3169,6 +3451,25 @@
       ],
       "type": "object"
     },
+    "rpc.restoreParams": {
+      "properties": {
+        "hash": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "hash"
+      ],
+      "type": "object"
+    },
     "rpc.rpcError": {
       "properties": {
         "code": {
@@ -3296,6 +3597,9 @@
         "busy": {
           "type": "boolean"
         },
+        "git": {
+          "type": "boolean"
+        },
         "id": {
           "type": "string"
         },
@@ -3316,6 +3620,9 @@
         },
         "turn_writes": {
           "type": "boolean"
+        },
+        "workspace": {
+          "$ref": "#/$defs/config.Workspace"
         }
       },
       "required": [
@@ -3327,7 +3634,9 @@
         "budgets",
         "allowed_commands",
         "allowed_writes",
-        "turn_writes"
+        "turn_writes",
+        "workspace",
+        "git"
       ],
       "type": "object"
     },
@@ -3519,6 +3828,97 @@
         "page",
         "busy",
         "pending"
+      ],
+      "type": "object"
+    },
+    "rpc.versionsParams": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "path"
+      ],
+      "type": "object"
+    },
+    "rpc.workspaceInfo": {
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "git": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "mounts": {
+          "items": {
+            "$ref": "#/$defs/config.Mount"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "kind",
+        "mounts",
+        "git"
+      ],
+      "type": "object"
+    },
+    "rpc.workspacePathParams": {
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "rpc.workspaceSaveParams": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "mounts": {
+          "items": {
+            "$ref": "#/$defs/config.Mount"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "name",
+        "kind",
+        "mounts"
       ],
       "type": "object"
     },
@@ -3781,6 +4181,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.EvalResult"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "file.version"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.FileVersion"
             },
             "seq": {
               "minimum": 0,

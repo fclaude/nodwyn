@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"errors"
+	"github.com/fclaude/nibb/internal/config"
 
 	"github.com/fclaude/nibb/internal/log"
 	"github.com/fclaude/nibb/internal/redact"
@@ -12,11 +14,18 @@ import (
 // Scheme. Eval remains available to the existing in-process frontend. Source
 // and result are redacted on the durable path; neither enters model context.
 func (s *Session) StartEval(source, actor string) error {
+	if s.workspace.Kind == config.KindDocs {
+		return errDocsEval
+	}
 	return s.startTurn(func(ctx context.Context) error {
 		_, err := s.evalRecorded(ctx, source, actor)
 		return err
 	})
 }
+
+// errDocsEval refuses a person's Scheme in a docs workspace (ADR 22): the
+// one product has two profiles, and this one evaluates no code.
+var errDocsEval = errors.New("a docs workspace does not evaluate Scheme")
 
 func (s *Session) evalRecorded(ctx context.Context, source, actor string) (scheme.Value, error) {
 	return s.recordEvaluation(source, actor, func() (scheme.Value, error) { return s.Eval(ctx, source) })

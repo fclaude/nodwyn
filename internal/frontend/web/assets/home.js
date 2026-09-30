@@ -7,6 +7,10 @@ let chosen = ""; // the folder the next task starts in, for this tab
 let draft = "";
 let current = null;
 
+export function kindLabel(kind) {
+  return { docs: "documents", code: "code", mixed: "code and documents" }[kind] || kind || "";
+}
+
 // chooseFolder preselects the folder the next task starts in.
 export function chooseFolder(folder) {
   chosen = folder;
@@ -63,27 +67,61 @@ export function renderHome(root, ctx) {
     h(
       "div",
       { class: "ask-bar" },
-      h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? repoName(chosen) : "Choose a folder")),
+      h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder"), chosen && desk.workspace(chosen) ? h("span", { class: "muted" }, kindLabel(desk.workspace(chosen).kind)) : null),
       h("span", { class: "where" }, where),
       submit,
     ),
   );
 
   const chips = h("div", { class: "work-in", id: "work-in" }, h("span", {}, "Work in"));
-  for (const folder of [chosen, ...folders.filter((f) => f !== chosen)].filter(Boolean).slice(0, 6))
-    chips.append(h("button", { type: "button", class: "chip", "aria-pressed": String(folder === chosen), title: folder, onclick: () => { chosen = folder; renderHome(root, ctx); } }, repoName(folder)));
-  const adding = h("div", { class: "add-folder", hidden: true });
-  const pathInput = h("input", { class: "input", placeholder: "/absolute/path/to/a/folder", "aria-label": "Folder path", spellcheck: false, autocomplete: "off" });
+  for (const folder of [chosen, ...folders.filter((f) => f !== chosen)].filter(Boolean).slice(0, 6)) {
+    const ws = desk.workspace(folder);
+    chips.append(
+      h(
+        "button",
+        { type: "button", class: "chip", "aria-pressed": String(folder === chosen), title: folder, onclick: () => { chosen = folder; renderHome(root, ctx); } },
+        desk.folderName(folder),
+        ws ? h("span", { class: "sub" }, kindLabel(ws.kind)) : null,
+      ),
+    );
+  }
+  // Adding a folder names it and says what kind of work it holds; where the
+  // console may save workspaces, the folder joins the list for next time.
+  const adding = h("form", { class: "add-folder card", hidden: true });
+  const pathInput = h("input", { class: "input", id: "add-path", placeholder: "/absolute/path/to/a/folder", spellcheck: false, autocomplete: "off", required: true });
+  const nameInput = h("input", { class: "input", id: "add-name", placeholder: "for example Receipts 2026", autocomplete: "off" });
+  let kind = "docs";
+  const kindChoice = (id, label) =>
+    h("button", { type: "button", class: "chip", "aria-pressed": String(kind === id), onclick: (e) => { kind = id; for (const b of e.target.parentElement.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b === e.target)); } }, label);
+  const addError = h("p", { class: "error", role: "alert" });
+  const canSave = conn.has("workspace.save");
   adding.append(
-    pathInput,
-    h("button", { type: "button", class: "btn small dark", onclick: () => useFolder(pathInput.value.trim()) }, "Use this folder"),
-    h("button", { type: "button", class: "btn small ghost", onclick: () => (adding.hidden = true) }, "Cancel"),
+    h("div", { class: "field" }, h("label", { for: "add-path" }, "Folder"), h("div", { class: "row-actions" }, pathInput, pickFolder ? h("button", { type: "button", class: "btn", onclick: async () => { const p = await pickFolder(); if (p) { pathInput.value = p; if (!nameInput.value) nameInput.value = p.split("/").pop(); } } }, "Choose…") : null)),
+    canSave ? h("div", { class: "field" }, h("label", { for: "add-name" }, "Name"), nameInput) : null,
+    canSave ? h("div", { class: "field" }, h("label", {}, "What's in it"), h("div", { class: "row-actions" }, kindChoice("docs", "Documents"), kindChoice("code", "Code"), kindChoice("mixed", "Both"))) : null,
+    canSave ? h("p", { class: "hint" }, "Documents: nibb reads, writes and organizes files, runs no programs, and keeps the previous version of a file before changing it. Code: nibb can also run programs; git is the undo.") : null,
+    addError,
+    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, canSave ? "Add this folder" : "Use this folder"), h("button", { type: "button", class: "btn ghost", onclick: () => (adding.hidden = true) }, "Cancel")),
   );
-  const useFolder = (path) => {
-    if (!path.startsWith("/")) return toast("Give the folder's full path, starting with /.");
-    chosen = path.replace(/\/+$/, "") || "/";
-    renderHome(root, ctx);
-  };
+  adding.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const path = pathInput.value.trim().replace(/\/+$/, "");
+    if (!path.startsWith("/")) {
+      addError.textContent = "Give the folder's full path, starting with /.";
+      return;
+    }
+    if (canSave) {
+      try {
+        await conn.call("workspace.save", { path, name: nameInput.value.trim(), kind, mounts: [] });
+        await desk.refreshWorkspaces();
+      } catch (e) {
+        addError.textContent = e.message;
+        return;
+      }
+    }
+    chosen = path;
+    renderHome(root, { ...ctx, keepTop: false });
+  });
   chips.append(
     h(
       "button",
@@ -91,13 +129,15 @@ export function renderHome(root, ctx) {
         type: "button",
         class: "chip dashed",
         onclick: async () => {
-          if (pickFolder) {
-            const path = await pickFolder();
-            if (path) useFolder(path);
-            return;
-          }
           adding.hidden = false;
-          pathInput.focus();
+          if (pickFolder && !pathInput.value) {
+            const path = await pickFolder();
+            if (path) {
+              pathInput.value = path;
+              nameInput.value = path.split("/").pop();
+            }
+          }
+          (pathInput.value ? nameInput : pathInput).focus();
         },
       },
       icon("plus", 14),
@@ -168,7 +208,7 @@ export function renderHome(root, ctx) {
           "div",
           { style: "display:flex;flex-direction:column;gap:3px" },
           h("div", { class: "card-title" }, h("span", {}, s.title), stats ? [h("span", { class: "plus" }, `+${stats.plus}`), h("span", { class: "minus" }, `−${stats.minus}`)] : null),
-          h("div", { class: "card-sub" }, `${item.title || "Untitled task"} · ${repoName(item.repo)}`),
+          h("div", { class: "card-sub" }, `${item.title || "Untitled task"} · ${desk.folderName(item.repo)}`),
         ),
         actions,
       ),
@@ -199,7 +239,7 @@ export function renderHome(root, ctx) {
               h(
                 "div",
                 { class: "what" },
-                item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${repoName(item.repo)}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${repoName(item.repo)}`)],
+                item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${desk.folderName(item.repo)}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${desk.folderName(item.repo)}`)],
               ),
             ),
           ),
@@ -233,7 +273,7 @@ export function renderHome(root, ctx) {
         "div",
         { style: "display:flex;flex-direction:column;gap:4px" },
         h("div", { style: "display:flex;align-items:center;gap:10px" }, h("span", { class: "run-dot" }), h("a", { href: `#/task/${item.id}`, style: "font-size:15px;font-weight:600;text-decoration:none" }, item.title || "Untitled task")),
-        h("div", { class: "card-sub", style: "padding-left:18px" }, run ? `Supervised run · ${repoName(item.repo)} · asks at each checkpoint` : `Working · ${repoName(item.repo)}`),
+        h("div", { class: "card-sub", style: "padding-left:18px" }, run ? `Supervised run · ${desk.folderName(item.repo)} · asks at each checkpoint` : `Working · ${desk.folderName(item.repo)}`),
       ),
     );
     if (run) {

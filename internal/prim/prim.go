@@ -18,10 +18,16 @@ import (
 
 // Options configure the host primitives.
 type Options struct {
-	Root         string // repository root; every path is pinned under it
-	Scratch      string // the session's scratch directory, outside Root; "" for none
-	NotesFile    string // this repository\'s notes kept across sessions, outside Root; "" for none
-	MaxReadBytes int64  // fs-read refuses larger files, unless it reads a line range
+	Root      string // repository root; every path is pinned under it
+	Scratch   string // the session's scratch directory, outside Root; "" for none
+	NotesFile string // this repository\'s notes kept across sessions, outside Root; "" for none
+	// Workspace (ADR 22): its kind ("docs" registers no shell-exec), the
+	// folders outside Root it may use, and the version store that keeps a
+	// file's previous content before a write where git is not the undo.
+	Kind         string
+	Mounts       []guard.Mount
+	Versions     *Versions
+	MaxReadBytes int64 // fs-read refuses larger files, unless it reads a line range
 	// MaxRangeBytes caps what a ranged fs-read returns: whole lines up to
 	// this many bytes, so the window never cuts a ranged read (the core
 	// sets it from window.max_result_tokens).
@@ -67,13 +73,17 @@ func Register(in *scheme.Interp, o Options) error {
 	if o.Root == "" {
 		return os.ErrInvalid
 	}
-	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch}
-	for _, p := range []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), shellExec(o), indexGrep(o, pin), fsFind(o, pin)} {
+	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts}
+	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin)}
+	if o.Kind != "docs" {
+		prims = append(prims, shellExec(o))
+	}
+	for _, p := range prims {
 		if err := in.Register(p); err != nil {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), projectNotes(o), projectNotesSave(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), projectNotes(o), projectNotesSave(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -105,7 +115,8 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 	argv.Scratch = o.Scratch
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
-		guard.RepoPin{Root: o.Root, Scratch: o.Scratch},
+		guard.WorkspaceKind{Kind: o.Kind},
+		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts},
 		guard.DefaultDenylist(),
 		argv,
 		guard.ProtectedPaths{Root: o.Root},
@@ -150,6 +161,30 @@ func repository(o Options) *scheme.Prim {
 		Meta: scheme.Meta{Doc: "The repository's root directory: every relative path is relative to it.", Hidden: true},
 		Handler: func(*scheme.Call) (scheme.Value, error) {
 			return scheme.Str(o.Root), nil
+		},
+	}
+}
+
+// workspace builds (workspace): the workspace's kind and its mounted
+// folders, as an alist: (("kind" . "docs") ("mounts" (("path" . P) ("access" . A)) …)).
+func workspace(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "workspace",
+		Meta: scheme.Meta{Doc: "This workspace's kind (code, docs or mixed) and the folders outside it it may use.", Hidden: true},
+		Handler: func(*scheme.Call) (scheme.Value, error) {
+			kind := o.Kind
+			if kind == "" {
+				kind = "code"
+			}
+			var mounts []scheme.Value
+			for _, m := range o.Mounts {
+				access := "read"
+				if m.Write {
+					access = "write"
+				}
+				mounts = append(mounts, scheme.List(scheme.Cons(scheme.Str("path"), scheme.Str(m.Path)), scheme.Cons(scheme.Str("access"), scheme.Str(access))))
+			}
+			return scheme.List(scheme.Cons(scheme.Str("kind"), scheme.Str(kind)), scheme.Cons(scheme.Str("mounts"), scheme.List(mounts...))), nil
 		},
 	}
 }

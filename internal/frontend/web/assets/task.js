@@ -5,6 +5,7 @@
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
 import { Transcript, planSteps } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
+import { kindLabel } from "./home.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
 
@@ -394,12 +395,12 @@ export class TaskView {
           "div",
           { class: "task-meta" },
           icon("folder", 15),
-          h("strong", {}, repoName(item.repo)),
+          h("strong", {}, this.desk.folderName(item.repo)),
           h("span", { class: "mono" }, shortPath(item.repo, home)),
           item.started ? h("span", { class: "started" }, `· started ${sameDay(item.started) ? clock(item.started) : ago(item.started)}`) : null,
         ),
       ),
-      st.label ? h("span", { class: `pill ${st.cls}` }, st.cls ? h("span", { class: `dot ${st.cls}` }) : null, st.label) : null,
+      st.label ? h("span", { class: `pill ${st.cls}` }, st.cls ? h("span", { class: `dot ${st.cls}` }) : null, st.label) : "",
       actions,
     );
   }
@@ -504,9 +505,11 @@ export class TaskView {
       );
     };
     node.replaceChildren(
-      meter("Time", elapsed, budgets ? budgets.wall_ns.soft / 1e6 : 0, (ms) => minutes(ms)),
-      meter("Tool calls", calls, budgets?.tool_calls.soft || 0),
-      tokens ? meter("Tokens", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
+      ...[
+        meter("Time", elapsed, budgets ? budgets.wall_ns.soft / 1e6 : 0, (ms) => minutes(ms)),
+        meter("Tool calls", calls, budgets?.tool_calls.soft || 0),
+        tokens ? meter("Tokens", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
+      ].filter(Boolean),
     );
   }
   changesPanel() {
@@ -525,9 +528,22 @@ export class TaskView {
     if (!written.length && !pending.length) return null;
     const rows = [
       ...pending.map((path) => h("div", { class: "file-row" }, icon("file", 15), h("span", { class: "mono", title: path }, path), h("span", { class: "badge" }, "proposed"))),
-      ...written.slice(-12).map((path) => h("div", { class: "file-row" }, icon("file", 15), h("span", { class: "mono", title: path }, path), h("span", { class: "badge plain" }, "written"))),
+      ...written.slice(-12).flatMap((path) => {
+        const versions = h("div", { class: "versions" });
+        const row = h(
+          "div",
+          { class: "file-row" },
+          icon("file", 15),
+          h("span", { class: "mono", title: path }, path),
+          this.info && !this.info.git && this.conn.has("versions.list")
+            ? h("button", { type: "button", class: "btn small ghost", style: "margin-left:auto", onclick: () => this.history(path, versions) }, "History")
+            : h("span", { class: "badge plain" }, "written"),
+        );
+        return [row, versions];
+      }),
     ];
-    return h("section", { class: "panel" }, h("h2", {}, "Changes", h("span", { class: "note" }, written.length > 12 ? `${written.length} files · latest shown` : "writes nibb was allowed")), rows);
+    const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git is the undo" : this.info ? "previous versions kept" : "writes nibb was allowed";
+    return h("section", { class: "panel" }, h("h2", {}, "Changes", h("span", { class: "note" }, note)), rows);
   }
   notesPanel() {
     if (this.notes === null) return null;
@@ -570,15 +586,54 @@ export class TaskView {
   workspacePanel() {
     const item = this.item;
     const tools = this.info?.tools?.length;
-    return h(
-      "section",
-      { class: "panel" },
-      h("h2", {}, "Workspace"),
-      h("div", { class: "kv" }, h("span", { class: "mono", title: item.repo }, shortPath(item.repo, this.desk.home)), h("span", {}, "write")),
-      tools ? h("div", { class: "kv" }, h("span", {}, "Tools"), h("span", {}, `${tools} offered to the model`)) : null,
-      this.info?.allowed_writes?.length ? h("div", { class: "kv" }, h("span", {}, "Writes without asking"), h("span", { class: "mono" }, this.info.allowed_writes.join(", "))) : null,
-      this.info?.allowed_commands?.length ? h("div", { class: "kv" }, h("span", {}, "Commands without asking"), h("span", {}, `${this.info.allowed_commands.length} prefixes`)) : null,
+    const ws = this.info?.workspace;
+    const named = this.desk.workspace(item.repo);
+    const kind = ws?.kind || named?.kind;
+    const rows = [h("div", { class: "kv" }, h("span", { class: "mono", title: item.repo }, shortPath(item.repo, this.desk.home)), h("span", {}, "write"))];
+    for (const m of ws?.mounts || named?.mounts || []) rows.push(h("div", { class: "kv" }, h("span", { class: "mono", title: m.path }, shortPath(m.path, this.desk.home)), h("span", {}, m.access === "write" ? "write" : "read only")));
+    if (tools) rows.push(h("div", { class: "kv" }, h("span", {}, "Tools"), h("span", {}, kind === "docs" ? `${tools} · no programs` : `${tools} offered to the model`)));
+    if (this.info?.allowed_writes?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Writes without asking"), h("span", { class: "mono" }, this.info.allowed_writes.join(", "))));
+    if (this.info?.allowed_commands?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Commands without asking"), h("span", {}, `${this.info.allowed_commands.length} prefixes`)));
+    const undo = this.info ? (this.info.git ? "A git repository: git is the undo." : "Not a git repository, so nibb keeps the previous version of a file before it writes. Restore it from Changes.") : "";
+    return h("section", { class: "panel" }, h("h2", {}, "Workspace", kind ? h("span", { class: "note" }, kindLabel(kind)) : null), rows, undo ? h("p", { class: "hint" }, undo) : null);
+  }
+  async history(path, node) {
+    if (node.childElementCount) {
+      node.replaceChildren();
+      return;
+    }
+    node.append(h("p", { class: "hint" }, "Reading kept versions…"));
+    let versions = [];
+    try {
+      versions = await this.conn.call("versions.list", { repo: this.item.repo, path });
+    } catch (error) {
+      node.replaceChildren(h("p", { class: "error" }, error.message));
+      return;
+    }
+    if (!versions.length) {
+      node.replaceChildren(h("p", { class: "hint" }, "No earlier version is kept: the file did not exist before, or git is its undo."));
+      return;
+    }
+    const canRestore = this.item.open && this.conn.has("session.restore");
+    node.replaceChildren(
+      ...versions.slice(0, 8).map((v) =>
+        h(
+          "div",
+          { class: "kv" },
+          h("span", {}, `${clock(v.time)} · ${ago(v.time)} · ${v.bytes.toLocaleString()} bytes`),
+          canRestore ? h("button", { type: "button", class: "btn small", disabled: this.busy, onclick: () => this.restore(path, v.hash) }, "Restore") : h("span", { class: "mono" }, v.hash.slice(0, 12)),
+        ),
+      ),
+      canRestore ? h("p", { class: "hint" }, "Restoring shows the change and asks first; the current content is kept too.") : h("p", { class: "hint" }, "Resume the task to restore a version."),
     );
+  }
+  async restore(path, hash) {
+    try {
+      const started = await this.conn.call("session.restore", { id: this.item.id, path, hash });
+      this.expect(started.operation_id, (result) => toast(result.Err ? `Not restored: ${result.Err}` : `Restored ${basename(path)}.`));
+    } catch (error) {
+      toast(error.message);
+    }
   }
   detailsPanel() {
     const link = (label, kind) => h("button", { type: "button", class: "btn small", onclick: () => this.inspect(kind) }, label);

@@ -683,6 +683,7 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
+| `(workspace)` | the workspace's kind and mounted folders from `.nibb/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The default system prompt adds a section from it only for a `docs` workspace or one with mounts, so a plain repository's prompt is unchanged. A `docs` workspace offers no `shell-exec`, and the guard refuses `shell-exec` and `register-tool` there whoever asks; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file that no git work tree at the root covers, its previous content is kept in `.nibb/versions/` and a `file.version` record names it |
 | `(log-note text)` | add a note to the session log, for the record and the transcript; the model never sees it |
 
 A turn that must plan (`plan-required?`) always drafts one, scored if there

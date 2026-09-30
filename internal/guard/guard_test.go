@@ -3,6 +3,8 @@ package guard
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -223,5 +225,56 @@ func TestAutoAllowAnswersConfirmsButNotDenials(t *testing.T) {
 	var denied *scheme.Denied
 	if !errors.As(err, &denied) || denied.Reason != "outside the repository" {
 		t.Fatalf("deny must stand under AutoAllow: %v", err)
+	}
+}
+
+func TestRepoPinMounts(t *testing.T) {
+	root, ref, shared, outside := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	pin := RepoPin{Root: root, Mounts: []Mount{{Path: ref}, {Path: shared, Write: true}}}
+	write := &scheme.Prim{Name: "fs-write", Meta: scheme.Meta{Irreversible: true, Params: []scheme.Param{{Name: "path", Role: "path"}, {Name: "content", Role: "payload"}}}}
+	read := &scheme.Prim{Name: "fs-read", Meta: scheme.Meta{Params: []scheme.Param{{Name: "path", Role: "path"}}}}
+	check := func(p *scheme.Prim, path string) Verdict {
+		return pin.Check(context.Background(), p, []scheme.Value{scheme.Str(path), scheme.Str("x")}).Verdict
+	}
+	for _, tt := range []struct {
+		p    *scheme.Prim
+		path string
+		want Verdict
+	}{
+		{read, "notes.md", Allow},
+		{write, "notes.md", Allow},
+		{read, filepath.Join(ref, "contract.pdf"), Allow},
+		{write, filepath.Join(ref, "contract.pdf"), Deny},
+		{write, filepath.Join(shared, "handbook.md"), Allow},
+		{read, filepath.Join(outside, "x"), Deny},
+		{read, "../" + filepath.Base(ref) + "/x", Deny},
+	} {
+		if got := check(tt.p, tt.path); got != tt.want {
+			t.Errorf("%s %s: %v, want %v", tt.p.Name, tt.path, got, tt.want)
+		}
+	}
+	if pin.Resolve(filepath.Join(ref, "a")) == "" || pin.Resolve(filepath.Join(outside, "a")) != "" {
+		t.Fatal("Resolve disagrees with Check")
+	}
+	// A link inside a read-only mount pointing into a writable one is judged by its target.
+	os.Symlink(shared, filepath.Join(ref, "link"))
+	if got := check(write, filepath.Join(ref, "link", "f")); got != Allow {
+		t.Fatalf("link into a writable mount: %v", got)
+	}
+	os.Symlink(outside, filepath.Join(shared, "escape"))
+	if got := check(write, filepath.Join(shared, "escape", "f")); got != Deny {
+		t.Fatalf("link out of a mount: %v", got)
+	}
+}
+
+func TestDocsWorkspaceRunsNoPrograms(t *testing.T) {
+	kind := WorkspaceKind{Kind: "docs"}
+	for _, name := range []string{"shell-exec", "register-tool"} {
+		if kind.Check(context.Background(), &scheme.Prim{Name: name}, nil).Verdict != Deny {
+			t.Fatalf("%s allowed in docs", name)
+		}
+	}
+	if (WorkspaceKind{Kind: "code"}).Check(context.Background(), &scheme.Prim{Name: "shell-exec"}, nil).Verdict != Allow {
+		t.Fatal("code workspace refused a program")
 	}
 }
