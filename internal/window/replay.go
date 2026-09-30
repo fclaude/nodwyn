@@ -94,6 +94,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			if rec.MaxOutput > 0 {
 				req.MaxTokens = rec.MaxOutput
 			}
+			req.Temperature, req.Seed = rec.Temperature, rec.Seed
 			digest, err := RequestHash(req)
 			if err != nil {
 				return zero, err

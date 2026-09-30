@@ -91,6 +91,10 @@ type LLMReq struct {
 	// MaxOutput is the request's reply cap when its model sets its own
 	// (max_output), instead of the recipe's window.output_reserve.
 	MaxOutput int `json:"max_output,omitempty"`
+	// Temperature and Seed are the request's sampling settings, when its
+	// model sets them.
+	Temperature *float64 `json:"temperature,omitempty"`
+	Seed        *int64   `json:"seed,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.

@@ -171,6 +171,12 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 	if old := s.options.Config.Control; old.Credential != "" && sameHost(old.URL, m.URL) && len(key) == 0 {
 		m.Credential = old.Credential
 	}
+	// Saving the same model on the same server keeps what was tuned by hand
+	// in config.toml; choosing another model starts from its defaults.
+	if old := s.options.Config.Control; providerName(old.Provider) == providerName(m.Provider) && strings.TrimRight(old.URL, "/") == m.URL && old.Model == m.Model {
+		m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
+		m.Temperature, m.Seed = old.Temperature, old.Seed
+	}
 	raw, err := os.ReadFile(s.options.Paths.ConfigFile)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, failure(-32000, err.Error())
@@ -243,4 +249,12 @@ func (s *server) freeClass(base string) string {
 		class = fmt.Sprintf("%s-%d", base, n)
 	}
 	return class
+}
+
+// providerName is a model's provider with the default spelled out.
+func providerName(p string) string {
+	if p == "" {
+		return "ollama"
+	}
+	return p
 }

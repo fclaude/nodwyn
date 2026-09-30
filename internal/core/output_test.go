@@ -99,3 +99,47 @@ func TestAModelMayCapItsOwnReplies(t *testing.T) {
 		}
 	}
 }
+
+// A model's temperature and seed go with each of its requests, in ollama's
+// options, and are recorded so the request replays; unset, nothing is sent.
+func TestAModelMaySetSampling(t *testing.T) {
+	srv := fake.New(fake.Turn{Content: "done"})
+	defer srv.Close()
+	cfg := config.Default()
+	temperature, seed := 0.0, int64(42)
+	cfg.Control.Temperature, cfg.Control.Seed = &temperature, &seed
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Config: cfg, Repo: t.TempDir(), Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	r := &rig{t: t, s: s, srv: srv, logb: logb}
+	if e := r.turn("hello"); e != "" {
+		t.Fatal(e)
+	}
+	raw := string(srv.Requests[0].Raw)
+	if !strings.Contains(raw, `"temperature":0`) || !strings.Contains(raw, `"seed":42`) {
+		t.Fatalf("sampling settings not sent:\n%s", raw)
+	}
+	evs, err := log.Read(bytes.NewReader(logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed := 0
+	for _, ev := range evs {
+		if ev.Kind == log.KindLLMReq {
+			req, err := window.ReplayRequest(evs, ev.Seq)
+			if err != nil {
+				t.Fatalf("request %d: %v", ev.Seq, err)
+			}
+			if req.Seed == nil || *req.Seed != 42 || req.Temperature == nil || *req.Temperature != 0 {
+				t.Fatalf("replayed request lost its sampling: %+v", req)
+			}
+			replayed++
+		}
+	}
+	if replayed == 0 {
+		t.Fatal("no request replayed")
+	}
+}

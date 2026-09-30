@@ -192,9 +192,30 @@ model = "qwen3:8b"
 \begin{scm}
 (model-names)                ;=> ("coder" "control" "local")
 (model-info "local")         ;=> ((name . "local") (model . "qwen3:8b") (provider . "ollama")
-                             ;    (num-ctx . 77824) (max-output . 16384))
+                             ;    (num-ctx . 77824) (max-output . 16384)
+                             ;    (temperature . #f) (seed . #f))
 (model-turn "coder")         ; inside a turn: ask the coder
 \end{scm}
+
+\subsection{Sampling: repeatable replies}
+
+Any model can carry its own sampling settings. Unset, the server decides:
+
+\begin{toml}
+[models.local]
+provider = "ollama"
+url = "http://localhost:11434"
+model = "qwen3:8b"
+temperature = 0          # 0 to 2
+seed = 42
+\end{toml}
+
+They go with every request to that model and are recorded with it, so
+\code{nodwyn replay -{}-window} still rebuilds the request exactly. A
+temperature of 0 with a seed makes replies as repeatable as the server
+allows. That is useful when you compare two strategies on the same task,
+though many servers are not bit-for-bit deterministic across hardware or
+batching. \code{model-info} shows them, as \code{\#f} when unset.
 
 \textbf{Routing} is narrowing plus naming: give a model a context you
 built, and let it work.

@@ -105,6 +105,12 @@ type Model struct {
 	// refuse the older field) or "max_tokens", for servers that only know
 	// that one. openai only.
 	OutputField string `toml:"output_field"`
+	// Temperature and Seed are sampling settings sent with every request to
+	// this model; unset leaves them to the server. Temperature 0 with a
+	// seed makes replies as repeatable as the server allows (ollama's
+	// options, a chat-completions server's fields).
+	Temperature *float64 `toml:"temperature"`
+	Seed        *int64   `toml:"seed"`
 }
 
 // Jev is the judge's configuration (ADR 19/20). Jev is keyed: it runs only
@@ -376,6 +382,9 @@ func (m Model) validate() error {
 	}
 	if m.Provider != "openai" && m.OutputField != "" {
 		return errors.New("output_field is for openai servers; ollama takes num_predict")
+	}
+	if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
+		return fmt.Errorf("temperature %v must be between 0 and 2", *m.Temperature)
 	}
 	return nil
 }

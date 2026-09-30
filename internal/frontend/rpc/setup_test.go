@@ -145,3 +145,31 @@ func TestSettingsWriteControlAndKey(t *testing.T) {
 		t.Fatalf("replacement class: %+v", settings.Control)
 	}
 }
+
+// Saving the same model again keeps what was tuned by hand in config.toml;
+// choosing another model starts from its defaults.
+func TestSettingsWriteKeepsTuningOfTheSameModel(t *testing.T) {
+	o := options(t)
+	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	os.WriteFile(o.Paths.ConfigFile, []byte("[control]\nurl = \"http://workshop:11434\"\nmodel = \"qwen\"\nnum_ctx = 90000\ntemperature = 0.2\nseed = 5\n"), 0o600)
+	cfg, err := config.Load(o.Paths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Config = cfg
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434/", "model": "qwen"})
+	raw, _ := os.ReadFile(o.Paths.ConfigFile)
+	for _, want := range []string{"num_ctx = 90000", "temperature = 0.2", "seed = 5"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("lost %q:\n%s", want, raw)
+		}
+	}
+	c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434/", "model": "llama"})
+	raw, _ = os.ReadFile(o.Paths.ConfigFile)
+	if strings.Contains(string(raw), "temperature") || strings.Contains(string(raw), "num_ctx") {
+		t.Fatalf("another model kept the old one's tuning:\n%s", raw)
+	}
+}

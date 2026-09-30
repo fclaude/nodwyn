@@ -69,3 +69,15 @@ func TestWriteFileIsPrivateAndAtomic(t *testing.T) {
 		t.Fatal("relative path accepted")
 	}
 }
+
+// Sampling settings are written back as they were set.
+func TestSetControlWritesSampling(t *testing.T) {
+	temperature, seed := 0.3, int64(11)
+	raw, cfg, err := SetControl(nil, Model{Provider: "ollama", URL: "http://localhost:11434", Model: "m", Temperature: &temperature, Seed: &seed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "temperature = 0.3\nseed = 11\n") || *cfg.Control.Temperature != 0.3 || *cfg.Control.Seed != 11 {
+		t.Fatalf("%s\n%+v", raw, cfg.Control)
+	}
+}

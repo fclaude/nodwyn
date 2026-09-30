@@ -218,7 +218,7 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 			m.NumCtx = s.opts.Config.WindowNumCtx()
 		}
 	}
-	return loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput}
+	return loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput, Temperature: m.Temperature, Seed: m.Seed}
 }
 
 // unconfigured stands in for a [control] model config.toml does not name.

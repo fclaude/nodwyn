@@ -52,6 +52,10 @@ type Request struct {
 	// prompt and output fit the context (window.output_reserve); 0 leaves it
 	// to the server. Omitted when 0, so older requests hash as before.
 	MaxTokens int `json:",omitempty"`
+	// Temperature and Seed are sampling settings; nil leaves them to the
+	// server, and is omitted so requests without them hash as before.
+	Temperature *float64 `json:",omitempty"`
+	Seed        *int64   `json:",omitempty"`
 }
 
 // Delta is a streamed fragment.

@@ -130,7 +130,7 @@ func (l *Loop) install() error {
 		{
 			Name: "model-info",
 			Meta: scheme.Meta{
-				Doc:      "What is known about a model before asking it: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys name, model (the provider's id), provider, num-ctx (its context length; 0 when unset) and max-output (the reply cap its requests carry).",
+				Doc:      "What is known about a model before asking it: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys name, model (the provider's id), provider, num-ctx (its context length; 0 when unset), max-output (the reply cap its requests carry), and temperature and seed (#f when the server decides).",
 				Variadic: true, // (model-info) or (model-info name)
 				Hidden:   true,
 				Origin:   "builtin",
@@ -623,12 +623,21 @@ func (l *Loop) modelInfo(c *scheme.Call) (scheme.Value, error) {
 	if ep.MaxOutput > 0 {
 		maxOutput = ep.MaxOutput
 	}
+	temperature, seed := scheme.False, scheme.False
+	if ep.Temperature != nil {
+		temperature = scheme.Float(*ep.Temperature)
+	}
+	if ep.Seed != nil {
+		seed = scheme.Int(*ep.Seed)
+	}
 	return scheme.List(
 		scheme.Cons(scheme.Sym("name"), scheme.Str(name)),
 		scheme.Cons(scheme.Sym("model"), scheme.Str(ep.Model)),
 		scheme.Cons(scheme.Sym("provider"), scheme.Str(provider)),
 		scheme.Cons(scheme.Sym("num-ctx"), scheme.Int(int64(ep.NumCtx))),
 		scheme.Cons(scheme.Sym("max-output"), scheme.Int(int64(maxOutput))),
+		scheme.Cons(scheme.Sym("temperature"), temperature),
+		scheme.Cons(scheme.Sym("seed"), seed),
 	), nil
 }
 

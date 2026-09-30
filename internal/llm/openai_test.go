@@ -101,3 +101,30 @@ func TestOpenAIMaxTokensField(t *testing.T) {
 		t.Fatalf("request: %v", got)
 	}
 }
+
+// Sampling settings are chat-completions fields when set, absent otherwise.
+func TestOpenAISampling(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = nil
+		json.Unmarshal(b, &got)
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+	o := NewOpenAI(srv.URL+"/v1", nil)
+	temperature, seed := 0.2, int64(7)
+	msgs := []Message{{Role: RoleUser, Content: "hi"}}
+	if _, err := o.Chat(context.Background(), Request{Model: "m", Messages: msgs, Temperature: &temperature, Seed: &seed}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got["temperature"] != 0.2 || got["seed"] != float64(7) {
+		t.Fatalf("request: %v", got)
+	}
+	if _, err := o.Chat(context.Background(), Request{Model: "m", Messages: msgs}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["temperature"]; ok {
+		t.Fatalf("unset temperature sent: %v", got)
+	}
+}

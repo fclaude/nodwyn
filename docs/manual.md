@@ -485,6 +485,28 @@ model to be briefer, at most twice (`ask-model`, docs/scheme.md §9). On the
 SWE-bench dev set, 99.8% of Qwen replies stayed under 8192 tokens and the
 longest was about 17k, a thinking burst.
 
+Any model may also set its sampling: `temperature` (0 to 2) and `seed`.
+Unset, the server decides. They go with every request to that model (in
+ollama's `options`, or as chat-completions fields) and are recorded with each
+`llm.req`, so `nodwyn replay --window` rebuilds the request exactly.
+`temperature = 0` with a `seed` makes replies as repeatable as the server
+allows; many servers are still not bit-for-bit deterministic, especially
+across hardware or batching.
+
+```toml
+[control]
+provider = "ollama"
+url = "http://localhost:11434"
+model = "qwen3:8b"
+temperature = 0
+seed = 42
+```
+
+The console's Settings page writes `[control]` for you. Saving the same model
+on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
+`max_output`, `output_field`, `temperature`, `seed`); choosing another model
+starts from its defaults.
+
 A session opens without it, to replay or evaluate; its first model request
 fails with that table, and is not retried. A key that is missing or not
 bound fails the same way.

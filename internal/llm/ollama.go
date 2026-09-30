@@ -113,13 +113,19 @@ type wireChunk struct {
 
 func toWire(req Request) wireRequest {
 	w := wireRequest{Model: req.Model, Stream: true, KeepAlive: req.KeepAlive}
-	if req.NumCtx > 0 || req.MaxTokens > 0 {
+	if req.NumCtx > 0 || req.MaxTokens > 0 || req.Temperature != nil || req.Seed != nil {
 		w.Options = map[string]any{}
 		if req.NumCtx > 0 {
 			w.Options["num_ctx"] = req.NumCtx
 		}
 		if req.MaxTokens > 0 {
 			w.Options["num_predict"] = req.MaxTokens
+		}
+		if req.Temperature != nil {
+			w.Options["temperature"] = *req.Temperature
+		}
+		if req.Seed != nil {
+			w.Options["seed"] = *req.Seed
 		}
 	}
 	for _, m := range req.Messages {

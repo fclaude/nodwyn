@@ -148,6 +148,8 @@ num_ctx = 32768
 		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\nmodel = \"m\"\noutput_field = \"n_predict\"\n",
 		"[models.x]\nprovider = \"ollama\"\nurl = \"http://a.test\"\nmodel = \"m\"\noutput_field = \"max_tokens\"\n",
 		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\nmodel = \"m\"\nmax_output = -1\n",
+		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\nmodel = \"m\"\ntemperature = 2.5\n",
+		"[models.x]\nprovider = \"ollama\"\nurl = \"http://a.test\"\nmodel = \"m\"\ntemperature = -0.1\n",
 	} {
 		os.WriteFile(path, []byte(bad), 0o600)
 		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "models.x") {

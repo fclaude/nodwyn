@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -80,6 +81,12 @@ func controlBlock(m Model) string {
 		fmt.Fprintf(&b, "max_output = %d\n", m.MaxOutput)
 	}
 	field("output_field", m.OutputField)
+	if m.Temperature != nil {
+		fmt.Fprintf(&b, "temperature = %s\n", strconv.FormatFloat(*m.Temperature, 'f', -1, 64))
+	}
+	if m.Seed != nil {
+		fmt.Fprintf(&b, "seed = %d\n", *m.Seed)
+	}
 	b.WriteString("\n")
 	return b.String()
 }

@@ -91,6 +91,9 @@ type Endpoint struct {
 	NumCtx    int
 	KeepAlive string
 	MaxOutput int // this model's reply cap; 0 uses Config.MaxOutput
+	// Sampling settings sent with each request; nil leaves them to the server.
+	Temperature *float64
+	Seed        *int64
 }
 
 //go:embed strategy.scm

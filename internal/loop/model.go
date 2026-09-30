@@ -92,7 +92,8 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer) (*llm.Resp
 	if ep.MaxOutput > 0 {
 		maxOutput, capFrom = ep.MaxOutput, "max_output of model "+name
 	}
-	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: maxOutput}
+	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: maxOutput,
+		Temperature: ep.Temperature, Seed: ep.Seed}
 	request.Tools = offered(l.tools, offer)
 	digest, err := window.RequestHash(request)
 	if err != nil {
@@ -102,6 +103,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer) (*llm.Resp
 		RequestHash: digest,
 		Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
 		NoTools: offer.none, OfferedTools: offer.only, MaxOutput: ep.MaxOutput,
+		Temperature: ep.Temperature, Seed: ep.Seed,
 	}
 	if name != ControlModel {
 		// The session's recipe carries the control model's settings; any

@@ -214,6 +214,26 @@
         "Provider": {
           "type": "string"
         },
+        "Seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "URL": {
           "type": "string"
         }
@@ -226,7 +246,9 @@
         "KeepAlive",
         "Credential",
         "MaxOutput",
-        "OutputField"
+        "OutputField",
+        "Temperature",
+        "Seed"
       ],
       "type": "object"
     },
@@ -1065,6 +1087,26 @@
         },
         "request_hash": {
           "type": "string"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "tools": {
           "type": "integer"

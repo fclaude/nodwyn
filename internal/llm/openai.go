@@ -81,8 +81,10 @@ type oaiRequest struct {
 	// The chat-completions cap on generated tokens, reasoning included;
 	// reasoning models refuse the older max_tokens, which some other
 	// servers need instead (OpenAI.MaxTokensField). One is set, never both.
-	MaxCompletionTokens int `json:"max_completion_tokens,omitempty"`
-	MaxTokens           int `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int      `json:"max_completion_tokens,omitempty"`
+	MaxTokens           int      `json:"max_tokens,omitempty"`
+	Temperature         *float64 `json:"temperature,omitempty"`
+	Seed                *int64   `json:"seed,omitempty"`
 }
 
 type oaiResponse struct {
@@ -97,7 +99,7 @@ type oaiResponse struct {
 }
 
 func toOpenAI(req Request) oaiRequest {
-	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens}
+	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed}
 	for _, m := range req.Messages {
 		om := oaiMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
 		for _, tc := range m.ToolCalls {
