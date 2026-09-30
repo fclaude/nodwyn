@@ -153,6 +153,9 @@ const modelKeyPosition = "header:Authorization:Bearer"
 // once, and the check is logged like any egress.
 func (s *Session) authorize(class string) func(*http.Request) error {
 	return func(req *http.Request) error {
+		if s.keychain == nil {
+			return llm.Permanent(fmt.Errorf("the %s key is in the keychain, which was locked when this task opened: unlock it, then close and resume the task", class))
+		}
 		h := s.HandleForClass(class)
 		if h == nil {
 			return llm.Permanent(fmt.Errorf("no %s credential in the keychain", class))

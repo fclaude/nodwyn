@@ -9,6 +9,7 @@ import { kindLabel } from "./home.js";
 import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
+import { keychainForm } from "./setup.js";
 
 const drafts = new Map(); // per task, this tab only
 
@@ -396,7 +397,12 @@ export class TaskView {
       stop.disabled = stop.disabled || !this.busy;
       actions.append(stop);
     }
-    if (!item.open && this.conn.has("session.resume")) actions.append(button("Resume", "up", () => this.resume(), "dark"));
+    const keysLocked = !item.open && this.desk.keysLocked;
+    if (!item.open && this.conn.has("session.resume")) {
+      const resume = button("Resume", "up", () => this.resume(), "dark");
+      resume.disabled = resume.disabled || keysLocked;
+      actions.append(resume);
+    }
     if (item.open && this.conn.has("session.close")) {
       const close = button("Close", "", () => this.act("session.close", "Closing the task; its conversation is kept."), "ghost");
       close.disabled = close.disabled || this.busy;
@@ -420,6 +426,7 @@ export class TaskView {
       ),
       st.label ? h("span", { class: `pill ${st.cls}` }, st.cls ? h("span", { class: `dot ${st.cls}` }) : null, st.label) : "",
       actions,
+      keysLocked ? h("details", { class: "callout", open: true }, h("summary", {}, "Unlock your keys to resume: this task's model needs one."), keychainForm({ conn: this.conn, desk: this.desk }, { onDone: () => this.header() })) : "",
     );
   }
   async act(method, message) {

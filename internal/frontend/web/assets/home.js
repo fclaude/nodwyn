@@ -42,7 +42,7 @@ export function renderHome(root, ctx) {
     },
   });
   task.value = draft;
-  const ready = () => !starting && canStart && conn.live && !!chosen && !!task.value.trim();
+  const ready = () => !starting && canStart && conn.live && !desk.keysLocked && !!chosen && !!task.value.trim();
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: !ready() }, icon("up", 18, 2));
   files ||= new Attachments();
   const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
@@ -170,7 +170,7 @@ export function renderHome(root, ctx) {
         "div",
         { class: "home-col" },
         h("h1", {}, "What should we get done?"),
-        locked ? h("details", { class: "callout" }, h("summary", {}, "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(ctx, { onDone: () => renderHome(root, { ...ctx, keepTop: false }) })) : null,
+        locked ? h("details", { class: "callout", open: desk.keysLocked }, h("summary", {}, desk.keysLocked ? "Unlock your keys to start a task: the model needs one." : "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(ctx, { onDone: () => renderHome(root, { ...ctx, keepTop: false }) })) : null,
         canStart ? form : h("div", { class: "callout plain" }, "This view can't start tasks. Use an interactive view or the terminal."),
         canStart ? chips : null,
         canStart ? adding : null,

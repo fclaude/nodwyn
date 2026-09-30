@@ -432,6 +432,7 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
   display: flex; align-items: center; gap: 12px; padding: 18px 32px 18px 48px;
   border-bottom: 1px solid var(--line); flex-wrap: wrap;
 }
+.task-head > .callout { flex-basis: 100%; }
 .task-head .titles { display: flex; flex-direction: column; gap: 6px; flex: 1 1 420px; min-width: 0; }
 .task-head h1 {
   margin: 0; font-family: var(--serif); font-size: 26px; font-weight: 500;

@@ -47,6 +47,46 @@ func TestKeychainCreateUnlockOverTheSocket(t *testing.T) {
 	}
 }
 
+// A task gets the keychain only when it is built, so one opened while the
+// model's key is locked away would fail every request even after an
+// unlock. The daemon refuses to open or resume it until the unlock.
+func TestLockedKeychainRefusesTasksUntilUnlocked(t *testing.T) {
+	o := options(t)
+	repo := t.TempDir()
+	path, stop := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("keychain.create", map[string]any{"passphrase": "correct horse"})
+	c.ok("settings.control.write", map[string]any{"provider": "openai", "url": "https://api.example.com/v1", "model": "m", "api_key": "sk-test-canary"})
+	var opened sessionDetails
+	json.Unmarshal(c.ok("session.open", map[string]any{"repo": repo}), &opened)
+	c.ok("session.close", map[string]any{"id": opened.ID})
+	stop()
+
+	cfg, err := config.Load(o.Paths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Config = cfg
+	path, _ = start(t, o)
+	c = connect(t, path)
+	c.hello()
+	for _, call := range []struct {
+		method string
+		params map[string]any
+	}{
+		{"session.open", map[string]any{"repo": repo}},
+		{"session.resume", map[string]any{"id": opened.ID}},
+		{"run.start", map[string]any{"repo": repo, "task": "t", "wall": "1m", "max_turns": 1, "auto_approve": false}},
+	} {
+		if r := c.call(call.method, call.params); r.Error == nil || !strings.Contains(r.Error.Message, "Unlock the keychain first") {
+			t.Fatalf("%s with the key locked: %+v", call.method, r.Error)
+		}
+	}
+	c.ok("keychain.unlock", map[string]any{"passphrase": "correct horse"})
+	c.ok("session.resume", map[string]any{"id": opened.ID})
+}
+
 func TestSettingsWriteControlAndKey(t *testing.T) {
 	o := options(t)
 	os.MkdirAll(o.Paths.ConfigDir, 0o700)
