@@ -27,7 +27,8 @@ import (
 type jevStore struct {
 	kc        *keychain.Store
 	captured  *http.Request
-	bodyBytes []byte // captured request body
+	bodyBytes []byte        // captured request body
+	reqs      []nlog.JevReq // jev.req records
 }
 
 func (s *jevStore) Redactor() *l1.Scanner { return l1.New() }
@@ -53,6 +54,9 @@ func (s *jevStore) Do(req *http.Request) (*http.Response, error) {
 	return http.DefaultClient.Do(req)
 }
 func (s *jevStore) Record(kind nlog.Kind, payload any) (nlog.Event, error) {
+	if r, ok := payload.(nlog.JevReq); ok {
+		s.reqs = append(s.reqs, r)
+	}
 	return nlog.Event{}, nil
 }
 
@@ -71,6 +75,13 @@ func jevBinding(srv *fakejev.Server) []binding.Binding {
 }
 
 func newJevHarness(t *testing.T, bound bool) *jevHarness {
+	t.Helper()
+	return newJevHarnessWith(t, bound, false, true)
+}
+
+// newJevHarnessWith also registers the model's judge-* tools (at the full
+// content level) when tools is set, and a jev-key only when key is set.
+func newJevHarnessWith(t *testing.T, bound, tools, key bool) *jevHarness {
 	t.Helper()
 	repo := t.TempDir()
 	os.WriteFile(repo+"/.env", []byte("API_KEY="+canary+"\n"), 0o600)
@@ -94,6 +105,9 @@ func newJevHarness(t *testing.T, bound bool) *jevHarness {
 	o.Credentials = store
 	o.Jev = store
 	o.JevConfig = prim.JevOptions{URL: srv.URL, Model: "jev-latest", Content: "plan", Timeout: 10 * time.Second}
+	if tools {
+		o.JevConfig.Content, o.JevConfig.Tools = "full", true
+	}
 	if err := prim.Register(in, o); err != nil {
 		t.Fatal(err)
 	}
@@ -115,12 +129,30 @@ func newJevHarness(t *testing.T, bound bool) *jevHarness {
 		}))
 
 	// Register the jev-key credential (user origin).
-	userCtx := scheme.WithOrigin(context.Background(), scheme.OriginUser)
-	if _, err := in.EvalString(userCtx, `(define jcred (credential-register "jev-key"))`); err != nil {
-		t.Fatalf("register jev-key: %v", err)
+	if key {
+		userCtx := scheme.WithOrigin(context.Background(), scheme.OriginUser)
+		if _, err := in.EvalString(userCtx, `(define jcred (credential-register "jev-key"))`); err != nil {
+			t.Fatalf("register jev-key: %v", err)
+		}
 	}
 
 	return &jevHarness{in: in, srv: srv, store: store, logB: &logB}
+}
+
+// tool applies a registered tool to JSON arguments with model origin, the
+// path a model's tool call takes (loop.apply): a tool the model is not
+// offered cannot be called by name.
+func (h *jevHarness) tool(t *testing.T, name, args string) (scheme.Value, error) {
+	t.Helper()
+	p, ok := h.in.Lookup(name)
+	if !ok || !p.Tool() {
+		return scheme.Void, errors.New("unknown tool " + name)
+	}
+	vals, err := p.ArgsFromJSON([]byte(args))
+	if err != nil {
+		return scheme.Void, err
+	}
+	return h.in.Apply(scheme.WithOrigin(context.Background(), scheme.OriginModel), scheme.Value{Kind: scheme.KPrim, Prim: p}, vals)
 }
 
 func (h *jevHarness) model(t *testing.T, src string) (scheme.Value, error) {
@@ -191,6 +223,101 @@ func TestJevScoreAndChoiceShapes(t *testing.T) {
 	}
 	if _, err := h.model(t, `(jev-score jcred "s" "i" '("only-one"))`); err == nil {
 		t.Fatal("fewer than two levels should be rejected")
+	}
+}
+
+// The jev-* primitives take a handle, which a model's JSON cannot hold, so
+// they are never offered; the judge-* tools are, and only when asked for.
+func TestJudgeToolsOfferedInsteadOfKeyedPrims(t *testing.T) {
+	for _, tools := range []bool{false, true} {
+		h := newJevHarnessWith(t, true, tools, true)
+		for _, kind := range []string{"noul", "score", "choice"} {
+			p, ok := h.in.Lookup("jev-" + kind)
+			if !ok || p.Tool() {
+				t.Fatalf("jev-%s must stay registered for Scheme and hidden from the model (found %v)", kind, ok)
+			}
+			if _, err := h.tool(t, "jev-"+kind, `{"cred":"jev-key","state":"s","instructions":"i"}`); err == nil {
+				t.Fatalf("jev-%s must not be callable as a tool", kind)
+			}
+			j, ok := h.in.Lookup("judge-" + kind)
+			if ok != tools {
+				t.Fatalf("judge-%s registered = %v, want %v", kind, ok, tools)
+			}
+			if !ok {
+				continue
+			}
+			if !j.Tool() || j.Meta.EgressClass != "jev-key" {
+				t.Fatalf("judge-%s: tool=%v class=%q", kind, j.Tool(), j.Meta.EgressClass)
+			}
+			for _, pa := range j.Meta.Params {
+				if pa.Role != "payload" {
+					t.Fatalf("judge-%s parameter %s has role %q; everything the model sends is payload", kind, pa.Name, pa.Role)
+				}
+			}
+		}
+	}
+}
+
+// The model's judge tool sends the stored key, redacts every string it
+// sends (criteria included) and logs the call as model-originated.
+func TestJudgeToolCarriesTheStoredKey(t *testing.T) {
+	h := newJevHarnessWith(t, true, true, true)
+	h.srv.Script(fakejev.Answer{Score: 2})
+	v, err := h.tool(t, "judge-score", `{"state":"the key is `+canary+`","instructions":"rate it","levels":["bad","ok","has `+canary+`"]}`)
+	if err != nil {
+		t.Fatalf("judge-score: %v", err)
+	}
+	if !strings.Contains(scheme.Write(v), `("score" . 1.0)`) {
+		t.Fatalf("score: %s", scheme.Write(v))
+	}
+	req := h.srv.LastRequest()
+	if req == nil || req.Auth != "Bearer test-secret" {
+		t.Fatalf("the stored jev-key must be injected: %+v", req)
+	}
+	if strings.Contains(string(req.Raw), canary) {
+		t.Fatal("canary leaked into the Jev request (state or criteria)")
+	}
+	if len(h.store.reqs) != 1 || h.store.reqs[0].Tool != "judge-score" || h.store.reqs[0].Origin != "model" || h.store.reqs[0].Level != "full" {
+		t.Fatalf("jev.req: %+v", h.store.reqs)
+	}
+	if len(h.store.reqs[0].Redactions) < 2 {
+		t.Fatalf("both the state and the level were redacted: %v", h.store.reqs[0].Redactions)
+	}
+	h.srv.Script(fakejev.Answer{Choice: "b", Probs: map[string]float64{"a": 0.1, "b": 0.9}})
+	if _, err := h.tool(t, "judge-choice", `{"state":"s","instructions":"which?","options":{"a":"first","b":"`+canary+`"}}`); err != nil {
+		t.Fatalf("judge-choice: %v", err)
+	}
+	if strings.Contains(string(h.srv.LastRequest().Raw), canary) {
+		t.Fatal("canary leaked through a judge-choice option")
+	}
+}
+
+// The guard judges a judge tool as carrying jev-key: unbound, it is denied
+// before anything is sent.
+func TestJudgeToolUnboundDenied(t *testing.T) {
+	h := newJevHarnessWith(t, false, true, true)
+	_, err := h.tool(t, "judge-noul", `{"state":"hello","instructions":"a question?"}`)
+	var d *scheme.Denied
+	if !errors.As(err, &d) {
+		t.Fatalf("want guard denial, got %v", err)
+	}
+	if h.store.captured != nil || h.srv.LastRequest() != nil {
+		t.Fatal("denied call but a request was sent")
+	}
+	if !strings.Contains(h.logB.String(), `"class":"jev-key"`) {
+		t.Fatalf("the egress check must name jev-key:\n%s", h.logB.String())
+	}
+}
+
+// With no jev-key stored, a judge tool fails before sending anything.
+func TestJudgeToolWithoutKey(t *testing.T) {
+	h := newJevHarnessWith(t, true, true, false)
+	_, err := h.tool(t, "judge-noul", `{"state":"hello","instructions":"a question?"}`)
+	if err == nil || !strings.Contains(err.Error(), "no jev-key credential is stored") {
+		t.Fatalf("want a missing-key error, got %v", err)
+	}
+	if h.srv.LastRequest() != nil || len(h.store.reqs) != 0 {
+		t.Fatal("nothing may be sent without a key")
 	}
 }
 

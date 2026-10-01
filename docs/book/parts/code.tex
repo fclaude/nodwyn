@@ -1296,7 +1296,11 @@ checked once, in the guard; the handler injects the key without looking
 again. The judge's primitives (\code{jev-noul}, \code{jev-score},
 \code{jev-choice}, \file{internal/prim/jev.go}) are built the same way,
 with the destination, method and position fixed in their metadata, and
-redact what they send before sending it.
+redact what they send before sending it. The model's \code{judge-noul},
+\code{judge-score} and \code{judge-choice} are the same handlers without
+the handle: their \code{EgressClass} is \code{jev-key}, as an MCP tool's
+is its server's key class, so E3 judges them as carrying it, and the
+handler looks the key up itself.
 
 A keyed model request (\file{internal/core/credentials.go},
 \code{authorize}) is not judged by the guard: \code{model-turn} is a

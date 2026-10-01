@@ -71,6 +71,12 @@ func (j *fakeJudge) asked() []string {
 // the fake judge's host.
 func judgedRig(t *testing.T, judge *fakeJudge, init string, turns ...fake.Turn) *rig {
 	t.Helper()
+	return judgedRigAt(t, judge, config.JevContentPlan, init, turns...)
+}
+
+// judgedRigAt is judgedRig at a jev.content level.
+func judgedRigAt(t *testing.T, judge *fakeJudge, content, init string, turns ...fake.Turn) *rig {
+	t.Helper()
 	repo := t.TempDir()
 	// These tests pin the gate's own turns; exploring before a draft has its
 	// own test (TestPlannerExploresFirst).
@@ -80,6 +86,7 @@ func judgedRig(t *testing.T, judge *fakeJudge, init string, turns ...fake.Turn) 
 	srv := fake.New(turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
+	cfg.Jev.Content = content
 	var kc *keychain.Store
 	if judge != nil {
 		cfg.Jev.URL = judge.URL

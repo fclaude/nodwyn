@@ -244,9 +244,14 @@ The response is tagged \code{external:http}.
 The judge, Jev, is reached through three primitives, \code{jev-noul},
 \code{jev-score} and \code{jev-choice}, built the same way: a bound
 credential, a fixed host, the payload redacted before it is sent, and a
-\code{jev.req} record of the content level, size, payload hash and
+\code{jev.req} record of the origin, content level, size, payload hash and
 redactions of every call. The default plan gate uses them only when a
-\code{jev-key} credential exists; without one, nothing is sent.
+\code{jev-key} credential exists; without one, nothing is sent. They are
+hidden from the model, which cannot hold a handle; it has
+\code{judge-noul}, \code{judge-score} and \code{judge-choice}, the same
+calls with the stored key supplied by Go and judged by the guard as
+carrying \code{jev-key}. Since the model chooses what those send, they are
+offered only when \code{jev.content} is \code{full}.
 
 Neither follows a redirect, any more than the MCP client or a model
 request does: the binding was checked for the host the request went to, and

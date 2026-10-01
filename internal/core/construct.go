@@ -160,9 +160,13 @@ func (s *Session) primitiveOptions() prim.Options {
 	}
 	// P5 Jev (ADR 19/20): Jev egress primitives are registered if Jev is
 	// enabled and a keychain is available. The session is the JevClient.
+	// The model's judge-* tools also need a jev-key stored now, since the
+	// tool list is fixed for the session, and the "full" content level,
+	// since the model chooses what it sends.
 	if o.Config.Jev.Enabled() && s.keychain != nil {
 		po.Jev = s
 		po.JevConfig = jevOptions(o.Config.Jev)
+		po.JevConfig.Tools = po.JevConfig.Content == config.JevContentFull && s.HandleForClass(prim.JevClass) != nil
 	}
 	return po
 }

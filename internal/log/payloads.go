@@ -193,8 +193,8 @@ type GatePlan struct {
 // The payload hash is a short digest; the raw payload is never logged, and a
 // redacted payload is never logged either (only the events it triggered).
 type JevReq struct {
-	Tool        string   `json:"tool"` // jev-noul | jev-score | jev-choice
-	Origin      string   `json:"origin"`
+	Tool        string   `json:"tool"`                 // jev-noul, jev-score, jev-choice, or judge-* for the model
+	Origin      string   `json:"origin"`               // user, model or harness
 	Level       string   `json:"level"`                // none | plan | plan+summaries | full
 	Bytes       int      `json:"bytes"`                // bytes of the redacted payload sent
 	PayloadHash string   `json:"payload_hash"`         // hex sha256[:16] of the redacted payload

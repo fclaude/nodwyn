@@ -102,7 +102,11 @@ func Register(in *scheme.Interp, o Options) error {
 		}
 	}
 	if o.Jev != nil {
-		for _, p := range []*scheme.Prim{jevNoul(o.JevConfig, o.Jev), jevScore(o.JevConfig, o.Jev), jevChoice(o.JevConfig, o.Jev)} {
+		ps := []*scheme.Prim{jevNoul(o.JevConfig, o.Jev, true), jevScore(o.JevConfig, o.Jev, true), jevChoice(o.JevConfig, o.Jev, true)}
+		if o.JevConfig.Tools {
+			ps = append(ps, jevNoul(o.JevConfig, o.Jev, false), jevScore(o.JevConfig, o.Jev, false), jevChoice(o.JevConfig, o.Jev, false))
+		}
+		for _, p := range ps {
 			if err := in.Register(p); err != nil {
 				return err
 			}

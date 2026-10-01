@@ -169,3 +169,36 @@ Jev now requires the actual POST and Bearer-header scope. Request bytes and
 credential ownership are unchanged. Confirmations carry the same complete facts
 used by authorization. Tests exercise all three primitives with matching and
 mismatching method/position rows and assert no transport call on denial.
+
+## Amendment — 2026-09-30: the model's judge tools
+
+The three primitives were offered to the model as tools, which it could
+never call: a handle cannot come from a model's JSON, so every call failed
+in the handler after the guard had allowed it. Now:
+
+- `jev-noul`, `jev-score` and `jev-choice` are hidden. They keep the handle
+  argument; the plan gate and user code hold one.
+- The model has `judge-noul`, `judge-score` and `judge-choice`: the same
+  calls without the handle. Go looks up the stored `jev-key` at call time,
+  and the primitive's `EgressClass` is `jev-key`, so E3 judges the call as
+  carrying that class at the Jev host, POST, `header:Authorization:Bearer`,
+  exactly the check a `jev-*` call gets (an MCP server's key works the same
+  way, ADR 22 §4). With no key stored the call fails before anything is
+  sent.
+- They are registered only when the session starts with a `jev-key`
+  stored, since the tool list is fixed for the session, and with
+  `jev.content = "full"`. ADR 19's levels say what may reach Jev; the model
+  chooses what these tools send, which may be raw file contents or tool
+  output, and nothing can hold that to a plan. At the default `plan` level
+  only the plan gate talks to Jev.
+- Every argument of every judge primitive is a payload: `levels` and
+  `options` had no role, so L1 and L2 never read them, and the handler did
+  not redact them. Now the guard reads them and the handler redacts every
+  string it sends.
+- `jev.req` records the call's origin (`harness` for the plan gate, `model`
+  for a judge tool, `user` for `:eval`).
+
+Section 3's example is out of date in one more way: a tool body runs with
+the model's origin, so it cannot call `credential`; a user tool closes over
+a handle looked up in `init.scm` instead.
+

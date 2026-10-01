@@ -1,11 +1,22 @@
-// Jev egress primitives (ADR 19/20): jev-noul, jev-score, jev-choice.
+// Jev egress primitives (ADR 19/20): jev-noul, jev-score, jev-choice, and
+// the model's judge-noul, judge-score, judge-choice.
 //
-// They are the only Scheme->Jev surface. Each is an Egress primitive with a
-// credential slot, so the guard's E3 check (binding table) and the L1 text
-// check run before the handler; the handler then redacts every string it is
-// about to send with the L1 scanner (ADR 19), POSTs one System One request,
-// records a jev.req event (level, bytes, payload hash, redaction classes,
-// the answer) -- never the payload -- and returns the answer as a value.
+// They are the only Scheme->Jev surface. Each is an Egress primitive, so the
+// guard's E3 check (binding table) and the L1 text check run before the
+// handler; the handler then redacts every string it is about to send with
+// the L1 scanner (ADR 19), POSTs one System One request, records a jev.req
+// event (origin, level, bytes, payload hash, redaction classes, the answer)
+// -- never the payload -- and returns the answer as a value.
+//
+// The jev-* primitives take the jev-key handle as their first argument: the
+// plan gate and user code hold one, and they are hidden, since a handle
+// cannot come from a model's JSON. The judge-* tools are the same calls
+// without it: Go looks up the stored jev-key itself and the guard judges
+// the call as carrying that class (Meta.EgressClass, as for an MCP
+// server's key). They are offered only when the session starts with a
+// jev-key stored and jev.content = "full", because what the model sends is
+// its own choice of text, which is the level at which content leaves
+// (ADR 20, amended 2026-09-30).
 //
 // Wire format (docs.typesafe.ai/api): POST /v1/systemone with
 // Authorization: Bearer <key> and
@@ -44,18 +55,28 @@ type JevOptions struct {
 	Model   string
 	Content string
 	Timeout time.Duration
+	// Tools registers judge-noul, judge-score and judge-choice for the model.
+	Tools bool
 }
 
 // JevClient supplies the shared host services used by Jev primitives.
-// Credential values remain behind injection; handlers never open the keychain.
+// Credential values remain behind injection; handlers never open the
+// keychain, and HandleForClass returns a handle, never a value.
 type JevClient interface {
 	Redactor() *l1.Scanner
+	HandleForClass(class string) *scheme.Handle
 	InjectHeader(id, name, prefix string, req *http.Request) error
 	Do(req *http.Request) (*http.Response, error)
 	Record(kind nlog.Kind, payload any) (nlog.Event, error)
 }
 
-const jevPath = "/v1/systemone"
+// JevClass is the credential class of the Jev key.
+const JevClass = "jev-key"
+
+const (
+	jevPath     = "/v1/systemone"
+	jevPosition = "header:Authorization:Bearer"
+)
 
 // jevHost is the destination the E3 binding check judges: the host of the
 // configured base URL, so the log never claims one host while bytes go to
@@ -74,20 +95,55 @@ type question struct {
 	Criteria     any    `json:"criteria,omitempty"`
 }
 
-// jevCall sends one question about state and returns its answer object.
-func jevCall(o JevOptions, jc JevClient, c *scheme.Call, tool, state string, q question) (map[string]any, error) {
-	if c.Args[0].Kind != scheme.KHandle {
-		return nil, fmt.Errorf("%s: arg 1 must be a credential handle", tool)
+// jevCred is the key a call sends: the handle in its first argument for a
+// jev-* primitive, the stored jev-key for a judge-* tool.
+func jevCred(jc JevClient, c *scheme.Call, keyed bool, tool string) (*scheme.Handle, error) {
+	if keyed {
+		if c.Args[0].Kind != scheme.KHandle {
+			return nil, fmt.Errorf("%s: arg 1 must be a credential handle", tool)
+		}
+		return c.Args[0].H, nil
 	}
-	cred := c.Args[0].H
+	h := jc.HandleForClass(JevClass)
+	if h == nil {
+		return nil, fmt.Errorf("%s: no %s credential is stored", tool, JevClass)
+	}
+	return h, nil
+}
+
+// jevCall sends one question about state and returns its answer object.
+func jevCall(o JevOptions, jc JevClient, c *scheme.Call, keyed bool, tool, state string, q question) (map[string]any, error) {
+	cred, err := jevCred(jc, c, keyed, tool)
+	if err != nil {
+		return nil, err
+	}
 	sc := jc.Redactor()
 
-	// Redact everything that leaves: the state and the instructions.
+	// Redact everything that leaves: the state, the instructions and the
+	// criteria (levels, or option names and descriptions).
 	var redactions []string
 	rstate, rs := redactText(state, sc)
 	redactions = append(redactions, rs...)
 	q.Instructions, rs = redactText(q.Instructions, sc)
 	redactions = append(redactions, rs...)
+	switch crit := q.Criteria.(type) {
+	case []string:
+		out := make([]string, len(crit))
+		for i, level := range crit {
+			out[i], rs = redactText(level, sc)
+			redactions = append(redactions, rs...)
+		}
+		q.Criteria = out
+	case map[string]string:
+		out := make(map[string]string, len(crit))
+		for name, desc := range crit {
+			rname, rn := redactText(name, sc)
+			rdesc, rd := redactText(desc, sc)
+			redactions = append(append(redactions, rn...), rd...)
+			out[rname] = rdesc
+		}
+		q.Criteria = out
+	}
 
 	body := map[string]any{
 		"state":     rstate,
@@ -102,7 +158,7 @@ func jevCall(o JevOptions, jc JevClient, c *scheme.Call, tool, state string, q q
 	hash := hex.EncodeToString(sum[:8])
 	record := func(ok bool, errText string, answer any) {
 		_, _ = jc.Record(nlog.KindJevReq, nlog.JevReq{
-			Tool: tool, Level: o.Content, Bytes: len(enc), PayloadHash: hash,
+			Tool: tool, Origin: string(c.Origin), Level: o.Content, Bytes: len(enc), PayloadHash: hash,
 			Redactions: redactions, OK: ok, Error: errText, Answer: answer,
 		})
 	}
@@ -166,100 +222,121 @@ func redactText(text string, sc *l1.Scanner) (string, []string) {
 	return res.Text, classes
 }
 
-func credParam() scheme.Param {
-	return scheme.Param{Name: "cred", Type: "any", Role: "credential", Doc: "the jev-key credential handle"}
+// jevMeta is the metadata of one judge primitive. keyed takes the handle
+// first and is hidden; otherwise the call carries the stored jev-key.
+func jevMeta(o JevOptions, keyed bool, doc string, params ...scheme.Param) scheme.Meta {
+	m := scheme.Meta{
+		Doc:            doc,
+		Egress:         true,
+		Host:           true,
+		EgressHost:     jevHost(o),
+		EgressMethod:   http.MethodPost,
+		EgressPosition: jevPosition,
+		TaintSource:    scheme.TagHTTP,
+		Params:         params,
+	}
+	if keyed {
+		m.Hidden = true
+		m.Params = append([]scheme.Param{{Name: "cred", Type: "any", Role: "credential", Doc: "the jev-key credential handle"}}, params...)
+	} else {
+		m.EgressClass = JevClass
+		m.Doc += " The text leaves the machine for an external judge (Jev); known secret shapes are redacted first."
+	}
+	return m
 }
 
-// jevNoul: (jev-noul cred state instructions) -> probability that the
-// answer to the yes/no instructions about state is yes.
-func jevNoul(o JevOptions, jc JevClient) *scheme.Prim {
+// jevName is jev-KIND for the keyed primitive, judge-KIND for the tool.
+func jevName(keyed bool, kind string) string {
+	if keyed {
+		return "jev-" + kind
+	}
+	return "judge-" + kind
+}
+
+// jevNoul: (jev-noul cred state instructions), or (judge-noul state
+// instructions) -> probability that the answer to the yes/no instructions
+// about state is yes.
+func jevNoul(o JevOptions, jc JevClient, keyed bool) *scheme.Prim {
+	name := jevName(keyed, "noul")
+	k := 0
+	if keyed {
+		k = 1
+	}
 	return &scheme.Prim{
-		Name: "jev-noul",
-		Meta: scheme.Meta{
-			Doc:            "Ask Jev a yes/no question about a text: returns the probability (0..1) that the answer is yes.",
-			Egress:         true,
-			Host:           true,
-			EgressHost:     jevHost(o),
-			EgressMethod:   http.MethodPost,
-			EgressPosition: "header:Authorization:Bearer",
-			TaintSource:    scheme.TagHTTP,
-			Params: []scheme.Param{credParam(),
-				{Name: "state", Type: "string", Role: "payload", Doc: "the text to judge (redacted before send)"},
-				{Name: "instructions", Type: "string", Role: "payload", Doc: "the yes/no question"},
-			},
-		},
+		Name: name,
+		Meta: jevMeta(o, keyed, "Ask Jev a yes/no question about a text: returns the probability (0..1) that the answer is yes.",
+			scheme.Param{Name: "state", Type: "string", Role: "payload", Doc: "the text to judge (redacted before send)"},
+			scheme.Param{Name: "instructions", Type: "string", Role: "payload", Doc: "the yes/no question"},
+		),
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
-			state, err := c.String(1)
+			state, err := c.String(k)
 			if err != nil {
 				return scheme.Void, err
 			}
-			instr, err := c.String(2)
+			instr, err := c.String(k + 1)
 			if err != nil {
 				return scheme.Void, err
 			}
-			ans, err := jevCall(o, jc, c, "jev-noul", state, question{Type: "noul", Instructions: instr})
+			ans, err := jevCall(o, jc, c, keyed, name, state, question{Type: "noul", Instructions: instr})
 			if err != nil {
 				return scheme.Void, err
 			}
 			p, ok := ans["noul"].(float64)
 			if !ok {
-				return scheme.Void, fmt.Errorf("jev-noul: no noul value in answer")
+				return scheme.Void, fmt.Errorf("%s: no noul value in answer", name)
 			}
 			return scheme.Float(p), nil
 		},
 	}
 }
 
-// jevScore: (jev-score cred state instructions levels) -> alist with the
-// score normalised to 0..1, the raw score, the level count and confidence.
-// levels is a list of 2..10 descriptions from low to high.
-func jevScore(o JevOptions, jc JevClient) *scheme.Prim {
+// jevScore: (jev-score cred state instructions levels), or (judge-score
+// state instructions levels) -> alist with the score normalised to 0..1,
+// the raw score, the level count and confidence. levels is a list of 2..10
+// descriptions from low to high.
+func jevScore(o JevOptions, jc JevClient, keyed bool) *scheme.Prim {
+	name := jevName(keyed, "score")
+	k := 0
+	if keyed {
+		k = 1
+	}
 	return &scheme.Prim{
-		Name: "jev-score",
-		Meta: scheme.Meta{
-			Doc:            "Rate a text along an ordered rubric: returns ((\"score\" . 0..1) (\"raw\" . n) (\"levels\" . k) (\"confidence\" . c)).",
-			Egress:         true,
-			Host:           true,
-			EgressHost:     jevHost(o),
-			EgressMethod:   http.MethodPost,
-			EgressPosition: "header:Authorization:Bearer",
-			TaintSource:    scheme.TagHTTP,
-			Params: []scheme.Param{credParam(),
-				{Name: "state", Type: "string", Role: "payload", Doc: "the text to rate (redacted before send)"},
-				{Name: "instructions", Type: "string", Role: "payload", Doc: "what to rate it on"},
-				{Name: "levels", Type: "list", Doc: "2 to 10 level descriptions, low to high"},
-			},
-		},
+		Name: name,
+		Meta: jevMeta(o, keyed, "Rate a text along an ordered rubric: returns ((\"score\" . 0..1) (\"raw\" . n) (\"levels\" . k) (\"confidence\" . c)).",
+			scheme.Param{Name: "state", Type: "string", Role: "payload", Doc: "the text to rate (redacted before send)"},
+			scheme.Param{Name: "instructions", Type: "string", Role: "payload", Doc: "what to rate it on"},
+			scheme.Param{Name: "levels", Type: "list", Role: "payload", Doc: "2 to 10 level descriptions, low to high"},
+		),
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
-			state, err := c.String(1)
+			state, err := c.String(k)
 			if err != nil {
 				return scheme.Void, err
 			}
-			instr, err := c.String(2)
+			instr, err := c.String(k + 1)
 			if err != nil {
 				return scheme.Void, err
 			}
-			items, err := c.List(3)
+			items, err := c.List(k + 2)
 			if err != nil {
 				return scheme.Void, err
 			}
 			if len(items) < 2 || len(items) > 10 {
-				return scheme.Void, fmt.Errorf("jev-score: levels must have 2 to 10 entries, got %d", len(items))
+				return scheme.Void, fmt.Errorf("%s: levels must have 2 to 10 entries, got %d", name, len(items))
 			}
 			levels := make([]string, len(items))
 			for i, it := range items {
 				if it.Kind != scheme.KString {
-					return scheme.Void, fmt.Errorf("jev-score: level %d is not a string", i)
+					return scheme.Void, fmt.Errorf("%s: level %d is not a string", name, i)
 				}
 				levels[i] = it.S
 			}
-			ans, err := jevCall(o, jc, c, "jev-score", state, question{Type: "score", Instructions: instr, Criteria: levels})
+			ans, err := jevCall(o, jc, c, keyed, name, state, question{Type: "score", Instructions: instr, Criteria: levels})
 			if err != nil {
 				return scheme.Void, err
 			}
 			raw, ok := ans["score"].(float64)
 			if !ok {
-				return scheme.Void, fmt.Errorf("jev-score: no score in answer")
+				return scheme.Void, fmt.Errorf("%s: no score in answer", name)
 			}
 			conf, _ := ans["confidence"].(float64)
 			norm := raw / float64(len(levels)-1)
@@ -273,51 +350,48 @@ func jevScore(o JevOptions, jc JevClient) *scheme.Prim {
 	}
 }
 
-// jevChoice: (jev-choice cred state instructions options) -> alist with the
-// chosen option, confidence and the probability of each option. options is
-// an alist of option name -> description (Seam C: class, destination and
+// jevChoice: (jev-choice cred state instructions options), or
+// (judge-choice state instructions options) -> alist with the chosen
+// option, confidence and the probability of each option. options is an
+// alist of option name -> description (Seam C: class, destination and
 // scope go in state; the options are what to do).
-func jevChoice(o JevOptions, jc JevClient) *scheme.Prim {
+func jevChoice(o JevOptions, jc JevClient, keyed bool) *scheme.Prim {
+	name := jevName(keyed, "choice")
+	k := 0
+	if keyed {
+		k = 1
+	}
 	return &scheme.Prim{
-		Name: "jev-choice",
-		Meta: scheme.Meta{
-			Doc:            "Pick one of several options for a text: returns ((\"choice\" . name) (\"confidence\" . c) (\"probabilities\" . ((name . p) ...))).",
-			Egress:         true,
-			Host:           true,
-			EgressHost:     jevHost(o),
-			EgressMethod:   http.MethodPost,
-			EgressPosition: "header:Authorization:Bearer",
-			TaintSource:    scheme.TagHTTP,
-			Params: []scheme.Param{credParam(),
-				{Name: "state", Type: "string", Role: "payload", Doc: "the situation to judge (redacted before send)"},
-				{Name: "instructions", Type: "string", Role: "payload", Doc: "the question"},
-				{Name: "options", Type: "alist", Doc: "option name -> description"},
-			},
-		},
+		Name: name,
+		Meta: jevMeta(o, keyed, "Pick one of several options for a text: returns ((\"choice\" . name) (\"confidence\" . c) (\"probabilities\" . ((name . p) ...))).",
+			scheme.Param{Name: "state", Type: "string", Role: "payload", Doc: "the situation to judge (redacted before send)"},
+			scheme.Param{Name: "instructions", Type: "string", Role: "payload", Doc: "the question"},
+			scheme.Param{Name: "options", Type: "alist", Role: "payload", Doc: "option name -> description"},
+		),
 		Handler: func(c *scheme.Call) (scheme.Value, error) {
-			state, err := c.String(1)
+			state, err := c.String(k)
 			if err != nil {
 				return scheme.Void, err
 			}
-			instr, err := c.String(2)
+			instr, err := c.String(k + 1)
 			if err != nil {
 				return scheme.Void, err
 			}
-			items, err := c.List(3)
+			items, err := c.List(k + 2)
 			if err != nil {
 				return scheme.Void, err
 			}
 			opts := map[string]string{}
 			for _, it := range items {
 				if it.Kind != scheme.KPair || it.P.Car.Kind != scheme.KString || it.P.Cdr.Kind != scheme.KString {
-					return scheme.Void, fmt.Errorf("jev-choice: options must be an alist of string -> string")
+					return scheme.Void, fmt.Errorf("%s: options must be an alist of string -> string", name)
 				}
 				opts[it.P.Car.S] = it.P.Cdr.S
 			}
 			if len(opts) < 2 {
-				return scheme.Void, fmt.Errorf("jev-choice: at least two options are required")
+				return scheme.Void, fmt.Errorf("%s: at least two options are required", name)
 			}
-			ans, err := jevCall(o, jc, c, "jev-choice", state, question{Type: "choice", Instructions: instr, Criteria: opts})
+			ans, err := jevCall(o, jc, c, keyed, name, state, question{Type: "choice", Instructions: instr, Criteria: opts})
 			if err != nil {
 				return scheme.Void, err
 			}

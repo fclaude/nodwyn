@@ -368,9 +368,24 @@ against the ask (up to three revisions), and the plan goes into the task
 block the model sees. Its thresholds and prompts are Scheme definitions a
 project may redefine.
 Every Jev call is a guarded egress: bound credential, L1 redaction of
-what leaves, a `jev.req` log line with size, hash and the answer. Set
-`jev.content = "none"` in `config.toml` to turn it off. Without a
+what leaves, a `jev.req` log line with origin, size, hash and the answer.
+Set `jev.content = "none"` in `config.toml` to turn it off. Without a
 `jev-key` credential nothing is sent and the loop runs without a gate.
+
+The model can ask the judge too, with `judge-noul`, `judge-score` and
+`judge-choice`: Go injects the stored `jev-key`, the binding above decides
+each call, and what the model sends is redacted the same way. Because the
+model chooses that text, which may be file contents or command output, the
+tools are offered only at the level that lets content leave:
+
+```toml
+# ~/.config/nodwyn/config.toml
+[jev]
+content = "full"
+```
+
+and only to sessions started after the `jev-key` was stored. The plan gate
+does not need them, and works at the default `plan` level.
 
 `register-check` in `.nodwyn/init.scm` adds your own tightening-only guard
 checkers (deny or confirm, never allow); see `docs/scheme.md` §7.

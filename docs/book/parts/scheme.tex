@@ -563,8 +563,9 @@ primitives, the loop's own primitives and the two tools the default loop
 registers (\code{read-definition} and \code{second-look}): 157 in a git
 repository opened without a keychain. A keychain adds \code{http-request}
 and \code{credential-register}; a judge, which needs the keychain too, adds
-the three \code{jev} primitives; every approved MCP tool and every tool a
-project registers adds one more. Section~\ref{sch:reference} lists them by
+the three \code{jev} primitives, and the model's three \code{judge} tools
+when a \code{jev-key} is stored and \code{jev.content} is \code{full};
+every approved MCP tool and every tool a project registers adds one more. Section~\ref{sch:reference} lists them by
 group.
 
 \section{The host primitives}
@@ -592,7 +593,8 @@ Primitive & What it does \\
 \code{(project-notes)}, \code{(project-notes-save text)} & this repository's notes kept across sessions \\
 \code{(credential class)}, \code{(credential-register class)} & the handle of a stored key, or \code{\#f}; store a new key (Section~\ref{sch:keys}) \\
 \code{(http-request cred url method position headers body)} & a keyed request, checked against the binding table \\
-\code{(jev-noul ...)}, \code{(jev-score ...)}, \code{(jev-choice ...)} & ask the configured judge a question about a text \\
+\code{(jev-noul ...)}, \code{(jev-score ...)}, \code{(jev-choice ...)} & ask the configured judge a question about a text; hidden, they take the key's handle \\
+\code{(judge-noul ...)}, \code{(judge-score ...)}, \code{(judge-choice ...)} & the same, for the model: Go supplies the stored \code{jev-key} \\
 \code{(policy-read name)}, \code{(policy-write name revision content)} & read or replace the bindings or approvals file; user only \\
 \bottomrule
 \end{tabular}

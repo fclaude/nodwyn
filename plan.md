@@ -560,6 +560,12 @@ friction.md:
 - **Background processes, read-only git tools, `index-grep` and `fs-find`
   without ripgrep.**
 - **The rename to nodwyn** (ADR 31) and **Go 1.26 as the base** (ADR 33).
+- **The egress gaps the book audit found** (2026-09-30): MCP arguments
+  outside L1 and L2 and untagged MCP results; keyed and model requests that
+  followed redirects; and the judge's primitives offered to the model, which
+  could never call them for want of a handle. They are hidden now, and the
+  model has `judge-noul`, `judge-score` and `judge-choice`, which carry the
+  stored `jev-key`, at `jev.content = "full"` (ADR 20, amended).
 
 ## 6. Timeline at a glance
 
@@ -639,13 +645,12 @@ Still open:
 
 In this order, each for the reason given:
 
-1. **Close the remaining egress gap the book audit found (2026-09-30).** The judge's primitives are offered to the model as tools, which it cannot call. Small. (The other two gaps were closed the same day: MCP arguments outside L1 and L2 and untagged MCP results; and keyed and model requests that followed redirects, so a key at a custom header or in a body could reach a host no binding names.)
-2. **W4 — OAuth2 credentials (ADR 24).** MCP's own authorization is OAuth-based, so many remote servers need it, and W5's Google Docs does too.
-3. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
-4. **U4 — unattended continuation between a run's turns.** Tool confirms can already be answered unattended; the turn-to-turn checkpoint still needs a person.
-5. **Plan step progress** in the console.
-6. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
-7. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
-8. **P8 — L3**, optional.
+1. **W4 — OAuth2 credentials (ADR 24).** MCP's own authorization is OAuth-based, so many remote servers need it, and W5's Google Docs does too.
+2. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
+3. **U4 — unattended continuation between a run's turns.** Tool confirms can already be answered unattended; the turn-to-turn checkpoint still needs a person.
+4. **Plan step progress** in the console.
+5. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
+6. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
+7. **P8 — L3**, optional.
 
 Dated: raise the Go base to 1.27 once Fedora 45 ships it (due 2026-10-20) and a 1.27 feature is worth having (ADR 33).

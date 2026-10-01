@@ -221,7 +221,9 @@ A keyed model names the class as its \code{credential}; the binding is
 checked on every request and recorded as \code{egress.check}. The judge
 works the same way with the class \code{jev-key}, bound to its host: once
 that key exists, the default loop's plan gate runs before each message.
-Set \code{jev.content = "none"} to send it nothing. A daemon holds the
+Set \code{jev.content = "none"} to send it nothing, or \code{"full"} to
+give the model the judge as tools (\code{judge-noul}, \code{judge-score},
+\code{judge-choice}) in sessions started after the key was stored. A daemon holds the
 keychain for every session it opens: unlock it once, from its terminal or
 the console, and sessions opened afterwards can use it.
 
