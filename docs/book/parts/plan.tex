@@ -120,22 +120,14 @@ attachments, and remote MCP servers with L1 and L2 on their arguments
 (\adr{22}, \adr{23}), background
 processes, read-only git tools, the rename from \code{nibb} (\adr{31}), and
 the working habits of the default loop (\adr{32}), Go~1.26 as the
-base (\adr{33}), keyed and model requests that follow no redirect, and the
-judge as the model's own tools.
+base (\adr{33}), keyed and model requests that follow no redirect, the
+judge as the model's own tools, and OAuth2 credentials (\adr{24}).
 
 \chapter{What is next}
 
 In the order \file{plan.md} gives them:
 
 \begin{description}[leftmargin=1.6em]
-\item[OAuth2 credentials] (\adr{24}). MCP's own authorization is built on
-  OAuth, so many remote servers need it, and so does Google Docs. A
-  credential gains a kind; an \code{oauth2} entry holds a token set acquired
-  with Authorization Code and PKCE over a single-shot loopback listener, as a
-  user action. Refresh happens inside the keychain, authorised by the same
-  binding row that authorises use, and a dead refresh token marks the
-  credential and denies rather than opening a browser in the middle of a
-  turn.
 \item[Images as attachments.] A model that reads images reads pixels, and no
   redactor reads pixels. The fence \adr{22} proposes: a confirm of its own
   that says so, and images never sent to the judge.

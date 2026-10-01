@@ -11,7 +11,7 @@ import (
 // Authority is the read-only binding surface used by policy checkers. Table is
 // an immutable snapshot; Live supplies the session's latest validated snapshot.
 type Authority interface {
-	Lookup(class, host, method, position string) (bool, string)
+	Lookup(class, host, method, position string, scopes ...string) (bool, string)
 	HasDestination(host string) bool
 }
 
@@ -74,10 +74,10 @@ func (p *Live) Snapshot() Table {
 }
 
 // Lookup is Table.Lookup on the current table.
-func (p *Live) Lookup(class, host, method, position string) (bool, string) {
+func (p *Live) Lookup(class, host, method, position string, scopes ...string) (bool, string) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return p.table.Lookup(class, host, method, position)
+	return p.table.Lookup(class, host, method, position, scopes...)
 }
 
 // HasDestination is Table.HasDestination on the current table.
@@ -93,6 +93,7 @@ func cloneTable(t Table) Table {
 		out.Bind[i] = row
 		out.Bind[i].Methods = slices.Clone(row.Methods)
 		out.Bind[i].Positions = slices.Clone(row.Positions)
+		out.Bind[i].Scopes = slices.Clone(row.Scopes)
 	}
 	return out
 }

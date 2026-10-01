@@ -13,6 +13,7 @@ import (
 type egressFacts struct {
 	HasCredential bool
 	Class         string // credential class; "" if the argument is not a handle
+	HandleID      string // the handle's id; "" for a class the primitive injects itself
 	Host          string // destination hostname (lower-cased)
 	Method        string // HTTP method, if the prim declares one
 	Position      string // requested injection position, e.g. "header:Authorization"
@@ -29,7 +30,7 @@ func egressFactsOf(p *scheme.Prim, args []scheme.Value) egressFacts {
 			// but E3 has no binding to check.
 			if class, ok := credClass(args[i]); ok {
 				f.HasCredential = true
-				f.Class = class
+				f.Class, f.HandleID = class, args[i].H.ID
 			}
 		}
 		if !f.HasCredential && p.Meta.EgressClass != "" && credIndex(p, args) < 0 {
@@ -111,17 +112,33 @@ func positionArg(p *scheme.Prim, args []scheme.Value) string {
 // EgressScope describes the credential-bearing call being confirmed. Empty
 // fields mean the primitive did not supply that fact; they are not wildcards.
 // It is display metadata only and must not be used as permission to add a binding.
+// Scopes are an OAuth2 credential's granted scopes: "Google Drive, files
+// this app created" and "Google Drive, everything" differ only there
+// (ADR 24 §4).
 type EgressScope struct {
 	Class    string
 	Host     string
 	Method   string
 	Position string
+	Scopes   []string `json:",omitempty"`
 }
 
-func egressScopeOf(p *scheme.Prim, args []scheme.Value) *EgressScope {
+// CredentialScopes returns the scopes a credential was granted: the one
+// with handle id, or for "" the one a primitive of class injects itself.
+// A static key has none.
+type CredentialScopes func(class, id string) []string
+
+func (f egressFacts) scopes(of CredentialScopes) []string {
+	if of == nil || !f.HasCredential {
+		return nil
+	}
+	return of(f.Class, f.HandleID)
+}
+
+func egressScopeOf(p *scheme.Prim, args []scheme.Value, scopes CredentialScopes) *EgressScope {
 	f := egressFactsOf(p, args)
 	if !f.HasCredential {
 		return nil
 	}
-	return &EgressScope{Class: f.Class, Host: f.Host, Method: f.Method, Position: f.Position}
+	return &EgressScope{Class: f.Class, Host: f.Host, Method: f.Method, Position: f.Position, Scopes: f.scopes(scopes)}
 }

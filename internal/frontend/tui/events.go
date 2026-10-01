@@ -193,6 +193,14 @@ func (m *model) consume(e rpc.ClientEvent) {
 		p, err = decode[log.CredRegister](e.Payload)
 		m.clearPrompt(p.PromptID)
 		m.append("credential registered: " + p.Class)
+	case string(log.KindCredRefresh):
+		var p log.CredRefresh
+		p, err = decode[log.CredRefresh](e.Payload)
+		if p.OK {
+			m.append("credential refreshed: " + p.Class + " at " + p.Endpoint)
+		} else {
+			m.append("credential refresh failed: " + p.Class + " at " + p.Endpoint + ": " + p.Error)
+		}
 	case event.PromptConfirm, event.PromptSecret, event.PromptCheckpoint:
 		err = m.setPrompt(e)
 	case event.Error:

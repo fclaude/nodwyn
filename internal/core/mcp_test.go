@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
@@ -16,6 +17,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/mcp"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
+	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -253,5 +255,78 @@ func TestMCPWithoutAKeyIsANamedDestination(t *testing.T) {
 	}
 	if len(server.Calls) != 1 || server.Calls[0].Args["q"] != "status" || server.Calls[0].Auth != "" {
 		t.Fatalf("calls: %+v", server.Calls)
+	}
+}
+
+// An MCP server keyed with an OAuth2 credential: the token, stale when the
+// session opens, is refreshed while the server connects, before the
+// session has started, and the refresh is recorded once it has; the server
+// gets the fresh token, and no token reaches the log.
+func TestMCPServerWithAnOAuth2Credential(t *testing.T) {
+	provider := fakeoauth.New("nodwyn-test")
+	t.Cleanup(provider.Close)
+	server := fakemcp.New(mcpTools()...)
+	t.Cleanup(server.Close)
+	root := t.TempDir()
+	repo := filepath.Join(root, "work")
+	os.MkdirAll(repo, 0o755)
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	os.MkdirAll(paths.ConfigDir, 0o700)
+	store, err := keychain.Create(filepath.Join(root, "keychain"), keychain.FastKDF, []byte("passphrase"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	store.SetClock(func() time.Time { return now })
+	g := keychain.Grant{Profile: keychain.Custom(provider.AuthURL(), provider.TokenURL(), ""), ClientID: provider.ClientID, Scopes: []string{"chat.read"}}
+	if _, err := store.AddOAuth2(context.Background(), "chat-oauth", g, provider.Browser); err != nil {
+		t.Fatal(err)
+	}
+	stale := now.Add(2 * time.Hour)
+	store.SetClock(func() time.Time { return stale })
+	row, _ := binding.Exact("chat-oauth", mcpHost(server), "POST", "header:Authorization:Bearer", "chat.read")
+	if err := binding.AppendExact(context.Background(), paths.Bindings, row); err != nil {
+		t.Fatal(err)
+	}
+	c, _ := mcp.New(server.URL, nil)
+	c.Initialize(context.Background())
+	tools, _ := c.Tools(context.Background())
+	if err := config.SaveMCPServer(config.MCPFile(paths), config.MCPServer{Name: "chat", URL: server.URL, Credential: "chat-oauth", Position: "header:Authorization:Bearer",
+		Manifest: mcp.Manifest(tools), Workspaces: []string{repo}, Tools: map[string]config.MCPTool{"search": {Effect: config.EffectRead, On: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	srv := fake.New()
+	t.Cleanup(srv.Close)
+	cfg := config.Default()
+	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Config: cfg, Repo: repo, Paths: paths, Keychain: store, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: logb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if provider.Refreshes() != 1 {
+		t.Fatalf("want one refresh while connecting, got %d", provider.Refreshes())
+	}
+	if last := server.Auth[len(server.Auth)-1]; !strings.HasPrefix(last, "Bearer fake-access-token-") {
+		t.Fatalf("the server got %q", last)
+	}
+	evs, err := log.Read(bytes.NewReader(logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refreshed bool
+	for i, ev := range evs {
+		if ev.Kind == log.KindCredRefresh {
+			var rec log.CredRefresh
+			ev.Decode(&rec)
+			refreshed = rec.OK && rec.Class == "chat-oauth" && i > 0
+		}
+	}
+	if evs[0].Kind != log.KindSessionStart || !refreshed {
+		t.Fatalf("the refresh is recorded after session.start: %s", logb.String())
+	}
+	if fakeoauth.HasToken(logb.String()) {
+		t.Fatal("a token reached the log")
 	}
 }

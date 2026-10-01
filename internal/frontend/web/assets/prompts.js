@@ -128,6 +128,9 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
           h("dd", {}, [e.Host || "an unspecified destination", e.Method ? ` · ${e.Method}` : ""].join("")),
           h("dt", {}, "Credential"),
           h("dd", {}, `${e.Class || "unnamed"} added as ${position(e.Position)}; the model never sees it`),
+          // An OAuth2 credential's scopes are what it may do there (ADR 24).
+          e.Scopes?.length ? h("dt", {}, "Scopes") : null,
+          e.Scopes?.length ? h("dd", {}, e.Scopes.join(" ")) : null,
         ),
       );
     }
@@ -144,7 +147,7 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     }
     if (prompt.Binding && p.Options?.binding) {
       const b = prompt.Binding;
-      card.append(h("dl", { class: "facts" }, h("dt", {}, "Save as"), h("dd", {}, `${b.Class} → ${b.Dest} · ${(b.Methods || []).join(", ")} · ${(b.Positions || []).join(", ")}`)));
+      card.append(h("dl", { class: "facts" }, h("dt", {}, "Save as"), h("dd", {}, `${b.Class} → ${b.Dest} · ${(b.Methods || []).join(", ")} · ${(b.Positions || []).join(", ")}${b.Scopes?.length ? ` · scopes ${b.Scopes.join(" ")}` : ""}`)));
     }
     if (enabled) {
       const options = p.Options || {};

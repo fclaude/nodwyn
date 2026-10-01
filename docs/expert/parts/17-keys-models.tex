@@ -61,6 +61,33 @@ A position is where the key is injected:
   \item \code{body}.
 \end{itemize}
 
+A service that uses OAuth2 (Google, Microsoft, GitHub, Notion, or an MCP
+server behind a login) gets an \code{oauth2} credential, authorized in the
+browser from the command line, never from a session:
+
+\begin{sh}
+nodwyn credential add --oauth2 google --client-id ID --scopes drive.file
+nodwyn credential add --oauth2 custom --client-id ID \
+    --auth-url https://auth.example/authorize --token-url https://auth.example/token
+\end{sh}
+
+Its row may name the scopes it allows; a token granted any other is refused:
+
+\begin{toml}
+[[bind]]
+class = "google"
+dest = "www.googleapis.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["GET", "POST"]
+scopes = ["https://www.googleapis.com/auth/drive.file"]
+\end{toml}
+
+The keychain refreshes the access token just before a use the table
+allowed and the session logs \code{cred.refresh}. If the provider refuses
+the refresh, every use is denied until \code{nodwyn credential login
+CLASS}; \code{nodwyn credential revoke CLASS} revokes it at the provider and
+deletes it here.
+
 The binding table is checked on every
 request, before anything is sent; an unbound combination is never sent.
 Only you edit it: the file is policy, and \code{policy-write} is user-only

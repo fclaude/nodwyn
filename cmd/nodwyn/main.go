@@ -39,6 +39,12 @@ commands:
   eval FILE...         evaluate Scheme files
   eval -e EXPR         evaluate an expression and print its value
   keychain init        create the encrypted keychain (asks for a passphrase)
+  credential [list]    list the keychain's credentials (never a secret)
+  credential add --oauth2 PROVIDER --client-id ID [--scopes A,B] [--class CLASS]
+                       authorize an OAuth2 credential in the browser (google,
+                       microsoft, github, notion, or custom with --auth-url/--token-url)
+  credential login ID|CLASS    authorize an OAuth2 credential again
+  credential revoke [--local] ID|CLASS  revoke at the provider and delete here
   paths                print the config and data locations
   version              print version
   licenses             print the browser console's dependency notices

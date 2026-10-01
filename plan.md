@@ -10,8 +10,8 @@ Companion to [SPEC.md](SPEC.md). The spec says *what* and *why*; this says *in w
 
 ## Status (2026-09-30)
 
-- **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: U1–U3 of the real UI, the task-oriented console, the standalone app, remote devices (D1–D5), workspaces, text attachments and remote MCP servers (D6–D8, the cowork track's W1, W2 text and W3a).
-- **Not done:** P8 (L3, optional); unattended continuation between a run's turns (U4); contained local MCP servers (W3b/D9); OAuth2 credentials (W4); documents out (W5); images as attachments; plan step progress.
+- **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: U1–U3 of the real UI, the task-oriented console, the standalone app, remote devices (D1–D5), workspaces, text attachments and remote MCP servers (D6–D8, the cowork track's W1, W2 text and W3a), and OAuth2 credentials (W4, 2026-09-30).
+- **Not done:** P8 (L3, optional); unattended continuation between a run's turns (U4); contained local MCP servers (W3b/D9); documents out (W5); images as attachments; plan step progress.
 - **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base (ADRs 26–29, 31–33). §5 "Outside the plan" says what drove them.
 - **Next:** §10.
 
@@ -84,7 +84,7 @@ nodwyn/
   docs/book/, docs/expert/  the book, and the field guide for users
 ```
 
-Not built: `detect/l3/` and `tools/l3train/` (P8); an OAuth2 kind in `keychain/` (W4).
+Not built: `detect/l3/` and `tools/l3train/` (P8).
 
 ---
 
@@ -399,8 +399,8 @@ approval over RPC needs its own explicit method.
 
 ### After v0 — cowork: workspaces, attachments, MCP (ADR 22, ADR 23)
 
-Status (2026-09-30): W1, W2 (text) and W3a are implemented, as D6–D8 below.
-Images, W3b, W4 and W5 are not.
+Status (2026-09-30): W1, W2 (text), W3a and W4 are implemented, W1–W3a as
+D6–D8 below. Images, W3b and W5 are not.
 
 The same harness, applied to work that is not only code, for **one person**
 (collaboration is out of scope). The invariants do not change; three
@@ -451,7 +451,12 @@ what the guard reads).
   token marks the credential `needs_reauth` and denies). Binding rows may
   name `scopes`, and every confirm involving an oauth2 credential names
   class, destination *and* scopes. Provider profiles ship narrow default
-  scopes.
+  scopes. **Done 2026-09-30** (ADR 24, "Implemented"): `nodwyn credential
+  add --oauth2 | login | revoke | list`, profiles for Google, Microsoft,
+  GitHub and Notion plus custom endpoints, a lock shared by every process
+  holding the keychain, `cred.refresh`, and scopes in bindings and confirms;
+  tested against a fake provider. MCP's own authorization discovery and
+  dynamic client registration are not done.
 - **W5 — documents in and out (≈1.5 weeks, needs W4).** LaTeX through the
   installed toolchain (`shell-exec` + a standing approval — the book already
   proves it), docx via pandoc from Markdown or LaTeX, Google Docs through its
@@ -534,7 +539,7 @@ Status (2026-09-30): **D1–D8 implemented** and merged into `main`, each
 with Go tests and a browser flow (test/browser). D9 is not started: honoring a
 per-host network allowlist inside a container needs an egress proxy, and
 half-isolation would be worse than none. Also open: images as attachments
-(vision plumbing), plan step progress, W4 OAuth2 and W5 documents out. What
+(vision plumbing), plan step progress and W5 documents out (W4 OAuth2 is done). What
 comes next is §10.
 
 ### Outside the plan — what running it taught (2026-09-26 to 2026-09-30)
@@ -645,12 +650,11 @@ Still open:
 
 In this order, each for the reason given:
 
-1. **W4 — OAuth2 credentials (ADR 24).** MCP's own authorization is OAuth-based, so many remote servers need it, and W5's Google Docs does too.
-2. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
-3. **U4 — unattended continuation between a run's turns.** Tool confirms can already be answered unattended; the turn-to-turn checkpoint still needs a person.
-4. **Plan step progress** in the console.
-5. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
-6. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
-7. **P8 — L3**, optional.
+1. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
+2. **U4 — unattended continuation between a run's turns.** Tool confirms can already be answered unattended; the turn-to-turn checkpoint still needs a person.
+3. **Plan step progress** in the console.
+4. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
+5. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
+6. **P8 — L3**, optional.
 
 Dated: raise the Go base to 1.27 once Fedora 45 ships it (due 2026-10-20) and a 1.27 feature is worth having (ADR 33).

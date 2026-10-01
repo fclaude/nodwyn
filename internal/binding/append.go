@@ -14,8 +14,10 @@ import (
 
 // Exact constructs a single-call proposal. It accepts no wildcard, missing
 // scope, URL, or control character. Existing hand-written rows remain governed
-// by Load's compatibility rules; proposals are deliberately narrower.
-func Exact(class, host, method, position string) (Binding, error) {
+// by Load's compatibility rules; proposals are deliberately narrower. An
+// OAuth2 credential's granted scopes go in the row, so it binds that token
+// and no broader one.
+func Exact(class, host, method, position string, scopes ...string) (Binding, error) {
 	bad := func() (Binding, error) {
 		return Binding{}, fmt.Errorf("bindings: incomplete or invalid exact call scope")
 	}
@@ -48,7 +50,16 @@ func Exact(class, host, method, position string) (Binding, error) {
 	default:
 		return bad()
 	}
-	return Binding{Class: class, Dest: host, Methods: []string{method}, Positions: []string{position}}, nil
+	for _, s := range scopes {
+		if s == "" || strings.IndexFunc(s, unicode.IsSpace) >= 0 || strings.IndexFunc(s, unicode.IsControl) >= 0 {
+			return bad()
+		}
+	}
+	row := Binding{Class: class, Dest: host, Methods: []string{method}, Positions: []string{position}}
+	if len(scopes) > 0 {
+		row.Scopes = append([]string(nil), scopes...)
+	}
+	return row, nil
 }
 func token(s string) bool {
 	if s == "" {
@@ -69,7 +80,7 @@ func AppendExact(ctx context.Context, path string, row Binding) error {
 	if len(row.Methods) != 1 || len(row.Positions) != 1 {
 		return fmt.Errorf("bindings: an exact row is required")
 	}
-	if _, err := Exact(row.Class, row.Dest, row.Methods[0], row.Positions[0]); err != nil {
+	if _, err := Exact(row.Class, row.Dest, row.Methods[0], row.Positions[0], row.Scopes...); err != nil {
 		return err
 	}
 	if path == "" {
@@ -80,7 +91,7 @@ func AppendExact(ctx context.Context, path string, row Binding) error {
 		if err != nil {
 			return nil, err
 		}
-		if bound, _ := table.Lookup(row.Class, row.Dest, row.Methods[0], row.Positions[0]); bound {
+		if bound, _ := table.Lookup(row.Class, row.Dest, row.Methods[0], row.Positions[0], row.Scopes...); bound {
 			return nil, ctx.Err()
 		}
 		var addition bytes.Buffer

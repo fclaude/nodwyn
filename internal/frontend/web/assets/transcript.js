@@ -274,6 +274,11 @@ export class Transcript {
         // is routine and stays in the log. Only a refusal is news.
         if (!p.bound) this.audit(`Refused to send ${p.class || "a credential"} to ${p.host || "that host"}`, p.reason || p, "bad");
         break;
+      case "cred.refresh":
+        // A refresh is routine; one that failed is why a call was refused.
+        if (p.ok) this.audit(`Refreshed ${p.class} at ${p.endpoint}`, p);
+        else this.audit(`Could not refresh ${p.class} at ${p.endpoint}`, p.error || p, "bad");
+        break;
       default:
         if (auditLabels[event.kind]) this.audit(auditLabels[event.kind], p);
     }

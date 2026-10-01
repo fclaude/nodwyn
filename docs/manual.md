@@ -53,7 +53,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/window` | the derived context | `Build` |
 | `internal/loop` | the loop's primitives and default strategy | the package comment's reading order, starting at `loop.go` `Turn` |
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
-| `internal/keychain` | encrypted credentials, opaque handles and injection | `keychain.go` |
+| `internal/keychain` | encrypted credentials, opaque handles and injection; OAuth2 token sets, refresh and acquisition | `store.go`, `oauth.go`, `acquire.go` |
 | `internal/binding` | binding loading and authorization lookup | `binding.go` `Lookup`; Scheme call decoding lives in `guard/egress_facts.go` |
 | `internal/redact`, `internal/detect/l1` | text redaction and credential-shape detection | `redact.go`, `l1.go` |
 | `internal/event` | what a front-end sees | `event.go` |
@@ -464,6 +464,59 @@ larger examples, each a behaviour written as a user would write it:
 - routing: the control model plans, a rule picks the model that implements,
   which gets only the task and the plan (`narrow-context`); if the result
   diverges, a stronger model gets one retry, and the control model reports.
+
+### OAuth2 credentials
+
+A service that uses OAuth2 (Google Drive and Docs, Microsoft Graph, GitHub,
+Notion, many MCP servers) gets a credential of kind `oauth2`: a token set
+that expires and is refreshed, instead of one value. Register nodwyn as an
+OAuth client with the provider (a desktop or "installed" app, redirect
+`http://127.0.0.1`), then:
+
+```bash
+nodwyn credential add --oauth2 google --client-id ID --scopes drive.file,documents
+```
+
+Your browser opens the provider's consent page; nodwyn waits five minutes
+for the redirect on a loopback port it opened for that one request, checks
+it, exchanges the code (PKCE, so no client secret is needed unless the
+provider insists: `--client-secret` asks for it), and stores the tokens in
+the keychain under the class `google` (`--class` names another). The
+default scopes are each provider's narrowest useful set (`drive.file` for
+Google: the files nodwyn created). `--oauth2 custom --auth-url URL
+--token-url URL [--revoke-url URL]` covers any other provider, such as an MCP
+server's authorization server.
+
+Like any key it goes nowhere until a binding names it, and a binding may
+name the scopes it allows, so a token granted more is refused:
+
+```toml
+# bindings.toml
+[[bind]]
+class = "google"
+dest = "www.googleapis.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["GET", "POST"]
+scopes = ["https://www.googleapis.com/auth/drive.file"]
+```
+
+Use it as any credential: a model's or an MCP server's `credential`, or
+`(credential "google")` in a tool you register. When the access token has
+less than a minute left, the keychain refreshes it just before it is sent,
+only for a use the binding allowed, and the session logs `cred.refresh`
+(never a token). A confirm for an OAuth2 credential names its scopes along
+with its class and destination. If the provider refuses the refresh (you
+revoked the app, the refresh token expired), the credential is marked and
+every use is denied with the command that fixes it; nodwyn never opens a
+browser in the middle of a turn:
+
+```bash
+nodwyn credential                  # list: kind, scopes, expiry, needs login
+nodwyn credential login google     # authorize again
+nodwyn credential revoke google    # revoke at the provider, delete here
+```
+
+The daemon sees these changes without a restart.
 
 ### Choosing models
 

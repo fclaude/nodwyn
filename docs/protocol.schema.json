@@ -26,13 +26,23 @@
             "array",
             "null"
           ]
+        },
+        "Scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [
         "Class",
         "Dest",
         "Positions",
-        "Methods"
+        "Methods",
+        "Scopes"
       ],
       "type": "object"
     },
@@ -560,6 +570,15 @@
         },
         "Position": {
           "type": "string"
+        },
+        "Scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [
@@ -795,6 +814,38 @@
       "required": [],
       "type": "object"
     },
+    "log.CredRefresh": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "expires": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "rotated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "class",
+        "handle",
+        "endpoint",
+        "ok"
+      ],
+      "type": "object"
+    },
     "log.CredRegister": {
       "properties": {
         "actor": {
@@ -835,6 +886,15 @@
         },
         "reason": {
           "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [
@@ -1666,6 +1726,9 @@
     },
     "payload.context.widen": {
       "$ref": "#/$defs/log.ContextWiden"
+    },
+    "payload.cred.refresh": {
+      "$ref": "#/$defs/log.CredRefresh"
     },
     "payload.cred.register": {
       "$ref": "#/$defs/log.CredRegister"
@@ -4700,6 +4763,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.ContextWiden"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "cred.refresh"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.CredRefresh"
             },
             "seq": {
               "minimum": 0,

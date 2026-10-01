@@ -58,6 +58,7 @@ nodwyn summary ... ID         add, list or revoke a summary
 nodwyn versions FILE          a file's kept previous versions
 nodwyn undo FILE              put back the newest kept version
 nodwyn keychain init          create the encrypted keychain
+nodwyn credential ...         list, add (OAuth2), log in again, revoke
 nodwyn repl | eval            Scheme, outside any session
 nodwyn paths                  config and data locations
 \end{txt}
@@ -113,7 +114,6 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
 \item \nodwyn{} starts no MCP server, in a container or otherwise; it
   connects to servers over HTTP (\code{https}, or plain \code{http} on this
   computer).
-\item No OAuth2: a credential is one static value.
 \item No images as attachments, and no built-in document output (docx,
   Google Docs); a tool you register can run an installed toolchain.
 \item No embedding index and no structural outline; retrieval is text

@@ -288,42 +288,50 @@ func (s *Session) authorizeAt(class, position, prim string) func(*http.Request) 
 			return err
 		}
 		host := strings.ToLower(req.URL.Hostname())
-		bound, reason := s.bindings.Lookup(class, host, req.Method, position)
-		s.recordCheck(log.EgressCheck{Prim: prim, Class: class, Host: host, Method: req.Method, Bound: bound, Reason: reason})
+		scopes := s.credentialScopes(class, h.ID)
+		bound, reason := s.bindings.Lookup(class, host, req.Method, position, scopes...)
+		s.recordEarly(log.KindEgressCheck, log.EgressCheck{Prim: prim, Class: class, Host: host, Method: req.Method, Scopes: scopes, Bound: bound, Reason: reason})
 		if !bound {
 			return errors.New(reason)
 		}
 		where, name, prefix := binding.Position(position)
 		switch where {
 		case "header":
-			return s.keychain.InjectHeader(h.ID, name, prefix, req)
+			return s.InjectHeader(h.ID, name, prefix, req)
 		case "query":
-			return s.keychain.InjectQuery(h.ID, name, req)
+			return s.InjectQuery(h.ID, name, req)
 		}
 		return fmt.Errorf("position %s is not supported for MCP servers", position)
 	}
 }
 
-// recordCheck logs an egress check, or holds it until session.start.
-func (s *Session) recordCheck(check log.EgressCheck) {
+// heldRecord is a record made while the session was being built (an MCP
+// server connecting: its egress check, its credential's refresh).
+type heldRecord struct {
+	kind    log.Kind
+	payload any
+}
+
+// recordEarly logs an event, or holds it until session.start.
+func (s *Session) recordEarly(kind log.Kind, payload any) {
 	s.mcpMu.Lock()
 	if !s.started {
-		s.heldChecks = append(s.heldChecks, check)
+		s.held = append(s.held, heldRecord{kind, payload})
 		s.mcpMu.Unlock()
 		return
 	}
 	s.mcpMu.Unlock()
-	_, _ = s.Record(log.KindEgressCheck, check)
+	_, _ = s.Record(kind, payload)
 }
 
-// markStarted records the checks held during construction.
+// markStarted records what was held during construction.
 func (s *Session) markStarted() {
 	s.mcpMu.Lock()
-	held := s.heldChecks
-	s.heldChecks, s.started = nil, true
+	held := s.held
+	s.held, s.started = nil, true
 	s.mcpMu.Unlock()
-	for _, check := range held {
-		_, _ = s.Record(log.KindEgressCheck, check)
+	for _, r := range held {
+		_, _ = s.Record(r.kind, r.payload)
 	}
 }
 
@@ -346,8 +354,16 @@ func InspectMCP(o Options, server config.MCPServer) ([]mcp.Tool, string, error) 
 			if h == nil {
 				return fmt.Errorf("no %s credential in the keychain", server.Credential)
 			}
-			if bound, reason := table.Lookup(server.Credential, strings.ToLower(req.URL.Hostname()), req.Method, server.Position); !bound {
+			info, err := o.Keychain.Info(h.ID)
+			if err != nil {
+				return err
+			}
+			if bound, reason := table.Lookup(server.Credential, strings.ToLower(req.URL.Hostname()), req.Method, server.Position, info.Scopes...); !bound {
 				return errors.New(reason)
+			}
+			// No session, so the refresh, if one is due, is not logged.
+			if err := o.Keychain.Refresh(req.Context(), h.ID, nil); err != nil {
+				return err
 			}
 			where, name, prefix := binding.Position(server.Position)
 			if where == "query" {

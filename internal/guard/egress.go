@@ -23,6 +23,9 @@ type Egress struct {
 	Table    binding.Authority
 	Policy   string // "deny" (default) or "confirm" for unbound secret egress
 	Recorder Logger // receives the egress.check event; nil discards (tests)
+	// Scopes gives an OAuth2 credential's granted scopes, which a binding
+	// row naming scopes must allow (ADR 24 §4); nil: no credential has any.
+	Scopes CredentialScopes
 }
 
 // Name identifies the checker in the log.
@@ -38,8 +41,9 @@ func (e Egress) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) De
 		// Not a secret-bearing egress: this checker has no opinion.
 		return Decision{Verdict: Allow}
 	}
-	bound, reason := e.Table.Lookup(f.Class, f.Host, f.Method, f.Position)
-	rec := log.EgressCheck{Prim: p.Name, Class: f.Class, Host: f.Host, Method: f.Method, Bound: bound, Reason: reason}
+	scopes := f.scopes(e.Scopes)
+	bound, reason := e.Table.Lookup(f.Class, f.Host, f.Method, f.Position, scopes...)
+	rec := log.EgressCheck{Prim: p.Name, Class: f.Class, Host: f.Host, Method: f.Method, Scopes: scopes, Bound: bound, Reason: reason}
 	e.record(rec)
 	if !bound {
 		verdict := Deny
@@ -48,7 +52,7 @@ func (e Egress) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) De
 		}
 		d := Decision{Verdict: verdict, Reason: reason}
 		if verdict == Confirm {
-			if row, err := binding.Exact(f.Class, f.Host, f.Method, f.Position); err == nil {
+			if row, err := binding.Exact(f.Class, f.Host, f.Method, f.Position, scopes...); err == nil {
 				d.Binding = &row
 			}
 		}

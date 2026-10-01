@@ -76,7 +76,8 @@ configured per-turn limits, including the legacy tool-call override; this
 protocol does not expose live turn counters. Details also include
 `allowed_commands`, `allowed_writes`, `turn_writes`, and optional `turn_actor`.
 Session details also contain `bindings`, a copied array of loaded metadata rows
-with `Class`, `Dest`, `Positions` and `Methods` fields. No credential values are
+with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
+`Scopes` (OAuth2 scopes the row allows, ADR 24) fields. No credential values are
 included; configuration edits reload before egress. Inspection reports the
 last validated snapshot; invalid reloads deny egress. Older daemons may
 omit this additive field, which clients must distinguish from an empty array.
@@ -206,6 +207,13 @@ prompt ID. `approval.change` records the explicit scope, derived kind/prefix
 and actor. File-backed approvals and in-process terminal replies need not have
 an RPC actor. Resume reads these as history and never reinstalls transient
 authority.
+
+`Prompt.Egress` names an OAuth2 credential's granted `Scopes` with its class
+and destination, and a proposed `Prompt.Binding` row pins them. A
+`cred.refresh` event records each refresh of an OAuth2 credential: class,
+handle id, token endpoint host, new expiry, whether the refresh token
+rotated, and `ok` or `error`; never a token. `egress.check` carries the
+credential's `scopes` when it has any.
 
 A `prompt.secret` contains only its ID and credential class. Send the value
 through `session.secret`, never Scheme source. The core copies secret bytes

@@ -409,6 +409,14 @@ bound like any other key, and what remains special about it is only that
 its requests carry the conversation by design, so their content is not
 judged. The judge is never asked about the control model.
 
+An OAuth2 credential (\adr{24}) is bound the same way, with one more fact:
+a row may name the scopes it allows, and a token granted more is refused,
+because ``Drive, the files this app made'' and ``Drive, everything'' differ
+only there. Its refresh is part of a use the table already allowed, sent to
+the endpoint fixed when you authorized it, and logged; a refresh the
+provider refuses denies until you authorize again, never in the middle of a
+turn.
+
 \section{The content-detection ladder}
 
 Binding is the authority, but local, zero-retention layers watch content, in

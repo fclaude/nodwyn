@@ -227,6 +227,24 @@ give the model the judge as tools (\code{judge-noul}, \code{judge-score},
 keychain for every session it opens: unlock it once, from its terminal or
 the console, and sessions opened afterwards can use it.
 
+A service that uses OAuth2, such as Google Drive or an MCP server behind a
+login, gets a credential of kind \code{oauth2}: register \nodwyn{} as an
+OAuth client with the provider, then authorize it in the browser:
+
+\begin{sh}
+nodwyn credential add --oauth2 google --client-id ID --scopes drive.file
+nodwyn credential                     # list: kind, scopes, expiry
+nodwyn credential login google        # after the provider refused a refresh
+nodwyn credential revoke google       # at the provider, and here
+\end{sh}
+
+It is bound like any key, and its row may name the scopes it allows
+(\code{scopes = [...]}), so a token granted more is refused. The keychain
+refreshes the token just before a use the binding allowed, the session logs
+\code{cred.refresh}, and a confirm names the scopes with the class and the
+destination. \code{--oauth2 custom} with \code{--auth-url} and
+\code{--token-url} covers a provider \nodwyn{} has no profile for.
+
 \chapter{Connecting an MCP server}
 
 Connections, in the console, adds a remote server: its address

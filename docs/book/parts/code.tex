@@ -1181,17 +1181,18 @@ func (s *Session) authorizeAt(class, position, prim string) func(*http.Request) 
             return err
         }
         host := strings.ToLower(req.URL.Hostname())
-        bound, reason := s.bindings.Lookup(class, host, req.Method, position)
-        s.recordCheck(log.EgressCheck{Prim: prim, Class: class, Host: host, Method: req.Method, Bound: bound, Reason: reason})
+        scopes := s.credentialScopes(class, h.ID)
+        bound, reason := s.bindings.Lookup(class, host, req.Method, position, scopes...)
+        s.recordEarly(log.KindEgressCheck, log.EgressCheck{Prim: prim, Class: class, Host: host, Method: req.Method, Scopes: scopes, Bound: bound, Reason: reason})
         if !bound {
             return errors.New(reason)
         }
         where, name, prefix := binding.Position(position)
         switch where {
         case "header":
-            return s.keychain.InjectHeader(h.ID, name, prefix, req)
+            return s.InjectHeader(h.ID, name, prefix, req)
         case "query":
-            return s.keychain.InjectQuery(h.ID, name, req)
+            return s.InjectQuery(h.ID, name, req)
         }
         return fmt.Errorf("position %s is not supported for MCP servers", position)
     }
@@ -1203,6 +1204,19 @@ was built once per server with \code{prim} set to
 \code{config.ToolName(server.Name, "*")}, so its records name
 \code{tracker\_\_*}, not the tool. The key never becomes a Scheme value:
 the handler holds no handle, and the keychain writes the header itself.
+
+\code{s.InjectHeader} is the session's sink, the same one
+\code{http-request} and the judge use. For an OAuth2 credential
+(\adr{24}) it first asks the keychain to refresh the access token if it has
+less than a minute left: \code{keychain.Refresh} posts the refresh token to
+the token endpoint stored with it, saves the new tokens under a lock that
+every \nodwyn{} process holding the keychain shares, and the session records
+\code{cred.refresh}, never a token. The refresh happens only here, after
+the lookup allowed the use, so a refused use never reaches the token
+endpoint; a refresh the provider refuses marks the credential, and every
+later use is denied with the command that authorizes it again. A binding
+row may name \code{scopes}, and \code{Lookup} then refuses a token granted
+any scope the row does not name.
 
 So the binding is checked twice for a keyed MCP call, at two different
 places. The guard checks it before the handler, from the primitive's fixed
@@ -1362,7 +1376,7 @@ Group & Kinds \\
 Session & \code{session.start}, \code{session.resume}, \code{session.end}, \code{turn.end}, \code{turn.checkpoint} \\
 Conversation & \code{user.msg}, \code{harness.msg}, \code{attach}, \code{llm.req}, \code{llm.resp}, \code{tool.call}, \code{tool.result} \\
 Context & \code{context.narrow}, \code{context.widen}, \code{context.fold}, \code{result.fold}, \code{summary}, \code{summary.drop} \\
-Authority & \code{guard.decision}, \code{egress.check}, \code{approval.change}, \code{binding.change}, \code{cred.register}, \code{redact.event} \\
+Authority & \code{guard.decision}, \code{egress.check}, \code{approval.change}, \code{binding.change}, \code{cred.register}, \code{cred.refresh}, \code{redact.event} \\
 Plan gate and judge & \code{gate.plan}, \code{jev.req} \\
 Supervised runs & \code{run.state}, \code{run.turn}, \code{run.checkpoint} \\
 Other & \code{eval.req}, \code{eval.result} (Scheme you evaluated), \code{file.version} (a kept previous version), \code{note} \\
@@ -1409,7 +1423,8 @@ be rebuilt request by request.
 
 Model thinking is stored on \code{llm.resp} and never sent back:
 \code{Build} reads only the content and the tool calls. A key held in the
-keychain appears only as its class and a handle id (\code{cred.register}).
+keychain appears only as its class and a handle id (\code{cred.register},
+and \code{cred.refresh} for an OAuth2 token refreshed before a use).
 Every payload is redacted at \code{Record} and again at \code{Append},
 which removes the credential shapes L1 recognises (not arbitrary
 passwords), and a \code{redact.event} says what was removed and where,

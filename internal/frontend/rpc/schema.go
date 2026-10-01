@@ -123,7 +123,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindToolCall): log.ToolCallEvent{}, string(log.KindToolResult): log.ToolResult{},
 		string(log.KindGuardDecision): log.GuardDecision{}, string(log.KindApprovalChange): log.ApprovalChange{}, string(log.KindBindingChange): log.BindingChange{}, string(log.KindSummaryDrop): log.SummaryDrop{},
 		string(log.KindEgressCheck): log.EgressCheck{}, string(log.KindGatePlan): log.GatePlan{}, string(log.KindJevReq): log.JevReq{},
-		string(log.KindCredRegister): log.CredRegister{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
+		string(log.KindCredRegister): log.CredRegister{}, string(log.KindCredRefresh): log.CredRefresh{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
 		string(log.KindRunState): log.RunState{}, string(log.KindRunTurn): log.RunTurn{}, string(log.KindRunCheckpoint): log.RunCheckpoint{},
 		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{}, string(log.KindAttach): log.Attach{},
 		string(log.KindRedact): struct {

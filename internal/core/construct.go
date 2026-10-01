@@ -197,7 +197,7 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 	// L2 knows, the learned layer is not paid for (SPEC ladder principle).
 	egressCheckers := []guard.Checker{guard.Taint{Table: s.bindings, Policy: o.Config.Policy.Unbound}}
 	if s.keychain != nil {
-		egressCheckers = append(egressCheckers, guard.Egress{Table: s.bindings, Policy: o.Config.Policy.Unbound, Recorder: s})
+		egressCheckers = append(egressCheckers, guard.Egress{Table: s.bindings, Policy: o.Config.Policy.Unbound, Recorder: s, Scopes: s.credentialScopes})
 	}
 	// P4 L1: scan the secret-bearing text of egress-bearing prims for
 	// credentials the model wrote directly (not via a credential handle).
@@ -215,7 +215,7 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 	// One guard for the session. While init.scm loads nobody is listening,
 	// so confirms are denied; the real confirmer is installed afterwards on
 	// the same guard, keeping any checkers init.scm registered.
-	g := guard.New(guard.DenyAll, s, checkers...).WithSchemeEval(s.evalScheme)
+	g := guard.New(guard.DenyAll, s, checkers...).WithSchemeEval(s.evalScheme).WithCredentialScopes(s.credentialScopes)
 	return g, nil
 }
 

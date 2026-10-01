@@ -24,6 +24,7 @@ Kind & What it records \\
 \code{gate.plan} & the plan gate's outcome for a message \\
 \code{jev.req} & a call to the judge: content level, size, payload hash, redactions, answer \\
 \code{cred.register} & a credential stored: class and handle id only \\
+\code{cred.refresh} & an OAuth2 credential refreshed before a use: class, handle id, token endpoint, expiry or error; never a token \\
 \code{redact.event} & a \code{[REDACTED class]} substitution and where it happened \\
 \code{binding.change} & a binding row requested, applied or refused \\
 \code{approval.change} & a standing approval granted explicitly \\
@@ -77,7 +78,7 @@ ADR & Title & Status \\
 21 & A real UI after v0: daemon, protocol, clients & partly built \\
 22 & Cowork: workspaces, attachments, MCP servers & partly built \\
 23 & Untrusted MCP servers: isolation, pinning, fail-closed & partly built \\
-24 & OAuth2 credentials: acquisition, refresh, scopes & proposed \\
+24 & OAuth2 credentials: acquisition, refresh, scopes & built \\
 25 & Log-derived ingress redaction and buffered model output & accepted \\
 26 & The agent loop is a Scheme procedure & accepted \\
 27 & Configured models and narrowed contexts & accepted \\

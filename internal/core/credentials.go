@@ -13,6 +13,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/loop"
@@ -80,28 +81,71 @@ func (s *Session) PromptAndAdd(ctx context.Context, class string) (*scheme.Handl
 	}
 }
 
-// InjectHeader implements prim.CredentialStore.
+// InjectHeader implements prim.CredentialStore. Every key the session sends
+// goes through one of these three, after the use was checked against the
+// binding table: an OAuth2 token is refreshed first if it is about to
+// expire, and the refresh is logged.
 func (s *Session) InjectHeader(id, name, prefix string, req *http.Request) error {
-	if s.keychain == nil {
-		return errors.New("core: no keychain configured")
+	if err := s.fresh(id, req); err != nil {
+		return err
 	}
 	return s.keychain.InjectHeader(id, name, prefix, req)
 }
 
 // InjectQuery implements prim.CredentialStore.
 func (s *Session) InjectQuery(id, key string, req *http.Request) error {
-	if s.keychain == nil {
-		return errors.New("core: no keychain configured")
+	if err := s.fresh(id, req); err != nil {
+		return err
 	}
 	return s.keychain.InjectQuery(id, key, req)
 }
 
 // InjectBody implements prim.CredentialStore.
 func (s *Session) InjectBody(id string, req *http.Request) error {
+	if err := s.fresh(id, req); err != nil {
+		return err
+	}
+	return s.keychain.InjectBody(id, req)
+}
+
+// fresh refreshes credential id if it is an OAuth2 token about to expire
+// (ADR 24 §3), logging the refresh as cred.refresh. The use it is for was
+// already checked against the binding table, which is what authorizes the
+// refresh.
+func (s *Session) fresh(id string, req *http.Request) error {
 	if s.keychain == nil {
 		return errors.New("core: no keychain configured")
 	}
-	return s.keychain.InjectBody(id, req)
+	return s.keychain.Refresh(req.Context(), id, func(r keychain.Refreshed) {
+		rec := log.CredRefresh{Class: r.Class, Handle: r.ID, Endpoint: r.Endpoint, Rotated: r.Rotated, OK: r.Err == nil}
+		if r.Err != nil {
+			rec.Error = r.Err.Error()
+		} else if !r.Expires.IsZero() {
+			rec.Expires = r.Expires.UTC().Format(time.RFC3339)
+		}
+		s.recordEarly(log.KindCredRefresh, rec)
+	})
+}
+
+// credentialScopes returns the scopes an OAuth2 credential was granted (the
+// one with handle id, or for "" the stored one of class); a static key has
+// none (guard.CredentialScopes).
+func (s *Session) credentialScopes(class, id string) []string {
+	if s.keychain == nil {
+		return nil
+	}
+	if id == "" {
+		h := s.keychain.HandleForClass(class)
+		if h == nil {
+			return nil
+		}
+		id = h.ID
+	}
+	info, err := s.keychain.Info(id)
+	if err != nil {
+		return nil
+	}
+	return info.Scopes
 }
 
 // Do implements prim.CredentialStore: sends the HTTP request. The request
@@ -175,15 +219,19 @@ func (s *Session) authorize(class string) func(*http.Request) error {
 			return err
 		}
 		host := strings.ToLower(req.URL.Hostname())
-		bound, reason := s.bindings.Lookup(class, host, req.Method, modelKeyPosition)
-		if _, err := s.Record(log.KindEgressCheck, log.EgressCheck{Prim: "model-turn", Class: class, Host: host, Method: req.Method, Bound: bound, Reason: reason}); err != nil {
+		scopes := s.credentialScopes(class, h.ID)
+		bound, reason := s.bindings.Lookup(class, host, req.Method, modelKeyPosition, scopes...)
+		if _, err := s.Record(log.KindEgressCheck, log.EgressCheck{Prim: "model-turn", Class: class, Host: host, Method: req.Method, Scopes: scopes, Bound: bound, Reason: reason}); err != nil {
 			return err
 		}
 		if !bound {
 			return llm.Permanent(errors.New(reason))
 		}
 		_, name, prefix := binding.Position(modelKeyPosition)
-		return s.keychain.InjectHeader(h.ID, name, prefix, req)
+		if err := s.InjectHeader(h.ID, name, prefix, req); err != nil {
+			return llm.Permanent(err)
+		}
+		return nil
 	}
 }
 

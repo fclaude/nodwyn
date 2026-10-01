@@ -70,10 +70,10 @@ type Session struct {
 	workspace config.Workspace
 	// MCP servers this session connected to (mcp.go); checks made while the
 	// session was being built wait for session.start.
-	mcpMu      sync.Mutex
-	mcp        []MCPServer
-	started    bool
-	heldChecks []log.EgressCheck
+	mcpMu   sync.Mutex
+	mcp     []MCPServer
+	started bool
+	held    []heldRecord
 
 	// P3 credential prompts: pending masked-secret prompts.
 	secrets   map[string]pendingSecret

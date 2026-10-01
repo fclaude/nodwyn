@@ -125,6 +125,8 @@ type Guard struct {
 	// run a Scheme-registered checker. Set by the core (which owns the
 	// interpreter). nil means no Scheme checkers are possible.
 	ev SchemeEval
+	// scopes names an OAuth2 credential's scopes in a confirm (ADR 24 §4).
+	scopes CredentialScopes
 }
 
 // New builds a guard. A nil confirmer denies every confirm; a nil logger
@@ -147,6 +149,10 @@ type SchemeEval func(ctx context.Context, proc scheme.Value, args []scheme.Value
 // WithSchemeEval installs the evaluator RegisterChecker uses to run a
 // Scheme procedure.
 func (g *Guard) WithSchemeEval(ev SchemeEval) *Guard { g.ev = ev; return g }
+
+// WithCredentialScopes makes every confirm of a credential-bearing call name
+// the credential's scopes along with its class and destination.
+func (g *Guard) WithCredentialScopes(scopes CredentialScopes) *Guard { g.scopes = scopes; return g }
 
 // RegisterChecker implements scheme.Gate (register-check, ADR 20). It adds
 // a tightening-only checker named name. The predicate is a Scheme closure
@@ -307,7 +313,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 	// Confirm.
 	approval, err := g.confirm(ctx, Prompt{
 		Binding:  result.binding,
-		Egress:   egressScopeOf(p, args),
+		Egress:   egressScopeOf(p, args, g.scopes),
 		Security: result.security,
 		Prim:     p.Name,
 		Args:     rec.Args,

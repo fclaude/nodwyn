@@ -7,18 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 // Binding is one row of the binding table: a secret class authorized for
-// exactly these destinations, positions and methods.
+// exactly these destinations, positions and methods. A row that names
+// scopes binds an OAuth2 credential only if every scope its token was
+// granted is among them (ADR 24 §4); a row without scopes does not look at
+// them.
 type Binding struct {
-	Class     string   `toml:"class"`     // e.g. "openai-key"
-	Dest      string   `toml:"dest"`      // host, e.g. "api.openai.com"
-	Positions []string `toml:"positions"` // e.g. "header:Authorization", "query:key", "body"
-	Methods   []string `toml:"methods"`   // e.g. "POST"
+	Class     string   `toml:"class"`            // e.g. "openai-key"
+	Dest      string   `toml:"dest"`             // host, e.g. "api.openai.com"
+	Positions []string `toml:"positions"`        // e.g. "header:Authorization", "query:key", "body"
+	Methods   []string `toml:"methods"`          // e.g. "POST"
+	Scopes    []string `toml:"scopes,omitempty"` // OAuth2 scopes allowed, e.g. "https://www.googleapis.com/auth/drive.file"
 }
 
 // Table is bindings.toml. A missing file means an empty table, which by
@@ -60,9 +65,10 @@ func parse(raw []byte, path string) (Table, error) {
 }
 
 // Lookup reports whether (class, host, method, position) is bound by any
-// row of the table. reason is set when it is not, for the guard's log and
-// prompt.
-func (t Table) Lookup(class, host, method, position string) (bound bool, reason string) {
+// row of the table, for a credential granted scopes (an OAuth2 token's;
+// none for a static key). reason is set when it is not, for the guard's log
+// and prompt.
+func (t Table) Lookup(class, host, method, position string, scopes ...string) (bound bool, reason string) {
 	rows := t.rows(class)
 	if len(rows) == 0 {
 		return false, fmt.Sprintf("class %q has no binding", class)
@@ -70,7 +76,7 @@ func (t Table) Lookup(class, host, method, position string) (bound bool, reason 
 	if host == "" {
 		return false, "no destination in the call"
 	}
-	hostOK := false
+	hostOK, outside := false, ""
 	for _, row := range rows {
 		if !hostMatches(row.Dest, host) {
 			continue
@@ -82,12 +88,33 @@ func (t Table) Lookup(class, host, method, position string) (bound bool, reason 
 		if position != "" && !member(row.Positions, position) {
 			continue
 		}
+		if s := beyond(row.Scopes, scopes); s != "" {
+			outside = s
+			continue
+		}
 		return true, ""
 	}
 	if !hostOK {
 		return false, fmt.Sprintf("destination %s is not bound for class %s", host, class)
 	}
+	if outside != "" {
+		return false, fmt.Sprintf("scope %s of the %s credential is not bound for %s", outside, class, host)
+	}
 	return false, fmt.Sprintf("method %s at position %s is not bound for class %s on %s", method, position, class, host)
+}
+
+// beyond returns the first of scopes a row's allowed scopes do not name,
+// or "" if all are allowed or the row names none.
+func beyond(allowed, scopes []string) string {
+	if len(allowed) == 0 {
+		return ""
+	}
+	for _, s := range scopes {
+		if !slices.Contains(allowed, s) {
+			return s
+		}
+	}
+	return ""
 }
 
 // rows returns every binding row for class.

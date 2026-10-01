@@ -73,3 +73,10 @@ existing redaction/append path. Old records remain readable; older binaries
 that do not know the new kinds cannot read logs containing them, consistent
 with this ADR's strict reader. A guard decision that cannot be recorded stops
 the host operation instead of allowing an unaudited effect.
+
+## Amendment — 2026-09-30: `cred.refresh`
+
+`cred.refresh` records one refresh of an OAuth2 credential (ADR 24 §3): the
+class, the handle id, the token endpoint's host, the new expiry, whether the
+refresh token rotated, and ok or the error. Never a token. It is written by
+the session that made the use the refresh was for.

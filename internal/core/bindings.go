@@ -28,7 +28,7 @@ func (s *Session) bindingEligible(p guard.Prompt) bool {
 		return false
 	}
 	f := p.Egress
-	row, err := binding.Exact(f.Class, f.Host, f.Method, f.Position)
+	row, err := binding.Exact(f.Class, f.Host, f.Method, f.Position, f.Scopes...)
 	if err != nil || !reflect.DeepEqual(row, *p.Binding) {
 		return false
 	}

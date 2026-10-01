@@ -1,6 +1,8 @@
 # ADR 0024: OAuth2 credentials — acquisition, refresh, scopes
 
-- Status: **proposed** (extends ADR 5 and the binding table; prerequisite for W5)
+- Status: accepted; implemented 2026-09-30 (W4). Extends ADR 5 and the
+  binding table; prerequisite for W5. "Implemented" below says where the code
+  differs from this text.
 - Date: 2026-09-22
 
 ## Context
@@ -113,3 +115,61 @@ endpoint exists.
   outside its declared scopes, but a token that was minted too broadly is
   broad at the provider. Narrow defaults are the mitigation.
 - **Tokens at rest are as safe as the passphrase**, exactly as in ADR 5.
+
+## Implemented — 2026-09-30
+
+As decided, with these specifics:
+
+- **Commands.** `nodwyn credential add --oauth2 PROVIDER --client-id ID
+  [--scopes A,B] [--class CLASS] [--client-secret] [--no-browser]` acquires;
+  `nodwyn credential login ID|CLASS` authorizes a `needs_reauth` credential
+  again with the same client, endpoints and scopes; `nodwyn credential revoke
+  [--local] ID|CLASS` revokes and deletes (`--local` only deletes);
+  `nodwyn credential list` describes every credential, never a secret. They
+  open the keychain file directly, at a terminal: authorizing is a user
+  action and no primitive or tool reaches it.
+- **Profiles** ship for `google` (short scope names expand to
+  `https://www.googleapis.com/auth/NAME`; `access_type=offline`), `microsoft`,
+  `github` and `notion` (both need a client secret), plus `custom` with
+  `--auth-url`, `--token-url`, `--revoke-url` (an MCP server's authorization
+  server, for one). No client id ships: the user registers nodwyn with the
+  provider and passes theirs. Endpoints must be https, or http on loopback.
+  The profiles' endpoints are the providers' documented ones; the tests run
+  against a fake provider (`test/fakes/oauth`), not the real services.
+- **Storage.** An entry has a kind; an oauth2 entry's token set (client,
+  endpoints, granted scopes, tokens, expiry, `needs_reauth`) is in the same
+  encrypted blob. A keychain holding one is written as format version 2, so
+  an older binary refuses it instead of rewriting it without its token
+  sets; a keychain of static keys stays version 1 (ADR 5, amended).
+- **Concurrency.** Every change takes an advisory lock on `keychain.lock`
+  and rereads the file first, and reads reread a file another process
+  wrote, so the daemon, a session in the terminal and a `credential`
+  command never write back a token another has already rotated. Refreshes
+  of one credential are serialized by the same lock, across processes too:
+  the second finds the token the first stored.
+- **Refresh** happens in `Store.Refresh`, which the session runs in each of
+  its injection sinks after the use was checked against the binding table;
+  the keychain refuses to inject an access token that has expired, so a path
+  that skipped the refresh fails instead of sending a stale token. A use the
+  binding table refuses never reaches the token endpoint. The session logs
+  each refresh as `cred.refresh` (class, handle id, token endpoint host, new
+  expiry, rotated, ok or error), holding records made while an MCP server
+  connects until `session.start`. Inspecting an MCP server from the console
+  has no session, so a refresh there is not logged, as nothing else there
+  is. A refusal by the token endpoint (`invalid_grant`, `invalid_client`,
+  `unauthorized_client`), or an expired token with no refresh token, marks
+  the credential `needs_reauth`; a network error does not.
+- **Scopes.** A binding row may name `scopes`; it then binds an oauth2
+  credential only if every scope the token was granted is among them, and
+  the denial names the first that is not. The guard's E3 check and the
+  model and MCP authorizers pass the granted scopes; `egress.check` records
+  them; the confirm names them (`Prompt.Egress.Scopes`), and a proposed
+  binding row pins them. A static key has no scopes, so a row's scopes do
+  not affect it.
+- **Revocation** posts the refresh token (or the access token, without one)
+  to the revocation endpoint (RFC 7009) and deletes the entry; a provider
+  without one is said to keep the tokens valid.
+
+Not done: MCP's own authorization discovery (protected-resource metadata,
+dynamic client registration). An MCP server that uses OAuth works with a
+`custom` credential whose client the user registered.

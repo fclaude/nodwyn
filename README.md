@@ -60,7 +60,7 @@ Integration-specific settings should not become getters on `Session`.
 
 The roadmap extends these boundaries: ADR 21 uses events for RPC clients;
 ADRs 22–23 bring MCP tools through the primitive/guard path; ADR 24 extends
-the credential lifecycle to OAuth. Local RPC and remote MCP servers are implemented (contained local MCP servers and OAuth remain planned). Keep `loop`, `plan`, and
+the credential lifecycle to OAuth. Local RPC, remote MCP servers and OAuth2 credentials are implemented (contained local MCP servers remain planned). Keep `loop`, `plan`, and
 `event` separate, and keep credential management shared across integrations.
 
 ## Build

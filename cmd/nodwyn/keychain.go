@@ -14,8 +14,8 @@ import (
 )
 
 // keychain creates the encrypted credential store. It exists only as
-// "keychain init": there is nothing else to do to a keychain from the
-// command line, since credentials are registered from inside a session.
+// "keychain init"; its credentials are managed with "credential"
+// (credential.go), and static keys are registered from inside a session.
 func (c *cli) keychain() error {
 	if c.fs.Arg(1) != "init" {
 		return fmt.Errorf("keychain: expected 'init'")

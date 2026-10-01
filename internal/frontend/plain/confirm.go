@@ -2,6 +2,8 @@ package plain
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
 )
@@ -18,10 +20,20 @@ func EgressSummary(scope *guard.EgressScope) string {
 		}
 		return fmt.Sprintf("%q", value)
 	}
-	return fmt.Sprintf("Credential class: %s\nDestination host: %s\nMethod: %s\nPosition: %s\nThese are the credential scope facts for this call.", known(scope.Class), known(scope.Host), known(scope.Method), known(scope.Position))
+	scopes := ""
+	if len(scope.Scopes) > 0 {
+		// An OAuth2 credential: what it may do at the provider is part of
+		// what is being sent (ADR 24 §4).
+		scopes = fmt.Sprintf("\nOAuth2 scopes: %s", strings.Join(scope.Scopes, " "))
+	}
+	return fmt.Sprintf("Credential class: %s\nDestination host: %s\nMethod: %s\nPosition: %s%s\nThese are the credential scope facts for this call.", known(scope.Class), known(scope.Host), known(scope.Method), known(scope.Position), scopes)
 }
 
 // BindingSummary distinguishes a requested change from a persisted outcome.
 func BindingSummary(p log.BindingChange) string {
-	return fmt.Sprintf("binding %s: %q → %q methods=%q positions=%q by %q %s", p.State, p.Binding.Class, p.Binding.Dest, p.Binding.Methods, p.Binding.Positions, p.Actor, p.Error)
+	scopes := ""
+	if len(p.Binding.Scopes) > 0 {
+		scopes = fmt.Sprintf(" scopes=%q", p.Binding.Scopes)
+	}
+	return fmt.Sprintf("binding %s: %q → %q methods=%q positions=%q%s by %q %s", p.State, p.Binding.Class, p.Binding.Dest, p.Binding.Methods, p.Binding.Positions, scopes, p.Actor, p.Error)
 }

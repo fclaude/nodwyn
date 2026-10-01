@@ -170,12 +170,13 @@ type GuardDecision struct {
 
 // EgressCheck records a binding lookup for a secret-bearing egress (E3).
 type EgressCheck struct {
-	Prim   string `json:"prim"`
-	Class  string `json:"class"`
-	Host   string `json:"host,omitempty"`
-	Method string `json:"method,omitempty"`
-	Bound  bool   `json:"bound"`
-	Reason string `json:"reason,omitempty"` // set when not bound
+	Prim   string   `json:"prim"`
+	Class  string   `json:"class"`
+	Host   string   `json:"host,omitempty"`
+	Method string   `json:"method,omitempty"`
+	Scopes []string `json:"scopes,omitempty"` // an OAuth2 credential's granted scopes (ADR 24)
+	Bound  bool     `json:"bound"`
+	Reason string   `json:"reason,omitempty"` // set when not bound
 }
 
 // GatePlan is the P5 gate outcome for one user message: the noul verdict,
@@ -211,6 +212,19 @@ type CredRegister struct {
 	PromptID string `json:"prompt_id,omitempty"`
 	Class    string `json:"class"`
 	Handle   string `json:"handle"` // the handle id
+}
+
+// CredRefresh records one refresh of an OAuth2 credential, made just before
+// a use the binding table allowed (ADR 24 §3). Never a token: the class, the
+// handle id, the token endpoint's host, and the new expiry or the error.
+type CredRefresh struct {
+	Class    string `json:"class"`
+	Handle   string `json:"handle"`
+	Endpoint string `json:"endpoint"`
+	Expires  string `json:"expires,omitempty"` // RFC 3339, when it succeeded and the token expires
+	Rotated  bool   `json:"rotated,omitempty"` // the provider issued a new refresh token
+	OK       bool   `json:"ok"`
+	Error    string `json:"error,omitempty"`
 }
 
 // Note is a free-form annotation.
