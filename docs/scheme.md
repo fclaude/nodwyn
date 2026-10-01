@@ -540,9 +540,9 @@ to.
 
 These primitives are hidden from the model. The ones that act on the
 conversation (`model-turn`, `run-tools`, `skip-tools`, `answer-call`,
-`add-message`, `log-note`, `fold-result`, `record-plan`, `narrow-context`,
-`fold-context`, `widen`) are refused outside a turn and from model-originated
-code; the ones that only describe the session (`model-info`, `model-names`,
+`add-message`, `log-note`, `fold-result`, `record-plan`, `plan-steps`,
+`record-step`, `narrow-context`, `fold-context`, `widen`) are refused outside
+a turn and from model-originated code; the ones that only describe the session (`model-info`, `model-names`,
 `window-limits`, `session-system-prompt`, `unattended?`, `plan-required?`,
 `plan-recorded?`, `session-list`, `session-events`) answer at any time, which
 is how `compact.scm` reads `(window-limits)` as it loads. The strategy runs with harness origin, so it cannot
@@ -784,6 +784,9 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded` or `required`), `plan`, `score`, `revisions`, `reason` |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
+| `(plan-steps)` | the steps of the plan recorded in this turn, as strings: its numbered or bulleted lines, in order, or the whole plan when it is prose (one step); `'()` before a plan is recorded. The console reads a plan's steps the same way |
+| `(record-step n state note)` | record that step `n` (from 1) of this turn's plan is `"done"` or `"skipped"`, with a note saying what shows it, as `plan.step`; a later mark of the same step replaces it. Returns `((done . k) (of . n) (next . m))`: the steps marked so far, the plan's steps, and the first unmarked one, or `#f`. An error without a plan, for a step the plan does not have, or for another state |
+| `plan-step` | the model's tool for those marks, an agent tool (`define-agent-tool`) answered by `plan-step-answer`: `{"step", "state", "note"}`, answered with what was marked and the next unmarked step. The plan header (`plan-header`) and a run's turn prompt ask the model to use it. A mark is the model's word, not a proof: the console shows it as such, and the evidence is the transcript |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
 | `(workspace)` | the workspace's kind and mounted folders from `.nodwyn/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The kind is a label: every kind has the same tools. Both default system prompts add a section naming the mounted folders, so a plain repository's prompt is unchanged; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file that no git work tree at the root covers, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it |
 | `(log-note text)` | add a note to the session log, for the record and the transcript; the model never sees it |
@@ -795,6 +798,12 @@ irreversible runs, and a turn that records none fails. What it enforces is
 that a plan was recorded, not who wrote it: the default `nodwyn-turn` has the
 control model plan, and a project's own `nodwyn-turn` may record a plan of its own
 with `record-plan`, as trusted project code.
+
+The model marks the plan's steps as it finishes them (`plan-step`), and the
+console's plan panel shows which are done, which were skipped and which is
+next. A strategy that does not use `run-calls` (where agent tools are
+answered) leaves `plan-step` unanswered; its own handler may call
+`record-step`.
 
 ### 9.6 Working habits
 

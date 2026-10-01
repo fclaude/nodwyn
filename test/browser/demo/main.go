@@ -157,6 +157,12 @@ func writeRepo(dir, name string) error {
 `,
 		"notes/todo.md": "- tell sessions apart\n- check phone width\n",
 	}
+	if name == "console" {
+		// The demo has no judge, so its coding task would get no plan: plan
+		// it anyway, without exploring first, so the plan panel has a plan
+		// and the model's step marks to show.
+		files[".nodwyn/init.scm"] = "(define plan-explore-rounds 0)\n(define (plan-gate request) (if (plan-recorded?) #f (plan-best #f request \"plan\")))\n"
+	}
 	for rel, body := range files {
 		path := filepath.Join(dir, rel)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -206,6 +212,11 @@ func chatServer() *fakemcp.Server {
 		fakemcp.Tool{Name: "post_message", Description: "Post a message to a channel.", Schema: map[string]any{"type": "object", "properties": map[string]any{"channel": map[string]any{"type": "string"}, "text": map[string]any{"type": "string"}}, "required": []any{"channel", "text"}},
 			Reply: func(map[string]any) (string, bool) { return "posted", false }},
 	)
+}
+
+// planStep is the model marking a step of its plan.
+func planStep(id string, step int, state, note string) fake.ToolCall {
+	return fake.ToolCall{ID: id, Name: "plan-step", Args: map[string]any{"step": step, "state": state, "note": note}}
 }
 
 // respond is the scripted model. A request offering no tools is the planner;
@@ -260,13 +271,19 @@ func respond(req fake.Request) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{
 			{ID: "r3", Name: "fs-read", Args: map[string]any{"path": "app.js"}},
 			{ID: "r4", Name: "fs-read", Args: map[string]any{"path": "notes/todo.md"}},
+			planStep("p1", 1, "done", "sessionRow in app.js draws each row"),
 		}}
 	case 2:
 		return fake.Turn{Content: "A saved session already records its repository, when it last changed and whether a turn was still running. I'll put when it changed and whether it's running under each title, and the session id on hover.", ToolCalls: []fake.ToolCall{
+			planStep("p2", 2, "done", "a saved session records its repository, last change and whether a turn runs"),
 			{ID: "w1", Name: "fs-edit", Args: map[string]any{"path": "app.js", "old": "  row.append(node(\"span\", session.repo, \"meta\"));\n", "new": "  const when = ago(session.lastEvent);\n  const state = session.inFlight ? \"running\" : \"idle\";\n  const meta = [session.repo, when, state].join(\" · \");\n  row.append(node(\"span\", meta, \"meta\"));\n  row.title = session.id;\n"}},
 		}}
 	case 3:
-		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "x1", Name: "shell-exec", Args: map[string]any{"cmd": "ls", "args": []any{"-la"}}}}}
+		return fake.Turn{ToolCalls: []fake.ToolCall{
+			planStep("p3", 3, "done", "app.js shows when it changed and whether it is running"),
+			{ID: "x1", Name: "shell-exec", Args: map[string]any{"cmd": "ls", "args": []any{"-la"}}},
+			planStep("p4", 4, "skipped", "the demo has no phone to check on"),
+		}}
 	default:
 		return fake.Turn{Content: "Done. Each row now shows **when it last changed** and **whether it's running**:\n\n```js\nconst meta = [session.repo, when, state].join(\" · \");\n```\n\nHover a row to see its id.", Chunk: 20}
 	}

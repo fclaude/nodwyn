@@ -503,5 +503,7 @@ embedded typefaces. How it is reached changed with [ADR 30](./0030-one-app-three
 transport of U2 is realized as that bridge, not as a raw RPC listener.
 The cowork pieces the canvas assumes (workspaces, attachments, remote MCP
 servers) are ADR 22 W1, W2 (text) and ADR 23 W3a. Not yet in the design's
-views: per-step plan progress (the log records the plan, not its steps'
-completion) and commit hashes under finished tasks.
+views: commit hashes under finished tasks. Per-step plan progress is there
+since 2026-09-30: the model marks steps with `plan-step`, the log records
+each mark (`plan.step`), and the plan panel shows which steps are done,
+skipped and next, as the model's word.

@@ -559,9 +559,9 @@ which parameters are optional, and each parameter's \emph{role}
 \ldots), which tells the guard what an argument is.
 
 \code{nodwyn repl} has the 111 builtins. A session adds its host
-primitives, the loop's own primitives and the two tools the default loop
-registers (\code{read-definition} and \code{second-look}): 157 in a git
-repository opened without a keychain. A keychain adds \code{http-request}
+primitives, the loop's own primitives and the three tools the default loop
+registers (\code{read-definition}, \code{second-look} and
+\code{plan-step}): 160 in a git repository opened without a keychain. A keychain adds \code{http-request}
 and \code{credential-register}; a judge, which needs the keychain too, adds
 the three \code{jev} primitives, and the model's three \code{judge} tools
 when a \code{jev-key} is stored and \code{jev.content} is \code{full};
@@ -1072,10 +1072,12 @@ Processes    shell-exec shell-start shell-read shell-send shell-stop
 Session      scratch-dir repository workspace project-notes project-notes-save
 Keys         credential; with a keychain, credential-register http-request
 Judge        jev-noul jev-score jev-choice         (with a judge configured)
+             judge-noul judge-score judge-choice   (the model's; jev.content = "full")
 Policy       policy-read policy-write
 MCP          server__tool, one per tool you turned on
 Loop         model-turn run-tools skip-tools answer-call add-message log-note
              fold-result narrow-context fold-context widen record-plan
+             plan-steps record-step
              session-requests session-system-prompt session-list session-events
              model-info model-names window-limits context-tokens
              unattended? plan-required? plan-recorded? reload

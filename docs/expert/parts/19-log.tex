@@ -48,7 +48,7 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
 \code{tool.call}, \code{tool.result} & each call and its one result \\
 \code{guard.decision} & every confirm and deny, and every allow of a tool or a host primitive, with checker, reason and answer \\
 \code{egress.check}, \code{jev.req} & keyed requests: binding lookup; judge calls \\
-\code{gate.plan} & the plan gate's outcome \\
+\code{gate.plan}, \code{plan.step} & the plan gate's outcome; the model's marks on its steps \\
 \code{context.narrow}, \code{context.fold}, \code{context.widen}, \code{result.fold} & window shaping \\
 \code{turn.checkpoint}, \code{turn.end} & budget checkpoints; the durable end of a turn, with its outcome \\
 \code{run.state}, \code{run.turn}, \code{run.checkpoint} & supervised runs \\

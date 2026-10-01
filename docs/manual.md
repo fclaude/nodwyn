@@ -366,7 +366,10 @@ Before each user message the default strategy's plan gate
 whether the message needs a plan; if so the model drafts one, Jev scores it
 against the ask (up to three revisions), and the plan goes into the task
 block the model sees. Its thresholds and prompts are Scheme definitions a
-project may redefine.
+project may redefine. As the model works it marks the plan's steps done or
+skipped with the `plan-step` tool, and the console's plan panel (`:plan` in
+the TUI) shows its progress; a mark is the model's word, and the transcript
+is the evidence.
 Every Jev call is a guarded egress: bound credential, L1 redaction of
 what leaves, a `jev.req` log line with origin, size, hash and the answer.
 Set `jev.content = "none"` in `config.toml` to turn it off. Without a

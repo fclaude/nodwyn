@@ -189,3 +189,17 @@ func TestPlanAndCheckpointTextIsSanitizedForDisplay(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanViewShowsStepMarks(t *testing.T) {
+	gate := log.GatePlan{Noul: "required", Plan: "1. read\n2. edit\n3. test", Score: 0.8}
+	marks := map[int]log.PlanStep{1: {Step: 1, Of: 3, State: "done", Note: "read main.go"}, 3: {Step: 3, Of: 3, State: "skipped"}}
+	got := formatGatePlan(gate) + formatSteps(gate, marks)
+	for _, want := range []string{"Required plan score: 0.80", "Steps (1 of 3 done, as the model marked them):", "[x] 1. read (read main.go)", "[ ] 2. edit", "[-] 3. test"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in:\n%s", want, got)
+		}
+	}
+	if formatSteps(gate, nil) != "" {
+		t.Fatal("no marks, no step list")
+	}
+}

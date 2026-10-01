@@ -30,7 +30,14 @@ func formatPlan(events []log.Event) (string, error) {
 			if err := events[i].Decode(&gate); err != nil {
 				return "", err
 			}
-			return heading + fmt.Sprintf("Recorded outcome · #%d\n", events[i].Seq) + formatGatePlan(gate), nil
+			marks := map[int]log.PlanStep{}
+			for _, e := range events[i+1:] {
+				var m log.PlanStep
+				if e.Kind == log.KindPlanStep && e.Decode(&m) == nil {
+					marks[m.Step] = m
+				}
+			}
+			return heading + fmt.Sprintf("Recorded outcome · #%d\n", events[i].Seq) + formatGatePlan(gate) + formatSteps(gate, marks), nil
 		}
 	}
 	return heading + "No planning outcome recorded for this message in this snapshot.", nil
@@ -44,6 +51,8 @@ func formatGatePlan(gate log.GatePlan) string {
 		fmt.Fprintf(&out, "No plan requested by the gate.\nNeed-plan probability: %.2f\n", gate.Score)
 	case "plan":
 		fmt.Fprintf(&out, "Recorded plan score: %.2f · revisions: %d\n", gate.Score, gate.Revisions)
+	case "required":
+		fmt.Fprintf(&out, "Required plan score: %.2f · revisions: %d\n", gate.Score, gate.Revisions)
 	case "degraded":
 		out.WriteString("Gate fallback; no plan score recorded.\n")
 	}
@@ -52,6 +61,39 @@ func formatGatePlan(gate log.GatePlan) string {
 	}
 	if gate.Plan != "" {
 		fmt.Fprintf(&out, "\n%s\n", gate.Plan)
+	}
+	return out.String()
+}
+
+// formatSteps lists the plan's steps with the model's marks (plan.step),
+// once it has made any.
+func formatSteps(gate log.GatePlan, marks map[int]log.PlanStep) string {
+	steps := gate.Steps()
+	if len(marks) == 0 || len(steps) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	done := 0
+	for _, m := range marks {
+		if m.State == "done" {
+			done++
+		}
+	}
+	fmt.Fprintf(&out, "\nSteps (%d of %d done, as the model marked them):\n", done, len(steps))
+	for i, s := range steps {
+		box := "[ ]"
+		m, ok := marks[i+1]
+		switch {
+		case ok && m.State == "done":
+			box = "[x]"
+		case ok:
+			box = "[-]"
+		}
+		fmt.Fprintf(&out, "%s %d. %s", box, i+1, s)
+		if ok && m.Note != "" {
+			fmt.Fprintf(&out, " (%s)", m.Note)
+		}
+		out.WriteString("\n")
 	}
 	return out.String()
 }

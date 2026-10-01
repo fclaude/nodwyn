@@ -91,6 +91,25 @@ func (l *Loop) install() error {
 			Handler: l.recordPlan,
 		},
 		{
+			Name: "plan-steps",
+			Meta: scheme.Meta{
+				Doc:    "The steps of the plan recorded in this turn, in order, as strings: its numbered or bulleted lines, or the whole plan when it is prose. '() when no plan was recorded.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.planSteps,
+		},
+		{
+			Name: "record-step",
+			Meta: scheme.Meta{
+				Doc:    "Record that step n of the turn's plan is done or skipped, with a note saying what shows it (plan.step); the console shows the plan's progress. Returns ((done . k) (of . n) (next . m)): steps marked so far, the plan's steps, and the first unmarked step, or #f.",
+				Params: []scheme.Param{{Name: "step", Type: "integer", Doc: "the step's number, from 1"}, {Name: "state", Type: "string", Doc: "done or skipped"}, {Name: "note", Type: "string", Doc: "what shows it"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.recordStep,
+		},
+		{
 			Name: "narrow-context",
 			Meta: scheme.Meta{
 				Doc:      "Start a fresh context: until fold-context, widen or the user's next message, models see system as their system prompt and only what comes after this. Hand a model a task with add-message after it. Contexts nest; calls pending when it opens wait until it folds. An optional agent name labels the context in the log; an options alist may follow it, where (lasting . #t) makes the narrowing outlast the turn, as a compaction's does: if it is still open at the user's next message, the conversation starts here from then on, under the session's system prompt.",
@@ -429,9 +448,72 @@ func (l *Loop) recordPlan(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, err
 	}
 	if strings.TrimSpace(gp.Plan) != "" {
+		t := l.turn
+		t.steps, t.marks = gp.Steps(), map[int]string{}
+	}
+	if strings.TrimSpace(gp.Plan) != "" {
 		l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gp.Score, gp.Revisions)}})
 	}
 	return scheme.Void, nil
+}
+
+// planSteps is (plan-steps): the steps of the plan recorded this turn.
+func (l *Loop) planSteps(c *scheme.Call) (scheme.Value, error) {
+	t, err := l.active(c)
+	if err != nil {
+		return scheme.Void, err
+	}
+	out := make([]scheme.Value, len(t.steps))
+	for i, s := range t.steps {
+		out[i] = scheme.Str(s)
+	}
+	return scheme.List(out...), nil
+}
+
+// recordStep is (record-step n state note): step n of the turn's plan is
+// done or skipped, as the model says (the strategy answers its plan-step
+// call with this). It is recorded as plan.step for the console.
+func (l *Loop) recordStep(c *scheme.Call) (scheme.Value, error) {
+	t, err := l.active(c)
+	if err != nil {
+		return scheme.Void, err
+	}
+	n, err := c.Int(0)
+	if err != nil {
+		return scheme.Void, err
+	}
+	state, err := c.String(1)
+	if err != nil {
+		return scheme.Void, err
+	}
+	note, err := c.String(2)
+	if err != nil {
+		return scheme.Void, err
+	}
+	switch {
+	case len(t.steps) == 0:
+		return scheme.Void, errors.New("no plan was recorded in this turn")
+	case n < 1 || int(n) > len(t.steps):
+		return scheme.Void, fmt.Errorf("the plan has %d steps, numbered from 1; there is no step %d", len(t.steps), n)
+	case state != "done" && state != "skipped":
+		return scheme.Void, fmt.Errorf("a step is done or skipped, not %q", state)
+	}
+	if err := l.record(log.KindPlanStep, log.PlanStep{Step: int(n), Of: len(t.steps), State: state, Note: note}); err != nil {
+		return scheme.Void, err
+	}
+	t.marks[int(n)] = state
+	next := scheme.False
+	for i := 1; i <= len(t.steps); i++ {
+		if t.marks[i] == "" {
+			next = scheme.Int(int64(i))
+			break
+		}
+	}
+	return scheme.List(
+		scheme.Cons(scheme.Sym("done"), scheme.Int(int64(len(t.marks)))),
+		scheme.Cons(scheme.Sym("of"), scheme.Int(int64(len(t.steps)))),
+		scheme.Cons(scheme.Sym("next"), next),
+	), nil
 }
 
 // narrowContext is (narrow-context system). The narrowing is an event in

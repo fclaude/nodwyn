@@ -21,6 +21,10 @@ type turnState struct {
 	// Each keeps the calls that were pending when it opened; they wait,
 	// unanswered, until it folds (a sub-agent answering the model's call).
 	contexts [][]pendingCall
+	// steps are the steps of the plan recorded this turn, and marks their
+	// states as the model marked them (record-step), by step number.
+	steps []string
+	marks map[int]string
 }
 
 // parked reports whether an open context holds calls still waiting for an

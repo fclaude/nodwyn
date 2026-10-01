@@ -70,11 +70,14 @@ func TestDefaultPromptsAreUnchanged(t *testing.T) {
 		r.eval("(length plan-score-levels)") != "5" || evalText(t, r, "(car plan-score-levels)") != "misses or contradicts the request" {
 		t.Fatal("judge prompts changed")
 	}
-	if evalText(t, r, "task-header") != window.DefaultTaskHeader || evalText(t, r, "plan-header") != window.DefaultPlanHeader {
+	// The plan header asks for plan-step marks since 2026-09-30; the
+	// window's default stays the one recipes that record no header used.
+	if evalText(t, r, "task-header") != window.DefaultTaskHeader ||
+		evalText(t, r, "plan-header") != "Plan for the current task (follow it; mark each step with plan-step as you finish it; say so if you must deviate):" {
 		t.Fatal("the window's headers changed")
 	}
 	// The run prompt reproduces what the run driver formatted in Go.
-	if got := evalText(t, r, `(run-turn-prompt "T" "DONE" 2 5)`); got != "Run task:\nT\n\nWork on one unfinished plan step, then report progress for review. If the entire task is complete, put DONE alone on the final line. Do not claim completion while work remains. This is turn 2 of at most 5." {
+	if got := evalText(t, r, `(run-turn-prompt "T" "DONE" 2 5)`); got != "Run task:\nT\n\nWork on one unfinished plan step, mark it with plan-step, then report progress for review. If the entire task is complete, put DONE alone on the final line. Do not claim completion while work remains. This is turn 2 of at most 5." {
 		t.Fatalf("run-turn-prompt: %q", got)
 	}
 }

@@ -484,19 +484,44 @@ export class TaskView {
   }
   planPanel() {
     const turn = this.lastTurn();
-    const gate = turn?.tail.findLast((e) => e.kind === "gate.plan");
+    const at = turn ? turn.tail.findLastIndex((e) => e.kind === "gate.plan") : -1;
     const panel = h("section", { class: "panel" });
-    if (!gate) {
+    if (at < 0) {
       panel.append(h("h2", {}, "Plan", h("span", { class: "note" }, turn ? "none recorded for this ask" : "")));
       if (!turn) return null;
       return panel;
     }
-    const p = gate.payload;
-    const note = p.noul === "plan" ? (p.score ? `scored ${Number(p.score).toFixed(2)} by the judge` : "drafted") : p.noul === "proceed" ? "not needed" : "judge unavailable";
-    panel.append(h("h2", {}, "Plan", h("span", { class: "note" }, note)));
+    const p = turn.tail[at].payload;
+    const judged =
+      p.noul === "plan"
+        ? p.score
+          ? `scored ${Number(p.score).toFixed(2)} by the judge`
+          : "drafted"
+        : p.noul === "proceed"
+          ? "not needed"
+          : p.noul === "required"
+            ? p.score
+              ? `required, scored ${Number(p.score).toFixed(2)}`
+              : "required for this run"
+            : "judge unavailable";
     const steps = planSteps(p.plan);
-    if (steps.length) panel.append(h("ol", { class: "plan" }, steps.map((s) => h("li", {}, s))));
-    else if (p.reason) panel.append(h("p", { class: "hint" }, p.reason));
+    // The model's marks since the plan (plan.step), the latest per step. A
+    // mark is the model's word; the transcript holds what shows it.
+    const marks = new Map();
+    for (const e of turn.tail.slice(at + 1)) if (e.kind === "plan.step") marks.set(e.payload.step, e.payload);
+    const done = [...marks.values()].filter((m) => m.state === "done").length;
+    const note = steps.length && marks.size ? `${done} of ${steps.length} done · ${judged}` : judged;
+    panel.append(h("h2", {}, "Plan", h("span", { class: "note" }, note)));
+    if (steps.length) {
+      const next = marks.size ? steps.findIndex((_, i) => !marks.has(i + 1)) : -1;
+      const items = steps.map((s, i) => {
+        const m = marks.get(i + 1);
+        const state = m ? m.state : i === next ? "next" : "";
+        const said = m ? (m.state === "done" ? "Marked done" : "Skipped") + (m.note ? `: ${m.note}` : "") : undefined;
+        return h("li", { class: state || undefined, title: said }, h("span", {}, h("span", { class: "text" }, s), m?.note ? h("small", {}, m.note) : null));
+      });
+      panel.append(h("ol", { class: "plan" }, items));
+    } else if (p.reason) panel.append(h("p", { class: "hint" }, p.reason));
     return panel;
   }
   turnPanel() {

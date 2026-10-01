@@ -2,9 +2,12 @@ package log
 
 import (
 	"encoding/json"
+	"regexp"
+	"strings"
+	"time"
+
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/budget"
-	"time"
 )
 
 // Typed payloads for the event kinds. They are the schema of the log; the
@@ -183,11 +186,46 @@ type EgressCheck struct {
 // whether a plan was required, the Seam A score, and the revision count.
 type GatePlan struct {
 	Origin    string  `json:"origin"`
-	Noul      string  `json:"noul"` // "plan" | "proceed" | "degraded"
+	Noul      string  `json:"noul"` // "plan" | "proceed" | "degraded" | "required" (a run's turn, no judge)
 	Plan      string  `json:"plan,omitempty"`
 	Score     float64 `json:"score,omitempty"`
 	Revisions int     `json:"revisions,omitempty"`
 	Reason    string  `json:"reason,omitempty"`
+}
+
+// planMarker is what starts a step's line: "1." "2)" "-" "*" "•".
+var planMarker = regexp.MustCompile(`^(\d+[.)]|[-*•])\s+`)
+
+// Steps reads the plan's numbered or bulleted lines as its steps, in order;
+// a plan in prose is one step. Step n of a plan.step is Steps()[n-1]. The
+// console reads a plan the same way (transcript.js planSteps).
+func (g GatePlan) Steps() []string {
+	var lines, steps []string
+	for _, l := range strings.Split(g.Plan, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	for _, l := range lines {
+		if m := planMarker.FindString(l); m != "" {
+			steps = append(steps, l[len(m):])
+		}
+	}
+	if len(steps) == 0 && len(lines) > 0 {
+		return []string{strings.Join(lines, " ")}
+	}
+	return steps
+}
+
+// PlanStep is the model marking step Step (of Of) of the turn's recorded
+// plan done or skipped, with Note saying what shows it. It is the model's
+// claim, not a proof: the evidence is the transcript around it. A later mark
+// of the same step replaces an earlier one.
+type PlanStep struct {
+	Step  int    `json:"step"`
+	Of    int    `json:"of"`
+	State string `json:"state"` // "done" | "skipped"
+	Note  string `json:"note,omitempty"`
 }
 
 // JevReq is one Jev egress (ADR 19/20): what left, how much, and the score.

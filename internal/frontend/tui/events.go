@@ -106,6 +106,16 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if err == nil {
 			m.append(formatGatePlan(p))
 		}
+	case string(log.KindPlanStep):
+		var p log.PlanStep
+		p, err = decode[log.PlanStep](e.Payload)
+		if err == nil {
+			line := fmt.Sprintf("step %d of %d marked %s", p.Step, p.Of, p.State)
+			if p.Note != "" {
+				line += ": " + p.Note
+			}
+			m.append(line)
+		}
 	case string(log.KindEvalReq):
 		m.endToolInterval()
 		var p log.EvalRequest

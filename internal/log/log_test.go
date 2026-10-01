@@ -260,3 +260,18 @@ func TestExclusiveWriter(t *testing.T) {
 		t.Fatalf("append after close: %+v %v", ev, err)
 	}
 }
+
+func TestGatePlanSteps(t *testing.T) {
+	for plan, want := range map[string][]string{
+		"1. read\n2) edit\n\n  - test  \nprose in between": {"read", "edit", "test"},
+		"* one\n• two":                    {"one", "two"},
+		"Just do it\nand check.":          {"Just do it and check."},
+		"":                                nil,
+		"10. tenth\nnot a step 3. inline": {"tenth"},
+	} {
+		got := GatePlan{Plan: plan}.Steps()
+		if strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("%q: %q, want %q", plan, got, want)
+		}
+	}
+}

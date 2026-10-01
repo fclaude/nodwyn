@@ -41,8 +41,11 @@ plan is recorded and fails a turn that records none; a project that redefines
 `nodwyn-turn` to plan its own way is held to the same rule. Planner or plan-recording
 failure prevents execution.
 
-The continuation asks for one unfinished plan step and a progress report. This
-is an instruction to the model, not a parser that proves a step was completed.
+The continuation asks for one unfinished plan step, marked with `plan-step`
+when it is done, and a progress report. This is an instruction to the model,
+not a parser that proves a step was completed: a mark (`plan.step`) is the
+model's word, shown as such in the console's plan panel, and the evidence is
+in the transcript.
 Before another turn, the operator gets a **run checkpoint**. A one-time yes
 continues the run; it grants no filesystem, command, credential or network
 permission. The checkpoint's prompt ID and answering peer are recorded.

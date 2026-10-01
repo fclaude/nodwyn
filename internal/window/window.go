@@ -51,7 +51,10 @@ type Policy struct {
 	PlanHeader string
 }
 
-// The default headers for the task and its plan.
+// The default headers for the task and its plan: what a recipe that records
+// none was built with. A session records the headers it runs with
+// (prompts.scm's task-header and plan-header, or a project's), so these
+// change only with a new recipe version.
 const (
 	DefaultTaskHeader = "Current task (the user's latest request):"
 	DefaultPlanHeader = "Plan for the current task (follow it; say so if you must deviate):"

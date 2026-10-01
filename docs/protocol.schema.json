@@ -1228,6 +1228,28 @@
       ],
       "type": "object"
     },
+    "log.PlanStep": {
+      "properties": {
+        "note": {
+          "type": "string"
+        },
+        "of": {
+          "type": "integer"
+        },
+        "state": {
+          "type": "string"
+        },
+        "step": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "step",
+        "of",
+        "state"
+      ],
+      "type": "object"
+    },
     "log.RunCheckpoint": {
       "properties": {
         "actor": {
@@ -1774,6 +1796,9 @@
     },
     "payload.output": {
       "$ref": "#/$defs/event.Text"
+    },
+    "payload.plan.step": {
+      "$ref": "#/$defs/log.PlanStep"
     },
     "payload.policy.result": {
       "$ref": "#/$defs/event.Policy"
@@ -5147,6 +5172,30 @@
             },
             "payload": {
               "$ref": "#/$defs/event.Text"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "plan.step"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.PlanStep"
             },
             "seq": {
               "minimum": 0,

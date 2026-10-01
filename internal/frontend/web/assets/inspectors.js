@@ -83,11 +83,11 @@ export function renderInspector(
       text("h3", `Recorded outcome · #${gate.seq}`),
       text("p", `Planning gate: ${p.noul}`),
     );
-    if (p.noul === "plan")
+    if (p.noul === "plan" || p.noul === "required")
       container.append(
         text(
           "p",
-          `Plan score: ${p.score || 0} · revisions: ${p.revisions || 0}`,
+          `${p.noul === "required" ? "Required plan" : "Plan"} score: ${p.score || 0} · revisions: ${p.revisions || 0}`,
         ),
       );
     else if (p.noul === "proceed")
@@ -98,6 +98,13 @@ export function renderInspector(
       container.append(text("p", "Gate fallback; no plan score recorded."));
     if (p.reason) container.append(text("p", p.reason));
     if (p.plan) container.append(text("pre", p.plan));
+    // The model's step marks after this plan, in the order it made them.
+    const marks = events.slice(events.indexOf(gate) + 1).filter((event) => event.kind === "plan.step");
+    if (marks.length) {
+      container.append(text("h3", "Steps marked by the model"));
+      for (const m of marks)
+        container.append(text("p", `#${m.seq} · step ${m.payload.step} of ${m.payload.of} ${m.payload.state}${m.payload.note ? `: ${m.payload.note}` : ""}`));
+    }
   } else if (kind === "budget") {
     container.append(
       text("h3", "Configured limits · current session lifetime"),

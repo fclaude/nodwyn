@@ -150,7 +150,9 @@ The result is captured only after the matching evaluation request is observed.
 
 ## Plan and budget snapshots
 
-`:plan` shows the latest user message and its most recent recorded gate outcome.
+`:plan` shows the latest user message and its most recent recorded gate outcome,
+and once the model has marked steps (`plan.step`), the plan's steps as
+`[x]` done, `[-]` skipped or `[ ]` open, each with the model's note.
 It distinguishes `plan` (recorded plan score and revision count), `proceed`
 (probability that a plan was needed, not a plan-quality score), and `degraded`
 (a fallback plan with no recorded score). The transcript uses the same labels.

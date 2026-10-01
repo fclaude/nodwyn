@@ -80,3 +80,12 @@ the host operation instead of allowing an unaudited effect.
 class, the handle id, the token endpoint's host, the new expiry, whether the
 refresh token rotated, and ok or the error. Never a token. It is written by
 the session that made the use the refresh was for.
+
+## Amendment — 2026-09-30: `plan.step`
+
+`plan.step` records the model marking a step of the turn's recorded plan
+done or skipped (the `plan-step` tool, answered by the strategy with
+`record-step`): the step's number, the plan's step count, the state and the
+model's note. It is the model's claim, not a proof, and the window ignores
+it: the model already sees its call and the answer. A front-end shows the
+plan's progress from it.

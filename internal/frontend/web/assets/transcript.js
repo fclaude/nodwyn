@@ -229,7 +229,7 @@ export class Transcript {
       case "gate.plan": {
         const steps = planSteps(p.plan);
         const label =
-          p.noul === "plan"
+          p.noul === "plan" || p.noul === "required"
             ? `Made a plan${steps.length ? ` · ${steps.length} steps` : ""}${p.score ? ` · scored ${Number(p.score).toFixed(2)}` : ""}`
             : p.noul === "proceed"
               ? "No plan needed for this"
@@ -237,6 +237,10 @@ export class Transcript {
         this.audit(label, p.plan || p.reason || undefined);
         break;
       }
+      case "plan.step":
+        // The model's own mark: what it says, with what it says shows it.
+        this.audit(`Step ${p.step} of ${p.of} marked ${p.state}`, p.note || undefined);
+        break;
       case "run.turn":
         this.end();
         this.el.append(h("div", { class: "audit" }, `Run · turn ${p.number}`));
@@ -351,6 +355,8 @@ export class Transcript {
   toolResult(p) {
     let c = this.call;
     if (!c || c.id !== p.id || c.name !== p.name) {
+      // A plan-step the strategy answered is shown by its plan.step line.
+      if (p.name === "plan-step" && p.ok && /^Step \d+ is /.test(p.value || "")) return;
       // A result without its call in view (a skipped or resumed call) stands alone.
       this.audit(`${toolLabel(p.name)} ${p.ok ? "returned" : "failed"}`, p.ok ? p.value : p.error, p.ok ? "" : "bad");
       return;
@@ -387,7 +393,8 @@ export class Transcript {
 }
 
 // planSteps reads a recorded plan's numbered or bulleted lines as steps; a
-// plan in prose is one step.
+// plan in prose is one step. The core reads it the same way
+// (log.GatePlan.Steps), so a plan.step's number is an index into this.
 export function planSteps(plan) {
   const lines = String(plan || "")
     .split("\n")

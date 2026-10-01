@@ -83,6 +83,18 @@ because a working habit (\file{checkloop.scm}) already wraps
 tool; replacing it outright would quietly switch that off. (The name is specific to \nodwyn{} so that a project's own
 \code{turn}, a counter say, can never shadow it by accident.)
 
+\subsection{Progress through the plan}
+
+The plan header asks the model to mark each step as it finishes it, with
+the \code{plan-step} tool: a step's number, \code{done} or
+\code{skipped}, and a note saying what shows it. The strategy answers the
+call (it is an agent tool) with \code{record-step}, which records
+\code{plan.step} and returns how many steps are marked and which is next;
+the model reads that answer, and the console's plan panel ticks the step.
+A mark is the model's word, like its report: the transcript is the
+evidence. A step's number indexes the plan's numbered or bulleted lines,
+which is why the planner is asked for numbered steps.
+
 \section{The evidence loop}
 
 When nobody reviews the work as it happens, a model's ``I'm done'' is not
@@ -142,7 +154,7 @@ turn:
 \begin{enumerate}
   \item sends the message \code{(run-turn-prompt task complete-line turn
     max-turns)} makes: the task, and a request to do one unfinished plan
-    step and report;
+    step, mark it with \code{plan-step}, and report;
   \item must plan (\code{plan-required?} is true), so \code{nodwyn-turn}
     runs the plan gate first, with or without a judge;
   \item runs the evidence loop, since nobody watches each call.

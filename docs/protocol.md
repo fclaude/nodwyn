@@ -208,6 +208,11 @@ and actor. File-backed approvals and in-process terminal replies need not have
 an RPC actor. Resume reads these as history and never reinstalls transient
 authority.
 
+A `plan.step` event is the model marking step `step` of `of` of the turn's
+recorded plan `done` or `skipped`, with its `note`; a later mark of the same
+step replaces an earlier one. A step's number indexes the plan's numbered or
+bulleted lines, or the whole plan when it is prose.
+
 `Prompt.Egress` names an OAuth2 credential's granted `Scopes` with its class
 and destination, and a proposed `Prompt.Binding` row pins them. A
 `cred.refresh` event records each refresh of an OAuth2 credential: class,

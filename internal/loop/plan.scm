@@ -113,3 +113,37 @@
                    ((< p plan-needed-threshold)
                     (record-plan (list (cons 'decision "proceed") (cons 'score p))))
                    (else (plan-best judge request "plan"))))))))
+
+;; Plan step progress. The model marks a step of the turn's plan done, or
+;; skipped, as it goes (plan-step); the strategy records the mark
+;; (record-step, as plan.step) and the console shows the plan's progress. A
+;; mark is the model's word, like its report: the evidence is the transcript.
+(define plan-step-no-plan "No plan was recorded in this turn, so there is no step to mark.")
+
+(define (plan-step-answer call args)
+  (let ((steps (plan-steps))
+        (n (assoc-ref args "step" #f))
+        (state (assoc-ref args "state" "done"))
+        (note (format "~a" (assoc-ref args "note" ""))))
+    (cond ((null? steps) plan-step-no-plan)
+          ((not (and (integer? n) (>= n 1) (<= n (length steps))))
+           (string-append "There is no step " (format "~a" n) ": the plan has "
+                          (number->string (length steps)) " steps, numbered from 1."))
+          ((not (member state '("done" "skipped")))
+           "A step is marked done or skipped.")
+          (else
+           (let* ((progress (record-step n state note))
+                  (next (assoc-ref progress 'next #f)))
+             (string-append "Step " (number->string n) " is " state ". "
+                            (if next
+                                (string-append "Next unmarked: " (number->string next) ". " (list-ref steps (- next 1)))
+                                "Every step of the plan is marked.")))))))
+
+(define-agent-tool "plan-step"
+  "Mark a step of the current plan done when you have finished it, or skipped when you decided against it, with what shows it: a test that passed, the file you changed, or why you skipped it. Steps are numbered from 1, as in the plan. Whoever follows the task sees the plan's progress."
+  '(("step" "integer" "the step's number in the plan")
+    ("state" "string" "done or skipped")
+    ("note" "string" "what shows it"))
+  (lambda (call args)
+    (guard (e (else (string-append "plan-step failed: " (format "~a" (assoc-ref e 'message "")))))
+      (plan-step-answer call args))))

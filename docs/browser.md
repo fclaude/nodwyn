@@ -4,7 +4,9 @@ The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
 beside it the plan, this turn's budget, the changes, the project notes and the
-workspace. **Connections**, **Workspaces** and **Settings** hold the rest. The
+workspace. The plan shows the model's progress through it: the steps it
+marked done (with what it says shows it), the ones it skipped, and the next.
+**Connections**, **Workspaces** and **Settings** hold the rest. The
 U3 inspectors described below sit under a task's **Details**. For the app
 window and first-run setup see [app.md](app.md).
 
@@ -152,7 +154,8 @@ reload the selected conversation, replace an inspector or discard a draft.
 
 The session view buttons open fixed snapshots:
 
-- **Plan** shows the latest user message's recorded gate outcome, score and plan.
+- **Plan** shows the latest user message's recorded gate outcome, score and plan,
+  and the steps the model marked since (`plan.step`), in order.
   A newer message without a recorded outcome never inherits an older plan.
 - **Budget** separates current configured soft/hard limits from the latest turn's
   recorded checkpoints. Checkpoint usage is not live remaining allowance.

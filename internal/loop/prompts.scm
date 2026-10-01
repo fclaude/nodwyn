@@ -148,14 +148,14 @@
 ;; the plan for it, to the system prompt, where they are never trimmed away.
 ;; Read once, like the system prompt.
 (define task-header "Current task (the user's latest request):")
-(define plan-header "Plan for the current task (follow it; say so if you must deviate):")
+(define plan-header "Plan for the current task (follow it; mark each step with plan-step as you finish it; say so if you must deviate):")
 
 ;; The message a supervised run sends for each of its turns (docs/runs.md).
 ;; complete-line is the marker the run looks for to know the task is done.
 (define (run-turn-prompt task complete-line turn max-turns)
   (string-append
    "Run task:\n" task
-   "\n\nWork on one unfinished plan step, then report progress for review. If the entire task is complete, put "
+   "\n\nWork on one unfinished plan step, mark it with plan-step, then report progress for review. If the entire task is complete, put "
    complete-line
    " alone on the final line. Do not claim completion while work remains. This is turn "
    (number->string turn) " of at most " (number->string max-turns) "."))

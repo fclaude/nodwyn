@@ -57,6 +57,7 @@ const (
 	KindGuardDecision  Kind = "guard.decision"  // Allow / Deny / Confirm at apply->Prim
 	KindEgressCheck    Kind = "egress.check"    // binding lookup for a secret-bearing egress (P3)
 	KindGatePlan       Kind = "gate.plan"       // noul gate + Seam A outcome per message (P5)
+	KindPlanStep       Kind = "plan.step"       // the model marked a step of the turn's plan done or skipped
 	KindJevReq         Kind = "jev.req"         // a Jev call: content level, bytes, payload hash, redaction, score (P5)
 	KindCredRegister   Kind = "cred.register"   // class + handle id only, never a value (P3)
 	KindCredRefresh    Kind = "cred.refresh"    // an OAuth2 credential refreshed before use: class, handle id, endpoint, expiry; never a token (ADR 24)
@@ -73,7 +74,7 @@ var kinds = map[Kind]bool{
 	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindHarnessMsg: true, KindContextNarrow: true, KindContextWiden: true, KindContextFold: true, KindResultFold: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
-	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true,
+	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,
 	KindJevReq: true, KindCredRegister: true, KindCredRefresh: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true, KindAttach: true,
 }
 

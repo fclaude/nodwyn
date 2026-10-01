@@ -11,7 +11,7 @@ Companion to [SPEC.md](SPEC.md). The spec says *what* and *why*; this says *in w
 ## Status (2026-09-30)
 
 - **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: U1–U3 of the real UI, the task-oriented console, the standalone app, remote devices (D1–D5), workspaces, text attachments and remote MCP servers (D6–D8, the cowork track's W1, W2 text and W3a), and OAuth2 credentials (W4, 2026-09-30).
-- **Not done:** P8 (L3, optional); unattended continuation between a run's turns (U4); contained local MCP servers (W3b/D9); documents out (W5); images as attachments; plan step progress.
+- **Not done:** P8 (L3, optional); unattended continuation between a run's turns (U4); contained local MCP servers (W3b/D9); documents out (W5); images as attachments.
 - **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base (ADRs 26–29, 31–33). §5 "Outside the plan" says what drove them.
 - **Next:** §10.
 
@@ -539,7 +539,7 @@ Status (2026-09-30): **D1–D8 implemented** and merged into `main`, each
 with Go tests and a browser flow (test/browser). D9 is not started: honoring a
 per-host network allowlist inside a container needs an egress proxy, and
 half-isolation would be worse than none. Also open: images as attachments
-(vision plumbing), plan step progress and W5 documents out (W4 OAuth2 is done). What
+(vision plumbing) and W5 documents out (W4 OAuth2 and plan step progress are done). What
 comes next is §10.
 
 ### Outside the plan — what running it taught (2026-09-26 to 2026-09-30)
@@ -571,6 +571,9 @@ friction.md:
   could never call them for want of a handle. They are hidden now, and the
   model has `judge-noul`, `judge-score` and `judge-choice`, which carry the
   stored `jev-key`, at `jev.content = "full"` (ADR 20, amended).
+- **Plan step progress** (2026-09-30): the model marks the plan's steps done
+  or skipped with `plan-step`, recorded as `plan.step`; the console's plan
+  panel and the TUI's `:plan` show which are done, skipped and next.
 
 ## 6. Timeline at a glance
 
@@ -652,9 +655,8 @@ In this order, each for the reason given:
 
 1. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
 2. **U4 — unattended continuation between a run's turns.** Tool confirms can already be answered unattended; the turn-to-turn checkpoint still needs a person.
-3. **Plan step progress** in the console.
-4. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
-5. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
-6. **P8 — L3**, optional.
+3. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
+4. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
+5. **P8 — L3**, optional.
 
 Dated: raise the Go base to 1.27 once Fedora 45 ships it (due 2026-10-20) and a 1.27 feature is worth having (ADR 33).
