@@ -161,7 +161,9 @@ func (w *WriteAllow) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 }
 
 // WritePath returns the repository-relative path of a write primitive
-// application (irreversible, with path and payload roles), or ok=false.
+// application, or ok=false. A write is irreversible, with a path role and
+// something to put there: a payload role (fs-write's content) or a source
+// role (the document doc-export converts).
 func WritePath(p *scheme.Prim, args []scheme.Value) (string, bool) {
 	if !p.Meta.Irreversible {
 		return "", false
@@ -171,7 +173,7 @@ func WritePath(p *scheme.Prim, args []scheme.Value) (string, bool) {
 		switch pa.Role {
 		case "path":
 			path = i
-		case "payload":
+		case "payload", "source":
 			payload = true
 		}
 	}

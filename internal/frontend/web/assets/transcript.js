@@ -7,7 +7,7 @@ import { markdown } from "./markdown.js";
 import { attachmentChip } from "./attach.js";
 
 const readName = /(^|[-_/.])(read|list|find|grep|search|get|show|status|outline|log|diff|query|fetch|lookup|view|notes|events|info)([-_.]|$)/;
-const writes = new Set(["fs-write", "fs-edit"]);
+const writes = new Set(["fs-write", "fs-edit", "doc-export"]);
 
 function category(name) {
   if (writes.has(name)) return "write";
@@ -288,6 +288,12 @@ export class Transcript {
         if (p.ok) this.audit(`Refreshed ${p.class} at ${p.endpoint}`, p);
         else this.audit(`Could not refresh ${p.class} at ${p.endpoint}`, p.error || p, "bad");
         break;
+      case "doc.upload":
+        // What left the machine, or why nothing did.
+        if (p.ok) this.audit(`Sent ${p.path} to ${p.host}`, p.url || p);
+        else if (p.sent) this.audit(`Sent ${p.path} to ${p.host}, which refused it`, p.error || p, "bad");
+        else this.audit(`Did not send ${p.path} to ${p.host}`, p.error || p, "bad");
+        break;
       default:
         if (auditLabels[event.kind]) this.audit(auditLabels[event.kind], p);
     }
@@ -324,7 +330,8 @@ export class Transcript {
     if (kind === "command") line = [icon("terminal", 15), h("span", { class: "mono" }, commandLine(p.args) || summaryText)];
     else if (kind === "write") {
       const a = argsObject(p.args);
-      line = [icon("file", 15), h("span", {}, p.name === "fs-edit" ? "Edit" : "Write"), h("span", { class: "mono" }, a.path || summaryText)];
+      const verb = { "fs-edit": "Edit", "doc-export": "Export" }[p.name] || "Write";
+      line = [icon("file", 15), h("span", {}, verb), h("span", { class: "mono" }, a.path || a.target || summaryText)];
     } else if (isMCP(p.name)) line = [icon("plug", 15), h("span", { class: "mono" }, `${toolLabel(p.name)} ${summaryText}`.trim())];
     else line = [icon("terminal", 15), h("span", { class: "mono" }, `${p.name} ${summaryText}`.trim())];
     const result = h("span", { class: "result" }, "running…");

@@ -51,6 +51,13 @@ type Options struct {
 	// injection, redaction, transport and recording; settings are ordinary data.
 	Jev       JevClient
 	JevConfig JevOptions
+
+	// Documents (W5). Pandoc is the program doc-export runs; "" finds
+	// pandoc on PATH. Docs is optional: nil offers no google-doc-upload,
+	// which also needs DocsConfig.GoogleClass. The core is the DocsClient.
+	Pandoc     string
+	Docs       DocsClient
+	DocsConfig DocsOptions
 }
 
 // DefaultOptions returns the bootstrap defaults for a repository root.
@@ -77,7 +84,7 @@ func Register(in *scheme.Interp, o Options) error {
 		return os.ErrInvalid
 	}
 	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts}
-	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o)}
+	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o), docExport(o, pin)}
 	if isGitWorkTree(o.Root) {
 		prims = append(prims, gitPrims(o, pin)...)
 	}
@@ -110,6 +117,11 @@ func Register(in *scheme.Interp, o Options) error {
 			if err := in.Register(p); err != nil {
 				return err
 			}
+		}
+	}
+	if o.Docs != nil && o.DocsConfig.GoogleClass != "" {
+		if err := in.Register(googleDocUpload(o.DocsConfig, o.Docs, pin)); err != nil {
+			return err
 		}
 	}
 	return nil

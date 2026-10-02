@@ -297,3 +297,39 @@ func TestMountsKeepProtectedPathsAndInnermostAccess(t *testing.T) {
 		t.Fatal("a read-only mount inside a writable one was writable")
 	}
 }
+
+// A source is read, never written: it is pinned and checked against the
+// denylist like a path, a read-only mount may supply it to an irreversible
+// primitive, and a primitive with a path and a source writes its path.
+func TestSourceRole(t *testing.T) {
+	root, ref, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	export := &scheme.Prim{Name: "doc-export", Meta: scheme.Meta{Irreversible: true, Params: []scheme.Param{{Name: "source", Role: "source"}, {Name: "target", Role: "path"}}}}
+	upload := &scheme.Prim{Name: "upload", Meta: scheme.Meta{Irreversible: true, Egress: true, Params: []scheme.Param{{Name: "path", Role: "source"}, {Name: "title", Role: "payload"}}}}
+	pin := RepoPin{Root: root, Mounts: []Mount{{Path: ref}}}
+	args := func(a, b string) []scheme.Value { return []scheme.Value{scheme.Str(a), scheme.Str(b)} }
+	for _, tt := range []struct {
+		p          *scheme.Prim
+		src, other string
+		want       Verdict
+	}{
+		{export, "notes.md", "notes.docx", Allow},
+		{export, filepath.Join(ref, "brief.md"), "brief.docx", Allow},
+		{export, "notes.md", filepath.Join(ref, "notes.docx"), Deny},
+		{export, filepath.Join(outside, "x.md"), "x.docx", Deny},
+		{upload, filepath.Join(ref, "brief.docx"), "Brief", Allow},
+		{upload, filepath.Join(outside, "x.docx"), "X", Deny},
+	} {
+		if got := pin.Check(context.Background(), tt.p, args(tt.src, tt.other)).Verdict; got != tt.want {
+			t.Errorf("%s %s %s: %v, want %v", tt.p.Name, tt.src, tt.other, got, tt.want)
+		}
+	}
+	if d := DefaultDenylist().Check(context.Background(), export, args(".env.md", "x.docx")); d.Verdict != Deny {
+		t.Fatalf("a credential-shaped source: %+v", d)
+	}
+	if path, ok := WritePath(export, args("notes.md", "notes.docx")); !ok || path != "notes.docx" {
+		t.Fatalf("doc-export writes %q %v", path, ok)
+	}
+	if path, ok := WritePath(upload, args("notes.docx", "Notes")); ok {
+		t.Fatalf("an upload is not a write, got %q", path)
+	}
+}

@@ -404,6 +404,28 @@ type FileVersion struct {
 	Bytes int    `json:"bytes"`
 }
 
+// DocUpload is one document sent to a document service (W5): which file,
+// how big, its hash, where it went and what came back. The content never
+// passes through Scheme, so the guard never saw it; this record says what
+// left. Never the content, never a token. Sent is false when nothing left
+// the machine (the document was refused, or the credential could not be
+// used); OK is true when the service made the document.
+type DocUpload struct {
+	Tool   string `json:"tool"`   // google-doc-upload
+	Origin string `json:"origin"` // user, model or harness
+	Path   string `json:"path"`   // absolute
+	Type   string `json:"type"`   // the media type sent
+	Bytes  int    `json:"bytes"`
+	SHA256 string `json:"sha256"`
+	Host   string `json:"host"`  // the destination
+	Class  string `json:"class"` // the credential class that went with it
+	Sent   bool   `json:"sent"`
+	OK     bool   `json:"ok"`
+	ID     string `json:"id,omitempty"`  // the document's id at the service
+	URL    string `json:"url,omitempty"` // where the person opens it
+	Error  string `json:"error,omitempty"`
+}
+
 // Attach is a file the person attached (ADR 22 §3). Text is what the model
 // reads: extracted by type, redacted at ingest and capped. It is data, never
 // instructions; Stored is the copy under the workspace's .nodwyn/attachments.

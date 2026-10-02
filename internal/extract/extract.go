@@ -136,15 +136,23 @@ func openZip(path string) (*zip.ReadCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("extract: not a valid Office file: %w", err)
 	}
+	if err := unpackBound(&r.Reader); err != nil {
+		r.Close()
+		return nil, err
+	}
+	return r, nil
+}
+
+// unpackBound refuses a package whose parts inflate past maxUnpacked.
+func unpackBound(r *zip.Reader) error {
 	var total uint64
 	for _, f := range r.File {
 		total += f.UncompressedSize64
 	}
 	if total > maxUnpacked {
-		r.Close()
-		return nil, fmt.Errorf("extract: the file unpacks to more than %d MB", maxUnpacked>>20)
+		return fmt.Errorf("extract: the file unpacks to more than %d MB", maxUnpacked>>20)
 	}
-	return r, nil
+	return nil
 }
 
 func readZip(r *zip.ReadCloser, name string) ([]byte, error) {

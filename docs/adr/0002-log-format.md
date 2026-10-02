@@ -100,3 +100,14 @@ width, height, the window's token estimate, the host its confirm named
 carry, by attach sequence, and why (`missing`, `changed`, `no-vision`,
 `elsewhere`). A declined image leaves a `note`. Both fields are optional,
 so older records read as before.
+
+## Amendment — 2026-10-01: `doc.upload`
+
+`doc.upload` records one document sent to a document service (W5,
+`google-doc-upload`): the tool, the call's origin, the file's absolute path,
+media type, size and sha256, the destination host and the credential class,
+whether the request was sent, whether it succeeded, and the document's id
+and link or the error. The file's bytes never were a Scheme value, so no
+guard record shows them; this one says what left the machine. Never the
+content, never a token. A document refused before sending (a secret shape
+L1 found, a file nodwyn cannot read) is recorded with `sent` false.

@@ -48,7 +48,7 @@ This is the spine. Read these in order and you have read the system.
 |---|---|---|
 | `internal/scheme` | the language: values, reader, eval/apply, builtins, primitive table | [docs/scheme.md](scheme.md) then `interp.go` `Eval` |
 | `internal/guard` | the one decision point and its checkers | `guard.go` `Before` |
-| `internal/prim` | host primitives and the diff | `prim.go` `Register`, `Checkers` |
+| `internal/prim` | host primitives and the diff; the document tools | `prim.go` `Register`, `Checkers`; `docs.go` |
 | `internal/llm` | the provider seam, the Ollama and OpenAI-compatible clients | `llm.go` `Provider` |
 | `internal/window` | the derived context | `Build` |
 | `internal/loop` | the loop's primitives and default strategy | the package comment's reading order, starting at `loop.go` `Turn` |
@@ -65,6 +65,7 @@ This is the spine. Read these in order and you have read the system.
 | `dev/`, `.nodwyn/` | this repository's own tools and standing approvals | `dev/go.scm` |
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
 | `test/fakes/ollama` | scriptable fake of the model server | `ollama.go` |
+| `test/fakes/jev`, `mcp`, `oauth`, `drive` | fakes of the judge, an MCP server, an OAuth2 provider and Drive's upload endpoint: no test reaches a real service | each package's comment |
 
 ### The invariants and the tests that hold them
 
@@ -534,6 +535,87 @@ nodwyn credential revoke google    # revoke at the provider, delete here
 ```
 
 The daemon sees these changes without a restart.
+
+### Documents out
+
+nodwyn writes documents three ways: Word, OpenDocument and HTML through
+pandoc, PDF from LaTeX through the TeX toolchain you have, and Google Docs
+through Drive's API.
+
+**Word, OpenDocument, HTML.** `doc-export` converts a Markdown (`.md`) or
+LaTeX (`.tex`) file in the workspace; the target's extension picks the
+format:
+
+```scheme
+(doc-export "report.md" "out/report.docx")   ; also .odt and .html
+```
+
+It needs pandoc 2.15 or later on `PATH` (`dnf install pandoc`, `apt install
+pandoc`, `brew install pandoc`); without it the tool says what to install.
+The target is a write: the confirm shows source, target and formats, a
+standing write approval for its directory covers it, and replacing a file
+keeps its previous version. The source may come from a read-only mount.
+
+pandoc reads the document in its sandbox, so an `\input`, an include or a
+remote image in it reads nothing. In a `.docx` or `.odt`, images that are
+files in the workspace are embedded; a link, a file outside the workspace
+or a credential-shaped name is left out and its description kept, and the
+result says which. Nothing the model writes reaches pandoc's command line.
+
+**PDF.** `doc-export` does not write PDF. A TeX engine reads files and can
+run programs when a document asks, and no sandbox covers that, so a PDF is
+built as this repository builds its book (`make book` runs `latexmk`):
+through `shell-exec`, which asks every time unless you give it a standing
+approval:
+
+```toml
+# <repo>/.nodwyn/allow.toml
+commands = ["latexmk -pdf"]
+```
+
+The approval covers every command line that starts so, `-shell-escape`
+included: give it only where you would run any such line yourself.
+
+**Google Docs.** `google-doc-upload` sends a `.docx`, `.odt`, `.html` or
+`.txt` (at most 5 MiB) to Google Drive, which makes it a new Google Doc, and
+returns its id and link. Markdown or LaTeX goes through `doc-export` first.
+It needs an OAuth2 credential (see above). Register nodwyn with Google as a
+desktop OAuth client with the Drive API enabled, then:
+
+```bash
+nodwyn credential add --oauth2 google --client-id ID
+```
+
+The default scope, `drive.file`, is enough: nodwyn can see and change only
+the files it created. Bind the credential to Drive's upload host:
+
+```toml
+# bindings.toml
+[[bind]]
+class = "google"
+dest = "www.googleapis.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["POST"]
+scopes = ["https://www.googleapis.com/auth/drive.file"]
+```
+
+The tool is offered to sessions started after the credential was stored.
+Every call asks, naming the file, its size, the destination and the
+credential's scopes, and offers no standing answer; `--yolo` answers it as
+any ordinary confirm. Before sending, nodwyn reads the file as text (every
+part of a `.docx` or `.odt`) and refuses it if it holds something shaped
+like a key whose class is not bound for that host; a package that embeds
+other files is refused, since nodwyn cannot read them. Each upload is
+logged as `doc.upload`: the file, its size and hash, the destination and the
+document's id, never its content or the token.
+
+`[docs]` in `config.toml` changes the defaults:
+
+```toml
+[docs]
+google_credential = "google"   # the keychain class; "" offers no Google tool
+google_upload_url = "https://www.googleapis.com/upload/drive/v3/files"
+```
 
 ### Choosing models
 

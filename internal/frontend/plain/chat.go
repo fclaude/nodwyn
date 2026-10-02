@@ -279,7 +279,23 @@ func (c *Chat) show(ev event.Event) {
 	case string(log.KindFileVersion):
 		endStream()
 		fmt.Fprintf(c.Out, "[kept the previous version of %s]\n", ev.Payload.(log.FileVersion).Path)
+	case string(log.KindDocUpload):
+		endStream()
+		fmt.Fprintln(c.Out, DocUploadSummary(ev.Payload.(log.DocUpload)))
 	}
+}
+
+// DocUploadSummary is the one line a transcript shows for a document sent
+// to a document service: where it went and what it became, or why it did
+// not go.
+func DocUploadSummary(d log.DocUpload) string {
+	switch {
+	case d.OK:
+		return fmt.Sprintf("[sent %s (%d bytes) to %s: %s]", d.Path, d.Bytes, d.Host, d.URL)
+	case d.Sent:
+		return fmt.Sprintf("[sent %s to %s, which refused it: %s]", d.Path, d.Host, d.Error)
+	}
+	return fmt.Sprintf("[did not send %s to %s: %s]", d.Path, d.Host, d.Error)
 }
 
 // AttachSummary is the one line a transcript shows for an attached file.
@@ -535,6 +551,10 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.FileVersion
 			_ = ev.Decode(&p)
 			fmt.Fprintf(w, "[kept the previous version of %s]\n", p.Path)
+		case log.KindDocUpload:
+			var p log.DocUpload
+			_ = ev.Decode(&p)
+			fmt.Fprintln(w, DocUploadSummary(p))
 		case log.KindTurnCheckpoint:
 			var p log.TurnCheckpoint
 			ev.Decode(&p)

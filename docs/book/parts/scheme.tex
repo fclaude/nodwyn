@@ -555,16 +555,20 @@ the \emph{primitive table}. You can inspect it:
 \code{"builtin"} or \code{"scheme"} (a registered tool). The declaration
 has more than it shows: whether the primitive is hidden from the model,
 which parameters are optional, and each parameter's \emph{role}
-(\code{path}, \code{dest}, \code{payload}, \code{credential}, \code{argv},
-\ldots), which tells the guard what an argument is.
+(\code{path}, \code{source}, \code{dest}, \code{payload}, \code{credential},
+\code{argv}, \ldots), which tells the guard what an argument is. A
+\code{path} is what the primitive acts on, and writes when it is
+irreversible; a \code{source} is a file it only reads, so a read-only
+mount may supply it.
 
 \code{nodwyn repl} has the 111 builtins. A session adds its host
 primitives, the loop's own primitives and the three tools the default loop
 registers (\code{read-definition}, \code{second-look} and
-\code{plan-step}): 160 in a git repository opened without a keychain. A keychain adds \code{http-request}
+\code{plan-step}): 161 in a git repository opened without a keychain. A keychain adds \code{http-request}
 and \code{credential-register}; a judge, which needs the keychain too, adds
 the three \code{jev} primitives, and the model's three \code{judge} tools
-when a \code{jev-key} is stored and \code{jev.content} is \code{full};
+when a \code{jev-key} is stored and \code{jev.content} is \code{full}; a
+stored \code{google} credential adds \code{google-doc-upload};
 every approved MCP tool and every tool a project registers adds one more. Section~\ref{sch:reference} lists them by
 group.
 
@@ -589,6 +593,8 @@ Primitive & What it does \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background; irreversible \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
 \code{(shell-send id text)} & type into it; asks every time \\
+\code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc, which reads the source sandboxed; a write of \code{target}, with a preview \\
+\code{(google-doc-upload path [title])} & send a document to Google Drive as a new Google Doc; asks every time, and only with a stored \code{google} credential \\
 \code{(scratch-dir)}, \code{(repository)}, \code{(workspace)} & the session's scratch directory; the repository's root; its kind and mounted folders \\
 \code{(project-notes)}, \code{(project-notes-save text)} & this repository's notes kept across sessions \\
 \code{(credential class)}, \code{(credential-register class)} & the handle of a stored key, or \code{\#f}; store a new key (Section~\ref{sch:keys}) \\
@@ -600,8 +606,8 @@ Primitive & What it does \\
 \end{tabular}
 \end{center}
 
-The model is offered the file, git and process primitives, the tools the
-default loop and the project register, and approved MCP tools, each named
+The model is offered the file, git, process and document primitives, the
+tools the default loop and the project register, and approved MCP tools, each named
 \code{server\_\_tool}. \code{load}, the session primitives, the key and
 policy primitives and the loop's own are \emph{hidden}: never offered to the
 model, there for Scheme code. \file{docs/scheme.md} gives every primitive's
@@ -1069,6 +1075,7 @@ A session adds these:
 Files        fs-read fs-write fs-edit fs-list fs-find index-grep
 Git          git-status git-diff                   (in a git work tree)
 Processes    shell-exec shell-start shell-read shell-send shell-stop
+Documents    doc-export; google-doc-upload             (with a google credential)
 Session      scratch-dir repository workspace project-notes project-notes-save
 Keys         credential; with a keychain, credential-register http-request
 Judge        jev-noul jev-score jev-choice         (with a judge configured)

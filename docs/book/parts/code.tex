@@ -643,10 +643,14 @@ that the model reads as \code{fs-edit: denied: not confirmed by the user}.
 
 \file{internal/guard/checkers.go}. \code{RepoPin} does not know what
 \code{fs-edit} is. It asks the primitive's declaration which parameters
-have the role \code{path}, resolves each against the root\,---\,following
-symlinks on the longest existing prefix, so a link out of the tree does not
-escape\,---\,and denies anything that lands outside the repository, the
-session's scratch directory and the workspace's mounted folders.
+have the role \code{path} or \code{source}, resolves each against the
+root\,---\,following symlinks on the longest existing prefix, so a link out
+of the tree does not escape\,---\,and denies anything that lands outside
+the repository, the session's scratch directory and the workspace's
+mounted folders. A \code{source} is a file the primitive only reads, such
+as the document \code{doc-export} converts, so a read-only mount may
+supply it; a \code{path} of an irreversible primitive is written there,
+and a read-only mount refuses it.
 
 \begin{go}
 func (r RepoPin) Resolve(raw string) string {
@@ -1327,6 +1331,15 @@ the handle: their \code{EgressClass} is \code{jev-key}, as an MCP tool's
 is its server's key class, so E3 judges them as carrying it, and the
 handler looks the key up itself.
 
+\code{google-doc-upload} (\file{internal/prim/docs.go}) is built the same
+way, with the class \code{google} and the host of Drive's upload endpoint.
+What it sends is a file, whose bytes never were a Scheme value, so neither
+L1 nor L2 sees them in the guard. The handler reads every text the file
+carries (\code{extract.AllText}: every XML part of a \file{.docx}, with the
+text runs Word splits joined again) and asks the session for the verdict
+the guard's L1 checker gives a payload (\code{TextSecret.Outgoing}) before
+it sends anything, and records the upload as \code{doc.upload}.
+
 A keyed model request (\file{internal/core/credentials.go},
 \code{authorize}) is not judged by the guard: \code{model-turn} is a
 hidden builtin with no egress metadata, and what it sends is the window,
@@ -1390,7 +1403,7 @@ Context & \code{context.narrow}, \code{context.widen}, \code{context.fold}, \cod
 Authority & \code{guard.decision}, \code{egress.check}, \code{approval.change}, \code{binding.change}, \code{cred.register}, \code{cred.refresh}, \code{redact.event} \\
 Plan gate and judge & \code{gate.plan}, \code{plan.step}, \code{jev.req} \\
 Supervised runs & \code{run.state}, \code{run.turn}, \code{run.checkpoint} \\
-Other & \code{eval.req}, \code{eval.result} (Scheme you evaluated), \code{file.version} (a kept previous version), \code{note} \\
+Other & \code{eval.req}, \code{eval.result} (Scheme you evaluated), \code{file.version} (a kept previous version), \code{doc.upload} (a document sent out), \code{note} \\
 \bottomrule
 \end{longtable}}
 

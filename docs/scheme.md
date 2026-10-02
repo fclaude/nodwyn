@@ -310,6 +310,8 @@ into Scheme values (ADR 3).
 | `(jev-score cred state instructions levels)` | **P5.** Rate a text on an ordered rubric of 2–10 level strings; returns `(("score" . 0..1) ("raw" . n) ("levels" . k) ("confidence" . c))`. Not offered to the model |
 | `(jev-choice cred state instructions options)` | **P5.** Pick one of the options (an alist name → description); returns `(("choice" . name) ("confidence" . c) ("probabilities" . ((name . p) …)))`. Not offered to the model |
 | `(judge-noul state instructions)` `(judge-score state instructions levels)` `(judge-choice state instructions options)` | The model's judge tools: the same three calls without the handle. Go uses the stored `jev-key` itself, and the guard judges the call as carrying that class, so the binding for the Jev host decides it as it does for `jev-*`. Registered only when the session starts with a `jev-key` stored and `jev.content = "full"`, because the model chooses the text it sends (ADR 20, amended). Every argument is a payload |
+| `(doc-export source target)` | **W5.** Convert a Markdown (`.md`) or LaTeX (`.tex`) file to a Word document (`.docx`), OpenDocument text (`.odt`) or HTML page (`.html`) with pandoc (2.15 or later, from `PATH`); the target's extension picks the format. `source` is a source (read: pinned, denylisted, a read-only mount may supply it) and `target` a path (written): irreversible, so it asks with a preview (source → target, formats, whether it creates or replaces), a standing write approval covers it as it covers `fs-write`, and the target's previous version is kept. pandoc runs twice with fixed arguments, no shell, the scrubbed environment and `shell-exec`'s timeout: `--sandbox --from=F --to=json` reads the source on stdin and nothing else (an `\input`, an include or a remote image reads nothing); Go then keeps, for `.docx` and `.odt`, only the images that are files in the workspace and not credential-shaped, by absolute path, and turns any other into its description; `--from=json --to=T --standalone --output=-` writes the result, which Go writes to `target`. Nothing the model writes becomes a pandoc option. No PDF: a TeX engine reads and runs what a document asks, so a LaTeX build stays `shell-exec` (`latexmk`). Returns what it wrote, the images it left out and pandoc's warnings |
+| `(google-doc-upload path [title])` | **W5.** Send a `.docx`, `.odt`, `.html` or `.txt` file (at most 5 MiB, Drive's limit for one upload) to Google Drive as a new Google Doc, in one multipart upload asking for `application/vnd.google-apps.document`; returns `(("id" . ID) ("url" . "https://docs.google.com/document/d/ID/edit") ("title" . T))`. `title` defaults to the file's name without its extension. Go uses the stored credential of the class `docs.google_credential` names (default `google`, an OAuth2 credential from `nodwyn credential add --oauth2 google`, whose narrow `drive.file` scope suffices), and the guard judges the call as carrying that class to the upload endpoint's host (`www.googleapis.com`) by `POST` at `header:Authorization:Bearer`: unbound is denied before anything is asked. Egress and irreversible: every call asks, naming the file, its size and the destination (the confirm also names the class and scopes), with no standing answer. The file's bytes never become a Scheme value, so the handler scans them itself before sending (L1, `extract.AllText`: a text file as it is; every XML part of a `.docx` or `.odt`, runs joined; an embedded file is refused) and refuses a known secret shape whose class is not bound for that host. The token is injected through the session, so an OAuth2 token is refreshed first and `cred.refresh` logged; each upload is recorded as `doc.upload` (file, size, hash, destination, document id; never content or token). Registered only when the session starts with such a credential stored. `path` is a source; `title` is a payload |
 
 MCP servers you approve in the console (ADR 23) add one primitive per tool
 you turned on, named `server__tool` (model APIs refuse `/`; the console shows
@@ -397,8 +399,15 @@ Every primitive declares:
 | `audited` | its guard decision is logged even when it is an allow of a pure builtin |
 | `preview` | Go-only, for irreversible host primitives: renders what the call would do (a diff) for the confirm prompt |
 
-Parameter **roles** (`path`, `dest`, `payload`, `credential`) tell the guard
-what an argument *is*; they are declared by host primitives from B2 on.
+Parameter **roles** (`path`, `source`, `dest`, `payload`, `credential`) tell
+the guard what an argument *is*; they are declared by host primitives from B2
+on. A `path` is what the primitive acts on, and writes when it is
+irreversible; a `source` is a file it only reads, whatever else it does
+(`doc-export`'s document, the file `google-doc-upload` sends). Both are
+pinned and checked against the credential-file denylist, but a read-only
+mount may supply a `source` even to an irreversible primitive. A write is an
+irreversible primitive with a `path` and something to put there: a
+`payload`, or a `source`.
 
 **Application of a primitive** — whether from the model, the prelude, a
 `.scm` file or the REPL — goes through exactly one Go function, which:

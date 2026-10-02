@@ -9,12 +9,20 @@ import (
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
-// pathArgs yields the (index, value) of every parameter with Role "path".
-func pathArgs(p *scheme.Prim, args []scheme.Value) []string {
-	var out []string
+// pathArg is one path argument: Role "path", what the primitive acts on
+// (and writes, when it is irreversible), or Role "source", a file it only
+// reads, whatever else it does (a document it converts or sends).
+type pathArg struct {
+	raw    string
+	source bool
+}
+
+// pathArgs yields every argument with Role "path" or "source".
+func pathArgs(p *scheme.Prim, args []scheme.Value) []pathArg {
+	var out []pathArg
 	for i, pa := range p.Meta.Params {
-		if pa.Role == "path" && i < len(args) && args[i].Kind == scheme.KString {
-			out = append(out, args[i].S)
+		if (pa.Role == "path" || pa.Role == "source") && i < len(args) && args[i].Kind == scheme.KString {
+			out = append(out, pathArg{raw: args[i].S, source: pa.Role == "source"})
 		}
 	}
 	return out
@@ -81,7 +89,8 @@ type Mount struct {
 func (RepoPin) Name() string { return "repo-pin" }
 
 func (r RepoPin) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
-	for _, raw := range pathArgs(p, args) {
+	for _, a := range pathArgs(p, args) {
+		raw := a.raw
 		if !r.inside(raw) {
 			where := "the repository " + r.Root
 			if r.Scratch != "" {
@@ -92,7 +101,9 @@ func (r RepoPin) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) D
 			}
 			return Decision{Verdict: Deny, Reason: "path " + raw + " is outside " + where}
 		}
-		if m := r.mountOf(raw); m != nil && !m.Write && p.Meta.Irreversible {
+		// A source is only read, so a read-only mount may supply it even to
+		// an irreversible primitive (a document exported elsewhere).
+		if m := r.mountOf(raw); m != nil && !m.Write && p.Meta.Irreversible && !a.source {
 			return Decision{Verdict: Deny, Reason: "path " + raw + " is in " + m.Path + ", which this workspace mounts read-only"}
 		}
 	}
@@ -204,30 +215,40 @@ func DefaultDenylist() PathDenylist {
 func (PathDenylist) Name() string { return "path-denylist" }
 
 func (d PathDenylist) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
-	for _, raw := range pathArgs(p, args) {
-		base := filepath.Base(raw)
-		for _, g := range d.Globs {
-			if ok, _ := filepath.Match(g, base); ok {
-				return Decision{Verdict: Deny, Reason: "path " + raw + " matches the credential-file denylist (" + g + ")"}
-			}
-		}
-		// Relative paths are the repository's, as the pin reads them, and
-		// links are followed: neither may reach a denied directory by
-		// another name.
-		abs := raw
-		if !filepath.IsAbs(abs) && d.Root != "" {
-			abs = filepath.Join(d.Root, abs)
-		}
-		abs, _ = filepath.Abs(abs)
-		real := resolveExisting(abs)
-		for _, dir := range d.Dirs {
-			rdir := resolveExisting(dir)
-			if within(abs, dir) || within(real, rdir) {
-				return Decision{Verdict: Deny, Reason: "path " + raw + " is under the protected directory " + dir}
-			}
+	for _, a := range pathArgs(p, args) {
+		if reason := d.Denies(a.raw); reason != "" {
+			return Decision{Verdict: Deny, Reason: reason}
 		}
 	}
 	return Decision{Verdict: Allow}
+}
+
+// Denies returns why raw is credential material, or "" when it is not. A
+// primitive that reaches files its arguments do not name (the images a
+// document refers to) asks it about each one.
+func (d PathDenylist) Denies(raw string) string {
+	base := filepath.Base(raw)
+	for _, g := range d.Globs {
+		if ok, _ := filepath.Match(g, base); ok {
+			return "path " + raw + " matches the credential-file denylist (" + g + ")"
+		}
+	}
+	// Relative paths are the repository's, as the pin reads them, and
+	// links are followed: neither may reach a denied directory by
+	// another name.
+	abs := raw
+	if !filepath.IsAbs(abs) && d.Root != "" {
+		abs = filepath.Join(d.Root, abs)
+	}
+	abs, _ = filepath.Abs(abs)
+	real := resolveExisting(abs)
+	for _, dir := range d.Dirs {
+		rdir := resolveExisting(dir)
+		if within(abs, dir) || within(real, rdir) {
+			return "path " + raw + " is under the protected directory " + dir
+		}
+	}
+	return ""
 }
 
 // ArgvTrigger asks for confirmation when a command line names a network

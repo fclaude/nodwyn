@@ -1,6 +1,7 @@
 # ADR 0022: Cowork — workspaces, attachments, and MCP servers
 
-- Status: **partially implemented** (W1, W2 text and W3a done 2026-09-30; W2 images done 2026-10-01; W3b, W4, W5 proposed)
+- Status: **partially implemented** (W1, W2 text and W3a done 2026-09-30, W4
+  the same day in ADR 24, W2 images and W5 2026-10-01; W3b proposed)
 - Date: 2026-09-22
 
 ## Context
@@ -342,3 +343,75 @@ record without dimensions), because a server that cannot read an image
 fails every later request until it is trimmed. A person who wants an image
 out of the conversation deletes its stored copy; later requests then say
 it is missing.
+
+## W5 implemented — 2026-10-01
+
+Documents out, as answer 4 decided, with these specifics:
+
+- **`(doc-export source target)`**, a host primitive in every workspace:
+  Markdown (`.md`) or LaTeX (`.tex`) to `.docx`, `.odt` or `.html`, the
+  target's extension picking the format, with pandoc 2.15 or later from
+  `PATH` (missing, the error names what to install). pandoc runs twice with
+  fixed arguments, no shell, the scrubbed environment, `TMPDIR` the scratch
+  directory and `shell-exec`'s timeout. The first run, `--sandbox
+  --from=F --to=json`, reads the source on stdin and nothing else, so an
+  `\input`, an include or a remote image in it reads nothing. For a format
+  that embeds images, Go then vets the document tree: an image that is a
+  file in the workspace, not credential-shaped, is kept by its absolute
+  path; any other is replaced by its description. The second run,
+  `--from=json --to=T --standalone --output=-`, writes the document, and Go
+  writes the target.
+- **Why the second run has no sandbox.** A pandoc built without its data
+  files embedded, as Fedora's and Debian's are, reads them from disk to
+  write a `.docx`, and `--sandbox` refuses that (verified with Fedora's
+  pandoc 3.7: "Could not find data file"). The writer needs no sandbox: the
+  only files it reads for a tree are the images it embeds, which Go chose.
+- **A new parameter role, `source`** (ADR 4, amended): a file the primitive
+  only reads. Pinned and denylisted like a path, but a read-only mount may
+  supply it to an irreversible primitive. `doc-export`'s target is a
+  `path`, so it is a write like `fs-write`'s: a confirm with a preview
+  (source → target, formats, created or replaced), standing write approvals
+  and turn trust, protected paths, and the version store.
+- **No PDF.** A TeX engine reads any file and runs programs when a document
+  asks, and pandoc's sandbox does not cover PDF output. LaTeX to PDF stays
+  `shell-exec` running `latexmk`, with a standing approval if the person
+  gives one, as this repository builds its book.
+- **`(google-doc-upload path [title])`**, offered only to a session that
+  starts with a credential of the class `[docs] google_credential` names
+  (default `google`) stored. One multipart upload to
+  `[docs] google_upload_url` (default
+  `https://www.googleapis.com/upload/drive/v3/files`) asking for
+  `application/vnd.google-apps.document`, which works with the narrow
+  `drive.file` scope; `.docx`, `.odt`, `.html` or `.txt`, at most 5 MiB.
+  Returns the document's id and link. As for an MCP server's key, the
+  credential is Go's: `Meta.EgressClass` is the class, the destination the
+  configured endpoint's host, `POST` at `header:Authorization:Bearer`, so
+  E3 decides it from the binding table (and its scopes) before anything is
+  asked. Every call confirms, with no standing answer, naming the file, its
+  size and the destination. The token is injected through the session's
+  sink, so an OAuth2 token is refreshed first and `cred.refresh` logged.
+  The configured URL is validated (https, or http on loopback, for tests);
+  the session's client refuses redirects.
+- **The bytes are scanned in the handler.** They never become a Scheme
+  value, so no checker sees them. `extract.AllText` reads every text the
+  file carries — a text file as it is; every XML part of a `.docx` or
+  `.odt`, as markup and as character data joined by paragraph, so a key
+  split across runs is whole — and the session judges it as the guard's L1
+  checker judges an egress payload (`guard.TextSecret.Outgoing`): a known
+  secret shape whose class is not bound for the host refuses the upload
+  before anything is sent. Images and fonts in a package are not read (the
+  limit §3 accepts for attachments); a package holding anything else, such
+  as an embedded file, is refused.
+- **`doc.upload`** (ADR 2, amended) records each upload: path, media type,
+  size, sha256, host, class, sent, ok, the document's id and link or the
+  error. Never content, never a token.
+
+The tests use fakes only: a fake pandoc written into a temporary directory
+(its arguments and input checked), a fake Drive upload endpoint
+(`test/fakes/drive`) and the fake OAuth2 provider. A test with the real
+pandoc runs when one is installed and skips otherwise.
+
+Not done: Google Docs beyond creating one (updating a document, folders,
+sharing), a resumable upload for files over 5 MiB, `.odt` attachments
+(`internal/extract` reads an `.odt` only for this scan), and Markdown
+straight to Drive (it goes through `doc-export` first).

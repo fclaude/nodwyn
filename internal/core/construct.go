@@ -179,6 +179,13 @@ func (s *Session) primitiveOptions() prim.Options {
 		po.JevConfig = jevOptions(o.Config.Jev)
 		po.JevConfig.Tools = po.JevConfig.Content == config.JevContentFull && s.HandleForClass(prim.JevClass) != nil
 	}
+	// W5 documents: google-doc-upload is offered only when a credential of
+	// the configured class is stored now, since the tool list is fixed for
+	// the session. The session is the DocsClient.
+	if class := o.Config.Docs.GoogleCredential; class != "" && s.HandleForClass(class) != nil {
+		po.Docs = s
+		po.DocsConfig = prim.DocsOptions{GoogleClass: class, GoogleUploadURL: o.Config.Docs.GoogleUploadURL}
+	}
 	return po
 }
 

@@ -39,10 +39,11 @@ The metadata is what makes the guard's job possible:
 \end{center}
 
 Host primitives also give each parameter a \textbf{role}: \code{path},
-\code{dest}, \code{payload}, \code{credential}, \code{argv} (a command
-line), \code{method} and \code{position}. The guard reads roles, not
-guesses: it knows the first argument of \code{fs-write} is a path because
-the table says so.
+\code{source} (a file only read), \code{dest}, \code{payload},
+\code{credential}, \code{argv} (a command line), \code{method} and
+\code{position}. The guard reads roles, not guesses: it knows the first
+argument of \code{fs-write} is a path because the table says so, and that
+\code{doc-export} reads its first argument and writes its second.
 
 \section{The host primitives}
 
@@ -62,6 +63,8 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(shell-start cmd args)} & start a program that keeps running, in the background (irreversible) \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
 \code{(shell-send id text)} & type into it (asks every time) \\
+\code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc (irreversible, a write of \code{target}) \\
+\code{(google-doc-upload path [title])} & send a document to Google Drive as a Google Doc (asks every time; only with a stored \code{google} credential) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions \\
 \code{(workspace)} & the folder's kind and mounted folders \\

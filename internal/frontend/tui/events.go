@@ -174,6 +174,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if err == nil {
 			m.append("kept the previous version of " + p.Path)
 		}
+	case string(log.KindDocUpload):
+		var p log.DocUpload
+		p, err = decode[log.DocUpload](e.Payload)
+		if err == nil {
+			m.append(plain.DocUploadSummary(p))
+		}
 	case string(log.KindHarnessMsg):
 		m.endToolInterval()
 		var p log.HarnessMsg

@@ -27,7 +27,7 @@ integrations and front-ends:
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
 | `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible); derive their context; redact text; detect credential shapes. |
-| `mcp`, `extract` | Talk to remote MCP servers (pinned manifests, bound keys); turn attached documents into redacted text, and check attached images by their content. |
+| `mcp`, `extract` | Talk to remote MCP servers (pinned manifests, bound keys); turn attached documents into redacted text, check attached images by their content, and read all a document carries before it is sent. |
 | `frontend/run` | Chain planned turns under a finite deadline and turn count; ask for continuation without granting tool authority. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nodwyn` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
@@ -60,7 +60,7 @@ Integration-specific settings should not become getters on `Session`.
 
 The roadmap extends these boundaries: ADR 21 uses events for RPC clients;
 ADRs 22–23 bring MCP tools through the primitive/guard path; ADR 24 extends
-the credential lifecycle to OAuth. Local RPC, remote MCP servers and OAuth2 credentials are implemented (contained local MCP servers remain planned). Keep `loop`, `plan`, and
+the credential lifecycle to OAuth. Local RPC, remote MCP servers, OAuth2 credentials and documents out (pandoc, Google Docs) are implemented (contained local MCP servers remain planned). Keep `loop`, `plan`, and
 `event` separate, and keep credential management shared across integrations.
 
 ## Build

@@ -261,7 +261,7 @@ func TestToolsExposedToModel(t *testing.T) {
 	for _, p := range h.in.Tools() {
 		names = append(names, p.Name)
 	}
-	if strings.Join(names, " ") != "fs-edit fs-find fs-list fs-read fs-write index-grep shell-exec" {
+	if strings.Join(names, " ") != "doc-export fs-edit fs-find fs-list fs-read fs-write index-grep shell-exec" {
 		t.Fatalf("tools: %v", names)
 	}
 }

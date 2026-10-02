@@ -8,8 +8,10 @@ import (
 
 // Param documents one positional parameter of a primitive. Type is one of
 // string integer number boolean list alist any (docs/scheme.md §7). Role is
-// what the argument *is* to the guard (path, dest, payload, credential) and
-// is empty for plain data.
+// what the argument *is* to the guard (path, source, dest, payload,
+// credential) and is empty for plain data. A source is a file the
+// primitive only reads; a path is what it acts on, and writes when it is
+// irreversible.
 type Param struct {
 	Name string
 	Type string
@@ -167,9 +169,9 @@ func (in *Interp) Prims() []*Prim {
 func (in *Interp) SetGate(g Gate) { in.gate = g }
 
 // SetExpand installs a rewrite of path and command arguments (parameters
-// with Role "path" or "argv", and the strings of an argv list), applied
-// before the guard, so the guard and the handler judge and use the same
-// value. The session uses it to give $TMPDIR one meaning in every tool.
+// with Role "path", "source" or "argv", and the strings of an argv list),
+// applied before the guard, so the guard and the handler judge and use the
+// same value. The session uses it to give $TMPDIR one meaning in every tool.
 func (in *Interp) SetExpand(f func(string) string) { in.expand = f }
 
 // expandArgs applies the rewrite to p's path and argv arguments.
@@ -187,7 +189,7 @@ func (in *Interp) expandArgs(p *Prim, args []Value) []Value {
 		out[i] = v
 	}
 	for i, pa := range p.Meta.Params {
-		if i >= len(args) || (pa.Role != "path" && pa.Role != "argv") {
+		if i >= len(args) || (pa.Role != "path" && pa.Role != "source" && pa.Role != "argv") {
 			continue
 		}
 		switch a := args[i]; a.Kind {

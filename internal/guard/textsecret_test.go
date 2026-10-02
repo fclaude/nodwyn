@@ -152,3 +152,19 @@ func TestLiteralKeyInAnAlistValue(t *testing.T) {
 		t.Fatalf("nested alist: %+v", d)
 	}
 }
+
+// Outgoing judges text that never was a Scheme value (a document's bytes)
+// as Check judges an egress payload.
+func TestOutgoingTextFollowsTheBindingTable(t *testing.T) {
+	cs := guard.TextSecret{Table: bound}
+	if d := cs.Outgoing("token "+anthropicKey, "api.anthropic.com", "POST"); d.Verdict != guard.Allow {
+		t.Fatalf("bound host: %+v", d)
+	}
+	d := cs.Outgoing("token "+anthropicKey, "www.googleapis.com", "POST")
+	if d.Verdict != guard.Deny || !strings.Contains(d.Reason, "anthropic-key") || !strings.Contains(d.Reason, "www.googleapis.com") {
+		t.Fatalf("unbound host: %+v", d)
+	}
+	if d := (guard.TextSecret{}).Outgoing("nothing secret here", "www.googleapis.com", "POST"); d.Verdict != guard.Allow {
+		t.Fatalf("clean text: %+v", d)
+	}
+}

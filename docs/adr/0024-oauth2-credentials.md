@@ -173,3 +173,15 @@ As decided, with these specifics:
 Not done: MCP's own authorization discovery (protected-resource metadata,
 dynamic client registration). An MCP server that uses OAuth works with a
 `custom` credential whose client the user registered.
+
+## Used by W5 — 2026-10-01
+
+`google-doc-upload` (ADR 22, W5 implemented) is the first tool built on
+this ADR: the `google` profile's default scope, `drive.file`, is all it
+needs, since it only creates documents. Its credential is supplied by Go
+like an MCP server's key: the guard judges the call as carrying the
+configured class (default `google`) to the upload host, a binding row's
+`scopes` bound what the token may hold, and the token is injected through
+the session's sink, so a stale one is refreshed and `cred.refresh` logged
+before the upload. Its tests run against the fake provider
+(`test/fakes/oauth`) and a fake Drive (`test/fakes/drive`).

@@ -128,6 +128,7 @@ Files & file contents in; writes out to disk & the pin, the path denylist, the c
 Programs & a command line out; its output in; anything the program itself does & the confirm, or a standing approval; the guard sees the command line only & \code{guard.decision}, \code{tool.result} \\
 You & messages, answers to prompts, secrets typed into a masked prompt, Scheme you evaluate & you & \code{user.msg}, \code{guard.decision}, \code{cred.register}, \code{eval.req} \\
 Attachments & a document's extracted text & you, by attaching it & \code{attach} \\
+Documents & out: a file sent to Google Drive; on disk: a document pandoc wrote & the binding table, the confirm, L1 on the file's text; for an export, the pin and the confirm & \code{egress.check}, \code{guard.decision}, \code{doc.upload}, \code{file.version} \\
 \bottomrule
 \end{longtable}}
 
@@ -339,6 +340,20 @@ it is OCRed. The log keeps its type, size, digest and that host, never the
 pixels; the window reads them from \file{.nodwyn/attachments/} and checks
 the digest, and a request to any other host, the judge's included, never
 carries the image.
+
+\section{Documents out}
+
+\code{doc-export} converts a Markdown or LaTeX file in the workspace to
+Word, OpenDocument or HTML with pandoc. Nothing leaves the machine, and the
+target is a write like any other. pandoc reads the source in its sandbox,
+so an include or a remote image in it reads nothing, and a Word or
+OpenDocument file embeds only images that are files in the workspace.
+\code{google-doc-upload} sends a document to Google Drive, which makes it a
+Google Doc: a keyed request whose class, host and scopes the binding table
+decides, asked every time. The file never was a Scheme value, so the guard
+cannot read it; the handler reads all the text it carries and refuses
+something shaped like a key whose class is not bound for Drive, before
+anything is sent, and \code{doc.upload} records what left.
 
 \section{What stays on the machine}
 

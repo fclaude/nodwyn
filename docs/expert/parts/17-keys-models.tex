@@ -88,6 +88,11 @@ the refresh, every use is denied until \code{nodwyn credential login
 CLASS}; \code{nodwyn credential revoke CLASS} revokes it at the provider and
 deletes it here.
 
+With a \code{google} credential stored, sessions offer the model
+\code{google-doc-upload}, which sends a document to Google Drive as a new
+Google Doc (Chapter~\ref{ch:workspaces} has the details). It needs only
+\code{POST} in that row, and only \code{drive.file}.
+
 The binding table is checked on every
 request, before anything is sent; an unbound combination is never sent.
 Only you edit it: the file is policy, and \code{policy-write} is user-only

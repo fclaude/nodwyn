@@ -69,6 +69,9 @@ wall_hard       = "4h"
 
 [jev]
 content = "plan"            # none | plan | plan+summaries | full
+
+[docs]
+google_credential = "google"  # the class google-doc-upload sends; "" for none
 \end{txt}
 
 A model may also set \code{num\_ctx} and \code{keep\_alive} (Ollama),
@@ -294,6 +297,45 @@ happens to them. Where git is not the undo, \nodwyn{} keeps a file's
 previous content before replacing it: \code{nodwyn versions FILE} lists
 them, \code{nodwyn undo FILE} puts back the newest, and the console restores
 any of them through an ordinary, confirmed write.
+
+\chapter{Documents out}
+
+The model's \code{doc-export} turns a Markdown or LaTeX file into Word
+(\file{.docx}), OpenDocument (\file{.odt}) or HTML, picked by the target's
+extension. It needs pandoc 2.15 or later on \code{PATH}; without it the
+tool says what to install. The target is a write like any other: the
+confirm shows source, target and formats, a standing write approval covers
+it, and the previous version is kept. pandoc reads the source in its
+sandbox, so an include or a remote image in it reads nothing, and a
+\file{.docx} or \file{.odt} embeds only images that are files in the
+workspace.
+
+PDF is not among them: a TeX engine reads any file and runs programs when a
+document asks. A LaTeX build stays \code{shell-exec} running
+\code{latexmk}, as this book's is (\code{make book}), with a standing
+approval if you choose to give one.
+
+\code{google-doc-upload} sends a \file{.docx}, \file{.odt}, \file{.html} or
+\file{.txt} to Google Drive as a new Google Doc and returns its link. It
+needs the OAuth2 credential above, whose default scope \code{drive.file}
+is enough, bound to Drive's upload host:
+
+\begin{txt}
+[[bind]]
+class = "google"
+dest = "www.googleapis.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["POST"]
+scopes = ["https://www.googleapis.com/auth/drive.file"]
+\end{txt}
+
+Sessions started after the credential was stored offer it. Every call asks,
+naming the file, its size and the destination, with no standing answer. A
+document holding something shaped like a key whose class is not bound for
+that host is refused before anything is sent, and each upload is logged as
+\code{doc.upload}: file, size, hash, destination and the document's id.
+\code{[docs]} in \file{config.toml} names another credential class
+(\code{google\_credential}) or endpoint (\code{google\_upload\_url}).
 
 \chapter{Budgets and runs}
 

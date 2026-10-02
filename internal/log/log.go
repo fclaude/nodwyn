@@ -67,6 +67,7 @@ const (
 	KindNote           Kind = "note"            // free-form operator annotation
 	KindFileVersion    Kind = "file.version"    // a file's previous content kept before a write (ADR 22)
 	KindAttach         Kind = "attach"          // a file the person attached: its extracted, redacted text (ADR 22)
+	KindDocUpload      Kind = "doc.upload"      // a document sent to a document service: file, size, hash, destination, the document's id; never content (W5)
 )
 
 var kinds = map[Kind]bool{
@@ -76,6 +77,7 @@ var kinds = map[Kind]bool{
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,
 	KindJevReq: true, KindCredRegister: true, KindCredRefresh: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true, KindAttach: true,
+	KindDocUpload: true,
 }
 
 // Known reports whether k is one of the fixed event kinds.

@@ -150,6 +150,47 @@ To take an image back out of a conversation, delete its copy under
 never send a different picture in its place.
 \end{tip}
 
+\section{Documents out}
+
+The model can also write documents. \code{doc-export} turns Markdown or
+LaTeX into Word, OpenDocument or HTML with pandoc (2.15 or later; without
+it the tool says what to install):
+
+\begin{scm}
+(doc-export "report.md" "out/report.docx")
+;=> "wrote out/report.docx (Word document, 9 KiB) from report.md"
+\end{scm}
+
+It is a write: it asks with source, target and formats, a standing write
+approval for the folder covers it, and replacing a file keeps the old one
+in the version store. pandoc reads the document in its sandbox, so an
+include or a remote image in it reads nothing, and a Word file embeds only
+images that are files in the folder; the answer says which were left out.
+There is no PDF: a TeX engine reads any file and runs programs when a
+document asks, so build a PDF with \code{shell-exec} and \code{latexmk}, as
+\nodwyn's own book is built.
+
+With a \code{google} credential stored and bound (Chapter~\ref{ch:keys}),
+\code{google-doc-upload} sends a \file{.docx}, \file{.odt}, \file{.html} or
+\file{.txt} to Google Drive as a new Google Doc and returns its link:
+
+\begin{scm}
+(google-doc-upload "out/report.docx" "Q3 report")
+;=> (("id" . "1AbC...") ("url" . "https://docs.google.com/document/d/1AbC.../edit") ("title" . "Q3 report"))
+\end{scm}
+
+Every call asks, naming the file, its size and where it goes, and no answer
+makes it stop asking.
+
+\begin{careful}
+The file's bytes never become a Scheme value, so the door cannot read them.
+The upload reads them itself, every part of a Word file included, and
+refuses one that holds something shaped like a key whose class is not bound
+for Google; \code{doc.upload} in the log says what left, never what it
+said. A contract or a salary list has no shape: what keeps it home is your
+``no''.
+\end{careful}
+
 \section{Notes, scratch and versions: where things live}
 
 \begin{center}

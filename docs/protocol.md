@@ -220,6 +220,15 @@ handle id, token endpoint host, new expiry, whether the refresh token
 rotated, and `ok` or `error`; never a token. `egress.check` carries the
 credential's `scopes` when it has any.
 
+A `doc.upload` event records each document `google-doc-upload` sends (W5):
+`tool`, `origin`, the file's absolute `path`, media `type`, `bytes` and
+`sha256`, the destination `host` and credential `class`, `sent` (false when
+nothing left the machine, such as a document refused for a secret shape),
+`ok`, and the document's `id` and `url` or the `error`; never its content or
+a token. Its confirm is an ordinary one with `Prompt.Egress` set and no
+`Path`, so it offers no session or turn approval. `doc-export`'s confirm is
+a write's: `Prompt.Path` is its target.
+
 A `prompt.secret` contains only its ID and credential class. Send the value
 through `session.secret`, never Scheme source. The core copies secret bytes
 into its typed reply channel and registers them in the shared encrypted

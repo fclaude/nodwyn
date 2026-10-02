@@ -892,6 +892,62 @@
       ],
       "type": "object"
     },
+    "log.DocUpload": {
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "class": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sent": {
+          "type": "boolean"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "origin",
+        "path",
+        "type",
+        "bytes",
+        "sha256",
+        "host",
+        "class",
+        "sent",
+        "ok"
+      ],
+      "type": "object"
+    },
     "log.EgressCheck": {
       "properties": {
         "bound": {
@@ -1816,6 +1872,9 @@
     },
     "payload.cred.register": {
       "$ref": "#/$defs/log.CredRegister"
+    },
+    "payload.doc.upload": {
+      "$ref": "#/$defs/log.DocUpload"
     },
     "payload.egress.check": {
       "$ref": "#/$defs/log.EgressCheck"
@@ -4933,6 +4992,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.CredRegister"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "doc.upload"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.DocUpload"
             },
             "seq": {
               "minimum": 0,

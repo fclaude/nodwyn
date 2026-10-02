@@ -14,6 +14,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -75,6 +76,7 @@ type Config struct {
 	Loop    Loop   `toml:"loop"`
 	Budget  Budget `toml:"budget"`
 	Jev     Jev    `toml:"jev"`
+	Docs    Docs   `toml:"docs"`
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].
 	Models map[string]Model `toml:"models"`
@@ -147,6 +149,46 @@ const (
 // other than "none". Whether it actually runs also needs a jev-key credential.
 func (j Jev) Enabled() bool {
 	return j.URL != "" && j.Content != JevContentNone
+}
+
+// Docs configures the document tools (W5, ADR 22 answer 4). doc-export
+// needs nothing here: it runs pandoc from PATH. google-doc-upload sends a
+// file to Google Drive with the credential of class GoogleCredential, and
+// is offered only to a session that starts with one stored; that class
+// must be bound to GoogleUploadURL's host (bindings.toml, POST at
+// header:Authorization:Bearer) like any other key.
+type Docs struct {
+	// GoogleCredential is the keychain class of the Google credential;
+	// default "google", the class nodwyn credential add --oauth2 google
+	// stores. "" offers no Google tool.
+	GoogleCredential string `toml:"google_credential"`
+	// GoogleUploadURL is Drive's upload endpoint; its host is the
+	// destination the binding table judges. Default GoogleUploadURL.
+	GoogleUploadURL string `toml:"google_upload_url"`
+}
+
+// GoogleUploadURL is Google Drive's upload endpoint (Drive API v3).
+const GoogleUploadURL = "https://www.googleapis.com/upload/drive/v3/files"
+
+func (d Docs) validate() error {
+	u, err := url.Parse(d.GoogleUploadURL)
+	if err != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("docs.google_upload_url must be an absolute URL without a query, got %q", d.GoogleUploadURL)
+	}
+	// The access token travels with every upload: https, or plain http to
+	// this machine only (a test's fake).
+	if u.Scheme != "https" && (u.Scheme != "http" || !loopback(u.Hostname())) {
+		return fmt.Errorf("docs.google_upload_url must be https (or http on this machine), got %q", d.GoogleUploadURL)
+	}
+	return nil
+}
+
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Loop bounds one turn of the agent loop.
@@ -256,7 +298,8 @@ func Default() Config {
 		// Jev defaults: no service (nodwyn runs file-only, gate is "plan"), full
 		// content when one is configured. A developer points jev.url at their
 		// instance to enable the gate (ADR 19).
-		Jev: Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan, ApproveThreshold: 0.8},
+		Jev:  Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan, ApproveThreshold: 0.8},
+		Docs: Docs{GoogleCredential: "google", GoogleUploadURL: GoogleUploadURL},
 	}
 }
 
@@ -374,6 +417,9 @@ func (c Config) Validate() error {
 	}
 	if c.Jev.ApproveThreshold <= 0 || c.Jev.ApproveThreshold > 1 {
 		return fmt.Errorf("jev.approve_threshold must be above 0 and at most 1, got %v", c.Jev.ApproveThreshold)
+	}
+	if err := c.Docs.validate(); err != nil {
+		return err
 	}
 	switch c.Jev.Content {
 	case JevContentNone, JevContentPlan, JevContentPlanSum, JevContentFull, "":

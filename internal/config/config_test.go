@@ -14,6 +14,21 @@ func TestDefaultIsValid(t *testing.T) {
 	}
 }
 
+// [docs] names the google credential class and Drive's upload endpoint;
+// the endpoint may be plain http only on this machine (a test's fake).
+func TestDocsSettings(t *testing.T) {
+	if d := Default().Docs; d.GoogleCredential != "google" || d.GoogleUploadURL != "https://www.googleapis.com/upload/drive/v3/files" {
+		t.Fatalf("defaults: %+v", d)
+	}
+	c, err := Parse([]byte("[docs]\ngoogle_credential = \"work-google\"\ngoogle_upload_url = \"http://127.0.0.1:8123/upload/drive/v3/files\"\n"))
+	if err != nil || c.Docs.GoogleCredential != "work-google" || c.Docs.GoogleUploadURL != "http://127.0.0.1:8123/upload/drive/v3/files" {
+		t.Fatalf("%+v %v", c.Docs, err)
+	}
+	if c, err := Parse([]byte("[docs]\ngoogle_credential = \"\"\n")); err != nil || c.Docs.GoogleCredential != "" {
+		t.Fatalf("no google tool: %+v %v", c.Docs, err)
+	}
+}
+
 func TestLoadMissingIsDefault(t *testing.T) {
 	c, err := Load(filepath.Join(t.TempDir(), "nope.toml"))
 	if err != nil {
@@ -60,6 +75,9 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		"unknown provider": "[control]\nprovider = \"anthropic\"\nurl = \"https://a.test\"\nmodel = \"m\"\nnum_ctx = 8192\n",
 		"partial control":  "[control]\nmodel = \"m\"\n",
 		"models.control":   "[models.control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\n",
+		"docs plain http":  "[docs]\ngoogle_upload_url = \"http://upload.example.com/files\"\n",
+		"docs query":       "[docs]\ngoogle_upload_url = \"https://www.googleapis.com/upload/drive/v3/files?uploadType=media\"\n",
+		"docs relative":    "[docs]\ngoogle_upload_url = \"/upload/drive/v3/files\"\n",
 	}
 	for name, body := range cases {
 		p := filepath.Join(t.TempDir(), "config.toml")

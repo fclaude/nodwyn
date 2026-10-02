@@ -41,26 +41,47 @@ func (ts TextSecret) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		ts.Table = binding.Table{}
 	}
 	payload, argv := secretText(p, args)
-	s := ts.Scanner
-	if s == nil {
-		s = l1.New()
-	}
+	s := ts.scanner()
 	if f, ok := firstKnown(s.Scan(argv)); ok {
 		return Decision{Verdict: Deny, Reason: "secret of class " + f.Class + " on the command line"}
+	}
+	if p.Meta.Egress {
+		facts := egressFactsOf(p, args)
+		return ts.Outgoing(payload, facts.Host, facts.Method)
 	}
 	f, ok := firstKnown(s.Scan(payload))
 	if !ok {
 		return Decision{Verdict: Allow}
 	}
-	if p.Meta.Egress {
-		facts := egressFactsOf(p, args)
-		bound, reason := ts.Table.Lookup(f.Class, facts.Host, facts.Method, "")
-		if bound {
-			return Decision{Verdict: Allow, Reason: "literal " + f.Class + " is bound for " + facts.Host}
-		}
-		return Decision{Verdict: Deny, Reason: "literal secret of class " + f.Class + " in the request is not bound for " + facts.Host + " (" + reason + ")"}
-	}
 	return Decision{Verdict: Confirm, Security: true, Reason: "the written content contains what looks like a " + f.Class}
+}
+
+// Outgoing judges text about to be sent to host by method, as Check judges
+// an egress primitive's payload: a known class is allowed iff it is bound
+// for that host and method, otherwise denied naming the class. A primitive
+// that sends what never was a Scheme value — a document's bytes, which
+// the guard does not see — asks it about that text before it sends.
+func (ts TextSecret) Outgoing(text, host, method string) Decision {
+	f, ok := firstKnown(ts.scanner().Scan(text))
+	if !ok {
+		return Decision{Verdict: Allow}
+	}
+	table := ts.Table
+	if table == nil {
+		table = binding.Table{}
+	}
+	bound, reason := table.Lookup(f.Class, host, method, "")
+	if bound {
+		return Decision{Verdict: Allow, Reason: "literal " + f.Class + " is bound for " + host}
+	}
+	return Decision{Verdict: Deny, Reason: "literal secret of class " + f.Class + " in the request is not bound for " + host + " (" + reason + ")"}
+}
+
+func (ts TextSecret) scanner() *l1.Scanner {
+	if ts.Scanner == nil {
+		return l1.New()
+	}
+	return ts.Scanner
 }
 
 // firstKnown returns the first finding that is a known class (never the
