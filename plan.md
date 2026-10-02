@@ -572,6 +572,92 @@ completed D7 on 2026-10-01; D9 came the same day, once an egress proxy could
 enforce a per-host allowlist inside the container (W3b above). What comes
 next is §10.
 
+### After v0 — sessions in git worktrees (ADR 34)
+
+Status (2026-10-02): proposed. The location (inside the repository, for
+backups) and the git authority (commit, rebase, push a new head for `main`)
+are decided. Two smaller questions are open in ADR 34 before WT3.
+
+Several sessions can be open on one repository, and a run invites it, but
+they share one working tree, index and stash, and nothing notices. Each
+session may instead have its own linked worktree on its own branch:
+- The host creates it when the user asks, never the model, under
+  `.nodwyn/worktrees/`.
+- The model commits on that branch, rebases it, and when asked pushes it
+  as `main`'s new head.
+
+Every phase is tested with real `git` in `t.TempDir()`, a bare repository
+as the remote and the fake model, so building it costs nothing. Each phase
+updates the docs it changes (manual, scheme.md, protocol.md and its schema,
+browser.md, tui.md, runs.md) in the same commit.
+
+- **WT0 — the repository behind a checkout (small).**
+  `git rev-parse --git-common-dir`, with `runGit`'s read-only flags, gives
+  each git root its repository. Project notes, MCP `workspaces`,
+  `session-list`/`session-events`, `knownFolder` and the console's folders
+  key on the repository.
+
+  Tests use a worktree made by hand. The git tools work there, versions
+  defer to git, the `.git` file is protected, and the pin refuses the
+  common directory's hooks by absolute path. After WT0, `--repo` pointed at
+  an existing worktree is first-class. (The scratch directory's clash with
+  the path denylist, which this phase first waited on, was fixed on
+  2026-10-01.)
+- **WT1 — a session in a new worktree (medium).**
+  - `core.Options.Worktree` creates `.nodwyn/worktrees/<id>` on
+    `nodwyn/<id>`, with a `*` `.gitignore`. The task-root refusal moves into
+    core. `worktree.create` is logged and `SessionStart.worktree` recorded.
+  - Resume recreates a missing worktree (`worktree.restore`). A clean
+    worktree with nothing unlanded is removed on close.
+  - The model gets a prompt section, `(worktree)`, and a stash-free version
+    of the compare-before-and-after habit in worktree sessions only.
+  - The plain CLI gets `nodwyn --worktree [--worktree-base REF]`.
+- **WT2 — lifecycle (small).** `nodwyn worktree list` and `nodwyn worktree
+  remove [--force]`. Removal refuses a dirty tree without `--force`, keeps
+  an unmerged branch and logs `worktree.remove`. `nodwyn sessions` shows the
+  branch.
+- **WT3 — the session's git (medium).**
+  - Worktree sessions get `git-commit`, `git-rebase` (with `"continue"` and
+    `"abort"`) and `git-push`: the session's branch with a lease, or
+    `"main"` by fast-forward. They take fixed arguments and refuse unless
+    `HEAD` is the session's branch.
+  - `allow.toml` gains `push = [URL, …]`, the remote URLs a session may push
+    to; an unlisted URL is a security confirm.
+  - Before a push, L1 scans the outgoing diff. A hook the model could have
+    written makes the call a confirm. A push logs `git.push`, and the local
+    `main` moves only by compare and swap or `--ff-only`.
+  - This amends ADR 17 and B3 for worktree sessions only. `dev/git.scm`'s
+    comment changes with it.
+- **WT4 — daemon and clients (medium).**
+  - RPC adds `worktree.open`, `worktree.list` and `worktree.remove`
+    (local only), and `run.start` gains `worktree`. Each change goes into
+    the method table, the schema, the web bridge's allowlist and
+    protocol.md; the drift tests already hold them together.
+  - `nodwyn run --worktree` and `nodwyn tui --worktree`, plus the TUI
+    chooser row and its branch in the title.
+  - In the console: the ask-bar toggle, and the branch, commits ahead and
+    last push in the task header and Workspace panel, with Remove. Worktree
+    sessions are grouped under their repository. Each comes with a browser
+    flow in test/browser.
+- **WT5 — proof (small).**
+  - Exfil scenarios: a worktree session cannot read the repository's
+    `.env` through `../`, cannot write the common directory's hooks, and
+    `git-diff` refuses a path outside the worktree. A push to a remote
+    re-pointed through `shell-exec` is a security confirm, and so is a
+    commit carrying a canary credential.
+  - Two fake-model sessions edit one repository at once, and each sees
+    only its own changes. One lands on `main` while the other's push is
+    refused until it rebases.
+  - The book and the expert guide are rebuilt, and friction.md records the
+    race this closes.
+
+Not in this track:
+- worktrees for sub-agents, which run one at a time;
+- force-pushing, merge commits, tags, and pull requests through a host's
+  API;
+- copying untracked files such as `.env` or caches into a new worktree;
+- version control other than git.
+
 ### Outside the plan — what running it taught (2026-09-26 to 2026-10-01)
 
 Running nodwyn unattended on a SWE-bench Verified cohort, daily use, and an
@@ -700,7 +786,12 @@ Still open:
 
 In this order, each for the reason given:
 
-1. **P8 — L3**, optional.
+1. **Sessions in git worktrees, WT0–WT5 (ADR 34; asked for 2026-10-01).**
+   Parallel sessions and runs on one repository race on its working tree
+   today, and U4's unattended continuation makes longer runs more likely.
+   Landing on `main` from a worktree replaces the wait for an operator to
+   commit.
+2. **P8 — L3**, optional.
 
 Smaller open gaps, in no order:
 

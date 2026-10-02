@@ -35,3 +35,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0031](./0031-renamed-to-nodwyn.md) — The project is renamed nodwyn
 - [0032](./0032-working-habits.md) — The default loop works the way pil did
 - [0033](./0033-go-126-base.md) — Go 1.26 is the base
+- [0034](./0034-sessions-in-git-worktrees.md) — Sessions in git worktrees (proposed)
