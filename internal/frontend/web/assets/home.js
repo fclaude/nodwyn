@@ -37,6 +37,11 @@ export function chooseFolder(folder) {
   chosen = folder;
 }
 
+// forgetFolder stops preselecting a folder that left the list.
+export function forgetFolder(folder) {
+  if (chosen === folder) chosen = "";
+}
+
 export function renderHome(root, ctx) {
   const { conn, desk, navigate, pickFolder } = ctx;
   const folders = desk.folders();
@@ -148,7 +153,8 @@ export function renderHome(root, ctx) {
   showMode();
 
   const chips = h("div", { class: "work-in", id: "work-in" }, h("span", {}, "Work in"));
-  for (const folder of [chosen, ...folders.filter((f) => f !== chosen)].filter(Boolean).slice(0, 6)) {
+  const listed = [chosen, ...folders.filter((f) => f !== chosen)].filter(Boolean);
+  for (const folder of listed.slice(0, 6)) {
     const ws = desk.workspace(folder);
     chips.append(
       h(
@@ -159,6 +165,8 @@ export function renderHome(root, ctx) {
       ),
     );
   }
+  // The rest are on Workspaces, each with New task here.
+  if (listed.length > 6) chips.append(h("a", { class: "chip", href: "#/workspaces", style: "text-decoration:none", title: "Every folder, on Workspaces" }, `${listed.length - 6} more`));
   // Adding a folder names it and says what kind of work it holds; where the
   // console may save workspaces, the folder joins the list for next time.
   const adding = h("form", { class: "add-folder card", hidden: true });

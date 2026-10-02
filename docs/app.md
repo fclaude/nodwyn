@@ -118,6 +118,7 @@ CGO_ENABLED=1 scripts/webview-env.sh run go build -tags webview ./cmd/nodwyn
 ## What the window adds
 
 The page gets three functions from the window and nothing else: a native
-folder chooser (for Home's **Add a folder**), system notifications (the same
-generic "nodwyn needs your answer", opt-in in Settings), and opening a link in
-the default browser. None of them reads or writes a file the page names.
+folder chooser (for adding a folder on Home or Workspaces), system
+notifications (the same generic "nodwyn needs your answer", opt-in in
+Settings), and opening a link in the default browser. None of them reads or
+writes a file the page names.

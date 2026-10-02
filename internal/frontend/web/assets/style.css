@@ -758,6 +758,9 @@ details.callout > summary { cursor: pointer; font-weight: 500; }
 details.box > summary { cursor: pointer; font-weight: 500; margin-bottom: 8px; }
 .ws-row { align-items: flex-start; }
 .ws-row .main span { white-space: normal; }
+.ws-row .main .ws-count { color: var(--faint); }
+.ws-row .end { flex-wrap: wrap; justify-content: flex-end; }
+.ws-row .confirm-text { flex-basis: 100%; text-align: right; color: var(--ink-2); }
 select.input { height: 34px; padding: 0 8px; }
 .versions { display: flex; flex-direction: column; gap: 6px; padding: 0 4px; }
 .versions:empty { display: none; }
@@ -820,6 +823,9 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 }
 .mode-note { margin-top: -4px; }
 @media (max-width: 760px) {
+  .ws-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); }
+  .ws-row .end { grid-column: 2; margin-left: 0; justify-content: flex-start; }
+  .ws-row .confirm-text { text-align: left; }
   .settings-grid.nested { grid-template-columns: minmax(0, 1fr); }
   .settings-grid.nested > .label { padding-top: 0; }
   .limits { grid-template-columns: minmax(0, 1fr) 7.5em 7.5em; }

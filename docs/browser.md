@@ -67,11 +67,14 @@ folder** names one and says what it holds — documents, code or both — and,
 in the app window, opens the system's folder chooser. The kind is a label: every
 kind has the same tools and the same guard (see
 [ADR 22](adr/0022-cowork-workspaces-attachments-mcp.md), amended). The
-Workspaces page edits a folder's name, kind and **mounted folders** (other
-folders a task may read, or read and write, by absolute path). The name is
-kept in `workspaces.toml` in the config directory; the kind and mounts in the
-folder's `.nodwyn/workspace.toml` (a code folder with no mounts needs none).
-They apply to tasks started afterwards.
+Workspaces page lists every named folder: **Add a workspace** names another,
+**Edit** changes a folder's name, kind and **mounted folders** (other folders
+a task may read, or read and write, by absolute path), and **Remove** takes
+it off the list after a confirm, leaving the folder, its files and its tasks
+as they were. Home offers the first six folders; the rest are a click away on
+Workspaces. The name is kept in `workspaces.toml` in the config directory;
+the kind and mounts in the folder's `.nodwyn/workspace.toml` (a code folder
+with no mounts needs none). They apply to tasks started afterwards.
 
 **Attaching.** The paperclip in either composer attaches files to the next
 message (at most 20 MB each): text formats, `.docx`, `.xlsx`, `.pptx`, PDF

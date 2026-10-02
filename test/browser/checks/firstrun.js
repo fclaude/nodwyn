@@ -56,6 +56,26 @@ const env = { ...process.env };
   await page.waitForSelector("#work-in button[aria-pressed=true]:has-text('Family papers')");
   step("documents workspace added");
   if (!fs.readFileSync(`${root}/work/.nodwyn/workspace.toml`, "utf8").includes('kind = "docs"')) throw new Error("workspace.toml");
+  // Workspaces: two more added there, and one of them removed.
+  for (const d of ["receipts", "letters"]) fs.mkdirSync(`${root}/${d}`);
+  await page.evaluate(() => (location.hash = "#/workspaces"));
+  for (const [d, name] of [["receipts", "Receipts"], ["letters", "Letters"]]) {
+    await page.click("text=Add a workspace");
+    await page.fill("#ws-path", `${root}/${d}`);
+    await page.fill("#ws-name", name);
+    await page.click("button:has-text('Add this folder')");
+    await page.waitForSelector(`.ws-row strong:has-text('${name}')`);
+  }
+  await page.click("button[aria-label='Remove Letters']");
+  await page.click(".ws-row .end button.danger:not([aria-label])");
+  await page.waitForSelector(".ws-row strong:has-text('Letters')", { state: "detached" });
+  const registry = fs.readFileSync(`${root}/config/nodwyn/workspaces.toml`, "utf8");
+  if (!registry.includes("Family papers") || !registry.includes("Receipts") || registry.includes("Letters")) throw new Error("workspaces.toml: " + registry);
+  if (!fs.existsSync(`${root}/letters`)) throw new Error("removing a workspace touched its folder");
+  step("workspaces added and removed on Workspaces");
+  await page.screenshot({ path: `${out}/firstrun-workspaces.png` });
+  await page.evaluate(() => (location.hash = "#/"));
+  await page.waitForSelector("#work-in button[aria-pressed=true]:has-text('Family papers')");
   fs.writeFileSync(`${root}/roadmap.md`, "# Roadmap\nShip cowork.\ntoken: ghp_" + "A1b2C3d4".repeat(5) + "\n");
   await page.setInputFiles(".ask input[type=file]", `${root}/roadmap.md`);
   await page.waitForSelector(".ask .attach-chip");

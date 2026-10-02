@@ -2,12 +2,14 @@
 // settings.js). They show what the daemon reports; where it reports nothing
 // yet, they say so.
 import { h, icon, repoName, shortPath, ago, toast } from "./dom.js";
-import { chooseFolder, kindLabel } from "./home.js";
+import { chooseFolder, forgetFolder, kindLabel } from "./home.js";
 import { modelRows } from "./settings.js";
 import { renderCredentials } from "./credentials.js";
 
 // ---------- workspaces ----------
 let editing = ""; // the folder whose editor is open
+let addingWorkspace = false; // the editor for a folder not on the list yet is open
+let removing = ""; // the named folder whose removal waits for its confirm
 export function renderWorkspaces(root, ctx) {
   const { desk, navigate, conn } = ctx;
   const counts = new Map();
@@ -17,9 +19,38 @@ export function renderWorkspaces(root, ctx) {
     counts.set(item.repo, entry);
   }
   const canEdit = conn.has("workspace.save");
+  const canRemove = conn.has("workspace.remove");
+  const redraw = () => renderWorkspaces(root, ctx);
+  // Removing forgets the name; the folder, its files and its
+  // .nodwyn/workspace.toml stay, and tasks there keep their history.
+  const remove = async (ws) => {
+    try {
+      await conn.call("workspace.remove", { path: ws.path });
+      removing = "";
+      if (editing === ws.path) editing = "";
+      forgetFolder(ws.path);
+      await desk.refreshWorkspaces();
+      toast(`Removed ${ws.name} from the list. The folder and its files are as they were.`);
+    } catch (e) {
+      toast(e.message);
+    }
+    redraw();
+  };
   const row = (folder, ws) => {
     const count = counts.get(folder);
     const mounts = ws?.mounts || [];
+    const actions =
+      ws && removing === folder
+        ? [
+            h("span", { class: "confirm-text" }, "Remove it from the list? The folder stays."),
+            h("button", { type: "button", class: "btn small danger", onclick: () => remove(ws) }, "Remove"),
+            h("button", { type: "button", class: "btn small ghost", onclick: () => { removing = ""; redraw(); } }, "Keep"),
+          ]
+        : [
+            h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder); navigate("#/"); } }, "New task here"),
+            canEdit ? h("button", { type: "button", class: "btn small ghost", onclick: () => { editing = editing === folder ? "" : folder; addingWorkspace = false; removing = ""; redraw(); } }, ws ? "Edit" : "Name it") : null,
+            ws && canRemove ? h("button", { type: "button", class: "btn small danger", "aria-label": `Remove ${ws.name}`, onclick: () => { removing = folder; redraw(); } }, "Remove") : null,
+          ];
     const node = h(
       "div",
       { class: "list-row ws-row" },
@@ -32,21 +63,23 @@ export function renderWorkspaces(root, ctx) {
         mounts.length ? h("span", {}, mounts.map((m) => `${shortPath(m.path, desk.home)} (${m.access === "write" ? "read and write" : "read only"})`).join(" · ")) : null,
         ws?.error ? h("span", { class: "error" }, ws.error) : null,
         ws ? h("span", {}, ws.git ? "A git repository: git is the undo." : "Not a git repository: nodwyn keeps the previous version of a file before it changes it.") : null,
+        h("span", { class: "ws-count" }, count ? `${count.tasks} task${count.tasks === 1 ? "" : "s"} · ${ago(count.last)}` : "No tasks yet"),
       ),
-      h(
-        "div",
-        { class: "end" },
-        count ? `${count.tasks} task${count.tasks === 1 ? "" : "s"} · ${ago(count.last)}` : "no tasks yet",
-        h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder); navigate("#/"); } }, "New task here"),
-        canEdit ? h("button", { type: "button", class: "btn small ghost", onclick: () => { editing = editing === folder ? "" : folder; renderWorkspaces(root, ctx); } }, ws ? "Edit" : "Name it") : null,
-      ),
+      h("div", { class: "end" }, actions),
     );
     return editing === folder ? [node, editor(folder, ws)] : [node];
   };
+  // editor names a folder and says what it holds; with no folder it adds
+  // one, and asks for its path first.
   const editor = (folder, ws) => {
-    let kind = ws?.kind || "code";
+    let kind = ws?.kind || (folder ? "code" : "docs");
     const mounts = (ws?.mounts || []).map((m) => ({ ...m }));
-    const name = h("input", { class: "input", id: "ws-name", value: ws?.name || desk.folderName(folder) });
+    const name = h("input", { class: "input", id: "ws-name", value: ws?.name || (folder ? desk.folderName(folder) : ""), placeholder: folder ? "" : "for example Receipts 2026", autocomplete: "off" });
+    const pathInput = folder ? null : h("input", { class: "input", id: "ws-path", placeholder: "/absolute/path/to/a/folder", spellcheck: false, autocomplete: "off", required: true });
+    const setPath = (p) => {
+      pathInput.value = p;
+      if (!name.value) name.value = p.replace(/\/+$/, "").split("/").pop();
+    };
     const error = h("p", { class: "error", role: "alert" });
     const list = h("div", { style: "display:flex;flex-direction:column;gap:8px" });
     const drawMounts = () =>
@@ -68,20 +101,32 @@ export function renderWorkspaces(root, ctx) {
       "form",
       {
         class: "card setup-form",
-        style: "margin: 0 16px 16px",
+        style: folder ? "margin: 0 16px 16px" : "",
         onsubmit: async (event) => {
           event.preventDefault();
+          const path = folder || pathInput.value.trim().replace(/\/+$/, "");
+          if (!path.startsWith("/")) {
+            error.textContent = "Give the folder's full path, starting with /.";
+            return;
+          }
+          const existing = folder ? null : desk.workspace(path);
+          if (existing) {
+            error.textContent = `That folder is already on the list as ${existing.name}: edit it there.`;
+            return;
+          }
           try {
-            await conn.call("workspace.save", { path: folder, name: name.value.trim(), kind, mounts });
+            await conn.call("workspace.save", { path, name: name.value.trim(), kind, mounts });
             editing = "";
+            addingWorkspace = false;
             await desk.refreshWorkspaces();
-            toast("Saved. Tasks you start here from now on use it.");
-            renderWorkspaces(root, ctx);
+            toast(folder ? "Saved. Tasks you start here from now on use it." : "Added. Start a task there with New task here, or from Home.");
+            redraw();
           } catch (e) {
             error.textContent = e.message;
           }
         },
       },
+      folder ? null : h("div", { class: "field" }, h("label", { for: "ws-path" }, "Folder"), h("div", { class: "row-actions" }, pathInput, ctx.pickFolder ? h("button", { type: "button", class: "btn", onclick: async () => { try { const p = await ctx.pickFolder(); if (p) setPath(p); } catch (e) { error.textContent = String(e?.message || e); } } }, "Choose…") : null)),
       h("div", { class: "field" }, h("label", { for: "ws-name" }, "Name"), name),
       h("div", { class: "field" }, h("label", {}, "What's in it"), h("div", { class: "row-actions" }, kindChoice("docs", "Documents"), kindChoice("code", "Code"), kindChoice("mixed", "Both"))),
       h("div", { class: "field" }, h("label", {}, "Other folders nodwyn may use here"), list, h("div", { class: "row-actions" }, mountPath, ctx.pickFolder ? h("button", { type: "button", class: "btn small", onclick: async () => { const p = await ctx.pickFolder(); if (p) mountPath.value = p; } }, "Choose…") : null, h("button", { type: "button", class: "btn small", onclick: () => { const p = mountPath.value.trim(); if (p) { mounts.push({ path: p, access: "read" }); mountPath.value = ""; drawMounts(); } } }, "Add"))),
@@ -90,15 +135,15 @@ export function renderWorkspaces(root, ctx) {
       h(
         "div",
         { class: "row-actions" },
-        h("button", { type: "submit", class: "btn dark" }, "Save"),
-        h("button", { type: "button", class: "btn ghost", onclick: () => { editing = ""; renderWorkspaces(root, ctx); } }, "Cancel"),
-        ws ? h("button", { type: "button", class: "btn danger", style: "margin-left:auto", onclick: async () => { try { await conn.call("workspace.remove", { path: folder }); editing = ""; await desk.refreshWorkspaces(); renderWorkspaces(root, ctx); } catch (e) { error.textContent = e.message; } } }, "Forget the name") : null,
+        h("button", { type: "submit", class: "btn dark" }, folder ? "Save" : "Add this folder"),
+        h("button", { type: "button", class: "btn ghost", onclick: () => { editing = ""; addingWorkspace = false; redraw(); } }, "Cancel"),
       ),
     );
     return form;
   };
   const named = desk.workspaces.flatMap((ws) => row(ws.path, ws));
   const others = desk.folders().filter((f) => !desk.workspace(f)).flatMap((f) => row(f, null));
+  const adder = addingWorkspace && canEdit ? editor("", null) : null;
   root.replaceChildren(
     h(
       "main",
@@ -108,10 +153,12 @@ export function renderWorkspaces(root, ctx) {
         { class: "page-col" },
         h("h1", {}, "Workspaces"),
         h("p", { class: "lede" }, "The folders nodwyn works in. A task is pinned to its folder and the folders mounted there: it reads and writes inside them and nowhere else."),
+        canEdit && !adder ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", onclick: () => { addingWorkspace = true; editing = ""; removing = ""; redraw(); document.getElementById("ws-path")?.focus(); } }, icon("plus", 15), "Add a workspace")) : null,
+        adder,
         named.length ? h("div", { class: "list" }, named) : null,
         others.length ? h("h2", { class: "section-title" }, named.length ? "Other folders tasks used" : "Folders tasks used") : null,
         others.length ? h("div", { class: "list" }, others) : null,
-        !named.length && !others.length ? h("div", { class: "callout plain" }, "No folders yet. On Home, choose Add a folder.") : null,
+        !named.length && !others.length && !adder ? h("div", { class: "callout plain" }, canEdit ? "No workspaces yet. Add the folders you want nodwyn to work in." : "No folders yet. On Home, choose Add a folder.") : null,
       ),
     ),
   );
