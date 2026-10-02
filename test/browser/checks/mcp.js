@@ -43,4 +43,5 @@ const out = process.argv[2];
   console.log("gathered row:", gathered.replace(/\s+/g, " ").trim());
   console.log(errors.length ? "ERRORS\n" + errors.join("\n") : "no page errors");
   await browser.close();
+  demo.kill("SIGTERM"); // node exits once the demo has cleaned up
 })().catch((e) => { console.error("FAILED", e.message); process.exit(1); });

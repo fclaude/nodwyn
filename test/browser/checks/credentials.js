@@ -151,5 +151,5 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   await browser.close();
   await stopApp(app);
   fs.rmSync(root, { recursive: true, force: true });
-  if (errors.length) process.exit(1);
+  process.exit(errors.length ? 1 : 0); // the exit handler kills the model and the provider, which would keep node running
 })().catch((e) => { console.error("FAILED", e.message); process.exit(1); });

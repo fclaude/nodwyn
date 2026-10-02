@@ -104,4 +104,5 @@ const env = { ...process.env };
   app.kill("SIGTERM");
   await new Promise((r) => app.on("exit", r));
   console.log("app exited; log tail:", log.split("\n").slice(-4).join(" | "));
+  process.exit(0); // the exit handler kills the scripted model, which would keep node running
 })().catch((e) => { console.error("FAILED", e.message); process.exit(1); });

@@ -61,4 +61,6 @@ const out = process.argv[2];
   console.log(execSync(`${process.env.NODWYN} devices`, { env }).toString().trim());
   console.log(errors.length ? "ERRORS\n" + errors.join("\n") : "no page errors");
   await browser.close();
+  for (const k of [ui, daemon]) { k.kill("SIGTERM"); await new Promise((r) => k.on("exit", r)); }
+  process.exit(0); // the exit handler kills the scripted model, which would keep node running
 })().catch((e) => { console.error("FAILED", e.message); process.exit(1); });
