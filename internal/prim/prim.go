@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/guard"
@@ -47,6 +48,10 @@ type Options struct {
 	Credentials CredentialStore
 	// Configured policy paths; only named policy operations can access them.
 	BindingsPath string
+	// Private are nodwyn's own configuration and data directories as the
+	// session resolved them (XDG overrides included); the denylist refuses
+	// them to every path argument, like the default places it names.
+	Private []string
 	// Jev is optional: nil disables its primitives. The host owns credential
 	// injection, redaction, transport and recording; settings are ordinary data.
 	Jev       JevClient
@@ -138,7 +143,7 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
 		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts},
-		denylist(o.Root, o.Scratch),
+		denylist(o),
 		argv,
 		guard.ProtectedPaths{Root: o.Root, Mounts: o.Mounts},
 		guard.ScratchWrites{Dir: o.Scratch},
@@ -154,14 +159,20 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 	return cs
 }
 
-// denylist is the credential denylist for a session in root. Its scratch
-// directory lives in nodwyn's data directory, which the list protects; it
-// is the one place there the session's tools may use.
-func denylist(root, scratch string) guard.PathDenylist {
+// denylist is the credential denylist for a session in o.Root. It adds
+// nodwyn's own directories where the session found them to the default
+// places. The scratch directory lives in nodwyn's data directory, which the
+// list protects; it is the one place there the session's tools may use.
+func denylist(o Options) guard.PathDenylist {
 	d := guard.DefaultDenylist()
-	d.Root = root
-	if scratch != "" {
-		d.Except = []string{scratch}
+	d.Root = o.Root
+	for _, dir := range o.Private {
+		if filepath.IsAbs(dir) && !slices.Contains(d.Dirs, filepath.Clean(dir)) {
+			d.Dirs = append(d.Dirs, filepath.Clean(dir))
+		}
+	}
+	if o.Scratch != "" {
+		d.Except = []string{o.Scratch}
 	}
 	return d
 }

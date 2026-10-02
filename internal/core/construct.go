@@ -162,6 +162,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	_, shellTimeout := o.Config.Loop.Durations()
 	po := prim.DefaultOptions(o.Repo)
 	po.Scratch = s.scratch
+	po.Private = []string{o.Paths.ConfigDir, o.Paths.DataDir}
 	po.Procs = s.procs
 	po.NotesFile = notesFile(o.Paths.DataDir, o.Repo)
 	po.Kind = s.workspace.Kind

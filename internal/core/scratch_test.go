@@ -1,12 +1,14 @@
 package core
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/llm"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -107,6 +109,97 @@ func TestScratchSweep(t *testing.T) {
 	sweepScratch(root)
 	if _, err := os.Stat(live); err != nil {
 		t.Fatalf("the sweep removed a directory touched just now: %v", err)
+	}
+}
+
+// With nodwyn's default layout (HOME, no XDG overrides) the scratch
+// directory is in ~/.local/share/nodwyn, which the denylist protects: the
+// model's fs-write and fs-read of $TMPDIR/... still go through, index-grep
+// searches it, and the rest of the data directory, named directly or through
+// a link in the scratch directory, stays denied.
+func TestScratchDirectoryWithTheDefaultLayout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	paths, err := config.DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths.DataDir != filepath.Join(home, ".local", "share", "nodwyn") {
+		t.Fatalf("data directory %q", paths.DataDir)
+	}
+	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{
+		{ID: "w", Name: "fs-write", Args: map[string]any{"path": "$TMPDIR/a.py", "content": "print(1)\n"}},
+		{ID: "r", Name: "fs-read", Args: map[string]any{"path": "$TMPDIR/a.py"}},
+	}}, fake.Turn{Content: "done"})
+	defer srv.Close()
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Repo: t.TempDir(), Paths: paths, Config: config.Default(), NoConfirm: true, Provider: llm.NewOllama(srv.URL), LogWriter: logb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	r := &rig{t: t, s: s, srv: srv, logb: logb}
+	if e := r.turn("go"); e != "" {
+		t.Fatal(e)
+	}
+	for id, e := range r.results() {
+		if e != "" {
+			t.Errorf("call %s: %s", id, e)
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(s.scratch, "a.py")); err != nil || string(b) != "print(1)\n" {
+		t.Fatalf("the model's scratch file: %q %v", b, err)
+	}
+	if !strings.HasPrefix(s.scratch, filepath.Join(paths.DataDir, "scratch")+string(filepath.Separator)) {
+		t.Fatalf("scratch directory %q", s.scratch)
+	}
+	if got := r.eval(`(let ((found (index-grep "$TMPDIR" "print"))) (list (assoc-ref found "files") (assoc-ref found "skipped")))`); got != "(1 0)" {
+		t.Errorf("index-grep in the scratch directory: files and skipped %s", got)
+	}
+
+	secret := filepath.Join(paths.SessionsDir, "other.jsonl")
+	os.MkdirAll(paths.SessionsDir, 0o700)
+	os.WriteFile(secret, []byte("log"), 0o600)
+	os.Symlink(paths.DataDir, filepath.Join(s.scratch, "data"))
+	for _, path := range []string{secret, "$TMPDIR/data/sessions/other.jsonl"} {
+		if _, err := s.Eval(t.Context(), `(fs-read "`+path+`")`); err == nil || !strings.Contains(err.Error(), "denied") {
+			t.Errorf("fs-read %s: %v", path, err)
+		}
+	}
+}
+
+// The guard denies nodwyn's configuration and data directories where the
+// session found them, not only at their default places: with XDG_DATA_HOME
+// inside the repository, the data directory there is still off limits,
+// except the session's scratch directory.
+func TestDenylistFollowsTheConfiguredDirectories(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(repo, "xdg-config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(repo, "xdg-data"))
+	paths, err := config.DefaultPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(paths.SessionsDir, 0o700)
+	os.WriteFile(filepath.Join(paths.SessionsDir, "other.jsonl"), []byte("log"), 0o600)
+	os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
+	s, err := New(Options{Repo: repo, Paths: paths, Config: config.Default(), NoConfirm: true, Provider: llm.NewOllama("http://127.0.0.1:1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, src := range []string{`(fs-read "main.go")`, `(fs-write "$TMPDIR/a.py" "x")`} {
+		if _, err := s.Eval(t.Context(), src); err != nil {
+			t.Fatalf("%s: %v", src, err)
+		}
+	}
+	for _, path := range []string{"xdg-data/nodwyn/sessions/other.jsonl", "xdg-config/nodwyn/bindings.toml"} {
+		if _, err := s.Eval(t.Context(), `(fs-read "`+path+`")`); err == nil || !strings.Contains(err.Error(), "protected directory") {
+			t.Errorf("fs-read %s: %v", path, err)
+		}
 	}
 }
 

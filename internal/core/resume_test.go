@@ -155,12 +155,19 @@ func TestResumeRejectsWrongRepoAndUnsafeIDs(t *testing.T) {
 }
 
 // This helper is killed while waiting on a model request, without Close.
+// crashPaths puts nodwyn's configuration and data in folders of their own
+// under the crash test's repository: the guard denies the session's own
+// directories, so the repository itself cannot be one of them.
+func crashPaths(dir string) config.Paths {
+	return config.PathsUnder(filepath.Join(dir, ".config"), filepath.Join(dir, ".data"))
+}
+
 func TestResumeCrashHelper(t *testing.T) {
 	dir := os.Getenv("NODWYN_TEST_CRASH_DIR")
 	if dir == "" {
 		return
 	}
-	o := Options{Repo: dir, Paths: config.PathsUnder(dir, dir), Config: config.Default(), Provider: llm.NewOllama(os.Getenv("NODWYN_TEST_CRASH_URL"))}
+	o := Options{Repo: dir, Paths: crashPaths(dir), Config: config.Default(), Provider: llm.NewOllama(os.Getenv("NODWYN_TEST_CRASH_URL"))}
 	s, err := New(o)
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +232,7 @@ func TestResumeAfterProcessKilled(t *testing.T) {
 	id, _ := os.ReadFile(filepath.Join(dir, "session-id"))
 	next := fake.New(fake.Turn{Content: "the marker was already written"})
 	defer next.Close()
-	o := Options{Paths: config.PathsUnder(dir, dir), Config: config.Default(), Provider: llm.NewOllama(next.URL), NoConfirm: true}
+	o := Options{Paths: crashPaths(dir), Config: config.Default(), Provider: llm.NewOllama(next.URL), NoConfirm: true}
 	info, err := (Store{Dir: o.Paths.SessionsDir}).Info(string(id))
 	if err != nil || !info.InFlight {
 		t.Fatalf("interruption: %+v %v", info, err)

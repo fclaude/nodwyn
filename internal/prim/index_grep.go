@@ -97,13 +97,14 @@ func indexGrep(o Options, pin guard.RepoPin) *scheme.Prim {
 			if !ok {
 				return scheme.Value{}, fmt.Errorf("fs-read is unavailable")
 			}
+			deny := denylist(o)
 			result := searchResult{Matches: []searchMatch{}}
 			outputBytes := 0
 			for _, file := range files {
 				if err := ctx.Err(); err != nil {
 					return scheme.Value{}, err
 				}
-				if !searchableFile(ctx, pin, read, file, o.MaxReadBytes) {
+				if !searchableFile(ctx, pin, deny, read, file, o.MaxReadBytes) {
 					result.Skipped++
 					continue
 				}
@@ -205,7 +206,7 @@ func fsFind(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			deny := denylist(o.Root, o.Scratch)
+			deny := denylist(o)
 			read, _ := c.In.Lookup("fs-read")
 			result := findResult{Files: []string{}}
 			for _, file := range files {
@@ -235,7 +236,7 @@ func fsFind(o Options, pin guard.RepoPin) *scheme.Prim {
 
 // Apply the built-in exclusions before reading content. The subsequent fs-read
 // still evaluates the complete guard, so this is filtering, not authorization.
-func searchableFile(ctx context.Context, pin guard.RepoPin, read *scheme.Prim, path string, maxBytes int64) bool {
+func searchableFile(ctx context.Context, pin guard.RepoPin, deny guard.PathDenylist, read *scheme.Prim, path string, maxBytes int64) bool {
 	st, err := os.Lstat(path)
 	if err != nil || !st.Mode().IsRegular() || st.Size() > maxBytes || !utf8.ValidString(path) || pin.Resolve(path) == "" {
 		return false
@@ -244,7 +245,6 @@ func searchableFile(ctx context.Context, pin guard.RepoPin, read *scheme.Prim, p
 	if err != nil {
 		return false
 	}
-	deny := guard.DefaultDenylist()
 	for _, p := range []string{path, real} {
 		if deny.Check(ctx, read, []scheme.Value{scheme.Str(p)}).Verdict == guard.Deny {
 			return false

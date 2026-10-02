@@ -249,8 +249,10 @@ file primitive's path or a command's argument that starts with `$TMPDIR/`
 need no approval. Nothing in it reaches the repository or its diff; a clean
 close removes it, and a resumed session gets a new, empty one. A session
 touches it at every turn, and directories untouched for a week, left by
-sessions that ended without closing, are swept. Everything else outside the
-repository stays refused, and a symbolic link out of the scratch directory
+sessions that ended without closing, are swept. It is the one place in
+nodwyn's data directory the tools may use: everything else outside the
+repository stays refused, the rest of the data directory included (wherever
+`XDG_DATA_HOME` puts it), and a symbolic link out of the scratch directory
 does not escape it (ADR 28).
 
 ### Notes kept across sessions
