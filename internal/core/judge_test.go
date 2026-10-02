@@ -127,8 +127,13 @@ func TestJudgeApproveNeedsAJudge(t *testing.T) {
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "m"
-	if _, err := New(Options{Config: cfg, Repo: t.TempDir(), JudgeApprove: true}); err == nil || !strings.Contains(err.Error(), "needs a judge") {
+	sessions := t.TempDir()
+	if _, err := New(Options{Config: cfg, Repo: t.TempDir(), Paths: config.PathsUnder(t.TempDir(), sessions), JudgeApprove: true}); err == nil || !strings.Contains(err.Error(), "needs a judge") {
 		t.Fatalf("want a needs-a-judge error, got %v", err)
+	}
+	// A session that did not open leaves no log behind.
+	if left, _ := filepath.Glob(filepath.Join(sessions, "sessions", "*")); len(left) != 0 {
+		t.Fatalf("a session that did not open left %v", left)
 	}
 }
 

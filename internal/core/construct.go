@@ -78,10 +78,12 @@ func New(o Options) (*Session, error) {
 		prompts: map[string]pendingConfirmation{},
 		secrets: map[string]pendingSecret{},
 	}
+	created := ""
 	if o.LogWriter != nil {
 		s.logw = log.New(o.LogWriter, s.id)
 	} else {
-		s.logw, err = log.Create(log.SessionPath(o.Paths.SessionsDir, s.id), s.id)
+		created = log.SessionPath(o.Paths.SessionsDir, s.id)
+		s.logw, err = log.Create(created, s.id)
 		if err != nil {
 			return nil, err
 		}
@@ -89,6 +91,11 @@ func New(o Options) (*Session, error) {
 
 	if err := s.initialize(); err != nil {
 		s.logw.Close()
+		// A session that never started leaves no log behind: nothing is in
+		// it yet, and an empty file would show as a broken session.
+		if created != "" {
+			os.Remove(created)
+		}
 		return nil, err
 	}
 	s.flushOutput()
