@@ -114,10 +114,16 @@ func (s *Session) InjectBody(id string, req *http.Request) error {
 // already checked against the binding table, which is what authorizes the
 // refresh.
 func (s *Session) fresh(id string, req *http.Request) error {
+	return s.freshCtx(req.Context(), id)
+}
+
+// freshCtx is fresh for a use that is not a request: the environment of a
+// contained MCP server, set once when it starts.
+func (s *Session) freshCtx(ctx context.Context, id string) error {
 	if s.keychain == nil {
 		return errors.New("core: no keychain configured")
 	}
-	return s.keychain.Refresh(req.Context(), id, func(r keychain.Refreshed) {
+	return s.keychain.Refresh(ctx, id, func(r keychain.Refreshed) {
 		rec := log.CredRefresh{Class: r.Class, Handle: r.ID, Endpoint: r.Endpoint, Rotated: r.Rotated, OK: r.Err == nil}
 		if r.Err != nil {
 			rec.Error = r.Err.Error()

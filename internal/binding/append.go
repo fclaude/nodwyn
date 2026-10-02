@@ -47,6 +47,11 @@ func Exact(class, host, method, position string, scopes ...string) (Binding, err
 		if len(parts) != 2 || parts[1] == "" || strings.IndexFunc(parts[1], unicode.IsControl) >= 0 {
 			return bad()
 		}
+	case "env":
+		// A contained MCP server's environment variable (ADR 23 W3b).
+		if len(parts) != 2 || !envName(parts[1]) {
+			return bad()
+		}
 	default:
 		return bad()
 	}
@@ -61,6 +66,20 @@ func Exact(class, host, method, position string, scopes ...string) (Binding, err
 	}
 	return row, nil
 }
+
+// envName reports whether s is a portable environment variable name.
+func envName(s string) bool {
+	if s == "" || len(s) > 64 || s[0] >= '0' && s[0] <= '9' {
+		return false
+	}
+	for _, c := range s {
+		if !(c == '_' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
 func token(s string) bool {
 	if s == "" {
 		return false

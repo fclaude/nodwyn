@@ -60,20 +60,20 @@ Integration-specific settings should not become getters on `Session`.
 
 The roadmap extends these boundaries: ADR 21 uses events for RPC clients;
 ADRs 22–23 bring MCP tools through the primitive/guard path; ADR 24 extends
-the credential lifecycle to OAuth. Local RPC, remote MCP servers, OAuth2 credentials and documents out (pandoc, Google Docs) are implemented (contained local MCP servers remain planned). Keep `loop`, `plan`, and
+the credential lifecycle to OAuth. Local RPC, MCP servers (remote, and local ones contained by podman or docker), OAuth2 credentials and documents out (pandoc, Google Docs) are implemented. Keep `loop`, `plan`, and
 `event` separate, and keep credential management shared across integrations.
 
 ## Build
 
 ```
-make build      # bin/nodwyn
+make build      # bin/nodwyn, and bin/nodwyn-egress (the proxy of contained MCP servers)
 make build-webview  # bin/nodwyn whose `nodwyn app` opens its own window (docs/app.md)
 make test       # go test -race ./...
 make lint       # vet, staticcheck, boundary and ingress lints
 make accept     # everything a candidate must pass before promotion
 make smoke      # manual two-turn session against the real control plane
 make selfcheck  # the candidate proves itself (ADR 13)
-make promote    # accept + selfcheck, then ~/.local/bin/nodwyn-stable (webview build; version = commit)
+make promote    # accept + selfcheck, then ~/.local/bin/nodwyn-stable and nodwyn-egress (webview build; version = commit)
 ```
 
 Requires Go 1.26 or newer (ADR 33) and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).

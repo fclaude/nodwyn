@@ -617,13 +617,14 @@ export class TaskView {
     const servers = this.info?.mcp || [];
     if (!servers.length) return null;
     const builtin = (this.info.tools || []).filter((t) => !t.name.includes("__")).length;
-    const words = { ready: (s) => `${s.tools.length} tool${s.tools.length === 1 ? "" : "s"}`, unapproved: () => "not reviewed", changed: () => "changed: off", error: () => "unavailable" };
+    const words = { ready: (s) => `${s.tools.length} tool${s.tools.length === 1 ? "" : "s"}`, unapproved: () => "not reviewed", changed: () => "changed: off", unavailable: () => "unavailable", error: () => "unavailable" };
+    const where = (s) => (s.transport === "container" ? `contained · network: ${s.network?.length ? s.network.join(", ") : "none"}` : `HTTP · ${s.host}`);
     return h(
       "section",
       { class: "panel" },
       h("h2", {}, "Tools in this task", h("a", { href: "#/connections", class: "note" }, "Manage")),
       h("div", { class: "kv" }, h("span", {}, "nodwyn · built in"), h("span", {}, `${builtin} tools`)),
-      servers.map((s) => h("div", { class: "kv", title: s.detail || "" }, h("span", {}, `${s.name} · HTTP · ${s.host}`), h("span", {}, (words[s.state] || (() => s.state))(s)))),
+      servers.map((s) => h("div", { class: "kv", title: s.detail || "" }, h("span", {}, `${s.name} · ${where(s)}`), h("span", {}, (words[s.state] || (() => s.state))(s)))),
     );
   }
   attachmentsPanel() {

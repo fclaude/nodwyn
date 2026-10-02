@@ -46,6 +46,8 @@ commands:
                        microsoft, github, notion, or custom with --auth-url/--token-url)
   credential login ID|CLASS    authorize an OAuth2 credential again
   credential revoke [--local] ID|CLASS  revoke at the provider and delete here
+  mcp [list]           list the MCP servers, and whether a contained one's image is here
+  mcp pull NAME        download a contained MCP server's image, by its digest
   paths                print the config and data locations
   version              print version
   licenses             print the browser console's dependency notices

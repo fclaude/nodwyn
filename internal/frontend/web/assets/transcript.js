@@ -298,6 +298,12 @@ export class Transcript {
         // is routine and stays in the log. Only a refusal is news.
         if (!p.bound) this.audit(`Refused to send ${p.class || "a credential"} to ${p.host || "that host"}`, p.reason || p, "bad");
         break;
+      case "mcp.egress":
+        // A contained server's connection through its proxy is routine and
+        // stays in the log; one it was not let through is news.
+        if (p.dropped) this.audit(`${p.server}: ${p.dropped} more connection attempts were not recorded`, p, "bad");
+        else if (!p.allowed) this.audit(`${p.server} could not reach ${p.host}${p.port ? `:${p.port}` : ""}`, p.reason || p, "bad");
+        break;
       case "cred.refresh":
         // A refresh is routine; one that failed is why a call was refused.
         if (p.ok) this.audit(`Refreshed ${p.class} at ${p.endpoint}`, p);

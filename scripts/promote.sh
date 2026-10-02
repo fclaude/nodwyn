@@ -54,6 +54,13 @@ if [ "$target" = build-webview ]; then
 		;;
 	esac
 fi
+# The egress proxy of contained MCP servers (ADR 23 W3b) is found next to
+# the nodwyn executable.
+EGRESS=$STABLE_DIR/nodwyn-egress
+if [ -x "$EGRESS" ]; then
+	mv -f "$EGRESS" "$EGRESS.prev"
+fi
+cp bin/nodwyn-egress "$EGRESS"
 echo "promote: $STABLE is now $("$STABLE" version)"
 if [ -n "$browser_only" ]; then echo "$browser_only" >&2; fi
 case ":$PATH:" in

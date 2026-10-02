@@ -80,3 +80,23 @@ func TestRPCReplayShowsEvaluationAndApprovalWithoutExecuting(t *testing.T) {
 		}
 	}
 }
+
+// A contained server's refused attempts are shown; the routine ones stay in
+// the log.
+func TestReplayShowsRefusedEgress(t *testing.T) {
+	var history bytes.Buffer
+	w := log.New(&history, "egress")
+	w.Append(log.KindMCPEgress, log.MCPEgress{Server: "notes", Method: "CONNECT", Host: "api.notes.example", Port: 443, Allowed: true})
+	w.Append(log.KindMCPEgress, log.MCPEgress{Server: "notes", Method: "CONNECT", Host: "evil.example.net", Port: 443, Reason: "not on the server's network list"})
+	w.Append(log.KindMCPEgress, log.MCPEgress{Server: "notes", Dropped: 12})
+	events, err := log.Read(&history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	Replay(events, &out, false)
+	got := out.String()
+	if strings.Contains(got, "api.notes.example") || !strings.Contains(got, "notes could not reach evil.example.net:443: not on the server's network list") || !strings.Contains(got, "12 more connection attempts") {
+		t.Fatal(got)
+	}
+}

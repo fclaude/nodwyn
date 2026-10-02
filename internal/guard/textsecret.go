@@ -15,9 +15,10 @@ import (
 //
 //   - payload text of an Egress primitive (http-request headers and body,
 //     every argument of an MCP tool): a known class is allowed iff bound
-//     for the destination host and method, otherwise denied naming the
-//     class — the same authority the handle path uses (E3), applied to
-//     literal text;
+//     for the destination host and method (for a contained MCP server,
+//     for every host it can reach), otherwise denied naming the class —
+//     the same authority the handle path uses (E3), applied to literal
+//     text;
 //   - argv of a command line: a known class is denied — a command can reach
 //     the network and the harness cannot see where the bytes go;
 //   - payload of an in-repository write (fs-write, fs-edit): a known class
@@ -47,6 +48,19 @@ func (ts TextSecret) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 	}
 	if p.Meta.Egress {
 		facts := egressFactsOf(p, args)
+		if p.Meta.EgressContained {
+			// A contained server can send on to every host on its
+			// network list: a literal key goes only if its class is bound
+			// for all of them, and nowhere when it has no network.
+			f, ok := firstKnown(s.Scan(payload))
+			if !ok {
+				return Decision{Verdict: Allow}
+			}
+			if bound, reason := boundFor(ts.Table, p, facts, f.Class); !bound {
+				return Decision{Verdict: Deny, Reason: "literal secret of class " + f.Class + " in the request is not bound for " + destOf(facts) + " (" + reason + ")"}
+			}
+			return Decision{Verdict: Allow, Reason: "literal " + f.Class + " is bound for " + destOf(facts)}
+		}
 		return ts.Outgoing(payload, facts.Host, facts.Method)
 	}
 	f, ok := firstKnown(s.Scan(payload))

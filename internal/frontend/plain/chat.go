@@ -285,6 +285,11 @@ func (c *Chat) show(ev event.Event) {
 	case string(log.KindDocUpload):
 		endStream()
 		fmt.Fprintln(c.Out, DocUploadSummary(ev.Payload.(log.DocUpload)))
+	case string(log.KindMCPEgress):
+		if line, ok := EgressLine(ev.Payload.(log.MCPEgress)); ok {
+			endStream()
+			fmt.Fprintln(c.Out, line)
+		}
 	}
 }
 
@@ -299,6 +304,19 @@ func DocUploadSummary(d log.DocUpload) string {
 		return fmt.Sprintf("[sent %s to %s, which refused it: %s]", d.Path, d.Host, d.Error)
 	}
 	return fmt.Sprintf("[did not send %s to %s: %s]", d.Path, d.Host, d.Error)
+}
+
+// EgressLine is what a transcript shows for a contained MCP server's
+// attempt to reach a host (ADR 23 W3b): nothing for one its proxy let
+// through, which is routine and stays in the log.
+func EgressLine(p log.MCPEgress) (string, bool) {
+	switch {
+	case p.Dropped > 0:
+		return fmt.Sprintf("⚑ %s: %d more connection attempts were not recorded", p.Server, p.Dropped), true
+	case !p.Allowed:
+		return fmt.Sprintf("⚑ %s could not reach %s:%d: %s", p.Server, p.Host, p.Port, p.Reason), true
+	}
+	return "", false
 }
 
 // AttachSummary is the one line a transcript shows for an attached file.
@@ -558,6 +576,12 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.DocUpload
 			_ = ev.Decode(&p)
 			fmt.Fprintln(w, DocUploadSummary(p))
+		case log.KindMCPEgress:
+			var p log.MCPEgress
+			_ = ev.Decode(&p)
+			if line, ok := EgressLine(p); ok {
+				fmt.Fprintln(w, line)
+			}
 		case log.KindTurnCheckpoint:
 			var p log.TurnCheckpoint
 			ev.Decode(&p)

@@ -84,7 +84,9 @@ omit this additive field, which clients must distinguish from an empty array.
 Details also contain `workspace` (the folder's kind and mounts, from
 `.nodwyn/workspace.toml`), `git` (whether the root is a git work tree) and
 `mcp` (each MCP server offered in this workspace, with whether its tools are
-offered or why they are withheld).
+offered or why they are withheld: `state` is `ready`, `unapproved`,
+`changed`, `unavailable` or `error`; a contained server has `transport`
+`container`, `host` `mcp:NAME` and its `network` hosts).
 The approval fields report current effective prefix lists and turn-wide write approval;
 file-backed and session-only prefixes share the lists. They are not setters.
 
@@ -236,6 +238,12 @@ a token. Its confirm is an ordinary one with `Prompt.Egress` set and no
 `Path`, so it offers no session or turn approval. `doc-export`'s confirm is
 a write's: `Prompt.Path` is its target.
 
+An `mcp.egress` event records one attempt of a contained MCP server to reach
+a host through its egress proxy (ADR 23 W3b): `server`, `method`, `host`,
+`port`, `allowed` and `reason`; never a path. After 1000 for one server, a
+last one carries the count left out as `dropped`. A client shows the
+refused ones; the rest are routine.
+
 A `prompt.secret` contains only its ID and credential class. Send the value
 through `session.secret`, never Scheme source. The core copies secret bytes
 into its typed reply channel and registers them in the shared encrypted
@@ -304,14 +312,23 @@ name.
 | `session.restore` | `{"id","path","hash"}` | `{operation_id}`; writes a kept version back through the ordinary approval, keeping the current content as a version too |
 | `session.attach` | `{"id","path","name"?}` | The attachment's receipt; `path` is absolute (the web console stages uploads itself). An image returns once its security confirm is answered (see below) |
 | `mcp.list` | `{}` | The configured MCP servers and their state |
-| `mcp.inspect` | `{"name"}` | `{tools, manifest, approved, changed}`: the server's live tools and whether they differ from what was approved |
-| `mcp.save` | `{"server", "api_key"?}` | The saved server; a key goes to the keychain with one binding row for that host |
+| `mcp.inspect` | `{"name"}` | `{tools, manifest, approved, changed}`: the server's live tools and whether they differ from what was approved; a contained server is started for it and removed |
+| `mcp.save` | `{"server", "api_key"?}` | The saved server; a key goes to the keychain with binding rows: for a remote server one, its host, POST, its position; for a contained one, one per `network` host at its `env:NAME` position, method `*` |
 | `mcp.approve` | `{"name","manifest"}` | The server with its manifest pinned; refused if the live manifest changed since it was inspected |
 | `mcp.remove` | `{"name"}` | `{}` |
+| `mcp.runtime` | `{}` | `{runtime, detail?, egress?, images}`: the container runtime (`podman`, `docker`, or `""` with why in `detail`), why a server with a network list cannot run (`egress`, when `nodwyn-egress` is missing), and per contained server `present`, `missing` or why the runtime could not say |
+| `mcp.pull` | `{"name"}` | `{image, present}`: downloads a contained server's image by its digest; nothing else downloads one |
+
+A server in `mcp.save` is remote (`url`) or contained (`transport:
+"container"`, `image` pinned by digest, `network`, `mounts`, optional
+`command` and `args`, `position: "env:NAME"` with a key). An entry for the
+same image, entrypoint and arguments (the same `url` for a remote one) keeps
+its approved manifest; any other change needs approval again.
 
 Settings, keychain, `workspace.save`, `workspace.remove` and the `mcp.inspect`,
-`mcp.save`, `mcp.approve` and `mcp.remove` methods are refused to a paired
-remote device in the web console (browser.md).
+`mcp.save`, `mcp.approve`, `mcp.remove` and `mcp.pull` methods are refused
+to a paired remote device in the web console (browser.md); `mcp.runtime`
+only reads.
 
 An image (PNG, JPEG, GIF or WebP by content; ADR 22, amended 2026-10-01) is
 attached only after the person says yes to its own confirm, which reaches

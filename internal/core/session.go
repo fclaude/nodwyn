@@ -79,10 +79,11 @@ type Session struct {
 	workspace config.Workspace
 	// MCP servers this session connected to (mcp.go); checks made while the
 	// session was being built wait for session.start.
-	mcpMu   sync.Mutex
-	mcp     []MCPServer
-	started bool
-	held    []heldRecord
+	mcpMu     sync.Mutex
+	mcp       []MCPServer
+	contained []containedServer // running contained servers, stopped by Close
+	started   bool
+	held      []heldRecord
 
 	// P3 credential prompts: pending masked-secret prompts.
 	secrets   map[string]pendingSecret
@@ -264,6 +265,9 @@ func (s *Session) Close() error {
 		if s.procs != nil {
 			s.procs.Close()
 		}
+		// Contained MCP servers stop before session.end, so their last
+		// proxy reports are recorded.
+		s.closeMCP()
 		_, _ = s.logw.Append(log.KindSessionEnd, log.SessionEnd{Reason: "closed"})
 		s.closeErr = s.logw.Close()
 		removeScratch(s.scratch)

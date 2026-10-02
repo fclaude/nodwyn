@@ -176,11 +176,11 @@ it.
 
 \section{MCP servers}
 
-MCP servers offer tools over the network. \nodwyn{} treats a server as a
-destination it does not trust. In the console, \textbf{Connections \(\rightarrow\)
-Tools} adds one (HTTPS only; a key goes to the keychain, bound to that host
-only), lists its tools for review, and records what you decided in
-\file{mcp.toml}:
+MCP servers offer tools. \nodwyn{} treats a server as a destination it
+does not trust. In the console, \textbf{Connections \(\rightarrow\)
+Tools} adds one, remote (HTTPS only; a key goes to the keychain, bound to
+that host only) or contained on this computer (below), lists its tools for
+review, and records what you decided in \file{mcp.toml}:
 
 \begin{itemize}
   \item \textbf{A pinned manifest.} You approve the exact tool list: every
@@ -207,3 +207,30 @@ The confirm for an MCP call is not really ``is this argument safe?''. It
 is ``do I want this third party to see this?''. The prompt names the
 server, the host and what is being sent, so you can answer that question.
 \end{tip}
+
+\subsection*{A server on this computer}
+
+A local server never runs as a process of yours. \nodwyn{} runs it in a
+container, with podman or docker (\code{[mcp] runtime} in
+\file{config.toml}), from an image pinned by digest; a tag is refused. You
+choose what it can reach:
+
+\begin{itemize}
+  \item \textbf{Network.} \code{network = []}: none at all. A list of hosts:
+    its only way out is \nodwyn{}'s egress proxy, which lets through
+    exactly those hosts (ports 443 and 80, or \code{host:port}) and records
+    every attempt as \code{mcp.egress}; the task shows the refused ones.
+  \item \textbf{Files.} \code{mounts}: workspace folders it sees under
+    \code{/workspace}, read-only unless \code{:write}. Never the workspace
+    itself, never \code{.nodwyn/}.
+  \item \textbf{A key.} \code{position = "env:NAME"}: the variable it
+    reads its key from. The key goes in at start only if its class is bound
+    for every listed host at that position; with no network it is refused.
+\end{itemize}
+
+A task never downloads code: \code{nodwyn mcp pull NAME}, or Pull in
+Connections, fetches the image by its digest. Everything else is fixed: no
+capability, a read-only root, none of your environment, and the container
+is removed when the task ends. A confirm names ``the contained server NAME
+(network: \ldots)''. An HTTP client in the server that ignores
+\code{HTTPS\_PROXY} reaches nothing.

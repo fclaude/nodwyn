@@ -21,7 +21,7 @@ import (
 type Binding struct {
 	Class     string   `toml:"class"`            // e.g. "openai-key"
 	Dest      string   `toml:"dest"`             // host, e.g. "api.openai.com"
-	Positions []string `toml:"positions"`        // e.g. "header:Authorization", "query:key", "body"
+	Positions []string `toml:"positions"`        // e.g. "header:Authorization", "query:key", "body", "env:NOTION_TOKEN"
 	Methods   []string `toml:"methods"`          // e.g. "POST"
 	Scopes    []string `toml:"scopes,omitempty"` // OAuth2 scopes allowed, e.g. "https://www.googleapis.com/auth/drive.file"
 }
@@ -151,7 +151,8 @@ func member(set []string, v string) bool {
 }
 
 // Position splits a binding position into (where, name, prefix). where is
-// one of "header", "query", "body"; name is the header or query key; prefix
+// one of "header", "query", "body", "env"; name is the header or query key,
+// or the environment variable of a contained MCP server (ADR 23); prefix
 // is the auth scheme plus a space for a position like
 // "header:Authorization:Bearer", else "".
 func Position(pos string) (where, name, prefix string) {

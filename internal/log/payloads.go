@@ -278,6 +278,21 @@ type CredRefresh struct {
 	Error    string `json:"error,omitempty"`
 }
 
+// MCPEgress records one attempt of a contained MCP server to reach a host
+// through its egress proxy (ADR 23 W3b): the server, the host and port,
+// and whether the proxy made the connection. Never a path or a query. A
+// server that keeps trying is recorded up to a limit; the record after it
+// says how many more attempts were left out.
+type MCPEgress struct {
+	Server  string `json:"server"`
+	Method  string `json:"method,omitempty"` // CONNECT, or a plain-HTTP request's method
+	Host    string `json:"host,omitempty"`
+	Port    int    `json:"port,omitempty"`
+	Allowed bool   `json:"allowed"`
+	Reason  string `json:"reason,omitempty"`  // why it was refused or failed
+	Dropped int    `json:"dropped,omitempty"` // attempts not recorded after the limit
+}
+
 // Note is a free-form annotation.
 type Note struct {
 	Text string `json:"text"`

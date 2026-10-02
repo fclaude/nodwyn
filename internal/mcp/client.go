@@ -1,27 +1,22 @@
-// Package mcp is a client for remote MCP servers over the streamable HTTP
-// transport (ADR 22 §4, ADR 23 §1): initialize, list tools, call a tool.
-// It runs no server and spawns nothing. Every request passes through an
-// authorize hook the host supplies, which checks the binding table and
-// injects the credential; the client never sees a secret.
+// Package mcp is a client for MCP servers (ADR 22 §4, ADR 23): initialize,
+// list tools, call a tool. It speaks JSON-RPC over either of MCP's
+// transports: streamable HTTP to a remote server (New), or one message per
+// line on the standard input and output of a server nodwyn runs in a
+// container (NewStdio). It spawns nothing itself. Every HTTP request passes
+// through an authorize hook the host supplies, which checks the binding
+// table and injects the credential; the client never sees a secret.
 package mcp
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime"
-	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"sync"
-	"time"
 )
 
 // ProtocolVersion is the MCP revision this client speaks.
@@ -53,40 +48,29 @@ type ServerInfo struct {
 	Version string `json:"version"`
 }
 
+// transport carries JSON-RPC messages to one server and its answers back.
+type transport interface {
+	// request sends a request with id and returns the response to it.
+	request(ctx context.Context, method string, id int64, body []byte) (*response, error)
+	// notify sends a notification, which has no response.
+	notify(ctx context.Context, method string, body []byte) error
+	host() string
+	close() error
+}
+
 // Client talks to one server.
 type Client struct {
-	endpoint  string
-	http      *http.Client
-	authorize func(*http.Request) error
-
-	mu      sync.Mutex
-	session string
-	next    int64
+	t    transport
+	mu   sync.Mutex
+	next int64
 }
 
-// New prepares a client for endpoint. authorize, when set, runs on every
-// request just before it is sent (binding check and credential injection).
-func New(endpoint string, authorize func(*http.Request) error) (*Client, error) {
-	u, err := url.Parse(endpoint)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, fmt.Errorf("mcp: %q is not an http(s) address", endpoint)
-	}
-	return &Client{
-		endpoint:  endpoint,
-		authorize: authorize,
-		http:      &http.Client{Timeout: 2 * time.Minute, Transport: &http.Transport{Proxy: http.ProxyFromEnvironment}, CheckRedirect: noRedirect},
-	}, nil
-}
+// Host is a remote server's hostname, the destination bindings name; ""
+// for a server over stdio.
+func (c *Client) Host() string { return c.t.host() }
 
-// noRedirect keeps a request at the host its binding names: a redirect
-// would carry arguments (and a credential) somewhere else.
-func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-
-// Host is the server's hostname, the destination bindings name.
-func (c *Client) Host() string {
-	u, _ := url.Parse(c.endpoint)
-	return strings.ToLower(u.Hostname())
-}
+// Close ends the conversation: for a server over stdio, its input closes.
+func (c *Client) Close() error { return c.t.close() }
 
 // Initialize opens the MCP session.
 func (c *Client) Initialize(ctx context.Context) (ServerInfo, error) {
@@ -197,32 +181,9 @@ func (c *Client) call(ctx context.Context, method string, params, result any) er
 	if err != nil {
 		return err
 	}
-	resp, err := c.post(ctx, body)
+	reply, err := c.t.request(ctx, method, id, body)
 	if err != nil {
 		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("mcp: %s: %s %s", method, resp.Status, strings.TrimSpace(string(detail)))
-	}
-	if s := resp.Header.Get("Mcp-Session-Id"); s != "" {
-		c.mu.Lock()
-		c.session = s
-		c.mu.Unlock()
-	}
-	want := fmt.Sprint(id)
-	var reply *response
-	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if mediaType == "text/event-stream" {
-		reply, err = readStream(resp.Body, want)
-	} else {
-		var r response
-		err = json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&r)
-		reply = &r
-	}
-	if err != nil {
-		return fmt.Errorf("mcp: %s: %w", method, err)
 	}
 	if reply.Error != nil {
 		return fmt.Errorf("mcp: %s: %s", method, reply.Error.Message)
@@ -233,75 +194,9 @@ func (c *Client) call(ctx context.Context, method string, params, result any) er
 	return json.Unmarshal(reply.Result, result)
 }
 
-// readStream reads server-sent events until the response to want.
-func readStream(r io.Reader, want string) (*response, error) {
-	scanner := bufio.NewScanner(io.LimitReader(r, maxBody))
-	scanner.Buffer(make([]byte, 64<<10), maxBody)
-	var data bytes.Buffer
-	flush := func() (*response, bool) {
-		defer data.Reset()
-		if data.Len() == 0 {
-			return nil, false
-		}
-		var r response
-		if json.Unmarshal(data.Bytes(), &r) != nil || strings.Trim(string(r.ID), `"`) != want {
-			return nil, false // a notification or another request: not ours
-		}
-		return &r, true
-	}
-	for scanner.Scan() {
-		line := scanner.Text()
-		switch {
-		case line == "":
-			if r, ok := flush(); ok {
-				return r, nil
-			}
-		case strings.HasPrefix(line, "data:"):
-			data.WriteString(strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
-			data.WriteByte('\n')
-		}
-	}
-	if r, ok := flush(); ok {
-		return r, nil
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-	return nil, errors.New("the stream ended without a response")
-}
-
 func (c *Client) notify(ctx context.Context, method string) error {
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": method})
-	resp, err := c.post(ctx, body)
-	if err != nil {
-		return err
-	}
-	resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("mcp: %s: %s", method, resp.Status)
-	}
-	return nil
-}
-
-func (c *Client) post(ctx context.Context, body []byte) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("MCP-Protocol-Version", ProtocolVersion)
-	c.mu.Lock()
-	if c.session != "" {
-		req.Header.Set("Mcp-Session-Id", c.session)
-	}
-	c.mu.Unlock()
-	if c.authorize != nil {
-		if err := c.authorize(req); err != nil {
-			return nil, err
-		}
-	}
-	return c.http.Do(req)
+	return c.t.notify(ctx, method, body)
 }
 
 // Manifest is the pinned identity of a tool list (ADR 23 §2): a hash over

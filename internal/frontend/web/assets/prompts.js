@@ -120,7 +120,10 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     card.append(h("div", { style: "display:flex;flex-direction:column;gap:6px" }, title, prompt.Reasons?.length ? h("ul", { class: "reasons" }, prompt.Reasons.map((r) => h("li", {}, r))) : null));
     if (prompt.Security) card.append(h("p", { class: "security" }, "Security confirmation: this answer applies to this call only."));
     if (s.mcp && !prompt.Egress) {
-      card.append(h("dl", { class: "facts" }, h("dt", {}, "Sends to"), h("dd", {}, `the MCP server ${toolLabel(prompt.Prim).split("/")[0]}`), h("dt", {}, "Content"), h("dd", {}, `${(prompt.Detail || prompt.Args || "").length.toLocaleString()} characters, below`)));
+      // A contained server's reason names it and what it can reach (ADR 23 W3b).
+      const box = (prompt.Reasons || []).map((r) => /the contained server (\S+) \(network: ([^)]*)\)/.exec(r)).find(Boolean);
+      const to = box ? `the contained server ${box[1]}, which can reach ${box[2] === "none" ? "no network" : box[2]}` : `the MCP server ${toolLabel(prompt.Prim).split("/")[0]}`;
+      card.append(h("dl", { class: "facts" }, h("dt", {}, "Sends to"), h("dd", {}, to), h("dt", {}, "Content"), h("dd", {}, `${(prompt.Detail || prompt.Args || "").length.toLocaleString()} characters, below`)));
     }
     if (prompt.Egress) {
       const e = prompt.Egress;

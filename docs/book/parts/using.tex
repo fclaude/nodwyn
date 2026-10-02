@@ -277,6 +277,37 @@ server's tool list changes, new sessions withhold all of its tools until you
 review it again. Approval, edits and removal are refused from a paired
 remote device.
 
+\section{A server on this computer}
+
+\nodwyn{} does not run a third-party server as a process of yours. A local
+server is \emph{contained}: \nodwyn{} runs it in a container, with podman or
+docker, from an image pinned by its digest. Connections asks for the image,
+the hosts it may reach (none, or a list), the workspace folders it sees, and
+the variable it reads its key from, if it needs one:
+
+\begin{txt}
+[[server]]
+name = "notion"
+transport = "container"
+image = "ghcr.io/example/mcp-notion@sha256:..."   # a tag is refused
+network = ["api.notion.com"]                      # [] is no network
+mounts = ["docs"]                                 # read-only; "out:write"
+credential = "notion-key"
+position = "env:NOTION_TOKEN"
+\end{txt}
+
+A task never downloads code: \code{nodwyn mcp pull notion}, or Pull on the
+server's page, fetches the image by its digest, and \code{nodwyn mcp} says
+which images are here. The container gets no capability, a read-only root,
+none of your environment and none of your files beyond the folders listed.
+With no network it has none at all; with hosts, its only way out is
+\nodwyn{}'s egress proxy, which lets through those hosts and nothing else,
+and the session log records every attempt (\code{mcp.egress}). Its key goes
+in only if it is bound for every one of those hosts, as the variable named
+(\code{env:NOTION\_TOKEN} in \file{bindings.toml}). A confirm names the
+contained server and what it can reach. The containers are removed when the
+task closes.
+
 \chapter{Workspaces, attachments and undo}
 
 A session's root is the directory it was started in. A workspace can also
@@ -403,6 +434,8 @@ first turn takes 10--60\,s & the model server is busy with another client, or th
 every request is slow & \code{:log}: if the elided count in \code{llm.req} jumps, a trim re-sent the prefix once; if every request is slow, another client is evicting the server's cache between requests \\
 a keyed model or MCP server fails with a binding reason & the key's class has no row for that host, method and position in \file{bindings.toml} \\
 an MCP server offers no tools & its tool list changed or was never approved: review it in Connections \\
+a contained MCP server is unavailable & the task's Tools panel says why: no podman or docker, an image not pulled (\code{nodwyn mcp pull NAME}), or no \code{nodwyn-egress} next to \code{nodwyn} \\
+a contained server cannot reach a site & the task shows the connection its proxy refused: add the host to its \code{network} list, or the server ignores \code{HTTPS\_PROXY} \\
 the model loops on a denied call & the progress guard stops it; read the reason and say what to do instead \\
 \code{hard stop: tool\_calls budget reached} & the turn ended; the log has everything; rephrase smaller, or raise \code{--max-tool-calls} \\
 a tool call errored & \code{:log 20}: the \code{tool.result} line has the exact error the model saw \\

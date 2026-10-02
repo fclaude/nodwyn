@@ -75,6 +75,14 @@ type Meta struct {
 	// named destination, as it would a host a binding names, for this
 	// primitive only. Go-only.
 	EgressApproved bool
+	// EgressContained marks a contained MCP server's tool (ADR 23 W3b): the
+	// call goes to a container (EgressHost names it), which may send it on
+	// to the hosts in EgressOnward and nowhere else. A literal key, or a
+	// value derived from a credential, in its arguments is then bound only
+	// if its class is bound for every one of them; with none, for none.
+	// Go-only.
+	EgressContained bool
+	EgressOnward    []string
 	// ConfirmReason, when set, is why an irreversible call asks, in the
 	// integration's words (an MCP tool nobody declared). Go-only.
 	ConfirmReason string

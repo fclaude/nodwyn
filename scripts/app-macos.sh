@@ -18,6 +18,12 @@ for arch in arm64 amd64; do
 		go build -trimpath -tags webview -ldflags "$ldflags" -o "bin/.app-build/nodwyn-$arch" ./cmd/nodwyn
 done
 lipo -create -output "$app/Contents/MacOS/nodwyn" bin/.app-build/nodwyn-arm64 bin/.app-build/nodwyn-amd64
+# The egress proxy of contained MCP servers (ADR 23 W3b) runs in the Linux
+# virtual machine podman or docker uses, so it is built for Linux, once per
+# architecture; nodwyn picks the one for its own.
+for arch in arm64 amd64; do
+	CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$app/Contents/MacOS/nodwyn-egress-linux-$arch" ./cmd/nodwyn-egress
+done
 rm -rf bin/.app-build
 sed "s/@VERSION@/${version#v}/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
 cp packaging/macos/Nodwyn.icns "$app/Contents/Resources/Nodwyn.icns"

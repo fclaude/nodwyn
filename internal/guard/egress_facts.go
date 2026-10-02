@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
@@ -107,6 +108,26 @@ func positionArg(p *scheme.Prim, args []scheme.Value) string {
 		}
 	}
 	return p.Meta.EgressPosition
+}
+
+// boundFor reports whether a key of class may go where the call sends it:
+// to the destination host, by the call's method; or, for a contained MCP
+// server's tool, on to every host its container can reach, since the
+// arguments may go to any of them. A container that reaches no host is
+// where no binding points, so nothing is bound for it.
+func boundFor(t binding.Authority, p *scheme.Prim, f egressFacts, class string) (bool, string) {
+	if !p.Meta.EgressContained {
+		return t.Lookup(class, f.Host, f.Method, "")
+	}
+	if len(p.Meta.EgressOnward) == 0 {
+		return false, destOf(f) + " has no network, so no binding names where it sends"
+	}
+	for _, host := range p.Meta.EgressOnward {
+		if bound, reason := t.Lookup(class, strings.ToLower(host), "", ""); !bound {
+			return false, destOf(f) + " can reach " + host + ": " + reason
+		}
+	}
+	return true, ""
 }
 
 // EgressScope describes the credential-bearing call being confirmed. Empty

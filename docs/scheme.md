@@ -322,6 +322,15 @@ class is bound for that host (L1), and content from outside may go there
 because you approved the server, key or not (L2). Results are tagged
 `external:mcp`. They are offered to the model like the tools above.
 
+A contained server's tools (ADR 23 W3b) send to its container, `mcp:NAME`,
+which may pass the arguments on to the hosts of its network list and
+nowhere else. A literal key in them, or a value derived from a credential,
+is refused unless its class is bound for every one of those hosts; with no
+network, always. The call carries no credential: the server's key went in
+when it started, and its binding is checked again before each call. The
+confirm and the tool's description name the contained server and what it
+can reach.
+
 ### Provenance (L2)
 
 Every value carries **provenance tags**: where it came from, not what it

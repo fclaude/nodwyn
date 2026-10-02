@@ -61,6 +61,7 @@ const (
 	KindJevReq         Kind = "jev.req"         // a Jev call: content level, bytes, payload hash, redaction, score (P5)
 	KindCredRegister   Kind = "cred.register"   // class + handle id only, never a value (P3)
 	KindCredRefresh    Kind = "cred.refresh"    // an OAuth2 credential refreshed before use: class, handle id, endpoint, expiry; never a token (ADR 24)
+	KindMCPEgress      Kind = "mcp.egress"      // a contained MCP server reaching, or refused, a host through its egress proxy (ADR 23 W3b)
 	KindRedact         Kind = "redact.event"    // a [REDACTED class] substitution at an ingress (P7)
 	KindSummaryDrop    Kind = "summary.drop"    // revoke a summary without deleting history
 	KindSummary        Kind = "summary"         // a rebuildable summary covering a seq range (P10)
@@ -76,7 +77,7 @@ var kinds = map[Kind]bool{
 	KindUserMsg: true, KindHarnessMsg: true, KindContextNarrow: true, KindContextWiden: true, KindContextFold: true, KindResultFold: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,
-	KindJevReq: true, KindCredRegister: true, KindCredRefresh: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true, KindAttach: true,
+	KindJevReq: true, KindCredRegister: true, KindCredRefresh: true, KindMCPEgress: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true, KindAttach: true,
 	KindDocUpload: true,
 }
 

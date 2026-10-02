@@ -121,3 +121,15 @@ as), `cache_write_tokens`, `reasoning_tokens`, `cost` (USD) and
 `turn.checkpoint`'s budget state gains `cost`, `priced`, `unpriced` and
 `cached_tokens`. An older record reads as unknown, never as free or as 0%
 cached.
+
+## Amendment — 2026-10-01: `mcp.egress`
+
+`mcp.egress` records one attempt of a contained MCP server to reach a host
+through its egress proxy (ADR 23 W3b): the server, the method (`CONNECT`,
+or a plain-HTTP request's), the host and port, whether the proxy made the
+connection, and why not. Never a path or a query, which can carry what the
+server is sending. A session records up to 1000 per server; one more record
+then gives the count left out (`dropped`). Records made while the session
+is being built wait for `session.start`, as `egress.check` and
+`cred.refresh` do; the last are written before `session.end`. The window
+ignores them: they are audit history, not conversation.

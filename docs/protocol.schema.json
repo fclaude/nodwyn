@@ -156,14 +156,47 @@
     },
     "config.MCPServer": {
       "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "command": {
+          "type": "string"
+        },
         "credential": {
+          "type": "string"
+        },
+        "image": {
           "type": "string"
         },
         "manifest": {
           "type": "string"
         },
+        "mounts": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "name": {
           "type": "string"
+        },
+        "network": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "position": {
           "type": "string"
@@ -176,6 +209,9 @@
             "object",
             "null"
           ]
+        },
+        "transport": {
+          "type": "string"
         },
         "url": {
           "type": "string"
@@ -396,6 +432,15 @@
         "name": {
           "type": "string"
         },
+        "network": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "state": {
           "type": "string"
         },
@@ -407,6 +452,9 @@
             "array",
             "null"
           ]
+        },
+        "transport": {
+          "type": "string"
         }
       },
       "required": [
@@ -1368,6 +1416,36 @@
       ],
       "type": "object"
     },
+    "log.MCPEgress": {
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "dropped": {
+          "type": "integer"
+        },
+        "host": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "allowed"
+      ],
+      "type": "object"
+    },
     "log.Note": {
       "properties": {
         "text": {
@@ -1986,6 +2064,9 @@
     "payload.llm.resp": {
       "$ref": "#/$defs/log.LLMResp"
     },
+    "payload.mcp.egress": {
+      "$ref": "#/$defs/log.MCPEgress"
+    },
     "payload.note": {
       "$ref": "#/$defs/log.Note"
     },
@@ -2156,7 +2237,13 @@
           "$ref": "#/$defs/request.mcp.list"
         },
         {
+          "$ref": "#/$defs/request.mcp.pull"
+        },
+        {
           "$ref": "#/$defs/request.mcp.remove"
+        },
+        {
+          "$ref": "#/$defs/request.mcp.runtime"
         },
         {
           "$ref": "#/$defs/request.mcp.save"
@@ -2544,6 +2631,37 @@
       ],
       "type": "object"
     },
+    "request.mcp.pull": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "mcp.pull"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.mcpNameParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.mcp.remove": {
       "properties": {
         "id": {
@@ -2572,6 +2690,38 @@
         "jsonrpc",
         "method",
         "params"
+      ],
+      "type": "object"
+    },
+    "request.mcp.runtime": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "mcp.runtime"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
       ],
       "type": "object"
     },
@@ -3718,10 +3868,16 @@
         "null"
       ]
     },
+    "result.mcp.pull": {
+      "$ref": "#/$defs/rpc.mcpPulled"
+    },
     "result.mcp.remove": {
       "properties": {},
       "required": [],
       "type": "object"
+    },
+    "result.mcp.runtime": {
+      "$ref": "#/$defs/rpc.mcpRuntime"
     },
     "result.mcp.save": {
       "$ref": "#/$defs/config.MCPServer"
@@ -4171,6 +4327,48 @@
       },
       "required": [
         "name"
+      ],
+      "type": "object"
+    },
+    "rpc.mcpPulled": {
+      "properties": {
+        "image": {
+          "type": "string"
+        },
+        "present": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "image",
+        "present"
+      ],
+      "type": "object"
+    },
+    "rpc.mcpRuntime": {
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "egress": {
+          "type": "string"
+        },
+        "images": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "runtime": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "images"
       ],
       "type": "object"
     },
@@ -5378,6 +5576,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.LLMResp"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "mcp.egress"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.MCPEgress"
             },
             "seq": {
               "minimum": 0,

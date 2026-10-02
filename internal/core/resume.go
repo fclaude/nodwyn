@@ -32,6 +32,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 		if err != nil {
 			writer.Close()
 			if s != nil {
+				s.closeMCP()
 				removeScratch(s.scratch)
 			}
 		}

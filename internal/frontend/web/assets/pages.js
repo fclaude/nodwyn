@@ -339,15 +339,37 @@ async function tools(body, ctx, info, redraw) {
   }
   const builtin = (info?.tools || []).filter((t) => !t.name.includes("__"));
   const canEdit = conn.has("mcp.save");
+  // Whether contained servers can run here, and whose image is present.
+  let runtime = null;
+  if (servers.some(contained) && conn.has("mcp.runtime")) {
+    try {
+      runtime = await conn.call("mcp.runtime");
+    } catch (error) {
+      runtime = { runtime: "", detail: error.message, images: {} };
+    }
+  }
   const serverRow = (server) => {
     const on = Object.values(server.tools || {}).filter((t) => t.on).length;
     const inspection = inspections.get(server.name);
-    const state = !server.manifest ? ["warn", "not reviewed"] : inspection?.changed ? ["warn", "changed"] : inspection?.error ? ["bad", "unreachable"] : ["ok", "pinned"];
+    const missing = contained(server) && runtime?.images?.[server.name] === "missing";
+    const state =
+      contained(server) && runtime && !runtime.runtime
+        ? ["bad", "no runtime"]
+        : missing
+          ? ["warn", "needs pull"]
+          : !server.manifest
+            ? ["warn", "not reviewed"]
+            : inspection?.changed
+              ? ["warn", "changed"]
+              : inspection?.error
+                ? ["bad", contained(server) ? "does not start" : "unreachable"]
+                : ["ok", "pinned"];
+    const where = contained(server) ? `Contained · ${imageName(server.image)} · network: ${networkWords(server)}` : `HTTP · ${host(server.url)}`;
     return h(
       "button",
       { type: "button", class: `list-row server-row${selectedServer === server.name ? " selected" : ""}`, onclick: () => { selectedServer = selectedServer === server.name ? "" : server.name; adding = false; redraw(); } },
-      icon("plug", 18),
-      h("div", { class: "main" }, h("strong", {}, server.name), h("span", {}, `HTTP · ${host(server.url)} · ${on} tool${on === 1 ? "" : "s"} on`)),
+      icon(contained(server) ? "box" : "plug", 18),
+      h("div", { class: "main" }, h("strong", {}, server.name), h("span", {}, `${where} · ${on} tool${on === 1 ? "" : "s"} on`)),
       h("div", { class: "end" }, h("span", { class: `dot ${state[0]}` }), state[1]),
     );
   };
@@ -362,7 +384,7 @@ async function tools(body, ctx, info, redraw) {
   );
   if (adding && canEdit) body.append(addServer(ctx, redraw));
   const server = servers.find((s) => s.name === selectedServer);
-  if (server) body.append(await serverDetail(server, ctx, redraw));
+  if (server) body.append(await serverDetail(server, ctx, redraw, runtime));
   body.append(h("div", { class: "callout plain" }, "An undeclared tool is treated as sending out and irreversible: every call asks you, and anything its credential isn't allowed to reach is refused."));
   void desk;
 }
@@ -375,14 +397,65 @@ function host(u) {
   }
 }
 
+// A contained server runs here, in a container (ADR 23 W3b).
+const contained = (server) => server.transport === "container";
+
+// imageName is an image reference short enough for a row: its last path
+// part and the start of its digest.
+function imageName(ref = "") {
+  const [name, digest = ""] = ref.split("@");
+  return `${name.split("/").pop()}@${digest.slice(0, 19)}…`;
+}
+
+function networkWords(server) {
+  return server.network?.length ? server.network.join(", ") : "none";
+}
+
+// words splits a field into its entries: commas, spaces or new lines.
+const words = (text) => text.split(/[\s,]+/).filter(Boolean);
+
 function addServer(ctx, redraw) {
   const { conn, desk } = ctx;
-  const name = h("input", { class: "input", id: "mcp-name", placeholder: "for example linear", required: true, pattern: "[a-z][a-z0-9-]{0,31}" });
+  const name = h("input", { class: "input", id: "mcp-name", placeholder: "for example linear", required: true, pattern: "[a-z][a-z0-9\\-]{0,31}" });
   const url = h("input", { class: "input", id: "mcp-url", placeholder: "https://mcp.example.com/mcp", required: true, spellcheck: false });
+  const image = h("input", { class: "input", id: "mcp-image", placeholder: "ghcr.io/example/mcp-notes@sha256:…", spellcheck: false });
+  const network = h("input", { class: "input", id: "mcp-network", placeholder: "none; or api.example.com, uploads.example.com:8443", spellcheck: false });
+  const mounts = h("input", { class: "input", id: "mcp-mounts", placeholder: "none; or docs, out:write", spellcheck: false });
+  const command = h("input", { class: "input", id: "mcp-command", placeholder: "the image's own", spellcheck: false });
+  const args = h("textarea", { class: "input", id: "mcp-args", rows: 2, placeholder: "one per line; the image's own if empty", spellcheck: false });
+  const envName = h("input", { class: "input", id: "mcp-env", placeholder: "for example NOTION_TOKEN", spellcheck: false });
   const key = h("input", { class: "input", id: "mcp-key", type: "password", autocomplete: "off", placeholder: "only if the server needs one" });
+  const keyHint = h("p", { class: "hint" });
   const error = h("p", { class: "error", role: "alert" });
   const folders = desk.folders();
   const chosen = new Set();
+  let kind = "http";
+  const remoteFields = h("div", { class: "fields" }, h("div", { class: "field" }, h("label", { for: "mcp-url" }, "Server address"), url, h("p", { class: "hint" }, "A remote server over HTTPS. nodwyn runs nothing of it on this computer.")));
+  const containedFields = h(
+    "div",
+    { class: "fields", hidden: true },
+    h("div", { class: "field" }, h("label", { for: "mcp-image" }, "Image"), image, h("p", { class: "hint" }, "Pinned by its digest, never a tag: the server cannot change under you. Pull it from the server's page once added; a task never downloads one.")),
+    h("div", { class: "field" }, h("label", { for: "mcp-network" }, "Hosts it may reach"), network, h("p", { class: "hint" }, "Through nodwyn's proxy, which lets through these hosts alone (ports 443 and 80, or the one you write) and records every attempt. Empty: no network at all.")),
+    h("div", { class: "field" }, h("label", { for: "mcp-mounts" }, "Folders it sees"), mounts, h("p", { class: "hint" }, "Folders of the workspace, read-only unless you write :write; it sees them under /workspace. Empty: none of your files.")),
+    h("div", { class: "field" }, h("label", { for: "mcp-command" }, "Command"), command, args, h("p", { class: "hint" }, "Only to replace what the image runs; no shell.")),
+    h("div", { class: "field" }, h("label", { for: "mcp-env" }, "Key variable"), envName, h("p", { class: "hint" }, "The environment variable the server reads its key from, if it needs one.")),
+  );
+  const describeKey = () => {
+    keyHint.textContent =
+      kind === "container"
+        ? "Kept in the keychain and given to the server when it starts, as the variable above, only if it is allowed for every host it may reach."
+        : "Kept in the keychain and sent only to this server's address, as a bearer Authorization header.";
+  };
+  describeKey();
+  const choose = (value) => (e) => {
+    kind = value;
+    for (const b of e.target.parentElement.children) b.setAttribute("aria-pressed", String(b === e.target));
+    remoteFields.hidden = kind !== "http";
+    containedFields.hidden = kind !== "container";
+    url.required = kind === "http";
+    image.required = kind === "container";
+    describeKey();
+  };
   return h(
     "form",
     {
@@ -390,7 +463,13 @@ function addServer(ctx, redraw) {
       onsubmit: async (event) => {
         event.preventDefault();
         error.textContent = "";
-        const params = { server: { name: name.value.trim(), url: url.value.trim(), workspaces: [...chosen], tools: {} } };
+        const server = { name: name.value.trim(), workspaces: [...chosen], tools: {} };
+        if (kind === "container") {
+          Object.assign(server, { transport: "container", image: image.value.trim(), network: words(network.value), mounts: words(mounts.value), args: args.value.split("\n").map((a) => a.trim()).filter(Boolean) });
+          if (command.value.trim()) server.command = command.value.trim();
+          if (key.value) server.position = `env:${envName.value.trim()}`;
+        } else server.url = url.value.trim();
+        const params = { server };
         if (key.value) params.api_key = key.value;
         key.value = "";
         try {
@@ -404,19 +483,46 @@ function addServer(ctx, redraw) {
       },
     },
     h("div", { class: "field" }, h("label", { for: "mcp-name" }, "Name"), name, h("p", { class: "hint" }, "Lower-case letters, digits and dashes. Its tools appear as name/tool.")),
-    h("div", { class: "field" }, h("label", { for: "mcp-url" }, "Server address"), url, h("p", { class: "hint" }, "A remote server over HTTPS. nodwyn runs no server on this computer.")),
-    h("div", { class: "field" }, h("label", { for: "mcp-key" }, "API key"), key, h("p", { class: "hint" }, "Kept in the keychain and sent only to this server's address, as a bearer Authorization header.")),
+    h(
+      "div",
+      { class: "field" },
+      h("label", {}, "Where it runs"),
+      h(
+        "div",
+        { class: "row-actions" },
+        h("button", { type: "button", class: "chip", "aria-pressed": "true", onclick: choose("http") }, "Remote, over HTTPS"),
+        h("button", { type: "button", class: "chip", "aria-pressed": "false", onclick: choose("container") }, "Contained, on this computer"),
+      ),
+    ),
+    remoteFields,
+    containedFields,
+    h("div", { class: "field" }, h("label", { for: "mcp-key" }, "API key"), key, keyHint),
     h("div", { class: "field" }, h("label", {}, "Offer it in"), h("div", { class: "row-actions" }, folders.map((f) => h("button", { type: "button", class: "chip", "aria-pressed": "false", onclick: (e) => { const on = e.target.getAttribute("aria-pressed") !== "true"; e.target.setAttribute("aria-pressed", String(on)); if (on) chosen.add(f); else chosen.delete(f); } }, desk.folderName(f))))),
     error,
     h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, "Add and review its tools"), h("button", { type: "button", class: "btn ghost", onclick: () => { adding = false; redraw(); } }, "Cancel")),
   );
 }
 
-async function serverDetail(server, ctx, redraw) {
+// containedWords says what a contained server can reach, for its page.
+function containedWords(server, runtime) {
+  const mounts = (server.mounts || []).map((m) => (m.endsWith(":write") ? `${m.slice(0, -6)} (may write)` : `${m.replace(/:read$/, "")} (read-only)`));
+  const reach = server.network?.length ? `no way out but nodwyn's proxy, to ${server.network.join(", ")}` : "no network at all";
+  const folders = mounts.length ? `the workspace folders ${mounts.join(", ")}` : "none of your files";
+  const how = runtime?.runtime ? ` with ${runtime.runtime}` : "";
+  return `A contained server: nodwyn runs it on this computer${how}, in a container from this image, with ${reach}, and ${folders}. It gets the arguments of the calls you allow, and is removed when the task ends.`;
+}
+
+async function serverDetail(server, ctx, redraw, runtime) {
   const { conn, desk } = ctx;
   const canEdit = conn.has("mcp.save");
-  const panel = h("section", { class: "card server-detail" }, h("p", { class: "hint" }, `Connecting to ${host(server.url)} to read its tools…`));
+  const isContained = contained(server);
+  const panel = h("section", { class: "card server-detail" }, h("p", { class: "hint" }, isContained ? "Starting it in a container to read its tools…" : `Connecting to ${host(server.url)} to read its tools…`));
+  // A contained server whose image is not here, or with no runtime to run
+  // it, is not started: the page says what is missing instead.
+  const missing = isContained && runtime?.images?.[server.name] === "missing";
+  const noRuntime = isContained && runtime && !runtime.runtime;
   let inspection = inspections.get(server.name);
+  if (!inspection && (missing || noRuntime)) inspection = { error: noRuntime ? runtime.detail : "its image is not on this computer" };
   if (!inspection && conn.has("mcp.inspect")) {
     try {
       inspection = await conn.call("mcp.inspect", { name: server.name });
@@ -452,8 +558,31 @@ async function serverDetail(server, ctx, redraw) {
       h("td", {}, offered(name)),
     );
   });
-  const banner = inspection?.error
-    ? h("div", { class: "callout" }, `Could not reach it: ${inspection.error}`)
+  const pull = async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = "Pulling…";
+    try {
+      await conn.call("mcp.pull", { name: server.name });
+      inspections.delete(server.name);
+      toast("Pulled. Review its tools before nodwyn offers any.");
+      redraw();
+    } catch (err) {
+      toast(err.message);
+      e.target.disabled = false;
+      e.target.textContent = "Pull the image";
+    }
+  };
+  const banner = missing
+    ? h(
+        "div",
+        { class: "callout" },
+        h("div", {}, h("strong", {}, "Its image is not on this computer. "), "Pulling downloads it from its registry, by its digest; nothing else in nodwyn downloads a server, and a task never does."),
+        canEdit && conn.has("mcp.pull") ? h("button", { type: "button", class: "btn dark", style: "margin-left:auto", onclick: pull }, "Pull the image") : null,
+      )
+    : noRuntime
+      ? h("div", { class: "callout" }, `It cannot run here: ${runtime.detail}. Remote servers still work.`)
+      : inspection?.error
+    ? h("div", { class: "callout" }, isContained ? `It did not start: ${inspection.error}` : `Could not reach it: ${inspection.error}`)
     : !server.manifest
       ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "Review these tools before nodwyn offers any. "), "Approving pins this exact tool list: if the server changes a name, description or schema, its tools stop until you review again."))
       : inspection?.changed
@@ -490,16 +619,33 @@ async function serverDetail(server, ctx, redraw) {
     h(
       "div",
       { class: "card-head" },
-      h("div", { style: "display:flex;flex-direction:column;gap:2px" }, h("strong", { style: "font-size:17px" }, server.name), h("span", { class: "hint mono" }, server.url)),
+      h("div", { style: "display:flex;flex-direction:column;gap:2px" }, h("strong", { style: "font-size:17px" }, server.name), h("span", { class: "hint mono" }, isContained ? server.image : server.url)),
       canEdit ? h("button", { type: "button", class: "btn small danger", style: "margin-left:auto", onclick: async () => { try { await conn.call("mcp.remove", { name: server.name }); selectedServer = ""; inspections.delete(server.name); redraw(); } catch (e) { toast(e.message); } } }, "Disconnect") : null,
     ),
-    h("p", { class: "hint" }, "A remote server: nodwyn sends it the arguments of the calls you allow, and runs nothing of it on this computer."),
+    h("p", { class: "hint" }, isContained ? containedWords(server, runtime) : "A remote server: nodwyn sends it the arguments of the calls you allow, and runs nothing of it on this computer."),
     banner,
     h("div", { class: "field" }, h("label", {}, "Offered in"), workspaceChips),
     names.length ? h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Tool"), h("th", {}, "What it does to the world"), h("th", {}, "Offered"))), h("tbody", {}, rows)) : null,
     server.credential
-      ? h("div", { class: "file-row" }, icon("key", 15), h("div", {}, h("span", { class: "mono" }, server.credential), " in the keychain. ", h("span", { class: "hint" }, `Only for ${host(server.url)} · POST · as ${server.position}. nodwyn adds it at the last step; the model never sees the value.`)))
-      : h("p", { class: "hint" }, "No credential: requests go without one."),
+      ? h(
+          "div",
+          { class: "file-row" },
+          icon("key", 15),
+          h(
+            "div",
+            {},
+            h("span", { class: "mono" }, server.credential),
+            " in the keychain. ",
+            h(
+              "span",
+              { class: "hint" },
+              isContained
+                ? `Given to the server when it starts, as the ${server.position.replace(/^env:/, "")} variable, only if it is allowed for every host it may reach (${networkWords(server)}). It stays valid as long as the token does; the model never sees the value.`
+                : `Only for ${host(server.url)} · POST · as ${server.position}. nodwyn adds it at the last step; the model never sees the value.`,
+            ),
+          ),
+        )
+      : h("p", { class: "hint" }, isContained ? "No credential: the server starts with no key." : "No credential: requests go without one."),
     canEdit
       ? h(
           "div",

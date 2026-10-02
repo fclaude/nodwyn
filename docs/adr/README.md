@@ -24,7 +24,7 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (amends plan P5)
 - [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (partly implemented)
 - [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (partly implemented)
-- [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (partly implemented)
+- [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (implemented)
 - [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (accepted, implemented)
 - [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output
 - [0026](./0026-the-loop-is-scheme.md) — The agent loop is a Scheme procedure

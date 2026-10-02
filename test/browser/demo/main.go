@@ -2,7 +2,10 @@
 // that looks around a scratch folder, proposes an edit, runs a command and
 // answers, a daemon on temporary directories, and the console bridge. It is
 // for looking at the console and for browser acceptance checks, never for
-// real work: every directory is temporary and the model is scripted.
+// real work: every directory is temporary and the model is scripted. A
+// contained MCP server added from Connections runs in a fake container
+// runtime (test/fakes/container), which is this program run again: nothing
+// is pulled or contained, and IMAGE is an image it has to pull first.
 //
 //	go run ./test/browser/demo            # prints the URL (with a launch ticket)
 //	go run ./test/browser/demo -seed      # also starts tasks so every view has content
@@ -23,14 +26,21 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/container"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 	webui "github.com/fclaude/nodwyn/internal/frontend/web"
+	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
+// notesImage is the image of the demo's contained server.
+const notesImage = "ghcr.io/example/mcp-notes@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
 func main() {
+	// Run again by the fake container runtime, this program is the runtime.
+	fakecontainer.Main(notesTools()...)
 	seed := flag.Bool("seed", false, "start demo tasks so every view has content")
 	port := flag.Int("port", 0, "loopback port for the console (0 picks one)")
 	modelOnly := flag.Bool("model-only", false, "run only the scripted model server and print its URL")
@@ -67,7 +77,16 @@ func run(seed bool, port int) error {
 	cfg := config.Default()
 	cfg.Control = config.Model{URL: model.URL, Model: "demo"}
 	cfg.Jev.Content = config.JevContentNone
-	options := core.Options{Config: cfg, Paths: paths, Version: "demo"}
+	runtime, err := fakecontainer.Install(filepath.Join(root, "runtime"), "podman")
+	if err != nil {
+		return err
+	}
+	defer runtime.StopAll()
+	cfg.MCP.Egress = filepath.Join(root, "runtime", "nodwyn-egress")
+	if err := os.WriteFile(cfg.MCP.Egress, []byte("#!/bin/false\n"), 0o755); err != nil {
+		return err
+	}
+	options := core.Options{Config: cfg, Paths: paths, Version: "demo", Containers: &container.Runtime{Kind: runtime.Kind, Path: runtime.Path}}
 
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -110,7 +129,7 @@ func run(seed bool, port int) error {
 		return err
 	}
 	url := "http://" + web.Addr().String()
-	fmt.Printf("URL %s/#ticket=%s\nCODE %s\nREPO %s\nMCP %s\n", url, ticket, code, repos["console"], chat.URL)
+	fmt.Printf("URL %s/#ticket=%s\nCODE %s\nREPO %s\nMCP %s\nIMAGE %s\n", url, ticket, code, repos["console"], chat.URL, notesImage)
 	go func() {
 		// More tickets for automated checks: one per line on stdin.
 		buf := make([]byte, 1)
@@ -215,6 +234,17 @@ func chatServer() *fakemcp.Server {
 	)
 }
 
+// notesTools are what the demo's contained server offers: a search that
+// reads, and a note it writes, which nobody declared.
+func notesTools() []fakemcp.Tool {
+	return []fakemcp.Tool{
+		{Name: "search_notes", Description: "Search the team's notes.", Schema: map[string]any{"type": "object", "properties": map[string]any{"query": map[string]any{"type": "string"}}, "required": []any{"query"}},
+			Reply: func(map[string]any) (string, bool) { return "2 notes: 'weekly status', 'phone approvals'", false }},
+		{Name: "write_note", Description: "Write a note.", Schema: map[string]any{"type": "object", "properties": map[string]any{"text": map[string]any{"type": "string"}}, "required": []any{"text"}},
+			Reply: func(map[string]any) (string, bool) { return "written", false }},
+	}
+}
+
 // planStep is the model marking a step of its plan.
 func planStep(id string, step int, state, note string) fake.ToolCall {
 	return fake.ToolCall{ID: id, Name: "plan-step", Args: map[string]any{"step": step, "state": state, "note": note}}
@@ -262,6 +292,17 @@ func respond(req fake.Request) fake.Turn {
 			return fake.Turn{Content: "Here is the draft. I'll post it to #eng-status.", ToolCalls: []fake.ToolCall{{ID: "m2", Name: "chat__post_message", Args: map[string]any{"channel": "#eng-status", "text": "Week of 28 September\n\nShipped: cowork workspaces, attachments that read PDFs, phone approvals."}}}}
 		default:
 			return fake.Turn{Content: "## Week of 28 September\n\n**Shipped**\n\n- Cowork workspaces\n- Attachments that read PDFs\n- Phone approvals\n\nPosted to #eng-status.", Chunk: 20}
+		}
+	}
+	if strings.HasPrefix(last, "Note") {
+		// The contained server, once Connections has added and approved it.
+		switch rounds {
+		case 0:
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "n1", Name: "notes__search_notes", Args: map[string]any{"query": "status"}}}}
+		case 1:
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "n2", Name: "notes__write_note", Args: map[string]any{"text": "Weekly status: phone approvals shipped."}}}}
+		default:
+			return fake.Turn{Content: "Noted.", Chunk: 12}
 		}
 	}
 	if !strings.HasPrefix(last, "The session list") {

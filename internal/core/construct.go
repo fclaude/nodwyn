@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/container"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/guard"
@@ -61,6 +62,10 @@ type Options struct {
 	// table denies every secret-bearing egress (ADR 6).
 	Keychain *keychain.Store
 	Bindings binding.Table
+	// Containers is the runtime contained MCP servers run with (ADR 23
+	// W3b); nil: the one config.toml names, else podman, else docker, as
+	// found on PATH. Tests give a fake.
+	Containers *container.Runtime
 }
 
 // New assembles a session, loads initialization under the guard, freezes the
@@ -104,6 +109,7 @@ func New(o Options) (*Session, error) {
 		Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(),
 		Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools()),
 	}); err != nil {
+		s.closeMCP()
 		s.logw.Close()
 		removeScratch(s.scratch)
 		return nil, err
@@ -270,6 +276,7 @@ func (s *Session) initialize() (err error) {
 	}
 	defer func() {
 		if err != nil {
+			s.closeMCP()
 			removeScratch(s.scratch)
 		}
 	}()

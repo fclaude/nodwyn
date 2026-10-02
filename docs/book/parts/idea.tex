@@ -121,7 +121,7 @@ Channel & What crosses & Who decides & Recorded as \\
 \midrule
 \endhead
 Models & out: the window (the conversation, or a narrowed part of it); in: text, thinking, tool calls & you, by configuring the model; for a keyed model, the binding table, on every request & \code{llm.req}, \code{llm.resp}, \code{egress.check} \\
-MCP servers & at session start: the server's tool list; per call: arguments out, a result in & you, in \file{mcp.toml}: which servers, which tools, in which workspaces; the pinned manifest; the guard, per call & \code{egress.check}, \code{guard.decision}, \code{tool.call}, \code{tool.result} \\
+MCP servers & at session start: the server's tool list; per call: arguments out, a result in; from a contained server, its connections through the proxy & you, in \file{mcp.toml}: which servers, which tools, in which workspaces, which hosts a contained one reaches; the pinned manifest; the guard, per call & \code{egress.check}, \code{guard.decision}, \code{tool.call}, \code{tool.result}, \code{mcp.egress} \\
 Keyed HTTP & a request with a credential injected at a bound position, and its response & the binding table; the guard's L1 and L2 checkers & \code{egress.check}, \code{guard.decision} \\
 The judge & the ask and the plan (more at a higher content level), redacted & the binding table; the content level \code{jev.content} & \code{jev.req}, \code{gate.plan} \\
 Files & file contents in; writes out to disk & the pin, the path denylist, the confirm & \code{guard.decision}, \code{tool.result}, \code{file.version} \\
@@ -156,10 +156,11 @@ is recorded and may be shown, but is never sent back to a model.
 
 \section{MCP servers}
 
-An MCP server offers tools over the network. \nodwyn{} speaks MCP's
-streamable HTTP transport to remote servers; it starts no server process of
-its own (\adr{23}: a server nobody has reviewed does not run in \nodwyn's
-process tree). Servers are listed in \file{mcp.toml} in the configuration
+An MCP server offers tools. \nodwyn{} speaks MCP's streamable HTTP
+transport to remote servers, and MCP's stdio transport to a server it runs
+in a container on this computer; it starts no server as a process of yours
+(\adr{23}: a server nobody has reviewed does not run in \nodwyn's process
+tree). Servers are listed in \file{mcp.toml} in the configuration
 directory, which you edit through the console's Connections page or by
 hand:
 
@@ -229,6 +230,23 @@ policy files and the guard.
 \paragraph{What the confirm is really asking.} Isolation cannot un-send an
 argument. At an MCP confirm the question is not ``is this argument safe?''
 but ``do I want this third party to see this?''.
+
+\paragraph{A contained server} (\code{transport = "container"}) runs from
+an image pinned by its digest, which you pull yourself
+(\code{nodwyn mcp pull NAME}); a task never downloads one. It runs with no
+capability, a read-only root, none of your environment and only the
+workspace folders its entry lists. Its \code{network} list is where its
+arguments can go next: empty, it has no network at all; with hosts, its
+container sits on a network with no route out, and its only way out is
+\nodwyn{}'s egress proxy in a second container, which lets through those
+hosts and refuses the rest, and every attempt is recorded as
+\code{mcp.egress}. Its calls go to \code{mcp:NAME}, so a key in the
+arguments is refused unless its class is bound for every listed host. Its
+own key goes in once, as an environment variable, only if bound for every
+listed host at that \code{env:} position; each check is an
+\code{egress.check}, and the check runs again before every call. The
+confirm names the contained server and what it can reach. A container is
+not a virtual machine: a kernel escape is out of scope.
 
 \section{Keyed HTTP and the judge}
 

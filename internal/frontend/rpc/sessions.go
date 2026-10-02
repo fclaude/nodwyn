@@ -132,6 +132,8 @@ var methodTable = map[string]handler{
 	"mcp.save":                (*server).mcpMethod,
 	"mcp.approve":             (*server).mcpMethod,
 	"mcp.remove":              (*server).mcpMethod,
+	"mcp.runtime":             (*server).mcpMethod,
+	"mcp.pull":                (*server).mcpMethod,
 	"session.open":            (*server).open,
 	"session.resume":          (*server).resume,
 	"session.info":            (*server).info,

@@ -13,4 +13,7 @@ leaves screenshots in `out/`. Nothing touches real sessions, keys or folders.
 | `mcp` | Connections adds, reviews and approves an MCP server; an undeclared tool asks every call without a standing answer; a read tool is gathered silently |
 
 `go run ./test/browser/demo -seed` starts the same world by hand and prints a
-launch URL.
+launch URL. A contained MCP server added in Connections (the `IMAGE` it
+prints, a network list, a folder such as `notes`) runs in a fake container
+runtime, the demo run again: Pull, review and approve it, then ask a task in
+`console` to "Note the weekly status" to see its confirm.

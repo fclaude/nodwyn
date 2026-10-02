@@ -78,9 +78,22 @@ type Config struct {
 	Budget  Budget `toml:"budget"`
 	Jev     Jev    `toml:"jev"`
 	Docs    Docs   `toml:"docs"`
+	MCP     MCP    `toml:"mcp"`
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].
 	Models map[string]Model `toml:"models"`
+}
+
+// MCP is how nodwyn runs contained MCP servers (ADR 23 W3b). The servers
+// themselves are in mcp.toml.
+type MCP struct {
+	// Runtime is the container runtime: "podman" or "docker". Unset:
+	// podman if it is on PATH, else docker. Without one, contained servers
+	// are unavailable and remote ones still work.
+	Runtime string `toml:"runtime"`
+	// Egress is the nodwyn-egress proxy a server with a network list
+	// reaches the network through. Unset: next to the nodwyn executable.
+	Egress string `toml:"egress"`
 }
 
 // ControlModel is the registry name of the [control] model: (model-turn)
@@ -434,6 +447,14 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("jev.content must be one of %q, got %q",
 			[]string{JevContentNone, JevContentPlan, JevContentPlanSum, JevContentFull}, c.Jev.Content)
+	}
+	switch c.MCP.Runtime {
+	case "", "podman", "docker":
+	default:
+		return fmt.Errorf("mcp.runtime must be \"podman\" or \"docker\", got %q", c.MCP.Runtime)
+	}
+	if c.MCP.Egress != "" && !filepath.IsAbs(c.MCP.Egress) {
+		return fmt.Errorf("mcp.egress must be an absolute path, got %q", c.MCP.Egress)
 	}
 	return nil
 }

@@ -17,6 +17,7 @@
 \code{nodwyn versions FILE}, \code{undo FILE} & kept versions outside git \\
 \code{nodwyn devices [revoke NAME]} & paired remote browsers \\
 \code{nodwyn keychain init} & create the keychain \\
+\code{nodwyn mcp [list]}, \code{mcp pull NAME} & MCP servers; download a contained server's image by digest \\
 \code{nodwyn repl}, \code{eval -e EXPR}, \code{eval FILE} & Scheme alone \\
 \code{nodwyn paths}, \code{version} & where things live; which build \\
 \bottomrule
@@ -58,7 +59,7 @@ anything else & \key{N} & no \\
 \toprule
 \file{\textasciitilde/.config/nodwyn/config.toml} & \code{[control]}, \code{[models.*]}, \code{[window]}, \code{[budget]}, \code{[policy]} \\
 \file{\textasciitilde/.config/nodwyn/bindings.toml} & where each key may go \\
-\file{\textasciitilde/.config/nodwyn/mcp.toml} & MCP servers, pinned manifests, declared effects \\
+\file{\textasciitilde/.config/nodwyn/mcp.toml} & MCP servers, pinned manifests, declared effects; a contained server's image, network and mounts \\
 \file{\textasciitilde/.config/nodwyn/keychain} & the encrypted keys \\
 \file{\textasciitilde/.local/share/nodwyn/sessions/} & the logs \\
 \file{<folder>/.nodwyn/init.scm} & your tools, checks, strategy, prompts \\

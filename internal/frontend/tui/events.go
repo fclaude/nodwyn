@@ -216,6 +216,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 		} else {
 			m.append("credential refresh failed: " + p.Class + " at " + p.Endpoint + ": " + p.Error)
 		}
+	case string(log.KindMCPEgress):
+		var p log.MCPEgress
+		p, err = decode[log.MCPEgress](e.Payload)
+		if line, ok := plain.EgressLine(p); ok && err == nil {
+			m.append(line)
+		}
 	case event.PromptConfirm, event.PromptSecret, event.PromptCheckpoint:
 		err = m.setPrompt(e)
 	case event.Error:

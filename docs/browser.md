@@ -53,6 +53,17 @@ nothing is offered until you choose. An undeclared tool asks every call and
 offers no standing answer. If the server later changes its tool list, new
 tasks withhold its tools until you review again.
 
+A server can also be **contained, on this computer** (ADR 23 W3b): its image
+pinned by digest, the hosts it may reach (none, or a list its proxy lets
+through), the workspace folders it sees, and, if it needs a key, the
+variable it reads it from; the key goes to the keychain, bound for every
+listed host. Its page says what it can reach, whether podman or docker is
+there, and whether its image is; Pull downloads the image by its digest,
+which nothing else in nodwyn does and a task never does. Reviewing its tools
+starts it in a container and removes it after. A confirm for one of its
+tools says it sends to the contained server and what that can reach; a
+connection its proxy refused shows in the task.
+
 ## Other devices (ADR 30)
 
 ```sh
@@ -78,7 +89,7 @@ for this turn, or for the session, as the core offers; it can also restore a
 kept file version (through the usual approval), save project notes, read the
 policy files, and stop or resume a run. It cannot save a credential binding,
 write a policy file, unlock or create the keychain, change the model, edit
-workspaces, add, review, approve or remove MCP servers, evaluate Scheme, or
+workspaces, add, review, approve, pull or remove MCP servers, evaluate Scheme, or
 list and revoke devices: those stay with the computer nodwyn runs on. A request counts as remote when it comes from another address or names
 this console by anything but its loopback address (a proxy such as
 `tailscale serve` connects from loopback on a phone's behalf). Launch tickets

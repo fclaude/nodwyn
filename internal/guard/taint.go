@@ -55,7 +55,7 @@ func (t Taint) Check(ctx context.Context, p *scheme.Prim, args []scheme.Value) D
 	if classes := payload.Creds(); len(classes) > 0 && p.Meta.Egress {
 		facts := egressFactsOf(p, args)
 		for _, class := range classes {
-			if bound, _ := t.Table.Lookup(class, facts.Host, facts.Method, ""); !bound {
+			if bound, _ := boundFor(t.Table, p, facts, class); !bound {
 				return Decision{Verdict: Deny, Reason: "a value derived from credential class " + class + " is not bound for " + destOf(facts)}
 			}
 		}

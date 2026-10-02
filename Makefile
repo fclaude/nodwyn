@@ -2,14 +2,19 @@ MODULE  := github.com/fclaude/nodwyn
 VERSION := $(shell git describe --always --dirty --abbrev=12 --exclude='*' 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build build-webview app test lint exfil accept promote selfcheck smoke book expert clean
+.PHONY: build build-webview egress app test lint exfil accept promote selfcheck smoke book expert clean
 
-build:
+build: egress
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
 
 ## build-webview: bin/nodwyn whose `nodwyn app` opens its own window (cgo; WebKitGTK on Linux, docs/app.md)
-build-webview:
+build-webview: egress
 	CGO_ENABLED=1 scripts/webview-env.sh run go build -trimpath -tags webview -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
+
+## egress: bin/nodwyn-egress, the proxy a contained MCP server reaches the network through
+## (ADR 23 W3b); static and for Linux, since it runs inside the server's image
+egress:
+	CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn-egress ./cmd/nodwyn-egress
 
 ## app: bin/Nodwyn.app, nodwyn with its own window (macOS; needs Xcode's command line tools)
 app:

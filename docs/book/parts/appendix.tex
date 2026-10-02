@@ -79,7 +79,7 @@ ADR & Title & Status \\
 20 & Jev as egress primitives; \code{register-check} & built \\
 21 & A real UI after v0: daemon, protocol, clients & partly built \\
 22 & Cowork: workspaces, attachments, MCP servers & partly built \\
-23 & Untrusted MCP servers: isolation, pinning, fail-closed & partly built \\
+23 & Untrusted MCP servers: isolation, pinning, fail-closed & built \\
 24 & OAuth2 credentials: acquisition, refresh, scopes & built \\
 25 & Log-derived ingress redaction and buffered model output & accepted \\
 26 & The agent loop is a Scheme procedure & accepted \\
@@ -105,8 +105,13 @@ ADR & Title & Status \\
   arguments, returns a verdict.
 \item[control model] the model \code{(model-turn)} asks, configured as
   \code{[control]}.
+\item[contained server] an MCP server \nodwyn{} runs in a container, from
+  an image pinned by digest, with no network or only its egress proxy.
 \item[effect] your declaration of what an MCP tool does: \code{read} or
   \code{write}; undeclared is treated as egress and irreversible.
+\item[egress proxy] \code{nodwyn-egress}, the only way out of a contained
+  server's network: it lets through the hosts listed and reports every
+  attempt.
 \item[handle] an opaque reference to a keychain entry; a Scheme value that
   can never become text.
 \item[Jev] the external calibrated judge, admitted at Seam A (plans against

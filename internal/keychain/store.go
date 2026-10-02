@@ -3,7 +3,8 @@
 // handles, and the value lives here, behind an AEAD. A value is never a
 // scheme.Value and never leaves this package except through the Inject*
 // sink functions, which write it into an outgoing request at a named
-// position. The value type has no String() and no accessor at all.
+// position, or into the environment of a container runtime at a named
+// variable. The value type has no String() and no accessor at all.
 //
 // File format (all little-endian):
 //
@@ -35,6 +36,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"sync"
 	"syscall"
 	"time"
@@ -456,7 +458,8 @@ func (st *Store) Lookup(id string) (class string, created time.Time, err error) 
 }
 
 // Inject* are the only ways a value leaves the package: each writes the
-// secret for id into an outgoing request at a named position (ADR 5).
+// secret for id into an outgoing request at a named position, or into a
+// starting command's environment (ADR 5).
 
 // InjectHeader sets the request header name to prefix + value. prefix is
 // the auth scheme with its trailing space ("Bearer "), or "" for a bare
@@ -490,6 +493,19 @@ func (st *Store) InjectBody(id string, req *http.Request) error {
 	}
 	req.Body = io.NopCloser(bytes.NewReader(v))
 	req.ContentLength = int64(len(v))
+	return nil
+}
+
+// InjectEnv sets the value as the environment variable name of a command
+// about to start: the container runtime that runs a contained MCP server,
+// which passes it on by name only (ADR 23 W3b). It never appears in the
+// command's arguments.
+func (st *Store) InjectEnv(id, name string, cmd *exec.Cmd) error {
+	v, err := st.secret(id)
+	if err != nil {
+		return err
+	}
+	cmd.Env = append(cmd.Env, name+"="+string(v))
 	return nil
 }
 

@@ -55,6 +55,8 @@ This is the spine. Read these in order and you have read the system.
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
 | `internal/keychain` | encrypted credentials, opaque handles and injection; OAuth2 token sets, refresh and acquisition | `store.go`, `oauth.go`, `acquire.go` |
 | `internal/binding` | binding loading and authorization lookup | `binding.go` `Lookup`; Scheme call decoding lives in `guard/egress_facts.go` |
+| `internal/mcp` | the MCP client, over streamable HTTP or a contained server's stdio | `client.go`, `stdio.go`; sessions use it from `core/mcp.go` |
+| `internal/container`, `internal/egress` | running a contained MCP server with podman or docker; the allowlisting proxy it reaches the network through (`cmd/nodwyn-egress`) | `server.go` `Start`, `proxy.go` |
 | `internal/redact`, `internal/detect/l1` | text redaction and credential-shape detection | `redact.go`, `l1.go` |
 | `internal/event` | what a front-end sees | `event.go` |
 | `internal/log` | the append-only log | `log.go` `Append`, `Replay` |
@@ -66,6 +68,7 @@ This is the spine. Read these in order and you have read the system.
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
 | `test/fakes/ollama` | scriptable fake of the model server | `ollama.go` |
 | `test/fakes/jev`, `mcp`, `oauth`, `drive` | fakes of the judge, an MCP server, an OAuth2 provider and Drive's upload endpoint: no test reaches a real service | each package's comment |
+| `test/fakes/mcp`, `test/fakes/container` | a fake MCP server (HTTP or stdio) and a fake container runtime that is the test binary run again | `mcp.go`, `container.go` |
 
 ### The invariants and the tests that hold them
 
@@ -119,8 +122,9 @@ whose content was replaced in the window.
 ### Install
 
 ```bash
-make build                       # bin/nodwyn from the working tree
+make build                       # bin/nodwyn (and bin/nodwyn-egress) from the working tree
 make promote                     # accept + selfcheck, then ~/.local/bin/nodwyn-stable (ADR 12/13)
+                                 # and nodwyn-egress beside it
 ```
 
 `nodwyn-stable version` is the commit it was built from. It is the webview
@@ -621,6 +625,96 @@ document's id, never its content or the token.
 google_credential = "google"   # the keychain class; "" offers no Google tool
 google_upload_url = "https://www.googleapis.com/upload/drive/v3/files"
 ```
+
+### MCP servers
+
+`mcp.toml` in the config directory lists the MCP servers nodwyn may use
+([ADR 23](adr/0023-untrusted-mcp-servers.md)); Connections in the console
+adds, reviews and approves them. A server offers nothing until you approve
+its tool list, which is then pinned: a changed name, description or schema
+withholds its tools until you review it again. Each tool is a primitive
+`server__tool` that crosses the guard; one you have not declared a read
+asks every call.
+
+A remote server is a URL; nodwyn sends it the arguments of the calls you
+allow. A local server is never run as a process of yours: nodwyn runs it in
+a container, from an image pinned by digest, with podman or docker:
+
+```toml
+# ~/.config/nodwyn/mcp.toml
+[[server]]
+name = "notion"
+transport = "container"
+image = "ghcr.io/example/mcp-notion@sha256:…"   # a digest; a tag is refused
+network = ["api.notion.com"]                     # [] is no network at all
+mounts = ["docs", "out:write"]                   # workspace folders, under /workspace
+credential = "notion-key"
+position = "env:NOTION_TOKEN"
+workspaces = ["/home/me/notes"]
+```
+
+```toml
+# ~/.config/nodwyn/config.toml (both optional)
+[mcp]
+runtime = "podman"                 # or "docker"; unset: podman if on PATH, else docker
+egress = "/opt/nodwyn/nodwyn-egress"   # unset: next to the nodwyn executable
+```
+
+A task never downloads code. Pull the image yourself, by its digest, once
+and again after you change it:
+
+```bash
+nodwyn mcp                # the servers, and whether each contained image is here
+nodwyn mcp pull notion    # or Pull in Connections
+```
+
+What the container gets, every time: no host environment (only the
+variables named here), no capability, a read-only root with a small `/tmp`,
+bounded memory and processes, no setuid privilege, the folders in `mounts`
+and nothing else of yours (never the workspace root, never `.nodwyn/`), and
+`--pull=never`. `command` and `args` replace the image's entrypoint, with no
+shell. nodwyn talks to the server over its standard input and output, so
+nothing listens on a port. Its standard error is kept, capped and redacted,
+for the task's details; the model never sees it.
+
+With `network = []` the server has no network at all. With hosts, it sits on
+a network with no route out; its only way out is nodwyn's egress proxy
+(`nodwyn-egress`, built by `make build` next to `nodwyn`), in a second
+container, which lets through those hosts alone, on ports 443 and 80 or the
+port an entry names (`uploads.example.com:8443`), and refuses the rest. The
+server finds it through `HTTPS_PROXY` and its siblings; a client that
+ignores them reaches nothing. Every attempt, let through or not, is recorded
+in the session log as `mcp.egress`; the task shows the refusals.
+
+A credential goes in once, as the variable `position` names, and only if its
+class is bound for every host on the list at that position (any method: the
+server makes the requests):
+
+```toml
+# bindings.toml
+[[bind]]
+class = "notion-key"
+dest = "api.notion.com"
+positions = ["env:NOTION_TOKEN"]
+methods = ["*"]
+```
+
+Adding the key in Connections writes these rows. A server whose key is not
+bound for one of its hosts does not start, and each check is recorded as an
+`egress.check`; a binding removed during a task stops further calls. A
+variable cannot be refreshed later, so an OAuth2 token is refreshed just
+before the server starts and the server gets the token valid then. With no
+network a credential has nowhere to go, and is refused.
+
+A contained server's calls go to `mcp:NAME`; a confirm names it and what it
+can reach (`the contained server notion (network: api.notion.com)`). A key
+written into the arguments is refused unless its class is bound for every
+host on the list. The containers stop when the task closes. If nodwyn is
+killed instead, their input ends: the proxy stops, and so does a server
+that ends with its input, as MCP servers do; anything left shows in
+`podman ps --filter label=nodwyn.mcp`, and the networks remain until
+`podman network prune --filter label=nodwyn.mcp`. `transport =
+"host-process"` is refused.
 
 ### Choosing models
 

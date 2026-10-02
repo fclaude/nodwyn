@@ -351,7 +351,7 @@ func readOnly(method string) bool {
 	switch method {
 	case "hello", "session.list", "session.watch", "session.info", "session.subscribe", "session.unsubscribe", "log.read",
 		"attention.list", "notes.read", "models.status", "run.info", "keychain.status", "settings.read",
-		"workspace.list", "versions.list", "mcp.list":
+		"workspace.list", "versions.list", "mcp.list", "mcp.runtime":
 		return true
 	}
 	return false
@@ -523,7 +523,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		"session.notes.write", "run.stop", "run.resume", "session.restore":
 		return true
 	case "session.binding.create", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write",
-		"workspace.save", "workspace.remove", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove":
+		"workspace.save", "workspace.remove", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
 		return !remote
 	case "devices.list", "devices.revoke":
 		return !remote && b.devices != nil
