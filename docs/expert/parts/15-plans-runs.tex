@@ -28,7 +28,8 @@ like this:
     \code{plan-max-revisions} (3) times; the best plan wins.
   \item The outcome is recorded as a \code{gate.plan} event, and the window
     pins the plan into the system prompt under \code{plan-header} for the
-    rest of the turn.
+    rest of the turn. The explorer's findings are handed to the model that
+    does the work as well, so it does not read the same files again.
 \end{enumerate}
 
 Without a judge, an ordinary interactive turn has no gate. If the judge's
@@ -84,6 +85,16 @@ because a working habit (\file{checkloop.scm}) already wraps
 tool; replacing it outright would quietly switch that off. (The name is specific to \nodwyn{} so that a project's own
 \code{turn}, a counter say, can never shadow it by accident.)
 
+\subsection{The model's own plan}
+
+Without a plan from the gate (an interactive turn with no judge), the model
+writes its own with the \code{plan-write} tool: numbered steps, recorded as
+\code{gate.plan} with decision \code{model} and pinned under
+\code{plan-header} like any other plan. It matters more than it looks: a
+model's thinking is not sent back to it, and a reply that only calls tools
+says nothing, so a design worked out in thinking is worked out again at
+every request until it is written down. Writing the plan again revises it.
+
 \subsection{Progress through the plan}
 
 The plan header asks the model to mark each step as it finishes it, with
@@ -113,6 +124,12 @@ evidence:
   \item A reply that stops after a change, with no test run since the last
     edit, gets \code{finish-untested-message}.
   \item At most \code{finish-reminders} (2) such reminders per turn.
+  \item When a person reads the answer before anything else happens
+    (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),
+    the no-change reminder is \code{finish-no-change-reviewed-message}: make
+    the change unless the request asks for none yet, a proposal to review
+    first say, and after it the turn may end unchanged. An unattended run,
+    and a run's last turn, still need a change.
   \item After \code{unrunnable-after} (6) test commands in a row fail to run
     at all, the model gets \code{(finish-unrunnable-message n)} once: finish
     and report the change as unverified, rather than spend the budget on a

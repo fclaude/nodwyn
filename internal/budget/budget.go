@@ -347,8 +347,27 @@ func uniqueAppend(items []string, item string) []string {
 	return append(items, item)
 }
 
-// AddTokens accounts for observed usage. Check before further work; Finish
-// checks hard ceilings without asking to continue an already completed answer.
+// cachedTokenShare is how many cached prompt tokens the token budget counts
+// as one: a provider reads them from its prompt cache instead of processing
+// them again, and prices them at about a tenth. Counted in full, a long
+// conversation on a model with a large context reached the default soft
+// limit in minutes while nine tenths of what it counted came from cache.
+const cachedTokenShare = 10
+
+// CountedPrompt is how many of a request's prompt tokens the token budget
+// counts, cached of them read from the provider's prompt cache (nil: not
+// reported, and all of them count).
+func CountedPrompt(prompt int, cached *int) int {
+	if cached == nil || *cached <= 0 || prompt <= 0 {
+		return prompt
+	}
+	c := min(*cached, prompt)
+	return prompt - c + c/cachedTokenShare
+}
+
+// AddTokens accounts for observed usage, prompt as CountedPrompt counts it.
+// Check before further work; Finish checks hard ceilings without asking to
+// continue an already completed answer.
 func (t *Turn) AddTokens(prompt, output int) {
 	for _, n := range []int{prompt, output} {
 		if n > 0 {

@@ -80,6 +80,45 @@ func TestUnattendedTurnEndsOnEvidence(t *testing.T) {
 	}
 }
 
+// A person reads a chat's reply before anything else happens, so a turn
+// asked for a proposal may end unchanged once the model says so: the
+// reminder says it may, once.
+func TestReviewedTurnMayEndUnchanged(t *testing.T) {
+	r := unattendedRig(t,
+		fake.Turn{Content: "Proposal: split the tab."},                         // nothing changed: reminded, with the way out
+		fake.Turn{Content: "You asked for a proposal first; nothing changed."}, // ends
+	)
+	if e := r.turn("propose something before changing anything"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 2 || !strings.Contains(lastMessage(r, 1), "unless the request asks for no change yet") {
+		t.Fatalf("%d requests; last message %q", len(r.srv.Requests), lastMessage(r, 1))
+	}
+}
+
+// Nobody reads a planned turn's answer outside a run, or a run's last turn,
+// before it ends: it changes something or runs out of reminders, and the
+// reminder offers no way out.
+func TestUnreviewedTurnIsNotOfferedAWayOut(t *testing.T) {
+	r := newRig(t, true,
+		fake.Turn{Content: "main.go declares package main."}, // the explorer
+		fake.Turn{Content: "1. Edit main.go."},               // the planner
+		fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+	)
+	if err := r.s.SendPlanned("change main.go"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5", len(r.srv.Requests))
+	}
+	for _, i := range []int{3, 4} {
+		if got := lastMessage(r, i); got != "No file has changed yet. Make the change in the repository before finishing." {
+			t.Fatalf("reminder %d: %q", i, got)
+		}
+	}
+}
+
 func shellArgs(id, cmd string, args ...string) fake.Turn {
 	return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "shell-exec", Args: map[string]any{"cmd": cmd, "args": args}}}}
 }
@@ -256,5 +295,10 @@ func TestPlannerExploresFirst(t *testing.T) {
 	}
 	if planner := lastMessage(r, 1); !strings.Contains(planner, "What a look at the repository found:\nmain.go declares package main") {
 		t.Fatalf("the planner was not told what exploring found:\n%s", planner)
+	}
+	// The model that does the work is told too, after the plan, so it does
+	// not read the same files again to learn it.
+	if worker := lastMessage(r, 2); worker != "What a read-only look at the repository found while the plan was made (read a file again only where you need its exact text):\nmain.go declares package main; tests run with go test ./..." {
+		t.Fatalf("the worker was not told what exploring found:\n%s", worker)
 	}
 }

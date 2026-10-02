@@ -60,3 +60,25 @@ The denylist also covers nodwyn's configuration and data directories where
 the session found them (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`), not only at
 their default places under the home directory; the scratch directory moves
 with the data directory and stays excepted.
+
+## Amendment: code is not credential material; tests have a home of their own — 2026-10-02
+
+The denylist's name globs (`credentials.*`, `id_*`, ...) also matched source
+files, so a task about the console's credentials page could not read or
+edit `credentials.js` or `credentials.go`: the model went through the shell,
+which the person had to approve for the whole session, and `git-status`,
+which left such files out, hid its changes from the evidence loop. A file
+with a source or documentation extension (`.go`, `.js`, `.py`, `.md`, ...)
+no longer matches a name glob, unless it is a dotfile (`.env.js`,
+`.eslintrc.js` may hold a key); the protected directories still apply to it
+and its contents still pass ingress redaction. `git-status` names every
+changed file, since a name is no secret; `git-diff` leaves out the contents
+of the files the denylist refuses, named exactly.
+
+The scratch directory stays in the data directory, but it is commands'
+`TMPDIR`, so when nodwyn ran its own tests every test repository was inside
+a protected directory and refused, and commits failed because the scrubbed
+environment has no SSH agent for the user's commit signing. The packages
+whose tests build a guard or commit run in a home of their own
+(`test/fakes/home`): `HOME` a new empty directory, the XDG directories and
+git's global and system configuration unset, and a git identity.

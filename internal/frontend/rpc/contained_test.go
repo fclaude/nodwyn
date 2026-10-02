@@ -12,13 +12,19 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/container"
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
+	"github.com/fclaude/nodwyn/test/fakes/home"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
 )
 
 // The test binary is also the fake container runtime.
 func TestMain(m *testing.M) {
 	fakecontainer.Main(fakemcp.Tool{Name: "search", Description: "Search the notes", Reply: func(map[string]any) (string, bool) { return "ok", false }})
-	os.Exit(m.Run())
+	// A home of its own (test/fakes/home): nodwyn's denylist, git's
+	// configuration and nodwyn's own read from it.
+	done := home.Isolate()
+	code := m.Run()
+	done()
+	os.Exit(code)
 }
 
 const notesImage = "ghcr.io/example/mcp-notes@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

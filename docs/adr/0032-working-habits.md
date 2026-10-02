@@ -172,3 +172,37 @@ context passes half the high water. On the 121-task cohort that is a change
 from the measured pil configuration and has not been run yet. A run with the
 old rule is `(define (hygiene-fold-reason due) "always")` in `init.scm`.
 Each fold's log note now ends with the reason.
+
+## Amendment 2026-10-02: what three runs of one small task showed
+
+The same request ("make it easier to configure the jev key in the ui ...
+Propose something before working on the changes") went through a
+six-turn run, a one-turn run and a chat, and failed each time for reasons
+in the harness, not in the request:
+
+- **The model's thinking is not kept.** It is logged, not sent back, and a
+  reply that only calls tools says nothing. In the chat's second turn the
+  model worked out the same design in nearly every one of 45 requests and
+  changed nothing. The working rules now say so, and the model writes its
+  plan with `plan-write`, an agent tool that records it (`gate.plan`,
+  decision `model`) where the window pins it and `plan-step` marks it.
+- **The evidence loop overrode "propose first".** A model that proposed
+  and stopped was told "No file has changed yet. Make the change", and
+  started implementing what nobody had approved, or wrote the proposal
+  into the repository to have a change. When a person reads the answer
+  before anything else happens, `(reviewed?)` (a chat, or a supervised
+  run's turn that a checkpoint follows), the reminder now says the request
+  may ask for no change yet, and after it the turn may end unchanged. An
+  unattended run, and a run's last turn (SWE-bench runs one turn), still
+  need a change.
+- **The explorer's findings reached only the planner.** The model doing the
+  work read the same files again within a minute. They are now handed to
+  it once the plan is recorded (`plan-findings-message`).
+- **The denylist refused the task's own files** (`credentials.js`,
+  `credentials.go` matched `credentials.*`), so the model read and edited
+  them through the shell, which the person had to approve for the whole
+  session, and `git-status` left them out, so the evidence loop said nothing
+  had changed after the model changed one. Code no longer matches the name
+  globs, and `git-status` names every file (ADR 28, amended).
+- **nodwyn's own tests failed when nodwyn ran them**, for reasons the
+  model could not tell from its own breakage (ADR 28, amended).

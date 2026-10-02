@@ -18,6 +18,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
+	"github.com/fclaude/nodwyn/test/fakes/home"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -30,7 +31,11 @@ import (
 // here fails, so a stray log is not committed with the change that made it.
 func TestMain(m *testing.M) {
 	fakecontainer.Main(containedTools()...)
+	// A home of its own (test/fakes/home): nodwyn's denylist, git's
+	// configuration and nodwyn's own read from it.
+	done := home.Isolate()
 	code := m.Run()
+	done()
 	if left, _ := filepath.Glob("*.jsonl"); len(left) != 0 {
 		fmt.Fprintf(os.Stderr, "session logs left in internal/core: %v\ngive the session Paths under t.TempDir() or a LogWriter\n", left)
 		code = 1

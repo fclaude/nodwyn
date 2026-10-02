@@ -62,6 +62,8 @@ func formatGatePlan(gate log.GatePlan) string {
 		out.WriteString("Gate fallback; no plan score recorded.\n")
 	case "carried":
 		fmt.Fprintf(&out, "The run's plan, carried from an earlier turn · %d of %d steps marked there\n", len(gate.Marks), len(gate.Steps()))
+	case "model":
+		out.WriteString("The model wrote this plan itself (plan-write).\n")
 	}
 	if gate.Reason != "" {
 		fmt.Fprintf(&out, "Reason: %s\n", gate.Reason)

@@ -24,8 +24,9 @@ const gitTimeout = 30 * time.Second
 // arguments only, and switch off everything in git that runs another
 // program (external diff drivers, text conversion filters, the file system
 // monitor, the pager), so reading a diff never executes repository or user
-// configuration. Credential-looking files are left out by pathspec, as
-// fs-read refuses them.
+// configuration. A diff leaves out the files fs-read refuses; the status
+// names every file, since a name is no secret and what changed must show:
+// the evidence loop reads it to know whether the turn changed anything.
 func gitPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 	return []*scheme.Prim{
 		{
@@ -72,7 +73,12 @@ func gitPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 						args = append(args, "--cached")
 					}
 				}
-				out, err := runGit(c.Ctx, o, append(args, "--", filepath.ToSlash(rel))...)
+				args = append(args, "--", filepath.ToSlash(rel))
+				hidden, err := deniedChanges(c.Ctx, o, args)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				out, err := runGit(c.Ctx, o, append(args, hidden...)...)
 				if err != nil {
 					return scheme.Value{}, err
 				}
@@ -85,6 +91,25 @@ func gitPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 	}
 }
 
+// deniedChanges are pathspecs that leave out of the diff diffArgs asks
+// for (its arguments from "diff" on) each changed file fs-read refuses, as
+// the session's denylist judges it: the files are named by git and
+// excluded by their exact names.
+func deniedChanges(ctx context.Context, o Options, diffArgs []string) ([]string, error) {
+	names, err := runGit(ctx, o, append([]string{diffArgs[0], "--name-only", "-z"}, diffArgs[1:]...)...)
+	if err != nil {
+		return nil, err
+	}
+	deny := denylist(o)
+	var out []string
+	for _, name := range strings.Split(names, "\x00") {
+		if name != "" && deny.Denies(name) != "" {
+			out = append(out, ":(top,exclude,literal)"+name)
+		}
+	}
+	return out, nil
+}
+
 // runGit runs one fixed git command in the root and returns its output, or
 // an error carrying git's own message.
 func runGit(parent context.Context, o Options, args ...string) (string, error) {
@@ -93,10 +118,6 @@ func runGit(parent context.Context, o Options, args ...string) (string, error) {
 	full := []string{"--no-pager", "--no-optional-locks",
 		"-c", "core.fsmonitor=false", "-c", "core.pager=cat", "-c", "color.ui=false"}
 	full = append(full, args...)
-	// Leave credential-looking files out, as fs-read does.
-	for _, glob := range guard.DefaultDenylist().Globs {
-		full = append(full, ":(exclude,glob)**/"+glob)
-	}
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = o.Root
 	cmd.Env = append(scrubEnv(o.EnvAllow), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")

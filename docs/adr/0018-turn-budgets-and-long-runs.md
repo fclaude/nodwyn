@@ -317,3 +317,16 @@ run checkpoint and resuming. The plan belongs to the run:
 All of this is Scheme (`plan.scm`, `prompts.scm`) over one read-only
 primitive and an extra field of `record-plan`. A project that wants a plan
 per turn redefines `plan-gate`.
+
+## Cached tokens count a tenth — 2026-10-02
+
+"Cached tokens still count in full against the token budget" (Spend,
+above) made the default soft limit (2M) a pause every few minutes on a
+model with a large context: a chat at 100k-140k tokens of context reached
+it after about twenty requests, nine tenths of what it counted read from the
+provider's cache, and waited two hours for a person. A prompt token the
+provider says it read from its cache now counts a tenth of one
+(`budget.CountedPrompt`), about what providers charge for it and what it asks
+of the server. A provider that does not report its cache counts in full, as
+before, and the console's "Tokens sent" counts the same way. The spend
+limit is unchanged: it counts what requests cost.

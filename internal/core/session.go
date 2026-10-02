@@ -54,6 +54,9 @@ type Session struct {
 	// (SendPlanned; plan.go).
 	planRequired atomic.Bool
 	planned      atomic.Bool
+	// reviewed: a person reads this turn's answer before anything else
+	// happens (plan.go, (reviewed?)).
+	reviewed atomic.Bool
 	// The turn's task and recorded plan, for the judge when it answers a
 	// confirm (judge.go).
 	turnMu   sync.Mutex
@@ -156,12 +159,16 @@ func (s *Session) SendRunTurn(task, completeLine string, turn, maxTurns int) err
 		if err != nil {
 			return err
 		}
-		return s.turn(ctx, text, true)
+		// A run checkpoint follows every turn but the last, and a person
+		// answers it unless the run is unattended.
+		return s.turn(ctx, text, true, !s.opts.Unattended && turn < maxTurns)
 	})
 }
 
+// send starts a turn on text. A chat's reply goes to the person who sent
+// it; a planned turn outside a run (SendPlanned) is taken as unreviewed.
 func (s *Session) send(text string, required bool) error {
-	return s.startTurn(func(ctx context.Context) error { return s.turn(ctx, text, required) })
+	return s.startTurn(func(ctx context.Context) error { return s.turn(ctx, text, required, !required) })
 }
 
 // turn records the user's message and runs the Scheme turn on it, which
@@ -169,14 +176,16 @@ func (s *Session) send(text string, required bool) error {
 // stays here is the invariant no Scheme can skip: a turn that must plan does
 // nothing irreversible before it records a plan, and fails if it records
 // none (plan.go).
-func (s *Session) turn(ctx context.Context, text string, required bool) error {
+func (s *Session) turn(ctx context.Context, text string, required, reviewed bool) error {
 	s.planRequired.Store(required)
 	s.planned.Store(false)
+	s.reviewed.Store(reviewed)
 	// The flags are the turn's: an evaluation after it, even after a
 	// required turn that failed unplanned, is not held to its plan.
 	defer func() {
 		s.planRequired.Store(false)
 		s.planned.Store(false)
+		s.reviewed.Store(false)
 	}()
 	safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
 	if err != nil {

@@ -53,13 +53,20 @@ func TestGitToolsReadChanges(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "plants.txt"), []byte("tomato\nbasil\n"), 0o600)
 	os.WriteFile(filepath.Join(root, ".env"), []byte("TOKEN=new\n"), 0o600)
 	os.WriteFile(filepath.Join(root, "new.txt"), []byte("x\n"), 0o600)
+	os.WriteFile(filepath.Join(root, "credentials.js"), []byte("export const x = 1;\n"), 0o600)
+	// The status names every file, a credential file too: a name is no
+	// secret, and the evidence loop must see what changed. The diff leaves
+	// out what fs-read refuses, and keeps code named like a credential file.
 	status := eval(`(git-status)`)
-	if !strings.Contains(status, " M plants.txt") || !strings.Contains(status, "?? new.txt") || strings.Contains(status, ".env") {
+	if !strings.Contains(status, " M plants.txt") || !strings.Contains(status, "?? new.txt") || !strings.Contains(status, " M .env") || !strings.Contains(status, "?? credentials.js") {
 		t.Fatalf("status:\n%s", status)
 	}
 	diff := eval(`(git-diff ".")`)
 	if !strings.Contains(diff, "+basil") || strings.Contains(diff, "TOKEN") {
 		t.Fatalf("diff:\n%s", diff)
+	}
+	if got := eval(`(git-diff ".env")`); got != "(no changes)" {
+		t.Fatalf("a credential file's diff: %q", got)
 	}
 	if got := eval(`(git-diff "plants.txt" #t)`); got != "(no changes)" {
 		t.Fatalf("nothing is staged: %q", got)

@@ -195,7 +195,7 @@ func resolveExisting(p string) string {
 // whatever their location (plan §3.3). It is defense in depth and stays
 // after L1 lands.
 type PathDenylist struct {
-	Globs []string // matched against the base name
+	Globs []string // matched against the base name, except of code (codeExtensions)
 	Dirs  []string // absolute directories that are entirely off limits
 	Root  string   // what relative paths are relative to (the repository)
 	// Except are directories inside Dirs that are not off limits: the
@@ -227,14 +227,33 @@ func (d PathDenylist) Check(_ context.Context, p *scheme.Prim, args []scheme.Val
 	return Decision{Verdict: Allow}
 }
 
+// codeExtensions mark a file as source or documentation. A name glob says
+// what a credential file is called, and code is called that too:
+// credentials.go, credentials.js and id_map.py are code about credentials,
+// not credentials, and a task about credentials has to read and change
+// them. Refusing them only sent the model to the shell, which reads them
+// anyway. A dotfile is not code here (.env.js, .eslintrc.js: configuration
+// that may hold a key). Their contents still pass ingress redaction (ADR
+// 25), and the protected directories still apply to them.
+var codeExtensions = map[string]bool{
+	".go": true, ".js": true, ".mjs": true, ".cjs": true, ".ts": true, ".tsx": true, ".jsx": true,
+	".vue": true, ".svelte": true, ".py": true, ".rb": true, ".php": true, ".java": true, ".kt": true,
+	".scala": true, ".rs": true, ".c": true, ".h": true, ".cc": true, ".cpp": true, ".hpp": true,
+	".cs": true, ".swift": true, ".m": true, ".dart": true, ".lua": true, ".pl": true, ".ex": true,
+	".exs": true, ".erl": true, ".hs": true, ".ml": true, ".clj": true, ".scm": true, ".el": true,
+	".css": true, ".scss": true, ".html": true, ".md": true, ".rst": true, ".tex": true,
+}
+
 // Denies returns why raw is credential material, or "" when it is not. A
 // primitive that reaches files its arguments do not name (the images a
 // document refers to) asks it about each one.
 func (d PathDenylist) Denies(raw string) string {
 	base := filepath.Base(raw)
-	for _, g := range d.Globs {
-		if ok, _ := filepath.Match(g, base); ok {
-			return "path " + raw + " matches the credential-file denylist (" + g + ")"
+	if strings.HasPrefix(base, ".") || !codeExtensions[strings.ToLower(filepath.Ext(base))] {
+		for _, g := range d.Globs {
+			if ok, _ := filepath.Match(g, base); ok {
+				return "path " + raw + " matches the credential-file denylist (" + g + ")"
+			}
 		}
 	}
 	// Relative paths are the repository's, as the pin reads them, and

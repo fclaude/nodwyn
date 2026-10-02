@@ -334,6 +334,23 @@ func TestSourceRole(t *testing.T) {
 	}
 }
 
+// Code named like credential material is code: a task about credentials
+// reads and changes credentials.go and credentials.js. The data files,
+// dotfiles and extension patterns stay refused.
+func TestDenylistLeavesCodeAlone(t *testing.T) {
+	d := DefaultDenylist()
+	for _, path := range []string{"internal/frontend/rpc/credentials.go", "web/assets/credentials.js", "id_map.py", "docs/credentials.md"} {
+		if why := d.Denies(path); why != "" {
+			t.Errorf("%s: %s", path, why)
+		}
+	}
+	for _, path := range []string{"credentials", "credentials.json", "config/credentials.yml.enc", ".env", ".env.js", ".env.md", "id_rsa", "id_ed25519.pub", "server.key", "cert.pem", ".netrc"} {
+		if d.Denies(path) == "" {
+			t.Errorf("%s is not refused", path)
+		}
+	}
+}
+
 // The session's scratch directory lives in nodwyn's data directory, which
 // the denylist protects; the scratch directory itself is usable, the rest
 // of the data directory is not, and credential-shaped names are refused in

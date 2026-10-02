@@ -79,11 +79,13 @@
 ;; revision that comes back empty, keeps the best plan so far. Records the
 ;; best plan under decision, and returns it.
 (define (plan-best judge request decision)
+  (define findings (plan-explore request))
   (define (keep best best-score revisions reason)
     (record-plan (list (cons 'decision decision) (cons 'plan best) (cons 'score best-score)
                        (cons 'revisions revisions) (cons 'reason reason)))
+    (plan-hand-over findings)
     best)
-  (let loop ((plan (plan-ask (plan-draft-with-findings request (plan-explore request))))
+  (let loop ((plan (plan-ask (plan-draft-with-findings request findings)))
              (round 0) (best #f) (best-score 0) (revisions 0))
     (let* ((score (if judge (plan-score judge request plan) #f))
            (scored (number? score))
@@ -101,6 +103,12 @@
                (if (string-empty? (string-trim revised))
                    (keep best best-score revisions "")
                    (loop revised (+ round 1) best best-score (+ revisions 1)))))))))
+
+;; What exploring found goes to the model that does the work, not only to
+;; the planner: it would otherwise read the same files again to learn it.
+(define (plan-hand-over findings)
+  (unless (string-empty? (string-trim findings))
+    (add-message (plan-findings-message findings))))
 
 ;; A run's later turn: the run's plan again, with the marks its earlier
 ;; turns made, so the steps keep their numbers and the window shows what is
@@ -134,7 +142,7 @@
 ;; skipped, as it goes (plan-step); the strategy records the mark
 ;; (record-step, as plan.step) and the console shows the plan's progress. A
 ;; mark is the model's word, like its report: the evidence is the transcript.
-(define plan-step-no-plan "No plan was recorded in this turn, so there is no step to mark.")
+(define plan-step-no-plan "No plan was recorded in this turn, so there is no step to mark: write one with plan-write first.")
 
 (define (plan-step-answer call args)
   (let ((steps (plan-steps))
@@ -163,3 +171,28 @@
   (lambda (call args)
     (guard (e (else (string-append "plan-step failed: " (format "~a" (assoc-ref e 'message "")))))
       (plan-step-answer call args))))
+
+;; The model's own plan. Its thinking is not kept from one request to the
+;; next, and a reply that only calls tools keeps nothing either, so a design
+;; worked out in thinking was worked out again at every request (a chat
+;; turn re-derived one 30 times and changed nothing). plan-write records the
+;; model's plan, decision "model", where the window pins it under
+;; plan-header for the rest of the turn and plan-step marks it. Writing it
+;; again revises it, and its marks start over; in a run it becomes the
+;; run's plan.
+(define (plan-write-answer call args)
+  (let ((plan (string-trim (format "~a" (assoc-ref args "plan" "")))))
+    (if (string-empty? plan)
+        "A plan needs at least one step."
+        (begin
+          (record-plan (list (cons 'decision "model") (cons 'plan plan)))
+          (let ((n (length (plan-steps))))
+            (string-append "Plan recorded: " (number->string n) (if (= n 1) " step" " steps")
+                           ". It stays in front of you; mark each step with plan-step as you finish it."))))))
+
+(define-agent-tool "plan-write"
+  "Write down your plan for the task: numbered steps, each naming the file or command involved. Your thinking is not kept from one request to the next; the plan is, in front of you for the rest of the task, and plan-step marks its steps. Write it once you know what to change, before changing it, and write it again only when it must change."
+  '(("plan" "string" "the numbered steps"))
+  (lambda (call args)
+    (guard (e (else (string-append "plan-write failed: " (format "~a" (assoc-ref e 'message "")))))
+      (plan-write-answer call args))))

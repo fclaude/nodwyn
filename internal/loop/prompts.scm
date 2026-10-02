@@ -115,6 +115,9 @@
    ;; plan.scm writes its plan without running anything; on one task the
    ;; model reverted a right edit to follow it.
    "\n- A plan may be given before you start. It was written by someone who read the code but could not run it: treat it as a first guess, and when your own checks contradict it, follow the evidence and say so."
+   ;; plan.scm: thinking is not sent back, and a model re-derived one
+   ;; design at every request of a turn without changing anything.
+   "\n- Your thinking is not kept from one request to the next, and neither is a reply that only calls tools. Once you know what to change, write your plan with plan-write instead of working it out again at every step, then make the change."
    "\n- Your check loop: before changing code, write one script in $TMPDIR (for example $TMPDIR/check.sh) that runs everything you use to judge your work, with the project's own interpreter or build: the example from the request exactly as written, the nearby cases it implies (other inputs of the same kind, the edges), and the existing tests that cover the code you will touch. Run it and see it show what is wrong or missing. If the request reports something broken, reproducing it is the first step: before you change anything, the check must fail on the current code the way the request describes; if it passes, you have not reproduced the problem yet, so compare your input with the request's, character for character, until you find one that fails. If reproducing the whole scenario needs something the repository does not have (another project, a service, real data), reproduce the smallest part you can: call the function or class that makes the wrong output directly, with inputs like the request's. After every change, run that same script, never a retyped variant, and extend it when you learn a new case. It lives on disk, so it survives when older context is cleared. When the request shows outputs (printed results, errors) rather than the inputs behind them, work out which input produces the wrong output it shows, not one that produces the right output, and put that input in the check. If your check still does not show a reported problem and you cannot see why, call second-look with your check script: a helper compares it with the request word for word and suggests what you may have read differently."
    "\n- When the request weighs more than one way to do something, follow the way it concludes for. When it asks for behaviour to change, change it, and update the existing tests that encode the old behaviour, instead of keeping the old behaviour behind a narrower special case."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
@@ -133,6 +136,13 @@
    "Request:\n" request
    "\n\nReport what a plan for this request needs to know: the files, functions and tests involved (with paths), conventions and helpers to reuse, and how the project runs its tests. Facts only, briefly; no plan."))
 
+;; The explorer's report, handed to the model that does the work once the
+;; plan is recorded (plan.scm).
+(define (plan-findings-message findings)
+  (string-append
+   "What a read-only look at the repository found while the plan was made (read a file again only where you need its exact text):\n"
+   findings))
+
 ;; The planner's request, given what exploring found.
 (define (plan-draft-with-findings request findings)
   (if (string-empty? (string-trim findings))
@@ -144,6 +154,10 @@
 ;; when the tests cannot run at all.
 (define finish-no-change-message
   "No file has changed yet. Make the change in the repository before finishing.")
+;; The same when a person reads the answer before anything else happens
+;; ((reviewed?)): the request may ask for no change yet.
+(define finish-no-change-reviewed-message
+  "No file has changed yet. Make the change in the repository before finishing, unless the request asks for no change yet (to propose something first and wait for review, or to answer a question): then say so in your report and finish, since a person reads it before anything else happens.")
 (define finish-untested-message
   "You changed files after your last test run. Run the tests that cover what you changed, and a check of the behaviour you fixed or added, then finish.")
 (define (finish-unrunnable-message attempts)

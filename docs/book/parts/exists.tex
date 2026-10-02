@@ -74,9 +74,9 @@ Every session offers \code{fs-read}, \code{fs-write}, \code{fs-edit},
 \code{git-status} and \code{git-diff}; with a stored \code{google}
 credential, \code{google-doc-upload}; with a stored \code{jev-key} and
 \code{jev.content} set to \code{full}, \code{judge-noul}, \code{judge-score} and
-\code{judge-choice}. The default loop adds three tools of its own, written
-in Scheme: \code{read-definition}, \code{second-look} and
-\code{plan-step}. A repository adds
+\code{judge-choice}. The default loop adds four tools of its own, written
+in Scheme: \code{read-definition}, \code{second-look}, \code{plan-write}
+and \code{plan-step}. A repository adds
 more in \file{.nodwyn/init.scm}; this one loads \file{dev/}, which offers
 \code{go-test}, \code{go-build}, \code{go-vet}, \code{go-fmt-check},
 \code{run-make}, \code{git-log}, \code{grep-repo}, \code{find-files} and

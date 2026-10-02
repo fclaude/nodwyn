@@ -170,7 +170,7 @@ nodwyn-stable                       # pins every path to this directory
 nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
 tools doc-export fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep plan-step
-      read-definition second-look shell-exec shell-read shell-send shell-start shell-stop
+      plan-write read-definition second-look shell-exec shell-read shell-send shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence
@@ -243,7 +243,8 @@ In a git work tree (a folder with `.git`), the model also gets `git-status`
 and `git-diff` (optionally a path, and `staged` for the index against the
 last commit). They are read-only and need no approval: git runs with fixed
 arguments, with external diff drivers, text conversion, the file system
-monitor and the pager switched off, and credential-looking files left out.
+monitor and the pager switched off. The status names every changed file; a
+diff leaves out the contents of credential-shaped files.
 Outside git, kept versions are the undo (`nodwyn versions`, `nodwyn undo`).
 
 ### The scratch directory
@@ -318,7 +319,9 @@ run after it — with an honest way out when the tests cannot run at all. It ans
 overrule its refusals. Still denied, exactly as with a human at the prompt:
 
 - anything outside the repository, and symlinks that leave it;
-- credential-shaped files (`.env*`, `*.pem`, `id_*`, `~/.ssh`, …);
+- credential-shaped files (`.env*`, `*.pem`, `id_*`, `credentials.*`,
+  `~/.ssh`, …), though not source or documentation named that way:
+  `credentials.go` and `credentials.js` are code about credentials;
 - a literal key on a command line, or in a request to an unbound host;
 - content that came from a file or a command heading somewhere no binding
   names;
@@ -431,7 +434,11 @@ block the model sees. Its thresholds and prompts are Scheme definitions a
 project may redefine. As the model works it marks the plan's steps done or
 skipped with the `plan-step` tool, and the console's plan panel (`:plan` in
 the TUI) shows its progress; a mark is the model's word, and the transcript
-is the evidence.
+is the evidence. Without a plan from the gate, the model writes its own with
+`plan-write`, which pins it the same way: its thinking is not kept from one
+request to the next, and a written plan is. A plan made with the judge or
+without one hands the explorer's findings to the model too, so it does not
+read the same files again.
 Every Jev call is a guarded egress: bound credential, L1 redaction of
 what leaves, a `jev.req` log line with origin, size, hash and the answer.
 Set `jev.content = "none"` in `config.toml` to turn it off. Without a
@@ -931,8 +938,9 @@ log. The TUI's `:budget` adds the turn's spend over every model request (the
 planner's, sub-agents' and compaction's included) and the judge's requests
 apart (priced by `[jev] price_*`, "Plan gate" above), and a budget
 checkpoint says what the turn has cost so far. The
-token budget still counts cached tokens in full: it measures context, not
-money.
+token budget counts a prompt token the provider read from its cache as a
+tenth of one, about what it costs and what it asks of the server; one it
+does not report on counts in full.
 
 **Keeping the cache warm.** A provider bills cached prompt tokens at a
 fraction of the input price (meta/muse-spark-1.3 through OpenRouter: a

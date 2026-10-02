@@ -221,10 +221,11 @@ type EgressCheck struct {
 // whether a plan was required, the Seam A score, and the revision count.
 // A run's later turn carries the run's plan instead of drafting one
 // ("carried"), with Marks, the steps its earlier turns marked, the latest
-// mark per step in step order.
+// mark per step in step order. The model may write its own plan ("model",
+// with plan-write).
 type GatePlan struct {
 	Origin    string     `json:"origin"`
-	Noul      string     `json:"noul"` // "plan" | "proceed" | "degraded" | "required" (a run's turn, no judge) | "carried" (a run's later turn)
+	Noul      string     `json:"noul"` // "plan" | "proceed" | "degraded" | "required" (a run's turn, no judge) | "carried" (a run's later turn) | "model" (plan-write)
 	Plan      string     `json:"plan,omitempty"`
 	Score     float64    `json:"score,omitempty"`
 	Revisions int        `json:"revisions,omitempty"`

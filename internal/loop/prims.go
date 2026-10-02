@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -303,7 +304,7 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 	}
 	cost, _ := llm.Cost(resp.Usage, rates)
 	if t.budget != nil {
-		t.budget.AddTokens(resp.Usage.PromptTokens, resp.Usage.OutputTokens)
+		t.budget.AddTokens(budget.CountedPrompt(resp.Usage.PromptTokens, resp.Usage.CachedTokens), resp.Usage.OutputTokens)
 		t.budget.AddSpend(cost, resp.Usage.CachedTokens)
 	}
 	t.expect(resp.Message.ToolCalls)

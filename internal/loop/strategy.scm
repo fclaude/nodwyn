@@ -55,9 +55,13 @@
 ;; When nobody reviews the work as it happens (unattended, or a supervised
 ;; run), a turn ends on evidence, not on the model's word: something changed,
 ;; and a test ran after the last edit. A reply that stops without that gets a
-;; reminder, at most finish-reminders times. Test commands that keep failing
-;; to run get finish-unrunnable-message once, so a broken environment ends
-;; in an honest report rather than a spent budget.
+;; reminder, at most finish-reminders times. When a person reads the answer
+;; before anything else happens ((reviewed?): a chat, or a run's turn a
+;; checkpoint follows), the no-change reminder says the request may ask for
+;; no change yet, a proposal to review first, and after it the turn may end
+;; unchanged. Test commands that keep failing to run get
+;; finish-unrunnable-message once, so a broken environment ends in an honest
+;; report rather than a spent budget.
 ;; The scratch directory is not the repository: writing the check script
 ;; there is not a change, and running it is a test run, as the check loop
 ;; asks (prompts.scm). In a git work tree git says what changed, edits made
@@ -183,8 +187,9 @@
   (let ((before (git-state)))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
+    ;; excused: a reviewed turn was told it may end unchanged.
     (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0)
-               (scripts '()) (written '()) (noted #f))
+               (scripts '()) (written '()) (noted #f) (excused #f))
       (let ((calls (assoc-ref reply 'tool-calls '())))
         (if (pair? calls)
             (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs)
@@ -208,7 +213,7 @@
                      (maybe-compact request reply)
                      (let ((stuck (and (not offered) (>= failed unrunnable-after))))
                        (when stuck (add-message (finish-unrunnable-message failed)))
-                       (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted)))))
+                       (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted excused)))))
             (let* ((now (and before (git-state)))
                    (new-lines (if now (filter (lambda (l) (not (member l before))) now) '()))
                    ;; With git: a tracked file changed, the file tools wrote
@@ -220,13 +225,16 @@
                                     (git-shows? written new-lines)
                                     (git-shows? written before))
                                 edited))
-                   (gap (cond ((not changed) finish-no-change-message)
-                              ((and (not tested) (not offered)) finish-untested-message)
+                   (reviewed (reviewed?))
+                   (gap (cond ((and (not changed) (not excused))
+                               (if reviewed finish-no-change-reviewed-message finish-no-change-message))
+                              ((and changed (not tested) (not offered)) finish-untested-message)
                               (else #f)))
                    (new (if (and now changed (not noted)) (git-new-files before now) '())))
               (cond ((and gap (< reminders finish-reminders))
                      (add-message gap)
-                     (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted))
+                     (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted
+                           (or excused (and (not changed) reviewed))))
                     ((pair? new)
                      (add-message (finish-new-files-message new))
-                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t)))))))))
+                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused)))))))))

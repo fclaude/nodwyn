@@ -13,7 +13,8 @@ over several requests, the largest single prompt too, since each request
 sends the whole prompt again. The side panel's Context meter shows how full
 the conversation's context is against the window's high water, with what the
 provider counted and how often it was compacted; "Tokens sent" is the token
-budget's count, every request's prompt in full. A compaction is one line in
+budget's count, every request's prompt, a token read from the provider's
+cache counted as a tenth. A compaction is one line in
 the conversation: what set it off, and the context's size before and after.
 **Connections** (tools, credentials, workspaces, models),
 **Workspaces** and **Settings** hold the rest; Settings also creates,

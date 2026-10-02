@@ -40,6 +40,17 @@ func (s *Session) registerPlanRequired() error {
 			},
 		},
 		{
+			Name: "reviewed?",
+			Meta: scheme.Meta{
+				Doc:    "True when a person reads this turn's answer before anything else happens: a chat's turn, and a supervised run's turn that a run checkpoint follows. False in an unattended run, in a run's last turn, and outside a turn. The default loop then lets a turn that changes nothing end, if the model says the request asks for no change yet.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: func(*scheme.Call) (scheme.Value, error) {
+				return scheme.Bool(s.reviewed.Load()), nil
+			},
+		},
+		{
 			Name: "plan-recorded?",
 			Meta: scheme.Meta{
 				Doc:    "True once this turn has recorded a non-empty plan.",

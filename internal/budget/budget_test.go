@@ -264,3 +264,24 @@ func TestJudgeRequests(t *testing.T) {
 		t.Fatalf("judge spend past the limit: %v", err)
 	}
 }
+
+// A prompt token the provider read from its cache counts a tenth against
+// the token budget; one it does not report on counts in full.
+func TestCachedPromptTokensCountATenth(t *testing.T) {
+	n := func(v int) *int { return &v }
+	for _, c := range []struct {
+		prompt int
+		cached *int
+		want   int
+	}{
+		{100000, n(90000), 19000},
+		{100000, nil, 100000},
+		{100000, n(0), 100000},
+		{500, n(900), 50}, // never more cached than the prompt
+		{0, n(10), 0},
+	} {
+		if got := CountedPrompt(c.prompt, c.cached); got != c.want {
+			t.Errorf("CountedPrompt(%d, %v) = %d, want %d", c.prompt, c.cached, got, c.want)
+		}
+	}
+}

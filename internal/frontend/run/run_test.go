@@ -97,6 +97,7 @@ func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, m
 	<-drained
 	return d.Info(), s.EventsSoFar()
 }
+
 // The plan is the run's: turn 1 drafts it, turn 2 carries it with the step
 // turn 1 marked, without asking the planner again, and works on the next.
 func TestSupervisedRun(t *testing.T) {
@@ -143,6 +144,35 @@ func TestSupervisedRun(t *testing.T) {
 		t.Fatalf("restore %+v %v", restored, err)
 	}
 }
+
+// A person reads a supervised run's turn at the checkpoint after it, so
+// that turn is reviewed; nobody reads the last turn before the run ends.
+func TestRunTurnsAreReviewedWhenACheckpointFollows(t *testing.T) {
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
+(define base-agent-turn agent-turn)
+(define (agent-turn request)
+  (log-note (if (reviewed?) "reviewed" "unreviewed"))
+  (base-agent-turn request))
+`), 0o644)
+	state, history := driveIn(t, repo, config.Default(), time.Minute, 2, "y",
+		fake.Turn{Content: "1. One step."}, fake.Turn{Content: "first"}, fake.Turn{Content: "second"})
+	if state.Status != "limited" || state.Turns != 2 {
+		t.Fatalf("%+v", state)
+	}
+	var said []string
+	for _, ev := range history {
+		var n log.Note
+		if ev.Kind == log.KindNote && ev.Decode(&n) == nil && strings.HasSuffix(n.Text, "reviewed") {
+			said = append(said, n.Text)
+		}
+	}
+	if strings.Join(said, " ") != "reviewed unreviewed" {
+		t.Fatalf("turns were %v", said)
+	}
+}
+
 func TestRunStops(t *testing.T) {
 	// A provider error is retried before it stops the run; keep that quick.
 	defer func(d time.Duration) { llm.RetryDelay = d }(llm.RetryDelay)

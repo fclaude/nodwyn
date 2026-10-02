@@ -80,3 +80,49 @@ func TestPlanStepWithoutAPlan(t *testing.T) {
 		t.Fatalf("answer:\n%s", r.logb.String())
 	}
 }
+
+func planWriteCall(id, plan string) fake.ToolCall {
+	return fake.ToolCall{ID: id, Name: "plan-write", Args: map[string]any{"plan": plan}}
+}
+
+// Without a plan from the gate, the model writes its own with plan-write:
+// it is recorded (decision "model"), pinned in the next request's system
+// prompt, and plan-step marks it. Writing it again revises it.
+func TestModelWritesItsOwnPlan(t *testing.T) {
+	r := judgedRig(t, nil, "",
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", "1. read main.go\n2. edit it")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("a", 1, "done", "read it")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("v", "1. edit main.go")}},
+		fake.Turn{Content: "done"})
+	if e := r.turn("change main.go"); e != "" {
+		t.Fatal(e)
+	}
+	if sys := requestMessages(t, r.srv.Requests[1])[0].Content; !strings.HasSuffix(sys, "say so if you must deviate):\n1. read main.go\n2. edit it") {
+		t.Fatalf("the plan is not pinned:\n%s", sys)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plans []log.GatePlan
+	answers := map[string]string{}
+	for _, ev := range evs {
+		switch ev.Kind {
+		case log.KindGatePlan:
+			var p log.GatePlan
+			ev.Decode(&p)
+			plans = append(plans, p)
+		case log.KindToolResult:
+			var tr log.ToolResult
+			ev.Decode(&tr)
+			answers[tr.ID] = tr.Value + tr.Error
+		}
+	}
+	if len(plans) != 2 || plans[0].Noul != "model" || plans[1].Plan != "1. edit main.go" {
+		t.Fatalf("plans %+v", plans)
+	}
+	if answers["w"] != "Plan recorded: 2 steps. It stays in front of you; mark each step with plan-step as you finish it." ||
+		answers["a"] != "Step 1 is done. Next unmarked: 2. edit it" {
+		t.Fatalf("answers %q", answers)
+	}
+}

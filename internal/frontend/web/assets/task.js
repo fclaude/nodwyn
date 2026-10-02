@@ -519,7 +519,9 @@ export class TaskView {
               : "required for this run"
             : p.noul === "carried"
               ? "the run's plan, carried over"
-              : "judge unavailable";
+              : p.noul === "model"
+                ? "written by the model"
+                : "judge unavailable";
     const steps = planSteps(p.plan);
     // The model's marks, the latest per step: those a carried plan brings
     // from the run's earlier turns, then those since (plan.step). A mark is
@@ -564,8 +566,16 @@ export class TaskView {
     const endTS = ended ? new Date(ended.ts || ended.TS).getTime() : this.busy ? Date.now() : new Date(turn.tail.at(-1)?.ts || startTS).getTime();
     const elapsed = startTS ? Math.max(0, endTS - startTS) : 0;
     const calls = turn.tail.filter((e) => e.kind === "tool.call").length;
+    // As the token budget counts them (budget.CountedPrompt): a prompt
+    // token read from the provider's cache counts a tenth.
     let tokens = 0;
-    for (const e of turn.tail) if (e.kind === "llm.resp") tokens += (e.payload.usage?.prompt_tokens || 0) + (e.payload.usage?.output_tokens || 0);
+    for (const e of turn.tail) {
+      if (e.kind !== "llm.resp") continue;
+      const u = e.payload.usage || {};
+      const prompt = u.prompt_tokens || 0;
+      const cached = Math.min(Math.max(u.cached_tokens || 0, 0), prompt);
+      tokens += prompt - cached + Math.floor(cached / 10) + (u.output_tokens || 0);
+    }
     const meter = (label, used, soft, fmt = String) => {
       const pct = soft ? Math.min(100, (used / soft) * 100) : 0;
       return h(
@@ -579,8 +589,9 @@ export class TaskView {
       ...[
         meter("Time", elapsed, budgets ? budgets.wall_ns.soft / 1e6 : 0, (ms) => minutes(ms)),
         meter("Tool calls", calls, budgets?.tool_calls.soft || 0),
-        // The budget counts every request's whole prompt, so this adds the
-        // context up once per request; Context below is how big it is.
+        // The budget counts every request's whole prompt, cached tokens at a
+        // tenth, so this adds the context up once per request; Context below
+        // is how big it is.
         tokens ? meter("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
         this.contextMeter(meter),
         this.judgeLine(),

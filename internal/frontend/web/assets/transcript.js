@@ -261,9 +261,11 @@ export class Transcript {
             ? `Made a plan${steps.length ? ` · ${steps.length} steps` : ""}${p.score ? ` · scored ${Number(p.score).toFixed(2)}` : ""}`
             : p.noul === "carried"
               ? `Went on with the run's plan · ${(p.marks || []).length} of ${steps.length} steps marked`
-              : p.noul === "proceed"
-                ? "No plan needed for this"
-                : "Planned without the plan judge";
+              : p.noul === "model"
+                ? `Wrote its plan${steps.length ? ` · ${steps.length} steps` : ""}`
+                : p.noul === "proceed"
+                  ? "No plan needed for this"
+                  : "Planned without the plan judge";
         this.audit(label, p.plan || p.reason || undefined);
         break;
       }
@@ -437,8 +439,10 @@ export class Transcript {
   toolResult(p) {
     let c = this.call;
     if (!c || c.id !== p.id || c.name !== p.name) {
-      // A plan-step the strategy answered is shown by its plan.step line.
+      // A plan-step or plan-write the strategy answered is shown by its
+      // plan.step or gate.plan line.
       if (p.name === "plan-step" && p.ok && /^Step \d+ is /.test(p.value || "")) return;
+      if (p.name === "plan-write" && p.ok && /^Plan recorded: /.test(p.value || "")) return;
       // A result without its call in view (a skipped or resumed call) stands alone.
       this.audit(`${toolLabel(p.name)} ${p.ok ? "returned" : "failed"}`, p.ok ? p.value : p.error, p.ok ? "" : "bad");
       return;
