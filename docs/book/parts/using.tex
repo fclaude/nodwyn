@@ -74,7 +74,10 @@ content = "plan"            # none | plan | plan+summaries | full
 A model may also set \code{num\_ctx} and \code{keep\_alive} (Ollama),
 \code{max\_output} and \code{output\_field} (servers that need them),
 \code{temperature} and \code{seed}. Each request records the settings it was
-sent with, so \code{nodwyn replay --window} can rebuild it.
+sent with, so \code{nodwyn replay --window} can rebuild it. A
+chat-completions model that reads images says so with \code{vision = true};
+Ollama reports it itself. Images can be attached only when the control model
+takes them.
 
 \chapter{Ways in}
 

@@ -33,6 +33,7 @@ export class TaskView {
     this.early = new Map(); // results that arrived before their id
     this.busy = false;
     this.acting = false;
+    this.uploading = false; // attachments on their way, an image perhaps waiting for its confirm
     this.timer = 0;
     this.root = h("div", { class: "task" });
     conn.onEvent((frame) => this.onFrame(frame));
@@ -328,7 +329,7 @@ export class TaskView {
     if (!this.el) return;
     const open = !!this.item?.open;
     const prompt = !!this.activePrompt();
-    const canSend = this.conn.has("session.send") && open && !this.loading && !this.acting;
+    const canSend = this.conn.has("session.send") && open && !this.loading && !this.acting && !this.uploading;
     this.el.form.hidden = !this.conn.has("session.send") || !!this.inspecting;
     this.el.reply.disabled = !canSend;
     this.el.reply.placeholder = !open
@@ -351,7 +352,19 @@ export class TaskView {
     this.busy = true;
     this.controls();
     try {
-      if (this.files.files.length) await this.files.upload(item.id);
+      if (this.files.files.length) {
+        // An image waits for its own confirm, answered on this page: the
+        // upload holds the composer, not the request card.
+        this.acting = false;
+        this.uploading = true;
+        this.controls();
+        try {
+          await this.files.upload(item.id);
+        } finally {
+          this.uploading = false;
+          this.acting = true;
+        }
+      }
       await this.conn.call("session.send", { id: item.id, text });
       if (drafts.get(item.id) === text) drafts.delete(item.id);
       if (version === this.version && this.el.reply.value === text) {

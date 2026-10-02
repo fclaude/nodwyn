@@ -108,6 +108,9 @@ type LLMReq struct {
 	// the high water ((model-turn name '((headroom . #t))), as the handover
 	// note's does) is trimmed only past the ceiling (window recipe v10).
 	HighWater int `json:"high_water,omitempty"`
+	// Withheld are the attached images in the window that this request did
+	// not carry, and why (window recipe v12).
+	Withheld []ImageGap `json:"withheld_images,omitempty"`
 }
 
 // ToolCall is one tool application the model asked for.
@@ -404,10 +407,17 @@ type FileVersion struct {
 // Attach is a file the person attached (ADR 22 §3). Text is what the model
 // reads: extracted by type, redacted at ingest and capped. It is data, never
 // instructions; Stored is the copy under the workspace's .nodwyn/attachments.
+//
+// An image (type image) has no text, and the log never holds its pixels:
+// the window reads them from Stored and checks them against SHA256 when it
+// builds a request. MediaType, Width and Height describe it, Tokens is what
+// the window counts for it, and Destination is the host the person agreed
+// it may go to, in the image's own confirm; no request to another host
+// carries it.
 type Attach struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
-	Type       string   `json:"type"`  // text | pdf | docx | xlsx | pptx
+	Type       string   `json:"type"`  // text | pdf | docx | xlsx | pptx | image
 	Bytes      int64    `json:"bytes"` // the file's size
 	SHA256     string   `json:"sha256"`
 	Stored     string   `json:"stored"` // path relative to the workspace root
@@ -416,4 +426,22 @@ type Attach struct {
 	Omitted    int      `json:"omitted,omitempty"` // bytes of extracted text left out by the cap
 	Redactions []string `json:"redactions,omitempty"`
 	Actor      string   `json:"actor,omitempty"`
+	// An image's (window recipe v12).
+	MediaType   string `json:"media_type,omitempty"` // image/png | image/jpeg | image/gif | image/webp
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	Tokens      int    `json:"tokens,omitempty"`      // the window's estimate (window.ImageTokens)
+	Destination string `json:"destination,omitempty"` // host:port of the control model it was confirmed for
+	ApprovedBy  string `json:"approved_by,omitempty"` // who answered its confirm
+	PromptID    string `json:"prompt_id,omitempty"`
+}
+
+// ImageGap is an attached image a request did not carry, and why: its
+// stored copy is "missing", or "changed" since it was attached; the model
+// asked takes no images ("no-vision"); or the request went to a host other
+// than the one the image was confirmed for ("elsewhere"). The request
+// carries a line saying so instead.
+type ImageGap struct {
+	Seq    uint64 `json:"seq"` // the attach record
+	Reason string `json:"reason"`
 }

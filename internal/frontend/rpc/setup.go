@@ -175,7 +175,7 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 	// in config.toml; choosing another model starts from its defaults.
 	if old := s.options.Config.Control; providerName(old.Provider) == providerName(m.Provider) && strings.TrimRight(old.URL, "/") == m.URL && old.Model == m.Model {
 		m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
-		m.Temperature, m.Seed = old.Temperature, old.Seed
+		m.Temperature, m.Seed, m.Vision = old.Temperature, old.Seed, old.Vision
 	}
 	raw, err := os.ReadFile(s.options.Paths.ConfigFile)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

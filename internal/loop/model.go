@@ -80,6 +80,7 @@ func offered(catalog []llm.Tool, offer toolOffer) []llm.Tool {
 // every time, so the model sees exactly what has been recorded, and the
 // request's hash lets nodwyn replay --window prove it. With headroom the
 // window is trimmed only past the ceiling instead of the high water.
+// Attached images are read from the workspace here, or withheld (images.go).
 func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom bool) (*llm.Response, error) {
 	ep, err := l.endpoint(name)
 	if err != nil {
@@ -92,6 +93,10 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 	w := window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, pol)
 	if !hasUserMessage(w.Messages) {
 		return nil, errors.New("the context has nothing for the model to answer; after narrow-context, add-message first")
+	}
+	withheld, err := l.images(ctx, name, ep, &w)
+	if err != nil {
+		return nil, err
 	}
 	maxOutput, capFrom := l.cfg.MaxOutput, "window.output_reserve"
 	if ep.MaxOutput > 0 {
@@ -108,7 +113,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		RequestHash: digest,
 		Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
 		NoTools: offer.none, OfferedTools: offer.only, MaxOutput: ep.MaxOutput,
-		Temperature: ep.Temperature, Seed: ep.Seed,
+		Temperature: ep.Temperature, Seed: ep.Seed, Withheld: withheld,
 	}
 	if pol.HighWater != l.cfg.Window.HighWater {
 		rec.HighWater = pol.HighWater

@@ -2,6 +2,8 @@
 // type (ADR 22 §3): text formats as they are, Office documents from their
 // XML, PDF through pdftotext when it is installed. It decodes; it never
 // interprets. What it returns is data for the model, never instructions.
+// An image is not turned into text: ReadImage checks it (image.go) so it
+// can be sent as it is.
 package extract
 
 import (
@@ -74,7 +76,7 @@ func File(ctx context.Context, path, name string) (Result, error) {
 	case ext == ".pptx":
 		return pptx(path)
 	case imageTypes[ext]:
-		return Result{}, fmt.Errorf("%w: images need a model that sees them, which nodwyn does not send yet", ErrUnsupported)
+		return Result{}, fmt.Errorf("%w: %s is an image, which is sent as an image (ReadImage), never as text; nothing is OCRed", ErrUnsupported, name)
 	case textTypes[ext] || ext == "":
 		raw, err := os.ReadFile(path)
 		if err != nil {

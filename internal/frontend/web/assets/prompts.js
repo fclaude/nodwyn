@@ -21,7 +21,10 @@ export function summary(event) {
     const tool = prompt.Prim.split("__").slice(1).join("__").replace(/[_-]+/g, " ");
     return { kind: prompt.Security ? "Security" : "Approval", tool: toolLabel(prompt.Prim), title: tool.charAt(0).toUpperCase() + tool.slice(1), detail: "", mcp: true };
   }
-  if (prompt.Path) title = `${verb || "Write"} ${basename(prompt.Path)}`;
+  // An image's own confirm (ADR 22 §3): its reasons say what it is and
+  // where it would go.
+  if (prompt.Prim === "attach image") title = `Send the image ${oneLine(prompt.Args, 50)} to the model?`;
+  else if (prompt.Path) title = `${verb || "Write"} ${basename(prompt.Path)}`;
   else if (prompt.Argv?.length) title = `Run ${oneLine(prompt.Argv.join(" "), 60)}`;
   else if (prompt.Egress?.Host) title = `Send to ${prompt.Egress.Host}`;
   else if (verb) title = `${verb} ${oneLine(prompt.Args, 50)}`;
@@ -134,7 +137,7 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
         ),
       );
     }
-    const shown = prompt.Path ? "" : prompt.Detail || prompt.Args;
+    const shown = prompt.Path || prompt.Prim === "attach image" ? "" : prompt.Detail || prompt.Args;
     if (prompt.Path && prompt.Detail) card.append(diffView(prompt.Detail, prompt.Path));
     else if (shown) {
       const long = shown.length > 600;

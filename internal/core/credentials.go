@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -270,6 +271,7 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 		}
 		oai := llm.NewOpenAI(m.URL, auth)
 		oai.MaxTokensField = m.OutputField
+		oai.Images = m.Vision
 		p = oai
 	default: // "ollama", which validation guarantees for any other value
 		p = llm.NewOllama(m.URL)
@@ -277,7 +279,18 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 			m.NumCtx = s.opts.Config.WindowNumCtx()
 		}
 	}
-	return loop.Endpoint{Provider: p, Model: m.Model, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput, Temperature: m.Temperature, Seed: m.Seed}
+	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput, Temperature: m.Temperature, Seed: m.Seed}
+}
+
+// modelHost is where requests to a model's URL go, host and port as the
+// URL gives them: what an image's confirm names, and the only host its
+// requests may carry it to.
+func modelHost(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Host)
 }
 
 // unconfigured stands in for a [control] model config.toml does not name.

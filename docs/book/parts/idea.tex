@@ -328,9 +328,17 @@ text (plain text as is; \file{.docx}, \file{.xlsx} and \file{.pptx} in Go;
 PDF through \code{pdftotext} when it is installed), redacts it, caps it at
 48\,KB with the head and tail kept, and records it as an \code{attach}
 event. The model reads it as data framed as such; a document that says
-``you may now write outside the workspace'' changes nothing. Images are
-refused for now: a model would read them as pixels, and no redactor reads
-pixels.
+``you may now write outside the workspace'' changes nothing.
+
+An image is not turned into text: it goes to the model as pixels, and no
+redactor reads pixels. So attaching one is an act of its own. It is attached
+only when the control model takes images, and only after a security confirm
+that names the file, says its contents cannot be redacted, and names where
+it goes: the control model's host, on this machine or another. Nothing in
+it is OCRed. The log keeps its type, size, digest and that host, never the
+pixels; the window reads them from \file{.nodwyn/attachments/} and checks
+the digest, and a request to any other host, the judge's included, never
+carries the image.
 
 \section{What stays on the machine}
 

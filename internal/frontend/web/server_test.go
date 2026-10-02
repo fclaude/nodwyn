@@ -616,8 +616,12 @@ func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 	if code != http.StatusOK || !strings.Contains(body, `"name":"notes.md"`) || strings.Contains(body, "hello") {
 		t.Fatalf("upload: %d %s", code, body)
 	}
-	if code, body := upload("photo.png", "\x89PNG", true); code != http.StatusUnprocessableEntity || !strings.Contains(body, "images") {
+	if code, body := upload("photo.png", "\x89PNG", true); code != http.StatusUnprocessableEntity || !strings.Contains(body, "not a PNG image") {
 		t.Fatalf("image upload: %d %s", code, body)
+	}
+	// An image needs a control model that takes images; this daemon has none.
+	if code, body := upload("dot.gif", "GIF89a\x02\x00\x02\x00\x00\x00\x00;", true); code != http.StatusUnprocessableEntity || !strings.Contains(body, "no control model is configured") {
+		t.Fatalf("image upload without a vision model: %d %s", code, body)
 	}
 	matches, _ := filepath.Glob(filepath.Join(repo, ".nodwyn", "attachments", "*", "notes.md"))
 	if len(matches) != 1 {

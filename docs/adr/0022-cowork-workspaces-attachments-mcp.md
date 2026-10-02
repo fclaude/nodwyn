@@ -1,6 +1,6 @@
 # ADR 0022: Cowork — workspaces, attachments, and MCP servers
 
-- Status: **partially implemented** (W1, W2 text and W3a done 2026-09-30; images, W3b, W4, W5 proposed)
+- Status: **partially implemented** (W1, W2 text and W3a done 2026-09-30; W2 images done 2026-10-01; W3b, W4, W5 proposed)
 - Date: 2026-09-22
 
 ## Context
@@ -249,3 +249,96 @@ the same tools and the same guard, `session.eval` works in every
 workspace, and the system prompt no longer describes a docs workspace as
 one that runs no programs. The kind stays as a label the console shows.
 Mounts, the pin and the version store are unchanged.
+
+## Amendment 2026-10-01: images may go to a remote control model
+
+§3 bounded unredactable images with three fences, the first being that the
+control plane is local, and said that a remote control plane must
+re-decide images: OCR-then-redact, or refuse them. The control model is now
+whatever `[control]` names (ADR 27), often another machine or a provider.
+Re-decided:
+
+- **Images may go to a remote control model**, but only through the image's
+  own confirm, and that confirm now carries the decision the local
+  control plane used to make for the person: it names the file, says its
+  pixels cannot be redacted, and names the destination, the control model
+  and its host, saying whether that host is this machine (loopback) or
+  another machine whose pixels leave this computer as they are.
+- **Nothing is OCRed.** Reading text out of an image to redact it would be
+  imperfect, and would make the model see something other than what the
+  person chose to send.
+- **An image goes only to the host it was confirmed for.** The attach
+  record keeps that host; a request to any other host, another configured
+  model included, carries a line saying the image is not for it instead.
+  The confirm is the consent, so it is never stretched to a destination it
+  did not name.
+- Images still never go to the judge, and the confirm is a security
+  confirm: no standing answer covers it, `--yolo` and a run's
+  `auto_approve` never answer it yes, and `--no-confirm` declines it.
+
+## W2 (images) implemented — 2026-10-01
+
+Images as decided above:
+
+- **Formats and caps** (`internal/extract/image.go`). PNG, JPEG, GIF and
+  WebP, decided by content: a `.png` that is not a PNG is refused, and so is
+  any other image format (HEIC, BMP, TIFF...) with a message saying to
+  convert it. A file without an extension is an image when its content is
+  one. At most 10 MB and 8000 pixels a side. The dimensions are read from
+  the header (no pixel is decoded); the bytes that were checked are the
+  bytes that are stored.
+- **Vision.** An image is attached only when the control model takes
+  images: ollama is asked (`/api/show` capabilities, `vision`), once per
+  session; a chat-completions model says so in its configuration,
+  `vision = true` (`config.Model.Vision`). Otherwise the attachment is
+  refused with what to change.
+- **The confirm** (`core.attachImage`). A `guard.Prompt` with `Security`,
+  `Prim` "attach image" and the file name, asked through
+  `Session.ConfirmApproval`, so it reaches every front-end as an ordinary
+  `prompt.confirm`. `--no-confirm` declines it and `--yolo` declines it too
+  (as `guard.AutoAllow` answers a security confirm); unanswered for ten
+  minutes, or cancelled with `session.abort`, it is declined. A declined
+  image leaves a `note` and no copy. While an attachment is in progress no
+  turn starts, and closing the session cancels it. The daemon makes the
+  attachment without its lifecycle lock, so the confirm can be answered
+  from another connection.
+- **The log holds no pixels.** The copy goes to
+  `.nodwyn/attachments/<id>/<name>` as text attachments do; the `attach`
+  record (type `image`) holds the media type, bytes, SHA-256, width,
+  height, token estimate, the confirmed host (`destination`) and who
+  answered the confirm.
+- **The window** (`internal/window/image.go`) carries an image as a user
+  message, a line framing it as data plus the image named by its digest
+  (`llm.Image`, whose bytes are not part of the request's JSON). When a
+  request is sent, the loop (`internal/loop/images.go`) reads each image
+  from the store and checks its size and digest. An image whose copy is
+  missing or changed, one the model asked does not take, or one going to
+  another host than it was confirmed for, is replaced by a line saying
+  which; the request's `llm.req` records each as `withheld_images`.
+  Request replay hashes the digest, not the bytes, and applies the recorded
+  reasons, so `nodwyn replay --window` verifies a request with images
+  without reading a file (window recipe v12; older logs have no images and
+  rebuild unchanged).
+- **Token accounting.** The record holds an estimate the window counts
+  instead of bytes/3: 85 tokens, plus 170 per 512-pixel tile of the image
+  scaled to fit 2048×2048 and then to a shorter side of at most 768. It is
+  the chat-completions tiling, an estimate for local models as bytes/3 is
+  for text. An image is trimmed with its line, oldest attachment first.
+- **Wire formats.** Ollama gets `images: [base64]` on the message; a
+  chat-completions server gets the content as parts, the text and then an
+  `image_url` data URL.
+- **Not to the judge, nor into narrowed contexts.** Jev's primitives take
+  strings, and the planner and sub-agents work in narrowed contexts that
+  start after the attachment; tests hold both.
+- **Front-ends.** Both console composers attach images; the upload waits
+  for the confirm, which the task page shows (the home composer opens the
+  task first). A chip reads "image · 1200×800 · ~1,105 tokens". The TUI and
+  line mode show the confirm like any other.
+
+Deviations from the plan: an image whose header does not give its
+dimensions is refused as damaged rather than attached with a fixed
+estimate (the fixed estimate, the formula's largest, 1,445, remains for a
+record without dimensions), because a server that cannot read an image
+fails every later request until it is trimmed. A person who wants an image
+out of the conversation deletes its stored copy; later requests then say
+it is missing.

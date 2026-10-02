@@ -24,11 +24,20 @@ folder's `.nodwyn/workspace.toml` (a code folder with no mounts needs none).
 They apply to tasks started afterwards.
 
 **Attaching.** The paperclip in either composer attaches files to the next
-message: text formats, `.docx`, `.xlsx`, `.pptx`, and PDF when `pdftotext`
-is installed; images are refused for now. Each file is copied into the
-folder's `.nodwyn/attachments/`, its text redacted and capped, and shown to the
+message: text formats, `.docx`, `.xlsx`, `.pptx`, PDF when `pdftotext`
+is installed, and images (PNG, JPEG, GIF, WebP; at most 10 MB) when the
+control model takes them. Each file is copied into the folder's
+`.nodwyn/attachments/`, its text redacted and capped, and shown to the
 model as data. The conversation shows a chip per file with how many
 secret-like strings were hidden.
+
+An image cannot be redacted, so before it is attached the task asks, as a
+security request card: it names the file, the model and its host, and
+whether that host is this computer. Sending waits for your answer; from
+Home the task opens first, so the card is in front of you. **Deny** leaves
+the image out and keeps your message unsent. An attached image shows as
+"image · 1200×800 · ~1,105 tokens": what it costs the context. It goes only
+to the host you allowed, never to the judge.
 
 **Undo.** Where git is not the undo, nodwyn keeps a file's previous content
 before changing it. A task's **Changes** list offers **History** per file;

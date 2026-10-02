@@ -568,7 +568,9 @@ func (b *bridge) attach(w http.ResponseWriter, r *http.Request, device string) {
 	if device != "" {
 		via = "web:" + device
 	}
-	ctx, cancel := context.WithTimeout(b.ctx, 90*time.Second)
+	// An image waits for its confirm, which the daemon gives up on after
+	// ten minutes; the call waits a little longer than that.
+	ctx, cancel := context.WithTimeout(b.ctx, 11*time.Minute)
 	defer cancel()
 	client, err := rpc.DialAs(ctx, b.socket, via)
 	if err != nil {

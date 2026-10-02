@@ -59,6 +59,7 @@ func run(seed bool, port int) error {
 	defer os.RemoveAll(root)
 	model := fake.NewFunc(respond)
 	defer model.Close()
+	model.SetCapabilities("completion", "tools", "vision") // images may be attached
 	chat := chatServer()
 	defer chat.Close()
 
@@ -223,14 +224,16 @@ func planStep(id string, step int, state, note string) fake.ToolCall {
 // otherwise the reply depends on how many tool rounds this ask has had.
 func respond(req fake.Request) fake.Turn {
 	var last string
-	rounds := 0
+	rounds, images := 0, 0
 	for _, raw := range req.Messages {
 		var m struct {
 			Role      string            `json:"role"`
 			Content   string            `json:"content"`
 			ToolCalls []json.RawMessage `json:"tool_calls"`
+			Images    []string          `json:"images"`
 		}
 		_ = json.Unmarshal(raw, &m)
+		images += len(m.Images)
 		switch {
 		case m.Role == "user" && !strings.HasPrefix(m.Content, "["):
 			last, rounds = m.Content, 0
@@ -241,6 +244,9 @@ func respond(req fake.Request) fake.Turn {
 	time.Sleep(400 * time.Millisecond)
 	if len(req.Tools) == 0 {
 		return fake.Turn{Content: "1. Find where the list is drawn\n2. Check what a saved session records\n3. Show when it changed and whether it's running\n4. Check it at phone width", Chunk: 24}
+	}
+	if strings.HasPrefix(last, "Describe") {
+		return fake.Turn{Content: fmt.Sprintf("This request carries %d image(s). The demo model does not look at them.", images), Chunk: 16}
 	}
 	if strings.HasPrefix(last, "Summarize") {
 		if rounds == 0 {

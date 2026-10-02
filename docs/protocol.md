@@ -286,7 +286,7 @@ name.
 | `workspace.remove` | `{"path"}` | `{}`; forgets the name, never the folder |
 | `versions.list` | `{"repo","path"}` | A file's kept previous versions (outside git); `repo` must be a named workspace or a folder a task has used |
 | `session.restore` | `{"id","path","hash"}` | `{operation_id}`; writes a kept version back through the ordinary approval, keeping the current content as a version too |
-| `session.attach` | `{"id","path","name"?}` | The attachment's receipt; `path` is absolute (the web console stages uploads itself) |
+| `session.attach` | `{"id","path","name"?}` | The attachment's receipt; `path` is absolute (the web console stages uploads itself). An image returns once its security confirm is answered (see below) |
 | `mcp.list` | `{}` | The configured MCP servers and their state |
 | `mcp.inspect` | `{"name"}` | `{tools, manifest, approved, changed}`: the server's live tools and whether they differ from what was approved |
 | `mcp.save` | `{"server", "api_key"?}` | The saved server; a key goes to the keychain with one binding row for that host |
@@ -296,6 +296,23 @@ name.
 Settings, keychain, `workspace.save`, `workspace.remove` and the `mcp.inspect`,
 `mcp.save`, `mcp.approve` and `mcp.remove` methods are refused to a paired
 remote device in the web console (browser.md).
+
+An image (PNG, JPEG, GIF or WebP by content; ADR 22, amended 2026-10-01) is
+attached only after the person says yes to its own confirm, which reaches
+the session's subscribers as an ordinary `prompt.confirm` with `Security`
+set, `Prim` `"attach image"`, `Args` the file name, and reasons that name the
+control model's host and say the pixels cannot be redacted. Answer it with
+`session.answer` (`y` or `n`; no standing answer applies) from a connection
+other than the one waiting in `session.attach`, since a connection's calls
+run in order; the daemon serves other methods meanwhile. A daemon session
+that answers confirms itself (a run's `auto_approve`) declines it, and so
+does `session.abort`, or ten minutes without an answer; `session.attach`
+then fails and the log has a `note`. While it waits, `session.send` is
+refused. The receipt of an image is its `attach` record: `type` `image`,
+`media_type`, `bytes`, `sha256`, `width`, `height`, `tokens` (the window's
+estimate), `destination` (the only host its requests go to) and
+`approved_by`; never the pixels. A request that did not carry an image
+records why in `llm.req` `withheld_images`.
 
 ## Generated contract
 

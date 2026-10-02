@@ -2,7 +2,7 @@
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, basename } from "./dom.js";
 import { summary } from "./prompts.js";
 import { modelForm, keychainForm } from "./setup.js";
-import { Attachments } from "./attach.js";
+import { Attachments, isImage } from "./attach.js";
 
 let chosen = ""; // the folder the next task starts in, for this tab
 let draft = "";
@@ -57,6 +57,8 @@ export function renderHome(root, ctx) {
         submit.disabled = true;
         try {
           const info = await conn.call("session.open", { repo: chosen });
+          // An image waits for its own confirm, which the task's page shows.
+          if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
           if (files.files.length) await files.upload(info.id);
           await conn.call("session.send", { id: info.id, text: task.value });
           draft = "";

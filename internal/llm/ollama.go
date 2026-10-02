@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -63,6 +65,49 @@ func (o *Ollama) Ping(ctx context.Context) (string, error) {
 	return v.Version, nil
 }
 
+// Capabilities asks /api/show what model can do: "completion", "tools",
+// "vision", "thinking"... A server older than the field reports none.
+func (o *Ollama) Capabilities(ctx context.Context, model string) ([]string, error) {
+	body, err := json.Marshal(map[string]string{"model": model})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.URL+"/api/show", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := o.Client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ollama: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := Redirected(resp, "model requests"); err != nil {
+		return nil, fmt.Errorf("ollama: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("ollama: show %s: %s: %s", model, resp.Status, strings.TrimSpace(string(b)))
+	}
+	var show struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&show); err != nil {
+		return nil, fmt.Errorf("ollama: show %s: %w", model, err)
+	}
+	return show.Capabilities, nil
+}
+
+// Vision reports whether the server lists "vision" among model's
+// capabilities: whether it reads the images a message carries.
+func (o *Ollama) Vision(ctx context.Context, model string) (bool, error) {
+	caps, err := o.Capabilities(ctx, model)
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(caps, "vision"), nil
+}
+
 // Wire types for /api/chat.
 
 type wireMessage struct {
@@ -72,6 +117,7 @@ type wireMessage struct {
 	ToolCalls  []wireToolCall `json:"tool_calls,omitempty"`
 	ToolName   string         `json:"tool_name,omitempty"`
 	ToolCallID string         `json:"tool_call_id,omitempty"`
+	Images     []string       `json:"images,omitempty"` // base64, no data: prefix
 }
 
 type wireToolCall struct {
@@ -142,6 +188,11 @@ func toWire(req Request) wireRequest {
 				wt.Function.Arguments = json.RawMessage("{}")
 			}
 			wm.ToolCalls = append(wm.ToolCalls, wt)
+		}
+		for _, img := range m.Images {
+			if len(img.Data) > 0 {
+				wm.Images = append(wm.Images, base64.StdEncoding.EncodeToString(img.Data))
+			}
 		}
 		w.Messages = append(w.Messages, wm)
 	}

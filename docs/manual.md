@@ -657,10 +657,40 @@ temperature = 0
 seed = 42
 ```
 
+**Images.** An image can be attached only when the control model takes
+images. Ollama says whether a model does (`ollama show MODEL` lists `vision`
+among its capabilities), and nodwyn asks it once per session. A
+chat-completions server does not say, so you do:
+
+```toml
+[control]
+provider = "openai"
+url = "https://api.example.com/v1"
+model = "some-vision-model"
+credential = "example-key"
+vision = true                     # it reads images; openai only
+```
+
+Attaching an image (PNG, JPEG, GIF or WebP, decided by its content; at most
+10 MB and 8000 pixels a side) asks a security confirm of its own. It names
+the file and the control model's host, says whether that host is this
+machine or another one, and says that the image cannot be redacted: whatever
+it shows reaches the model as it is, and nothing in it is read as text.
+`--yolo` never answers it yes and `--no-confirm` declines it. The log keeps
+the image's type, size, digest, dimensions and host, never its pixels; the
+copy is in `.nodwyn/attachments/`. An image goes only to the host it was
+confirmed for: a request to another configured model, at another host,
+says the image is not for it, and the judge, the planner and sub-agents
+never get it. The window counts an image as about 85 tokens plus 170 per
+512-pixel tile once it is scaled to fit 2048×2048 and a shorter side of
+768 (a 1200×800 screenshot is about 1,105). If its stored copy changes or
+is deleted, later requests say so instead of sending it, which is also how
+to take an image out of a conversation.
+
 The console's Settings page writes `[control]` for you. Saving the same model
 on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
-`max_output`, `output_field`, `temperature`, `seed`); choosing another model
-starts from its defaults.
+`max_output`, `output_field`, `temperature`, `seed`, `vision`); choosing
+another model starts from its defaults.
 
 The line-mode `nodwyn` refuses to start without it, printing the table to
 add, and checks at start that an Ollama control server answers. A daemon

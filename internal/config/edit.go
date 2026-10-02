@@ -87,6 +87,9 @@ func controlBlock(m Model) string {
 	if m.Seed != nil {
 		fmt.Fprintf(&b, "seed = %d\n", *m.Seed)
 	}
+	if m.Vision {
+		b.WriteString("vision = true\n")
+	}
 	b.WriteString("\n")
 	return b.String()
 }

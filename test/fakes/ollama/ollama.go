@@ -51,6 +51,25 @@ type Server struct {
 	next     int
 	respond  func(Request) Turn
 	Requests []Request
+	// capabilities is what /api/show reports for every model: completion
+	// and tools, unless SetCapabilities says otherwise.
+	capabilities []string
+	shows        int
+}
+
+// SetCapabilities sets what /api/show reports, such as "vision" for a
+// model that takes images.
+func (s *Server) SetCapabilities(caps ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.capabilities = caps
+}
+
+// Shows is how many times /api/show was asked.
+func (s *Server) Shows() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.shows
 }
 
 // NewFunc starts a fake whose every reply is chosen by respond from the
@@ -64,10 +83,24 @@ func NewFunc(respond func(Request) Turn) *Server {
 
 // New starts a fake with the given script.
 func New(turns ...Turn) *Server {
-	s := &Server{turns: turns}
+	s := &Server{turns: turns, capabilities: []string{"completion", "tools"}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"version": "fake"})
+	})
+	mux.HandleFunc("/api/show", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		if r.Method != http.MethodPost || json.NewDecoder(r.Body).Decode(&req) != nil || req.Model == "" {
+			http.Error(w, `{"error":"fake ollama: show needs a model"}`, http.StatusBadRequest)
+			return
+		}
+		s.mu.Lock()
+		s.shows++
+		caps := append([]string(nil), s.capabilities...)
+		s.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"capabilities": caps, "details": map[string]string{"family": "fake"}})
 	})
 	mux.HandleFunc("/api/chat", s.chat)
 	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {

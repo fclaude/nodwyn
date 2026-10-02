@@ -40,11 +40,15 @@ type Session struct {
 	mu         sync.Mutex
 	busy       bool
 	turnCancel context.CancelFunc
-	closed     bool
-	closing    bool
-	turns      sync.WaitGroup // includes final event delivery after Busy becomes false
-	closeOnce  sync.Once
-	closeErr   error
+	// attaching: an attachment is being added, perhaps waiting for an
+	// image's confirm (attach.go); no turn starts meanwhile.
+	attaching    bool
+	attachCancel context.CancelFunc
+	closed       bool
+	closing      bool
+	turns        sync.WaitGroup // includes final event delivery after Busy becomes false
+	closeOnce    sync.Once
+	closeErr     error
 
 	// The plan a turn must record before it may do anything irreversible
 	// (SendPlanned; plan.go).
@@ -171,6 +175,10 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 		s.mu.Unlock()
 		return errors.New("core: a turn is already running")
 	}
+	if s.attaching {
+		s.mu.Unlock()
+		return errors.New("core: an attachment is in progress; send when it is done")
+	}
 	limits, err := s.opts.Config.Budget.Limits(s.opts.Config.Loop.MaxToolCalls)
 	if err != nil {
 		s.mu.Unlock()
@@ -218,13 +226,17 @@ func (s *Session) Busy() bool {
 }
 
 // Abort cancels the running turn, if any: the model request is dropped, a
-// running tool is killed, a pending confirm is answered "no".
+// running tool is killed, a pending confirm is answered "no". An attachment
+// waiting for its confirm is not attached.
 func (s *Session) Abort() {
 	s.mu.Lock()
-	cancel := s.turnCancel
+	cancel, attach := s.turnCancel, s.attachCancel
 	s.mu.Unlock()
 	if cancel != nil {
 		cancel()
+	}
+	if attach != nil {
+		attach()
 	}
 }
 

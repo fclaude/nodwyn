@@ -31,6 +31,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/budget"
@@ -70,6 +71,9 @@ type Config struct {
 	// with (model-turn "NAME").
 	Models         map[string]Endpoint
 	RequestTimeout time.Duration // per model request
+	// Root is the workspace root, under which attached images are stored
+	// (.nodwyn/attachments); a request reads them from there.
+	Root string
 }
 
 // ControlModel is the registry name of the [control] model.
@@ -90,12 +94,17 @@ type Loop struct {
 	// turn is the turn in progress, nil between turns. The session runs one
 	// turn at a time, so a field suffices.
 	turn *turnState
+
+	// vision caches, per model name, whether the model takes images.
+	visionMu sync.Mutex
+	vision   map[string]bool
 }
 
 // Endpoint is one model a strategy can ask by name.
 type Endpoint struct {
 	Provider  llm.Provider
 	Model     string // model id as the provider names it
+	Host      string // host:port of its URL: where a request to it goes
 	NumCtx    int
 	KeepAlive string
 	MaxOutput int // this model's reply cap; 0 uses Config.MaxOutput

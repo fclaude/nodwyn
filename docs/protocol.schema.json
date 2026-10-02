@@ -246,6 +246,9 @@
         },
         "URL": {
           "type": "string"
+        },
+        "Vision": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -258,7 +261,8 @@
         "MaxOutput",
         "OutputField",
         "Temperature",
-        "Seed"
+        "Seed",
+        "Vision"
       ],
       "type": "object"
     },
@@ -704,10 +708,22 @@
         "actor": {
           "type": "string"
         },
+        "approved_by": {
+          "type": "string"
+        },
         "bytes": {
           "type": "integer"
         },
+        "destination": {
+          "type": "string"
+        },
+        "height": {
+          "type": "integer"
+        },
         "id": {
+          "type": "string"
+        },
+        "media_type": {
           "type": "string"
         },
         "name": {
@@ -718,6 +734,9 @@
         },
         "pages": {
           "type": "integer"
+        },
+        "prompt_id": {
+          "type": "string"
         },
         "redactions": {
           "items": {
@@ -737,8 +756,14 @@
         "text": {
           "type": "string"
         },
+        "tokens": {
+          "type": "integer"
+        },
         "type": {
           "type": "string"
+        },
+        "width": {
+          "type": "integer"
         }
       },
       "required": [
@@ -1059,6 +1084,22 @@
       ],
       "type": "object"
     },
+    "log.ImageGap": {
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq",
+        "reason"
+      ],
+      "type": "object"
+    },
     "log.JevReq": {
       "properties": {
         "answer": {},
@@ -1176,6 +1217,15 @@
         },
         "tools": {
           "type": "integer"
+        },
+        "withheld_images": {
+          "items": {
+            "$ref": "#/$defs/log.ImageGap"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [

@@ -24,6 +24,20 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolName   string     `json:"tool_name,omitempty"`    // role=tool
 	ToolCallID string     `json:"tool_call_id,omitempty"` // role=tool
+	// Images go with a user message to a model that takes them: an
+	// attached image (ADR 22 §3). Omitted when empty, so requests without
+	// one hash as before.
+	Images []Image `json:"images,omitempty"`
+}
+
+// Image is a picture sent with a message. Only its media type and digest
+// are in the request's JSON, so a request's hash names the image by its
+// SHA-256 and nodwyn replay --window verifies the request without the
+// pixels; the bytes go only into a provider's wire format.
+type Image struct {
+	MediaType string `json:"media_type"` // image/png, image/jpeg, image/gif or image/webp
+	SHA256    string `json:"sha256"`     // hex digest of Data
+	Data      []byte `json:"-"`
 }
 
 // ToolCall is a model request to apply a tool. Args is the JSON object of
@@ -90,4 +104,10 @@ type Provider interface {
 	Chat(ctx context.Context, req Request, onDelta func(Delta)) (*Response, error)
 	// Ping checks reachability and returns a version string.
 	Ping(ctx context.Context) (string, error)
+}
+
+// VisionReporter is a provider that can say whether a model takes images.
+// A provider that is not one is taken not to.
+type VisionReporter interface {
+	Vision(ctx context.Context, model string) (bool, error)
 }

@@ -195,7 +195,14 @@ func (s *server) attach(req request, client *peer) (any, *rpcError) {
 	if owned.driver.Active() {
 		return nil, failure(-32000, "Stop the active run before attaching")
 	}
-	receipt, err := owned.session.Attach(p.Path, p.Name, client.actor)
+	// An image waits for its confirm, which a client answers with
+	// session.answer, so the attachment is made without the lifecycle lock
+	// (as mcp.inspect is). The session itself refuses a turn meanwhile, and
+	// closing it cancels the attachment.
+	session := owned.session
+	s.mu.Unlock()
+	receipt, err := session.Attach(p.Path, p.Name, client.actor)
+	s.mu.Lock()
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}

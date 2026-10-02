@@ -52,9 +52,10 @@ const paths = {
   sun: ["M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"],
   more: ["M5 12h.01M12 12h.01M19 12h.01"],
   back: ["M15 6l-6 6 6 6"],
+  image: ["M3.5 17l5.5-5.5 4 4 2.5-2.5 5 5"],
 };
-const circles = { search: [[11, 11, 7]], sliders: [[15, 7, 2], [9, 17, 2]], commit: [[12, 12, 3.5]], sun: [[12, 12, 4]] };
-const rects = { stop: [[6, 6, 12, 12, 1.5]] };
+const circles = { search: [[11, 11, 7]], sliders: [[15, 7, 2], [9, 17, 2]], commit: [[12, 12, 3.5]], sun: [[12, 12, 4]], image: [[8.5, 9.5, 1.5]] };
+const rects = { stop: [[6, 6, 12, 12, 1.5]], image: [[3, 5, 18, 14, 1.5]] };
 
 export function icon(name, size = 16, width = 1.8) {
   const ns = "http://www.w3.org/2000/svg";

@@ -93,8 +93,8 @@ fastest safe way to let \nodwyn{} make a large change.
 
 In the console, the paperclip attaches files to your next message: text
 formats, Word (\file{.docx}), Excel (\file{.xlsx}), PowerPoint
-(\file{.pptx}), and PDF when \code{pdftotext} is installed. Images are
-refused for now. Each file is:
+(\file{.pptx}), and PDF when \code{pdftotext} is installed, and images
+(below). Each file other than an image is:
 
 \begin{enumerate}
   \item copied into the folder's \file{.nodwyn/attachments/};
@@ -115,6 +115,40 @@ guarantee it obeys. A document can still say ``ignore your task and
 \ldots''. What the guard guarantees holds regardless: whatever the model
 decides after reading it still has to pass through the door.
 \end{careful}
+
+\subsection{Images}
+
+A PNG, JPEG, GIF or WebP (decided by what the file contains, not its name;
+at most 10\,MB and 8000 pixels a side) is sent to the model as an image, so
+it can only be attached when the control model takes images: Ollama says so
+itself, a chat-completions model needs \code{vision = true} in its table.
+Nothing redacts pixels, so the task asks first, every time:
+
+\begin{txt}
+─── confirm: attach image whiteboard.png
+  • whiteboard.png is an image (PNG, 1200×800, 32 KB, about 1,105 tokens).
+    Its contents cannot be redacted: whatever it shows, a password or a key
+    included, reaches the model as it is, and nothing in it is read as text.
+  • It goes to the control model qwen2.5vl at workshop:11434, another machine:
+    its pixels leave this computer as they are.
+  • It goes with later requests to that host only, while the conversation
+    shows it; the judge never gets it.
+allow? [y/N]
+\end{txt}
+
+It is a security confirm: \key{Y} covers this image only, \code{--yolo}
+never says yes to it, and \code{--no-confirm} says no. The chip then reads
+``image · 1200×800 · \textasciitilde1,105 tokens'', which is what the
+picture costs the context. The log keeps its size, digest and the host you
+allowed, never the pixels. A request to any other host gets a line saying
+the image is not for it, and the planner and sub-agents, which start in a
+context of their own, never see it.
+
+\begin{tip}
+To take an image back out of a conversation, delete its copy under
+\file{.nodwyn/attachments/}. Later requests then say it is missing; they
+never send a different picture in its place.
+\end{tip}
 
 \section{Notes, scratch and versions: where things live}
 

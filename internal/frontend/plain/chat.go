@@ -284,6 +284,13 @@ func (c *Chat) show(ev event.Event) {
 
 // AttachSummary is the one line a transcript shows for an attached file.
 func AttachSummary(a log.Attach) string {
+	if a.Type == "image" {
+		tokens := fmt.Sprint(a.Tokens)
+		for i := len(tokens) - 3; i > 0; i -= 3 {
+			tokens = tokens[:i] + "," + tokens[i:]
+		}
+		return fmt.Sprintf("[attached %s · image · %d×%d · ~%s tokens · goes to %s only]", a.Name, a.Width, a.Height, tokens, a.Destination)
+	}
 	line := fmt.Sprintf("[attached %s · %s · %d bytes", a.Name, a.Type, a.Bytes)
 	if a.Pages > 0 {
 		line += fmt.Sprintf(" · %d pages", a.Pages)

@@ -3,6 +3,7 @@ package llm
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,6 +28,9 @@ type OpenAI struct {
 	// "max_tokens" for servers that only know the older field; anything
 	// else sends max_completion_tokens.
 	MaxTokensField string
+	// Images is set when the model takes images (vision = true in its
+	// config): a chat-completions server does not say whether one does.
+	Images bool
 }
 
 // NewOpenAI returns a client for base. Like NewOllama, requests are bounded
@@ -43,6 +47,10 @@ func NewOpenAI(base string, authorize func(*http.Request) error) *OpenAI {
 }
 
 func (o *OpenAI) Name() string { return "openai" }
+
+// Vision reports what the configuration says: whether the model takes
+// images.
+func (o *OpenAI) Vision(context.Context, string) (bool, error) { return o.Images, nil }
 
 // Ping lists the server's models.
 func (o *OpenAI) Ping(ctx context.Context) (string, error) {
@@ -103,13 +111,75 @@ func (o *OpenAI) ContextLength(ctx context.Context, model string) (int, error) {
 
 type oaiMessage struct {
 	Role       string        `json:"role"`
-	Content    string        `json:"content"`
+	Content    oaiContent    `json:"content"`
 	ToolCalls  []oaiToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string        `json:"tool_call_id,omitempty"`
 	// Reasoning is where servers that expose a model's thinking put it;
 	// the name varies (DeepSeek and vLLM: reasoning_content).
 	Reasoning        string `json:"reasoning,omitempty"`
 	ReasoningContent string `json:"reasoning_content,omitempty"`
+}
+
+// oaiContent is a message's content: a string, or, for a message that
+// carries images, an array of parts, its text first and then each image
+// as a data URL.
+type oaiContent struct {
+	Text  string
+	Parts []oaiPart
+}
+
+type oaiPart struct {
+	Type     string `json:"type"` // "text" | "image_url"
+	Text     string `json:"text,omitempty"`
+	ImageURL *struct {
+		URL string `json:"url"`
+	} `json:"image_url,omitempty"`
+}
+
+func (c oaiContent) MarshalJSON() ([]byte, error) {
+	if c.Parts != nil {
+		return json.Marshal(c.Parts)
+	}
+	return json.Marshal(c.Text)
+}
+
+// UnmarshalJSON reads a reply's content: a string, null (a reply that is
+// only tool calls), or parts, whose text is joined.
+func (c *oaiContent) UnmarshalJSON(raw []byte) error {
+	*c = oaiContent{}
+	switch {
+	case bytes.Equal(raw, []byte("null")):
+		return nil
+	case len(raw) > 0 && raw[0] == '[':
+		var parts []oaiPart
+		if err := json.Unmarshal(raw, &parts); err != nil {
+			return err
+		}
+		for _, p := range parts {
+			c.Text += p.Text
+		}
+		return nil
+	}
+	return json.Unmarshal(raw, &c.Text)
+}
+
+// openAIContent is m's content on the wire: its text, and its images as
+// data URLs after it.
+func openAIContent(m Message) oaiContent {
+	c := oaiContent{Text: m.Content}
+	for _, img := range m.Images {
+		if len(img.Data) == 0 {
+			continue
+		}
+		if c.Parts == nil {
+			c.Parts = []oaiPart{{Type: "text", Text: m.Content}}
+		}
+		p := oaiPart{Type: "image_url", ImageURL: &struct {
+			URL string `json:"url"`
+		}{"data:" + img.MediaType + ";base64," + base64.StdEncoding.EncodeToString(img.Data)}}
+		c.Parts = append(c.Parts, p)
+	}
+	return c
 }
 
 type oaiToolCall struct {
@@ -149,7 +219,7 @@ type oaiResponse struct {
 func toOpenAI(req Request) oaiRequest {
 	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed}
 	for _, m := range req.Messages {
-		om := oaiMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
+		om := oaiMessage{Role: m.Role, Content: openAIContent(m), ToolCallID: m.ToolCallID}
 		for _, tc := range m.ToolCalls {
 			var ot oaiToolCall
 			ot.ID, ot.Type = tc.ID, "function"
@@ -200,7 +270,7 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 	out := &Response{
 		Message: Message{
 			Role:     RoleAssistant,
-			Content:  choice.Message.Content,
+			Content:  choice.Message.Content.Text,
 			Thinking: choice.Message.Reasoning + choice.Message.ReasoningContent,
 		},
 		DoneReason: choice.FinishReason,

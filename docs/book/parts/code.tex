@@ -343,6 +343,17 @@ The same fold applies the events that shape the context: a strategy's
 \code{summary} written with \code{nodwyn summary} replaces an older span
 until it is dropped.
 
+An attached image is the one thing the window does not take from the log
+whole. \code{Build} names it by its SHA-256 (\code{llm.Image}, whose bytes
+are not part of the request's JSON) and counts the token estimate its
+\code{attach} record holds. Before the request is hashed and sent, the loop
+(\file{internal/loop/images.go}) reads each image from
+\file{.nodwyn/attachments/} and checks its size and digest, or withholds it
+with a line saying why: the copy is missing or changed, the model takes no
+images, or the request goes to another host than the image's confirm named.
+The reasons go into \code{llm.req}, so replay rebuilds the request, digest
+and all, without reading a file.
+
 \section{The provider answers}
 
 \file{internal/llm/ollama.go}. The native \code{/api/chat} protocol sends

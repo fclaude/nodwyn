@@ -298,6 +298,7 @@ func (s *Session) initialize() (err error) {
 		MaxOutput:      o.Config.Window.OutputReserve,
 		Models:         models,
 		RequestTimeout: requestTimeout,
+		Root:           o.Repo,
 	})
 	if err != nil {
 		return err

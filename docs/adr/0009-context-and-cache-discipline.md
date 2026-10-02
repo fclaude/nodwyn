@@ -99,3 +99,19 @@ the whole catalog, so the window, and the recipe, are unchanged by it. Every req
 `window.output_reserve` (window-v8: `max_output` in the recipe), so the
 prompt and the reply fit `num_ctx`. Recipes v1 to v7 still replay under their
 own rules. A strategy may also fold a tool result (`fold-result`): later windows show its text instead, recorded as `result.fold` (window-v9), so what the model no longer needs (a failed attempt, a stale or old read) stops taking room while the log keeps it. A request may be let past the high water, up to the window's ceiling (`(model-turn name '((headroom . #t)))`, compaction's note request); `llm.req` records its trim line as `high_water` and replay builds that request with it (window-v10). The window's water marks grow with the control model's context when config.toml leaves them unset (ADR 32, amendment 2026-09-30); the recipe records the sizes the session used, so replay needs no configuration.
+
+## Amendment: attached images in the window — 2026-10-01
+
+An attached image (ADR 22, amended 2026-10-01) is a user message: a line
+framing it as data, and the image named by its SHA-256. The log never holds
+its pixels; the request's sender reads them from the workspace's attachment
+store and checks their size and digest. An image it cannot send as
+attached, because its copy is missing or changed, the model takes no
+images, or the request goes to another host than the image's confirm named,
+is replaced by a line saying which, and `llm.req` records the reasons as
+`withheld_images`. The request hash covers the digest, never the bytes, so
+replay applies the recorded reasons and verifies the request without
+reading a file (window-v12; a log without images builds as before). The
+window counts an image as the estimate its record holds (85 tokens and 170
+per 512-pixel tile, after the chat-completions scaling), not as bytes/3, and
+trims it with its line, oldest attachment first.

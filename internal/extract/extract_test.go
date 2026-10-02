@@ -38,7 +38,7 @@ func TestText(t *testing.T) {
 	if _, err := File(context.Background(), path, "notes.txt"); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("binary as text: %v", err)
 	}
-	if _, err := File(context.Background(), path, "photo.jpg"); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "images") {
+	if _, err := File(context.Background(), path, "photo.jpg"); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "sent as an image") {
 		t.Fatalf("image: %v", err)
 	}
 	if _, err := File(context.Background(), path, "tool.exe"); !errors.Is(err, ErrUnsupported) {

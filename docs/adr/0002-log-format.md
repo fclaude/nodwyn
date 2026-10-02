@@ -89,3 +89,14 @@ done or skipped (the `plan-step` tool, answered by the strategy with
 model's note. It is the model's claim, not a proof, and the window ignores
 it: the model already sees its call and the answer. A front-end shows the
 plan's progress from it.
+
+## Amendment — 2026-10-01: images in `attach` and `llm.req`
+
+No new kind. An `attach` record may be of type `image` (ADR 22, amended
+2026-10-01): it then has no text and never the pixels, but the media type,
+width, height, the window's token estimate, the host its confirm named
+(`destination`) and who answered the confirm (`approved_by`, `prompt_id`).
+`llm.req` gains `withheld_images`: the attached images the request did not
+carry, by attach sequence, and why (`missing`, `changed`, `no-vision`,
+`elsewhere`). A declined image leaves a `note`. Both fields are optional,
+so older records read as before.

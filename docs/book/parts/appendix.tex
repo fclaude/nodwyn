@@ -14,7 +14,7 @@ Kind & What it records \\
 \code{session.end} & clean shutdown; absent after a crash \\
 \code{user.msg} & text you sent, redacted \\
 \code{harness.msg} & text the loop's strategy added for the model \\
-\code{attach} & an attached file: name, type, hash, extracted and redacted text \\
+\code{attach} & an attached file: name, type, hash, extracted and redacted text; for an image, its size, token estimate and confirmed host, never its pixels \\
 \code{llm.req} & a request to a model: which model, what was elided, settings, a digest \\
 \code{llm.resp} & the model's reply: content, thinking, tool calls, stop reason, usage \\
 \code{tool.call} & a tool application about to be evaluated, with its origin \\
@@ -97,7 +97,7 @@ ADR & Title & Status \\
 \begin{description}[leftmargin=2.2em]
 \item[attachment] a file you brought into a conversation: copied into the
   workspace, its text extracted, redacted and capped, and shown to the model
-  as data.
+  as data. An image is sent as an image, after a confirm of its own.
 \item[binding] a user-owned row authorising a credential class for a
   destination, positions and methods; the egress authority.
 \item[checker] one stage of the guard; reads a primitive's metadata and

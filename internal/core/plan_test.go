@@ -33,6 +33,7 @@ type fakeJudge struct {
 	answers   []any
 	questions []string // the type of each question asked
 	states    []string // the state each question was about
+	bodies    []string // each request as sent
 }
 
 func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
@@ -48,6 +49,7 @@ func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
 		defer j.mu.Unlock()
 		j.questions = append(j.questions, body.Questions["q"].Type)
 		j.states = append(j.states, body.State)
+		j.bodies = append(j.bodies, string(raw))
 		if len(j.answers) == 0 {
 			http.Error(w, "no scripted answer", http.StatusInternalServerError)
 			return

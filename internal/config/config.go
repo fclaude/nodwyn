@@ -111,6 +111,10 @@ type Model struct {
 	// options, a chat-completions server's fields).
 	Temperature *float64 `toml:"temperature"`
 	Seed        *int64   `toml:"seed"`
+	// Vision says the model takes images, so an attached image may be sent
+	// to it (ADR 22 §3). openai only: a chat-completions server does not
+	// say, while ollama reports it (/api/show).
+	Vision bool `toml:"vision"`
 }
 
 // Jev is the judge's configuration (ADR 19/20). Jev is keyed: it runs only
@@ -410,6 +414,9 @@ func (m Model) validate() error {
 	}
 	if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
 		return fmt.Errorf("temperature %v must be between 0 and 2", *m.Temperature)
+	}
+	if m.Provider != "openai" && m.Vision {
+		return errors.New("vision is for openai servers; ollama says itself whether a model takes images")
 	}
 	return nil
 }

@@ -126,3 +126,15 @@ their very next message.
   A strategy asks for a compaction at its next round with
   `(compact-next-round)`. Both are user code in `compact.scm`
   (docs/scheme.md §9.2).
+
+## Amendment: models that take images (2026-10-01)
+
+An attached image (ADR 22, amended 2026-10-01) is sent only to a model that
+takes images: ollama says so (`/api/show` lists `vision`), and a
+chat-completions model says so in its table, `vision = true`, since those
+servers do not. It is attached only if the control model takes images, and
+it goes only to the host its confirm named, the control model's: a request
+to any other configured model, at another host, carries a line saying the
+image is not for it. Routing is still user code; the image's consent is not
+stretched by it. A narrowed context, the planner's or a sub-agent's, starts
+after the attachment and so carries no image.
