@@ -333,3 +333,30 @@ func TestSourceRole(t *testing.T) {
 		t.Fatalf("an upload is not a write, got %q", path)
 	}
 }
+
+// The session's scratch directory lives in nodwyn's data directory, which
+// the denylist protects; the scratch directory itself is usable, the rest
+// of the data directory is not, and credential-shaped names are refused in
+// the scratch directory too.
+func TestDenylistExceptsTheScratchDirectory(t *testing.T) {
+	data := t.TempDir()
+	scratch := filepath.Join(data, "scratch", "nodwyn-scratch-1")
+	os.MkdirAll(scratch, 0o700)
+	d := PathDenylist{Globs: []string{".env"}, Dirs: []string{data}, Except: []string{scratch}}
+	if why := d.Denies(filepath.Join(scratch, "probe.py")); why != "" {
+		t.Fatalf("the scratch directory is denied: %s", why)
+	}
+	if d.Denies(filepath.Join(data, "sessions", "x.jsonl")) == "" {
+		t.Fatal("the rest of the data directory is usable")
+	}
+	if d.Denies(filepath.Join(scratch, ".env")) == "" {
+		t.Fatal("a credential-shaped name in the scratch directory is usable")
+	}
+	// A link in the scratch directory that leads elsewhere in the data
+	// directory is judged by where it leads.
+	os.MkdirAll(filepath.Join(data, "sessions"), 0o700)
+	os.Symlink(filepath.Join(data, "sessions"), filepath.Join(scratch, "out"))
+	if d.Denies(filepath.Join(scratch, "out", "x.jsonl")) == "" {
+		t.Fatal("a link out of the scratch directory escaped the denylist")
+	}
+}

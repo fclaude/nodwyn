@@ -205,7 +205,7 @@ func fsFind(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			deny := denylist(o.Root)
+			deny := denylist(o.Root, o.Scratch)
 			read, _ := c.In.Lookup("fs-read")
 			result := findResult{Files: []string{}}
 			for _, file := range files {

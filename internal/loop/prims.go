@@ -23,7 +23,7 @@ func (l *Loop) install() error {
 		{
 			Name: "model-turn",
 			Meta: scheme.Meta{
-				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]; an options alist may follow the name, where (tools . #f) offers the model no tools and (headroom . #t) lets the request run past the window's high water, up to its ceiling, before older context is trimmed. Returns an alist with keys content, thinking, done (the stop reason), tool-calls, prompt-tokens and output-tokens (the server's counts; 0 when it gives none); each call is an alist with keys id, name and args (the model's JSON text).",
+				Doc:      "Ask a model once, over the window built from the log: the control model, or with a name the configured model [models.NAME]; an options alist may follow the name, where (tools . #f) offers the model no tools and (headroom . #t) lets the request run past the window's high water, up to its ceiling, before older context is trimmed. Returns an alist with keys content, thinking, done (the stop reason), tool-calls, prompt-tokens and output-tokens (the server's counts; 0 when it gives none), cached-tokens (from the provider's prompt cache) and cost (USD, reported or estimated from configured prices), each #f when unknown; each call is an alist with keys id, name and args (the model's JSON text).",
 				Variadic: true, // (model-turn), (model-turn name) or (model-turn name options)
 				Hidden:   true,
 				Origin:   "builtin",

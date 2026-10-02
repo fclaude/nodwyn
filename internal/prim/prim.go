@@ -138,7 +138,7 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 	cs := []guard.Checker{
 		guard.MetaPolicy{},
 		guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts},
-		denylist(o.Root),
+		denylist(o.Root, o.Scratch),
 		argv,
 		guard.ProtectedPaths{Root: o.Root, Mounts: o.Mounts},
 		guard.ScratchWrites{Dir: o.Scratch},
@@ -154,9 +154,15 @@ func Checkers(o Options, allow *guard.CommandAllow, writes *guard.WriteAllow, ex
 	return cs
 }
 
-func denylist(root string) guard.PathDenylist {
+// denylist is the credential denylist for a session in root. Its scratch
+// directory lives in nodwyn's data directory, which the list protects; it
+// is the one place there the session's tools may use.
+func denylist(root, scratch string) guard.PathDenylist {
 	d := guard.DefaultDenylist()
 	d.Root = root
+	if scratch != "" {
+		d.Except = []string{scratch}
+	}
 	return d
 }
 

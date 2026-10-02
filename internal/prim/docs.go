@@ -167,7 +167,7 @@ func docExport(o Options, pin guard.RepoPin) *scheme.Prim {
 			if !to.embeds {
 				title = strings.TrimSuffix(filepath.Base(dst), filepath.Ext(dst))
 			}
-			tree, dropped, raws, err := vetTree(tree, filepath.Dir(src), pin, denylist(o.Root), title, to.embeds)
+			tree, dropped, raws, err := vetTree(tree, filepath.Dir(src), pin, denylist(o.Root, o.Scratch), title, to.embeds)
 			if err != nil {
 				return scheme.Value{}, err
 			}

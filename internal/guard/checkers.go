@@ -198,6 +198,10 @@ type PathDenylist struct {
 	Globs []string // matched against the base name
 	Dirs  []string // absolute directories that are entirely off limits
 	Root  string   // what relative paths are relative to (the repository)
+	// Except are directories inside Dirs that are not off limits: the
+	// session's scratch directory, which lives in nodwyn's data directory.
+	// Globs still apply in them.
+	Except []string
 }
 
 // DefaultDenylist is the bootstrap list.
@@ -242,6 +246,11 @@ func (d PathDenylist) Denies(raw string) string {
 	}
 	abs, _ = filepath.Abs(abs)
 	real := resolveExisting(abs)
+	for _, ex := range d.Except {
+		if ex != "" && within(abs, ex) && within(real, resolveExisting(ex)) {
+			return ""
+		}
+	}
 	for _, dir := range d.Dirs {
 		rdir := resolveExisting(dir)
 		if within(abs, dir) || within(real, rdir) {
