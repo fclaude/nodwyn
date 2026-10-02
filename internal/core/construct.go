@@ -196,7 +196,8 @@ func (s *Session) primitiveOptions() prim.Options {
 	// W5 documents: google-doc-upload is offered only when a credential of
 	// the configured class is stored now, since the tool list is fixed for
 	// the session. The session is the DocsClient.
-	if class := o.Config.Docs.GoogleCredential; class != "" && s.HandleForClass(class) != nil {
+	// Uploads set to deny are not offered at all (uploads.go).
+	if class := o.Config.Docs.GoogleCredential; class != "" && s.HandleForClass(class) != nil && s.uploadPolicy() != config.UploadDeny {
 		po.Docs = s
 		po.DocsConfig = prim.DocsOptions{GoogleClass: class, GoogleUploadURL: o.Config.Docs.GoogleUploadURL}
 	}
@@ -243,6 +244,7 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 		}
 		egressCheckers = append(egressCheckers, guard.TextSecret{Table: s.bindings, Scanner: sc})
 	}
+	egressCheckers = append(egressCheckers, uploadChecker{s})
 	checkers := append([]guard.Checker{guard.BindingReload{Policy: s.bindings}}, prim.Checkers(po, s.allow, s.writes, egressCheckers...)...)
 	// One guard for the session. While init.scm loads nobody is listening,
 	// so confirms are denied; the real confirmer is installed afterwards on

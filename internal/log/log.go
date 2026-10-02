@@ -53,6 +53,7 @@ const (
 	KindToolCall       Kind = "tool.call"       // a tool application about to be evaluated
 	KindToolResult     Kind = "tool.result"     // its result or error (redacted from P7)
 	KindBindingChange  Kind = "binding.change"  // requested/applied/failed persistent binding update
+	KindSettingChange  Kind = "setting.change"  // a setting in config.toml changed by a person's answer or the console
 	KindApprovalChange Kind = "approval.change" // explicit temporary policy expansion
 	KindGuardDecision  Kind = "guard.decision"  // Allow / Deny / Confirm at apply->Prim
 	KindEgressCheck    Kind = "egress.check"    // binding lookup for a secret-bearing egress (P3)
@@ -76,7 +77,7 @@ var kinds = map[Kind]bool{
 	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindHarnessMsg: true, KindContextNarrow: true, KindContextWiden: true, KindContextFold: true, KindResultFold: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
-	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,
+	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSettingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,
 	KindJevReq: true, KindCredRegister: true, KindCredRefresh: true, KindMCPEgress: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true, KindAttach: true,
 	KindDocUpload: true,
 }

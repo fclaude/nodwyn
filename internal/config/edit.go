@@ -61,6 +61,58 @@ func SetControl(raw []byte, m Model) ([]byte, Config, error) {
 	return []byte(text), cfg, nil
 }
 
+// SetKey returns raw (config.toml's contents) with key in table set to the
+// string value, keeping every other line, comments included, as written: an
+// existing assignment is replaced in place, a missing one is added at the
+// end of the table, and a missing table is added at the end of the file.
+// The result is parsed and validated before it is returned.
+func SetKey(raw []byte, table, key, value string) ([]byte, Config, error) {
+	line := fmt.Sprintf("%s = %s\n", key, quote(value))
+	assign := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(key) + `\s*=`)
+	text := string(raw)
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	lines := strings.SplitAfter(text, "\n")
+	lines = lines[:len(lines)-1] // the empty string after the final newline
+	in, found, at := false, false, -1
+	for i, l := range lines {
+		if match := tableHeader.FindStringSubmatch(strings.TrimRight(l, "\r\n")); match != nil {
+			in = strings.Trim(match[1], `"`) == table
+			if in {
+				found, at = true, i+1
+			}
+			continue
+		}
+		if !in {
+			continue
+		}
+		if assign.MatchString(l) {
+			lines[i] = line
+			at = -2
+			break
+		}
+		if t := strings.TrimSpace(l); t != "" && !strings.HasPrefix(t, "#") {
+			at = i + 1 // after the table's last setting
+		}
+	}
+	switch {
+	case at >= 0:
+		lines = append(lines[:at], append([]string{line}, lines[at:]...)...)
+	case !found:
+		if len(lines) > 0 {
+			lines = append(lines, "\n")
+		}
+		lines = append(lines, "["+table+"]\n", line)
+	}
+	text = strings.Join(lines, "")
+	cfg, err := Parse([]byte(text))
+	if err != nil {
+		return nil, Config{}, err
+	}
+	return []byte(text), cfg, nil
+}
+
 func controlBlock(m Model) string {
 	var b strings.Builder
 	b.WriteString("[control]\n")

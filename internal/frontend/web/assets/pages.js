@@ -3,6 +3,7 @@
 import { h, icon, repoName, shortPath, ago, toast } from "./dom.js";
 import { chooseFolder, kindLabel } from "./home.js";
 import { modelForm, keychainForm } from "./setup.js";
+import { uploadLabels } from "./transcript.js";
 
 // ---------- theme (a per-browser convenience; dark unless chosen) ----------
 const themes = ["dark", "light", "system"];
@@ -88,6 +89,8 @@ export function renderSettings(root, ctx) {
               ? h("details", { class: "box" }, h("summary", {}, "Change the main model"), modelForm(ctx, { onSaved: () => renderSettings(root, ctx) }), h("p", { class: "hint" }, `Saved in ${desk.settings?.config_file || "config.toml"}; other settings there are kept. Tasks already open keep the model they started with.`))
               : null,
           ),
+          desk.settings?.docs ? h("div", { class: "label" }, "Google Docs uploads") : null,
+          desk.settings?.docs ? h("div", { class: "value", id: "uploads" }) : null,
           conn.has("keychain.status") ? h("div", { class: "label" }, "Keychain") : null,
           conn.has("keychain.status") ? h("div", { class: "value" }, conn.has("keychain.unlock") ? keychainForm(ctx, { onDone: () => renderSettings(root, ctx) }) : h("p", { class: "hint" }, desk.keychain?.unlocked ? "Unlocked." : "Locked.")) : null,
           conn.has("devices.list") ? h("div", { class: "label" }, "Other devices") : null,
@@ -105,6 +108,45 @@ export function renderSettings(root, ctx) {
     ),
   );
   if (conn.has("devices.list")) showDevices(root.querySelector("#devices"), ctx);
+  if (desk.settings?.docs) showUploads(root.querySelector("#uploads"), ctx);
+}
+
+// showUploads is how an upload to Google Docs is handled. A task that asked
+// may have saved an answer since the page loaded, so it reads it again.
+async function showUploads(node, ctx) {
+  const { conn, desk } = ctx;
+  const draw = () => {
+    const docs = desk.settings?.docs || {};
+    const current = docs.google_upload || "";
+    const editable = conn.has("settings.docs.write");
+    const choose = async (value) => {
+      try {
+        desk.settings = await conn.call("settings.docs.write", { google_upload: value });
+      } catch (error) {
+        toast(error.message);
+      }
+      draw();
+    };
+    const chip = (value) => h("button", { type: "button", class: "chip", "aria-pressed": String(current === value), disabled: !editable, onclick: () => choose(value) }, uploadLabels[value].replace(/^./, (c) => c.toUpperCase()));
+    node.replaceChildren(
+      h("div", { class: "row-actions" }, chip("ask"), chip("allow"), chip("deny")),
+      h(
+        "p",
+        { class: "hint" },
+        current ? "" : "Not set yet: the first upload asks. ",
+        "Allow by hand asks before each upload, and --yolo, --judge and unattended runs never upload. Always allow uploads without asking, wherever the binding table allows it. Deny never uploads.",
+        docs.google ? "" : " No Google credential is configured, so no task can upload yet.",
+        editable ? "" : " Only the computer nodwyn runs on can change this.",
+      ),
+    );
+  };
+  draw();
+  try {
+    desk.settings = await conn.call("settings.read");
+    draw();
+  } catch {
+    /* keep what the page loaded with */
+  }
 }
 
 async function showDevices(node, ctx) {

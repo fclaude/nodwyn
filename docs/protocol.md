@@ -186,6 +186,19 @@ the existing checkpoint choices: yes to double the soft limit, no to stop, or
 an absolute soft limit within the hard ceiling (durations for wall time).
 A budget choice never creates tool authority.
 
+A `prompt.choice` is a question with named answers: `{ID, Title, Reasons,
+Choices}`, each choice `{Key, Label, Detail, Local}`. Answer it with
+`session.answer` and a choice's `Key` as `reply`; any other reply fails and
+leaves it pending. A choice marked `Local` widens what nodwyn does without
+asking, and is refused from a paired remote device (an actor relayed `via`
+another): the console does not offer it there. The first upload to Google
+Docs asks one (`ask`, `allow` or `deny`), and the answer is saved as the
+`[docs] google_upload` setting. `allow` approves that upload, `deny` refuses
+it, and `ask` goes on to a security `prompt.confirm` for it. The saved answer
+is recorded as a `setting.change` event: `actor`, `prompt_id`, `key`
+(`docs.google_upload`), `value`, `state` (`applied` or `failed`) and `error`.
+A `prompt.closed` follows it, as it follows every prompt.
+
 Standing approvals require `session.approval.create`, tied to a currently
 pending ordinary confirmation. `scope: "session"` derives the command prefix
 or write directory from that call; a file at the repository root grants only
@@ -234,8 +247,9 @@ A `doc.upload` event records each document `google-doc-upload` sends (W5):
 `sha256`, the destination `host` and credential `class`, `sent` (false when
 nothing left the machine, such as a document refused for a secret shape),
 `ok`, and the document's `id` and `url` or the `error`; never its content or
-a token. Its confirm is an ordinary one with `Prompt.Egress` set and no
-`Path`, so it offers no session or turn approval. `doc-export`'s confirm is
+a token. Its confirm, while `[docs] google_upload` is `ask`, is a security
+one with `Prompt.Egress` set and no `Path`, so it offers no standing
+answer; with `allow` there is none, and with `deny` the tool is refused. `doc-export`'s confirm is
 a write's: `Prompt.Path` is its target.
 
 An `mcp.egress` event records one attempt of a contained MCP server to reach
@@ -279,8 +293,9 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `models.status` | `{}` | Each configured model: `name`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`), `detail` |
 | `keychain.status` | `{}` | `{exists, unlocked, credentials}` |
 | `keychain.create` / `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain |
-| `settings.read` | `{}` | `{config_file, control, models, keychain}` |
+| `settings.read` | `{}` | `{config_file, control, models, keychain, docs}` |
 | `settings.control.write` | `{"provider","url","model","api_key"?}` | Settings after replacing `[control]` in `config.toml` |
+| `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
 
 `session.list` entries also carry `title` (the first sentence of the first
 message, shortened), `started`, `changes` (files the guard allowed the session
@@ -292,7 +307,11 @@ validates the result as the loader would, writes it atomically (0600), and
 applies it to sessions opened afterwards. An `api_key` goes to the unlocked
 keychain under a fresh class, with one binding row: that host, `POST`,
 `header:Authorization:Bearer`. Passphrases and keys are `writeOnly` in the
-schema and never echoed.
+schema and never echoed. `docs` in the settings is `{google, google_upload}`:
+whether a Google credential class is configured, and the upload setting as
+`config.toml` has it now (`""` until the first upload or `settings.docs.write`
+sets it). `settings.docs.write` keeps every other line of the file, takes the
+lock sessions take when they save the same answer, and writes it 0600.
 
 `hello` accepts an optional `via` (for example `web:phone`), once per
 connection, matching `^[a-z][a-z0-9]*:[a-z0-9][a-z0-9._-]{0,31}$`. It is
@@ -325,8 +344,8 @@ A server in `mcp.save` is remote (`url`) or contained (`transport:
 same image, entrypoint and arguments (the same `url` for a remote one) keeps
 its approved manifest; any other change needs approval again.
 
-`settings.control.write`, `keychain.create`, `keychain.unlock`,
-`session.binding.create`, `session.policy.write`, `workspace.save`,
+`settings.control.write`, `settings.docs.write`, `keychain.create`,
+`keychain.unlock`, `session.binding.create`, `session.policy.write`, `workspace.save`,
 `workspace.remove` and the `mcp.inspect`, `mcp.save`, `mcp.approve`,
 `mcp.remove` and `mcp.pull` methods are refused to a paired remote device in
 the web console (browser.md); `mcp.runtime` only reads. The console never

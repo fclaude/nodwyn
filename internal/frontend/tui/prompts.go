@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ type pendingPrompt struct {
 	id, kind, title, detail, choices string
 	session, turn, bind              bool
 	checkpoint                       budget.Checkpoint
+	keys                             []string // a choice's answers
 }
 
 func (m *model) setPrompt(e rpc.ClientEvent) error {
@@ -58,6 +60,20 @@ func (m *model) setPrompt(e rpc.ClientEvent) error {
 		raw := value.Checkpoint
 		p.detail = fmt.Sprintf("Budget: %s\nUsed: %s · soft: %s · hard: %s\n\nUsage at checkpoint\n%s", raw.Dimension, budgetAmount(raw.Dimension, raw.Used), budgetAmount(raw.Dimension, raw.Limit.Soft), budgetAmount(raw.Dimension, raw.Limit.Hard), formatBudgetState(raw.State))
 		p.choices = "y = double soft limit · n = stop · or enter an absolute soft limit (duration for wall).\nThis does not grant tool authority."
+	case event.PromptChoice:
+		value, err := decode[event.Choice](e.Payload)
+		if err != nil {
+			return err
+		}
+		p.id = value.ID
+		p.title = value.Title
+		p.detail = strings.Join(value.Reasons, "\n")
+		var lines []string
+		for _, o := range value.Choices {
+			p.keys = append(p.keys, o.Key)
+			lines = append(lines, o.Key+" = "+o.Label+": "+o.Detail)
+		}
+		p.choices = strings.Join(lines, "\n")
 	case event.PromptSecret:
 		value, err := decode[event.SecretPrompt](e.Payload)
 		if err != nil {
@@ -100,12 +116,18 @@ func (m *model) reply(value string) tea.Cmd {
 	}
 	reply := strings.ToLower(strings.TrimSpace(value))
 	scope := ""
-	if p.kind == event.PromptCheckpoint {
+	switch p.kind {
+	case event.PromptCheckpoint:
 		if _, err := budget.ParseChoice(reply, p.checkpoint); err != nil {
 			m.status = safe(err.Error())
 			return nil
 		}
-	} else {
+	case event.PromptChoice:
+		if !slices.Contains(p.keys, reply) {
+			m.status = "Type one of " + strings.Join(p.keys, ", ") + ", then Enter."
+			return nil
+		}
+	default:
 		switch reply {
 		case "y", "yes", "n", "no":
 		case "b":

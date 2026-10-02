@@ -14,6 +14,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/policyfile"
 )
 
 // The methods in this file let a person set nodwyn up without a terminal
@@ -118,6 +119,18 @@ type settingsResult struct {
 	Control    config.Model   `json:"control"`
 	Models     []string       `json:"models"`
 	Keychain   keychainStatus `json:"keychain"`
+	Docs       docsSettings   `json:"docs"`
+}
+
+// docsSettings is how documents leave this computer: whether a Google
+// credential is configured, and how an upload to Google Docs is handled
+// ("ask", "allow" or "deny"; "" until the first upload or Settings sets it).
+type docsSettings struct {
+	Google       bool   `json:"google"`
+	GoogleUpload string `json:"google_upload"`
+}
+type docsParams struct {
+	GoogleUpload string `json:"google_upload"`
 }
 type controlParams struct {
 	Provider string `json:"provider"`
@@ -133,7 +146,45 @@ func (s *server) settings() settingsResult {
 	for name := range s.options.Config.Models {
 		names = append(names, name)
 	}
-	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Keychain: s.keychainStatus()}
+	// The upload setting is read from config.toml as it is now: a session
+	// that asked the question saved the answer there.
+	docs := s.options.Config.Docs
+	if cfg, err := config.Load(s.options.Paths.ConfigFile); err == nil {
+		docs = cfg.Docs
+	}
+	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Keychain: s.keychainStatus(),
+		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}}
+}
+
+// docsSettingsMethod answers settings.docs.write: it saves how an upload to
+// Google Docs is handled, in config.toml under the lock sessions use when
+// they save the same answer.
+func (s *server) docsSettingsMethod(req request, _ *peer) (any, *rpcError) {
+	var p docsParams
+	if err := params(req.Params, &p, "google_upload"); err != nil {
+		return nil, err
+	}
+	switch p.GoogleUpload {
+	case config.UploadAsk, config.UploadAllow, config.UploadDeny:
+	default:
+		return nil, failure(-32602, `google_upload must be "ask", "allow" or "deny"`)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var cfg config.Config
+	err := policyfile.Update(ctx, s.options.Paths.ConfigFile, func(raw []byte) ([]byte, error) {
+		out, parsed, err := config.SetKey(raw, "docs", "google_upload", p.GoogleUpload)
+		cfg = parsed
+		return out, err
+	})
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	if err := os.Chmod(s.options.Paths.ConfigFile, 0o600); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	s.options.Config.Docs.GoogleUpload = cfg.Docs.GoogleUpload
+	return s.settings(), nil
 }
 
 func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {

@@ -59,6 +59,11 @@ type Session struct {
 	turnMu   sync.Mutex
 	turnTask string
 	turnPlan string
+	// The upload setting this session chose (uploads.go), when it has no
+	// config file to keep it in.
+	uploadMu      sync.Mutex
+	uploadSetting string
+	uploadSet     bool
 	prompts  map[string]pendingConfirmation
 	promptMu sync.Mutex
 

@@ -17,3 +17,7 @@ launch URL. A contained MCP server added in Connections (the `IMAGE` it
 prints, a network list, a folder such as `notes`) runs in a fake container
 runtime, the demo run again: Pull, review and approve it, then ask a task in
 `console` to "Note the weekly status" to see its confirm.
+`-docs` also keeps a made-up Google token in a throwaway keychain, bound to a
+fake Drive: ask a task in `console` to "Upload the status to Google Docs" to
+see the question that sets how uploads are handled, then its effect in
+Settings.

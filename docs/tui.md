@@ -47,7 +47,9 @@ log remains the source of truth; scrollback is a display derived from it.
 A message that starts with `/compact` or `/optimize` runs that command
 instead of an ordinary turn, as in every client ([the manual](manual.md)).
 Attached to a daemon, the TUI also follows a run (`nodwyn run`): its
-checkpoint arrives as an ordinary prompt ([runs](runs.md)).
+checkpoint arrives as an ordinary prompt ([runs](runs.md)). A question with
+named answers, such as the first upload's to Google Docs, lists them; type
+one's key (`ask`, `allow` or `deny`) and Enter.
 
 | Control | Meaning |
 |---|---|

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -259,6 +260,12 @@ func (c *Chat) show(ev event.Event) {
 	case event.PromptSecret:
 		endStream()
 		c.secretInput(ev.Payload.(event.SecretPrompt))
+	case event.PromptChoice:
+		endStream()
+		c.choice(ev.Payload.(event.Choice))
+	case string(log.KindSettingChange):
+		endStream()
+		fmt.Fprintln(c.Out, SettingSummary(ev.Payload.(log.SettingChange)))
 	case event.Error:
 		endStream()
 		fmt.Fprintf(c.Out, "error: %s\n", ev.Payload.(event.ErrorInfo).Err)
@@ -597,6 +604,42 @@ func budgetAmount(dimension string, n int64) string {
 		return time.Duration(n).String()
 	}
 	return strconv.FormatInt(n, 10)
+}
+
+// choice asks a question with a fixed set of answers, each named by its key.
+func (c *Chat) choice(ev event.Choice) {
+	fmt.Fprintf(c.Out, "\n─── %s\n", ev.Title)
+	for _, r := range ev.Reasons {
+		fmt.Fprintf(c.Out, "  %s\n", r)
+	}
+	keys := make([]string, len(ev.Choices))
+	for i, o := range ev.Choices {
+		keys[i] = o.Key
+		fmt.Fprintf(c.Out, "  %-6s %s: %s\n", o.Key, o.Label, o.Detail)
+	}
+	for {
+		line, ok := c.lines.read("[" + strings.Join(keys, "/") + "] ")
+		if !ok {
+			return // the session declines it when it closes
+		}
+		line = strings.TrimSpace(line)
+		if !slices.Contains(keys, line) {
+			fmt.Fprintf(c.Out, "answer one of %s\n", strings.Join(keys, ", "))
+			continue
+		}
+		if err := c.Session.Answer(ev.ID, line); err != nil {
+			fmt.Fprintln(c.Out, err)
+		}
+		return
+	}
+}
+
+// SettingSummary is the one line a transcript shows for a changed setting.
+func SettingSummary(p log.SettingChange) string {
+	if p.State != "applied" {
+		return fmt.Sprintf("[%s = %s was not saved: %s]", p.Key, p.Value, p.Error)
+	}
+	return fmt.Sprintf("[%s = %s, saved in config.toml]", p.Key, p.Value)
 }
 
 func (c *Chat) checkpoint(ev event.Checkpoint) {

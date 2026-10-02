@@ -490,7 +490,9 @@ what the guard reads).
   Go vets the images and keeps raw content as text. PDF stays `shell-exec`
   running `latexmk`. `google-doc-upload` creates a Google Doc from a file on
   a bound OAuth2 credential, after checking all the text the file carries,
-  and logs `doc.upload`. Not done: changing an existing Google Doc,
+  and logs `doc.upload`. How uploads are handled is the person's setting
+  (`[docs] google_upload`: allow by hand, always allow, deny), which the
+  first upload asks for (2026-10-02). Not done: changing an existing Google Doc,
   folders, sharing, and uploads over 5 MiB.
 
 **One product** (agreed 2026-09-22, amended 2026-09-30). One core, one

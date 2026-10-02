@@ -660,9 +660,25 @@ scopes = ["https://www.googleapis.com/auth/drive.file"]
 ```
 
 The tool is offered to sessions started after the credential was stored.
-Every call asks, naming the file, its size, the destination and the
-credential's scopes, and offers no standing answer; `--yolo` answers it as
-any ordinary confirm. Before sending, nodwyn reads the file as text (every
+How an upload is handled is a setting, `[docs] google_upload`, that you
+choose. Until you have, the first upload asks you which:
+
+- **Allow by hand** (`ask`): every upload asks, naming the file, its size,
+  the destination and the credential's scopes. This is a security
+  confirmation, answered for one call at a time: `--yolo`, `--judge` and
+  an unattended run never upload.
+- **Always allow** (`allow`): uploads go without asking, `--yolo` and
+  unattended runs included, wherever the binding table allows them. The
+  key check below and the log still apply. Only the computer nodwyn runs
+  on can choose it; a paired phone is not offered it.
+- **Deny** (`deny`): the upload is refused, and sessions started after
+  that are not offered the tool.
+
+The answer is saved in `config.toml` for every session and logged as
+`setting.change`, with who gave it. Settings in the console changes it, and
+so does editing the file. A run with nobody to ask (`--yolo`, `--judge`,
+unattended) declines an upload while the setting is unset, and does not
+choose for you. Before sending, nodwyn reads the file as text (every
 part of a `.docx` or `.odt`) and refuses it if it holds something shaped
 like a key whose class is not bound for that host; a package that embeds
 other files is refused, since nodwyn cannot read them. Each upload is
@@ -675,6 +691,7 @@ document's id, never its content or the token.
 [docs]
 google_credential = "google"   # the keychain class; "" offers no Google tool
 google_upload_url = "https://www.googleapis.com/upload/drive/v3/files"
+google_upload = "ask"          # "ask", "allow" or "deny"; unset, the first upload asks
 ```
 
 ### MCP servers

@@ -481,6 +481,63 @@
       ],
       "type": "object"
     },
+    "event.Choice": {
+      "properties": {
+        "Choices": {
+          "items": {
+            "$ref": "#/$defs/event.ChoiceOption"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ID": {
+          "type": "string"
+        },
+        "Reasons": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ID",
+        "Title",
+        "Reasons",
+        "Choices"
+      ],
+      "type": "object"
+    },
+    "event.ChoiceOption": {
+      "properties": {
+        "Detail": {
+          "type": "string"
+        },
+        "Key": {
+          "type": "string"
+        },
+        "Label": {
+          "type": "string"
+        },
+        "Local": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "Key",
+        "Label",
+        "Detail"
+      ],
+      "type": "object"
+    },
     "event.Closed": {
       "properties": {
         "ID": {
@@ -1610,6 +1667,34 @@
       ],
       "type": "object"
     },
+    "log.SettingChange": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "prompt_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value",
+        "state"
+      ],
+      "type": "object"
+    },
     "log.Summary": {
       "properties": {
         "from": {
@@ -2082,6 +2167,9 @@
     "payload.prompt.checkpoint": {
       "$ref": "#/$defs/event.Checkpoint"
     },
+    "payload.prompt.choice": {
+      "$ref": "#/$defs/event.Choice"
+    },
     "payload.prompt.closed": {
       "$ref": "#/$defs/event.Closed"
     },
@@ -2133,6 +2221,9 @@
     },
     "payload.session.state": {
       "$ref": "#/$defs/rpc.sessionState"
+    },
+    "payload.setting.change": {
+      "$ref": "#/$defs/log.SettingChange"
     },
     "payload.status": {
       "$ref": "#/$defs/event.StatusInfo"
@@ -2331,6 +2422,9 @@
         },
         {
           "$ref": "#/$defs/request.settings.control.write"
+        },
+        {
+          "$ref": "#/$defs/request.settings.docs.write"
         },
         {
           "$ref": "#/$defs/request.settings.read"
@@ -3627,6 +3721,37 @@
       ],
       "type": "object"
     },
+    "request.settings.docs.write": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "settings.docs.write"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.docsParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.settings.read": {
       "properties": {
         "id": {
@@ -4004,6 +4129,9 @@
     "result.settings.control.write": {
       "$ref": "#/$defs/rpc.settingsResult"
     },
+    "result.settings.docs.write": {
+      "$ref": "#/$defs/rpc.settingsResult"
+    },
     "result.settings.read": {
       "$ref": "#/$defs/rpc.settingsResult"
     },
@@ -4172,6 +4300,32 @@
         "provider",
         "url",
         "model"
+      ],
+      "type": "object"
+    },
+    "rpc.docsParams": {
+      "properties": {
+        "google_upload": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "google_upload"
+      ],
+      "type": "object"
+    },
+    "rpc.docsSettings": {
+      "properties": {
+        "google": {
+          "type": "boolean"
+        },
+        "google_upload": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "google",
+        "google_upload"
       ],
       "type": "object"
     },
@@ -4889,6 +5043,9 @@
         "control": {
           "$ref": "#/$defs/config.Model"
         },
+        "docs": {
+          "$ref": "#/$defs/rpc.docsSettings"
+        },
         "keychain": {
           "$ref": "#/$defs/rpc.keychainStatus"
         },
@@ -4906,7 +5063,8 @@
         "config_file",
         "control",
         "models",
-        "keychain"
+        "keychain",
+        "docs"
       ],
       "type": "object"
     },
@@ -5740,6 +5898,30 @@
               "type": "string"
             },
             "kind": {
+              "const": "prompt.choice"
+            },
+            "payload": {
+              "$ref": "#/$defs/event.Choice"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
               "const": "prompt.closed"
             },
             "payload": {
@@ -6003,6 +6185,30 @@
             },
             "payload": {
               "$ref": "#/$defs/rpc.sessionState"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "setting.change"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SettingChange"
             },
             "seq": {
               "minimum": 0,

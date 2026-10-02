@@ -20,8 +20,8 @@ import (
 // value, so the guard cannot read it. These hold the handler's own check
 // and the binding: a document carrying the canary, wherever in the file it
 // hides, never reaches Drive, an unbound upload never leaves, and neither
-// the canary nor the token reaches the log. Confirms are answered yes
-// (AutoApprove), so only refusals stop the uploads.
+// the canary nor the token reaches the log. Uploads are set to always
+// allow, so nobody is asked and only refusals stop them.
 
 const googleSecret = "ya29.exfil-google-token-0123456789"
 
@@ -38,6 +38,7 @@ func docsSession(t *testing.T, drive *fakedrive.Server, bound bool) (*core.Sessi
 	}
 	cfg := config.Default()
 	cfg.Docs.GoogleUploadURL = drive.UploadURL()
+	cfg.Docs.GoogleUpload = config.UploadAllow
 	repo := t.TempDir()
 	logb := &strings.Builder{}
 	s, err := core.New(core.Options{Config: cfg, Repo: repo, AutoApprove: true, LogWriter: logb, Keychain: kc, Bindings: tbl})

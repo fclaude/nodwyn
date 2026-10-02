@@ -183,8 +183,14 @@ With a \code{google} credential stored and bound (Chapter~\ref{ch:keys}),
 ;=> (("id" . "1AbC...") ("url" . "https://docs.google.com/document/d/1AbC.../edit") ("title" . "Q3 report"))
 \end{scm}
 
-Every call asks, naming the file, its size and where it goes, and no answer
-makes it stop asking.
+The first upload asks how uploads should be handled from now on: \emph{allow
+by hand} (every call asks, naming the file, its size and where it goes, and
+\code{-{}-yolo}, \code{-{}-judge} and unattended runs never upload),
+\emph{always allow} (no call asks; only this computer can choose it, never
+a paired phone), or \emph{deny} (refused, and later sessions do not offer
+the tool). The answer is \code{google\_upload} in the \code{[docs]} table
+of \file{config.toml}; Settings in the console changes it, and the log
+records it as \code{setting.change}.
 
 \begin{careful}
 The file's bytes never become a Scheme value, so the door cannot read them.

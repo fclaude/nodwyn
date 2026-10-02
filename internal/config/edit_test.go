@@ -38,6 +38,38 @@ model = "tiny"
 	}
 }
 
+func TestSetKeyReplacesAddsAndValidates(t *testing.T) {
+	raw := []byte(`# mine
+[docs]
+google_upload_url = "http://127.0.0.1:9/upload" # local fake
+
+[window]
+high_water = 50000
+`)
+	out, cfg, err := SetKey(raw, "docs", "google_upload", "allow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# mine\n[docs]\ngoogle_upload_url = \"http://127.0.0.1:9/upload\" # local fake\ngoogle_upload = \"allow\"\n\n[window]\nhigh_water = 50000\n"
+	if string(out) != want || cfg.Docs.GoogleUpload != "allow" || cfg.Window.HighWater != 50000 {
+		t.Fatalf("added:\n%s", out)
+	}
+	out, cfg, err = SetKey(out, "docs", "google_upload", "deny")
+	if err != nil || strings.Count(string(out), "google_upload =") != 1 || cfg.Docs.GoogleUpload != "deny" {
+		t.Fatalf("replaced:\n%s %v", out, err)
+	}
+	out, _, err = SetKey([]byte("[window]\nhigh_water = 50000"), "docs", "google_upload", "ask")
+	if err != nil || string(out) != "[window]\nhigh_water = 50000\n\n[docs]\ngoogle_upload = \"ask\"\n" {
+		t.Fatalf("new table:\n%q %v", out, err)
+	}
+	if out, _, err = SetKey(nil, "docs", "google_upload", "ask"); err != nil || string(out) != "[docs]\ngoogle_upload = \"ask\"\n" {
+		t.Fatalf("empty file: %q %v", out, err)
+	}
+	if _, _, err := SetKey(nil, "docs", "google_upload", "sometimes"); err == nil {
+		t.Fatal("accepted an unknown upload setting")
+	}
+}
+
 func TestSetControlAppendsAndValidates(t *testing.T) {
 	out, _, err := SetControl(nil, Model{URL: "http://localhost:11434", Model: "m"})
 	if err != nil || !strings.HasPrefix(string(out), "[control]\n") {

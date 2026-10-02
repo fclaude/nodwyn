@@ -11,6 +11,7 @@ export function summary(event) {
   const p = event.payload || {};
   if (event.kind === "prompt.secret")
     return { kind: "Credential", tool: p.Class, title: `Add the ${p.Class} credential`, detail: "" };
+  if (event.kind === "prompt.choice") return { kind: "Setting", tool: "", title: p.Title, detail: "" };
   if (event.kind === "prompt.checkpoint") {
     const c = p.Checkpoint || {};
     return { kind: "Budget", tool: c.dimension, title: `Keep going past the ${dimension(c.dimension)} limit?`, detail: "" };
@@ -195,6 +196,21 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
       card.append(form);
       choice("Decline", "", "danger", "session.secret", { secret: "" });
     }
+  } else if (event.kind === "prompt.choice") {
+    // A question with named answers whose answer is saved as a setting. An
+    // answer marked Local widens what nodwyn does without asking: only this
+    // computer, which may change settings, is offered it.
+    const here = methods.has("settings.docs.write");
+    card.append(h("div", { style: "display:flex;flex-direction:column;gap:6px" }, h("h2", {}, p.Title), p.Reasons?.length ? h("ul", { class: "reasons" }, p.Reasons.map((r) => h("li", {}, r))) : null));
+    if (enabled) {
+      const options = p.Choices || [];
+      options.forEach((o, i) => {
+        if (o.Local && !here) return;
+        choice(o.Label, String(i + 1), i === 0 ? "accent" : o.Key === "deny" ? "danger" : "", "session.answer", { reply: o.Key });
+        fine.append(h("p", {}, h("strong", {}, `${o.Label}: `), o.Detail));
+      });
+      if (!here && options.some((o) => o.Local)) fine.append(h("p", {}, `${options.filter((o) => o.Local).map((o) => o.Label).join(", ")} can be chosen only on the computer nodwyn runs on.`));
+    }
   } else if (event.kind === "prompt.checkpoint") {
     const c = p.Checkpoint || {};
     const amount = (v) => (c.dimension === "wall" ? `${Math.round(v / 6e10)} min` : String(v));
@@ -225,7 +241,8 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
 }
 
 // shortcut maps a key press to the card's matching answer, when focus is not
-// in a text field: Y, T, A, B, N as the terminal client uses them.
+// in a text field: Y, T, A, B, N as the terminal client uses them, and a
+// question's answers by number.
 export function shortcut(card, event) {
   if (!card || event.metaKey || event.ctrlKey || event.altKey) return false;
   const target = event.target;

@@ -9,6 +9,7 @@
 //
 //	go run ./test/browser/demo            # prints the URL (with a launch ticket)
 //	go run ./test/browser/demo -seed      # also starts tasks so every view has content
+//	go run ./test/browser/demo -docs      # a Google credential, and a fake Drive to upload to
 package main
 
 import (
@@ -25,12 +26,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/container"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 	webui "github.com/fclaude/nodwyn/internal/frontend/web"
+	"github.com/fclaude/nodwyn/internal/keychain"
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
+	fakedrive "github.com/fclaude/nodwyn/test/fakes/drive"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -44,6 +48,7 @@ func main() {
 	seed := flag.Bool("seed", false, "start demo tasks so every view has content")
 	port := flag.Int("port", 0, "loopback port for the console (0 picks one)")
 	modelOnly := flag.Bool("model-only", false, "run only the scripted model server and print its URL")
+	docs := flag.Bool("docs", false, "keep a Google credential in a throwaway keychain, bound to a fake Drive that takes uploads")
 	flag.Parse()
 	if *modelOnly {
 		model := fake.NewFunc(respond)
@@ -55,13 +60,13 @@ func main() {
 		model.Close()
 		return
 	}
-	if err := run(*seed, *port); err != nil {
+	if err := run(*seed, *port, *docs); err != nil {
 		fmt.Fprintln(os.Stderr, "demo:", err)
 		os.Exit(1)
 	}
 }
 
-func run(seed bool, port int) error {
+func run(seed bool, port int, docs bool) error {
 	root, err := os.MkdirTemp("/tmp", "nodwyn-demo-")
 	if err != nil {
 		return err
@@ -86,7 +91,32 @@ func run(seed bool, port int) error {
 	if err := os.WriteFile(cfg.MCP.Egress, []byte("#!/bin/false\n"), 0o755); err != nil {
 		return err
 	}
-	options := core.Options{Config: cfg, Paths: paths, Version: "demo", Containers: &container.Runtime{Kind: runtime.Kind, Path: runtime.Path}}
+	var store *keychain.Store
+	if docs {
+		// A throwaway keychain holding a made-up Google token, bound to the
+		// fake Drive's host: what nodwyn credential add --oauth2 google and
+		// the binding it proposes would leave, with nothing real in it.
+		drive := fakedrive.New()
+		defer drive.Close()
+		if store, err = keychain.Create(filepath.Join(root, "keychain"), keychain.FastKDF, []byte("demo")); err != nil {
+			return err
+		}
+		if _, err := store.Add("google", []byte("ya29.demo-not-a-token")); err != nil {
+			return err
+		}
+		row, err := binding.Exact("google", "127.0.0.1", "POST", "header:Authorization:Bearer")
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(paths.ConfigDir, 0o700); err != nil {
+			return err
+		}
+		if err := binding.AppendExact(context.Background(), paths.Bindings, row); err != nil {
+			return err
+		}
+		cfg.Docs.GoogleUploadURL = drive.UploadURL()
+	}
+	options := core.Options{Config: cfg, Paths: paths, Version: "demo", Keychain: store, Containers: &container.Runtime{Kind: runtime.Kind, Path: runtime.Path}}
 
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -181,6 +211,7 @@ func writeRepo(dir, name string) error {
 		// The demo has no judge, so its coding task would get no plan: plan
 		// it anyway, without exploring first, so the plan panel has a plan
 		// and the model's step marks to show.
+		files["status.txt"] = "Week of 28 September: cowork workspaces, attachments that read PDFs, phone approvals.\n"
 		files[".nodwyn/init.scm"] = "(define plan-explore-rounds 0)\n(define (plan-gate request) (if (plan-recorded?) #f (plan-best #f request \"plan\")))\n"
 	}
 	for rel, body := range files {
@@ -293,6 +324,13 @@ func respond(req fake.Request) fake.Turn {
 		default:
 			return fake.Turn{Content: "## Week of 28 September\n\n**Shipped**\n\n- Cowork workspaces\n- Attachments that read PDFs\n- Phone approvals\n\nPosted to #eng-status.", Chunk: 20}
 		}
+	}
+	if strings.HasPrefix(last, "Upload") {
+		// With -docs: send the status to the fake Drive.
+		if rounds == 0 {
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "u1", Name: "google-doc-upload", Args: map[string]any{"path": "status.txt", "title": "Weekly status"}}}}
+		}
+		return fake.Turn{Content: "Done: the status is in Google Docs.", Chunk: 12}
 	}
 	if strings.HasPrefix(last, "Note") {
 		// The contained server, once Connections has added and approved it.

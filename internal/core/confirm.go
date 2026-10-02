@@ -15,6 +15,7 @@ import (
 type pendingConfirmation struct {
 	ctx        context.Context
 	checkpoint *pendingCheckpoint
+	choice     *pendingChoice
 	prompt     guard.Prompt
 	reply      chan guard.Approval
 }
@@ -46,6 +47,12 @@ func (s *Session) answer(id, reply, actor, scope string, strict bool) error {
 	pending, ok := s.prompts[id]
 	if !ok || (pending.ctx != nil && pending.ctx.Err() != nil) {
 		return fmt.Errorf("core: no pending prompt %q", id)
+	}
+	if pending.choice != nil {
+		if scope != "" {
+			return fmt.Errorf("core: a question's answer is one of its choices")
+		}
+		return s.answerChoice(id, pending, reply, actor)
 	}
 	if pending.checkpoint != nil {
 		if scope != "" {
@@ -125,6 +132,14 @@ func (s *Session) Confirm(ctx context.Context, p guard.Prompt) (bool, error) {
 // attributed answer: who answered, and whether for this call, this turn or
 // standing. Turn trust answers ordinary writes without asking.
 func (s *Session) ConfirmApproval(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
+	if p.Prim == uploadPrim && s.uploadPolicy() == "" {
+		return s.chooseUploadPolicy(ctx, p)
+	}
+	return s.confirmPrompt(ctx, p)
+}
+
+// confirmPrompt asks p as a yes-or-no confirm.
+func (s *Session) confirmPrompt(ctx context.Context, p guard.Prompt) (guard.Approval, error) {
 	// A proposal must be completely visible, exact, and derived from this call.
 	if !s.bindingEligible(p) {
 		p.Binding = nil

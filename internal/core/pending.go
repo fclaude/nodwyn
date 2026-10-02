@@ -22,6 +22,8 @@ func (s *Session) PendingPrompts() ([]event.Event, error) {
 		p := s.prompts[id]
 		if p.checkpoint != nil {
 			pending = append(pending, event.Event{Kind: event.PromptCheckpoint, Payload: event.Checkpoint{ID: id, Checkpoint: p.checkpoint.info}})
+		} else if p.choice != nil {
+			pending = append(pending, event.Event{Kind: event.PromptChoice, Payload: event.Choice{ID: id, Title: p.choice.title, Reasons: p.choice.reasons, Choices: p.choice.options}})
 		} else {
 			pending = append(pending, event.Event{Kind: event.PromptConfirm, Payload: event.NewConfirm(id, p.prompt)})
 		}

@@ -77,6 +77,7 @@ approve_threshold = 0.8     # --judge allows a call at or above this
 
 [docs]
 google_credential = "google"  # the class google-doc-upload sends; "" for none
+google_upload = "ask"         # ask | allow | deny; unset, the first upload asks
 
 [mcp]
 # runtime = "podman"        # or "docker"; unset: podman if on PATH, else docker
@@ -400,14 +401,30 @@ methods = ["POST"]
 scopes = ["https://www.googleapis.com/auth/drive.file"]
 \end{txt}
 
-Sessions started after the credential was stored offer it. Every call asks,
-naming the file, its size and the destination, and no standing approval
-covers it. It is an ordinary confirm, so in a run \code{-{}-yolo} answers
-it yes and the judge of a \code{-{}-judge} run may allow it. A
+Sessions started after the credential was stored offer it. How an upload
+is handled is your setting, \code{google\_upload} in \code{[docs]}, and
+until you choose, the first upload asks you which:
+
+\begin{itemize}
+\item \emph{Allow by hand} (\code{ask}): every upload asks, naming the
+  file, its size and the destination. It is a security confirm, so no
+  standing approval covers it, and \code{-{}-yolo}, \code{-{}-judge} and
+  an unattended run never upload.
+\item \emph{Always allow} (\code{allow}): uploads go without asking,
+  in a run too, wherever the binding table lets them. Only the computer
+  \nodwyn{} runs on can choose it, never a paired phone.
+\item \emph{Deny} (\code{deny}): uploads are refused, and later sessions
+  do not offer the tool.
+\end{itemize}
+
+The answer goes into \file{config.toml}, is logged as
+\code{setting.change} with who gave it, and holds for every session;
+Settings in the console changes it. A run with nobody to ask declines an
+upload while the setting is unset. A
 document holding something shaped like a key whose class is not bound for
 that host is refused before anything is sent, and each upload is logged as
 \code{doc.upload}: file, size, hash, destination and the document's id.
-\code{[docs]} in \file{config.toml} names another credential class
+\code{[docs]} in \file{config.toml} also names another credential class
 (\code{google\_credential}) or endpoint (\code{google\_upload\_url}).
 
 \chapter{Budgets and runs}

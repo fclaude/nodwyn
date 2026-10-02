@@ -65,6 +65,8 @@ type docsSetup struct {
 	noKey   bool              // store no google credential
 	unbound bool              // no binding row for the upload host
 	turns   []fake.Turn
+	upload  string        // docs.google_upload; "" is "ask", "unset" leaves it unset
+	adjust  func(*Options) // last changes to the session's options
 }
 
 // docsRig opens a session whose google credential is bound (or not) to the
@@ -107,8 +109,19 @@ func docsRig(t *testing.T, drive *fakedrive.Server, setup docsSetup) (*rig, conf
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
 	cfg.Docs.GoogleUploadURL = drive.UploadURL()
+	switch setup.upload {
+	case "":
+		cfg.Docs.GoogleUpload = config.UploadAsk
+	case "unset":
+	default:
+		cfg.Docs.GoogleUpload = setup.upload
+	}
 	logb := &bytes.Buffer{}
-	s, err := New(Options{Config: cfg, Repo: repo, Paths: paths, Keychain: store, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: logb})
+	o := Options{Config: cfg, Repo: repo, Paths: paths, Keychain: store, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: logb}
+	if setup.adjust != nil {
+		setup.adjust(&o)
+	}
+	s, err := New(o)
 	if err != nil {
 		t.Fatal(err)
 	}

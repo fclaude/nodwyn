@@ -186,12 +186,31 @@ type Docs struct {
 	// GoogleUploadURL is Drive's upload endpoint; its host is the
 	// destination the binding table judges. Default GoogleUploadURL.
 	GoogleUploadURL string `toml:"google_upload_url"`
+	// GoogleUpload is how an upload is handled: "ask" (allow by hand: a
+	// person says yes to each, and --yolo, --judge or an unattended run
+	// never does), "allow" (always, with no confirm; the binding check and
+	// the key scan still apply), or "deny" (refused, and the tool is not
+	// offered). Unset, the first upload asks the person which, and their
+	// answer is saved here.
+	GoogleUpload string `toml:"google_upload"`
 }
+
+// The google_upload settings.
+const (
+	UploadAsk   = "ask"
+	UploadAllow = "allow"
+	UploadDeny  = "deny"
+)
 
 // GoogleUploadURL is Google Drive's upload endpoint (Drive API v3).
 const GoogleUploadURL = "https://www.googleapis.com/upload/drive/v3/files"
 
 func (d Docs) validate() error {
+	switch d.GoogleUpload {
+	case "", UploadAsk, UploadAllow, UploadDeny:
+	default:
+		return fmt.Errorf("docs.google_upload must be %q, %q or %q, got %q", UploadAsk, UploadAllow, UploadDeny, d.GoogleUpload)
+	}
 	u, err := url.Parse(d.GoogleUploadURL)
 	if err != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
 		return fmt.Errorf("docs.google_upload_url must be an absolute URL without a query, got %q", d.GoogleUploadURL)

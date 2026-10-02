@@ -26,7 +26,8 @@ const (
 	StreamThinking   = "stream.thinking"   // Payload: Text
 	PromptCheckpoint = "prompt.checkpoint" // Payload: Checkpoint; answered through Session.Answer
 	PromptConfirm    = "prompt.confirm"    // Payload: Confirm; answered through Session.Answer
-	PromptSecret     = "prompt.secret"     // Payload: SecretPrompt; answered through Session.Secret
+	PromptSecret     = "prompt.secret"     // Payload: SecretPrompt; answered through Session.SecretReply
+	PromptChoice     = "prompt.choice"     // Payload: Choice; answered through Session.Answer with a choice's key
 	Status           = "status"            // Payload: StatusInfo
 	Error            = "error"             // Payload: ErrorInfo
 	Output           = "output"            // Payload: Text — Scheme display/write output
@@ -78,6 +79,25 @@ type ErrorInfo struct {
 // FromLog wraps a written log event with its decoded payload.
 func FromLog(ev log.Event, payload any) Event {
 	return Event{Kind: string(ev.Kind), Seq: ev.Seq, Payload: payload}
+}
+
+// Choice is a question with named answers, such as how uploads to Google
+// Docs are to be handled from now on. The reply is one choice's Key.
+type Choice struct {
+	ID      string
+	Title   string
+	Reasons []string
+	Choices []ChoiceOption
+}
+
+// ChoiceOption is one answer to a Choice.
+type ChoiceOption struct {
+	Key    string
+	Label  string
+	Detail string
+	// Local means only this machine may give this answer, not a paired
+	// device: it widens what nodwyn does without asking.
+	Local bool `json:",omitempty"`
 }
 
 // Checkpoint offers additional soft budget, never additional tool authority.

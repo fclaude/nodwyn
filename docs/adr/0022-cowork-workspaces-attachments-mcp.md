@@ -393,7 +393,15 @@ Documents out, as answer 4 decided, with these specifics:
   configured endpoint's host, `POST` at `header:Authorization:Bearer`, so
   E3 decides it from the binding table (and its scopes) before anything is
   asked. Every call confirms, with no standing answer, naming the file, its
-  size and the destination. The token is injected through the session's
+  size and the destination. (Amended 2026-10-02: how an upload is handled
+  is the person's setting, `[docs] google_upload`. With `ask` every call is
+  a security confirm, which `--yolo`, `--judge` and unattended runs never
+  answer yes. With `allow` no call asks, but E3 and the scan below still
+  decide. With `deny` the guard refuses the call and later sessions are not
+  offered the tool. While it is unset, the first call that would confirm
+  asks which of the three, saves the answer in `config.toml` and records
+  `setting.change`. `allow` can be chosen only on this computer, not from a
+  paired device.) The token is injected through the session's
   sink, so an OAuth2 token is refreshed first and `cred.refresh` logged.
   The configured URL is validated (https, or http on loopback, for tests);
   the session's client refuses redirects.

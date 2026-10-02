@@ -265,6 +265,19 @@ type CredRegister struct {
 	Handle   string `json:"handle"` // the handle id
 }
 
+// SettingChange records a setting written to config.toml because a person
+// chose it: Key is table.key (docs.google_upload), Value what was written,
+// State "applied" or "failed" with Error. PromptID names the question it
+// answered, when it was one.
+type SettingChange struct {
+	Actor    string `json:"actor,omitempty"`
+	PromptID string `json:"prompt_id,omitempty"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+	State    string `json:"state"`
+	Error    string `json:"error,omitempty"`
+}
+
 // CredRefresh records one refresh of an OAuth2 credential, made just before
 // a use the binding table allowed (ADR 24 §3). Never a token: the class, the
 // handle id, the token endpoint's host, and the new expiry or the error.

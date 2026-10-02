@@ -385,7 +385,8 @@ so an include or a remote image in it reads nothing, and a Word or
 OpenDocument file embeds only images that are files in the workspace.
 \code{google-doc-upload} sends a document to Google Drive, which makes it a
 Google Doc: a keyed request whose class, host and scopes the binding table
-decides, asked every time. The file never was a Scheme value, so the guard
+decides, asked every time unless you have chosen to always allow or deny
+uploads (the first one asks which). The file never was a Scheme value, so the guard
 cannot read it; the handler reads all the text it carries and refuses
 something shaped like a key whose class is not bound for Drive, before
 anything is sent, and \code{doc.upload} records what left.

@@ -87,6 +87,42 @@ func TestLockedKeychainRefusesTasksUntilUnlocked(t *testing.T) {
 	c.ok("session.resume", map[string]any{"id": opened.ID})
 }
 
+// The upload setting reads as config.toml has it now, and Settings saves it
+// there, keeping the file's other lines.
+func TestSettingsDocsWrite(t *testing.T) {
+	o := options(t)
+	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	os.WriteFile(o.Paths.ConfigFile, []byte("# mine\n[window]\nhigh_water = 50000\n"), 0o644)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	var settings settingsResult
+	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
+	if settings.Docs.GoogleUpload != "" || !settings.Docs.Google {
+		t.Fatalf("unset: %+v", settings.Docs)
+	}
+	if r := c.call("settings.docs.write", map[string]any{"google_upload": "sometimes"}); r.Error == nil {
+		t.Fatal("accepted an unknown setting")
+	}
+	json.Unmarshal(c.ok("settings.docs.write", map[string]any{"google_upload": "deny"}), &settings)
+	if settings.Docs.GoogleUpload != "deny" {
+		t.Fatalf("written: %+v", settings.Docs)
+	}
+	raw, _ := os.ReadFile(o.Paths.ConfigFile)
+	if !strings.Contains(string(raw), "# mine") || !strings.Contains(string(raw), "[docs]\ngoogle_upload = \"deny\"") {
+		t.Fatalf("config.toml:\n%s", raw)
+	}
+	if info, _ := os.Stat(o.Paths.ConfigFile); info.Mode().Perm() != 0o600 {
+		t.Fatal(info.Mode())
+	}
+	// A session that saved its answer: the next read sees it.
+	os.WriteFile(o.Paths.ConfigFile, []byte("[docs]\ngoogle_upload = \"allow\"\n"), 0o600)
+	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
+	if settings.Docs.GoogleUpload != "allow" {
+		t.Fatalf("fresh read: %+v", settings.Docs)
+	}
+}
+
 func TestSettingsWriteControlAndKey(t *testing.T) {
 	o := options(t)
 	os.MkdirAll(o.Paths.ConfigDir, 0o700)

@@ -121,6 +121,7 @@ var methodTable = map[string]handler{
 	"keychain.unlock":         (*server).keychain,
 	"settings.read":           (*server).settingsMethod,
 	"settings.control.write":  (*server).settingsMethod,
+	"settings.docs.write":     (*server).docsSettingsMethod,
 	"workspace.list":          (*server).workspaces,
 	"workspace.save":          (*server).workspaces,
 	"workspace.remove":        (*server).workspaces,

@@ -222,8 +222,21 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if line, ok := plain.EgressLine(p); ok && err == nil {
 			m.append(line)
 		}
-	case event.PromptConfirm, event.PromptSecret, event.PromptCheckpoint:
+	case event.PromptConfirm, event.PromptSecret, event.PromptCheckpoint, event.PromptChoice:
 		err = m.setPrompt(e)
+	case event.PromptClosed:
+		var p event.Closed
+		p, err = decode[event.Closed](e.Payload)
+		if err == nil {
+			m.clearPrompt(p.ID)
+		}
+	case string(log.KindSettingChange):
+		var p log.SettingChange
+		p, err = decode[log.SettingChange](e.Payload)
+		if err == nil {
+			m.clearPrompt(p.PromptID)
+			m.append(plain.SettingSummary(p))
+		}
 	case event.Error:
 		var p event.ErrorInfo
 		p, err = decode[event.ErrorInfo](e.Payload)

@@ -84,6 +84,9 @@ function detailsBlock(label, value) {
   return h("details", {}, h("summary", {}, label), h("pre", {}, typeof value === "string" ? value : JSON.stringify(value, null, 2)));
 }
 
+// The upload setting's values as Settings and the question name them.
+export const uploadLabels = { ask: "allow by hand", allow: "always allow", deny: "deny" };
+
 const auditLabels = {
   "turn.checkpoint": "Budget checkpoint answered",
   "approval.change": "Standing answer changed",
@@ -315,6 +318,13 @@ export class Transcript {
         else if (p.sent) this.audit(`Sent ${p.path} to ${p.host}, which refused it`, p.error || p, "bad");
         else this.audit(`Did not send ${p.path} to ${p.host}`, p.error || p, "bad");
         break;
+      case "setting.change": {
+        const name = { "docs.google_upload": "Uploads to Google Docs" }[p.key] || p.key;
+        const value = uploadLabels[p.value] || p.value;
+        if (p.state === "applied") this.audit(`${name}: ${value}, saved in config.toml`, p);
+        else this.audit(`${name}: ${value} was not saved`, p.error || p, "bad");
+        break;
+      }
       default:
         if (auditLabels[event.kind]) this.audit(auditLabels[event.kind], p);
     }

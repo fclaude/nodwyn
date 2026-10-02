@@ -10,7 +10,8 @@ skipped, and the next. After each reply the conversation shows its tokens,
 and when the provider reports them or the model has prices, how much of the
 prompt came from the cache and what it cost (the manual, "Choosing models").
 **Connections** (tools, credential bindings, workspaces, models),
-**Workspaces** and **Settings** hold the rest. The
+**Workspaces** and **Settings** hold the rest; Settings also says how
+uploads to Google Docs are handled and changes it (the manual, "Documents out"). The
 U3 inspectors described below sit under a task's **Details**. For the app
 window and first-run setup see [app.md](app.md).
 
@@ -94,7 +95,9 @@ A device can read tasks, start and steer them, and answer approvals — one-time
 for this turn, or for the session, as the core offers; it can also restore a
 kept file version (through the usual approval), save project notes, read the
 policy files, and stop or resume a run. It cannot save a credential binding,
-write a policy file, unlock or create the keychain, change the model, edit
+write a policy file, unlock or create the keychain, change the model or how
+uploads to Google Docs are handled (it can answer the first upload's
+question with "allow by hand" or "deny", never "always allow"), edit
 workspaces, add, review, approve, pull or remove MCP servers, evaluate Scheme, or
 list and revoke devices: those stay with the computer nodwyn runs on. A request counts as remote when it comes from another address or names
 this console by anything but its loopback address (a proxy such as

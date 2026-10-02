@@ -179,11 +179,12 @@ export class TaskView {
     const view = this.el.transcript;
     const follow = view.scrollHeight - view.scrollTop - view.clientHeight < 120;
     view.querySelector(":scope > [data-placeholder]")?.remove();
-    if (p.prompt_id && ["guard.decision", "turn.checkpoint", "cred.register", "run.checkpoint"].includes(event.kind)) this.resolve(p.prompt_id);
+    if (p.prompt_id && ["guard.decision", "turn.checkpoint", "cred.register", "run.checkpoint", "setting.change"].includes(event.kind)) this.resolve(p.prompt_id);
     switch (event.kind) {
       case "prompt.confirm":
       case "prompt.secret":
       case "prompt.checkpoint":
+      case "prompt.choice":
         if (!this.resolved.has(p.ID)) {
           this.prompts.set(p.ID, event);
           if (!this.desk.firstSeen.has(p.ID)) this.desk.firstSeen.set(p.ID, Date.now());

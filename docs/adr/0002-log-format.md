@@ -133,3 +133,13 @@ then gives the count left out (`dropped`). Records made while the session
 is being built wait for `session.start`, as `egress.check` and
 `cred.refresh` do; the last are written before `session.end`. The window
 ignores them: they are audit history, not conversation.
+
+## Amendment — 2026-10-02: `setting.change`
+
+`setting.change` records a setting a session saved because a person chose
+it at a prompt: who answered (`actor`, `prompt_id`), the setting (`key`,
+such as `docs.google_upload`), its `value`, and whether it was saved in
+`config.toml` (`state` `applied` or `failed`, with the `error`). It is the
+answer to a `prompt.choice`, which, like every live prompt, is not logged
+itself. A setting changed from Settings or by editing the file is outside
+any session and leaves no record. The window ignores it.
