@@ -65,6 +65,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(shell-send id text)} & type into it (asks every time) \\
 \code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc (irreversible, a write of \code{target}) \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a Google Doc (asks every time; only with a stored \code{google} credential) \\
+\code{(judge-noul state question)}, \code{judge-score}, \code{judge-choice} & ask the judge (only at \code{jev.content = "full"} with a \code{jev-key} stored; Chapter~\ref{ch:keys}) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions \\
 \code{(workspace)} & the folder's kind and mounted folders \\

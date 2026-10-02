@@ -208,8 +208,10 @@ an interactive session, to see how \code{add-message} works:
 still unanswered, because a call must be followed by its result.
 
 This \code{agent-turn} replaces the default one, so it also drops the plan
-gate and \code{/optimize} handling. That is fine for an experiment. For
-keeps, wrap instead:
+gate of an interactive turn (a run's turns still plan, since
+\code{nodwyn-turn} runs the gate first) and the \code{/compact} and
+\code{/optimize} handling. That is fine for an experiment. For keeps, wrap
+instead:
 
 \begin{scm}
 (define mine-base-agent-turn agent-turn)

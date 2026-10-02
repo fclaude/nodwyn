@@ -85,7 +85,8 @@ Most agents try to protect secrets by recognising them in text. \nodwyn{}
 turns the problem around. A secret you give it (an API key, say) is a
 \textbf{credential}: you type it once into a masked prompt, it goes into an
 encrypted keychain, and Scheme only ever holds an opaque \textbf{handle},
-\code{\#<cred:openai-key:1>}, that no builtin can turn into text. A
+\code{\#<cred:openai-key:3f9a2c1e7b4d5a60>}, that no builtin can turn
+into text. A
 \textbf{binding} says where that credential may go: which host, which HTTP
 methods, which position in the request (a header, a query parameter). The
 key is injected at the last moment, on the way out, and only if the binding

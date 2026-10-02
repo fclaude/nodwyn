@@ -158,14 +158,18 @@ it the tool says what to install):
 
 \begin{scm}
 (doc-export "report.md" "out/report.docx")
-;=> "wrote out/report.docx (Word document, 9 KiB) from report.md"
+;=> "wrote out/report.docx (Word document, 10 KiB) from report.md"
 \end{scm}
 
 It is a write: it asks with source, target and formats, a standing write
 approval for the folder covers it, and replacing a file keeps the old one
 in the version store. pandoc reads the document in its sandbox, so an
-include or a remote image in it reads nothing, and a Word file embeds only
-images that are files in the folder; the answer says which were left out.
+include or a remote image in it reads nothing, and a Word or OpenDocument
+file embeds only images that are files in the folder. An HTML page leaves
+out an image that links elsewhere, which a browser would fetch when the
+page is opened. Raw content written into the source (an HTML block, a Word
+field) comes out as text, never interpreted. The answer says which images
+were left out and when raw content was shown as text.
 There is no PDF: a TeX engine reads any file and runs programs when a
 document asks, so build a PDF with \code{shell-exec} and \code{latexmk}, as
 \nodwyn's own book is built.

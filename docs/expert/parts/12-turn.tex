@@ -50,7 +50,7 @@ read.
 \code{(answer-call call text)} & answer one call with your own text, as a success \\
 \code{(add-message text)} & say something to the model, as a user message \\
 \code{(log-note text)} & write a note into the log; the model never sees it \\
-\code{(unattended?)} & is anybody approving? (\code{-{}-yolo}, a run's auto-approve) \\
+\code{(unattended?)} & true when nobody approves the calls: \code{-{}-yolo}, a run's \code{-{}-judge}, an unattended run \\
 \code{(plan-required?)}, \code{(plan-recorded?)} & must this turn plan; has it? \\
 \code{(repository)}, \code{(workspace)} & where we are \\
 \code{(model-info [name])}, \code{(model-names)}, \code{(window-limits)} & what we are talking to, and how big the window is \\
@@ -83,11 +83,16 @@ error: model-turn: only available while a turn is running
  (tool-calls . (((id . "c1") (name . "fs-list") (args . "{\"path\":\".\"}"))
                 ((id . "c2") (name . "fs-read") (args . "{\"path\":\"README.md\"}"))))
  (prompt-tokens . 299)
- (output-tokens . 44))
+ (output-tokens . 44)
+ (cached-tokens . #f)          ; prompt tokens read from the provider's cache
+ (cost . #f))                  ; USD; #f when not known
 \end{scm}
 
 Note that a call's \code{args} is the model's JSON \emph{text}. Parse it
-when you need it: \code{(json-parse (assoc-ref call 'args "\{\}"))}.
+when you need it: \code{(json-parse (assoc-ref call 'args "\{\}"))}. The
+token counts are the server's (0 when it gives none); \code{cached-tokens}
+and \code{cost} are \code{\#f} unless the provider reports them, or, for the
+cost, the model's prices are configured (Chapter~\ref{ch:keys}).
 
 \code{options} controls what the model is offered:
 
@@ -138,7 +143,7 @@ Here is a real turn: the model listed the folder and read the README, then
 answered. \code{:log} shows the events:
 
 \begin{txt}
-    3 llm.req         {RequestHash:98a9311e... Model:demo Messages:2 Tools:13 ...}
+    3 llm.req         {RequestHash:98a9311e... Model:demo Messages:2 Tools:15 ...}
     4 llm.resp        {ToolCalls:[{ID:c1 Name:fs-list ...} {ID:c2 Name:fs-read ...}]}
     5 tool.call       {ToolCall:{ID:c1 Name:fs-list Args:{"path":"."}} Origin:model}
     6 guard.decision  {Prim:fs-list Origin:model Decision:allow ...}
@@ -146,7 +151,7 @@ answered. \code{:log} shows the events:
     8 tool.call       {ToolCall:{ID:c2 Name:fs-read Args:{"path":"README.md"}} Origin:model}
     9 guard.decision  {Prim:fs-read Origin:model Decision:allow ...}
    10 tool.result     {ID:c2 Name:fs-read OK:true Value:A small garden: ...}
-   11 llm.req         {RequestHash:8d677869... Model:demo Messages:5 Tools:13 ...}
+   11 llm.req         {RequestHash:8d677869... Model:demo Messages:5 Tools:15 ...}
    12 llm.resp        {Content:## What's here ...}
    14 turn.end        {Text:turn ended Outcome:completed}
 \end{txt}

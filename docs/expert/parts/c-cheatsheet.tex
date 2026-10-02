@@ -11,13 +11,14 @@
 \code{nodwyn ui [-{}-listen ADDR]} & the console in a browser; \code{-{}-listen} for other devices \\
 \code{nodwyn tui} & the full-screen terminal client \\
 \code{nodwyn daemon} & the session server \\
-\code{nodwyn run -{}-task F -{}-max-turns N -{}-budget-wall D} & a supervised run; \code{status}, \code{stop}, \code{resume} \\
+\code{nodwyn run -{}-task F -{}-max-turns N -{}-budget-wall D} & a supervised run, \code{-{}-unattended} for nobody to answer it, \code{-{}-yolo} or \code{-{}-judge} for its confirms; \code{status}, \code{stop}, \code{resume} \\
 \code{nodwyn sessions}, \code{replay ID [-{}-window SEQ]} & list; transcript; exact request \\
 \code{nodwyn summary \ldots} & add, list, drop reviewed summaries \\
 \code{nodwyn versions FILE}, \code{undo FILE} & kept versions outside git \\
 \code{nodwyn devices [revoke NAME]} & paired remote browsers \\
 \code{nodwyn keychain init} & create the keychain \\
 \code{nodwyn mcp [list]}, \code{mcp pull NAME} & MCP servers; download a contained server's image by digest \\
+\code{nodwyn credential \ldots} & \code{list} the keychain's credentials, \code{revoke ID} one; \code{add -{}-oauth2 P} and \code{login ID} authorize OAuth2 in the browser \\
 \code{nodwyn repl}, \code{eval -e EXPR}, \code{eval FILE} & Scheme alone \\
 \code{nodwyn paths}, \code{version} & where things live; which build \\
 \bottomrule
@@ -57,7 +58,7 @@ anything else & \key{N} & no \\
 \begin{center}
 \begin{tabularx}{\linewidth}{lX}
 \toprule
-\file{\textasciitilde/.config/nodwyn/config.toml} & \code{[control]}, \code{[models.*]}, \code{[window]}, \code{[budget]}, \code{[policy]} \\
+\file{\textasciitilde/.config/nodwyn/config.toml} & \code{[control]}, \code{[models.*]}, \code{[window]}, \code{[budget]}, \code{[loop]}, \code{[policy]}, \code{[jev]}, \code{[docs]} \\
 \file{\textasciitilde/.config/nodwyn/bindings.toml} & where each key may go \\
 \file{\textasciitilde/.config/nodwyn/mcp.toml} & MCP servers, pinned manifests, declared effects; a contained server's image, network and mounts \\
 \file{\textasciitilde/.config/nodwyn/keychain} & the encrypted keys \\

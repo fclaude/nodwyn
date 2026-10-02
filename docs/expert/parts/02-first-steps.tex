@@ -11,7 +11,10 @@ make app          # bin/Nodwyn.app on macOS: the same program with a window
 \end{sh}
 
 To build it you need Go; to run it, nothing else: search, the console and
-the keychain are all built in. You also need a \textbf{model} to talk to: \nodwyn{} has no built-in model.
+the keychain are all built in. (Two document features call programs you
+install yourself: exporting documents needs pandoc, and reading a PDF
+attachment needs \code{pdftotext}; Chapter~\ref{ch:workspaces}.) You also
+need a \textbf{model} to talk to: \nodwyn{} has no built-in model.
 Any Ollama server works, on your machine or another one on your network, and
 so does any server that speaks the OpenAI chat-completions protocol.
 
@@ -73,20 +76,25 @@ Then go to a folder and start a session:
 \begin{txt}
 $ cd ~/src/garden
 $ nodwyn
-control model: http://localhost:11434 qwen3:8b (ollama)
+control model: http://localhost:11434 qwen3:8b (ollama 0.12.3)
+log: /home/you/.local/share/nodwyn/sessions/20260930T200043Z-e0550e21.jsonl
 nodwyn session 20260930T200043Z-e0550e21
 repo  /home/you/src/garden
-tools fs-edit fs-find fs-list fs-read fs-write index-grep read-definition second-look
-      shell-exec shell-read shell-send shell-start shell-stop
+tools doc-export fs-edit fs-find fs-list fs-read fs-write index-grep plan-step
+      read-definition second-look shell-exec shell-read shell-send shell-start
+      shell-stop
 :h for commands
 
 you> what grows in this garden?
 \end{txt}
 
 The banner tells you three important things: the \textbf{session id} (the
-name of its log), the \textbf{repo} (every path the model touches is pinned
-under it), and the \textbf{tools} the model is offered. You will learn to
-change that last line in Chapter~\ref{ch:tools}.
+name of its log, whose path is on the line above), the \textbf{repo} (every
+path the model touches is pinned under it), and the \textbf{tools} the model
+is offered. You will learn to change that last line in
+Chapter~\ref{ch:tools}. (In a git work tree the list also has
+\code{git-status} and \code{git-diff}; with keys stored, a few more appear,
+Chapter~\ref{ch:keys}.)
 
 \subsection{At the prompt}
 
@@ -180,6 +188,20 @@ irreversible actions & 25 / 200 attempts & \code{-{}-budget-actions N} \\
 At a checkpoint, \code{y} doubles the soft limit, \code{n} stops, and a
 number sets a new soft limit. Approvals and hard ceilings do not change.
 
+After each reply the terminal shows what the request used:
+
+\begin{txt}
+· [12,400→800 tok · 78% cached · $0.012]
+\end{txt}
+
+That is the prompt's tokens, the reply's, the share of the prompt the
+provider read from its cache, and what the request cost. The cache share
+and the cost appear only when they are known (Chapter~\ref{ch:keys}), and
+the timings only when the server reports them, as Ollama does. A
+checkpoint also says what the turn has cost so far. Cost is shown, never
+enforced: no budget counts money, and cached tokens count in full against
+the token budget.
+
 Independently of budgets, a \textbf{progress guard} ends a turn that goes in
 circles: the same call four times in a row, a denied call retried three
 times, or ten failures in a row. No Scheme can catch these stops. That is a
@@ -227,6 +249,12 @@ that looks like a key, a command line built out of tool output. With nobody
 watching, the default loop also changes its manners: it asks the model to
 work by evidence and ends a turn only when something changed and a test ran
 after it (Chapter~\ref{ch:plans}).
+
+\code{-{}-yolo} still leaves someone to answer budget checkpoints, and a
+run's checkpoints between turns. For a run that nobody answers at all, and
+for one whose confirms the judge answers instead of a blanket yes, see
+\code{nodwyn run -{}-unattended} and \code{-{}-judge} in
+Chapter~\ref{ch:plans}.
 
 \begin{careful}
 The guard makes \code{-{}-yolo} survivable, not safe. Use it on a copy, set

@@ -61,8 +61,10 @@ this is the summary.
 \section*{In a session}
 
 \begin{description}[leftmargin=1.2em,labelindent=0pt,itemsep=0.3em]
-  \item[Files] \code{fs-read fs-write fs-edit fs-list fs-find index-grep}.
-  \item[Programs] \code{shell-exec}.
+  \item[Files] \code{fs-read fs-write fs-edit fs-list fs-find index-grep};
+    in a git work tree, \code{git-status git-diff}.
+  \item[Programs] \code{shell-exec}; \code{shell-start shell-read shell-send
+    shell-stop} for programs that keep running.
   \item[Documents] \code{doc-export}; with a \code{google} credential,
     \code{google-doc-upload}.
   \item[Places] \code{scratch-dir repository workspace}.
@@ -70,18 +72,20 @@ this is the summary.
     session-events}.
   \item[Keys and network] \code{credential credential-register http-request
     policy-read policy-write}; the judge: \code{jev-noul jev-score
-    jev-choice} (hidden), and for the model \code{judge-noul judge-score
+    jev-choice} (hidden), and for the model, at \code{jev.content =
+    "full"} with a \code{jev-key} stored, \code{judge-noul judge-score
     judge-choice}.
   \item[The loop] \code{model-turn run-tools skip-tools answer-call
     add-message log-note fold-result narrow-context fold-context widen
-    session-system-prompt session-requests model-info model-names
-    window-limits unattended?
+    context-tokens session-system-prompt session-requests model-info
+    model-names window-limits unattended?
     plan-required? plan-recorded? record-plan plan-steps record-step
     reload}.
   \item[Defined in Scheme by the loop] \code{nodwyn-turn agent-turn
     ask-model run-calls sub-agent define-agent-tool plan-gate maybe-compact
     compact-context compact-next-round compact-turn evidence-loop
-    optimize-turn} and the prompts.
+    optimize-turn} and the prompts; the agent tools \code{plan-step
+    read-definition second-look}.
 \end{description}
 
 \section*{Not in the language}

@@ -10,7 +10,8 @@ Supervised runs are built on top of both.
 
 Before a turn's work, \code{(plan-gate request)} may have a plan made. With
 a \textbf{judge} configured (Jev: its primitives registered and a
-\code{jev-key} credential stored and bound), it goes like this:
+\code{jev-key} credential stored and bound; Chapter~\ref{ch:keys}), it goes
+like this:
 
 \begin{enumerate}
   \item The judge is asked \code{plan-needed-question}: does this request
@@ -90,17 +91,21 @@ the \code{plan-step} tool: a step's number, \code{done} or
 \code{skipped}, and a note saying what shows it. The strategy answers the
 call (it is an agent tool) with \code{record-step}, which records
 \code{plan.step} and returns how many steps are marked and which is next;
-the model reads that answer, and the console's plan panel ticks the step.
-A mark is the model's word, like its report: the transcript is the
-evidence. A step's number indexes the plan's numbered or bulleted lines,
-which is why the planner is asked for numbered steps.
+the model reads that answer, the console's plan panel ticks the step, and
+\code{:plan} in the terminal client lists the steps as \code{[x]} done,
+\code{[-]} skipped or \code{[ ]} not yet, with the notes. A step the plan
+does not have, or a mark in a turn with no plan, is said in the answer and
+recorded nowhere. A mark is the model's word, like its report: the
+transcript is the evidence. A step's number indexes the plan's numbered or
+bulleted lines, which is why the planner is asked for numbered steps.
 
 \section{The evidence loop}
 
 When nobody reviews the work as it happens, a model's ``I'm done'' is not
-enough. With \code{(unattended?)} (\code{-{}-yolo}) or in a supervised run,
-the default \code{agent-turn} runs the \textbf{evidence loop} instead of the
-plain one. It ends a turn on evidence:
+enough. With \code{(unattended?)} (\code{-{}-yolo}, \code{-{}-judge}, an
+unattended run) or in a supervised run, the default \code{agent-turn} runs
+the \textbf{evidence loop} instead of the plain one. It ends a turn on
+evidence:
 
 \begin{itemize}
   \item A reply that stops before anything changed gets
@@ -116,9 +121,9 @@ plain one. It ends a turn on evidence:
 
 A command counts as a test run when its command line contains one of
 \code{test-command-words}: \code{pytest}, \code{go test},
-\code{cargo test}, \code{npm test}, \code{make test}, \code{rspec} and two
-dozen more. A test run with failures still counts as a run; only commands
-that never got as far as running a test count against
+\code{cargo test}, \code{npm test}, \code{make test}, \code{rspec} and
+twenty-one more. A test run with failures still counts as a run; only
+commands that never got as far as running a test count against
 \code{unrunnable-after}.
 
 The scratch directory is not the repository. A file the model writes there,
@@ -207,15 +212,28 @@ none, the run stops and says so, for you to read the turn and
 \code{nodwyn run resume -{}-unattended SESSION}. A plain resume is
 supervised: how a run goes on is said again at every resume.
 
-With \code{-{}-judge} instead of \code{-{}-yolo}, the judge answers the
-run's ordinary confirms: it is shown the task, the plan and the call (at
-\code{jev.content = "full"} also what the call would write or send) and
-asked whether to allow it; the call runs only if the probability of allow
-is at least \code{jev.approve\_threshold} (0.8) in your config. Security
-confirms are declined without asking, and a failed judge is a no. The
-decision is made in Go, so no Scheme, a repository's included, can approve
-a call the judge refused; \code{(approve-refuse? call)} in
-\file{.nodwyn/init.scm} can only refuse more.
+\subsection{Judged approval}
+
+With \code{-{}-judge} instead of \code{-{}-yolo} (the two exclude each
+other), the judge answers the run's ordinary confirms, in an unattended run
+or a supervised one. It needs a judge: a \code{jev-key} stored and
+\code{jev.content} other than \code{none} (Chapter~\ref{ch:keys}); without
+one the run does not start. The judge is shown the task, the plan and the
+call (the tool, why it needs approval, the path it writes or the command
+line it runs; at \code{jev.content = "full"} also what it would write or
+send) and asked whether to allow it; the call runs only if the probability
+of allow is at least \code{jev.approve\_threshold} (0.8) in your config.
+The answer is for that call only, never a standing one, and the log notes
+each one with the judge's probability. Security confirms are declined
+without asking, and a failed judge is a no.
+
+The decision is made in Go, so no Scheme, a repository's included, can
+approve a call the judge refused. A project may define
+\code{(approve-refuse? call)} in \file{.nodwyn/init.scm}: it is asked about
+a call the judge allowed, with \code{call} an association list of
+\code{task}, \code{plan}, \code{prim}, \code{reasons}, \code{path},
+\code{argv}, \code{args} and \code{detail}, and true, or an error,
+declines it. It can only refuse more.
 
 \begin{puzzle}[ 17: plan only for big asks]
 Write a \code{nodwyn-turn} that records your house plan only when the

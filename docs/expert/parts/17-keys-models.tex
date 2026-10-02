@@ -2,7 +2,8 @@
 \label{ch:keys}
 
 This chapter is about everything that leaves your machine on purpose: model
-requests, keyed APIs your tools call, and MCP servers.
+requests and what they cost, keyed APIs your tools call, the judge, and MCP
+servers.
 
 \section{The keychain}
 
@@ -69,9 +70,16 @@ browser from the command line, never from a session:
 nodwyn credential add --oauth2 google --client-id ID --scopes drive.file
 nodwyn credential add --oauth2 custom --client-id ID \
     --auth-url https://auth.example/authorize --token-url https://auth.example/token
+nodwyn credential list        # every credential, never a secret
 \end{sh}
 
-Its row may name the scopes it allows; a token granted any other is refused:
+\code{google}, \code{microsoft}, \code{github} and \code{notion} have
+profiles; any other provider is \code{custom}. \code{-{}-client-secret}
+asks for the client's secret when the provider needs one, and
+\code{-{}-class} names the class (by default, the provider's name).
+\code{add} prints the binding row to write, since nothing uses a credential
+until a binding names it. The row may name the scopes it allows; a token
+granted any other is refused:
 
 \begin{toml}
 [[bind]]
@@ -86,12 +94,16 @@ The keychain refreshes the access token just before a use the table
 allowed and the session logs \code{cred.refresh}. If the provider refuses
 the refresh, every use is denied until \code{nodwyn credential login
 CLASS}; \code{nodwyn credential revoke CLASS} revokes it at the provider and
-deletes it here.
+deletes it here (\code{-{}-local} only deletes it here). Nothing opens a
+browser in the middle of a turn: authorizing is something you do, at a
+terminal.
 
-With a \code{google} credential stored, sessions offer the model
-\code{google-doc-upload}, which sends a document to Google Drive as a new
-Google Doc (Chapter~\ref{ch:workspaces} has the details). It needs only
-\code{POST} in that row, and only \code{drive.file}.
+With a \code{google} credential stored when a session starts, the session
+offers the model \code{google-doc-upload}, which sends a document to
+Google Drive as a new Google Doc (Chapter~\ref{ch:workspaces} has the
+details). It needs only \code{POST} in that row, and only
+\code{drive.file}. (\code{google\_credential} in the \code{[docs]} table of
+\file{config.toml} names another class.)
 
 The binding table is checked on every
 request, before anything is sent; an unbound combination is never sent.
@@ -155,6 +167,13 @@ redaction as every tool result before the model reads it.
     not go to a destination no binding names.
 \end{itemize}
 
+And no redirect is followed. A keyed request, a judge call or a model
+request that the server answers with a redirect fails with an error that
+names only the host it pointed to (``the server redirected to HOST; nodwyn
+does not follow redirects for keyed requests''): the binding was checked
+for the host the request went to, and following would carry the key, the
+body or the whole conversation somewhere else.
+
 By default a keyed request that no binding covers is denied outright. With
 \code{policy.unbound = "confirm"} in \file{config.toml}, it asks instead,
 and the answer offers \key{B}: save this exact binding and allow. The binding is then in the
@@ -174,13 +193,105 @@ confirm that names that host (Chapter~\ref{ch:workspaces} shows it); a
 model you route to at another host gets a line saying the image is not for
 it.
 
+\section{What a request costs}
+
+A hosted model is paid by the token, and a provider caches the start of a
+prompt it has seen, at a lower price. For each reply, \nodwyn{} records
+what the provider reports: the prompt and reply tokens, how many prompt
+tokens came from its cache, and the cost in US dollars (OpenRouter reports
+all of them).
+For a provider that reports no cost, give the model its prices, in dollars
+per million tokens, and \nodwyn{} estimates:
+
+\begin{toml}
+[models.coder]
+provider = "openai"
+url = "https://api.openai.com/v1"
+model = "gpt-5.1-codex"
+credential = "openai-key"
+price_input = 1.25              # example prices: copy your provider's
+price_cached_input = 0.125      # unset: cached tokens cost price_input
+price_output = 10
+\end{toml}
+
+An estimate needs both \code{price\_input} and \code{price\_output}; it
+prices cached prompt tokens at \code{price\_cached\_input} and reasoning as
+output, and cannot know a provider's surcharge for writing its cache, so a
+reported cost always wins. The same keys work in \code{[control]}.
+
+Where you see it:
+
+\begin{itemize}
+  \item after each reply, the usage line in the terminal and the terminal
+    client, \code{12,400$\to$800 tok · 78\% cached · \$0.012}, with
+    $\approx$ before an estimate (Chapter~\ref{ch:first}); the console
+    sums a turn's requests on one such line;
+  \item at a budget checkpoint, what the turn has cost so far, ``at least''
+    when some requests had no known cost;
+  \item \code{:budget} in the terminal client: the latest turn's spend over
+    all its model requests and the share of prompt tokens from cache, or
+    why the spend is unknown;
+  \item in the log, \code{llm.resp}'s \code{usage} (Chapter~\ref{ch:log}),
+    and in Scheme, \code{model-turn}'s \code{cached-tokens} and
+    \code{cost} (Chapter~\ref{ch:turn}).
+\end{itemize}
+
+Unknown is never shown as free. Nothing is enforced with these numbers: a
+cost never stops a turn, and cached tokens count in full against the token
+budget. A low cached share on a long task is worth a look: it means the
+start of the prompt keeps changing (trims, folds, compaction; see the tip
+in Chapter~\ref{ch:contexts}).
+
+\section{The judge}
+
+The judge, Jev, is a keyed service like any other. The plan gate asks it
+whether a request needs a plan and how good a plan is
+(Chapter~\ref{ch:plans}), and a run started with \code{-{}-judge} asks it
+whether to allow a call. It is set up in three places: the \code{[jev]}
+table of \file{config.toml}, a key, and a binding.
+
+\begin{toml}
+[jev]
+url = "https://api.typesafe.ai"   # the default
+content = "plan"                  # none, plan (the default), plan+summaries or full
+approve_threshold = 0.8           # for runs started with --judge
+\end{toml}
+
+\begin{txt}
+you> :eval (credential-register "jev-key")
+\end{txt}
+
+\begin{toml}
+[[bind]]
+class = "jev-key"
+dest = "api.typesafe.ai"
+positions = ["header:Authorization:Bearer"]
+methods = ["POST"]
+\end{toml}
+
+\code{content} is how much may leave for the judge. At \code{none} there is
+no judge. At \code{plan} the plan gate sends the request and the plan, and
+a judged call is described by its tool, reasons and target. At \code{full}
+the judge also sees what a judged call would write or send, and a session
+that starts with a \code{jev-key} stored offers the model three tools of
+its own: \code{judge-noul} (a yes-or-no question; the probability of yes),
+\code{judge-score} (a rating along levels the model lists) and
+\code{judge-choice} (one of several options). They are the hidden
+\code{jev-noul}, \code{jev-score} and \code{jev-choice} without the handle:
+Go looks the stored key up when the call is made, and the guard checks the
+call against the \code{jev-key} binding as it checks the plan gate's. Every
+string sent is redacted first, and \code{jev.req} logs each call, never its
+text.
+
 \section{MCP servers}
 
 MCP servers offer tools. \nodwyn{} treats a server as a destination it
 does not trust. In the console, \textbf{Connections \(\rightarrow\)
 Tools} adds one, remote (HTTPS only; a key goes to the keychain, bound to
 that host only) or contained on this computer (below), lists its tools for
-review, and records what you decided in \file{mcp.toml}:
+review, and records in \file{mcp.toml} what you decided, including the
+workspaces it is offered in. \nodwyn{} never runs a local server as a
+program of its own: only in a container.
 
 \begin{itemize}
   \item \textbf{A pinned manifest.} You approve the exact tool list: every
@@ -191,7 +302,8 @@ review, and records what you decided in \file{mcp.toml}:
     \emph{reads} or \emph{changes things}. A tool with no declaration is
     treated as both: it asks every call and offers no standing answer.
   \item \textbf{Nothing on by default.} A new server offers nothing, and a
-    new tool is off until you turn it on.
+    new tool is off until you turn it on, and then only to new tasks in the
+    workspaces you chose.
 \end{itemize}
 
 The model sees an MCP tool as \code{server\_\_tool} (model APIs refuse

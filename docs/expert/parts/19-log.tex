@@ -14,7 +14,7 @@ nodwyn --show-thinking replay SESSION    # with the model's thinking
 \end{sh}
 
 \begin{txt}
-# session 20260930T201929Z-fd1fbe10 — demo ollama @ /home/you/garden (13 tools)
+# session 20260930T201929Z-fd1fbe10 — demo ollama @ /home/you/garden (15 tools)
 
 you> Summarize this folder
 ▸ fs-list {"path":"."}
@@ -44,7 +44,7 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
 \toprule
 \code{session.start}, \code{session.resume}, \code{session.end} & lifecycle; no \code{session.end} after a crash \\
 \code{user.msg}, \code{harness.msg} & what you sent; what a strategy added with \code{add-message} \\
-\code{llm.req}, \code{llm.resp} & each model request (with its hash and recipe) and reply \\
+\code{llm.req}, \code{llm.resp} & each model request (with its hash and recipe) and reply, with its usage: tokens, and cached tokens and cost when known \\
 \code{tool.call}, \code{tool.result} & each call and its one result \\
 \code{guard.decision} & every confirm and deny, and every allow of a tool or a host primitive, with checker, reason and answer \\
 \code{egress.check}, \code{jev.req} & keyed requests: binding lookup; judge calls \\
@@ -57,7 +57,7 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
 \code{cred.register}, \code{cred.refresh}, \code{binding.change}, \code{approval.change} & keys and policy \\
 \code{file.version}, \code{attach}, \code{doc.upload} & kept versions; attachments; documents sent out \\
 \code{summary}, \code{summary.drop} & reviewed summaries \\
-\code{note} & \code{log-note} from a strategy \\
+\code{note} & \code{log-note} from a strategy, and the harness's own notes: a retried model request, a judged approval, a resume \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -74,7 +74,9 @@ jq -c 'select(.kind=="guard.decision" and .payload.decision!="allow")
        | .payload' $F                                     # only what was stopped
 jq -r 'select(.kind=="tool.result" and .payload.ok==false)
        | "\(.seq) \(.payload.name): \(.payload.error)"' $F # failures
-jq -r 'select(.kind=="note") | .payload.text' $F           # strategy notes
+jq -r 'select(.kind=="note") | .payload.text' $F           # notes
+jq -c 'select(.kind=="llm.resp") | .payload.usage
+       | {prompt_tokens,cached_tokens,cost}' $F           # what each request cost
 \end{sh}
 
 \begin{tip}
@@ -136,6 +138,7 @@ session before editing its summaries.
 \code{control model \ldots\ unreachable} & the \code{url}; for Ollama, \code{curl URL/api/version} \\
 first turn takes 10--60 s & a cold prompt cache, or another client holds the model server \\
 every request is slow & the prefix cache misses: look for trims (the \code{elided} count jumping) or folds in \code{:log} \\
+a hosted model costs more than expected & the usage line's cached share (a low one is the same cache miss) and \code{:budget} in the terminal client; prices in the model's table if no cost shows \\
 the model loops on a denied call & the progress guard will stop it; read the \code{guard.decision}s first \\
 \code{hard stop: tool\_calls budget reached} & the turn ended; ask for something smaller, or raise \code{-{}-max-tool-calls} \\
 a tool call errored & \code{:log 20}: the \code{tool.result} has the exact error the model saw \\
