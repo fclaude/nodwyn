@@ -125,7 +125,7 @@ func docExport(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "doc-export",
 		Meta: scheme.Meta{
-			Doc: "Convert a Markdown (.md) or LaTeX (.tex) file in the repository to a Word document (.docx), OpenDocument text (.odt) or HTML page (.html) with pandoc; the target's extension picks the format. In a .docx or .odt, images that are files in the repository are embedded; others (links, files outside) are left out, their descriptions kept. Replacing an existing target keeps its previous version.",
+			Doc: "Convert a Markdown (.md) or LaTeX (.tex) file in the repository to a Word document (.docx), OpenDocument text (.odt) or HTML page (.html) with pandoc; the target's extension picks the format. In a .docx or .odt, images that are files in the repository are embedded; others (links, files outside) are left out, their descriptions kept; an .html page drops images linked from elsewhere; raw markup written into the source is kept as text. Replacing an existing target keeps its previous version.",
 			Params: []scheme.Param{
 				{Name: "source", Type: "string", Doc: "the .md or .tex file, relative to the repository root", Role: "source"},
 				{Name: "target", Type: "string", Doc: "the file to write, relative to the repository root: .docx, .odt or .html", Role: "path"},
@@ -167,7 +167,7 @@ func docExport(o Options, pin guard.RepoPin) *scheme.Prim {
 			if !to.embeds {
 				title = strings.TrimSuffix(filepath.Base(dst), filepath.Ext(dst))
 			}
-			tree, dropped, err := vetTree(tree, filepath.Dir(src), pin, denylist(o.Root), title, to.embeds)
+			tree, dropped, raws, err := vetTree(tree, filepath.Dir(src), pin, denylist(o.Root), title, to.embeds)
 			if err != nil {
 				return scheme.Value{}, err
 			}
@@ -191,6 +191,9 @@ func docExport(o Options, pin guard.RepoPin) *scheme.Prim {
 			fmt.Fprintf(&b, "wrote %s (%s, %s) from %s", dstName, to.name, byteCount(len(doc)), srcName)
 			if len(dropped) > 0 {
 				fmt.Fprintf(&b, "\n%d image(s) left out, their descriptions kept: %s", len(dropped), strings.Join(dropped, "; "))
+			}
+			if len(raws) > 0 {
+				fmt.Fprintf(&b, "\nraw content written into the source (%s) is shown as text, not interpreted", strings.Join(raws, ", "))
 			}
 			if notes := strings.TrimSpace(notes1 + notes2); notes != "" {
 				b.WriteString("\npandoc said:\n" + clip(notes, maxPandocNotes))
@@ -329,28 +332,57 @@ func (b *bounded) Write(p []byte) (int, error) {
 // imageTypes are the extensions doc-export embeds.
 var imageTypes = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".svg": true, ".bmp": true, ".tif": true, ".tiff": true, ".webp": true, ".emf": true, ".wmf": true}
 
-// vetTree checks every image in pandoc's JSON tree before a writer that
-// embeds images reads it (embeds; a writer that only refers to them, as
-// HTML's does, reads nothing, and its tree is left as it is). One that is
-// a file inside the workspace, not credential-shaped, and an image by its
-// extension, is kept and named by its absolute path (a relative one is
-// relative to base, the source's directory); a data: URI is kept, since it
-// reads nothing. Any other becomes a Span of its description, and is
-// listed with why. A title, when given, becomes the page title of a tree
-// that has none, which pandoc would otherwise fill with "-".
-func vetTree(raw []byte, base string, pin guard.RepoPin, deny guard.PathDenylist, title string, embeds bool) ([]byte, []string, error) {
+// vetTree checks pandoc's JSON tree before the writer reads it.
+//
+// Raw content (RawBlock, RawInline: OpenXML, HTML, LaTeX written into the
+// source) becomes literal code: the text stays, but no format interprets
+// it, so a document cannot carry a field, a frame or a script that fetches
+// something when it is opened.
+//
+// For a writer that embeds images (embeds), an image that is a file inside
+// the workspace, not credential-shaped, and an image by its extension, is
+// kept and named by its absolute path (a relative one is relative to base,
+// the source's directory); a data: URI is kept, since it reads nothing.
+// For one that only refers to them, as HTML's does, an image is kept unless
+// it is a link elsewhere, which a page would load when opened. Any other
+// image becomes a Span of its description, and is listed with why. A
+// title, when given, becomes the page title of a tree that has none, which
+// pandoc would otherwise fill with "-".
+func vetTree(raw []byte, base string, pin guard.RepoPin, deny guard.PathDenylist, title string, embeds bool) ([]byte, []string, []string, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var tree map[string]any
 	if err := dec.Decode(&tree); err != nil {
-		return nil, nil, fmt.Errorf("pandoc's document tree: %w", err)
+		return nil, nil, nil, fmt.Errorf("pandoc's document tree: %w", err)
 	}
-	var dropped []string
+	var dropped, raws []string
 	var bad error
 	var walk func(v any) any
 	walk = func(v any) any {
 		switch x := v.(type) {
 		case map[string]any:
+			if (x["t"] == "RawBlock" || x["t"] == "RawInline") && len(asList(x["c"])) == 2 {
+				c := asList(x["c"])
+				format, _ := c[0].(string)
+				text, _ := c[1].(string)
+				raws = append(raws, format)
+				kind := "Code"
+				if x["t"] == "RawBlock" {
+					kind = "CodeBlock"
+				}
+				return map[string]any{"t": kind, "c": []any{[]any{"", []any{}, []any{}}, text}}
+			}
+			if x["t"] == "Image" && !embeds {
+				c := asList(x["c"])
+				if len(c) == 3 {
+					if target := asList(c[2]); len(target) == 2 {
+						if src, _ := target[0].(string); remote(src) {
+							dropped = append(dropped, src+" (a link elsewhere: a page would load it when opened)")
+							return map[string]any{"t": "Span", "c": []any{c[0], walk(c[1])}}
+						}
+					}
+				}
+			}
 			if x["t"] == "Image" && embeds {
 				c, _ := x["c"].([]any)
 				var target []any
@@ -384,7 +416,7 @@ func vetTree(raw []byte, base string, pin guard.RepoPin, deny guard.PathDenylist
 	}
 	walk(tree)
 	if bad != nil {
-		return nil, nil, bad
+		return nil, nil, nil, bad
 	}
 	if meta, ok := tree["meta"].(map[string]any); ok && title != "" {
 		if meta["title"] == nil && meta["pagetitle"] == nil {
@@ -395,9 +427,24 @@ func vetTree(raw []byte, base string, pin guard.RepoPin, deny guard.PathDenylist
 	enc := json.NewEncoder(&out)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(tree); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return out.Bytes(), dropped, nil
+	return out.Bytes(), dropped, raws, nil
+}
+
+func asList(v any) []any {
+	l, _ := v.([]any)
+	return l
+}
+
+// remote reports whether an image source names something elsewhere: a URL
+// with a scheme other than data:, or a scheme-relative //host/path.
+func remote(src string) bool {
+	if strings.HasPrefix(src, "//") {
+		return true
+	}
+	u, err := url.Parse(src)
+	return err == nil && len(u.Scheme) > 1 && !strings.EqualFold(u.Scheme, "data")
 }
 
 // vetImage returns the absolute path to embed for an image's source, or

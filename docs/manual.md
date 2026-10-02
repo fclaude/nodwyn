@@ -560,7 +560,12 @@ pandoc reads the document in its sandbox, so an `\input`, an include or a
 remote image in it reads nothing. In a `.docx` or `.odt`, images that are
 files in the workspace are embedded; a link, a file outside the workspace
 or a credential-shaped name is left out and its description kept, and the
-result says which. Nothing the model writes reaches pandoc's command line.
+result says which. An `.html` page keeps its images by reference, except a
+link elsewhere, which the page would load when opened. Raw content written
+into the source (OpenXML, HTML or LaTeX passed through) is shown as text,
+never interpreted, so a document cannot carry a field, a frame or a script
+that fetches something when it is opened. Nothing the model writes reaches
+pandoc's command line.
 
 **PDF.** `doc-export` does not write PDF. A TeX engine reads files and can
 run programs when a document asks, and no sandbox covers that, so a PDF is

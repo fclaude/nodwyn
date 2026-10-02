@@ -199,10 +199,12 @@ func TestDocExportHTMLTitleAndLaTeX(t *testing.T) {
 		t.Fatalf("runs: %q", runs)
 	}
 	tree := pandoc.read("input2")
-	if !strings.Contains(tree, `"pagetitle":{"c":"paper","t":"MetaString"}`) || !strings.Contains(tree, `["fig.png",""]`) || !strings.Contains(tree, `["https://example.com/x.png",""]`) {
+	// A page refers to its images: a file in the folder stays as it is, and
+	// a link elsewhere, which the page would load when opened, is left out.
+	if !strings.Contains(tree, `"pagetitle":{"c":"paper","t":"MetaString"}`) || !strings.Contains(tree, `["fig.png",""]`) || strings.Contains(tree, "https://example.com/x.png") {
 		t.Fatalf("tree: %s", tree)
 	}
-	if strings.Contains(got.S, "left out") {
+	if !strings.Contains(got.S, "left out") || !strings.Contains(got.S, "https://example.com/x.png") {
 		t.Fatalf("result: %q", got.S)
 	}
 	if b, _ := os.ReadFile(filepath.Join(h.root, "site", "paper.html")); string(b) != "FAKE-DOCUMENT" {
@@ -325,5 +327,27 @@ func TestDocExportWithRealPandoc(t *testing.T) {
 	}
 	if !strings.Contains(got.S, "Could not load include file") {
 		t.Fatalf("pandoc's warning is not in the result: %q", got.S)
+	}
+}
+
+// Raw content in the source (an OpenXML field, an HTML frame) reaches the
+// writer as literal code, never as markup it would interpret.
+func TestDocExportKeepsRawContentAsText(t *testing.T) {
+	pandoc := newFakePandoc(t, "")
+	h := exportHarness(t, pandoc.path)
+	os.WriteFile(filepath.Join(h.root, "notes.md"), []byte("hi"), 0o644)
+	raw := `{"pandoc-api-version":[1,23,1,1],"meta":{},"blocks":[` +
+		`{"t":"RawBlock","c":["openxml","<w:fldSimple w:instr=\"INCLUDEPICTURE http://evil.example/x\"/>"]},` +
+		`{"t":"Para","c":[{"t":"RawInline","c":["html","<iframe src=\"http://evil.example/\"></iframe>"]}]}]}`
+	os.WriteFile(filepath.Join(pandoc.dir, "tree.json"), []byte(raw), 0o644)
+	for _, target := range []string{"out/notes.docx", "out/notes.html"} {
+		got := h.mustEval(t, `(doc-export "notes.md" "`+target+`")`)
+		tree := pandoc.read("input2")
+		if strings.Contains(tree, "RawBlock") || strings.Contains(tree, "RawInline") || !strings.Contains(tree, `"t":"CodeBlock"`) || !strings.Contains(tree, `"t":"Code"`) {
+			t.Fatalf("%s: raw content reached the writer: %s", target, tree)
+		}
+		if !strings.Contains(got.S, "raw content written into the source (openxml, html) is shown as text") {
+			t.Fatalf("%s: result %q", target, got.S)
+		}
 	}
 }

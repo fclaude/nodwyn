@@ -358,7 +358,12 @@ Documents out, as answer 4 decided, with these specifics:
   `\input`, an include or a remote image in it reads nothing. For a format
   that embeds images, Go then vets the document tree: an image that is a
   file in the workspace, not credential-shaped, is kept by its absolute
-  path; any other is replaced by its description. The second run,
+  path; any other is replaced by its description. An HTML page keeps its
+  images by reference, except links elsewhere, which a browser would load
+  when the page is opened. In every format, raw content (RawBlock,
+  RawInline: OpenXML, HTML, LaTeX written into the source) becomes literal
+  code, so the output cannot carry a field, a frame or a script that
+  fetches something when it is opened. The second run,
   `--from=json --to=T --standalone --output=-`, writes the document, and Go
   writes the target.
 - **Why the second run has no sandbox.** A pandoc built without its data
