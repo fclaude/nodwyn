@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,9 +24,18 @@ import (
 
 // The test binary is also the fake container runtime (test/fakes/container):
 // a contained server it runs offers these tools.
+//
+// A session with neither a LogWriter nor Paths logs to the working
+// directory, which under go test is this package's. A run that leaves a log
+// here fails, so a stray log is not committed with the change that made it.
 func TestMain(m *testing.M) {
 	fakecontainer.Main(containedTools()...)
-	os.Exit(m.Run())
+	code := m.Run()
+	if left, _ := filepath.Glob("*.jsonl"); len(left) != 0 {
+		fmt.Fprintf(os.Stderr, "session logs left in internal/core: %v\ngive the session Paths under t.TempDir() or a LogWriter\n", left)
+		code = 1
+	}
+	os.Exit(code)
 }
 
 func containedTools() []fakemcp.Tool {
