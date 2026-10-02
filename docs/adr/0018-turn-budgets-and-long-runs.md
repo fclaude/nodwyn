@@ -1,6 +1,6 @@
 # ADR 0018: Turn budgets and long-running turns
 
-- Status: **partially implemented** (turn budgets, checkpoints, progress guard and supervised driver implemented; unattended policy proposed)
+- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01)
 - Date: 2026-09-21
 
 ## Context

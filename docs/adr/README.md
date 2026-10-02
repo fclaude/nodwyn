@@ -19,13 +19,13 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0015](./0015-friction-log.md) — Friction log
 - [0016](./0016-fallback-is-allowed.md) — Fallback is allowed and honest
 - [0017](./0017-standing-command-approvals.md) — Standing command approvals
-- [0018](./0018-turn-budgets-and-long-runs.md) — Turn budgets and long-running turns (partly implemented)
+- [0018](./0018-turn-budgets-and-long-runs.md) — Turn budgets and long-running turns (implemented, unattended runs and judged approval included)
 - [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC)
-- [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (amends plan P5)
-- [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (partly implemented)
-- [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (partly implemented)
-- [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (implemented)
-- [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (accepted, implemented)
+- [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (amends plan P5; implemented, amended for the judge tools and judged approval)
+- [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (implemented)
+- [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented)
+- [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (implemented: remote servers, and contained ones in podman or docker)
+- [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (implemented; W5 builds on it)
 - [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output
 - [0026](./0026-the-loop-is-scheme.md) — The agent loop is a Scheme procedure
 - [0027](./0027-models-and-narrowed-contexts.md) — Configured models and narrowed contexts

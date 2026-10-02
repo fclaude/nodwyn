@@ -23,19 +23,21 @@ integrations and front-ends:
 | `budget` | Account for one turn, enforce ceilings, and request additional soft allowance. |
 | `loop` | Provide the primitives and default Scheme for a turn: the strategy, the plan gate, prompts, compaction, sub-agents, working habits. |
 | `event`, `log` | Describe front-end events; persist the history from which context and replay are derived. |
-| `keychain`, `binding` | Hold encrypted credentials and inject them; authorize their destinations, methods and positions. |
+| `keychain`, `binding` | Hold encrypted credentials, acquire and refresh OAuth2 tokens, and inject them; authorize their destinations, methods, positions and scopes. |
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
-| `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible); derive their context; redact text; detect credential shapes. |
+| `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible) and price their requests; derive their context; redact text; detect credential shapes. |
 | `mcp`, `extract` | Talk to remote MCP servers (pinned manifests, bound keys); turn attached documents into redacted text, check attached images by their content, and read all a document carries before it is sent. |
-| `frontend/run` | Chain planned turns under a finite deadline and turn count; ask for continuation without granting tool authority. |
+| `frontend/run` | Chain planned turns under a finite deadline and turn count; ask a person to continue, or, unattended, go on only after a turn that marked a plan step done. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nodwyn` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |
 
 **A user message:** the front-end calls `Session.Send`. The session records
-and redacts the message, and calls the Scheme procedure `agent-turn`. The
-default runs the plan gate, then asks the model, runs the tools it requested
-through Scheme and repeats until the model answers without tools; a project
-may redefine it in `.nodwyn/init.scm`. The loop's primitives build each window from
+and redacts the message, and calls the Scheme procedure `nodwyn-turn`, which
+plans first when the turn must (a run's turns must) and then applies
+`agent-turn`. The default `agent-turn` runs the plan gate, then asks the
+model, runs the tools it requested through Scheme and repeats until the
+model answers without tools; a project may redefine either in
+`.nodwyn/init.scm`. The loop's primitives build each window from
 recorded events and record every result before the next model request. The
 front-end consumes events from the session.
 
@@ -53,15 +55,19 @@ and credential, destination and payload roles. Supply its settings during
 core construction and use host interfaces for credential injection,
 transport, redaction and recording, as Jev does. Declare fixed request scope
 with `EgressHost`, `EgressMethod` and `EgressPosition` when the primitive has no
-corresponding role parameters. Do not open the keychain or
+corresponding role parameters, and `EgressClass` when Go supplies the
+credential (as for `google-doc-upload` and the judge tools). Do not open the keychain or
 read secrets in the integration. Test it through Scheme and the guard with
 a local fake service, bound/unbound destinations and canary credentials.
 Integration-specific settings should not become getters on `Session`.
 
 The roadmap extends these boundaries: ADR 21 uses events for RPC clients;
 ADRs 22–23 bring MCP tools through the primitive/guard path; ADR 24 extends
-the credential lifecycle to OAuth. Local RPC, MCP servers (remote, and local ones contained by podman or docker), OAuth2 credentials and documents out (pandoc, Google Docs) are implemented. Keep `loop`, `plan`, and
-`event` separate, and keep credential management shared across integrations.
+the credential lifecycle to OAuth. Local RPC, workspaces, attachments (text
+and images), MCP servers (remote, and local ones contained by podman or
+docker), OAuth2 credentials and documents out (pandoc, Google Docs) are
+implemented. Keep `loop` and `event` separate, and keep credential
+management shared across integrations.
 
 ## Build
 
@@ -102,6 +108,8 @@ bin/nodwyn summary SESSION      # inspect user-authored, revocable summaries
 bin/nodwyn sessions --ids       # IDs only (scripts)
 bin/nodwyn --resume <session-id> # continue in the recorded repository
 bin/nodwyn repl                 # Scheme REPL
+bin/nodwyn credential add --oauth2 google --client-id ID  # an OAuth2 credential, authorized in the browser (ADR 24)
+bin/nodwyn credential           # list credentials, never a secret
 ```
 
 The control model is the `[control]` table in `~/.config/nodwyn/config.toml`:
@@ -110,8 +118,10 @@ an Ollama server, or any chat-completions server with a key bound in
 what to add. Model requests honor
 `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, so a sandbox whose only egress is
 an allowlist proxy can still reach the model. Every write and every
-command is confirmed by you, with a diff for writes and edits; standing
-approvals for read-only commands live in `.nodwyn/allow.toml` (ADR 17).
+command is confirmed by you, with a diff for writes and edits, unless a
+standing approval covers it: command prefixes and write paths in
+`.nodwyn/allow.toml` (ADR 17). Writes to the session's scratch directory,
+outside the repository, ask only when they need a security confirm (ADR 28).
 Session logs live in `~/.local/share/nodwyn/sessions/`.
 Resume restores the conversation and appends to that same log. It reloads current
 configuration, bindings, standing approvals from files, and repository `init.scm`,
@@ -179,10 +189,18 @@ Actions count authorized irreversible host attempts, including every nested
 write or command inside a Scheme tool. Denials consume no action allowance.
 The checkpoint lists attempted file paths and commands. Wall time includes
 planning and approval waits; its hard deadline cancels blocked work, while soft
-wall checkpoints occur at operation boundaries. Tokens are the control provider's
-reported prompt plus output usage: a response can overshoot a token ceiling,
-but no subsequent operation starts after that usage is observed. Judge-service
-usage is not included because it is not reported through the control provider.
+wall checkpoints occur at operation boundaries. Tokens are the prompt plus
+output usage each model request reports, the control model's and any other
+configured model's: a response can overshoot a token ceiling, but no
+subsequent operation starts after that usage is observed. Judge requests are
+not counted.
+
+After each reply the front-ends show its tokens, the share read from the
+provider's prompt cache and its cost, each only when known; a model's
+`price_input`, `price_cached_input` and `price_output` (USD per million
+tokens) estimate the cost when the provider does not report it. The TUI's
+`:budget` shows the latest turn's spend, and a checkpoint what the turn has
+cost so far. Spend is shown, never a limit: nothing stops a turn on cost.
 
 ### Local daemon (U2)
 
@@ -213,8 +231,9 @@ Ctrl+Q quits.
 Quitting a daemon client detaches without stopping its session; Ctrl+R reconnects
 and recovers history without resending operations. Plain mode remains the default.
 Use `:tools` to list model-facing tools, or `:tools NAME` for an input schema.
-`:plan` shows the latest message’s recorded planning outcome; `:budget` shows
-configured limits and the latest turn’s checkpoint snapshots.
+`:plan` shows the latest message’s recorded planning outcome and the steps the
+model marked done or skipped; `:budget` shows configured limits, the latest
+turn’s checkpoint snapshots and its spend.
 Use `:log`, `:bindings` (also `:allow`), `:replay` and `:friction` for read-only inspection;
 Esc returns to the conversation and `r` refreshes a snapshot.
 Enter sends the whole draft; Alt+Enter or Ctrl+J adds a newline. Bracketed paste
@@ -229,14 +248,15 @@ and revocation, and the remaining structural-retrieval work.
 The browser console is organized around tasks: Home starts one in a folder
 and shows what needs an answer, what runs and what finished; a task shows
 its conversation with the approval inline (the diff, and Y/T/A/N), and beside
-it the plan, this turn's budget, changes with their history, attachments,
+it the plan with the steps the model marked, this turn's budget, changes
+with their history, attachments (documents and images),
 project notes and the workspace. Connections adds and reviews MCP servers;
-Workspaces names folders, their kind (documents or code) and mounted
+Workspaces names folders, their kind (documents, code or both) and mounted
 folders; Settings chooses the model and unlocks the keychain. It runs as
 `nodwyn ui` for a daemon, as `nodwyn app` without one (see [the app](docs/app.md)),
 and on a phone paired by name. See [the browser guide](docs/browser.md).
 
-### Supervised background runs
+### Background runs
 
 Start `nodwyn daemon`, then submit a bounded task:
 
@@ -251,4 +271,16 @@ Attach the browser or terminal client to the daemon to answer tool prompts and
 between-turn checkpoints. Disconnecting the client leaves the run owned by the
 daemon. Resume preserves the original deadline and consumed turn count; it never
 replays an interrupted tool or restores temporary approvals. See [runs](docs/runs.md)
-for completion semantics and recovery. `--yolo` answers a run's tool confirms, but continuing from one turn to the next still waits for a person's yes at the run checkpoint.
+for completion semantics and recovery.
+
+Without a person: `--yolo` answers a run's ordinary confirms yes (never a
+security confirm). `--judge` puts each ordinary confirm to the judge
+instead, which allows a call only when its probability of "allow" reaches
+`jev.approve_threshold` (0.8 by default) and declines security confirms; the
+decision is made in Go, so a project's Scheme can only refuse more. It
+needs the judge (Jev enabled, a `jev-key` stored) and excludes `--yolo`.
+`--unattended` means nobody answers anything: confirms are declined unless
+`--yolo` or `--judge` answers them, soft budget checkpoints go on to the
+hard limit, and the run goes on after a turn only if that turn marked a
+plan step done. A resume restores none of these; `nodwyn run resume` takes
+them again.

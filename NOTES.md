@@ -1,3 +1,5 @@
+*The hand-off note of the design session that came before any code (2026-09-20), kept as written. It is not current: the code exists, the project is named nodwyn (ADR 31), and [plan.md](plan.md) says where the work stands.*
+
 ## Objective
 Design the full architecture of a minimal, self-extending coding-agent harness ("pi-clone") in Go + user-written Scheme, with a binding-based credential/permission system, Jev (TypeSafe) as a calibrated judge at specific seams, a disk/cache/RAM memory hierarchy, and a streaming TUI. Name the harness. No code yet — purely architectural design + naming.
 

@@ -1,6 +1,6 @@
 # ADR 0021: A real UI after v0 — the daemon, the protocol, the clients
 
-- Status: **partially implemented** (U1, U2, P9 and U3 complete; the canvas design implemented 2026-09-30; U4 complete 2026-10-01 with unattended continuation, ADR 18)
+- Status: accepted; implemented (U1, U2, P9 and U3 2026-09-22; the canvas design 2026-09-30; U4 2026-10-01, completed by ADR 18's unattended runs)
 - Date: 2026-09-22
 
 ## Context

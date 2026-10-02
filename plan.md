@@ -6,13 +6,13 @@ Companion to [SPEC.md](SPEC.md). The spec says *what* and *why*; this says *in w
 
 **Control-plane model:** at the start, a local Qwen served by Ollama on `workshop` over the tailnet — no API key, no cloud dependency, no secret on the build machine until Phase 3 (§3.4). Since P3 the control model is whatever `[control]` in `config.toml` names, an Ollama server or a keyed chat-completions server.
 
-**Definition of done for v0:** the four I/O edges (E1–E4) are each guarded by the mechanism the spec assigns them, the exfil scenario suite passes, the log replays a session byte-for-byte, and a developer can use nodwyn on a real repo with real keys bound in `bindings.toml`. Proof of the last point: nodwyn built most of itself.
+**Definition of done for v0:** the four I/O edges (E1–E4) are each guarded by the mechanism the spec assigns them, the exfil scenario suite passes, the log replays a session byte-for-byte, and a developer can use nodwyn on a real repo with real keys bound in `bindings.toml`. The planned proof of the last point was that nodwyn would build most of itself. In the event, most phases were built with an external agent under ADR 16; the phase notes and friction.md say which.
 
-## Status (2026-09-30)
+## Status (2026-10-01)
 
-- **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: U1–U3 of the real UI, the task-oriented console, the standalone app, remote devices (D1–D5), workspaces, text attachments and remote MCP servers (D6–D8, the cowork track's W1, W2 text and W3a), and OAuth2 credentials (W4, 2026-09-30).
-- **Not done:** P8 (L3, optional); contained local MCP servers (W3b/D9); documents out (W5); images as attachments.
-- **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base (ADRs 26–29, 31–33). §5 "Outside the plan" says what drove them.
+- **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: the real UI, U1–U4 (U4's unattended runs 2026-10-01); the task-oriented console, the standalone app and remote devices (D1–D5); and the cowork track except W3b: workspaces (W1), attachments (W2, text 2026-09-30, images 2026-10-01), remote MCP servers (W3a; W1–W3a are D6–D8), OAuth2 credentials (W4, 2026-09-30) and documents out (W5, 2026-10-01).
+- **Not done:** P8 (L3, optional); contained local MCP servers (W3b/D9).
+- **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base (ADRs 26–29, 31–33), and smaller pieces such as the judge tools, plan step progress, judged approval and what a model request cost. §5 "Outside the plan" says what drove them.
 - **Next:** §10.
 
 The week numbers below are the original estimate; §6 sets them beside what shipped and when. Promotion stopped creating tags on 2026-09-30 (ADR 13 amended): tags named in the phases below are the plan's, and the ones that exist are in §6.
@@ -40,41 +40,43 @@ Two stages:
 
 ## 2. Repository layout
 
-As it is on 2026-09-30 (the plan's first layout had `plan/`, `memory/`, `workspace/`, `attach/`, `detect/l2/` and `ui/` packages; each landed in an existing package instead, as noted):
+As it is on 2026-10-01 (the plan's first layout had `plan/`, `memory/`, `workspace/`, `attach/`, `detect/l2/` and `ui/` packages; each landed in an existing package instead, as noted):
 
 ```
 nodwyn/
   cmd/nodwyn/               entrypoint only: flags → core → front-end
   cmd/nodwyn-schema/        regenerates the documented protocol schema
   internal/
-    core/                   the UI-agnostic façade: Session; attachments, MCP connection, workspaces, resume (B2+)
+    core/                   the UI-agnostic façade: Session; attachments, MCP connection, workspaces, resume, judged approval (B2+)
+    event/                  the events front-ends render and answer            (B2)
     log/                    append-only JSONL, replay, event kinds             (B0)
     config/                 XDG dirs, config.toml, workspaces, mcp.toml        (B0+)
     policyfile/             locked, atomic writes of policy files              (U3)
     scheme/                 reader, values and provenance tags, eval/apply, prim table (B1, P1b, P6)
     scheme/prelude/         *.scm embedded in the binary                       (B1)
-    prim/                   host primitives: fs, search, git, shell, http-request, jev, policy, versions (B2+)
+    prim/                   host primitives: fs, search, git, shell, processes, http-request, jev, policy, versions, documents (B2+)
     guard/                  the apply→Prim decision; checkers incl. E3, L1, L2  (B2+)
     budget/                 per-turn accounting, ceilings, checkpoints         (ADR 18)
-    llm/                    Provider interface; Ollama and chat-completions    (B2, P3)
+    llm/                    Provider interface; Ollama and chat-completions; usage and cost (B2, P3)
     loop/                   loop primitives and the default Scheme: strategy, plan gate, prompts, compaction, sub-agents, habits (B2, ADR 26)
     window/                 the log-derived window, summaries, exact replay    (B2, P10)
-    keychain/               encrypted store, handles, sink injection           (P3)
+    keychain/               encrypted store, handles, sink injection; OAuth2 acquisition and refresh (P3, W4)
     binding/                binding table, E3 lookup                           (P3)
     detect/l1/              shape/prefix scanner                               (P4)
     redact/                 the context-ingress redactor                       (P7)
-    extract/                text from attached documents                       (W2)
+    extract/                text from attached documents, image checks, the text of a file before upload (W2, W5)
     mcp/                    remote MCP client, manifest hashing                (W3a)
     frontend/plain/         line mode                                          (B2)
     frontend/tui/           bubbletea client                                   (P9)
     frontend/rpc/           the daemon: JSON-RPC over a unix socket            (U2)
     frontend/web/           the browser console, its bridge and assets         (U3, D1–D8)
-    frontend/run/           supervised background runs                         (U4)
+    frontend/run/           background runs, supervised or unattended          (U4)
   dev/                      *.scm dev tools nodwyn loads to build itself       (B3)
   .nodwyn/                  init.scm (loads dev/) and allow.toml (ADR 17)      (B3)
   scripts/                  promote, selfcheck, smoke, lints, app and webview builds
+  packaging/macos/          what make app puts in Nodwyn.app                   (D4)
   test/exfil/               the exfil scenario suite
-  test/fakes/               fake Ollama, Jev and MCP servers
+  test/fakes/               fake Ollama, Jev, MCP and Google Drive servers, a fake OAuth2 provider
   test/sessions/            real session logs kept as replay fixtures
   test/browser/             browser flows against the console
   docs/adr/                 decision records
@@ -107,7 +109,7 @@ Not built: `detect/l3/` and `tools/l3train/` (P8).
 ### 3.2 Self-hosting discipline (compiler-style staging)
 
 12. **Two binaries, always.** `bin/nodwyn` is the working-tree build. `~/.local/bin/nodwyn-stable` is the last promoted build. **All development sessions run `nodwyn-stable`; nodwyn never edits itself through the binary being edited.** A broken working tree can never strand you.
-13. **Promotion.** `scripts/promote.sh` runs `make accept` (unit + exfil suite + structural lints) and `scripts/selfcheck.sh` (the candidate must complete a scripted session: read a file, register a dev tool, run `go test ./internal/log`, replay its own log). Only then: `nodwyn-stable` → `nodwyn-stable.prev`, candidate → `nodwyn-stable`. The stable binary's version is the commit it was built from; until 2026-09-30 promotion also created a git tag `v0.N-<phase>` (ADR 13, amended). `nodwyn-stable` is the webview build wherever WebKit is available, so `nodwyn-stable app` opens a window (ADR 30). Rollback is `mv`.
+13. **Promotion.** `scripts/promote.sh` runs `make accept` (unit + exfil suite + structural lints) and `scripts/selfcheck.sh` (the candidate must complete a scripted session: read a file, register a dev tool, run `go test ./internal/log`, complete a model turn, replay its own log; since 2026-09-30 the model turn goes to a fake model on loopback, so promotion needs no key and no other machine). Only then: `nodwyn-stable` → `nodwyn-stable.prev`, candidate → `nodwyn-stable`. The stable binary's version is the commit it was built from; until 2026-09-30 promotion also created a git tag `v0.N-<phase>` (ADR 13, amended). `nodwyn-stable` is the webview build wherever WebKit is available, so `nodwyn-stable app` opens a window (ADR 30). Rollback is `mv`.
 14. **`.nodwyn/init.scm` convention.** On start, nodwyn loads `./.nodwyn/init.scm` if present (after `prelude/`). This repo's `init.scm` loads `dev/*.scm`. Nothing in `dev/` bypasses the guard — that is the whole point.
 15. **Friction log.** When nodwyn-stable gets in the way, hand-edit *and* write one line in `docs/friction.md`. That file is the backlog for the line-mode UI, the TUI (P9) and memory (P10) — real data, not guesses.
 16. **Fallback is allowed and honest.** If a task is faster by hand or with another agent, do it that way and note it. The goal is a built nodwyn, not purity. The measure of success is the trend in friction.md, not 100% self-authorship.
@@ -232,7 +234,7 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
 - Keychain class `nodwyn-control` defined for a keyed control plane; unused while workshop is the control plane.
 - **With nodwyn:** nodwyn-stable v0.2 writes this code. Tests use canary values, never real keys; nodwyn never touches the real keychain during development because the working tree's binary is not the one running. There is no real key to register at promotion — the first one arrives with Jev in P5 — so this phase is proven entirely by the exfil suite and fakes.
 - **Accept — first exfil scenarios** (each asserts the decision *and* that a canary secret appears nowhere in log, context dump or stdout): bound header ⇒ Allow; other host ⇒ Deny; body instead of header ⇒ Deny; keychain unreadable without passphrase; `(display handle)` prints `#<cred:…>`. Promote `v0.3-creds`.
-- **Done 2026-09-21; promoted as `v0.4-creds`.** No `llm-call` primitive was built and the `nodwyn-control` class is unused: other models are configured and asked by name through `model-turn` (ADR 27), and a keyed control model names its credential in `[control]`; either way the key is bound like any other and checked on every request.
+- **Done 2026-09-21 (external agent, reviewed and fixed before commit); promoted as `v0.4-creds`.** No `llm-call` primitive was built and the `nodwyn-control` class is unused: other models are configured and asked by name through `model-turn` (ADR 27), and a keyed control model names its credential in `[control]`; either way the key is bound like any other and checked on every request.
 
 ### Phase 4 — L1 fast path (weeks 10–11)
 
@@ -248,10 +250,10 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
 ### Phase 5 — Plan gate, hard trigger, Seam A (weeks 12–13)
 
 - **Jev as Scheme egress primitives (ADR 20).** Three host primitives registered in `internal/prim/` (Go handlers, `Meta.Egress: true`): `jev-noul`, `jev-score`, `jev-choice`. Each takes a credential handle in its first argument (`Param.Role: "credential"`). The loop's Seam A call is `(jev-score handle plan-text ask-text)` evaluated through `interp.Apply` — the same path a model tool call takes: guard intercept → binding check → redaction → HTTP → Scheme value returned. There is no separate Go client package; no second surface.
-  - Endpoint: `POST https://api.typesafe.ai/v1/systemone`, model `jev-1.13.0`. The Jev key is a bound data-plane credential (P3) — **the first real secret on the build machine**, and the first real use of P3.
+  - Endpoint: `POST https://api.typesafe.ai/v1/systemone`, model `jev-1.13.0` (the default is now `jev-latest`, `jev.model` in `config.toml`). The Jev key is a bound data-plane credential (P3) — **the first real secret on the build machine**, and the first real use of P3.
   - The guard sees Jev calls like any other egress: `guard.decision` logged, binding check fires, payload redacted (L1 now, L1+L3 at P7), `jev.req` logged with level, bytes, payload hash, redaction events, and the score.
-  - **User tools can call Jev under the same policy.** A user-registered tool that wraps `jev-score` is indistinguishable from a model tool call at the guard level; the `origin` field in the log distinguishes them, but the policy is identical. The model can only call such a tool if the user has registered it.
-  - **The loop's `provider.Chat()` is the sole Go-only call** — the control plane. Per the spec's LLM-as-tool split it is the harness's identity, not a guarded egress, not subject to the binding check, and logged as `llm.req`/`llm.resp`, not `guard.decision`.
+  - **User tools can call Jev under the same policy.** A user-registered tool that wraps `jev-score` is indistinguishable from a model tool call at the guard level; the `origin` field in the log distinguishes them, but the policy is identical. The model can only call such a tool if the user has registered it. (Since 2026-09-30 the model also has `judge-noul`, `judge-score` and `judge-choice`, offered only at `jev.content = "full"` with a `jev-key` stored; the `jev-*` primitives are hidden. ADR 20, amended.)
+  - **The loop's `provider.Chat()` is the sole Go-only call** — the control plane. Per the spec's LLM-as-tool split it is the harness's identity, not a guarded egress, not subject to the binding check, and logged as `llm.req`/`llm.resp`, not `guard.decision`. (Since ADR 27 a keyed control model's key is bound like any other: checked on every request and logged as `egress.check`.)
 - **Jev is an egress edge (ADR 19).** The Jev credential is bound to `api.typesafe.ai` (P3); the payload — the user's ask and the plan text, by default — passes the same redaction controller the model context gets (L1 now, L3 later, `[REDACTED class]`) before it is sent. No bespoke sanitiser: E3 + E2 composed. `jev.content` (`none` / `plan` / `plan+summaries` / `full`, the last opt-in per repo) sets how much beyond ask+plan may go; every call is logged as `jev.req` with level, bytes, payload hash and redaction events.
 - **`register-check` (ADR 20).** A hidden builtin: `(register-check name verdict predicate)` adds a Scheme-written guard checker. `verdict` is `"deny"` or `"confirm"` (not `"allow"`). The strictest-wins rule guarantees a user checker can only **tighten**, never relax. The checker is added after all Go checkers. Hidden from the model; callable only from user-originated Scheme.
 - Noul gate before each message → plan → Seam A `score` → revise ≤3 → proceed. `gate.plan` logged per message.
@@ -259,7 +261,7 @@ Each phase: (a) open a session in `nodwyn-stable`, (b) point it at the ADR and t
 - Degradation: Jev unreachable ⇒ hard trigger still enforced, gate defaults to "plan", outage logged.
 - **With nodwyn:** built without a plan gate; after promotion every later build session is planned and scored — the remaining phases (L2, redaction, TUI) are the hardest, so the quality lift lands where it matters.
 - **Accept:** fake Jev in `test/fakes`; exfil scenarios: a Jev call with an unbound credential ⇒ Deny; a Jev call with a bound credential whose payload contains a canary ⇒ the canary is redacted in the sent payload and in `jev.req`; `jev.content = none` sends nothing; gate events for every message in a replayed session; `register-check` with a predicate matching `shell-exec` ⇒ the guard records a confirm/deny from the Scheme checker; the checker cannot override an existing Deny. Promote `v0.5-plan`.
-- **Done 2026-09-22 (external agent, reviewed and fixed before push).** `jev-noul`/`jev-score`/`jev-choice` as egress primitives (ADR 20) over the documented System One protocol (`state`/`model`/`questions` → `answers`, `Authorization: Bearer`), redaction before send, `jev.req` per call; the gate (`internal/plan`) thresholds the noul probability, scores plans on a 5-level rubric normalised to 0..1, revises ≤3; the plan enters the window's task block; `register-check` for tightening-only Scheme checkers. Review fixes: the client had invented a wire format (`verdict`/`score` fields) and the fake matched it; the plan was computed and discarded; Bearer auth was impossible (positions now take a scheme: `header:Authorization:Bearer`); checkers registered in `init.scm` were dropped by a guard swap; `jev.content` defaulted to `full` against ADR 19. Not yet verified against the live API (no key registered). Tag `v0.6-plan`.
+- **Done 2026-09-22 (external agent, reviewed and fixed before push).** `jev-noul`/`jev-score`/`jev-choice` as egress primitives (ADR 20) over the documented System One protocol (`state`/`model`/`questions` → `answers`, `Authorization: Bearer`), redaction before send, `jev.req` per call; the gate (`internal/plan`, Scheme in `loop/plan.scm` since 2026-09-27) thresholds the noul probability, scores plans on a 5-level rubric normalised to 0..1, revises ≤3; the plan enters the window's task block; `register-check` for tightening-only Scheme checkers. Review fixes: the client had invented a wire format (`verdict`/`score` fields) and the fake matched it; the plan was computed and discarded; Bearer auth was impossible (positions now take a scheme: `header:Authorization:Bearer`); checkers registered in `init.scm` were dropped by a guard swap; `jev.content` defaulted to `full` against ADR 19. Not yet verified against the live API (no key registered). Tag `v0.6-plan`.
 
 ### Phase 6 — L2 taint (weeks 14–15)
 
@@ -365,7 +367,9 @@ this is additive work, not a refactor. Four phases, each useful alone:
   approval/credential replies, explicit standing approvals and approval inspection.
   [The protocol guide](docs/protocol.md) and generated schema define the wire
   contract. Kernel peer credentials identify answerers; resuming never restores
-  transient authority. Optional TCP/token transport remains deferred.
+  transient authority. The optional TCP/token transport became the console
+  bridge's `nodwyn ui --listen` with paired devices (D5), not a raw RPC
+  listener.
   **P9 uses this protocol**; its terminal views and line-mode flow parity are implemented.
 - **U3 — the desktop client (implemented).**
   `nodwyn ui` now serves embedded assets over a paired loopback WebSocket bridge
@@ -400,8 +404,8 @@ approval over RPC needs its own explicit method.
 
 ### After v0 — cowork: workspaces, attachments, MCP (ADR 22, ADR 23)
 
-Status (2026-09-30): W1, W2 (text), W3a and W4 are implemented, W1–W3a as
-D6–D8 below. Images, W3b and W5 are not.
+Status (2026-10-01): W1, W2 (text and images), W3a, W4 and W5 are
+implemented, W1–W3a as D6–D8 below. W3b is not.
 
 The same harness, applied to work that is not only code, for **one person**
 (collaboration is out of scope). The invariants do not change; three
@@ -417,7 +421,8 @@ what the guard reads).
   what keeps ADR 17's standing write approvals honest where there is no git.
   A workspace is a plain folder; if the user syncs it, nodwyn makes no
   assumption about locking or conflicts. A `kind` (`code`/`docs`/`mixed`)
-  picks default tools and framing, never policy.
+  is a label the console shows; it picks neither tools nor policy (ADR 22,
+  amended 2026-09-30).
 - **W2 — attachments, text and images (≈1.5 weeks, needs P7).** `nodwyn attach
   FILE` copies into `.nodwyn/attachments/`, extracts text by type (PDF, docx,
   xlsx, pptx), **redacts at ingest** through the P7 controller, caps size,
@@ -427,7 +432,14 @@ what the guard reads).
   image is *not redactable* — the fence around it is that the control plane
   is local, that images are never sent to Jev, and that attaching one has
   its own confirm saying so. Per-image token accounting, since bytes/3 is
-  meaningless for pixels.
+  meaningless for pixels. **Done:** text 2026-09-30 (D7), images 2026-10-01
+  (ADR 22, amended). Files are attached through the daemon's
+  `session.attach`, from the console; there is no `nodwyn attach` command.
+  The control model may be remote now, so an image may go to it only
+  through its own security confirm, which names the host and says the
+  pixels leave unredacted, and only to that host; nothing is OCRed. PNG, JPEG, GIF and WebP, checked by content; the
+  log keeps the image's digest, never its pixels. Not done: the `external`
+  tag, since an attachment never becomes a Scheme value.
 - **W3a — remote MCP servers (≈1 week, needs P3).** An MCP tool becomes a
   primitive named `server/tool`, crossing the guard like `fs-read`. Because
   MCP declares no `egress`/`irreversible`/roles, the server carries a
@@ -435,7 +447,11 @@ what the guard reads).
   irreversible** — confirm every call, deny unbound egress. A remote server
   is just a destination in the binding table, so this phase is mostly a
   JSON-RPC client plus the profile. Manifest hashes are pinned: a changed
-  tool description stops the session until re-approved (ADR 23).
+  tool description stops the session until re-approved (ADR 23). **Done
+  2026-09-30** (D8), with two deviations (ADR 23, "W3a implemented"): a
+  tool's primitive is named `server__tool`, since model APIs refuse `/`
+  (the console shows `server/tool`); and a changed or unapproved manifest
+  withholds that server's tools for the session instead of stopping it.
 - **W3b — contained local servers (≈2 weeks, needs W3a).** Servers nodwyn
   cannot review never run in its process tree: a local server runs in a
   digest-pinned container with a declared network (`[]` = none) and declared
@@ -461,10 +477,17 @@ what the guard reads).
 - **W5 — documents in and out (≈1.5 weeks, needs W4).** LaTeX through the
   installed toolchain (`shell-exec` + a standing approval — the book already
   proves it), docx via pandoc from Markdown or LaTeX, Google Docs through its
-  API on an OAuth2 credential.
+  API on an OAuth2 credential. **Done 2026-10-01** (ADR 22, "W5
+  implemented"): `doc-export` writes `.docx`, `.odt` or `.html` from
+  Markdown or LaTeX with pandoc, which reads the source in its sandbox;
+  Go vets the images and keeps raw content as text. PDF stays `shell-exec`
+  running `latexmk`. `google-doc-upload` creates a Google Doc from a file on
+  a bound OAuth2 credential, after checking all the text the file carries,
+  and logs `doc.upload`. Not done: changing an existing Google Doc,
+  folders, sharing, and uploads over 5 MiB.
 
 **One product** (agreed 2026-09-22, amended 2026-09-30). One core, one
-binary, one protocol (ADR 21). A workspace `kind` (code or docs) is a label
+binary, one protocol (ADR 21). A workspace `kind` (code, docs or mixed) is a label
 the console shows; every kind has the same tools and the same guard, and
 `session.eval` works in every workspace. (The first version of this decision
 had docs workspaces drop `shell-exec`, `register-tool` and Scheme evaluation;
@@ -523,10 +546,10 @@ Each step is independently useful and lands with tests and docs.
   `session.attach`: copy into `.nodwyn/attachments/`, deterministic
   extraction (text formats; docx/xlsx/pptx in Go; PDF via `pdftotext` when
   installed), redact at ingest, cap, log `attach`, enter the next message as
-  data. Images wait for vision plumbing.
+  data. Images followed on 2026-10-01 (W2 above).
 - **D8 — MCP servers over HTTP (W3a).** Capability profiles, undeclared =
   egress + irreversible with no standing answer, manifest pinning, tools as
-  `server/tool` primitives frozen per session, credentials through the
+  `server__tool` primitives frozen per session, credentials through the
   binding table; the Connections page with per-tool profiles, manifest
   review and per-workspace enablement.
 - **D9 — contained local MCP servers (W3b), stretch.** Docker-backed, per
@@ -536,18 +559,17 @@ Order: D1–D3 make the design real on today's capabilities; D4 is the family
 requirement and comes next; D5 is small once D4's pairing exists; D6–D8
 are the cowork track the canvas assumes.
 
-Status (2026-09-30): **D1–D8 implemented** and merged into `main`, each
+Status (2026-10-01): **D1–D8 implemented** and merged into `main`, each
 with Go tests and a browser flow (test/browser). D9 is not started: honoring a
 per-host network allowlist inside a container needs an egress proxy, and
-half-isolation would be worse than none. Also open: images as attachments
-(vision plumbing) and W5 documents out (W4 OAuth2 and plan step progress are done). What
-comes next is §10.
+half-isolation would be worse than none. Images as attachments completed D7
+on 2026-10-01. What comes next is §10.
 
-### Outside the plan — what running it taught (2026-09-26 to 2026-09-30)
+### Outside the plan — what running it taught (2026-09-26 to 2026-10-01)
 
-Running nodwyn unattended on a SWE-bench Verified cohort, and daily use,
-produced work no phase had planned. Each item came from a failure recorded in
-friction.md:
+Running nodwyn unattended on a SWE-bench Verified cohort, daily use, and an
+audit of the book against the code produced work no phase had planned. Many
+items came from a failure recorded in friction.md:
 
 - **The loop is a Scheme procedure** (ADR 26): trying a plan cycle, a judge
   check or a stop-at-first-failure batch meant editing Go; now it is
@@ -574,7 +596,23 @@ friction.md:
   stored `jev-key`, at `jev.content = "full"` (ADR 20, amended).
 - **Plan step progress** (2026-09-30): the model marks the plan's steps done
   or skipped with `plan-step`, recorded as `plan.step`; the console's plan
-  panel and the TUI's `:plan` show which are done, skipped and next.
+  panel and the TUI's `:plan` show which are done, skipped and next. An
+  unattended run uses the marks to decide whether to go on.
+- **A selfcheck that costs nothing** (2026-09-30, ADR 13 amended): its model
+  turn went to whatever `[control]` named, so every promotion was a paid
+  request and a passphrase at the terminal. It now goes to the fake Ollama
+  (`test/fakes/ollama/serve`) on loopback, with a temporary config and no
+  keychain.
+- **Judged approval** (2026-10-01, ADR 18 and ADR 20 amended): `nodwyn run
+  --judge` puts each ordinary confirm to the judge. The decision is made in
+  Go (`internal/core/judge.go`) against `jev.approve_threshold`, because a
+  first version in Scheme could be redefined by a repository's `init.scm`;
+  Scheme can only refuse more (`approve-refuse?`).
+- **What a model request cost** (2026-10-01, ADR 2 and ADR 18 amended): the
+  tokens read from the provider's prompt cache, the reasoning tokens and the
+  cost, as reported or estimated from a model's `price_*` settings, are
+  recorded in `llm.resp` and shown after each reply. Spend never stops a
+  turn.
 
 ## 6. Timeline at a glance
 
@@ -596,6 +634,7 @@ The weeks are the original estimate; the last two columns are what happened.
 | after v0 | U3 browser, U4 attention and runs | | `v0.31-browser-view` … `v0.41-supervised-runs` | 2026-09-22 |
 | after v0 | Console rebuild | | `v0.42-console` | 2026-09-25 |
 | after v0 | D1–D8 (console, app, devices, workspaces, attachments, MCP) | | commits on `main`; promotion no longer tags | 2026-09-30 |
+| after v0 | W4 OAuth2; W2 images, W5 documents out, U4 unattended runs | | commits on `main` | 2026-09-30, 2026-10-01 |
 
 Cut order, as planned: P10 → P8 → P9 polish (keep `--plain`). Never cut B0–B3 or P3–P7. Only P8 was cut.
 
@@ -604,10 +643,10 @@ Cut order, as planned: P10 → P8 → P9 polish (keep `--plain`). Never cut B0�
 ## 7. Cross-cutting discipline
 
 - **Exfil scenario suite (`test/exfil/`)** is the project's most important artifact: Scheme script + expected `Decision` + post-condition that a seeded canary appears in none of log, context dump, captured Jev payloads, stdout. Grows every phase; required for promotion.
-- **Selfcheck (`scripts/selfcheck.sh`)** is the second gate: the candidate binary must complete a scripted session on this repo before it can become stable.
+- **Selfcheck (`scripts/selfcheck.sh`)** is the second gate: the candidate binary must complete a scripted session on this repo, its model turn against a fake model, before it can become stable.
 - **Structural checks in CI:** the kernel-fixed hash after loading `.scm` (`TestKernelFixed`); the single context ingress (`scripts/lint-ingress.sh`); the single Scheme→Go exit (`applyPrim` is the only `Prim.Handler` call, held by `TestGateIsTheSingleExit`); the core/front-end boundary (`scripts/lint-boundaries.sh`, ADR 10).
 - **Fuzzing:** reader and L1 from day one.
-- **Fakes, not mocks:** a fake Ollama (`/api/chat` streaming, scripted tool calls), a fake Jev and a fake MCP server under `test/fakes/`. `make smoke` runs a two-turn session against the configured control model and is manual, not CI.
+- **Fakes, not mocks:** a fake Ollama (`/api/chat` streaming, scripted tool calls; `serve` runs it as a command for the selfcheck), a fake Jev, a fake MCP server, a fake OAuth2 provider and a fake Google Drive upload endpoint under `test/fakes/`. `make smoke` runs a two-turn session against the configured control model and is manual, not CI.
 - **friction.md** is reviewed at every promotion; the top three items are candidates for the next phase's side-work.
 - **ADR per decision**; SPEC.md is amended, not contradicted.
 
@@ -624,7 +663,7 @@ Cut order, as planned: P10 → P8 → P9 polish (keep `--plain`). Never cut B0�
 | 4 | Interpreter scope creep | ADR 7 scope freeze; bootstrap kernel is minimal by design, P1b is the only growth window |
 | 5 | Taint representation chosen late | `Taint` reserved in B1; propagation implemented once in dispatch |
 | 6 | Confirm loop becomes a rubber stamp (spec Risk 2) | Default Deny; confirm names class + dest + scope and offers a binding row |
-| 7 | Jev latency/outage on every message | Cache noul per user message; 2 s timeout; degrade to "plan"; hard trigger independent |
+| 7 | Jev latency/outage on every message | Noul once per user message; a per-request timeout (`jev.timeout`, 10 s by default); a failed noul degrades to an unscored plan; hard trigger independent |
 | 8 | L1 false positives make the daily driver annoying | Allowlist; per-class tuning on nodwyn's own repo; confirmed events feed L3 |
 | 9 | Secret leaks via an unexpected path (error, panic, debug print) | Canary-grep post-condition in every exfil scenario; handles print opaque; keychain value type has no `String()` |
 | 10 | Single developer, hard deadline | Phase gates with promotion; cut order defined |
@@ -654,9 +693,13 @@ Still open:
 
 In this order, each for the reason given:
 
-1. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
-2. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
-3. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
-4. **P8 — L3**, optional.
+1. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
+2. **P8 — L3**, optional.
+
+Smaller open gaps, in no order:
+
+- MCP's own authorization discovery and dynamic client registration (ADR 24): an MCP server behind OAuth needs a `custom` credential whose client the user registered.
+- OAuth2 credentials are added and authorized again only with `nodwyn credential` at a terminal; the console and the app cannot do either, which matters for the people ADR 30 has in mind.
+- Google Docs beyond creating one: changing a document, folders, sharing, uploads over 5 MiB (ADR 22, W5).
 
 Dated: raise the Go base to 1.27 once Fedora 45 ships it (due 2026-10-20) and a 1.27 feature is worth having (ADR 33).

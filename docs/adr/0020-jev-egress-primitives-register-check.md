@@ -1,6 +1,6 @@
 # ADR 0020: Jev as egress primitives; register-check
 
-- Status: accepted; implemented in P5 (`v0.6-plan`, 2026-09-22)
+- Status: accepted; implemented in P5 (`v0.6-plan`, 2026-09-22); amended 2026-09-30 (the model's judge tools) and 2026-10-01 (Seam C answers confirms)
 - Date: 2026-09-21
 
 ## Context

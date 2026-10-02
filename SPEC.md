@@ -1,8 +1,10 @@
-# pi-clone — Architecture Spec (v0)
+# nodwyn — Architecture Spec (v0)
+
+*Written on 2026-09-20 as "pi-clone", before the project had a name (ADR 31). Amended where later decisions changed it, never contradicted.*
 
 A minimal, self-extending coding-agent harness. Single binary. One developer, 3–6 month budget.
 
-**Stack:** Go host + user-written Scheme interpreter embedded in Go. Single static binary. TUI via bubbletea + crossterm.
+**Stack:** Go host + user-written Scheme interpreter embedded in Go. Single static binary. TUI via bubbletea + crossterm. *(crossterm is a Rust crate; in Go bubbletea owns the terminal, ADR 11.)*
 
 ---
 
@@ -18,7 +20,7 @@ A minimal, self-extending coding-agent harness. Single binary. One developer, 3�
 
 ## The agent loop
 
-`ask LLM → run tool (through guard) → feed result back → ask again`. Stop on a plain answer or a hard stop. No sub-agents for the core loop.
+`ask LLM → run tool (through guard) → feed result back → ask again`. Stop on a plain answer or a hard stop. No sub-agents for the core loop. *(Sub-agents exist as user code over the loop's primitives, ADR 27; the default loop's habits use them, ADR 32. The invariants below stay in Go.)*
 
 The loop is a Scheme procedure, `agent-turn`, so how a turn goes — plan first, consult the judge, stop a batch at its first failure — can change without changing Go. What a turn must not skip stays in Go, behind the loop's primitives: windows built from the log, only the model's own calls run, one result per call, budgets and the progress guard. The core is enough when the behaviours we want — a plan cycle with a judge, routing work to another model — can be written as user code. *(Added by ADR 26.)*
 
@@ -51,7 +53,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 
 - **L1** — regex/entropy/egress-allowlist, fails closed, auditable. (Jev 0.93)
 - **L2** — taint: tag a value at registry entry, propagate through Scheme primitives, guard checks the tags. Tags are immutable sorted name sets with no global registry or attribution cap (amended 2026-09-22 for readability). Scoped to stopping the *model's* indirect exfil, not a user (who is the principal). (Jev 0.54, sound-for-purpose)
-- **L3** — local, interpretable feature classifier v0 (entropy, char-ngram spectra, base64/URL/JWT structure, prefix, digit-ratio). Small neural context classifier is the documented upgrade path. Trains on the public secret corpus + the harness's own confirmed events (features + boolean, never raw content). Optional — system works without it. (Jev 0.68)
+- **L3** — local, interpretable feature classifier v0 (entropy, char-ngram spectra, base64/URL/JWT structure, prefix, digit-ratio). Small neural context classifier is the documented upgrade path. Trains on the public secret corpus + the harness's own confirmed events (features + boolean, never raw content). Optional — system works without it. (Jev 0.68) *(Not built: plan P8. Until it is, the text layers are L1 alone.)*
 
 ---
 
@@ -75,7 +77,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 *Amended 2026-09-21 by ADR 19: the original "never content" rule conflated content with secret values. Seam A needs the ask and the plan.*
 
 - **Seam A:** score a draft **plan** against the **user's ask** (quality/coherence/fulfillment), over the actual text of both. LLM revises on low score, ≤3 rounds.
-- **Seam C:** score an ambiguous egress **situation** on **class + destination + scope**, never the value.
+- **Seam C:** score an ambiguous egress **situation** on **class + destination + scope**, never the value. *(Amended 2026-10-01 by ADR 18 and ADR 20: in a run started with `--judge`, the judge answers its ordinary confirms. It is shown the task, the plan and the call at the user's `jev.content` level, redacted; the decision is made in Go, and security confirms are never put to it.)*
 - **Jev is an egress edge.** Its credential is a bound data-plane credential (E3) and its payload passes the same redaction controller as the model context (E2/E4). What it may see beyond ask+plan is a user policy (`jev.content`: none / plan / plan+summaries / full), logged per call.
 - **Never:** a secret value (enforced by redaction, not by withholding content), control flow, or its own loop (control-plane key is exempt).
 
@@ -113,9 +115,9 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 
 ## What Jev did NOT decide (deliberate)
 
-- Whether to build a scheme subagent / multi-agent loop — out of v0 scope.
+- Whether to build a scheme subagent / multi-agent loop — out of v0 scope. *(Built after v0 as user code, ADR 27.)*
 - Whether embeddings are worth building — deferred; structural index first.
-- Whether the harness should support GUI — no; TUI only.
+- Whether the harness should support GUI — no; TUI only. *(Revised by ADR 21 and ADR 30: a browser console and a desktop app, clients of the same protocol as the TUI.)*
 - Whether Jev should ever be allowed to see argument content — *revised by ADR 19*: yes, after redaction, at a level the user chooses; raw tool results are opt-in per repository because of retention.
 
 ---
