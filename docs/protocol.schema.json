@@ -2480,6 +2480,9 @@
           "$ref": "#/$defs/request.settings.read"
         },
         {
+          "$ref": "#/$defs/request.settings.write"
+        },
+        {
           "$ref": "#/$defs/request.versions.list"
         },
         {
@@ -3834,6 +3837,37 @@
       ],
       "type": "object"
     },
+    "request.settings.write": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "settings.write"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.settingsWriteParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.versions.list": {
       "properties": {
         "id": {
@@ -4183,6 +4217,9 @@
       "$ref": "#/$defs/rpc.settingsResult"
     },
     "result.settings.read": {
+      "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.settings.write": {
       "$ref": "#/$defs/rpc.settingsResult"
     },
     "result.versions.list": {
@@ -5092,6 +5129,21 @@
       ],
       "type": "object"
     },
+    "rpc.settingValue": {
+      "properties": {
+        "default": {},
+        "set": {
+          "type": "boolean"
+        },
+        "value": {}
+      },
+      "required": [
+        "value",
+        "default",
+        "set"
+      ],
+      "type": "object"
+    },
     "rpc.settingsResult": {
       "properties": {
         "config_file": {
@@ -5102,6 +5154,9 @@
         },
         "docs": {
           "$ref": "#/$defs/rpc.docsSettings"
+        },
+        "judge": {
+          "type": "boolean"
         },
         "keychain": {
           "$ref": "#/$defs/rpc.keychainStatus"
@@ -5114,6 +5169,15 @@
             "array",
             "null"
           ]
+        },
+        "values": {
+          "additionalProperties": {
+            "$ref": "#/$defs/rpc.settingValue"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
         }
       },
       "required": [
@@ -5121,7 +5185,24 @@
         "control",
         "models",
         "keychain",
-        "docs"
+        "docs",
+        "values",
+        "judge"
+      ],
+      "type": "object"
+    },
+    "rpc.settingsWriteParams": {
+      "properties": {
+        "set": {
+          "additionalProperties": {},
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "set"
       ],
       "type": "object"
     },

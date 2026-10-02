@@ -79,6 +79,7 @@ type Config struct {
 	Jev     Jev    `toml:"jev"`
 	Docs    Docs   `toml:"docs"`
 	MCP     MCP    `toml:"mcp"`
+	Tasks   Tasks  `toml:"tasks"`
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].
 	Models map[string]Model `toml:"models"`
@@ -94,6 +95,58 @@ type MCP struct {
 	// Egress is the nodwyn-egress proxy a server with a network list
 	// reaches the network through. Unset: next to the nodwyn executable.
 	Egress string `toml:"egress"`
+}
+
+// Tasks is how the console starts a task unless the person chooses
+// otherwise for that one: its default running mode, and the limits of a run
+// it starts. nodwyn run takes these from its own flags.
+type Tasks struct {
+	// Mode is "chat" (the default: a conversation, each request answered as
+	// it comes), "run" (it goes on turn after turn, asking before each next
+	// one; ADR 18) or "unattended" (a run nobody answers, ADR 18 §5).
+	Mode string `toml:"mode"`
+	// Approval is who answers a run's ordinary confirms: "ask" (a person;
+	// in an unattended run nobody, so they are declined unless a standing
+	// approval covers them), "judge" (the judge decides, as --judge) or
+	// "yes" (as --yolo). Security confirms are never answered yes, and a
+	// chat always asks.
+	Approval string `toml:"approval"`
+	// Turns and Wall are a run's turn limit (1–10000) and how long it may
+	// take in all, e.g. "2h".
+	Turns int    `toml:"turns"`
+	Wall  string `toml:"wall"`
+}
+
+// The tasks.mode and tasks.approval settings.
+const (
+	ModeChat       = "chat"
+	ModeRun        = "run"
+	ModeUnattended = "unattended"
+
+	ApproveAsk   = "ask"
+	ApproveJudge = "judge"
+	ApproveYes   = "yes"
+)
+
+func (t Tasks) validate() error {
+	switch t.Mode {
+	case ModeChat, ModeRun, ModeUnattended:
+	default:
+		return fmt.Errorf("tasks.mode must be %q, %q or %q, got %q", ModeChat, ModeRun, ModeUnattended, t.Mode)
+	}
+	switch t.Approval {
+	case ApproveAsk, ApproveJudge, ApproveYes:
+	default:
+		return fmt.Errorf("tasks.approval must be %q, %q or %q, got %q", ApproveAsk, ApproveJudge, ApproveYes, t.Approval)
+	}
+	// run.State's own limit: a run is finite.
+	if t.Turns < 1 || t.Turns > 10000 {
+		return fmt.Errorf("tasks.turns must be from 1 to 10000, got %d", t.Turns)
+	}
+	if d, err := time.ParseDuration(t.Wall); err != nil || d <= 0 {
+		return fmt.Errorf("tasks.wall must be a positive duration, got %q", t.Wall)
+	}
+	return nil
 }
 
 // ControlModel is the registry name of the [control] model: (model-turn)
@@ -338,8 +391,9 @@ func Default() Config {
 		// Jev defaults: no service (nodwyn runs file-only, gate is "plan"), full
 		// content when one is configured. A developer points jev.url at their
 		// instance to enable the gate (ADR 19).
-		Jev:  Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan, ApproveThreshold: 0.8},
-		Docs: Docs{GoogleCredential: "google", GoogleUploadURL: GoogleUploadURL},
+		Jev:   Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan, ApproveThreshold: 0.8},
+		Docs:  Docs{GoogleCredential: "google", GoogleUploadURL: GoogleUploadURL},
+		Tasks: Tasks{Mode: ModeChat, Approval: ApproveAsk, Turns: 20, Wall: "2h"},
 	}
 }
 
@@ -459,6 +513,9 @@ func (c Config) Validate() error {
 		return fmt.Errorf("jev.approve_threshold must be above 0 and at most 1, got %v", c.Jev.ApproveThreshold)
 	}
 	if err := c.Docs.validate(); err != nil {
+		return err
+	}
+	if err := c.Tasks.validate(); err != nil {
 		return err
 	}
 	switch c.Jev.Content {

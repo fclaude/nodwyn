@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // tableHeader matches a TOML table or array-of-tables header line.
@@ -62,23 +66,68 @@ func SetControl(raw []byte, m Model) ([]byte, Config, error) {
 }
 
 // SetKey returns raw (config.toml's contents) with key in table set to the
-// string value, keeping every other line, comments included, as written: an
-// existing assignment is replaced in place, a missing one is added at the
-// end of the table, and a missing table is added at the end of the file.
-// The result is parsed and validated before it is returned.
+// string value, as Edit does.
 func SetKey(raw []byte, table, key, value string) ([]byte, Config, error) {
-	line := fmt.Sprintf("%s = %s\n", key, quote(value))
-	assign := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(key) + `\s*=`)
+	return Edit(raw, Change{Table: table, Key: key, Value: value})
+}
+
+// A Change sets Key in Table to Value: a string, bool, int64 or float64. A
+// nil Value removes the key, so its default applies.
+type Change struct {
+	Table, Key string
+	Value      any
+}
+
+var (
+	tableName = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`)
+	keyName   = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+)
+
+// Edit returns raw (config.toml's contents) with changes made in order,
+// keeping every other line, comments included, as written: an existing
+// assignment is replaced or removed in place, a missing one is added at the
+// end of its table, and a missing table at the end of the file. Only the
+// result is parsed and validated, so changes that are valid together (a
+// soft limit raised past the old hard one, with the hard one) may be made
+// at once; a caller never writes a file nodwyn would refuse to load.
+func Edit(raw []byte, changes ...Change) ([]byte, Config, error) {
 	text := string(raw)
 	if text != "" && !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
 	lines := strings.SplitAfter(text, "\n")
 	lines = lines[:len(lines)-1] // the empty string after the final newline
+	for _, c := range changes {
+		var err error
+		if lines, err = edit(lines, c); err != nil {
+			return nil, Config{}, err
+		}
+	}
+	text = strings.Join(lines, "")
+	cfg, err := Parse([]byte(text))
+	if err != nil {
+		return nil, Config{}, err
+	}
+	return []byte(text), cfg, nil
+}
+
+func edit(lines []string, c Change) ([]string, error) {
+	if !tableName.MatchString(c.Table) || !keyName.MatchString(c.Key) {
+		return nil, fmt.Errorf("config: no setting %s.%s", c.Table, c.Key)
+	}
+	var line string
+	if c.Value != nil {
+		value, err := literal(c.Value)
+		if err != nil {
+			return nil, fmt.Errorf("%s.%s: %w", c.Table, c.Key, err)
+		}
+		line = fmt.Sprintf("%s = %s\n", c.Key, value)
+	}
+	assign := regexp.MustCompile(`^\s*` + regexp.QuoteMeta(c.Key) + `\s*=`)
 	in, found, at := false, false, -1
 	for i, l := range lines {
 		if match := tableHeader.FindStringSubmatch(strings.TrimRight(l, "\r\n")); match != nil {
-			in = strings.Trim(match[1], `"`) == table
+			in = strings.Trim(match[1], `"`) == c.Table
 			if in {
 				found, at = true, i+1
 			}
@@ -88,29 +137,110 @@ func SetKey(raw []byte, table, key, value string) ([]byte, Config, error) {
 			continue
 		}
 		if assign.MatchString(l) {
+			if line == "" {
+				return append(lines[:i:i], lines[i+1:]...), nil
+			}
 			lines[i] = line
-			at = -2
-			break
+			return lines, nil
 		}
 		if t := strings.TrimSpace(l); t != "" && !strings.HasPrefix(t, "#") {
 			at = i + 1 // after the table's last setting
 		}
 	}
 	switch {
-	case at >= 0:
-		lines = append(lines[:at], append([]string{line}, lines[at:]...)...)
-	case !found:
+	case line == "": // nothing to remove
+	case found:
+		lines = append(lines[:at:at], append([]string{line}, lines[at:]...)...)
+	default:
 		if len(lines) > 0 {
 			lines = append(lines, "\n")
 		}
-		lines = append(lines, "["+table+"]\n", line)
+		lines = append(lines, "["+c.Table+"]\n", line)
 	}
-	text = strings.Join(lines, "")
-	cfg, err := Parse([]byte(text))
+	return lines, nil
+}
+
+// literal writes a TOML value. A float always has a decimal point, so it
+// reads back as a float.
+func literal(v any) (string, error) {
+	switch v := v.(type) {
+	case string:
+		return quote(v), nil
+	case bool:
+		return strconv.FormatBool(v), nil
+	case int:
+		return strconv.Itoa(v), nil
+	case int64:
+		return strconv.FormatInt(v, 10), nil
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return "", fmt.Errorf("%v is not a number TOML can hold", v)
+		}
+		s := strconv.FormatFloat(v, 'f', -1, 64)
+		if !strings.Contains(s, ".") {
+			s += ".0"
+		}
+		return s, nil
+	}
+	return "", fmt.Errorf("a %T is not a setting's value", v)
+}
+
+// Keys reports which settings config.toml's contents set, by dotted name
+// such as "budget.tokens_hard".
+func Keys(raw []byte) (map[string]bool, error) {
+	var c Config
+	md, err := toml.Decode(string(raw), &c)
 	if err != nil {
-		return nil, Config{}, err
+		return nil, err
 	}
-	return []byte(text), cfg, nil
+	set := map[string]bool{}
+	for _, k := range md.Keys() {
+		set[k.String()] = true
+	}
+	return set, nil
+}
+
+// Value is setting key of table in c, as config.toml spells it: a string,
+// bool, int64 or float64, or nil for an optional setting left unset (such as
+// control.temperature). ok is false when c has no such setting.
+func (c Config) Value(table, key string) (value any, ok bool) {
+	v := reflect.ValueOf(c)
+	for _, name := range append(strings.Split(table, "."), key) {
+		if v.Kind() != reflect.Struct {
+			return nil, false
+		}
+		field, found := tomlField(v, name)
+		if !found {
+			return nil, false
+		}
+		v = field
+	}
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return nil, true
+		}
+		v = v.Elem()
+	}
+	switch v.Kind() {
+	case reflect.String:
+		return v.String(), true
+	case reflect.Bool:
+		return v.Bool(), true
+	case reflect.Int, reflect.Int64:
+		return v.Int(), true
+	case reflect.Float64:
+		return v.Float(), true
+	}
+	return nil, false
+}
+
+func tomlField(v reflect.Value, name string) (reflect.Value, bool) {
+	for i := range v.NumField() {
+		if tag, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("toml"), ","); tag == name {
+			return v.Field(i), true
+		}
+	}
+	return reflect.Value{}, false
 }
 
 func controlBlock(m Model) string {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/core"
@@ -53,6 +54,9 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if p.Judge && p.AutoApprove {
 			return nil, failure(-32602, "judge and auto_approve exclude each other: the judge answers what auto_approve would")
 		}
+		if err := unwatchedRefusal(client.actor, p.AutoApprove, p.Unattended, p.Judge); err != nil {
+			return nil, err
+		}
 		info, err := os.Stat(p.Repo)
 		if !filepath.IsAbs(p.Repo) || err != nil || !info.IsDir() {
 			return nil, failure(-32602, "repo must be an existing absolute directory")
@@ -99,6 +103,9 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	}
 	if p.Judge && p.AutoApprove {
 		return nil, failure(-32602, "judge and auto_approve exclude each other: the judge answers what auto_approve would")
+	}
+	if err := unwatchedRefusal(client.actor, p.AutoApprove, p.Unattended, p.Judge); err != nil {
+		return nil, err
 	}
 	owned, open := s.sessions[p.ID]
 	if req.Method == "run.stop" {
@@ -161,6 +168,20 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	}
 	return s.startRun(session, state, client.actor)
 }
+
+// unwatchedRefusal says why a paired device may not start or resume a run
+// whose requests a person does not answer (auto_approve, judge or
+// unattended). Like "Always allow" for uploads, that is chosen on the
+// computer nodwyn runs on (ADR 30): a device answers requests, it does not
+// hand them to no one. The bridge relays a paired device's name as via, so
+// its actor carries " via "; a process claiming one only limits itself.
+func unwatchedRefusal(actor string, autoApprove, unattended, judge bool) *rpcError {
+	if (autoApprove || unattended || judge) && strings.Contains(actor, " via ") {
+		return failure(-32602, "A run whose requests nobody answers by hand starts only on the computer nodwyn runs on, not from a paired device")
+	}
+	return nil
+}
+
 func (s *server) startRun(session *core.Session, state run.State, actor string) (any, *rpcError) {
 	driver, err := run.New(session, state)
 	if err != nil { // Drain before closing even if the deadline expired during setup.

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/llm"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestKeychainCreateUnlockOverTheSocket(t *testing.T) {
@@ -207,5 +209,140 @@ func TestSettingsWriteKeepsTuningOfTheSameModel(t *testing.T) {
 	raw, _ = os.ReadFile(o.Paths.ConfigFile)
 	if strings.Contains(string(raw), "temperature") || strings.Contains(string(raw), "num_ctx") {
 		t.Fatalf("another model kept the old one's tuning:\n%s", raw)
+	}
+}
+
+// Settings changes what tasks opened afterwards get, keeping config.toml's
+// other lines; a task already open keeps the limits it started with.
+func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
+	model := fake.New()
+	defer model.Close()
+	o := options(t)
+	o.Provider = llm.NewOllama(model.URL)
+	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	os.WriteFile(o.Paths.ConfigFile, []byte("# mine\n[budget]\ntokens_soft = 100\ntokens_hard = 200 # tight\n"), 0o644)
+	cfg, err := config.Load(o.Paths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Config = cfg
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	var before sessionDetails
+	json.Unmarshal(c.ok("session.open", map[string]any{"repo": t.TempDir()}), &before)
+
+	var settings settingsResult
+	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
+	if v := settings.Values["budget.tokens_hard"]; v.Value != float64(200) || v.Default != float64(10_000_000) || !v.Set {
+		t.Fatalf("tokens_hard read: %+v", v)
+	}
+	if v := settings.Values["control.temperature"]; v.Value != nil || v.Set {
+		t.Fatalf("unset temperature: %+v", v)
+	}
+	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{
+		"budget.tokens_soft": 500, "budget.tokens_hard": 1000, "budget.cost_hard": 2.5,
+		"tasks.mode": "unattended", "tasks.turns": 8, "loop.shell_timeout": "5m",
+	}}), &settings)
+	if v := settings.Values["budget.tokens_hard"]; v.Value != float64(1000) || !v.Set {
+		t.Fatalf("tokens_hard written: %+v", v)
+	}
+	if v := settings.Values["tasks.mode"]; v.Value != "unattended" || v.Default != "chat" {
+		t.Fatalf("mode written: %+v", v)
+	}
+	raw, _ := os.ReadFile(o.Paths.ConfigFile)
+	for _, want := range []string{"# mine\n", "tokens_hard = 1000\n", "cost_hard = 2.5\n", "[tasks]\n", "mode = \"unattended\"\nturns = 8\n", "[loop]\nshell_timeout = \"5m\"\n"} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("config.toml lacks %q:\n%s", want, raw)
+		}
+	}
+	if info, _ := os.Stat(o.Paths.ConfigFile); info.Mode().Perm() != 0o600 {
+		t.Fatal(info.Mode())
+	}
+
+	var info, after sessionDetails
+	json.Unmarshal(c.ok("session.info", map[string]any{"id": before.ID}), &info)
+	if info.Budgets.Tokens.Hard != 200 || info.Budgets.Cost.Hard != 0 {
+		t.Fatalf("an open task took the new limits: %+v", info.Budgets)
+	}
+	json.Unmarshal(c.ok("session.open", map[string]any{"repo": t.TempDir()}), &after)
+	if after.Budgets.Tokens.Hard != 1000 || after.Budgets.Cost.Hard != 2_500_000 {
+		t.Fatalf("a new task kept the old limits: %+v", after.Budgets)
+	}
+
+	// null removes a setting, so its default applies again.
+	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{"budget.cost_hard": nil, "tasks.turns": nil}}), &settings)
+	raw, _ = os.ReadFile(o.Paths.ConfigFile)
+	if strings.Contains(string(raw), "cost_hard") || strings.Contains(string(raw), "turns") || settings.Values["budget.cost_hard"].Value != float64(0) || settings.Values["tasks.turns"].Set {
+		t.Fatalf("not removed:\n%s\n%+v", raw, settings.Values["budget.cost_hard"])
+	}
+
+	// What Settings may not change, or values nodwyn would not load, leave
+	// the file as it was.
+	for _, set := range []map[string]any{
+		{},
+		{"control.url": "http://elsewhere:11434"},
+		{"policy.unbound": "confirm"},
+		{"jev.url": "https://judge.example"},
+		{"budget.tokens_hard": "lots"},
+		{"budget.tokens_hard": 1.5},
+		{"budget.tokens_hard": 50}, // below the soft limit
+		{"tasks.mode": "sometimes"},
+		{"tasks.wall": ""},
+		{"control.vision": "yes"},
+	} {
+		if r := c.call("settings.write", map[string]any{"set": set}); r.Error == nil {
+			t.Errorf("accepted %v", set)
+		}
+	}
+	if now, _ := os.ReadFile(o.Paths.ConfigFile); string(now) != string(raw) {
+		t.Fatalf("a refused write changed the file:\n%s", now)
+	}
+}
+
+// A paired device starts or resumes only runs it answers itself.
+func TestPairedDeviceRunsAreAnsweredByHand(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	phone := connect(t, path)
+	phone.ok("hello", map[string]any{"protocol": 1, "via": "web:phone"})
+	for _, unwatched := range []string{"auto_approve", "unattended", "judge"} {
+		run := map[string]any{"repo": "/nonexistent", "task": "t", "wall": "1m", "max_turns": 2, "auto_approve": false}
+		run[unwatched] = true
+		if r := phone.call("run.start", run); r.Error == nil || !strings.Contains(r.Error.Message, "paired device") {
+			t.Fatalf("run.start with %s from a phone: %+v", unwatched, r.Error)
+		}
+		if r := phone.call("run.resume", map[string]any{"id": "x", unwatched: true}); r.Error == nil || !strings.Contains(r.Error.Message, "paired device") {
+			t.Fatalf("run.resume with %s from a phone: %+v", unwatched, r.Error)
+		}
+	}
+	// One it answers gets as far as the folder check.
+	run := map[string]any{"repo": "/nonexistent", "task": "t", "wall": "1m", "max_turns": 2, "auto_approve": false}
+	if r := phone.call("run.start", run); r.Error == nil || !strings.Contains(r.Error.Message, "repo must be") {
+		t.Fatalf("supervised run from a phone: %+v", r.Error)
+	}
+	desk := connect(t, path)
+	desk.hello()
+	run["unattended"] = true
+	if r := desk.call("run.start", run); r.Error == nil || !strings.Contains(r.Error.Message, "repo must be") {
+		t.Fatalf("unattended run on this computer: %+v", r.Error)
+	}
+}
+
+// Every setting Settings may change is one config.toml has, and the daemon
+// knows how to take its table from a written file.
+func TestSettableSettingsExist(t *testing.T) {
+	defaults := config.Default()
+	for name := range settable {
+		table, key := splitSetting(name)
+		if _, ok := defaults.Value(table, key); !ok {
+			t.Errorf("%s is not a setting", name)
+		}
+		withTables(defaults, defaults, map[string]bool{table: true})
+	}
+	for _, left := range []string{"control.url", "control.credential", "jev.url", "mcp.egress", "docs.google_upload_url", "policy.unbound", "loop.max_tool_calls"} {
+		if _, ok := settable[left]; ok {
+			t.Errorf("%s is settable from the console", left)
+		}
 	}
 }

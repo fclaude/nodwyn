@@ -6,7 +6,8 @@ import { Desk } from "./desk.js";
 import { renderSidebar } from "./sidebar.js";
 import { renderHome } from "./home.js";
 import { TaskView } from "./task.js";
-import { renderSettings, renderWorkspaces, renderConnections, applyTheme, storedTheme } from "./pages.js";
+import { renderWorkspaces, renderConnections } from "./pages.js";
+import { renderSettings, applyTheme, storedTheme } from "./settings.js";
 
 applyTheme(storedTheme());
 const conn = new Connection();
@@ -95,7 +96,9 @@ function openMenu() {
 }
 
 let lastRoute = "";
-function render(routeChanged = false) {
+// render draws the shell and the route. what is the desk change that asked
+// for it ("" when something else did).
+function render(routeChanged = false, what = "") {
   if (conn.state !== "live") return;
   $("gate").hidden = true;
   $("shell").hidden = false;
@@ -125,11 +128,15 @@ function render(routeChanged = false) {
     if (route.name === "settings") renderSettings(view, ctx);
     else if (route.name === "workspaces") renderWorkspaces(view, ctx);
     else if (route.name === "connections") renderConnections(view, ctx);
-  } else if (route.name === "settings") renderSettings(view, ctx);
+  } else if (route.name === "settings" && (!what || what === "setup" || what === "models")) {
+    // Settings holds fields being typed into: a task's progress elsewhere
+    // does not redraw it.
+    renderSettings(view, ctx);
+  }
   lastRoute = key;
 }
 
-desk.onChange(() => render());
+desk.onChange((what) => render(false, what));
 desk.notifier.onOpen = (id) => navigate(`#/task/${id}`);
 conn.onState(async (state, detail) => {
   $("offline").hidden = state === "live" || state === "connecting" || $("shell").hidden;

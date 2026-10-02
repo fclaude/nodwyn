@@ -130,3 +130,22 @@ view that has no source says so rather than guessing.
   (`make build-webview`) on Linux and macOS and checks the installed binary's
   build tags; only a system without WebKitGTK gets the browser build, with a
   note. `make build` and CI stay cgo-free.
+
+## Settings — 2026-10-02
+
+Settings changes what a person sets in `config.toml` without a terminal,
+not only the model: `settings.write {set}` changes named settings together,
+from a fixed list the daemon keeps (how Home starts a task, the turn
+budgets and spend limit, the loop's timeouts, the window, the main model's
+tuning, the judge's content level, threshold, timeout and model, and the
+container runtime). The list leaves out what decides where content goes or
+what nodwyn may do: the model's and the judge's addresses (the model's has
+its own form, with its key and binding), credentials, the egress proxy, and
+`[policy]`. `config.Edit` makes the changes line by line, keeping the rest
+of the file, and only the result is validated, as the loader would, under
+the policy-file lock; a refused change leaves the file as it was.
+`settings.read` reports each listed setting's value, default and whether the
+file sets it, and whether a judge is available. Like the model, changes
+apply to sessions opened afterwards; a session reports the budget it runs
+with, not the daemon's current one. A paired remote device reads Settings
+but cannot change them.

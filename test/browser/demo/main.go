@@ -116,6 +116,21 @@ func run(seed bool, port int, docs bool) error {
 		}
 		cfg.Docs.GoogleUploadURL = drive.UploadURL()
 	}
+	// The demo's configuration is in its config.toml, as a daemon's is, so
+	// Settings changes it there as it would anyone's.
+	raw, _, err := config.SetControl(nil, cfg.Control)
+	if err != nil {
+		return err
+	}
+	if raw, cfg, err = config.Edit(raw,
+		config.Change{Table: "jev", Key: "content", Value: cfg.Jev.Content},
+		config.Change{Table: "mcp", Key: "egress", Value: cfg.MCP.Egress},
+		config.Change{Table: "docs", Key: "google_upload_url", Value: cfg.Docs.GoogleUploadURL}); err != nil {
+		return err
+	}
+	if err := config.WriteFile(paths.ConfigFile, raw); err != nil {
+		return err
+	}
 	options := core.Options{Config: cfg, Paths: paths, Version: "demo", Keychain: store, Containers: &container.Runtime{Kind: runtime.Kind, Path: runtime.Path}}
 
 	if err := cfg.Validate(); err != nil {

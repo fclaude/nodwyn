@@ -15,6 +15,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/policyfile"
+	"github.com/fclaude/nodwyn/internal/prim"
 )
 
 // The methods in this file let a person set nodwyn up without a terminal
@@ -120,6 +121,11 @@ type settingsResult struct {
 	Models     []string       `json:"models"`
 	Keychain   keychainStatus `json:"keychain"`
 	Docs       docsSettings   `json:"docs"`
+	// Values are the settings settings.write may change, by dotted name.
+	Values map[string]settingValue `json:"values"`
+	// Judge says a judge can answer a run's confirms now: jev.content is
+	// not "none" and a jev-key is stored in the unlocked keychain.
+	Judge bool `json:"judge"`
 }
 
 // docsSettings is how documents leave this computer: whether a Google
@@ -152,8 +158,9 @@ func (s *server) settings() settingsResult {
 	if cfg, err := config.Load(s.options.Paths.ConfigFile); err == nil {
 		docs = cfg.Docs
 	}
+	judge := s.options.Config.Jev.Enabled() && s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
 	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Keychain: s.keychainStatus(),
-		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}}
+		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge}
 }
 
 // docsSettingsMethod answers settings.docs.write: it saves how an upload to

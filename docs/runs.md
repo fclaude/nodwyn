@@ -13,6 +13,23 @@ nodwyn ui
 # Or nodwyn tui --socket /absolute/path/to/daemon.sock
 ```
 
+The console's Home starts a run too, in the mode Settings › Starting tasks
+names or the one chosen for that task, with the turn and time limits set
+there:
+
+```toml
+# config.toml
+[tasks]
+mode = "run"        # "chat" (the default), "run" or "unattended"
+approval = "ask"    # a run's ordinary confirms: "ask", "judge" (as --judge) or "yes" (as --yolo)
+turns = 20
+wall = "2h"
+```
+
+A paired remote device starts only a supervised run whose confirms it
+answers; `run.start` and `run.resume` with `auto_approve`, `judge` or
+`unattended` are refused to it ([browser view](browser.md)).
+
 Each turn sends the message `(run-turn-prompt task complete-line turn
 max-turns)` makes, a Scheme prompt a project may redefine
 ([docs/scheme.md](scheme.md) §9.1); the turn must plan before it acts (§9.5).

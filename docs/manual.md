@@ -212,6 +212,14 @@ attempts (soft/hard), and no spend limit. Legacy `loop.max_tool_calls` remains a
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
+The console's Settings page changes these limits, the timeouts
+(`loop.request_timeout`, `loop.shell_timeout`), the window, the main
+model's tuning, the judge's settings and how Home starts a task (`[tasks]`:
+a chat, a run or an unattended run, who answers a run's requests, its turns
+and time), keeping every other line of `config.toml` as written. Tasks
+started afterwards get the new values; open ones keep theirs ([the browser
+view](browser.md), "Settings").
+
 Line mode is one client of several: `nodwyn tui` is a full-screen terminal
 client ([the TUI](tui.md)), `nodwyn app` and `nodwyn ui` show the console in
 a window or a browser ([the app](app.md), [the browser view](browser.md)),
@@ -989,7 +997,8 @@ never get it. The window counts an image as about 85 tokens plus 170 per
 is deleted, later requests say so instead of sending it, which is also how
 to take an image out of a conversation.
 
-The console's Settings page writes `[control]` for you. Saving the same model
+The console's Settings page writes `[control]` for you, and tunes it under
+Models › Main model tuning. Saving the same model
 on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
 `max_output`, `output_field`, `temperature`, `seed`, `vision` and the
 `price_*` entries); choosing another model starts from its defaults.

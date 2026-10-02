@@ -78,7 +78,9 @@ type sessionDetails struct {
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
-	limits, _ := s.options.Config.Budget.Limits(s.options.Config.Loop.MaxToolCalls)
+	// The session's own limits: Settings may have changed the daemon's
+	// since it opened, and a run's spend limit is its own.
+	limits := session.Limits()
 	trust, actor := session.TurnApproval()
 	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
 }
@@ -125,6 +127,7 @@ var methodTable = map[string]handler{
 	"settings.read":           (*server).settingsMethod,
 	"settings.control.write":  (*server).settingsMethod,
 	"settings.docs.write":     (*server).docsSettingsMethod,
+	"settings.write":          (*server).settingsWrite,
 	"workspace.list":          (*server).workspaces,
 	"workspace.save":          (*server).workspaces,
 	"workspace.remove":        (*server).workspaces,

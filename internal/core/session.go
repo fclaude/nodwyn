@@ -109,6 +109,29 @@ func (s *Session) Repo() string { return s.opts.Repo }
 // Tools lists the tools offered to the model.
 func (s *Session) Tools() []llm.Tool { return s.loop.Tools() }
 
+// Limits are the budget this session's next turn starts from: the
+// configuration it was opened with, whatever Settings has changed since.
+func (s *Session) Limits() budget.Limits {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	limits, _ := s.limits()
+	return limits
+}
+
+// limits computes a turn's budget; s.mu is held. The spend limit is the
+// task's: a soft limit raised at a checkpoint holds for later turns (and
+// each turn starts from what the earlier ones cost).
+func (s *Session) limits() (budget.Limits, error) {
+	limits, err := s.opts.Config.Budget.Limits(s.opts.Config.Loop.MaxToolCalls)
+	if err != nil {
+		return budget.Limits{}, err
+	}
+	if limits.Cost.Hard > 0 && s.costSoft > limits.Cost.Soft && s.costSoft <= limits.Cost.Hard {
+		limits.Cost.Soft = s.costSoft
+	}
+	return limits, nil
+}
+
 // Events is the stream a front-end reads. It is closed by Close.
 func (s *Session) Events() <-chan event.Event { return s.out }
 
@@ -190,16 +213,10 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 		s.mu.Unlock()
 		return errors.New("core: an attachment is in progress; send when it is done")
 	}
-	limits, err := s.opts.Config.Budget.Limits(s.opts.Config.Loop.MaxToolCalls)
+	limits, err := s.limits()
 	if err != nil {
 		s.mu.Unlock()
 		return err
-	}
-	// The spend limit is the task's: a soft limit raised at a checkpoint
-	// holds for later turns, and each turn starts from what the earlier ones
-	// cost.
-	if limits.Cost.Hard > 0 && s.costSoft > limits.Cost.Soft && s.costSoft <= limits.Cost.Hard {
-		limits.Cost.Soft = s.costSoft
 	}
 	ctx, turn, cancel := budget.Start(context.Background(), limits, s.confirmBudget)
 	if limits.Cost.Hard > 0 {

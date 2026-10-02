@@ -100,4 +100,9 @@ func TestSessionTitleIsShort(t *testing.T) {
 			t.Errorf("Title(%q) = %q, want %q", in, got, want)
 		}
 	}
+	// A run is read by its task, not the run prompt around it.
+	run := SessionInfo{FirstMessage: "Run task:\nTidy the receipts. Then sum them.\n\nWork on one unfinished plan step", Run: &log.RunState{Task: "Tidy the receipts. Then sum them."}}
+	if got := run.Title(); got != "Tidy the receipts" {
+		t.Errorf("run title %q", got)
+	}
 }

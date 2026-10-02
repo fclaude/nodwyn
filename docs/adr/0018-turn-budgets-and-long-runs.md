@@ -243,3 +243,25 @@ request and tool call, so the request that crosses the limit completes and
 nothing starts after it. The unit is a millionth of a dollar, so a limit is
 an integer like the others. An unattended run's soft checkpoint goes on to
 the hard limit.
+
+## Runs from the console — 2026-10-02
+
+The console's Home starts a run as well as a chat. How it starts a task
+unless the person chooses otherwise for that one is the user's
+configuration, `[tasks]` in `config.toml`: `mode` (`chat`, the default;
+`run`; or `unattended`), `approval` (who answers a run's ordinary confirms:
+`ask`, `judge` or `yes`), and a run's `turns` and `wall`. They are only
+what the console sends: Home calls `run.start` with them as explicit
+parameters, so `auto_approve`, `judge` and `unattended` remain properties
+of a run, never of the daemon, and a run's turns and lifetime stay finite.
+`nodwyn run` keeps its own required flags.
+
+Answering a run's requests without a person is chosen on the computer
+nodwyn runs on, as "always allow" for uploads is (ADR 30): `run.start` and
+`run.resume` with `auto_approve`, `judge` or `unattended` are refused to an
+actor relayed `via` a paired device, and the web bridge refuses them to any
+remote connection. A device may start a supervised run whose confirms it
+answers itself.
+
+A run's first message is the run prompt around its task, so the task list
+titles a run by its task (`run.state`), redacted as a first message is.

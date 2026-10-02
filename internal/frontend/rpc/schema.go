@@ -57,6 +57,7 @@ func contracts() map[string]methodContract {
 		"settings.read":           {struct{}{}, settingsResult{}},
 		"settings.control.write":  {controlParams{}, settingsResult{}},
 		"settings.docs.write":     {docsParams{}, settingsResult{}},
+		"settings.write":          {settingsWriteParams{}, settingsResult{}},
 		"workspace.list":          {struct{}{}, []workspaceInfo{}},
 		"workspace.save":          {workspaceSaveParams{}, workspaceInfo{}},
 		"workspace.remove":        {workspacePathParams{}, struct{}{}},

@@ -1,0 +1,694 @@
+// Settings: what nodwyn does unless a task says otherwise. Most of it is
+// config.toml, read from settings.read and changed with settings.write on
+// the computer nodwyn runs on: the daemon validates and writes, tasks
+// started afterwards get the result, and open ones keep what they started
+// with. Appearance and notifications belong to this browser.
+import { h, toast, ago } from "./dom.js";
+import { modelForm, keychainForm } from "./setup.js";
+import { uploadLabels } from "./transcript.js";
+import { modeNames } from "./home.js";
+
+// ---------- theme (a per-browser convenience; dark unless chosen) ----------
+const themes = ["dark", "light", "system"];
+export function storedTheme() {
+  try {
+    const mode = localStorage.getItem("nodwyn-theme");
+    return themes.includes(mode) ? mode : "dark";
+  } catch {
+    return "dark";
+  }
+}
+export function applyTheme(mode) {
+  if (!themes.includes(mode)) mode = "dark";
+  document.documentElement.dataset.theme = mode;
+  try {
+    if (mode === "dark") localStorage.removeItem("nodwyn-theme");
+    else localStorage.setItem("nodwyn-theme", mode);
+  } catch {
+    /* a browser that refuses storage still gets the theme for this tab */
+  }
+}
+
+// What each mode and answerer does, as Starting tasks explains it.
+const approvalNames = { ask: "Ask", judge: "The judge decides", yes: "Yes, automatically" };
+
+function modeHint(mode, approval, { turns, wall }) {
+  const limits = `up to ${turns} turns or ${wall}`;
+  if (mode === "run") return `It goes on turn after turn until the model says it is done, ${limits}, and asks you before each next turn.`;
+  if (mode === "unattended") return `Nobody answers it: it goes on while each turn marks a step of its plan done, ${limits}, and stops for you to look when one doesn't. Its limits stop it rather than ask.`;
+  return "A conversation: you answer each request as it comes, and it waits for you after each reply.";
+}
+
+function approvalHint(approval, mode) {
+  const chat = mode === "chat" ? " A chat always asks you." : "";
+  if (approval === "judge") return `The judge is shown the task, the plan and the request, and lets it go ahead only above its threshold (Judge, below). Security requests are declined without asking it.${chat}`;
+  if (approval === "yes") return `Ordinary requests are answered yes, as nodwyn run --yolo does. Security requests — a credential-shaped write, a protected path, a command built from tool output — are declined.${chat}`;
+  if (mode === "unattended") return "Nobody is there to answer, so a request no standing approval covers is declined, and the model is told.";
+  return `You answer each one, as in a chat.${chat}`;
+}
+
+// ---------- what each setting takes ----------
+// count: a whole number of 0 or more; integer: any whole number; decimal: a
+// number of 0 or more; duration: Go's, such as 90s, 20m or 2h; text: as typed;
+// choice: one of the chips. The daemon judges every value again.
+const specs = {
+  "tasks.mode": { kind: "choice", label: "Default mode" },
+  "tasks.approval": { kind: "choice", label: "Requests in a run" },
+  "tasks.turns": { kind: "count", label: "Run turns" },
+  "tasks.wall": { kind: "duration", label: "Run time" },
+  "budget.tool_calls_soft": { kind: "count", label: "Tool calls, ask at" },
+  "budget.tool_calls_hard": { kind: "count", label: "Tool calls, stop at" },
+  "budget.tokens_soft": { kind: "count", label: "Tokens sent, ask at" },
+  "budget.tokens_hard": { kind: "count", label: "Tokens sent, stop at" },
+  "budget.actions_soft": { kind: "count", label: "Actions, ask at" },
+  "budget.actions_hard": { kind: "count", label: "Actions, stop at" },
+  "budget.wall_soft": { kind: "duration", label: "Time, ask at" },
+  "budget.wall_hard": { kind: "duration", label: "Time, stop at" },
+  "budget.cost_soft": { kind: "decimal", label: "Spend, ask at" },
+  "budget.cost_hard": { kind: "decimal", label: "Spend, stop at" },
+  "loop.request_timeout": { kind: "duration", label: "A model reply" },
+  "loop.shell_timeout": { kind: "duration", label: "A command" },
+  "control.num_ctx": { kind: "count", label: "Context length" },
+  "control.max_output": { kind: "count", label: "Reply cap" },
+  "control.temperature": { kind: "decimal", label: "Temperature" },
+  "control.seed": { kind: "integer", label: "Seed" },
+  "control.keep_alive": { kind: "text", label: "Keep loaded" },
+  "control.vision": { kind: "choice", label: "Takes images" },
+  "control.output_field": { kind: "choice", label: "Reply cap field" },
+  "control.price_input": { kind: "decimal", label: "Price of input" },
+  "control.price_cached_input": { kind: "decimal", label: "Price of cached input" },
+  "control.price_output": { kind: "decimal", label: "Price of output" },
+  "jev.content": { kind: "choice", label: "What the judge sees" },
+  "jev.approve_threshold": { kind: "decimal", label: "Allows a request at" },
+  "jev.timeout": { kind: "duration", label: "Waits for an answer" },
+  "jev.model": { kind: "text", label: "Judge model" },
+  "mcp.runtime": { kind: "choice", label: "Container runtime" },
+  "window.high_water": { kind: "count", label: "High water" },
+  "window.low_water": { kind: "count", label: "Low water" },
+  "window.max_result_tokens": { kind: "count", label: "Largest tool result" },
+  "window.output_reserve": { kind: "count", label: "Kept for each reply" },
+};
+
+// Unsaved edits by setting: the text typed into a field, or the value a
+// choice picked ("" for the default). They survive the page being redrawn
+// while tasks run, and go to the daemon together.
+const edits = new Map();
+let saveError = "";
+let saving = false;
+let modelOpen = false;
+let refreshBar = () => {};
+
+const values = (desk) => desk.settings?.values || {};
+const same = (a, b) => (a ?? null) === (b ?? null);
+const grouped = (n) => (Number.isSafeInteger(n) && Math.abs(n) >= 10000 ? n.toLocaleString("en-US") : String(n));
+
+// shown is how a value reads in its field.
+function shown(value, kind) {
+  if (value === null || value === undefined) return "";
+  if (kind === "count" || kind === "integer") return grouped(value);
+  return String(value);
+}
+
+// initial is what a field shows before an edit: empty when the default
+// applies, so clearing a field puts the default back.
+function initial(v, kind) {
+  return v.set || !same(v.value, v.default) ? shown(v.value, kind) : "";
+}
+
+function parse(kind, text) {
+  const plain = text.replace(/[,_\s]/g, "").replace(/^\$/, "");
+  switch (kind) {
+    case "count":
+    case "integer": {
+      const ok = kind === "count" ? /^\d+$/ : /^-?\d+$/;
+      if (!ok.test(plain) || !Number.isSafeInteger(Number(plain))) return { error: kind === "count" ? "a whole number" : "a whole number, such as 42" };
+      return { value: Number(plain) };
+    }
+    case "decimal":
+      if (!/^(\d+\.?\d*|\.\d+)$/.test(plain)) return { error: "a number, such as 0.5" };
+      return { value: Number(plain) };
+    case "duration":
+      if (!/^(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))+$/.test(text.trim())) return { error: "a duration, such as 90s, 20m or 2h" };
+      return { value: text.trim() };
+  }
+  return { value: text.trim() };
+}
+
+// changes is what the edits would change, as settings.write takes them.
+function changes(desk) {
+  const set = {};
+  const errors = [];
+  for (const [name, edit] of edits) {
+    const v = values(desk)[name];
+    const spec = specs[name];
+    if (!v || !spec) continue;
+    if (spec.kind === "choice") {
+      if (!same(edit, v.value)) set[name] = edit === "" ? null : edit;
+      continue;
+    }
+    const text = String(edit).trim();
+    if (text === initial(v, spec.kind)) continue;
+    if (text === "") {
+      set[name] = null;
+      continue;
+    }
+    const parsed = parse(spec.kind, text);
+    if (parsed.error) errors.push(`${spec.label} takes ${parsed.error}.`);
+    else if (!same(parsed.value, v.value) || !v.set) set[name] = parsed.value;
+  }
+  return { set, errors };
+}
+
+// ---------- fields ----------
+function editable(conn) {
+  return conn.has("settings.write");
+}
+
+// input is one setting's field: it shows what config.toml sets, or is
+// empty with the default as its placeholder.
+function input(ctx, name, { placeholder, width = "", prefix = "", suffix = "" } = {}) {
+  const v = values(ctx.desk)[name];
+  const spec = specs[name];
+  if (!v || !spec) return null;
+  const numeric = spec.kind === "count" || spec.kind === "integer" || spec.kind === "decimal";
+  const node = h("input", {
+    class: `input setting${width ? ` ${width}` : ""}`,
+    id: `set-${name}`,
+    "aria-label": spec.label,
+    inputmode: spec.kind === "decimal" ? "decimal" : numeric ? "numeric" : null,
+    autocomplete: "off",
+    spellcheck: false,
+    disabled: !editable(ctx.conn),
+    placeholder: placeholder ?? (shown(v.default, spec.kind) || "—"),
+    oninput: () => {
+      edits.set(name, node.value);
+      saveError = "";
+      refreshBar();
+    },
+  });
+  node.value = edits.has(name) ? edits.get(name) : initial(v, spec.kind);
+  if (!prefix && !suffix) return node;
+  return h("span", { class: "affix" }, prefix ? h("span", { class: "unit" }, prefix) : null, node, suffix ? h("span", { class: "unit" }, suffix) : null);
+}
+
+// choice is a setting picked from chips; "" is the default.
+function choice(ctx, name, options, redraw) {
+  const v = values(ctx.desk)[name];
+  if (!v) return null;
+  const current = edits.has(name) ? edits.get(name) : (v.value ?? "");
+  return h(
+    "div",
+    { class: "row-actions", role: "group", "aria-label": specs[name].label },
+    options.map(([value, label]) =>
+      h(
+        "button",
+        {
+          type: "button",
+          class: "chip",
+          id: `set-${name}-${value || "default"}`,
+          "aria-pressed": String(String(current) === String(value)),
+          disabled: !editable(ctx.conn),
+          onclick: () => {
+            edits.set(name, value);
+            saveError = "";
+            redraw();
+          },
+        },
+        label,
+      ),
+    ),
+  );
+}
+
+// picked is a choice's value as edited, else as set.
+function picked(desk, name) {
+  return edits.has(name) ? edits.get(name) : (values(desk)[name]?.value ?? "");
+}
+
+const row = (label, ...value) => [h("div", { class: "label" }, label), h("div", { class: "value" }, ...value)];
+const section = (id, title, intro, ...rows) => h("section", { class: "settings-section", id: `section-${id}`, "aria-labelledby": `heading-${id}` }, h("h2", { id: `heading-${id}` }, title), intro ? h("p", { class: "hint intro" }, intro) : null, h("div", { class: "settings-grid" }, ...rows));
+
+// ---------- the page ----------
+export function renderSettings(root, ctx) {
+  const { conn, desk } = ctx;
+  const redraw = () => renderSettings(root, ctx);
+  // Redrawn in place (a choice, a save, the models' status): keep the
+  // scroll position and the field that has focus.
+  const before = root.querySelector(":scope > main.settings-page");
+  const scrolled = before ? before.scrollTop : 0;
+  const active = root.contains(document.activeElement) ? document.activeElement : null;
+  const focus = active?.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
+
+  // An older daemon reports no values: its settings live in config.toml.
+  const known = !!desk.settings?.values;
+  const sections = [
+    ...(known ? [tasksSection(ctx, redraw), limitsSection(ctx)] : []),
+    modelsSection(ctx, root),
+    ...(known ? [judgeSection(ctx, redraw)] : []),
+    documentsSection(ctx),
+    ...(known ? [containersSection(ctx, redraw), windowSection(ctx)] : []),
+    keysSection(ctx, root),
+    browserSection(ctx),
+    connectionSection(ctx),
+  ].filter(Boolean);
+  const nav = h(
+    "nav",
+    { class: "settings-nav row-actions", "aria-label": "Settings sections" },
+    sections.map((s) => h("button", { type: "button", class: "chip", onclick: () => s.scrollIntoView({ behavior: "smooth", block: "start" }) }, s.querySelector("h2").textContent)),
+  );
+  const bar = h("div", { class: "save-bar", role: "region", "aria-label": "Unsaved settings", hidden: true });
+  refreshBar = () => drawBar(bar, ctx, redraw);
+
+  const page = h(
+    "main",
+    { class: "page settings-page" },
+    h(
+      "div",
+      { class: "page-col" },
+      h("h1", {}, "Settings"),
+      known && !editable(conn) ? h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
+      nav,
+      ...sections,
+      bar,
+    ),
+  );
+  root.replaceChildren(page);
+  page.scrollTop = scrolled;
+  refreshBar();
+  if (conn.has("devices.list")) showDevices(root.querySelector("#devices"), ctx);
+  if (desk.settings?.docs) showUploads(root.querySelector("#uploads"), ctx);
+  if (focus) {
+    const node = document.getElementById(focus.id);
+    node?.focus({ preventScroll: true });
+    try {
+      if (focus.start !== null && focus.start !== undefined) node?.setSelectionRange(focus.start, focus.end);
+    } catch {
+      /* not a text field */
+    }
+  }
+}
+
+// drawBar shows the unsaved edits and saves them together: one
+// settings.write, so changes that only make sense together (a soft limit
+// above the old hard one) are judged together.
+function drawBar(bar, ctx, redraw) {
+  const { conn, desk } = ctx;
+  const { set, errors } = changes(desk);
+  const count = Object.keys(set).length;
+  bar.hidden = !editable(conn) || (count === 0 && errors.length === 0 && !saveError);
+  if (bar.hidden) return;
+  const message = saveError || errors[0] || `${count} unsaved change${count === 1 ? "" : "s"}. Tasks you start afterwards use them; open tasks keep theirs.`;
+  bar.replaceChildren(
+    h("p", { class: saveError || errors.length ? "error" : "", role: saveError || errors.length ? "alert" : "status" }, message),
+    h(
+      "div",
+      { class: "row-actions" },
+      h("button", { type: "button", class: "btn ghost", onclick: () => { edits.clear(); saveError = ""; redraw(); } }, "Discard"),
+      h(
+        "button",
+        {
+          type: "button",
+          class: "btn accent",
+          disabled: saving || count === 0 || errors.length > 0,
+          onclick: async () => {
+            saving = true;
+            saveError = "";
+            drawBar(bar, ctx, redraw);
+            try {
+              desk.settings = await conn.call("settings.write", { set });
+              edits.clear();
+              toast("Saved. Tasks you start from now on use these settings.");
+            } catch (error) {
+              // The daemon names the setting; the method's name is noise here.
+              saveError = error.message.replace(/^settings\.write: /, "");
+            } finally {
+              saving = false;
+            }
+            redraw();
+          },
+        },
+        saving ? "Saving…" : "Save",
+      ),
+    ),
+  );
+}
+
+function tasksSection(ctx, redraw) {
+  const { desk, conn } = ctx;
+  const mode = picked(desk, "tasks.mode");
+  const approval = picked(desk, "tasks.approval");
+  const v = values(desk);
+  const turns = v["tasks.turns"]?.value;
+  const wall = v["tasks.wall"]?.value;
+  const noJudge = approval === "judge" && !desk.settings?.judge;
+  return section(
+    "tasks",
+    "Starting tasks",
+    "How Home starts a task, unless you choose otherwise for that one.",
+    ...row(
+      "Default mode",
+      choice(ctx, "tasks.mode", Object.entries(modeNames), redraw),
+      h("p", { class: "hint" }, modeHint(mode, approval, { turns, wall })),
+      conn.has("settings.write") ? null : h("p", { class: "hint" }, "From another device, Home starts only tasks whose requests you answer yourself."),
+    ),
+    ...row(
+      "Requests in a run",
+      choice(ctx, "tasks.approval", Object.entries(approvalNames), redraw),
+      h("p", { class: "hint" }, approvalHint(approval, mode)),
+      noJudge ? h("p", { class: "hint warn-text" }, "No judge is available now, so a run started this way will not start. See Judge below.") : null,
+    ),
+    ...row(
+      "Run limits",
+      h("div", { class: "row-actions" }, h("span", { class: "muted" }, "Up to"), input(ctx, "tasks.turns", { width: "narrow" }), h("span", { class: "muted" }, "turns, or"), input(ctx, "tasks.wall", { width: "narrow" })),
+      h("p", { class: "hint" }, "A run stops at whichever comes first. Its time counts everything, waiting for your answers included."),
+    ),
+  );
+}
+
+function limitsSection(ctx) {
+  const pair = (label, soft, hard, opts = {}) => [
+    h("div", { class: "limit-name" }, label),
+    input(ctx, soft, { width: "narrow", ...opts.soft }),
+    input(ctx, hard, { width: "narrow", ...opts.hard }),
+  ];
+  const v = values(ctx.desk);
+  const costOn = v["budget.cost_hard"]?.value > 0;
+  return section(
+    "limits",
+    "Limits",
+    "Each turn — a message and the work it sets off — stops to ask whether to go on when it reaches “ask at”, and stops at “stop at”. An unattended run goes on to the stop. Leave a field empty for its default.",
+    ...row(
+      "Each turn",
+      h(
+        "div",
+        { class: "limits" },
+        h("div", {}),
+        h("div", { class: "limit-head" }, "Ask at"),
+        h("div", { class: "limit-head" }, "Stop at"),
+        ...pair("Tool calls", "budget.tool_calls_soft", "budget.tool_calls_hard"),
+        ...pair("Tokens sent", "budget.tokens_soft", "budget.tokens_hard"),
+        ...pair("Actions", "budget.actions_soft", "budget.actions_hard"),
+        ...pair("Time", "budget.wall_soft", "budget.wall_hard"),
+      ),
+      h("p", { class: "hint" }, "Tokens sent counts every request's prompt in full, so it grows faster than the conversation. Actions are writes, commands and other steps that change something."),
+    ),
+    ...row(
+      "Spend",
+      h(
+        "div",
+        { class: "limits" },
+        h("div", {}),
+        h("div", { class: "limit-head" }, "Ask at"),
+        h("div", { class: "limit-head" }, "Stop at"),
+        ...pair("The whole task", "budget.cost_soft", "budget.cost_hard", { soft: { prefix: "$", placeholder: costOn ? "the stop" : "—" }, hard: { prefix: "$", placeholder: "off" } }),
+      ),
+      h("p", { class: "hint" }, "In US dollars, for what a task's model requests cost as far as known: as the provider reports it, or from the model's prices below. It counts every turn of a task, and is off until “stop at” is set. A request nobody priced isn't counted."),
+    ),
+    ...row(
+      "Waiting",
+      h("div", { class: "row-actions" }, h("span", { class: "muted" }, "A model reply up to"), input(ctx, "loop.request_timeout", { width: "narrow" }), h("span", { class: "muted" }, "and a command up to"), input(ctx, "loop.shell_timeout", { width: "narrow" })),
+    ),
+  );
+}
+
+export function modelRows(desk) {
+  if (!desk.models) return [h("p", { class: "hint" }, "Checking the configured models…")];
+  const words = { ready: "answers", missing: "server answers; model not installed", unreachable: "does not answer", unconfigured: "not set up" };
+  return [
+    h(
+      "div",
+      { class: "list" },
+      desk.models.map((m) =>
+        h(
+          "div",
+          { class: "list-row" },
+          h("span", { class: `dot ${m.state === "ready" ? "ok" : m.state === "unreachable" ? "bad" : "warn"}` }),
+          h("div", { class: "main" }, h("strong", {}, m.name === "control" ? "Main model" : m.name), h("span", {}, m.model ? `${m.model} · ${m.provider}${m.host ? ` at ${m.host}` : ""}` : "No model configured")),
+          h("div", { class: "end" }, m.detail || words[m.state] || m.state),
+        ),
+      ),
+    ),
+    h("p", { class: "hint" }, "A reachability check: nodwyn asks each model server for its list of models and sends no credential."),
+  ];
+}
+
+function modelsSection(ctx, root) {
+  const { conn, desk } = ctx;
+  const control = desk.settings?.control || {};
+  const provider = control.Provider || control.provider || "ollama";
+  const configured = !!(control.Model || control.model);
+  const v = values(desk);
+  const reserve = v["window.output_reserve"]?.value;
+  const tuning =
+    configured && desk.settings?.values
+      ? h(
+          "div",
+          { class: "settings-grid nested" },
+          ...row("Context length", input(ctx, "control.num_ctx", { placeholder: provider === "ollama" ? "the window's size" : "the server's" }), h("p", { class: "hint" }, "Tokens the model holds at once. It also sizes the conversation window.")),
+          ...row("Reply cap", input(ctx, "control.max_output", { placeholder: reserve ? `${grouped(reserve)}, the window's reserve` : "the window's reserve" }), h("p", { class: "hint" }, "The most a reply may take, thinking included. A remote reasoning model may need more.")),
+          ...row("Sampling", h("div", { class: "row-actions" }, h("span", { class: "muted" }, "Temperature"), input(ctx, "control.temperature", { width: "narrow", placeholder: "server's" }), h("span", { class: "muted" }, "seed"), input(ctx, "control.seed", { width: "narrow", placeholder: "none" })), h("p", { class: "hint" }, "Temperature is 0 to 2; empty leaves both to the server. 0 with a seed makes replies as repeatable as the server allows.")),
+          provider === "ollama"
+            ? row("Keep loaded", input(ctx, "control.keep_alive", { width: "narrow", placeholder: "Ollama's" }), h("p", { class: "hint" }, "How long Ollama keeps the model in memory between requests, such as 30m, or -1 for always."))
+            : [
+                ...row("Takes images", choice(ctx, "control.vision", [[true, "Yes"], [false, "No"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "Whether an attached image may be sent to this model. A chat-completions server doesn't say, so you do.")),
+                ...row("Reply cap field", choice(ctx, "control.output_field", [["", "max_completion_tokens"], ["max_tokens", "max_tokens"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "Reasoning models refuse the older max_tokens; some servers know only that one.")),
+              ],
+          ...row(
+            "Prices",
+            h(
+              "div",
+              { class: "row-actions" },
+              input(ctx, "control.price_input", { width: "narrow", prefix: "$", placeholder: "unknown" }),
+              h("span", { class: "muted" }, "input,"),
+              input(ctx, "control.price_cached_input", { width: "narrow", prefix: "$", placeholder: "as input" }),
+              h("span", { class: "muted" }, "cached input,"),
+              input(ctx, "control.price_output", { width: "narrow", prefix: "$", placeholder: "unknown" }),
+              h("span", { class: "muted" }, "output"),
+            ),
+            h("p", { class: "hint" }, "US dollars per million tokens, to estimate what a request cost when the provider doesn't report it. They feed the spend limit; nothing else is enforced with them."),
+          ),
+        )
+      : null;
+  return section(
+    "models",
+    "Models",
+    "",
+    ...row(
+      "Configured",
+      modelRows(desk),
+      h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => desk.refreshModels() }, "Check again")),
+      conn.has("settings.control.write")
+        ? h(
+            "details",
+            { class: "box", open: modelOpen, ontoggle: (event) => (modelOpen = event.target.open) },
+            h("summary", {}, "Change the main model"),
+            modelForm(ctx, { onSaved: () => renderSettings(root, ctx) }),
+            h("p", { class: "hint" }, `Saved in ${desk.settings?.config_file || "config.toml"}; other settings there are kept. Saving the same model keeps its tuning below; another model starts from its defaults. Tasks already open keep the model they started with.`),
+          )
+        : null,
+    ),
+    tuning ? row("Main model tuning", tuning) : [],
+  );
+}
+
+function judgeSection(ctx, redraw) {
+  const { desk } = ctx;
+  const content = picked(desk, "jev.content");
+  const status =
+    content === "none"
+      ? "Off: nothing goes to the judge, and plans are drafted without its score."
+      : desk.settings?.judge
+        ? "Ready: a jev-key is stored and the keychain is unlocked."
+        : "Not available: no jev-key is stored, or the keychain is locked. The manual's “The judge (Jev)” says how to add one.";
+  const levels = [
+    ["none", "Off"],
+    ["plan", "The task and plan"],
+    ...(content === "plan+summaries" ? [["plan+summaries", "Plan and summaries"]] : []),
+    ["full", "Also what calls would send"],
+  ];
+  const contentHint = {
+    none: "The judge is not asked anything.",
+    plan: "It is shown the task and the plan, which is all the plan gate needs. The default.",
+    "plan+summaries": "Reserved: for now the judge sees what it sees at “The task and plan”.",
+    full: "When it answers a run's requests it also sees what a call would write or send, and the model may ask it questions itself (judge-* tools). Credentials are never shown to it.",
+  };
+  return section(
+    "judge",
+    "Judge",
+    "The judge (Jev) scores plans before a task acts, and answers a run's requests when you choose it to.",
+    ...row("Status", h("p", { class: "hint" }, status)),
+    ...row("What it sees", choice(ctx, "jev.content", levels, redraw), h("p", { class: "hint" }, contentHint[content] || "")),
+    ...row("Allows a request at", input(ctx, "jev.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a run's request go ahead. Anything below, or no answer, is a no.")),
+    ...row("Waits", input(ctx, "jev.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer; a judge that doesn't answer in time is a no.")),
+    ...row("Model", input(ctx, "jev.model")),
+  );
+}
+
+function documentsSection(ctx) {
+  if (!ctx.desk.settings?.docs) return null;
+  return section("documents", "Documents", "", ...row("Google Docs uploads", h("div", { class: "value", id: "uploads" })));
+}
+
+function containersSection(ctx, redraw) {
+  return section(
+    "containers",
+    "Containers",
+    "",
+    ...row(
+      "Runtime",
+      choice(ctx, "mcp.runtime", [["", "Automatic"], ["podman", "Podman"], ["docker", "Docker"]], redraw),
+      h("p", { class: "hint" }, "What contained MCP servers run in (Connections › Tools). Automatic uses podman if it's installed, else docker."),
+    ),
+  );
+}
+
+function windowSection(ctx) {
+  const v = values(ctx.desk);
+  const fixed = v["window.high_water"]?.set || v["window.low_water"]?.set;
+  return section(
+    "window",
+    "Context window",
+    "How much of the conversation each model request carries. Past the high water, the task is summarized or its oldest parts trimmed, down to the low water. Most people never change these.",
+    ...row(
+      "Water marks",
+      h("div", { class: "row-actions" }, h("span", { class: "muted" }, "High"), input(ctx, "window.high_water", { width: "narrow", placeholder: "grows with the model" }), h("span", { class: "muted" }, "low"), input(ctx, "window.low_water", { width: "narrow", placeholder: "grows with the model" })),
+      h("p", { class: "hint" }, fixed ? "Set, they stay as set. Clear both to have them grow with the main model's context again." : "Unset, they grow with the main model's context: the high water at three quarters of it."),
+    ),
+    ...row("Largest tool result", input(ctx, "window.max_result_tokens", { width: "narrow" }), h("p", { class: "hint" }, "Tokens. A larger result is shown by its beginning and end.")),
+    ...row("Kept for each reply", input(ctx, "window.output_reserve", { width: "narrow" }), h("p", { class: "hint" }, "Tokens left free for the model's reply, and the cap on it unless the model has its own.")),
+  );
+}
+
+function keysSection(ctx, root) {
+  const { conn, desk } = ctx;
+  if (!conn.has("keychain.status") && !conn.has("devices.list")) return null;
+  return section(
+    "keys",
+    "Keys and devices",
+    "",
+    conn.has("keychain.status")
+      ? row("Keychain", conn.has("keychain.unlock") ? keychainForm(ctx, { onDone: () => renderSettings(root, ctx) }) : h("p", { class: "hint" }, desk.keychain?.unlocked ? "Unlocked." : "Locked."))
+      : [],
+    conn.has("devices.list") ? [h("div", { class: "label" }, "Other devices"), h("div", { class: "value", id: "devices" }, h("p", { class: "hint" }, "Loading…"))] : [],
+  );
+}
+
+function browserSection(ctx) {
+  const { conn, desk, rerender } = ctx;
+  const theme = storedTheme();
+  const themeButton = (mode, label) => h("button", { type: "button", class: "chip", "aria-pressed": String(theme === mode), onclick: () => { applyTheme(mode); rerender(); } }, label);
+  const notifier = desk.notifier;
+  const notifyNote = !notifier.available
+    ? "This browser can't show desktop notifications here (they need a secure page)."
+    : typeof Notification !== "undefined" && Notification.permission === "denied"
+      ? "Notifications are blocked for this page in the browser's settings."
+      : "Only “nodwyn needs your answer”: never the task, the arguments or a diff.";
+  return section(
+    "browser",
+    "This browser",
+    "",
+    ...row("Appearance", h("div", { class: "row-actions" }, themeButton("dark", "Dark"), themeButton("light", "Light"), themeButton("system", "Match the system")), h("p", { class: "hint" }, "Dark unless you choose otherwise. Kept in this browser only.")),
+    ...row(
+      "Desktop notifications",
+      h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", disabled: !notifier.available || !conn.live, onclick: async () => { await notifier.toggle(); rerender(); } }, notifier.enabled ? "Turn off for this tab" : "Turn on for this tab")),
+      h("p", { class: "hint" }, notifyNote),
+    ),
+  );
+}
+
+function connectionSection(ctx) {
+  const { conn } = ctx;
+  const peer = conn.hello?.peer || "";
+  return section(
+    "connection",
+    "This connection",
+    "",
+    ...row(
+      "nodwyn",
+      h("div", { class: "kv" }, h("span", {}, "Version"), h("span", { class: "mono" }, conn.hello?.version || "—")),
+      h("div", { class: "kv" }, h("span", {}, "Answers are logged as"), h("span", { class: "mono", title: peer }, peer || "—")),
+      h("div", { class: "kv" }, h("span", {}, "Mode"), h("span", {}, conn.has("session.send") ? "interactive" : "read-only")),
+    ),
+  );
+}
+
+// showUploads is how an upload to Google Docs is handled. A task that asked
+// may have saved an answer since the page loaded, so it reads it again.
+async function showUploads(node, ctx) {
+  const { conn, desk } = ctx;
+  const draw = () => {
+    const docs = desk.settings?.docs || {};
+    const current = docs.google_upload || "";
+    const editable = conn.has("settings.docs.write");
+    const choose = async (value) => {
+      try {
+        desk.settings = await conn.call("settings.docs.write", { google_upload: value });
+      } catch (error) {
+        toast(error.message);
+      }
+      draw();
+    };
+    const chip = (value) => h("button", { type: "button", class: "chip", "aria-pressed": String(current === value), disabled: !editable, onclick: () => choose(value) }, uploadLabels[value].replace(/^./, (c) => c.toUpperCase()));
+    node.replaceChildren(
+      h("div", { class: "row-actions" }, chip("ask"), chip("allow"), chip("deny")),
+      h(
+        "p",
+        { class: "hint" },
+        current ? "" : "Not set yet: the first upload asks. ",
+        "Allow by hand asks before each upload, and --yolo, --judge and unattended runs never upload. Always allow uploads without asking, wherever the binding table allows it. Deny never uploads.",
+        docs.google ? "" : " No Google credential is configured, so no task can upload yet.",
+        editable ? "" : " Only the computer nodwyn runs on can change this.",
+      ),
+    );
+  };
+  draw();
+  try {
+    desk.settings = await conn.call("settings.read");
+    draw();
+  } catch {
+    /* keep what the page loaded with */
+  }
+}
+
+async function showDevices(node, ctx) {
+  const { conn } = ctx;
+  let list;
+  try {
+    list = await conn.call("devices.list");
+  } catch (error) {
+    node.replaceChildren(h("p", { class: "error" }, error.message));
+    return;
+  }
+  const rows = list.map((d) =>
+    h(
+      "div",
+      { class: "list-row" },
+      h("div", { class: "main" }, h("strong", {}, d.name), h("span", {}, `paired ${ago(d.paired)} · last seen ${ago(d.last_seen)}`)),
+      h(
+        "div",
+        { class: "end" },
+        h(
+          "button",
+          {
+            type: "button",
+            class: "btn small danger",
+            onclick: async () => {
+              try {
+                await conn.call("devices.revoke", { name: d.name });
+                toast(`${d.name} can no longer reach nodwyn.`);
+                showDevices(node, ctx);
+              } catch (error) {
+                toast(error.message);
+              }
+            },
+          },
+          "Revoke",
+        ),
+      ),
+    ),
+  );
+  node.replaceChildren(
+    rows.length ? h("div", { class: "list" }, rows) : h("p", { class: "hint" }, "No other device is paired."),
+    h("p", { class: "hint" }, "Paired browsers on other machines, such as your phone. They can answer and send messages, never change settings, keys or policy."),
+  );
+}

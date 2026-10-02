@@ -7,8 +7,26 @@ import { Attachments, isImage } from "./attach.js";
 let chosen = ""; // the folder the next task starts in, for this tab
 let draft = "";
 let current = null;
-let files = null;
-let starting = false; // a start is in flight: one task per ask // the files chosen for the next task, kept across redraws
+let files = null; // the files chosen for the next task, kept across redraws
+let starting = false; // a start is in flight: one task per ask
+let mode = ""; // how the next task runs, if this tab chose; "" is Settings' default
+
+// How a task runs: [tasks] in config.toml, Settings › Starting tasks.
+export const modeNames = { chat: "Chat", run: "Run", unattended: "Unattended run" };
+
+// taskDefaults is how Home starts a task unless this tab chose otherwise.
+function taskDefaults(desk) {
+  const v = desk.settings?.values || {};
+  const get = (name, fallback) => v[name]?.value ?? fallback;
+  return { mode: get("tasks.mode", "chat"), approval: get("tasks.approval", "ask"), turns: get("tasks.turns", 20), wall: get("tasks.wall", "2h") };
+}
+
+// modeNote says, under the composer, what a run will do before it starts.
+function modeNote(mode, approval, { turns, wall }) {
+  if (mode === "chat") return "";
+  const answers = { ask: mode === "unattended" ? "Requests no standing approval covers are declined." : "You answer its requests.", judge: "The judge answers its requests.", yes: "Ordinary requests are answered yes." }[approval];
+  return mode === "run" ? `Up to ${turns} turns or ${wall}; it asks before each next turn. ${answers}` : `Nobody answers: it goes on while it marks plan steps done, up to ${turns} turns or ${wall}. ${answers}`;
+}
 
 export function kindLabel(kind) {
   return { docs: "documents", code: "code", mixed: "code and documents" }[kind] || kind || "";
@@ -25,6 +43,16 @@ export function renderHome(root, ctx) {
   if (!chosen || !folders.includes(chosen)) chosen = chosen && !folders.includes(chosen) && chosen.startsWith("/") ? chosen : folders[0] || "";
   const control = desk.control();
   const canStart = conn.has("session.open") && conn.has("session.send");
+  const defaults = taskDefaults(desk);
+  // Another device starts only tasks whose requests it answers itself
+  // (ADR 30): a supervised run, its requests asked.
+  const here = conn.has("settings.write");
+  const approval = here ? defaults.approval : "ask";
+  const modes = conn.has("run.start") ? (here ? ["chat", "run", "unattended"] : ["chat", "run"]) : ["chat"];
+  const runMode = () => {
+    const m = mode || defaults.mode;
+    return modes.includes(m) ? m : "chat";
+  };
 
   const task = h("textarea", {
     id: "task",
@@ -42,9 +70,32 @@ export function renderHome(root, ctx) {
     },
   });
   task.value = draft;
-  const ready = () => !starting && canStart && conn.live && !desk.keysLocked && !!chosen && !!task.value.trim();
-  const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: !ready() }, icon("up", 18, 2));
+  // A run's session is the run's from its first moment: nothing can be
+  // attached to it.
+  const ready = () => !starting && canStart && conn.live && !desk.keysLocked && !!chosen && !!task.value.trim() && !(runMode() !== "chat" && files.files.length);
+  const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: true }, icon("up", 18, 2));
   files ||= new Attachments();
+  const attach = files.button("Attach");
+  const note = h("p", { class: "hint mode-note", "aria-live": "polite" });
+  const short = { ask: "", judge: " · judged", yes: " · says yes" };
+  const picker =
+    modes.length > 1
+      ? h(
+          "select",
+          { class: "mode-select", "aria-label": "How the task runs", title: "How the task runs; the default is in Settings", onchange: (event) => { mode = event.target.value; showMode(); } },
+          modes.map((m) => h("option", { value: m }, m === "chat" ? modeNames.chat : modeNames[m] + short[approval])),
+        )
+      : null;
+  if (picker) picker.value = runMode();
+  const showMode = () => {
+    const m = runMode();
+    const text = modeNote(m, approval, defaults);
+    note.textContent = text + (m !== "chat" && files.files.length ? " A run takes no attachments: remove them, or start a chat." : "");
+    note.hidden = !note.textContent;
+    attach.disabled = m !== "chat";
+    attach.title = m === "chat" ? "Attach a file" : "A run takes no attachments; start a chat to attach files";
+    submit.disabled = !ready();
+  };
   const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
   const form = h(
     "form",
@@ -55,13 +106,20 @@ export function renderHome(root, ctx) {
         if (!ready()) return;
         starting = true;
         submit.disabled = true;
+        const m = runMode();
         try {
-          const info = await conn.call("session.open", { repo: chosen });
-          // An image waits for its own confirm, which the task's page shows.
-          if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
-          if (files.files.length) await files.upload(info.id);
-          await conn.call("session.send", { id: info.id, text: task.value });
+          let info;
+          if (m === "chat") {
+            info = await conn.call("session.open", { repo: chosen });
+            // An image waits for its own confirm, which the task's page shows.
+            if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
+            if (files.files.length) await files.upload(info.id);
+            await conn.call("session.send", { id: info.id, text: task.value });
+          } else {
+            info = await conn.call("run.start", { repo: chosen, task: task.value, wall: defaults.wall, max_turns: defaults.turns, auto_approve: approval === "yes", judge: approval === "judge", unattended: m === "unattended" });
+          }
           draft = "";
+          mode = "";
           await desk.refresh();
           navigate(`#/task/${info.id}`);
         } catch (error) {
@@ -80,11 +138,14 @@ export function renderHome(root, ctx) {
       "div",
       { class: "ask-bar" },
       h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder"), chosen && desk.workspace(chosen) ? h("span", { class: "muted" }, kindLabel(desk.workspace(chosen).kind)) : null),
-      files.button("Attach"),
+      attach,
+      picker,
       h("span", { class: "where" }, where),
       submit,
     ),
+    note,
   );
+  showMode();
 
   const chips = h("div", { class: "work-in", id: "work-in" }, h("span", {}, "Work in"));
   for (const folder of [chosen, ...folders.filter((f) => f !== chosen)].filter(Boolean).slice(0, 6)) {
@@ -272,6 +333,8 @@ export function renderHome(root, ctx) {
     if (label) label.textContent = where;
     return current;
   }
+  // The composer on the page is this one now: chosen files update its note.
+  files.onChange = showMode;
   root.replaceChildren(h("main", { class: waiting.length ? "home urgent" : "home" }, top, grid));
   if (!draft && canStart && document.activeElement === document.body) task.focus();
   current = { focus: () => task.focus() };
@@ -286,7 +349,7 @@ export function renderHome(root, ctx) {
         "div",
         { style: "display:flex;flex-direction:column;gap:4px" },
         h("div", { style: "display:flex;align-items:center;gap:10px" }, h("span", { class: "run-dot" }), h("a", { href: `#/task/${item.id}`, style: "font-size:15px;font-weight:600;text-decoration:none" }, item.title || "Untitled task")),
-        h("div", { class: "card-sub", style: "padding-left:18px" }, run ? `Supervised run · ${desk.folderName(item.repo)} · asks at each checkpoint` : `Working · ${desk.folderName(item.repo)}`),
+        h("div", { class: "card-sub", style: "padding-left:18px" }, run ? `${run.unattended ? "Unattended run" : "Supervised run"}${run.judge ? ", judged" : run.auto_approve ? ", says yes" : ""} · ${desk.folderName(item.repo)} · ${run.unattended ? "goes on while it marks plan steps done" : "asks at each checkpoint"}` : `Working · ${desk.folderName(item.repo)}`),
       ),
     );
     if (run) {

@@ -80,6 +80,11 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		"docs plain http":  "[docs]\ngoogle_upload_url = \"http://upload.example.com/files\"\n",
 		"docs query":       "[docs]\ngoogle_upload_url = \"https://www.googleapis.com/upload/drive/v3/files?uploadType=media\"\n",
 		"docs relative":    "[docs]\ngoogle_upload_url = \"/upload/drive/v3/files\"\n",
+		"tasks mode":       "[tasks]\nmode = \"background\"\n",
+		"tasks approval":   "[tasks]\napproval = \"always\"\n",
+		"tasks no turns":   "[tasks]\nturns = 0\n",
+		"tasks many turns": "[tasks]\nturns = 10001\n",
+		"tasks wall":       "[tasks]\nwall = \"forever\"\n",
 	}
 	for name, body := range cases {
 		p := filepath.Join(t.TempDir(), "config.toml")

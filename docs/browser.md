@@ -16,10 +16,47 @@ provider counted and how often it was compacted; "Tokens sent" is the token
 budget's count, every request's prompt in full. A compaction is one line in
 the conversation: what set it off, and the context's size before and after.
 **Connections** (tools, credential bindings, workspaces, models),
-**Workspaces** and **Settings** hold the rest; Settings also says how
-uploads to Google Docs are handled and changes it (the manual, "Documents out"). The
+**Workspaces** and **Settings** hold the rest. The
 U3 inspectors described below sit under a task's **Details**. For the app
 window and first-run setup see [app.md](app.md).
+
+## Settings
+
+Settings is what tasks start with when nobody says otherwise, kept in
+`config.toml`; every other line of the file, comments included, stays as
+you wrote it. Its sections:
+
+- **Starting tasks** — the default mode Home starts a task in (a chat, a
+  run, or an unattended run, below), who answers a run's requests (you, the
+  judge, or yes, as `--yolo` does), and a run's turn and time limits.
+- **Limits** — each turn's tool calls, tokens sent, actions and time: where
+  it asks whether to go on, and where it stops; the spend limit on a whole
+  task, in dollars, off until you set where it stops; and how long a model
+  reply and a command may take.
+- **Models** — whether each configured model answers, the main model, and
+  its tuning: context length, reply cap, temperature and seed, how long
+  Ollama keeps it loaded, whether a chat-completions model takes images and
+  which field caps its reply, and its prices.
+- **Judge** — whether a judge is available, what it may be shown, the
+  probability at which it allows a run's request, and how long it may take.
+- **Documents** — how uploads to Google Docs are handled (the manual,
+  "Documents out").
+- **Containers** — podman, docker, or whichever is installed, for contained
+  MCP servers.
+- **Context window** — the water marks between which a task's context is
+  summarized or trimmed, the largest tool result shown whole, and the room
+  kept for each reply.
+- The keychain, paired devices, this browser's appearance and
+  notifications, and this connection.
+
+A field left empty takes its default, which it shows; clearing one puts the
+default back. Changes wait in a bar at the bottom of the page and are saved
+together, and the daemon checks them together as it would on loading the
+file, so a soft limit can be raised past the old hard one along with it.
+They apply to tasks started afterwards; an open task keeps the limits and
+model it started with, and its Budget details say which. The model's and
+the judge's addresses, credentials and the `[policy]` table are not here:
+they are set where they are reviewed, or in `config.toml`.
 
 ## Tasks, folders and files
 
@@ -100,8 +137,11 @@ kernel identity followed by `via web:NAME`.
 A device can read tasks, start and steer them, and answer approvals — one-time,
 for this turn, or for the session, as the core offers; it can also restore a
 kept file version (through the usual approval), save project notes, read the
-policy files, and stop or resume a run. It cannot save a credential binding,
-write a policy file, unlock or create the keychain, change the model or how
+policy files, and start, stop or resume a run whose requests a person
+answers. It cannot start or resume a run that answers its own requests
+(unattended, judged, or saying yes), save a credential binding,
+write a policy file, unlock or create the keychain, change Settings, the
+model or how
 uploads to Google Docs are handled (it can answer the first upload's
 question with "allow by hand" or "deny", never "always allow"), edit
 workspaces, add, review, approve, pull or remove MCP servers, evaluate Scheme, or
@@ -322,7 +362,15 @@ exercised by those mocks.
 
 ## Runs (U4)
 
-Runs are started with `nodwyn run`, not from the console ([runs](runs.md)).
+Home starts a task in the mode Settings › Starting tasks names, or the one
+chosen beside Attach for that task: a **chat**; a **run**, which goes on
+turn after turn and asks before each next one; or an **unattended run**,
+which nobody answers ([runs](runs.md)). Under the composer a line says what
+the run will do: its turn and time limits, and who answers its requests.
+A run takes its task from the composer and no attachments. Another device
+offers only chats and runs whose requests it answers itself. `nodwyn run`
+starts runs from a terminal.
+
 The console follows a run like any task: its status says "Run" or
 "Unattended run" (and "judged" when the judge answers its confirms) with the
 turn count, the sidebar shows the turns and the time left, and the plan panel

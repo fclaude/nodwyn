@@ -191,9 +191,25 @@ deadline and turn count, and restores no temporary approvals. A turn that
 was interrupted without a recorded outcome is never assumed to have
 succeeded: the driver refuses to guess.
 
+In the console, Home starts a run instead of a chat when you choose
+\textbf{Run} or \textbf{Unattended run} beside Attach, or make one the
+default in Settings \textrightarrow{} Starting tasks. Settings also says who
+answers a run's requests (you, the judge, or yes, as \code{-{}-yolo}) and
+its turn and time limits; they are \code{[tasks]} in \file{config.toml}:
+
+\begin{toml}
+[tasks]
+mode = "run"        # "chat" (the default), "run" or "unattended"
+approval = "ask"    # "ask", "judge" or "yes"
+turns = 20
+wall = "2h"
+\end{toml}
+
 \begin{careful}
 A run's \code{-{}-yolo} is a property of \emph{that run}. A daemon left
-running never auto-approves a session someone opens later from a browser.
+running never auto-approves a session someone opens later from a browser;
+Home passes the mode with each run it starts. A paired phone may start only
+a run whose requests it answers itself.
 \end{careful}
 
 \subsection{Unattended runs}

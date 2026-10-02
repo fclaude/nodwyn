@@ -303,9 +303,10 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `models.status` | `{}` | Each configured model: `name`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`), `detail` |
 | `keychain.status` | `{}` | `{exists, unlocked, credentials}` |
 | `keychain.create` / `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain |
-| `settings.read` | `{}` | `{config_file, control, models, keychain, docs}` |
+| `settings.read` | `{}` | `{config_file, control, models, keychain, docs, values, judge}` |
 | `settings.control.write` | `{"provider","url","model","api_key"?}` | Settings after replacing `[control]` in `config.toml` |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
+| `settings.write` | `{"set": {"budget.tokens_hard": 20000000, "budget.cost_hard": null, …}}` | Settings after changing those settings in `config.toml` together |
 
 `session.list` entries also carry `title` (the first sentence of the first
 message, shortened), `started`, `changes` (files the guard allowed the session
@@ -322,6 +323,27 @@ whether a Google credential class is configured, and the upload setting as
 `config.toml` has it now (`""` until the first upload or `settings.docs.write`
 sets it). `settings.docs.write` keeps every other line of the file, takes the
 lock sessions take when they save the same answer, and writes it 0600.
+
+`values` in the settings maps each setting `settings.write` may change, by
+dotted name, to `{value, default, set}`: the value tasks opened now get
+(`null` for an optional one left unset, such as `control.temperature`), its
+default, and whether `config.toml` sets it. `judge` says whether a judge can
+answer a run's confirms now: `jev.content` is not `none` and a `jev-key` is
+in the unlocked keychain. `settings.write` takes `set`, from those names to
+new values; `null` removes a key so its default applies. It accepts only
+`tasks.mode`, `tasks.approval`, `tasks.turns` and `tasks.wall` (how the
+console starts a task, below), the `budget.*` limits, `loop.request_timeout`
+and `loop.shell_timeout`, the `window.*` marks, the `[control]` model's
+tuning (`num_ctx`, `max_output`, `output_field`, `keep_alive`,
+`temperature`, `seed`, `vision` and the `price_*` entries), `jev.content`,
+`jev.approve_threshold`, `jev.timeout`, `jev.model` and `mcp.runtime`;
+never an address, a credential, the egress proxy or `[policy]`. The
+changes are made together and only their result is validated, as the
+loader would (so a soft limit can be raised past the old hard one with
+it); every other line of the file is kept, the lock sessions take is held,
+and the file is written 0600. They apply to tasks opened afterwards: an
+open task keeps its own, and `session.info` reports the budgets it runs
+with.
 
 `hello` accepts an optional `via` (for example `web:phone`), once per
 connection, matching `^[a-z][a-z0-9]*:[a-z0-9][a-z0-9._-]{0,31}$`. It is
@@ -354,12 +376,16 @@ A server in `mcp.save` is remote (`url`) or contained (`transport:
 same image, entrypoint and arguments (the same `url` for a remote one) keeps
 its approved manifest; any other change needs approval again.
 
-`settings.control.write`, `settings.docs.write`, `keychain.create`,
+`settings.control.write`, `settings.docs.write`, `settings.write`, `keychain.create`,
 `keychain.unlock`, `session.binding.create`, `session.policy.write`, `workspace.save`,
 `workspace.remove` and the `mcp.inspect`, `mcp.save`, `mcp.approve`,
 `mcp.remove` and `mcp.pull` methods are refused to a paired remote device in
 the web console (browser.md); `mcp.runtime` only reads. The console never
-offers `session.eval` or `run.start`.
+offers `session.eval`. It starts runs from Home with `run.start`, but a
+paired remote device may start or resume only a run whose requests a person
+answers: `run.start` and `run.resume` with `auto_approve`, `judge` or
+`unattended` are refused to it, by the console and by the daemon (whose
+actor for it carries `via`).
 
 An MCP server is remote (its `url` HTTPS, or plain HTTP to this machine
 only) or contained (ADR 23 W3b): the daemon runs it in podman or docker from
@@ -532,9 +558,14 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
   and the flags are never read back from the log: omitted, the run resumes
   supervised.
 
-Run methods are available through local RPC/CLI; the browser can follow the
-session, answer its existing prompts, and stop (`run.stop` or `session.abort`)
-or resume (`run.resume`) it. While a
+Run methods are available through local RPC/CLI and the browser, which
+starts a run from Home with the limits and mode of `[tasks]` in
+`config.toml` (`mode`: `chat`, `run` or `unattended`; `approval`: `ask`,
+`judge` or `yes`; `turns`; `wall`), follows the session, answers its
+prompts, and stops (`run.stop` or `session.abort`) or resumes
+(`run.resume`) it. A run whose requests nobody answers by hand
+(`auto_approve`, `judge` or `unattended`) cannot be started or resumed by an
+actor relayed `via` a paired device. While a
 run is active, session `busy` includes the between-turn wait. `session.send`,
 `session.eval`, `session.friction`, `session.policy.read`/`write`,
 `session.notes.write`, `session.restore` and `session.attach` are rejected

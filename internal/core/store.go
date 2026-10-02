@@ -37,9 +37,14 @@ type SessionInfo struct {
 }
 
 // Title is what a person reads a session by: the first sentence of the
-// first message when it is short, else its first words.
+// first message when it is short, else its first words. A run's first
+// message is the run's prompt around its task, so a run is read by the task.
 func (i SessionInfo) Title() string {
-	title, _, _ := strings.Cut(strings.TrimSpace(i.FirstMessage), "\n")
+	text := i.FirstMessage
+	if i.Run != nil && strings.TrimSpace(i.Run.Task) != "" {
+		text = i.Run.Task
+	}
+	title, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
 	title = strings.TrimSpace(title)
 	if end := strings.IndexAny(title, ".?!"); end > 0 && end < 90 && (end+1 == len(title) || title[end+1] == ' ') {
 		title = title[:end+1]
@@ -128,6 +133,7 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 		case log.KindRunState:
 			var r log.RunState
 			if ev.Decode(&r) == nil {
+				r.Task = redact.Redact(r.Task, nil).Text
 				info.Run = &r
 			}
 		case log.KindUserMsg:

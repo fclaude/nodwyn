@@ -461,10 +461,12 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 		switch {
 		case req.JSONRPC != "2.0" || req.ID == 0:
 			callErr = errors.New("invalid request")
-		case !b.allowed(req.Method, remote):
+		case !b.allowed(req.Method, remote) || (remote && unwatchedRun(req)):
 			callErr = errors.New("operation unavailable in this browser mode; use the terminal client")
 			if b.readOnly {
 				callErr = errors.New("this browser view is read-only; use the terminal client for this operation")
+			} else if remote && unwatchedRun(req) {
+				callErr = errors.New("a run whose requests nobody answers by hand starts only on the computer nodwyn runs on")
 			} else if remote {
 				callErr = errors.New("this is not available from another device; use nodwyn on its own computer")
 			}
@@ -520,15 +522,32 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	}
 	switch method {
 	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
-		"session.notes.write", "run.stop", "run.resume", "session.restore":
+		"session.notes.write", "run.start", "run.stop", "run.resume", "session.restore":
 		return true
-	case "session.binding.create", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write",
+	case "session.binding.create", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write",
 		"workspace.save", "workspace.remove", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
 		return !remote
 	case "devices.list", "devices.revoke":
 		return !remote && b.devices != nil
 	}
 	return false
+}
+
+// unwatchedRun reports a run.start or run.resume whose requests a person
+// would not answer: another device may start or resume a run only as one
+// it answers itself. The daemon refuses it too, by the device's via.
+func unwatchedRun(req request) bool {
+	if req.Method != "run.start" && req.Method != "run.resume" {
+		return false
+	}
+	var p struct {
+		AutoApprove bool `json:"auto_approve"`
+		Unattended  bool `json:"unattended"`
+		Judge       bool `json:"judge"`
+	}
+	// Params the daemon would refuse anyway are left to it.
+	_ = json.Unmarshal(req.Params, &p)
+	return p.AutoApprove || p.Unattended || p.Judge
 }
 
 // maxUpload bounds one attached file.

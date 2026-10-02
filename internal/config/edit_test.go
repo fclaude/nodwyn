@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,5 +112,95 @@ func TestSetControlWritesSampling(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "temperature = 0.3\nseed = 11\n") || *cfg.Control.Temperature != 0.3 || *cfg.Control.Seed != 11 {
 		t.Fatalf("%s\n%+v", raw, cfg.Control)
+	}
+}
+
+// Edit makes several changes and validates only the result: a soft limit
+// raised past the old hard one is valid once the hard one is raised too.
+func TestEditTypedValuesTogether(t *testing.T) {
+	raw := []byte("# mine\n[budget]\ntokens_soft = 100 # low\ntokens_hard = 200\n")
+	out, cfg, err := Edit(raw,
+		Change{"budget", "tokens_soft", int64(500)},
+		Change{"budget", "tokens_hard", int64(1000)},
+		Change{"budget", "cost_hard", 2.0},
+		Change{"control", "vision", true},
+		Change{"control", "url", "https://api.example.com/v1"},
+		Change{"control", "model", "m"},
+		Change{"control", "provider", "openai"},
+		Change{"tasks", "wall", "90m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	for _, want := range []string{"# mine\n", "tokens_soft = 500\n", "tokens_hard = 1000\ncost_hard = 2.0\n", "vision = true\n", "[tasks]\nwall = \"90m\"\n"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "# low") || cfg.Budget.TokensSoft != 500 || cfg.Budget.TokensHard != 1000 || cfg.Budget.CostHard != 2 || !cfg.Control.Vision || cfg.Tasks.Wall != "90m" {
+		t.Fatalf("parsed %+v from:\n%s", cfg, text)
+	}
+	// Each change alone is checked only with the others.
+	if _, _, err := Edit(raw, Change{"budget", "tokens_soft", int64(500)}); err == nil {
+		t.Fatal("accepted soft above hard")
+	}
+}
+
+// A nil value removes the key, so its default applies again; removing one
+// that is not there changes nothing.
+func TestEditRemovesKeys(t *testing.T) {
+	raw := []byte("[window]\nhigh_water = 50000 # fixed\nlow_water = 20000\n\n[control]\nurl = \"http://x\"\nmodel = \"m\"\ntemperature = 0.2\n")
+	out, cfg, err := Edit(raw, Change{"window", "high_water", nil}, Change{"window", "low_water", nil}, Change{"control", "temperature", nil}, Change{"budget", "cost_hard", nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != "[window]\n\n[control]\nurl = \"http://x\"\nmodel = \"m\"\n" {
+		t.Fatalf("removed:\n%q", out)
+	}
+	if cfg.Window.Fixed || cfg.Window.HighWater != Default().Window.HighWater || cfg.Control.Temperature != nil {
+		t.Fatalf("defaults not back: %+v", cfg)
+	}
+}
+
+func TestEditRefusesWhatItCannotWrite(t *testing.T) {
+	for _, c := range []Change{
+		{"budget", "cost_hard", math.NaN()},
+		{"budget", "tokens_hard", []string{"x"}},
+		{"budget]\n[control", "url", "http://x"},
+		{"budget", "tokens_hard = 1\nx", int64(1)},
+		{"budget", "nonsense", int64(1)},
+	} {
+		if out, _, err := Edit(nil, c); err == nil {
+			t.Errorf("%+v wrote:\n%s", c, out)
+		}
+	}
+}
+
+func TestKeysAndValues(t *testing.T) {
+	raw := []byte("[budget]\ncost_hard = 3.5\n[control]\nurl = \"http://x\"\nmodel = \"m\"\nseed = 7\n")
+	set, err := Keys(raw)
+	if err != nil || !set["budget.cost_hard"] || !set["control.seed"] || set["budget.tokens_hard"] {
+		t.Fatalf("%v %v", set, err)
+	}
+	cfg, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		table, key string
+		want       any
+	}{
+		{"budget", "cost_hard", 3.5}, {"budget", "tokens_hard", int64(10_000_000)}, {"budget", "wall_soft", "20m"},
+		{"control", "seed", int64(7)}, {"control", "temperature", nil}, {"control", "vision", false},
+		{"tasks", "mode", "chat"}, {"policy.l1", "enabled", true},
+	} {
+		if got, ok := cfg.Value(c.table, c.key); !ok || got != c.want {
+			t.Errorf("%s.%s = %#v %v, want %#v", c.table, c.key, got, ok, c.want)
+		}
+	}
+	for _, missing := range [][2]string{{"budget", "nope"}, {"nope", "x"}, {"policy", "allow_commands"}, {"control", "model.x"}} {
+		if v, ok := cfg.Value(missing[0], missing[1]); ok {
+			t.Errorf("%v: %v", missing, v)
+		}
 	}
 }

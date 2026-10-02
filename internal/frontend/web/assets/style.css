@@ -784,3 +784,42 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .server-detail { gap: 16px; }
 .server-detail .table select { max-width: 240px; }
 .server-row .end { gap: 6px; }
+
+/* settings */
+.settings-nav { gap: 6px; }
+.settings-nav .chip { height: 28px; font-size: 12.5px; }
+.settings-section { display: flex; flex-direction: column; gap: 12px; padding-top: 22px; border-top: 1px solid var(--line); scroll-margin-top: 16px; }
+.settings-section h2 { margin: 0; font-family: var(--serif); font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+.settings-section .hint.intro { font-size: 13.5px; color: var(--muted); max-width: 680px; }
+.settings-grid.nested { grid-template-columns: 150px minmax(0, 1fr); gap: 12px 16px; }
+.settings-grid.nested > .label { font-size: 13px; font-weight: 500; color: var(--ink-2); padding-top: 8px; }
+.input.setting { height: 34px; width: min(320px, 100%); }
+.input.setting.narrow { width: 9em; }
+.input.setting::placeholder { color: var(--faint-2); }
+.affix { display: inline-flex; align-items: center; gap: 4px; }
+.affix .unit { color: var(--faint); font-size: 13px; }
+.affix .input.setting.narrow { width: 7.5em; }
+.limits { display: grid; grid-template-columns: minmax(0, 1fr) 9em 9em; gap: 8px 10px; align-items: center; max-width: 460px; }
+.limits .input.setting.narrow, .limits .affix { width: 100%; }
+.limits .affix .input.setting.narrow { flex: 1; min-width: 0; width: auto; }
+.limit-head { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.limit-name { font-size: 13.5px; color: var(--ink-2); }
+.warn-text { color: var(--warn-ink-2); }
+.save-bar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.save-bar p { margin: 0; font-size: 13.5px; color: var(--ink-2); flex: 1 1 260px; }
+.save-bar p.error { color: var(--bad); }
+/* how the composer's task runs */
+.mode-select {
+  height: 34px; padding: 0 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg);
+  color: var(--ink); font-size: 13px; font-weight: 500; max-width: 100%;
+}
+.mode-note { margin-top: -4px; }
+@media (max-width: 760px) {
+  .settings-grid.nested { grid-template-columns: minmax(0, 1fr); }
+  .settings-grid.nested > .label { padding-top: 0; }
+  .limits { grid-template-columns: minmax(0, 1fr) 7.5em 7.5em; }
+}
