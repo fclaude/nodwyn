@@ -139,7 +139,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		return nil, err
 	}
 	l.show(resp)
-	if err := l.record(log.KindLLMResp, responseRecord(resp)); err != nil {
+	if err := l.record(log.KindLLMResp, responseRecord(resp, ep.Rates)); err != nil {
 		return nil, err
 	}
 	if resp.DoneReason == "length" {
@@ -187,13 +187,17 @@ func (l *Loop) show(resp *llm.Response) {
 	}
 }
 
-// responseRecord is the llm.resp log payload for a response.
-func responseRecord(resp *llm.Response) log.LLMResp {
+// responseRecord is the llm.resp log payload for a response, priced with
+// the model's rates when the provider did not report its cost.
+func responseRecord(resp *llm.Response, rates llm.Rates) log.LLMResp {
+	cost, estimated := llm.Cost(resp.Usage, rates)
 	rec := log.LLMResp{
 		Content: resp.Message.Content, Thinking: resp.Message.Thinking, DoneReason: resp.DoneReason,
 		Usage: log.Usage{
 			PromptTokens: resp.Usage.PromptTokens, OutputTokens: resp.Usage.OutputTokens,
 			PromptEvalMS: resp.Usage.PromptEvalMS, EvalMS: resp.Usage.EvalMS, TotalMS: resp.Usage.TotalMS, LoadMS: resp.Usage.LoadMS,
+			CachedTokens: resp.Usage.CachedTokens, CacheWriteTokens: resp.Usage.CacheWriteTokens, ReasoningTokens: resp.Usage.ReasoningTokens,
+			Cost: cost, CostEstimated: estimated,
 		},
 	}
 	for _, tc := range resp.Message.ToolCalls {

@@ -279,7 +279,8 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 			m.NumCtx = s.opts.Config.WindowNumCtx()
 		}
 	}
-	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput, Temperature: m.Temperature, Seed: m.Seed}
+	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput, Temperature: m.Temperature, Seed: m.Seed,
+		Rates: llm.Rates{Input: m.PriceInput, CachedInput: m.PriceCachedInput, Output: m.PriceOutput}}
 }
 
 // modelHost is where requests to a model's URL go, host and port as the

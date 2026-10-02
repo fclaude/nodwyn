@@ -201,10 +201,22 @@ export class Transcript {
         }
         if (p.usage) {
           const u = p.usage;
-          this.tokens = (this.usage ? this.tokens : { in: 0, out: 0, ms: 0 }) || { in: 0, out: 0, ms: 0 };
+          const fresh = { in: 0, out: 0, ms: 0, cachedIn: 0, cached: 0, cost: 0, priced: 0, unpriced: 0, estimated: false };
+          this.tokens = (this.usage ? this.tokens : fresh) || fresh;
           this.tokens.in += u.prompt_tokens || 0;
           this.tokens.out += u.output_tokens || 0;
           this.tokens.ms += u.total_ms || 0;
+          // A provider that reports its prompt cache and cost (OpenRouter)
+          // says so; absent is unknown, never 0% or free.
+          if (u.cached_tokens !== undefined) {
+            this.tokens.cachedIn += u.prompt_tokens || 0;
+            this.tokens.cached += u.cached_tokens;
+          }
+          if (u.cost !== undefined) {
+            this.tokens.cost += u.cost;
+            this.tokens.priced++;
+            this.tokens.estimated ||= !!u.cost_estimated;
+          } else this.tokens.unpriced++;
           if (!this.usage) {
             this.usage = h("div", { class: "usage" });
             turn.append(this.usage);
@@ -212,7 +224,10 @@ export class Transcript {
           // Only Ollama reports a duration; a chat-completions server (OpenRouter
           // among them) reports none, so no time rather than "0.0 s".
           const time = this.tokens.ms > 0 ? ` · ${(this.tokens.ms / 1000).toFixed(1)} s with the model` : "";
-          this.usage.textContent = `${this.tokens.in.toLocaleString()} → ${this.tokens.out.toLocaleString()} tokens${time}`;
+          const t = this.tokens;
+          const cache = t.cachedIn > 0 ? ` · ${Math.round((100 * t.cached) / t.cachedIn)}% cached` : "";
+          const cost = t.priced > 0 ? ` · ${t.unpriced > 0 ? "at least " : ""}${usd(t.cost, t.estimated)}` : "";
+          this.usage.textContent = `${t.in.toLocaleString()} → ${t.out.toLocaleString()} tokens${cache}${cost}${time}`;
         }
         this.call = null;
         break;
@@ -404,6 +419,13 @@ export class Transcript {
     }
     this.call = null;
   }
+}
+
+// usd writes a cost as the terminal clients do (plain.USD): ≈ marks an
+// estimate from configured prices.
+export function usd(c, estimated) {
+  const s = c > 0 && c < 0.0001 ? "<$0.0001" : c < 0.01 ? `$${c.toFixed(4)}` : c < 1 ? `$${c.toFixed(3)}` : `$${c.toFixed(2)}`;
+  return estimated ? `≈${s}` : s;
 }
 
 // planSteps reads a recorded plan's numbered or bulleted lines as steps; a

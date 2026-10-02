@@ -104,6 +104,9 @@
         "actions": {
           "type": "integer"
         },
+        "cached_tokens": {
+          "type": "integer"
+        },
         "commands": {
           "items": {
             "type": "string"
@@ -112,6 +115,9 @@
             "array",
             "null"
           ]
+        },
+        "cost": {
+          "type": "number"
         },
         "elapsed_ns": {
           "type": "integer"
@@ -125,10 +131,16 @@
             "null"
           ]
         },
+        "priced": {
+          "type": "integer"
+        },
         "tokens": {
           "type": "integer"
         },
         "tool_calls": {
+          "type": "integer"
+        },
+        "unpriced": {
           "type": "integer"
         }
       },
@@ -221,6 +233,36 @@
         "OutputField": {
           "type": "string"
         },
+        "PriceCachedInput": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "PriceInput": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "PriceOutput": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "Provider": {
           "type": "string"
         },
@@ -262,7 +304,10 @@
         "OutputField",
         "Temperature",
         "Seed",
-        "Vision"
+        "Vision",
+        "PriceInput",
+        "PriceCachedInput",
+        "PriceOutput"
       ],
       "type": "object"
     },
@@ -1634,6 +1679,32 @@
     },
     "log.Usage": {
       "properties": {
+        "cache_write_tokens": {
+          "type": "integer"
+        },
+        "cached_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cost_estimated": {
+          "type": "boolean"
+        },
         "eval_ms": {
           "type": "integer"
         },
@@ -1647,6 +1718,9 @@
           "type": "integer"
         },
         "prompt_tokens": {
+          "type": "integer"
+        },
+        "reasoning_tokens": {
           "type": "integer"
         },
         "total_ms": {

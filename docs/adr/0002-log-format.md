@@ -111,3 +111,13 @@ and link or the error. The file's bytes never were a Scheme value, so no
 guard record shows them; this one says what left the machine. Never the
 content, never a token. A document refused before sending (a secret shape
 L1 found, a file nodwyn cannot read) is recorded with `sent` false.
+
+## Amendment — 2026-10-01: what a request cost
+
+No new kind. `llm.resp` `usage` gains optional `cached_tokens` (a pointer:
+absent means the provider did not say, which older logs and Ollama read
+as), `cache_write_tokens`, `reasoning_tokens`, `cost` (USD) and
+`cost_estimated` (the cost came from configured prices, not the provider).
+`turn.checkpoint`'s budget state gains `cost`, `priced`, `unpriced` and
+`cached_tokens`. An older record reads as unknown, never as free or as 0%
+cached.

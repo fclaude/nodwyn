@@ -70,8 +70,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if p.Content != "" {
 			m.append("nodwyn> " + p.Content)
 		}
-		m.append(fmt.Sprintf("      %d→%d tok · %.1fs", p.Usage.PromptTokens, p.Usage.OutputTokens,
-			float64(p.Usage.TotalMS)/1000))
+		m.append("      " + plain.UsageLine(p.Usage))
 		m.liveText = ""
 		m.liveThinking = ""
 	case string(log.KindToolCall):

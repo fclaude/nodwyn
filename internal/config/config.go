@@ -14,6 +14,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -117,6 +118,13 @@ type Model struct {
 	// to it (ADR 22 §3). openai only: a chat-completions server does not
 	// say, while ollama reports it (/api/show).
 	Vision bool `toml:"vision"`
+	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
+	// per million tokens, in USD, for estimating what a request cost when
+	// the provider does not report it (OpenRouter does). Unset is unknown;
+	// cached input unset is priced as input. Nothing is enforced with them.
+	PriceInput       *float64 `toml:"price_input"`
+	PriceCachedInput *float64 `toml:"price_cached_input"`
+	PriceOutput      *float64 `toml:"price_output"`
 }
 
 // Jev is the judge's configuration (ADR 19/20). Jev is keyed: it runs only
@@ -472,6 +480,11 @@ func (m Model) validate() error {
 	}
 	if m.Provider != "openai" && m.Vision {
 		return errors.New("vision is for openai servers; ollama says itself whether a model takes images")
+	}
+	for name, p := range map[string]*float64{"price_input": m.PriceInput, "price_cached_input": m.PriceCachedInput, "price_output": m.PriceOutput} {
+		if p != nil && (*p < 0 || math.IsNaN(*p) || math.IsInf(*p, 0)) {
+			return fmt.Errorf("%s %v must be a price of 0 or more (USD per million tokens)", name, *p)
+		}
 	}
 	return nil
 }

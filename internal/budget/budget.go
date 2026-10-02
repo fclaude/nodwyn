@@ -35,6 +35,14 @@ type State struct {
 	Elapsed   time.Duration `json:"elapsed_ns"`
 	Files     []string      `json:"files"`
 	Commands  []string      `json:"commands"`
+	// What the turn's model requests cost, as far as known: Cost in USD
+	// over the Priced requests, Unpriced the requests whose cost is not
+	// known, CachedTokens the prompt tokens providers said came from their
+	// cache. Shown, never a limit; Tokens still counts cached tokens in full.
+	Cost         float64 `json:"cost,omitempty"`
+	Priced       int64   `json:"priced,omitempty"`
+	Unpriced     int64   `json:"unpriced,omitempty"`
+	CachedTokens int64   `json:"cached_tokens,omitempty"`
 }
 
 // Checkpoint is the question put to the user when a soft limit is reached:
@@ -255,6 +263,21 @@ func (t *Turn) AddTokens(prompt, output int) {
 				t.state.Tokens += int64(n)
 			}
 		}
+	}
+}
+
+// AddSpend records one model request's cost (nil: not known) and the prompt
+// tokens its provider read from cache (nil: not reported). It never stops a
+// turn.
+func (t *Turn) AddSpend(cost *float64, cached *int) {
+	if cost != nil && *cost >= 0 {
+		t.state.Cost += *cost
+		t.state.Priced++
+	} else {
+		t.state.Unpriced++
+	}
+	if cached != nil && *cached > 0 {
+		t.state.CachedTokens += int64(*cached)
 	}
 }
 

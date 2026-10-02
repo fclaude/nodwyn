@@ -234,3 +234,18 @@ func TestWindowSizedForTheContext(t *testing.T) {
 		}
 	}
 }
+
+func TestModelPrices(t *testing.T) {
+	cfg := Default()
+	neg := -1.0
+	cfg.Control = Model{Provider: "openai", URL: "https://openrouter.ai/api/v1", Model: "m", PriceInput: &neg}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("a negative price was accepted")
+	}
+	in, out := 3.0, 15.0
+	m := Model{Provider: "openai", URL: "https://openrouter.ai/api/v1", Model: "m", PriceInput: &in, PriceOutput: &out}
+	raw, parsed, err := SetControl(nil, m)
+	if err != nil || parsed.Control.PriceInput == nil || *parsed.Control.PriceInput != 3 || parsed.Control.PriceCachedInput != nil {
+		t.Fatalf("%s %+v %v", raw, parsed.Control, err)
+	}
+}

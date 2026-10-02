@@ -661,6 +661,28 @@ a task and a plan, but a strategy that asks a model over the whole
 conversation sends the whole conversation. Only you configure models; the
 model cannot.
 
+**What a request cost.** After each reply the TUI, line mode and the
+console show its tokens, and when the provider says so, how much of the
+prompt came from its cache and what the request cost:
+`12,400→800 tok · 78% cached · $0.012`. OpenRouter reports both in every
+response, cost in USD included; nothing has to be asked for. A server that
+reports no cost can be priced in its model entry, per million tokens:
+
+```toml
+[models.coder]
+price_input = 3.0          # USD per million prompt tokens
+price_cached_input = 0.3   # prompt tokens read from the cache; unset: price_input
+price_output = 15.0        # output tokens, reasoning included
+```
+
+A cost from prices is an estimate, shown with ≈: it does not know a
+provider's surcharge for writing to its cache, so a reported cost always
+wins. Ollama reports neither, and its line reads as before; so does an older
+log. `:budget` adds the turn's spend over every model request (the
+planner's, sub-agents' and compaction's included; the judge reports no
+cost), and a budget checkpoint says what the turn has cost so far. Spend is
+shown, never a limit: the token budget still counts cached tokens in full.
+
 No keyed request follows a redirect (`http-request`, Jev, MCP), and no model
 request does, keyed or not: the binding was checked for the host the request
 went to, and a redirect would take the key and the body (for a model, the

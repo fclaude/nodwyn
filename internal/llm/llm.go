@@ -86,6 +86,18 @@ type Usage struct {
 	EvalMS       int64
 	TotalMS      int64
 	LoadMS       int64
+	// CachedTokens is how many of PromptTokens the provider read from its
+	// prompt cache, when it says; nil when it does not (Ollama), which is
+	// not the same as a reported 0. CacheWriteTokens are prompt tokens it
+	// wrote to the cache (billed above the input rate by some providers).
+	// ReasoningTokens are the part of OutputTokens spent thinking: shown,
+	// never added again.
+	CachedTokens     *int
+	CacheWriteTokens int
+	ReasoningTokens  int
+	// Cost is what the provider says the request cost, in USD (OpenRouter
+	// does); nil when it does not say.
+	Cost *float64
 }
 
 // Response is the complete model output for one request.

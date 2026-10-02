@@ -90,6 +90,14 @@ func controlBlock(m Model) string {
 	if m.Vision {
 		b.WriteString("vision = true\n")
 	}
+	price := func(name string, p *float64) {
+		if p != nil {
+			fmt.Fprintf(&b, "%s = %s\n", name, strconv.FormatFloat(*p, 'f', -1, 64))
+		}
+	}
+	price("price_input", m.PriceInput)
+	price("price_cached_input", m.PriceCachedInput)
+	price("price_output", m.PriceOutput)
 	b.WriteString("\n")
 	return b.String()
 }

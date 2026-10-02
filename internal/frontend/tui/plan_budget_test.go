@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -201,5 +202,32 @@ func TestPlanViewShowsStepMarks(t *testing.T) {
 	}
 	if formatSteps(gate, nil) != "" {
 		t.Fatal("no marks, no step list")
+	}
+}
+
+func llmResp(t *testing.T, seq uint64, u log.Usage) log.Event {
+	t.Helper()
+	raw, _ := json.Marshal(log.LLMResp{Content: "x", Usage: u})
+	return log.Event{Seq: seq, Kind: log.KindLLMResp, Payload: raw}
+}
+
+func TestBudgetViewSpend(t *testing.T) {
+	user, _ := json.Marshal(log.UserMsg{Text: "do it"})
+	start := log.Event{Seq: 1, Kind: log.KindUserMsg, Payload: user}
+	c1, c2 := 0.01, 0.02
+	cached := 750
+	known := []log.Event{start, llmResp(t, 2, log.Usage{PromptTokens: 1000, OutputTokens: 10, CachedTokens: &cached, Cost: &c1}), llmResp(t, 3, log.Usage{PromptTokens: 1000, OutputTokens: 10, CachedTokens: &cached, Cost: &c2})}
+	got, err := formatBudgets(budget.Limits{}, known)
+	if err != nil || !strings.Contains(got, "Spend this turn: $0.030 (2 requests, 75% of prompt tokens from cache)") {
+		t.Fatalf("known:\n%s %v", got, err)
+	}
+	unknown := []log.Event{start, llmResp(t, 2, log.Usage{PromptTokens: 1000, OutputTokens: 10, TotalMS: 900})}
+	if got, _ := formatBudgets(budget.Limits{}, unknown); !strings.Contains(got, "Spend unknown: 1 requests, and the provider reports no cost and no prices are configured") {
+		t.Fatalf("unknown:\n%s", got)
+	}
+	// An older log's llm.resp has no cost fields: unknown, never $0.
+	oldResp := log.Event{Seq: 2, Kind: log.KindLLMResp, Payload: json.RawMessage(`{"content":"x","usage":{"prompt_tokens":5,"output_tokens":1,"prompt_eval_ms":0,"eval_ms":0,"total_ms":0,"load_ms":0}}`)}
+	if got, _ := formatBudgets(budget.Limits{}, []log.Event{start, oldResp}); strings.Contains(got, "$0") || !strings.Contains(got, "Spend unknown") {
+		t.Fatalf("old log:\n%s", got)
 	}
 }

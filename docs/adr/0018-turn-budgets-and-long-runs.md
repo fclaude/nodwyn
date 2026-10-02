@@ -211,3 +211,11 @@ strategy records the plan. The judge's call crosses the
 guard like the plan gate's, so the `jev-key` binding is checked and what is
 sent is redacted. This is ADR 20's Seam C ("score an ambiguous situation")
 put where an unattended run needs it; ADR 19 says what it may be shown.
+
+## Spend — 2026-10-01
+
+A turn's state also counts what its model requests cost, as far as known
+(`cost`, `priced`, `unpriced`, `cached_tokens`), and a checkpoint shows it.
+It is not a budget dimension: nothing stops a turn on spend. Cached tokens
+still count in full against the token budget, which measures context, not
+money.

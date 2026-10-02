@@ -128,6 +128,16 @@ type Usage struct {
 	EvalMS       int64 `json:"eval_ms"`
 	TotalMS      int64 `json:"total_ms"`
 	LoadMS       int64 `json:"load_ms"`
+	// CachedTokens are the prompt tokens the provider read from its cache,
+	// when it reports them: absent (an older log, Ollama) is unknown, not 0.
+	CachedTokens     *int `json:"cached_tokens,omitempty"`
+	CacheWriteTokens int  `json:"cache_write_tokens,omitempty"`
+	ReasoningTokens  int  `json:"reasoning_tokens,omitempty"`
+	// Cost is the request's cost in USD: reported by the provider, or, with
+	// CostEstimated, estimated from the model's configured prices. Absent is
+	// unknown, never free.
+	Cost          *float64 `json:"cost,omitempty"`
+	CostEstimated bool     `json:"cost_estimated,omitempty"`
 }
 
 // LLMResp is the model's full output for one request.

@@ -240,8 +240,11 @@ func (c *Chat) show(ev event.Event) {
 	case string(log.KindLLMResp):
 		endStream()
 		p := ev.Payload.(log.LLMResp)
-		fmt.Fprintf(c.Out, "%s\n", dim(fmt.Sprintf("[%d prompt tokens, %d out, prompt eval %.1fs, gen %.1fs]",
-			p.Usage.PromptTokens, p.Usage.OutputTokens, float64(p.Usage.PromptEvalMS)/1000, float64(p.Usage.EvalMS)/1000)))
+		line := UsageLine(p.Usage)
+		if p.Usage.PromptEvalMS > 0 || p.Usage.EvalMS > 0 {
+			line += fmt.Sprintf(" (prompt eval %.1fs, gen %.1fs)", float64(p.Usage.PromptEvalMS)/1000, float64(p.Usage.EvalMS)/1000)
+		}
+		fmt.Fprintf(c.Out, "%s\n", dim("["+line+"]"))
 	case string(log.KindLLMReq):
 		p := ev.Payload.(log.LLMReq)
 		if len(p.Elided) > 0 {
@@ -575,7 +578,11 @@ func budgetAmount(dimension string, n int64) string {
 func (c *Chat) checkpoint(ev event.Checkpoint) {
 	p := ev.Checkpoint
 	fmt.Fprintf(c.Out, "\n─── checkpoint: %s %s (soft %s, hard %s)\n", p.Dimension, budgetAmount(p.Dimension, p.Used), budgetAmount(p.Dimension, p.Limit.Soft), budgetAmount(p.Dimension, p.Limit.Hard))
-	fmt.Fprintf(c.Out, "  %d tool calls, %d tokens, %d actions, %s elapsed\n", p.State.ToolCalls, p.State.Tokens, p.State.Actions, p.State.Elapsed.Round(time.Second))
+	spend := ""
+	if s := SpendSoFar(p.State); s != "" {
+		spend = " · " + s
+	}
+	fmt.Fprintf(c.Out, "  %d tool calls, %d tokens, %d actions, %s elapsed%s\n", p.State.ToolCalls, p.State.Tokens, p.State.Actions, p.State.Elapsed.Round(time.Second), spend)
 	if len(p.State.Files) > 0 {
 		fmt.Fprintf(c.Out, "  files: %s\n", strings.Join(p.State.Files, ", "))
 	}

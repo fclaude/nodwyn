@@ -111,6 +111,8 @@ type Endpoint struct {
 	// Sampling settings sent with each request; nil leaves them to the server.
 	Temperature *float64
 	Seed        *int64
+	// Rates price a request the provider does not report the cost of.
+	Rates llm.Rates
 }
 
 //go:embed strategy.scm

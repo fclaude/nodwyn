@@ -210,10 +210,50 @@ type oaiResponse struct {
 		Message      oaiMessage `json:"message"`
 		FinishReason string     `json:"finish_reason"`
 	} `json:"choices"`
-	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-	} `json:"usage"`
+	Usage json.RawMessage `json:"usage"`
+}
+
+// usage reads a chat-completions usage object field by field, so a field
+// of an unexpected shape costs only that field, never the response: the
+// token counts, and when the server reports them, the prompt tokens read
+// from and written to its cache, the reasoning tokens, and OpenRouter's
+// cost in USD.
+func usage(raw json.RawMessage) Usage {
+	var fields struct {
+		PromptTokens        json.RawMessage `json:"prompt_tokens"`
+		CompletionTokens    json.RawMessage `json:"completion_tokens"`
+		Cost                json.RawMessage `json:"cost"`
+		PromptTokensDetails struct {
+			CachedTokens     json.RawMessage `json:"cached_tokens"`
+			CacheWriteTokens json.RawMessage `json:"cache_write_tokens"`
+		} `json:"prompt_tokens_details"`
+		CompletionTokensDetails struct {
+			ReasoningTokens json.RawMessage `json:"reasoning_tokens"`
+		} `json:"completion_tokens_details"`
+	}
+	var u Usage
+	if json.Unmarshal(raw, &fields) != nil {
+		return u
+	}
+	count := func(raw json.RawMessage) (int, bool) {
+		var n int
+		if len(raw) == 0 || json.Unmarshal(raw, &n) != nil || n < 0 {
+			return 0, false
+		}
+		return n, true
+	}
+	u.PromptTokens, _ = count(fields.PromptTokens)
+	u.OutputTokens, _ = count(fields.CompletionTokens)
+	if n, ok := count(fields.PromptTokensDetails.CachedTokens); ok {
+		u.CachedTokens = &n
+	}
+	u.CacheWriteTokens, _ = count(fields.PromptTokensDetails.CacheWriteTokens)
+	u.ReasoningTokens, _ = count(fields.CompletionTokensDetails.ReasoningTokens)
+	var cost float64
+	if len(fields.Cost) > 0 && json.Unmarshal(fields.Cost, &cost) == nil && cost >= 0 {
+		u.Cost = &cost
+	}
+	return u
 }
 
 func toOpenAI(req Request) oaiRequest {
@@ -274,7 +314,7 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 			Thinking: choice.Message.Reasoning + choice.Message.ReasoningContent,
 		},
 		DoneReason: choice.FinishReason,
-		Usage:      Usage{PromptTokens: wr.Usage.PromptTokens, OutputTokens: wr.Usage.CompletionTokens},
+		Usage:      usage(wr.Usage),
 	}
 	for i, tc := range choice.Message.ToolCalls {
 		args := json.RawMessage(tc.Function.Arguments)

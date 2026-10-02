@@ -277,11 +277,17 @@ func (l *Loop) modelTurn(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Void, err
 	}
+	var rates llm.Rates
+	if ep, err := l.endpoint(name); err == nil {
+		rates = ep.Rates
+	}
+	cost, _ := llm.Cost(resp.Usage, rates)
 	if t.budget != nil {
 		t.budget.AddTokens(resp.Usage.PromptTokens, resp.Usage.OutputTokens)
+		t.budget.AddSpend(cost, resp.Usage.CachedTokens)
 	}
 	t.expect(resp.Message.ToolCalls)
-	return replyValue(resp), nil
+	return replyValue(resp, cost), nil
 }
 
 // runTools is (run-tools calls): run each call in order, stopping the turn
@@ -699,8 +705,9 @@ func halt(err error) error { return &scheme.Halt{Err: err} }
 // The values a strategy sees are alists with symbol keys, like the other
 // records the harness makes (primitive-info, error objects).
 
-// replyValue is what (model-turn) returns.
-func replyValue(resp *llm.Response) scheme.Value {
+// replyValue is what (model-turn) returns. cached-tokens and cost are #f
+// when not known.
+func replyValue(resp *llm.Response, cost *float64) scheme.Value {
 	calls := make([]scheme.Value, len(resp.Message.ToolCalls))
 	for i, tc := range resp.Message.ToolCalls {
 		calls[i] = callValue(tc)
@@ -712,7 +719,23 @@ func replyValue(resp *llm.Response) scheme.Value {
 		scheme.Cons(scheme.Sym("tool-calls"), scheme.List(calls...)),
 		scheme.Cons(scheme.Sym("prompt-tokens"), scheme.Int(int64(resp.Usage.PromptTokens))),
 		scheme.Cons(scheme.Sym("output-tokens"), scheme.Int(int64(resp.Usage.OutputTokens))),
+		scheme.Cons(scheme.Sym("cached-tokens"), optionalInt(resp.Usage.CachedTokens)),
+		scheme.Cons(scheme.Sym("cost"), optionalFloat(cost)),
 	)
+}
+
+func optionalInt(n *int) scheme.Value {
+	if n == nil {
+		return scheme.False
+	}
+	return scheme.Int(int64(*n))
+}
+
+func optionalFloat(f *float64) scheme.Value {
+	if f == nil {
+		return scheme.False
+	}
+	return scheme.Float(*f)
 }
 
 // callValue is one call. args is the model's JSON text, unparsed, so a

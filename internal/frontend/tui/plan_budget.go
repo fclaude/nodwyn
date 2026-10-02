@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
 	"github.com/fclaude/nodwyn/internal/log"
 )
 
@@ -119,6 +120,7 @@ func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 		return out.String(), nil
 	}
 	fmt.Fprintf(&out, "\nLatest submitted turn · #%d (%s)\n", events[start].Seq, events[start].Kind)
+	out.WriteString(formatSpend(events[start+1:]))
 	count, ended := 0, false
 	for _, e := range events[start+1:] {
 		if e.Kind == log.KindTurnEnd {
@@ -150,7 +152,71 @@ func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 }
 
 func formatBudgetState(state budget.State) string {
-	return fmt.Sprintf("Tool calls: %d · tokens: %d · actions: %d · elapsed: %s\nFiles: %s\nCommands: %s", state.ToolCalls, state.Tokens, state.Actions, state.Elapsed.Round(time.Millisecond), strings.Join(state.Files, ", "), strings.Join(state.Commands, ", "))
+	spend := ""
+	if s := plain.SpendSoFar(state); s != "" {
+		spend = " · " + s
+	}
+	return fmt.Sprintf("Tool calls: %d · tokens: %d · actions: %d · elapsed: %s%s\nFiles: %s\nCommands: %s", state.ToolCalls, state.Tokens, state.Actions, state.Elapsed.Round(time.Millisecond), spend, strings.Join(state.Files, ", "), strings.Join(state.Commands, ", "))
+}
+
+// formatSpend is what the latest turn's model requests cost (llm.resp
+// since its user.msg or eval.req), as far as known. The judge's calls are
+// not model requests and have no cost the provider reports.
+func formatSpend(events []log.Event) string {
+	var cost float64
+	var requests, priced, estimated int
+	var prompt, cached int64
+	var cachedKnown bool
+	for _, e := range events {
+		if e.Kind != log.KindLLMResp {
+			continue
+		}
+		var p log.LLMResp
+		if e.Decode(&p) != nil {
+			continue
+		}
+		requests++
+		if p.Usage.Cost != nil {
+			cost += *p.Usage.Cost
+			priced++
+			if p.Usage.CostEstimated {
+				estimated++
+			}
+		}
+		if p.Usage.CachedTokens != nil {
+			cachedKnown = true
+			prompt += int64(p.Usage.PromptTokens)
+			cached += int64(*p.Usage.CachedTokens)
+		}
+	}
+	if requests == 0 {
+		return ""
+	}
+	cache := ""
+	if cachedKnown && prompt > 0 {
+		cache = fmt.Sprintf(", %d%% of prompt tokens from cache", percent(cached, prompt))
+	}
+	switch {
+	case priced == 0:
+		return fmt.Sprintf("Spend unknown: %d requests, and the provider reports no cost and no prices are configured (price_input, price_output)%s\n", requests, cache)
+	case priced < requests:
+		return fmt.Sprintf("Spend this turn: at least %s (%d requests, %d without a known cost%s)\n", plain.USD(cost, estimated > 0), requests, requests-priced, cache)
+	}
+	how := ""
+	if estimated > 0 {
+		how = ", estimated from configured prices"
+	}
+	return fmt.Sprintf("Spend this turn: %s (%d requests%s%s)\n", plain.USD(cost, estimated > 0), requests, cache, how)
+}
+
+func percent(part, whole int64) int64 {
+	if whole <= 0 {
+		return 0
+	}
+	if part > whole {
+		part = whole
+	}
+	return (part*100 + whole/2) / whole
 }
 
 func checkpointDecision(record log.TurnCheckpoint) string {

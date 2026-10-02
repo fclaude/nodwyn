@@ -208,6 +208,13 @@ and actor. File-backed approvals and in-process terminal replies need not have
 an RPC actor. Resume reads these as history and never reinstalls transient
 authority.
 
+`llm.resp` `usage` may carry `cached_tokens` (the prompt tokens the
+provider read from its cache; absent is unknown, not 0), `cache_write_tokens`,
+`reasoning_tokens`, and `cost` in USD with `cost_estimated` when it comes
+from the model's configured prices rather than the provider. A budget
+checkpoint's `state` carries `cost`, `priced`, `unpriced` and
+`cached_tokens` for the turn so far. All are optional and additive.
+
 A `plan.step` event is the model marking step `step` of `of` of the turn's
 recorded plan `done` or `skipped`, with its `note`; a later mark of the same
 step replaces an earlier one. A step's number indexes the plan's numbered or

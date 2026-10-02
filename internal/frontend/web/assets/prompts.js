@@ -1,6 +1,7 @@
 // Prompt views only describe choices. The daemon validates the live prompt
 // ID, applies the answer, and records the answering connection's actor.
 import { h, icon, basename, diffStats, oneLine, ago, toolLabel, isMCP } from "./dom.js";
+import { usd } from "./transcript.js";
 
 const verbs = { "fs-write": "Write", "fs-edit": "Edit", "shell-exec": "Run", "http-get": "Fetch", "http-post": "Send" };
 
@@ -196,7 +197,7 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     const amount = (v) => (c.dimension === "wall" ? `${Math.round(v / 6e10)} min` : String(v));
     card.append(
       h("h2", {}, s.title),
-      h("p", { class: "hint" }, `Used ${amount(c.used)} of a soft limit of ${amount(c.limit?.soft)}; the hard limit is ${amount(c.limit?.hard)}. More budget grants no new permission.`),
+      h("p", { class: "hint" }, `Used ${amount(c.used)} of a soft limit of ${amount(c.limit?.soft)}; the hard limit is ${amount(c.limit?.hard)}${c.state?.priced ? ` · ${c.state.unpriced ? "at least " : ""}${usd(c.state.cost || 0, false)} so far` : ""}. More budget grants no new permission.`),
     );
     if (enabled) {
       choice("Keep going", "Y", "accent", "session.answer", { reply: "y" });
