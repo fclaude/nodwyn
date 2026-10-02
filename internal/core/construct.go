@@ -36,9 +36,9 @@ type Options struct {
 	// confirms with "no" (guard.AutoAllow). Denials are unaffected: this
 	// answers the guard's questions, it does not overrule its refusals.
 	AutoApprove bool
-	// JudgeApprove has the judge (Jev) answer ordinary confirms, through
-	// approve.scm's (approve-call call); security confirms are declined
-	// without asking, and a failure is a no. It needs a judge: Jev enabled
+	// JudgeApprove has the judge (Jev) answer ordinary confirms, decided in
+	// Go (judge.go) so no Scheme can approve a call; security confirms are
+	// declined without asking, and a failure is a no. It needs a judge: Jev enabled
 	// and a jev-key stored (ADR 18 §5, ADR 20 Seam C).
 	JudgeApprove bool
 	// Unattended means nobody is there to answer anything (an unattended

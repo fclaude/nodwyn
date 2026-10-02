@@ -127,6 +127,12 @@ type Jev struct {
 	Model   string `toml:"model"`   // default jev-latest
 	Timeout string `toml:"timeout"` // per request, e.g. "10s"
 	Content string `toml:"content"` // "none" | "plan" | "plan+summaries" | "full" (default "plan")
+	// ApproveThreshold is the judge's probability of "allow" at which it
+	// approves a call when it answers a run's confirms (--judge, ADR 18):
+	// above 0, at most 1, default 0.8. It is here, in the user's config and
+	// not in any Scheme a repository can ship, so that nothing but the user
+	// moves it.
+	ApproveThreshold float64 `toml:"approve_threshold"`
 }
 
 // Valid content levels, lowest to highest.
@@ -250,7 +256,7 @@ func Default() Config {
 		// Jev defaults: no service (nodwyn runs file-only, gate is "plan"), full
 		// content when one is configured. A developer points jev.url at their
 		// instance to enable the gate (ADR 19).
-		Jev: Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan},
+		Jev: Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan, ApproveThreshold: 0.8},
 	}
 }
 
@@ -365,6 +371,9 @@ func (c Config) Validate() error {
 	}
 	if c.Jev.Model == "" {
 		return errors.New("jev.model is required")
+	}
+	if c.Jev.ApproveThreshold <= 0 || c.Jev.ApproveThreshold > 1 {
+		return fmt.Errorf("jev.approve_threshold must be above 0 and at most 1, got %v", c.Jev.ApproveThreshold)
 	}
 	switch c.Jev.Content {
 	case JevContentNone, JevContentPlan, JevContentPlanSum, JevContentFull, "":

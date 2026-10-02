@@ -392,7 +392,7 @@ this is additive work, not a refactor. Four phases, each useful alone:
   run driver with checkpoints as notifications, desktop notifications for
   "needs your approval" — unattended continuation between a run's turns was
   the last piece, done 2026-10-01: `nodwyn run --unattended` (ADR 18 §5),
-  with the judge answering confirms when asked to (`--judge`, approve.scm).
+  with the judge answering confirms when asked to (`--judge`, decided in Go so no Scheme can approve a call).
 
 Accepted risk: the socket is an approval surface. 0600 in the runtime dir, no
 TCP by default, client identity in every decision, and creating a standing

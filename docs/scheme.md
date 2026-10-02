@@ -799,20 +799,15 @@ that a plan was recorded, not who wrote it: the default `nodwyn-turn` has the
 control model plan, and a project's own `nodwyn-turn` may record a plan of its own
 with `record-plan`, as trusted project code.
 
-**Judged approval** (`internal/loop/approve.scm`). When the judge answers a
-session's confirms (`nodwyn run --judge`), the core calls
-`(approve-call call)` for every ordinary confirm, with `call` an alist of
-`task`, `plan`, `prim`, `reasons`, `path`, `argv`, `args`, `detail` and
-`content` (the `jev.content` level), and allows the call only if the result's
-`allow` is true. Security confirms never reach it, and an error is a no.
+**Judged approval.** When the judge answers a session's confirms
+(`nodwyn run --judge`), the decision is Go's (`internal/core/judge.go`): it
+shows the judge the task, the turn's plan and the call, asks `jev-choice`
+whether to allow it, and allows it only at `jev.approve_threshold` (config)
+or above. Scheme cannot approve anything; it may refuse more:
 
 | | |
 |---|---|
-| `approve-threshold` | the judge's probability of "allow" at which a call runs (0.8) |
-| `approve-question` | what the judge is asked about the call |
-| `approve-options` | the choice it makes: `allow` or `deny`, each described |
-| `(approve-state call)` | the text the judge is shown: task, plan, the call and its target; at `full`, what it would do |
-| `(approve-call call)` | asks `jev-choice` and returns `((allow . #t/#f) (score . p) (reason . text))`; no judge, or no answer, is a no |
+| `(approve-refuse? call)` | optional, defined by a project: asked about a call the judge allowed, with `call` an alist of `task`, `plan`, `prim`, `reasons`, `path`, `argv`, `args` and `detail`; true declines it, and so does an error. Never asked about a call the judge refused |
 
 The model marks the plan's steps as it finishes them (`plan-step`), and the
 console's plan panel shows which are done, which were skipped and which is

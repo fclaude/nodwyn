@@ -199,14 +199,14 @@ none, the run stops and says so, for you to read the turn and
 supervised: how a run goes on is said again at every resume.
 
 With \code{-{}-judge} instead of \code{-{}-yolo}, the judge answers the
-run's ordinary confirms: \code{approve.scm}'s \code{approve-call} shows it
-the task, the plan and the call (at \code{jev.content = "full"} also what the
-call would write or send) and asks \code{jev-choice} whether to allow it;
-the call runs only if the probability of allow is at least
-\code{approve-threshold} (0.8). Security confirms are declined without
-asking, and a failed judge is a no. Redefine \code{approve-question},
-\code{approve-state} or the threshold in \file{.nodwyn/init.scm} to judge
-your way.
+run's ordinary confirms: it is shown the task, the plan and the call (at
+\code{jev.content = "full"} also what the call would write or send) and
+asked whether to allow it; the call runs only if the probability of allow
+is at least \code{jev.approve\_threshold} (0.8) in your config. Security
+confirms are declined without asking, and a failed judge is a no. The
+decision is made in Go, so no Scheme, a repository's included, can approve
+a call the judge refused; \code{(approve-refuse? call)} in
+\file{.nodwyn/init.scm} can only refuse more.
 
 \begin{puzzle}[ 17: plan only for big asks]
 Write a \code{nodwyn-turn} that records your house plan only when the

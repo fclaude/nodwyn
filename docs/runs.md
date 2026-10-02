@@ -121,7 +121,10 @@ fewer, and nothing in it ever waits for a person:
   it runs; at `jev.content = "full"` also what it would write or send), and
   asked whether a call like this should run with nobody watching. The call
   runs only if the judge's probability of "allow" is at least
-  `approve-threshold` (0.8). A judge that fails or cannot be reached is a no;
+  `jev.approve_threshold` in config.toml (0.8). The decision is Go's: no
+  Scheme, a repository's `.nodwyn/init.scm` included, can approve a call the
+  judge refused. A project may only refuse more, by defining
+  `(approve-refuse? call)`. A judge that fails or cannot be reached is a no;
   security confirms are declined without asking it. Each answer is the
   guard's decision with actor `judge`, a note with the judge's probability,
   and the judge's `jev.req`. `--judge` needs a judge (a `jev-key` stored and

@@ -205,8 +205,8 @@ a handle looked up in `init.scm` instead.
 ## Amendment — 2026-10-01: Seam C answers confirms
 
 Seam C ("score an ambiguous egress situation") is used for judged approval
-(ADR 18): `approve.scm` asks `jev-choice` whether a call should run with
-nobody watching, and the core's confirmer allows it only above a threshold.
-It is Scheme, like the plan gate, so a project can change the question, the
-options, what is shown and the threshold; it cannot change that security
-confirms are declined without asking, or that a failure is a no.
+(ADR 18): the core asks `jev-choice` whether a call should run with nobody
+watching, and allows it only above `jev.approve_threshold`. Unlike the plan
+gate it is Go, because an approval must not be something a repository's
+Scheme can grant: Scheme can only add refusals (`approve-refuse?`), as
+`register-check` can only tighten the guard.

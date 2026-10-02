@@ -131,9 +131,6 @@ var defaultOptimizer string
 //go:embed plan.scm
 var defaultPlanGate string
 
-//go:embed approve.scm
-var defaultApproval string
-
 // The working habits (ADR 32), loaded after the defaults they wrap, in this
 // order: shell.scm wraps run-calls and fold-result innermost, readdef.scm
 // feeds hygiene.scm's reads, and checkloop.scm wraps nodwyn-turn.
@@ -186,9 +183,6 @@ func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
 	}
 	if _, err := interp.EvalString(harness, defaultPlanGate); err != nil {
 		return nil, fmt.Errorf("loop: default plan gate: %w", err)
-	}
-	if _, err := interp.EvalString(harness, defaultApproval); err != nil {
-		return nil, fmt.Errorf("loop: default judged approval: %w", err)
 	}
 	for _, h := range defaultHabits {
 		if _, err := interp.EvalString(harness, h.src); err != nil {

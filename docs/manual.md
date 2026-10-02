@@ -302,8 +302,10 @@ plan step done, stopping otherwise for you to review and
 `nodwyn run resume --unattended SESSION`. With `--judge` instead of
 `--yolo`, the judge answers each ordinary confirm: it is shown the task,
 the plan and the call, and the call runs only if it judges it called for
-and safe (probability of allow at least 0.8); security confirms are still
-declined. See [runs](runs.md).
+and safe (probability of allow at least `jev.approve_threshold` in
+config.toml, 0.8 by default); security confirms are still declined. The
+decision is Go's: no Scheme can approve what the judge refused, and a
+project's `(approve-refuse? call)` can only refuse more. See [runs](runs.md).
 
 **With credentials.** `--yolo` on its own cannot unlock the keychain: a
 passphrase needs a terminal (plan §3.3), so an unattended process with a
