@@ -28,6 +28,7 @@ func runTask(args []string) error {
 	wall := flags.String("budget-wall", "", "required total run deadline, e.g. 2h")
 	turns := flags.Int("max-turns", 0, "required maximum number of turns")
 	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
+	judge := flags.Bool("judge", false, "the judge (Jev) answers this run's ordinary confirms instead of a person, allowing a call only when it judges it called for and safe; security confirms are declined; needs a jev-key")
 	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -57,7 +58,10 @@ func runTask(args []string) error {
 		if err != nil {
 			return err
 		}
-		params = map[string]any{"repo": root, "task": string(data), "wall": *wall, "max_turns": *turns, "auto_approve": *yolo, "unattended": *unattended}
+		if *judge && *yolo {
+			return errors.New("--judge and --yolo exclude each other: the judge answers what --yolo would")
+		}
+		params = map[string]any{"repo": root, "task": string(data), "wall": *wall, "max_turns": *turns, "auto_approve": *yolo, "unattended": *unattended, "judge": *judge}
 		if *yolo {
 			fmt.Fprintf(os.Stderr, "yolo: this run's ordinary confirms are answered yes in %s; denials and security confirms still stop it\n", root)
 		}
@@ -70,17 +74,17 @@ func runTask(args []string) error {
 		}
 		var invalid bool
 		flags.Visit(func(f *flag.Flag) {
-			resumeFlag := command == "resume" && (f.Name == "yolo" || f.Name == "unattended")
+			resumeFlag := command == "resume" && (f.Name == "yolo" || f.Name == "unattended" || f.Name == "judge")
 			if f.Name != "socket" && !resumeFlag {
 				invalid = true
 			}
 		})
 		if invalid {
-			return errors.New("run status/stop accepts only --socket and a session ID, and resume also --yolo and --unattended; limits never reset")
+			return errors.New("run status/stop accepts only --socket and a session ID, and resume also --yolo, --judge and --unattended; limits never reset")
 		}
 		if command == "resume" {
 			// How the run goes on is said again at every resume.
-			params = map[string]any{"id": flags.Arg(0), "auto_approve": *yolo, "unattended": *unattended}
+			params = map[string]any{"id": flags.Arg(0), "auto_approve": *yolo, "unattended": *unattended, "judge": *judge}
 		} else {
 			params = map[string]string{"id": flags.Arg(0)}
 		}

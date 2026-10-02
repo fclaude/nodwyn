@@ -371,6 +371,8 @@ type RunState struct {
 	// how the run was started or resumed; a resume sets them again.
 	Unattended  bool `json:"unattended,omitempty"`
 	AutoApprove bool `json:"auto_approve,omitempty"`
+	// Judge: the judge answered its ordinary tool confirms.
+	Judge bool `json:"judge,omitempty"`
 }
 
 // RunTurn marks the start of a run's Number-th turn.

@@ -115,13 +115,26 @@ fewer, and nothing in it ever waits for a person:
   reason. A mark is the model's word: what the run proves is that the model
   kept claiming progress, step by step, in a log that can be reviewed step by
   step.
+- **With `--judge`, the judge answers instead.** Each ordinary tool confirm is
+  put to the judge (Jev): it is shown the task, the turn's plan and the call
+  (the tool, why it needs approval, the file it writes or the command line
+  it runs; at `jev.content = "full"` also what it would write or send), and
+  asked whether a call like this should run with nobody watching. The call
+  runs only if the judge's probability of "allow" is at least
+  `approve-threshold` (0.8). A judge that fails or cannot be reached is a no;
+  security confirms are declined without asking it. Each answer is the
+  guard's decision with actor `judge`, a note with the judge's probability,
+  and the judge's `jev.req`. `--judge` needs a judge (a `jev-key` stored and
+  bound, `jev.content` other than `none`) and excludes `--yolo`; it also
+  works in a supervised run, where you still answer the run checkpoints.
 - Everything else is as for a supervised run: the plan before every turn,
   finite turn and wall limits, the progress guard, completion only by the
   model's final line, the same pin, denylist and binding table.
 
-`run.state` records how the run was started (`unattended`, `auto_approve`).
+`run.state` records how the run was started (`unattended`, `auto_approve`,
+`judge`).
 A resume never brings either back from the log: `nodwyn run resume SESSION`
-resumes a supervised run, and `--unattended` (with `--yolo` if wanted) must be
-said again, as the person resuming decides how it goes on. The console shows
+resumes a supervised run, and `--unattended` (with `--yolo` or `--judge` if
+wanted) must be said again, as the person resuming decides how it goes on. The console shows
 an unattended run as such and can stop and resume it; its Resume button
 resumes it supervised.

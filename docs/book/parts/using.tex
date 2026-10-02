@@ -321,8 +321,10 @@ confirms with yes; it does not answer security confirms, and it does not
 continue the run between turns. Use it on a throwaway checkout: the guard
 makes an unattended run survivable, not safe. \code{nodwyn run
 -{}-unattended} goes further: nobody answers at all, tool confirms are
-declined unless a standing approval covers them, and the run goes on to its
-next turn only after a turn that marked a step of its plan done.
+declined unless a standing approval covers them (or, with
+\code{-{}-judge}, answered by the judge, which is shown the task, the plan
+and the call), and the run goes on to its next turn only after a turn that
+marked a step of its plan done.
 
 \chapter{Building \nodwyn{} with \nodwyn}
 

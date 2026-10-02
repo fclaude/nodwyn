@@ -202,3 +202,11 @@ Section 3's example is out of date in one more way: a tool body runs with
 the model's origin, so it cannot call `credential`; a user tool closes over
 a handle looked up in `init.scm` instead.
 
+## Amendment — 2026-10-01: Seam C answers confirms
+
+Seam C ("score an ambiguous egress situation") is used for judged approval
+(ADR 18): `approve.scm` asks `jev-choice` whether a call should run with
+nobody watching, and the core's confirmer allows it only above a threshold.
+It is Scheme, like the plan gate, so a project can change the question, the
+options, what is shown and the threshold; it cannot change that security
+confirms are declined without asking, or that a failure is a no.

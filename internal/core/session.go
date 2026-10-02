@@ -50,8 +50,13 @@ type Session struct {
 	// (SendPlanned; plan.go).
 	planRequired atomic.Bool
 	planned      atomic.Bool
-	prompts      map[string]pendingConfirmation
-	promptMu     sync.Mutex
+	// The turn's task and recorded plan, for the judge when it answers a
+	// confirm (judge.go).
+	turnMu   sync.Mutex
+	turnTask string
+	turnPlan string
+	prompts  map[string]pendingConfirmation
+	promptMu sync.Mutex
 
 	allow  *guard.CommandAllow
 	writes *guard.WriteAllow
@@ -142,6 +147,7 @@ func (s *Session) turn(ctx context.Context, text string, required bool) error {
 	if err := safe.Decode(&msg); err != nil {
 		return err
 	}
+	s.setTurnTask(msg.Text)
 	touchScratch(s.scratch)
 	if err := s.loop.Turn(ctx, msg.Text); err != nil {
 		return err

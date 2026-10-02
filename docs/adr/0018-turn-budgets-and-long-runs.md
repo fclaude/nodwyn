@@ -185,3 +185,18 @@ Section 5 is implemented as an option of the run driver:
 allow entry; anything else is a deny" holds without `--yolo`. With it, the
 run trades that for ordinary confirms answered yes, as a supervised `--yolo`
 run already did; security confirms and every deny are unchanged.
+
+### Judged approval — 2026-10-01
+
+Between declining every confirm and answering them all yes, the judge can
+answer: `nodwyn run --judge` (`run.start {judge: true}`, with or without
+`unattended`). The session's confirmer puts each ordinary confirm to
+`approve.scm`'s `(approve-call call)`, which asks the judge a `jev-choice`
+between allowing and refusing the call given the task, the turn's plan and
+the call, and allows it only if the judge's probability of "allow" is at
+least `approve-threshold` (0.8). Security confirms are declined without
+asking; a failure anywhere is a no; a judged answer is for that call only
+(scope once) and is attributed to `judge`. The judge's call crosses the
+guard like the plan gate's, so the `jev-key` binding is checked and what is
+sent is redacted. This is ADR 20's Seam C ("score an ambiguous situation")
+put where an unattended run needs it; ADR 19 says what it may be shown.

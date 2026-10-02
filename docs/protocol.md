@@ -420,18 +420,21 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
 
 ## Supervised and unattended run methods
 
-- `run.start {repo, task, wall, max_turns, auto_approve, unattended?}` creates a new daemon-owned session
+- `run.start {repo, task, wall, max_turns, auto_approve, unattended?, judge?}` creates a new daemon-owned session
   and returns `{id, state}`. `wall` is a positive duration; `max_turns` is 1–10000;
   `auto_approve` (required, true or false) answers the run's ordinary tool
   confirms, as `--yolo` does. `unattended` (optional) makes a run nobody
   answers: tool confirms are declined unless `auto_approve`, soft budget
   checkpoints go on to the hard limit, and the run goes on after a turn only
-  when that turn marked a plan step done ([runs](runs.md)). `state` reports
-  both flags.
+  when that turn marked a plan step done ([runs](runs.md)). `judge` (optional,
+  excludes `auto_approve`) has the judge answer ordinary tool confirms; it
+  needs a configured judge. `state` reports the flags. A guard decision
+  answered by the judge has actor `judge`; one declined because nobody was
+  there to ask, actor `unattended`.
 - `run.info {id}` returns task, original deadline, maximum and consumed turns,
   status and reason. A saved formerly running run is reported paused.
 - `run.stop {id}` cancels the driver and its active turn or checkpoint.
-- `run.resume {id, auto_approve?, unattended?}` explicitly reopens a stopped run at a recorded turn boundary,
+- `run.resume {id, auto_approve?, unattended?, judge?}` explicitly reopens a stopped run at a recorded turn boundary,
   preserving its original deadline and turn count. No transient grants survive,
   and the flags are never read back from the log: omitted, the run resumes
   supervised.

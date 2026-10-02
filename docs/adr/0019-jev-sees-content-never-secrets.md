@@ -59,3 +59,13 @@ to the judge.
 - The spec's "why-not-what" line is restated as: Jev judges intent and
   plans over redacted content; the local stack judges provenance and
   secret shape, and is the only thing that ever sees a value.
+
+## Amendment — 2026-10-01: judged approval
+
+When the judge answers a run's confirms (ADR 18, "Judged approval"), what it
+is shown follows this ADR's levels. At `plan` (the default): the task, the
+turn's plan, and the call's shape: the tool, the guard's reasons, and its
+target, the path a write names or the command line a program runs. At
+`full`: also what the call would do (the write's preview or content, the
+call's arguments). Everything is redacted (L1) before it leaves, and
+logged as `jev.req` with the harness's origin.

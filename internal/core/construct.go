@@ -36,6 +36,11 @@ type Options struct {
 	// confirms with "no" (guard.AutoAllow). Denials are unaffected: this
 	// answers the guard's questions, it does not overrule its refusals.
 	AutoApprove bool
+	// JudgeApprove has the judge (Jev) answer ordinary confirms, through
+	// approve.scm's (approve-call call); security confirms are declined
+	// without asking, and a failure is a no. It needs a judge: Jev enabled
+	// and a jev-key stored (ADR 18 §5, ADR 20 Seam C).
+	JudgeApprove bool
 	// Unattended means nobody is there to answer anything (an unattended
 	// run, ADR 18 §5): no prompt ever waits for a person. Tool confirms are
 	// declined, or answered as AutoApprove answers them when it is set too;
@@ -260,6 +265,9 @@ func (s *Session) initialize() (err error) {
 	// Interpreter: output becomes an event, never stdout.
 	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}), scheme.WithBaseDir(o.Repo))
 	po := s.primitiveOptions()
+	if o.JudgeApprove && (po.Jev == nil || s.HandleForClass(prim.JevClass) == nil) {
+		return errors.New("core: judged approval needs a judge: jev.content other than none, an unlocked keychain and a jev-key stored")
+	}
 	if err := prim.Register(s.interp, po); err != nil {
 		return err
 	}
@@ -311,6 +319,8 @@ func (s *Session) initialize() (err error) {
 		confirmer = guard.DenyAll
 	case o.AutoApprove:
 		confirmer = guard.AutoAllow
+	case o.JudgeApprove:
+		confirmer = judgeConfirmer{s}
 	case o.Unattended:
 		confirmer = guard.DenyAll
 	}

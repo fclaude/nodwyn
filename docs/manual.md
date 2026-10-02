@@ -299,7 +299,11 @@ confirms are declined unless a standing approval covers them (or answered
 as `--yolo` answers them, if given too), soft budget checkpoints go on to
 the hard limit, and the run goes on after a turn only if that turn marked a
 plan step done, stopping otherwise for you to review and
-`nodwyn run resume --unattended SESSION`. See [runs](runs.md).
+`nodwyn run resume --unattended SESSION`. With `--judge` instead of
+`--yolo`, the judge answers each ordinary confirm: it is shown the task,
+the plan and the call, and the call runs only if it judges it called for
+and safe (probability of allow at least 0.8); security confirms are still
+declined. See [runs](runs.md).
 
 **With credentials.** `--yolo` on its own cannot unlock the keychain: a
 passphrase needs a terminal (plan §3.3), so an unattended process with a

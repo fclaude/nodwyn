@@ -36,7 +36,7 @@ func (s *Session) registerPlanRequired() error {
 				Origin: "builtin",
 			},
 			Handler: func(*scheme.Call) (scheme.Value, error) {
-				return scheme.Bool(s.opts.AutoApprove || s.opts.Unattended), nil
+				return scheme.Bool(s.opts.AutoApprove || s.opts.JudgeApprove || s.opts.Unattended), nil
 			},
 		},
 		{
@@ -65,6 +65,7 @@ func (s *Session) notePlan(kind log.Kind, payload any) {
 	}
 	if gp, ok := payload.(log.GatePlan); ok && strings.TrimSpace(gp.Plan) != "" {
 		s.planned.Store(true)
+		s.setTurnPlan(gp.Plan)
 	}
 }
 

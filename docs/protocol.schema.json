@@ -1287,6 +1287,9 @@
           "format": "date-time",
           "type": "string"
         },
+        "judge": {
+          "type": "boolean"
+        },
         "max_turns": {
           "type": "integer"
         },
@@ -4180,6 +4183,9 @@
         "id": {
           "type": "string"
         },
+        "judge": {
+          "type": "boolean"
+        },
         "unattended": {
           "type": "boolean"
         }
@@ -4207,6 +4213,9 @@
     "rpc.runParams": {
       "properties": {
         "auto_approve": {
+          "type": "boolean"
+        },
+        "judge": {
           "type": "boolean"
         },
         "max_turns": {
@@ -4662,6 +4671,9 @@
         "deadline": {
           "format": "date-time",
           "type": "string"
+        },
+        "judge": {
+          "type": "boolean"
         },
         "max_turns": {
           "type": "integer"

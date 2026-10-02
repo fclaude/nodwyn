@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -178,5 +179,24 @@ func TestUnattendedRunOverRPC(t *testing.T) {
 	}
 	if !resumed.State.Unattended {
 		t.Fatalf("resume asked for unattended: %+v", resumed.State)
+	}
+}
+
+// A judged run needs a judge, and the judge and auto_approve exclude each
+// other.
+func TestJudgedRunRefusals(t *testing.T) {
+	o := options(t)
+	path, stop := start(t, o)
+	defer stop()
+	c := connect(t, path)
+	c.hello()
+	repo := t.TempDir()
+	r := c.call("run.start", runParams{Repo: repo, Task: "t", Wall: "1m", MaxTurns: 2, Judge: true, AutoApprove: true})
+	if r.Error == nil || r.Error.Code != -32602 {
+		t.Fatalf("judge with auto_approve: %+v", r)
+	}
+	r = c.call("run.start", runParams{Repo: repo, Task: "t", Wall: "1m", MaxTurns: 2, Judge: true})
+	if r.Error == nil || !strings.Contains(r.Error.Message, "needs a judge") {
+		t.Fatalf("judge without one: %+v", r)
 	}
 }

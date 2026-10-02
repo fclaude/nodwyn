@@ -198,6 +198,16 @@ none, the run stops and says so, for you to read the turn and
 \code{nodwyn run resume -{}-unattended SESSION}. A plain resume is
 supervised: how a run goes on is said again at every resume.
 
+With \code{-{}-judge} instead of \code{-{}-yolo}, the judge answers the
+run's ordinary confirms: \code{approve.scm}'s \code{approve-call} shows it
+the task, the plan and the call (at \code{jev.content = "full"} also what the
+call would write or send) and asks \code{jev-choice} whether to allow it;
+the call runs only if the probability of allow is at least
+\code{approve-threshold} (0.8). Security confirms are declined without
+asking, and a failed judge is a no. Redefine \code{approve-question},
+\code{approve-state} or the threshold in \file{.nodwyn/init.scm} to judge
+your way.
+
 \begin{puzzle}[ 17: plan only for big asks]
 Write a \code{nodwyn-turn} that records your house plan only when the
 request is longer than 200 characters or mentions ``refactor'', and

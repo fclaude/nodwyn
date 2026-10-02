@@ -32,12 +32,14 @@ type fakeJudge struct {
 	mu        sync.Mutex
 	answers   []any
 	questions []string // the type of each question asked
+	states    []string // the state each question was about
 }
 
 func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
 	j := &fakeJudge{answers: answers}
 	j.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
+			State     string                           `json:"state"`
 			Questions map[string]struct{ Type string } `json:"questions"`
 		}
 		raw, _ := io.ReadAll(r.Body)
@@ -45,6 +47,7 @@ func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
 		j.mu.Lock()
 		defer j.mu.Unlock()
 		j.questions = append(j.questions, body.Questions["q"].Type)
+		j.states = append(j.states, body.State)
 		if len(j.answers) == 0 {
 			http.Error(w, "no scripted answer", http.StatusInternalServerError)
 			return
@@ -77,6 +80,12 @@ func judgedRig(t *testing.T, judge *fakeJudge, init string, turns ...fake.Turn) 
 // judgedRigAt is judgedRig at a jev.content level.
 func judgedRigAt(t *testing.T, judge *fakeJudge, content, init string, turns ...fake.Turn) *rig {
 	t.Helper()
+	return judgedRigWith(t, judge, content, init, nil, turns...)
+}
+
+// judgedRigWith is judgedRigAt with the session's options adjusted first.
+func judgedRigWith(t *testing.T, judge *fakeJudge, content, init string, adjust func(*Options), turns ...fake.Turn) *rig {
+	t.Helper()
 	repo := t.TempDir()
 	// These tests pin the gate's own turns; exploring before a draft has its
 	// own test (TestPlannerExploresFirst).
@@ -97,8 +106,12 @@ func judgedRigAt(t *testing.T, judge *fakeJudge, content, init string, turns ...
 		kc.Add("jev-key", []byte("sk-judge-canary-0001"))
 	}
 	logb := &bytes.Buffer{}
-	s, err := New(Options{Config: cfg, Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb, Keychain: kc,
-		Bindings: binding.Table{Bind: []binding.Binding{{Class: "jev-key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}}})
+	o := Options{Config: cfg, Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb, Keychain: kc,
+		Bindings: binding.Table{Bind: []binding.Binding{{Class: "jev-key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}}}
+	if adjust != nil {
+		adjust(&o)
+	}
+	s, err := New(o)
 	if err != nil {
 		t.Fatal(err)
 	}
