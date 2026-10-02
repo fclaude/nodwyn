@@ -10,6 +10,12 @@
 ;; judge is there, and the core refuses anything irreversible until a plan is
 ;; recorded.
 ;;
+;; A run's plan is the run's, not the turn's: a later turn carries the plan
+;; an earlier one recorded, with the steps marked so far (plan-carry), and
+;; works on its next unmarked step. Only once every step is marked, and the
+;; run goes on, does a turn plan again, told how the last plan went. A model
+;; that finds the plan wrong marks the steps that no longer apply skipped.
+;;
 ;; A project may redefine any of these, or plan-gate itself.
 
 (define plan-needed-threshold 0.5) ; the judge's "needs a plan" probability at which a request gets one
@@ -96,13 +102,23 @@
                    (keep best best-score revisions "")
                    (loop revised (+ round 1) best best-score (+ revisions 1)))))))))
 
+;; A run's later turn: the run's plan again, with the marks its earlier
+;; turns made, so the steps keep their numbers and the window shows what is
+;; done.
+(define (plan-carry run)
+  (record-plan (list (cons 'decision "carried") (cons 'plan (assoc-ref run 'plan))
+                     (cons 'marks (assoc-ref run 'marks '())))))
+
 (define (plan-gate request)
   (let ((judge (plan-judge)))
     (cond ((plan-recorded?) #f) ; this turn has its plan already
           ((plan-required?)
-           (let ((plan (plan-best judge request (if judge "plan" "required"))))
-             (when (string-empty? (string-trim plan))
-               (error "required plan: the planner returned an empty plan"))))
+           (let ((run (run-plan)))
+             (if (and run (assoc-ref run 'next #f))
+                 (plan-carry run)
+                 (let ((plan (plan-best judge (plan-run-request request run) (if judge "plan" "required"))))
+                   (when (string-empty? (string-trim plan))
+                     (error "required plan: the planner returned an empty plan"))))))
           ((not judge) #f)
           (else
            (let ((p (guard (e (else e)) (jev-noul judge request plan-needed-question))))

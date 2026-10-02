@@ -96,8 +96,15 @@ export function renderInspector(
       );
     else if (p.noul === "degraded")
       container.append(text("p", "Gate fallback; no plan score recorded."));
+    else if (p.noul === "carried")
+      container.append(text("p", "The run's plan, carried from an earlier turn."));
     if (p.reason) container.append(text("p", p.reason));
     if (p.plan) container.append(text("pre", p.plan));
+    if (p.marks?.length) {
+      container.append(text("h3", "Steps marked in earlier turns"));
+      for (const m of p.marks)
+        container.append(text("p", `step ${m.step} of ${m.of} ${m.state}${m.note ? `: ${m.note}` : ""}`));
+    }
     // The model's step marks after this plan, in the order it made them.
     const marks = events.slice(events.indexOf(gate) + 1).filter((event) => event.kind === "plan.step");
     if (marks.length) {

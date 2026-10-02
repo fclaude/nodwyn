@@ -60,6 +60,26 @@ const (
 	DefaultPlanHeader = "Plan for the current task (follow it; say so if you must deviate):"
 )
 
+// carriedMarks is what a run's later turn is told of its plan's progress:
+// the steps its earlier turns marked, under the plan in the system prompt.
+// They are fixed when the plan is carried, so the prompt stays the same
+// for the rest of the turn; marks made during it are in the conversation.
+// Recipe v13; an older log carries no marks.
+func carriedMarks(marks []log.PlanStep) string {
+	if len(marks) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nMarked in earlier turns of this task:")
+	for _, m := range marks {
+		fmt.Fprintf(&b, "\nStep %d %s", m.Step, m.State)
+		if m.Note != "" {
+			b.WriteString(": " + m.Note)
+		}
+	}
+	return b.String()
+}
+
 // Result is the built window.
 type Result struct {
 	Messages  []llm.Message
@@ -141,6 +161,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	var entries []entry
 	sticky := map[uint64]bool{}
 	task, plan := "", ""
+	var marks []log.PlanStep // the steps a carried plan's earlier turns marked
 	// Narrowed contexts, innermost last: each starts at an entry index with
 	// its own system prompt. A fold drops the innermost and its entries.
 	type frame struct {
@@ -173,7 +194,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 				}
 				frames = nil
 				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
-				task, plan = p.Text, ""
+				task, plan, marks = p.Text, "", nil
 			}
 		case log.KindContextNarrow:
 			var p log.ContextNarrow
@@ -210,7 +231,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		case log.KindGatePlan:
 			var p log.GatePlan
 			if ev.Decode(&p) == nil && p.Plan != "" {
-				plan = p.Plan // the gate's plan for the current task (P5)
+				plan, marks = p.Plan, p.Marks // the gate's plan for the current task (P5)
 			}
 		case log.KindLLMResp:
 			var p log.LLMResp
@@ -256,7 +277,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		sys = system + "\n\n" + taskHeader + "\n" + task
 	}
 	if plan != "" {
-		sys += "\n\n" + planHeader + "\n" + plan
+		sys += "\n\n" + planHeader + "\n" + plan + carriedMarks(marks)
 	}
 	if n := len(frames); n > 0 {
 		// The strategy's system prompt replaces the session's, task and plan

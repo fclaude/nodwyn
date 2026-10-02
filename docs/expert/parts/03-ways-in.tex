@@ -72,7 +72,8 @@ nodwyn run resume SESSION
 \end{sh}
 
 Every turn of a run must record a plan before anything irreversible
-happens, and between turns you get a \textbf{run checkpoint}: a yes
+happens; the first drafts it and later turns carry it on, with the steps
+marked so far. Between turns you get a \textbf{run checkpoint}: a yes
 continues, and grants nothing else. The run ends when the model's final line
 is exactly \code{NODWYN\_RUN\_COMPLETE}, which is the model's claim, not a
 proof; or when the turn or time limit runs out. With

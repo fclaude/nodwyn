@@ -1265,6 +1265,15 @@
     },
     "log.GatePlan": {
       "properties": {
+        "marks": {
+          "items": {
+            "$ref": "#/$defs/log.PlanStep"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "noul": {
           "type": "string"
         },

@@ -259,9 +259,11 @@ export class Transcript {
         const label =
           p.noul === "plan" || p.noul === "required"
             ? `Made a plan${steps.length ? ` · ${steps.length} steps` : ""}${p.score ? ` · scored ${Number(p.score).toFixed(2)}` : ""}`
-            : p.noul === "proceed"
-              ? "No plan needed for this"
-              : "Planned without the plan judge";
+            : p.noul === "carried"
+              ? `Went on with the run's plan · ${(p.marks || []).length} of ${steps.length} steps marked`
+              : p.noul === "proceed"
+                ? "No plan needed for this"
+                : "Planned without the plan judge";
         this.audit(label, p.plan || p.reason || undefined);
         break;
       }

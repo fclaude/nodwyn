@@ -169,13 +169,33 @@
 
 ;; The message a supervised run sends for each of its turns (docs/runs.md).
 ;; complete-line is the marker the run looks for to know the task is done.
+;; The plan is the run's: a later turn carries it, with the steps marked so
+;; far (plan.scm).
 (define (run-turn-prompt task complete-line turn max-turns)
   (string-append
    "Run task:\n" task
-   "\n\nWork on one unfinished plan step, mark it with plan-step, then report progress for review. If the entire task is complete, put "
+   "\n\nWork on the plan's next unmarked step, mark it with plan-step, then report progress for review. The plan carries over to the run's next turn, with your marks; if it no longer fits, mark the steps that do not apply skipped, saying why, and once every step is marked the next turn plans again. If the entire task is complete, put "
    complete-line
    " alone on the final line. Do not claim completion while work remains. This is turn "
    (number->string turn) " of at most " (number->string max-turns) "."))
+
+;; The planner's request in a run whose plan has every step marked: the
+;; request, with the last plan and how it went, so the new plan covers
+;; what remains. Without such a plan, the request as it is.
+(define (plan-run-request request run)
+  (if (not run)
+      request
+      (string-append
+       request
+       "\n\nThe run's previous plan, every step of it now marked:\n" (assoc-ref run 'plan "")
+       "\n\nHow it went:"
+       (apply string-append
+              (map (lambda (m)
+                     (string-append "\nStep " (number->string (assoc-ref m 'step 0)) " " (assoc-ref m 'state "")
+                                    (let ((note (assoc-ref m 'note "")))
+                                      (if (string-empty? note) "" (string-append ": " note)))))
+                   (assoc-ref run 'marks '())))
+       "\n\nPlan what remains of the task.")))
 
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)

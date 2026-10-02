@@ -347,3 +347,25 @@ func TestTokensFrom(t *testing.T) {
 		t.Fatal("found a seq the window does not show")
 	}
 }
+
+// A run's later turn carries its plan with the steps already marked: the
+// system prompt shows them under the plan, and only for that turn.
+func TestCarriedPlanShowsItsMarks(t *testing.T) {
+	s := newSession()
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "run turn 1"})
+	s.w.Append(log.KindGatePlan, log.GatePlan{Noul: "required", Plan: "1. read\n2. edit"})
+	if sys := Build(s.events(t), "sys", 0, pol).Messages[0].Content; !strings.HasSuffix(sys, "1. read\n2. edit") {
+		t.Fatalf("a drafted plan: %q", sys)
+	}
+	s.w.Append(log.KindPlanStep, log.PlanStep{Step: 1, Of: 2, State: "done", Note: "read it"})
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "run turn 2"})
+	s.w.Append(log.KindGatePlan, log.GatePlan{Noul: "carried", Plan: "1. read\n2. edit", Marks: []log.PlanStep{{Step: 1, Of: 2, State: "done", Note: "read it"}}})
+	sys := Build(s.events(t), "sys", 0, pol).Messages[0].Content
+	if !strings.HasSuffix(sys, "1. read\n2. edit\n\nMarked in earlier turns of this task:\nStep 1 done: read it") {
+		t.Fatalf("a carried plan: %q", sys)
+	}
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "something else"})
+	if sys := Build(s.events(t), "sys", 0, pol).Messages[0].Content; strings.Contains(sys, "Marked in earlier turns") {
+		t.Fatalf("marks outlived their turn: %q", sys)
+	}
+}

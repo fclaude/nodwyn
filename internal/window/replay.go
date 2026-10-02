@@ -19,11 +19,12 @@ import (
 // tools (llm.req no_tools), v8 the cap on generated tokens (max_output),
 // v9 folded results (result.fold), v10 a request's own trim line
 // (llm.req high_water), v11 narrowings that outlast their turn
-// (context.narrow lasting), and v12 attached images (an attach record of
+// (context.narrow lasting), v12 attached images (an attach record of
 // type image, carried by digest) and the images a request withheld
-// (llm.req withheld_images); an older log has none of them, so Build
-// rebuilds it unchanged.
-const RecipeVersion = "window-v12"
+// (llm.req withheld_images), and v13 a run's plan carried into a later
+// turn with the steps already marked (gate.plan marks); an older log has
+// none of them, so Build rebuilds it unchanged.
+const RecipeVersion = "window-v13"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas
 // and model options. It verifies reconstruction; it is not a tamper-proof seal.
@@ -64,7 +65,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 				return zero, fmt.Errorf("window replay: this legacy request lacks recorded context or a request hash")
 			}
 			switch c.Version {
-			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", "window-v8", "window-v9", "window-v10", "window-v11", RecipeVersion:
+			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", "window-v8", "window-v9", "window-v10", "window-v11", "window-v12", RecipeVersion:
 			default:
 				return zero, fmt.Errorf("window replay: unsupported recipe %q", c.Version)
 			}

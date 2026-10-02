@@ -93,7 +93,7 @@ func (l *Loop) install() error {
 		{
 			Name: "record-plan",
 			Meta: scheme.Meta{
-				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded or required), plan, score, revisions and reason. The window shows a recorded plan to the model for the rest of the turn.",
+				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded, required or carried), plan, score, revisions, reason, and marks, the steps of the plan already marked, each an alist of step, state and note, as run-plan gives them (a run's later turn carries its plan with them). The window shows a recorded plan, and the marks it carries, to the model for the rest of the turn.",
 				Params: []scheme.Param{{Name: "outcome", Type: "alist", Doc: "the gate's decision and plan"}},
 				Hidden: true,
 				Origin: "builtin",
@@ -108,6 +108,15 @@ func (l *Loop) install() error {
 				Origin: "builtin",
 			},
 			Handler: l.planSteps,
+		},
+		{
+			Name: "run-plan",
+			Meta: scheme.Meta{
+				Doc:    "The plan of the run this turn belongs to, as its earlier turns left it: an alist of plan (the text), steps, marks (the latest mark per step, in step order, each an alist of step, state and note) and next (the first unmarked step, or #f when every step is marked). #f when this turn is not a run's, or no turn of the run has recorded a plan yet. A run started afresh has none; a resumed one keeps its plan.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.runPlanPrim,
 		},
 		{
 			Name: "record-step",
@@ -470,12 +479,25 @@ func (l *Loop) recordPlan(c *scheme.Call) (scheme.Value, error) {
 	if v, ok := lookup(outcome, "revisions"); ok && v.Kind == scheme.KInt {
 		gp.Revisions = int(v.I)
 	}
+	if v, ok := lookup(outcome, "marks"); ok {
+		marks, err := planMarks(v, len(gp.Steps()))
+		if err != nil {
+			return scheme.Void, err
+		}
+		if len(marks) > 0 && strings.TrimSpace(gp.Plan) == "" {
+			return scheme.Void, errors.New("marks need the plan they mark")
+		}
+		gp.Marks = marks
+	}
 	if err := l.record(log.KindGatePlan, gp); err != nil {
 		return scheme.Void, err
 	}
 	if strings.TrimSpace(gp.Plan) != "" {
 		t := l.turn
 		t.steps, t.marks = gp.Steps(), map[int]string{}
+		for _, m := range gp.Marks {
+			t.marks[m.Step] = m.State
+		}
 	}
 	if strings.TrimSpace(gp.Plan) != "" {
 		l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gp.Score, gp.Revisions)}})
@@ -584,6 +606,121 @@ func (l *Loop) recordStep(c *scheme.Call) (scheme.Value, error) {
 		scheme.Cons(scheme.Sym("of"), scheme.Int(int64(len(t.steps)))),
 		scheme.Cons(scheme.Sym("next"), next),
 	), nil
+}
+
+// planMarks reads the marks record-plan carries with a plan of n steps:
+// a list of alists of step, state and note, at most one per step.
+func planMarks(v scheme.Value, n int) ([]log.PlanStep, error) {
+	items, ok := v.Slice()
+	if !ok {
+		return nil, errors.New("marks is a list of alists of step, state and note")
+	}
+	var marks []log.PlanStep
+	seen := map[int]bool{}
+	for _, it := range items {
+		step, ok := lookup(it, "step")
+		if !ok || step.Kind != scheme.KInt {
+			return nil, errors.New("a mark needs its step's number")
+		}
+		m := log.PlanStep{Step: int(step.I), Of: n, State: field(it, "state"), Note: field(it, "note")}
+		switch {
+		case m.Step < 1 || m.Step > n:
+			return nil, fmt.Errorf("the plan has %d steps, numbered from 1; there is no step %d", n, m.Step)
+		case m.State != "done" && m.State != "skipped":
+			return nil, fmt.Errorf("a step is done or skipped, not %q", m.State)
+		case seen[m.Step]:
+			return nil, fmt.Errorf("step %d is marked twice", m.Step)
+		}
+		seen[m.Step] = true
+		marks = append(marks, m)
+	}
+	return marks, nil
+}
+
+// runPlanPrim is (run-plan), read from the log like every window, so a
+// resumed run finds the plan it had.
+func (l *Loop) runPlanPrim(c *scheme.Call) (scheme.Value, error) {
+	if c.Origin == scheme.OriginModel {
+		return scheme.Void, errors.New("not callable from a model-originated evaluation")
+	}
+	plan, marks, ok := runPlan(l.host.EventsSoFar())
+	if !ok {
+		return scheme.False, nil
+	}
+	steps := log.GatePlan{Plan: plan}.Steps()
+	stepValues := make([]scheme.Value, len(steps))
+	for i, s := range steps {
+		stepValues[i] = scheme.Str(s)
+	}
+	marked := map[int]bool{}
+	markValues := make([]scheme.Value, len(marks))
+	for i, m := range marks {
+		marked[m.Step] = true
+		markValues[i] = scheme.List(
+			scheme.Cons(scheme.Sym("step"), scheme.Int(int64(m.Step))),
+			scheme.Cons(scheme.Sym("state"), scheme.Str(m.State)),
+			scheme.Cons(scheme.Sym("note"), scheme.Str(m.Note)),
+		)
+	}
+	next := scheme.False
+	for i := 1; i <= len(steps); i++ {
+		if !marked[i] {
+			next = scheme.Int(int64(i))
+			break
+		}
+	}
+	return scheme.List(
+		scheme.Cons(scheme.Sym("plan"), scheme.Str(plan)),
+		scheme.Cons(scheme.Sym("steps"), scheme.List(stepValues...)),
+		scheme.Cons(scheme.Sym("marks"), scheme.List(markValues...)),
+		scheme.Cons(scheme.Sym("next"), next),
+	), nil
+}
+
+// runPlan is the plan of the run the latest turn belongs to, as the run's
+// turns left it: the latest plan a turn of the run recorded (a turn whose
+// user.msg follows a run.turn), and the latest mark per step since, the
+// marks it carried included, in step order. ok is false when the latest
+// turn is not a run's, or no turn of the run recorded a plan. A run that
+// starts afresh (run.state running with no turns yet) starts with none; a
+// resume keeps it, and a chat turn between leaves it alone.
+func runPlan(events []log.Event) (plan string, marks []log.PlanStep, ok bool) {
+	var byStep map[int]log.PlanStep
+	reserved, inRun := false, false
+	for _, ev := range events {
+		switch ev.Kind {
+		case log.KindRunState:
+			var p log.RunState
+			if ev.Decode(&p) == nil && p.Status == "running" && p.Turns == 0 {
+				plan, byStep = "", nil
+			}
+		case log.KindRunTurn:
+			reserved = true
+		case log.KindUserMsg:
+			inRun, reserved = reserved, false
+		case log.KindGatePlan:
+			var p log.GatePlan
+			if inRun && ev.Decode(&p) == nil && strings.TrimSpace(p.Plan) != "" {
+				plan, byStep = p.Plan, map[int]log.PlanStep{}
+				for _, m := range p.Marks {
+					byStep[m.Step] = m
+				}
+			}
+		case log.KindPlanStep:
+			var p log.PlanStep
+			if inRun && plan != "" && ev.Decode(&p) == nil {
+				byStep[p.Step] = p
+			}
+		}
+	}
+	if !inRun || plan == "" {
+		return "", nil, false
+	}
+	for _, m := range byStep {
+		marks = append(marks, m)
+	}
+	sort.Slice(marks, func(i, j int) bool { return marks[i].Step < marks[j].Step })
+	return plan, marks, true
 }
 
 // narrowContext is (narrow-context system). The narrowing is an event in

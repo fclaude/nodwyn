@@ -517,11 +517,15 @@ export class TaskView {
             ? p.score
               ? `required, scored ${Number(p.score).toFixed(2)}`
               : "required for this run"
-            : "judge unavailable";
+            : p.noul === "carried"
+              ? "the run's plan, carried over"
+              : "judge unavailable";
     const steps = planSteps(p.plan);
-    // The model's marks since the plan (plan.step), the latest per step. A
-    // mark is the model's word; the transcript holds what shows it.
+    // The model's marks, the latest per step: those a carried plan brings
+    // from the run's earlier turns, then those since (plan.step). A mark is
+    // the model's word; the transcript holds what shows it.
     const marks = new Map();
+    for (const m of p.marks || []) marks.set(m.step, m);
     for (const e of turn.tail.slice(at + 1)) if (e.kind === "plan.step") marks.set(e.payload.step, e.payload);
     const done = [...marks.values()].filter((m) => m.state === "done").length;
     const note = steps.length && marks.size ? `${done} of ${steps.length} done · ${judged}` : judged;

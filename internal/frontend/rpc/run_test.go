@@ -50,7 +50,8 @@ func waitRun(t *testing.T, c *client, id, status string) run.State {
 	return run.State{}
 }
 func TestRunDetachCheckpointAndResume(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "1. first step"}, fake.Turn{Content: "step done"}, fake.Turn{Content: "1. final step"}, fake.Turn{Content: "done\n" + run.CompleteLine})
+	// The resumed turn carries the run's plan: the planner is not asked again.
+	srv := fake.New(fake.Turn{Content: "1. first step"}, fake.Turn{Content: "step done"}, fake.Turn{Content: "done\n" + run.CompleteLine})
 	defer srv.Close()
 	o := options(t)
 	o.Provider = llm.NewOllama(srv.URL)

@@ -77,8 +77,9 @@ func TestDefaultPromptsAreUnchanged(t *testing.T) {
 		evalText(t, r, "plan-header") != "Plan for the current task (follow it; mark each step with plan-step as you finish it; say so if you must deviate):" {
 		t.Fatal("the window's headers changed")
 	}
-	// The run prompt reproduces what the run driver formatted in Go.
-	if got := evalText(t, r, `(run-turn-prompt "T" "DONE" 2 5)`); got != "Run task:\nT\n\nWork on one unfinished plan step, mark it with plan-step, then report progress for review. If the entire task is complete, put DONE alone on the final line. Do not claim completion while work remains. This is turn 2 of at most 5." {
+	// The run prompt reproduces what the run driver formatted in Go, and
+	// since 2026-10-02 says the plan carries over to the run's next turn.
+	if got := evalText(t, r, `(run-turn-prompt "T" "DONE" 2 5)`); got != "Run task:\nT\n\nWork on the plan's next unmarked step, mark it with plan-step, then report progress for review. The plan carries over to the run's next turn, with your marks; if it no longer fits, mark the steps that do not apply skipped, saying why, and once every step is marked the next turn plans again. If the entire task is complete, put DONE alone on the final line. Do not claim completion while work remains. This is turn 2 of at most 5." {
 		t.Fatalf("run-turn-prompt: %q", got)
 	}
 }

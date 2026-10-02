@@ -219,13 +219,17 @@ type EgressCheck struct {
 
 // GatePlan is the P5 gate outcome for one user message: the noul verdict,
 // whether a plan was required, the Seam A score, and the revision count.
+// A run's later turn carries the run's plan instead of drafting one
+// ("carried"), with Marks, the steps its earlier turns marked, the latest
+// mark per step in step order.
 type GatePlan struct {
-	Origin    string  `json:"origin"`
-	Noul      string  `json:"noul"` // "plan" | "proceed" | "degraded" | "required" (a run's turn, no judge)
-	Plan      string  `json:"plan,omitempty"`
-	Score     float64 `json:"score,omitempty"`
-	Revisions int     `json:"revisions,omitempty"`
-	Reason    string  `json:"reason,omitempty"`
+	Origin    string     `json:"origin"`
+	Noul      string     `json:"noul"` // "plan" | "proceed" | "degraded" | "required" (a run's turn, no judge) | "carried" (a run's later turn)
+	Plan      string     `json:"plan,omitempty"`
+	Score     float64    `json:"score,omitempty"`
+	Revisions int        `json:"revisions,omitempty"`
+	Reason    string     `json:"reason,omitempty"`
+	Marks     []PlanStep `json:"marks,omitempty"`
 }
 
 // planMarker is what starts a step's line: "1." "2)" "-" "*" "•".
@@ -255,7 +259,7 @@ func (g GatePlan) Steps() []string {
 // PlanStep is the model marking step Step (of Of) of the turn's recorded
 // plan done or skipped, with Note saying what shows it. It is the model's
 // claim, not a proof: the evidence is the transcript around it. A later mark
-// of the same step replaces an earlier one.
+// of the same step replaces an earlier one, in a later turn of a run too.
 type PlanStep struct {
 	Step  int    `json:"step"`
 	Of    int    `json:"of"`

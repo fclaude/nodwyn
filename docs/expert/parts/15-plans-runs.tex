@@ -167,12 +167,26 @@ turn:
 
 \begin{enumerate}
   \item sends the message \code{(run-turn-prompt task complete-line turn
-    max-turns)} makes: the task, and a request to do one unfinished plan
-    step, mark it with \code{plan-step}, and report;
+    max-turns)} makes: the task, and a request to do the plan's next
+    unmarked step, mark it with \code{plan-step}, and report;
   \item must plan (\code{plan-required?} is true), so \code{nodwyn-turn}
     runs the plan gate first, with or without a judge;
   \item runs the evidence loop, since nobody watches each call.
 \end{enumerate}
+
+A turn is one message and the work up to a reply with no tool call. It is
+what the per-turn budgets measure, where the run checkpoint comes and where
+a run can stop and resume. The \emph{plan} is the run's. The first turn
+drafts it. Every later turn carries it: \code{(run-plan)} reads it from the
+log with the steps marked so far, and \code{plan-carry} records it again as
+this turn's (\code{gate.plan} with decision \code{carried} and the
+\code{marks}), so the steps keep their numbers and the window shows what is
+done under the plan. Nothing is explored, drafted or scored for it. Only
+when every step is marked and the run goes on does a turn plan again, and
+the planner is told the previous plan and how each step went
+(\code{plan-run-request}). To set a plan aside, the model marks the steps
+that no longer apply \code{skipped}, saying why. A project that wants a new
+plan every turn redefines \code{plan-gate}.
 
 Between turns you get a \textbf{run checkpoint}: a yes continues and grants
 nothing else, no file, command or network permission. The run ends when:

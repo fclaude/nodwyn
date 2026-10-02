@@ -1,6 +1,6 @@
 # ADR 0018: Turn budgets and long-running turns
 
-- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01)
+- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01; the run's plan carried across its turns 2026-10-02)
 - Date: 2026-09-21
 
 ## Context
@@ -276,3 +276,44 @@ their cost, since it measures money, and `knownSpend` reads it from the
 `jev.req` records as it reads model costs from `llm.resp`. A judge request
 with no prices is not counted, and the first turn with one says so, as for
 model requests.
+
+## The plan is the run's — 2026-10-02
+
+§4 has the driver send "continue with the plan" and §5 makes "a plan whose
+steps become checkpoint boundaries". As implemented, "a plan for every
+turn" was a new plan every turn. Plan state was the turn's (the core's
+`planned` flag, the loop's steps and marks, the window's plan, all reset
+at each `user.msg`), and a run's continuation is a `user.msg`. So each turn
+explored the repository again and drafted a plan for the whole task in a
+context that did not show what earlier turns had done, while the run prompt
+asked for "one unfinished plan step". The unattended checkpoint counted
+steps marked against a plan drafted that same turn.
+
+A turn stays what it was: one message and the work up to a reply with no
+tool call, or a budget stop. It is the unit of the per-turn budgets, the
+run checkpoint and resuming. The plan belongs to the run:
+
+- The first turn of a run drafts the plan as before. Each later turn carries
+  it: `plan-gate` records the same plan again as `gate.plan`, `noul`
+  `carried`, with `marks`, the `plan.step` marks of the run's earlier turns,
+  the latest per step. Recording it keeps the core's invariant (a required
+  turn records a plan) and the window's rule (a turn's plan is the
+  `gate.plan` after its `user.msg`) unchanged. The window shows the carried
+  marks under the plan (recipe v13); they are fixed for the turn, so the
+  system prompt is too. The loop's `record-step` starts from them, so step
+  numbers and "next unmarked" hold across turns.
+- `(run-plan)` reads the run's plan from the log: the latest plan a run
+  turn recorded (a `user.msg` after a `run.turn`) and the marks since. Chat
+  turns between do not count, a resume keeps the plan, and a `run.state`
+  `running` with no turns yet, a fresh run, starts with none.
+- A new plan is drafted only once every step is marked and the run goes on.
+  The planner gets the previous plan and how each step went. There is no
+  separate "replan" tool: a model that finds the plan wrong marks the steps
+  that no longer apply skipped, with why, and the next turn plans again.
+- The unattended checkpoint still counts the `plan.step` marks a turn made.
+  Carried marks are in `gate.plan`, not `plan.step`, so they are not counted
+  again, and progress is now measured against a plan that stays put.
+
+All of this is Scheme (`plan.scm`, `prompts.scm`) over one read-only
+primitive and an extra field of `record-plan`. A project that wants a plan
+per turn redefines `plan-gate`.

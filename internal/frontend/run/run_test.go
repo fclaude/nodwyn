@@ -97,16 +97,29 @@ func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, m
 	<-drained
 	return d.Info(), s.EventsSoFar()
 }
+// The plan is the run's: turn 1 drafts it, turn 2 carries it with the step
+// turn 1 marked, without asking the planner again, and works on the next.
 func TestSupervisedRun(t *testing.T) {
-	state, history := drive(t, time.Minute, 3, "y", fake.Turn{Content: "1. First step."}, fake.Turn{Content: "first done"}, fake.Turn{Content: "1. Remaining step."}, fake.Turn{Content: "all done\n" + CompleteLine})
+	state, history := drive(t, time.Minute, 3, "y",
+		fake.Turn{Content: "1. First step.\n2. Second step."},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepDone("a", 1)}}, fake.Turn{Content: "first done"},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepDone("b", 2)}}, fake.Turn{Content: "all done\n" + CompleteLine})
 	if state.Status != "completed" || state.Turns != 2 {
 		t.Fatalf("%+v", state)
 	}
-	plans, checks := 0, 0
+	var plans []log.GatePlan
+	checks, planners := 0, 0
 	for _, ev := range history {
 		switch ev.Kind {
 		case log.KindGatePlan:
-			plans++
+			var p log.GatePlan
+			ev.Decode(&p)
+			plans = append(plans, p)
+		case log.KindContextNarrow:
+			var p log.ContextNarrow
+			if ev.Decode(&p) == nil && p.Agent == "planner" {
+				planners++
+			}
 		case log.KindRunCheckpoint:
 			checks++
 			var p log.RunCheckpoint
@@ -118,8 +131,12 @@ func TestSupervisedRun(t *testing.T) {
 			t.Fatal("run checkpoint granted tool authority")
 		}
 	}
-	if plans != 2 || checks != 1 {
-		t.Fatalf("plans=%d checks=%d", plans, checks)
+	if len(plans) != 2 || checks != 1 || planners != 1 {
+		t.Fatalf("plans=%+v checks=%d planners=%d", plans, checks, planners)
+	}
+	if plans[0].Noul != "required" || plans[1].Noul != "carried" || plans[1].Plan != plans[0].Plan ||
+		len(plans[1].Marks) != 1 || plans[1].Marks[0] != (log.PlanStep{Step: 1, Of: 2, State: "done", Note: "did it"}) {
+		t.Fatalf("plans %+v", plans)
 	}
 	restored, err := Restore(history)
 	if err != nil || restored.Turns != 2 || !restored.Deadline.Equal(state.Deadline) {
@@ -230,7 +247,7 @@ func TestHardTurnBudgetCanContinueOnlyAfterCheckpoint(t *testing.T) {
 	state, history := driveConfigured(t, cfg, time.Minute, 3, "y",
 		fake.Turn{Content: "1. Inspect files."},
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}},
-		fake.Turn{Content: "1. Finish."}, fake.Turn{Content: CompleteLine})
+		fake.Turn{Content: CompleteLine}) // turn 2 carries the plan
 	if state.Status != "completed" || state.Turns != 2 {
 		t.Fatalf("%+v", state)
 	}
@@ -373,6 +390,24 @@ func TestUnattendedRunContinuesOnProgressAndStopsWithout(t *testing.T) {
 	if len(cps) != 2 || !cps[0].Allowed || cps[0].Actor != "unattended" || cps[0].Reason != "turn 1 marked 2 plan steps done" ||
 		cps[1].Allowed || cps[1].Reason != "turn 2 marked no plan step done" {
 		t.Fatalf("checkpoints %+v", cps)
+	}
+	// Turn 1 marked every step, so turn 2 plans again, told how the last
+	// plan went.
+	var decisions []string
+	replanned := false
+	for _, ev := range history {
+		var p log.GatePlan
+		if ev.Kind == log.KindGatePlan && ev.Decode(&p) == nil {
+			decisions = append(decisions, p.Noul)
+		}
+		var h log.HarnessMsg
+		if ev.Kind == log.KindHarnessMsg && ev.Decode(&h) == nil &&
+			strings.Contains(h.Text, "The run's previous plan, every step of it now marked:\n1. first\n2. second\n\nHow it went:\nStep 1 done: did it\nStep 2 done: did it") {
+			replanned = true
+		}
+	}
+	if strings.Join(decisions, " ") != "required required" || !replanned {
+		t.Fatalf("decisions %v, replanned with progress %v", decisions, replanned)
 	}
 	var recorded log.RunState
 	for _, ev := range history {

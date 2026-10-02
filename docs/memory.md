@@ -59,7 +59,8 @@ sticky-elision decisions, then the budget policy recomputes from source. This
 makes revocation effective rather than leaving an old cached omission in place.
 
 Recipes from `window-v2` on record this policy (new sessions record
-`window-v12`, which adds later window features such as attached images);
+`window-v13`, which adds later window features such as attached images
+and a run's carried plan);
 historical `window-v1` requests retain their original policy. Replaying an
 earlier request uses only the log prefix before
 that request, so a later revocation cannot change what the model originally saw.

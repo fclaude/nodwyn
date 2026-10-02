@@ -80,9 +80,9 @@ this is the summary.
     context-tokens session-system-prompt session-requests model-info
     model-names window-limits unattended?
     plan-required? plan-recorded? record-plan plan-steps record-step
-    reload}.
+    run-plan reload}.
   \item[Defined in Scheme by the loop] \code{nodwyn-turn agent-turn
-    ask-model run-calls sub-agent define-agent-tool plan-gate maybe-compact
+    ask-model run-calls sub-agent define-agent-tool plan-gate plan-carry maybe-compact
     compact-context compact-next-round compact-turn evidence-loop
     optimize-turn} and the prompts; the agent tools \code{plan-step
     read-definition second-look}.

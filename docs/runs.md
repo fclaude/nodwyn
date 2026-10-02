@@ -58,25 +58,36 @@ last change, and offers an honest way out when the tests cannot run at all.
 Running its own check script in the scratch directory counts as a test run.
 In a git work tree git decides what changed, and files left in the
 repository that git does not track are named once before the turn ends.
-Before the plan, a read-only explorer looks at the repository, so the plan
-names real files.
+Before a plan is drafted, a read-only explorer looks at the repository, so
+the plan names real files.
+
+A turn is one message to the model and the work it does until it replies
+without a tool call, or a budget stops it. It is the unit of the per-turn
+budgets, of the run checkpoint and of resuming. The plan is not the turn's:
+it is the run's.
 
 Each turn requires a nonempty, durably recorded plan before execution. The
 Scheme `nodwyn-turn` runs the plan gate first in every run turn, whatever `agent-turn`
-a project defines ([docs/scheme.md](scheme.md) §9.5): the control model drafts
-the plan in a context of its own, offered no tools, and with a Jev credential
-the score/revise path runs through the guard; the noul decision cannot skip a
-required plan. Without a judge the model still drafts a plan. Judge outages
-retain the plain-plan fallback. The core refuses anything irreversible until a
-plan is recorded and fails a turn that records none; a project that redefines
-`nodwyn-turn` to plan its own way is held to the same rule. Planner or plan-recording
-failure prevents execution.
+a project defines ([docs/scheme.md](scheme.md) §9.5). The first turn drafts
+the plan: the control model writes it in a context of its own, offered no
+tools, and with a Jev credential the score/revise path runs through the
+guard; the noul decision cannot skip a required plan. Without a judge the
+model still drafts a plan. Judge outages retain the plain-plan fallback.
+Each later turn carries the run's plan: it records the same plan again
+(`gate.plan` decision `carried`) with the steps marked so far, and nothing is
+explored, drafted or scored. Only when every step is marked and the run
+goes on does a turn draft a new plan, told the previous one and how each
+step went. A resumed run carries the plan it had. The core refuses anything
+irreversible until a plan is recorded and fails a turn that records none; a
+project that redefines `nodwyn-turn` to plan its own way is held to the same
+rule. Planner or plan-recording failure prevents execution.
 
-The continuation asks for one unfinished plan step, marked with `plan-step`
-when it is done, and a progress report. This is an instruction to the model,
-not a parser that proves a step was completed: a mark (`plan.step`) is the
-model's word, shown as such in the console's plan panel, and the evidence is
-in the transcript.
+The continuation asks for the plan's next unmarked step, marked with
+`plan-step` when it is done, and a progress report; a plan that no longer
+fits is set aside by marking its remaining steps skipped, with why. This is
+an instruction to the model, not a parser that proves a step was completed:
+a mark (`plan.step`) is the model's word, shown as such in the console's
+plan panel, and the evidence is in the transcript.
 Before another turn, the operator gets a **run checkpoint**. A one-time yes
 continues the run; it grants no filesystem, command, credential or network
 permission. The checkpoint's prompt ID and answering peer are recorded.
@@ -163,7 +174,8 @@ fewer, and nothing in it ever waits for a person:
   and the judge's `jev.req`. `--judge` needs a judge (a `jev-key` stored and
   bound, `jev.content` other than `none`) and excludes `--yolo`; it also
   works in a supervised run, where you still answer the run checkpoints.
-- Everything else is as for a supervised run: the plan before every turn,
+- Everything else is as for a supervised run: a recorded plan in every turn,
+  the run's, carried until every step is marked,
   finite turn and wall limits, the progress guard, completion only by the
   model's final line, the same pin, denylist and binding table.
 

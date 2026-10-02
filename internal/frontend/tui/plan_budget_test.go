@@ -205,6 +205,25 @@ func TestPlanViewShowsStepMarks(t *testing.T) {
 	}
 }
 
+// A run's later turn shows its carried plan with the marks of the run's
+// earlier turns, and the marks made since over them.
+func TestPlanViewShowsACarriedPlansMarks(t *testing.T) {
+	gate := log.GatePlan{Noul: "carried", Plan: "1. read\n2. edit\n3. test", Marks: []log.PlanStep{{Step: 1, Of: 3, State: "done", Note: "read main.go"}, {Step: 2, Of: 3, State: "skipped"}}}
+	got, err := formatPlan([]log.Event{
+		historyRecord(1, log.KindUserMsg, log.UserMsg{Text: "run turn 2"}),
+		historyRecord(2, log.KindGatePlan, gate),
+		historyRecord(3, log.KindPlanStep, log.PlanStep{Step: 2, Of: 3, State: "done", Note: "edited"}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"The run's plan, carried from an earlier turn · 2 of 3 steps marked there", "Steps (2 of 3 done, as the model marked them):", "[x] 1. read (read main.go)", "[x] 2. edit (edited)", "[ ] 3. test"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in:\n%s", want, got)
+		}
+	}
+}
+
 func llmResp(t *testing.T, seq uint64, u log.Usage) log.Event {
 	t.Helper()
 	raw, _ := json.Marshal(log.LLMResp{Content: "x", Usage: u})

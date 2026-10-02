@@ -580,7 +580,7 @@ conversation (`model-turn`, `run-tools`, `skip-tools`, `answer-call`,
 `record-step`, `record-compaction`, `narrow-context`, `fold-context`, `widen`) are refused outside
 a turn and from model-originated code; the ones that only describe the session (`model-info`, `model-names`,
 `window-limits`, `session-system-prompt`, `session-requests`,
-`context-tokens`, `unattended?`, `plan-required?`, `plan-recorded?`,
+`context-tokens`, `unattended?`, `plan-required?`, `plan-recorded?`, `run-plan`,
 `session-list`, `session-events`) answer at any time (`session-system-prompt`
 and `context-tokens` once the session has started), which
 is how `compact.scm` reads `(window-limits)` as it loads. The strategy runs with harness origin, so it cannot
@@ -610,7 +610,7 @@ strings (§1.1):
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5), and the draft request that carries what it found |
 | `finish-no-change-message`, `finish-untested-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)` | what the evidence loop tells the model (§9) |
 | `task-header` `plan-header` | the headers under which the window adds the user's latest request and its plan to the system prompt, where they are never trimmed away |
-| `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for |
+| `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for. It asks for the plan's next unmarked step and says the plan carries over to the next turn (§9.5) |
 | `(plan-system-prompt repo)` | the planner's system prompt |
 | `(plan-draft-prompt request)` | the planner's request for a plan |
 | `(plan-revise-prompt request plan score)` | the request for a better plan after the judge scored it `score` (0..1) |
@@ -824,6 +824,16 @@ the rest of the turn. Without a judge there is no gate. If the judge's
 yes/no question fails, the model plans anyway, unscored ("degraded"); a
 judge the guard refuses (an unbound key) ends the turn, as any denial does.
 
+A run's plan is the run's, not the turn's. Its first turn drafts the plan;
+each later turn carries it (`plan-carry`): it records the same plan again,
+decision `carried`, with the steps the run's turns have marked, so the steps
+keep their numbers, `plan-step` answers with the right next step, and the
+window shows the marks under the plan. Nothing is explored, drafted or
+scored for a carried plan. Only when every step is marked and the run goes
+on does a turn draft a new one, from the request with the previous plan and
+how each step went (`plan-run-request`). A model that finds the plan wrong
+marks the steps that no longer apply skipped, saying why.
+
 | | |
 |---|---|
 | `plan-needed-threshold` | the judge's probability of "needs a plan" at which a request gets one (0.5) |
@@ -832,11 +842,14 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
 | `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
 | `(record-compaction facts)` | record a compaction as `context.compact`, from an alist: `trigger` (`auto`, `command` or `requested`), `compacted`, `before` (the size `(context-tokens)` gave before it), `threshold` and `focus`. The size after and the note's reply are read when it is called, so call it once the handover is in place, as `compact-context` does |
-| `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded` or `required`), `plan`, `score`, `revisions`, `reason` |
+| `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded`, `required` or `carried`), `plan`, `score`, `revisions`, `reason`, and `marks`, the steps of the plan already marked, each an alist of `step`, `state` and `note` as `run-plan` gives them; the turn's `record-step` and the window start from them. An error for a step the plan does not have, another state, a step marked twice, or marks without a plan |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
+| `(run-plan)` | the plan of the run this turn belongs to, as its earlier turns left it, read from the log: `((plan . text) (steps . list) (marks . list) (next . n))`, where `marks` are the latest mark per step, in step order, each `((step . n) (state . s) (note . t))`, and `next` is the first unmarked step, or `#f` when every step is marked. `#f` when this turn is not a run's (its `user.msg` follows no `run.turn`) or no turn of the run has recorded a plan. Only the run's turns count: a chat turn between leaves its plan alone, a resume keeps it, and a run started afresh has none |
+| `(plan-carry run)` | record `run`'s plan, from `(run-plan)`, as this turn's, decision `carried`, with its marks |
+| `(plan-run-request request run)` | the planner's request when a run's plan has every step marked: `request`, the previous plan and how each step went; `request` alone when `run` is `#f` |
 | `(plan-steps)` | the steps of the plan recorded in this turn, as strings: its numbered or bulleted lines, in order, or the whole plan when it is prose (one step); `'()` before a plan is recorded. The console reads a plan's steps the same way |
-| `(record-step n state note)` | record that step `n` (from 1) of this turn's plan is `"done"` or `"skipped"`, with a note saying what shows it, as `plan.step`; a later mark of the same step replaces it. Returns `((done . k) (of . n) (next . m))`: the steps marked so far, the plan's steps, and the first unmarked one, or `#f`. An error without a plan, for a step the plan does not have, or for another state |
+| `(record-step n state note)` | record that step `n` (from 1) of this turn's plan is `"done"` or `"skipped"`, with a note saying what shows it, as `plan.step`; a later mark of the same step replaces it, one a carried plan brought included. Returns `((done . k) (of . n) (next . m))`: the steps marked so far, carried ones included, the plan's steps, and the first unmarked one, or `#f`. An error without a plan, for a step the plan does not have, or for another state |
 | `plan-step` | the model's tool for those marks, an agent tool (`define-agent-tool`) answered by `plan-step-answer`: `{"step", "state", "note"}`, answered with what was marked and the next unmarked step. The plan header (`plan-header`) and a run's turn prompt ask the model to use it. A mark is the model's word, not a proof: the console shows it as such, and the evidence is the transcript |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
 | `(workspace)` | the workspace's kind and mounted folders from `.nodwyn/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The kind is a label: every kind has the same tools. Both default system prompts add a section naming the mounted folders, so a plain repository's prompt is unchanged; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file that no git work tree at the root covers, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it |

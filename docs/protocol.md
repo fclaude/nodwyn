@@ -236,7 +236,11 @@ checkpoint's `state` carries `cost`, `priced`, `unpriced` and
 A `plan.step` event is the model marking step `step` of `of` of the turn's
 recorded plan `done` or `skipped`, with its `note`; a later mark of the same
 step replaces an earlier one. A step's number indexes the plan's numbered or
-bulleted lines, or the whole plan when it is prose.
+bulleted lines, or the whole plan when it is prose. A run's later turn
+carries the run's plan: its `gate.plan` has `noul` `carried`, the same
+`plan`, and `marks`, the `plan.step` marks of the run's earlier turns, the
+latest per step in step order; the turn's own marks come after it, as
+`plan.step`, and a front-end shows both ([runs](runs.md)).
 
 `Prompt.Egress` names an OAuth2 credential's granted `Scopes` with its class
 and destination, and a proposed `Prompt.Binding` row pins them. A
@@ -523,7 +527,7 @@ Summary records now have typed `from`, `through`, `source_hash` and `text`
 payloads. `summary.drop` names `summary_seq`. These are durable history, not
 permission or mutation RPCs. The first editing surface is the local `nodwyn
 summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
-Recipes from `window-v2` on are summary-aware; new runtimes record `window-v12`,
+Recipes from `window-v2` on are summary-aware; new runtimes record `window-v13`,
 and exact replay supports every recipe from `window-v1` to it.
 
 
