@@ -3,18 +3,22 @@
 The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
-beside it the plan, this turn's budget, the changes, the project notes and the
-workspace. The plan shows the model's progress through it: the steps it
-marked done (with what it says shows it), the ones it skipped, and the next.
-**Connections**, **Workspaces** and **Settings** hold the rest. The
+beside it the plan, this turn's budget, the changes, the attachments, the
+project notes and the workspace. The plan shows the model's progress through
+it: the steps it marked done (with what it says shows it), the ones it
+skipped, and the next. After each reply the conversation shows its tokens,
+and when the provider reports them or the model has prices, how much of the
+prompt came from the cache and what it cost (the manual, "Choosing models").
+**Connections** (tools, credential bindings, workspaces, models),
+**Workspaces** and **Settings** hold the rest. The
 U3 inspectors described below sit under a task's **Details**. For the app
 window and first-run setup see [app.md](app.md).
 
 ## Tasks, folders and files
 
 **Starting.** Home's composer starts a task in the chosen folder. **Add a
-folder** names one and says what it holds — documents or code — and, in the
-app window, opens the system's folder chooser. The kind is a label: every
+folder** names one and says what it holds — documents, code or both — and,
+in the app window, opens the system's folder chooser. The kind is a label: every
 kind has the same tools and the same guard (see
 [ADR 22](adr/0022-cowork-workspaces-attachments-mcp.md), amended). The
 Workspaces page edits a folder's name, kind and **mounted folders** (other
@@ -24,9 +28,10 @@ folder's `.nodwyn/workspace.toml` (a code folder with no mounts needs none).
 They apply to tasks started afterwards.
 
 **Attaching.** The paperclip in either composer attaches files to the next
-message: text formats, `.docx`, `.xlsx`, `.pptx`, PDF when `pdftotext`
-is installed, and images (PNG, JPEG, GIF, WebP; at most 10 MB) when the
-control model takes them. Each file is copied into the folder's
+message (at most 20 MB each): text formats, `.docx`, `.xlsx`, `.pptx`, PDF
+when `pdftotext` is installed, and images (PNG, JPEG, GIF, WebP; at most
+10 MB) when the control model takes them; the TUI and line mode attach
+nothing. Each file is copied into the folder's
 `.nodwyn/attachments/`, its text redacted and capped, and shown to the
 model as data. The conversation shows a chip per file with how many
 secret-like strings were hidden.
@@ -46,12 +51,14 @@ diff, then your answer), and keeps the current content too. From a terminal:
 `nodwyn versions FILE` and `nodwyn undo FILE`.
 
 **Tools from MCP servers.** Connections › Tools adds a remote server (HTTPS, or
-plain HTTP to this computer only; a key goes to the keychain, bound to that host only), lists its tools for
+plain HTTP to this computer only; a key goes to the keychain, bound to that host only)
+and the folders it is offered in, lists its tools for
 review, and approves that exact tool list. For each tool you say what it does
 — reads, changes things, or leave it undeclared — and whether it is offered;
 nothing is offered until you choose. An undeclared tool asks every call and
 offers no standing answer. If the server later changes its tool list, new
-tasks withhold its tools until you review again.
+tasks withhold its tools until you review again. nodwyn runs no MCP server on
+this computer: contained local servers (ADR 23) are not available yet.
 
 A server can also be **contained, on this computer** (ADR 23 W3b): its image
 pinned by digest, the hosts it may reach (none, or a list its proxy lets
@@ -121,9 +128,10 @@ restarts.
 The desk shows saved and open sessions, their repository and last activity,
 recorded conversations, streamed text, collapsed thinking, tool arguments and
 results, guard decisions, and model usage. It reads a fixed log prefix in pages
-before applying live events, deduplicating durable sequence numbers. Refresh
-reloads that prefix. A reconnect never retries an operation. Browser reload
-retains pairing through the session cookie; select a session again to inspect it.
+before applying live events, deduplicating durable sequence numbers. Reloading
+the page reads that prefix again. A reconnect never retries an operation. Browser
+reload retains pairing through the session cookie, and the address keeps the
+task, so the same task opens again.
 Untrusted text is rendered as literal text, never HTML or executable Markdown.
 
 Create a session with an existing absolute repository directory, resume a saved
@@ -157,8 +165,9 @@ Credential prompts use a password field and the existing shared keychain path.
 Input is cleared on submit, session switch, refresh, or disconnect; it is never
 saved as a draft or included in the transcript. JavaScript strings cannot be
 reliably wiped from browser memory; the UI does not claim a secure memory arena.
-Budget checkpoints show usage and unchanged hard ceilings, with continue, stop,
-and explicit absolute soft-limit choices. More budget grants no tool authority.
+Budget checkpoints show usage, what the turn has cost so far when that is
+known, and unchanged hard ceilings, with continue, stop, and explicit absolute
+soft-limit choices. More budget grants no tool authority.
 
 Read-only mode displays the pending prompt but exposes no reply controls and
 rejects replies at the server. Pending state is restored from the daemon on
@@ -167,14 +176,15 @@ client clears the panel. Browser replies retain the Unix peer identity of the
 bridge in audit receipts; individual tabs are not separate security principals.
 
 Closing a browser tab or stopping `nodwyn ui` does not close sessions in the separately running daemon. Stopping the daemon still closes its
-sessions normally. The session list's titles and history metadata are snapshots; use Refresh to
-update them. Open/running/needs-answer state updates live across the daemon's
+sessions normally. The session list's titles and history metadata are snapshots, read
+again when this console starts, resumes or closes a task, or another client opens one;
+reload the page to update them at other times. Open/running/needs-answer state updates live across the daemon's
 sessions, including sessions opened by another client. These updates do not
 reload the selected conversation, replace an inspector or discard a draft.
 
 The session view buttons open fixed snapshots:
 
-- **Plan** shows the latest user message's recorded gate outcome, score and plan,
+- **Plan record** shows the latest user message's recorded gate outcome, score and plan,
   and the steps the model marked since (`plan.step`), in order.
   A newer message without a recorded outcome never inherits an older plan.
 - **Budget** separates current configured soft/hard limits from the latest turn's
@@ -271,7 +281,7 @@ caller-supplied paths/actors, environment-name hijacking, model-origin rejection
 known-secret containment, bounded reads and filesystem escape checks. Browser
 acceptance covers creation, persistence, validation errors, stale saves and draft
 retention after a failed write.
-Supervised background runs and cross-session notifications are described below.
+Cross-session notifications and runs are described below.
 Optional general TCP transport remains separate roadmap work.
 
 
@@ -300,6 +310,16 @@ RPC/WebSocket tests cover content-free snapshots and live transitions. Browser
 acceptance verifies another session's prompt and resolution without disturbing a
 draft, and notification mocks verify opt-in, generic text, revision ordering,
 deduplication and reconnect behavior. Native OS notification delivery was not
-exercised by those mocks. The supervised run driver is now available through `nodwyn run`; the browser
-receives its ordinary checkpoint prompts and Abort stops the whole run. See
-[runs](runs.md). Unattended continuation remains the next U4 slice.
+exercised by those mocks.
+
+## Runs (U4)
+
+Runs are started with `nodwyn run`, not from the console ([runs](runs.md)).
+The console follows a run like any task: its status says "Run" or
+"Unattended run" (and "judged" when the judge answers its confirms) with the
+turn count, the sidebar shows the turns and the time left, and the plan panel
+shows each turn's progress. A supervised run's checkpoint arrives as an
+ordinary prompt. **Pause** stops the run (`run.stop`), **Stop** aborts the
+session and with it the run, and **Resume run** resumes a stopped run
+supervised. The transcript says when an unattended run went on or stopped by
+itself, and which confirms the judge allowed or refused.

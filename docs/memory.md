@@ -58,8 +58,10 @@ the newer cache does not revive the older cache. Summary edits reset derived
 sticky-elision decisions, then the budget policy recomputes from source. This
 makes revocation effective rather than leaving an old cached omission in place.
 
-`window-v2` records this policy. Historical `window-v1` requests retain their
-original policy. Replaying an earlier request uses only the log prefix before
+Recipes from `window-v2` on record this policy (new sessions record
+`window-v12`, which adds later window features such as attached images);
+historical `window-v1` requests retain their original policy. Replaying an
+earlier request uses only the log prefix before
 that request, so a later revocation cannot change what the model originally saw.
 The checked-in v0.27 selfcheck fixture exercises real v1 compatibility; synthetic
 and fake-service tests separately exercise replacement, revocation and canaries.
@@ -71,10 +73,12 @@ and fake-service tests separately exercise replacement, revocation and canaries.
 ```scheme
 (index-grep "internal/window" "func (Build|ReplayRequest)")
 (index-grep "README.md" "summary")
+(index-grep "." "TODO" "*.go" 2)    ; optional glob, and up to 5 lines of context
 ```
 
-It returns an object/alist with `matches` (path, one-based line, text), `files`
-searched, `skipped` candidates and `truncated`. Results are sorted by path and
+It returns an object/alist with `matches` (path, one-based line, text, and
+with context the lines before and after), `files` searched, `skipped`
+candidates and `truncated`. Results are sorted by path and
 line. An empty match list is an ordinary no-match result. A truncated result is
 explicitly incomplete: narrow the path or pattern. There is no persistent index;
 every call observes current files under that session's repository root.
@@ -124,5 +128,14 @@ carried about 1.1 MB of vendored grammar binaries plus a WebAssembly runtime:
 the binding's Go module embeds only JavaScript and JSON, so Go and Python
 could not come from it. `index-grep` and `fs-read` cover retrieval.
 
-Across sessions, a repository keeps only its project notes (`project-notes`, docs/scheme.md); there is no semantic index or automatic summary generator.
-Those are not claims made by this P10 implementation.
+## Compaction
+
+Within a session, long work is compacted: just under the window's high water,
+or when you send `/compact`, the model writes a handover note and the
+conversation goes on from it, in that turn and later ones (the manual,
+"Changing the loop"; docs/scheme.md §9.2). The note is model-written and
+narrows the window (`context.narrow`); it is not a `summary` record, and the
+log keeps the whole conversation.
+
+Across sessions, a repository keeps only its project notes (`project-notes`, docs/scheme.md); there is no semantic index.
+That is not a claim made by this P10 implementation.

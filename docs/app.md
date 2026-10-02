@@ -29,13 +29,14 @@ pair with the code the app prints to its log.
 
 ## First run
 
-With no `config.toml`, Home asks which model to use: an Ollama server (on this
+With no model configured (no `[control]` in `config.toml`), Home asks which model to use: an Ollama server (on this
 computer or another one on the network) or any OpenAI-compatible server. The
 choice is written to the `[control]` table of `config.toml`; every other line
 of an existing file is kept, and saving the same model on the same server
-again keeps its hand-tuned settings (`num_ctx`, `temperature`, `seed`, …). An API key is never written there: it goes into
+again keeps its hand-tuned settings (`num_ctx`, `temperature`, `seed`, prices, …). An API key is never written there: it goes into
 the encrypted keychain, and a binding row allows it only for that server's
-host, `POST`, as a bearer `Authorization` header. A keychain is created from
+host, `POST`, as a bearer `Authorization` header. A model with a key must be
+reached over HTTPS, unless it runs on this computer. A keychain is created from
 Settings with a passphrase (at least 8 characters, not recoverable).
 
 When a keychain exists, a new app starts with it locked; Home offers to unlock

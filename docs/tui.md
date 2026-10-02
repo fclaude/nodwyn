@@ -35,10 +35,19 @@ Another process's writer lock remains authoritative; the TUI reports an attach
 error rather than opening a second writer.
 
 The conversation shows user and model text, tool calls/results, guard outcomes,
-plan scores and evaluation output. Thinking is hidden by default; `:thinking`
-toggles recorded reasoning and live thinking. Durable response text replaces
-its streamed preview rather than appearing twice. The log remains the source
-of truth; scrollback is a display derived from it.
+plan scores, the steps the model marks done or skipped (`plan-step`),
+attachments, document uploads and evaluation output. After each reply a
+usage line gives its tokens and, when known, the share of the prompt read
+from the provider's cache, its cost and the model's time (`12,400→800 tok ·
+78% cached · $0.012`; [the manual](manual.md), "Choosing models"). Thinking is hidden by
+default; `:thinking` toggles recorded reasoning and live thinking. Durable
+response text replaces its streamed preview rather than appearing twice. The
+log remains the source of truth; scrollback is a display derived from it.
+
+A message that starts with `/compact` or `/optimize` runs that command
+instead of an ordinary turn, as in every client ([the manual](manual.md)).
+Attached to a daemon, the TUI also follows a run (`nodwyn run`): its
+checkpoint arrives as an ordinary prompt ([runs](runs.md)).
 
 | Control | Meaning |
 |---|---|
@@ -57,7 +66,7 @@ of truth; scrollback is a display derived from it.
 | `:replay` | Read a transcript of the current session's durable log |
 | `:friction` | Read `docs/friction.md` through the existing guarded Scheme path |
 | `:plan` | Inspect the latest user message’s recorded planning outcome |
-| `:budget` | Inspect configured limits and the latest submitted turn’s checkpoints |
+| `:budget` | Inspect configured limits, the latest submitted turn’s spend and its checkpoints |
 | `:details` | Expand or collapse tool-call groups (see below) |
 | `:tools [name]` | List model-facing tools; an exact name shows the input schema |
 | `:allow` | Open the bindings/current approvals inspector |
@@ -161,11 +170,15 @@ plan. No recorded outcome is shown as absence, never as success or an assertion
 that the judge is disabled. Use `:log` for older outcomes and diagnostic notes.
 
 `:budget` shows the configured initial soft/hard limits for the current session
-lifetime, including the legacy tool-call override. It then shows checkpoints
-from the latest submitted user-message or Scheme-evaluation turn: dimension,
-usage, soft/hard limits at that point, all four usage counters, files/commands,
-recorded choice or error, and actor when available. Elapsed time is rounded to
-milliseconds. A recorded turn end is identified separately.
+lifetime, including the legacy tool-call override. For the latest submitted
+user-message or Scheme-evaluation turn it then shows what its model requests
+cost, as far as the provider reported or the model's prices estimate (and the
+share of prompt tokens read from cache), or that the spend is unknown and why;
+the judge's calls report no cost. Then that turn's checkpoints: dimension,
+usage, soft/hard limits at that point, all four usage counters, the spend so
+far when known, files/commands, recorded choice or error, and actor when
+available. Elapsed time is rounded to milliseconds. A recorded turn end is
+identified separately.
 
 These are checkpoint snapshots, not live counters, remaining allowances or
 final turn totals. A turn without a recorded checkpoint has unknown usage here.
@@ -241,8 +254,9 @@ mode offers the same choices. Older daemon prompts omit the binding action.
 The initial client, multiline composer, tool discovery, read-only inspectors,
 tool/plan/budget presentation and guarded binding edits are implemented.
 P9 line-mode flow parity is complete. Live budget counters are not exposed by
-the current API; the budget view explicitly reports recorded usage. U3's desktop client and U4's
-background supervisor remain separate roadmap work.
+the current API; the budget view explicitly reports recorded usage. The
+browser console and app window ([browser](browser.md), [app](app.md)) are
+other clients of the same daemon, which also drives runs ([runs](runs.md)).
 
 
 ## P9 acceptance coverage

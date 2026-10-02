@@ -73,11 +73,13 @@ nodwyn run stop SESSION
 nodwyn run resume SESSION
 ```
 
-Each command accepts `--socket PATH` before the session ID. Browser/terminal
-Abort stops the whole run, including a between-turn checkpoint. A client closing
+Each command accepts `--socket PATH` before the session ID. Aborting the
+session (`session.abort`, the console's **Stop**) stops the whole run,
+including a between-turn checkpoint. A client closing
 or disconnecting does not stop it. The active run reserves its session: manual
-send/eval/friction/policy operations are rejected until it stops. Prompt replies
-and inspection of recorded history remain available.
+send, eval, friction, policy, project-notes, file-restore and attach operations
+are rejected until it stops. Prompt replies and inspection of recorded history
+remain available.
 
 The daemon stops and joins drivers before closing sessions on shutdown. There
 is no automatic restart. Explicit resume reloads current session policy, retains
@@ -142,5 +144,7 @@ fewer, and nothing in it ever waits for a person:
 A resume never brings either back from the log: `nodwyn run resume SESSION`
 resumes a supervised run, and `--unattended` (with `--yolo` or `--judge` if
 wanted) must be said again, as the person resuming decides how it goes on. The console shows
-an unattended run as such and can stop and resume it; its Resume button
-resumes it supervised.
+an unattended or judged run as such ("Unattended run", "judged"). Its
+**Pause** button stops the run (`run.stop`) and **Resume run** resumes it
+supervised. The console does not start runs: `nodwyn run` (or `run.start`
+over the [protocol](protocol.md)) does.

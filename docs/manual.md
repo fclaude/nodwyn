@@ -36,7 +36,7 @@ This is the spine. Read these in order and you have read the system.
 | 4 | [internal/window/window.go](../internal/window/window.go) `Build` | elides oldest tool results *in place* so the request prefix never changes |
 | 5 | [internal/llm/ollama.go](../internal/llm/ollama.go) `Chat` | native `/api/chat` streaming; thinking separated; tool-call args stay JSON objects |
 | 6 | [internal/loop/tools.go](../internal/loop/tools.go) `apply` | `Prim.ArgsFromJSON` orders named JSON args into positional Scheme values; `WithOrigin(ctx, OriginModel)` |
-| 7 | [internal/scheme/prim.go](../internal/scheme/prim.go) `applyPrim` | **the single Scheme→Go exit**: arity check, `gate.Before`, then the handler |
+| 7 | [internal/scheme/prim.go](../internal/scheme/prim.go) `applyPrim` | **the single Scheme→Go exit**: arity check, `gate.Before`, the handler, then the result's taint (`taintResult`) |
 | 8 | [internal/guard/guard.go](../internal/guard/guard.go) `Before` | checkers run in order; strictest verdict wins; a standing approval outranks confirm, never deny; every host-reaching decision is logged |
 | 9 | [internal/guard/checkers.go](../internal/guard/checkers.go), [allow.go](../internal/guard/allow.go) | the bootstrap envelope: `MetaPolicy`, `RepoPin`, `PathDenylist`, `ArgvTrigger`, `CommandAllow` |
 | 10 | [internal/prim/fs.go](../internal/prim/fs.go), [shell.go](../internal/prim/shell.go) | the host primitives; `Meta.Params[].Role` is what the guard reads; `Preview` renders the diff for the prompt |
@@ -48,11 +48,15 @@ This is the spine. Read these in order and you have read the system.
 |---|---|---|
 | `internal/scheme` | the language: values, reader, eval/apply, builtins, primitive table | [docs/scheme.md](scheme.md) then `interp.go` `Eval` |
 | `internal/guard` | the one decision point and its checkers | `guard.go` `Before` |
-| `internal/prim` | host primitives and the diff; the document tools | `prim.go` `Register`, `Checkers`; `docs.go` |
-| `internal/llm` | the provider seam, the Ollama and OpenAI-compatible clients | `llm.go` `Provider` |
+| `internal/prim` | host primitives and the diff; the document tools; the judge's primitives and tools | `prim.go` `Register`, `Checkers`; `docs.go`; `jev.go` |
+| `internal/llm` | the provider seam, the Ollama and OpenAI-compatible clients, what a request cost | `llm.go` `Provider`; `cost.go` |
 | `internal/window` | the derived context | `Build` |
 | `internal/loop` | the loop's primitives and default strategy | the package comment's reading order, starting at `loop.go` `Turn` |
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
+| `internal/budget` | one turn's budgets and checkpoints | `budget.go` |
+| `internal/extract` | attachments: text by file type, images checked but never read as text | `extract.go`, `image.go` |
+| `internal/mcp` | the client for remote MCP servers; it runs no server and starts no process | `client.go` |
+| `internal/policyfile` | atomic writes of the policy files the console edits | `update.go` |
 | `internal/keychain` | encrypted credentials, opaque handles and injection; OAuth2 token sets, refresh and acquisition | `store.go`, `oauth.go`, `acquire.go` |
 | `internal/binding` | binding loading and authorization lookup | `binding.go` `Lookup`; Scheme call decoding lives in `guard/egress_facts.go` |
 | `internal/mcp` | the MCP client, over streamable HTTP or a contained server's stdio | `client.go`, `stdio.go`; sessions use it from `core/mcp.go` |
@@ -62,11 +66,16 @@ This is the spine. Read these in order and you have read the system.
 | `internal/log` | the append-only log | `log.go` `Append`, `Replay` |
 | `internal/config` | XDG paths, config.toml and allow.toml | `Default`, `Validate` |
 | `internal/frontend/plain` | line mode and replay | `chat.go` `show` |
+| `internal/frontend/tui` | the terminal client ([docs/tui.md](tui.md)) | `model.go` |
 | `internal/frontend/rpc` | local daemon sessions, turns and events | `server.go`, `sessions.go`, `events.go` |
+| `internal/frontend/run` | supervised and unattended runs ([docs/runs.md](runs.md)) | `run.go` `Driver` |
+| `internal/frontend/web` | the browser console: its bridge to the daemon and its pages ([docs/browser.md](browser.md)) | `server.go`, `assets/app.js` |
 | `cmd/nodwyn` | flags → core → front-end; nothing else | `main.go` |
+| `cmd/nodwyn-schema` | generates `docs/protocol.schema.json` | `main.go` |
 | `dev/`, `.nodwyn/` | this repository's own tools and standing approvals | `dev/go.scm` |
 | `test/exfil` | the exfiltration scenario suite | `exfil_test.go`, `scenarios/` |
-| `test/fakes/ollama` | scriptable fake of the model server | `ollama.go` |
+| `test/browser` | the console's checks in headless Chromium | `README.md` |
+| `test/fakes/ollama` | scriptable fake of the model server; `serve` runs it for the selfcheck | `ollama.go` |
 | `test/fakes/jev`, `mcp`, `oauth`, `drive` | fakes of the judge, an MCP server, an OAuth2 provider and Drive's upload endpoint: no test reaches a real service | each package's comment |
 | `test/fakes/mcp`, `test/fakes/container` | a fake MCP server (HTTP or stdio) and a fake container runtime that is the test binary run again | `mcp.go`, `container.go` |
 
@@ -100,20 +109,27 @@ jq -c '[.seq,.kind]' ~/.local/share/nodwyn/sessions/<id>.jsonl
 Event kinds are listed in [internal/log/log.go](../internal/log/log.go).
 `guard.decision` lines carry `origin` (user, model, or harness for the loop
 strategy and plan gate), `decision`, `checker`,
-`reason` and, for confirms, `answer`. An `llm.req` has `elided`: the seqs
-whose content was replaced in the window.
+`reason` and, for confirms, `answer` and, when recorded, `actor`: who
+answered (a daemon client's identity, `judge` or `unattended`). An
+`llm.req` has `elided`: the seqs whose content was replaced in the window.
 
-### Where the next phases plug in
+### Where each phase lives
 
-| Phase | Seam already in place |
+Every phase of [plan.md](../plan.md) up to P10 is built except the optional
+P8. This is where to start reading each, and where P8 and contained local
+MCP servers would go.
+
+| Phase | Where it lives |
 |---|---|
-| P3 credentials | `scheme.KHandle`; `Param.Role = "credential"`; `config.Bindings`; `guard.Egress` checks the binding table (done) |
-| P4 L1 | a checker over `Role: payload`/`argv` text; `log.Writer.Filter` |
-| P5 Jev + plan gate | `log.KindGatePlan`; `ArgvTrigger` becomes the hard-trigger list |
-| P6 taint | `Value.Taint` (reserved), `Call.Origin` |
+| P3 credentials | `scheme.KHandle`; `Param.Role = "credential"`; `internal/keychain`; `guard.Egress` checks the binding table (`internal/binding`) |
+| P4 L1 | `internal/detect/l1`; `guard.TextSecret` scans `Role: payload`/`argv` text |
+| P5 Jev + plan gate | `internal/loop/plan.scm`; `internal/prim/jev.go`; `log.KindGatePlan`; `ArgvTrigger` is the hard-trigger list |
+| P6 taint | `Value.Taint`, propagated in `taintResult`; `guard.Taint` runs before L1 |
 | P7 redaction | `Session.Record` sanitizes payloads; the log writer enforces redaction; `window.Build` derives context from written events |
 | P9 TUI | `internal/frontend/tui` over `core.Session`, no core change |
-| P10 memory | replace `internal/window`; `log.KindSummary` |
+| P10 memory | summaries in `internal/window` (`summary.go`) and `log.KindSummary`; `index-grep` ([docs/memory.md](memory.md)) |
+| P8 L3 (optional, not started) | the residual L1 marks as unknown entropy (`l1.Scanner`'s `isUnknownEntropy`); a checker after `guard.TextSecret` |
+| W3b contained local MCP servers (not available) | nothing yet: `internal/mcp` reaches remote servers over HTTP and starts no process |
 
 ---
 
@@ -134,9 +150,11 @@ build where that can be built, so `nodwyn-stable app` opens a window; on Linux t
 Use `nodwyn-stable` for real work and `bin/nodwyn` only to test a change to
 nodwyn itself. Never run the binary you are editing (ADR 12).
 
-Requires Go 1.26 or newer (ADR 33), `staticcheck`, and a
-model to talk to: the `[control]` table in `config.toml` (`bin/nodwyn paths`
-shows where it lives; everything else has defaults in
+Building requires Go 1.26 or newer (ADR 33) and `staticcheck`. The
+selfcheck's model turn goes to a fake model server, so promoting needs no
+model, key or passphrase. Using nodwyn needs a model to talk to: the
+`[control]` table in `config.toml` (`bin/nodwyn paths` shows where it lives;
+everything else has defaults in
 [internal/config/config.go](../internal/config/config.go)). There is no
 built-in model; without one, nodwyn prints the table to add. See "Choosing
 models".
@@ -151,8 +169,8 @@ nodwyn-stable                       # pins every path to this directory
 ```
 nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
-tools fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep read-definition
-      second-look shell-exec shell-read shell-send shell-start shell-stop
+tools doc-export fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep plan-step
+      read-definition second-look shell-exec shell-read shell-send shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence
@@ -163,6 +181,7 @@ Commands at the `you>` prompt:
 | | |
 |---|---|
 | `:q` | quit (writes `session.end`) |
+| `:h` | list these commands |
 | `:log [n]` | last n log events |
 | `:tools` | tools offered to the model |
 | `:allow` | standing command and write approvals in effect |
@@ -178,7 +197,8 @@ terminal, the TUI, the console and a paired phone):
 | `/compact [what to keep]` | compact the conversation now, whatever its size: the model writes a handover note for your latest request, and your next message goes on from the note instead of the whole conversation. Words after it are what the note must keep (`/compact the failing test names`). The log keeps everything |
 | `/optimize [n \| ids] [focus]` | learn from this repository's past sessions and improve `.nodwyn/init.scm` ("Changing the loop" below) |
 
-Flags: `--repo DIR`, `--model`, `--url`, `--show-thinking`, `--no-confirm`
+Flags: `--repo DIR`, `--resume ID` (go on with a session; it keeps its
+repository unless `--repo` is given), `--model`, `--url`, `--show-thinking`, `--no-confirm`
 (every confirm is a no — for scripts and CI), `--yolo` (every ordinary
 confirm is a yes — for work nobody is watching), `--no-keychain`,
 `--keychain-tty` (ask for the keychain passphrase on the terminal even when
@@ -190,6 +210,12 @@ checkpoint behavior are described in the README. Defaults are 50/500 calls,
 attempts (soft/hard). Legacy `loop.max_tool_calls` remains an explicit override.
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
+
+Line mode is one client of several: `nodwyn tui` is a full-screen terminal
+client ([the TUI](tui.md)), `nodwyn app` and `nodwyn ui` show the console in
+a window or a browser ([the app](app.md), [the browser view](browser.md)),
+and `nodwyn run` hands a bounded task to the daemon ([runs](runs.md)).
+`nodwyn -h` lists every command and flag.
 
 ### Programs that keep running
 
@@ -236,7 +262,8 @@ repository's path, and never in the repository or its diff. The next session
 in the same repository shows them in its system prompt, under a heading that
 calls them the agent's own notes: leads to check, not instructions. A save
 is capped at 8 KiB and redacted, and content that looks like a credential
-needs your approval.
+needs your approval. The console's task view shows them and lets you edit
+them ("What nodwyn knows here"), through the same guarded save.
 
 ### Confirms
 
@@ -330,7 +357,8 @@ daemon: a daemon left running never auto-approves a session someone opens
 later from the browser. `nodwyn run status|stop` follow the run, and its
 turns are bounded by `--max-turns` and `--budget-wall`. `--yolo` answers the
 tool confirms inside each turn; going on to the next turn still waits for a
-yes at the run checkpoint, from the browser or the terminal client.
+yes at the run checkpoint, from the browser or the terminal client, unless
+the run is `--unattended`.
 
 ### Standing approvals
 
@@ -435,6 +463,23 @@ arguments); the inner `shell-exec` is still irreversible, so pair the tool
 with a standing approval. The language is in [docs/scheme.md](scheme.md);
 try things in `nodwyn repl` or with `:eval`.
 
+### Tools from MCP servers
+
+A remote MCP server's tools can be offered too. Add the server in the
+console, under Connections › Tools ([the browser view](browser.md)): its
+address (HTTPS, or plain HTTP to this computer only), a key if it needs one
+(kept in the keychain and bound to that host alone), and the folders where it
+is offered. nodwyn lists the server's tools, you say what each does (reads,
+or changes things) and which are offered, and it pins that tool list; if the
+server's list changes, new sessions withhold its tools until you review it
+again. The servers are kept in `mcp.toml` in the config directory. The model
+sees a tool as `server__tool`, and every call crosses the guard: its
+arguments are payloads that leave the machine, a tool that changes things
+asks, and an undeclared one asks every call with no standing answer.
+
+nodwyn runs no MCP server on this computer. Local servers, run in a
+container nodwyn controls (W3b, ADR 23), are not available yet.
+
 ### Changing the loop
 
 A turn is the Scheme procedure `agent-turn`; redefine it in
@@ -499,7 +544,8 @@ OAuth client with the provider (a desktop or "installed" app, redirect
 nodwyn credential add --oauth2 google --client-id ID --scopes drive.file,documents
 ```
 
-Your browser opens the provider's consent page; nodwyn waits five minutes
+Your browser opens the provider's consent page (`--no-browser` prints its
+address instead); nodwyn waits five minutes
 for the redirect on a loopback port it opened for that one request, checks
 it, exchanges the code (PKCE, so no client secret is needed unless the
 provider insists: `--client-secret` asks for it), and stores the tokens in
@@ -538,7 +584,10 @@ nodwyn credential login google     # authorize again
 nodwyn credential revoke google    # revoke at the provider, delete here
 ```
 
-The daemon sees these changes without a restart.
+`revoke --local` only deletes it here; `login` and `revoke` take the
+credential's id or class. `credential add` stores only OAuth2 credentials: a
+static key is still registered in a session, with `credential-register`. The
+daemon sees these changes without a restart.
 
 ### Documents out
 
@@ -772,7 +821,7 @@ price_output = 15.0        # output tokens, reasoning included
 A cost from prices is an estimate, shown with ≈: it does not know a
 provider's surcharge for writing to its cache, so a reported cost always
 wins. Ollama reports neither, and its line reads as before; so does an older
-log. `:budget` adds the turn's spend over every model request (the
+log. The TUI's `:budget` adds the turn's spend over every model request (the
 planner's, sub-agents' and compaction's included; the judge reports no
 cost), and a budget checkpoint says what the turn has cost so far. Spend is
 shown, never a limit: the token budget still counts cached tokens in full.
@@ -862,8 +911,9 @@ temperature = 0
 seed = 42
 ```
 
-**Images.** An image can be attached only when the control model takes
-images. Ollama says whether a model does (`ollama show MODEL` lists `vision`
+**Images.** Files are attached from the console's composer
+([the browser view](browser.md), "Attaching"). An image can be attached
+only when the control model takes images. Ollama says whether a model does (`ollama show MODEL` lists `vision`
 among its capabilities), and nodwyn asks it once per session. A
 chat-completions server does not say, so you do:
 
@@ -881,7 +931,8 @@ Attaching an image (PNG, JPEG, GIF or WebP, decided by its content; at most
 the file and the control model's host, says whether that host is this
 machine or another one, and says that the image cannot be redacted: whatever
 it shows reaches the model as it is, and nothing in it is read as text.
-`--yolo` never answers it yes and `--no-confirm` declines it. The log keeps
+`--yolo` never answers it yes, and `--no-confirm`, a judged run and an
+unattended run decline it. The log keeps
 the image's type, size, digest, dimensions and host, never its pixels; the
 copy is in `.nodwyn/attachments/`. An image goes only to the host it was
 confirmed for: a request to another configured model, at another host,
@@ -894,8 +945,8 @@ to take an image out of a conversation.
 
 The console's Settings page writes `[control]` for you. Saving the same model
 on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
-`max_output`, `output_field`, `temperature`, `seed`, `vision`); choosing
-another model starts from its defaults.
+`max_output`, `output_field`, `temperature`, `seed`, `vision` and the
+`price_*` entries); choosing another model starts from its defaults.
 
 The line-mode `nodwyn` refuses to start without it, printing the table to
 add, and checks at start that an Ollama control server answers. A daemon
@@ -963,6 +1014,9 @@ Unknown entropy remains a residual for P8's optional L3 classifier.
 `nodwyn daemon --no-keychain` to skip credential-store startup, and
 `--socket /absolute/private/directory/sock` to override its socket path.
 The protocol supports session lifecycle, send/abort, subscriptions, paged
-log catch-up, and answering prompts (`session.answer`, `session.secret`,
-`session.approval.create`, `session.binding.create`). See [the protocol guide](protocol.md) for the handshake, methods,
-permissions and reconnect semantics.
+log catch-up, answering prompts (`session.answer`, `session.secret`,
+`session.approval.create`, `session.binding.create`), runs, and what the
+console needs besides: model and keychain setup, workspaces, attachments,
+file versions and MCP servers. See [the protocol guide](protocol.md) for the handshake, methods,
+permissions and reconnect semantics. `nodwyn app` starts one itself when none
+is running ([the app](app.md)).

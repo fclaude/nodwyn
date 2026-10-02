@@ -325,10 +325,18 @@ A server in `mcp.save` is remote (`url`) or contained (`transport:
 same image, entrypoint and arguments (the same `url` for a remote one) keeps
 its approved manifest; any other change needs approval again.
 
-Settings, keychain, `workspace.save`, `workspace.remove` and the `mcp.inspect`,
-`mcp.save`, `mcp.approve`, `mcp.remove` and `mcp.pull` methods are refused
-to a paired remote device in the web console (browser.md); `mcp.runtime`
-only reads.
+`settings.control.write`, `keychain.create`, `keychain.unlock`,
+`session.binding.create`, `session.policy.write`, `workspace.save`,
+`workspace.remove` and the `mcp.inspect`, `mcp.save`, `mcp.approve`,
+`mcp.remove` and `mcp.pull` methods are refused to a paired remote device in
+the web console (browser.md); `mcp.runtime` only reads. The console never
+offers `session.eval` or `run.start`.
+
+An MCP server is remote (its `url` HTTPS, or plain HTTP to this machine
+only) or contained (ADR 23 W3b): the daemon runs it in podman or docker from
+an image pinned by digest, speaking MCP over the container's standard input
+and output, with no network or only the hosts its egress proxy lets
+through. The daemon starts no MCP server as a process of its own.
 
 An image (PNG, JPEG, GIF or WebP by content; ADR 22, amended 2026-10-01) is
 attached only after the person says yes to its own confirm, which reaches
@@ -338,7 +346,8 @@ control model's host and say the pixels cannot be redacted. Answer it with
 `session.answer` (`y` or `n`; no standing answer applies) from a connection
 other than the one waiting in `session.attach`, since a connection's calls
 run in order; the daemon serves other methods meanwhile. A daemon session
-that answers confirms itself (a run's `auto_approve`) declines it, and so
+that answers confirms itself (a run's `auto_approve` or `judge`) or that
+nobody answers (`unattended`) declines it, and so
 does `session.abort`, or ten minutes without an answer; `session.attach`
 then fails and the log has a `note`. While it waits, `session.send` is
 refused. The receipt of an image is its `attach` record: `type` `image`,
@@ -380,8 +389,8 @@ including final event delivery, before closing the channel and writer.
 `identity*.go` reads platform peer credentials; `approvals.go` passes attributed
 replies to the core facade. It owns neither pending prompts nor policy changes.
 `schema.go` derives documentation from wire types. U2's local Unix transport is
-implemented; P9 can now exercise it as a first client. U3/U4 and optional TCP
-remain future work.
+implemented; its clients are the TUI (P9), the browser console and app window
+(U3), and `nodwyn run` (U4). Optional TCP remains future work.
 
 
 ## Persistent binding approval
@@ -415,8 +424,8 @@ Summary records now have typed `from`, `through`, `source_hash` and `text`
 payloads. `summary.drop` names `summary_seq`. These are durable history, not
 permission or mutation RPCs. The first editing surface is the local `nodwyn
 summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
-New runtimes use the summary-aware `window-v2` recipe; exact replay still supports
-`window-v1`.
+Recipes from `window-v2` on are summary-aware; new runtimes record `window-v12`,
+and exact replay supports every recipe from `window-v1` to it.
 
 
 ### Prompt scope metadata
@@ -482,7 +491,9 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
   answered by the judge has actor `judge`; one declined because nobody was
   there to ask, actor `unattended`.
 - `run.info {id}` returns task, original deadline, maximum and consumed turns,
-  status and reason. A saved formerly running run is reported paused.
+  status and reason, and for a run this daemon drives, how it was started
+  (`unattended`, `auto_approve`, `judge`). A saved formerly running run is
+  reported paused.
 - `run.stop {id}` cancels the driver and its active turn or checkpoint.
 - `run.resume {id, auto_approve?, unattended?, judge?}` explicitly reopens a stopped run at a recorded turn boundary,
   preserving its original deadline and turn count. No transient grants survive,
@@ -492,10 +503,12 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
 Run methods are available through local RPC/CLI; the browser can follow the
 session, answer its existing prompts, and stop (`run.stop` or `session.abort`)
 or resume (`run.resume`) it. While a
-run is active, session `busy` includes the between-turn wait. Manual send/eval
-and policy/friction operations are rejected until it stops. New `run.state`,
+run is active, session `busy` includes the between-turn wait. `session.send`,
+`session.eval`, `session.friction`, `session.policy.read`/`write`,
+`session.notes.write`, `session.restore` and `session.attach` are rejected
+until it stops. New `run.state`,
 `run.turn` and `run.checkpoint` records and optional `turn.end.outcome/error`
 fields are described by the generated schema. An unattended run's
-`run.checkpoint` has actor `unattended` and a `reason`, and its `run.state`
-records `unattended` and `auto_approve`. See [runs](runs.md) for limits,
+`run.checkpoint` has actor `unattended` and a `reason`, and `run.state`
+records `unattended`, `auto_approve` and `judge`. See [runs](runs.md) for limits,
 completion-marker semantics and recovery constraints.
