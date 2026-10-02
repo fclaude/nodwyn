@@ -129,7 +129,7 @@ MCP servers would go.
 | P9 TUI | `internal/frontend/tui` over `core.Session`, no core change |
 | P10 memory | summaries in `internal/window` (`summary.go`) and `log.KindSummary`; `index-grep` ([docs/memory.md](memory.md)) |
 | P8 L3 (optional, not started) | the residual L1 marks as unknown entropy (`l1.Scanner`'s `isUnknownEntropy`); a checker after `guard.TextSecret` |
-| W3b contained local MCP servers (not available) | nothing yet: `internal/mcp` reaches remote servers over HTTP and starts no process |
+| W3b contained local MCP servers | `internal/container` runs a server in podman or docker, `internal/egress` (`cmd/nodwyn-egress`) is the allowlisting proxy, `core/contained.go` connects it to a session; `internal/mcp` speaks to it over stdio |
 
 ---
 
@@ -477,8 +477,8 @@ sees a tool as `server__tool`, and every call crosses the guard: its
 arguments are payloads that leave the machine, a tool that changes things
 asks, and an undeclared one asks every call with no standing answer.
 
-nodwyn runs no MCP server on this computer. Local servers, run in a
-container nodwyn controls (W3b, ADR 23), are not available yet.
+A server on this computer runs only in a container nodwyn controls (W3b,
+ADR 23); "MCP servers" below says how.
 
 ### Changing the loop
 

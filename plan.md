@@ -10,8 +10,8 @@ Companion to [SPEC.md](SPEC.md). The spec says *what* and *why*; this says *in w
 
 ## Status (2026-10-01)
 
-- **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: the real UI, U1–U4 (U4's unattended runs 2026-10-01); the task-oriented console, the standalone app and remote devices (D1–D5); and the cowork track except W3b: workspaces (W1), attachments (W2, text 2026-09-30, images 2026-10-01), remote MCP servers (W3a; W1–W3a are D6–D8), OAuth2 credentials (W4, 2026-09-30) and documents out (W5, 2026-10-01).
-- **Not done:** P8 (L3, optional); contained local MCP servers (W3b/D9).
+- **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: the real UI, U1–U4 (U4's unattended runs 2026-10-01); the task-oriented console, the standalone app and remote devices (D1–D5); and the cowork track: workspaces (W1), attachments (W2, text 2026-09-30, images 2026-10-01), remote MCP servers (W3a; W1–W3a are D6–D8), contained local MCP servers (W3b/D9, 2026-10-01), OAuth2 credentials (W4, 2026-09-30) and documents out (W5, 2026-10-01).
+- **Not done:** P8 (L3, optional).
 - **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base (ADRs 26–29, 31–33), and smaller pieces such as the judge tools, plan step progress, judged approval and what a model request cost. §5 "Outside the plan" says what drove them.
 - **Next:** §10.
 
@@ -405,7 +405,7 @@ approval over RPC needs its own explicit method.
 ### After v0 — cowork: workspaces, attachments, MCP (ADR 22, ADR 23)
 
 Status (2026-10-01): W1, W2 (text and images), W3a, W4 and W5 are
-implemented, W1–W3a as D6–D8 below. W3b is not.
+implemented, W1–W3a as D6–D8 below. W3b came on 2026-10-01, as D9.
 
 The same harness, applied to work that is not only code, for **one person**
 (collaboration is out of scope). The invariants do not change; three
@@ -457,7 +457,14 @@ what the guard reads).
   digest-pinned container with a declared network (`[]` = none) and declared
   workspace mounts (default none), reached over loopback HTTP. A container
   runtime becomes an optional dependency; without one, remote servers still
-  work. See ADR 23 for the full posture and its accepted limits.
+  work. See ADR 23 for the full posture and its accepted limits. **Done
+  2026-10-01** (ADR 23, "W3b implemented"): podman or docker, an image
+  pinned by digest and pulled only by the user, MCP over the container's
+  stdio rather than loopback HTTP, `--network none` or a per-server internal
+  network whose only way out is a sidecar running `nodwyn-egress`, which
+  lets through only the listed hosts and records each attempt
+  (`mcp.egress`); a credential goes in as a declared variable only if it is
+  bound for every listed host. Verified against real podman and docker.
 - **W4 — OAuth2 credentials (≈1.5 weeks, extends P3; ADR 24).** ADR 5 stores
   one static value; OAuth2 is a token set that expires, rotates, and is
   acquired through a browser. A credential gains a kind (`static` |
@@ -553,17 +560,17 @@ Each step is independently useful and lands with tests and docs.
   binding table; the Connections page with per-tool profiles, manifest
   review and per-workspace enablement.
 - **D9 — contained local MCP servers (W3b), stretch.** Docker-backed, per
-  ADR 23.
+  ADR 23. Done 2026-10-01, with podman or docker.
 
 Order: D1–D3 make the design real on today's capabilities; D4 is the family
 requirement and comes next; D5 is small once D4's pairing exists; D6–D8
 are the cowork track the canvas assumes.
 
-Status (2026-10-01): **D1–D8 implemented** and merged into `main`, each
-with Go tests and a browser flow (test/browser). D9 is not started: honoring a
-per-host network allowlist inside a container needs an egress proxy, and
-half-isolation would be worse than none. Images as attachments completed D7
-on 2026-10-01. What comes next is §10.
+Status (2026-10-01): **D1–D9 implemented** and merged into `main`, each
+with Go tests and a browser flow (test/browser). Images as attachments
+completed D7 on 2026-10-01; D9 came the same day, once an egress proxy could
+enforce a per-host allowlist inside the container (W3b above). What comes
+next is §10.
 
 ### Outside the plan — what running it taught (2026-09-26 to 2026-10-01)
 
@@ -634,7 +641,7 @@ The weeks are the original estimate; the last two columns are what happened.
 | after v0 | U3 browser, U4 attention and runs | | `v0.31-browser-view` … `v0.41-supervised-runs` | 2026-09-22 |
 | after v0 | Console rebuild | | `v0.42-console` | 2026-09-25 |
 | after v0 | D1–D8 (console, app, devices, workspaces, attachments, MCP) | | commits on `main`; promotion no longer tags | 2026-09-30 |
-| after v0 | W4 OAuth2; W2 images, W5 documents out, U4 unattended runs | | commits on `main` | 2026-09-30, 2026-10-01 |
+| after v0 | W4 OAuth2; W2 images, W3b/D9 contained MCP servers, W5 documents out, U4 unattended runs | | commits on `main` | 2026-09-30, 2026-10-01 |
 
 Cut order, as planned: P10 → P8 → P9 polish (keep `--plain`). Never cut B0–B3 or P3–P7. Only P8 was cut.
 
@@ -693,8 +700,7 @@ Still open:
 
 In this order, each for the reason given:
 
-1. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
-2. **P8 — L3**, optional.
+1. **P8 — L3**, optional.
 
 Smaller open gaps, in no order:
 

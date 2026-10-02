@@ -403,7 +403,7 @@ export class TaskView {
     const st = this.status();
     const actions = h("div", { class: "task-actions" });
     const button = (label, iconName, handler, cls = "") => h("button", { type: "button", class: `btn ${cls}`, disabled: !this.conn.live || this.acting, onclick: handler }, iconName ? icon(iconName, 15) : null, label);
-    if (item.run?.status === "running" && this.conn.has("run.stop")) actions.append(button("Pause", "pause", () => this.act("run.stop", "Pausing the run after this step…")));
+    if (item.run?.status === "running" && this.conn.has("run.stop")) actions.append(button("Pause", "pause", () => this.act("run.stop", "Stopping the run…")));
     else if (item.open && item.run && item.run.status !== "running" && item.run.status !== "completed" && this.conn.has("run.resume")) actions.append(button("Resume run", "up", () => this.act("run.resume", "Resuming the run…")));
     if (item.open && this.conn.has("session.abort")) {
       const stop = button("Stop", "stop", () => this.act("session.abort", "Stopping…"));

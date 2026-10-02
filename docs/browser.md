@@ -57,8 +57,7 @@ review, and approves that exact tool list. For each tool you say what it does
 — reads, changes things, or leave it undeclared — and whether it is offered;
 nothing is offered until you choose. An undeclared tool asks every call and
 offers no standing answer. If the server later changes its tool list, new
-tasks withhold its tools until you review again. nodwyn runs no MCP server on
-this computer: contained local servers (ADR 23) are not available yet.
+tasks withhold its tools until you review again.
 
 A server can also be **contained, on this computer** (ADR 23 W3b): its image
 pinned by digest, the hosts it may reach (none, or a list its proxy lets
