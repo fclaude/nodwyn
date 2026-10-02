@@ -35,8 +35,9 @@ you wrote it. Its sections:
   reply and a command may take.
 - **Models** — whether each configured model answers, the main model, and
   its tuning: context length, reply cap, temperature and seed, how long
-  Ollama keeps it loaded, whether a chat-completions model takes images and
-  which field caps its reply, and its prices.
+  Ollama keeps it loaded, whether a chat-completions model takes images,
+  which field caps its reply and how its requests name their session (the
+  manual, "Keeping the cache warm"), and its prices.
 - **Judge** — whether a judge is available, what it may be shown, the
   probability at which it allows a run's request, and how long it may take.
 - **Documents** — how uploads to Google Docs are handled (the manual,

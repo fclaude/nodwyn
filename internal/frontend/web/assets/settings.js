@@ -75,6 +75,7 @@ const specs = {
   "control.keep_alive": { kind: "text", label: "Keep loaded" },
   "control.vision": { kind: "choice", label: "Takes images" },
   "control.output_field": { kind: "choice", label: "Reply cap field" },
+  "control.cache_key": { kind: "choice", label: "Session key" },
   "control.price_input": { kind: "decimal", label: "Price of input" },
   "control.price_cached_input": { kind: "decimal", label: "Price of cached input" },
   "control.price_output": { kind: "decimal", label: "Price of output" },
@@ -452,6 +453,7 @@ function modelsSection(ctx, root) {
             : [
                 ...row("Takes images", choice(ctx, "control.vision", [[true, "Yes"], [false, "No"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "Whether an attached image may be sent to this model. A chat-completions server doesn't say, so you do.")),
                 ...row("Reply cap field", choice(ctx, "control.output_field", [["", "max_completion_tokens"], ["max_tokens", "max_tokens"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "Reasoning models refuse the older max_tokens; some servers know only that one.")),
+                ...row("Session key", choice(ctx, "control.cache_key", [["", "Header and field"], ["header", "Header only"], ["off", "Not sent"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "Names the session to the server, so it can keep the requests on the replica that holds their prompt cache. Header only for a server that refuses fields it doesn't know.")),
               ],
           ...row(
             "Prices",

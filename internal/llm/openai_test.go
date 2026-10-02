@@ -129,6 +129,51 @@ func TestOpenAISampling(t *testing.T) {
 	}
 }
 
+// A cache key goes with every chat request as X-Session-Id and, unless the
+// server is to get it only as a header, as prompt_cache_key; without one,
+// neither is sent. The model list is asked without it.
+func TestOpenAICacheKey(t *testing.T) {
+	var got map[string]any
+	var header string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		header = r.Header.Get("X-Session-Id")
+		if r.Method == http.MethodGet {
+			w.Write([]byte(`{"data":[]}`))
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		got = nil
+		json.Unmarshal(b, &got)
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+	msgs := []Message{{Role: RoleUser, Content: "hi"}}
+	for _, tc := range []struct {
+		key        string
+		headerOnly bool
+		wantBody   any
+	}{
+		{"k1", false, "k1"},
+		{"k1", true, nil},
+		{"", false, nil},
+	} {
+		o := NewOpenAI(srv.URL+"/v1", nil)
+		o.CacheKey, o.CacheKeyHeaderOnly = tc.key, tc.headerOnly
+		if _, err := o.Chat(context.Background(), Request{Model: "m", Messages: msgs}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if header != tc.key || got["prompt_cache_key"] != tc.wantBody {
+			t.Errorf("key %q, header only %v: sent header %q, body %v", tc.key, tc.headerOnly, header, got)
+		}
+		if _, err := o.Ping(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if header != "" {
+			t.Errorf("the model list was asked with X-Session-Id %q", header)
+		}
+	}
+}
+
 func TestOpenAIContextLength(t *testing.T) {
 	var auth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

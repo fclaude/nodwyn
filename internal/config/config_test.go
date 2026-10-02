@@ -167,6 +167,7 @@ model = "coder-large"
 credential = "example-key"
 max_output = 32768
 output_field = "max_tokens"
+cache_key = "header"
 
 [models.local]
 provider = "ollama"
@@ -178,7 +179,7 @@ num_ctx = 32768
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m := c.Models["impl"]; m.Provider != "openai" || m.Credential != "example-key" || m.Model != "coder-large" || m.MaxOutput != 32768 || m.OutputField != "max_tokens" {
+	if m := c.Models["impl"]; m.Provider != "openai" || m.Credential != "example-key" || m.Model != "coder-large" || m.MaxOutput != 32768 || m.OutputField != "max_tokens" || m.CacheKey != "header" {
 		t.Fatalf("impl: %+v", m)
 	}
 	if c.Models["local"].NumCtx != 32768 {
@@ -193,6 +194,8 @@ num_ctx = 32768
 		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\nmodel = \"m\"\nmax_output = -1\n",
 		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\nmodel = \"m\"\ntemperature = 2.5\n",
 		"[models.x]\nprovider = \"ollama\"\nurl = \"http://a.test\"\nmodel = \"m\"\ntemperature = -0.1\n",
+		"[models.x]\nprovider = \"openai\"\nurl = \"https://a.test\"\nmodel = \"m\"\ncache_key = \"body\"\n",
+		"[models.x]\nprovider = \"ollama\"\nurl = \"http://a.test\"\nmodel = \"m\"\ncache_key = \"off\"\n",
 	} {
 		os.WriteFile(path, []byte(bad), 0o600)
 		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "models.x") {

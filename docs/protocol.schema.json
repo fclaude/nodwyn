@@ -254,6 +254,9 @@
     },
     "config.Model": {
       "properties": {
+        "CacheKey": {
+          "type": "string"
+        },
         "Credential": {
           "type": "string"
         },
@@ -344,6 +347,7 @@
         "Temperature",
         "Seed",
         "Vision",
+        "CacheKey",
         "PriceInput",
         "PriceCachedInput",
         "PriceOutput"

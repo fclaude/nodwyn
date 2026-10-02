@@ -71,6 +71,27 @@ type Result struct {
 	// the request's sender reads their bytes (ReadImage) or withholds them
 	// (Withhold) before it hashes and sends the request (image.go).
 	Images []ImageRef
+	// seqs and sizes are, for each message after the system prompt, the
+	// event it shows and its estimate (TokensFrom).
+	seqs  []uint64
+	sizes []int
+}
+
+// TokensFrom is the estimate of the window from the message showing the
+// event at seq to its end: what a server with a prefix cache reads again
+// when that message changes, as when its result is folded. false when no
+// message shows the event, such as one a narrowed context leaves out.
+func (r Result) TokensFrom(seq uint64) (int, bool) {
+	for i, s := range r.seqs {
+		if s == seq {
+			n := 0
+			for _, size := range r.sizes[i:] {
+				n += size
+			}
+			return n, true
+		}
+	}
+	return 0, false
 }
 
 // AttachmentText is how an attachment reads to the model: what it is, that
@@ -291,6 +312,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 			out.Images = append(out.Images, imageRef(e.seq, len(out.Messages), *e.image))
 		}
 		out.Messages = append(out.Messages, e.msg)
+		out.seqs, out.sizes = append(out.seqs, e.seq), append(out.sizes, e.size)
 	}
 	return out
 }

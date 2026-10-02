@@ -30,7 +30,7 @@ replacing them (Chapter~\ref{ch:checks}).
 \section{The habit files}
 
 Each file wraps \code{run-calls} (and sometimes \code{fold-result},
-\code{sub-agent} or \code{nodwyn-turn}) with the idiom from
+\code{sub-agent}, \code{model-turn} or \code{nodwyn-turn}) with the idiom from
 Chapter~\ref{ch:strategies}, so your \code{init.scm} can wrap them again,
 tune their settings, or redefine them away.
 
@@ -68,7 +68,16 @@ An outline keeps the definition lines (\code{def}, \code{class},
 \code{func}, \code{fn}\ldots) with their line numbers, so the model can
 read any part back with a ranged \code{fs-read}. Reads fold in batches of
 at least \code{hygiene-min-bytes} (24,000), because every fold makes the
-server re-read the prompt from that point.
+server re-read the prompt from that point. With a provider whose prompt
+cache works, that re-read costs the full input price for everything after
+the first folded read, where a cached token costs a fraction of it, so a
+batch also has to pay for itself. It folds when it is at least as large as
+the rest of the window after it (\code{(context-tokens result)} measures
+that), when the provider's cache is not serving the context anyway (it read
+less than \code{hygiene-cache-share}, a quarter, of the recent prompts), or
+when the context is past \code{hygiene-pressure} (half) of the high water,
+where room matters more than the cache. Otherwise the reads wait. Each
+fold's log note says which reason applied.
 
 \subsection{\file{readdef.scm}: \texttt{read-definition}}
 

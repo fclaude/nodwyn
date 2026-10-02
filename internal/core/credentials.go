@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -278,6 +280,10 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 		oai := llm.NewOpenAI(m.URL, auth)
 		oai.MaxTokensField = m.OutputField
 		oai.Images = m.Vision
+		if m.CacheKey != config.CacheKeyOff {
+			oai.CacheKey = cacheKey(s.id)
+			oai.CacheKeyHeaderOnly = m.CacheKey == config.CacheKeyHeader
+		}
 		p = oai
 	default: // "ollama", which validation guarantees for any other value
 		p = llm.NewOllama(m.URL)
@@ -287,6 +293,15 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 	}
 	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput, Temperature: m.Temperature, Seed: m.Seed,
 		Rates: llm.Rates{Input: m.PriceInput, CachedInput: m.PriceCachedInput, Output: m.PriceOutput}}
+}
+
+// cacheKey is what a session's requests to a chat-completions server name
+// their session by (config.Model.CacheKey): the same for every request of
+// the session, resumed or not, and saying nothing else about it, not even
+// when it started, which the id does.
+func cacheKey(id string) string {
+	sum := sha256.Sum256([]byte("nodwyn cache key\x00" + id))
+	return hex.EncodeToString(sum[:16])
 }
 
 // modelHost is where requests to a model's URL go, host and port as the

@@ -527,7 +527,7 @@ of cut replies and the evidence loop for unattended turns (all below, and in
 | `(model-info)` `(model-info name)` | What is known about a model before asking it: the control model, or the configured model `[models.NAME]`. An alist: `name`, `model` (the provider's id), `provider`, `num-ctx` (its context length; 0 when unset), `max-output` (the reply cap its requests carry: its `max_output`, else `window.output_reserve`), and `temperature` and `seed` (its sampling settings, `#f` when the server decides). An unknown name is an error that lists the configured ones. |
 | `(model-names)` | The names `model-turn` and `model-info` accept: `"control"` and each configured `[models.NAME]`, sorted. |
 | `(window-limits)` | The window's sizes, in tokens as the window estimates them: an alist of `high-water` (past it older context is trimmed), `low-water` (what trimming goes down to), `ceiling` (the most a request with headroom may carry: the control model's context less the reply cap, or the high water when nothing is known above it), `max-result-tokens` (a longer tool result is shortened) and `output-reserve` (the default reply cap). The water marks grow with a large context unless config.toml sets them (manual, "Choosing models"). Compaction's default threshold is read from it (§9.2). |
-| `(context-tokens)` | The size of the context the next `model-turn` would send, in the units of `(window-limits)`, before any trimming. Unlike a reply's `prompt-tokens` it counts as the window does, whatever the server's tokenizer, and includes the tool results added since the last request. Compaction measures it (§9.2). |
+| `(context-tokens)` `(context-tokens result)` | The size of the context the next `model-turn` would send, in the units of `(window-limits)`, before any trimming. Unlike a reply's `prompt-tokens` it counts as the window does, whatever the server's tokenizer, and includes the tool results added since the last request. Compaction measures it (§9.2). With a tool result (its seq, or the id of the call it answers, as for `fold-result`), only the part from that result to the end: what a server with a prompt cache reads again when the result is folded, since the prompt before it is unchanged. `#f` when the window does not show the result (a narrowed context or a compaction left it out). `hygiene.scm` weighs its folds with it (§9.6). |
 
 When nobody reviews the work as it happens — `(unattended?)` (`--yolo`, a
 run's `auto_approve`, `--judge`, `--unattended`) or a supervised run's turn
@@ -871,7 +871,7 @@ answered) leaves `plan-step` unanswered; its own handler may call
 Beside the prompts' `working-rules`, the default loop carries the habits that
 held up on a coding benchmark (ADR 32), as user code in `internal/loop/`,
 loaded after the files above in this order. Each wraps `run-calls` (and
-`fold-result`, `sub-agent` or `nodwyn-turn` where it says), so a project's
+`fold-result`, `sub-agent`, `model-turn` or `nodwyn-turn` where it says), so a project's
 `init.scm` can wrap them again or redefine them away.
 
 - `shell.scm`: a command line sent through `shell-exec`'s `cmd`/`args` (a
@@ -886,8 +886,17 @@ loaded after the files above in this order. Each wraps `run-calls` (and
   that never ran a test is folded to one line once a later one does; a read
   of a file edited since is folded to its outline after `hygiene-stale-age`
   rounds; a read `hygiene-age` rounds old is folded to its outline. Reads
-  fold in batches of at least `hygiene-min-bytes`, so the server re-reads
-  the prompt rarely.
+  fold in batches of at least `hygiene-min-bytes`, and only when the fold
+  pays for the prompt cache it costs: a fold makes a caching server read
+  everything after the first folded read again, at the full input price. So
+  a batch folds when it is at least as large as the rest of the window after
+  it (`(context-tokens result)`), when the provider's cache is not serving the
+  context anyway (it read less than `hygiene-cache-share`, a quarter, of the
+  last `hygiene-cache-requests` prompts; a provider that does not say, such
+  as Ollama, counts as serving it), or when the context is past
+  `hygiene-pressure` (half) of the high water. The log note of each fold says
+  which. It wraps `sub-agent`, to watch the main context only, and
+  `model-turn`, to read the cache counts of its requests.
 - `readdef.scm`: the tool `read-definition` (path, name) reads a function,
   method or class by name, its whole definition and line range, or the start
   and members of a long class; a shell script that only reads a file to print

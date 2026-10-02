@@ -133,3 +133,42 @@ otherwise, about 30 such requests over the run. Long read-only sessions
 differ: on a repository review with meta/muse-spark-1.3 (32 rounds, no
 edits) 24 of 28 re-reads followed a fold of that file, 16 of them whole
 files, since nothing is edited and every read ages out.
+
+## Amendment 2026-10-02: a fold waits until it pays for the cache it costs
+
+A fold changes a message in the middle of the prompt, so a server with a
+prompt cache reads everything after it again at the full input price. In
+the review described in ADR 9's amendment of 2026-10-02, 12 of 34 requests
+followed a fold. Given what nodwyn sent, at most 64% of the prompt tokens
+could have come from the cache, against 93% had every request kept its
+predecessor's prompt. Each fold cut the reusable prefix back to the oldest
+read it folded, eight rounds back or more, so the server read 26,000 to
+50,000 tokens again each time. `hygiene-min-bytes` also counts a read's raw bytes, while the
+window shows a read longer than `max-result-tokens` shortened: the 109,563
+bytes of the first fold were about 11,000 tokens in the window.
+
+Keeping F tokens costs F times the cached price in each later request.
+Folding them costs the A tokens after them, less F, once at the input
+price less the cached price. With cached tokens at a tenth of the input
+price, a fold that is half of what follows pays for itself after 9 more
+requests; at a fiftieth (meta/muse-spark-1.3), after 49. A smaller fold
+takes longer. Without a working cache there is nothing to lose, and the
+fold saves the full price of F on every later request.
+
+So a due batch now folds when at least one of these holds:
+- the fold is at least as large as the rest of the window after it
+  (`(context-tokens result)`, new: the window from a result to its end, in
+  the window's units, with reads counted as the window shows them);
+- the provider's cache is not serving the context: it read less than
+  `hygiene-cache-share` (a quarter) of the last `hygiene-cache-requests`
+  (4) prompts in the main context;
+- the context is past `hygiene-pressure` (half) of the high water, where
+  room matters more than the cache.
+
+A provider that reports no cache, such as Ollama, counts as serving the
+context, since this ADR's window is built for its prefix cache. On a local
+model reads therefore wait until a batch is half of what follows or the
+context passes half the high water. On the 121-task cohort that is a change
+from the measured pil configuration and has not been run yet. A run with the
+old rule is `(define (hygiene-fold-reason due) "always")` in `init.scm`.
+Each fold's log note now ends with the reason.

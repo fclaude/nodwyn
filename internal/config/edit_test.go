@@ -204,3 +204,14 @@ func TestKeysAndValues(t *testing.T) {
 		}
 	}
 }
+
+// A server's cache_key is written back as it was set.
+func TestSetControlWritesCacheKey(t *testing.T) {
+	raw, cfg, err := SetControl(nil, Model{Provider: "openai", URL: "https://api.example.test/v1", Model: "m", CacheKey: CacheKeyHeader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "cache_key = \"header\"\n") || cfg.Control.CacheKey != CacheKeyHeader {
+		t.Fatalf("%s\n%+v", raw, cfg.Control)
+	}
+}

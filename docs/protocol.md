@@ -335,7 +335,7 @@ new values; `null` removes a key so its default applies. It accepts only
 console starts a task, below), the `budget.*` limits, `loop.request_timeout`
 and `loop.shell_timeout`, the `window.*` marks, the `[control]` model's
 tuning (`num_ctx`, `max_output`, `output_field`, `keep_alive`,
-`temperature`, `seed`, `vision` and the `price_*` entries), `jev.content`,
+`temperature`, `seed`, `vision`, `cache_key` and the `price_*` entries), `jev.content`,
 `jev.approve_threshold`, `jev.timeout`, `jev.model` and `mcp.runtime`;
 never an address, a credential, the egress proxy or `[policy]`. The
 changes are made together and only their result is validated, as the

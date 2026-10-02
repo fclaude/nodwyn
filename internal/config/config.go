@@ -184,6 +184,13 @@ type Model struct {
 	// to it (ADR 22 §3). openai only: a chat-completions server does not
 	// say, while ollama reports it (/api/show).
 	Vision bool `toml:"vision"`
+	// CacheKey is how requests name their session to a chat-completions
+	// server, so one that routes by it keeps a session on the replica that
+	// holds its prompt cache (ADR 9): "session" (the default) sends a key
+	// derived from the session id as the X-Session-Id header and as
+	// prompt_cache_key, "header" only as the header, for a server that
+	// refuses fields it does not know, and "off" sends neither. openai only.
+	CacheKey string `toml:"cache_key"`
 	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
 	// per million tokens, in USD, for estimating what a request cost when
 	// the provider does not report it (OpenRouter does). Unset is unknown;
@@ -192,6 +199,13 @@ type Model struct {
 	PriceCachedInput *float64 `toml:"price_cached_input"`
 	PriceOutput      *float64 `toml:"price_output"`
 }
+
+// The cache_key settings.
+const (
+	CacheKeySession = "session"
+	CacheKeyHeader  = "header"
+	CacheKeyOff     = "off"
+)
 
 // Jev is the judge's configuration (ADR 19/20). Jev is keyed: it runs only
 // when a credential of class jev-key is registered and bound to the URL's
@@ -577,6 +591,14 @@ func (m Model) validate() error {
 	}
 	if m.Provider != "openai" && m.Vision {
 		return errors.New("vision is for openai servers; ollama says itself whether a model takes images")
+	}
+	switch m.CacheKey {
+	case "", CacheKeySession, CacheKeyHeader, CacheKeyOff:
+	default:
+		return fmt.Errorf("cache_key %q is not supported (session, header, off)", m.CacheKey)
+	}
+	if m.Provider != "openai" && m.CacheKey != "" {
+		return errors.New("cache_key is for openai servers")
 	}
 	for name, p := range map[string]*float64{"price_input": m.PriceInput, "price_cached_input": m.PriceCachedInput, "price_output": m.PriceOutput} {
 		if p != nil && (*p < 0 || math.IsNaN(*p) || math.IsInf(*p, 0)) {

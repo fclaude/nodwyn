@@ -872,6 +872,28 @@ cost), and a budget checkpoint says what the turn has cost so far. The
 token budget still counts cached tokens in full: it measures context, not
 money.
 
+**Keeping the cache warm.** A provider bills cached prompt tokens at a
+fraction of the input price (meta/muse-spark-1.3 through OpenRouter: a
+fiftieth), but only a request that reaches the replica holding the cache
+gets them. Each request to a chat-completions server therefore names its
+session: a key derived from the session id, the same for every request of
+the session and resumed ones, saying nothing else about it. It goes as
+OpenRouter's `X-Session-Id` header and as `prompt_cache_key`, the field
+OpenAI routes by. A server that refuses fields it does not know takes the
+header alone, and `off` sends neither:
+
+```toml
+[control]
+cache_key = "header"       # session (the default), header or off; openai only
+```
+
+What the key does is up to the server: OpenRouter keeps the session with one
+provider, and a provider may or may not keep it on one replica. Compare the
+cached share of requests that only add to the previous one, in the console
+or the log's `llm.resp` events, with the setting on and off. The default
+loop also folds old reads only when that does not cost more of the cache
+than it saves (`hygiene.scm`, docs/scheme.md §9.6).
+
 A spend limit, `cost_soft` and `cost_hard` in `[budget]` (US dollars), is
 off unless you set it. It counts the known cost of the whole task, every
 turn and a resumed session's history included: a checkpoint asks past
@@ -1000,8 +1022,8 @@ to take an image out of a conversation.
 The console's Settings page writes `[control]` for you, and tunes it under
 Models › Main model tuning. Saving the same model
 on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
-`max_output`, `output_field`, `temperature`, `seed`, `vision` and the
-`price_*` entries); choosing another model starts from its defaults.
+`max_output`, `output_field`, `temperature`, `seed`, `vision`, `cache_key`
+and the `price_*` entries); choosing another model starts from its defaults.
 
 The line-mode `nodwyn` refuses to start without it, printing the table to
 add, and checks at start that an Ollama control server answers. A daemon

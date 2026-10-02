@@ -134,8 +134,9 @@ var defaultOptimizer string
 var defaultPlanGate string
 
 // The working habits (ADR 32), loaded after the defaults they wrap, in this
-// order: shell.scm wraps run-calls and fold-result innermost, readdef.scm
-// feeds hygiene.scm's reads, and checkloop.scm wraps nodwyn-turn.
+// order: shell.scm wraps run-calls and fold-result innermost, hygiene.scm
+// also wraps model-turn, readdef.scm feeds hygiene.scm's reads, and
+// checkloop.scm wraps nodwyn-turn.
 var (
 	//go:embed shell.scm
 	habitShell string

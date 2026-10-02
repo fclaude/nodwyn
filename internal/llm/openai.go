@@ -31,6 +31,13 @@ type OpenAI struct {
 	// Images is set when the model takes images (vision = true in its
 	// config): a chat-completions server does not say whether one does.
 	Images bool
+	// CacheKey names the session a request belongs to, so a server that
+	// routes by it can send the session's requests to the replica holding
+	// their prompt cache: OpenRouter's X-Session-Id header, and, unless
+	// CacheKeyHeaderOnly, the body's prompt_cache_key (OpenAI's name, which
+	// OpenRouter also reads). "" sends neither.
+	CacheKey           string
+	CacheKeyHeaderOnly bool
 }
 
 // NewOpenAI returns a client for base. Like NewOllama, requests are bounded
@@ -203,6 +210,7 @@ type oaiRequest struct {
 	MaxTokens           int      `json:"max_tokens,omitempty"`
 	Temperature         *float64 `json:"temperature,omitempty"`
 	Seed                *int64   `json:"seed,omitempty"`
+	PromptCacheKey      string   `json:"prompt_cache_key,omitempty"`
 }
 
 type oaiResponse struct {
@@ -292,6 +300,9 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 	if o.MaxTokensField == "max_tokens" {
 		wire.MaxTokens, wire.MaxCompletionTokens = wire.MaxCompletionTokens, 0
 	}
+	if !o.CacheKeyHeaderOnly {
+		wire.PromptCacheKey = o.CacheKey
+	}
 	body, err := json.Marshal(wire)
 	if err != nil {
 		return nil, err
@@ -338,7 +349,7 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 
 // send makes one authorized request and returns a 200 response. A redirect
 // is an error (NoRedirect), and a permanent one: asking again gets the same
-// answer.
+// answer. A request with a body, a chat completion, carries the cache key.
 func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
 	hreq, err := http.NewRequestWithContext(ctx, method, o.URL+path, bytes.NewReader(body))
 	if err != nil {
@@ -346,6 +357,9 @@ func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*h
 	}
 	if body != nil {
 		hreq.Header.Set("Content-Type", "application/json")
+		if o.CacheKey != "" {
+			hreq.Header.Set("X-Session-Id", o.CacheKey)
+		}
 	}
 	if o.Authorize != nil {
 		if err := o.Authorize(hreq); err != nil {

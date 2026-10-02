@@ -8,15 +8,25 @@
 ;;   2. a read of a file edited since is stale: it is folded to its outline,
 ;;      noting the file changed;
 ;;   3. a read hygiene-age rounds old is folded to its outline.
-;; Folding an old result makes the server re-read the prompt after it, so
-;; reads fold in batches of at least hygiene-min-bytes; rule 1 folds results
-;; near the end. The log keeps everything; fs-read ranges bring any part back.
+;; Folding an old result makes a server with a prompt cache read all of the
+;; prompt after it again at the full input price, where a cached token costs
+;; a fraction of that (a fiftieth on meta/muse-spark-1.3): a fold that takes
+;; out less than it makes the server read again rarely pays for itself. So
+;; reads fold in batches of at least hygiene-min-bytes, and only when the
+;; batch is at least as large as the rest of the window after it, when the
+;; provider's cache is not serving the context anyway, or when the context
+;; is past hygiene-pressure of the high water, where room matters more.
+;; Rule 1 folds results near the end. The log keeps everything; fs-read
+;; ranges bring any part back.
 
 (define hygiene-age 8)            ; rounds before a read is old
 (define hygiene-stale-age 2)      ; rounds before a stale read may fold
 (define hygiene-min-bytes 24000)  ; fold reads only when this much can go at once
 (define hygiene-min-read 2000)    ; smaller reads stay as they are
 (define hygiene-outline-lines 40) ; outline lines kept per read
+(define hygiene-cache-share 0.25) ; the cache serves the context when it read this much of the recent prompts
+(define hygiene-cache-requests 4) ; the recent requests that say whether it does
+(define hygiene-pressure 0.5)     ; past this share of the high water, reads fold whatever the cache
 
 ;; Lines an outline keeps: definitions, across common languages.
 (define hygiene-outline-words
@@ -32,6 +42,7 @@
 (define hygiene-reads '()) ; unfolded reads: (id path first text round)
 (define hygiene-edits '()) ; (path . round) of each file's latest edit
 (define hygiene-unrun '()) ; test commands that did not run a test: (id . why)
+(define hygiene-cache '()) ; recent requests that reported the provider's cache: (prompt . cached)
 
 (define hygiene-base-sub-agent sub-agent)
 (define (sub-agent . args)
@@ -41,6 +52,15 @@
                   (apply hygiene-base-sub-agent args))))
     (set! hygiene-depth (- hygiene-depth 1))
     answer))
+
+(define hygiene-base-model-turn model-turn)
+(define (model-turn . args)
+  (let ((reply (apply hygiene-base-model-turn args)))
+    (when (= hygiene-depth 0)
+      (let ((prompt (assoc-ref reply 'prompt-tokens 0)) (cached (assoc-ref reply 'cached-tokens #f)))
+        (when (and (integer? cached) (integer? prompt) (> prompt 0))
+          (set! hygiene-cache (hygiene-take (cons (cons prompt cached) hygiene-cache) hygiene-cache-requests)))))
+    reply))
 
 (define (hygiene-args call)
   (let ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}"))))))
@@ -72,17 +92,18 @@
            (walk (cdr lines) (+ n 1) (cons (string-append "  " (number->string n) ": " (hygiene-cut (string-trim (car lines)) 120)) out)))
           (else (walk (cdr lines) (+ n 1) out)))))
 
-(define (hygiene-fold-read r stale)
+(define (hygiene-fold-text r stale)
   (let* ((path (list-ref r 1)) (first (list-ref r 2)) (text (list-ref r 3))
          (body (hygiene-body text))
          (last (+ first (length (string-split (if (string-suffix? "\n" body) (substring body 0 (- (string-length body) 1)) body) "\n")) -1))
          (outline (hygiene-outline text)))
-    (fold-result (list-ref r 0)
-                 (string-append "[folded: read of " path " lines " (number->string first) "-" (number->string last)
-                                (if stale ", from before you edited it (the file has changed since)" "")
-                                ". The full text is in the log; read again what you need with fs-read (path, start, count)."
-                                (if (null? outline) " No definitions in it.]" " Its definitions:]\n")
-                                (string-join outline "\n")))))
+    (string-append "[folded: read of " path " lines " (number->string first) "-" (number->string last)
+                   (if stale ", from before you edited it (the file has changed since)" "")
+                   ". The full text is in the log; read again what you need with fs-read (path, start, count)."
+                   (if (null? outline) " No definitions in it.]" " Its definitions:]\n")
+                   (string-join outline "\n"))))
+
+(define (hygiene-fold-read r stale) (fold-result (list-ref r 0) (hygiene-fold-text r stale)))
 
 ;; A test command's output shows tests ran.
 (define (hygiene-ran? result)
@@ -123,17 +144,64 @@
   (let ((e (assoc-ref hygiene-edits (list-ref r 1) #f)))
     (and e (> e (list-ref r 4)))))
 
-;; Fold old and stale reads, once there is enough to fold at once.
+(define (hygiene-tokens s) (quotient (+ (string-length s) 2) 3)) ; the window's estimate
+
+;; Whether the provider's prompt cache serves this context: it read at least
+;; hygiene-cache-share of the recent requests' prompts. A provider that does
+;; not say (Ollama) is taken to; ADR 9's window is built for its cache.
+(define (hygiene-cache-serves?)
+  (or (null? hygiene-cache)
+      (>= (fold (lambda (n r) (+ n (cdr r))) 0 hygiene-cache)
+          (* hygiene-cache-share (fold (lambda (n r) (+ n (car r))) 0 hygiene-cache)))))
+
+;; Tokens folding reads takes out of the window: what each shows there,
+;; shortened past max-result-tokens as the window shortens it, less its
+;; outline.
+(define (hygiene-saved due)
+  (let ((cap (assoc-ref (window-limits) 'max-result-tokens 0)))
+    (fold (lambda (n r)
+            (let ((shown (hygiene-tokens (list-ref r 3))))
+              (+ n (max 0 (- (if (and (> cap 0) (> shown cap)) cap shown)
+                             (hygiene-tokens (hygiene-fold-text r (hygiene-stale? r))))))))
+          0 due)))
+
+;; The window from the earliest of the reads the window still shows to its
+;; end (reads are noted in order, so the last of them is the earliest):
+;; what folding them makes the server read again. 0 when it shows none.
+(define (hygiene-after due)
+  (let walk ((rs (reverse due)))
+    (if (null? rs)
+        0
+        (or (guard (e (else #f)) (context-tokens (list-ref (car rs) 0)))
+            (walk (cdr rs))))))
+
+;; Why the due reads may fold now, or #f while folding them would make the
+;; server read again more than it takes out.
+(define (hygiene-fold-reason due)
+  (cond ((not (hygiene-cache-serves?)) "the provider's cache is not serving this context")
+        ((>= (context-tokens) (* hygiene-pressure (assoc-ref (window-limits) 'high-water 0)))
+         "the context is filling the window")
+        (else
+         (let ((after (hygiene-after due)) (saved (hygiene-saved due)))
+           (cond ((= after 0) "the window no longer shows them")
+                 ((>= (* 2 saved) after)
+                  (string-append "they are " (number->string saved) " of the " (number->string after)
+                                 " tokens the server reads again"))
+                 (else #f))))))
+
+;; Fold old and stale reads, once there is enough to fold at once and
+;; folding it pays (hygiene-fold-reason).
 (define (hygiene-sweep)
   (let* ((due (filter (lambda (r) (let ((age (- hygiene-round (list-ref r 4))))
                                     (or (>= age hygiene-age) (and (hygiene-stale? r) (>= age hygiene-stale-age)))))
                       hygiene-reads))
-         (bytes (fold (lambda (n r) (+ n (string-length (list-ref r 3)))) 0 due)))
-    (when (and (pair? due) (>= bytes hygiene-min-bytes))
+         (bytes (fold (lambda (n r) (+ n (string-length (list-ref r 3)))) 0 due))
+         (why (and (pair? due) (>= bytes hygiene-min-bytes) (hygiene-fold-reason due))))
+    (when why
       (for-each (lambda (r) (hygiene-fold-read r (hygiene-stale? r))) due)
       (set! hygiene-reads (filter (lambda (r) (not (member r due))) hygiene-reads))
       (log-note (string-append "hygiene: folded " (number->string (length due)) " reads, "
-                               (number->string bytes) " bytes")))))
+                               (number->string bytes) " bytes: " why)))))
 
 (define hygiene-base-run-calls run-calls)
 (define (run-calls calls)

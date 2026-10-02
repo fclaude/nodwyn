@@ -320,3 +320,30 @@ func TestLastingNarrowing(t *testing.T) {
 		}
 	}
 }
+
+// TokensFrom is the window from a message to its end: the system prompt and
+// the tools are before it, and what follows it is counted.
+func TestTokensFrom(t *testing.T) {
+	s := newSession()
+	s.turn(300)
+	s.turn(600)
+	evs := s.events(t)
+	r := Build(evs, "sys", 10, pol)
+	var results []uint64
+	for _, ev := range evs {
+		if ev.Kind == log.KindToolResult {
+			results = append(results, ev.Seq)
+		}
+	}
+	first, ok := r.TokensFrom(results[0])
+	second, ok2 := r.TokensFrom(results[1])
+	if !ok || !ok2 {
+		t.Fatal("a result in the window was not found")
+	}
+	if first >= r.EstTokens-Estimate("sys")-10 || second >= first || second < Estimate(strings.Repeat("x", 600)) {
+		t.Fatalf("from the first result %d, from the second %d, of %d", first, second, r.EstTokens)
+	}
+	if _, ok := r.TokensFrom(9999); ok {
+		t.Fatal("found a seq the window does not show")
+	}
+}

@@ -198,9 +198,10 @@ func (l *Loop) install() error {
 		{
 			Name: "context-tokens",
 			Meta: scheme.Meta{
-				Doc:    "The size of the context the next model-turn would send, in tokens as the window estimates them (the unit of window-limits), before any trimming.",
-				Hidden: true,
-				Origin: "builtin",
+				Doc:      "The size of the context the next model-turn would send, in tokens as the window estimates them (the unit of window-limits), before any trimming. With a tool result (its seq, or the id of the call it answers), the size of the part from that result on: what a server with a prompt cache reads again when the result is folded; #f when the window does not show it.",
+				Variadic: true, // (context-tokens) or (context-tokens result)
+				Hidden:   true,
+				Origin:   "builtin",
 			},
 			Handler: l.contextTokens,
 		},
@@ -416,18 +417,27 @@ func (l *Loop) foldResult(c *scheme.Call) (scheme.Value, error) {
 	if strings.TrimSpace(text) == "" {
 		return scheme.Void, errors.New("text is required: it is what later windows show")
 	}
-	events := l.host.EventsSoFar()
-	switch arg := c.Args[0]; arg.Kind {
+	seq, err := resultSeq(l.host.EventsSoFar(), c.Args[0])
+	if err != nil {
+		return scheme.Void, err
+	}
+	return scheme.Void, l.record(log.KindResultFold, log.ResultFold{Seq: seq, Text: text})
+}
+
+// resultSeq is the seq of the tool.result arg names: its seq, or the id of
+// the call it answers (the latest such result).
+func resultSeq(events []log.Event, arg scheme.Value) (uint64, error) {
+	switch arg.Kind {
 	case scheme.KInt:
 		for _, ev := range events {
 			if ev.Seq == uint64(arg.I) {
 				if ev.Kind != log.KindToolResult {
-					return scheme.Void, fmt.Errorf("seq %d is a %s, not a tool.result", arg.I, ev.Kind)
+					return 0, fmt.Errorf("seq %d is a %s, not a tool.result", arg.I, ev.Kind)
 				}
-				return scheme.Void, l.record(log.KindResultFold, log.ResultFold{Seq: ev.Seq, Text: text})
+				return ev.Seq, nil
 			}
 		}
-		return scheme.Void, fmt.Errorf("no event at seq %d", arg.I)
+		return 0, fmt.Errorf("no event at seq %d", arg.I)
 	case scheme.KString:
 		for i := len(events) - 1; i >= 0; i-- {
 			if events[i].Kind != log.KindToolResult {
@@ -435,12 +445,12 @@ func (l *Loop) foldResult(c *scheme.Call) (scheme.Value, error) {
 			}
 			var p log.ToolResult
 			if events[i].Decode(&p) == nil && p.ID == arg.S {
-				return scheme.Void, l.record(log.KindResultFold, log.ResultFold{Seq: events[i].Seq, Text: text})
+				return events[i].Seq, nil
 			}
 		}
-		return scheme.Void, fmt.Errorf("no result for call %q", arg.S)
+		return 0, fmt.Errorf("no result for call %q", arg.S)
 	}
-	return scheme.Void, fmt.Errorf("result is a seq or a call id, got %s", scheme.Write(c.Args[0]))
+	return 0, fmt.Errorf("result is a seq or a call id, got %s", scheme.Write(arg))
 }
 
 // recordPlan is (record-plan outcome): the plan gate's outcome, in the log
@@ -904,10 +914,13 @@ func (l *Loop) windowLimits(*scheme.Call) (scheme.Value, error) {
 	), nil
 }
 
-// contextTokens is (context-tokens): the window the next model-turn would
-// build, before it trims anything. Compaction compares it with a threshold
-// derived from the high water, so both count the same way, and it measures
-// the tool results just added, which the last reply's prompt-tokens cannot.
+// contextTokens is (context-tokens [result]): the window the next
+// model-turn would build, before it trims anything. Compaction compares it
+// with a threshold derived from the high water, so both count the same way,
+// and it measures the tool results just added, which the last reply's
+// prompt-tokens cannot. With a result, only the part from that result on:
+// what folding it makes a prefix cache read again (hygiene.scm); #f when
+// the window does not show it.
 func (l *Loop) contextTokens(c *scheme.Call) (scheme.Value, error) {
 	if c.Origin == scheme.OriginModel {
 		return scheme.Void, errors.New("not callable from a model-originated evaluation")
@@ -915,7 +928,23 @@ func (l *Loop) contextTokens(c *scheme.Call) (scheme.Value, error) {
 	if !l.frozen {
 		return scheme.Void, errors.New("the window is not fixed until the session has started")
 	}
+	if len(c.Args) > 1 {
+		return scheme.Void, errors.New("expected at most a tool result")
+	}
+	events := l.host.EventsSoFar()
 	pol := l.cfg.Window
 	pol.HighWater = math.MaxInt
-	return scheme.Int(int64(window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, pol).EstTokens)), nil
+	built := window.Build(events, l.system, l.toolsLen, pol)
+	if len(c.Args) == 0 {
+		return scheme.Int(int64(built.EstTokens)), nil
+	}
+	seq, err := resultSeq(events, c.Args[0])
+	if err != nil {
+		return scheme.Void, err
+	}
+	n, ok := built.TokensFrom(seq)
+	if !ok {
+		return scheme.False, nil
+	}
+	return scheme.Int(int64(n)), nil
 }

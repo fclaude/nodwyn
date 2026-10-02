@@ -115,3 +115,28 @@ reading a file (window-v12; a log without images builds as before). The
 window counts an image as the estimate its record holds (85 tokens and 170
 per 512-pixel tile, after the chat-completions scaling), not as bytes/3, and
 trims it with its line, oldest attachment first.
+
+## Amendment 2026-10-02: requests name their session
+
+This ADR keeps the prefix byte-stable, but a shared remote server caches per
+replica. In a 34-request repository review with meta/muse-spark-1.3 through
+OpenRouter, 126,082 of 1,521,085 prompt tokens were read from the cache
+(8.3%). Rebuilt with `nodwyn replay --window`, 21 of those requests were
+their predecessor's request with messages appended. One of them read the
+predecessor's whole prompt from the cache, 14 read none of it, and the
+partial hits matched older requests: seq 70 read seq 13's 5,120-token prompt
+and none of the three requests between them. That is what replicas with
+caches of their own look like. OpenRouter routes the model to one provider,
+Meta, so OpenRouter's own provider routing does not explain it.
+
+Each request to a chat-completions server now names its session, so a
+server that routes by it can keep the session on one cache. The name is a
+SHA-256 digest of the session id, which is the same across a resume and
+says nothing else (the id holds the start time). It goes as OpenRouter's
+`X-Session-Id` header and as `prompt_cache_key`, OpenAI's field, which
+OpenRouter also reads. `cache_key` in a model's entry sends it as the header
+only (`header`), for servers that refuse unknown fields, or not at all
+(`off`). Both go only on the wire: the provider-neutral request, its hash
+and replay are unchanged. Whether the key reaches Meta's replicas is not
+documented; the cached share of append-only requests in the next session's
+log is the test.

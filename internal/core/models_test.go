@@ -33,7 +33,7 @@ type fakeOpenAI struct {
 	requests []seenRequest
 }
 
-type seenRequest struct{ body, auth string }
+type seenRequest struct{ body, auth, session string }
 
 // oaiText and oaiCall are assistant messages in the protocol's JSON.
 func oaiText(s string) string { return `{"role":"assistant","content":` + quote(s) + `}` }
@@ -48,7 +48,7 @@ func newFakeOpenAI(t *testing.T, replies ...string) *fakeOpenAI {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		f.requests = append(f.requests, seenRequest{string(body), r.Header.Get("Authorization")})
+		f.requests = append(f.requests, seenRequest{string(body), r.Header.Get("Authorization"), r.Header.Get("X-Session-Id")})
 		if len(f.replies) == 0 {
 			http.Error(w, `{"error":"script exhausted"}`, http.StatusInternalServerError)
 			return
@@ -131,6 +131,39 @@ func TestModelTurnByName(t *testing.T) {
 	}
 	if n := replayAll(t, r.logb); n != 2 {
 		t.Fatalf("replayed %d requests", n)
+	}
+}
+
+// A session's requests to a chat-completions server name the session by a
+// key derived from its id, the same in every request, so a server that
+// routes by it can keep them on one prompt cache; cache_key = "off" sends
+// none (ADR 9).
+func TestModelRequestsCarryTheSessionsCacheKey(t *testing.T) {
+	init := `
+(define (agent-turn request)
+  (let loop ((reply (model-turn "impl")))
+    (unless (null? (assoc-ref reply 'tool-calls '()))
+      (run-tools (assoc-ref reply 'tool-calls))
+      (loop (model-turn "impl")))))`
+	for _, setting := range []string{"", config.CacheKeyHeader, config.CacheKeyOff} {
+		impl := newFakeOpenAI(t, oaiCall("c1", "fs-list", `{"path":"."}`), oaiText("listed"))
+		r := modelRig(t, init, map[string]config.Model{"impl": {Provider: "openai", URL: impl.URL + "/v1", Model: "m", CacheKey: setting}}, Options{})
+		if err := r.turn("list files"); err != "" {
+			t.Fatal(err)
+		}
+		key := cacheKey(r.s.ID())
+		if setting == config.CacheKeyOff {
+			key = ""
+		}
+		for i, req := range impl.seen() {
+			inBody := strings.Contains(req.body, `"prompt_cache_key":"`+key+`"`)
+			if req.session != key || inBody != (setting == "") || strings.Contains(req.body, r.s.ID()) {
+				t.Errorf("cache_key %q, request %d: X-Session-Id %q, body %s", setting, i, req.session, req.body)
+			}
+		}
+	}
+	if len(cacheKey("a")) != 32 || cacheKey("a") == cacheKey("b") {
+		t.Fatalf("keys %q %q", cacheKey("a"), cacheKey("b"))
 	}
 }
 
