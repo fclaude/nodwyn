@@ -216,7 +216,7 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     const amount = (v) => (c.dimension === "wall" ? `${Math.round(v / 6e10)} min` : c.dimension === "cost" ? usd(v / 1e6, false) : String(v));
     card.append(
       h("h2", {}, s.title),
-      h("p", { class: "hint" }, `Used ${amount(c.used)} of a soft limit of ${amount(c.limit?.soft)}; the hard limit is ${amount(c.limit?.hard)}${c.state?.priced ? ` · ${c.state.unpriced ? "at least " : ""}${usd(c.state.cost || 0, false)} so far` : ""}. More budget grants no new permission.`),
+      h("p", { class: "hint" }, `Used ${amount(c.used)} of a soft limit of ${amount(c.limit?.soft)}; the hard limit is ${amount(c.limit?.hard)}${c.state?.priced ? ` · ${c.state.unpriced ? "at least " : ""}${usd(c.state.cost || 0, false)} so far` : ""}${c.state?.judge_calls ? ` · the judge: ${c.state.judge_calls} call${c.state.judge_calls === 1 ? "" : "s"}, ${(c.state.judge_tokens || 0).toLocaleString()} tokens${c.state.judge_cost ? `, ${usd(c.state.judge_cost, true)}` : ""}` : ""}. More budget grants no new permission.`),
     );
     if (enabled) {
       choice("Keep going", "Y", "accent", "session.answer", { reply: "y" });

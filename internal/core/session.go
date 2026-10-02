@@ -67,10 +67,11 @@ type Session struct {
 	// The spend limit's soft limit as a checkpoint last raised it, and
 	// whether a turn has said the limit cannot see a request's cost
 	// (spend.go). Both under mu.
-	costSoft   int64
-	spendNoted bool
-	prompts    map[string]pendingConfirmation
-	promptMu   sync.Mutex
+	costSoft        int64
+	spendNoted      bool
+	judgeSpendNoted bool
+	prompts         map[string]pendingConfirmation
+	promptMu        sync.Mutex
 
 	allow  *guard.CommandAllow
 	writes *guard.WriteAllow

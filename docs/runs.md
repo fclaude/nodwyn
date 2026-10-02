@@ -39,7 +39,9 @@ is 1–10000. `--budget-wall` is the total run lifetime, including model waits,
 approval waits and time spent stopped. The daemon's configured per-turn budgets
 still apply, including planning tokens reported by the control provider. A
 provider response can exceed its token ceiling; no further operation then starts.
-Judge token usage remains unavailable.
+The judge's tokens are recorded (`jev.req`) and shown, not counted against
+the token budget; its cost, when `[jev]` has prices, counts against a spend
+limit.
 
 `--budget-cost USD` (`run.start {cost}`) gives the run a spend limit: what
 its model requests cost, as far as known, over the whole run, replacing

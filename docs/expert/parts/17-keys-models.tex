@@ -257,6 +257,8 @@ table of \file{config.toml}, a key, and a binding.
 url = "https://api.typesafe.ai"   # the default
 content = "plan"                  # none, plan (the default), plan+summaries or full
 approve_threshold = 0.8           # for runs started with --judge
+price_input = 0.5                 # US dollars per million tokens, to price
+price_output = 2.0                #   what the judge reports it used
 \end{toml}
 
 \begin{txt}
@@ -284,6 +286,15 @@ Go looks the stored key up when the call is made, and the guard checks the
 call against the \code{jev-key} binding as it checks the plan gate's. Every
 string sent is redacted first, and \code{jev.req} logs each call, never its
 text.
+
+The judge reports what each request used, in tokens, and never what it
+cost. \nodwyn{} records the counts and the model that answered with each
+call, and prices them with \code{price\_input} and \code{price\_output}
+when you set them. Each call is a line in the conversation
+(\code{[judge jev-choice: 318$\to$34 tok · $\approx$\$0.0002]}), and the running total
+is in the console's side panel, at checkpoints and in \code{:budget}. Its
+tokens are not model tokens and stay out of the token budget; its cost
+counts against a spend limit.
 
 \section{MCP servers}
 

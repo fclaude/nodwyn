@@ -194,7 +194,9 @@ wall checkpoints occur at operation boundaries. Tokens are the prompt plus
 output usage each model request reports, the control model's and any other
 configured model's: a response can overshoot a token ceiling, but no
 subsequent operation starts after that usage is observed. Judge requests are
-not counted.
+not model requests and are not counted against tokens; their usage is
+recorded and shown, and their cost, priced by `[jev] price_input` and
+`price_output`, counts against a spend limit.
 
 After each reply the front-ends show its tokens, the share read from the
 provider's prompt cache and its cost, each only when known; a model's

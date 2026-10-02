@@ -43,6 +43,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
@@ -57,6 +58,39 @@ type JevOptions struct {
 	Timeout time.Duration
 	// Tools registers judge-noul, judge-score and judge-choice for the model.
 	Tools bool
+	// PriceInput and PriceOutput are the judge's prices, USD per million
+	// tokens, to estimate what a request cost; nil when not set.
+	PriceInput, PriceOutput *float64
+}
+
+// jevUsage reads the API's usage object field by field; nil when it gives
+// no counts. The cost is estimated from the configured prices.
+func jevUsage(raw json.RawMessage, o JevOptions) *nlog.JevUsage {
+	var fields struct {
+		Input  json.RawMessage `json:"input_tokens"`
+		Output json.RawMessage `json:"output_tokens"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &fields) != nil {
+		return nil
+	}
+	count := func(raw json.RawMessage) (int, bool) {
+		var n int
+		if len(raw) == 0 || json.Unmarshal(raw, &n) != nil || n < 0 {
+			return 0, false
+		}
+		return n, true
+	}
+	in, gotIn := count(fields.Input)
+	out, gotOut := count(fields.Output)
+	if !gotIn && !gotOut {
+		return nil
+	}
+	u := &nlog.JevUsage{InputTokens: in, OutputTokens: out}
+	if o.PriceInput != nil && o.PriceOutput != nil {
+		c := (float64(in)**o.PriceInput + float64(out)**o.PriceOutput) / 1e6
+		u.Cost = &c
+	}
+	return u
 }
 
 // JevClient supplies the shared host services used by Jev primitives.
@@ -156,10 +190,12 @@ func jevCall(o JevOptions, jc JevClient, c *scheme.Call, keyed bool, tool, state
 	}
 	sum := sha256.Sum256(enc)
 	hash := hex.EncodeToString(sum[:8])
+	var model string
+	var used *nlog.JevUsage
 	record := func(ok bool, errText string, answer any) {
 		_, _ = jc.Record(nlog.KindJevReq, nlog.JevReq{
 			Tool: tool, Origin: string(c.Origin), Level: o.Content, Bytes: len(enc), PayloadHash: hash,
-			Redactions: redactions, OK: ok, Error: errText, Answer: answer,
+			Redactions: redactions, OK: ok, Error: errText, Answer: answer, Model: model, Usage: used,
 		})
 	}
 
@@ -198,11 +234,18 @@ func jevCall(o JevOptions, jc JevClient, c *scheme.Call, keyed bool, tool, state
 		return nil, fmt.Errorf("%s: %s", tool, resp.Status)
 	}
 	var out struct {
+		Model   string                    `json:"model"`
 		Answers map[string]map[string]any `json:"answers"`
+		Usage   json.RawMessage           `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		record(false, "bad json", nil)
 		return nil, fmt.Errorf("%s: decode: %w", tool, err)
+	}
+	// What it used is counted whatever the answer: the request was made.
+	model, used = out.Model, jevUsage(out.Usage, o)
+	if t := budget.From(c.Ctx); t != nil && used != nil {
+		t.AddJudge(used.InputTokens+used.OutputTokens, used.Cost)
 	}
 	ans, ok := out.Answers["q"]
 	if !ok {

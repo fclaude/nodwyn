@@ -217,6 +217,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 		} else {
 			m.append("credential refresh failed: " + p.Class + " at " + p.Endpoint + ": " + p.Error)
 		}
+	case string(log.KindJevReq):
+		var p log.JevReq
+		p, err = decode[log.JevReq](e.Payload)
+		if err == nil {
+			m.append(plain.JudgeLine(p))
+		}
 	case string(log.KindContextCompact):
 		var p log.ContextCompact
 		p, err = decode[log.ContextCompact](e.Payload)

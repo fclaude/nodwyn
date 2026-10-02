@@ -166,3 +166,13 @@ sizes, and one that gave up left nothing. Windows ignore the kind.
 
 `llm.resp` `usage` gains `unreported`: the server gave no token counts, so
 its zeros are not counts. An older record reads as reported.
+
+## Amendment — 2026-10-02: what the judge used
+
+No new kind. `jev.req` gains `model`, the judge model that answered as the
+API names it, and `usage`: `input_tokens` and `output_tokens` as the API
+reports them (its response always carries them), and `cost`, an estimate
+from `[jev] price_input` and `price_output` (the API reports no cost),
+absent without prices. Both are absent when no answer came back. A turn's
+budget state gains `judge_calls`, `judge_tokens`, `judge_cost` and
+`judge_unpriced`. All optional; an older record reads as unknown.

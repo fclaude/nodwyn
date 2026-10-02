@@ -69,6 +69,75 @@ func SpendSoFar(s budget.State) string {
 	return USD(s.Cost, false) + " so far"
 }
 
+// JudgeLine is one judge request as the transcript shows it: the tool, the
+// judge's tokens and, with [jev] prices, its estimated cost; or why it
+// failed. "[judge jev-choice: 318→34 tok · ≈$0.0002]".
+func JudgeLine(p log.JevReq) string {
+	if !p.OK && p.Usage == nil {
+		return fmt.Sprintf("[judge %s failed: %s]", p.Tool, p.Error)
+	}
+	parts := []string{"no usage reported"}
+	if u := p.Usage; u != nil {
+		parts = []string{fmt.Sprintf("%s→%s tok", Thousands(int64(u.InputTokens)), Thousands(int64(u.OutputTokens)))}
+		if u.Cost != nil {
+			parts = append(parts, USD(*u.Cost, true))
+		}
+	}
+	if !p.OK {
+		parts = append(parts, "no answer: "+p.Error)
+	}
+	return fmt.Sprintf("[judge %s: %s]", p.Tool, strings.Join(parts, " · "))
+}
+
+// JudgeTally adds judge requests up: how many, their tokens, and their cost
+// as far as priced.
+type JudgeTally struct {
+	Calls, Tokens, Unpriced int64
+	Cost                    float64
+}
+
+// Add counts one jev.req.
+func (j *JudgeTally) Add(p log.JevReq) {
+	j.Calls++
+	if p.Usage == nil {
+		return
+	}
+	j.Tokens += int64(p.Usage.InputTokens + p.Usage.OutputTokens)
+	if p.Usage.Cost != nil {
+		j.Cost += *p.Usage.Cost
+	} else {
+		j.Unpriced++
+	}
+}
+
+// String is the tally for a person: "3 judge calls, 1,240 tokens, ≈$0.0012",
+// "" for none. Costs are estimates from [jev] prices: the judge reports
+// none.
+func (j JudgeTally) String() string {
+	if j.Calls == 0 {
+		return ""
+	}
+	s := fmt.Sprintf("%d judge call", j.Calls)
+	if j.Calls != 1 {
+		s += "s"
+	}
+	s += ", " + Thousands(j.Tokens) + " tokens"
+	switch {
+	case j.Unpriced == 0 && j.Tokens > 0:
+		s += ", " + USD(j.Cost, true)
+	case j.Unpriced < j.Calls && j.Cost > 0:
+		s += ", at least " + USD(j.Cost, true)
+	case j.Unpriced > 0:
+		s += ", not priced ([jev] price_input, price_output)"
+	}
+	return s
+}
+
+// JudgeSoFar is a turn's judge requests for a checkpoint, "" for none.
+func JudgeSoFar(s budget.State) string {
+	return JudgeTally{Calls: s.JudgeCalls, Tokens: s.JudgeTokens, Unpriced: s.JudgeUnpriced, Cost: s.JudgeCost}.String()
+}
+
 // Thousands writes n with commas.
 func Thousands(n int64) string {
 	s := strconv.FormatInt(n, 10)

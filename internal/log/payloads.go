@@ -276,6 +276,20 @@ type JevReq struct {
 	Answer      any      `json:"answer,omitempty"`     // the answer object Jev returned (no content of ours)
 	OK          bool     `json:"ok"`
 	Error       string   `json:"error,omitempty"`
+	// Model is the judge model that answered, as the API names it
+	// (jev-1.13.0 for jev-latest); Usage what the request used. Both absent
+	// when no answer came back.
+	Model string    `json:"model,omitempty"`
+	Usage *JevUsage `json:"usage,omitempty"`
+}
+
+// JevUsage is what one judge request used, as the API reports it, and what
+// it cost: an estimate from [jev] price_input and price_output, since the
+// API reports no cost; absent when no prices are set.
+type JevUsage struct {
+	InputTokens  int      `json:"input_tokens"`
+	OutputTokens int      `json:"output_tokens"`
+	Cost         *float64 `json:"cost,omitempty"`
 }
 
 // CredRegister records a credential registration. Class and Handle are

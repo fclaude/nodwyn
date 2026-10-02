@@ -223,6 +223,11 @@ type Jev struct {
 	// not in any Scheme a repository can ship, so that nothing but the user
 	// moves it.
 	ApproveThreshold float64 `toml:"approve_threshold"`
+	// PriceInput and PriceOutput are the judge's prices, USD per million
+	// tokens: the API reports what a request used, never what it cost, so
+	// these estimate it. Unset, judge requests are counted, not priced.
+	PriceInput  *float64 `toml:"price_input"`
+	PriceOutput *float64 `toml:"price_output"`
 }
 
 // Valid content levels, lowest to highest.
@@ -525,6 +530,11 @@ func (c Config) Validate() error {
 	}
 	if c.Jev.ApproveThreshold <= 0 || c.Jev.ApproveThreshold > 1 {
 		return fmt.Errorf("jev.approve_threshold must be above 0 and at most 1, got %v", c.Jev.ApproveThreshold)
+	}
+	for name, p := range map[string]*float64{"price_input": c.Jev.PriceInput, "price_output": c.Jev.PriceOutput} {
+		if p != nil && (math.IsNaN(*p) || math.IsInf(*p, 0) || *p < 0) {
+			return fmt.Errorf("jev.%s must be US dollars per million tokens, at least 0, got %v", name, *p)
+		}
 	}
 	if err := c.Docs.validate(); err != nil {
 		return err

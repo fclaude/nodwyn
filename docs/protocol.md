@@ -254,6 +254,14 @@ one with `Prompt.Egress` set and no `Path`, so it offers no standing
 answer; with `allow` there is none, and with `deny` the tool is refused. `doc-export`'s confirm is
 a write's: `Prompt.Path` is its target.
 
+A `jev.req` event records one judge request: the tool, its origin, the
+content level, the redacted payload's size and hash, the redactions, the
+answer, and, when an answer came back, the `model` that answered and its
+`usage` (`input_tokens`, `output_tokens`, and `cost`, an estimate from
+`[jev]` prices; the API reports none). A budget checkpoint's state counts
+the turn's judge requests apart: `judge_calls`, `judge_tokens`,
+`judge_cost`, `judge_unpriced`.
+
 A `context.compact` event records one compaction: `trigger` (`auto`,
 `command` or `requested`), `compacted`, `before_tokens` and `after_tokens`
 (the window's estimates, the unit `compact-threshold` is in), `threshold`

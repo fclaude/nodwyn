@@ -60,7 +60,9 @@ func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
 			http.Error(w, "judge down", status)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{"answers": map[string]any{"q": answer}})
+		// The API's documented shape: the model that answered and the usage.
+		json.NewEncoder(w).Encode(map[string]any{"model": "jev-1.13.0", "answers": map[string]any{"q": answer},
+			"usage": map[string]int{"input_tokens": len(raw) / 4, "output_tokens": 20}})
 	}))
 	t.Cleanup(j.Close)
 	return j

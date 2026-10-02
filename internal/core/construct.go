@@ -133,7 +133,7 @@ func jevOptions(j config.Jev) prim.JevOptions {
 	if content == "" {
 		content = config.JevContentPlan
 	}
-	return prim.JevOptions{URL: j.URL, Model: j.Model, Content: content, Timeout: timeout}
+	return prim.JevOptions{URL: j.URL, Model: j.Model, Content: content, Timeout: timeout, PriceInput: j.PriceInput, PriceOutput: j.PriceOutput}
 }
 
 func resolveOptions(o Options) (Options, error) {

@@ -265,3 +265,14 @@ answers itself.
 
 A run's first message is the run prompt around its task, so the task list
 titles a run by its task (`run.state`), redacted as a first message is.
+
+### The judge's spend — 2026-10-02
+
+The judge (Jev) reports each request's tokens and never its cost. A turn
+counts its judge requests apart from its model requests: calls, tokens, and
+the cost `[jev] price_input` and `price_output` estimate. The token budget
+leaves them out, since it measures the model's context. A spend limit counts
+their cost, since it measures money, and `knownSpend` reads it from the
+`jev.req` records as it reads model costs from `llm.resp`. A judge request
+with no prices is not counted, and the first turn with one says so, as for
+model requests.

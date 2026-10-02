@@ -120,6 +120,9 @@ func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 		g.observe(string(e.Kind), e.Payload)
 	}
 	out.WriteString("\n" + g.report())
+	if j := judgeTally(events).String(); j != "" {
+		out.WriteString("Judge in this session: " + j + ".\n")
+	}
 	out.WriteString("\nUsage below is recorded at checkpoints, not live counters or remaining allowance.\n")
 	start := -1
 	for i, e := range events {
@@ -133,6 +136,9 @@ func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 	}
 	fmt.Fprintf(&out, "\nLatest submitted turn · #%d (%s)\n", events[start].Seq, events[start].Kind)
 	out.WriteString(formatSpend(events[start+1:]))
+	if j := judgeTally(events[start+1:]).String(); j != "" {
+		out.WriteString("Judge this turn: " + j + ".\n")
+	}
 	count, ended := 0, false
 	for _, e := range events[start+1:] {
 		if e.Kind == log.KindTurnEnd {
@@ -168,12 +174,27 @@ func formatBudgetState(state budget.State) string {
 	if s := plain.SpendSoFar(state); s != "" {
 		spend = " · " + s
 	}
+	if j := plain.JudgeSoFar(state); j != "" {
+		spend += " · " + j
+	}
 	return fmt.Sprintf("Tool calls: %d · tokens: %d · actions: %d · elapsed: %s%s\nFiles: %s\nCommands: %s", state.ToolCalls, state.Tokens, state.Actions, state.Elapsed.Round(time.Millisecond), spend, strings.Join(state.Files, ", "), strings.Join(state.Commands, ", "))
+}
+
+// judgeTally adds up the judge requests among events.
+func judgeTally(events []log.Event) plain.JudgeTally {
+	var j plain.JudgeTally
+	for _, e := range events {
+		var p log.JevReq
+		if e.Kind == log.KindJevReq && e.Decode(&p) == nil {
+			j.Add(p)
+		}
+	}
+	return j
 }
 
 // formatSpend is what the latest turn's model requests cost (llm.resp
 // since its user.msg or eval.req), as far as known. The judge's calls are
-// not model requests and have no cost the provider reports.
+// not model requests; judgeTally counts them.
 func formatSpend(events []log.Event) string {
 	var cost float64
 	var requests, priced, estimated int

@@ -435,6 +435,26 @@ what leaves, a `jev.req` log line with origin, size, hash and the answer.
 Set `jev.content = "none"` in `config.toml` to turn it off. Without a
 `jev-key` credential nothing is sent and the loop runs without a gate.
 
+**What the judge used.** The judge reports each request's tokens, never its
+cost, and nodwyn records them in `jev.req` with the model that answered
+(`jev-1.13.0` for `jev-latest`). Give it prices, in US dollars per million
+tokens, to estimate the cost:
+
+```toml
+[jev]
+price_input = 0.5
+price_output = 2.0
+```
+
+Every client shows each judge request as one line
+(`[judge jev-choice: 318→34 tok · ≈$0.0002]`). They also show the judge's
+running total when it has been asked: in the console's side panel ("Judge,
+this task"), at a budget checkpoint, and in the TUI's `:budget` (this turn
+and this session). Settings sets the prices. Judge tokens are not model
+tokens, so the token budget leaves them out, but a spend limit counts their
+cost; a judge request with no prices is not counted, and the first turn
+with one says so.
+
 The model can ask the judge too, with `judge-noul`, `judge-score` and
 `judge-choice`: Go injects the stored `jev-key`, the binding above decides
 each call, and what the model sends is redacted the same way. Because the
@@ -867,8 +887,9 @@ A cost from prices is an estimate, shown with ≈: it does not know a
 provider's surcharge for writing to its cache, so a reported cost always
 wins. Ollama reports neither, and its line reads as before; so does an older
 log. The TUI's `:budget` adds the turn's spend over every model request (the
-planner's, sub-agents' and compaction's included; the judge reports no
-cost), and a budget checkpoint says what the turn has cost so far. The
+planner's, sub-agents' and compaction's included) and the judge's requests
+apart (priced by `[jev] price_*`, "Plan gate" above), and a budget
+checkpoint says what the turn has cost so far. The
 token budget still counts cached tokens in full: it measures context, not
 money.
 

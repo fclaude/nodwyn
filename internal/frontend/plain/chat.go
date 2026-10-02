@@ -295,6 +295,9 @@ func (c *Chat) show(ev event.Event) {
 	case string(log.KindContextCompact):
 		endStream()
 		fmt.Fprintln(c.Out, CompactLine(ev.Payload.(log.ContextCompact)))
+	case string(log.KindJevReq):
+		endStream()
+		fmt.Fprintln(c.Out, dim(JudgeLine(ev.Payload.(log.JevReq))))
 	case string(log.KindMCPEgress):
 		if line, ok := EgressLine(ev.Payload.(log.MCPEgress)); ok {
 			endStream()
@@ -566,6 +569,10 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			var p log.ContextCompact
 			_ = ev.Decode(&p)
 			fmt.Fprintln(w, CompactLine(p))
+		case log.KindJevReq:
+			var p log.JevReq
+			_ = ev.Decode(&p)
+			fmt.Fprintln(w, dim(JudgeLine(p)))
 		case log.KindLLMResp:
 			var p log.LLMResp
 			_ = ev.Decode(&p)
@@ -670,6 +677,9 @@ func (c *Chat) checkpoint(ev event.Checkpoint) {
 		spend = " · " + s
 	}
 	fmt.Fprintf(c.Out, "  %d tool calls, %d tokens, %d actions, %s elapsed%s\n", p.State.ToolCalls, p.State.Tokens, p.State.Actions, p.State.Elapsed.Round(time.Second), spend)
+	if j := JudgeSoFar(p.State); j != "" {
+		fmt.Fprintf(c.Out, "  %s\n", j)
+	}
 	if len(p.State.Files) > 0 {
 		fmt.Fprintf(c.Out, "  files: %s\n", strings.Join(p.State.Files, ", "))
 	}

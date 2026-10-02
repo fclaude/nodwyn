@@ -13,20 +13,20 @@ import (
 // reported by the provider or priced from the model's price_*. It counts the
 // whole task, a resumed one's history and every turn of a run included.
 
-// knownSpend is what the task's model requests have cost so far, as far as
-// known.
+// knownSpend is what the task's model and judge requests have cost so far,
+// as far as known.
 func (s *Session) knownSpend() float64 {
 	var total float64
 	for _, ev := range s.EventsSoFar() {
-		if ev.Kind != log.KindLLMResp {
+		if ev.Kind != log.KindLLMResp && ev.Kind != log.KindJevReq {
 			continue
 		}
 		var r struct {
-			Usage struct {
+			Usage *struct {
 				Cost *float64 `json:"cost"`
 			} `json:"usage"`
 		}
-		if json.Unmarshal(ev.Payload, &r) == nil && r.Usage.Cost != nil && *r.Usage.Cost > 0 {
+		if json.Unmarshal(ev.Payload, &r) == nil && r.Usage != nil && r.Usage.Cost != nil && *r.Usage.Cost > 0 {
 			total += *r.Usage.Cost
 		}
 	}
@@ -38,14 +38,17 @@ func (s *Session) knownSpend() float64 {
 // whose cost nobody knows says so once: the limit cannot count it.
 func (s *Session) endSpend(turn *budget.Turn) {
 	_, unpriced, limit := turn.Spend()
+	judge := turn.Snapshot().JudgeUnpriced
 	s.mu.Lock()
 	s.costSoft = limit.Soft
-	noted := s.spendNoted
-	if unpriced > 0 {
-		s.spendNoted = true
-	}
+	noted, judgeNoted := s.spendNoted, s.judgeSpendNoted
+	s.spendNoted = noted || unpriced > 0
+	s.judgeSpendNoted = judgeNoted || judge > 0
 	s.mu.Unlock()
 	if unpriced > 0 && !noted {
 		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set (budget.cost_hard), but %d model request(s) this turn had no known cost: the provider reported none, and the model has no price_* in config.toml. The limit does not count them.", unpriced)})
+	}
+	if judge > 0 && !judgeNoted {
+		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set (budget.cost_hard), but %d judge request(s) this turn had no price: the judge reports what it used, not what it cost, and [jev] has no price_input and price_output in config.toml. The limit does not count them.", judge)})
 	}
 }

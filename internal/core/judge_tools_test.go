@@ -58,6 +58,46 @@ func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 	}
 }
 
+// What the judge used is recorded with each answer, priced when [jev] has
+// prices, and counted in the task's spend; its tokens stay out of the
+// token budget, which counts model tokens.
+func TestJudgeUsageIsRecordedAndPriced(t *testing.T) {
+	judge := newFakeJudge(t, noul(0.2), noul(0.75))
+	r := judgedRigWith(t, judge, config.JevContentFull, "", func(o *Options) {
+		in, out := 1000.0, 2000.0
+		o.Config.Jev.PriceInput, o.Config.Jev.PriceOutput = &in, &out
+	},
+		fake.Turn{ToolCalls: []fake.ToolCall{{Name: "judge-noul", Args: map[string]any{"state": "the diff", "instructions": "is it complete?"}}}},
+		fake.Turn{Content: "done"})
+	if e := r.turn("check it"); e != "" {
+		t.Fatal(e)
+	}
+	var total float64
+	n := 0
+	for _, ev := range r.logged() {
+		if ev.Kind != log.KindJevReq {
+			continue
+		}
+		var jr log.JevReq
+		ev.Decode(&jr)
+		n++
+		u := jr.Usage
+		if jr.Model != "jev-1.13.0" || u == nil || u.InputTokens <= 0 || u.OutputTokens != 20 || u.Cost == nil {
+			t.Fatalf("jev.req %+v usage %+v", jr, u)
+		}
+		if want := (float64(u.InputTokens)*1000 + 20*2000) / 1e6; *u.Cost != want {
+			t.Fatalf("cost %v, want %v", *u.Cost, want)
+		}
+		total += *u.Cost
+	}
+	if n != 2 {
+		t.Fatalf("%d judge requests", n)
+	}
+	if got := r.s.knownSpend(); got != total {
+		t.Fatalf("the task's spend is %v, the judge's %v (the model has no prices)", got, total)
+	}
+}
+
 // A model's judge-noul call goes through the session: the guard checks
 // jev-key's binding, the key is injected, the answer comes back as the
 // tool's result, and jev.req says the model sent it.

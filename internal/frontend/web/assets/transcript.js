@@ -309,6 +309,15 @@ export class Transcript {
         if (p.lasting) this.audit(`The conversation goes on from here${p.agent ? ` (${p.agent})` : ""}`);
         else this.audit(auditLabels[event.kind], p);
         break;
+      case "jev.req": {
+        // A judge request: what it used, and with [jev] prices what it cost
+        // (an estimate: the judge reports no cost).
+        const u = p.usage;
+        const used = u ? ` · ${(u.input_tokens || 0).toLocaleString()} → ${(u.output_tokens || 0).toLocaleString()} tokens${u.cost !== undefined ? ` · ${usd(u.cost, true)}` : ""}` : "";
+        if (!p.ok && !u) this.audit(`The judge (${p.tool}) did not answer: ${p.error || "no answer"}`, undefined, "bad");
+        else this.audit(`Asked the judge (${p.tool})${used}`, { model: p.model, answer: p.answer, origin: p.origin, sent: `${(p.bytes || 0).toLocaleString()} bytes`, error: p.error });
+        break;
+      }
       case "context.compact": {
         // Sizes are the window's estimates, the unit compaction measures in.
         const n = (v) => `~${Number(v || 0).toLocaleString()}`;
@@ -511,6 +520,22 @@ export function contextGauge(events) {
     }
   }
   return g;
+}
+
+// judgeTally adds up the judge's requests among events: calls, tokens, and
+// the cost as far as priced ([jev] prices; the judge reports no cost).
+export function judgeTally(events) {
+  const j = { calls: 0, tokens: 0, cost: 0, unpriced: 0 };
+  for (const e of events) {
+    if (e.kind !== "jev.req") continue;
+    j.calls++;
+    const u = e.payload?.usage;
+    if (!u) continue;
+    j.tokens += (u.input_tokens || 0) + (u.output_tokens || 0);
+    if (u.cost !== undefined) j.cost += u.cost;
+    else j.unpriced++;
+  }
+  return j;
 }
 
 // planSteps reads a recorded plan's numbered or bulleted lines as steps; a

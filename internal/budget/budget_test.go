@@ -244,3 +244,23 @@ func TestSpendChoicesAndAmounts(t *testing.T) {
 		t.Fatal("other amounts changed")
 	}
 }
+
+// The judge's requests are counted apart: their tokens are not model
+// tokens, but their cost counts against a spend limit.
+func TestJudgeRequests(t *testing.T) {
+	limits := testLimits()
+	limits.Cost = Limit{Soft: Micros(0.5), Hard: Micros(0.5)}
+	ctx, turn, done := Start(context.Background(), limits, nil)
+	defer done()
+	cost := 0.6
+	turn.AddJudge(100, &cost)
+	turn.AddJudge(50, nil)
+	s := turn.Snapshot()
+	if s.JudgeCalls != 2 || s.JudgeTokens != 150 || s.JudgeCost != 0.6 || s.JudgeUnpriced != 1 || s.Tokens != 0 || s.Cost != 0 {
+		t.Fatalf("state %+v", s)
+	}
+	var stop *Stop
+	if err := turn.Finish(ctx); !errors.As(err, &stop) || !stop.Spend {
+		t.Fatalf("judge spend past the limit: %v", err)
+	}
+}

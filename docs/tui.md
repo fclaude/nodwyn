@@ -179,8 +179,10 @@ that the judge is disabled. Use `:log` for older outcomes and diagnostic notes.
 lifetime, including the legacy tool-call override. For the latest submitted
 user-message or Scheme-evaluation turn it then shows what its model requests
 cost, as far as the provider reported or the model's prices estimate (and the
-share of prompt tokens read from cache), or that the spend is unknown and why;
-the judge's calls report no cost. Then that turn's checkpoints: dimension,
+share of prompt tokens read from cache), or that the spend is unknown and why,
+and what the judge used (calls, tokens and, with `[jev]` prices, cost) in that
+turn and in the session. Each judge request is also one line in the
+conversation. Then that turn's checkpoints: dimension,
 usage, soft/hard limits at that point, all four usage counters, the spend so
 far when known, files/commands, recorded choice or error, and actor when
 available. Elapsed time is rounded to milliseconds. A recorded turn end is

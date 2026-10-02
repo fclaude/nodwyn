@@ -3,7 +3,7 @@
 // the workspace. Every figure comes from the log or from session.info; a
 // panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
-import { Transcript, planSteps, usd, contextGauge } from "./transcript.js";
+import { Transcript, planSteps, usd, contextGauge, judgeTally } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
 import { kindLabel } from "./home.js";
 import { Attachments, attachmentChip } from "./attach.js";
@@ -579,9 +579,22 @@ export class TaskView {
         // context up once per request; Context below is how big it is.
         tokens ? meter("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
         this.contextMeter(meter),
+        this.judgeLine(),
         // The spend limit counts the whole task, not this turn.
         budgets?.cost?.hard ? meter("Spend, this task", this.knownSpend(), budgets.cost.soft / 1e6, (c) => usd(c, false)) : null,
       ].filter(Boolean),
+    );
+  }
+  // judgeLine is what the judge has used in this task, when it was asked at
+  // all: its calls, tokens and, with [jev] prices, what they cost.
+  judgeLine() {
+    const j = judgeTally(this.events());
+    if (!j.calls) return null;
+    const cost = j.tokens && j.unpriced === 0 ? ` · ${usd(j.cost, true)}` : j.cost > 0 ? ` · at least ${usd(j.cost, true)}` : j.unpriced ? " · not priced" : "";
+    return h(
+      "div",
+      { class: "meter", title: "The judge reports what it used, not what it cost; [jev] price_input and price_output estimate it. Its tokens are not in the token budget; its cost counts against a spend limit." },
+      h("div", { class: "meter-head" }, h("span", {}, "Judge, this task"), h("span", {}, `${j.calls} call${j.calls === 1 ? "" : "s"} · ${j.tokens.toLocaleString()} tokens${cost}`)),
     );
   }
   // contextMeter is how full the conversation's context is, against the

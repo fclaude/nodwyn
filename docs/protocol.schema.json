@@ -134,6 +134,18 @@
             "null"
           ]
         },
+        "judge_calls": {
+          "type": "integer"
+        },
+        "judge_cost": {
+          "type": "number"
+        },
+        "judge_tokens": {
+          "type": "integer"
+        },
+        "judge_unpriced": {
+          "type": "integer"
+        },
         "priced": {
           "type": "integer"
         },
@@ -1363,6 +1375,9 @@
         "level": {
           "type": "string"
         },
+        "model": {
+          "type": "string"
+        },
         "ok": {
           "type": "boolean"
         },
@@ -1383,6 +1398,16 @@
         },
         "tool": {
           "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.JevUsage"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -1392,6 +1417,31 @@
         "bytes",
         "payload_hash",
         "ok"
+      ],
+      "type": "object"
+    },
+    "log.JevUsage": {
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "input_tokens": {
+          "type": "integer"
+        },
+        "output_tokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "input_tokens",
+        "output_tokens"
       ],
       "type": "object"
     },

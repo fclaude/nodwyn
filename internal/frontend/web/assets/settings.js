@@ -81,6 +81,8 @@ const specs = {
   "control.price_output": { kind: "decimal", label: "Price of output" },
   "jev.content": { kind: "choice", label: "What the judge sees" },
   "jev.approve_threshold": { kind: "decimal", label: "Allows a request at" },
+  "jev.price_input": { kind: "decimal", label: "Judge price of input" },
+  "jev.price_output": { kind: "decimal", label: "Judge price of output" },
   "jev.timeout": { kind: "duration", label: "Waits for an answer" },
   "jev.model": { kind: "text", label: "Judge model" },
   "mcp.runtime": { kind: "choice", label: "Container runtime" },
@@ -523,6 +525,18 @@ function judgeSection(ctx, redraw) {
     ...row("Allows a request at", input(ctx, "jev.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a run's request go ahead. Anything below, or no answer, is a no.")),
     ...row("Waits", input(ctx, "jev.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer; a judge that doesn't answer in time is a no.")),
     ...row("Model", input(ctx, "jev.model")),
+    ...row(
+      "Prices",
+      h(
+        "div",
+        { class: "row-actions" },
+        input(ctx, "jev.price_input", { width: "narrow", prefix: "$", placeholder: "unknown" }),
+        h("span", { class: "muted" }, "input,"),
+        input(ctx, "jev.price_output", { width: "narrow", prefix: "$", placeholder: "unknown" }),
+        h("span", { class: "muted" }, "output"),
+      ),
+      h("p", { class: "hint" }, "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: tasks show the judge's spend, and a spend limit counts it."),
+    ),
   );
 }
 

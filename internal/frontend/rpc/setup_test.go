@@ -243,6 +243,7 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{
 		"budget.tokens_soft": 500, "budget.tokens_hard": 1000, "budget.cost_hard": 2.5,
 		"tasks.mode": "unattended", "tasks.turns": 8, "loop.shell_timeout": "5m",
+		"jev.price_input": 0.5, "jev.price_output": 2,
 	}}), &settings)
 	if v := settings.Values["budget.tokens_hard"]; v.Value != float64(1000) || !v.Set {
 		t.Fatalf("tokens_hard written: %+v", v)
@@ -251,7 +252,7 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 		t.Fatalf("mode written: %+v", v)
 	}
 	raw, _ := os.ReadFile(o.Paths.ConfigFile)
-	for _, want := range []string{"# mine\n", "tokens_hard = 1000\n", "cost_hard = 2.5\n", "[tasks]\n", "mode = \"unattended\"\nturns = 8\n", "[loop]\nshell_timeout = \"5m\"\n"} {
+	for _, want := range []string{"# mine\n", "tokens_hard = 1000\n", "cost_hard = 2.5\n", "[tasks]\n", "mode = \"unattended\"\nturns = 8\n", "[loop]\nshell_timeout = \"5m\"\n", "price_input = 0.5\n", "price_output = 2"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("config.toml lacks %q:\n%s", want, raw)
 		}
@@ -290,6 +291,7 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 		{"tasks.mode": "sometimes"},
 		{"tasks.wall": ""},
 		{"control.vision": "yes"},
+		{"jev.price_output": -1},
 	} {
 		if r := c.call("settings.write", map[string]any{"set": set}); r.Error == nil {
 			t.Errorf("accepted %v", set)

@@ -73,6 +73,14 @@ type State struct {
 	// EarlierCost is what the task's earlier turns cost, as far as known: a
 	// spend limit counts it with Cost.
 	EarlierCost float64 `json:"earlier_cost,omitempty"`
+	// The judge's requests this turn: how many answered, their tokens, and
+	// their cost as far as priced ([jev] price_*), JudgeUnpriced the ones
+	// not priced. Judge tokens are not model tokens, so the token budget
+	// leaves them out; a spend limit counts JudgeCost.
+	JudgeCalls    int64   `json:"judge_calls,omitempty"`
+	JudgeTokens   int64   `json:"judge_tokens,omitempty"`
+	JudgeCost     float64 `json:"judge_cost,omitempty"`
+	JudgeUnpriced int64   `json:"judge_unpriced,omitempty"`
 }
 
 // Checkpoint is the question put to the user when a soft limit is reached:
@@ -211,8 +219,28 @@ func (t *Turn) hard(ctx context.Context, dimension string, used int64, limit Lim
 	return nil
 }
 
-// spent is the task's known cost so far, in the cost limit's unit.
-func (t *Turn) spent() int64 { return Micros(t.state.EarlierCost + t.state.Cost) }
+// spent is the task's known cost so far, the judge's included, in the cost
+// limit's unit.
+func (t *Turn) spent() int64 {
+	return Micros(t.state.EarlierCost + t.state.Cost + t.state.JudgeCost)
+}
+
+// AddJudge records one judge request: its tokens, and its cost (nil: not
+// priced). Like AddSpend it stops nothing itself.
+func (t *Turn) AddJudge(tokens int, cost *float64) {
+	t.state.JudgeCalls++
+	if tokens > 0 {
+		t.state.JudgeTokens += int64(tokens)
+	}
+	if cost != nil && *cost >= 0 {
+		t.state.JudgeCost += *cost
+	} else {
+		t.state.JudgeUnpriced++
+	}
+}
+
+// Snapshot is what the turn has used so far.
+func (t *Turn) Snapshot() State { return t.snapshot() }
 
 // SetEarlierCost tells the turn what the task's earlier turns cost, for the
 // spend limit. Call it before the turn's work.

@@ -48,6 +48,7 @@ var settable = map[string]settingKind{
 	"control.price_input": number, "control.price_cached_input": number, "control.price_output": number,
 
 	"jev.content": text, "jev.approve_threshold": number, "jev.timeout": text, "jev.model": text,
+	"jev.price_input": number, "jev.price_output": number,
 
 	"mcp.runtime": text,
 }

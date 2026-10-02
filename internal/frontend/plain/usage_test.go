@@ -69,3 +69,37 @@ func TestCompactLine(t *testing.T) {
 		t.Fatalf("gave up: %q", got)
 	}
 }
+
+func TestJudgeLineAndTally(t *testing.T) {
+	cost := 0.00022
+	priced := log.JevReq{Tool: "jev-choice", OK: true, Usage: &log.JevUsage{InputTokens: 318, OutputTokens: 34, Cost: &cost}}
+	if got := JudgeLine(priced); got != "[judge jev-choice: 318→34 tok · ≈$0.0002]" {
+		t.Fatalf("priced: %q", got)
+	}
+	bare := log.JevReq{Tool: "jev-noul", OK: true, Usage: &log.JevUsage{InputTokens: 296, OutputTokens: 20}}
+	if got := JudgeLine(bare); got != "[judge jev-noul: 296→20 tok]" {
+		t.Fatalf("unpriced: %q", got)
+	}
+	failed := log.JevReq{Tool: "jev-noul", Error: "401 Unauthorized"}
+	if got := JudgeLine(failed); got != "[judge jev-noul failed: 401 Unauthorized]" {
+		t.Fatalf("failed: %q", got)
+	}
+	var j JudgeTally
+	j.Add(priced)
+	if got := j.String(); got != "1 judge call, 352 tokens, ≈$0.0002" {
+		t.Fatalf("one: %q", got)
+	}
+	j.Add(bare)
+	j.Add(failed)
+	if got := j.String(); got != "3 judge calls, 668 tokens, at least ≈$0.0002" {
+		t.Fatalf("mixed: %q", got)
+	}
+	var none JudgeTally
+	none.Add(bare)
+	if got := none.String(); got != "1 judge call, 316 tokens, not priced ([jev] price_input, price_output)" {
+		t.Fatalf("unpriced: %q", got)
+	}
+	if JudgeSoFar(budget.State{}) != "" {
+		t.Fatal("a turn without the judge mentions it")
+	}
+}
