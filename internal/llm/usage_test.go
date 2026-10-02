@@ -56,6 +56,15 @@ func TestOpenAIUsageUnknownZeroAndOddShapes(t *testing.T) {
 	if u.PromptTokens != 10 || u.OutputTokens != 2 || u.Cost != nil || u.CachedTokens != nil || u.ReasoningTokens != 0 {
 		t.Fatalf("odd shapes %+v", u)
 	}
+	if u.Unreported {
+		t.Fatal("counts reported as missing")
+	}
+	// No counts at all: not a request of zero tokens.
+	for _, missing := range []string{`null`, `{}`, `{"cost":0.01}`} {
+		if u, _ = chatWithUsage(t, missing); !u.Unreported || u.PromptTokens != 0 {
+			t.Fatalf("%s: %+v", missing, u)
+		}
+	}
 }
 
 func price(f float64) *float64 { return &f }

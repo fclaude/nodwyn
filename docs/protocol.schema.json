@@ -956,6 +956,44 @@
       ],
       "type": "object"
     },
+    "log.ContextCompact": {
+      "properties": {
+        "after_tokens": {
+          "type": "integer"
+        },
+        "before_tokens": {
+          "type": "integer"
+        },
+        "compacted": {
+          "type": "boolean"
+        },
+        "focus": {
+          "type": "string"
+        },
+        "note_seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "note_tokens": {
+          "type": "integer"
+        },
+        "threshold": {
+          "type": "integer"
+        },
+        "trigger": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "trigger",
+        "compacted",
+        "before_tokens"
+      ],
+      "type": "object"
+    },
     "log.ContextFold": {
       "properties": {},
       "required": [],
@@ -1894,6 +1932,9 @@
         },
         "total_ms": {
           "type": "integer"
+        },
+        "unreported": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2100,6 +2141,9 @@
     },
     "payload.binding.change": {
       "$ref": "#/$defs/log.BindingChange"
+    },
+    "payload.context.compact": {
+      "$ref": "#/$defs/log.ContextCompact"
     },
     "payload.context.fold": {
       "$ref": "#/$defs/log.ContextFold"
@@ -5318,6 +5362,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.BindingChange"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "context.compact"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.ContextCompact"
             },
             "seq": {
               "minimum": 0,

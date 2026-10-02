@@ -34,6 +34,7 @@ Kind & What it records \\
 \code{turn.end} & the durable end of a turn \\
 \code{run.state}, \code{run.turn}, \code{run.checkpoint} & a run's progress: its limits and state, whether it is unattended, auto-approved or judged, its turns, and each checkpoint's answer \\
 \code{context.narrow}, \code{context.widen}, \code{context.fold}, \code{result.fold} & changes to what later windows show \\
+\code{context.compact} & a compaction: what set it off, the context's size before and after, its handover note \\
 \code{summary}, \code{summary.drop} & a revocable summary over a span, and its revocation \\
 \code{file.version} & a file's previous content, kept in \file{.nodwyn/versions/} before a write: its path, size and hash \\
 \code{doc.upload} & a document sent to Google Drive: file, size, hash, destination, the document's id or why nothing was sent; never content or a token \\

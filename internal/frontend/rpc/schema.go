@@ -123,7 +123,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindSessionStart): log.SessionStart{}, string(log.KindSessionResume): log.SessionStart{}, string(log.KindSessionEnd): log.SessionEnd{},
 		string(log.KindEvalReq): log.EvalRequest{}, string(log.KindEvalResult): log.EvalResult{},
 		string(log.KindUserMsg): log.UserMsg{}, string(log.KindHarnessMsg): log.HarnessMsg{},
-		string(log.KindContextNarrow): log.ContextNarrow{}, string(log.KindContextWiden): log.ContextWiden{}, string(log.KindContextFold): log.ContextFold{}, string(log.KindLLMReq): log.LLMReq{}, string(log.KindLLMResp): log.LLMResp{},
+		string(log.KindContextNarrow): log.ContextNarrow{}, string(log.KindContextWiden): log.ContextWiden{}, string(log.KindContextFold): log.ContextFold{}, string(log.KindContextCompact): log.ContextCompact{}, string(log.KindLLMReq): log.LLMReq{}, string(log.KindLLMResp): log.LLMResp{},
 		string(log.KindToolCall): log.ToolCallEvent{}, string(log.KindToolResult): log.ToolResult{},
 		string(log.KindGuardDecision): log.GuardDecision{}, string(log.KindApprovalChange): log.ApprovalChange{}, string(log.KindBindingChange): log.BindingChange{}, string(log.KindSummaryDrop): log.SummaryDrop{},
 		string(log.KindEgressCheck): log.EgressCheck{}, string(log.KindGatePlan): log.GatePlan{}, string(log.KindPlanStep): log.PlanStep{}, string(log.KindJevReq): log.JevReq{},

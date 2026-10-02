@@ -39,7 +39,11 @@ plan scores, the steps the model marks done or skipped (`plan-step`),
 attachments, document uploads and evaluation output. After each reply a
 usage line gives its tokens and, when known, the share of the prompt read
 from the provider's cache, its cost and the model's time (`12,400→800 tok ·
-78% cached · $0.012`; [the manual](manual.md), "Choosing models"). Thinking is hidden by
+78% cached · $0.012`; [the manual](manual.md), "Choosing models"). The title
+says how full the conversation's context is (`context ~45k of ~61k`: nodwyn's
+estimate of the latest request against the window's high water), a
+compaction is one line with the size before and after, and `:budget` adds
+what the provider counted for that request and the compactions so far. Thinking is hidden by
 default; `:thinking` toggles recorded reasoning and live thinking. Durable
 response text replaces its streamed preview rather than appearing twice. The
 log remains the source of truth; scrollback is a display derived from it.

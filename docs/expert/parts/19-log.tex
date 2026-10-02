@@ -50,6 +50,7 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
 \code{egress.check}, \code{jev.req} & keyed requests: binding lookup; judge calls \\
 \code{gate.plan}, \code{plan.step} & the plan gate's outcome; the model's marks on its steps \\
 \code{context.narrow}, \code{context.fold}, \code{context.widen}, \code{result.fold} & window shaping \\
+\code{context.compact} & a compaction: what set it off, the context's size before and after, the note \\
 \code{turn.checkpoint}, \code{turn.end} & budget checkpoints; the durable end of a turn, with its outcome \\
 \code{run.state}, \code{run.turn}, \code{run.checkpoint} & supervised runs \\
 \code{eval.req}, \code{eval.result} & your \code{:eval}s \\

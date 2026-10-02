@@ -42,6 +42,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 		}
 		m.lastSeq = e.Seq
 	}
+	m.gauge.observe(e.Kind, e.Payload)
 	var err error
 	switch e.Kind {
 	case event.StreamText, event.StreamThinking, event.Output:
@@ -215,6 +216,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 			m.append("credential refreshed: " + p.Class + " at " + p.Endpoint)
 		} else {
 			m.append("credential refresh failed: " + p.Class + " at " + p.Endpoint + ": " + p.Error)
+		}
+	case string(log.KindContextCompact):
+		var p log.ContextCompact
+		p, err = decode[log.ContextCompact](e.Payload)
+		if err == nil {
+			m.append(plain.CompactLine(p))
 		}
 	case string(log.KindMCPEgress):
 		var p log.MCPEgress

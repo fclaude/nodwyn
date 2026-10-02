@@ -577,7 +577,7 @@ to.
 These primitives are hidden from the model. The ones that act on the
 conversation (`model-turn`, `run-tools`, `skip-tools`, `answer-call`,
 `add-message`, `log-note`, `fold-result`, `record-plan`, `plan-steps`,
-`record-step`, `narrow-context`, `fold-context`, `widen`) are refused outside
+`record-step`, `record-compaction`, `narrow-context`, `fold-context`, `widen`) are refused outside
 a turn and from model-originated code; the ones that only describe the session (`model-info`, `model-names`,
 `window-limits`, `session-system-prompt`, `session-requests`,
 `context-tokens`, `unattended?`, `plan-required?`, `plan-recorded?`,
@@ -683,6 +683,16 @@ A session with no request before the `/compact` has nothing to compact, and
 the model is not asked. Each outcome is a `note` in the log, which the
 clients show.
 
+Every compaction, whatever set it off and whether it worked, is recorded as
+`context.compact` (`record-compaction`): the trigger (`auto`, `command` for
+`/compact`, `requested` for `compact-next-round`), whether it compacted, the
+context's size before and after in the window's estimated tokens, the
+threshold an automatic one passed, the focus, and the handover note's reply
+(its `llm.resp` seq, its length in tokens, and whether it stopped at the
+output limit). The clients show it as one line, such as
+`compacted (past ~58,983 tokens): context ~59,210 → ~4,100 tokens`, and one
+that gave up as a warning.
+
 A strategy asks for compaction at the next round, whatever the size, with
 `(compact-next-round [focus])`: `maybe-compact` runs it where the loop next
 calls it, in this turn or the next, and the request is used once.
@@ -695,7 +705,7 @@ calls it, in this turn or the next, and the request is used once.
 | `(compact-focus-prompt focus)` | what the note must keep, as the user put it after `/compact` or a strategy gave `compact-next-round`, added after `compact-summary-prompt` |
 | `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to re-run its reproduction and re-check its findings before building on them |
 | `(maybe-compact request reply)` | compact if a strategy asked for it with `compact-next-round`, or if the context the next `model-turn` would send passed the threshold; call it once the reply's calls are answered (`reply` itself is not read) |
-| `(compact-context request [focus])` | compact now, handing over `request`; `#t` if the turn continues in the narrowed context |
+| `(compact-context request [focus [trigger]])` | compact now, handing over `request`; `#t` if the turn continues in the narrowed context. `trigger` (`auto`, `command`, or `requested`, the default) is what the record says set it off |
 | `(compact-next-round [focus])` | compact at the next `maybe-compact`, whatever the size; `compact-requested` holds the request (`#f` when there is none) |
 | `(compact-request? request)` `(compact-turn request)` | whether a message is a `/compact`, and what the default `agent-turn` does with one |
 
@@ -821,6 +831,7 @@ judge the guard refuses (an unbound key) ends the turn, as any denial does.
 | `plan-max-revisions` | revisions after the first draft (3) |
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
 | `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
+| `(record-compaction facts)` | record a compaction as `context.compact`, from an alist: `trigger` (`auto`, `command` or `requested`), `compacted`, `before` (the size `(context-tokens)` gave before it), `threshold` and `focus`. The size after and the note's reply are read when it is called, so call it once the handover is in place, as `compact-context` does |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded` or `required`), `plan`, `score`, `revisions`, `reason` |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |

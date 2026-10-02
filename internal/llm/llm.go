@@ -98,6 +98,9 @@ type Usage struct {
 	// Cost is what the provider says the request cost, in USD (OpenRouter
 	// does); nil when it does not say.
 	Cost *float64
+	// Unreported: the server said nothing about tokens, so PromptTokens and
+	// OutputTokens are 0 for want of a count, not a count of 0.
+	Unreported bool
 }
 
 // Response is the complete model output for one request.

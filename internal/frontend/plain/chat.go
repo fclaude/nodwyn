@@ -292,6 +292,9 @@ func (c *Chat) show(ev event.Event) {
 	case string(log.KindDocUpload):
 		endStream()
 		fmt.Fprintln(c.Out, DocUploadSummary(ev.Payload.(log.DocUpload)))
+	case string(log.KindContextCompact):
+		endStream()
+		fmt.Fprintln(c.Out, CompactLine(ev.Payload.(log.ContextCompact)))
 	case string(log.KindMCPEgress):
 		if line, ok := EgressLine(ev.Payload.(log.MCPEgress)); ok {
 			endStream()
@@ -343,6 +346,24 @@ func AttachSummary(a log.Attach) string {
 		line += fmt.Sprintf(" · %d secret-like string(s) hidden", n)
 	}
 	return line + "]"
+}
+
+// CompactLine is what a transcript shows for a compaction: what set it off,
+// and the context's size before and after in the window's estimated tokens,
+// the unit compaction measures in (a provider may count a fifth fewer).
+func CompactLine(p log.ContextCompact) string {
+	why := map[string]string{"auto": "past ~" + Thousands(int64(p.Threshold)) + " tokens", "command": "/compact", "requested": "asked for by the strategy"}[p.Trigger]
+	if why == "" {
+		why = p.Trigger
+	}
+	if !p.Compacted {
+		return fmt.Sprintf("⚑ compaction (%s) gave up: no handover note came back; the turn goes on in the full context of ~%s tokens", why, Thousands(int64(p.Before)))
+	}
+	line := fmt.Sprintf("── compacted (%s): context ~%s → ~%s tokens, handover note %s tokens", why, Thousands(int64(p.Before)), Thousands(int64(p.After)), Thousands(int64(p.NoteTokens)))
+	if p.Truncated {
+		line += ", cut short at the output limit"
+	}
+	return line + " ──"
 }
 
 // LastingNarrowLine is the line a transcript shows for a lasting
@@ -541,6 +562,10 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			}
 		case log.KindContextWiden:
 			fmt.Fprintln(w, "── context widened ──")
+		case log.KindContextCompact:
+			var p log.ContextCompact
+			_ = ev.Decode(&p)
+			fmt.Fprintln(w, CompactLine(p))
 		case log.KindLLMResp:
 			var p log.LLMResp
 			_ = ev.Decode(&p)

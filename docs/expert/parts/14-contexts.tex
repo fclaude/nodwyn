@@ -176,6 +176,21 @@ and the turn ends there: your next message goes on from the note. A
 strategy asks for the same at its next round with
 \code{(compact-next-round)}.
 
+Every compaction is one line wherever you watch, and one
+\code{context.compact} record in the log: what set it off, and how big the
+context was before and after, in the window's estimate (the unit of the
+threshold; your provider usually counts a fifth or so fewer):
+
+\begin{txt}
+── compacted (past ~58,983 tokens): context ~59,210 → ~4,100 tokens, handover note 812 tokens ──
+\end{txt}
+
+One that gave up, because no note came back, is a warning, and the turn
+goes on in the full context. How full the context is shows as you work:
+in the terminal client's title (\code{context \textasciitilde 45k of
+\textasciitilde 61k}) and \code{:budget}, and in the console's Context
+meter.
+
 \begin{scm}
 (define compact-threshold 40000)   ; compact earlier
 (define compact-threshold #f)      ; never compact; only trim

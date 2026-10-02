@@ -197,7 +197,7 @@ func responseRecord(resp *llm.Response, rates llm.Rates) log.LLMResp {
 			PromptTokens: resp.Usage.PromptTokens, OutputTokens: resp.Usage.OutputTokens,
 			PromptEvalMS: resp.Usage.PromptEvalMS, EvalMS: resp.Usage.EvalMS, TotalMS: resp.Usage.TotalMS, LoadMS: resp.Usage.LoadMS,
 			CachedTokens: resp.Usage.CachedTokens, CacheWriteTokens: resp.Usage.CacheWriteTokens, ReasoningTokens: resp.Usage.ReasoningTokens,
-			Cost: cost, CostEstimated: estimated,
+			Cost: cost, CostEstimated: estimated, Unreported: resp.Usage.Unreported,
 		},
 	}
 	for _, tc := range resp.Message.ToolCalls {

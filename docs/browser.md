@@ -8,7 +8,13 @@ project notes and the workspace. The plan shows the model's progress through
 it: the steps it marked done (with what it says shows it), the ones it
 skipped, and the next. After each reply the conversation shows its tokens,
 and when the provider reports them or the model has prices, how much of the
-prompt came from the cache and what it cost (the manual, "Choosing models").
+prompt came from the cache and what it cost (the manual, "Choosing models");
+over several requests, the largest single prompt too, since each request
+sends the whole prompt again. The side panel's Context meter shows how full
+the conversation's context is against the window's high water, with what the
+provider counted and how often it was compacted; "Tokens sent" is the token
+budget's count, every request's prompt in full. A compaction is one line in
+the conversation: what set it off, and the context's size before and after.
 **Connections** (tools, credential bindings, workspaces, models),
 **Workspaces** and **Settings** hold the rest; Settings also says how
 uploads to Google Docs are handled and changes it (the manual, "Documents out"). The

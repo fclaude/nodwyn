@@ -520,7 +520,15 @@ Long work is compacted on its own just under the window's high water: the
 model writes a handover note and goes on from it, in that turn and the next
 ones. Set `(define compact-threshold 40000)` to compact earlier, `#f` to
 only trim, and send `/compact` to compact whenever you like
-([docs/scheme.md](scheme.md) §9.2).
+([docs/scheme.md](scheme.md) §9.2). Each compaction is one line in every
+client, with what set it off and the context's size before and after
+(`compacted (past ~58,983 tokens): context ~59,210 → ~4,100 tokens, handover
+note 812 tokens`), and one that gave up is a warning. How full the context
+is shows as you go: the TUI's title (`context ~45k of ~61k`), its `:budget`
+(the estimate beside what the provider counted, and the compactions so far)
+and the console's Context meter. Those sizes are nodwyn's estimates, the
+unit the window and compaction use; a provider usually counts a fifth or so
+fewer.
 
 nodwyn can learn how to work in a repository from its own history: send
 `/optimize` (or `/optimize 5`, or `/optimize` with session ids, optionally
@@ -829,7 +837,14 @@ model cannot.
 **What a request cost.** After each reply the TUI, line mode and the
 console show its tokens, and when the provider says so, how much of the
 prompt came from its cache and what the request cost:
-`12,400→800 tok · 78% cached · $0.012`. OpenRouter reports both in every
+`12,400→800 tok · 78% cached · $0.012`, with the reasoning share of the
+output when the provider reports it (`800 tok (300 reasoning)`). A server
+that sends no token counts reads `tokens not reported`, not `0→0`. Over a
+turn of several requests, the console adds them up, and since each request
+sends the whole prompt again it also gives the largest single prompt, which
+is how big the context got (`405,467 → 4,936 tokens over 12 requests ·
+largest prompt 58,412`). The token budget adds them up the same way.
+OpenRouter reports cache use and cost in every
 response, cost in USD included; nothing has to be asked for. A server that
 reports no cost can be priced in its model entry, per million tokens:
 

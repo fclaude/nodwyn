@@ -15,7 +15,15 @@ import (
 // prices: an estimate is marked ≈), the time only when the provider
 // reports one, so an Ollama request or an older log reads as it always did.
 func UsageLine(u log.Usage) string {
-	parts := []string{fmt.Sprintf("%s→%s tok", Thousands(int64(u.PromptTokens)), Thousands(int64(u.OutputTokens)))}
+	tok := fmt.Sprintf("%s→%s tok", Thousands(int64(u.PromptTokens)), Thousands(int64(u.OutputTokens)))
+	if u.Unreported {
+		tok = "tokens not reported"
+	}
+	if u.ReasoningTokens > 0 {
+		// Reasoning is part of the output the provider counted.
+		tok += fmt.Sprintf(" (%s reasoning)", Thousands(int64(u.ReasoningTokens)))
+	}
+	parts := []string{tok}
 	if u.CachedTokens != nil && u.PromptTokens > 0 {
 		parts = append(parts, fmt.Sprintf("%d%% cached", percent(int64(*u.CachedTokens), int64(u.PromptTokens))))
 	}

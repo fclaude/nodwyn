@@ -204,10 +204,14 @@ export class Transcript {
         }
         if (p.usage) {
           const u = p.usage;
-          const fresh = { in: 0, out: 0, ms: 0, cachedIn: 0, cached: 0, cost: 0, priced: 0, unpriced: 0, estimated: false };
+          const fresh = { in: 0, out: 0, ms: 0, cachedIn: 0, cached: 0, cost: 0, priced: 0, unpriced: 0, estimated: false, requests: 0, largest: 0, reasoning: 0 };
           this.tokens = (this.usage ? this.tokens : fresh) || fresh;
           this.tokens.in += u.prompt_tokens || 0;
           this.tokens.out += u.output_tokens || 0;
+          this.tokens.requests++;
+          if (u.unreported) this.tokens.unreported = (this.tokens.unreported || 0) + 1;
+          this.tokens.largest = Math.max(this.tokens.largest || 0, u.prompt_tokens || 0);
+          this.tokens.reasoning += u.reasoning_tokens || 0;
           this.tokens.ms += u.total_ms || 0;
           // A provider that reports its prompt cache and cost (OpenRouter)
           // says so; absent is unknown, never 0% or free.
@@ -230,7 +234,13 @@ export class Transcript {
           const t = this.tokens;
           const cache = t.cachedIn > 0 ? ` · ${Math.round((100 * t.cached) / t.cachedIn)}% cached` : "";
           const cost = t.priced > 0 ? ` · ${t.unpriced > 0 ? "at least " : ""}${usd(t.cost, t.estimated)}` : "";
-          this.usage.textContent = `${t.in.toLocaleString()} → ${t.out.toLocaleString()} tokens${cache}${cost}${time}`;
+          // Each request sends the whole prompt again, so over several the
+          // first number adds the prompt up each time: the largest single
+          // prompt says how big the context got.
+          const reasoning = t.reasoning > 0 ? ` (${t.reasoning.toLocaleString()} reasoning)` : "";
+          const over = t.requests > 1 ? ` over ${t.requests} requests · largest prompt ${t.largest.toLocaleString()}` : "";
+          const silent = t.unreported ? ` · ${t.unreported === t.requests ? "the server reported no tokens" : `${t.unreported} of them reported no tokens`}` : "";
+          this.usage.textContent = t.unreported === t.requests ? `tokens not reported${cost}${time}` : `${t.in.toLocaleString()} → ${t.out.toLocaleString()} tokens${reasoning}${over}${silent}${cache}${cost}${time}`;
         }
         this.call = null;
         break;
@@ -294,8 +304,24 @@ export class Transcript {
       case "context.narrow":
         // A lasting narrowing, such as a compaction's, is where later turns
         // start; any other ends with its turn.
-        this.audit(p.lasting ? `The conversation goes on from here${p.agent ? ` (${p.agent})` : ""}` : auditLabels[event.kind], p);
+        // Its system prompt is the session's own, so the details say nothing
+        // new; a compaction's numbers are in its context.compact.
+        if (p.lasting) this.audit(`The conversation goes on from here${p.agent ? ` (${p.agent})` : ""}`);
+        else this.audit(auditLabels[event.kind], p);
         break;
+      case "context.compact": {
+        // Sizes are the window's estimates, the unit compaction measures in.
+        const n = (v) => `~${Number(v || 0).toLocaleString()}`;
+        const why = { auto: `past ${n(p.threshold)} tokens`, command: "/compact", requested: "asked for by the strategy" }[p.trigger] || p.trigger;
+        if (!p.compacted) this.audit(`Compaction (${why}) gave up: no handover note came back, so the turn goes on in the full context of ${n(p.before_tokens)} tokens`, undefined, "bad");
+        else
+          this.audit(
+            `Compacted the conversation (${why}): context ${n(p.before_tokens)} → ${n(p.after_tokens)} tokens`,
+            [`Handover note: ${Number(p.note_tokens || 0).toLocaleString()} tokens${p.truncated ? ", cut short at the output limit" : ""}`, p.focus ? `Asked to keep: ${p.focus}` : "", "Sizes are nodwyn's estimates, the unit compaction measures in; a provider may count a fifth fewer."].filter(Boolean).join("\n"),
+            p.truncated ? "bad" : "",
+          );
+        break;
+      }
       case "egress.check":
         // Every model request checks where its key may go; an allowed check
         // is routine and stays in the log. Only a refusal is news.
@@ -442,6 +468,49 @@ export class Transcript {
 export function usd(c, estimated) {
   const s = c > 0 && c < 0.0001 ? "<$0.0001" : c < 0.01 ? `$${c.toFixed(4)}` : c < 1 ? `$${c.toFixed(3)}` : `$${c.toFixed(2)}`;
   return estimated ? `≈${s}` : s;
+}
+
+// contextGauge is how big the conversation's context is, from the log: the
+// window's estimate of the latest control-model request made in the
+// conversation itself (not in a planner's or sub-agent's narrowed context),
+// what the provider counted for that request's prompt, the window's high
+// water from the session's start, and the compactions so far.
+export function contextGauge(events) {
+  const g = { est: 0, reported: 0, high: 0, compactions: 0 };
+  let depth = 0;
+  let await_ = false;
+  for (const e of events) {
+    const p = e.payload || {};
+    switch (e.kind) {
+      case "session.start":
+      case "session.resume":
+        if (p.context?.high_water) g.high = p.context.high_water;
+        break;
+      case "user.msg":
+      case "context.widen":
+        depth = 0; // a narrowed context ends with the turn
+        break;
+      case "context.narrow":
+        if (!p.lasting) depth++;
+        break;
+      case "context.fold":
+        depth = Math.max(0, depth - 1);
+        break;
+      case "llm.req":
+        await_ = depth === 0 && !p.endpoint;
+        if (await_) [g.est, g.reported] = [p.est_tokens || 0, 0];
+        break;
+      case "llm.resp":
+        if (await_) g.reported = p.usage?.prompt_tokens || 0;
+        await_ = false;
+        break;
+      case "context.compact":
+        g.compactions++;
+        if (p.compacted) [g.est, g.reported] = [p.after_tokens || 0, 0];
+        break;
+    }
+  }
+  return g;
 }
 
 // planSteps reads a recorded plan's numbered or bulleted lines as steps; a

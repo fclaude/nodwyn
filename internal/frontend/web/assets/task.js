@@ -3,7 +3,7 @@
 // the workspace. Every figure comes from the log or from session.info; a
 // panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
-import { Transcript, planSteps, usd } from "./transcript.js";
+import { Transcript, planSteps, usd, contextGauge } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
 import { kindLabel } from "./home.js";
 import { Attachments, attachmentChip } from "./attach.js";
@@ -575,11 +575,26 @@ export class TaskView {
       ...[
         meter("Time", elapsed, budgets ? budgets.wall_ns.soft / 1e6 : 0, (ms) => minutes(ms)),
         meter("Tool calls", calls, budgets?.tool_calls.soft || 0),
-        tokens ? meter("Tokens", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
+        // The budget counts every request's whole prompt, so this adds the
+        // context up once per request; Context below is how big it is.
+        tokens ? meter("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
+        this.contextMeter(meter),
         // The spend limit counts the whole task, not this turn.
         budgets?.cost?.hard ? meter("Spend, this task", this.knownSpend(), budgets.cost.soft / 1e6, (c) => usd(c, false)) : null,
       ].filter(Boolean),
     );
+  }
+  // contextMeter is how full the conversation's context is, against the
+  // window's high water, past which older context is trimmed (compaction
+  // comes just before). Estimates, the unit the window and compaction use.
+  contextMeter(meter) {
+    const g = contextGauge(this.events());
+    if (!g.est) return null;
+    const node = meter("Context", g.est, g.high, (n) => `~${n.toLocaleString()}`);
+    const said = [g.reported ? `the provider counted ${g.reported.toLocaleString()} tokens for the latest request` : "", g.compactions ? `compacted ${g.compactions === 1 ? "once" : `${g.compactions} times`}` : ""].filter(Boolean);
+    if (said.length) node.append(h("small", { class: "hint" }, said.join(" · ")));
+    node.title = "nodwyn's estimate of the latest request in the conversation; older context is trimmed past the window's high water, and compaction comes just before it";
+    return node;
   }
   // knownSpend is what the task's model requests cost, as far as known: the
   // cost its llm.resp records carry, as the spend limit counts it.

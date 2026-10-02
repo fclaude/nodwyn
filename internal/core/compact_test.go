@@ -130,6 +130,22 @@ func (r *rig) notes() []string {
 	return out
 }
 
+// compactions returns every context.compact in the log.
+func (r *rig) compactions() []log.ContextCompact {
+	r.t.Helper()
+	var out []log.ContextCompact
+	for _, ev := range r.logged() {
+		if ev.Kind == log.KindContextCompact {
+			var p log.ContextCompact
+			if err := ev.Decode(&p); err != nil {
+				r.t.Fatal(err)
+			}
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // replaysAll checks that every recorded request rebuilds from the log, so a
 // compacted window replays like any other.
 func (r *rig) replaysAll() {
@@ -171,6 +187,20 @@ func TestCompactionHandsOverInANarrowedContext(t *testing.T) {
 	}
 	if n := r.narrowings(); n != 1 {
 		t.Fatalf("%d narrowings, want 1", n)
+	}
+	// The record says what set it off and how much it saved; the size after
+	// is the next request's.
+	c := r.compactions()
+	var req log.LLMReq
+	var reqs []log.LLMReq
+	for _, ev := range r.logged() {
+		if ev.Kind == log.KindLLMReq && ev.Decode(&req) == nil {
+			reqs = append(reqs, req)
+		}
+	}
+	if len(c) != 1 || c[0].Trigger != "auto" || !c[0].Compacted || c[0].Threshold <= 0 || c[0].Before <= c[0].Threshold ||
+		c[0].After <= 0 || c[0].After >= c[0].Before || c[0].After != reqs[3].EstTokens || c[0].NoteSeq == 0 || c[0].NoteTokens <= 0 || c[0].Truncated {
+		t.Fatalf("context.compact %+v (next request ~%d)", c, reqs[3].EstTokens)
 	}
 }
 
@@ -224,6 +254,9 @@ func TestCompactionGivesUpWithoutANote(t *testing.T) {
 	}
 	if got := r.eval("compact-gave-up-at"); got == "0" {
 		t.Fatal("giving up did not record the size")
+	}
+	if c := r.compactions(); len(c) != 1 || c[0].Compacted || c[0].Trigger != "auto" || c[0].Before <= c[0].Threshold || c[0].After != 0 {
+		t.Fatalf("a compaction that gave up: %+v", c)
 	}
 }
 
@@ -439,6 +472,9 @@ func TestCompactOnRequest(t *testing.T) {
 	}
 	if notes := r.notes(); len(notes) == 0 || !strings.HasPrefix(notes[len(notes)-1], "Compacted") {
 		t.Fatalf("the user is not told: %q", notes)
+	}
+	if c := r.compactions(); len(c) != 1 || c[0].Trigger != "command" || c[0].Focus != "the package name" || !c[0].Compacted || c[0].Threshold != 0 {
+		t.Fatalf("/compact's record: %+v", c)
 	}
 
 	if err := r.turn("does it print anything?"); err != "" {

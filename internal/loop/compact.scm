@@ -77,14 +77,26 @@
 ;; Compact now: #t once the turn continues in the narrowed context, #f if no
 ;; note came back and the turn goes on in the full one. The narrowing lasts
 ;; past the turn, so the next turns start from the note as well. An optional
-;; focus says what the note must keep.
-(define (compact-context request . focus)
-  (let ((note (apply compact-note focus)))
+;; focus says what the note must keep, and an optional trigger what asked for
+;; it (auto, command, or requested, the default). Either way it is recorded as
+;; context.compact, with the context's size before and after.
+(define (compact-context request . more)
+  (let* ((focus (if (pair? more) (car more) ""))
+         (trigger (if (and (pair? more) (pair? (cdr more))) (cadr more) "requested"))
+         (before (context-tokens))
+         (note (compact-note focus))
+         (record (lambda (compacted)
+                   (record-compaction
+                    (list (cons 'trigger trigger) (cons 'compacted compacted) (cons 'before before)
+                          (cons 'threshold (and (equal? trigger "auto") compact-threshold))
+                          (cons 'focus focus))))))
     (if note
         (begin (narrow-context (session-system-prompt) "compaction" '((lasting . #t)))
                (add-message (compact-handover-prompt request note))
+               (record #t)
                #t)
         (begin (add-message "Never mind the handover note; continue the task.")
+               (record #f)
                #f))))
 
 ;; Compact if a strategy asked for it (compact-next-round), or if the context
@@ -95,12 +107,12 @@
   (let ((focus compact-requested))
     (if focus
         (begin (set! compact-requested #f)
-               (compact-context request focus))
+               (compact-context request focus "requested"))
         (let ((size (context-tokens)))
           (and compact-threshold
                (> size compact-threshold)
                (> size (+ compact-gave-up-at (quotient compact-threshold 4)))
-               (or (compact-context request)
+               (or (compact-context request "" "auto")
                    (begin (set! compact-gave-up-at size) #f)))))))
 
 (define (compact-request? request)
@@ -129,7 +141,7 @@
   (let ((task (compact-last-request)))
     (cond ((not task)
            (log-note "Nothing to compact: there is no request before this one."))
-          ((compact-context task (compact-focus request))
+          ((compact-context task (compact-focus request) "command")
            (log-note "Compacted: the conversation goes on from the handover note."))
           (else
            (log-note "Not compacted: the model wrote no handover note.")))))

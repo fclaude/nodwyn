@@ -151,3 +151,18 @@ No new kind. `turn.checkpoint` may have dimension `cost`, its `used` and
 `earlier_cost`: what the task's earlier turns cost. `turn.end` gains the
 outcome `spend_limit`, and `run.state` a run's own spend limit, `cost`
 (US dollars). All optional; an older record reads as before.
+
+## Amendment — 2026-10-02: `context.compact`, and counts not reported
+
+`context.compact` records one compaction (`compact.scm`, through
+`record-compaction`): what set it off (`auto`, `command`, `requested`),
+whether it compacted, the context's size before and after in the window's
+estimated tokens (the unit `compact-threshold` is in), the threshold an
+automatic one passed, the focus, and the handover note's reply: its
+`llm.resp` seq, its output tokens and whether it stopped at the output
+limit. One that gave up has `compacted` false and no size after. Until now
+a compaction was only a lasting `context.narrow`, which says nothing about
+sizes, and one that gave up left nothing. Windows ignore the kind.
+
+`llm.resp` `usage` gains `unreported`: the server gave no token counts, so
+its zeros are not counts. An older record reads as reported.

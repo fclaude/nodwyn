@@ -254,6 +254,14 @@ one with `Prompt.Egress` set and no `Path`, so it offers no standing
 answer; with `allow` there is none, and with `deny` the tool is refused. `doc-export`'s confirm is
 a write's: `Prompt.Path` is its target.
 
+A `context.compact` event records one compaction: `trigger` (`auto`,
+`command` or `requested`), `compacted`, `before_tokens` and `after_tokens`
+(the window's estimates, the unit `compact-threshold` is in), `threshold`
+for an automatic one, `focus`, and the note's reply: `note_seq`,
+`note_tokens` and `truncated`. One that gave up has `compacted` false. An
+`llm.resp` `usage` with `unreported` true had no token counts from the
+server: its zeros are not counts.
+
 An `mcp.egress` event records one attempt of a contained MCP server to reach
 a host through its egress proxy (ADR 23 W3b): `server`, `method`, `host`,
 `port`, `allowed` and `reason`; never a path. After 1000 for one server, a

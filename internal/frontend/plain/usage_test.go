@@ -2,6 +2,7 @@ package plain
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/budget"
@@ -42,5 +43,29 @@ func TestSpendSoFar(t *testing.T) {
 	}
 	if got := SpendSoFar(budget.State{Cost: 0.25, Priced: 2, Unpriced: 1}); got != "at least $0.250 so far" {
 		t.Fatal(got)
+	}
+}
+
+func TestUsageLineReasoningAndUnreported(t *testing.T) {
+	if got := UsageLine(log.Usage{PromptTokens: 1200, OutputTokens: 400, ReasoningTokens: 300}); got != "1,200→400 tok (300 reasoning)" {
+		t.Fatalf("reasoning: %q", got)
+	}
+	if got := UsageLine(log.Usage{Unreported: true}); got != "tokens not reported" {
+		t.Fatalf("unreported: %q", got)
+	}
+}
+
+func TestCompactLine(t *testing.T) {
+	auto := log.ContextCompact{Trigger: "auto", Compacted: true, Before: 59210, After: 4100, Threshold: 58983, NoteTokens: 812}
+	if got := CompactLine(auto); got != "── compacted (past ~58,983 tokens): context ~59,210 → ~4,100 tokens, handover note 812 tokens ──" {
+		t.Fatalf("auto: %q", got)
+	}
+	cut := log.ContextCompact{Trigger: "command", Compacted: true, Before: 20000, After: 3000, NoteTokens: 4096, Truncated: true}
+	if got := CompactLine(cut); !strings.Contains(got, "(/compact)") || !strings.Contains(got, "cut short at the output limit") {
+		t.Fatalf("command: %q", got)
+	}
+	gave := log.ContextCompact{Trigger: "requested", Before: 30000}
+	if got := CompactLine(gave); !strings.HasPrefix(got, "⚑ compaction (asked for by the strategy) gave up") || !strings.Contains(got, "~30,000 tokens") {
+		t.Fatalf("gave up: %q", got)
 	}
 }

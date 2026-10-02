@@ -81,6 +81,16 @@ func (l *Loop) install() error {
 			Handler: l.logNote,
 		},
 		{
+			Name: "record-compaction",
+			Meta: scheme.Meta{
+				Doc:    "Record a compaction as context.compact, from an alist: trigger (auto, command or requested), compacted (#t or #f), before (the context's size before it, from context-tokens), threshold (for auto) and focus. The size after and the note's reply are read here: the context as it stands, and the latest model reply.",
+				Params: []scheme.Param{{Name: "facts", Type: "alist", Doc: "what the compaction knows"}},
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.recordCompaction,
+		},
+		{
 			Name: "record-plan",
 			Meta: scheme.Meta{
 				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded or required), plan, score, revisions and reason. The window shows a recorded plan to the model for the rest of the turn.",
@@ -461,6 +471,50 @@ func (l *Loop) recordPlan(c *scheme.Call) (scheme.Value, error) {
 		l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gp.Score, gp.Revisions)}})
 	}
 	return scheme.Void, nil
+}
+
+// recordCompaction is (record-compaction facts): one compaction, for the
+// record and the front-ends. What only the strategy knows (what set it off,
+// the size before, the threshold, the focus) comes from facts; the size
+// after and the note are measured here, so call it once the handover is in
+// place.
+func (l *Loop) recordCompaction(c *scheme.Call) (scheme.Value, error) {
+	if _, err := l.active(c); err != nil {
+		return scheme.Void, err
+	}
+	facts := c.Args[0]
+	rec := log.ContextCompact{Trigger: field(facts, "trigger"), Focus: field(facts, "focus")}
+	switch rec.Trigger {
+	case "auto", "command", "requested":
+	default:
+		return scheme.Void, errors.New("trigger must be auto, command or requested")
+	}
+	if v, ok := lookup(facts, "compacted"); ok {
+		rec.Compacted = v.IsTrue()
+	}
+	if v, ok := lookup(facts, "before"); ok && v.Kind == scheme.KInt {
+		rec.Before = int(v.I)
+	}
+	if v, ok := lookup(facts, "threshold"); ok && v.Kind == scheme.KInt {
+		rec.Threshold = int(v.I)
+	}
+	events := l.host.EventsSoFar()
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Kind != log.KindLLMResp {
+			continue
+		}
+		var resp log.LLMResp
+		if events[i].Decode(&resp) == nil {
+			rec.NoteSeq, rec.NoteTokens, rec.Truncated = events[i].Seq, resp.Usage.OutputTokens, resp.DoneReason == "length"
+		}
+		break
+	}
+	if rec.Compacted && l.frozen {
+		pol := l.cfg.Window
+		pol.HighWater = math.MaxInt
+		rec.After = window.Build(events, l.system, l.toolsLen, pol).EstTokens
+	}
+	return scheme.Void, l.record(log.KindContextCompact, rec)
 }
 
 // planSteps is (plan-steps): the steps of the plan recorded this turn.

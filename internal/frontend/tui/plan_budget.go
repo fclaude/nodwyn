@@ -115,6 +115,11 @@ func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 	for _, row := range rows {
 		fmt.Fprintf(&out, "%s · soft %s · hard %s\n", row.name, budgetAmount(row.name, row.limit.Soft), budgetAmount(row.name, row.limit.Hard))
 	}
+	var g contextGauge
+	for _, e := range events {
+		g.observe(string(e.Kind), e.Payload)
+	}
+	out.WriteString("\n" + g.report())
 	out.WriteString("\nUsage below is recorded at checkpoints, not live counters or remaining allowance.\n")
 	start := -1
 	for i, e := range events {

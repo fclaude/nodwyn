@@ -66,6 +66,26 @@ type ContextWiden struct{}
 // again.
 type ContextFold struct{}
 
+// ContextCompact records one compaction (compact.scm, record-compaction):
+// what set it off (auto: the context passed Threshold; command: /compact;
+// requested: a strategy's compact-next-round), whether it compacted, and the
+// context's size before and after, in the window's estimated tokens (the
+// unit of compact-threshold, not the provider's count). The handover note is
+// the llm.resp at NoteSeq: NoteTokens long, Truncated when it stopped at the
+// output limit. A compaction that gave up (no note came back) has
+// Compacted false and no After. Windows ignore it.
+type ContextCompact struct {
+	Trigger    string `json:"trigger"`
+	Compacted  bool   `json:"compacted"`
+	Before     int    `json:"before_tokens"`
+	After      int    `json:"after_tokens,omitempty"`
+	Threshold  int    `json:"threshold,omitempty"`
+	Focus      string `json:"focus,omitempty"`
+	NoteSeq    uint64 `json:"note_seq,omitempty"`
+	NoteTokens int    `json:"note_tokens,omitempty"`
+	Truncated  bool   `json:"truncated,omitempty"`
+}
+
 // ResultFold replaces what later windows show for one tool result (Seq)
 // with Text: an outline, or a line saying what it was, once the details
 // stopped mattering (fold-result). The result itself stays in the log.
@@ -138,6 +158,8 @@ type Usage struct {
 	// unknown, never free.
 	Cost          *float64 `json:"cost,omitempty"`
 	CostEstimated bool     `json:"cost_estimated,omitempty"`
+	// Unreported: the server gave no token counts; the zeros are not counts.
+	Unreported bool `json:"unreported,omitempty"`
 }
 
 // LLMResp is the model's full output for one request.

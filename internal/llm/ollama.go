@@ -272,6 +272,9 @@ func (o *Ollama) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 				EvalMS:       ch.EvalDuration / 1e6,
 				TotalMS:      ch.TotalDuration / 1e6,
 				LoadMS:       ch.LoadDuration / 1e6,
+				// Ollama leaves a count of 0 out, and every reply has at
+				// least one token: neither count means none was given.
+				Unreported: ch.PromptEvalCount == 0 && ch.EvalCount == 0,
 			}
 			break
 		}

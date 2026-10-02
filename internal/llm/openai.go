@@ -231,7 +231,7 @@ func usage(raw json.RawMessage) Usage {
 			ReasoningTokens json.RawMessage `json:"reasoning_tokens"`
 		} `json:"completion_tokens_details"`
 	}
-	var u Usage
+	u := Usage{Unreported: true}
 	if json.Unmarshal(raw, &fields) != nil {
 		return u
 	}
@@ -242,8 +242,10 @@ func usage(raw json.RawMessage) Usage {
 		}
 		return n, true
 	}
-	u.PromptTokens, _ = count(fields.PromptTokens)
-	u.OutputTokens, _ = count(fields.CompletionTokens)
+	var gotPrompt, gotOutput bool
+	u.PromptTokens, gotPrompt = count(fields.PromptTokens)
+	u.OutputTokens, gotOutput = count(fields.CompletionTokens)
+	u.Unreported = !gotPrompt && !gotOutput
 	if n, ok := count(fields.PromptTokensDetails.CachedTokens); ok {
 		u.CachedTokens = &n
 	}

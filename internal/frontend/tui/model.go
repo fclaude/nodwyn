@@ -38,6 +38,7 @@ type model struct {
 	thinking                                     bool
 	details                                      bool // tool arguments and results inline
 	lastSeq                                      uint64
+	gauge                                        contextGauge
 	prompt                                       *pendingPrompt
 	resolved                                     map[string]bool
 	status                                       string
@@ -112,6 +113,7 @@ func (m *model) restore(s snapshot) {
 	m.id, m.repo, m.busy, m.active = s.ID, s.Repo, s.Busy, true
 	m.loading, m.disconnected = false, false
 	m.lastSeq = 0
+	m.gauge = contextGauge{}
 	m.transcript = nil
 	m.activeTool = nil
 	m.liveText = ""
@@ -451,6 +453,9 @@ func (m *model) View() tea.View {
 		state = "disconnected"
 	}
 	title := "nodwyn · " + state
+	if g := m.gauge.title(); g != "" && m.active {
+		title += " · " + g
+	}
 	var body string
 	if !m.active {
 		title = "nodwyn · choose a session"
