@@ -27,6 +27,9 @@ Judge token usage remains unavailable.
 A run's turn ends on evidence (docs/scheme.md §9): the default loop reminds a
 model that stops before changing anything, or without a test run after its
 last change, and offers an honest way out when the tests cannot run at all.
+Running its own check script in the scratch directory counts as a test run.
+In a git work tree git decides what changed, and files left in the
+repository that git does not track are named once before the turn ends.
 Before the plan, a read-only explorer looks at the repository, so the plan
 names real files.
 

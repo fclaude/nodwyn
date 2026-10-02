@@ -95,3 +95,41 @@ note. `[window]` water marks set in config.toml are kept as set. A context no
 bigger than the window, such as a local model sized by it, has no such room:
 there a round that jumps past the high water still trims before the note is
 written, unless the reply reserve is given up for it.
+
+## Amendment 2026-10-01: the evidence loop reads the scratch directory and git
+
+The check loop asks for one script in `$TMPDIR`, but the evidence loop knew
+only `test-command-words` and counted any `fs-write` as a change: writing
+the check reset "tested", and `bash $TMPDIR/check.sh` never set it. In the
+pil run on the 121 tasks, 18 of the 23 "You changed files after your last
+test run" reminders (12 tasks) came after the model had run its scratch
+check since its last edit to the repository. Now a write into the scratch
+directory is not a change, a command that runs a file written there is a
+test run, and a failing check, which fails until the work is done, never
+counts toward the way out for tests that cannot run.
+
+In a git work tree the loop also asks git (`git-status`, read by the
+strategy, not offered as a model call): something changed when a tracked
+file's status differs from the start of the turn, or the file tools wrote a
+file git now lists as new or listed already. An edit through the shell
+counts; a write of the same content, or a file a run leaves behind, does
+not. Files new since the turn began that git does
+not track are named once (`finish-new-files-message`). In the same run, 22
+tasks left such files: changelog entries, new test roots and `*_tmp.py`
+repro tests. The benchmark's patch is `git diff`, which leaves untracked
+files out, so this note does not move that score; it is for repositories
+where what is left in the tree is the change. Both system prompts gain a
+rule for programs that keep running or may hang (`shell-start`) and, in a
+git work tree, `(git-rule)`: look at the change with `git-status` and
+`git-diff` before finishing.
+
+Hygiene was measured on the same run before changing it, and stays as it
+is. Reads folded in 22 of the 121 tasks: 137 folds (65 of them stale),
+0.87 MB. 106 later reads went back to a folded passage, mostly as ranges,
+0.28 MB; counted as bytes times the requests they stay in the context, the
+folds keep 66% of what they save after those re-reads. A request right
+after a fold took a median 3.2 s of prompt evaluation against 0.4 s
+otherwise, about 30 such requests over the run. Long read-only sessions
+differ: on a repository review with meta/muse-spark-1.3 (32 rounds, no
+edits) 24 of 28 re-reads followed a fold of that file, 16 of them whole
+files, since nothing is edited and every read ages out.

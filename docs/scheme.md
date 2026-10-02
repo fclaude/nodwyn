@@ -525,6 +525,17 @@ a test run when its command line contains one of `test-command-words`
 the list). After `unrunnable-after` (6) test commands in a row fail to run,
 the model gets `(finish-unrunnable-message n)` once: finish and report the
 change as unverified rather than spend the budget on a broken environment.
+The scratch directory is not the repository: a file the model writes there
+(as `$TMPDIR/…` or by its path) is not a change, and a command that runs one
+of those files — its check script — is a test run. A check fails until the
+work is done, so its failing runs never count toward `unrunnable-after`.
+Where `git-status` exists, git says whether anything changed, edits made
+through the shell included: a tracked file's status differs from the start
+of the turn, or the file tools wrote a file git now lists as new or listed
+already; files a run leaves behind are no change. Files new
+since the turn began that git does not track get
+`(finish-new-files-message files)` once before the turn ends: whatever is
+left in the repository is in the change.
 
 | | |
 |---|---|
@@ -579,7 +590,7 @@ strings (§1.1):
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5), and the draft request that carries what it found |
-| `finish-no-change-message`, `finish-untested-message`, `(finish-unrunnable-message n)` | what the evidence loop tells the model (§9) |
+| `finish-no-change-message`, `finish-untested-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)` | what the evidence loop tells the model (§9) |
 | `task-header` `plan-header` | the headers under which the window adds the user's latest request and its plan to the system prompt, where they are never trimmed away |
 | `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for |
 | `(plan-system-prompt repo)` | the planner's system prompt |
@@ -590,7 +601,8 @@ strings (§1.1):
 | `(optimizer-system-prompt)`, `(optimizer-task history focus)` | the optimizer's system prompt and task (§9.4) |
 | `plan-score-rubric` | the judge's instruction for scoring a plan |
 | `plan-score-levels` | the rubric's 2–10 levels, worst first |
-| `working-rules` | how to work, added to both system prompts (§9.6): shell command lines, the project's environment, reading with the file tools, a plan as a first guess, the check loop, following the request's conclusion, widening in general form, whole test modules, comparing failures with the unchanged code, finding regressions file by file |
+| `working-rules` | how to work, added to both system prompts (§9.6): shell command lines, programs that keep running or may hang (`shell-start`), the project's environment, reading with the file tools, a plan as a first guess, the check loop, following the request's conclusion, widening in general form, whole test modules, comparing failures with the unchanged code, finding regressions file by file |
+| `(git-rule)` | in both system prompts after `working-rules`, only where `git-diff` is offered: look at the change with `git-status` and `git-diff` before finishing |
 
 ```scheme
 (define base-system-prompt system-prompt)      ; keep the default to extend it

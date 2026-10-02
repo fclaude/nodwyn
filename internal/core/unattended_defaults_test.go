@@ -2,6 +2,9 @@ package core
 
 import (
 	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,7 +16,12 @@ import (
 // unattendedRig is a --yolo session: nobody approves its calls.
 func unattendedRig(t *testing.T, turns ...fake.Turn) *rig {
 	t.Helper()
-	repo := t.TempDir()
+	return unattendedRigIn(t, t.TempDir(), turns...)
+}
+
+// unattendedRigIn is unattendedRig on a repository made beforehand.
+func unattendedRigIn(t *testing.T, repo string, turns ...fake.Turn) *rig {
+	t.Helper()
 	srv := fake.New(turns...)
 	t.Cleanup(srv.Close)
 	logb := &bytes.Buffer{}
@@ -69,6 +77,145 @@ func TestUnattendedTurnEndsOnEvidence(t *testing.T) {
 	}
 	if !strings.Contains(lastMessage(r, 3), "after your last test run") {
 		t.Fatalf("untested reminder: %q", lastMessage(r, 3))
+	}
+}
+
+func shellArgs(id, cmd string, args ...string) fake.Turn {
+	return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "shell-exec", Args: map[string]any{"cmd": cmd, "args": args}}}}
+}
+
+func write(id, path, content string) fake.Turn {
+	return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-write", Args: map[string]any{"path": path, "content": content}}}}
+}
+
+// gitWorkTree is a git repository with tracked.txt committed and notes.txt
+// left untracked, as a user's work tree may be.
+func gitWorkTree(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	repo := t.TempDir()
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("one\n"), 0o644)
+	run("add", "tracked.txt")
+	run("-c", "commit.gpgsign=false", "commit", "-q", "-m", "first")
+	os.WriteFile(filepath.Join(repo, "notes.txt"), []byte("mine\n"), 0o644)
+	return repo
+}
+
+// The check script lives in the scratch directory: writing it is not a
+// change, and running it is a test run, failing or not.
+func TestCheckScriptIsATestNotAChange(t *testing.T) {
+	r := unattendedRig(t,
+		write("c", "$TMPDIR/check.sh", "exit 1\n"), // the check, failing
+		fake.Turn{Content: "done"},                 // nothing changed yet: reminded
+		writeFile("w"),                             // a change
+		shellArgs("t", "bash", "$TMPDIR/check.sh"), // the check, after the change
+		fake.Turn{Content: "done"},                 // ends
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if !strings.Contains(lastMessage(r, 2), "No file has changed yet") {
+		t.Fatalf("a write to $TMPDIR counted as a change: %q", lastMessage(r, 2))
+	}
+}
+
+// A check fails until the work is done: its failing runs are not test
+// commands that cannot run, so they never offer the way out.
+func TestFailingCheckRunsAreNotUnrunnable(t *testing.T) {
+	turns := []fake.Turn{write("c", "$TMPDIR/check.sh", "exit 1\n"), writeFile("w")}
+	for i := 0; i < 6; i++ {
+		turns = append(turns, shellArgs("t"+string(rune('a'+i)), "bash", "$TMPDIR/check.sh", string(rune('a'+i))))
+	}
+	turns = append(turns, fake.Turn{Content: "done"})
+	r := unattendedRig(t, turns...)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 9 {
+		t.Fatalf("%d requests, want 9", len(r.srv.Requests))
+	}
+	for i := range r.srv.Requests {
+		if strings.Contains(lastMessage(r, i), "did not run successfully") {
+			t.Fatalf("request %d offered the way out for a failing check", i)
+		}
+	}
+}
+
+// In a git work tree git says what changed: a write that changes nothing
+// is no change, nor is a file a run leaves behind, and an edit through the
+// shell is one. The leftover is named before the turn ends.
+func TestGitSaysWhatChanged(t *testing.T) {
+	r := unattendedRigIn(t, gitWorkTree(t),
+		write("same", "tracked.txt", "one\n"), // the same content: no change
+		shell("o", "touch run.log"),           // a run's leftover: no change
+		fake.Turn{Content: "done"},            // reminded
+		shell("e", "echo two >> tracked.txt"), // a change, through the shell
+		shell("t", "true # go test ./..."),    // a test run after it
+		fake.Turn{Content: "done"},            // run.log named
+		fake.Turn{Content: "done"},            // ends
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if !strings.Contains(lastMessage(r, 3), "No file has changed yet") {
+		t.Fatalf("no change counted as one: %q", lastMessage(r, 3))
+	}
+	if !strings.Contains(lastMessage(r, 6), "git does not track them: run.log.") {
+		t.Fatalf("leftover not named: %q", lastMessage(r, 6))
+	}
+}
+
+// An edit to a file git showed before the turn leaves the status as it was;
+// the edit still counts, and the file is not new.
+func TestEditToAFileGitShowedIsAChange(t *testing.T) {
+	r := unattendedRigIn(t, gitWorkTree(t),
+		write("w", "notes.txt", "mine, edited\n"), // untracked before the turn
+		shell("t", "true # pytest"),
+		fake.Turn{Content: "done"}, // ends
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 3 {
+		t.Fatalf("%d requests, want 3; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// Files new since the turn began that git does not track are named once
+// before the turn ends; files untracked before it are not.
+func TestNewUntrackedFilesAreNamedOnce(t *testing.T) {
+	r := unattendedRigIn(t, gitWorkTree(t),
+		write("w", "repro.py", "print(1)\n"), // a stray script in the repository
+		shell("t", "true # pytest"),          // a test run after it
+		fake.Turn{Content: "done"},           // reminded of repro.py
+		fake.Turn{Content: "done"},           // ends: said once
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 4 {
+		t.Fatalf("%d requests, want 4", len(r.srv.Requests))
+	}
+	note := lastMessage(r, 3)
+	if !strings.Contains(note, "git does not track them: repro.py.") || strings.Contains(note, "notes.txt") {
+		t.Fatalf("new files note: %q", note)
 	}
 }
 

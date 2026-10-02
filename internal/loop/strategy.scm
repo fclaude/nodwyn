@@ -58,6 +58,12 @@
 ;; reminder, at most finish-reminders times. Test commands that keep failing
 ;; to run get finish-unrunnable-message once, so a broken environment ends
 ;; in an honest report rather than a spent budget.
+;; The scratch directory is not the repository: writing the check script
+;; there is not a change, and running it is a test run, as the check loop
+;; asks (prompts.scm). In a git work tree git says what changed, edits made
+;; through the shell included, and files new since the turn began that git
+;; does not track get finish-new-files-message once: a stray script or
+;; backup would end up in the change.
 (define finish-reminders 2)
 (define unrunnable-after 6) ; failed test commands in a row before the way out is offered
 
@@ -92,26 +98,135 @@
        (let ((v (guard (e (else #f)) (json-parse (format "~a" (assoc-ref result 'value ""))))))
          (and (pair? v) (equal? (assoc-ref v "status" 1) 0)))))
 
+;; How a model's call may spell a path in the scratch directory: $TMPDIR,
+;; as the prompts name it, or the directory itself.
+(define (scratch-prefixes)
+  (let ((dir (guard (e (else #f)) (scratch-dir))))
+    (append '("$TMPDIR/" "${TMPDIR}/") (if dir (list (string-append dir "/")) '()))))
+
+;; The name inside the scratch directory of a call's path argument, or #f
+;; when the path is not in it.
+(define (scratch-name call)
+  (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+         (path (if (pair? a) (format "~a" (assoc-ref a "path" "")) "")))
+    (let try ((ps (scratch-prefixes)))
+      (cond ((null? ps) #f)
+            ((and (string-prefix? (car ps) path) (> (string-length path) (string-length (car ps))))
+             (substring path (string-length (car ps)) (string-length path)))
+            (else (try (cdr ps)))))))
+
+;; Programs that only look at, move or remove a file: naming a script is
+;; not running it.
+(define check-run-skip '("cat" "head" "tail" "less" "more" "ls" "wc" "file" "stat" "chmod" "cp" "mv" "rm"))
+
+;; A shell-exec call that runs one of the scripts the model wrote in the
+;; scratch directory (scripts: their names there), such as its check.
+(define (check-run? call scripts)
+  (and (pair? scripts)
+       (equal? (assoc-ref call 'name) "shell-exec")
+       (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+              (cmd (if (pair? a) (format "~a" (assoc-ref a "cmd" "")) ""))
+              (line (command-line call)))
+         (and (not (member (car (reverse (string-split cmd "/"))) check-run-skip))
+              (let any ((ss scripts))
+                (and (pair? ss)
+                     (or (let spelled ((ps (scratch-prefixes)))
+                           (and (pair? ps)
+                                (or (string-contains? line (string-append (car ps) (car ss)))
+                                    (spelled (cdr ps)))))
+                         (any (cdr ss)))))))))
+
+;; The repository as git sees it: the lines of (git-status) after the branch
+;; line, or #f where there is no git-status (not a git work tree) or git
+;; fails.
+(define (git-state)
+  (and (guard (e (else #f)) (primitive-info "git-status") #t)
+       (guard (e (else #f))
+         (filter (lambda (l) (not (or (equal? (string-trim l) "") (string-prefix? "## " l))))
+                 (string-split (format "~a" (git-status)) "\n")))))
+
+;; The path in a line of (git-state).
+(define (git-state-path line) (if (> (string-length line) 3) (substring line 3 (string-length line)) ""))
+
+;; The lines of state for files git tracks.
+(define (git-tracked state) (filter (lambda (l) (not (string-prefix? "?? " l))) state))
+
+;; Files git does not track in state that it did not show in before.
+(define (git-new-files before state)
+  (map git-state-path
+       (filter (lambda (l) (and (string-prefix? "?? " l) (not (member l before)))) state)))
+
+;; A call's path argument as git-status names it: relative to the root.
+(define (repo-path call)
+  (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+         (p (if (pair? a) (format "~a" (assoc-ref a "path" "")) ""))
+         (root (guard (e (else #f)) (repository))))
+    (cond ((string-prefix? "./" p) (substring p 2 (string-length p)))
+          ((and root (string-prefix? (string-append root "/") p))
+           (substring p (+ (string-length root) 1) (string-length p)))
+          (else p))))
+
+;; Whether git shows one of paths in lines, itself or in an untracked
+;; directory.
+(define (git-shows? paths lines)
+  (let any ((ls lines))
+    (and (pair? ls)
+         (let ((shown (git-state-path (car ls))))
+           (or (let match ((ps paths))
+                 (and (pair? ps)
+                      (or (equal? shown (car ps))
+                          (and (string-suffix? "/" shown) (string-prefix? shown (car ps)))
+                          (match (cdr ps)))))
+               (any (cdr ls)))))))
+
 (define (evidence-loop request)
-  (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0))
-    (let ((calls (assoc-ref reply 'tool-calls '())))
-      (if (pair? calls)
-          (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs))
-            (cond ((pair? cs)
-                   (let ((c (car cs)) (r (car rs)))
-                     (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
-                            (walk (cdr cs) (cdr rs) #t #f failed))
-                           ((test-call? c)
-                            (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1))))
-                           (else (walk (cdr cs) (cdr rs) edited tested failed)))))
-                  (else
-                   (maybe-compact request reply)
-                   (let ((stuck (and (not offered) (>= failed unrunnable-after))))
-                     (when stuck (add-message (finish-unrunnable-message failed)))
-                     (loop (ask-model) edited tested failed (or offered stuck) reminders)))))
-          (let ((gap (cond ((not edited) finish-no-change-message)
-                           ((and (not tested) (not offered)) finish-untested-message)
-                           (else #f))))
-            (when (and gap (< reminders finish-reminders))
-              (add-message gap)
-              (loop (ask-model) edited tested failed-runs offered (+ reminders 1))))))))
+  (let ((before (git-state)))
+    ;; written: the repository paths the file tools changed, for git to
+    ;; place.
+    (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0)
+               (scripts '()) (written '()) (noted #f))
+      (let ((calls (assoc-ref reply 'tool-calls '())))
+        (if (pair? calls)
+            (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs)
+                       (scripts scripts) (written written))
+              (cond ((pair? cs)
+                     (let ((c (car cs)) (r (car rs)))
+                       (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
+                              (let ((name (scratch-name c)))
+                                (if name
+                                    (walk (cdr cs) (cdr rs) edited tested failed
+                                          (if (member name scripts) scripts (cons name scripts)) written)
+                                    (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written)))))
+                             ;; A check fails until the work is done: only a
+                             ;; run that went through says the setup works.
+                             ((check-run? c scripts)
+                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 failed) scripts written))
+                             ((test-call? c)
+                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written))
+                             (else (walk (cdr cs) (cdr rs) edited tested failed scripts written)))))
+                    (else
+                     (maybe-compact request reply)
+                     (let ((stuck (and (not offered) (>= failed unrunnable-after))))
+                       (when stuck (add-message (finish-unrunnable-message failed)))
+                       (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted)))))
+            (let* ((now (and before (git-state)))
+                   (new-lines (if now (filter (lambda (l) (not (member l before))) now) '()))
+                   ;; With git: a tracked file changed, the file tools wrote
+                   ;; a file git did not show before, or one it already
+                   ;; showed, whose further edits the status cannot show.
+                   ;; Files a run left behind are no change.
+                   (changed (if now
+                                (or (not (equal? (git-tracked now) (git-tracked before)))
+                                    (git-shows? written new-lines)
+                                    (git-shows? written before))
+                                edited))
+                   (gap (cond ((not changed) finish-no-change-message)
+                              ((and (not tested) (not offered)) finish-untested-message)
+                              (else #f)))
+                   (new (if (and now changed (not noted)) (git-new-files before now) '())))
+              (cond ((and gap (< reminders finish-reminders))
+                     (add-message gap)
+                     (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted))
+                    ((pair? new)
+                     (add-message (finish-new-files-message new))
+                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t)))))))))

@@ -121,6 +121,15 @@ dozen more. A test run with failures still counts as a run; only commands
 that never got as far as running a test count against
 \code{unrunnable-after}.
 
+The scratch directory is not the repository. A file the model writes there,
+such as its check script \code{\$TMPDIR/check.sh}, is not a change, and a
+command that runs it is a test run; a check fails until the work is done, so
+its failing runs never count against \code{unrunnable-after}. In a git work
+tree git decides what changed, so an edit made through the shell counts and
+a write that changes nothing does not. Files new since the turn began that
+git does not track are named once, with
+\code{(finish-new-files-message files)}, before the turn ends.
+
 \begin{tip}
 If your project runs its tests some other way, teach the loop:
 \begin{scm}

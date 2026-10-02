@@ -11,7 +11,8 @@ your own strategy is wrapping.
 
 \code{working-rules} (in \file{prompts.scm}) is added to both system
 prompts. It is the text form of the habits: run command lines through
-\code{bash -c}; find the project's own interpreter and environment before
+\code{bash -c}; start a program that keeps running or may hang with
+\code{shell-start} instead of waiting on \code{shell-exec}; find the project's own interpreter and environment before
 running its code, and never patch the standard library to make tests run;
 read with the file tools, not with scripts; treat a plan written before
 anything ran as a first guess; keep \textbf{one check script} in
@@ -19,7 +20,9 @@ anything ran as a first guess; keep \textbf{one check script} in
 unchanged after every change; follow the conclusion of a request that
 weighs options; widen a fix in the general form, not just for the example;
 run whole test modules; compare failures against the unchanged code with
-\code{git stash}; bisect regressions file by file.
+\code{git stash}; bisect regressions file by file. In a git work tree,
+\code{(git-rule)} adds one more: look at the change with \code{git-status}
+and \code{git-diff} before finishing.
 
 If your project has its own rules, add them after these rather than
 replacing them (Chapter~\ref{ch:checks}).

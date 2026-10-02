@@ -23,6 +23,7 @@
    """
    (scratch-rule (scratch-dir))
    working-rules
+   (git-rule)
    (workspace-section)
    (project-notes-section)))
 
@@ -76,6 +77,7 @@
    """
    (scratch-rule (scratch-dir))
    working-rules
+   (git-rule)
    (workspace-section)
    (project-notes-section)))
 
@@ -89,6 +91,14 @@
       "\n- Throwaway files that must not end up in the repository (a script that reproduces a problem, notes, temporary output) go in the session's scratch directory, the one place outside it you may use: write its path as $TMPDIR, in commands and in file paths alike, writes there need no approval, and it is deleted when the session ends."
       ""))
 
+;; The system prompt's rule for the read-only git tools, or "" where they
+;; are not offered (the root is not a git work tree): before finishing, the
+;; change is checked as git will show it.
+(define (git-rule)
+  (if (guard (e (else #f)) (primitive-info "git-diff") #t)
+      "\n- Before you finish, look at your change as git shows it, with git-status and git-diff (they need no approval): it should hold the whole change and nothing else, no stray scripts, backups or debugging output."
+      ""))
+
 ;; How to work, in both system prompts (ADR 32): the habits that held up
 ;; on the benchmark, each from a failure seen in its logs. The loop's
 ;; working habits (shell.scm, hygiene.scm, readdef.scm, envhint.scm,
@@ -98,6 +108,7 @@
    ;; shell.scm: a command line through cmd/args is answered with the call
    ;; that runs it; say so up front.
    "\n- shell-exec runs one program with its arguments. For pipes, redirects, cd or chained commands, run cmd \"bash\" with args [\"-c\", \"<command line>\"], and keep long output short with | tail -n 40 or | grep."
+   "\n- shell-exec waits for its command to end and stops one that runs too long. A program that keeps running (a server, a watcher) or that may hang goes to shell-start instead: read its output with shell-read, which can wait for it, and end it with shell-stop."
    "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; ls /opt/*/envs .venv venv 2>/dev/null; conda env list)."
    "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
    "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
@@ -139,6 +150,12 @@
   (string-append
    "Your last " (number->string attempts)
    " test commands did not run successfully. If the project's tests cannot run here, stop trying: finish, and say in your report that the change is unverified and why."))
+;; In a git work tree, files new since the turn began that git does not
+;; track, said once: whatever is left in the repository is in the change.
+(define (finish-new-files-message files)
+  (string-append
+   "These files are new in the repository and git does not track them: " (string-join files ", ")
+   ". Remove the ones that are not part of the change (a script, notes, output, a backup, what a run left behind; throwaway files belong in $TMPDIR), keep the ones the change needs, then finish."))
 
 ;; The planner's system prompt.
 (define (plan-system-prompt repo)
