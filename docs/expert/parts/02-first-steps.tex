@@ -181,6 +181,7 @@ tool calls & 50 / 500 & \code{-{}-max-tool-calls N} \\
 wall time & 20 minutes / 4 hours & \code{-{}-budget-wall 2h} \\
 model tokens & 1M / 10M reported & \code{-{}-budget-tokens N} \\
 irreversible actions & 25 / 200 attempts & \code{-{}-budget-actions N} \\
+spend, the whole task's & none unless you set one & \code{-{}-budget-cost 5} (US dollars) \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -198,9 +199,17 @@ That is the prompt's tokens, the reply's, the share of the prompt the
 provider read from its cache, and what the request cost. The cache share
 and the cost appear only when they are known (Chapter~\ref{ch:keys}), and
 the timings only when the server reports them, as Ollama does. A
-checkpoint also says what the turn has cost so far. Cost is shown, never
-enforced: no budget counts money, and cached tokens count in full against
-the token budget.
+checkpoint also says what the turn has cost so far. Cached tokens count in
+full against the token budget, which measures context, not money.
+
+Money has its own limit, if you want one: \code{cost\_soft} and
+\code{cost\_hard} in \code{[budget]}, in dollars, or
+\code{-{}-budget-cost}. It is the task's, not the turn's: every turn of a
+session or a run counts against it, a resumed session's history too, and a
+soft limit you raise at its checkpoint stays raised. At the hard limit the
+task stops (\code{turn.end} says \code{spend\_limit}), a run ends, and the
+next message stops before it reaches the model. Only costs it knows count;
+the first turn with a request nobody priced says so in a note.
 
 Independently of budgets, a \textbf{progress guard} ends a turn that goes in
 circles: the same call four times in a row, a denied call retried three

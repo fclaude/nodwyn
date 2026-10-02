@@ -65,7 +65,7 @@ type docsSetup struct {
 	noKey   bool              // store no google credential
 	unbound bool              // no binding row for the upload host
 	turns   []fake.Turn
-	upload  string        // docs.google_upload; "" is "ask", "unset" leaves it unset
+	upload  string         // docs.google_upload; "" is "ask", "unset" leaves it unset
 	adjust  func(*Options) // last changes to the session's options
 }
 

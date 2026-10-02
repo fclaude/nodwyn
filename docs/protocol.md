@@ -70,9 +70,11 @@ session. `in_flight` describes durable history, not process liveness; a session
 owned by a different process still appears with `open: false`.
 
 Open-session details contain `id`, `repo`, `busy`, `tools` (the existing model
-tool schemas) and `budgets`. Budgets contain `tool_calls`, `tokens`, `actions`
-and `wall_ns`, each with numeric `soft` and `hard` fields. These are the
-configured per-turn limits, including the legacy tool-call override; this
+tool schemas) and `budgets`. Budgets contain `tool_calls`, `tokens`, `actions`,
+`wall_ns` and `cost`, each with numeric `soft` and `hard` fields. `cost` is
+the task's spend limit in millionths of a US dollar, counted over the whole
+task rather than a turn; a `hard` of 0 is none. These are the
+configured limits, including the legacy tool-call override; this
 protocol does not expose live turn counters. Details also include
 `allowed_commands`, `allowed_writes`, `turn_writes`, and optional `turn_actor`.
 Session details also contain `bindings`, a copied array of loaded metadata rows
@@ -498,7 +500,7 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
 
 ## Supervised and unattended run methods
 
-- `run.start {repo, task, wall, max_turns, auto_approve, unattended?, judge?}` creates a new daemon-owned session
+- `run.start {repo, task, wall, max_turns, auto_approve, unattended?, judge?, cost?}` creates a new daemon-owned session
   and returns `{id, state}`. `wall` is a positive duration; `max_turns` is 1–10000;
   `auto_approve` (required, true or false) answers the run's ordinary tool
   confirms, as `--yolo` does. `unattended` (optional) makes a run nobody
@@ -506,7 +508,10 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
   checkpoints go on to the hard limit, and the run goes on after a turn only
   when that turn marked a plan step done ([runs](runs.md)). `judge` (optional,
   excludes `auto_approve`) has the judge answer ordinary tool confirms; it
-  needs a configured judge. `state` reports the flags. A guard decision
+  needs a configured judge. `cost` (optional, US dollars) is the run's spend
+  limit, replacing `budget.cost_hard`; it is kept on resume, and the turn that
+  reaches it ends with outcome `spend_limit` and the run `limited`. `state`
+  reports the flags. A guard decision
   answered by the judge has actor `judge`; one declined because nobody was
   there to ask, actor `unattended`.
 - `run.info {id}` returns task, original deadline, maximum and consumed turns,
@@ -529,5 +534,9 @@ until it stops. New `run.state`,
 `run.turn` and `run.checkpoint` records and optional `turn.end.outcome/error`
 fields are described by the generated schema. An unattended run's
 `run.checkpoint` has actor `unattended` and a `reason`, and `run.state`
-records `unattended`, `auto_approve` and `judge`. See [runs](runs.md) for limits,
+records `unattended`, `auto_approve`, `judge` and a run's own `cost`.
+`turn.end.outcome` is `completed`, `stopped`, `hard_budget`, `spend_limit`
+(the task's spend limit; no turn follows it), `canceled` or `error`. A
+budget checkpoint on spend has dimension `cost`, its amounts in millionths
+of a dollar; a reply's absolute soft limit is in dollars (`2.50`). See [runs](runs.md) for limits,
 completion-marker semantics and recovery constraints.

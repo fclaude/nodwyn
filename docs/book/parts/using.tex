@@ -70,6 +70,8 @@ actions_soft    = 25
 actions_hard    = 200
 wall_soft       = "20m"
 wall_hard       = "4h"
+# cost_soft     = 2.0       # US dollars for the whole task; off unless set
+# cost_hard     = 10.0
 
 [jev]
 content = "plan"            # none | plan | plan+summaries | full
@@ -435,7 +437,19 @@ stops at a \emph{checkpoint}: \code{y} doubles the soft limit up to the hard
 one, \code{n} stops, a number or a duration sets a new soft limit. A
 checkpoint never approves a tool. The flags \code{--max-tool-calls},
 \code{--budget-wall}, \code{--budget-tokens} and \code{--budget-actions}
-set the hard limits for one invocation. A turn also stops if the model
+set the hard limits for one invocation.
+
+A spend limit is yours to set, and off unless you do: \code{cost\_soft}
+and \code{cost\_hard} in \code{[budget]}, in US dollars, or
+\code{--budget-cost} for one session or run. It counts what the whole task
+has cost, every turn and a resumed session's history included, not one
+turn. Past the soft limit a checkpoint asks (a new soft limit is in dollars,
+and holds for later turns); at the hard one the task stops, a run ends
+\code{limited}, and nothing reaches the model until you raise it. It counts
+only costs it knows, reported by the provider or priced from the model's
+\code{price\_*}; the first turn with a request it cannot price says so.
+
+A turn also stops if the model
 repeats an identical call four times in a row, retries a denied call three
 times, or gets ten tool errors in a row.
 

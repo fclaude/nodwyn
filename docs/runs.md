@@ -24,6 +24,15 @@ still apply, including planning tokens reported by the control provider. A
 provider response can exceed its token ceiling; no further operation then starts.
 Judge token usage remains unavailable.
 
+`--budget-cost USD` (`run.start {cost}`) gives the run a spend limit: what
+its model requests cost, as far as known, over the whole run, replacing
+`budget.cost_hard` for its session. The turn that reaches it stops with
+outcome `spend_limit` and the run ends `limited`; a resume keeps the limit,
+as it keeps the deadline, so a resumed run stops at once until the limit is
+raised. A configured `budget.cost_hard` applies the same way when the run
+gives none. Requests with no known cost are not counted (the manual,
+"Choosing models").
+
 A run's turn ends on evidence (docs/scheme.md §9): the default loop reminds a
 model that stops before changing anything, or without a test run after its
 last change, and offers an honest way out when the tests cannot run at all.

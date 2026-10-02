@@ -205,7 +205,9 @@ nodwyn run --task task.md --repo . --max-turns 20 --budget-wall 2h --unattended
 Nobody answers an unattended run, so nothing in it waits for anybody. Tool
 confirms are declined unless a standing approval covers them (with
 \code{-{}-yolo} too, ordinary ones are answered yes; security confirms are
-declined either way). A soft budget checkpoint goes on to the hard limit.
+declined either way). A soft budget checkpoint goes on to the hard limit,
+the spend limit's included: give the run \code{-{}-budget-cost 5} and it
+ends \code{limited} once its known spend reaches \$5, kept on resume.
 The run checkpoint is answered by the plan: after a turn that marked a step
 done with \code{plan-step}, the next turn starts; after a turn that marked
 none, the run stops and says so, for you to read the turn and

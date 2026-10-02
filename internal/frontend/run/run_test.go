@@ -442,3 +442,28 @@ func TestUnattendedRunPassesSoftBudgetCheckpoints(t *testing.T) {
 		t.Fatalf("budget checkpoint %+v", cp)
 	}
 }
+
+// A run's spend limit is the whole run's: the turn that reaches it stops,
+// and no turn follows it.
+func TestRunStopsAtTheSpendLimit(t *testing.T) {
+	cfg := config.Default()
+	input, output := 4000.0, 0.0 // about $1.20 a request from the fake
+	cfg.Control.PriceInput, cfg.Control.PriceOutput = &input, &output
+	cfg.Budget.CostHard = 1
+	state, history := driveConfigured(t, cfg, time.Minute, 5, "y", fake.Turn{Content: "1. work"}, fake.Turn{Content: "step"}, fake.Turn{Content: "more"}, fake.Turn{Content: "more"})
+	if state.Status != "limited" || state.Turns != 1 || !strings.Contains(state.Reason, "spend limit") {
+		t.Fatalf("%+v", state)
+	}
+	var end log.TurnEnd
+	for _, ev := range history {
+		if ev.Kind == log.KindTurnEnd {
+			ev.Decode(&end)
+		}
+	}
+	if end.Outcome != "spend_limit" {
+		t.Fatalf("turn.end %+v", end)
+	}
+	if restored, err := Restore(history); err != nil || restored.Status != "limited" {
+		t.Fatalf("restore %+v %v", restored, err)
+	}
+}

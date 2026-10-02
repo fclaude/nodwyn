@@ -5,26 +5,52 @@
 // A turn is measured in four dimensions: tool calls, model tokens,
 // irreversible actions and wall time. Each has a soft limit, which raises a
 // checkpoint asking whether to continue, and a hard limit, which stops the
-// turn and cancels its context.
+// turn and cancels its context. A fifth, spend, is the person's choice: off
+// unless set, it counts the known cost of the whole task, not one turn.
 package budget
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// Limit is one dimension's ceilings. Wall limits are nanoseconds.
+// Limit is one dimension's ceilings. Wall limits are nanoseconds; cost
+// limits are millionths of a US dollar (Micro).
 type Limit struct {
 	Soft int64 `json:"soft"` // reaching it raises a checkpoint
 	Hard int64 `json:"hard"` // reaching it stops the turn
 }
 
-// Limits are a turn's ceilings in every dimension.
-type Limits struct{ ToolCalls, Tokens, Actions, Wall Limit }
+// Limits are a turn's ceilings in every dimension. Cost is off when its
+// Hard is 0.
+type Limits struct{ ToolCalls, Tokens, Actions, Wall, Cost Limit }
+
+// Micro is one US dollar in a cost limit's unit.
+const Micro = 1_000_000
+
+// Micros converts US dollars to a cost limit's unit.
+func Micros(usd float64) int64 { return int64(math.Round(usd * Micro)) }
+
+// Amount writes a dimension's value as a person reads it: a duration for
+// wall time, dollars for cost, a count otherwise.
+func Amount(dimension string, n int64) string {
+	switch dimension {
+	case "wall":
+		return time.Duration(n).String()
+	case "cost":
+		usd := float64(n) / Micro
+		if usd != 0 && usd < 0.01 {
+			return fmt.Sprintf("$%.4f", usd)
+		}
+		return fmt.Sprintf("$%.2f", usd)
+	}
+	return strconv.FormatInt(n, 10)
+}
 
 // State is what a turn has used so far, shown at a checkpoint. Files and
 // Commands are the distinct targets of its irreversible actions.
@@ -38,11 +64,15 @@ type State struct {
 	// What the turn's model requests cost, as far as known: Cost in USD
 	// over the Priced requests, Unpriced the requests whose cost is not
 	// known, CachedTokens the prompt tokens providers said came from their
-	// cache. Shown, never a limit; Tokens still counts cached tokens in full.
+	// cache. A spend limit, when set, counts Cost (with EarlierCost); Tokens
+	// still counts cached tokens in full.
 	Cost         float64 `json:"cost,omitempty"`
 	Priced       int64   `json:"priced,omitempty"`
 	Unpriced     int64   `json:"unpriced,omitempty"`
 	CachedTokens int64   `json:"cached_tokens,omitempty"`
+	// EarlierCost is what the task's earlier turns cost, as far as known: a
+	// spend limit counts it with Cost.
+	EarlierCost float64 `json:"earlier_cost,omitempty"`
 }
 
 // Checkpoint is the question put to the user when a soft limit is reached:
@@ -61,7 +91,8 @@ type Choice struct {
 }
 
 // ParseChoice accepts yes (double the soft limit), no, or a new absolute soft
-// limit. Wall limits use durations; other dimensions use positive integers.
+// limit. Wall limits use durations, cost limits US dollars ("2.50" or
+// "$2.50"); other dimensions use positive integers.
 func ParseChoice(reply string, p Checkpoint) (Choice, error) {
 	reply = strings.ToLower(strings.TrimSpace(reply))
 	switch reply {
@@ -79,11 +110,19 @@ func ParseChoice(reply string, p Checkpoint) (Choice, error) {
 	}
 	var next int64
 	var err error
-	if p.Dimension == "wall" {
+	switch p.Dimension {
+	case "wall":
 		var d time.Duration
 		d, err = time.ParseDuration(reply)
 		next = int64(d)
-	} else {
+	case "cost":
+		var usd float64
+		usd, err = strconv.ParseFloat(strings.TrimPrefix(reply, "$"), 64)
+		if err == nil && (math.IsNaN(usd) || math.IsInf(usd, 0)) {
+			err = errors.New("not a number")
+		}
+		next = Micros(usd)
+	default:
 		next, err = strconv.ParseInt(reply, 10, 64)
 	}
 	if err != nil || next <= p.Used || next <= p.Limit.Soft || next > p.Limit.Hard {
@@ -94,8 +133,11 @@ func ParseChoice(reply string, p Checkpoint) (Choice, error) {
 
 // Stop distinguishes a hard turn ceiling from a declined checkpoint. Drivers
 // may start a new bounded turn after the former, never after the latter.
+// Spend marks the hard spend limit, which is the task's: no later turn may
+// start after it either, since it would start past the limit.
 type Stop struct {
 	Hard   bool
+	Spend  bool
 	Reason string
 }
 
@@ -159,9 +201,28 @@ func (t *Turn) hard(ctx context.Context, dimension string, used int64, limit Lim
 		return context.Cause(ctx)
 	}
 	if used >= limit.Hard {
+		if dimension == "cost" {
+			err := &Stop{Hard: true, Spend: true, Reason: "hard stop: spend limit reached (" + Amount("cost", used) + " of " + Amount("cost", limit.Hard) + " known)"}
+			t.cancel(err)
+			return err
+		}
 		return t.stop("hard stop: "+dimension+" budget reached", true)
 	}
 	return nil
+}
+
+// spent is the task's known cost so far, in the cost limit's unit.
+func (t *Turn) spent() int64 { return Micros(t.state.EarlierCost + t.state.Cost) }
+
+// SetEarlierCost tells the turn what the task's earlier turns cost, for the
+// spend limit. Call it before the turn's work.
+func (t *Turn) SetEarlierCost(usd float64) { t.state.EarlierCost = usd }
+
+// Spend is what the turn's model requests cost, as far as known, how many
+// were unpriced, and the spend limit as the turn leaves it (a checkpoint may
+// have raised its soft limit). Call it once the turn's work is over.
+func (t *Turn) Spend() (cost float64, unpriced int64, limit Limit) {
+	return t.state.Cost, t.state.Unpriced, t.limits.Cost
 }
 
 // check applies both limits: past the hard one the turn stops; past the
@@ -203,7 +264,13 @@ func (t *Turn) Check(ctx context.Context) error {
 	if err := t.check(ctx, "wall", int64(time.Since(t.start)), &t.limits.Wall); err != nil {
 		return err
 	}
-	return t.check(ctx, "tokens", t.state.Tokens, &t.limits.Tokens)
+	if err := t.check(ctx, "tokens", t.state.Tokens, &t.limits.Tokens); err != nil {
+		return err
+	}
+	if t.limits.Cost.Hard > 0 {
+		return t.check(ctx, "cost", t.spent(), &t.limits.Cost)
+	}
+	return nil
 }
 
 // ToolCall charges one tool call, checking every limit first.
@@ -267,8 +334,9 @@ func (t *Turn) AddTokens(prompt, output int) {
 }
 
 // AddSpend records one model request's cost (nil: not known) and the prompt
-// tokens its provider read from cache (nil: not reported). It never stops a
-// turn.
+// tokens its provider read from cache (nil: not reported). It stops nothing
+// itself: the next Check or Finish applies the spend limit. A cost not known
+// is not counted, so a spend limit sees only priced requests.
 func (t *Turn) AddSpend(cost *float64, cached *int) {
 	if cost != nil && *cost >= 0 {
 		t.state.Cost += *cost
@@ -287,5 +355,11 @@ func (t *Turn) Finish(ctx context.Context) error {
 	if err := t.hard(ctx, "wall", int64(time.Since(t.start)), t.limits.Wall); err != nil {
 		return err
 	}
-	return t.hard(ctx, "tokens", t.state.Tokens, t.limits.Tokens)
+	if err := t.hard(ctx, "tokens", t.state.Tokens, t.limits.Tokens); err != nil {
+		return err
+	}
+	if t.limits.Cost.Hard > 0 {
+		return t.hard(ctx, "cost", t.spent(), t.limits.Cost)
+	}
+	return nil
 }

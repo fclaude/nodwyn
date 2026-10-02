@@ -282,7 +282,7 @@ export class Transcript {
         break;
       case "turn.end":
         if (p.outcome && p.outcome !== "completed") {
-          const words = { stopped: "Stopped", hard_budget: "Stopped at a hard budget limit", canceled: "Stopped: canceled", error: "Stopped by an error" };
+          const words = { stopped: "Stopped", hard_budget: "Stopped at a hard budget limit", spend_limit: "Stopped at the spend limit", canceled: "Stopped: canceled", error: "Stopped by an error" };
           this.audit(words[p.outcome] || `Turn ended: ${p.outcome}`, p.error || undefined, p.outcome === "error" ? "bad" : "");
         }
         this.end();

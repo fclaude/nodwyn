@@ -119,6 +119,9 @@
         "cost": {
           "type": "number"
         },
+        "earlier_cost": {
+          "type": "number"
+        },
         "elapsed_ns": {
           "type": "integer"
         },
@@ -1568,6 +1571,9 @@
         },
         "auto_approve": {
           "type": "boolean"
+        },
+        "cost": {
+          "type": "number"
         },
         "deadline": {
           "format": "date-time",
@@ -4262,6 +4268,9 @@
         "actions": {
           "$ref": "#/$defs/budget.Limit"
         },
+        "cost": {
+          "$ref": "#/$defs/budget.Limit"
+        },
         "tokens": {
           "$ref": "#/$defs/budget.Limit"
         },
@@ -4276,7 +4285,8 @@
         "tool_calls",
         "tokens",
         "actions",
-        "wall_ns"
+        "wall_ns",
+        "cost"
       ],
       "type": "object"
     },
@@ -4750,6 +4760,9 @@
         "auto_approve": {
           "type": "boolean"
         },
+        "cost": {
+          "type": "number"
+        },
         "judge": {
           "type": "boolean"
         },
@@ -5206,6 +5219,9 @@
       "properties": {
         "auto_approve": {
           "type": "boolean"
+        },
+        "cost": {
+          "type": "number"
         },
         "deadline": {
           "format": "date-time",

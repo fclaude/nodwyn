@@ -204,10 +204,11 @@ confirm is a yes — for work nobody is watching), `--no-keychain`,
 `--keychain-tty` (ask for the keychain passphrase on the terminal even when
 input is a script),
 `--max-tool-calls N` (hard call override), `--budget-wall 2h`,
-`--budget-tokens N`, and `--budget-actions N`. The `[budget]` settings and
+`--budget-tokens N`, `--budget-actions N` and `--budget-cost USD` (a spend
+limit for the session). The `[budget]` settings and
 checkpoint behavior are described in the README. Defaults are 50/500 calls,
 20m/4h wall time, 1M/10M reported model tokens and 25/200 irreversible host
-attempts (soft/hard). Legacy `loop.max_tool_calls` remains an explicit override.
+attempts (soft/hard), and no spend limit. Legacy `loop.max_tool_calls` remains an explicit override.
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
@@ -357,7 +358,9 @@ inherits them, so the run has exactly the credentials you bound and no way
 to acquire others. `--yolo` there is a property of **that run**, not of the
 daemon: a daemon left running never auto-approves a session someone opens
 later from the browser. `nodwyn run status|stop` follow the run, and its
-turns are bounded by `--max-turns` and `--budget-wall`. `--yolo` answers the
+turns are bounded by `--max-turns` and `--budget-wall`, and its spend by
+`--budget-cost USD` if you give one (the whole run's; it ends the run
+`limited`). `--yolo` answers the
 tool confirms inside each turn; going on to the next turn still waits for a
 yes at the run checkpoint, from the browser or the terminal client, unless
 the run is `--unattended`.
@@ -842,8 +845,17 @@ provider's surcharge for writing to its cache, so a reported cost always
 wins. Ollama reports neither, and its line reads as before; so does an older
 log. The TUI's `:budget` adds the turn's spend over every model request (the
 planner's, sub-agents' and compaction's included; the judge reports no
-cost), and a budget checkpoint says what the turn has cost so far. Spend is
-shown, never a limit: the token budget still counts cached tokens in full.
+cost), and a budget checkpoint says what the turn has cost so far. The
+token budget still counts cached tokens in full: it measures context, not
+money.
+
+A spend limit, `cost_soft` and `cost_hard` in `[budget]` (US dollars), is
+off unless you set it. It counts the known cost of the whole task, every
+turn and a resumed session's history included: a checkpoint asks past
+`cost_soft`, and at `cost_hard` the task stops until you raise it. A request
+whose cost nobody knows is not counted, and a note says so the first time.
+The README has the details; `--budget-cost USD` sets it for one session or
+run.
 
 No keyed request follows a redirect (`http-request`, Jev, MCP), and no model
 request does, keyed or not: the binding was checked for the host the request

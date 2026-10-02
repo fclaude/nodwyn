@@ -21,7 +21,11 @@ func turnOutcome(ctx context.Context, err error) log.TurnEnd {
 	switch {
 	case errors.As(err, &stop):
 		result.Outcome = "stopped"
-		if stop.Hard {
+		switch {
+		case stop.Spend:
+			// The task's limit, not the turn's: no later turn may start.
+			result.Outcome = "spend_limit"
+		case stop.Hard:
 			result.Outcome = "hard_budget"
 		}
 	case errors.Is(err, context.Canceled):

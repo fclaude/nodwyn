@@ -227,7 +227,9 @@ Where you see it:
     $\approx$ before an estimate (Chapter~\ref{ch:first}); the console
     sums a turn's requests on one such line;
   \item at a budget checkpoint, what the turn has cost so far, ``at least''
-    when some requests had no known cost;
+    when some requests had no known cost; and, if you set
+    \code{cost\_hard} in \code{[budget]}, a checkpoint and a stop on what
+    the whole task has cost (Chapter~\ref{ch:first});
   \item \code{:budget} in the terminal client: the latest turn's spend over
     all its model requests and the share of prompt tokens from cache, or
     why the spend is unknown;

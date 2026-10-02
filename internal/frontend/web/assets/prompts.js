@@ -34,7 +34,7 @@ export function summary(event) {
 }
 
 function dimension(name) {
-  return { tool_calls: "tool-call", tokens: "token", actions: "action", wall: "time" }[name] || name;
+  return { tool_calls: "tool-call", tokens: "token", actions: "action", wall: "time", cost: "spend" }[name] || name;
 }
 
 // parseDiff turns the guard's unified diff into rows with line numbers.
@@ -213,14 +213,14 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
     }
   } else if (event.kind === "prompt.checkpoint") {
     const c = p.Checkpoint || {};
-    const amount = (v) => (c.dimension === "wall" ? `${Math.round(v / 6e10)} min` : String(v));
+    const amount = (v) => (c.dimension === "wall" ? `${Math.round(v / 6e10)} min` : c.dimension === "cost" ? usd(v / 1e6, false) : String(v));
     card.append(
       h("h2", {}, s.title),
       h("p", { class: "hint" }, `Used ${amount(c.used)} of a soft limit of ${amount(c.limit?.soft)}; the hard limit is ${amount(c.limit?.hard)}${c.state?.priced ? ` · ${c.state.unpriced ? "at least " : ""}${usd(c.state.cost || 0, false)} so far` : ""}. More budget grants no new permission.`),
     );
     if (enabled) {
       choice("Keep going", "Y", "accent", "session.answer", { reply: "y" });
-      const input = h("input", { class: "input", id: `budget-${p.ID}`, required: true, placeholder: c.dimension === "wall" ? "e.g. 30m" : "a new soft limit" });
+      const input = h("input", { class: "input", id: `budget-${p.ID}`, required: true, placeholder: c.dimension === "wall" ? "e.g. 30m" : c.dimension === "cost" ? "dollars, e.g. 2.50" : "a new soft limit" });
       card.append(
         h(
           "form",

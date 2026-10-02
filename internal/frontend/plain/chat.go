@@ -599,12 +599,7 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 	}
 }
 
-func budgetAmount(dimension string, n int64) string {
-	if dimension == "wall" {
-		return time.Duration(n).String()
-	}
-	return strconv.FormatInt(n, 10)
-}
+func budgetAmount(dimension string, n int64) string { return budget.Amount(dimension, n) }
 
 // choice asks a question with a fixed set of answers, each named by its key.
 func (c *Chat) choice(ev event.Choice) {

@@ -388,8 +388,10 @@ type SummaryDrop struct {
 	SummarySeq uint64 `json:"summary_seq"`
 }
 
-// TurnEnd retains the old note text and adds machine-readable outcomes. Older
-// logs lack Outcome; readers must treat that as unknown, not as success.
+// TurnEnd retains the old note text and adds machine-readable outcomes:
+// completed, stopped, hard_budget, spend_limit (the task's spend limit; no
+// later turn may start), canceled or error. Older logs lack Outcome; readers
+// must treat that as unknown, not as success.
 type TurnEnd struct {
 	Text    string `json:"text"`
 	Outcome string `json:"outcome,omitempty"`
@@ -414,6 +416,8 @@ type RunState struct {
 	AutoApprove bool `json:"auto_approve,omitempty"`
 	// Judge: the judge answered its ordinary tool confirms.
 	Judge bool `json:"judge,omitempty"`
+	// Cost: the run's spend limit in US dollars, when it set its own.
+	Cost float64 `json:"cost,omitempty"`
 }
 
 // RunTurn marks the start of a run's Number-th turn.

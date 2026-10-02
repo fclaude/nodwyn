@@ -64,8 +64,13 @@ type Session struct {
 	uploadMu      sync.Mutex
 	uploadSetting string
 	uploadSet     bool
-	prompts  map[string]pendingConfirmation
-	promptMu sync.Mutex
+	// The spend limit's soft limit as a checkpoint last raised it, and
+	// whether a turn has said the limit cannot see a request's cost
+	// (spend.go). Both under mu.
+	costSoft   int64
+	spendNoted bool
+	prompts    map[string]pendingConfirmation
+	promptMu   sync.Mutex
 
 	allow  *guard.CommandAllow
 	writes *guard.WriteAllow
@@ -190,7 +195,16 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 		s.mu.Unlock()
 		return err
 	}
-	ctx, _, cancel := budget.Start(context.Background(), limits, s.confirmBudget)
+	// The spend limit is the task's: a soft limit raised at a checkpoint
+	// holds for later turns, and each turn starts from what the earlier ones
+	// cost.
+	if limits.Cost.Hard > 0 && s.costSoft > limits.Cost.Soft && s.costSoft <= limits.Cost.Hard {
+		limits.Cost.Soft = s.costSoft
+	}
+	ctx, turn, cancel := budget.Start(context.Background(), limits, s.confirmBudget)
+	if limits.Cost.Hard > 0 {
+		turn.SetEarlierCost(s.knownSpend())
+	}
 	s.busy = true
 	s.turnCancel = cancel
 	s.turns.Add(1)
@@ -200,6 +214,9 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 		var turnErr error
 		defer s.turns.Done()
 		defer func() {
+			if limits.Cost.Hard > 0 {
+				s.endSpend(turn)
+			}
 			_, _ = s.Record(log.KindTurnEnd, turnOutcome(ctx, turnErr))
 			s.flushOutput()
 			cancel()

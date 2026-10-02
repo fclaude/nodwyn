@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"syscall"
@@ -70,6 +71,12 @@ func (c *cli) applyBudgets(cfg *config.Config) error {
 		}
 		cfg.Budget.ActionsHard = c.budgetActions
 		cfg.Budget.ActionsSoft = min(cfg.Budget.ActionsSoft, c.budgetActions)
+	}
+	if c.set("budget-cost") {
+		if !(c.budgetCost > 0) || math.IsInf(c.budgetCost, 0) {
+			return fmt.Errorf("budget-cost must be a positive number of US dollars")
+		}
+		cfg.Budget = cfg.Budget.WithCostHard(c.budgetCost)
 	}
 	if c.set("budget-wall") {
 		hard, err := time.ParseDuration(c.budgetWall)

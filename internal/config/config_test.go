@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/fclaude/nodwyn/internal/budget"
 )
 
 func TestDefaultIsValid(t *testing.T) {
@@ -108,6 +110,10 @@ func TestBudgetConfigurationAndLegacyOverride(t *testing.T) {
 		"[budget]\nactions_soft=10\nactions_hard=2\n",
 		"[loop]\nmax_tool_calls=0\n",
 		"[loop]\nmax_tool_calls=3\n[budget]\ntool_calls_hard=4\n",
+		"[budget]\ncost_soft=1.0\n",
+		"[budget]\ncost_soft=3.0\ncost_hard=2.0\n",
+		"[budget]\ncost_hard=-1.0\n",
+		"[budget]\ncost_hard=nan\n",
 	} {
 		path := filepath.Join(t.TempDir(), "config.toml")
 		os.WriteFile(path, []byte(body), 0600)
@@ -127,8 +133,22 @@ func TestBudgetConfigurationAndLegacyOverride(t *testing.T) {
 	}
 	defaults := Default()
 	limits, err = defaults.Budget.Limits(defaults.Loop.MaxToolCalls)
-	if err != nil || limits.ToolCalls.Soft != 50 || limits.ToolCalls.Hard != 500 {
+	if err != nil || limits.ToolCalls.Soft != 50 || limits.ToolCalls.Hard != 500 || limits.Cost != (budget.Limit{}) {
 		t.Fatalf("defaults: %+v %v", limits, err)
+	}
+	// A spend limit, in dollars; soft unset is the hard limit.
+	for body, want := range map[string]budget.Limit{
+		"[budget]\ncost_soft=0.5\ncost_hard=2\n": {Soft: 500_000, Hard: 2_000_000},
+		"[budget]\ncost_hard=2.25\n":             {Soft: 2_250_000, Hard: 2_250_000},
+	} {
+		os.WriteFile(path, []byte(body), 0600)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if limits, err := cfg.Budget.Limits(0); err != nil || limits.Cost != want {
+			t.Fatalf("%s: %+v %v", body, limits.Cost, err)
+		}
 	}
 }
 

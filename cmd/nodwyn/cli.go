@@ -28,6 +28,7 @@ type cli struct {
 
 	budgetTokens  int64
 	budgetActions int64
+	budgetCost    float64
 	maxCalls      int
 }
 
@@ -73,6 +74,7 @@ func newCLI(args []string) *cli {
 	c.fs.StringVar(&c.budgetWall, "budget-wall", "", "hard turn wall limit, e.g. 2h")
 	c.fs.Int64Var(&c.budgetTokens, "budget-tokens", 0, "hard reported model token limit per turn")
 	c.fs.Int64Var(&c.budgetActions, "budget-actions", 0, "hard irreversible host-action limit per turn")
+	c.fs.Float64Var(&c.budgetCost, "budget-cost", 0, "spend limit for the session in US dollars, as far as costs are known (replaces budget.cost_hard)")
 	c.fs.IntVar(&c.maxCalls, "max-tool-calls", 0, "tool calls allowed per turn before the hard stop (overrides budget.tool_calls_hard)")
 	c.fs.Bool("plain", true, "use the line-mode front-end")
 	c.fs.Usage = func() { fmt.Fprint(c.fs.Output(), usage); c.fs.PrintDefaults() }

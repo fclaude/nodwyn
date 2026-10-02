@@ -179,8 +179,9 @@ larger soft limit. A completed answer does not ask for more soft allowance. This
 `--no-confirm` stops at checkpoints. Each answer, including cancellation, is a
 redacted `turn.checkpoint` log record. A new turn starts with fresh accounting.
 
-`--max-tool-calls N`, `--budget-wall 2h`, `--budget-tokens N` and
-`--budget-actions N` override hard ceilings for this invocation. Explicit legacy
+`--max-tool-calls N`, `--budget-wall 2h`, `--budget-tokens N`,
+`--budget-actions N` and `--budget-cost USD` override hard ceilings for this
+invocation. Explicit legacy
 `loop.max_tool_calls` settings still work; do not also set
 `budget.tool_calls_hard` in that file. Configurations without a legacy override
 now use the ADR 18 default of 500 hard tool calls (previously 200).
@@ -200,7 +201,28 @@ provider's prompt cache and its cost, each only when known; a model's
 `price_input`, `price_cached_input` and `price_output` (USD per million
 tokens) estimate the cost when the provider does not report it. The TUI's
 `:budget` shows the latest turn's spend, and a checkpoint what the turn has
-cost so far. Spend is shown, never a limit: nothing stops a turn on cost.
+cost so far.
+
+A spend limit is yours to set, and off unless you do:
+
+```toml
+[budget]
+cost_soft = 2.0    # US dollars: past this a checkpoint asks
+cost_hard = 10.0   # the task stops here; cost_soft unset is cost_hard
+```
+
+It counts what the whole task's model requests cost, not one turn's: every
+turn of a session or a run, a resumed session's history included. Past
+`cost_soft` a checkpoint asks (answer in dollars, `2.50`), and a raised soft
+limit holds for later turns. At `cost_hard` the turn stops (`turn.end`
+outcome `spend_limit`), and no later turn starts: a run ends `limited`, and
+a new message stops before it reaches the model. Raise `cost_hard` to go on.
+It counts only known costs, reported by the provider or priced from the
+model's `price_*`. A request with neither is not counted, and the first
+turn that has one says so in a note. `--budget-cost USD` sets the hard limit
+for one session or one run (`nodwyn run --budget-cost 5`, kept on resume).
+An unattended run's soft checkpoint goes on to the hard limit, as for the
+other budgets.
 
 ### Local daemon (U2)
 

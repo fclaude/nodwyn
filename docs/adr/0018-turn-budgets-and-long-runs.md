@@ -218,4 +218,28 @@ A turn's state also counts what its model requests cost, as far as known
 (`cost`, `priced`, `unpriced`, `cached_tokens`), and a checkpoint shows it.
 It is not a budget dimension: nothing stops a turn on spend. Cached tokens
 still count in full against the token budget, which measures context, not
-money.
+money. (Amended 2026-10-02 below: spend may be limited, if the person says
+so.)
+
+## Spend limit — 2026-10-02
+
+Spend is a fifth dimension, `cost`, and the only one off by default:
+`[budget] cost_soft` and `cost_hard`, in US dollars, set by the person, or
+`--budget-cost` for one session or run. Unlike the others it is the task's,
+not the turn's. A turn starts from what the task's earlier requests cost
+(the `cost` the `llm.resp` records carry, so a resumed session counts its
+history), and a soft limit raised at a checkpoint holds for the turns after
+it. Its hard stop is a `budget.Stop` with `Spend` set, recorded as `turn.end`
+outcome `spend_limit`. A driver does not go on after it, as it would after a
+hard turn budget: the next turn would start past the limit. A run ends
+`limited`. A run's own limit is recorded in `run.state` (`cost`) and kept on
+resume, as the deadline is.
+
+It counts only known costs, reported by the provider or priced from the
+model's `price_*`. Counting an unknown cost as zero is the only honest choice
+short of refusing to run, so the first turn with an unpriced request says so
+in a `note`. Checks run where the token budget's do, before each model
+request and tool call, so the request that crosses the limit completes and
+nothing starts after it. The unit is a millionth of a dollar, so a limit is
+an integer like the others. An unattended run's soft checkpoint goes on to
+the hard limit.

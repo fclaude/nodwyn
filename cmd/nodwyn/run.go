@@ -27,6 +27,7 @@ func runTask(args []string) error {
 	task := flags.String("task", "", "UTF-8 task file (at most 64 KiB)")
 	wall := flags.String("budget-wall", "", "required total run deadline, e.g. 2h")
 	turns := flags.Int("max-turns", 0, "required maximum number of turns")
+	cost := flags.Float64("budget-cost", 0, "spend limit for the whole run in US dollars, as far as costs are known (replaces budget.cost_hard)")
 	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
 	judge := flags.Bool("judge", false, "the judge (Jev) answers this run's ordinary confirms instead of a person, allowing a call only when it judges it called for and safe; security confirms are declined; needs a jev-key")
 	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done")
@@ -61,7 +62,13 @@ func runTask(args []string) error {
 		if *judge && *yolo {
 			return errors.New("--judge and --yolo exclude each other: the judge answers what --yolo would")
 		}
+		if *cost < 0 {
+			return errors.New("--budget-cost is US dollars, more than 0")
+		}
 		params = map[string]any{"repo": root, "task": string(data), "wall": *wall, "max_turns": *turns, "auto_approve": *yolo, "unattended": *unattended, "judge": *judge}
+		if *cost > 0 {
+			params.(map[string]any)["cost"] = *cost
+		}
 		if *yolo {
 			fmt.Fprintf(os.Stderr, "yolo: this run's ordinary confirms are answered yes in %s; denials and security confirms still stop it\n", root)
 		}

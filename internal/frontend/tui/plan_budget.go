@@ -102,10 +102,17 @@ func formatSteps(gate log.GatePlan, marks map[int]log.PlanStep) string {
 func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 	var out strings.Builder
 	out.WriteString("Configured per-turn limits · current session lifetime\nInitial soft limits; checkpoint choices apply only within their turn.\n\n")
-	for _, row := range []struct {
+	rows := []struct {
 		name  string
 		limit budget.Limit
-	}{{"tool_calls", limits.ToolCalls}, {"tokens", limits.Tokens}, {"actions", limits.Actions}, {"wall", limits.Wall}} {
+	}{{"tool_calls", limits.ToolCalls}, {"tokens", limits.Tokens}, {"actions", limits.Actions}, {"wall", limits.Wall}}
+	if limits.Cost.Hard > 0 {
+		rows = append(rows, struct {
+			name  string
+			limit budget.Limit
+		}{"cost", limits.Cost})
+	}
+	for _, row := range rows {
 		fmt.Fprintf(&out, "%s · soft %s · hard %s\n", row.name, budgetAmount(row.name, row.limit.Soft), budgetAmount(row.name, row.limit.Hard))
 	}
 	out.WriteString("\nUsage below is recorded at checkpoints, not live counters or remaining allowance.\n")

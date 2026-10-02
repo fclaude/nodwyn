@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -167,9 +166,4 @@ func (m *model) reply(value string) tea.Cmd {
 	})
 }
 
-func budgetAmount(dimension string, value int64) string {
-	if dimension == "wall" {
-		return time.Duration(value).String()
-	}
-	return fmt.Sprint(value)
-}
+func budgetAmount(dimension string, value int64) string { return budget.Amount(dimension, value) }

@@ -2,6 +2,7 @@ package budget
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strings"
 	"testing"
@@ -170,5 +171,76 @@ func TestHardCeilingPrecedesOtherSoftCheckpoint(t *testing.T) {
 	turn.AddTokens(20, 0)
 	if err := turn.Action(ctx, "x", ""); err == nil {
 		t.Fatal("hard actions did not stop")
+	}
+}
+
+// A spend limit counts what the task's earlier turns cost with this turn's
+// known cost: it asks at the soft limit and stops at the hard one, with a
+// stop that says no later turn may start. A request whose cost is not known
+// is not counted.
+func TestSpendLimit(t *testing.T) {
+	limits := testLimits()
+	limits.Cost = Limit{Soft: Micros(1), Hard: Micros(2)}
+	var asked []Checkpoint
+	ctx, turn, done := Start(context.Background(), limits, func(_ context.Context, p Checkpoint) (Choice, error) {
+		asked = append(asked, p)
+		return ParseChoice("$1.50", p)
+	})
+	defer done()
+	turn.SetEarlierCost(0.75)
+	cost := 0.20
+	turn.AddSpend(&cost, nil)
+	turn.AddSpend(nil, nil)
+	if err := turn.Check(ctx); err != nil || len(asked) != 0 {
+		t.Fatalf("under the soft limit: %v %+v", err, asked)
+	}
+	turn.AddSpend(&cost, nil) // 0.75 + 0.40
+	if err := turn.Check(ctx); err != nil || len(asked) != 1 || asked[0].Dimension != "cost" || asked[0].Used != Micros(1.15) || asked[0].State.EarlierCost != 0.75 {
+		t.Fatalf("soft limit: %v %+v", err, asked)
+	}
+	if spent, unpriced, limit := turn.Spend(); spent != 0.40 || unpriced != 1 || limit.Soft != Micros(1.5) {
+		t.Fatalf("spend: %v %v %+v", spent, unpriced, limit)
+	}
+	cost = 1.0
+	turn.AddSpend(&cost, nil)
+	err := turn.Finish(ctx)
+	var stop *Stop
+	if !errors.As(err, &stop) || !stop.Hard || !stop.Spend || !strings.Contains(stop.Reason, "$2.15 of $2.00") {
+		t.Fatalf("hard limit: %v", err)
+	}
+	if ctx.Err() == nil {
+		t.Fatal("the hard spend stop did not cancel the turn")
+	}
+
+	// Off unless set: no cost is ever too much.
+	ctx, turn, done = Start(context.Background(), testLimits(), nil)
+	defer done()
+	cost = 1e9
+	turn.AddSpend(&cost, nil)
+	if err := turn.Check(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSpendChoicesAndAmounts(t *testing.T) {
+	p := Checkpoint{Dimension: "cost", Used: Micros(1.2), Limit: Limit{Micros(1), Micros(5)}}
+	for _, input := range []string{"1", "$1.10", "6", "NaN", "Inf", "-1", "two"} {
+		if _, err := ParseChoice(input, p); err == nil {
+			t.Errorf("accepted %q", input)
+		}
+	}
+	if c, err := ParseChoice("$2.5", p); err != nil || c.Soft != Micros(2.5) {
+		t.Fatalf("%+v %v", c, err)
+	}
+	if c, err := ParseChoice("y", p); err != nil || c.Soft != Micros(2) {
+		t.Fatalf("%+v %v", c, err)
+	}
+	for n, want := range map[int64]string{0: "$0.00", Micros(2.5): "$2.50", 1234: "$0.0012"} {
+		if got := Amount("cost", n); got != want {
+			t.Errorf("Amount(%d) = %s, want %s", n, got, want)
+		}
+	}
+	if Amount("wall", int64(time.Minute)) != "1m0s" || Amount("tokens", 7) != "7" {
+		t.Fatal("other amounts changed")
 	}
 }

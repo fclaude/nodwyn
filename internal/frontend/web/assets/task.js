@@ -3,7 +3,7 @@
 // the workspace. Every figure comes from the log or from session.info; a
 // panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
-import { Transcript, planSteps } from "./transcript.js";
+import { Transcript, planSteps, usd } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
 import { kindLabel } from "./home.js";
 import { Attachments, attachmentChip } from "./attach.js";
@@ -576,8 +576,17 @@ export class TaskView {
         meter("Time", elapsed, budgets ? budgets.wall_ns.soft / 1e6 : 0, (ms) => minutes(ms)),
         meter("Tool calls", calls, budgets?.tool_calls.soft || 0),
         tokens ? meter("Tokens", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
+        // The spend limit counts the whole task, not this turn.
+        budgets?.cost?.hard ? meter("Spend, this task", this.knownSpend(), budgets.cost.soft / 1e6, (c) => usd(c, false)) : null,
       ].filter(Boolean),
     );
+  }
+  // knownSpend is what the task's model requests cost, as far as known: the
+  // cost its llm.resp records carry, as the spend limit counts it.
+  knownSpend() {
+    let cost = 0;
+    for (const e of this.events()) if (e.kind === "llm.resp" && e.payload.usage?.cost > 0) cost += e.payload.usage.cost;
+    return cost;
   }
   changesPanel() {
     const written = [];

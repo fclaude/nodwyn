@@ -26,6 +26,9 @@ type runParams struct {
 	// Judge has the judge (Jev) answer the run's ordinary tool confirms
 	// instead of a person; it excludes auto_approve and needs a judge.
 	Judge bool `json:"judge,omitempty"`
+	// Cost is the run's spend limit in US dollars, for the whole run; it
+	// replaces budget.cost_hard. Omitted, the configured one applies.
+	Cost float64 `json:"cost,omitempty"`
 }
 
 // resumeParams resume a run. How it goes on is said again, never read back
@@ -44,7 +47,7 @@ type runResult struct {
 func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if req.Method == "run.start" {
 		var p runParams
-		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve", "unattended", "judge"); err != nil {
+		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve", "unattended", "judge", "cost"); err != nil {
 			return nil, err
 		}
 		if p.Judge && p.AutoApprove {
@@ -64,11 +67,15 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if err != nil || wall <= 0 {
 			return nil, failure(-32602, "wall must be a positive duration")
 		}
-		state := run.State{Task: p.Task, Deadline: time.Now().Add(wall), MaxTurns: p.MaxTurns, Unattended: p.Unattended, AutoApprove: p.AutoApprove, Judge: p.Judge}
+		state := run.State{Task: p.Task, Deadline: time.Now().Add(wall), MaxTurns: p.MaxTurns, Unattended: p.Unattended, AutoApprove: p.AutoApprove, Judge: p.Judge, Cost: p.Cost}
 		if err := state.Validate(); err != nil {
 			return nil, failure(-32602, err.Error())
 		}
 		options := s.options
+		options.Config.Budget = options.Config.Budget.WithCostHard(p.Cost)
+		if _, err := options.Config.Budget.Limits(options.Config.Loop.MaxToolCalls); err != nil {
+			return nil, failure(-32602, err.Error())
+		}
 		options.Repo = p.Repo
 		options.NoConfirm = false
 		// Without this a run stops at the first write and waits for a client
@@ -144,6 +151,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		delete(s.sessions, p.ID)
 	}
 	options := s.options
+	options.Config.Budget = options.Config.Budget.WithCostHard(state.Cost)
 	options.Repo = ""
 	options.NoConfirm = false
 	options.AutoApprove, options.Unattended, options.JudgeApprove = p.AutoApprove, p.Unattended, p.Judge

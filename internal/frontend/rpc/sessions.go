@@ -53,6 +53,9 @@ type budgetInfo struct {
 	Tokens    budget.Limit `json:"tokens"`
 	Actions   budget.Limit `json:"actions"`
 	Wall      budget.Limit `json:"wall_ns"`
+	// Cost is the task's spend limit in millionths of a US dollar; a hard
+	// limit of 0 is none.
+	Cost budget.Limit `json:"cost"`
 }
 type sessionDetails struct {
 	Bindings   []binding.Binding `json:"bindings"`
@@ -77,7 +80,7 @@ type sessionDetails struct {
 func (s *server) details(session *core.Session) sessionDetails {
 	limits, _ := s.options.Config.Budget.Limits(s.options.Config.Loop.MaxToolCalls)
 	trust, actor := session.TurnApproval()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
 }
 
 func orEmpty[T any](list []T) []T {

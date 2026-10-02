@@ -111,12 +111,13 @@ export function renderInspector(
     );
     if (info) {
       const amount = (name, value) =>
-        name === "wall_ns" ? `${value / 1e9}s` : String(value);
+        name === "wall_ns" ? `${value / 1e9}s` : name === "cost" ? `$${(value / 1e6).toFixed(2)}` : String(value);
       container.append(
         table(
           ["Dimension", "Initial soft limit", "Hard limit"],
-          Object.entries(info.budgets).map(([name, limit]) => [
-            name === "wall_ns" ? "wall" : name,
+          // A spend limit of 0 is none; it counts the whole task.
+          Object.entries(info.budgets).filter(([name, limit]) => name !== "cost" || limit.hard > 0).map(([name, limit]) => [
+            name === "wall_ns" ? "wall" : name === "cost" ? "spend (whole task)" : name,
             amount(name, limit.soft),
             amount(name, limit.hard),
           ]),

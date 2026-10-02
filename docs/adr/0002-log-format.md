@@ -143,3 +143,11 @@ such as `docs.google_upload`), its `value`, and whether it was saved in
 answer to a `prompt.choice`, which, like every live prompt, is not logged
 itself. A setting changed from Settings or by editing the file is outside
 any session and leaves no record. The window ignores it.
+
+## Amendment — 2026-10-02: the spend limit
+
+No new kind. `turn.checkpoint` may have dimension `cost`, its `used` and
+`limit` in millionths of a US dollar, and its budget state gains
+`earlier_cost`: what the task's earlier turns cost. `turn.end` gains the
+outcome `spend_limit`, and `run.state` a run's own spend limit, `cost`
+(US dollars). All optional; an older record reads as before.
