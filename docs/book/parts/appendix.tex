@@ -26,6 +26,7 @@ Kind & What it records \\
 \code{jev.req} & a call to the judge: which call, its origin, content level, size, payload hash, redactions, answer \\
 \code{cred.register} & a credential stored: class and handle id only \\
 \code{cred.refresh} & an OAuth2 credential refreshed before a use: class, handle id, token endpoint, expiry or error; never a token \\
+\code{mcp.egress} & a contained MCP server's connection through its egress proxy, allowed or refused: server, method, host, port, why; past a limit, how many were not recorded \\
 \code{redact.event} & a \code{[REDACTED class]} substitution and where it happened \\
 \code{binding.change} & a binding row requested, applied or refused \\
 \code{approval.change} & a standing approval granted explicitly \\
@@ -78,7 +79,7 @@ ADR & Title & Status \\
 19 & Jev sees content, never secrets (amends the spec) & accepted \\
 20 & Jev as egress primitives; \code{register-check} & built \\
 21 & A real UI after v0: daemon, protocol, clients & partly built \\
-22 & Cowork: workspaces, attachments, MCP servers & partly built \\
+22 & Cowork: workspaces, attachments, MCP servers & built \\
 23 & Untrusted MCP servers: isolation, pinning, fail-closed & built \\
 24 & OAuth2 credentials: acquisition, refresh, scopes & built \\
 25 & Log-derived ingress redaction and buffered model output & accepted \\

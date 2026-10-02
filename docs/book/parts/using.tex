@@ -3,7 +3,7 @@
 \chapter{Install and configure}
 
 \begin{sh}
-make build                       # bin/nodwyn from the working tree
+make build                       # bin/nodwyn and bin/nodwyn-egress
 make build-webview               # the same, with a native window for nodwyn app
 make app                         # bin/Nodwyn.app for macOS
 make promote                     # accept + selfcheck, then ~/.local/bin/nodwyn-stable
@@ -17,11 +17,15 @@ real work and \file{bin/nodwyn} only to test a change to \nodwyn{}.
 on Linux); \code{make build} leaves it out and \code{nodwyn app} then
 opens your browser. \code{make promote} builds \code{nodwyn-stable} with
 the tag wherever it can, and its version is the commit it was built from.
+\code{nodwyn-egress}, built static for Linux, is the proxy a contained MCP
+server reaches the network through; \nodwyn{} looks for it next to its own
+executable, where \code{make promote} installs it.
 
-\code{nodwyn paths} prints where everything lives: \file{config.toml},
-\file{bindings.toml}, \file{mcp.toml} and the keychain in the configuration
-directory; session logs, notes and scratch directories in the data
-directory.
+\code{nodwyn paths} prints where \file{config.toml}, \file{bindings.toml},
+the keychain and the session logs are. \file{mcp.toml} sits beside
+\file{config.toml} in the configuration directory; a repository's notes and
+the sessions' scratch directories are in the data directory, beside the
+session logs.
 
 \section{config.toml}
 
@@ -69,15 +73,25 @@ wall_hard       = "4h"
 
 [jev]
 content = "plan"            # none | plan | plan+summaries | full
+approve_threshold = 0.8     # --judge allows a call at or above this
 
 [docs]
 google_credential = "google"  # the class google-doc-upload sends; "" for none
+
+[mcp]
+# runtime = "podman"        # or "docker"; unset: podman if on PATH, else docker
+# egress = "..."            # nodwyn-egress; unset: next to the nodwyn binary
 \end{txt}
 
-A model may also set \code{num\_ctx} and \code{keep\_alive} (Ollama),
+A model may also set \code{num\_ctx} (sent to Ollama; for \code{[control]}
+it also sizes the window) and \code{keep\_alive} (Ollama),
 \code{max\_output} and \code{output\_field} (servers that need them),
-\code{temperature} and \code{seed}. Each request records the settings it was
-sent with, so \code{nodwyn replay --window} can rebuild it. A
+\code{temperature} and \code{seed}, and \code{price\_input},
+\code{price\_cached\_input} and \code{price\_output}: its prices in USD per
+million tokens, from which a request's cost is estimated when the provider
+does not report it (cached input unset is priced as input). Each request
+records the settings it was sent with, so \code{nodwyn replay --window} can
+rebuild it. A
 chat-completions model that reads images says so with \code{vision = true};
 Ollama reports it itself. Images can be attached only when the control model
 takes them.
@@ -112,9 +126,9 @@ $ cd ~/src/your-repo
 $ nodwyn-stable
 nodwyn session 20260930T101500Z-1c2d3e4f
 repo  /home/you/src/your-repo
-tools fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep
-      read-definition second-look shell-exec shell-read shell-send
-      shell-start shell-stop
+tools doc-export fs-edit fs-find fs-list fs-read fs-write git-diff git-status
+      index-grep plan-step read-definition second-look shell-exec shell-read
+      shell-send shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence
@@ -140,7 +154,27 @@ Ctrl-C & abort the running turn; at the prompt, exit \\
 
 The two slash commands work in every client. While a turn runs, line mode
 prints the reply once it is complete, a card per tool call, guard flags, and
-a usage line per model request.
+a usage line per model request, as the full-screen client and the console
+do:
+
+\begin{center}
+\code{12,400$\to$800 tok \textperiodcentered{} 78\% cached
+\textperiodcentered{} \$0.012 \textperiodcentered{} 3.2s}
+\end{center}
+
+Prompt and output tokens always; the share of the prompt the provider read
+from its cache, and the request's cost, only when known (a cost estimated
+from the model's configured prices is marked $\approx$); the time only when
+the server reports it. A budget checkpoint says what the turn has cost so
+far, ``at least'' when some requests had no known cost.
+
+The full-screen client takes the same commands and adds inspectors:
+\code{:plan} shows the turn's plan gate, its plan, and each step as the
+model marked it, done (\code{[x]}), skipped (\code{[-]}) or not yet
+(\code{[ ]}), with its note; \code{:budget} shows the configured limits,
+what the latest turn's model requests cost as far as known, and its
+checkpoints; \code{:replay}, \code{:bindings} and \code{:friction} show
+the transcript, the binding table and \file{docs/friction.md}.
 
 \code{nodwyn --resume ID} continues a session in the same log, with the
 configuration, bindings, approvals files and \file{init.scm} as they are
@@ -182,8 +216,9 @@ Read the reason lines. ``command line names a path outside the repository''
 and ``uses the network tool curl'' are the guard telling you what a
 \code{y} would do. A \emph{security} confirm\,---\,a write to \file{.nodwyn/},
 \file{.git/}, CI configuration, \file{scripts/} or the \file{Makefile},
-content that looks like a key, a command line built from tool
-output\,---\,offers only \code{y} and \code{N}.
+content that looks like a key, a command line built from tool output, an
+image to attach\,---\,offers only \code{y} and \code{N}, and
+\code{-{}-yolo}, the judge and an unattended run all decline it.
 
 \section{Standing approvals}
 
@@ -211,7 +246,9 @@ nodwyn-stable                              # then, at the prompt:
 :eval (credential-register "openai-key")   # masked input
 \end{sh}
 
-The console's Settings page does the same without a terminal. A key is
+The console stores two kinds of key without a terminal: Settings the main
+model's, and Connections an MCP server's, each with its one binding row.
+Any other key is registered as above. A key is
 stored under a class you name, and it goes nowhere until a row in
 \file{bindings.toml} allows it:
 
@@ -253,14 +290,16 @@ destination. \code{--oauth2 custom} with \code{--auth-url} and
 
 \chapter{Connecting an MCP server}
 
-Connections, in the console, adds a remote server: its address
+Connections, in the console, adds a server. A remote one needs its address
 (\code{https}, or plain \code{http} to this computer only), and, if it needs
 one, a key, which goes into the keychain with a binding for that host only.
 Then:
 
 \begin{enumerate}[leftmargin=2em]
-\item \textbf{Review} the tools the server offers: names, descriptions,
-  input schemas and the server's own hints.
+\item \textbf{Review} the tools the server offers: their names and the
+  start of each description. Their input schemas and the server's own
+  hints are part of the tool list you approve, but the console does not
+  show them.
 \item \textbf{Declare} what each tool you want does: \emph{reads}, or
   \emph{changes things}. Leave it undeclared and every call asks, as if it
   both sent data out and could not be undone.
@@ -336,7 +375,8 @@ The model's \code{doc-export} turns a Markdown or LaTeX file into Word
 extension. It needs pandoc 2.15 or later on \code{PATH}; without it the
 tool says what to install. The target is a write like any other: the
 confirm shows source, target and formats, a standing write approval covers
-it, and the previous version is kept. pandoc reads the source in its
+it, and, where git is not the undo, the previous version is kept. pandoc
+reads the source in its
 sandbox, so an include or a remote image in it reads nothing, and a
 \file{.docx} or \file{.odt} embeds only images that are files in the
 workspace.
@@ -361,7 +401,9 @@ scopes = ["https://www.googleapis.com/auth/drive.file"]
 \end{txt}
 
 Sessions started after the credential was stored offer it. Every call asks,
-naming the file, its size and the destination, with no standing answer. A
+naming the file, its size and the destination, and no standing approval
+covers it. It is an ordinary confirm, so in a run \code{-{}-yolo} answers
+it yes and the judge of a \code{-{}-judge} run may allow it. A
 document holding something shaped like a key whose class is not bound for
 that host is refused before anything is sent, and each upload is logged as
 \code{doc.upload}: file, size, hash, destination and the document's id.
@@ -380,7 +422,7 @@ set the hard limits for one invocation. A turn also stops if the model
 repeats an identical call four times in a row, retries a denied call three
 times, or gets ten tool errors in a row.
 
-Longer work is a \emph{supervised run}, submitted to a daemon:
+Longer work is a \emph{run}, submitted to a daemon:
 
 \begin{sh}
 nodwyn run --task task.txt --repo . --budget-wall 2h --max-turns 20
@@ -389,18 +431,27 @@ nodwyn run stop SESSION
 nodwyn run resume SESSION
 \end{sh}
 
-Each turn of a run must record a plan before it may do anything
-irreversible, and a person says yes at a checkpoint between turns. A run
+For a run, \code{--budget-wall} is the deadline of the whole run, not of
+one turn. Each turn of a run must record a plan before it may do anything
+irreversible, and in a supervised run a person says yes at a checkpoint
+between turns. A run
 ends when the model's reply ends with the line \code{NODWYN\_RUN\_COMPLETE},
 which is its claim, not proof. \code{--yolo} answers a run's ordinary tool
 confirms with yes; it does not answer security confirms, and it does not
-continue the run between turns. Use it on a throwaway checkout: the guard
-makes an unattended run survivable, not safe. \code{nodwyn run
--{}-unattended} goes further: nobody answers at all, tool confirms are
-declined unless a standing approval covers them (or, with
-\code{-{}-judge}, answered by the judge, which is shown the task, the plan
-and the call), and the run goes on to its next turn only after a turn that
-marked a step of its plan done.
+continue the run between turns. \code{-{}-judge} has the judge answer them
+instead: it is shown the task, the plan and the call (at
+\code{jev.content = "full"}, also what the call would write or send), and
+the call runs only if the judge's probability of allow is at least
+\code{jev.approve\_threshold} and the project's \code{approve-refuse?}, if
+it defines one, does not refuse it. It needs a stored \code{jev-key},
+excludes \code{--yolo}, and declines security confirms. Use either on a
+throwaway checkout: the guard makes an unattended run survivable, not safe.
+\code{-{}-unattended} goes further: nobody answers at all. Tool confirms
+are declined unless a standing approval covers them, answered yes with
+\code{--yolo} or put to the judge with \code{-{}-judge}; a soft budget
+checkpoint goes on to the hard limit; and the run goes on to its next turn
+only after a turn that marked a step of its plan done. A resume restores
+none of these flags: give them to \code{nodwyn run resume} again.
 
 \chapter{Building \nodwyn{} with \nodwyn}
 
@@ -438,7 +489,7 @@ a contained MCP server is unavailable & the task's Tools panel says why: no podm
 a contained server cannot reach a site & the task shows the connection its proxy refused: add the host to its \code{network} list, or the server ignores \code{HTTPS\_PROXY} \\
 the model loops on a denied call & the progress guard stops it; read the reason and say what to do instead \\
 \code{hard stop: tool\_calls budget reached} & the turn ended; the log has everything; rephrase smaller, or raise \code{--max-tool-calls} \\
-a tool call errored & \code{:log 20}: the \code{tool.result} line has the exact error the model saw \\
+a tool call errored & the error line printed during the turn, or \code{nodwyn replay ID}, has the exact error the model saw; \code{:log} cuts each event at 120 characters \\
 a file changed without a prompt & \code{:allow}: a standing approval covered it; the \code{guard.decision} line names which \\
 a session died & \code{nodwyn --resume <id>}; everything up to the last fsync is in the log \\
 \bottomrule

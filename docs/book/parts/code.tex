@@ -56,7 +56,8 @@ its own.
 \section{The session starts a turn}
 
 \file{internal/core/session.go}. \code{Send} calls \code{startTurn}, which
-refuses while the session is closing or a turn is running, starts the
+refuses while the session is closing, a turn is running or an attachment
+is being taken in, starts the
 turn's budget, and runs the work in a goroutine with a cancellable context.
 However the turn ends, the deferred function records \code{turn.end},
 clears the turn's state and emits \code{status idle}. Note \code{turnTrust}
@@ -72,6 +73,10 @@ func (s *Session) startTurn(work func(context.Context) error) error {
     if s.busy {
         s.mu.Unlock()
         return errors.New("core: a turn is already running")
+    }
+    if s.attaching {
+        s.mu.Unlock()
+        return errors.New("core: an attachment is in progress; send when it is done")
     }
     limits, err := s.opts.Config.Budget.Limits(s.opts.Config.Loop.MaxToolCalls)
     // ...
@@ -124,11 +129,15 @@ var msg log.UserMsg
 if err := safe.Decode(&msg); err != nil {
     return err
 }
+s.setTurnTask(msg.Text)
 touchScratch(s.scratch)
 if err := s.loop.Turn(ctx, msg.Text); err != nil {
     return err
 }
 \end{go}
+
+\code{setTurnTask} keeps the recorded request as the turn's task, which a
+judged run shows the judge with each call it asks about.
 
 \section{Record: the log first, then everything else}
 
@@ -204,7 +213,11 @@ The default strategy is \file{internal/loop/strategy.scm} (\adr{26}).
 \code{nodwyn-turn} runs the plan gate when the turn must plan, then
 \code{agent-turn}, which sends \code{/compact} and \code{/optimize} to
 their own procedures and everything else to the default loop: ask, run
-what the model asked for, ask again, until a reply has no tool calls.
+what the model asked for, ask again, until a reply has no tool calls. When
+nobody reviews the work as it happens (\code{(unattended?)}, or a run's
+turn), \code{evidence-loop} runs instead: it ends the turn on evidence, so
+a reply that stops before anything changed, or with a change and no test
+run after it, is answered with a reminder, at most twice.
 
 \begin{scm}
 (define (nodwyn-turn request)
@@ -259,12 +272,23 @@ resp, err := l.ask(c.Ctx, name, offer, headroom)
 if err != nil {
     return scheme.Void, err
 }
+var rates llm.Rates
+if ep, err := l.endpoint(name); err == nil {
+    rates = ep.Rates
+}
+cost, _ := llm.Cost(resp.Usage, rates)
 if t.budget != nil {
     t.budget.AddTokens(resp.Usage.PromptTokens, resp.Usage.OutputTokens)
+    t.budget.AddSpend(cost, resp.Usage.CachedTokens)
 }
 t.expect(resp.Message.ToolCalls)
-return replyValue(resp), nil
+return replyValue(resp, cost), nil
 \end{go}
+
+\code{llm.Cost} takes the cost the provider reported, or estimates it
+from the model's configured prices, or says it is unknown. The turn's
+budget counts it, but no limit is set on it, and the reply carries it to
+the strategy as \code{cost}, with \code{cached-tokens}.
 
 \file{internal/loop/model.go}, \code{ask}. Every request rebuilds the window
 from the events so far; there is no list of messages kept between requests.
@@ -276,6 +300,8 @@ recorded as \code{llm.resp}:
 \begin{go}
 w := window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, pol)
 // ...
+withheld, err := l.images(ctx, name, ep, &w)
+// ...
 request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: maxOutput,
     Temperature: ep.Temperature, Seed: ep.Seed}
 request.Tools = offered(l.tools, offer)
@@ -284,7 +310,8 @@ digest, err := window.RequestHash(request)
 rec := log.LLMReq{
     RequestHash: digest,
     Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
-    // ...
+    NoTools: offer.none, OfferedTools: offer.only, MaxOutput: ep.MaxOutput,
+    Temperature: ep.Temperature, Seed: ep.Seed, Withheld: withheld,
 }
 // ...
 if err := l.record(log.KindLLMReq, rec); err != nil {
@@ -296,7 +323,7 @@ resp, err := llm.ChatRetrying(ctx, ep.Provider, request, attempt, func(n int, er
 })
 // ...
 l.show(resp)
-if err := l.record(log.KindLLMResp, responseRecord(resp)); err != nil {
+if err := l.record(log.KindLLMResp, responseRecord(resp, ep.Rates)); err != nil {
     return nil, err
 }
 \end{go}
@@ -610,10 +637,15 @@ the replacement text and makes a credential-shaped one a security confirm.
 for any tool or any primitive that is host, egress, irreversible or
 audited; pure builtins such as \code{car} and \code{+} are allowed
 silently, and every non-allow is recorded. A confirm goes to the
-confirmer. With \code{--no-confirm} it answers every confirm with no, and
-with \code{--yolo} every ordinary confirm with yes and every security
-confirm with no; otherwise it is the session, which implements it in
-\file{internal/core/confirm.go} as an event and a wait:
+confirmer, which \code{initialize} installs once \file{init.scm} has run.
+With \code{--no-confirm} it answers every confirm with no; with
+\code{--yolo} every ordinary confirm with yes and every security confirm
+with no; in a \code{-{}-judge} run it is \code{judgeConfirmer}
+(\file{internal/core/judge.go}), which puts each ordinary confirm to the
+judge and declines a security one without asking; in an unattended run
+with neither, it answers every confirm with no. Otherwise it is the
+session, which implements it in \file{internal/core/confirm.go} as an
+event and a wait:
 
 \begin{go}
 s.promptMu.Lock()
@@ -820,10 +852,14 @@ effect = "read"
 
 \code{Validate} requires an \code{https} URL (\code{http} only on
 loopback), a position whenever there is a credential, and an effect that is
-\code{read}, \code{write} or absent. The effect is the person's
+\code{read}, \code{write} or absent; for a contained server, an image
+pinned by digest, a credential only with a \code{network} list and at an
+\code{env:} position; and it refuses \code{transport = "host-process"}.
+The effect is the person's
 declaration, not the server's: MCP describes what a tool takes, not what it
 does to the world, and the server's own hints (\code{readOnlyHint},
-\code{destructiveHint}) are shown but never trusted.
+\code{destructiveHint}) are part of the manifest the person approves but
+never trusted, and the console does not show them.
 
 \begin{go}
 const (
@@ -1059,10 +1095,11 @@ binding check still runs, and its arguments still leave.
 
 \section{What L1 and L2 read}
 
-Two checkers read roles. L1 (\code{TextSecret}, \file{textsecret.go})
-scans the text of \code{payload} and \code{argv} parameters for
-credential shapes; L2 (\code{Taint}, \file{taint.go}) reads the provenance
-of the same parameters. Both select parameters by role:
+Two checkers read the \code{payload} and \code{argv} roles. L1
+(\code{TextSecret}, \file{textsecret.go}) scans the text of those
+parameters for credential shapes; L2 (\code{Taint}, \file{taint.go}) reads
+their provenance. Both select parameters by role, as \code{secretText}
+does:
 
 \begin{go}
 for i, pa := range p.Meta.Params {
@@ -1106,8 +1143,9 @@ strategy that builds a command line out of an MCP result gets the security
 confirm it would get for a file's or a command's output, which no standing
 approval and no \code{--yolo} can answer.
 
-A server configured without a credential has no class for E3 to look up
-and no transport hook: nothing consults the binding table for it. What
+A remote server configured without a credential has no class for E3 to
+look up and no transport hook: only L1 and L2 consult the binding table,
+about the arguments, never about the call itself. What
 authorises its traffic is \file{mcp.toml} itself (the URL, the approved
 manifest, the tools turned on, the workspaces) and, for tools that are not
 declared reads, the confirm. L2 would deny content from outside heading to
@@ -1239,7 +1277,7 @@ was built once per server with \code{prim} set to
 the handler holds no handle, and the keychain writes the header itself.
 
 \code{s.InjectHeader} is the session's sink, the same one
-\code{http-request} and the judge use. For an OAuth2 credential
+\code{http-request}, the judge and \code{google-doc-upload} use. For an OAuth2 credential
 (\adr{24}) it first asks the keychain to refresh the access token if it has
 less than a minute left: \code{keychain.Refresh} posts the refresh token to
 the token endpoint stored with it, saves the new tokens under a lock that
@@ -1393,17 +1431,22 @@ func boundFor(t binding.Authority, p *scheme.Prim, f egressFacts, class string) 
 }
 \end{go}
 
-\code{TestContainedServerCrossesTheGuard} and
-\code{TestContainedCredentialMustBeBoundForEveryHost} in
-\file{internal/core/contained\_test.go} run this against a fake runtime,
-the test binary run again (\file{test/fakes/container}), which records
-every argument list and environment; \code{TestContainedWithPodman} runs
-it with the real podman or docker when asked to.
+\begin{sloppypar}
+In \file{internal/core/contained\_test.go},
+\code{TestContainedServerCrossesTheGuard} runs this path against a fake
+runtime, the test binary run again (\file{test/fakes/container}), which
+records every argument list and environment. Another test,
+\code{TestContainedCredentialMustBeBoundForEveryHost}, checks the key's
+bindings, that the key is only in the runtime's environment, and that the
+proxy's reports reach the log; \code{TestContainedWithPodman} runs a
+server with the real podman or docker when asked to.
+\end{sloppypar}
 
 \section{The other keyed requests, compared}
 
-Two other routes send a key off the machine, and each checks the binding
-in a different place.
+Other routes send a key off the machine: \code{http-request} and the
+judge's primitives, \code{google-doc-upload}, and a keyed model request.
+Each checks the binding in its own place.
 
 \code{http-request} (\file{internal/prim/egress.go}) is the general keyed
 request. Its first parameter has the role \code{credential} and must be a
@@ -1424,7 +1467,8 @@ is its server's key class, so E3 judges them as carrying it, and the
 handler looks the key up itself.
 
 \code{google-doc-upload} (\file{internal/prim/docs.go}) is built the same
-way, with the class \code{google} and the host of Drive's upload endpoint.
+way, with the class \code{docs.google\_credential} names (\code{google}
+by default) and the host of Drive's upload endpoint.
 What it sends is a file, whose bytes never were a Scheme value, so neither
 L1 nor L2 sees them in the guard. The handler reads every text the file
 carries (\code{extract.AllText}: every XML part of a \file{.docx}, with the
@@ -1457,8 +1501,9 @@ Redirects & refused & refused & refused \\
 \bottomrule
 \end{longtable}}
 
-No client follows a redirect. \code{http-request} and the judge send
-through one client in \file{internal/core/credentials.go}, the model
+No client follows a redirect. \code{http-request}, the judge and
+\code{google-doc-upload} send through one client in
+\file{internal/core/credentials.go}, the model
 clients are in \file{internal/llm}, and each is built with
 \code{CheckRedirect: llm.NoRedirect}, as the MCP client is with its own
 \code{noRedirect}. Go's default policy would follow up to ten redirects,
@@ -1477,11 +1522,15 @@ A session log lives under the data directory's \file{sessions/}
 (\file{\textasciitilde/.local/share/nodwyn/sessions/} unless
 \code{XDG\_DATA\_HOME} says otherwise), one \file{<id>.jsonl} per session.
 It is created once, with mode 0600, and locked with \code{flock} so that
-one process appends to it at a time. Each line is one event:
+one process appends to it at a time. If building the session fails, the
+log it created is removed, so a refused session leaves no empty log behind.
+Each line is one event:
 \code{seq}, \code{ts}, \code{session}, \code{kind} and \code{payload}. The
 kinds are fixed in \file{internal/log/log.go}; a reader rejects any other,
 and rejects a gap in \code{seq}. The payload of each kind is a Go type in
-\file{internal/log/payloads.go}, which is the log's schema.
+\file{internal/log/payloads.go}, which is the log's schema, with one
+exception: \code{redact.event}'s payload, the source event's seq and the
+substitutions, is built in \file{internal/core/events.go}.
 
 {\small
 \begin{longtable}{@{}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{11.4cm}@{}}
@@ -1494,8 +1543,8 @@ Conversation & \code{user.msg}, \code{harness.msg}, \code{attach}, \code{llm.req
 Context & \code{context.narrow}, \code{context.widen}, \code{context.fold}, \code{result.fold}, \code{summary}, \code{summary.drop} \\
 Authority & \code{guard.decision}, \code{egress.check}, \code{approval.change}, \code{binding.change}, \code{cred.register}, \code{cred.refresh}, \code{redact.event} \\
 Plan gate and judge & \code{gate.plan}, \code{plan.step}, \code{jev.req} \\
-Supervised runs & \code{run.state}, \code{run.turn}, \code{run.checkpoint} \\
-Other & \code{eval.req}, \code{eval.result} (Scheme you evaluated), \code{file.version} (a kept previous version), \code{doc.upload} (a document sent out), \code{note} \\
+Runs & \code{run.state}, \code{run.turn}, \code{run.checkpoint} \\
+Other & \code{eval.req}, \code{eval.result} (Scheme you evaluated), \code{file.version} (a kept previous version), \code{doc.upload} (a document sent out), \code{mcp.egress} (a contained server's connection through its proxy), \code{note} \\
 \bottomrule
 \end{longtable}}
 
@@ -1524,8 +1573,9 @@ What is \emph{not} in the log is as telling as what is. An \code{llm.req}
 does not repeat the messages; it records their number, an estimate of
 their size, the seqs elided in this window, what the request did not take
 from the session's recipe (another model, a subset of the tools or none,
-its own reply cap, its sampling settings, a higher trim line), and a
-\code{request\_hash} of the provider-neutral request. The rest of the
+its own reply cap, its sampling settings, a higher trim line), the
+attached images it did not carry and why, and a \code{request\_hash} of
+the provider-neutral request, in which an image is its digest. The rest of the
 recipe\,---\,the system prompt, the tool schemas, the window's policy, the
 context size and the output cap\,---\,is recorded once, in
 \code{session.start}'s \code{context}. From these,
@@ -1603,9 +1653,10 @@ Field & What it means, and who reads it \\
 \code{TaintSource} & the tag the result carries (\code{external:file}, \code{external:shell}, \code{external:http}, \code{external:mcp}, \code{external:log}) \\
 \code{TaintOpaque} & the result is a measurement of the arguments and inherits none of their taint \\
 \code{TaintStrip} & removes taint; L2 refuses it to model and harness origin \\
-\code{EgressHost}, \code{EgressMethod}, \code{EgressPosition} & fixed egress facts for a primitive whose arguments do not carry them (the judge, MCP) \\
-\code{EgressClass} & the credential class a host integration injects itself; makes the call credential-bearing for E3 (MCP) \\
+\code{EgressHost}, \code{EgressMethod}, \code{EgressPosition} & fixed egress facts for a primitive whose arguments do not carry them (the \code{jev-*} and \code{judge-*} primitives, \code{google-doc-upload}, MCP) \\
+\code{EgressClass} & the credential class a host integration injects itself; makes the call credential-bearing for E3 (\code{judge-*}, \code{google-doc-upload}, a keyed remote MCP server) \\
 \code{EgressApproved} & the person named \code{EgressHost} outside the binding table; L2 counts it as a named destination for this primitive (MCP) \\
+\code{EgressContained}, \code{EgressOnward} & a contained MCP server's tool, and the hosts its container may send on to; L1 and L2 bind a key in its arguments only if its class is bound for every one \\
 \code{ConfirmReason} & why an irreversible call asks, in the integration's words \\
 \code{Preview} & renders what the call would do (a diff, the arguments) for the confirm \\
 \code{Origin} & \code{builtin}, or \code{scheme} for a tool registered from Scheme \\
@@ -1620,12 +1671,18 @@ Field & What it means, and who reads it \\
 none of them: its body calls Go primitives, and the guard judges each of
 those calls on its own declaration.
 
-\paragraph{Roles are what checkers read.} Seven are in use:
+\paragraph{Roles are what checkers read.} Eight are in use:
 \begin{itemize}
 \item \code{path}: \code{RepoPin}, \code{PathDenylist}, the protected-path,
   scratch and write-approval checkers, and the \code{\$TMPDIR} rewrite
   (the \code{fs-} primitives, \code{index-grep}, \code{git-diff},
-  \code{load});
+  \code{load}, \code{doc-export}'s target);
+\item \code{source}: a file the primitive only reads. \code{RepoPin} and
+  \code{PathDenylist} judge it as they judge a path, but a read-only mount
+  may supply it even to an irreversible primitive; with a \code{path} it
+  makes the call a write of that path; the \code{\$TMPDIR} rewrite covers
+  it (\code{doc-export}'s document, the file \code{google-doc-upload}
+  sends);
 \item \code{argv}: \code{ArgvTrigger}, standing command approvals, L1 (a
   key shape on a command line is denied), L2 (a command line built from
   tool output is a security confirm), and the \code{\$TMPDIR} rewrite
@@ -1633,10 +1690,11 @@ those calls on its own declaration.
 \item \code{payload}: L1 and L2 (\code{fs-write}'s content,
   \code{fs-edit}'s replacement, \code{shell-send}, \code{http-request}'s
   headers and body, the judge's inputs, \code{project-notes-save},
-  \code{policy-write});
+  \code{policy-write}, \code{google-doc-upload}'s title, every argument of
+  an MCP tool);
 \item \code{credential}, \code{dest}, \code{method}, \code{position}: the
-  facts E3 looks up in the binding table (\code{http-request}; the judge
-  has \code{credential} and fixed facts).
+  facts E3 looks up in the binding table (\code{http-request}; the
+  \code{jev-*} primitives have \code{credential} and fixed facts).
 \end{itemize}
 A checker that switches on a primitive's name is a bug; none in
 \file{internal/guard} does.
@@ -1668,7 +1726,8 @@ the bridge (\adr{13}): it refuses a dirty tree, runs \code{make accept}
 version (with the \code{webview} tag where WebKit is available, so
 \code{nodwyn-stable app} opens a window), runs the selfcheck, keeps the
 previous stable binary as \code{nodwyn-stable.prev} and installs the new
-one in \file{\textasciitilde/.local/bin} (or \code{NODWYN\_STABLE\_DIR}).
+one in \file{\textasciitilde/.local/bin} (or \code{NODWYN\_STABLE\_DIR}),
+with \code{nodwyn-egress}, the contained servers' proxy, beside it.
 It no longer tags: \code{v0.1-bootstrap} to \code{v0.42-console} are
 history.
 

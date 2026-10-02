@@ -126,21 +126,17 @@ plan's progress, step by step, in the console, unattended runs that go
 on from turn to turn by themselves while the model marks its plan done,
 the judge answering a run's confirms, decided in Go (\adr{18}), images as
 attachments behind a confirm of their own (\adr{22}), documents out
-through pandoc and to Google Docs (W5), and what each model request
-cost, with its cache hits.
+through pandoc and to Google Docs (W5), what each model request
+cost, with its cache hits, and contained local MCP servers (\adr{23}, W3b):
+run with podman or docker from an image pinned by digest, with no network
+or only the hosts an egress proxy lets through.
 
 \chapter{What is next}
 
-In the order \file{plan.md} gives them:
-
 \begin{description}[leftmargin=1.6em]
-\item[Contained local MCP servers] (\adr{23}, W3b). Many MCP servers are
-  programs meant to run on your machine. \nodwyn{} will not start one in its
-  own process tree; the design runs it in a digest-pinned container with a
-  declared network (empty meaning none) and declared mounts (default none),
-  reached over loopback. Not started: enforcing a per-host network allowlist
-  inside a container needs an egress proxy, and half the isolation would be
-  worse than none.
 \item[L3] (P8, optional): a calibrated classifier for the class-unknown
   residual, which feeds the decision with binding and never decides alone.
+\item[Go 1.27] (dated): raise the Go base once the build machine's
+  distribution ships it (Fedora~45, due 2026-10-20) and a 1.27 feature is
+  worth having (\adr{33}).
 \end{description}

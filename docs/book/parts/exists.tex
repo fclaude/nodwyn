@@ -4,19 +4,20 @@
 
 \section{Packages}
 
-\begin{center}
-\small
-\begin{tabular}{@{}L{4.8cm}L{10.2cm}@{}}
+{\small
+\begin{longtable}{@{}L{4.8cm}L{10.2cm}@{}}
 \toprule
 Package & Owns \\
 \midrule
+\endhead
 \code{internal/scheme} & the language: values and their provenance tags, reader, \code{eval}/\code{apply}, builtins, the primitive table, \code{applyPrim} \\
 \code{internal/guard} & the decision pipeline and its checkers: metadata, the pin and mounts, the path denylist, command-line triggers, standing approvals, E3, L1, L2, user checkers \\
 \code{internal/prim} & host primitives: files, search, git, programs, documents, \code{http-request}, the judge, policy files, the version store \\
 \code{internal/keychain}, \code{internal/binding} & encrypted credentials and their injection; the binding table \\
 \code{internal/detect/l1}, \code{internal/redact} & credential-shape detection; redaction of text \\
 \code{internal/llm} & the \code{Provider} interface; Ollama and chat-completions clients; what a request cost \\
-\code{internal/mcp} & a client for remote MCP servers; manifest hashing \\
+\code{internal/mcp} & a client for MCP servers, over streamable HTTP or a contained server's standard input and output; manifest hashing \\
+\code{internal/container}, \code{internal/egress} & running a contained MCP server with podman or docker; the egress proxy that is its only way out \\
 \code{internal/extract} & text from attached documents; checks on attached images; every text a document carries, before it is uploaded \\
 \code{internal/window} & the context window, derived from the log \\
 \code{internal/loop} & the loop's primitives and its default Scheme: the strategy, the plan gate, prompts, compaction, sub-agents, working habits \\
@@ -30,13 +31,13 @@ Package & Owns \\
 \code{internal/frontend/web} & the browser console and its bridge \\
 \code{internal/frontend/run} & supervised background runs \\
 \code{cmd/nodwyn} & flags $\to$ core $\to$ front-end; nothing else \\
+\code{cmd/nodwyn-egress} & the egress proxy, built static for Linux to run in a container \\
 \code{dev/}, \code{.nodwyn/} & this repository's own tools and standing approvals \\
 \code{test/exfil} & the exfiltration scenario suite \\
-\code{test/fakes} & scriptable fakes of a model server, the judge, an MCP server, an OAuth2 provider and Google Drive \\
+\code{test/fakes} & scriptable fakes of a model server, the judge, an MCP server, a container runtime, an OAuth2 provider and Google Drive \\
 \code{test/browser} & browser flows against the console \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{longtable}}
 
 \section{Commands}
 
@@ -59,6 +60,7 @@ nodwyn versions FILE          a file's kept previous versions
 nodwyn undo FILE              put back the newest kept version
 nodwyn keychain init          create the encrypted keychain
 nodwyn credential ...         list, add (OAuth2), log in again, revoke
+nodwyn mcp [pull NAME]        MCP servers; pull a contained one's image
 nodwyn repl | eval            Scheme, outside any session
 nodwyn paths                  config and data locations
 \end{txt}
@@ -101,7 +103,7 @@ Claim & Held by \\
 \endhead
 The log is the single source of truth & \code{nodwyn replay} reproduces a transcript from the file alone; the window takes only events; \code{log\_test.go} round-trips and repairs a truncated tail; \code{replay --window} verifies a request against its recorded digest \\
 One Scheme$\to$Go exit, the guard on it & \code{applyPrim} is the only caller of \code{Prim.Handler}; \code{TestGateIsTheSingleExit} records every crossing, including through \code{map}, \code{apply}, \code{sort} and a registered tool \\
-MCP tools cross the guard & \code{TestMCPToolsCrossTheGuard}: an undeclared tool confirms with no standing answer, the key reaches the server and neither the log nor the model, the checks are recorded; \code{TestMCPManifestChangeOffersNothing} \\
+MCP tools cross the guard & \code{TestMCPToolsCrossTheGuard}: an undeclared tool confirms with no standing answer, the key reaches the server and neither the log nor the model, the checks are recorded; \code{TestMCPManifestChangeOffersNothing}; for a contained server, \code{TestContainedServerCrossesTheGuard} and \code{TestContainedCredentialMustBeBoundForEveryHost}, against a fake runtime \\
 Loading \code{.scm} cannot change evaluation & \code{TestKernelFixed}: fingerprint unchanged, only the table grew \\
 A strategy cannot skip the invariants & \code{strategy\_test.go}: fabricated or rewritten calls refused, unanswered calls answered, stops uncatchable, provenance kept \\
 Proper tail calls & \code{TestTailCalls}: 200k iterations in nine tail positions under an 8\,MB stack cap \\
@@ -118,11 +120,13 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
 
 \begin{itemize}
 \item No L3. Known key shapes are detected; unknown ones are not.
-\item \nodwyn{} starts no MCP server, in a container or otherwise; it
-  connects to servers over HTTP (\code{https}, or plain \code{http} on this
-  computer). It does not discover a server's own authorization or register
-  itself as a client: a server behind a login takes an OAuth2 credential
-  you add with \code{nodwyn credential add -{}-oauth2}.
+\item \nodwyn{} runs a local MCP server only in a container, with podman or
+  docker, never as a process of yours. A contained server that dies is not
+  restarted: its calls fail and say why. One that ignores the proxy
+  variables reaches nothing. \nodwyn{} does not
+  discover a server's own authorization or register itself as a client: a
+  server behind a login takes an OAuth2 credential you add with
+  \code{nodwyn credential add -{}-oauth2}.
 \item No PDF output built in: \code{doc-export} writes \file{.docx},
   \file{.odt} and \file{.html}, and a PDF is built from LaTeX with
   \code{shell-exec} (\code{latexmk}), since no sandbox covers a TeX engine.

@@ -35,10 +35,12 @@ against the digest recorded with it.
 
 \paragraph{What does it talk to?} More than a model. A session reads and
 writes files, runs programs, talks to the models you configured, calls
-tools on the MCP servers you connected, sends keyed requests to APIs you
-bound, and asks a judge about plans. You reach it from a terminal, a
+tools on the MCP servers you connected or run in containers, sends keyed
+requests to APIs you bound, asks a judge about plans (and, in a judged
+run, about calls), and writes documents, which it may upload to Google
+Docs. You reach it from a terminal, a
 full-screen terminal client, a browser, a desktop window or a paired phone,
-and you can attach documents to a conversation. Chapter~\ref{ch:io} lists
+and you can attach documents and images to a conversation. Chapter~\ref{ch:io} lists
 every one of these channels, what crosses it, and what decides whether it
 may.
 
@@ -61,8 +63,9 @@ them.
 \item \textbf{The judge judges intent and plans over redacted content; the
   local stack judges \emph{what}.} Jev\,---\,the external calibrated judge used
   at two seams\,---\,sees the ask, the plan, and egress \emph{situations}
-  (class, destination, scope), after redaction. It never sees a secret
-  value. (Wording amended by \adr{19}.)
+  (class, destination, scope), after redaction, and more only at the
+  content level you choose. It never sees a secret value. (Wording amended
+  by \adr{19}.)
 \item \textbf{Secrets are credentials, not content.} The harness holds opaque
   handles into a log-excluded encrypted keychain, uses them only at a bound
   destination, and never sees the value.
@@ -97,17 +100,26 @@ I/O. A keyed call to \code{http-request}, the judge or an MCP tool is
 checked against the binding table by the guard before its handler runs; an
 MCP server's transport checks it again on every HTTP request, and a keyed
 model's transport checks it there, on every request, just before the key
-is injected. The one outbound
-exchange that is not a primitive application is the MCP handshake when a
-session starts, which sends no conversation content and checks the binding
-the same way before a key goes out.
+is injected. The outbound exchanges that are not primitive applications
+send no conversation content: the MCP handshake and tool list when a
+session starts, which check the binding the same way before a key goes
+out; a chat-completions server's model list (\code{GET /models}), asked
+without a key for the model's context length; Ollama's
+\code{/api/version}, which line mode asks to see the server is up, and
+\code{/api/show}, which says whether a model takes images; and the
+console's check that each configured model answers. An OAuth2 refresh
+goes to the token endpoint stored with the credential, as part of a use
+the binding table already allowed.
 
 \paragraph{In: what reaches the model passes one door.} Tool results, your
 messages, attachments, the plan and the model's own replies enter the
 model's context only as recorded events. \code{Session.Record} redacts each
 one, the log writer redacts again, and the window is built from what was
 written. Nothing is appended to the conversation by any other route, and a
-lint in CI checks it. The two parts of a request that are not events, the
+lint in CI checks it. An attached image passes the same door as a record
+naming it by digest, but its pixels are not text and are never redacted:
+they are read from the attachment store when a request is sent, and only
+after a confirm of their own. The two parts of a request that are not events, the
 system prompt and the tool list, are assembled when the session starts;
 the tool descriptions, including those an MCP server wrote, pass the same
 redactor, and a repository's notes were redacted when they were saved.
@@ -122,12 +134,12 @@ Channel & What crosses & Who decides & Recorded as \\
 \endhead
 Models & out: the window (the conversation, or a narrowed part of it); in: text, thinking, tool calls & you, by configuring the model; for a keyed model, the binding table, on every request & \code{llm.req}, \code{llm.resp}, \code{egress.check} \\
 MCP servers & at session start: the server's tool list; per call: arguments out, a result in; from a contained server, its connections through the proxy & you, in \file{mcp.toml}: which servers, which tools, in which workspaces, which hosts a contained one reaches; the pinned manifest; the guard, per call & \code{egress.check}, \code{guard.decision}, \code{tool.call}, \code{tool.result}, \code{mcp.egress} \\
-Keyed HTTP & a request with a credential injected at a bound position, and its response & the binding table; the guard's L1 and L2 checkers & \code{egress.check}, \code{guard.decision} \\
-The judge & the ask and the plan (more at a higher content level), redacted & the binding table; the content level \code{jev.content} & \code{jev.req}, \code{gate.plan} \\
+Keyed HTTP & a request with a credential injected at a bound position, and its response; the model reaches it only through a tool you registered & the binding table; the guard's L1 and L2 checkers & \code{egress.check}, \code{guard.decision}, \code{cred.refresh} for an OAuth2 credential \\
+The judge & the ask and the plan; in a \code{-{}-judge} run, each call it is asked to allow; at \code{full}, what the call would do, and what the model sends with the \code{judge} tools; all redacted & the binding table; the content level \code{jev.content}; for a judged call, Go, against \code{jev.approve\_threshold} & \code{jev.req}, \code{gate.plan}, \code{guard.decision} \\
 Files & file contents in; writes out to disk & the pin, the path denylist, the confirm & \code{guard.decision}, \code{tool.result}, \code{file.version} \\
 Programs & a command line out; its output in; anything the program itself does & the confirm, or a standing approval; the guard sees the command line only & \code{guard.decision}, \code{tool.result} \\
 You & messages, answers to prompts, secrets typed into a masked prompt, Scheme you evaluate & you & \code{user.msg}, \code{guard.decision}, \code{cred.register}, \code{eval.req} \\
-Attachments & a document's extracted text & you, by attaching it & \code{attach} \\
+Attachments & a document's extracted text; an image, as it is, to a model that takes images & you, by attaching it; for an image, a security confirm that names the host it goes to & \code{attach}, \code{llm.req} \\
 Documents & out: a file sent to Google Drive; on disk: a document pandoc wrote & the binding table, the confirm, L1 on the file's text; for an export, the pin and the confirm & \code{egress.check}, \code{guard.decision}, \code{doc.upload}, \code{file.version} \\
 \bottomrule
 \end{longtable}}
@@ -138,7 +150,11 @@ The control model answers \code{(model-turn)}; any other model you configure
 under \code{[models.NAME]} answers \code{(model-turn "NAME")}. Each request
 sends the window built from the log: by default the whole conversation, or,
 when a strategy has called \code{narrow-context}, only the task and the plan
-it chose. What comes back is text, the model's thinking, and tool calls.
+it chose. What comes back is text, the model's thinking, and tool calls,
+with the server's token counts. \code{llm.resp} records them, the prompt
+tokens the provider read from its cache when it says, and the request's
+cost, as the provider reported it or as the model's configured prices
+estimate it.
 
 A model that needs a key names a credential class in its configuration. On
 every request the transport looks the class up in the binding table for the
@@ -192,10 +208,11 @@ a slash; the console shows \code{server/tool}), and the tool list is frozen
 for the session. The tool descriptions are text the server wrote, and they
 reach the model: pinning makes them stable and reviewed, not true.
 
-\paragraph{Per call.} An MCP primitive is always egress to the server's host.
+\paragraph{Per call.} An MCP primitive is always egress: to the server's
+host, or for a contained server to its container.
 Its \emph{effect} is your declaration, not the server's: MCP describes what
 a tool takes, not what it does to the world, and the server's own hints are
-shown but never trusted.
+part of the manifest you approve but never trusted.
 \begin{itemize}
 \item \code{effect = "read"}: the call runs without asking. Its arguments
   still leave for the server.
@@ -203,7 +220,7 @@ shown but never trusted.
   the arguments shown by name, and no standing approval can answer for it.
   An undeclared tool is treated as sending out \emph{and} irreversible.
 \end{itemize}
-A server with a credential makes every call credential-bearing: the guard's
+A remote server with a credential makes every call credential-bearing: the guard's
 binding check (E3) runs before the handler, and the transport checks the
 binding again, and injects the key, on every HTTP request\,---\,the
 handshake, the tool list and each call. Redirects are not followed, so a
@@ -332,8 +349,8 @@ is the same daemon and bridge in one program, with a native window where
 the build has one and the default browser otherwise. A phone
 or another computer reaches the bridge only if you start it with
 \code{--listen} and pair the device by name; its answers are recorded with
-that name, and it may answer prompts but not change policy files, settings
-or the keychain.
+that name, and it may answer prompts but not change policy files,
+settings, workspaces or MCP servers, nor create or unlock the keychain.
 
 Your messages are redacted before they are recorded (E4), which catches a
 key pasted by mistake. A secret you type into a masked prompt goes into the
@@ -380,8 +397,10 @@ session, the version store and the notes a repository keeps between
 sessions all live on disk, under \nodwyn's configuration and data
 directories or the workspace's \file{.nodwyn/}. The model cannot write any
 of them directly: the configuration and data directories are outside every
-root and denied, and \file{.nodwyn/} always asks. \code{nodwyn paths}
-prints where each one is.
+root and denied, except the session's own scratch directory, which lives
+in the data directory and is the model's to use; and \file{.nodwyn/}
+always asks. \code{nodwyn paths} prints where the configuration, the
+binding table, the keychain and the session logs are.
 
 \section{The edges, by substrate}
 
@@ -441,8 +460,8 @@ methods = ["POST"]
 \section{One table for every key}
 
 The same table authorises every key \nodwyn{} holds: a model's, an MCP
-server's, the judge's, and any API a user tool calls through
-\code{http-request}. The spec distinguishes the harness's own model key,
+server's, the judge's, the Google credential \code{google-doc-upload}
+sends, and any API a user tool calls through \code{http-request}. The spec distinguishes the harness's own model key,
 \emph{control plane}, from every other credential, \emph{data plane}, so
 that other providers become tools among tools. In the code the distinction
 is narrower than that: a keyed control model is stored in the keychain and
@@ -454,9 +473,10 @@ An OAuth2 credential (\adr{24}) is bound the same way, with one more fact:
 a row may name the scopes it allows, and a token granted more is refused,
 because ``Drive, the files this app made'' and ``Drive, everything'' differ
 only there. Its refresh is part of a use the table already allowed, sent to
-the endpoint fixed when you authorized it, and logged; a refresh the
-provider refuses denies until you authorize again, never in the middle of a
-turn.
+the endpoint fixed when you authorized it, and logged as
+\code{cred.refresh}. A refresh the provider refuses denies every use until
+you authorize again with \code{nodwyn credential login}; nothing opens a
+browser in the middle of a turn.
 
 \section{The content-detection ladder}
 
@@ -495,7 +515,14 @@ as the model context (E2/E4) before it leaves. What may go beyond the ask
 and the plan is a user policy\,---\,\code{jev.content}: \code{none},
 \code{plan} (default), \code{plan+summaries}, or \code{full}\,---\,and every
 call is logged with its level, size, payload hash and the redactions it
-triggered.
+triggered. At \code{none} nothing is sent: there is no judge. At
+\code{plan} the plan gate sends the ask and the draft plan, and a
+\code{-{}-judge} run sends, for each call it asks about, the task, the plan
+and the call's shape: the tool, why the guard asks, and the path written or
+the command line run. \code{plan+summaries} is accepted and, for now, sends
+what \code{plan} sends. \code{full} adds what a judged call would write or
+send, and offers the model the \code{judge} tools, with which it chooses
+what is sent.
 
 Two seams:
 
@@ -503,9 +530,14 @@ Two seams:
 \item[Seam A] score a draft \emph{plan} against the \emph{ask} for quality,
   coherence and fulfilment; the model revises on a low score, at most three
   rounds. The default plan gate does this.
-\item[Seam C] score an ambiguous egress \emph{situation}\,---\,class,
-  destination, scope\,---\,never the value. \code{jev-choice} makes it
-  possible; nothing in the default loop or the guard calls it.
+\item[Seam C] score an ambiguous \emph{situation}\,---\,class,
+  destination, scope\,---\,never the value. A \code{-{}-judge} run uses it
+  for its ordinary confirms: Go (\file{internal/core/judge.go}) asks
+  \code{jev-choice} whether to allow the call and allows it only if the
+  probability of allow is at least \code{jev.approve\_threshold} (0.8 by
+  default). A security confirm is declined without asking, and Scheme can
+  only refuse more (\code{approve-refuse?}). Nothing in the default loop or
+  the guard calls it otherwise.
 \end{description}
 
 Never: a secret value (enforced by redaction, not by withholding content),
@@ -545,8 +577,9 @@ the guard never knows what a terminal is. A \emph{standing approval}\,---\,a
 command prefix or a write path the user authorised ahead of time\,---\,turns an
 ordinary confirm into an allow and never turns a deny into anything. A
 \emph{security} confirm\,---\,a write to a protected path, content that looks
-like a key, a command line built from tool output\,---\,cannot be answered by
-a standing approval, and an unattended run refuses it. A project may add
+like a key, a command line built from tool output, an image to
+attach\,---\,cannot be answered by a standing approval, and a run nobody
+watches refuses it: \code{-{}-yolo}, the judge and an unattended run alike. A project may add
 its own checkers in Scheme (\code{register-check}); they can deny or ask,
 never allow. Every decision that reaches the host, and every non-allow, is
 logged with who asked (the user, the model or the harness) and why.
