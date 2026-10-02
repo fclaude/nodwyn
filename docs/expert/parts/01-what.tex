@@ -133,8 +133,10 @@ knows where the edges are.
     not escape.
   \item \textbf{Credential-looking files are refused}: \file{.env} and \file{.env.*},
     \file{*.pem}, \file{id\_*}, \file{\textasciitilde/.ssh},
-    \file{\textasciitilde/.aws}, \nodwyn's own config and data directories,
-    and more.
+    \file{\textasciitilde/.aws}, \nodwyn's own config and data directories
+    wherever \code{XDG\_CONFIG\_HOME} and \code{XDG\_DATA\_HOME} put them
+    (all but the session's scratch directory, which lives in the data
+    directory), and more.
   \item \textbf{Every write and every command asks}, unless you have given a
     standing approval for it, and a few paths always ask: \file{.nodwyn/},
     \file{.git/}, \file{.github/}, \file{.gitea/}, \file{scripts/} and the

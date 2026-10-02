@@ -177,7 +177,7 @@ and the strictest answer wins:
 \midrule
 \code{meta} & the primitive's own metadata: irreversible means confirm \\
 \code{repo-pin} & every path role: inside the folder, the scratch directory or a mount \\
-\code{path-denylist} & credential-looking files and directories, even inside the folder \\
+\code{path-denylist} & credential-looking files and directories, and \nodwyn's own config and data (all but the scratch directory), even inside the folder \\
 \code{argv-trigger} & command lines: paths outside, network tools, dangerous flags \\
 \code{protected-path} & writes to \file{.nodwyn/}, \file{.git/}, \file{.github/}, \file{scripts/}, \file{Makefile}\ldots \\
 \code{scratch} & writes inside the scratch directory: no need to ask \\
