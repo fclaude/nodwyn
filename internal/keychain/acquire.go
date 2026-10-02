@@ -45,6 +45,9 @@ type Profile struct {
 	// NeedsSecret is set for a provider that issues no token to a client
 	// without a secret.
 	NeedsSecret bool
+	// APIHost is where the provider's tokens are usually sent: the host a
+	// binding for them usually names.
+	APIHost string
 }
 
 // The provider profiles that ship (ADR 24 §1). A custom provider names its
@@ -58,12 +61,14 @@ var profiles = map[string]Profile{
 		Scopes:         []string{"drive.file"},
 		ScopePrefix:    "https://www.googleapis.com/auth/",
 		AuthParams:     []string{"access_type=offline", "prompt=consent"},
+		APIHost:        "www.googleapis.com",
 	},
 	"microsoft": {
 		Name:          "microsoft",
 		AuthEndpoint:  "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
 		TokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
 		Scopes:        []string{"offline_access", "Files.ReadWrite.AppFolder"},
+		APIHost:       "graph.microsoft.com",
 	},
 	"github": {
 		Name:          "github",
@@ -71,6 +76,7 @@ var profiles = map[string]Profile{
 		TokenEndpoint: "https://github.com/login/oauth/access_token",
 		Scopes:        []string{"read:user"},
 		NeedsSecret:   true,
+		APIHost:       "api.github.com",
 	},
 	"notion": {
 		Name:          "notion",
@@ -79,6 +85,7 @@ var profiles = map[string]Profile{
 		AuthParams:    []string{"owner=user"},
 		TokenAuth:     "basic",
 		NeedsSecret:   true,
+		APIHost:       "api.notion.com",
 	},
 }
 

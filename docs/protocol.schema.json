@@ -2408,10 +2408,31 @@
           "$ref": "#/$defs/request.attention.list"
         },
         {
+          "$ref": "#/$defs/request.credentials.add"
+        },
+        {
+          "$ref": "#/$defs/request.credentials.authorize"
+        },
+        {
+          "$ref": "#/$defs/request.credentials.bind"
+        },
+        {
+          "$ref": "#/$defs/request.credentials.list"
+        },
+        {
+          "$ref": "#/$defs/request.credentials.remove"
+        },
+        {
+          "$ref": "#/$defs/request.credentials.replace"
+        },
+        {
           "$ref": "#/$defs/request.hello"
         },
         {
           "$ref": "#/$defs/request.keychain.create"
+        },
+        {
+          "$ref": "#/$defs/request.keychain.passphrase"
         },
         {
           "$ref": "#/$defs/request.keychain.status"
@@ -2582,6 +2603,193 @@
       ],
       "type": "object"
     },
+    "request.credentials.add": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "credentials.add"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.credentialAddParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.credentials.authorize": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "credentials.authorize"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.credentialAuthorizeParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.credentials.bind": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "credentials.bind"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.credentialBindParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.credentials.list": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "credentials.list"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
+    "request.credentials.remove": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "credentials.remove"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.credentialRemoveParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.credentials.replace": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "credentials.replace"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.credentialReplaceParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.hello": {
       "properties": {
         "id": {
@@ -2631,7 +2839,38 @@
         "params": {
           "allOf": [
             {
-              "$ref": "#/$defs/rpc.passphraseParams"
+              "$ref": "#/$defs/rpc.keychainCreateParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.keychain.passphrase": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "keychain.passphrase"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.keychainPassphraseParams"
             }
           ],
           "unevaluatedProperties": false
@@ -4101,10 +4340,31 @@
         "null"
       ]
     },
+    "result.credentials.add": {
+      "$ref": "#/$defs/rpc.credentialsResult"
+    },
+    "result.credentials.authorize": {
+      "$ref": "#/$defs/rpc.authorizationInfo"
+    },
+    "result.credentials.bind": {
+      "$ref": "#/$defs/rpc.credentialsResult"
+    },
+    "result.credentials.list": {
+      "$ref": "#/$defs/rpc.credentialsResult"
+    },
+    "result.credentials.remove": {
+      "$ref": "#/$defs/rpc.credentialRemoved"
+    },
+    "result.credentials.replace": {
+      "$ref": "#/$defs/rpc.credentialsResult"
+    },
     "result.hello": {
       "$ref": "#/$defs/rpc.helloResult"
     },
     "result.keychain.create": {
+      "$ref": "#/$defs/rpc.keychainStatus"
+    },
+    "result.keychain.passphrase": {
       "$ref": "#/$defs/rpc.keychainStatus"
     },
     "result.keychain.status": {
@@ -4383,6 +4643,38 @@
       ],
       "type": "object"
     },
+    "rpc.authorizationInfo": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "credential": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "class",
+        "provider",
+        "state"
+      ],
+      "type": "object"
+    },
     "rpc.bindingParams": {
       "properties": {
         "id": {
@@ -4395,6 +4687,46 @@
       "required": [
         "id",
         "prompt_id"
+      ],
+      "type": "object"
+    },
+    "rpc.bindingRow": {
+      "properties": {
+        "dest": {
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "positions": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "dest",
+        "methods",
+        "positions"
       ],
       "type": "object"
     },
@@ -4445,6 +4777,288 @@
         "provider",
         "url",
         "model"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialAddParams": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "dest": {
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "position": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string",
+          "writeOnly": true
+        }
+      },
+      "required": [
+        "class",
+        "value"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialAuthorizeParams": {
+      "properties": {
+        "auth_url": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string"
+        },
+        "client_id": {
+          "type": "string"
+        },
+        "client_secret": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "revoke_url": {
+          "type": "string"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "token_url": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "rpc.credentialBindParams": {
+      "properties": {
+        "dest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "position": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "dest",
+        "methods",
+        "position"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialInfo": {
+      "properties": {
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/rpc.bindingRow"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "class": {
+          "type": "string"
+        },
+        "created": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "expires": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "needs_reauth": {
+          "type": "boolean"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "refreshable": {
+          "type": "boolean"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "shadowed": {
+          "type": "boolean"
+        },
+        "token_host": {
+          "type": "string"
+        },
+        "used_by": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "class",
+        "kind",
+        "created",
+        "used_by",
+        "bindings"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialRemoveParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revoke": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialRemoved": {
+      "properties": {
+        "list": {
+          "$ref": "#/$defs/rpc.credentialsResult"
+        },
+        "revoked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "revoked",
+        "list"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialReplaceParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string",
+          "writeOnly": true
+        }
+      },
+      "required": [
+        "id",
+        "value"
+      ],
+      "type": "object"
+    },
+    "rpc.credentialsResult": {
+      "properties": {
+        "authorizations": {
+          "items": {
+            "$ref": "#/$defs/rpc.authorizationInfo"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "bindings_error": {
+          "type": "string"
+        },
+        "bindings_file": {
+          "type": "string"
+        },
+        "credentials": {
+          "items": {
+            "$ref": "#/$defs/rpc.credentialInfo"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "keychain": {
+          "$ref": "#/$defs/rpc.keychainStatus"
+        },
+        "missing": {
+          "items": {
+            "$ref": "#/$defs/rpc.missingCredential"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/rpc.providerInfo"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "keychain",
+        "credentials",
+        "missing",
+        "authorizations",
+        "providers",
+        "bindings_file"
       ],
       "type": "object"
     },
@@ -4555,12 +5169,45 @@
       ],
       "type": "object"
     },
+    "rpc.keychainCreateParams": {
+      "properties": {
+        "no_passphrase": {
+          "type": "boolean"
+        },
+        "passphrase": {
+          "type": "string",
+          "writeOnly": true
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "rpc.keychainPassphraseParams": {
+      "properties": {
+        "current": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "no_passphrase": {
+          "type": "boolean"
+        },
+        "passphrase": {
+          "type": "string",
+          "writeOnly": true
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
     "rpc.keychainStatus": {
       "properties": {
         "credentials": {
           "type": "integer"
         },
         "exists": {
+          "type": "boolean"
+        },
+        "no_passphrase": {
           "type": "boolean"
         },
         "unlocked": {
@@ -4683,6 +5330,27 @@
       },
       "required": [
         "server"
+      ],
+      "type": "object"
+    },
+    "rpc.missingCredential": {
+      "properties": {
+        "class": {
+          "type": "string"
+        },
+        "used_by": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "class",
+        "used_by"
       ],
       "type": "object"
     },
@@ -4811,6 +5479,35 @@
         "name",
         "revision",
         "content"
+      ],
+      "type": "object"
+    },
+    "rpc.providerInfo": {
+      "properties": {
+        "api_host": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "needs_secret": {
+          "type": "boolean"
+        },
+        "scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "scopes",
+        "needs_secret",
+        "api_host"
       ],
       "type": "object"
     },

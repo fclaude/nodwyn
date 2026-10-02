@@ -480,7 +480,10 @@ what the guard reads).
   GitHub and Notion plus custom endpoints, a lock shared by every process
   holding the keychain, `cred.refresh`, and scopes in bindings and confirms;
   tested against a fake provider. MCP's own authorization discovery and
-  dynamic client registration are not done.
+  dynamic client registration are not done. **From the console, 2026-10-02**
+  (ADR 24 and ADR 5 amendments): Connections › Credentials lists, adds,
+  replaces, allows, authorizes and revokes credentials, and the keychain may
+  have no passphrase.
 - **W5 — documents in and out (≈1.5 weeks, needs W4).** LaTeX through the
   installed toolchain (`shell-exec` + a standing approval — the book already
   proves it), docx via pandoc from Markdown or LaTeX, Google Docs through its
@@ -773,7 +776,7 @@ Resolved:
 
 - Module path: `github.com/fclaude/nodwyn`. No Scheme interpreter existed; B1 wrote a minimal, documented subset from scratch (ADR 7).
 - 3. **Where `nodwyn-stable` lives:** `~/.local/bin`, or `NODWYN_STABLE_DIR`.
-- 4. **Keychain backend:** a passphrase-encrypted file (ADR 5); no OS keyring.
+- 4. **Keychain backend:** a passphrase-encrypted file (ADR 5); no OS keyring. Amended 2026-10-02: the passphrase may be left out, and is then the empty one.
 - 5. **Unbound egress default:** Deny (ADR 6). `policy.unbound = "confirm"` is opt-in, and then the confirm can save the exact binding row.
 - 6. **Jev credential** — *resolved by ADR 20*: bound data-plane credential, guarded and logged like any other egress.
 - 7. **Frontier providers:** an OpenAI-compatible chat-completions provider exists and can be the control model or any `[models.NAME]`, its key bound like any other. No Anthropic Messages provider, and no `nodwyn-control` class.
@@ -798,7 +801,6 @@ In this order, each for the reason given:
 Smaller open gaps, in no order:
 
 - MCP's own authorization discovery and dynamic client registration (ADR 24): an MCP server behind OAuth needs a `custom` credential whose client the user registered.
-- OAuth2 credentials are added and authorized again only with `nodwyn credential` at a terminal; the console and the app cannot do either, which matters for the people ADR 30 has in mind.
 - Google Docs beyond creating one: changing a document, folders, sharing, uploads over 5 MiB (ADR 22, W5).
 
 Dated: raise the Go base to 1.27 once Fedora 45 ships it (due 2026-10-20) and a 1.27 feature is worth having (ADR 33).

@@ -11,7 +11,8 @@ nodwyn tui --socket /absolute/private/directory/sock --repo /path/to/project
 
 Without `--socket`, the TUI uses core directly and owns the selected session.
 It loads the same configuration, bindings, initialization and shared keychain
-as plain chat. Keychain unlock happens before entering the full-screen view;
+as plain chat. Keychain unlock happens before entering the full-screen view
+(a keychain without a passphrase opens without asking);
 `--no-keychain` skips it. Quitting aborts local work, drains events and closes
 the session log.
 

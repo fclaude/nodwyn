@@ -30,6 +30,9 @@ type server struct {
 	mu       sync.Mutex
 	sessions map[string]ownedSession
 	watch    stateWatch
+	// authorizations are the OAuth2 authorizations started from the
+	// console (credentials.go).
+	authorizations map[string]*authorization
 }
 type sessionInfo struct {
 	ID           string    `json:"id"`
@@ -124,6 +127,13 @@ var methodTable = map[string]handler{
 	"keychain.status":         (*server).keychain,
 	"keychain.create":         (*server).keychain,
 	"keychain.unlock":         (*server).keychain,
+	"keychain.passphrase":     (*server).keychain,
+	"credentials.list":        (*server).credentialsMethod,
+	"credentials.add":         (*server).credentialsMethod,
+	"credentials.replace":     (*server).credentialsMethod,
+	"credentials.remove":      (*server).credentialsMethod,
+	"credentials.bind":        (*server).credentialsMethod,
+	"credentials.authorize":   (*server).credentialsMethod,
 	"settings.read":           (*server).settingsMethod,
 	"settings.control.write":  (*server).settingsMethod,
 	"settings.docs.write":     (*server).docsSettingsMethod,
@@ -474,6 +484,11 @@ func (s *server) own(session *core.Session, drivers ...*run.Driver) {
 	}()
 }
 func (s *server) close() error {
+	s.mu.Lock()
+	for _, a := range s.authorizations {
+		a.cancel()
+	}
+	s.mu.Unlock()
 	var first error
 	for id, owned := range s.sessions {
 		owned.driver.Stop()

@@ -202,7 +202,7 @@ repository unless `--repo` is given), `--model`, `--url`, `--show-thinking`, `--
 (every confirm is a no — for scripts and CI), `--yolo` (every ordinary
 confirm is a yes — for work nobody is watching), `--no-keychain`,
 `--keychain-tty` (ask for the keychain passphrase on the terminal even when
-input is a script),
+input is a script; a keychain without one opens without asking),
 `--max-tool-calls N` (hard call override), `--budget-wall 2h`,
 `--budget-tokens N`, `--budget-actions N` and `--budget-cost USD` (a spend
 limit for the session). The `[budget]` settings and
@@ -352,7 +352,9 @@ project's `(approve-refuse? call)` can only refuse more. See [runs](runs.md).
 
 **With credentials.** `--yolo` on its own cannot unlock the keychain: a
 passphrase needs a terminal (plan §3.3), so an unattended process with a
-keychain on disk starts without one and says so. When the run is *supposed*
+keychain on disk starts without one and says so. (A keychain without a
+passphrase opens anywhere, terminal or not; see "The keychain" below for
+what that gives up.) When the run is *supposed*
 to have keys — measuring how the model uses a bound tool, for instance —
 put the keychain in the daemon and submit runs to it:
 
@@ -573,6 +575,42 @@ larger examples, each a behaviour written as a user would write it:
   which gets only the task and the plan (`narrow-context`); if the result
   diverges, a stronger model gets one retry, and the control model reports.
 
+### The keychain
+
+Keys live in one encrypted file, `keychain` in the config directory
+(`nodwyn paths`); the model and Scheme only ever hold a handle to one
+([ADR 5](adr/0005-keychain-crypto.md)).
+
+```bash
+nodwyn keychain init                    # asks for a passphrase, twice
+nodwyn keychain init --no-passphrase    # or none at all (not recommended)
+nodwyn keychain passphrase              # set or change it (asks for the current one)
+nodwyn keychain passphrase --remove     # leave it without one (not recommended)
+```
+
+A passphrase is asked for when a session, the TUI or a daemon starts, at the
+terminal; the app's console asks for it instead. A keychain **without a
+passphrase** opens by itself everywhere, including where nobody can type one
+(an unattended run, a daemon a service manager starts). That is all it buys:
+the file is still encrypted, but under a key anyone can derive, so it is as
+safe as its permissions (0600, your user) and no safer. Anyone who can read
+the file, or a backup of it, can use every key in it, and nodwyn says so
+when it opens one ("no passphrase"). The console's Settings does the same as
+these commands, and asks for the current passphrase before changing or
+removing one: being at the console lets a person use the keys, never read
+them out of the file.
+
+A daemon that has the keychain open keeps using it after the passphrase
+changes elsewhere, and asks for the new one when it next starts.
+
+The keys themselves are managed in the console, under **Connections ›
+Credentials** ([browser.md](browser.md), "Credentials"): what is stored,
+where each may go and what uses it; adding a key and allowing it for a host,
+replacing a rotated one, connecting an OAuth2 account and removing one. From
+a terminal, `nodwyn credential` lists them and handles OAuth2 (below), and
+`:eval (credential-register "CLASS")` in a session stores a static key at a
+masked prompt.
+
 ### OAuth2 credentials
 
 A service that uses OAuth2 (Google Drive and Docs, Microsoft Graph, GitHub,
@@ -585,7 +623,8 @@ OAuth client with the provider (a desktop or "installed" app, redirect
 nodwyn credential add --oauth2 google --client-id ID --scopes drive.file,documents
 ```
 
-Your browser opens the provider's consent page (`--no-browser` prints its
+or, in the console, Connections › Credentials › Connect an account. Your
+browser opens the provider's consent page (`--no-browser` prints its
 address instead); nodwyn waits five minutes
 for the redirect on a loopback port it opened for that one request, checks
 it, exchanges the code (PKCE, so no client secret is needed unless the
@@ -626,9 +665,11 @@ nodwyn credential revoke google    # revoke at the provider, delete here
 ```
 
 `revoke --local` only deletes it here; `login` and `revoke` take the
-credential's id or class. `credential add` stores only OAuth2 credentials: a
-static key is still registered in a session, with `credential-register`. The
-daemon sees these changes without a restart.
+credential's id or class. The console's Credentials page does each of these
+too (Authorize again, Remove…). `credential add` stores only OAuth2
+credentials: a static key is registered in a session, with
+`credential-register`, or added in the console. The daemon sees these
+changes without a restart.
 
 ### Documents out
 
@@ -1108,13 +1149,15 @@ Unknown entropy remains a residual for P8's optional L3 classifier.
 
 ## Local daemon
 
-`nodwyn daemon` starts the U2 session server in the foreground. Use
+`nodwyn daemon` starts the U2 session server in the foreground; it opens a
+keychain without a passphrase at once, and asks for one at the terminal
+otherwise. Use
 `nodwyn daemon --no-keychain` to skip credential-store startup, and
 `--socket /absolute/private/directory/sock` to override its socket path.
 The protocol supports session lifecycle, send/abort, subscriptions, paged
 log catch-up, answering prompts (`session.answer`, `session.secret`,
 `session.approval.create`, `session.binding.create`), runs, and what the
-console needs besides: model and keychain setup, workspaces, attachments,
-file versions and MCP servers. See [the protocol guide](protocol.md) for the handshake, methods,
+console needs besides: model and keychain setup, credentials, workspaces,
+attachments, file versions and MCP servers. See [the protocol guide](protocol.md) for the handshake, methods,
 permissions and reconnect semantics. `nodwyn app` starts one itself when none
 is running ([the app](app.md)).

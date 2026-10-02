@@ -6,7 +6,7 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0002](./0002-log-format.md) — Log format and event kinds
 - [0003](./0003-tool-calls-are-scheme-applications.md) — Model tool calls are Scheme applications
 - [0004](./0004-prim-metadata.md) — Primitive metadata
-- [0005](./0005-keychain-crypto.md) — Keychain crypto
+- [0005](./0005-keychain-crypto.md) — Keychain crypto (amended: a keychain may have no passphrase; credentials managed in the console)
 - [0006](./0006-unbound-egress-default.md) — Unbound egress defaults to deny
 - [0007](./0007-scheme-scope.md) — Scheme scope: written from scratch, documented first
 - [0008](./0008-llm-provider-ollama-first.md) — LLM client is a Provider interface, Ollama first
@@ -25,7 +25,7 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (implemented)
 - [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented)
 - [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (implemented: remote servers, and contained ones in podman or docker)
-- [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (implemented; W5 builds on it)
+- [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (implemented, from the console too; W5 builds on it)
 - [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output
 - [0026](./0026-the-loop-is-scheme.md) — The agent loop is a Scheme procedure
 - [0027](./0027-models-and-narrowed-contexts.md) — Configured models and narrowed contexts

@@ -10,6 +10,7 @@
 //	go run ./test/browser/demo            # prints the URL (with a launch ticket)
 //	go run ./test/browser/demo -seed      # also starts tasks so every view has content
 //	go run ./test/browser/demo -docs      # a Google credential, and a fake Drive to upload to
+//	go run ./test/browser/demo -oauth-only  # only a fake OAuth2 provider, for Connections › Credentials
 package main
 
 import (
@@ -36,6 +37,7 @@ import (
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
 	fakedrive "github.com/fclaude/nodwyn/test/fakes/drive"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
+	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -49,7 +51,17 @@ func main() {
 	port := flag.Int("port", 0, "loopback port for the console (0 picks one)")
 	modelOnly := flag.Bool("model-only", false, "run only the scripted model server and print its URL")
 	docs := flag.Bool("docs", false, "keep a Google credential in a throwaway keychain, bound to a fake Drive that takes uploads")
+	oauthOnly := flag.Bool("oauth-only", false, "run only a fake OAuth2 provider (client id demo-client) and print its endpoints")
 	flag.Parse()
+	if *oauthOnly {
+		provider := fakeoauth.New("demo-client")
+		fmt.Printf("OAUTH %s %s %s\n", provider.AuthURL(), provider.TokenURL(), provider.RevokeURL())
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		<-ctx.Done()
+		stop()
+		provider.Close()
+		return
+	}
 	if *modelOnly {
 		model := fake.NewFunc(respond)
 		fmt.Printf("MODEL %s\n", model.URL)

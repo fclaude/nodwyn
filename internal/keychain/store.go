@@ -14,7 +14,11 @@
 // derive the key that opens the ciphertext. The AEAD is XChaCha20-Poly1305
 // (24-byte nonce, 16-byte tag); the key is argon2id of the passphrase and
 // salt. Losing the passphrase loses the credentials; they are re-registerable
-// (ADR 5).
+// (ADR 5). A keychain may have no passphrase, for people who would rather
+// not type one: it is sealed under the empty passphrase, so the file is as
+// safe as its permissions and no safer, and it opens without asking
+// (OpenWithoutPassphrase). The passphrase can be set, changed or removed
+// later (SetPassphrase).
 //
 // A credential has a kind (ADR 24): static, one value, or oauth2, a token
 // set that expires and is refreshed here, inside the package, just before it
@@ -52,6 +56,11 @@ var (
 	// would make every existing keychain unreadable.
 	magic       = []byte("NIBBKC01")
 	errNotFound = errors.New("keychain: no such credential")
+	errWrong    = errors.New("keychain: wrong passphrase or corrupted file")
+
+	// ErrNeedsPassphrase is OpenWithoutPassphrase's answer for a keychain
+	// that has a passphrase.
+	ErrNeedsPassphrase = errors.New("keychain: it has a passphrase")
 )
 
 const (
@@ -114,6 +123,7 @@ type Store struct {
 	aead    cipher.AEAD
 	kdf     KDFParams
 	salt    []byte
+	open    bool // sealed under the empty passphrase: it has none
 	entries map[string]entry
 	order   []string // insertion order, for deterministic sealing
 	stamp   stamp    // the file as this process last read or wrote it
@@ -168,7 +178,8 @@ func random(n int) []byte {
 }
 
 // Create makes a new, empty keychain at path using the given KDF parameters
-// (pass DefaultKDF for production, FastKDF in tests).
+// (pass DefaultKDF for production, FastKDF in tests). An empty passphrase
+// makes a keychain without one.
 func Create(path string, kdf KDFParams, passphrase []byte) (*Store, error) {
 	salt := random(saltLen)
 	st := openedStore(path, kdf, salt)
@@ -176,7 +187,7 @@ func Create(path string, kdf KDFParams, passphrase []byte) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	st.aead = aead
+	st.aead, st.open = aead, len(passphrase) == 0
 	if err := st.save(); err != nil {
 		return nil, err
 	}
@@ -235,15 +246,60 @@ func Open(path string, passphrase []byte) (*Store, error) {
 	}
 	pt, err := aead.Open(nil, f.nonce, f.ct, magic)
 	if err != nil {
-		return nil, errors.New("keychain: wrong passphrase or corrupted file")
+		return nil, errWrong
 	}
 	st := openedStore(path, f.kdf, f.salt)
-	st.aead = aead
+	st.aead, st.open = aead, len(passphrase) == 0
 	if err := st.decode(pt); err != nil {
 		return nil, err
 	}
 	st.stamp = stamp
 	return st, nil
+}
+
+// OpenWithoutPassphrase opens a keychain that has no passphrase. One that
+// has a passphrase is ErrNeedsPassphrase; trying costs one key derivation.
+func OpenWithoutPassphrase(path string) (*Store, error) {
+	st, err := Open(path, nil)
+	if errors.Is(err, errWrong) {
+		return nil, ErrNeedsPassphrase
+	}
+	return st, err
+}
+
+// HasPassphrase reports whether the keychain needs a passphrase to open.
+func (st *Store) HasPassphrase() bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return !st.open
+}
+
+// SetPassphrase seals the keychain under a new passphrase, with a new salt;
+// an empty one leaves it without a passphrase. Another process that holds
+// the keychain open can no longer change it, and must open it again.
+func (st *Store) SetPassphrase(passphrase []byte) error {
+	unlock, err := st.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if err := st.reloadLocked(); err != nil {
+		return err
+	}
+	salt := random(saltLen)
+	aead, err := chacha20poly1305.NewX(derive(st.kdf, passphrase, salt))
+	if err != nil {
+		return err
+	}
+	oldAEAD, oldSalt, oldOpen := st.aead, st.salt, st.open
+	st.aead, st.salt, st.open = aead, salt, len(passphrase) == 0
+	if err := st.save(); err != nil {
+		st.aead, st.salt, st.open = oldAEAD, oldSalt, oldOpen
+		return err
+	}
+	return nil
 }
 
 // reloadLocked replaces the entries with what the file holds now. The
@@ -259,7 +315,7 @@ func (st *Store) reloadLocked() error {
 		return err
 	}
 	if !bytes.Equal(f.salt, st.salt) {
-		return errors.New("keychain: the file was replaced by another keychain; unlock it again")
+		return errors.New("keychain: the keychain was replaced or its passphrase changed; unlock it again")
 	}
 	pt, err := st.aead.Open(nil, f.nonce, f.ct, magic)
 	if err != nil {
@@ -352,6 +408,24 @@ func (st *Store) add(e entry) (*scheme.Handle, error) {
 		return nil, err
 	}
 	return &scheme.Handle{Class: e.class, ID: id}, nil
+}
+
+// Replace gives the static credential id a new value, keeping its id and
+// class, so the bindings and settings that name the class keep working: a
+// key rotated where it was issued.
+func (st *Store) Replace(id string, secret []byte) error {
+	return st.change(func() error {
+		e, ok := st.entries[id]
+		if !ok {
+			return errNotFound
+		}
+		if e.oauth != nil {
+			return fmt.Errorf("keychain: %s is an oauth2 credential; authorize it again instead", e.class)
+		}
+		e.value = value(append([]byte(nil), secret...))
+		st.entries[id] = e
+		return nil
+	})
 }
 
 // Delete removes a credential. An oauth2 credential's tokens stay valid at

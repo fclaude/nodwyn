@@ -27,10 +27,29 @@ type keychainStatus struct {
 	Exists      bool `json:"exists"`
 	Unlocked    bool `json:"unlocked"`
 	Credentials int  `json:"credentials"`
+	// NoPassphrase is set when the open keychain has no passphrase: it
+	// opens without one, and the file is as safe as its permissions.
+	NoPassphrase bool `json:"no_passphrase,omitempty"`
 }
 type passphraseParams struct {
 	Passphrase string `json:"passphrase"`
 }
+type keychainCreateParams struct {
+	Passphrase string `json:"passphrase,omitempty"`
+	// NoPassphrase creates a keychain without one (not recommended).
+	NoPassphrase bool `json:"no_passphrase,omitempty"`
+}
+type keychainPassphraseParams struct {
+	// Current is the passphrase the keychain has now; one without a
+	// passphrase takes none.
+	Current    string `json:"current,omitempty"`
+	Passphrase string `json:"passphrase,omitempty"`
+	// NoPassphrase removes it instead (not recommended).
+	NoPassphrase bool `json:"no_passphrase,omitempty"`
+}
+
+// minPassphrase is the shortest passphrase the console accepts.
+const minPassphrase = 8
 
 func (s *server) keychainStatus() keychainStatus {
 	status := keychainStatus{}
@@ -40,25 +59,30 @@ func (s *server) keychainStatus() keychainStatus {
 	if s.options.Keychain != nil {
 		status.Unlocked = true
 		status.Credentials = s.options.Keychain.Count()
+		status.NoPassphrase = !s.options.Keychain.HasPassphrase()
 	}
 	return status
 }
 
+// wrongPassphrase answers a passphrase that does not open the keychain. It
+// costs a moment, so guessing over the socket is no faster than at the
+// terminal; other methods do not wait for it.
+func (s *server) wrongPassphrase(message string) *rpcError {
+	s.mu.Unlock()
+	time.Sleep(time.Second)
+	s.mu.Lock()
+	return failure(-32000, message)
+}
+
 func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
-	if req.Method == "keychain.status" {
+	switch req.Method {
+	case "keychain.status":
 		if err := params(req.Params, &struct{}{}); err != nil {
 			return nil, err
 		}
 		return s.keychainStatus(), nil
-	}
-	var p passphraseParams
-	if err := params(req.Params, &p, "passphrase"); err != nil {
-		return nil, err
-	}
-	pass := []byte(p.Passphrase)
-	defer clear(pass)
-	if len(pass) == 0 {
-		return nil, failure(-32602, "A passphrase is required")
+	case "keychain.passphrase":
+		return s.keychainPassphrase(req)
 	}
 	if s.options.Keychain != nil {
 		return nil, failure(-32000, "The keychain is already unlocked")
@@ -67,26 +91,41 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 	var store *keychain.Store
 	var err error
 	if req.Method == "keychain.create" {
+		var p keychainCreateParams
+		if err := params(req.Params, &p, "passphrase", "no_passphrase"); err != nil {
+			return nil, err
+		}
+		pass := []byte(p.Passphrase)
+		defer clear(pass)
+		switch {
+		case p.NoPassphrase && len(pass) > 0:
+			return nil, failure(-32602, "Give a passphrase or ask for none, not both")
+		case !p.NoPassphrase && len(pass) == 0:
+			return nil, failure(-32602, "A passphrase is required")
+		case !p.NoPassphrase && len(pass) < minPassphrase:
+			return nil, failure(-32602, "Use a passphrase of at least 8 characters")
+		}
 		if _, statErr := os.Stat(path); statErr == nil {
 			return nil, failure(-32000, "A keychain already exists; unlock it instead")
-		}
-		if len(pass) < 8 {
-			return nil, failure(-32602, "Use a passphrase of at least 8 characters")
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
 		store, err = keychain.Create(path, keychain.DefaultKDF, pass)
 	} else {
+		var p passphraseParams
+		if err := params(req.Params, &p, "passphrase"); err != nil {
+			return nil, err
+		}
+		pass := []byte(p.Passphrase)
+		defer clear(pass)
+		// An empty passphrase opens a keychain that has none.
 		store, err = keychain.Open(path, pass)
 		if err != nil {
-			// A wrong passphrase costs a moment, so guessing over the
-			// socket is no faster than at the terminal; other methods do
-			// not wait for it.
-			s.mu.Unlock()
-			time.Sleep(time.Second)
-			s.mu.Lock()
-			return nil, failure(-32000, "That passphrase does not open the keychain")
+			if _, statErr := os.Stat(path); statErr != nil {
+				return nil, failure(-32000, "There is no keychain yet; create one")
+			}
+			return nil, s.wrongPassphrase("That passphrase does not open the keychain")
 		}
 	}
 	if err != nil {
@@ -97,6 +136,46 @@ func (s *server) keychain(req request, _ *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	s.options.Keychain, s.options.Bindings = store, table
+	return s.keychainStatus(), nil
+}
+
+// keychainPassphrase sets, changes or removes the passphrase of the open
+// keychain. A keychain that has one asks for it first: being at the
+// console lets a person use the keys, and removing the passphrase would
+// let them read every key from the file.
+func (s *server) keychainPassphrase(req request) (any, *rpcError) {
+	var p keychainPassphraseParams
+	if err := params(req.Params, &p, "current", "passphrase", "no_passphrase"); err != nil {
+		return nil, err
+	}
+	current, pass := []byte(p.Current), []byte(p.Passphrase)
+	defer clear(current)
+	defer clear(pass)
+	store := s.options.Keychain
+	if store == nil {
+		return nil, failure(-32000, "Unlock the keychain first")
+	}
+	switch {
+	case p.NoPassphrase && len(pass) > 0:
+		return nil, failure(-32602, "Give a new passphrase or ask for none, not both")
+	case !p.NoPassphrase && len(pass) < minPassphrase:
+		return nil, failure(-32602, "Use a passphrase of at least 8 characters")
+	case p.NoPassphrase && !store.HasPassphrase():
+		return nil, failure(-32000, "The keychain has no passphrase")
+	}
+	if store.HasPassphrase() {
+		if len(current) == 0 {
+			return nil, failure(-32602, "Give the keychain's current passphrase")
+		}
+		if _, err := keychain.Open(s.options.Paths.Keychain, current); err != nil {
+			return nil, s.wrongPassphrase("That is not the keychain's current passphrase")
+		}
+	} else if len(current) > 0 {
+		return nil, failure(-32602, "The keychain has no passphrase yet; give only the new one")
+	}
+	if err := store.SetPassphrase(pass); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
 	return s.keychainStatus(), nil
 }
 

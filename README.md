@@ -274,11 +274,13 @@ and shows what needs an answer, what runs and what finished; a task shows
 its conversation with the approval inline (the diff, and Y/T/A/N), and beside
 it the plan with the steps the model marked, this turn's budget, changes
 with their history, attachments (documents and images),
-project notes and the workspace. Connections adds and reviews MCP servers;
+project notes and the workspace. Connections adds and reviews MCP servers
+and manages credentials (keys, OAuth2 accounts, and where each may go);
 Workspaces names folders, their kind (documents, code or both) and mounted
 folders; Settings sets the mode Home starts a task in (a chat, a run or an
 unattended run), the limits, the model and its tuning, the judge and the
-context window, and unlocks the keychain. It runs as
+context window, and unlocks the keychain or sets its passphrase (a keychain
+may have none, which is not recommended). It runs as
 `nodwyn ui` for a daemon, as `nodwyn app` without one (see [the app](docs/app.md)),
 and on a phone paired by name. See [the browser guide](docs/browser.md).
 

@@ -2,7 +2,8 @@
 
 Start the daemon in the foreground with `nodwyn daemon`. It is the `nodwynd` role
 from ADR 21, shipped in the existing binary. `nodwyn daemon --no-keychain` skips
-keychain startup; otherwise it uses the same masked terminal unlock as chat.
+keychain startup; otherwise it opens a keychain without a passphrase at once,
+and asks for a passphrase with the same masked terminal unlock as chat.
 Configuration is loaded once at startup. No model connection is needed to list
 or open sessions. `SIGINT` and `SIGTERM` close clients and session writers.
 
@@ -309,8 +310,10 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `notes.read` | `{"repo":"/absolute/repository"}` | `{text}`: that repository's project notes; needs no session |
 | `session.notes.write` | `{"id":"SESSION_ID","text":"…"}` | `{operation_id}`; a `policy.result` event named `notes` reports the guarded save |
 | `models.status` | `{}` | Each configured model: `name`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`), `detail` |
-| `keychain.status` | `{}` | `{exists, unlocked, credentials}` |
-| `keychain.create` / `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain |
+| `keychain.status` | `{}` | `{exists, unlocked, credentials, no_passphrase?}`; `no_passphrase` is set when the open keychain has none |
+| `keychain.create` | `{"passphrase":"…"}` or `{"no_passphrase":true}` | Keychain status; tasks opened afterwards receive the keychain. A passphrase has at least 8 characters |
+| `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain. `""` opens a keychain without a passphrase |
+| `keychain.passphrase` | `{"current"?, "passphrase"?, "no_passphrase"?}` | Keychain status after setting, changing or (`no_passphrase`) removing the open keychain's passphrase; `current` is required when it has one, and a wrong one waits a second as `keychain.unlock` does |
 | `settings.read` | `{}` | `{config_file, control, models, keychain, docs, values, judge}` |
 | `settings.control.write` | `{"provider","url","model","api_key"?}` | Settings after replacing `[control]` in `config.toml` |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
@@ -325,8 +328,8 @@ answered. `settings.control.write` keeps every other line of `config.toml`,
 validates the result as the loader would, writes it atomically (0600), and
 applies it to sessions opened afterwards. An `api_key` goes to the unlocked
 keychain under a fresh class, with one binding row: that host, `POST`,
-`header:Authorization:Bearer`. Passphrases and keys are `writeOnly` in the
-schema and never echoed. `docs` in the settings is `{google, google_upload}`:
+`header:Authorization:Bearer`. Passphrases, keys and client secrets are
+`writeOnly` in the schema and never echoed. `docs` in the settings is `{google, google_upload}`:
 whether a Google credential class is configured, and the upload setting as
 `config.toml` has it now (`""` until the first upload or `settings.docs.write`
 sets it). `settings.docs.write` keeps every other line of the file, takes the
@@ -352,6 +355,38 @@ it); every other line of the file is kept, the lock sessions take is held,
 and the file is written 0600. They apply to tasks opened afterwards: an
 open task keeps its own, and `session.info` reports the budgets it runs
 with.
+
+### Credentials (ADR 5, ADR 24)
+
+| Method | Params | Result |
+|---|---|---|
+| `credentials.list` | `{}` | `{keychain, credentials, missing, authorizations, providers, bindings_file}` |
+| `credentials.add` | `{"class","value","dest"?,"methods"?,"position"?}` | The list; stores a static key, and with `dest` one exact binding row per method |
+| `credentials.replace` | `{"id","value"}` | The list; a static key's new value, same id and class |
+| `credentials.bind` | `{"id","dest","methods","position"}` | The list; one exact binding row per method, with an OAuth2 credential's granted scopes |
+| `credentials.remove` | `{"id","revoke"?}` | `{revoked, list}`; `revoke` asks an OAuth2 provider to revoke the tokens first |
+| `credentials.authorize` | `{"id"}`, or `{"provider","client_id","class"?,"client_secret"?,"scopes"?,"auth_url"?,"token_url"?,"revoke_url"?}` | `{id, class, provider, url, state:"waiting"}` |
+
+Each entry of `credentials` is `{id, class, kind, created, used_by,
+bindings}`, and for OAuth2 `provider`, `scopes`, `expires`, `refreshable`,
+`needs_reauth` and `token_host`; `shadowed` marks a credential a lookup by
+class never reaches, since an earlier one has the class. `used_by` names what
+is configured to send the class (the main model, `model NAME`, `MCP server
+NAME`, Google Docs, the judge), and `bindings` are the rows of
+`bindings.toml` that name it, read as the file is now. `missing` lists the
+classes a model or an MCP server is configured to send that the keychain
+does not hold. No result carries a value or a token. A class is letters,
+digits, dots, dashes or underscores (at most 64), and adding a second
+credential of a class is refused.
+
+`credentials.authorize` starts Authorization Code with PKCE (ADR 24 §2) and
+answers as soon as the provider's consent page exists: `url` is for the
+person's browser, on the daemon's computer, since the provider sends it back
+to a listener on the daemon's loopback. The authorization then waits up to
+five minutes; `credentials.list` reports it as `waiting`, `done` (with the
+new or re-authorized `credential` id) or `failed` (with `error`) for ten
+minutes after. With `id` it authorizes that OAuth2 credential again, with
+its client, endpoints and scopes. At most four wait at once.
 
 `hello` accepts an optional `via` (for example `web:phone`), once per
 connection, matching `^[a-z][a-z0-9]*:[a-z0-9][a-z0-9._-]{0,31}$`. It is
@@ -385,10 +420,11 @@ same image, entrypoint and arguments (the same `url` for a remote one) keeps
 its approved manifest; any other change needs approval again.
 
 `settings.control.write`, `settings.docs.write`, `settings.write`, `keychain.create`,
-`keychain.unlock`, `session.binding.create`, `session.policy.write`, `workspace.save`,
-`workspace.remove` and the `mcp.inspect`, `mcp.save`, `mcp.approve`,
-`mcp.remove` and `mcp.pull` methods are refused to a paired remote device in
-the web console (browser.md); `mcp.runtime` only reads. The console never
+`keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `workspace.save`,
+`workspace.remove`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
+`mcp.remove` and `mcp.pull` methods, and every `credentials.*` method but
+`credentials.list` are refused to a paired remote device in
+the web console (browser.md); `mcp.runtime` and `credentials.list` only read. The console never
 offers `session.eval`. It starts runs from Home with `run.start`, but a
 paired remote device may start or resume only a run whose requests a person
 answers: `run.start` and `run.resume` with `auto_approve`, `judge` or

@@ -37,13 +37,27 @@ again keeps its hand-tuned settings (`num_ctx`, `temperature`, `seed`, prices, â
 the encrypted keychain, and a binding row allows it only for that server's
 host, `POST`, as a bearer `Authorization` header. A model with a key must be
 reached over HTTPS, unless it runs on this computer. A keychain is created from
-Settings with a passphrase (at least 8 characters, not recoverable).
+Settings with a passphrase (at least 8 characters, not recoverable), or, if
+you tick "Don't protect it with a passphrase", without one (not recommended:
+see below).
 
-When a keychain exists, a new app starts with it locked; Home offers to unlock
-it. While the model's own key is in a locked keychain, no task can be opened,
-resumed or run: the app asks you to unlock first, so no task starts without
-the key it needs. Tasks opened after unlocking can use every key in it. Settings and keychain changes are available only to a
-console on this computer, never to a paired remote device.
+When a keychain with a passphrase exists, a new app starts with it locked;
+Home offers to unlock it. While the model's own key is in a locked keychain,
+no task can be opened, resumed or run: the app asks you to unlock first, so
+no task starts without the key it needs. Tasks opened after unlocking can use
+every key in it. A keychain without a passphrase is opened as the app starts,
+and nothing asks. It is still an encrypted file, but its key comes from the
+empty passphrase, so it protects nothing its file permissions (0600, your
+user) do not: anyone who can read the file, or a backup of it, can use every
+key in it. Settings says so while it has none, and sets, changes or removes
+the passphrase (changing or removing one asks for the current one first).
+
+Connections â€º Credentials manages the keys themselves: what the keychain
+holds, where each may be sent and what uses it; adding a key and allowing it
+for a host, replacing a rotated one, connecting an OAuth2 account, and
+removing or revoking one ([browser.md](browser.md), "Credentials"). Settings,
+keychain and credential changes are available only to a console on this
+computer, never to a paired remote device.
 
 ## The macOS app
 

@@ -1,7 +1,8 @@
 # ADR 0024: OAuth2 credentials — acquisition, refresh, scopes
 
-- Status: accepted; implemented 2026-09-30 (W4). Extends ADR 5 and the
-  binding table; prerequisite for W5. "Implemented" below says where the code
+- Status: accepted; implemented 2026-09-30 (W4), and from the console
+  2026-10-02 (amendment below). Extends ADR 5 and the binding table;
+  prerequisite for W5. "Implemented" below says where the code
   differs from this text.
 - Date: 2026-09-22
 
@@ -185,3 +186,26 @@ configured class (default `google`) to the upload host, a binding row's
 the session's sink, so a stale one is refreshed and `cred.refresh` logged
 before the upload. Its tests run against the fake provider
 (`test/fakes/oauth`) and a fake Drive (`test/fakes/drive`).
+
+## Amendment — 2026-10-02: authorizing from the console
+
+The command line was the only place to add an OAuth2 credential or
+authorize one again, which left the people ADR 30 has in mind with a
+credential that stops working and no way to fix it. The console's
+Connections › Credentials now does both (`credentials.authorize`), with the
+same flow: the daemon builds the authorization URL and starts the
+single-shot loopback listener, answers with the URL at once, and the
+console opens it in the person's browser; the provider sends the browser
+back to the daemon's loopback, and the console polls `credentials.list`
+for the outcome (waiting, done or failed, listed for ten minutes). At most
+four wait at once, each for five minutes, and a daemon that stops cancels
+them.
+
+It stays a user action: the method is offered to the console on the
+computer nodwyn runs on and refused to a paired device, and no primitive or
+tool reaches it, so nothing the model does can put a consent screen in
+front of the user. The redirect goes to the daemon's loopback, so it works
+only from a browser on that computer. A credential authorized this way is
+bound from the same page; its rows carry the scopes it was granted. Revoking
+from the console asks the provider first, as `credential revoke` does, and
+"Remove here only" is its `--local`.

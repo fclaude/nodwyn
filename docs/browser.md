@@ -15,8 +15,9 @@ the conversation's context is against the window's high water, with what the
 provider counted and how often it was compacted; "Tokens sent" is the token
 budget's count, every request's prompt in full. A compaction is one line in
 the conversation: what set it off, and the context's size before and after.
-**Connections** (tools, credential bindings, workspaces, models),
-**Workspaces** and **Settings** hold the rest. The
+**Connections** (tools, credentials, workspaces, models),
+**Workspaces** and **Settings** hold the rest; Settings also creates,
+unlocks and sets the passphrase of the keychain. The
 U3 inspectors described below sit under a task's **Details**. For the app
 window and first-run setup see [app.md](app.md).
 
@@ -115,6 +116,47 @@ starts it in a container and removes it after. A confirm for one of its
 tools says it sends to the contained server and what that can reach; a
 connection its proxy refused shows in the task.
 
+## Credentials
+
+**Connections › Credentials** (`#/connections/credentials`, or Settings ›
+Keychain › Manage credentials) lists what the keychain holds: each
+credential's class, kind (an API key, or an OAuth2 account with its provider
+and granted scopes, and when its access token runs out), what is configured
+to send it (the main model, another model, an MCP server, Google Docs, the
+judge) and the binding rows that allow it somewhere. A credential allowed
+nowhere is marked: nodwyn refuses every request that would carry it. A class
+a model or an MCP server sends that the keychain does not hold is named at
+the top, with a button to add it; so is a keychain without a passphrase.
+
+- **Add a key**: a class, the value (a password field; nothing shows it
+  again), and optionally the host it may go to, its methods and where it goes
+  in the request (`Authorization: Bearer`, another header, a query parameter,
+  the body, or a contained MCP server's environment variable). The host is
+  saved as one exact binding row per method.
+- **Allow it for a host** adds binding rows for a credential already stored;
+  an OAuth2 credential's rows carry the scopes it was granted, so a broader
+  token is refused.
+- **Replace the key** gives a static key a new value after it was rotated
+  where it was issued; its id and class stay, so its bindings and what uses
+  it carry on.
+- **Connect an account (OAuth2)**: a provider (google, microsoft, github,
+  notion, or custom with its endpoints), your OAuth client's id (and secret
+  if the provider insists), scopes (the provider's narrowest useful set by
+  default) and a class. nodwyn opens the provider's consent page; when you
+  agree, the provider sends the browser back to a listener on this
+  computer's loopback, and the tokens go into the keychain. The page waits
+  up to five minutes and shows the outcome. **Authorize again** does the same
+  for a credential the provider stopped refreshing. It works from a browser
+  on the computer nodwyn runs on, since that is where the provider sends you
+  back.
+- **Remove…** asks first, naming what uses it; an OAuth2 credential can be
+  revoked at its provider and removed, or removed here only. Its binding
+  rows stay in `bindings.toml`: narrowing or removing a row is an edit of that
+  file, or of a task's Details › Policy.
+
+No reply carries a value or a token. A paired device sees the list but
+changes nothing.
+
 ## Other devices (ADR 30)
 
 ```sh
@@ -138,10 +180,11 @@ kernel identity followed by `via web:NAME`.
 A device can read tasks, start and steer them, and answer approvals — one-time,
 for this turn, or for the session, as the core offers; it can also restore a
 kept file version (through the usual approval), save project notes, read the
-policy files, and start, stop or resume a run whose requests a person
-answers. It cannot start or resume a run that answers its own requests
-(unattended, judged, or saying yes), save a credential binding,
-write a policy file, unlock or create the keychain, change Settings, the
+policy files, see the credentials, and start, stop or resume a run whose
+requests a person answers. It cannot start or resume a run that answers its
+own requests (unattended, judged, or saying yes), save a credential binding,
+write a policy file, unlock or create the keychain or change its passphrase,
+add, replace, allow, authorize or remove a credential, change Settings, the
 model or how
 uploads to Google Docs are handled (it can answer the first upload's
 question with "allow by hand" or "deny", never "always allow"), edit
@@ -271,7 +314,7 @@ client for session data. There is no JavaScript build system, second history sto
 connection to the bridge; `desk.js` holds what every page reads (tasks, what
 needs you); `sidebar.js`, `home.js`, `task.js`, `transcript.js` and `pages.js`
 draw the views; `prompts.js` renders review choices; `setup.js` the first-run
-model and keychain setup; `attach.js` attachments; `markdown.js` model replies;
+model and keychain setup; `credentials.js` Connections › Credentials; `attach.js` attachments; `markdown.js` model replies;
 `inspectors.js` fixed snapshots from the same redacted records; `policy.js`
 policy drafts and review controls; `dom.js` the helpers that keep every string
 text. A pinned WebSocket library avoids a

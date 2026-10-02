@@ -175,17 +175,10 @@ func (c *cli) credentialAdd(ctx context.Context, args []string) error {
 
 // apiHost is a binding hint: where a provider's tokens are usually sent.
 func apiHost(p keychain.Profile) string {
-	switch p.Name {
-	case "google":
-		return "www.googleapis.com"
-	case "microsoft":
-		return "graph.microsoft.com"
-	case "github":
-		return "api.github.com"
-	case "notion":
-		return "api.notion.com"
+	if p.APIHost == "" {
+		return "the API's host"
 	}
-	return "the API's host"
+	return p.APIHost
 }
 
 func quoted(ss []string) string {

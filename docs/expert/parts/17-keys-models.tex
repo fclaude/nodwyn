@@ -12,10 +12,20 @@ you choose (not recoverable; the console asks for at least 8 characters). Create
 
 \begin{sh}
 nodwyn keychain init          # or: the app's Settings page
+nodwyn keychain passphrase    # change it later; --remove leaves none
 \end{sh}
 
-Then store a key from a session. The input is masked, never logged, never
-echoed:
+\code{nodwyn keychain init -{}-no-passphrase} (or ``Don't protect it with a
+passphrase'' in Settings) makes a keychain that opens by itself, even in an
+unattended run with no terminal. It is still encrypted, but under a key
+anyone can derive: it is as safe as its file permissions and no safer, and
+anyone who can read the file, or a backup of it, can use every key in it.
+Not recommended; \nodwyn{} says ``no passphrase'' wherever it opens one.
+
+The console's Connections \textrightarrow{} Credentials page lists the keys,
+where each may go and what uses it, and adds, replaces, allows, authorizes
+and removes them. From a session, a key is stored like this; the input is
+masked, never logged, never echoed:
 
 \begin{txt}
 you> :eval (credential-register "weather-key")

@@ -351,7 +351,7 @@ func readOnly(method string) bool {
 	switch method {
 	case "hello", "session.list", "session.watch", "session.info", "session.subscribe", "session.unsubscribe", "log.read",
 		"attention.list", "notes.read", "models.status", "run.info", "keychain.status", "settings.read",
-		"workspace.list", "versions.list", "mcp.list", "mcp.runtime":
+		"workspace.list", "versions.list", "mcp.list", "mcp.runtime", "credentials.list":
 		return true
 	}
 	return false
@@ -526,6 +526,10 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		return true
 	case "session.binding.create", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write",
 		"workspace.save", "workspace.remove", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
+		return !remote
+	// Keys and the passphrase are typed here, and an OAuth2 provider sends
+	// the person back to a listener on this computer's loopback.
+	case "keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize":
 		return !remote
 	case "devices.list", "devices.revoke":
 		return !remote && b.devices != nil

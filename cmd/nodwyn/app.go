@@ -15,17 +15,20 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 	webui "github.com/fclaude/nodwyn/internal/frontend/web"
+	"github.com/fclaude/nodwyn/internal/keychain"
 )
 
 // app is nodwyn as one program (ADR 30): it attaches to a daemon already
 // answering on the socket, or owns one in this process, and shows the
 // console in a window of its own (with the webview build tag) or in the
-// default browser. No terminal is needed: the keychain is unlocked and the
-// model chosen from the console.
+// default browser. No terminal is needed: the keychain is unlocked (or
+// opens by itself, if it has no passphrase) and the model chosen from the
+// console.
 func (c *cli) app() error {
 	if err := c.rejectGlobals("app: put %s after the command"); err != nil {
 		return err
@@ -133,12 +136,20 @@ func ensureDaemon(ctx context.Context, paths config.Paths, socket string) (owned
 	if err != nil {
 		return false, nil, err
 	}
+	// The keychain starts locked, and the console asks for the passphrase;
+	// one without a passphrase is opened now.
+	options := core.Options{Config: cfg, Paths: paths, Version: versionString()}
+	if store, err := keychain.OpenWithoutPassphrase(paths.Keychain); err == nil {
+		if options.Bindings, err = binding.Load(paths.Bindings); err != nil {
+			return false, nil, err
+		}
+		options.Keychain = store
+		fmt.Fprintln(os.Stderr, "app: the keychain has no passphrase; opened it")
+	}
 	listener, err := rpc.Listen(socket)
 	if err != nil {
 		return false, nil, err
 	}
-	// The keychain starts locked: the console asks for the passphrase.
-	options := core.Options{Config: cfg, Paths: paths, Version: versionString()}
 	done = make(chan error, 1)
 	go func() { done <- rpc.Serve(ctx, listener, options) }()
 	return true, done, nil

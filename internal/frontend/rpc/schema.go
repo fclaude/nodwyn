@@ -52,8 +52,15 @@ func contracts() map[string]methodContract {
 		"session.notes.write":     {notesWriteParams{}, inspectionStarted{}},
 		"models.status":           {struct{}{}, []modelStatus{}},
 		"keychain.status":         {struct{}{}, keychainStatus{}},
-		"keychain.create":         {passphraseParams{}, keychainStatus{}},
+		"keychain.create":         {keychainCreateParams{}, keychainStatus{}},
 		"keychain.unlock":         {passphraseParams{}, keychainStatus{}},
+		"keychain.passphrase":     {keychainPassphraseParams{}, keychainStatus{}},
+		"credentials.list":        {struct{}{}, credentialsResult{}},
+		"credentials.add":         {credentialAddParams{}, credentialsResult{}},
+		"credentials.replace":     {credentialReplaceParams{}, credentialsResult{}},
+		"credentials.remove":      {credentialRemoveParams{}, credentialRemoved{}},
+		"credentials.bind":        {credentialBindParams{}, credentialsResult{}},
+		"credentials.authorize":   {credentialAuthorizeParams{}, authorizationInfo{}},
 		"settings.read":           {struct{}{}, settingsResult{}},
 		"settings.control.write":  {controlParams{}, settingsResult{}},
 		"settings.docs.write":     {docsParams{}, settingsResult{}},
@@ -171,6 +178,13 @@ func wireNotification(method string, params any) map[string]any {
 
 type schemaBuilder struct{ defs map[string]any }
 
+// writeOnly are the request fields that carry a secret into the daemon.
+var writeOnly = map[string]bool{
+	"secretParams.secret": true, "passphraseParams.passphrase": true, "controlParams.api_key": true, "mcpSaveParams.api_key": true,
+	"keychainCreateParams.passphrase": true, "keychainPassphraseParams.current": true, "keychainPassphraseParams.passphrase": true,
+	"credentialAddParams.value": true, "credentialReplaceParams.value": true, "credentialAuthorizeParams.client_secret": true,
+}
+
 func (g *schemaBuilder) typ(t reflect.Type) map[string]any {
 	if t == reflect.TypeOf(json.RawMessage{}) || t.Kind() == reflect.Interface {
 		return map[string]any{}
@@ -241,7 +255,7 @@ func (g *schemaBuilder) object(t reflect.Type) map[string]any {
 		if t == reflect.TypeOf(approvalParams{}) && name == "scope" {
 			p["enum"] = []string{"session", "turn"}
 		}
-		if (t == reflect.TypeOf(secretParams{}) && name == "secret") || (t == reflect.TypeOf(passphraseParams{}) && name == "passphrase") || (t == reflect.TypeOf(controlParams{}) && name == "api_key") || (t == reflect.TypeOf(mcpSaveParams{}) && name == "api_key") {
+		if writeOnly[t.Name()+"."+name] {
 			p["writeOnly"] = true
 		}
 		props[name] = p

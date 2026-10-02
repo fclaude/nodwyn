@@ -11,9 +11,11 @@ leaves screenshots in `out/`. Nothing touches real sessions, keys or folders.
 | `firstrun` | `nodwyn app` with no config: model setup and keychain creation from the page, a documents workspace, an attachment with a hidden secret, a versioned edit restored through its approval |
 | `remote` | `nodwyn ui --listen` with another host name: a phone pairs by name, answers, and the log records `via web:phone`; launch tickets are refused remotely |
 | `mcp` | Connections adds, reviews and approves an MCP server; an undeclared tool asks every call without a standing answer; a read tool is gathered silently |
+| `credentials` | A keychain created without a passphrase; Connections › Credentials stores a key allowed for one host, replaces it, connects an OAuth2 account through a fake provider and allows it with its scopes, removes the key; Settings sets and removes the passphrase; restarted, the keychain is open without unlocking; nothing sideways at phone width |
 
 `go run ./test/browser/demo -seed` starts the same world by hand and prints a
-launch URL. A contained MCP server added in Connections (the `IMAGE` it
+launch URL; `-oauth-only` runs just a fake OAuth2 provider (client id
+`demo-client`) and prints its endpoints, for Connect an account › custom. A contained MCP server added in Connections (the `IMAGE` it
 prints, a network list, a folder such as `notes`) runs in a fake container
 runtime, the demo run again: Pull, review and approve it, then ask a task in
 `console` to "Note the weekly status" to see its confirm.

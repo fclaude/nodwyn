@@ -3,8 +3,8 @@
 // the computer nodwyn runs on: the daemon validates and writes, tasks
 // started afterwards get the result, and open ones keep what they started
 // with. Appearance and notifications belong to this browser.
-import { h, toast, ago } from "./dom.js";
-import { modelForm, keychainForm } from "./setup.js";
+import { h, icon, toast, ago } from "./dom.js";
+import { modelForm, keychainForm, passphraseForm, noPassphraseWarning } from "./setup.js";
 import { uploadLabels } from "./transcript.js";
 import { modeNames } from "./home.js";
 
@@ -582,11 +582,24 @@ function keysSection(ctx, root) {
     "keys",
     "Keys and devices",
     "",
-    conn.has("keychain.status")
-      ? row("Keychain", conn.has("keychain.unlock") ? keychainForm(ctx, { onDone: () => renderSettings(root, ctx) }) : h("p", { class: "hint" }, desk.keychain?.unlocked ? "Unlocked." : "Locked."))
-      : [],
+    conn.has("keychain.status") ? row("Keychain", keychainSettings(ctx, () => renderSettings(root, ctx))) : [],
     conn.has("devices.list") ? [h("div", { class: "label" }, "Other devices"), h("div", { class: "value", id: "devices" }, h("p", { class: "hint" }, "Loading…"))] : [],
   );
+}
+
+// keychainSettings is the keychain's state, and what can be done about it
+// from here: create or unlock it, and set, change or remove its passphrase.
+function keychainSettings(ctx, redraw) {
+  const { conn, desk } = ctx;
+  const status = desk.keychain || {};
+  if (!status.unlocked) return conn.has("keychain.unlock") ? keychainForm(ctx, { onDone: redraw }) : h("p", { class: "hint" }, "Locked.");
+  const credentials = `${status.credentials} saved credential${status.credentials === 1 ? "" : "s"}`;
+  return [
+    h("p", { class: "hint" }, status.no_passphrase ? `Open · ${credentials} · no passphrase.` : `Unlocked · ${credentials} · protected by a passphrase.`),
+    status.no_passphrase ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "It has no passphrase. "), noPassphraseWarning)) : null,
+    h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/connections/credentials" }, icon("key", 15), "Manage credentials")),
+    conn.has("keychain.passphrase") ? h("details", { class: "box", open: !!status.no_passphrase }, h("summary", {}, status.no_passphrase ? "Set a passphrase" : "Change or remove the passphrase"), passphraseForm(ctx, { onDone: redraw })) : null,
+  ];
 }
 
 function browserSection(ctx) {

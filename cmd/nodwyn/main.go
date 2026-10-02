@@ -39,7 +39,9 @@ commands:
   repl                 interactive Scheme REPL (reads stdin)
   eval FILE...         evaluate Scheme files
   eval -e EXPR         evaluate an expression and print its value
-  keychain init        create the encrypted keychain (asks for a passphrase)
+  keychain init        create the encrypted keychain (asks for a passphrase;
+                       --no-passphrase makes one without: not recommended)
+  keychain passphrase  set or change its passphrase (--remove: none, not recommended)
   credential [list]    list the keychain's credentials (never a secret)
   credential add --oauth2 PROVIDER --client-id ID [--scopes A,B] [--class CLASS]
                        authorize an OAuth2 credential in the browser (google,

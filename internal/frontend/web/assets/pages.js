@@ -4,6 +4,7 @@
 import { h, icon, repoName, shortPath, ago, toast } from "./dom.js";
 import { chooseFolder, kindLabel } from "./home.js";
 import { modelRows } from "./settings.js";
+import { renderCredentials } from "./credentials.js";
 
 // ---------- workspaces ----------
 let editing = ""; // the folder whose editor is open
@@ -122,9 +123,12 @@ let selectedServer = "";
 let adding = false;
 const inspections = new Map(); // server name -> { tools, manifest, approved, changed } or { error }
 
+const connectionsTabs = ["tools", "credentials", "workspaces", "models"];
+
 export async function renderConnections(root, ctx) {
   const { conn, desk } = ctx;
-  const tab = (id, label) => h("button", { type: "button", role: "tab", "aria-selected": String(connectionsTab === id), onclick: () => { connectionsTab = id; renderConnections(root, ctx); } }, label);
+  if (connectionsTabs.includes(ctx.tab)) connectionsTab = ctx.tab;
+  const tab = (id, label) => h("button", { type: "button", role: "tab", "aria-selected": String(connectionsTab === id), onclick: () => ctx.navigate(`#/connections/${id}`) }, label);
   const body = h("div", { style: "display:flex;flex-direction:column;gap:24px" });
   root.replaceChildren(
     h(
@@ -154,6 +158,7 @@ export async function renderConnections(root, ctx) {
     );
     return;
   }
+  if (connectionsTab === "credentials" && conn.has("credentials.list")) return renderCredentials(body, ctx, () => renderConnections(root, ctx));
   const open = desk.all().find((s) => s.open);
   let info = null;
   if (open) {

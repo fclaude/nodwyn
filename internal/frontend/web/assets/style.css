@@ -781,6 +781,7 @@ select.input { height: 34px; padding: 0 8px; }
 button.list-row { width: 100%; border: none; background: transparent; text-align: left; color: inherit; font: inherit; }
 button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .list > button.list-row:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+.list > button.list-row:last-child { border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); }
 .server-detail { gap: 16px; }
 .server-detail .table select { max-width: 240px; }
 .server-row .end { gap: 6px; }
@@ -823,3 +824,11 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .settings-grid.nested > .label { padding-top: 0; }
   .limits { grid-template-columns: minmax(0, 1fr) 7.5em 7.5em; }
 }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); }
+.check input { margin: 0; }
+.cred-detail { gap: 14px; }
+.cred-row .end { gap: 6px; white-space: nowrap; }
+.cred-detail .row-actions .input { flex: 1; min-width: 160px; width: auto; }
+.cred-detail .row-actions select.input { flex: 0 1 auto; }
+.table-wrap { overflow-x: auto; }
+.cred-detail .table td { overflow-wrap: anywhere; }

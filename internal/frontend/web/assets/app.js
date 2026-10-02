@@ -20,7 +20,7 @@ function parse() {
   const hash = location.hash.replace(/^#/, "");
   const parts = hash.split("/").filter(Boolean);
   if (parts[0] === "task" && parts[1]) return { name: "task", id: decodeURIComponent(parts[1]) };
-  if (["settings", "workspaces", "connections"].includes(parts[0])) return { name: parts[0] };
+  if (["settings", "workspaces", "connections"].includes(parts[0])) return { name: parts[0], tab: parts[1] };
   return { name: "home" };
 }
 function navigate(hash) {
@@ -127,7 +127,7 @@ function render(routeChanged = false, what = "") {
   } else if (key !== lastRoute || routeChanged) {
     if (route.name === "settings") renderSettings(view, ctx);
     else if (route.name === "workspaces") renderWorkspaces(view, ctx);
-    else if (route.name === "connections") renderConnections(view, ctx);
+    else if (route.name === "connections") renderConnections(view, { ...ctx, tab: route.tab });
   } else if (route.name === "settings" && (!what || what === "setup" || what === "models")) {
     // Settings holds fields being typed into: a task's progress elsewhere
     // does not redraw it.

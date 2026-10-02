@@ -253,9 +253,12 @@ nodwyn-stable                              # then, at the prompt:
 :eval (credential-register "openai-key")   # masked input
 \end{sh}
 
-The console stores two kinds of key without a terminal: Settings the main
-model's, and Connections an MCP server's, each with its one binding row.
-Any other key is registered as above. A key is
+The console stores keys without a terminal: Settings the main model's,
+Connections an MCP server's, each with its one binding row, and Connections
+\textrightarrow{} Credentials any key, with the host it may go to, and
+OAuth2 accounts. A key can also be registered as above.
+\code{nodwyn keychain init -{}-no-passphrase} makes a keychain that opens
+without asking, which is as safe as its file permissions and no safer. A key is
 stored under a class you name, and it goes nowhere until a row in
 \file{bindings.toml} allows it:
 

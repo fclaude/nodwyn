@@ -15,7 +15,7 @@ out="$here/out"
 mkdir -p "$out"
 (cd "$root" && go build -o "$out/nodwyn" ./cmd/nodwyn && go build -o "$out/demo" ./test/browser/demo)
 [ -d "$here/node_modules/playwright" ] || (cd "$here" && npm install --silent)
-checks=${*:-screens approve firstrun remote mcp}
+checks=${*:-screens approve firstrun remote mcp credentials}
 status=0
 for check in $checks; do
 	echo "== $check"

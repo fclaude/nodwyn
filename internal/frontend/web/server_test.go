@@ -69,7 +69,8 @@ func TestBrowserAuthorityBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, method := range []string{"session.open", "session.resume", "session.send", "session.eval", "session.friction", "session.answer", "session.secret", "session.binding.create", "session.approval.create", "session.abort", "session.close", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write", "run.start", "devices.revoke"} {
+	for _, method := range []string{"session.open", "session.resume", "session.send", "session.eval", "session.friction", "session.answer", "session.secret", "session.binding.create", "session.approval.create", "session.abort", "session.close", "keychain.unlock", "keychain.passphrase", "settings.control.write", "settings.docs.write", "settings.write", "run.start", "devices.revoke",
+		"credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize"} {
 		if readOnly(method) {
 			t.Fatal(method)
 		}
@@ -536,12 +537,13 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	if _, ok := s.b.authenticated(r); ok {
 		t.Fatal("revoked device still paired")
 	}
-	for _, method := range []string{"session.binding.create", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull"} {
+	for _, method := range []string{"session.binding.create", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
+		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize"} {
 		if s.b.allowed(method, true) {
 			t.Fatalf("remote device may call %s", method)
 		}
 	}
-	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "run.start", "run.resume"} {
+	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "run.start", "run.resume", "credentials.list"} {
 		if !s.b.allowed(method, true) {
 			t.Fatalf("remote device may not call %s", method)
 		}
