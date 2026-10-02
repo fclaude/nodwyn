@@ -182,6 +182,22 @@ A run's \code{-{}-yolo} is a property of \emph{that run}. A daemon left
 running never auto-approves a session someone opens later from a browser.
 \end{careful}
 
+\subsection{Unattended runs}
+
+\begin{sh}
+nodwyn run --task task.md --repo . --max-turns 20 --budget-wall 2h --unattended
+\end{sh}
+
+Nobody answers an unattended run, so nothing in it waits for anybody. Tool
+confirms are declined unless a standing approval covers them (with
+\code{-{}-yolo} too, ordinary ones are answered yes; security confirms are
+declined either way). A soft budget checkpoint goes on to the hard limit.
+The run checkpoint is answered by the plan: after a turn that marked a step
+done with \code{plan-step}, the next turn starts; after a turn that marked
+none, the run stops and says so, for you to read the turn and
+\code{nodwyn run resume -{}-unattended SESSION}. A plain resume is
+supervised: how a run goes on is said again at every resume.
+
 \begin{puzzle}[ 17: plan only for big asks]
 Write a \code{nodwyn-turn} that records your house plan only when the
 request is longer than 200 characters or mentions ``refactor'', and

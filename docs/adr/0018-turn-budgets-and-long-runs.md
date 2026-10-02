@@ -157,3 +157,31 @@ joins drivers before session shutdown. See [runs](../runs.md).
 
 Section 5 remains pending. This implementation does not expose unattended mode
 or remove confirmations to approximate it.
+
+## Unattended runs implementation — 2026-10-01
+
+Section 5 is implemented as an option of the run driver:
+`nodwyn run --unattended` (`run.start {unattended: true}`).
+
+- The session gets `core.Options.Unattended`: its confirmer declines every
+  tool confirm (`guard.DenyAll`), or answers as `--yolo` does when the run
+  also auto-approves (ordinary yes, security no). Nothing reaches a
+  front-end as a prompt. A soft budget checkpoint continues up to the hard
+  limit and is recorded with actor `unattended`; `--no-confirm` keeps
+  declining it, as before.
+- "A plan whose steps become checkpoint boundaries": the driver counts the
+  `plan.step` marks with state `done` each turn records (the model marks
+  steps with `plan-step`, the strategy records them). After a turn that
+  marked one or more, the run goes on; after a turn that marked none, it
+  stops with the reason, for a person to review and resume. Each answer is
+  a `run.checkpoint` with actor `unattended` and a `reason`.
+- `run.state` records `unattended` and `auto_approve`. A resume restores
+  neither: `run.resume` takes them as parameters, and the CLI's
+  `nodwyn run resume --unattended [--yolo] SESSION`.
+- `(unattended?)` is true for these sessions too, so they get the
+  unattended system prompt and the evidence loop.
+
+"Every write must be covered by a standing approval and every command by an
+allow entry; anything else is a deny" holds without `--yolo`. With it, the
+run trades that for ordinary confirms answered yes, as a supervised `--yolo`
+run already did; security confirms and every deny are unchanged.

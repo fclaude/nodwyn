@@ -36,6 +36,12 @@ type Options struct {
 	// confirms with "no" (guard.AutoAllow). Denials are unaffected: this
 	// answers the guard's questions, it does not overrule its refusals.
 	AutoApprove bool
+	// Unattended means nobody is there to answer anything (an unattended
+	// run, ADR 18 §5): no prompt ever waits for a person. Tool confirms are
+	// declined, or answered as AutoApprove answers them when it is set too;
+	// a soft budget checkpoint continues up to the hard limit, and both are
+	// recorded as answered by "unattended".
+	Unattended bool
 	// InitFile is loaded after the prelude with user origin; "" disables.
 	// Default: <Repo>/.nodwyn/init.scm if it exists.
 	InitFile string
@@ -305,6 +311,8 @@ func (s *Session) initialize() (err error) {
 		confirmer = guard.DenyAll
 	case o.AutoApprove:
 		confirmer = guard.AutoAllow
+	case o.Unattended:
+		confirmer = guard.DenyAll
 	}
 	g.SetConfirmer(confirmer)
 	return nil

@@ -90,6 +90,38 @@ through normal session redaction and persistence. Each submitted turn records
 its task in the ordinary conversation and rebuilds context from history.
 `turn.end` retains its historical text and adds optional outcome/error fields.
 
-This slice supports supervised runs only. Unattended continuation and its tighter
-policy envelope are still pending; removing the checkpoint requirement is not an
-unattended implementation.
+## Unattended runs
+
+```sh
+nodwyn run --task task.txt --repo . --budget-wall 2h --max-turns 20 --unattended
+```
+
+An unattended run is one nobody answers (ADR 18 §5). It gets more guards, not
+fewer, and nothing in it ever waits for a person:
+
+- **Tool confirms are declined** without asking: a write or a command runs
+  only if a standing approval covers it (`.nodwyn/allow.toml`, config); any
+  other is refused, logged, and the model is told. With `--yolo` too, ordinary
+  confirms are answered yes instead. Security confirms (a credential-shaped
+  write, a protected path, a command built from tool output) are declined
+  either way.
+- **A soft budget checkpoint goes on to the hard limit**, recorded as answered
+  by `unattended`; the hard limits still stop the turn.
+- **The run checkpoint is answered by progress.** A turn that marked at least
+  one step of its plan done (`plan-step`, recorded as `plan.step`) is followed
+  by the next; a turn that marked none stops the run, with the reason in its
+  status ("turn 3 marked no plan step done"), for a person to look before
+  another. Each answer is a `run.checkpoint` with actor `unattended` and its
+  reason. A mark is the model's word: what the run proves is that the model
+  kept claiming progress, step by step, in a log that can be reviewed step by
+  step.
+- Everything else is as for a supervised run: the plan before every turn,
+  finite turn and wall limits, the progress guard, completion only by the
+  model's final line, the same pin, denylist and binding table.
+
+`run.state` records how the run was started (`unattended`, `auto_approve`).
+A resume never brings either back from the log: `nodwyn run resume SESSION`
+resumes a supervised run, and `--unattended` (with `--yolo` if wanted) must be
+said again, as the person resuming decides how it goes on. The console shows
+an unattended run as such and can stop and resume it; its Resume button
+resumes it supervised.

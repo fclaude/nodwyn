@@ -26,7 +26,7 @@ func contracts() map[string]methodContract {
 		"run.start":               {runParams{}, runResult{}},
 		"run.info":                {idParams{}, run.State{}},
 		"run.stop":                {idParams{}, struct{}{}},
-		"run.resume":              {idParams{}, runResult{}},
+		"run.resume":              {resumeParams{}, runResult{}},
 		"session.watch":           {struct{}{}, []sessionState{}},
 		"hello":                   {helloParams{}, helloResult{}},
 		"session.list":            {struct{}{}, []sessionInfo{}},

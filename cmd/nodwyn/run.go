@@ -28,6 +28,7 @@ func runTask(args []string) error {
 	wall := flags.String("budget-wall", "", "required total run deadline, e.g. 2h")
 	turns := flags.Int("max-turns", 0, "required maximum number of turns")
 	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
+	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -56,9 +57,12 @@ func runTask(args []string) error {
 		if err != nil {
 			return err
 		}
-		params = map[string]any{"repo": root, "task": string(data), "wall": *wall, "max_turns": *turns, "auto_approve": *yolo}
+		params = map[string]any{"repo": root, "task": string(data), "wall": *wall, "max_turns": *turns, "auto_approve": *yolo, "unattended": *unattended}
 		if *yolo {
 			fmt.Fprintf(os.Stderr, "yolo: this run's ordinary confirms are answered yes in %s; denials and security confirms still stop it\n", root)
+		}
+		if *unattended {
+			fmt.Fprintln(os.Stderr, "unattended: nobody answers this run; it stops after a turn that marks no plan step done")
 		}
 	} else {
 		if flags.NArg() != 1 {
@@ -66,14 +70,20 @@ func runTask(args []string) error {
 		}
 		var invalid bool
 		flags.Visit(func(f *flag.Flag) {
-			if f.Name != "socket" {
+			resumeFlag := command == "resume" && (f.Name == "yolo" || f.Name == "unattended")
+			if f.Name != "socket" && !resumeFlag {
 				invalid = true
 			}
 		})
 		if invalid {
-			return errors.New("run status/stop/resume accepts only --socket and session ID; limits never reset")
+			return errors.New("run status/stop accepts only --socket and a session ID, and resume also --yolo and --unattended; limits never reset")
 		}
-		params = map[string]string{"id": flags.Arg(0)}
+		if command == "resume" {
+			// How the run goes on is said again at every resume.
+			params = map[string]any{"id": flags.Arg(0), "auto_approve": *yolo, "unattended": *unattended}
+		} else {
+			params = map[string]string{"id": flags.Arg(0)}
+		}
 	}
 	if *socket == "" {
 		path, err := rpc.DefaultSocket()
@@ -98,7 +108,9 @@ func runTask(args []string) error {
 		return err
 	}
 	fmt.Println(string(result))
-	if command == "start" || command == "resume" {
+	if (command == "start" || command == "resume") && *unattended {
+		fmt.Fprintln(os.Stderr, "Run submitted. Follow it with nodwyn run status, nodwyn tui --socket", *socket, "or nodwyn ui --socket", *socket+". Disconnecting does not stop the run.")
+	} else if command == "start" || command == "resume" {
 		fmt.Fprintln(os.Stderr, "Run submitted. Attach with nodwyn tui --socket", *socket, "or nodwyn ui --socket", *socket, "to answer checkpoints. Disconnecting does not stop the run.")
 	}
 	return nil

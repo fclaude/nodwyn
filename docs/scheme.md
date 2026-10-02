@@ -519,7 +519,7 @@ change as unverified rather than spend the budget on a broken environment.
 
 | | |
 |---|---|
-| `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`) |
+| `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`), or nobody is there at all (`nodwyn run --unattended`) |
 
 A reply's `done` is `"length"` when the model reached the output cap (the
 model's `max_output`, else `window.output_reserve`); the core notes it in the log. What to do is the

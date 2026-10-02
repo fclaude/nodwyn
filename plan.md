@@ -11,7 +11,7 @@ Companion to [SPEC.md](SPEC.md). The spec says *what* and *why*; this says *in w
 ## Status (2026-09-30)
 
 - **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: U1–U3 of the real UI, the task-oriented console, the standalone app, remote devices (D1–D5), workspaces, text attachments and remote MCP servers (D6–D8, the cowork track's W1, W2 text and W3a), and OAuth2 credentials (W4, 2026-09-30).
-- **Not done:** P8 (L3, optional); unattended continuation between a run's turns (U4); contained local MCP servers (W3b/D9); documents out (W5); images as attachments.
+- **Not done:** P8 (L3, optional); contained local MCP servers (W3b/D9); documents out (W5); images as attachments.
 - **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base (ADRs 26–29, 31–33). §5 "Outside the plan" says what drove them.
 - **Next:** §10.
 
@@ -383,15 +383,15 @@ this is additive work, not a refactor. Four phases, each useful alone:
   (`nodwyn ui`), assets embedded in the binary. Views in order: session list,
   transcript, **approvals** (the diff panel is what justifies a GUI), plan and
   budgets, inspectors for the log, bindings and standing approvals.
-- **U4 — multi-session and background runs (in progress).** Cross-session attention
+- **U4 — multi-session and background runs (done 2026-10-01).** Cross-session attention
   indicators and opt-in generic desktop notifications are implemented. The bounded
   supervised run driver is implemented with required plans, finite wall/turn limits,
   checkpoint replies, and explicit resume at recorded turn boundaries; see
   [runs](docs/runs.md). Unattended tool approval exists (`--yolo`, a run's
   `auto_approve`). Of the original scope — several sessions at once, the ADR 18
   run driver with checkpoints as notifications, desktop notifications for
-  "needs your approval" — only unattended continuation between a run's turns
-  remains.
+  "needs your approval" — unattended continuation between a run's turns was
+  the last piece, done 2026-10-01: `nodwyn run --unattended` (ADR 18 §5).
 
 Accepted risk: the socket is an approval surface. 0600 in the runtime dir, no
 TCP by default, client identity in every decision, and creating a standing
@@ -654,9 +654,8 @@ Still open:
 In this order, each for the reason given:
 
 1. **Images as attachments.** Needs vision plumbing in the model clients, the confirm that says an image cannot be redacted, and per-image token accounting (ADR 22 §3).
-2. **U4 — unattended continuation between a run's turns.** Tool confirms can already be answered unattended; the turn-to-turn checkpoint still needs a person.
-3. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
-4. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
-5. **P8 — L3**, optional.
+2. **W5 — documents out** (docx via pandoc, Google Docs on W4's OAuth2).
+3. **W3b/D9 — contained local MCP servers.** Blocked on an egress proxy that can enforce a per-host allowlist inside the container; half-isolation would be worse than none.
+4. **P8 — L3**, optional.
 
 Dated: raise the Go base to 1.27 once Fedora 45 ships it (due 2026-10-20) and a 1.27 feature is worth having (ADR 33).

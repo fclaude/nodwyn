@@ -1,10 +1,13 @@
-// Package run chains existing core turns under a finite, supervised lifetime.
-// It owns continuation policy, never tool authority or the turn loop.
+// Package run chains existing core turns under a finite lifetime. It owns
+// continuation policy, never tool authority or the turn loop. A supervised
+// run asks a person before each next turn; an unattended one (ADR 18 §5)
+// goes on by itself only after a turn that marked a step of its plan done.
 package run
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +33,12 @@ type State struct {
 	// stopped or error; Reason says why it is not running.
 	Status string `json:"status"`
 	Reason string `json:"reason,omitempty"`
+	// Unattended: nobody answers this run's prompts (its session declines
+	// tool confirms, or answers them as AutoApprove does), and it continues
+	// after a turn only when that turn marked a plan step done. Neither is
+	// restored from the log: a resume says again how the run goes on.
+	Unattended  bool `json:"unattended,omitempty"`
+	AutoApprove bool `json:"auto_approve,omitempty"`
 }
 
 // Validate reports whether a run can start or resume: a task, turns left and
@@ -47,9 +56,10 @@ func (s State) Validate() error {
 	return nil
 }
 
-// completion is how one turn ended.
+// completion is how one turn ended, and the plan steps it marked done.
 type completion struct {
-	end log.TurnEnd
+	end  log.TurnEnd
+	done int
 }
 
 // Driver runs one run: it sends a planned turn, waits for it to end, stops
@@ -115,6 +125,10 @@ func (d *Driver) Observe(ev event.Event) {
 	switch ev.Kind {
 	case string(log.KindTurnEnd):
 		d.current.end, _ = ev.Payload.(log.TurnEnd)
+	case string(log.KindPlanStep):
+		if p, ok := ev.Payload.(log.PlanStep); ok && p.State == "done" {
+			d.current.done++
+		}
 	case event.Status:
 		if p, ok := ev.Payload.(event.StatusInfo); ok && p.State == "idle" {
 			d.waiting = false
@@ -131,7 +145,7 @@ func (d *Driver) execute(actor string) {
 	defer d.cancel()
 	state := d.Info()
 	// The log's redacted state, not the submitted raw task, drives subsequent work.
-	ev, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: "running", Actor: actor})
+	ev, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: "running", Actor: actor, Unattended: state.Unattended, AutoApprove: state.AutoApprove})
 	if err != nil {
 		d.finish("error", err.Error())
 		return
@@ -203,6 +217,21 @@ func (d *Driver) execute(actor string) {
 			d.finish("limited", "maximum turn count reached")
 			return
 		}
+		if state.Unattended {
+			// Nobody is there to ask. A turn that marked a step of its plan
+			// done made progress the log shows; one that marked none may be
+			// going in circles, and a person should look before another.
+			goOn, why := unattendedCheckpoint(next, result.done)
+			if _, err := d.session.Record(log.KindRunCheckpoint, log.RunCheckpoint{Number: next, Allowed: goOn, Actor: "unattended", Reason: why}); err != nil {
+				d.finish("error", err.Error())
+				return
+			}
+			if !goOn {
+				d.finish("stopped", why+"; review the turn, then resume the run")
+				return
+			}
+			continue
+		}
 		approval, err := d.session.ConfirmApproval(d.ctx, guard.Prompt{Prim: "run checkpoint", Reasons: []string{"Continue with another planned turn? This grants no tool permission."}, Detail: answer})
 		_, recordErr := d.session.Record(log.KindRunCheckpoint, log.RunCheckpoint{Number: next, Allowed: approval.Allowed && err == nil, Actor: approval.Actor, PromptID: approval.PromptID})
 		if recordErr != nil {
@@ -216,6 +245,18 @@ func (d *Driver) execute(actor string) {
 	}
 }
 
+// unattendedCheckpoint is an unattended run's answer after turn n, which
+// marked done plan steps done: go on if it marked any.
+func unattendedCheckpoint(n, done int) (bool, string) {
+	switch done {
+	case 0:
+		return false, fmt.Sprintf("turn %d marked no plan step done", n)
+	case 1:
+		return true, fmt.Sprintf("turn %d marked 1 plan step done", n)
+	}
+	return true, fmt.Sprintf("turn %d marked %d plan steps done", n, done)
+}
+
 // Complete reports whether answer ends with CompleteLine.
 func Complete(answer string) bool {
 	lines := strings.Split(strings.TrimRight(answer, "\r\n"), "\n")
@@ -225,7 +266,7 @@ func Complete(answer string) bool {
 // finish records the run's final state and releases Wait.
 func (d *Driver) finish(status, reason string) {
 	state := d.Info()
-	_, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: status, Reason: reason})
+	_, err := d.session.Record(log.KindRunState, log.RunState{Task: state.Task, Deadline: state.Deadline, MaxTurns: state.MaxTurns, Turns: state.Turns, Status: status, Reason: reason, Unattended: state.Unattended, AutoApprove: state.AutoApprove})
 	d.mu.Lock()
 	d.state.Status = status
 	d.state.Reason = reason

@@ -1263,6 +1263,9 @@
         },
         "prompt_id": {
           "type": "string"
+        },
+        "reason": {
+          "type": "string"
         }
       },
       "required": [
@@ -1276,6 +1279,9 @@
       "properties": {
         "actor": {
           "type": "string"
+        },
+        "auto_approve": {
+          "type": "boolean"
         },
         "deadline": {
           "format": "date-time",
@@ -1295,6 +1301,9 @@
         },
         "turns": {
           "type": "integer"
+        },
+        "unattended": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2523,7 +2532,7 @@
         "params": {
           "allOf": [
             {
-              "$ref": "#/$defs/rpc.idParams"
+              "$ref": "#/$defs/rpc.resumeParams"
             }
           ],
           "unevaluatedProperties": false
@@ -4163,6 +4172,23 @@
       ],
       "type": "object"
     },
+    "rpc.resumeParams": {
+      "properties": {
+        "auto_approve": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "unattended": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
     "rpc.rpcError": {
       "properties": {
         "code": {
@@ -4191,6 +4217,9 @@
         },
         "task": {
           "type": "string"
+        },
+        "unattended": {
+          "type": "boolean"
         },
         "wall": {
           "type": "string"
@@ -4627,6 +4656,9 @@
     },
     "run.State": {
       "properties": {
+        "auto_approve": {
+          "type": "boolean"
+        },
         "deadline": {
           "format": "date-time",
           "type": "string"
@@ -4645,6 +4677,9 @@
         },
         "turns": {
           "type": "integer"
+        },
+        "unattended": {
+          "type": "boolean"
         }
       },
       "required": [

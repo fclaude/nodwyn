@@ -295,3 +295,150 @@ func TestRunTurnPromptIsScheme(t *testing.T) {
 	}
 	t.Fatal("no run turn was sent")
 }
+
+// driveUnattended runs an unattended run (ADR 18 §5) over the fake model:
+// nobody answers, so any prompt that reaches a front-end fails the test.
+func driveUnattended(t *testing.T, cfg config.Config, max int, yolo bool, turns ...fake.Turn) (State, []log.Event, string) {
+	t.Helper()
+	repo := t.TempDir()
+	init := filepath.Join(repo, ".nodwyn", "init.scm")
+	os.MkdirAll(filepath.Dir(init), 0o755)
+	os.WriteFile(init, []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
+	srv := fake.New(turns...)
+	defer srv.Close()
+	cfg.Budget.TokensSoft = 100000
+	cfg.Budget.TokensHard = 100000
+	s, err := core.New(core.Options{Repo: repo, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL), Unattended: true, AutoApprove: yolo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := New(s, State{Task: "perform test task", Deadline: time.Now().Add(time.Minute), MaxTurns: max, Unattended: true, AutoApprove: yolo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for ev := range s.Events() {
+			d.Observe(ev)
+			switch ev.Kind {
+			case event.PromptConfirm, event.PromptCheckpoint, event.PromptSecret:
+				t.Errorf("an unattended run asked a person: %s %+v", ev.Kind, ev.Payload)
+			}
+		}
+	}()
+	d.Start("test-creator")
+	select {
+	case <-d.done:
+	case <-time.After(5 * time.Second):
+		d.Stop()
+		t.Error("driver did not finish")
+	}
+	d.Wait()
+	s.Close()
+	<-drained
+	return d.Info(), s.EventsSoFar(), repo
+}
+
+func stepDone(id string, n int) fake.ToolCall {
+	return fake.ToolCall{ID: id, Name: "plan-step", Args: map[string]any{"step": n, "state": "done", "note": "did it"}}
+}
+
+func checkpoints(t *testing.T, history []log.Event) []log.RunCheckpoint {
+	t.Helper()
+	var out []log.RunCheckpoint
+	for _, ev := range history {
+		if ev.Kind == log.KindRunCheckpoint {
+			var p log.RunCheckpoint
+			ev.Decode(&p)
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// An unattended run goes on after a turn that marked a plan step done, and
+// stops after one that marked none; nobody is asked either time.
+func TestUnattendedRunContinuesOnProgressAndStopsWithout(t *testing.T) {
+	state, history, _ := driveUnattended(t, config.Default(), 5, false,
+		fake.Turn{Content: "1. first\n2. second"},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepDone("a", 1), stepDone("b", 2)}},
+		fake.Turn{Content: "both done"},
+		fake.Turn{Content: "1. look again"},
+		fake.Turn{Content: "nothing to do"})
+	if state.Status != "stopped" || state.Turns != 2 || !strings.Contains(state.Reason, "turn 2 marked no plan step done") {
+		t.Fatalf("%+v", state)
+	}
+	cps := checkpoints(t, history)
+	if len(cps) != 2 || !cps[0].Allowed || cps[0].Actor != "unattended" || cps[0].Reason != "turn 1 marked 2 plan steps done" ||
+		cps[1].Allowed || cps[1].Reason != "turn 2 marked no plan step done" {
+		t.Fatalf("checkpoints %+v", cps)
+	}
+	var recorded log.RunState
+	for _, ev := range history {
+		if ev.Kind == log.KindRunState {
+			ev.Decode(&recorded)
+			break
+		}
+	}
+	if !recorded.Unattended || recorded.AutoApprove {
+		t.Fatalf("run.state %+v", recorded)
+	}
+	// Restore does not bring unattended back: a resume says it again.
+	if restored, err := Restore(history); err != nil || restored.Unattended {
+		t.Fatalf("restore %+v %v", restored, err)
+	}
+}
+
+// Its tool confirms are declined without asking; with --yolo ordinary ones
+// are answered yes. Either way the run still ends on the model's word.
+func TestUnattendedRunAnswersConfirmsItself(t *testing.T) {
+	write := fake.ToolCall{ID: "w", Name: "fs-write", Args: map[string]any{"path": "out.txt", "content": "hello\n"}}
+	for _, yolo := range []bool{false, true} {
+		state, history, repo := driveUnattended(t, config.Default(), 2, yolo,
+			fake.Turn{Content: "1. write the file"},
+			fake.Turn{ToolCalls: []fake.ToolCall{write, stepDone("s", 1)}},
+			fake.Turn{Content: "done\n" + CompleteLine})
+		if state.Status != "completed" {
+			t.Fatalf("yolo=%v: %+v", yolo, state)
+		}
+		_, err := os.Stat(filepath.Join(repo, "out.txt"))
+		if written := err == nil; written != yolo {
+			t.Fatalf("yolo=%v: file written = %v", yolo, written)
+		}
+		var answer string
+		for _, ev := range history {
+			var d log.GuardDecision
+			if ev.Kind == log.KindGuardDecision && ev.Decode(&d) == nil && d.Prim == "fs-write" {
+				answer = d.Answer
+			}
+		}
+		if want := map[bool]string{false: "no", true: "yes"}[yolo]; answer != want {
+			t.Fatalf("yolo=%v: fs-write answered %q", yolo, answer)
+		}
+	}
+}
+
+// A soft budget checkpoint goes on to the hard limit without asking, and is
+// recorded as answered by the run.
+func TestUnattendedRunPassesSoftBudgetCheckpoints(t *testing.T) {
+	cfg := config.Default()
+	cfg.Budget.ToolCallsSoft = 1
+	cfg.Budget.ToolCallsHard = 10
+	state, history, _ := driveUnattended(t, cfg, 1, false,
+		fake.Turn{Content: "1. look"},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}, stepDone("s", 1)}},
+		fake.Turn{Content: "looked\n" + CompleteLine})
+	if state.Status != "completed" {
+		t.Fatalf("%+v", state)
+	}
+	var cp log.TurnCheckpoint
+	for _, ev := range history {
+		if ev.Kind == log.KindTurnCheckpoint {
+			ev.Decode(&cp)
+		}
+	}
+	if cp.Actor != "unattended" || !cp.Choice.Continue || cp.Choice.Soft != 10 {
+		t.Fatalf("budget checkpoint %+v", cp)
+	}
+}

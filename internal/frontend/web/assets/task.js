@@ -378,7 +378,7 @@ export class TaskView {
     const item = this.item;
     if (!item) return { label: "", cls: "" };
     if (this.activePrompt()) return { label: "Waiting for you", cls: "warn" };
-    if (item.run?.status === "running") return { label: `Run · turn ${item.run.turns} of ${item.run.max_turns}`, cls: "run" };
+    if (item.run?.status === "running") return { label: `${item.run.unattended ? "Unattended run" : "Run"} · turn ${item.run.turns} of ${item.run.max_turns}`, cls: "run" };
     if (this.busy) return { label: this.statusDetail && this.statusDetail !== "busy" ? oneWord(this.statusDetail) : "Working", cls: "run" };
     if (item.open) return { label: "Idle", cls: "" };
     return { label: "Saved", cls: "" };

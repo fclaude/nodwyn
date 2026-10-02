@@ -365,6 +365,12 @@ type RunState struct {
 	Status   string    `json:"status"`
 	Reason   string    `json:"reason,omitempty"`
 	Actor    string    `json:"actor,omitempty"`
+	// Unattended: nobody answers this run's prompts, and it goes on from a
+	// turn only when that turn marked a plan step done (ADR 18 §5).
+	// AutoApprove: its ordinary tool confirms are answered yes. Both are
+	// how the run was started or resumed; a resume sets them again.
+	Unattended  bool `json:"unattended,omitempty"`
+	AutoApprove bool `json:"auto_approve,omitempty"`
 }
 
 // RunTurn marks the start of a run's Number-th turn.
@@ -379,6 +385,9 @@ type RunCheckpoint struct {
 	Allowed  bool   `json:"allowed"`
 	Actor    string `json:"actor,omitempty"`
 	PromptID string `json:"prompt_id"`
+	// Reason says why an unattended run went on or stopped: the plan steps
+	// the turn marked done, or that it marked none.
+	Reason string `json:"reason,omitempty"`
 }
 
 // FileVersion records that a file's previous content was kept before nodwyn

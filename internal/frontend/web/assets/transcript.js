@@ -237,6 +237,11 @@ export class Transcript {
         this.audit(label, p.plan || p.reason || undefined);
         break;
       }
+      case "run.checkpoint":
+        // An unattended run answers its own checkpoints, and says why.
+        if (p.actor === "unattended") this.audit(`${p.allowed ? "Went on" : "Stopped"} by itself: ${p.reason}`, p, p.allowed ? "" : "bad");
+        else this.audit(auditLabels[event.kind], p);
+        break;
       case "plan.step":
         // The model's own mark: what it says, with what it says shows it.
         this.audit(`Step ${p.step} of ${p.of} marked ${p.state}`, p.note || undefined);

@@ -31,12 +31,12 @@ func (s *Session) registerPlanRequired() error {
 		{
 			Name: "unattended?",
 			Meta: scheme.Meta{
-				Doc:    "True when nobody approves this session's calls: it answers ordinary confirms itself (--yolo, a run's auto_approve). The default prompts and loop work differently then.",
+				Doc:    "True when nobody approves this session's calls: it answers ordinary confirms itself (--yolo, a run's auto_approve), or nobody is there at all (an unattended run). The default prompts and loop work differently then.",
 				Hidden: true,
 				Origin: "builtin",
 			},
 			Handler: func(*scheme.Call) (scheme.Value, error) {
-				return scheme.Bool(s.opts.AutoApprove), nil
+				return scheme.Bool(s.opts.AutoApprove || s.opts.Unattended), nil
 			},
 		},
 		{

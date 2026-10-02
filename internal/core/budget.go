@@ -38,6 +38,12 @@ func (s *Session) confirmBudget(ctx context.Context, p budget.Checkpoint) (choic
 	if s.opts.NoConfirm {
 		return budget.Choice{}, nil
 	}
+	if s.opts.Unattended {
+		// Nobody is there to ask: go on to the hard limit, which still
+		// stops the turn.
+		actor = "unattended"
+		return budget.Choice{Continue: true, Soft: p.Limit.Hard}, nil
+	}
 	s.promptMu.Lock()
 	id = "p" + rand.Text()
 	ch := make(chan checkpointReply, 1)

@@ -418,17 +418,23 @@ restarted daemon has a new revision sequence. Closed states clear attention and 
 snapshots. Delivery uses the existing bounded peer queue; slow clients disconnect
 and obtain a new snapshot rather than receiving an unbounded backlog.
 
-## Supervised run methods
+## Supervised and unattended run methods
 
-- `run.start {repo, task, wall, max_turns, auto_approve}` creates a new daemon-owned session
+- `run.start {repo, task, wall, max_turns, auto_approve, unattended?}` creates a new daemon-owned session
   and returns `{id, state}`. `wall` is a positive duration; `max_turns` is 1–10000;
   `auto_approve` (required, true or false) answers the run's ordinary tool
-  confirms, as `--yolo` does.
+  confirms, as `--yolo` does. `unattended` (optional) makes a run nobody
+  answers: tool confirms are declined unless `auto_approve`, soft budget
+  checkpoints go on to the hard limit, and the run goes on after a turn only
+  when that turn marked a plan step done ([runs](runs.md)). `state` reports
+  both flags.
 - `run.info {id}` returns task, original deadline, maximum and consumed turns,
   status and reason. A saved formerly running run is reported paused.
 - `run.stop {id}` cancels the driver and its active turn or checkpoint.
-- `run.resume {id}` explicitly reopens a stopped run at a recorded turn boundary,
-  preserving its original deadline and turn count. No transient grants survive.
+- `run.resume {id, auto_approve?, unattended?}` explicitly reopens a stopped run at a recorded turn boundary,
+  preserving its original deadline and turn count. No transient grants survive,
+  and the flags are never read back from the log: omitted, the run resumes
+  supervised.
 
 Run methods are available through local RPC/CLI; the browser can follow the
 session, answer its existing prompts, and stop (`run.stop` or `session.abort`)
@@ -436,5 +442,7 @@ or resume (`run.resume`) it. While a
 run is active, session `busy` includes the between-turn wait. Manual send/eval
 and policy/friction operations are rejected until it stops. New `run.state`,
 `run.turn` and `run.checkpoint` records and optional `turn.end.outcome/error`
-fields are described by the generated schema. See [runs](runs.md) for limits,
+fields are described by the generated schema. An unattended run's
+`run.checkpoint` has actor `unattended` and a `reason`, and its `run.state`
+records `unattended` and `auto_approve`. See [runs](runs.md) for limits,
 completion-marker semantics and recovery constraints.

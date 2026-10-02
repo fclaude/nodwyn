@@ -27,8 +27,8 @@ commands:
   sessions             list sessions
   versions FILE        list a file's kept previous versions (--repo sets the workspace)
   undo FILE            put back a file's newest kept version
-  run [flags]          submit a bounded supervised task to the daemon
-  run status|stop|resume [--socket PATH] SESSION
+  run [flags]          submit a bounded task to the daemon (--unattended: nobody answers it)
+  run status|stop|resume [--socket PATH] SESSION  (resume also takes --yolo, --unattended)
   daemon [--socket PATH] serve local sessions, turns and events
   app [--browser]      nodwyn as one program: a window, and a daemon if none runs
   ui [--socket PATH]    interactive browser view (optional --read-only)

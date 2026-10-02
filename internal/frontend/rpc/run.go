@@ -20,6 +20,17 @@ type runParams struct {
 	// property of the run, never of the daemon: a daemon that auto-approved
 	// everything would do so for sessions opened later from a browser too.
 	AutoApprove bool `json:"auto_approve"`
+	// Unattended: nobody answers the run's prompts, and it goes on from a
+	// turn only when that turn marked a plan step done (ADR 18 §5).
+	Unattended bool `json:"unattended,omitempty"`
+}
+
+// resumeParams resume a run. How it goes on is said again, never read back
+// from the log: a resume grants nothing the person did not ask for now.
+type resumeParams struct {
+	ID          string `json:"id"`
+	AutoApprove bool   `json:"auto_approve,omitempty"`
+	Unattended  bool   `json:"unattended,omitempty"`
 }
 type runResult struct {
 	ID    string    `json:"id"`
@@ -29,7 +40,7 @@ type runResult struct {
 func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if req.Method == "run.start" {
 		var p runParams
-		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve"); err != nil {
+		if err := params(req.Params, &p, "repo", "task", "wall", "max_turns", "auto_approve", "unattended"); err != nil {
 			return nil, err
 		}
 		info, err := os.Stat(p.Repo)
@@ -46,7 +57,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if err != nil || wall <= 0 {
 			return nil, failure(-32602, "wall must be a positive duration")
 		}
-		state := run.State{Task: p.Task, Deadline: time.Now().Add(wall), MaxTurns: p.MaxTurns}
+		state := run.State{Task: p.Task, Deadline: time.Now().Add(wall), MaxTurns: p.MaxTurns, Unattended: p.Unattended, AutoApprove: p.AutoApprove}
 		if err := state.Validate(); err != nil {
 			return nil, failure(-32602, err.Error())
 		}
@@ -56,14 +67,19 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		// Without this a run stops at the first write and waits for a client
 		// that may not exist, until its budget kills it.
 		options.AutoApprove = p.AutoApprove
+		options.Unattended = p.Unattended
 		session, err := core.New(options)
 		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
 		return s.startRun(session, state, client.actor)
 	}
-	var p idParams
-	if err := params(req.Params, &p, "id"); err != nil {
+	var p resumeParams
+	allowed := []string{"id"}
+	if req.Method == "run.resume" {
+		allowed = append(allowed, "auto_approve", "unattended")
+	}
+	if err := params(req.Params, &p, allowed...); err != nil {
 		return nil, err
 	}
 	owned, open := s.sessions[p.ID]
@@ -106,6 +122,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	if err := state.Validate(); err != nil {
 		return nil, failure(-32000, err.Error())
 	}
+	state.Unattended, state.AutoApprove = p.Unattended, p.AutoApprove
 	if open {
 		owned.driver.Stop()
 		owned.driver.Wait()
@@ -118,6 +135,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 	options := s.options
 	options.Repo = ""
 	options.NoConfirm = false
+	options.AutoApprove, options.Unattended = p.AutoApprove, p.Unattended
 	session, err := core.Resume(options, p.ID)
 	if err != nil {
 		return nil, failure(-32000, err.Error())

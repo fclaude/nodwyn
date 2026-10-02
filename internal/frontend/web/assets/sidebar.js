@@ -25,7 +25,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
   const running = desk.running().filter(matches).map((item) => {
     const run = item.run?.status === "running" ? item.run : null;
     const left = run ? new Date(run.deadline).getTime() - Date.now() : 0;
-    return row(item, run ? `Turn ${run.turns} of ${run.max_turns} · ${left > 0 ? minutes(left) + " left" : "time up"}` : `Working · ${desk.folderName(item.repo)}`, "run");
+    return row(item, run ? `${run.unattended ? "Unattended · " : ""}Turn ${run.turns} of ${run.max_turns} · ${left > 0 ? minutes(left) + " left" : "time up"}` : `Working · ${desk.folderName(item.repo)}`, "run");
   });
   const recent = desk.recent().filter(matches).slice(0, filter ? 30 : 8).map((item) => row(item, `${desk.folderName(item.repo)} · ${ago(item.last_event)}`, ""));
 

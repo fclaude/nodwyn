@@ -226,7 +226,7 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 			state := owned.driver.Info()
 			entry.Run = &state
 		} else if i.Run != nil {
-			entry.Run = &run.State{Task: i.Run.Task, Deadline: i.Run.Deadline, MaxTurns: i.Run.MaxTurns, Turns: i.Run.Turns, Status: i.Run.Status, Reason: i.Run.Reason}
+			entry.Run = &run.State{Task: i.Run.Task, Deadline: i.Run.Deadline, MaxTurns: i.Run.MaxTurns, Turns: i.Run.Turns, Status: i.Run.Status, Reason: i.Run.Reason, Unattended: i.Run.Unattended, AutoApprove: i.Run.AutoApprove}
 		}
 		result = append(result, entry)
 	}

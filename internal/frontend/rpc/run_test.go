@@ -132,3 +132,51 @@ func TestRunDaemonShutdownAtCheckpoint(t *testing.T) {
 		t.Fatalf("shutdown lost stop: %+v %v", state, err)
 	}
 }
+
+// run.start with unattended runs without asking anyone, and a resume is
+// unattended only when it says so again.
+func TestUnattendedRunOverRPC(t *testing.T) {
+	step := fake.ToolCall{ID: "s", Name: "plan-step", Args: map[string]any{"step": 1, "state": "done", "note": "ok"}}
+	srv := fake.New(fake.Turn{Content: "1. first step"}, fake.Turn{ToolCalls: []fake.ToolCall{step}}, fake.Turn{Content: "step done"},
+		fake.Turn{Content: "1. second step"}, fake.Turn{Content: "nothing marked"})
+	defer srv.Close()
+	o := options(t)
+	o.Provider = llm.NewOllama(srv.URL)
+	path, stop := start(t, o)
+	defer stop()
+	c := connect(t, path)
+	c.hello()
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
+	var started runResult
+	if err := json.Unmarshal(c.ok("run.start", runParams{Repo: repo, Task: "test task", Wall: "1m", MaxTurns: 10, Unattended: true}), &started); err != nil {
+		t.Fatal(err)
+	}
+	if !started.State.Unattended {
+		t.Fatalf("started %+v", started.State)
+	}
+	stopped := waitRun(t, c, started.ID, "stopped")
+	if stopped.Turns != 2 || !stopped.Unattended {
+		t.Fatalf("stopped %+v", stopped)
+	}
+	var resumed runResult
+	if err := json.Unmarshal(c.ok("run.resume", map[string]any{"id": started.ID}), &resumed); err != nil {
+		t.Fatal(err)
+	}
+	if resumed.State.Unattended || resumed.State.AutoApprove {
+		t.Fatalf("a plain resume came back unattended: %+v", resumed.State)
+	}
+	// The plain resume may use a turn before the stop lands (the fake has no
+	// more replies, so it fails); there are turns enough left either way.
+	c.ok("run.stop", idParams{started.ID})
+	for runInfo(t, c, started.ID).Status == "running" {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := json.Unmarshal(c.ok("run.resume", map[string]any{"id": started.ID, "unattended": true}), &resumed); err != nil {
+		t.Fatal(err)
+	}
+	if !resumed.State.Unattended {
+		t.Fatalf("resume asked for unattended: %+v", resumed.State)
+	}
+}

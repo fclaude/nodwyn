@@ -293,6 +293,14 @@ what the run did.
 
 Use it on a throwaway checkout. The guard makes yolo survivable, not safe.
 
+**Between turns.** A supervised run (`nodwyn run`) still asks a person
+before each next turn. `nodwyn run --unattended` does not ask anything: tool
+confirms are declined unless a standing approval covers them (or answered
+as `--yolo` answers them, if given too), soft budget checkpoints go on to
+the hard limit, and the run goes on after a turn only if that turn marked a
+plan step done, stopping otherwise for you to review and
+`nodwyn run resume --unattended SESSION`. See [runs](runs.md).
+
 **With credentials.** `--yolo` on its own cannot unlock the keychain: a
 passphrase needs a terminal (plan §3.3), so an unattended process with a
 keychain on disk starts without one and says so. When the run is *supposed*
