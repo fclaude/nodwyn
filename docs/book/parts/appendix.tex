@@ -15,15 +15,15 @@ Kind & What it records \\
 \code{user.msg} & text you sent, redacted \\
 \code{harness.msg} & text the loop's strategy added for the model \\
 \code{attach} & an attached file: name, type, hash, extracted and redacted text; for an image, its size, token estimate and confirmed host, never its pixels \\
-\code{llm.req} & a request to a model: which model, what was elided, settings, a digest \\
-\code{llm.resp} & the model's reply: content, thinking, tool calls, stop reason, usage \\
+\code{llm.req} & a request to a model: which model, what was elided, settings, a digest, and the attached images it did not carry, with why \\
+\code{llm.resp} & the model's reply: content, thinking, tool calls, stop reason, usage (tokens; cached tokens and cost when known) \\
 \code{tool.call} & a tool application about to be evaluated, with its origin \\
 \code{tool.result} & its result or error, redacted \\
 \code{guard.decision} & primitive, origin, verdict, checker, reason, answer and who answered \\
-\code{egress.check} & a binding lookup for a keyed request: class, host, method, outcome \\
+\code{egress.check} & a binding lookup for a keyed request: class, host, method, an OAuth2 credential's scopes, outcome \\
 \code{gate.plan} & the plan gate's outcome for a message \\
 \code{plan.step} & the model marked a step of the plan done or skipped, with its note \\
-\code{jev.req} & a call to the judge: content level, size, payload hash, redactions, answer \\
+\code{jev.req} & a call to the judge: which call, its origin, content level, size, payload hash, redactions, answer \\
 \code{cred.register} & a credential stored: class and handle id only \\
 \code{cred.refresh} & an OAuth2 credential refreshed before a use: class, handle id, token endpoint, expiry or error; never a token \\
 \code{redact.event} & a \code{[REDACTED class]} substitution and where it happened \\
@@ -31,10 +31,10 @@ Kind & What it records \\
 \code{approval.change} & a standing approval granted explicitly \\
 \code{turn.checkpoint} & a budget checkpoint and its answer \\
 \code{turn.end} & the durable end of a turn \\
-\code{run.state}, \code{run.turn}, \code{run.checkpoint} & a supervised run's progress \\
+\code{run.state}, \code{run.turn}, \code{run.checkpoint} & a run's progress: its limits and state, whether it is unattended, auto-approved or judged, its turns, and each checkpoint's answer \\
 \code{context.narrow}, \code{context.widen}, \code{context.fold}, \code{result.fold} & changes to what later windows show \\
 \code{summary}, \code{summary.drop} & a revocable summary over a span, and its revocation \\
-\code{file.version} & a file's previous content, kept before a write \\
+\code{file.version} & a file's previous content, kept in \file{.nodwyn/versions/} before a write: its path, size and hash \\
 \code{doc.upload} & a document sent to Google Drive: file, size, hash, destination, the document's id or why nothing was sent; never content or a token \\
 \code{eval.req}, \code{eval.result} & Scheme you evaluated, and its redacted result \\
 \code{note} & free-form: hard stops, standing approvals, turn trust \\

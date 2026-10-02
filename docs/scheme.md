@@ -31,8 +31,11 @@ Status: **v0 kernel (P1b)**. §10 lists what is deliberately absent.
 | `.` | dotted pair inside a list: `(a . b)` |
 | anything else | a symbol; case-sensitive; `+`, `-`, `...`, `1+` are symbols |
 
-A token is parsed as an integer if `strconv.ParseInt` accepts it, else as a
-float if `strconv.ParseFloat` accepts it, else it is a symbol.
+A token is parsed as an integer if `strconv.ParseInt` accepts it in base 10,
+else as a float if `strconv.ParseFloat` accepts it and it is made only of
+digits, signs, a point and an exponent, else it is a symbol: `inf`, `nan`
+and `1_000` are symbols, and an integer too large for 64 bits reads as a
+float.
 
 Unbalanced input is reported as *incomplete*, which the REPL uses to keep
 reading lines.
@@ -188,7 +191,7 @@ primitive in the table (§7) and can be listed with `(primitives)`.
 |---|---|
 | `(not x)` | `#t` only for `#f` |
 | `(boolean? x)` | |
-| `(eq? a b)` `(eqv? a b)` | **identity** for pairs and procedures; **value** for everything else, including strings. `eqv?` is an alias |
+| `(eq? a b)` `(eqv? a b)` | **identity** for pairs, vectors, procedures and handles; **value** for everything else, including strings. `eqv?` is an alias |
 | `(equal? a b)` | structural equality |
 
 ### Pairs and lists
@@ -281,7 +284,8 @@ Mapping, in both directions:
 `json-emit` treats a proper list whose elements are all pairs with string
 cars as an object and any other proper list as an array. Consequently `'()`
 emits `[]`, and there is no way to emit `{}` in v0.
-Procedures, handles and symbols other than `null` cannot be emitted.
+Procedures, handles, vectors, void, symbols other than `null`, and a NaN or
+infinite float cannot be emitted.
 
 This mapping is also how the agent loop turns a model's tool-call arguments
 into Scheme values (ADR 3).
@@ -299,7 +303,7 @@ into Scheme values (ADR 3).
 | `(shell-read id [wait])` | what process `id` printed since the last read (stdout and stderr together), after a first line with its state: `running` or `exited N`. With `wait` (0 to 60 seconds) it first waits for new output or an exit. The latest 1 MiB of output is kept, and a read says how much was dropped before it, or how much is left past the output cap. Read-only, so no approval |
 | `(shell-send id text)` | type `text` into the process's input (end a line with `\n`), and return what it printed next (as soon as there is output, waiting at most a second). Irreversible, with the reason that what it does depends on the program: it asks every time; `text` is a payload the credential checks read |
 | `(shell-stop id)` | stop the process (SIGTERM to its group, SIGKILL after 2 seconds) and return its last output and exit status. Needs no approval: it ends only what this session started |
-| `(scratch-dir)` | the session's scratch directory (a session always has one; `nodwyn repl` and `eval` have no host primitives at all). It is a private directory (mode 0700) under nodwyn's data directory, outside the repository; the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept once untouched for a week (a session touches its own at every turn). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
+| `(scratch-dir)` | the session's scratch directory (a session always has one; `nodwyn repl` and `eval` have none of the session's primitives, and `load` is their only host primitive). It is a private directory (mode 0700) under nodwyn's data directory, outside the repository; the file primitives take absolute paths inside it, or paths starting with `$TMPDIR/`, which the interpreter rewrites to it in every path and command argument before the guard; writes there need no approval, and commands get it as `TMPDIR`. It is removed when the session closes, a resumed session gets a new, empty one, and directories a crashed session left are swept once untouched for a week (a session touches its own at every turn). The default system prompt tells the model about it by `$TMPDIR`, not by its path, so the prompt is the same across sessions. |
 | `(project-notes)` `(project-notes-save text)` | this repository's notes kept across sessions (how tests run, where things are, runbooks), `""` when there are none; and replacing them. They live in nodwyn's data directory, keyed by the repository's path, never in the repository. A save is capped at 8 KiB and redacted, and its text is a payload the guard checks, so content that looks like a credential needs a person's approval. The default system prompt shows the notes under a heading that calls them leads to check, not instructions |
 | `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `header:NAME:SCHEME` such as `header:Authorization:Bearer`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))`, the body read up to 1 MiB |
 | `(policy-read name)` | User-only, hidden from the model catalog. Read configured `bindings` or repository `approvals`, returning content, revision and existence; bounded to 64 KiB and rejects recognized secrets. No arbitrary path. |
@@ -335,9 +339,10 @@ can reach.
 
 Every value carries **provenance tags**: where it came from, not what it
 contains. A host primitive tags its result (`fs-read`, `fs-list`, `fs-find`,
-`index-grep`, `git-status`, `git-diff` and `policy-read` mint
+`index-grep`, `git-status`, `git-diff`, `doc-export` and `policy-read` mint
 `external:file`; `shell-exec` and the background-process primitives mint
-`external:shell`; `http-request` and the Jev primitives mint `external:http`;
+`external:shell`; `http-request`, the `jev-*` and `judge-*` primitives and
+`google-doc-upload` mint `external:http`;
 MCP tools mint `external:mcp`; `session-list` and `session-events` mint
 `external:log`), a credential
 handle carries `cred:<class>`, and the tags of a call's arguments flow into
@@ -408,8 +413,9 @@ Every primitive declares:
 | `audited` | its guard decision is logged even when it is an allow of a pure builtin |
 | `preview` | Go-only, for irreversible host primitives: renders what the call would do (a diff) for the confirm prompt |
 
-Parameter **roles** (`path`, `source`, `dest`, `payload`, `credential`) tell
-the guard what an argument *is*; they are declared by host primitives from B2
+Parameter **roles** (`path`, `source`, `dest`, `payload`, `credential`, and
+for commands and keyed requests `argv`, `method` and `position`) tell the
+guard what an argument *is*; they are declared by host primitives from B2
 on. A `path` is what the primitive acts on, and writes when it is
 irreversible; a `source` is a file it only reads, whatever else it does
 (`doc-export`'s document, the file `google-doc-upload` sends). Both are
@@ -491,7 +497,7 @@ A turn is a Scheme procedure. The session records the user's message and
 calls `(nodwyn-turn request)` with the recorded (redacted) text, which runs
 the plan gate when the turn must plan and then `(agent-turn request)` (§9.5).
 The defaults are installed before `.nodwyn/init.scm` loads, so a project can
-redefine either. Stripped of `/optimize`, the plan gate, `ask-model`'s retry
+redefine either. Stripped of `/compact`, `/optimize`, the plan gate, `ask-model`'s retry
 of cut replies and the evidence loop for unattended turns (all below, and in
 `internal/loop/strategy.scm`), the default `agent-turn` is this loop:
 
@@ -524,7 +530,8 @@ of cut replies and the evidence loop for unattended turns (all below, and in
 | `(context-tokens)` | The size of the context the next `model-turn` would send, in the units of `(window-limits)`, before any trimming. Unlike a reply's `prompt-tokens` it counts as the window does, whatever the server's tokenizer, and includes the tool results added since the last request. Compaction measures it (§9.2). |
 
 When nobody reviews the work as it happens — `(unattended?)` (`--yolo`, a
-run's `auto_approve`) or a supervised run's turn (`plan-required?`) — the
+run's `auto_approve`, `--judge`, `--unattended`) or a supervised run's turn
+(`plan-required?`) — the
 default `agent-turn` ends a turn on evidence, not on the model's word
 (`evidence-loop`): a reply that stops before anything changed, or with a
 change and no test run after it, gets `finish-no-change-message` or
@@ -572,8 +579,10 @@ conversation (`model-turn`, `run-tools`, `skip-tools`, `answer-call`,
 `add-message`, `log-note`, `fold-result`, `record-plan`, `plan-steps`,
 `record-step`, `narrow-context`, `fold-context`, `widen`) are refused outside
 a turn and from model-originated code; the ones that only describe the session (`model-info`, `model-names`,
-`window-limits`, `session-system-prompt`, `unattended?`, `plan-required?`,
-`plan-recorded?`, `session-list`, `session-events`) answer at any time, which
+`window-limits`, `session-system-prompt`, `session-requests`,
+`context-tokens`, `unattended?`, `plan-required?`, `plan-recorded?`,
+`session-list`, `session-events`) answer at any time (`session-system-prompt`
+and `context-tokens` once the session has started), which
 is how `compact.scm` reads `(window-limits)` as it loads. The strategy runs with harness origin, so it cannot
 strip provenance or change policy (`wipe`, `register-check` and `policy-write`
 are user-only); the tools it runs execute with model origin, as if the model
@@ -771,8 +780,9 @@ refusals, judges' verdicts, sub-agents, notes) within
 `optimize-session-chars` per session and `optimize-total-chars` in all, and
 hands them to a sub-agent labelled `optimizer`. That agent may read the
 repository and write only under `.nodwyn/`, a protected path, so every write
-asks the user and shows the diff; an unattended run (`--yolo`) refuses those
-writes, so `/optimize` needs a person at the prompt. When it is done `init.scm` is reloaded (and
+asks the user and shows the diff; a session nobody approves (`--yolo`,
+`--judge`, an unattended run) refuses those writes, so `/optimize` needs a
+person at the prompt. When it is done `init.scm` is reloaded (and
 restored if the reload fails), and the model tells the user what changed.
 Its prompts are `(optimizer-system-prompt)` and `(optimizer-task history
 focus)`, in `prompts.scm` with the others. A strategy that redefines `agent-turn` keeps `/optimize` by

@@ -607,7 +607,8 @@ Primitive & What it does \\
 \end{center}
 
 The model is offered the file, git, process and document primitives, the
-tools the default loop and the project register, and approved MCP tools, each named
+\code{judge} tools when the session has them, the tools the default loop
+and the project register, and approved MCP tools, each named
 \code{server\_\_tool}. \code{load}, the session primitives, the key and
 policy primitives and the loop's own are \emph{hidden}: never offered to the
 model, there for Scheme code. \file{docs/scheme.md} gives every primitive's
@@ -680,10 +681,11 @@ nothing in it reaches the repository or its diff.
 
 Every value carries \emph{provenance tags}: where it came from, not what it
 contains. A host primitive tags its result: \code{fs-read}, \code{fs-list},
-\code{fs-find}, \code{index-grep}, \code{git-status}, \code{git-diff} and
-\code{policy-read} with \code{external:file}; \code{shell-exec} and the
-background-process primitives with \code{external:shell};
-\code{http-request} and the \code{jev} primitives with
+\code{fs-find}, \code{index-grep}, \code{git-status}, \code{git-diff},
+\code{doc-export} and \code{policy-read} with \code{external:file};
+\code{shell-exec} and the background-process primitives with
+\code{external:shell}; \code{http-request}, the \code{jev} and
+\code{judge} primitives and \code{google-doc-upload} with
 \code{external:http}; MCP tools with \code{external:mcp};
 \code{session-list} and \code{session-events} with
 \code{external:log}. A handle carries \code{cred:<class>}. The tags of a
@@ -962,9 +964,10 @@ make checks safe to write:
     the loop's strategy alike. Checks run after the built-in ones.
   \item A check registered in \file{init.scm} holds from the start of the
     session; \code{(reload)} does not change the session's checks.
-  \item A \code{"confirm"} check is an ordinary confirm, which a standing
-    approval or an unattended run answers. A rule that must hold with
-    nobody watching is a \code{"deny"}.
+  \item A \code{"confirm"} check is an ordinary confirm: a standing
+    approval covers it, \code{-{}-yolo} answers it yes and the judge of a
+    \code{-{}-judge} run may allow it. A rule that must hold with nobody
+    watching is a \code{"deny"}.
 \end{itemize}
 
 \section{The loop is Scheme too}\label{sch:loop}

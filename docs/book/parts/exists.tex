@@ -12,12 +12,12 @@ Package & Owns \\
 \midrule
 \code{internal/scheme} & the language: values and their provenance tags, reader, \code{eval}/\code{apply}, builtins, the primitive table, \code{applyPrim} \\
 \code{internal/guard} & the decision pipeline and its checkers: metadata, the pin and mounts, the path denylist, command-line triggers, standing approvals, E3, L1, L2, user checkers \\
-\code{internal/prim} & host primitives: files, search, git, programs, \code{http-request}, the judge, policy files, the version store \\
+\code{internal/prim} & host primitives: files, search, git, programs, documents, \code{http-request}, the judge, policy files, the version store \\
 \code{internal/keychain}, \code{internal/binding} & encrypted credentials and their injection; the binding table \\
 \code{internal/detect/l1}, \code{internal/redact} & credential-shape detection; redaction of text \\
-\code{internal/llm} & the \code{Provider} interface; Ollama and chat-completions clients \\
+\code{internal/llm} & the \code{Provider} interface; Ollama and chat-completions clients; what a request cost \\
 \code{internal/mcp} & a client for remote MCP servers; manifest hashing \\
-\code{internal/extract} & text from attached documents \\
+\code{internal/extract} & text from attached documents; checks on attached images; every text a document carries, before it is uploaded \\
 \code{internal/window} & the context window, derived from the log \\
 \code{internal/loop} & the loop's primitives and its default Scheme: the strategy, the plan gate, prompts, compaction, sub-agents, working habits \\
 \code{internal/budget} & per-turn accounting, ceilings and checkpoints \\
@@ -32,7 +32,7 @@ Package & Owns \\
 \code{cmd/nodwyn} & flags $\to$ core $\to$ front-end; nothing else \\
 \code{dev/}, \code{.nodwyn/} & this repository's own tools and standing approvals \\
 \code{test/exfil} & the exfiltration scenario suite \\
-\code{test/fakes} & scriptable fakes of a model server, the judge and an MCP server \\
+\code{test/fakes} & scriptable fakes of a model server, the judge, an MCP server, an OAuth2 provider and Google Drive \\
 \code{test/browser} & browser flows against the console \\
 \bottomrule
 \end{tabular}
@@ -50,7 +50,7 @@ nodwyn ui                     the browser console for a running daemon
 nodwyn ui --listen ADDR       also for other devices, paired by name
 nodwyn app                    daemon, console and window in one program
 nodwyn devices [revoke NAME]  list or revoke paired devices
-nodwyn run ...                submit and follow a supervised run
+nodwyn run ...                a supervised, judged or unattended run
 nodwyn sessions               list sessions
 nodwyn replay ID              print a session log as a transcript
 nodwyn replay ID --window SEQ rebuild and verify one model request
@@ -67,10 +67,14 @@ nodwyn paths                  config and data locations
 
 Every session offers \code{fs-read}, \code{fs-write}, \code{fs-edit},
 \code{fs-list}, \code{fs-find}, \code{index-grep}, \code{shell-exec},
-\code{shell-start}, \code{shell-read}, \code{shell-send} and
-\code{shell-stop}; in a git work tree also \code{git-status} and
-\code{git-diff}. The default loop adds two tools of its own, written in
-Scheme: \code{read-definition} and \code{second-look}. A repository adds
+\code{shell-start}, \code{shell-read}, \code{shell-send},
+\code{shell-stop} and \code{doc-export}; in a git work tree also
+\code{git-status} and \code{git-diff}; with a stored \code{google}
+credential, \code{google-doc-upload}; with a stored \code{jev-key} and
+\code{jev.content} set to \code{full}, \code{judge-noul}, \code{judge-score} and
+\code{judge-choice}. The default loop adds three tools of its own, written
+in Scheme: \code{read-definition}, \code{second-look} and
+\code{plan-step}. A repository adds
 more in \file{.nodwyn/init.scm}; this one loads \file{dev/}, which offers
 \code{go-test}, \code{go-build}, \code{go-vet}, \code{go-fmt-check},
 \code{run-make}, \code{git-log}, \code{grep-repo}, \code{find-files} and
@@ -80,8 +84,11 @@ approved and that is offered in this workspace, appears as
 
 \begin{sloppypar}
 Hidden from the model, callable from Scheme: \code{http-request},
-\code{credential}, \code{credential-register}, the loop's primitives, the
-policy-file primitives, \code{wipe} and \code{box}.
+\code{credential}, \code{credential-register}, the \code{jev} primitives,
+the session's own (\code{scratch-dir}, \code{repository},
+\code{workspace}, \code{project-notes}, \code{project-notes-save}), the
+loop's primitives, the policy-file primitives, \code{load},
+\code{register-check}, \code{wipe} and \code{box}.
 \end{sloppypar}
 
 \section{Guarantees, and the tests that hold them}
@@ -102,7 +109,7 @@ Every primitive is documented & \code{TestDocCoverage}, \code{TestSessionPrimiti
 A handle never becomes text & \code{TestHandlePrintsOpaque} \\
 What enters the context is redacted & \code{TestIngressCanary} and the redaction tests in \file{internal/core} \\
 The core knows nothing about terminals & \file{scripts/lint-boundaries.sh} in \code{make lint} \\
-No path for the canary to leak & \code{test/exfil}: twelve scenarios, plus Go tests for bindings and the judge; each asserts the decision and greps the canary out of the log, the output and the result \\
+No path for the canary to leak & \code{test/exfil}: twelve scenarios, plus Go tests for bindings, redirects, the judge, OAuth2 credentials and document uploads; each asserts the decision and greps the canary out of the log, the output and the result \\
 Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive requests \\
 \bottomrule
 \end{longtable}}
@@ -113,13 +120,21 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
 \item No L3. Known key shapes are detected; unknown ones are not.
 \item \nodwyn{} starts no MCP server, in a container or otherwise; it
   connects to servers over HTTP (\code{https}, or plain \code{http} on this
-  computer).
-\item No images as attachments, and no built-in document output (docx,
-  Google Docs); a tool you register can run an installed toolchain.
+  computer). It does not discover a server's own authorization or register
+  itself as a client: a server behind a login takes an OAuth2 credential
+  you add with \code{nodwyn credential add -{}-oauth2}.
+\item No PDF output built in: \code{doc-export} writes \file{.docx},
+  \file{.odt} and \file{.html}, and a PDF is built from LaTeX with
+  \code{shell-exec} (\code{latexmk}), since no sandbox covers a TeX engine.
+\item Nothing reads an image's pixels: an attached image goes to a model
+  unredacted, after a confirm that says so.
 \item No embedding index and no structural outline; retrieval is text
   search.
 \item One person. A workspace is not shared, and the socket and the paired
   devices are one user's.
-\item A supervised run continues from one turn to the next only when a
-  person says yes.
+\item Spend is counted, never limited: no budget stops a turn on what its
+  requests cost.
+\item A plan step marked done is the model's word. An unattended run goes
+  on from turn to turn on those marks, and nothing checks them against the
+  transcript.
 \end{itemize}
