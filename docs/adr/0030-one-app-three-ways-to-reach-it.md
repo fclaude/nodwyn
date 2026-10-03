@@ -149,3 +149,14 @@ file sets it, and whether a judge is available. Like the model, changes
 apply to sessions opened afterwards; a session reports the budget it runs
 with, not the daemon's current one. A paired remote device reads Settings
 but cannot change them.
+
+## Approvals — 2026-10-02
+
+ADR 35 replaces "how Home starts a task" (`tasks.*`) on the settings list
+with `[approval]`: whether writes in the folder ask, and who answers a
+command (the judge, then the person; the person; or nobody). These decide
+what a task does without asking, so they are chosen here, on the computer
+nodwyn runs on, as "always allow" for uploads is: a device reads them and
+cannot change them, and its tasks ask what they say. A device's console
+starts only chats; `run.start` and `run.resume` with `auto_approve`,
+`judge` or `unattended` stay refused to it.

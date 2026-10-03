@@ -19,7 +19,7 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0015](./0015-friction-log.md) — Friction log
 - [0016](./0016-fallback-is-allowed.md) — Fallback is allowed and honest
 - [0017](./0017-standing-command-approvals.md) — Standing command approvals
-- [0018](./0018-turn-budgets-and-long-runs.md) — Turn budgets and long-running turns (implemented, unattended runs and judged approval included)
+- [0018](./0018-turn-budgets-and-long-runs.md) — Turn budgets and long-running turns (implemented, unattended runs and judged approval included; amended by 0035)
 - [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC)
 - [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (amends plan P5; implemented, amended for the judge tools and judged approval)
 - [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (implemented)
@@ -36,3 +36,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0032](./0032-working-habits.md) — The default loop works the way pil did
 - [0033](./0033-go-126-base.md) — Go 1.26 is the base
 - [0034](./0034-sessions-in-git-worktrees.md) — Sessions in git worktrees (proposed)
+- [0035](./0035-chat-is-the-way-to-work.md) — A chat is the way to work, and it asks less (amends 17, 18, 30)

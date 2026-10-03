@@ -36,9 +36,9 @@ against the digest recorded with it.
 \paragraph{What does it talk to?} More than a model. A session reads and
 writes files, runs programs, talks to the models you configured, calls
 tools on the MCP servers you connected or run in containers, sends keyed
-requests to APIs you bound, asks a judge about plans (and, in a judged
-run, about calls), and writes documents, which it may upload to Google
-Docs. You reach it from a terminal, a
+requests to APIs you bound, asks a judge about plans and about the
+commands it would otherwise ask you to allow, and writes documents, which
+it may upload to Google Docs. You reach it from a terminal, a
 full-screen terminal client, a browser, a desktop window or a paired phone,
 and you can attach documents and images to a conversation. Chapter~\ref{ch:io} lists
 every one of these channels, what crosses it, and what decides whether it
@@ -135,12 +135,12 @@ Channel & What crosses & Who decides & Recorded as \\
 Models & out: the window (the conversation, or a narrowed part of it); in: text, thinking, tool calls & you, by configuring the model; for a keyed model, the binding table, on every request & \code{llm.req}, \code{llm.resp}, \code{egress.check} \\
 MCP servers & at session start: the server's tool list; per call: arguments out, a result in; from a contained server, its connections through the proxy & you, in \file{mcp.toml}: which servers, which tools, in which workspaces, which hosts a contained one reaches; the pinned manifest; the guard, per call & \code{egress.check}, \code{guard.decision}, \code{tool.call}, \code{tool.result}, \code{mcp.egress} \\
 Keyed HTTP & a request with a credential injected at a bound position, and its response; the model reaches it only through a tool you registered & the binding table; the guard's L1 and L2 checkers & \code{egress.check}, \code{guard.decision}, \code{cred.refresh} for an OAuth2 credential \\
-The judge & the ask and the plan; in a \code{-{}-judge} run, each call it is asked to allow; at \code{full}, what the call would do, and what the model sends with the \code{judge} tools; all redacted & the binding table; the content level \code{jev.content}; for a judged call, Go, against \code{jev.approve\_threshold} & \code{jev.req}, \code{gate.plan}, \code{guard.decision} \\
-Files & file contents in; writes out to disk & the pin, the path denylist, the confirm & \code{guard.decision}, \code{tool.result}, \code{file.version} \\
-Programs & a command line out; its output in; anything the program itself does & the confirm, or a standing approval; the guard sees the command line only & \code{guard.decision}, \code{tool.result} \\
+The judge & the ask and the plan; each call it is asked to allow, a command in a session you answer (\code{approval.commands}) or any ordinary confirm in a \code{-{}-judge} run; at \code{full}, what the call would do, and what the model sends with the \code{judge} tools; all redacted & the binding table; the content level \code{jev.content}; for a judged call, Go, against \code{jev.approve\_threshold} & \code{jev.req}, \code{gate.plan}, \code{guard.decision} \\
+Files & file contents in; writes out to disk & the pin, the path denylist, \code{approval.writes}; the confirm for a protected path, credential-shaped content, or with \code{writes = "ask"} & \code{guard.decision}, \code{tool.result}, \code{file.version} \\
+Programs & a command line out; its output in; anything the program itself does & a standing approval, the judge, or you (\code{approval.commands}); the guard sees the command line only & \code{guard.decision}, \code{tool.result} \\
 You & messages, answers to prompts, secrets typed into a masked prompt, Scheme you evaluate & you & \code{user.msg}, \code{guard.decision}, \code{cred.register}, \code{eval.req} \\
 Attachments & a document's extracted text; an image, as it is, to a model that takes images & you, by attaching it; for an image, a security confirm that names the host it goes to & \code{attach}, \code{llm.req} \\
-Documents & out: a file sent to Google Drive; on disk: a document pandoc wrote & the binding table, the confirm, L1 on the file's text; for an export, the pin and the confirm & \code{egress.check}, \code{guard.decision}, \code{doc.upload}, \code{file.version} \\
+Documents & out: a file sent to Google Drive; on disk: a document pandoc wrote & the binding table, the confirm, L1 on the file's text; for an export, what decides any write & \code{egress.check}, \code{guard.decision}, \code{doc.upload}, \code{file.version} \\
 \bottomrule
 \end{longtable}}
 
@@ -303,11 +303,16 @@ included, and must land under the session's root, its scratch directory, or
 a folder the workspace mounts; a read-only mount refuses every write.
 Credential-shaped files (\file{.env*}, \file{*.pem}, \file{*.key},
 \file{id\_*}, \file{.netrc} and others) are refused wherever they are.
-Writes ask, with a diff, unless a standing approval covers the path; a write
-to \file{.nodwyn/}, \file{.git/}, CI configuration, \file{scripts/} or the
-\file{Makefile} always asks, because what is written there later runs with
-your authority. Outside a git work tree, a file's previous content is kept
-before it is replaced (\code{nodwyn versions}, \code{nodwyn undo}). What is
+A write the pin lets through goes ahead, its diff logged and shown
+(\code{approval.writes = "allow"}, the default; \adr{35}); with
+\code{"ask"} it asks, with a diff, unless a standing approval covers the
+path. Either way a write to \file{.nodwyn/}, \file{.git/}, CI
+configuration, \file{scripts/} or the \file{Makefile} always asks, because
+what is written there later runs with your authority, and so does a write
+of content that looks like a credential. Unless git can give a file's
+previous content back, because it has the file committed and unchanged,
+that content is kept in \file{.nodwyn/versions} before the file is
+replaced (\code{nodwyn versions}, \code{nodwyn undo}). What is
 read enters the context redacted, and as a Scheme value it carries the tag
 \code{external:file}.
 
@@ -319,7 +324,9 @@ keeps going. This is the widest channel, and the one the guard sees least
 of: it sees the command line, and nothing after the program starts.
 
 What it does with the command line: asks, unless a standing approval covers
-the command's prefix; names in the prompt any network tool
+the command's prefix\,---\,in a session you answer, by default, the judge
+first and you if it refuses or there is none (\code{approval.commands});
+names in the prompt any network tool
 (\code{curl}, \code{ssh}, \code{rsync}, \ldots), destructive git or
 \code{rm}, and any path outside the root; refuses a literal key on the
 command line; and turns a command line built from tool output into a
@@ -328,13 +335,14 @@ root, with an allowlisted environment (\code{PATH}, \code{HOME}, the Go
 variables, locale, \code{TMPDIR} pointing at the session's scratch
 directory, and a few more), its output capped, and its own process group so
 that an abort kills the whole tree. Only \code{shell-send} writes to a
-program's input, and it asks every time: typing into a shell is running
-commands. Its output enters the context redacted and carries
+program's input, and every call is a confirm of its own: typing into a
+shell is running commands. Its output enters the context redacted and carries
 \code{external:shell}.
 
-What it cannot do: a confirmed command can read anything you can read and
-reach anything you can reach. The confirm is the control, which is why the
-prompt names what it can.
+What it cannot do: a command you or the judge allowed can read anything
+you can read and reach anything you can reach. The confirm is the control,
+which is why the prompt names what it can, and why the judge is shown the
+task and the plan with the call.
 
 \section{You}
 
@@ -517,10 +525,11 @@ and the plan is a user policy\,---\,\code{jev.content}: \code{none},
 \code{plan} (default), \code{plan+summaries}, or \code{full}\,---\,and every
 call is logged with its level, size, payload hash and the redactions it
 triggered. At \code{none} nothing is sent: there is no judge. At
-\code{plan} the plan gate sends the ask and the draft plan, and a
-\code{-{}-judge} run sends, for each call it asks about, the task, the plan
-and the call's shape: the tool, why the guard asks, and the path written or
-the command line run. \code{plan+summaries} is accepted and, for now, sends
+\code{plan} the plan gate sends the ask and the draft plan, and a judged
+call\,---\,a command in a session you answer, or any ordinary confirm of a
+\code{-{}-judge} run\,---\,sends the task, the plan and the call's shape:
+the tool, why the guard asks, and the path written or the command line
+run. \code{plan+summaries} is accepted and, for now, sends
 what \code{plan} sends. \code{full} adds what a judged call would write or
 send, and offers the model the \code{judge} tools, with which it chooses
 what is sent.
@@ -532,13 +541,18 @@ Two seams:
   coherence and fulfilment; the model revises on a low score, at most three
   rounds. The default plan gate does this.
 \item[Seam C] score an ambiguous \emph{situation}\,---\,class,
-  destination, scope\,---\,never the value. A \code{-{}-judge} run uses it
-  for its ordinary confirms: Go (\file{internal/core/judge.go}) asks
-  \code{jev-choice} whether to allow the call and allows it only if the
-  probability of allow is at least \code{jev.approve\_threshold} (0.8 by
-  default). A security confirm is declined without asking, and Scheme can
-  only refuse more (\code{approve-refuse?}). Nothing in the default loop or
-  the guard calls it otherwise.
+  destination, scope\,---\,never the value. A session you answer uses it,
+  with \code{approval.commands = "judge"} (the default, \adr{35}), for a
+  command, input to a running program or an MCP tool that acts; a
+  \code{-{}-judge} run uses it for all its ordinary confirms. Either way Go
+  (\file{internal/core/judge.go}) asks \code{jev-choice} whether to allow
+  the call and allows it only if the probability of allow is at least
+  \code{jev.approve\_threshold} (0.8 by default), and Scheme can only
+  refuse more (\code{approve-refuse?}). In a session you answer, a refusal
+  is a question for you, told what the judge answered; in a run it is a
+  no. A security confirm never reaches the judge: you are asked, and a run
+  declines it. Nothing in the default loop or the guard calls it
+  otherwise.
 \end{description}
 
 Never: a secret value (enforced by redaction, not by withholding content),
@@ -574,13 +588,17 @@ The guard is a pipeline of \emph{checkers}. Each looks at the primitive's
 declared metadata and its actual arguments and returns a verdict; the
 strictest wins (deny over confirm over allow). A confirm is put to the user
 through a \emph{confirmer} the core implements as an event plus a wait, so
-the guard never knows what a terminal is. A \emph{standing approval}\,---\,a
-command prefix or a write path the user authorised ahead of time\,---\,turns an
-ordinary confirm into an allow and never turns a deny into anything. A
-\emph{security} confirm\,---\,a write to a protected path, content that looks
-like a key, a command line built from tool output, an image to
-attach\,---\,cannot be answered by a standing approval, and a run nobody
-watches refuses it: \code{-{}-yolo}, the judge and an unattended run alike. A project may add
+the guard never knows what a terminal is; in a session a person answers,
+\code{approval.commands} may have the judge answer an ordinary confirm
+first. A \emph{standing approval}\,---\,a command prefix or a write path
+the user authorised ahead of time, and, by default, any write in the
+folder\,---\,turns an ordinary confirm into an allow and never turns a deny
+into anything. A \emph{security} confirm\,---\,a write to a protected
+path, content that looks like a key, a command line built from tool output,
+an image to attach\,---\,cannot be answered by a standing approval, an
+\code{[approval]} setting or the judge. It goes to the person, and a run
+nobody watches refuses it (\code{-{}-yolo}, a \code{-{}-judge} run and an
+unattended run alike). A project may add
 its own checkers in Scheme (\code{register-check}); they can deny or ask,
 never allow. Every decision that reaches the host, and every non-allow, is
 logged with who asked (the user, the model or the harness) and why.
@@ -632,8 +650,17 @@ What \nodwyn{} does not protect against, or does not yet:
   path exists for a secret \emph{value} to egress unless bound or explicitly
   confirmed\,---\,and ``closed'' is the user's affirmation.
 \item A confirmed command is a confirmed command. The guard sees a command
-  line, not what the program does; a \code{y} to a script is a \code{y} to
-  everything the script does.
+  line, not what the program does; a \code{y} to a script, yours or the
+  judge's, is a \code{y} to everything the script does.
+\item With the defaults, a person need not look at the work. Writes in
+  the folder go ahead and, once a judge is set up, the judge allows
+  commands (\adr{35}), so the model can write code and run it without a
+  person looking at either. The judge decides each command with the task
+  and the plan in view. What does not depend on it: the pin, the
+  denylist, the binding table and L1 on egress, taint on a command built
+  from tool output, the protected paths, the scrubbed environment and the
+  hard limits. \code{approval.commands = "ask"} puts every command to you,
+  and \code{approval.writes = "ask"} every write.
 \item A model provider, and an MCP server, sees what it is sent.
   Configuring a model is consenting that the window leaves for it;
   approving an MCP tool is consenting that its arguments leave for the

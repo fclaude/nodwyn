@@ -583,7 +583,7 @@ These exist only in a session.
 Primitive & What it does \\
 \midrule
 \code{(fs-read path [start [count]])} & a whole file (at most 1\,MiB), or \code{count} lines (default 200) from line \code{start} under a \code{[lines A-B of N]} header \\
-\code{(fs-write path content)} & create or replace a file; irreversible, the confirm shows a diff \\
+\code{(fs-write path content)} & create or replace a file; irreversible, its diff logged and shown at any confirm \\
 \code{(fs-edit path old new [replace\_all])} & replace exactly one occurrence of \code{old}, or with \code{\#t} every one; irreversible \\
 \code{(fs-list path)} & a directory's names, sorted; directories end in \code{/} \\
 \code{(fs-find path glob)} & file names under a directory matching a glob, at most 500 \\
@@ -592,7 +592,7 @@ Primitive & What it does \\
 \code{(shell-exec cmd args)} & run a program and wait for it; irreversible \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background; irreversible \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
-\code{(shell-send id text)} & type into it; asks every time \\
+\code{(shell-send id text)} & type into it; a confirm on every call \\
 \code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc, which reads the source sandboxed; a write of \code{target}, with a preview \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a new Google Doc; only with a stored \code{google} credential, and asks or not as \code{docs.google\_upload} says (unset: the first call asks which) \\
 \code{(scratch-dir)}, \code{(repository)}, \code{(workspace)} & the session's scratch directory; the repository's root; its kind and mounted folders \\
@@ -653,8 +653,10 @@ how to split it. Otherwise:
 \end{itemize}
 
 \code{shell-exec} is irreversible, so every call confirms unless a standing
-approval covers it (Section~\ref{sch:init}). \code{shell-start} starts a
-program the same way\,---\,no shell, the same environment and scratch
+approval covers it (Section~\ref{sch:init}); in a session a person
+answers, the judge is asked first by default (\code{approval.commands}),
+and the person when it refuses or there is no judge. \code{shell-start}
+starts a program the same way\,---\,no shell, the same environment and scratch
 directory, a process group of its own\,---\,and is checked like
 \code{shell-exec}; the process runs until it exits, \code{shell-stop} ends
 it or the session closes, and at most four run at once.
@@ -854,17 +856,21 @@ loads three files:
 
 After \file{init.scm} the tool list and the system prompt are fixed for the
 session. \file{.nodwyn/} is a protected path: every write to it is a
-security confirm, which no standing approval and no \code{-{}-yolo} run can
-answer, so the model cannot change \file{init.scm} behind your back. Files
+security confirm, which no standing approval, no \code{[approval]} setting
+and no \code{-{}-yolo} run can answer, so the model cannot change
+\file{init.scm} behind your back. Files
 loaded from elsewhere, such as \file{dev/}, are ordinary files: review
 changes to them as code, since the next session runs them with your
 authority.
 
 Pair each command-wrapping tool with a \emph{standing approval} in
-\file{.nodwyn/allow.toml}, or every call prompts. A command entry matches a
-command line that starts with its words (\code{"go test"} matches
+\file{.nodwyn/allow.toml}, or every call is a confirm, put by default to
+the judge and then to you. A command entry matches a command line that
+starts with its words (\code{"go test"} matches
 \code{go test -race ./...}, not \code{go build}); a write entry is a
-repository-relative prefix. An excerpt of \nodwyn's own:
+repository-relative prefix, which matters while \code{approval.writes} is
+\code{"ask"}: by default every write in the folder goes ahead. An excerpt
+of \nodwyn's own:
 
 \begin{txt}
 commands = ["go test", "go build", "go vet", "gofmt -l",
@@ -965,7 +971,9 @@ make checks safe to write:
   \item A check registered in \file{init.scm} holds from the start of the
     session; \code{(reload)} does not change the session's checks.
   \item A \code{"confirm"} check is an ordinary confirm: a standing
-    approval covers it, \code{-{}-yolo} answers it yes and the judge of a
+    approval covers it (on a write in the folder, \code{approval.writes =
+    "allow"} is one), \code{approval.commands} may have the judge or the
+    setting answer it, \code{-{}-yolo} answers it yes and the judge of a
     \code{-{}-judge} run may allow it. A rule that must hold with nobody
     watching is a \code{"deny"}.
 \end{itemize}

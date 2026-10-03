@@ -93,12 +93,17 @@ ADR & Title & Status \\
 31 & The project is renamed \nodwyn{} & accepted \\
 32 & The default loop works the way pil did & accepted \\
 33 & Go 1.26 is the base & accepted \\
+35 & A chat is the way to work, and it asks less (amends 17, 18, 30) & accepted \\
 \bottomrule
 \end{longtable}}
 
 \chapter{Glossary}
 
 \begin{description}[leftmargin=2.2em]
+\item[approval] \code{[approval]} in \file{config.toml} (Settings
+  \textrightarrow{} Approvals): whether writes in the folder go ahead
+  (\code{writes}) and who answers a command first, the judge, you or the
+  setting (\code{commands}), in a session a person answers.
 \item[attachment] a file you brought into a conversation: copied into the
   workspace, its text extracted, redacted and capped, and shown to the model
   as data. An image is sent as an image, after a confirm of its own.
@@ -131,10 +136,13 @@ ADR & Title & Status \\
 \item[provenance tag] where a Scheme value came from (\code{external:file},
   \code{cred:openai-key}, \ldots); the union of a call's arguments flows into
   its result.
-\item[security confirm] a confirm no standing approval can answer and an
-  unattended run refuses.
+\item[security confirm] a confirm no standing approval, \code{[approval]}
+  setting or judge can answer: it goes to a person, and a run nobody
+  watches refuses it.
 \item[standing approval] a command prefix or write path the user authorised
-  ahead of time; converts an ordinary confirm to an allow, never a deny.
+  ahead of time, and, by default, any write in the folder
+  (\code{approval.writes}); converts an ordinary confirm to an allow, never
+  a deny.
 \item[strategy] the Scheme procedure that runs a turn, \code{agent-turn}.
 \item[window] the model's context, rebuilt from the log on every request.
 \item[workspace] a session's root plus its mounts.

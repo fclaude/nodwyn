@@ -39,17 +39,43 @@ func TestVersionsKeepListReadAndPrune(t *testing.T) {
 	if _, err := ReadVersion(v.Dir, list[0].Hash); err == nil {
 		t.Fatal("damaged object accepted")
 	}
-	// Inside a git work tree, git is the undo.
-	os.Mkdir(filepath.Join(root, ".git"), 0o755)
-	git := &Versions{Dir: VersionsDir(root), Skip: InGitWorkTree(root)}
-	before, _ := ListVersions(git.Dir, file)
-	git.Keep(file)
-	after, _ := ListVersions(git.Dir, file)
-	if len(after) != len(before) {
-		t.Fatal("versioned a file git already covers")
-	}
 	var nilStore *Versions
 	if err := nilStore.Keep(file); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// In a git work tree git is the undo only for what it has committed: a
+// tracked, unchanged file keeps no version, while an uncommitted change, an
+// untracked file and an ignored one do (ADR 35).
+func TestVersionsInGitKeepWhatGitCannotRestore(t *testing.T) {
+	root, _ := gitRepo(t)
+	os.WriteFile(filepath.Join(root, ".gitignore"), []byte("local.conf\n"), 0o600)
+	os.WriteFile(filepath.Join(root, "local.conf"), []byte("mine\n"), 0o600)
+	os.WriteFile(filepath.Join(root, "new.txt"), []byte("draft\n"), 0o600)
+	v := &Versions{Dir: VersionsDir(root), Skip: InGitWorkTree(root)}
+	kept := func(name string) bool {
+		t.Helper()
+		abs := filepath.Join(root, name)
+		if err := v.Keep(abs); err != nil {
+			t.Fatal(err)
+		}
+		list, err := ListVersions(v.Dir, abs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(list) > 0
+	}
+	if kept("plants.txt") {
+		t.Fatal("kept a version of a committed, unchanged file")
+	}
+	os.WriteFile(filepath.Join(root, "plants.txt"), []byte("tomato\nbasil\n"), 0o600)
+	for _, name := range []string{"plants.txt", "new.txt", "local.conf"} {
+		if !kept(name) {
+			t.Errorf("%s: no version kept of what git cannot restore", name)
+		}
+	}
+	if InGitWorkTree(t.TempDir())(filepath.Join(root, "plants.txt")) {
+		t.Fatal("skipped outside a git work tree")
 	}
 }

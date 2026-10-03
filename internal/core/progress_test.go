@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -33,6 +34,8 @@ func TestProgressStopsTurnAndAllowsNextMessage(t *testing.T) {
 			defer srv.Close()
 			o := diskOptions(t)
 			o.Provider = llm.NewOllama(srv.URL)
+			// The denied call is a write answered no, so writes ask.
+			o.Config.Approval.Writes = config.ApproveAsk
 			s, err := New(o)
 			if err != nil {
 				t.Fatal(err)

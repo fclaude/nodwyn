@@ -564,7 +564,7 @@ left in the repository is in the change.
 
 | | |
 |---|---|
-| `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`) |
+| `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`). `[approval]` (ADR 35) does not make it true: a chat whose commands the judge answers still has a person to ask |
 
 A reply's `done` is `"length"` when the model reached the output cap (the
 model's `max_output`, else `window.output_reserve`); the core notes it in the log. What to do is the
@@ -864,7 +864,7 @@ marks the steps that no longer apply skipped, saying why.
 | `plan-write` | the model's tool for a plan of its own, an agent tool answered by `plan-write-answer`: `{"plan"}`, recorded with `record-plan`, decision `model`, so the window pins it under `plan-header` and `plan-step` marks it. The model's thinking is not kept from one request to the next, and a reply that only calls tools keeps nothing either: without a written plan a design is worked out again at every request. Writing it again revises it and its marks start over; in a run it becomes the run's plan. The working rules ask for it once the model knows what to change |
 | `plan-step` | the model's tool for those marks, an agent tool (`define-agent-tool`) answered by `plan-step-answer`: `{"step", "state", "note"}`, answered with what was marked and the next unmarked step. The plan header (`plan-header`) and a run's turn prompt ask the model to use it. A mark is the model's word, not a proof: the console shows it as such, and the evidence is the transcript |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
-| `(workspace)` | the workspace's kind and mounted folders from `.nodwyn/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The kind is a label: every kind has the same tools. Both default system prompts add a section naming the mounted folders, so a plain repository's prompt is unchanged; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file that no git work tree at the root covers, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it |
+| `(workspace)` | the workspace's kind and mounted folders from `.nodwyn/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The kind is a label: every kind has the same tools. Both default system prompts add a section naming the mounted folders, so a plain repository's prompt is unchanged; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it, unless a git work tree at the root has the file committed and unchanged (ADR 35) |
 | `(log-note text)` | add a note to the session log, for the record and the transcript; the model never sees it |
 
 A turn that must plan (`plan-required?`) always drafts one, scored if there

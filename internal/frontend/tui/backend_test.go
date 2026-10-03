@@ -37,7 +37,11 @@ func testOptions(t *testing.T) core.Options {
 	if err := os.Mkdir(repo, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return core.Options{Config: config.Default(), Repo: repo, Paths: config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data")), Version: "test"}
+	// Writes ask (approval.writes, ADR 35), so a write is the prompt these
+	// tests answer.
+	cfg := config.Default()
+	cfg.Approval.Writes = config.ApproveAsk
+	return core.Options{Config: cfg, Repo: repo, Paths: config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data")), Version: "test"}
 }
 func testRemote(t *testing.T, o core.Options) (*remote, string) {
 	t.Helper()

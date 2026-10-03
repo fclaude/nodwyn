@@ -12,7 +12,7 @@ Companion to [SPEC.md](SPEC.md). The spec says *what* and *why*; this says *in w
 
 - **Done:** the bootstrap (B0–B3), P1b, P3–P7, P9 and P10: v0 without the optional L3, shipped 2026-09-21 to 2026-09-22. After v0: the real UI, U1–U4 (U4's unattended runs 2026-10-01); the task-oriented console, the standalone app and remote devices (D1–D5); and the cowork track: workspaces (W1), attachments (W2, text 2026-09-30, images 2026-10-01), remote MCP servers (W3a; W1–W3a are D6–D8), contained local MCP servers (W3b/D9, 2026-10-01), OAuth2 credentials (W4, 2026-09-30) and documents out (W5, 2026-10-01).
 - **Not done:** P8 (L3, optional).
-- **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base (ADRs 26–29, 31–33), and smaller pieces such as the judge tools, plan step progress, judged approval and what a model request cost. §5 "Outside the plan" says what drove them.
+- **Not planned, done anyway:** the loop as Scheme, model routing, the scratch directory, optional tool parameters, the working habits, the rename, Go 1.26 as the base, a chat as the one way to work (ADRs 26–29, 31–33, 35), and smaller pieces such as the judge tools, plan step progress, judged approval and what a model request cost. §5 "Outside the plan" says what drove them.
 - **Next:** §10.
 
 The week numbers below are the original estimate; §6 sets them beside what shipped and when. Promotion stopped creating tags on 2026-09-30 (ADR 13 amended): tags named in the phases below are the plan's, and the ones that exist are in §6.
@@ -711,6 +711,13 @@ items came from a failure recorded in friction.md:
   cost, as reported or estimated from a model's `price_*` settings, are
   recorded in `llm.resp` and shown after each reply. Spend never stops a
   turn.
+- **A chat is the way to work** (2026-10-02, ADR 35): the console's three
+  ways to start a task (chat, run, unattended run) were one mechanism seen
+  three ways, and the default, a chat, asked about every write and command
+  and stopped at soft limits a long request reaches. Now every console task
+  is a chat; writes in the folder go ahead with their previous content kept,
+  the judge answers a command before the person is asked, and soft limits
+  are off unless set. `nodwyn run` stays for scripts and benchmarks.
 
 ## 6. Timeline at a glance
 

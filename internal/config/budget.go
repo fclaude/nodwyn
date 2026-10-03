@@ -5,6 +5,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/fclaude/nodwyn/internal/budget"
 )
 
@@ -25,6 +27,26 @@ type Budget struct {
 	// stops and no later turn starts. cost_soft unset is cost_hard.
 	CostSoft float64 `toml:"cost_soft"`
 	CostHard float64 `toml:"cost_hard"`
+}
+
+// softFollowsHard makes a soft limit the file leaves unset follow its hard
+// one, as the defaults have it: a hard limit set lower than the default
+// soft one moves the checkpoint with it rather than making the pair
+// invalid, and no checkpoint asks unless a soft limit is set.
+func (b *Budget) softFollowsHard(md toml.MetaData) {
+	set := func(key string) bool { return md.IsDefined("budget", key) }
+	if set("tool_calls_hard") && !set("tool_calls_soft") {
+		b.ToolCallsSoft = b.ToolCallsHard
+	}
+	if set("tokens_hard") && !set("tokens_soft") {
+		b.TokensSoft = b.TokensHard
+	}
+	if set("actions_hard") && !set("actions_soft") {
+		b.ActionsSoft = b.ActionsHard
+	}
+	if set("wall_hard") && !set("wall_soft") {
+		b.WallSoft = b.WallHard
+	}
 }
 
 // WithCostHard returns b with a spend limit of usd, for one run or session:

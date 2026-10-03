@@ -48,8 +48,10 @@ error: register-check: register-check: verdict must be "deny" or "confirm", got 
 
 \begin{careful}
 A \code{"confirm"} check is an \emph{ordinary} confirm: a standing approval
-for that command waives it, and \code{-{}-yolo} answers it yes. If a rule must
-hold with nobody watching, make it a \code{"deny"}.
+waives it, the judge may answer it, and \code{-{}-yolo} answers it yes. On a
+write, writes in the folder going ahead are such an approval, so a
+\code{"confirm"} check on a write asks only with \code{[approval] writes =
+"ask"}. If a rule must hold with nobody watching, make it a \code{"deny"}.
 \end{careful}
 
 \subsection{Checks worth having}

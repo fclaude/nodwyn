@@ -214,3 +214,23 @@ func (sw ScratchWrites) Check(_ context.Context, p *scheme.Prim, args []scheme.V
 	}
 	return Decision{Verdict: Allow, Standing: true, Reason: "scratch directory " + sw.Dir}
 }
+
+// FolderWrites approves, as standing, every write: approval.writes =
+// "allow", the default (ADR 35). It decides only the confirm a write
+// raises for being irreversible. The pin, the denylist and a read-only
+// mount still deny before it matters, and a security confirm (a protected
+// path, content that looks like a credential) still asks, since a standing
+// approval never waives one. The write's diff goes to the log, and its
+// previous content is kept, so it can be undone.
+type FolderWrites struct{}
+
+// Name identifies the checker in the log.
+func (FolderWrites) Name() string { return "folder-writes" }
+
+// Check approves any write.
+func (FolderWrites) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
+	if _, ok := WritePath(p, args); !ok {
+		return Decision{Verdict: Allow}
+	}
+	return Decision{Verdict: Allow, Standing: true, Reason: "writes in the folder go ahead (approval.writes)"}
+}

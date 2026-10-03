@@ -27,7 +27,8 @@ commands:
   sessions             list sessions
   versions FILE        list a file's kept previous versions (--repo sets the workspace)
   undo FILE            put back a file's newest kept version
-  run [flags]          submit a bounded task to the daemon (--unattended: nobody answers it;
+  run [flags]          carry a task to its end with no conversation, for scripts and
+                       benchmarks (docs/runs.md; --unattended: nobody answers it;
                        --judge: the judge answers its confirms)
   run status|stop|resume [--socket PATH] SESSION  (resume also takes --yolo, --judge, --unattended)
   daemon [--socket PATH] serve local sessions, turns and events

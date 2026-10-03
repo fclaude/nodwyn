@@ -215,6 +215,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	cfg.Control.URL = model.URL
 	cfg.Control.Model = "test-model"
 	cfg.Policy.Unbound = "confirm"
+	cfg.Approval.Writes = config.ApproveAsk // a write is the prompt the browser answers
 	cfg.Budget.ToolCallsSoft = 1
 	cfg.Budget.ToolCallsHard = 3
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))

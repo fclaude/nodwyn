@@ -41,6 +41,16 @@ and symbolic links like the repository pin. An unattended run (`--yolo`)
 answers ordinary confirms but never security ones, so it cannot write them;
 before this, it could.
 
+*Amended 2026-10-02 (ADR 35):* `[approval] writes = "allow"`, the
+default, makes every write the pin lets through a standing approval
+(`guard.FolderWrites`), so a write prefix list matters only with
+`writes = "ask"`. Protected paths and credential-shaped content remain
+security confirms. git is no longer the only undo: a write keeps the
+file's previous content unless git has it committed and unchanged.
+Commands are unchanged here: a standing approval still runs one without a
+confirm, and what no standing approval covers goes to `[approval]
+commands` (the judge, then the person, by default).
+
 ## Consequences
 - This is the command-line analogue of the binding table (SPEC): the user
   authorizes ahead of time, the harness applies silently and logs.

@@ -6,7 +6,6 @@
 import { h, icon, toast, ago } from "./dom.js";
 import { modelForm, keychainForm, passphraseForm, noPassphraseWarning } from "./setup.js";
 import { uploadLabels } from "./transcript.js";
-import { modeNames } from "./home.js";
 
 // ---------- theme (a per-browser convenience; dark unless chosen) ----------
 const themes = ["dark", "light", "system"];
@@ -29,22 +28,19 @@ export function applyTheme(mode) {
   }
 }
 
-// What each mode and answerer does, as Starting tasks explains it.
-const approvalNames = { ask: "Ask", judge: "The judge decides", yes: "Yes, automatically" };
+// What a task does without asking: [approval] in config.toml (ADR 35).
+const writeChoices = [["allow", "Without asking"], ["ask", "Ask me"]];
+const commandChoices = [["judge", "The judge, then me"], ["ask", "Ask me"], ["allow", "Without asking"]];
 
-function modeHint(mode, approval, { turns, wall }) {
-  const limits = `up to ${turns} turns or ${wall}`;
-  if (mode === "run") return `It goes on turn after turn until the model says it is done, ${limits}, and asks you before each next turn.`;
-  if (mode === "unattended") return `Nobody answers it: it goes on while each turn marks a step of its plan done, ${limits}, and stops for you to look when one doesn't. Its limits stop it rather than ask.`;
-  return "A conversation: you answer each request as it comes, and it waits for you after each reply.";
+function writesHint(writes) {
+  if (writes === "ask") return "Every write waits for your answer. “Always” covers its folder for the rest of the task.";
+  return "Anywhere in the task's folder. Each change is shown with its diff, and the file's previous version is kept, so Restore or nodwyn undo puts it back; git keeps what it has committed.";
 }
 
-function approvalHint(approval, mode) {
-  const chat = mode === "chat" ? " A chat always asks you." : "";
-  if (approval === "judge") return `The judge is shown the task, the plan and the request, and lets it go ahead only above its threshold (Judge, below). Security requests are declined without asking it.${chat}`;
-  if (approval === "yes") return `Ordinary requests are answered yes, as nodwyn run --yolo does. Security requests — a credential-shaped write, a protected path, a command built from tool output — are declined.${chat}`;
-  if (mode === "unattended") return "Nobody is there to answer, so a request no standing approval covers is declined, and the model is told.";
-  return `You answer each one, as in a chat.${chat}`;
+function commandsHint(commands, judge) {
+  if (commands === "ask") return "You answer each command no allow list covers. “Always” covers that command for the rest of the task.";
+  if (commands === "allow") return "Commands, and tools that act such as an MCP server's, run without asking. With writes also free, the model can write code and run it with nobody looking.";
+  return `The judge is shown the task, its plan and the command, and lets it run above its threshold (Judge, below). When it doesn't, you're asked, and told what it answered. “Always” covers that command for the rest of the task.${judge ? "" : " No judge is set up now, so you're asked."}`;
 }
 
 // ---------- what each setting takes ----------
@@ -52,19 +48,17 @@ function approvalHint(approval, mode) {
 // number of 0 or more; duration: Go's, such as 90s, 20m or 2h; text: as typed;
 // choice: one of the chips. The daemon judges every value again.
 const specs = {
-  "tasks.mode": { kind: "choice", label: "Default mode" },
-  "tasks.approval": { kind: "choice", label: "Requests in a run" },
-  "tasks.turns": { kind: "count", label: "Run turns" },
-  "tasks.wall": { kind: "duration", label: "Run time" },
-  "budget.tool_calls_soft": { kind: "count", label: "Tool calls, ask at" },
+  "approval.writes": { kind: "choice", label: "Writing files" },
+  "approval.commands": { kind: "choice", label: "Running commands" },
+  "budget.tool_calls_soft": { kind: "count", label: "Tool calls, ask at", follows: true },
   "budget.tool_calls_hard": { kind: "count", label: "Tool calls, stop at" },
-  "budget.tokens_soft": { kind: "count", label: "Tokens sent, ask at" },
+  "budget.tokens_soft": { kind: "count", label: "Tokens sent, ask at", follows: true },
   "budget.tokens_hard": { kind: "count", label: "Tokens sent, stop at" },
-  "budget.actions_soft": { kind: "count", label: "Actions, ask at" },
+  "budget.actions_soft": { kind: "count", label: "Actions, ask at", follows: true },
   "budget.actions_hard": { kind: "count", label: "Actions, stop at" },
-  "budget.wall_soft": { kind: "duration", label: "Time, ask at" },
+  "budget.wall_soft": { kind: "duration", label: "Time, ask at", follows: true },
   "budget.wall_hard": { kind: "duration", label: "Time, stop at" },
-  "budget.cost_soft": { kind: "decimal", label: "Spend, ask at" },
+  "budget.cost_soft": { kind: "decimal", label: "Spend, ask at", follows: true },
   "budget.cost_hard": { kind: "decimal", label: "Spend, stop at" },
   "loop.request_timeout": { kind: "duration", label: "A model reply" },
   "loop.shell_timeout": { kind: "duration", label: "A command" },
@@ -80,7 +74,7 @@ const specs = {
   "control.price_cached_input": { kind: "decimal", label: "Price of cached input" },
   "control.price_output": { kind: "decimal", label: "Price of output" },
   "jev.content": { kind: "choice", label: "What the judge sees" },
-  "jev.approve_threshold": { kind: "decimal", label: "Allows a request at" },
+  "jev.approve_threshold": { kind: "decimal", label: "Allows a command at" },
   "jev.price_input": { kind: "decimal", label: "Judge price of input" },
   "jev.price_output": { kind: "decimal", label: "Judge price of output" },
   "jev.timeout": { kind: "duration", label: "Waits for an answer" },
@@ -113,9 +107,11 @@ function shown(value, kind) {
 }
 
 // initial is what a field shows before an edit: empty when the default
-// applies, so clearing a field puts the default back.
-function initial(v, kind) {
-  return v.set || !same(v.value, v.default) ? shown(v.value, kind) : "";
+// applies, so clearing a field puts the default back. A soft limit the file
+// leaves unset follows its hard one, and shows empty too.
+function initial(v, spec) {
+  if (spec.follows && !v.set) return "";
+  return v.set || !same(v.value, v.default) ? shown(v.value, spec.kind) : "";
 }
 
 function parse(kind, text) {
@@ -150,7 +146,7 @@ function changes(desk) {
       continue;
     }
     const text = String(edit).trim();
-    if (text === initial(v, spec.kind)) continue;
+    if (text === initial(v, spec)) continue;
     if (text === "") {
       set[name] = null;
       continue;
@@ -189,7 +185,7 @@ function input(ctx, name, { placeholder, width = "", prefix = "", suffix = "" } 
       refreshBar();
     },
   });
-  node.value = edits.has(name) ? edits.get(name) : initial(v, spec.kind);
+  node.value = edits.has(name) ? edits.get(name) : initial(v, spec);
   if (!prefix && !suffix) return node;
   return h("span", { class: "affix" }, prefix ? h("span", { class: "unit" }, prefix) : null, node, suffix ? h("span", { class: "unit" }, suffix) : null);
 }
@@ -245,7 +241,7 @@ export function renderSettings(root, ctx) {
   // An older daemon reports no values: its settings live in config.toml.
   const known = !!desk.settings?.values;
   const sections = [
-    ...(known ? [tasksSection(ctx, redraw), limitsSection(ctx)] : []),
+    ...(known ? [approvalSection(ctx, redraw), limitsSection(ctx)] : []),
     modelsSection(ctx, root),
     ...(known ? [judgeSection(ctx, redraw)] : []),
     documentsSection(ctx),
@@ -336,42 +332,21 @@ function drawBar(bar, ctx, redraw) {
   );
 }
 
-function tasksSection(ctx, redraw) {
-  const { desk, conn } = ctx;
-  const mode = picked(desk, "tasks.mode");
-  const approval = picked(desk, "tasks.approval");
-  const v = values(desk);
-  const turns = v["tasks.turns"]?.value;
-  const wall = v["tasks.wall"]?.value;
-  const noJudge = approval === "judge" && !desk.settings?.judge;
+function approvalSection(ctx, redraw) {
+  const { desk } = ctx;
   return section(
-    "tasks",
-    "Starting tasks",
-    "How Home starts a task, unless you choose otherwise for that one.",
-    ...row(
-      "Default mode",
-      choice(ctx, "tasks.mode", Object.entries(modeNames), redraw),
-      h("p", { class: "hint" }, modeHint(mode, approval, { turns, wall })),
-      conn.has("settings.write") ? null : h("p", { class: "hint" }, "From another device, Home starts only tasks whose requests you answer yourself."),
-    ),
-    ...row(
-      "Requests in a run",
-      choice(ctx, "tasks.approval", Object.entries(approvalNames), redraw),
-      h("p", { class: "hint" }, approvalHint(approval, mode)),
-      noJudge ? h("p", { class: "hint warn-text" }, "No judge is available now, so a run started this way will not start. See Judge below.") : null,
-    ),
-    ...row(
-      "Run limits",
-      h("div", { class: "row-actions" }, h("span", { class: "muted" }, "Up to"), input(ctx, "tasks.turns", { width: "narrow" }), h("span", { class: "muted" }, "turns, or"), input(ctx, "tasks.wall", { width: "narrow" })),
-      h("p", { class: "hint" }, "A run stops at whichever comes first. Its time counts everything, waiting for your answers included."),
-    ),
+    "approval",
+    "Approvals",
+    "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/), content that looks like a credential, and a command built from what a tool returned always ask, and nothing outside the task's folder is written.",
+    ...row("Writing files", choice(ctx, "approval.writes", writeChoices, redraw), h("p", { class: "hint" }, writesHint(picked(desk, "approval.writes")))),
+    ...row("Running commands", choice(ctx, "approval.commands", commandChoices, redraw), h("p", { class: "hint" }, commandsHint(picked(desk, "approval.commands"), !!desk.settings?.judge))),
   );
 }
 
 function limitsSection(ctx) {
   const pair = (label, soft, hard, opts = {}) => [
     h("div", { class: "limit-name" }, label),
-    input(ctx, soft, { width: "narrow", ...opts.soft }),
+    input(ctx, soft, { width: "narrow", placeholder: "the stop", ...opts.soft }),
     input(ctx, hard, { width: "narrow", ...opts.hard }),
   ];
   const v = values(ctx.desk);
@@ -379,7 +354,7 @@ function limitsSection(ctx) {
   return section(
     "limits",
     "Limits",
-    "Each turn — a message and the work it sets off — stops to ask whether to go on when it reaches “ask at”, and stops at “stop at”. An unattended run goes on to the stop. Leave a field empty for its default.",
+    "Each turn — a message and the work it sets off — stops at “stop at”. It asks you whether to go on only if you set an “ask at” below that. Leave a field empty for its default.",
     ...row(
       "Each turn",
       h(
@@ -514,16 +489,16 @@ function judgeSection(ctx, redraw) {
     none: "The judge is not asked anything.",
     plan: "It is shown the task and the plan, which is all the plan gate needs. The default.",
     "plan+summaries": "Reserved: for now the judge sees what it sees at “The task and plan”.",
-    full: "When it answers a run's requests it also sees what a call would write or send, and the model may ask it questions itself (judge-* tools). Credentials are never shown to it.",
+    full: "When it answers a command it also sees what the call would send, and the model may ask it questions itself (judge-* tools). Credentials are never shown to it.",
   };
   return section(
     "judge",
     "Judge",
-    "The judge (Jev) scores plans before a task acts, and answers a run's requests when you choose it to.",
+    "The judge (Jev) scores plans before a task acts, and answers its commands before you're asked (Approvals, above).",
     ...row("Status", h("p", { class: "hint" }, status)),
     ...row("What it sees", choice(ctx, "jev.content", levels, redraw), h("p", { class: "hint" }, contentHint[content] || "")),
-    ...row("Allows a request at", input(ctx, "jev.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a run's request go ahead. Anything below, or no answer, is a no.")),
-    ...row("Waits", input(ctx, "jev.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer; a judge that doesn't answer in time is a no.")),
+    ...row("Allows a command at", input(ctx, "jev.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a command go ahead. Below that, or with no answer, you're asked.")),
+    ...row("Waits", input(ctx, "jev.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
     ...row("Model", input(ctx, "jev.model")),
     ...row(
       "Prices",

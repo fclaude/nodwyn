@@ -26,6 +26,18 @@ type rig struct {
 
 func newRig(t *testing.T, noConfirm bool, turns ...fake.Turn) *rig {
 	t.Helper()
+	return newRigWith(t, noConfirm, nil, turns...)
+}
+
+// newAskingRig is newRig with writes that ask (approval.writes = "ask"), for
+// tests of the write prompt and its answers.
+func newAskingRig(t *testing.T, turns ...fake.Turn) *rig {
+	t.Helper()
+	return newRigWith(t, false, func(c *config.Config) { c.Approval.Writes = config.ApproveAsk }, turns...)
+}
+
+func newRigWith(t *testing.T, noConfirm bool, adjust func(*config.Config), turns ...fake.Turn) *rig {
+	t.Helper()
 	repo := t.TempDir()
 	os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
 	srv := fake.New(turns...)
@@ -34,6 +46,9 @@ func newRig(t *testing.T, noConfirm bool, turns ...fake.Turn) *rig {
 	cfg.Control.URL = srv.URL
 	cfg.Control.Model = "test-model"
 	cfg.Loop.MaxToolCalls = 3
+	if adjust != nil {
+		adjust(&cfg)
+	}
 	logb := &bytes.Buffer{}
 	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: noConfirm, LogWriter: logb})
 	if err != nil {
@@ -116,7 +131,7 @@ func TestTurnWithToolCall(t *testing.T) {
 }
 
 func TestConfirmYesAndNo(t *testing.T) {
-	r := newRig(t, false,
+	r := newAskingRig(t,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w1", Name: "fs-write", Args: map[string]any{"path": "new.txt", "content": "hi\n"}}}},
 		fake.Turn{Content: "written"},
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w2", Name: "fs-write", Args: map[string]any{"path": "new.txt", "content": "bye\n"}}}},
@@ -271,7 +286,7 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 	w := func(id, path, content string) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-write", Args: map[string]any{"path": path, "content": content}}}}
 	}
-	r := newRig(t, false,
+	r := newAskingRig(t,
 		w("1", "a/one.txt", "1"), w("2", "a/two.txt", "2"), w("3", "b/three.txt", "3"), fake.Turn{Content: "turn one done"},
 		w("4", "a/four.txt", "4"), w("5", ".nodwyn/allow.toml", "x"), fake.Turn{Content: "turn two done"},
 	)

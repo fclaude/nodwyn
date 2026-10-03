@@ -30,8 +30,9 @@ through the guard like a read, and a relative path starts at the folder.
 
 \begin{careful}
 \file{.nodwyn/} is a protected path: every write to it is a security
-confirm, so no standing approval, turn approval or \code{-{}-yolo} can let
-the model change your \code{init.scm} behind your back. Files you
+confirm, so no standing approval (writes in the folder going ahead
+included), turn approval or \code{-{}-yolo} can let the model change your
+\code{init.scm} behind your back. Files you
 \code{load} from elsewhere (\file{dev/} above) are ordinary files; if you
 keep tools there, review changes to them as you would review code, because
 they run with your authority in the next session.
@@ -126,7 +127,7 @@ and the \code{shell-exec} inside it. A tool is never a way around the
 guard; it is a way to give an action a good name and a good description.
 Pair a tool that runs a command with a standing approval for exactly that
 command (\code{commands = ["wc -l"]} in \file{.nodwyn/allow.toml}), and it
-will run without asking.
+will run without asking anyone, the judge included.
 
 \section{The pattern that wins: \texttt{run}}
 

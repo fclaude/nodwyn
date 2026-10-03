@@ -456,30 +456,31 @@ func TestUnattendedRunContinuesOnProgressAndStopsWithout(t *testing.T) {
 }
 
 // Its tool confirms are declined without asking; with --yolo ordinary ones
-// are answered yes. Either way the run still ends on the model's word.
+// are answered yes. A write in the folder needs neither (approval.writes,
+// ADR 35). Either way the run still ends on the model's word.
 func TestUnattendedRunAnswersConfirmsItself(t *testing.T) {
 	write := fake.ToolCall{ID: "w", Name: "fs-write", Args: map[string]any{"path": "out.txt", "content": "hello\n"}}
+	command := fake.ToolCall{ID: "c", Name: "shell-exec", Args: map[string]any{"cmd": "true", "args": []any{}}}
 	for _, yolo := range []bool{false, true} {
 		state, history, repo := driveUnattended(t, config.Default(), 2, yolo,
-			fake.Turn{Content: "1. write the file"},
-			fake.Turn{ToolCalls: []fake.ToolCall{write, stepDone("s", 1)}},
+			fake.Turn{Content: "1. write the file and check it"},
+			fake.Turn{ToolCalls: []fake.ToolCall{write, command, stepDone("s", 1)}},
 			fake.Turn{Content: "done\n" + CompleteLine})
 		if state.Status != "completed" {
 			t.Fatalf("yolo=%v: %+v", yolo, state)
 		}
-		_, err := os.Stat(filepath.Join(repo, "out.txt"))
-		if written := err == nil; written != yolo {
-			t.Fatalf("yolo=%v: file written = %v", yolo, written)
+		if _, err := os.Stat(filepath.Join(repo, "out.txt")); err != nil {
+			t.Fatalf("yolo=%v: the write in the folder did not go ahead: %v", yolo, err)
 		}
 		var answer string
 		for _, ev := range history {
 			var d log.GuardDecision
-			if ev.Kind == log.KindGuardDecision && ev.Decode(&d) == nil && d.Prim == "fs-write" {
+			if ev.Kind == log.KindGuardDecision && ev.Decode(&d) == nil && d.Prim == "shell-exec" {
 				answer = d.Answer
 			}
 		}
 		if want := map[bool]string{false: "no", true: "yes"}[yolo]; answer != want {
-			t.Fatalf("yolo=%v: fs-write answered %q", yolo, answer)
+			t.Fatalf("yolo=%v: shell-exec answered %q", yolo, answer)
 		}
 	}
 }

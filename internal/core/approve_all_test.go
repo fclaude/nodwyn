@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/log"
 )
@@ -64,7 +65,7 @@ func approvalChanges(t *testing.T, s *Session) []log.ApprovalChange {
 // turned it on, and installs nothing; a protected path still asks, and
 // turned off, everything asks again. Each switch is in the log.
 func TestApproveAllAnswersOrdinaryWritesAndCommands(t *testing.T) {
-	r := newRig(t, false)
+	r := newAskingRig(t)
 	a := answering(t, r.s, "n")
 	ctx := context.Background()
 	if err := r.s.SetApproveAll(true, "unix:uid=1"); err != nil {
@@ -122,7 +123,7 @@ func TestApproveAllAnswersOrdinaryWritesAndCommands(t *testing.T) {
 
 // Turned on while an ordinary write waits for an answer, it answers it.
 func TestApproveAllAnswersWhatIsWaiting(t *testing.T) {
-	r := newRig(t, false)
+	r := newAskingRig(t)
 	a := answering(t, r.s, "")
 	done := make(chan error, 1)
 	go func() {
@@ -157,7 +158,9 @@ func TestApproveAllIsNotScheme(t *testing.T) {
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define approve-all #t)\n(define dont-ask #t)\n"), 0o644)
-	s, err := New(Options{Repo: repo, Paths: diskOptions(t).Paths, Config: diskOptions(t).Config})
+	cfg := diskOptions(t).Config
+	cfg.Approval.Writes = config.ApproveAsk // a write is the confirm asked
+	s, err := New(Options{Repo: repo, Paths: diskOptions(t).Paths, Config: cfg})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -117,10 +117,13 @@ an Ollama server, or any chat-completions server with a key bound in
 `bindings.toml`. There is no built-in default; when it is missing, nodwyn says
 what to add. Model requests honor
 `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, so a sandbox whose only egress is
-an allowlist proxy can still reach the model. Every write and every
-command is confirmed by you, with a diff for writes and edits, unless a
-standing approval covers it: command prefixes and write paths in
-`.nodwyn/allow.toml` (ADR 17). Writes to the session's scratch directory,
+an allowlist proxy can still reach the model. What asks you is
+`[approval]` (ADR 35). By default a write inside the repository goes ahead,
+its diff logged and its previous content kept for undo, and a command no
+standing approval covers (command prefixes in `.nodwyn/allow.toml`, ADR 17)
+goes to the judge first, then to you when it refuses or there is no judge.
+A protected path, content that looks like a credential and a command built
+from tool output always ask. Writes to the session's scratch directory,
 outside the repository, ask only when they need a security confirm (ADR 28).
 Session logs live in `~/.local/share/nodwyn/sessions/`.
 Resume restores the conversation and appends to that same log. It reloads current
@@ -163,14 +166,12 @@ Turn limits live under `[budget]` in `config.toml`:
 
 ```toml
 [budget]
-tool_calls_soft = 50
 tool_calls_hard = 500
-wall_soft = "20m"
 wall_hard = "4h"
-tokens_soft = 1000000
 tokens_hard = 10000000
-actions_soft = 25
 actions_hard = 200
+# tool_calls_soft, wall_soft, tokens_soft, actions_soft: unset, each is its
+# hard limit, so no checkpoint asks (ADR 35). Set one lower to be asked there.
 ```
 
 At a checkpoint, `y` doubles the soft limit up to its hard ceiling, `n` stops,
@@ -277,17 +278,19 @@ with their history, attachments (documents and images),
 project notes and the workspace. Connections adds and reviews MCP servers
 and manages credentials (keys, OAuth2 accounts, and where each may go);
 Workspaces names folders, their kind (documents, code or both) and mounted
-folders; Settings sets the mode Home starts a task in (a chat, a run or an
-unattended run), the limits, the model and its tuning, the judge and the
-context window, and unlocks the keychain or sets its passphrase (a keychain
+folders; Settings sets what a task does without asking you (writes in its
+folder, and who answers a command: the judge, then you, by default), the
+limits, the model and its tuning, the judge and the context window, and
+unlocks the keychain or sets its passphrase (a keychain
 may have none, which is not recommended). It runs as
 `nodwyn ui` for a daemon, as `nodwyn app` without one (see [the app](docs/app.md)),
 and on a phone paired by name. See [the browser guide](docs/browser.md).
 
 ### Background runs
 
-Home in the console starts a run when Settings › Starting tasks (or the
-choice beside Attach) says so. From a terminal, start `nodwyn daemon`, then
+Every task the console starts is a chat; a request that takes long is a
+message like any other (ADR 35). For scripts and benchmarks, `nodwyn run`
+carries a task to its end with no conversation. Start `nodwyn daemon`, then
 submit a bounded task:
 
 ```sh

@@ -111,7 +111,9 @@ func TestScenarios(t *testing.T) {
 			}
 			confirms := 0
 			confirmer := guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { confirms++; return false, nil })
-			checkers := append(prim.Checkers(o, nil, nil), guard.Taint{Policy: "deny"}, guard.TextSecret{Scanner: l1.New()})
+			// Writes in the folder go ahead, as sessions have them by
+			// default (approval.writes, ADR 35).
+			checkers := append(prim.Checkers(o, nil, nil), guard.Taint{Policy: "deny"}, guard.TextSecret{Scanner: l1.New()}, guard.FolderWrites{})
 			in.SetGate(guard.New(confirmer, recorder{nlog.New(&logBuf, "exfil")}, checkers...))
 
 			ctx := scheme.WithOrigin(context.Background(), scheme.OriginModel)

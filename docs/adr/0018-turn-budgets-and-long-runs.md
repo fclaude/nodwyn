@@ -1,6 +1,6 @@
 # ADR 0018: Turn budgets and long-running turns
 
-- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01; the run's plan carried across its turns 2026-10-02)
+- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01; the run's plan carried across its turns 2026-10-02); amended by ADR 35 (soft limits off by default; the console starts only chats)
 - Date: 2026-09-21
 
 ## Context
@@ -330,3 +330,15 @@ provider says it read from its cache now counts a tenth of one
 of the server. A provider that does not report its cache counts in full, as
 before, and the console's "Tokens sent" counts the same way. The spend
 limit is unchanged: it counts what requests cost.
+
+## A chat is the way to work — 2026-10-02
+
+ADR 35 changes two things here. The soft limits default to the hard ones
+(500 tool calls, 10 million tokens, 200 actions, 4 h), so no checkpoint
+asks unless the person sets one lower; a soft limit the file leaves unset
+follows its hard one. And "Runs from the console" is withdrawn: Home starts
+every task as a chat, `[tasks]` is gone (a file that has it still loads),
+and the console neither starts nor resumes runs. `nodwyn run` stays as a
+batch tool for scripts and benchmarks, with its flags as above; its
+unattended runs' writes in the folder are a standing approval by default
+(`[approval] writes`), which §5 already allowed.

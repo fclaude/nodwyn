@@ -19,7 +19,13 @@ func choice(allow float64) map[string]any {
 	return map[string]any{"choice": c, "confidence": 0.9, "probabilities": map[string]any{"allow": allow, "deny": 1 - allow}}
 }
 
-func judged(o *Options) { o.NoConfirm, o.JudgeApprove, o.Unattended = false, true, true }
+// judged makes an unattended run's session whose confirms the judge
+// answers. Its writes ask (approval.writes), so a write is the confirm
+// these tests put to the judge.
+func judged(o *Options) {
+	o.NoConfirm, o.JudgeApprove, o.Unattended = false, true, true
+	o.Config.Approval.Writes = config.ApproveAsk
+}
 
 // quiet turns off the evidence loop's reminders, which an unattended session
 // gets (docs/scheme.md §9): these tests pin each model reply.

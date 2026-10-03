@@ -28,11 +28,14 @@ people who use it every day set it up, work with it, and keep it honest.
 \begin{itemize}
   \item Name the file, the pattern to follow and the test to run. A local
     model does well with a paragraph and badly with a page.
-  \item Read every diff at the confirm; an \code{fs-write} of a whole
-    existing file deserves suspicion, an \code{fs-edit} is usually small.
-  \item For a larger change: commit first, answer \key{T} for the turn, and
-    review with \code{git diff} after.
-  \item When a turn goes sideways, abort it (\key{Ctrl-C}, or Abort in the
+  \item Read the diffs as they go by: every write is shown with its diff,
+    whether or not it asked. An \code{fs-write} of a whole existing file
+    deserves suspicion; an \code{fs-edit} is usually small.
+  \item For a larger change: commit first, and review with \code{git diff}
+    after. A write you do not want is one \code{git checkout} away for a
+    committed file, and one \code{nodwyn undo} or Restore away for any
+    other.
+  \item When a turn goes sideways, stop it (\key{Ctrl-C}, or Stop in the
     console) and say what you want differently. The log keeps what
     happened.
 \end{itemize}

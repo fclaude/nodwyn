@@ -26,12 +26,14 @@ const (
 
 // settable is what Settings may change in config.toml (settings.write), by
 // dotted name, and the kind of value each takes; config.Parse judges the
-// value. What decides where content goes or what nodwyn may do is not here:
-// the model's address and key (settings.control.write), the judge's
-// address, credentials and bindings, the egress proxy and the [policy]
-// table are set where they are reviewed, or in config.toml by hand.
+// value. Settings changes only on the computer nodwyn runs on (ADR 30), so
+// what a task asks a person about, [approval] (ADR 35), is here. What
+// decides where content goes is not: the model's address and key
+// (settings.control.write), the judge's address, credentials and bindings,
+// the egress proxy and the [policy] table are set where they are reviewed,
+// or in config.toml by hand.
 var settable = map[string]settingKind{
-	"tasks.mode": text, "tasks.approval": text, "tasks.turns": whole, "tasks.wall": text,
+	"approval.writes": text, "approval.commands": text,
 
 	"budget.tool_calls_soft": whole, "budget.tool_calls_hard": whole,
 	"budget.tokens_soft": whole, "budget.tokens_hard": whole,
@@ -186,8 +188,8 @@ func (s *server) settingsWrite(req request, _ *peer) (any, *rpcError) {
 func withTables(held, parsed config.Config, tables map[string]bool) config.Config {
 	for table := range tables {
 		switch table {
-		case "tasks":
-			held.Tasks = parsed.Tasks
+		case "approval":
+			held.Approval = parsed.Approval
 		case "budget":
 			held.Budget = parsed.Budget
 		case "loop":

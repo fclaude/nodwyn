@@ -27,10 +27,15 @@ func shortDir(t *testing.T) string {
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	return dir
 }
+
+// options are a daemon's. Writes ask (approval.writes, ADR 35), so a write
+// is the prompt these tests answer.
 func options(t *testing.T) core.Options {
 	t.Helper()
 	dir := t.TempDir()
-	return core.Options{Config: config.Default(), Paths: config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data")), Version: "test"}
+	cfg := config.Default()
+	cfg.Approval.Writes = config.ApproveAsk
+	return core.Options{Config: cfg, Paths: config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data")), Version: "test"}
 }
 func start(t *testing.T, o core.Options) (string, func()) {
 	t.Helper()

@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -79,7 +80,9 @@ type Config struct {
 	Jev     Jev    `toml:"jev"`
 	Docs    Docs   `toml:"docs"`
 	MCP     MCP    `toml:"mcp"`
-	Tasks   Tasks  `toml:"tasks"`
+	// Approval is what a session a person can answer does without asking
+	// (ADR 35).
+	Approval Approval `toml:"approval"`
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].
 	Models map[string]Model `toml:"models"`
@@ -97,54 +100,40 @@ type MCP struct {
 	Egress string `toml:"egress"`
 }
 
-// Tasks is how the console starts a task unless the person chooses
-// otherwise for that one: its default running mode, and the limits of a run
-// it starts. nodwyn run takes these from its own flags.
-type Tasks struct {
-	// Mode is "chat" (the default: a conversation, each request answered as
-	// it comes), "run" (it goes on turn after turn, asking before each next
-	// one; ADR 18) or "unattended" (a run nobody answers, ADR 18 §5).
-	Mode string `toml:"mode"`
-	// Approval is who answers a run's ordinary confirms: "ask" (a person;
-	// in an unattended run nobody, so they are declined unless a standing
-	// approval covers them), "judge" (the judge decides, as --judge) or
-	// "yes" (as --yolo). Security confirms are never answered yes, and a
-	// chat always asks.
-	Approval string `toml:"approval"`
-	// Turns and Wall are a run's turn limit (1–10000) and how long it may
-	// take in all, e.g. "2h".
-	Turns int    `toml:"turns"`
-	Wall  string `toml:"wall"`
+// Approval is what a session a person can answer does without asking
+// them: the console's, the TUI's, the plain front-end's and a supervised
+// run's (ADR 35). nodwyn run's flags and --no-confirm replace it for their
+// own sessions; writes applies to every session.
+// Neither setting waives a security confirm or relaxes a deny.
+type Approval struct {
+	// Writes is "allow" (the default: a write the pin lets through goes
+	// ahead, its diff logged and its previous content kept) or "ask".
+	Writes string `toml:"writes"`
+	// Commands is who answers any other ordinary confirm no standing
+	// approval covers — a command, input to a running program, an MCP tool
+	// that acts: "judge" (the default: the judge, and the person when it
+	// refuses or there is none), "ask" (the person) or "allow" (yes, as
+	// --yolo answers).
+	Commands string `toml:"commands"`
 }
 
-// The tasks.mode and tasks.approval settings.
+// The approval.writes and approval.commands settings.
 const (
-	ModeChat       = "chat"
-	ModeRun        = "run"
-	ModeUnattended = "unattended"
-
+	ApproveAllow = "allow"
 	ApproveAsk   = "ask"
 	ApproveJudge = "judge"
-	ApproveYes   = "yes"
 )
 
-func (t Tasks) validate() error {
-	switch t.Mode {
-	case ModeChat, ModeRun, ModeUnattended:
+func (a Approval) validate() error {
+	switch a.Writes {
+	case ApproveAllow, ApproveAsk:
 	default:
-		return fmt.Errorf("tasks.mode must be %q, %q or %q, got %q", ModeChat, ModeRun, ModeUnattended, t.Mode)
+		return fmt.Errorf("approval.writes must be %q or %q, got %q", ApproveAllow, ApproveAsk, a.Writes)
 	}
-	switch t.Approval {
-	case ApproveAsk, ApproveJudge, ApproveYes:
+	switch a.Commands {
+	case ApproveJudge, ApproveAsk, ApproveAllow:
 	default:
-		return fmt.Errorf("tasks.approval must be %q, %q or %q, got %q", ApproveAsk, ApproveJudge, ApproveYes, t.Approval)
-	}
-	// run.State's own limit: a run is finite.
-	if t.Turns < 1 || t.Turns > 10000 {
-		return fmt.Errorf("tasks.turns must be from 1 to 10000, got %d", t.Turns)
-	}
-	if d, err := time.ParseDuration(t.Wall); err != nil || d <= 0 {
-		return fmt.Errorf("tasks.wall must be a positive duration, got %q", t.Wall)
+		return fmt.Errorf("approval.commands must be %q, %q or %q, got %q", ApproveJudge, ApproveAsk, ApproveAllow, a.Commands)
 	}
 	return nil
 }
@@ -406,13 +395,15 @@ func Default() Config {
 		Window: Window{HighWater: 60 * 1024, LowWater: 30 * 1024, MaxResultTokens: 3 * 1024, OutputReserve: 16 * 1024},
 		Policy: Policy{Unbound: "deny", L1: L1{Enabled: true}},
 		Loop:   Loop{MaxToolCalls: 0, RequestTimeout: "30m", ShellTimeout: "10m"},
-		Budget: Budget{ToolCallsSoft: 50, ToolCallsHard: 500, TokensSoft: 1_000_000, TokensHard: 10_000_000, ActionsSoft: 25, ActionsHard: 200, WallSoft: "20m", WallHard: "4h"},
+		// The soft limits are the hard ones: no checkpoint interrupts a turn
+		// unless the person asks for one (ADR 35).
+		Budget: Budget{ToolCallsSoft: 500, ToolCallsHard: 500, TokensSoft: 10_000_000, TokensHard: 10_000_000, ActionsSoft: 200, ActionsHard: 200, WallSoft: "4h", WallHard: "4h"},
 		// Jev defaults: no service (nodwyn runs file-only, gate is "plan"), full
 		// content when one is configured. A developer points jev.url at their
 		// instance to enable the gate (ADR 19).
-		Jev:   Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan, ApproveThreshold: 0.8},
-		Docs:  Docs{GoogleCredential: "google", GoogleUploadURL: GoogleUploadURL},
-		Tasks: Tasks{Mode: ModeChat, Approval: ApproveAsk, Turns: 20, Wall: "2h"},
+		Jev:      Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan, ApproveThreshold: 0.8},
+		Docs:     Docs{GoogleCredential: "google", GoogleUploadURL: GoogleUploadURL},
+		Approval: Approval{Writes: ApproveAllow, Commands: ApproveJudge},
 	}
 }
 
@@ -440,9 +431,13 @@ func Parse(raw []byte) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if undec := md.Undecoded(); len(undec) > 0 {
+	// [tasks] chose how the console started a task (ADR 18); a chat is the
+	// only way now (ADR 35), and a file that still has the table loads.
+	undec := slices.DeleteFunc(md.Undecoded(), func(k toml.Key) bool { return len(k) > 0 && k[0] == "tasks" })
+	if len(undec) > 0 {
 		return Config{}, fmt.Errorf("unknown keys: %v", undec)
 	}
+	c.Budget.softFollowsHard(md)
 	c.Window.Fixed = md.IsDefined("window", "high_water") || md.IsDefined("window", "low_water")
 	if md.IsDefined("loop", "max_tool_calls") && c.Loop.MaxToolCalls <= 0 {
 		return Config{}, fmt.Errorf("loop.max_tool_calls must be positive when set")
@@ -539,7 +534,7 @@ func (c Config) Validate() error {
 	if err := c.Docs.validate(); err != nil {
 		return err
 	}
-	if err := c.Tasks.validate(); err != nil {
+	if err := c.Approval.validate(); err != nil {
 		return err
 	}
 	switch c.Jev.Content {

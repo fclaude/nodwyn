@@ -137,22 +137,29 @@ knows where the edges are.
     wherever \code{XDG\_CONFIG\_HOME} and \code{XDG\_DATA\_HOME} put them
     (all but the session's scratch directory, which lives in the data
     directory), and more.
-  \item \textbf{Every write and every command asks}, unless you have given a
-    standing approval for it, and a few paths always ask: \file{.nodwyn/},
-    \file{.git/}, \file{.github/}, \file{.gitea/}, \file{scripts/} and the
-    \file{Makefile}, because what is written there later runs with your
-    authority.
+  \item \textbf{A write in the folder can be undone.} By default it goes
+    ahead without asking: its diff is logged and shown, and the file's
+    previous content is kept, so it can be put back. A few paths always
+    ask, every time: \file{.nodwyn/}, \file{.git/}, \file{.github/},
+    \file{.gitea/}, \file{scripts/} and the \file{Makefile}, because what is
+    written there later runs with your authority. Content that looks like a
+    key asks too.
+  \item \textbf{A command runs only when something says yes}: a standing
+    approval, the judge, which is asked first by default, or you, when the
+    judge refuses or there is none.
   \item \textbf{No key leaves unless a binding says where it may go}, and
     content that came from your files or from a command's output is refused
     on its way to a destination no binding names.
 \end{itemize}
 
-And what it does \emph{not} promise: that a command you approve is safe. If
-you say yes to \code{bash -c "rm -rf build"}, it runs; if you say yes to
-\code{curl}, it reaches the network with your access (the guard flags network
-tools by name so you notice). The guard makes you
-the decision-maker; it does not make decisions wise. Read the reason lines
-it shows you. They are written to tell you what a yes would do.
+And what it does \emph{not} promise: that a command you or the judge
+approve is safe. If you say yes to \code{bash -c "rm -rf build"}, it runs;
+if you say yes to \code{curl}, it reaches the network with your access (the
+guard flags network tools by name so you notice). The guard decides who
+answers; it does not make the answers wise. Read the reason lines it shows
+you. They are written to tell you what a yes would do. If you want every
+command to be yours to answer, Chapter~\ref{ch:primitives} shows the
+setting.
 
 \begin{tip}
 The fastest way to become good with \nodwyn{} is to read its log. Every

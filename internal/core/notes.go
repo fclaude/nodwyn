@@ -74,9 +74,10 @@ func (s *Session) SaveNotes(text, actor string) (string, error) {
 func (s *Session) Workspace() config.Workspace { return s.workspace }
 
 // Restore writes a kept version of a file back on a person's behalf. It
-// applies the registered fs-write with user origin, so the guard shows the
-// change and asks like any other write, and the current content is itself
-// kept first: a restore can be undone the same way. The outcome arrives as a
+// applies the registered fs-write with user origin, so the guard decides it
+// like any other write (it asks when approval.writes does) and logs its
+// diff, and the current content is itself kept first: a restore can be
+// undone the same way. The outcome arrives as a
 // policy.result event named "restore" carrying the returned ID.
 func (s *Session) Restore(path, hash, actor string) (string, error) {
 	if actor == "" {

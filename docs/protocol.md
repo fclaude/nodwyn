@@ -243,7 +243,11 @@ Failure to record a guard decision prevents the host operation.
 prompt ID. `approval.change` records the explicit scope, derived kind/prefix
 and actor. File-backed approvals and in-process terminal replies need not have
 an RPC actor. Resume reads these as history and never reinstalls transient
-authority.
+authority. A confirm `[approval]` answers without a person (ADR 35) has
+actor `judge` (the judge allowed it) or `setting` (`commands = "allow"`);
+a write that `writes = "allow"` lets through is an allow with checker
+`standing` and the diff in `detail`. When the judge refuses, the prompt the
+person gets carries the judge's answer among its reasons.
 
 `llm.resp` `usage` may carry `cached_tokens` (the prompt tokens the
 provider read from its cache; absent is unknown, not 0), `cache_write_tokens`,
@@ -362,11 +366,11 @@ lock sessions take when they save the same answer, and writes it 0600.
 dotted name, to `{value, default, set}`: the value tasks opened now get
 (`null` for an optional one left unset, such as `control.temperature`), its
 default, and whether `config.toml` sets it. `judge` says whether a judge can
-answer a run's confirms now: `jev.content` is not `none` and a `jev-key` is
-in the unlocked keychain. `settings.write` takes `set`, from those names to
-new values; `null` removes a key so its default applies. It accepts only
-`tasks.mode`, `tasks.approval`, `tasks.turns` and `tasks.wall` (how the
-console starts a task, below), the `budget.*` limits, `loop.request_timeout`
+answer confirms now: `jev.content` is not `none` and a `jev-key` is in the
+unlocked keychain. `settings.write` takes `set`, from those names to new
+values; `null` removes a key so its default applies. It accepts only
+`approval.writes` and `approval.commands` (what a task does without asking,
+ADR 35), the `budget.*` limits, `loop.request_timeout`
 and `loop.shell_timeout`, the `window.*` marks, the `[control]` model's
 tuning (`num_ctx`, `max_output`, `output_field`, `keep_alive`,
 `temperature`, `seed`, `vision`, `cache_key` and the `price_*` entries), `jev.content`,
@@ -625,12 +629,11 @@ and obtain a new snapshot rather than receiving an unbounded backlog.
   and the flags are never read back from the log: omitted, the run resumes
   supervised.
 
-Run methods are available through local RPC/CLI and the browser, which
-starts a run from Home with the limits and mode of `[tasks]` in
-`config.toml` (`mode`: `chat`, `run` or `unattended`; `approval`: `ask`,
-`judge` or `yes`; `turns`; `wall`), follows the session, answers its
-prompts, and stops (`run.stop` or `session.abort`) or resumes
-(`run.resume`) it. A run whose requests nobody answers by hand
+Run methods are for `nodwyn run`, a batch tool for scripts and benchmarks
+(ADR 35), over local RPC. The browser starts every task as a chat
+(`session.open`, `session.send`); it shows a run started elsewhere, answers
+its prompts and stops it (`session.abort`). A run whose requests nobody
+answers by hand
 (`auto_approve`, `judge` or `unattended`) cannot be started or resumed by an
 actor relayed `via` a paired device. While a
 run is active, session `busy` includes the between-turn wait. `session.send`,

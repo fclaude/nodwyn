@@ -62,7 +62,7 @@ export function renderWorkspaces(root, ctx) {
         h("span", { class: "mono", title: folder }, shortPath(folder, desk.home)),
         mounts.length ? h("span", {}, mounts.map((m) => `${shortPath(m.path, desk.home)} (${m.access === "write" ? "read and write" : "read only"})`).join(" · ")) : null,
         ws?.error ? h("span", { class: "error" }, ws.error) : null,
-        ws ? h("span", {}, ws.git ? "A git repository: git is the undo." : "Not a git repository: nodwyn keeps the previous version of a file before it changes it.") : null,
+        ws ? h("span", {}, ws.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the rest." : "Not a git repository: nodwyn keeps the previous version of a file before it changes it.") : null,
         h("span", { class: "ws-count" }, count ? `${count.tasks} task${count.tasks === 1 ? "" : "s"} · ${ago(count.last)}` : "No tasks yet"),
       ),
       h("div", { class: "end" }, actions),

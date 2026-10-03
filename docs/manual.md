@@ -206,24 +206,28 @@ input is a script; a keychain without one opens without asking),
 `--max-tool-calls N` (hard call override), `--budget-wall 2h`,
 `--budget-tokens N`, `--budget-actions N` and `--budget-cost USD` (a spend
 limit for the session). The `[budget]` settings and
-checkpoint behavior are described in the README. Defaults are 50/500 calls,
-20m/4h wall time, 1M/10M reported model tokens and 25/200 irreversible host
-attempts (soft/hard), and no spend limit. Legacy `loop.max_tool_calls` remains an explicit override.
+checkpoint behavior are described in the README. Defaults stop a turn at 500
+calls, 4h wall time, 10M reported model tokens or 200 irreversible host
+attempts, and set no spend limit. The soft limits are the hard ones unless
+you set them lower, so by default no checkpoint asks (ADR 35); a soft limit
+left unset follows its hard one. Legacy `loop.max_tool_calls` remains an explicit override.
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
 The console's Settings page changes these limits, the timeouts
 (`loop.request_timeout`, `loop.shell_timeout`), the window, the main
-model's tuning, the judge's settings and how Home starts a task (`[tasks]`:
-a chat, a run or an unattended run, who answers a run's requests, its turns
-and time), keeping every other line of `config.toml` as written. Tasks
+model's tuning, the judge's settings and what a task does without asking
+(`[approval]`, "Confirms" below), keeping every other line of `config.toml`
+as written. Tasks
 started afterwards get the new values; open ones keep theirs ([the browser
 view](browser.md), "Settings").
 
 Line mode is one client of several: `nodwyn tui` is a full-screen terminal
 client ([the TUI](tui.md)), `nodwyn app` and `nodwyn ui` show the console in
 a window or a browser ([the app](app.md), [the browser view](browser.md)),
-and `nodwyn run` hands a bounded task to the daemon ([runs](runs.md)).
+and `nodwyn run` carries a task to its end with no conversation, a batch
+tool for scripts and benchmarks ([runs](runs.md)). Everywhere else a task is
+a chat: a request that takes long is a message like any other.
 `nodwyn -h` lists every command and flag.
 
 ### Programs that keep running
@@ -245,7 +249,9 @@ last commit). They are read-only and need no approval: git runs with fixed
 arguments, with external diff drivers, text conversion, the file system
 monitor and the pager switched off. The status names every changed file; a
 diff leaves out the contents of credential-shaped files.
-Outside git, kept versions are the undo (`nodwyn versions`, `nodwyn undo`).
+Kept versions are the undo for what git cannot give back: before a write,
+nodwyn keeps a file's content unless git has it committed and unchanged
+(`nodwyn versions`, `nodwyn undo`).
 
 ### The scratch directory
 
@@ -279,7 +285,30 @@ them ("What nodwyn knows here"), through the same guarded save.
 
 ### Confirms
 
-Every write and every command stops for you:
+What asks you is `[approval]` in `config.toml`, which Settings › Approvals
+changes (ADR 35):
+
+```toml
+[approval]
+writes = "allow"    # the default: writes in the folder go ahead; or "ask"
+commands = "judge"  # the default: the judge, then you; "ask": you; "allow": nobody asks
+```
+
+- **Writes** the repository pin lets through go ahead without asking. Each
+  is logged with its diff and shown in the transcript, and the file's
+  previous content is kept first (git keeps what it has committed and
+  unchanged), so `nodwyn undo` or the console's Restore takes it back.
+- **Commands**, and other calls that act such as an MCP tool, that no
+  standing approval covers go to the judge first when one is set up
+  ("The judge (Jev)" below): if it allows the call, it runs; if it refuses,
+  or there is no judge, you are asked, and the prompt says what it answered.
+- **Always you**, whatever `[approval]` says: a write to a protected path,
+  content that looks like a credential, a command built from tool output,
+  a request carrying a credential and an upload.
+
+`[approval]` is for sessions a person answers. `--no-confirm`, `--yolo` and
+`nodwyn run`'s flags decide the confirms of theirs, below; `writes` applies to
+every session. A prompt looks like this (a write, with `writes = "ask"`):
 
 ```
 ─── confirm: fs-edit ("internal/x.go" "old…" "new…")
@@ -298,9 +327,8 @@ allow? [y/N]
   line, its prefix (`go test`, `rg`, …); for a write, the file's directory
   (`internal/scheme/`). Not persisted.
 - `t` — writes only: yes, and approve every further write **until this
-  turn ends**. Use it when you gave a task you intend to review with
-  `git diff` afterwards. The diff of each auto-approved write is logged and
-  shown dimmed as it happens.
+  turn ends** (with `writes = "ask"`). The diff of each auto-approved write
+  is logged and shown dimmed as it happens.
 - `b` — keyed requests only: yes, and save this exact binding (class, host,
   method, position) to `bindings.toml`. It is offered only with
   `policy.unbound = "confirm"`; by default a keyed request no binding covers
@@ -385,7 +413,9 @@ stops the questions for one task: its ordinary writes and commands are
 approved without asking until you uncheck it or the task closes. Protected
 paths and writes that look like a key still ask, and nothing the guard
 refuses is allowed. No Scheme can turn it on, a repository's `init.scm`
-included, and it is never saved: a resumed task asks again.
+included, and it is never saved: a resumed task asks again. Since writes in
+the folder already go ahead by default (`[approval]`, "Confirms" above), it
+matters most for commands: while it is on, the judge is not asked.
 
 Commands you never want to be asked about go in one of two files:
 
@@ -398,8 +428,10 @@ allow_commands = ["go test", "go build", "git status", "git diff", "rg"]
 ```toml
 # <repo>/.nodwyn/allow.toml   (tracked with the repository)
 commands = ["make lint", "make test"]
-writes   = ["internal/", "docs/"]     # write prefixes that never prompt
+writes   = ["internal/", "docs/"]     # write prefixes that never prompt, with writes = "ask"
 ```
+
+A standing command approval runs without the judge being asked.
 
 `.nodwyn/`, `.git/`, `.github/`, `.gitea/`, `scripts/` and `Makefile` always
 prompt, whatever the list says: they hold code that later runs with your
@@ -450,6 +482,14 @@ Every Jev call is a guarded egress: bound credential, L1 redaction of
 what leaves, a `jev.req` log line with origin, size, hash and the answer.
 Set `jev.content = "none"` in `config.toml` to turn it off. Without a
 `jev-key` credential nothing is sent and the loop runs without a gate.
+
+With `[approval] commands = "judge"`, the default, the judge also answers a
+command before you are asked ("Confirms" above). It is shown the task, the
+turn's plan and the command line (at `jev.content = "full"` also what the
+call would send), and the command runs if its probability of allow is at
+least `jev.approve_threshold` (0.8). The decision is Go's: no Scheme can
+approve what the judge refused, and a project's `(approve-refuse? call)`
+can only refuse more. When it refuses, you are asked, and told its answer.
 
 **What the judge used.** The judge reports each request's tokens, never its
 cost, and nodwyn records them in `jev.req` with the model that answered

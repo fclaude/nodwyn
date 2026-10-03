@@ -4,7 +4,7 @@
 Two questions decide whether an agent is useful on real work: does it think
 before it acts, and does it know when it is actually done? \nodwyn{}
 answers both in Scheme: the \emph{plan gate} and the \emph{evidence loop}.
-Supervised runs are built on top of both.
+Runs, the batch tool for scripts and benchmarks, are built on top of both.
 
 \section{The plan gate}
 
@@ -165,22 +165,27 @@ however many times it runs your test script.
 \section{The unattended system prompt}
 
 \code{(system-prompt repo)} returns \code{(unattended-system-prompt repo)}
-when nobody approves, and \code{(interactive-system-prompt repo)}
-otherwise. The unattended one is about how to work (understand the
-request, set up a check that runs, make the whole change, validate by
-running it, report honestly), instead of announcing each call to someone
-who approves it. Both include \code{working-rules}
+when nobody is there to answer what asks (\code{(unattended?)}), and
+\code{(interactive-system-prompt repo)} otherwise. The interactive one
+tells the model that the user follows its work and may be asked to approve
+a command, so it should say in one short line what it is about to do before
+calling a tool. The unattended one is about how to work instead (understand
+the request, set up a check that runs, make the whole change, validate by
+running it, report honestly). Both include \code{working-rules}
 (Chapter~\ref{ch:habits}).
 
-\section{Supervised runs}
+\section{Runs: the batch tool}
 
 \begin{sh}
 nodwyn daemon                       # in one terminal, or the app
 nodwyn run --task task.md --repo . --max-turns 20 --budget-wall 2h
 \end{sh}
 
-A run is a sequence of turns driven by the daemon, not by you typing. Each
-turn:
+A run carries a task to its end with no conversation: a sequence of turns
+driven by the daemon, not by you typing. It is a batch tool, for scripts
+and benchmarks (\file{docs/runs.md}); in the console, a long request is
+just a message (below). Without \code{-{}-unattended} it is a
+\textbf{supervised} run, which asks you between turns. Each turn:
 
 \begin{enumerate}
   \item sends the message \code{(run-turn-prompt task complete-line turn
@@ -213,7 +218,7 @@ nothing else, no file, command or network permission. The run ends when:
     \code{NODWYN\_RUN\_COMPLETE}, which is the model's claim, not proof: read
     the transcript and run your checks;
   \item \code{-{}-max-turns} or \code{-{}-budget-wall} runs out;
-  \item you stop it (\code{nodwyn run stop}, or Abort in the console), or a
+  \item you stop it (\code{nodwyn run stop}, or Stop in the console), or a
     refusal, progress stop or provider failure does.
 \end{itemize}
 
@@ -222,25 +227,28 @@ deadline and turn count, and restores no temporary approvals. A turn that
 was interrupted without a recorded outcome is never assumed to have
 succeeded: the driver refuses to guess.
 
-In the console, Home starts a run instead of a chat when you choose
-\textbf{Run} or \textbf{Unattended run} beside Attach, or make one the
-default in Settings \textrightarrow{} Starting tasks. Settings also says who
-answers a run's requests (you, the judge, or yes, as \code{-{}-yolo}) and
-its turn and time limits; they are \code{[tasks]} in \file{config.toml}:
+The console does not start or resume runs (\adr{35}). Every task it starts
+is a chat, and a request that takes long is a message like any other: the
+turn goes on until the model answers or a hard limit stops it, and with the
+default soft limits no checkpoint interrupts it. The console shows a run
+started elsewhere, and its Stop ends it; a message afterwards goes on with
+the task as a chat. A \file{config.toml} that still has the \code{[tasks]}
+table, which once chose how the console started a task, loads, and the
+table is ignored.
 
-\begin{toml}
-[tasks]
-mode = "run"        # "chat" (the default), "run" or "unattended"
-approval = "ask"    # "ask", "judge" or "yes"
-turns = 20
-wall = "2h"
-\end{toml}
+A run's writes in its folder go ahead as every session's do
+(\code{[approval] writes}, Chapter~\ref{ch:primitives}). Its other confirms
+follow its flags: the judge answers them with \code{-{}-judge}, yes does
+with \code{-{}-yolo}, and an unattended run declines them. A supervised run
+with none of these flags has you to ask, so it is answered as a chat is:
+\code{[approval] commands} first, then you.
 
 \begin{careful}
-A run's \code{-{}-yolo} is a property of \emph{that run}. A daemon left
-running never auto-approves a session someone opens later from a browser;
-Home passes the mode with each run it starts. A paired phone may start only
-a run whose requests it answers itself.
+A run's \code{-{}-yolo}, \code{-{}-judge} or \code{-{}-unattended} is a
+property of \emph{that run}. A daemon left running never carries it into a
+session someone opens later from a browser: that session's confirms follow
+\code{[approval]}. A run whose requests nobody answers by hand cannot be
+started or resumed from a paired device.
 \end{careful}
 
 \subsection{Unattended runs}
@@ -250,11 +258,13 @@ nodwyn run --task task.md --repo . --max-turns 20 --budget-wall 2h --unattended
 \end{sh}
 
 Nobody answers an unattended run, so nothing in it waits for anybody. Tool
-confirms are declined unless a standing approval covers them (with
-\code{-{}-yolo} too, ordinary ones are answered yes; security confirms are
-declined either way). A soft budget checkpoint goes on to the hard limit,
-the spend limit's included: give the run \code{-{}-budget-cost 5} and it
-ends \code{limited} once its known spend reaches \$5, kept on resume.
+confirms are declined unless a standing approval covers them; writes in the
+folder are one by default, so an unattended run writes as a chat does
+(with \code{-{}-yolo} too, ordinary confirms are answered yes; security
+confirms are declined either way). A soft budget checkpoint, if you set one
+lower than its hard limit, goes on to the hard limit, the spend limit's
+included: give the run \code{-{}-budget-cost 5} and it ends \code{limited}
+once its known spend reaches \$5, kept on resume.
 The run checkpoint is answered by the plan: after a turn that marked a step
 done with \code{plan-step}, the next turn starts; after a turn that marked
 none, the run stops and says so, for you to read the turn and
@@ -283,6 +293,13 @@ a call the judge allowed, with \code{call} an association list of
 \code{task}, \code{plan}, \code{prim}, \code{reasons}, \code{path},
 \code{argv}, \code{args} and \code{detail}, and true, or an error,
 declines it. It can only refuse more.
+
+A chat asks the same judge, in the same way, about the commands no
+standing approval covers (\code{[approval] commands = "judge"}, the
+default; Chapter~\ref{ch:primitives}). There a refusal, or a failed judge,
+is not a no: it is a question for you, and the prompt says what the judge
+answered. Security confirms, writes, calls that carry a credential and
+uploads are never put to it there; they go to you.
 
 \begin{puzzle}[ 17: plan only for big asks]
 Write a \code{nodwyn-turn} that records your house plan only when the

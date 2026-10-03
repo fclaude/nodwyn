@@ -821,12 +821,6 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 }
 .save-bar p { margin: 0; font-size: 13.5px; color: var(--ink-2); flex: 1 1 260px; }
 .save-bar p.error { color: var(--bad); }
-/* how the composer's task runs */
-.mode-select {
-  height: 34px; padding: 0 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg);
-  color: var(--ink); font-size: 13px; font-weight: 500; max-width: 100%;
-}
-.mode-note { margin-top: -4px; }
 @media (max-width: 760px) {
   .ws-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); }
   .ws-row .end { grid-column: 2; margin-left: 0; justify-content: flex-start; }

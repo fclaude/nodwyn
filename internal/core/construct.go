@@ -246,6 +246,9 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 	}
 	egressCheckers = append(egressCheckers, uploadChecker{s})
 	checkers := append([]guard.Checker{guard.BindingReload{Policy: s.bindings}}, prim.Checkers(po, s.allow, s.writes, egressCheckers...)...)
+	if s.approval().Writes == config.ApproveAllow {
+		checkers = append(checkers, guard.FolderWrites{})
+	}
 	// One guard for the session. While init.scm loads nobody is listening,
 	// so confirms are denied; the real confirmer is installed afterwards on
 	// the same guard, keeping any checkers init.scm registered.
@@ -348,6 +351,8 @@ func (s *Session) initialize() (err error) {
 		confirmer = judgeConfirmer{s}
 	case o.Unattended:
 		confirmer = guard.DenyAll
+	default:
+		confirmer = s.personConfirmer()
 	}
 	g.SetConfirmer(confirmer)
 	return nil

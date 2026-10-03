@@ -50,7 +50,7 @@ read.
 \code{(answer-call call text)} & answer one call with your own text, as a success \\
 \code{(add-message text)} & say something to the model, as a user message \\
 \code{(log-note text)} & write a note into the log; the model never sees it \\
-\code{(unattended?)} & true when nobody approves the calls: \code{-{}-yolo}, a run's \code{-{}-judge}, an unattended run \\
+\code{(unattended?)} & true when nobody approves the calls: \code{-{}-yolo}, a run's \code{-{}-judge}, an unattended run; \code{[approval]} never makes it true, since a person can still be asked \\
 \code{(plan-required?)}, \code{(plan-recorded?)} & must this turn plan; has it? \\
 \code{(repository)}, \code{(workspace)} & where we are \\
 \code{(model-info [name])}, \code{(model-names)}, \code{(window-limits)} & what we are talking to, and how big the window is \\

@@ -57,25 +57,29 @@ unbound        = "deny"     # or "confirm" for keyed egress no binding covers
 allow_commands = []         # standing approvals, global
 allow_writes   = []
 
+[approval]                  # what a session you answer does without asking
+writes   = "allow"          # or "ask"
+commands = "judge"          # or "ask", or "allow"
+
 [loop]
 request_timeout = "30m"
 shell_timeout   = "10m"
 
-[budget]
-tool_calls_soft = 50
-tool_calls_hard = 500
-tokens_soft     = 1000000
+[budget]                    # per turn: "soft" asks, "hard" stops
+tool_calls_soft = 500       # a soft limit left unset is its hard one,
+tool_calls_hard = 500       #   so nothing asks until you set one lower
+tokens_soft     = 10000000
 tokens_hard     = 10000000
-actions_soft    = 25
+actions_soft    = 200
 actions_hard    = 200
-wall_soft       = "20m"
+wall_soft       = "4h"
 wall_hard       = "4h"
 # cost_soft     = 2.0       # US dollars for the whole task; off unless set
 # cost_hard     = 10.0
 
 [jev]
 content = "plan"            # none | plan | plan+summaries | full
-approve_threshold = 0.8     # --judge allows a call at or above this
+approve_threshold = 0.8     # the judge allows a call at or above this
 # price_input   = 0.5       # US dollars per million tokens: the judge reports
 # price_output  = 2.0       #   its tokens, never its cost
 
@@ -114,9 +118,11 @@ takes them.
 \item[\code{nodwyn ui}] The browser console for a running daemon: tasks,
   approvals inline with their diffs, plans, budgets, changes and their
   history, attachments, notes; Connections for MCP servers, Workspaces for
-  folders, Settings for how tasks start (a chat, a run or an unattended
-  run), their limits, the model and its tuning, the judge and the
-  keychain.
+  folders, Settings for what a task does without asking (Approvals), its
+  limits, the model and its tuning, the judge and the keychain. Every task
+  it starts is a chat, and a long request is a message like any other
+  (\adr{35}); it starts no runs, but shows one that \code{nodwyn run}
+  started.
 \item[\code{nodwyn app}] The daemon, the console and a window in one
   program. It attaches to a daemon if one is running, and otherwise serves
   one itself until you close it.
@@ -191,8 +197,40 @@ unknown'' so the next turn can look before it retries.
 
 \chapter{Confirms}
 
-Every write and every command stops for you, with a reason and, for
-writes, a diff:
+A tool call the guard neither allows nor denies outright is a
+\emph{confirm}. In a session you answer\,---\,the console's, the
+full-screen client's and line mode's\,---\,\code{[approval]} in
+\file{config.toml}, which the console sets in Settings \textrightarrow{}
+Approvals, decides which of them go ahead without you (\adr{35}):
+
+\begin{description}[leftmargin=2.2em]
+\item[\code{writes = "allow"}] the default. A write the pin lets
+  through\,---\,in the repository or folder, the scratch directory or a
+  mount opened for writing\,---\,goes ahead. Its diff is logged and shown
+  in the transcript, and its previous content is kept
+  (Chapter~\ref{ch:undo}). \code{"ask"} makes every write stop for you,
+  with its diff.
+\item[\code{commands = "judge"}] the default. A command no standing
+  approval covers, input to a running program, or an MCP tool that acts is
+  put to the judge first, which is shown the task, the turn's plan and the
+  call. If the judge allows it, it runs, recorded with the judge as the one
+  who answered. If the judge refuses or fails, you are asked, and the
+  prompt says what it answered. Without a judge (no \code{jev-key} stored,
+  \code{jev.content = "none"}, or a locked keychain) you are asked.
+\item[\code{commands = "ask"}] you answer each one.
+\item[\code{commands = "allow"}] they run, recorded with the actor
+  \code{setting}.
+\end{description}
+
+Some confirms neither setting answers, and they come to you, where a run
+nobody watches declines them: a security confirm (below), a write while
+\code{writes} is \code{"ask"}, a call that carries a credential or
+proposes a binding, and an upload. Standing approvals (below) apply first,
+as before. \code{writes} applies to every session, a run's included; the
+flags of \code{nodwyn run} and \code{-{}-no-confirm} decide the other
+confirms of their sessions as before. A confirm that reaches you gives a
+reason and, for a write, a diff; this one is a write with \code{writes =
+"ask"}:
 
 \begin{txt}
 --- confirm: fs-edit ("internal/x.go" "old..." "new...")
@@ -211,7 +249,8 @@ allow? [y/N/a=always under internal//t=all writes this turn]
   \code{denied: not confirmed by the user} and moves on.
 \item[\code{a}] yes, and a \emph{standing approval for this session}: the
   command prefix (\code{go test}, \code{rg}) or the write's directory
-  (\code{internal/scheme/}). Not persisted.
+  (\code{internal/scheme/}). Not persisted. A command made standing this
+  way is not put to the judge again.
 \item[\code{t}] writes only: yes, and every further write \emph{until this
   turn ends}. For a task you intend to review with \code{git diff}
   afterwards. Each auto-approved write's diff is logged and shown dimmed.
@@ -224,8 +263,9 @@ and ``uses the network tool curl'' are the guard telling you what a
 \code{y} would do. A \emph{security} confirm\,---\,a write to \file{.nodwyn/},
 \file{.git/}, CI configuration, \file{scripts/} or the \file{Makefile},
 content that looks like a key, a command line built from tool output, an
-image to attach\,---\,offers only \code{y} and \code{N}, and
-\code{-{}-yolo}, the judge and an unattended run all decline it.
+image to attach\,---\,offers only \code{y} and \code{N}. No standing
+approval and no \code{[approval]} setting answers it, and \code{-{}-yolo},
+a \code{-{}-judge} run and an unattended run all decline it.
 
 \section{Standing approvals}
 
@@ -243,7 +283,9 @@ Prefixes match argv tokens: \code{"go test"} matches \code{go test ./...}
 and \code{/usr/local/go/bin/go test}, not \code{go build}. Denies still
 apply\,---\,only the confirm is waived\,---\,and every use is logged with the
 prefix as reason. Keep command approvals to commands that only read or
-test: nothing that commits, pushes, deletes or reaches the network.
+test: nothing that commits, pushes, deletes or reaches the network. Write
+approvals matter while \code{approval.writes} is \code{"ask"}; by default
+every write in the folder already goes ahead.
 
 \chapter{Keys, models and the judge}
 
@@ -273,8 +315,10 @@ methods = ["POST"]
 A keyed model names the class as its \code{credential}; the binding is
 checked on every request and recorded as \code{egress.check}. The judge
 works the same way with the class \code{jev-key}, bound to its host: once
-that key exists, the default loop's plan gate runs before each message.
-Set \code{jev.content = "none"} to send it nothing, or \code{"full"} to
+that key exists, the default loop's plan gate runs before each message,
+and the judge answers commands before you are asked
+(\code{approval.commands = "judge"}, the default). Set
+\code{jev.content = "none"} to send it nothing, or \code{"full"} to
 give the model the judge as tools (\code{judge-noul}, \code{judge-score},
 \code{judge-choice}) in sessions started after the key was stored. A daemon holds the
 keychain for every session it opens: unlock it once, from its terminal or
@@ -357,7 +401,7 @@ in only if it is bound for every one of those hosts, as the variable named
 contained server and what it can reach. The containers are removed when the
 task closes.
 
-\chapter{Workspaces, attachments and undo}
+\chapter{Workspaces, attachments and undo}\label{ch:undo}
 
 A session's root is the directory it was started in. A workspace can also
 \emph{mount} other folders, read-only or writable, in
@@ -374,19 +418,30 @@ The console's Workspaces page adds, names and removes folders and edits
 their mounts; removing one forgets its name, never the folder.
 Attachments come in through the console's composers (or
 \code{session.attach} over the protocol); Chapter~\ref{ch:io} says what
-happens to them. Where git is not the undo, \nodwyn{} keeps a file's
-previous content before replacing it: \code{nodwyn versions FILE} lists
-them, \code{nodwyn undo FILE} puts back the newest, and the console restores
-any of them through an ordinary, confirmed write.
+happens to them.
+
+Where git is not the undo, \nodwyn{} keeps a file's previous content in
+\file{.nodwyn/versions} before replacing it. Git is the undo for a file it
+has committed and unchanged; outside a git work tree, and for a file with
+uncommitted changes, an untracked one or an ignored one inside it,
+\nodwyn{} keeps the version, so \file{.nodwyn/versions} appears in git
+repositories too, with a \file{.gitignore} that keeps it out of
+\code{git status}. Each write in a git work tree asks git
+(\code{git status}) which case it is. \code{nodwyn versions FILE} lists the
+kept versions, \code{nodwyn undo FILE} puts back the newest, and the
+console's Restore puts back any of them. A Restore is a write like any
+other: it goes ahead without asking unless \code{approval.writes} is
+\code{"ask"}, and what it replaces can be put back the same way.
 
 \chapter{Documents out}
 
 The model's \code{doc-export} turns a Markdown or LaTeX file into Word
 (\file{.docx}), OpenDocument (\file{.odt}) or HTML, picked by the target's
 extension. It needs pandoc 2.15 or later on \code{PATH}; without it the
-tool says what to install. The target is a write like any other: the
-confirm shows source, target and formats, a standing write approval covers
-it, and, where git is not the undo, the previous version is kept. pandoc
+tool says what to install. The target is a write like any other: it goes
+ahead in the folder unless \code{approval.writes} is \code{"ask"}, when
+the confirm shows source, target and formats and a standing write approval
+covers it; where git is not the undo, the previous version is kept. pandoc
 reads the source in its
 sandbox, so an include or a remote image in it reads nothing, and a
 \file{.docx} or \file{.odt} embeds only images that are files in the
@@ -418,8 +473,8 @@ until you choose, the first upload asks you which:
 \begin{itemize}
 \item \emph{Allow by hand} (\code{ask}): every upload asks, naming the
   file, its size and the destination. It is a security confirm, so no
-  standing approval covers it, and \code{-{}-yolo}, \code{-{}-judge} and
-  an unattended run never upload.
+  standing approval covers it, \code{approval.commands} does not answer it,
+  and \code{-{}-yolo}, \code{-{}-judge} and an unattended run never upload.
 \item \emph{Always allow} (\code{allow}): uploads go without asking,
   in a run too, wherever the binding table lets them. Only the computer
   \nodwyn{} runs on can choose it, never a paired phone.
@@ -439,11 +494,16 @@ that host is refused before anything is sent, and each upload is logged as
 
 \chapter{Budgets and runs}
 
-A turn has soft and hard limits on tool calls, reported model tokens,
-irreversible actions and wall time (\code{[budget]}). At a soft limit it
-stops at a \emph{checkpoint}: \code{y} doubles the soft limit up to the hard
-one, \code{n} stops, a number or a duration sets a new soft limit. A
-checkpoint never approves a tool. The flags \code{--max-tool-calls},
+A turn has hard limits on tool calls, reported model tokens, irreversible
+actions and wall time (\code{[budget]}): by default 500 tool calls, ten
+million tokens, 200 actions and four hours. At a hard limit the turn stops.
+Each also has a soft limit, Settings' ``ask at'', which by default is the
+hard one, so no checkpoint interrupts a turn (\adr{35}). A soft limit the
+file leaves unset follows its hard one, so lowering a hard limit moves the
+checkpoint with it. Set a soft limit lower to have the turn stop there at a
+\emph{checkpoint}: \code{y} doubles the soft limit up to the hard one,
+\code{n} stops, a number or a duration sets a new soft limit. A checkpoint
+never approves a tool. The flags \code{--max-tool-calls},
 \code{--budget-wall}, \code{--budget-tokens} and \code{--budget-actions}
 set the hard limits for one invocation.
 
@@ -461,7 +521,13 @@ A turn also stops if the model
 repeats an identical call four times in a row, retries a denied call three
 times, or gets ten tool errors in a row.
 
-Longer work is a \emph{run}, submitted to a daemon:
+A long request is a message like any other: the turn goes on until the
+model answers, a command needs you (there is no judge, or it refused), a
+security confirm comes up, or one of the stops above ends it.
+
+A \emph{run} is not a way of working in the console. \code{nodwyn run} is a
+batch tool for scripts and benchmarks: it carries a task to its end with no
+conversation, submitted to a daemon:
 
 \begin{sh}
 nodwyn run --task task.txt --repo . --budget-wall 2h --max-turns 20
@@ -486,11 +552,16 @@ it defines one, does not refuse it. It needs a stored \code{jev-key},
 excludes \code{--yolo}, and declines security confirms. Use either on a
 throwaway checkout: the guard makes an unattended run survivable, not safe.
 \code{-{}-unattended} goes further: nobody answers at all. Tool confirms
-are declined unless a standing approval covers them, answered yes with
+are declined unless a standing approval covers them (by default every
+write in the folder is one), answered yes with
 \code{--yolo} or put to the judge with \code{-{}-judge}; a soft budget
 checkpoint goes on to the hard limit; and the run goes on to its next turn
 only after a turn that marked a step of its plan done. A resume restores
 none of these flags: give them to \code{nodwyn run resume} again.
+
+The console does not start or resume runs. It shows a run started
+elsewhere, and its Stop ends it; a message sent afterwards goes on with the
+task as a chat.
 
 \chapter{Building \nodwyn{} with \nodwyn}
 
@@ -500,9 +571,11 @@ none of these flags: give them to \code{nodwyn run resume} again.
   \ldots
 \item Give it tasks that name the file, the pattern to follow and the test
   to add, and ask it to run \code{go-test} on the package.
-\item Review every diff at the confirm, or \code{t} and review with
-  \code{git diff} at the end. An \code{fs-write} of a whole existing file
-  deserves suspicion; an \code{fs-edit} rarely does.
+\item Review the diffs. By default each write goes ahead and is shown
+  with its diff; read them as they come, or with \code{git diff} at the
+  end. With \code{approval.writes = "ask"}, review each at the confirm, or
+  answer \code{t} and review at the end. An \code{fs-write} of a whole
+  existing file deserves suspicion; an \code{fs-edit} rarely does.
 \item When it gets in the way, hand-edit, and add one line to
   \file{docs/friction.md}.
 \item \code{make accept} before committing. You commit; there is no commit
@@ -529,7 +602,8 @@ a contained server cannot reach a site & the task shows the connection its proxy
 the model loops on a denied call & the progress guard stops it; read the reason and say what to do instead \\
 \code{hard stop: tool\_calls budget reached} & the turn ended; the log has everything; rephrase smaller, or raise \code{--max-tool-calls} \\
 a tool call errored & the error line printed during the turn, or \code{nodwyn replay ID}, has the exact error the model saw; \code{:log} cuts each event at 120 characters \\
-a file changed without a prompt & \code{:allow}: a standing approval covered it; the \code{guard.decision} line names which \\
+a file changed without a prompt & by default writes in the folder go ahead (\code{approval.writes}); otherwise \code{:allow}: a standing approval covered it. The \code{guard.decision} line names which; \code{nodwyn undo} or Restore puts the file back \\
+a command ran without a prompt & the judge allowed it (\code{approval.commands = "judge"}, the default), the setting did (\code{"allow"}), or a standing approval covered it; the \code{guard.decision} line says which \\
 a session died & \code{nodwyn --resume <id>}; everything up to the last fsync is in the log \\
 \bottomrule
 \end{longtable}}

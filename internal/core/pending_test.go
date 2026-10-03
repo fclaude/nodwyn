@@ -85,7 +85,7 @@ func TestCanceledPromptsRejectRepliesBeforeCleanup(t *testing.T) {
 }
 
 func TestTurnApprovalCannotWaiveSecurityConfirmation(t *testing.T) {
-	r := newRig(t, false)
+	r := newAskingRig(t)
 	source := `(begin (fs-write "ordinary.txt" "ordinary") (fs-write "secret.txt" "sk-ant-abcdefgh1234"))`
 	if err := r.s.StartEval(source, "test-actor"); err != nil {
 		t.Fatal(err)

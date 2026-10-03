@@ -29,7 +29,7 @@ Package & Owns \\
 \code{internal/frontend/tui} & the full-screen terminal client \\
 \code{internal/frontend/rpc} & the daemon, its protocol and sessions \\
 \code{internal/frontend/web} & the browser console and its bridge \\
-\code{internal/frontend/run} & supervised background runs \\
+\code{internal/frontend/run} & the driver of \code{nodwyn run}: a task carried to its end with no conversation, for scripts and benchmarks \\
 \code{cmd/nodwyn} & flags $\to$ core $\to$ front-end; nothing else \\
 \code{cmd/nodwyn-egress} & the egress proxy, built static for Linux to run in a container \\
 \code{dev/}, \code{.nodwyn/} & this repository's own tools and standing approvals \\
@@ -51,7 +51,7 @@ nodwyn ui                     the browser console for a running daemon
 nodwyn ui --listen ADDR       also for other devices, paired by name
 nodwyn app                    daemon, console and window in one program
 nodwyn devices [revoke NAME]  list or revoke paired devices
-nodwyn run ...                a supervised, judged or unattended run
+nodwyn run ...                a batch run, for scripts and benchmarks
 nodwyn sessions               list sessions
 nodwyn replay ID              print a session log as a transcript
 nodwyn replay ID --window SEQ rebuild and verify one model request
@@ -111,7 +111,7 @@ Every primitive is documented & \code{TestDocCoverage}, \code{TestSessionPrimiti
 A handle never becomes text & \code{TestHandlePrintsOpaque} \\
 What enters the context is redacted & \code{TestIngressCanary} and the redaction tests in \file{internal/core} \\
 The core knows nothing about terminals & \file{scripts/lint-boundaries.sh} in \code{make lint} \\
-No path for the canary to leak & \code{test/exfil}: twelve scenarios, plus Go tests for bindings, redirects, the judge, OAuth2 credentials and document uploads; each asserts the decision and greps the canary out of the log, the output and the result \\
+No path for the canary to leak & \code{test/exfil}: fifteen scenarios, run with writes in the folder allowed, as sessions have them by default (a write to a hook, a credential-shaped write and a write through a link still ask or are refused), plus Go tests for bindings, redirects, the judge, OAuth2 credentials and document uploads; each asserts the decision and greps the canary out of the log, the output and the result \\
 Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive requests \\
 \bottomrule
 \end{longtable}}
@@ -138,7 +138,7 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
   devices are one user's.
 \item Spend is counted, never limited: no budget stops a turn on what its
   requests cost.
-\item A plan step marked done is the model's word. An unattended run goes
-  on from turn to turn on those marks, and nothing checks them against the
-  transcript.
+\item A plan step marked done is the model's word. An unattended run
+  (\code{nodwyn run -{}-unattended}) goes on from turn to turn on those
+  marks, and nothing checks them against the transcript.
 \end{itemize}

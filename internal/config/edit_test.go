@@ -127,17 +127,17 @@ func TestEditTypedValuesTogether(t *testing.T) {
 		Change{"control", "url", "https://api.example.com/v1"},
 		Change{"control", "model", "m"},
 		Change{"control", "provider", "openai"},
-		Change{"tasks", "wall", "90m"})
+		Change{"approval", "commands", "ask"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(out)
-	for _, want := range []string{"# mine\n", "tokens_soft = 500\n", "tokens_hard = 1000\ncost_hard = 2.0\n", "vision = true\n", "[tasks]\nwall = \"90m\"\n"} {
+	for _, want := range []string{"# mine\n", "tokens_soft = 500\n", "tokens_hard = 1000\ncost_hard = 2.0\n", "vision = true\n", "[approval]\ncommands = \"ask\"\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q in:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "# low") || cfg.Budget.TokensSoft != 500 || cfg.Budget.TokensHard != 1000 || cfg.Budget.CostHard != 2 || !cfg.Control.Vision || cfg.Tasks.Wall != "90m" {
+	if strings.Contains(text, "# low") || cfg.Budget.TokensSoft != 500 || cfg.Budget.TokensHard != 1000 || cfg.Budget.CostHard != 2 || !cfg.Control.Vision || cfg.Approval.Commands != "ask" {
 		t.Fatalf("parsed %+v from:\n%s", cfg, text)
 	}
 	// Each change alone is checked only with the others.
@@ -190,9 +190,9 @@ func TestKeysAndValues(t *testing.T) {
 		table, key string
 		want       any
 	}{
-		{"budget", "cost_hard", 3.5}, {"budget", "tokens_hard", int64(10_000_000)}, {"budget", "wall_soft", "20m"},
+		{"budget", "cost_hard", 3.5}, {"budget", "tokens_hard", int64(10_000_000)}, {"budget", "wall_soft", "4h"},
 		{"control", "seed", int64(7)}, {"control", "temperature", nil}, {"control", "vision", false},
-		{"tasks", "mode", "chat"}, {"policy.l1", "enabled", true},
+		{"approval", "writes", "allow"}, {"approval", "commands", "judge"}, {"policy.l1", "enabled", true},
 	} {
 		if got, ok := cfg.Value(c.table, c.key); !ok || got != c.want {
 			t.Errorf("%s.%s = %#v %v, want %#v", c.table, c.key, got, ok, c.want)

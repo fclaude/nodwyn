@@ -54,15 +54,29 @@ console or by editing the file, and applies to tasks started afterwards.
 
 \section{Undo where git is not the undo}
 
-Before \code{fs-write} or \code{fs-edit} replaces a file that no git work
-tree covers, \nodwyn{} keeps its previous content in
-\file{.nodwyn/versions/} and records a \code{file.version} event:
+Writes in the folder go ahead without asking (Chapter~\ref{ch:primitives}),
+so each one must be possible to take back. Before \code{fs-write},
+\code{fs-edit} or \code{doc-export} replaces a file, \nodwyn{} keeps its
+previous content in \file{.nodwyn/versions/} and records a
+\code{file.version} event, unless git can give it back:
 
 \begin{txt}
 you> :eval (fs-edit "plants.txt" "basil" "basil\nmint")
-⚑ guard confirm fs-edit: fs-edit is irreversible; changes plants.txt → yes
+· ⚑ writes in the folder go ahead (approval.writes)
+· --- plants.txt
+· +++ plants.txt
+· @@ -1,2 +1,3 @@
+·  tomatoes
+·  basil
+· +mint
 [kept the previous version of /home/you/garden/plants.txt]
 \end{txt}
+
+In a git work tree, each write asks git (\code{git status}) whether the
+file is committed and unchanged; only then is git the undo, and nothing is
+kept. A file with uncommitted changes, an untracked file and an ignored one
+keep a version, so the store appears in git repositories too. Its own
+\file{.gitignore} keeps it out of \code{git status}.
 
 \begin{sh}
 $ nodwyn versions plants.txt
@@ -72,21 +86,22 @@ Restored /home/you/garden/plants.txt to its version of 2026-09-30 13:19 (55d684f
 \end{sh}
 
 In the console, a task's \textbf{Changes} list has \textbf{History} per
-file; \textbf{Restore} writes a kept version back through the ordinary
-approval (you see the diff and answer), and keeps the current content as a
+file; \textbf{Restore} writes a kept version back as a write like any
+other, so it goes ahead without asking, its diff logged (it asks when
+\code{[approval] writes = "ask"}), and keeps the current content as a
 version too, so a restore can itself be undone. The store is capped per
 folder.
 
 \begin{tip}
-In a git repository, git is the undo: nothing is kept in
-\file{.nodwyn/versions/}, and \code{git diff} and \code{git checkout} are
-your tools. The model gets two of its own there, \code{git-status} and
-\code{git-diff}: read-only, so they need no approval, and run with
-everything in git that could start another program switched off (external
-diff drivers, text conversion, the pager), with credential-looking files
-left out. Commit before a big task, and review with \code{git diff}
-afterwards; with the \key{T} answer (all writes this turn), that is the
-fastest safe way to let \nodwyn{} make a large change.
+In a git repository, git is the undo for what it has committed:
+\code{git diff} and \code{git checkout} are your tools, and the version
+store keeps only what git could not give back. The model gets two of its
+own there, \code{git-status} and \code{git-diff}: read-only, so they need
+no approval, and run with everything in git that could start another
+program switched off (external diff drivers, text conversion, the pager),
+with credential-looking files left out. Commit before a big task, and
+review with \code{git diff} afterwards; with writes in the folder going
+ahead, that is the fastest safe way to let \nodwyn{} make a large change.
 \end{tip}
 
 \section{Attachments}
@@ -161,9 +176,10 @@ it the tool says what to install):
 ;=> "wrote out/report.docx (Word document, 10 KiB) from report.md"
 \end{scm}
 
-It is a write: it asks with source, target and formats, a standing write
-approval for the folder covers it, and replacing a file keeps the old one
-in the version store. pandoc reads the document in its sandbox, so an
+It is a write: it goes ahead like any write in the folder (with
+\code{[approval] writes = "ask"} it asks, with source, target and
+formats), and replacing a file keeps the old one in the version store.
+pandoc reads the document in its sandbox, so an
 include or a remote image in it reads nothing, and a Word or OpenDocument
 file embeds only images that are files in the folder. An HTML page leaves
 out an image that links elsewhere, which a browser would fetch when the
@@ -184,8 +200,9 @@ With a \code{google} credential stored and bound (Chapter~\ref{ch:keys}),
 \end{scm}
 
 The first upload asks how uploads should be handled from now on: \emph{allow
-by hand} (every call asks, naming the file, its size and where it goes, and
-\code{-{}-yolo}, \code{-{}-judge} and unattended runs never upload),
+by hand} (every call asks you, naming the file, its size and where it
+goes; \code{[approval]} never answers it, and \code{-{}-yolo},
+\code{-{}-judge} and unattended runs never upload),
 \emph{always allow} (no call asks; only this computer can choose it, never
 a paired phone), or \emph{deny} (refused, and later sessions do not offer
 the tool). The answer is \code{google\_upload} in the \code{[docs]} table
@@ -211,7 +228,7 @@ said. A contract or a salary list has no shape: what keeps it home is your
 workspace settings & \file{<folder>/.nodwyn/workspace.toml} \\
 project tools and strategy & \file{<folder>/.nodwyn/init.scm} (and what it loads) \\
 standing approvals & \file{<folder>/.nodwyn/allow.toml}, \file{config.toml} \\
-kept versions & \file{<folder>/.nodwyn/versions/} (only outside git) \\
+kept versions & \file{<folder>/.nodwyn/versions/} (what git cannot give back) \\
 attachments & \file{<folder>/.nodwyn/attachments/} \\
 project notes & \nodwyn's data directory, keyed by the folder's path \\
 session logs & \file{\textasciitilde/.local/share/nodwyn/sessions/} \\

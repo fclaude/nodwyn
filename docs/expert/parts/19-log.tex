@@ -52,7 +52,7 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
 \code{context.narrow}, \code{context.fold}, \code{context.widen}, \code{result.fold} & window shaping \\
 \code{context.compact} & a compaction: what set it off, the context's size before and after, the note \\
 \code{turn.checkpoint}, \code{turn.end} & budget checkpoints; the durable end of a turn, with its outcome \\
-\code{run.state}, \code{run.turn}, \code{run.checkpoint} & supervised runs \\
+\code{run.state}, \code{run.turn}, \code{run.checkpoint} & runs (\code{nodwyn run}) \\
 \code{eval.req}, \code{eval.result} & your \code{:eval}s \\
 \code{redact.event} & a redaction: where and which class, never the value \\
 \code{cred.register}, \code{cred.refresh}, \code{binding.change}, \code{approval.change}, \code{setting.change} & keys, policy, and a setting you chose at a prompt \\
@@ -143,7 +143,8 @@ a hosted model costs more than expected & the usage line's cached share (a low o
 the model loops on a denied call & the progress guard will stop it; read the \code{guard.decision}s first \\
 \code{hard stop: tool\_calls budget reached} & the turn ended; ask for something smaller, or raise \code{-{}-max-tool-calls} \\
 a tool call errored & \code{:log 20}: the \code{tool.result} has the exact error the model saw \\
-a file changed without a confirm & \code{:allow}: a standing approval covered it; the decision's reason names it \\
+a file changed without a confirm & by default writes in the folder go ahead: the decision's reason says \code{approval.writes}, or names the standing approval that covered it; git or \code{nodwyn undo} puts it back \\
+a command ran without asking you & the decision's \code{actor}: \code{judge} (the judge allowed it; a \code{note} has its reason) or \code{setting} (\code{[approval] commands = "allow"}); otherwise \code{:allow} lists the standing approval \\
 a strategy seems ignored & \code{:eval agent-turn} prints which procedure is installed; \code{(reload)} returns notes \\
 \bottomrule
 \end{tabularx}

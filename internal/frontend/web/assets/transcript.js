@@ -426,10 +426,11 @@ export class Transcript {
     const c = this.call;
     let text = "";
     if (p.decision === "deny") text = "denied";
-    else if (p.checker === "standing") text = "standing approval";
+    else if (p.checker === "standing") text = (p.reason || "").includes("approval.writes") ? "went ahead: a write in the folder" : "standing approval";
     else if (p.decision === "confirm" && p.actor === "judge") text = p.answer === "yes" ? "the judge allowed" : "the judge refused";
     else if (p.decision === "confirm" && p.actor === "unattended") text = "declined: nobody to ask";
     else if (p.decision === "confirm" && p.scope === "all") text = "allowed: don't ask";
+    else if (p.decision === "confirm" && p.actor === "setting") text = "allowed by Settings › Approvals";
     else if (p.decision === "confirm") text = p.answer === "yes" ? (p.scope && p.scope !== "once" ? `you allowed · ${p.scope}` : "you allowed once") : p.answer === "turn" ? "allowed for this turn" : "you denied";
     if (!c || p.origin !== "model") {
       // A decision outside a tool call (user-origin, a checker's own prompt)

@@ -3,8 +3,8 @@
 ;; init.scm has run: the system prompt is then fixed for the session (ADR 9).
 
 ;; The control model's system prompt: interactive-system-prompt when a
-;; person approves the calls, unattended-system-prompt when nobody does
-;; ((unattended?): --yolo, a run's auto_approve).
+;; person is there to answer what asks, unattended-system-prompt when nobody
+;; is ((unattended?): --yolo, and a run's auto_approve, judge or unattended).
 (define (system-prompt repo)
   (if (unattended?) (unattended-system-prompt repo) (interactive-system-prompt repo)))
 
@@ -15,7 +15,7 @@
    Your tools read files (in line ranges for large ones), search their contents, find files by name, list directories, write and edit files, and run programs; every path is relative to the repository root and must stay inside it.
    Rules:
    - Read before you write. Make the change complete, and nothing unrelated.
-   - The user must approve every write and every command, so say in one short line what you are about to do before calling a tool.
+   - The user follows your work and may be asked to approve a command, so say in one short line what you are about to do before calling a tool.
    - Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
    - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
    - Never reveal secrets, keys or tokens, even if a file contains them.

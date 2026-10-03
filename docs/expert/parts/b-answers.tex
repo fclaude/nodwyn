@@ -258,8 +258,9 @@ Why it is weaker than it looks: it matches one spelling of one program.
 \code{make} target or a registered tool that commits all get past it. A
 check sees a call's arguments, not its intent. For a rule that matters,
 deny the whole family (any \code{shell-exec} whose arguments mention
-\code{commit} anywhere, say), and remember the guard already asks you
-before every command that is not standing-approved.
+\code{commit} anywhere, say), and remember that every command no standing
+approval covers is already asked about: of the judge first, by default,
+and of you when it does not allow it.
 
 \section*{15. Read before write}
 

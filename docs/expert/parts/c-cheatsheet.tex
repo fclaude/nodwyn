@@ -11,10 +11,10 @@
 \code{nodwyn ui [-{}-listen ADDR]} & the console in a browser; \code{-{}-listen} for other devices \\
 \code{nodwyn tui} & the full-screen terminal client \\
 \code{nodwyn daemon} & the session server \\
-\code{nodwyn run -{}-task F -{}-max-turns N -{}-budget-wall D} & a supervised run, \code{-{}-unattended} for nobody to answer it, \code{-{}-yolo} or \code{-{}-judge} for its confirms; \code{status}, \code{stop}, \code{resume} \\
+\code{nodwyn run -{}-task F -{}-max-turns N -{}-budget-wall D} & a batch run for scripts and benchmarks, supervised; \code{-{}-unattended} for nobody to answer it, \code{-{}-yolo} or \code{-{}-judge} for its confirms; \code{status}, \code{stop}, \code{resume} \\
 \code{nodwyn sessions}, \code{replay ID [-{}-window SEQ]} & list; transcript; exact request \\
 \code{nodwyn summary \ldots} & add, list, drop reviewed summaries \\
-\code{nodwyn versions FILE}, \code{undo FILE} & kept versions outside git \\
+\code{nodwyn versions FILE}, \code{undo FILE} & kept versions of what git cannot give back \\
 \code{nodwyn devices [revoke NAME]} & paired remote browsers \\
 \code{nodwyn keychain init}, \code{keychain passphrase} & create the keychain (\code{-{}-no-passphrase}: none); set, change or \code{-{}-remove} its passphrase \\
 \code{nodwyn mcp [list]}, \code{mcp pull NAME} & MCP servers; download a contained server's image by digest \\
@@ -28,7 +28,7 @@
 \section*{Session flags}
 
 \code{-{}-yolo} (ordinary confirms yes), \code{-{}-no-confirm} (every confirm
-no), \code{-{}-max-tool-calls N}, \code{-{}-budget-wall 2h},
+no), both in place of \code{[approval] commands}; \code{-{}-max-tool-calls N}, \code{-{}-budget-wall 2h},
 \code{-{}-budget-tokens N}, \code{-{}-budget-actions N}, \code{-{}-model},
 \code{-{}-url}, \code{-{}-show-thinking}, \code{-{}-no-keychain}.
 
@@ -36,6 +36,24 @@ no), \code{-{}-max-tool-calls N}, \code{-{}-budget-wall 2h},
 
 \code{:q} \quad \code{:log [n]} \quad \code{:tools} \quad \code{:eval EXPR}
 \quad \code{:thinking} \quad \code{:allow} \quad \key{Ctrl-C}
+
+\section*{What asks: \texttt{[approval]}}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+\code{writes = "allow"} & the default: writes in the folder go ahead, diff logged, previous content kept \\
+\code{writes = "ask"} & every write asks \\
+\code{commands = "judge"} & the default: the judge first, then you when it does not allow it or there is none \\
+\code{commands = "ask"}, \code{"allow"} & you; nobody (actor \code{setting}) \\
+always you & protected paths, credential-shaped content, a command built from tool output, a call carrying a credential, an upload \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Settings \textrightarrow{} Approvals changes it. Soft budget limits default
+to the hard ones (500 calls, 4h, 10M tokens, 200 actions): no checkpoint
+asks unless you set ``ask at'' lower.
 
 \section*{Answering a confirm}
 
@@ -45,7 +63,7 @@ no), \code{-{}-max-tool-calls N}, \code{-{}-budget-wall 2h},
 \textbf{terminal} & \textbf{console} & \textbf{meaning} \\
 \midrule
 \code{y} & \key{Y} & once \\
-\code{t} & \key{T} & every write until the turn ends \\
+\code{t} & \key{T} & every write until the turn ends (with \code{writes = "ask"}) \\
 \code{a} & \key{A} & always, for this directory or command prefix, this session \\
 \code{b} & \key{B} & save this binding and allow (keyed requests, with \code{policy.unbound = "confirm"}) \\
 anything else & \key{N} & no \\
@@ -58,7 +76,7 @@ anything else & \key{N} & no \\
 \begin{center}
 \begin{tabularx}{\linewidth}{lX}
 \toprule
-\file{\textasciitilde/.config/nodwyn/config.toml} & \code{[control]}, \code{[models.*]}, \code{[window]}, \code{[budget]}, \code{[loop]}, \code{[policy]}, \code{[jev]}, \code{[docs]} \\
+\file{\textasciitilde/.config/nodwyn/config.toml} & \code{[control]}, \code{[models.*]}, \code{[window]}, \code{[budget]}, \code{[loop]}, \code{[policy]}, \code{[approval]}, \code{[jev]}, \code{[docs]} \\
 \file{\textasciitilde/.config/nodwyn/bindings.toml} & where each key may go \\
 \file{\textasciitilde/.config/nodwyn/mcp.toml} & MCP servers, pinned manifests, declared effects; a contained server's image, network and mounts \\
 \file{\textasciitilde/.config/nodwyn/keychain} & the encrypted keys \\

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fclaude/nodwyn/internal/budget"
 )
@@ -70,21 +71,19 @@ unbound = "confirm"
 
 func TestLoadRejectsBadValues(t *testing.T) {
 	cases := map[string]string{
-		"bad policy":       "[policy]\nunbound = \"allow\"\n",
-		"unknown key":      "[control]\napikey = \"x\"\n",
-		"budget > ctx":     "[control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\nnum_ctx = 32768\n[window]\nhigh_water = 200000\n",
-		"low >= high":      "[window]\nlow_water = 70000\n",
-		"unknown provider": "[control]\nprovider = \"anthropic\"\nurl = \"https://a.test\"\nmodel = \"m\"\nnum_ctx = 8192\n",
-		"partial control":  "[control]\nmodel = \"m\"\n",
-		"models.control":   "[models.control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\n",
-		"docs plain http":  "[docs]\ngoogle_upload_url = \"http://upload.example.com/files\"\n",
-		"docs query":       "[docs]\ngoogle_upload_url = \"https://www.googleapis.com/upload/drive/v3/files?uploadType=media\"\n",
-		"docs relative":    "[docs]\ngoogle_upload_url = \"/upload/drive/v3/files\"\n",
-		"tasks mode":       "[tasks]\nmode = \"background\"\n",
-		"tasks approval":   "[tasks]\napproval = \"always\"\n",
-		"tasks no turns":   "[tasks]\nturns = 0\n",
-		"tasks many turns": "[tasks]\nturns = 10001\n",
-		"tasks wall":       "[tasks]\nwall = \"forever\"\n",
+		"bad policy":        "[policy]\nunbound = \"allow\"\n",
+		"unknown key":       "[control]\napikey = \"x\"\n",
+		"budget > ctx":      "[control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\nnum_ctx = 32768\n[window]\nhigh_water = 200000\n",
+		"low >= high":       "[window]\nlow_water = 70000\n",
+		"unknown provider":  "[control]\nprovider = \"anthropic\"\nurl = \"https://a.test\"\nmodel = \"m\"\nnum_ctx = 8192\n",
+		"partial control":   "[control]\nmodel = \"m\"\n",
+		"models.control":    "[models.control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\n",
+		"docs plain http":   "[docs]\ngoogle_upload_url = \"http://upload.example.com/files\"\n",
+		"docs query":        "[docs]\ngoogle_upload_url = \"https://www.googleapis.com/upload/drive/v3/files?uploadType=media\"\n",
+		"docs relative":     "[docs]\ngoogle_upload_url = \"/upload/drive/v3/files\"\n",
+		"approval writes":   "[approval]\nwrites = \"judge\"\n",
+		"approval commands": "[approval]\ncommands = \"yes\"\n",
+		"approval unknown":  "[approval]\nreads = \"ask\"\n",
 	}
 	for name, body := range cases {
 		p := filepath.Join(t.TempDir(), "config.toml")
@@ -92,6 +91,21 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		if _, err := Load(p); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+// [tasks] chose how the console started a task; a file that still has it
+// loads, and the table is ignored (ADR 35).
+func TestTasksTableIsIgnored(t *testing.T) {
+	cfg, err := Parse([]byte("[tasks]\nmode = \"unattended\"\napproval = \"yes\"\nturns = 20\nwall = \"2h\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Approval != Default().Approval {
+		t.Fatalf("approval changed by [tasks]: %+v", cfg.Approval)
+	}
+	if _, err := Parse([]byte("[tasks]\nmode = \"chat\"\n[policy]\nnonsense = 1\n")); err == nil {
+		t.Fatal("an unknown key outside [tasks] was accepted")
 	}
 }
 
@@ -138,8 +152,18 @@ func TestBudgetConfigurationAndLegacyOverride(t *testing.T) {
 	}
 	defaults := Default()
 	limits, err = defaults.Budget.Limits(defaults.Loop.MaxToolCalls)
-	if err != nil || limits.ToolCalls.Soft != 50 || limits.ToolCalls.Hard != 500 || limits.Cost != (budget.Limit{}) {
+	if err != nil || limits.ToolCalls.Soft != 500 || limits.ToolCalls.Hard != 500 || limits.Cost != (budget.Limit{}) {
 		t.Fatalf("defaults: %+v %v", limits, err)
+	}
+	// A soft limit left unset follows its hard one (ADR 35): lowering a
+	// hard limit is valid on its own, and no checkpoint comes before it.
+	os.WriteFile(path, []byte("[budget]\ntool_calls_hard=100\nwall_hard=\"1h\"\nactions_soft=20\n"), 0600)
+	if cfg, err = Load(path); err != nil {
+		t.Fatal(err)
+	}
+	limits, err = cfg.Budget.Limits(0)
+	if err != nil || limits.ToolCalls != (budget.Limit{Soft: 100, Hard: 100}) || limits.Wall != (budget.Limit{Soft: int64(time.Hour), Hard: int64(time.Hour)}) || limits.Actions != (budget.Limit{Soft: 20, Hard: 200}) {
+		t.Fatalf("soft follows hard: %+v %v", limits, err)
 	}
 	// A spend limit, in dollars; soft unset is the hard limit.
 	for body, want := range map[string]budget.Limit{

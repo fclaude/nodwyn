@@ -65,11 +65,11 @@ const (
 // gate's calls do: the key's binding is checked, what is sent is redacted
 // and jev.req is logged.
 func (s *Session) judgeCall(ctx context.Context, p guard.Prompt) (bool, string) {
-	choose, ok := s.interp.Lookup("jev-choice")
-	h := s.HandleForClass(prim.JevClass)
-	if !ok || h == nil {
+	if !s.judgeAvailable() {
 		return false, "no judge is configured"
 	}
+	choose, _ := s.interp.Lookup("jev-choice")
+	h := s.HandleForClass(prim.JevClass)
 	options := scheme.List(
 		scheme.Cons(scheme.Str("allow"), scheme.Str(approveAllow)),
 		scheme.Cons(scheme.Str("deny"), scheme.Str(approveDeny)),

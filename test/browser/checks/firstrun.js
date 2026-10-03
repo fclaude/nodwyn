@@ -92,12 +92,11 @@ const env = { ...process.env };
   if (fs.readFileSync(`${root}/work/app.js`, "utf8") === original) throw new Error("edit not written");
   await page.screenshot({ path: `${out}/firstrun-task.png` });
   await page.click(".file-row button:has-text('History')");
+  // A write in the folder goes ahead without asking (ADR 35), a restore too.
   await page.click(".versions button:has-text('Restore')");
-  await page.waitForSelector(".ask-card", { timeout: 10000 });
-  step("restore asks first");
+  for (let i = 0; i < 25 && fs.readFileSync(`${root}/work/app.js`, "utf8") !== original; i++) await page.waitForTimeout(200);
+  step("restored without asking");
   await page.screenshot({ path: `${out}/firstrun-restore.png` });
-  await page.keyboard.press("y");
-  await page.waitForTimeout(1500);
   console.log("restored:", fs.readFileSync(`${root}/work/app.js`, "utf8") === original);
   console.log(errors.length ? "ERRORS\n" + errors.join("\n") : "no page errors");
   await browser.close();

@@ -28,11 +28,16 @@ Settings is what tasks start with when nobody says otherwise, kept in
 `config.toml`; every other line of the file, comments included, stays as
 you wrote it. Its sections:
 
-- **Starting tasks** — the default mode Home starts a task in (a chat, a
-  run, or an unattended run, below), who answers a run's requests (you, the
-  judge, or yes, as `--yolo` does), and a run's turn and time limits.
+- **Approvals** — what a task does without asking you (ADR 35): whether it
+  writes files in its folder without asking (the default) or asks first,
+  and who answers a command no allow list covers: the judge, then you when
+  it refuses or there is none (the default); you; or nobody, and it runs. A
+  write to a protected file, content that looks like a credential and a
+  command built from what a tool returned always ask. The transcript says
+  which calls went ahead, which the judge allowed, and why it refused one.
 - **Limits** — each turn's tool calls, tokens sent, actions and time: where
-  it asks whether to go on, and where it stops; the spend limit on a whole
+  it stops, and, if you set it lower, where it asks first whether to go
+  on (by default it doesn't); the spend limit on a whole
   task, in dollars, off until you set where it stops; and how long a model
   reply and a command may take.
 - **Models** — whether each configured model answers, the main model, and
@@ -41,7 +46,7 @@ you wrote it. Its sections:
   which field caps its reply and how its requests name their session (the
   manual, "Keeping the cache warm"), and its prices.
 - **Judge** — whether a judge is available, what it may be shown, the
-  probability at which it allows a run's request, and how long it may take.
+  probability at which it lets a command run, and how long it may take.
 - **Documents** — how uploads to Google Docs are handled (the manual,
   "Documents out").
 - **Containers** — podman, docker, or whichever is installed, for contained
@@ -94,11 +99,12 @@ the image out and keeps your message unsent. An attached image shows as
 "image · 1200×800 · ~1,105 tokens": what it costs the context. It goes only
 to the host you allowed, never to the judge.
 
-**Undo.** Where git is not the undo, nodwyn keeps a file's previous content
-before changing it. A task's **Changes** list offers **History** per file;
-**Restore** writes a kept version back through the ordinary approval (the
-diff, then your answer), and keeps the current content too. From a terminal:
-`nodwyn versions FILE` and `nodwyn undo FILE`.
+**Undo.** Unless git already has a file committed and unchanged, nodwyn keeps
+its previous content before changing it, so a write that went ahead without
+asking can be taken back. A task's **Changes** list offers **History** per
+file; **Restore** writes a kept version back as a write like any other (it
+asks only when Settings › Approvals has writes ask), and keeps the current
+content too. From a terminal: `nodwyn versions FILE` and `nodwyn undo FILE`.
 
 **Tools from MCP servers.** Connections › Tools adds a remote server (HTTPS, or
 plain HTTP to this computer only; a key goes to the keychain, bound to that host only)
@@ -183,11 +189,11 @@ kernel identity followed by `via web:NAME`.
 
 A device can read tasks, start and steer them, and answer approvals — one-time,
 for this turn, or for the session, as the core offers; it can also restore a
-kept file version (through the usual approval), save project notes, read the
-policy files, see the credentials, and start, stop or resume a run whose
-requests a person answers. It cannot start or resume a run that answers its
-own requests (unattended, judged, or saying yes), turn on "don't ask", save a
-credential binding,
+kept file version, save project notes, read the policy files, see the
+credentials, and stop a run. Its tasks ask what Settings › Approvals, chosen
+on the computer nodwyn runs on, says they ask. It cannot start or resume a
+run that answers its own requests (unattended, judged, or saying yes), turn
+on "don't ask", save a credential binding,
 write a policy file, unlock or create the keychain or change its passphrase,
 add, replace, allow, authorize or remove a credential, change Settings, the
 model or how
@@ -419,20 +425,16 @@ exercised by those mocks.
 
 ## Runs (U4)
 
-Home starts a task in the mode Settings › Starting tasks names, or the one
-chosen beside Attach for that task: a **chat**; a **run**, which goes on
-turn after turn and asks before each next one; or an **unattended run**,
-which nobody answers ([runs](runs.md)). Under the composer a line says what
-the run will do: its turn and time limits, and who answers its requests.
-A run takes its task from the composer and no attachments. Another device
-offers only chats and runs whose requests it answers itself. `nodwyn run`
-starts runs from a terminal.
+Every task Home starts is a chat (ADR 35). A request that takes long is a
+message like any other: the turn goes on until the model answers or a hard
+limit stops it, and asks you only what Settings › Approvals leaves to you.
 
-The console follows a run like any task: its status says "Run" or
-"Unattended run" (and "judged" when the judge answers its confirms) with the
-turn count, the sidebar shows the turns and the time left, and the plan panel
-shows each turn's progress. A supervised run's checkpoint arrives as an
-ordinary prompt. **Pause** stops the run (`run.stop`), **Stop** aborts the
-session and with it the run, and **Resume run** resumes a stopped run
-supervised. The transcript says when an unattended run went on or stopped by
-itself, and which confirms the judge allowed or refused.
+`nodwyn run` carries a task to its end with no conversation, for scripts
+and benchmarks ([runs](runs.md)). The console shows such a run like any
+task: its status says "Run" or "Unattended run" (and "judged" when the judge
+answers its confirms) with the turn count, the sidebar shows the turns and
+the time left, and the plan panel shows each turn's progress. A supervised
+run's checkpoint arrives as an ordinary prompt. **Stop** aborts the session
+and with it the run; a message afterwards goes on with the task as a chat.
+The transcript says when an unattended run went on or stopped by itself,
+and which confirms the judge allowed or refused.

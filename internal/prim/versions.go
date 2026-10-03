@@ -3,6 +3,7 @@ package prim
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -213,12 +214,28 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// InGitWorkTree reports whether path is inside a git work tree whose top
-// is root or below it: there git is the undo.
+// InGitWorkTree reports, for root's Versions.Skip, whether git is the undo
+// for a path: it is inside the git work tree at root, tracked, and neither
+// the index nor the work tree changes it, so git gives its content back.
+// Since writes go ahead without asking (ADR 35), an uncommitted change, an
+// untracked or ignored file, and a file git cannot be asked about keep a
+// version: git could not restore them.
 func InGitWorkTree(root string) func(string) bool {
-	_, err := os.Stat(filepath.Join(root, ".git"))
-	git := err == nil
+	if !isGitWorkTree(root) {
+		return func(string) bool { return false }
+	}
+	o := DefaultOptions(root)
 	return func(abs string) bool {
-		return git && (abs == root || strings.HasPrefix(abs, root+string(filepath.Separator)))
+		if abs != root && !strings.HasPrefix(abs, root+string(filepath.Separator)) {
+			return false
+		}
+		rel, err := filepath.Rel(root, abs)
+		if err != nil {
+			return false
+		}
+		// Status names an existing file unless it is tracked and unchanged:
+		// ?? untracked, !! ignored, and the codes of a change.
+		out, err := runGit(context.Background(), o, "status", "--porcelain", "--ignored", "--untracked-files=all", "--", ":(literal)"+rel)
+		return err == nil && strings.TrimSpace(out) == ""
 	}
 }

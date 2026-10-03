@@ -242,17 +242,17 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 	}
 	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{
 		"budget.tokens_soft": 500, "budget.tokens_hard": 1000, "budget.cost_hard": 2.5,
-		"tasks.mode": "unattended", "tasks.turns": 8, "loop.shell_timeout": "5m",
+		"approval.commands": "ask", "approval.writes": "ask", "loop.shell_timeout": "5m",
 		"jev.price_input": 0.5, "jev.price_output": 2,
 	}}), &settings)
 	if v := settings.Values["budget.tokens_hard"]; v.Value != float64(1000) || !v.Set {
 		t.Fatalf("tokens_hard written: %+v", v)
 	}
-	if v := settings.Values["tasks.mode"]; v.Value != "unattended" || v.Default != "chat" {
-		t.Fatalf("mode written: %+v", v)
+	if v := settings.Values["approval.commands"]; v.Value != "ask" || v.Default != "judge" {
+		t.Fatalf("approval written: %+v", v)
 	}
 	raw, _ := os.ReadFile(o.Paths.ConfigFile)
-	for _, want := range []string{"# mine\n", "tokens_hard = 1000\n", "cost_hard = 2.5\n", "[tasks]\n", "mode = \"unattended\"\nturns = 8\n", "[loop]\nshell_timeout = \"5m\"\n", "price_input = 0.5\n", "price_output = 2"} {
+	for _, want := range []string{"# mine\n", "tokens_hard = 1000\n", "cost_hard = 2.5\n", "[approval]\n", "commands = \"ask\"\nwrites = \"ask\"\n", "[loop]\nshell_timeout = \"5m\"\n", "price_input = 0.5\n", "price_output = 2"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("config.toml lacks %q:\n%s", want, raw)
 		}
@@ -272,9 +272,9 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 	}
 
 	// null removes a setting, so its default applies again.
-	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{"budget.cost_hard": nil, "tasks.turns": nil}}), &settings)
+	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{"budget.cost_hard": nil, "approval.writes": nil}}), &settings)
 	raw, _ = os.ReadFile(o.Paths.ConfigFile)
-	if strings.Contains(string(raw), "cost_hard") || strings.Contains(string(raw), "turns") || settings.Values["budget.cost_hard"].Value != float64(0) || settings.Values["tasks.turns"].Set {
+	if strings.Contains(string(raw), "cost_hard") || strings.Contains(string(raw), "writes") || settings.Values["budget.cost_hard"].Value != float64(0) || settings.Values["approval.writes"].Set || settings.Values["approval.writes"].Value != "allow" {
 		t.Fatalf("not removed:\n%s\n%+v", raw, settings.Values["budget.cost_hard"])
 	}
 
@@ -288,8 +288,9 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 		{"budget.tokens_hard": "lots"},
 		{"budget.tokens_hard": 1.5},
 		{"budget.tokens_hard": 50}, // below the soft limit
-		{"tasks.mode": "sometimes"},
-		{"tasks.wall": ""},
+		{"approval.commands": "sometimes"},
+		{"approval.writes": ""},
+		{"tasks.mode": "chat"},
 		{"control.vision": "yes"},
 		{"jev.price_output": -1},
 	} {

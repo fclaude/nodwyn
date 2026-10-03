@@ -5,8 +5,10 @@
 The fastest way into \nodwyn{} is to follow a single tool call from the
 keyboard to the disk and back. The call followed here is an \code{fs-edit}:
 the model asks to replace some text in a file, you are asked, you say yes.
-The sections below follow it through eighteen files, in the order the
-call reaches them. The excerpts are the current code, lightly abridged:
+You are asked because this session has \code{approval.writes = "ask"}; by
+default the write would go ahead, logged with its diff, at the point the
+guard's section shows (\adr{35}). The sections below follow it through
+eighteen files, in the order the call reaches them. The excerpts are the current code, lightly abridged:
 \code{// ...} marks an elision, and arrows and dashes in comments are
 written in ASCII. Paths are relative to the repository root.
 
@@ -136,8 +138,8 @@ if err := s.loop.Turn(ctx, msg.Text); err != nil {
 }
 \end{go}
 
-\code{setTurnTask} keeps the recorded request as the turn's task, which a
-judged run shows the judge with each call it asks about.
+\code{setTurnTask} keeps the recorded request as the turn's task, which
+the judge is shown with each call it is asked to allow.
 
 \section{Record: the log first, then everything else}
 
@@ -625,14 +627,19 @@ The pipeline is assembled in \file{internal/core/construct.go}
 \code{PathDenylist}, \code{ArgvTrigger}, \code{ProtectedPaths},
 \code{ScratchWrites}, \code{WritePreview}, \code{CommandAllow},
 \code{WriteAllow}, then \code{Taint} (L2), \code{Egress} (E3, when a
-keychain is open) and \code{TextSecret} (L1, on by default), then any
-checker a project added with \code{register-check}, which can only tighten.
+keychain is open) and \code{TextSecret} (L1, on by default), then
+\code{FolderWrites} when \code{approval.writes} is \code{"allow"}, the
+default, then any checker a project added with \code{register-check},
+which can only tighten.
 
 For our \code{fs-edit}: \code{MetaPolicy} asks because the primitive is
 irreversible; \code{RepoPin} and \code{PathDenylist} check the path;
 \code{WritePreview} attaches the diff; \code{WriteAllow} may turn the
-confirm into an allow if the directory has a standing approval; L1 scans
-the replacement text and makes a credential-shaped one a security confirm.
+confirm into an allow if the directory has a standing approval, and
+\code{FolderWrites} would for any path the pin let through (in this
+session it is not installed); L1 scans the replacement text and makes a
+credential-shaped one a security confirm, which no standing approval
+waives.
 \code{Before} then records the \code{guard.decision}. An allow is recorded
 for any tool or any primitive that is host, egress, irreversible or
 audited; pure builtins such as \code{car} and \code{+} are allowed
@@ -643,9 +650,17 @@ With \code{--no-confirm} it answers every confirm with no; with
 with no; in a \code{-{}-judge} run it is \code{judgeConfirmer}
 (\file{internal/core/judge.go}), which puts each ordinary confirm to the
 judge and declines a security one without asking; in an unattended run
-with neither, it answers every confirm with no. Otherwise it is the
-session, which implements it in \file{internal/core/confirm.go} as an
-event and a wait:
+with neither, it answers every confirm with no. Otherwise a person answers,
+and it is \code{personConfirmer} (\file{internal/core/approval.go}), which
+reads \code{approval.commands}. With \code{"judge"}, the default, an
+ordinary confirm that is not a write and carries no credential (no egress,
+binding proposal or upload) goes to the judge through the same
+\code{judgeCall}; if the judge refuses, fails or is not set up, the
+person is asked, with the judge's answer added to the prompt's reasons.
+With \code{"allow"} such a confirm is answered yes with the actor
+\code{setting}. Everything else, and everything with \code{"ask"}, goes
+to the session, which implements it in \file{internal/core/confirm.go} as
+an event and a wait. Our \code{fs-edit} names a path, so it goes there:
 
 \begin{go}
 s.promptMu.Lock()
@@ -713,9 +728,9 @@ func (r RepoPin) Resolve(raw string) string {
 or every one with \code{replace\_all}. Its \code{Preview} renders the diff
 the confirm shows, using the same \code{applyEdit} the handler uses. The
 handler resolves the path again (the guard already denied an escape; this
-is defence in depth), keeps the previous version outside git (logged as
-\code{file.version}), and writes. Failures are messages written for the
-model to act on:
+is defence in depth), keeps the previous version unless git has the file
+committed and unchanged (logged as \code{file.version}), and writes.
+Failures are messages written for the model to act on:
 
 \begin{go}
 func applyEdit(content, old, replacement string, all bool) (string, error) {

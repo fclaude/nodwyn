@@ -182,6 +182,7 @@ and the strictest answer wins:
 \code{protected-path} & writes to \file{.nodwyn/}, \file{.git/}, \file{.github/}, \file{scripts/}, \file{Makefile}\ldots \\
 \code{scratch} & writes inside the scratch directory: no need to ask \\
 \code{command-allow}, \code{write-allow} & your standing approvals \\
+\code{folder-writes} & every write the pin lets through, as a standing approval, while \code{[approval] writes = "allow"} (the default; below) \\
 \code{l1} & payloads that look like credentials \\
 \code{l2} & provenance: outside content heading to the network or into a command \\
 \code{egress}, \code{bindings} & keyed and outgoing requests against the binding table \\
@@ -198,8 +199,9 @@ Two rules shape how they combine:
     \code{go test} read \file{\textasciitilde/.ssh}.
   \item \textbf{Some confirms are security confirms}, and no approval waives
     them: a write to a protected path, content that looks like a key, a
-    command line built out of tool output. They need a person, every time;
-    \code{-{}-yolo} refuses them.
+    command line built out of tool output. They need a person, every time:
+    neither the judge nor a setting answers them, and \code{-{}-yolo}
+    refuses them.
 \end{itemize}
 
 Here is all of that in one real session with \code{-{}-yolo}:
@@ -239,19 +241,94 @@ And the folder's, tracked with it:
 \begin{toml}
 # <folder>/.nodwyn/allow.toml
 commands = ["make lint", "make test"]
-writes   = ["internal/", "docs/"]      # write prefixes that never prompt
+writes   = ["internal/", "docs/"]      # write prefixes that never prompt, with writes = "ask"
 \end{toml}
 
 Command prefixes match whole words of the argument list: \code{"go test"}
 matches \code{go test ./...} and \code{/usr/local/go/bin/go test}, but not
 \code{go build}. Every use is still logged, as \emph{allow} with the reason
-\code{standing approval: go test}.
+\code{standing approval: go test}. A standing command approval runs
+without the judge being asked.
 
 \begin{tip}
 Keep standing approvals read-only in spirit: tests, builds, status and
 diff. Nothing that commits, pushes, deletes or reaches the network. The
 point of a confirm is the one time it catches something you did not expect.
 \end{tip}
+
+\section{What asks, and who answers: \texttt{[approval]}}
+
+A confirm that no standing approval covers goes to whoever answers the
+session's confirms. In a session a person can answer (the console's, the
+terminal client's, a line-mode session's), the \code{[approval]} table of
+\file{config.toml} decides how much of that reaches the person
+(\adr{35}). Settings \textrightarrow{} Approvals changes it, from the
+computer \nodwyn{} runs on only:
+
+\begin{toml}
+[approval]
+writes = "allow"     # the default: writes in the folder go ahead; or "ask"
+commands = "judge"   # the default: the judge, then you; "ask": you; "allow": nobody asks
+\end{toml}
+
+\begin{description}[leftmargin=1.2em,labelindent=0pt]
+  \item[writes] At \code{"allow"}, every write the pin lets through is a
+    standing approval from the \code{folder-writes} checker: in the folder,
+    the scratch directory or a mount opened for writing. Each write is
+    logged as an \emph{allow} with its diff and shown in the conversation,
+    and the file's previous content is kept first: by git when it has the
+    file committed and unchanged, otherwise in \file{.nodwyn/versions/}
+    (Chapter~\ref{ch:workspaces}). At \code{"ask"}, every write asks, and
+    \key{A} and \key{T} answer it as before.
+  \item[commands] Who answers the other ordinary confirms: a command,
+    input to a running program, an MCP tool that acts. At \code{"judge"},
+    the judge is asked first, as a run started with \code{-{}-judge} asks
+    it (Chapter~\ref{ch:plans}). It is shown the task, the turn's plan and
+    the call; the decision is made in Go against
+    \code{jev.approve\_threshold}, and a project's
+    \code{(approve-refuse? call)} may refuse more. A call it allows runs,
+    recorded with actor \code{judge}. When it refuses or fails, you are
+    asked, and the prompt carries its answer as a reason, \emph{``the judge
+    did not allow it: \ldots''}. Without a judge (no \code{jev-key} stored,
+    \code{jev.content = "none"} or a locked keychain) you are asked. At
+    \code{"ask"}, you are asked. At \code{"allow"}, the call runs, recorded
+    with actor \code{setting}.
+\end{description}
+
+An answer from the judge or the setting is for that call only. Your own
+\key{A} still makes a command prefix standing for the session, so the
+judge is not asked about it again, and the standing approvals in
+\file{allow.toml} and \code{policy.allow\_commands} come first, as before.
+Some confirms \code{[approval]} never answers. They go to you, every time,
+and are asked rather than declined:
+
+\begin{itemize}
+  \item a security confirm: a write to a protected path, content that looks
+    like a key, a command built from tool output;
+  \item a write, which is for \code{writes} to decide;
+  \item a call that carries a credential or proposes a binding;
+  \item an upload.
+\end{itemize}
+
+\code{-{}-yolo} and \code{-{}-no-confirm}, and \code{nodwyn run}'s
+\code{-{}-judge} and \code{-{}-unattended}, decide the confirms of their own
+sessions as before; \code{writes} applies to every session, runs included.
+(A \file{config.toml} that still has the \code{[tasks]} table of older
+versions loads, and the table is ignored.)
+
+\begin{careful}
+With writes free and the judge allowing commands, the model can write code
+and run it without a person looking at either. The judge decides each
+command with the task and the plan in view, and the fences that do not
+depend on it still hold: the pin, the denylist, the binding table and
+\code{l1} on what leaves, provenance on a command built from tool output,
+protected paths, the scrubbed environment and the hard limits. The
+repository's exfiltration scenarios (\file{test/exfil/}) run with writes in
+the folder allowed, and show that a write to a git hook and a
+credential-shaped write still ask, and that a write through a link out of
+the folder is refused. If you want every command asked, set
+\code{commands = "ask"}.
+\end{careful}
 
 \section{Provenance: where a value came from}
 

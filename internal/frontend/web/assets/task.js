@@ -439,8 +439,8 @@ export class TaskView {
     const st = this.status();
     const actions = h("div", { class: "task-actions" });
     const button = (label, iconName, handler, cls = "") => h("button", { type: "button", class: `btn ${cls}`, disabled: !this.conn.live || this.acting, onclick: handler }, iconName ? icon(iconName, 15) : null, label);
-    if (item.run?.status === "running" && this.conn.has("run.stop")) actions.append(button("Pause", "pause", () => this.act("run.stop", "Stopping the run…")));
-    else if (item.open && item.run && item.run.status !== "running" && item.run.status !== "completed" && this.conn.has("run.resume")) actions.append(button("Resume run", "up", () => this.act("run.resume", "Resuming the run…")));
+    // A run comes from nodwyn run (ADR 35): Stop ends it, and a message
+    // afterwards goes on with the task as a chat.
     if (item.open && this.conn.has("session.abort")) {
       const stop = button("Stop", "stop", () => this.act("session.abort", "Stopping…"));
       stop.disabled = stop.disabled || !this.busy;
@@ -479,17 +479,13 @@ export class TaskView {
     );
   }
   async act(method, message) {
-    const item = this.item,
-      version = this.version;
+    const item = this.item;
     this.acting = true;
     this.controls();
     try {
       toast(message);
       await this.conn.call(method, { id: item.id });
-      if (method === "session.close" || method.startsWith("run.")) await this.desk.refresh();
-      if (method === "run.resume" && version === this.version) {
-        this.item = this.desk.sessions.get(item.id) || item;
-      }
+      if (method === "session.close") await this.desk.refresh();
     } catch (error) {
       toast(error.message);
     } finally {
@@ -583,7 +579,9 @@ export class TaskView {
     const turn = this.lastTurn();
     const budgets = this.info?.budgets;
     if (!turn) return null;
-    const panel = h("section", { class: "panel" }, h("h2", {}, "This turn", h("span", { class: "note" }, budgets ? "asks before a limit" : "counted from the log")));
+    // By default a soft limit is its hard one, so nothing asks first (ADR 35).
+    const asks = budgets && ["tool_calls", "tokens", "actions", "wall_ns", "cost"].some((d) => budgets[d]?.soft < budgets[d]?.hard);
+    const panel = h("section", { class: "panel" }, h("h2", {}, "This turn", h("span", { class: "note" }, budgets ? (asks ? "asks before a limit" : "stops at a limit") : "counted from the log")));
     const meters = h("div", { style: "display:flex;flex-direction:column;gap:12px", dataset: { meters: "1" } });
     panel.append(meters);
     this.fillMeters(meters, turn);
@@ -689,14 +687,15 @@ export class TaskView {
           { class: "file-row" },
           icon("file", 15),
           h("span", { class: "mono", title: path }, path),
-          this.info && !this.info.git && this.conn.has("versions.list")
+          // In git too: a file git cannot give back keeps a version (ADR 35).
+          this.info && this.conn.has("versions.list")
             ? h("button", { type: "button", class: "btn small ghost", style: "margin-left:auto", onclick: () => this.history(path, versions) }, "History")
             : h("span", { class: "badge plain" }, "written"),
         );
         return [row, versions];
       }),
     ];
-    const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git is the undo" : this.info ? "previous versions kept" : "writes nodwyn was allowed";
+    const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git and kept versions are the undo" : this.info ? "previous versions kept" : "writes nodwyn was allowed";
     return h("section", { class: "panel" }, h("h2", {}, "Changes", h("span", { class: "note" }, note)), rows);
   }
   // toolsPanel lists where this task's tools come from, when some come from
@@ -775,7 +774,7 @@ export class TaskView {
     if (tools) rows.push(h("div", { class: "kv" }, h("span", {}, "Tools"), h("span", {}, `${tools} offered to the model`)));
     if (this.info?.allowed_writes?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Writes without asking"), h("span", { class: "mono" }, this.info.allowed_writes.join(", "))));
     if (this.info?.allowed_commands?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Commands without asking"), h("span", {}, `${this.info.allowed_commands.length} prefixes`)));
-    const undo = this.info ? (this.info.git ? "A git repository: git is the undo." : "Not a git repository, so nodwyn keeps the previous version of a file before it writes. Restore it from Changes.") : "";
+    const undo = this.info ? (this.info.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the previous version of anything else before it writes. Restore it from Changes." : "Not a git repository, so nodwyn keeps the previous version of a file before it writes. Restore it from Changes.") : "";
     return h("section", { class: "panel" }, h("h2", {}, "Workspace", kind ? h("span", { class: "note" }, kindLabel(kind)) : null), rows, undo ? h("p", { class: "hint" }, undo) : null);
   }
   async history(path, node) {
@@ -792,7 +791,7 @@ export class TaskView {
       return;
     }
     if (!versions.length) {
-      node.replaceChildren(h("p", { class: "hint" }, "No earlier version is kept: the file did not exist before, or git is its undo."));
+      node.replaceChildren(h("p", { class: "hint" }, "No earlier version is kept: the file did not exist before, or git has it committed and is its undo."));
       return;
     }
     const canRestore = this.item.open && this.conn.has("session.restore");
@@ -805,7 +804,7 @@ export class TaskView {
           canRestore ? h("button", { type: "button", class: "btn small", disabled: this.busy, onclick: () => this.restore(path, v.hash) }, "Restore") : h("span", { class: "mono" }, v.hash.slice(0, 12)),
         ),
       ),
-      canRestore ? h("p", { class: "hint" }, "Restoring shows the change and asks first; the current content is kept too.") : h("p", { class: "hint" }, "Resume the task to restore a version."),
+      canRestore ? h("p", { class: "hint" }, "Restoring is a write like any other: it shows the change, and asks first only if writes ask (Settings › Approvals). The current content is kept too.") : h("p", { class: "hint" }, "Resume the task to restore a version."),
     );
   }
   async restore(path, hash) {

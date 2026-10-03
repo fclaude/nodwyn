@@ -9,7 +9,7 @@ task in one and answer it from another.
 
 \code{nodwyn daemon} is a small server that owns sessions and speaks a
 JSON-RPC protocol over a private Unix socket. The browser console, the
-terminal client and supervised runs are all clients of it. You rarely start
+terminal client and \code{nodwyn run} are all clients of it. You rarely start
 it by hand: the app starts one inside itself when none is running.
 
 \begin{center}
@@ -22,7 +22,7 @@ it by hand: the app starts one inside itself when none is running.
 \code{nodwyn ui} & the console in your browser, attached to a running daemon \\
 \code{nodwyn tui} & a full-screen terminal client, local or attached to a daemon \\
 \code{nodwyn daemon} & the session server in the foreground \\
-\code{nodwyn run \ldots} & submit a bounded, supervised task to the daemon \\
+\code{nodwyn run \ldots} & carry a task to its end with no conversation, for scripts and benchmarks \\
 \code{nodwyn repl}, \code{nodwyn eval} & the Scheme interpreter on its own, no session \\
 \bottomrule
 \end{tabularx}
@@ -32,17 +32,21 @@ it by hand: the app starts one inside itself when none is running.
 
 The console, in the app's window or a browser tab, is organised around
 tasks. \textbf{Home} starts a task in a folder and lists what needs your
-answer, what is running and what finished. A \textbf{task} shows its
-conversation with the approval inline (the diff, the reasons, the buttons
-from Chapter~\ref{ch:first}), and beside it the plan, this turn's budget,
-the changes it made, the project notes and the workspace.
+answer, what is running and what finished. Every task it starts is a chat
+(\adr{35}): a request that takes long is a message like any other, and its
+turn goes on until the model answers or a hard limit stops it. A
+\textbf{task} shows its conversation, each write with its diff and, when
+something asks, the approval inline (the reasons and the buttons from
+Chapter~\ref{ch:first}), and beside it the plan, this turn's budget, the
+changes it made, the project notes and the workspace.
 \textbf{Connections} lists the tools (MCP servers among them), the
 credential bindings a task loaded, the named workspaces and the models;
 \textbf{Workspaces} edits your named folders; and \textbf{Settings} holds
-how Home starts a task (a chat, a run or an unattended run), each turn's
-limits and the spend limit, the model and its tuning, the judge, the
-context window, the keychain and the paired devices. A change applies to
-tasks started afterwards; open ones keep what they started with.
+what a task does without asking you (Approvals: writing files and running
+commands), each turn's limits and the spend limit, the model and its
+tuning, the judge, the context window, the keychain and the paired
+devices. A change applies to tasks started afterwards; open ones keep what
+they started with.
 
 \begin{tip}
 The console never invents state. Budgets are counted from the log, the plan
@@ -59,10 +63,11 @@ send), and inspectors behind colon commands: \code{:plan}, \code{:budget},
 \code{:replay}, \code{:log [n] [kind]}. \key{Ctrl+C} aborts busy work,
 \key{Ctrl+Q} detaches, \key{Ctrl+R} reconnects.
 
-\section{Supervised runs}
+\section{Runs, for scripts and benchmarks}
 
-A run is a task that goes on for several turns without you typing each
-message:
+A run carries a task to its end with no conversation: it goes on for
+several turns without anybody typing each message. It is a batch tool, for
+scripts and benchmarks, started from the command line:
 
 \begin{sh}
 nodwyn run --task task.md --repo . --max-turns 20 --budget-wall 2h
@@ -81,6 +86,10 @@ proof; or when the turn or time limit runs out. With
 after a turn that marked a step of its plan done; with \code{-{}-judge} the
 judge answers its ordinary tool confirms. Chapter~\ref{ch:plans} shows the
 Scheme that makes this work.
+
+The console does not start or resume runs. It shows a run started
+elsewhere, and its Stop ends it; a message afterwards goes on with the
+task as a chat.
 
 \section{From another device}
 
@@ -106,7 +115,9 @@ your home Wi-Fi) is yours to provide.
 A paired device can answer approvals, and approving a command \emph{is}
 running a command as you. Pair only devices you would hand a terminal. A
 remote device can never change settings, keys, policy files or the
-workspace registry: those need a console on the computer itself.
+workspace registry: those need a console on the computer itself. So what
+asks, Settings \textrightarrow{} Approvals, is chosen there, and a device's
+tasks get what was chosen.
 \end{careful}
 
 \section{Sharing with people who will never open a terminal}

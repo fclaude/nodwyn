@@ -1,8 +1,12 @@
 # Bounded supervised runs
 
-`nodwyn run` submits a task to a running daemon. The driver is frontend policy
-above the existing core session, plan gate and turn loop. It adds no tool
-permissions, bypasses no checker, and does not change the loop's host interface.
+`nodwyn run` is a batch tool for scripts and benchmarks: it carries a task to
+its end with no conversation. It is not a way of working in the console,
+where every task is a chat and a long request is a message like any other
+(ADR 35). It submits the task to a running daemon. The driver is frontend
+policy above the existing core session, plan gate and turn loop. It adds no
+tool permissions, bypasses no checker, and does not change the loop's host
+interface.
 
 ```sh
 nodwyn daemon
@@ -13,22 +17,17 @@ nodwyn ui
 # Or nodwyn tui --socket /absolute/path/to/daemon.sock
 ```
 
-The console's Home starts a run too, in the mode Settings › Starting tasks
-names or the one chosen for that task, with the turn and time limits set
-there:
+The console does not start or resume runs. It shows a run started here,
+and its Stop ends it; a message afterwards goes on with the task as a chat.
+`run.start` and `run.resume` with `auto_approve`, `judge` or `unattended`
+are refused to an actor relayed from a paired device
+([browser view](browser.md)).
 
-```toml
-# config.toml
-[tasks]
-mode = "run"        # "chat" (the default), "run" or "unattended"
-approval = "ask"    # a run's ordinary confirms: "ask", "judge" (as --judge) or "yes" (as --yolo)
-turns = 20
-wall = "2h"
-```
-
-A paired remote device starts only a supervised run whose confirms it
-answers; `run.start` and `run.resume` with `auto_approve`, `judge` or
-`unattended` are refused to it ([browser view](browser.md)).
+A run's writes in its folder go ahead without asking, as every session's
+do (`[approval] writes`, ADR 35). A supervised run's other confirms are
+answered as a chat's are, by `[approval] commands`: the judge first by
+default, then the person. Its flags replace that, as below: the judge alone
+with `--judge`, yes with `--yolo`, and declined when it is unattended.
 
 Each turn sends the message `(run-turn-prompt task complete-line turn
 max-turns)` makes, a Scheme prompt a project may redefine
@@ -143,14 +142,18 @@ nodwyn run --task task.txt --repo . --budget-wall 2h --max-turns 20 --unattended
 An unattended run is one nobody answers (ADR 18 §5). It gets more guards, not
 fewer, and nothing in it ever waits for a person:
 
-- **Tool confirms are declined** without asking: a write or a command runs
-  only if a standing approval covers it (`.nodwyn/allow.toml`, config); any
-  other is refused, logged, and the model is told. With `--yolo` too, ordinary
+- **Tool confirms are declined** without asking: a command runs only if a
+  standing approval covers it (`.nodwyn/allow.toml`, config), and a write
+  only if one does; writes in the folder are one by default
+  (`[approval] writes`, ADR 35). Any other is refused, logged, and the model
+  is told. With `--yolo` too, ordinary
   confirms are answered yes instead. Security confirms (a credential-shaped
   write, a protected path, a command built from tool output) are declined
   either way.
 - **A soft budget checkpoint goes on to the hard limit**, recorded as answered
-  by `unattended`; the hard limits still stop the turn.
+  by `unattended`; the hard limits still stop the turn. (By default the soft
+  limits are the hard ones, so only a soft limit set lower, or the spend
+  limit's, makes one.)
 - **The run checkpoint is answered by progress.** A turn that marked at least
   one step of its plan done (`plan-step`, recorded as `plan.step`) is followed
   by the next; a turn that marked none stops the run, with the reason in its
@@ -184,7 +187,6 @@ fewer, and nothing in it ever waits for a person:
 A resume never brings either back from the log: `nodwyn run resume SESSION`
 resumes a supervised run, and `--unattended` (with `--yolo` or `--judge` if
 wanted) must be said again, as the person resuming decides how it goes on. The console shows
-an unattended or judged run as such ("Unattended run", "judged"). Its
-**Pause** button stops the run (`run.stop`) and **Resume run** resumes it
-supervised. The console does not start runs: `nodwyn run` (or `run.start`
-over the [protocol](protocol.md)) does.
+an unattended or judged run as such ("Unattended run", "judged"), and its
+**Stop** ends it. The console does not start or resume runs: `nodwyn run`
+(or `run.start` and `run.resume` over the [protocol](protocol.md)) does.

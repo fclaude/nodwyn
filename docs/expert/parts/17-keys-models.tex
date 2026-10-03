@@ -258,15 +258,18 @@ in Chapter~\ref{ch:contexts}).
 
 The judge, Jev, is a keyed service like any other. The plan gate asks it
 whether a request needs a plan and how good a plan is
-(Chapter~\ref{ch:plans}), and a run started with \code{-{}-judge} asks it
-whether to allow a call. It is set up in three places: the \code{[jev]}
-table of \file{config.toml}, a key, and a binding.
+(Chapter~\ref{ch:plans}). A chat asks it first whether to allow a command
+no standing approval covers (\code{[approval] commands = "judge"}, the
+default; Chapter~\ref{ch:primitives}), and you when it does not; a run
+started with \code{-{}-judge} asks it about every ordinary confirm. Without
+a judge, those commands are yours to answer. It is set up in three places:
+the \code{[jev]} table of \file{config.toml}, a key, and a binding.
 
 \begin{toml}
 [jev]
 url = "https://api.typesafe.ai"   # the default
 content = "plan"                  # none, plan (the default), plan+summaries or full
-approve_threshold = 0.8           # for runs started with --judge
+approve_threshold = 0.8           # a call it judges runs at this probability of allow or above
 price_input = 0.5                 # US dollars per million tokens, to price
 price_output = 2.0                #   what the judge reports it used
 \end{toml}
