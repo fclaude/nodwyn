@@ -189,3 +189,18 @@ its lock, as `summary` records are, through the same redaction boundary.
 The window ignores them. `session.delete` removes a whole log, which this
 ADR's writer otherwise never does; it takes the writer's lock first, so a
 log another process has open is refused, not removed.
+
+## Amendment — 2026-10-03: closing a writer unlocks first
+
+The writer's lock is a `flock`, which belongs to the open file
+description. A child that another goroutine forks while the log is open
+(a `shell-exec` command, a contained server's runtime) shares that
+description until its exec closes it, so a session closed in that window
+stayed locked and a resume, rename or delete right after it was refused
+as "already open". Closing a writer now unlocks (`LOCK_UN`) before it
+closes the file, which releases the lock through every copy at once.
+Retrying the lock was not chosen: it would also wait out a real second
+writer, and nothing bounds how long a child waits before its exec. POSIX
+record locks were not chosen either: they are the process's, so a second
+writer in the same process would not be refused, and any close of the
+file, a reader's included, would drop them.

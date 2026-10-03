@@ -160,7 +160,7 @@ func Create(path, session string, opts ...Option) (*Writer, error) {
 		f.Close()
 		return nil, err
 	}
-	return New(f, session, opts...), nil
+	return New(lockedFile{f}, session, opts...), nil
 }
 
 // Open resumes appending to an existing session log. The last complete event
@@ -190,7 +190,7 @@ func Open(path string, opts ...Option) (*Writer, error) {
 		}
 	}
 	last := events[len(events)-1]
-	w := New(f, last.Session, opts...)
+	w := New(lockedFile{f}, last.Session, opts...)
 	w.seq = last.Seq
 	if truncated {
 		return w, ErrTruncated
@@ -400,4 +400,16 @@ func lock(f *os.File) error {
 		return fmt.Errorf("log: session is already open or cannot be locked: %w", err)
 	}
 	return nil
+}
+
+// lockedFile is a session log file holding the lock taken by lock.
+type lockedFile struct{ *os.File }
+
+// Close releases the lock before closing the file. The lock belongs to the
+// open file description, and a child that another goroutine forks while the
+// log is open shares that description until its exec closes it, so without
+// the unlock a resume in that window found the session still locked.
+func (f lockedFile) Close() error {
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return f.File.Close()
 }

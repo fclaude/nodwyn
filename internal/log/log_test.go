@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -259,6 +261,50 @@ func TestExclusiveWriter(t *testing.T) {
 	if err != nil || ev.Seq != 2 {
 		t.Fatalf("append after close: %+v %v", ev, err)
 	}
+}
+
+// A log closed while another goroutine forks a child opens again at once.
+// The child shares the log's open file description until its exec closes
+// it, and the lock went with the description: a resume during a shell
+// command was refused as already open.
+func TestCloseReleasesLockWhileChildrenFork(t *testing.T) {
+	if _, err := exec.LookPath("true"); err != nil {
+		t.Skip("no true command to fork")
+	}
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	w, err := Create(path, "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Append(KindNote, Note{Text: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	var forks sync.WaitGroup
+	for range 4 {
+		forks.Add(1)
+		go func() {
+			defer forks.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				_ = exec.Command("true").Run()
+			}
+		}()
+	}
+	defer func() { close(done); forks.Wait() }()
+	for i := range 2000 {
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if w, err = Open(path); err != nil {
+			t.Fatalf("reopen %d: %v", i, err)
+		}
+	}
+	w.Close()
 }
 
 func TestGatePlanSteps(t *testing.T) {
