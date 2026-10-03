@@ -4981,6 +4981,9 @@
         "kind": {
           "type": "string"
         },
+        "model": {
+          "type": "boolean"
+        },
         "needs_reauth": {
           "type": "boolean"
         },
@@ -5096,6 +5099,9 @@
             "null"
           ]
         },
+        "jev": {
+          "$ref": "#/$defs/rpc.jevInfo"
+        },
         "keychain": {
           "$ref": "#/$defs/rpc.keychainStatus"
         },
@@ -5122,6 +5128,7 @@
         "keychain",
         "credentials",
         "missing",
+        "jev",
         "authorizations",
         "providers",
         "bindings_file"
@@ -5232,6 +5239,61 @@
       },
       "required": [
         "operation_id"
+      ],
+      "type": "object"
+    },
+    "rpc.jevInfo": {
+      "properties": {
+        "bound": {
+          "type": "boolean"
+        },
+        "bound_hosts": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "class": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "off": {
+          "type": "string"
+        },
+        "position": {
+          "type": "string"
+        },
+        "stored": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "class",
+        "host",
+        "position",
+        "methods",
+        "enabled",
+        "off",
+        "stored",
+        "bound",
+        "bound_hosts"
       ],
       "type": "object"
     },
@@ -5403,6 +5465,9 @@
       "properties": {
         "class": {
           "type": "string"
+        },
+        "model": {
+          "type": "boolean"
         },
         "used_by": {
           "items": {
@@ -5979,6 +6044,12 @@
         "docs": {
           "$ref": "#/$defs/rpc.docsSettings"
         },
+        "jev_host": {
+          "type": "string"
+        },
+        "jev_stored": {
+          "type": "boolean"
+        },
         "judge": {
           "type": "boolean"
         },
@@ -6011,7 +6082,9 @@
         "keychain",
         "docs",
         "values",
-        "judge"
+        "judge",
+        "jev_host",
+        "jev_stored"
       ],
       "type": "object"
     },

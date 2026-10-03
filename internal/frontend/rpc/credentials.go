@@ -26,6 +26,11 @@ type credentialsResult struct {
 	Keychain    keychainStatus      `json:"keychain"`
 	Credentials []credentialInfo    `json:"credentials"`
 	Missing     []missingCredential `json:"missing"`
+	// Jev is what the Judge subpanel needs without guessing: the class and
+	// binding values a new jev-key takes, the judge's host, whether the
+	// daemon's configuration enables it, and whether a key is stored and
+	// bound. The key's value is never included.
+	Jev jevInfo `json:"jev"`
 	// Authorizations are the OAuth2 authorizations this daemon started in
 	// the last ten minutes, waiting or finished.
 	Authorizations []authorizationInfo `json:"authorizations"`
@@ -34,6 +39,25 @@ type credentialsResult struct {
 	// BindingsError is why bindings.toml does not load, when it does not:
 	// the rows shown are then the ones this daemon last loaded.
 	BindingsError string `json:"bindings_error,omitempty"`
+}
+
+// jevInfo is what the Judge subpanel needs without guessing: the class
+// and binding values a new jev-key takes, the judge's host, whether the
+// daemon's configuration enables it (Off names why when it does not), and
+// whether a key is stored and allowed for that host. The key's value is
+// never included.
+type jevInfo struct {
+	Class    string   `json:"class"`
+	Host     string   `json:"host"`
+	Position string   `json:"position"`
+	Methods  []string `json:"methods"`
+	Enabled  bool     `json:"enabled"`
+	Off      string   `json:"off"`
+	Stored   bool     `json:"stored"`
+	Bound    bool     `json:"bound"`
+	// BoundHosts are the hosts the stored jev-key may go to: its bindings'
+	// dests, whatever the judge's host now is. Empty when none is stored.
+	BoundHosts []string `json:"bound_hosts"`
 }
 
 // credentialInfo is everything that may be said about a credential.
@@ -54,6 +78,10 @@ type credentialInfo struct {
 	// UsedBy names what is configured to send it: "the main model",
 	// "model fast", "MCP server linear", "Google Docs", "the judge".
 	UsedBy []string `json:"used_by"`
+	// Model is whether a configured model sends it: the control model or
+	// one of the models a strategy may ask for. The console's Model keys
+	// panel groups by it instead of matching the UsedBy labels.
+	Model bool `json:"model,omitempty"`
 	// Bindings are the binding rows that name its class: where it may go.
 	Bindings []bindingRow `json:"bindings"`
 }
@@ -70,6 +98,9 @@ type bindingRow struct {
 type missingCredential struct {
 	Class  string   `json:"class"`
 	UsedBy []string `json:"used_by"`
+	// Model is whether a configured model sends it. The console's Model
+	// keys panel groups by it instead of matching the UsedBy labels.
+	Model bool `json:"model,omitempty"`
 }
 
 type providerInfo struct {
@@ -294,6 +325,11 @@ func (s *server) appendRows(rows []binding.Binding) error {
 func (s *server) credentials() credentialsResult {
 	result := credentialsResult{Keychain: s.keychainStatus(), Credentials: []credentialInfo{}, Missing: []missingCredential{},
 		Authorizations: s.authorizationList(), BindingsFile: s.options.Paths.Bindings}
+	table, err := binding.Load(s.options.Paths.Bindings)
+	if err != nil {
+		table, result.BindingsError = s.options.Bindings, err.Error()
+	}
+	result.Jev = s.jevState(table)
 	for _, name := range keychain.ProfileNames() {
 		p, _ := keychain.ProfileNamed(name)
 		result.Providers = append(result.Providers, providerInfo{Name: p.Name, Scopes: p.Scopes, NeedsSecret: p.NeedsSecret, APIHost: p.APIHost})
@@ -302,16 +338,13 @@ func (s *server) credentials() credentialsResult {
 	if store == nil {
 		return result
 	}
-	table, err := binding.Load(s.options.Paths.Bindings)
-	if err != nil {
-		table, result.BindingsError = s.options.Bindings, err.Error()
-	}
 	users := s.credentialUsers()
+	models := modelClasses(s.options.Config)
 	seen := map[string]bool{}
 	for _, in := range store.List() {
 		info := credentialInfo{ID: in.ID, Class: in.Class, Kind: in.Kind, Created: in.Created, Provider: in.Provider, Scopes: in.Scopes,
 			Refreshable: in.Refreshable, NeedsReauth: in.NeedsReauth, TokenHost: in.TokenHost, Shadowed: seen[in.Class],
-			UsedBy: users.of(in.Class), Bindings: []bindingRow{}}
+			UsedBy: users.of(in.Class), Model: models[in.Class], Bindings: []bindingRow{}}
 		if !in.Expires.IsZero() {
 			expires := in.Expires
 			info.Expires = &expires
@@ -326,10 +359,63 @@ func (s *server) credentials() credentialsResult {
 	}
 	for _, class := range users.required {
 		if !seen[class] {
-			result.Missing = append(result.Missing, missingCredential{Class: class, UsedBy: users.of(class)})
+			result.Missing = append(result.Missing, missingCredential{Class: class, UsedBy: users.of(class), Model: models[class]})
 		}
 	}
 	return result
+}
+
+// modelClasses are the credential classes the configured models send: the
+// control model and one per strategy model. The console groups its Model
+// keys panel by these instead of parsing the UsedBy labels.
+func modelClasses(cfg config.Config) map[string]bool {
+	out := map[string]bool{}
+	if cfg.Control.Credential != "" {
+		out[cfg.Control.Credential] = true
+	}
+	for _, m := range cfg.Models {
+		if m.Credential != "" {
+			out[m.Credential] = true
+		}
+	}
+	return out
+}
+
+// jevState reports the Judge subpanel's state for the binding table as
+// credentials shows it, so the answers agree with the rows shown.
+func (s *server) jevState(table binding.Table) jevInfo {
+	cfg := s.options.Config.Jev
+	host := prim.JevHost(prim.JevOptions{URL: cfg.URL})
+	info := jevInfo{Class: prim.JevClass, Host: host, Position: prim.JevPosition, Methods: []string{prim.JevMethod},
+		Enabled: cfg.Enabled(), BoundHosts: []string{}}
+	switch {
+	case cfg.URL == "":
+		info.Off = "jev.url is empty"
+	case cfg.Content == config.JevContentNone:
+		info.Off = "jev.content is none"
+	}
+	store := s.options.Keychain
+	if store == nil || info.Class == "" {
+		return info
+	}
+	info.Stored = store.HandleForClass(info.Class) != nil
+	if !info.Stored {
+		return info
+	}
+	seen := map[string]bool{}
+	for _, row := range table.Bind {
+		if row.Class == info.Class && row.Dest != "" && !seen[row.Dest] {
+			seen[row.Dest] = true
+			info.BoundHosts = append(info.BoundHosts, row.Dest)
+		}
+	}
+	slices.Sort(info.BoundHosts)
+	if host == "" {
+		return info
+	}
+	bound, _ := table.Lookup(info.Class, host, prim.JevMethod, prim.JevPosition)
+	info.Bound = bound
+	return info
 }
 
 // credentialUsers is what is configured to send which class.

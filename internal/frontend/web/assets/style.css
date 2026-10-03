@@ -833,6 +833,8 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .check input { margin: 0; }
 .cred-detail { gap: 14px; }
 .cred-row .end { gap: 6px; white-space: nowrap; }
+.cred-status { font-size: 14px; }
+.cred-status .dot { margin-top: 2px; }
 .cred-detail .row-actions .input { flex: 1; min-width: 160px; width: auto; }
 .cred-detail .row-actions select.input { flex: 0 1 auto; }
 .table-wrap { overflow-x: auto; }

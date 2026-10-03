@@ -478,7 +478,13 @@ function judgeSection(ctx, redraw) {
       ? "Off: nothing goes to the judge, and plans are drafted without its score."
       : desk.settings?.judge
         ? "Ready: a jev-key is stored and the keychain is unlocked."
-        : "Not available: no jev-key is stored, or the keychain is locked. The manual's “The judge (Jev)” says how to add one.";
+        : "Not available: no jev-key is stored, or the keychain is locked.";
+  // The row shows only when the Judge panel has a field for it: the
+  // judge's host is known and no key is stored. With a stored key the row
+  // stays out whatever the judge's content level, so it never offers to
+  // add a key that is already there. The label is neutral: the row is
+  // about the key, not about enabling the judge.
+  const keyAction = desk.settings?.jev_host && !desk.settings?.jev_stored ? h("a", { class: "btn small", href: "#/connections/credentials" }, "Judge key") : null;
   const levels = [
     ["none", "Off"],
     ["plan", "The task and plan"],
@@ -496,6 +502,7 @@ function judgeSection(ctx, redraw) {
     "Judge",
     "The judge (Jev) scores plans before a task acts, and answers its commands before you're asked (Approvals, above).",
     ...row("Status", h("p", { class: "hint" }, status)),
+    ...row("Key", keyAction || h("p", { class: "hint" }, desk.settings?.jev_stored ? "Stored in the keychain." : "Set the judge's address (jev.url) first.")),
     ...row("What it sees", choice(ctx, "jev.content", levels, redraw), h("p", { class: "hint" }, contentHint[content] || "")),
     ...row("Allows a command at", input(ctx, "jev.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a command go ahead. Below that, or with no answer, you're asked.")),
     ...row("Waits", input(ctx, "jev.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),

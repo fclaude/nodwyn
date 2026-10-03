@@ -108,14 +108,20 @@ type JevClient interface {
 const JevClass = "jev-key"
 
 const (
-	jevPath     = "/v1/systemone"
-	jevPosition = "header:Authorization:Bearer"
+	jevPath = "/v1/systemone"
+	// JevPosition is where the jev-key goes in a request: a bearer token in
+	// the Authorization header. It is the position the Credentials console
+	// pre-fills, so the binding it writes is the one the judge's calls
+	// carry.
+	JevPosition = "header:Authorization:Bearer"
+	// JevMethod is the HTTP method of every judge call.
+	JevMethod = "POST"
 )
 
-// jevHost is the destination the E3 binding check judges: the host of the
+// JevHost is the destination the E3 binding check judges: the host of the
 // configured base URL, so the log never claims one host while bytes go to
 // another. Bind class jev-key to it (api.typesafe.ai in production).
-func jevHost(o JevOptions) string {
+func JevHost(o JevOptions) string {
 	if u, err := url.Parse(o.URL); err == nil && u.Host != "" {
 		return strings.ToLower(u.Hostname())
 	}
@@ -272,9 +278,9 @@ func jevMeta(o JevOptions, keyed bool, doc string, params ...scheme.Param) schem
 		Doc:            doc,
 		Egress:         true,
 		Host:           true,
-		EgressHost:     jevHost(o),
+		EgressHost:     JevHost(o),
 		EgressMethod:   http.MethodPost,
-		EgressPosition: jevPosition,
+		EgressPosition: JevPosition,
 		TaintSource:    scheme.TagHTTP,
 		Params:         params,
 	}

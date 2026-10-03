@@ -11,6 +11,29 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
+// Settings reports the judge's host and whether a jev-key is stored, so
+// its judge-key row never points at a Judge panel with no field and never
+// offers to add a key that is already there.
+func TestSettingsJevHost(t *testing.T) {
+	o := options(t)
+	o.Config.Jev.URL = "https://judge.example:8443"
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("keychain.create", map[string]any{"no_passphrase": true})
+	var settings settingsResult
+	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
+	if settings.JevHost != "judge.example" || settings.JevStored {
+		t.Fatalf("jev before storing: %+v", settings)
+	}
+	c.ok("credentials.add", map[string]any{"class": "jev-key", "value": "sk-judge-canary-0001",
+		"dest": "judge.example", "methods": []string{"POST"}, "position": "header:Authorization:Bearer"})
+	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
+	if !settings.JevStored {
+		t.Fatalf("jev after storing: %+v", settings)
+	}
+}
+
 func TestKeychainCreateUnlockOverTheSocket(t *testing.T) {
 	o := options(t)
 	path, stop := start(t, o)

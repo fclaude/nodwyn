@@ -205,6 +205,14 @@ type settingsResult struct {
 	// Judge says a judge can answer a run's confirms now: jev.content is
 	// not "none" and a jev-key is stored in the unlocked keychain.
 	Judge bool `json:"judge"`
+	// JevHost is the host of jev.url: where a jev-key goes. Empty when the
+	// judge has no address. Settings shows its judge-key row only when it
+	// is known, so the row never points at a panel with no field.
+	JevHost string `json:"jev_host"`
+	// JevStored says a jev-key is in the keychain, whether or not the judge
+	// is enabled: Settings needs it to tell "no key stored" from "the judge
+	// is off with a key stored". The key's value is never included.
+	JevStored bool `json:"jev_stored"`
 }
 
 // docsSettings is how documents leave this computer: whether a Google
@@ -238,8 +246,10 @@ func (s *server) settings() settingsResult {
 		docs = cfg.Docs
 	}
 	judge := s.options.Config.Jev.Enabled() && s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
+	stored := s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
 	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Keychain: s.keychainStatus(),
-		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge}
+		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge,
+		JevHost: prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL}), JevStored: stored}
 }
 
 // docsSettingsMethod answers settings.docs.write: it saves how an upload to

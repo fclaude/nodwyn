@@ -314,8 +314,11 @@ methods = ["POST"]
 
 A keyed model names the class as its \code{credential}; the binding is
 checked on every request and recorded as \code{egress.check}. The judge
-works the same way with the class \code{jev-key}, bound to its host: once
-that key exists, the default loop's plan gate runs before each message,
+works the same way with the class \code{jev-key}, bound to its host: the
+console's Connections page keeps a Judge card at the top of its
+Credentials, with one field for the key when none is stored, and the
+binding it writes is the judge's own (its host, Bearer token, \code{POST}).
+Once that key exists, the default loop's plan gate runs before each message,
 and the judge answers commands before you are asked
 (\code{approval.commands = "judge"}, the default). Set
 \code{jev.content = "none"} to send it nothing, or \code{"full"} to

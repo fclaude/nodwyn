@@ -1,8 +1,9 @@
 // Credentials from the console: a keychain without a passphrase, a key
-// stored and allowed for one host, replaced, an OAuth2 account connected
-// through a fake provider, a credential removed, the passphrase set and
-// removed again; and after a restart, a keychain without a passphrase is
-// open without anyone unlocking it.
+// stored and allowed for one host, replaced, the judge key stored through
+// its own panel with its details opened inside that panel, an OAuth2
+// account connected through a fake provider, a credential removed, the
+// passphrase set and removed again; and after a restart, a keychain
+// without a passphrase is open without anyone unlocking it.
 const { chromium } = require("playwright");
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -68,6 +69,35 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   await page.click(".cred-detail button:has-text('Replace')");
   await page.waitForSelector("text=has its new value", { timeout: 10000 });
   step("key replaced");
+
+  // The Judge panel: store the judge key through its own field. Its details
+  // open inside that panel at once; any shadowing of the detail renderer
+  // blanks the whole tab, so this step guards the panel's wiring too.
+  await page.fill("#judge #jev-value", "sk-judge-canary-0001");
+  await page.click("#judge button:has-text('Store the judge key')");
+  await page.waitForSelector("#judge .cred-row:has-text('jev-key')", { timeout: 10000 });
+  await page.waitForSelector("#judge .cred-detail td", { timeout: 10000 });
+  if (!(await page.isVisible("#judge .cred-detail"))) throw new Error("the judge key's details opened outside its panel");
+  step("judge key stored through its own panel, details inside it");
+  // And through its row: closing and reopening must keep the tab alive too.
+  await page.click("#judge .cred-row:has-text('jev-key')");
+  await page.waitForSelector("#judge .cred-detail", { state: "detached", timeout: 10000 });
+  await page.click("#judge .cred-row:has-text('jev-key')");
+  await page.waitForSelector("#judge .cred-detail td", { timeout: 10000 });
+  step("judge key's row reopens its details inside its panel");
+  await page.screenshot({ path: `${out}/credentials-judge.png`, fullPage: true });
+
+  // Settings › Judge: with the key stored, the Key row says so and offers
+  // no second add, even though the judge itself is off in the demo.
+  await go("#/settings");
+  await page.waitForSelector("text=Stored in the keychain.", { timeout: 10000 });
+  if (await page.isVisible("a:has-text('Judge key')")) throw new Error("Settings still offers to add a stored judge key");
+  step("settings reports the stored judge key");
+
+  // Back to Credentials for the OAuth2 account: the check left the page on
+  // Settings, where there is no Connect button.
+  await go("#/connections/credentials");
+  await page.waitForSelector("#judge .cred-row:has-text('jev-key')", { timeout: 10000 });
 
   // Connect an account through the fake provider: the console opens its
   // consent page, the provider sends the browser back to nodwyn, and the
