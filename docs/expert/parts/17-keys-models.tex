@@ -200,6 +200,20 @@ key and one binding for every model a provider offers. When the app sets up
 a model for you, it saves the server and writes exactly that binding: the
 server's host, \code{POST}, a bearer \code{Authorization} header.
 
+A conversation may be moved to another model between turns
+(\adr{40}). The choice names a \code{[models.NAME]} entry, config.toml's
+\code{[control]} model, or a server and one of its models, so the key
+never changes: another model on the same server is the same address and the
+same key, and a switched model on another server brings that server's key
+and its own binding, checked on the request as every other request is. The
+choice is a record in the session's log (\code{session.model}) and is
+restored when the session is resumed; it is this computer's act, not a
+paired device's, whether the task is being opened or moved. The window is
+sized for the model that will answer, as opening the task on it would size
+it (from \code{num\_ctx}, or the context the server's model list gives),
+and a switch is refused when the conversation would not fit it. Whether a
+model takes images is asked of each model the task is moved to.
+
 An attached image is egress of a kind no binding governs: its pixels cannot
 be redacted. It goes to the control model's host only, and only after a
 confirm that names that host (Chapter~\ref{ch:workspaces} shows it); a

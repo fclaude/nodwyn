@@ -32,6 +32,7 @@ func contracts() map[string]methodContract {
 		"session.list":            {struct{}{}, []sessionInfo{}},
 		"session.open":            {openParams{}, sessionDetails{}},
 		"session.resume":          {idParams{}, sessionDetails{}},
+		"session.model.set":       {modelSetParams{}, core.ModelState{}},
 		"session.info":            {idParams{}, sessionDetails{}},
 		"session.close":           {idParams{}, struct{}{}},
 		"session.rename":          {renameParams{}, struct{}{}},
@@ -143,7 +144,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindCredRegister): log.CredRegister{}, string(log.KindCredRefresh): log.CredRefresh{}, string(log.KindMCPEgress): log.MCPEgress{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
 		string(log.KindRunState): log.RunState{}, string(log.KindRunTurn): log.RunTurn{}, string(log.KindRunCheckpoint): log.RunCheckpoint{},
 		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{}, string(log.KindAttach): log.Attach{}, string(log.KindDocUpload): log.DocUpload{},
-		string(log.KindSessionTitle): log.SessionTitle{}, string(log.KindSessionArchive): log.SessionArchive{},
+		string(log.KindSessionTitle): log.SessionTitle{}, string(log.KindSessionArchive): log.SessionArchive{}, string(log.KindSessionModel): log.SessionModel{},
 		string(log.KindRedact): struct {
 			Source uint64         `json:"source_seq"`
 			Events []redact.Event `json:"events"`

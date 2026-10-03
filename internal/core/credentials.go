@@ -253,11 +253,11 @@ func (s *Session) models() map[string]loop.Endpoint {
 	for name, m := range s.opts.Config.Models {
 		out[name] = s.endpoint(m)
 	}
-	control := s.endpoint(s.opts.Config.Control)
+	control := s.endpoint(s.model)
 	switch {
 	case s.opts.Provider != nil:
 		control.Provider = s.opts.Provider
-	case s.opts.Config.Control.URL == "" || s.opts.Config.Control.Model == "":
+	case s.model.URL == "" || s.model.Model == "":
 		// A session opens without one, to replay or evaluate; its first
 		// model request says what to add.
 		control.Provider = unconfigured{llm.Permanent(config.MissingControl(s.opts.Paths.ConfigFile))}

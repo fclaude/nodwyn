@@ -51,6 +51,11 @@ type Options struct {
 	// InitFile is loaded after the prelude with user origin; "" disables.
 	// Default: <Repo>/.nodwyn/init.scm if it exists.
 	InitFile string
+	// Model is the model this conversation talks to (ADR 40). The zero
+	// choice is config.toml's [control] model. A session resumed from a log
+	// that switched its model takes that choice back, when config.toml
+	// still has it.
+	Model ModelChoice
 	// EventBuffer is the events channel capacity (default 256).
 	EventBuffer int
 	// LogWriter overrides the session log destination (tests).
@@ -104,11 +109,18 @@ func New(o Options) (*Session, error) {
 		return nil, err
 	}
 	s.flushOutput()
-	if _, err := s.Record(log.KindSessionStart, log.SessionStart{
-		Context: s.loop.WindowContext(),
+	recipe := s.loop.WindowContext()
+	_, err = s.Record(log.KindSessionStart, log.SessionStart{
+		Context: recipe,
 		Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(),
-		Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools()),
-	}); err != nil {
+		Model: s.model.Model, URL: s.model.URL, Tools: len(s.loop.Tools()),
+	})
+	if c := s.opts.Model; err == nil && c.Name != loop.ControlModel {
+		// A conversation opened on a chosen model records the choice as a
+		// switch does, so resuming it talks to that model again (ADR 40).
+		_, err = s.Record(log.KindSessionModel, modelRecord("", c, s.model, recipe))
+	}
+	if err != nil {
 		s.closeMCP()
 		s.logw.Close()
 		removeScratch(s.scratch)
@@ -139,6 +151,16 @@ func jevOptions(j config.Jev) prim.JevOptions {
 func resolveOptions(o Options) (Options, error) {
 	if _, err := o.Config.Budget.Limits(o.Config.Loop.MaxToolCalls); err != nil {
 		return Options{}, err
+	}
+	// The choice is resolved once, here, so a refusal says what is wrong
+	// before a session exists; initialize resolves it into the model the
+	// conversation talks to. config.toml's [control] model stays where it
+	// is, so a conversation can be moved back to it (ADR 40).
+	if _, err := resolveModel(o.Config, o.Model); err != nil {
+		return Options{}, err
+	}
+	if o.Model.Name == "" && o.Model.Server == "" && o.Model.Model == "" {
+		o.Model.Name = loop.ControlModel
 	}
 	if o.Repo == "" {
 		return Options{}, errors.New("core: repo root is required")
@@ -289,6 +311,13 @@ func (s *Session) initialize() (err error) {
 	if s.workspace, err = config.LoadWorkspace(o.Repo); err != nil {
 		return fmt.Errorf("core: %w", err)
 	}
+	// The model this conversation talks to: config.toml's [control] model,
+	// or the one chosen for it (ADR 40). Every part of the session that
+	// asks it (the loop, the window, the planner, the image checks) reads
+	// this one, so a switch is the only place it changes.
+	if s.model, err = resolveModel(o.Config, o.Model); err != nil {
+		return err
+	}
 	// Interpreter: output becomes an event, never stdout.
 	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}), scheme.WithBaseDir(o.Repo))
 	po := s.primitiveOptions()
@@ -318,7 +347,11 @@ func (s *Session) initialize() (err error) {
 	// redefine it; the tool list is frozen once init.scm has run.
 	requestTimeout, _ := o.Config.Loop.Durations()
 	models := s.models()
-	win, ceiling := s.sizeWindow(models)
+	control, win, ceiling, sizing := s.sizeWindow(models[loop.ControlModel])
+	models[loop.ControlModel] = control
+	if sizing != "" {
+		s.note(sizing)
+	}
 	s.loop, err = loop.New(s, s.interp, loop.Config{
 		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens, Thinking: true},
 		Ceiling:        ceiling,

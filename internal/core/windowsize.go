@@ -15,19 +15,19 @@ import (
 // sizeWindow sizes the window for the control model's context
 // (config.Window.Sized): its num_ctx, or, when that is unset, what an
 // OpenAI-compatible server's model list says, which then fills num_ctx so
-// the session's recipe and (model-info) report it. It returns the window
-// and its ceiling.
-func (s *Session) sizeWindow(models map[string]loop.Endpoint) (config.Window, int) {
+// the session's recipe and (model-info) report it. It returns the control
+// model so filled, the window, its ceiling, and a note saying how the window
+// was sized ("" when the defaults stand for a reason nothing needs saying).
+// Opening a conversation and moving it to another model size it the same way
+// (ADR 40).
+func (s *Session) sizeWindow(control loop.Endpoint) (loop.Endpoint, config.Window, int, string) {
 	w := s.opts.Config.Window
-	control := models[loop.ControlModel]
 	if oai, ok := control.Provider.(*llm.OpenAI); ok && control.NumCtx == 0 {
 		n, err := contextLength(oai, control.Model)
 		if err != nil {
-			s.note(fmt.Sprintf("the window keeps its default size: %s; set num_ctx in [control] to size it for the model's context", err))
-			return w, w.HighWater
+			return control, w, w.HighWater, fmt.Sprintf("the window keeps its default size: %s; set num_ctx in [control] to size it for the model's context", err)
 		}
 		control.NumCtx = n
-		models[loop.ControlModel] = control
 	}
 	reserve := w.OutputReserve
 	if control.MaxOutput > 0 {
@@ -35,10 +35,10 @@ func (s *Session) sizeWindow(models map[string]loop.Endpoint) (config.Window, in
 	}
 	sized, ceiling := w.Sized(control.NumCtx, reserve)
 	if sized.HighWater != w.HighWater || ceiling > sized.HighWater {
-		s.note(fmt.Sprintf("the window is sized for %s's context of %d tokens: trimmed past %d down to %d, compacted with room up to %d",
-			control.Model, control.NumCtx, sized.HighWater, sized.LowWater, ceiling))
+		return control, sized, ceiling, fmt.Sprintf("the window is sized for %s's context of %d tokens: trimmed past %d down to %d, compacted with room up to %d",
+			control.Model, control.NumCtx, sized.HighWater, sized.LowWater, ceiling)
 	}
-	return sized, ceiling
+	return control, sized, ceiling, ""
 }
 
 // note records a note in the session log; a note that cannot be written

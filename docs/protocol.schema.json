@@ -489,6 +489,23 @@
       ],
       "type": "object"
     },
+    "core.ModelState": {
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
     "event.Checkpoint": {
       "properties": {
         "Checkpoint": {
@@ -1754,6 +1771,42 @@
       ],
       "type": "object"
     },
+    "log.SessionModel": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.WindowContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "from": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
     "log.SessionStart": {
       "properties": {
         "context": {
@@ -2364,6 +2417,9 @@
     "payload.session.end": {
       "$ref": "#/$defs/log.SessionEnd"
     },
+    "payload.session.model": {
+      "$ref": "#/$defs/log.SessionModel"
+    },
     "payload.session.resume": {
       "$ref": "#/$defs/log.SessionStart"
     },
@@ -2573,6 +2629,9 @@
         },
         {
           "$ref": "#/$defs/request.session.list"
+        },
+        {
+          "$ref": "#/$defs/request.session.model.set"
         },
         {
           "$ref": "#/$defs/request.session.notes.write"
@@ -3883,6 +3942,37 @@
       ],
       "type": "object"
     },
+    "request.session.model.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.model.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.modelSetParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.notes.write": {
       "properties": {
         "id": {
@@ -4722,6 +4812,9 @@
         "array",
         "null"
       ]
+    },
+    "result.session.model.set": {
+      "$ref": "#/$defs/core.ModelState"
     },
     "result.session.notes.write": {
       "$ref": "#/$defs/rpc.inspectionStarted"
@@ -5721,6 +5814,26 @@
       ],
       "type": "object"
     },
+    "rpc.modelSetParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
     "rpc.modelStatus": {
       "properties": {
         "detail": {
@@ -5801,7 +5914,16 @@
     },
     "rpc.openParams": {
       "properties": {
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
         "repo": {
+          "type": "string"
+        },
+        "server": {
           "type": "string"
         }
       },
@@ -6122,6 +6244,9 @@
             "null"
           ]
         },
+        "model": {
+          "$ref": "#/$defs/core.ModelState"
+        },
         "repo": {
           "type": "string"
         },
@@ -6151,6 +6276,7 @@
         "busy",
         "tools",
         "budgets",
+        "model",
         "allowed_commands",
         "allowed_writes",
         "turn_writes",
@@ -7475,6 +7601,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.SessionEnd"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "session.model"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionModel"
             },
             "seq": {
               "minimum": 0,

@@ -60,9 +60,10 @@ IDs are transport data and are echoed unchanged.
 | Method | Named parameters | Result |
 |---|---|---|
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
-| `session.open` | `{"repo":"/absolute/repository"}` | Open-session details |
+| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"` | Open-session details |
 | `session.resume` | `{"id":"SESSION_ID"}` | Open-session details |
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
+| `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"` | The model the conversation talks to now |
 | `session.close` | `{"id":"SESSION_ID"}` | `{}` after releasing the session writer |
 | `session.rename` | `{"id":"SESSION_ID","title":"…"}` | `{}` after recording the name; `""` takes it back |
 | `session.archive` | `{"id":"SESSION_ID","archived":true}` | `{}` after archiving a closed session, or bringing it back |
@@ -82,7 +83,27 @@ configured limits, including the legacy tool-call override; this
 protocol does not expose live turn counters. Details also include
 `allowed_commands`, `allowed_writes`, `turn_writes`, optional `turn_actor`,
 `approve_all` ("don't ask" is on) and optional `approve_actor` (who turned it
-on).
+on). Details also include `model`: the model this conversation talks to now,
+as `name` (a `[models.NAME]` entry, or `control` for config.toml's
+`[control]` model), `server` (the `[servers.NAME]` it is on, when it is on
+one) and `model` (the id as the provider names it). No key and no
+credential class is in it.
+
+A conversation's model may be chosen as it opens and moved between turns
+(ADR 40). `session.open` takes a model the same way `session.model.set`
+moves an open session: `name` is a `[models.NAME]` entry or `control`, or
+`server` and `model` name a model on a configured `[servers.NAME]` (which
+needs no config.toml entry of its own). A switch applies from the next turn
+on, with the window sized for the new model as opening on it would size it;
+it is refused while a turn runs and when the conversation would not fit
+the target's context (its `num_ctx`, or what its server's model list says)
+less its reply reserve. Either is recorded as a `session.model` event (which
+the session's subscribers receive), carrying the window's recipe from then
+on. Both are refused to a paired device, whose `session.open` without a
+model opens on `[control]`: where a conversation's content goes stays with
+this computer (ADR 30). Resuming a session restores the model its log last
+named, falling back to `[control]` with a `note` when config.toml no longer
+offers it.
 Session details also contain `bindings`, a copied array of loaded metadata rows
 with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
 `Scopes` (OAuth2 scopes the row allows, ADR 24) fields. No credential values are

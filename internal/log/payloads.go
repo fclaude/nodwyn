@@ -367,6 +367,24 @@ type SessionArchive struct {
 	Archived bool   `json:"archived"`
 }
 
+// SessionModel records the model a conversation talks to (ADR 40): the
+// person chose it when the conversation opened, or another one for it since,
+// and the next turn asks it. From is the model id it talked to before (empty
+// at open); Model is the model id now, as the provider names it. Server names
+// the [servers.NAME] it is on, Name the [models.NAME] entry it is ("control"
+// for config.toml's) and URL where it is reached. Context is the window's
+// recipe from here on, sized for this model, as session.resume's is. No key
+// and no credential class is here: a switch changes nothing about either.
+type SessionModel struct {
+	Actor   string         `json:"actor,omitempty"`
+	From    string         `json:"from,omitempty"`
+	Model   string         `json:"model"`
+	Server  string         `json:"server,omitempty"`
+	Name    string         `json:"name,omitempty"`
+	URL     string         `json:"url,omitempty"`
+	Context *WindowContext `json:"context,omitempty"`
+}
+
 // TurnCheckpoint records a budget decision, including cancellation and the
 // unchanged hard ceiling. Text is redacted by the ordinary Record boundary.
 type TurnCheckpoint struct {

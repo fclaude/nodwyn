@@ -12,7 +12,8 @@ import (
 // the window's estimate of the latest control-model request made in the
 // conversation itself, not in a planner's or sub-agent's narrowed context,
 // what the provider counted for that request's prompt, the window's high
-// water from the session's start, and the compactions so far.
+// water (the session's, or the model's it was moved to), and the
+// compactions so far.
 type contextGauge struct {
 	depth       int  // narrowed contexts open
 	await       bool // the next llm.resp answers the request being followed
@@ -27,6 +28,12 @@ func (g *contextGauge) observe(kind string, raw json.RawMessage) {
 	switch log.Kind(kind) {
 	case log.KindSessionStart, log.KindSessionResume:
 		if p, err := decode[log.SessionStart](raw); err == nil && p.Context != nil {
+			g.high = p.Context.HighWater
+		}
+	case log.KindSessionModel:
+		// A conversation moved to another model is trimmed by the window
+		// sized for it (ADR 40).
+		if p, err := decode[log.SessionModel](raw); err == nil && p.Context != nil {
 			g.high = p.Context.HighWater
 		}
 	case log.KindUserMsg, log.KindContextWiden:

@@ -17,6 +17,22 @@ type helloResult struct {
 }
 type openParams struct {
 	Repo string `json:"repo"`
+	// Name, Server and Model choose the model the conversation starts on,
+	// as session.model.set does (ADR 40). Without them it is config.toml's
+	// [control] model.
+	Name   string `json:"name,omitempty"`
+	Server string `json:"server,omitempty"`
+	Model  string `json:"model,omitempty"`
+}
+
+// modelSetParams choose a conversation's model: a [models.NAME] entry by
+// name (or "control" for config.toml's [control] model), or a model on one
+// of the configured [servers.NAME].
+type modelSetParams struct {
+	ID     string `json:"id"`
+	Name   string `json:"name,omitempty"`
+	Server string `json:"server,omitempty"`
+	Model  string `json:"model,omitempty"`
 }
 type idParams struct {
 	ID string `json:"id"`

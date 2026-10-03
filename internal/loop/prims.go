@@ -553,7 +553,7 @@ func (l *Loop) recordCompaction(c *scheme.Call) (scheme.Value, error) {
 		break
 	}
 	if rec.Compacted && l.frozen {
-		pol := l.cfg.Window
+		pol, _ := l.policy()
 		pol.HighWater = math.MaxInt
 		rec.After = window.Build(events, l.system, l.toolsLen, pol).EstTokens
 	}
@@ -1115,10 +1115,13 @@ func (l *Loop) modelInfo(c *scheme.Call) (scheme.Value, error) {
 
 // modelNames is (model-names).
 func (l *Loop) modelNames(*scheme.Call) (scheme.Value, error) {
+	// The registry's map is the one a switch writes the control model into.
+	l.controlMu.RLock()
 	names := make([]string, 0, len(l.cfg.Models))
 	for n := range l.cfg.Models {
 		names = append(names, n)
 	}
+	l.controlMu.RUnlock()
 	sort.Strings(names)
 	vs := make([]scheme.Value, len(names))
 	for i, n := range names {
@@ -1129,11 +1132,11 @@ func (l *Loop) modelNames(*scheme.Call) (scheme.Value, error) {
 
 // windowLimits is (window-limits).
 func (l *Loop) windowLimits(*scheme.Call) (scheme.Value, error) {
-	w := l.cfg.Window
+	w, ceiling := l.policy()
 	return scheme.List(
 		scheme.Cons(scheme.Sym("high-water"), scheme.Int(int64(w.HighWater))),
 		scheme.Cons(scheme.Sym("low-water"), scheme.Int(int64(w.LowWater))),
-		scheme.Cons(scheme.Sym("ceiling"), scheme.Int(int64(max(l.cfg.Ceiling, w.HighWater)))),
+		scheme.Cons(scheme.Sym("ceiling"), scheme.Int(int64(max(ceiling, w.HighWater)))),
 		scheme.Cons(scheme.Sym("max-result-tokens"), scheme.Int(int64(w.MaxResultTokens))),
 		scheme.Cons(scheme.Sym("output-reserve"), scheme.Int(int64(l.cfg.MaxOutput))),
 	), nil
@@ -1157,7 +1160,7 @@ func (l *Loop) contextTokens(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, errors.New("expected at most a tool result")
 	}
 	events := l.host.EventsSoFar()
-	pol := l.cfg.Window
+	pol, _ := l.policy()
 	pol.HighWater = math.MaxInt
 	built := window.Build(events, l.system, l.toolsLen, pol)
 	if len(c.Args) == 0 {

@@ -1559,7 +1559,7 @@ substitutions, is built in \file{internal/core/events.go}.
 Group & Kinds \\
 \midrule
 \endhead
-Session & \code{session.start}, \code{session.resume}, \code{session.end}, \code{session.title}, \code{session.archive}, \code{turn.end}, \code{turn.checkpoint} \\
+Session & \code{session.start}, \code{session.resume}, \code{session.end}, \code{session.title}, \code{session.archive}, \code{session.model}, \code{turn.end}, \code{turn.checkpoint} \\
 Conversation & \code{user.msg}, \code{harness.msg}, \code{attach}, \code{llm.req}, \code{llm.resp}, \code{tool.call}, \code{tool.result} \\
 Context & \code{context.narrow}, \code{context.widen}, \code{context.fold}, \code{result.fold}, \code{summary}, \code{summary.drop} \\
 Authority & \code{guard.decision}, \code{egress.check}, \code{approval.change}, \code{binding.change}, \code{cred.register}, \code{cred.refresh}, \code{redact.event} \\
@@ -1598,8 +1598,10 @@ its own reply cap, its sampling settings, a higher trim line), the
 attached images it did not carry and why, and a \code{request\_hash} of
 the provider-neutral request, in which an image is its digest. The rest of the
 recipe\,---\,the system prompt, the tool schemas, the window's policy, the
-context size and the output cap\,---\,is recorded once, in
-\code{session.start}'s \code{context}. From these,
+context size and the output cap\,---\,is recorded in
+\code{session.start}'s \code{context}, and again where it changes: in
+\code{session.resume}, and in \code{session.model} when the conversation is
+moved to another model and the window is sized for it (\adr{40}). From these,
 \code{nodwyn replay SESSION --window SEQ} rebuilds the request recorded at
 \code{SEQ} from the log before it, recomputes the hash, and refuses a
 mismatch. It loads no current configuration, runs no tool and asks no

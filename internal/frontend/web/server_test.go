@@ -539,9 +539,17 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 		t.Fatal("revoked device still paired")
 	}
 	for _, method := range []string{"session.binding.create", "session.approve_all", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
-		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize", "session.delete"} {
+		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize", "session.delete", "session.model.set"} {
 		if s.b.allowed(method, true) {
 			t.Fatalf("remote device may call %s", method)
+		}
+	}
+	// ... and this computer may: choosing a conversation's model is its
+	// act (ADR 30, ADR 40), so the refusal above is a boundary, not a
+	// method the bridge never allowed anyone.
+	for _, method := range []string{"session.model.set", "session.approve_all", "settings.control.write"} {
+		if !s.b.allowed(method, false) {
+			t.Fatalf("this computer may not call %s", method)
 		}
 	}
 	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "run.start", "run.resume", "credentials.list", "session.rename", "session.archive"} {

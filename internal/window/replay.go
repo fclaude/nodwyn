@@ -131,6 +131,17 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			}
 			runtime = next
 		}
+		if ev.Kind == log.KindSessionModel {
+			// A conversation moved to another model is built from here on by
+			// the recipe sized for it (ADR 40).
+			var moved log.SessionModel
+			if err := ev.Decode(&moved); err != nil {
+				return zero, err
+			}
+			if moved.Context != nil {
+				runtime.Context = moved.Context
+			}
+		}
 		prefix = append(prefix, ev)
 	}
 	return zero, fmt.Errorf("window replay: no request at seq %d", seq)

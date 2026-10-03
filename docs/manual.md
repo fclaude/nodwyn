@@ -1037,6 +1037,37 @@ a task and a plan, but a strategy that asks a model over the whole
 conversation sends the whole conversation. Only you configure models; the
 model cannot.
 
+**The model a conversation talks to.** A conversation may be moved to
+another model between turns, and it keeps that model when it is resumed
+(ADR 40). The choice is one of: `control` (config.toml's `[control]`
+model), a `[models.NAME]` entry, or a server and a model on it — the last
+needs no `[models.NAME]` block, so any of the models an OpenRouter-shaped
+server lists can be chosen. One key per server is unchanged: another model
+on the same server is the same address, the same key and the same binding,
+and a model on another server is reached with that server's key, its
+binding checked on every request as always. A switch takes effect at the
+next turn — `(model-turn)` asks the new model, while `(model-turn "NAME")`
+still asks a named one for a turn (ADR 27). The window is then sized for the
+new model, as it would be had the task been opened on it: from its
+`num_ctx`, or from the context the server's model list gives (OpenRouter's
+does), and a note in the transcript says how. A switch is refused while a
+turn runs, while an attachment is being added, and when the conversation
+would not fit the new model's context less its reply reserve: compact it
+first, or choose a model with more context (nothing is judged for a model
+whose context neither config.toml nor its server says). Whether an attached
+image may go is asked of the new model, so a text-only model on the same
+server gets a line saying the image was withheld, not the image. The change
+is in the log as `session.model`, and every request still replays to its
+recorded hash. Choosing the model is this computer's act: a paired phone
+opens tasks on the `[control]` model and may steer them, but not decide
+where their content goes.
+
+On the wire this is `session.open` with `name`, or `server` and `model`,
+and `session.model.set` for a session already open; `session.info` reports
+the model the conversation talks to now. The console's picker and the TUI's
+command are not built yet: today a person chooses the model through a
+client that speaks the protocol, on this computer.
+
 **What a request cost.** After each reply the TUI, line mode and the
 console show its tokens, and when the provider says so, how much of the
 prompt came from its cache and what the request cost:

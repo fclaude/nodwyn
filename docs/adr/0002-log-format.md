@@ -190,6 +190,25 @@ The window ignores them. `session.delete` removes a whole log, which this
 ADR's writer otherwise never does; it takes the writer's lock first, so a
 log another process has open is refused, not removed.
 
+## Amendment — 2026-10-03: `session.model`
+
+`session.model` records the model a conversation talks to (ADR 40): the
+one chosen for it as it opened, or one it was moved to between turns.
+`from` is the model id it talked to before (absent at open), `model` the
+id it talks to now as the provider names it, `server` the
+`[servers.NAME]` it is on and `name` the registry entry it is (`control`,
+or a `[models.NAME]` entry), `url` where it is reached, `actor` who chose
+it, and `context` the window's recipe from here on, sized for that model,
+in the form `session.start` and `session.resume` carry it. A switch
+changes no key: no credential class and no value is in the record. The
+latest one is the model the conversation talks to, and resuming a session
+restores it, so a `session.start` or `session.resume` after it records the
+restored model as the one the session talks to. Window replay takes the
+recipe from the latest `session.start`, `session.resume` or
+`session.model` before the request it rebuilds. A recorded choice whose
+server or name config.toml no longer has is not restored: the session
+talks to `[control]` again and a `note` says so.
+
 ## Amendment — 2026-10-03: closing a writer unlocks first
 
 The writer's lock is a `flock`, which belongs to the open file

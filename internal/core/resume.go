@@ -51,6 +51,17 @@ func Resume(o Options, id string) (_ *Session, err error) {
 		}
 	}
 	o.Repo = info.Repo
+	// A conversation keeps the model it was switched to (ADR 40): the log
+	// says which, and a choice config.toml no longer offers falls back to
+	// the [control] model rather than making the task unopenable.
+	gone := ""
+	if c := lastModelChoice(history); c != (ModelChoice{}) {
+		if _, err := resolveModel(o.Config, c); err != nil {
+			gone = err.Error()
+		} else {
+			o.Model = c
+		}
+	}
 	st, err := os.Stat(o.Repo)
 	if err != nil {
 		return nil, err
@@ -84,11 +95,18 @@ func Resume(o Options, id string) (_ *Session, err error) {
 			return nil, err
 		}
 	}
-	if _, err = s.Record(log.KindSessionResume, log.SessionStart{Context: s.loop.WindowContext(), Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(), Model: o.Config.Control.Model, URL: o.Config.Control.URL, Tools: len(s.loop.Tools())}); err != nil {
+	if _, err = s.Record(log.KindSessionResume, log.SessionStart{Context: s.loop.WindowContext(), Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(), Model: s.model.Model, URL: s.model.URL, Tools: len(s.loop.Tools())}); err != nil {
 		return nil, err
 	}
 	if _, err = s.Record(log.KindNote, log.Note{Text: "Session resumed; session-only approvals and Scheme state were reset. No interrupted tool was rerun."}); err != nil {
 		return nil, err
+	}
+	if gone != "" {
+		// The conversation says what it lost, rather than silently talking
+		// to another model than the one it was left on.
+		if _, err = s.Record(log.KindNote, log.Note{Text: "The model this conversation was switched to is no longer configured, so it talks to the [control] model again: " + gone}); err != nil {
+			return nil, err
+		}
 	}
 	// A task taken up again is no longer put away (ADR 39).
 	if info.Archived {
@@ -99,6 +117,28 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	s.markStarted()
 	s.flushOutput()
 	return s, nil
+}
+
+// lastModelChoice is the model the log last switched this conversation to
+// (ADR 40), if it switched one: the person's choice outlives the process, as
+// the conversation does. The zero choice means no switch is recorded.
+func lastModelChoice(events []log.Event) ModelChoice {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Kind != log.KindSessionModel {
+			continue
+		}
+		var rec log.SessionModel
+		if err := events[i].Decode(&rec); err != nil {
+			return ModelChoice{}
+		}
+		// A named choice is restored by its name, and a model chosen on a
+		// server by that pair: a choice is one or the other.
+		if rec.Name != "" {
+			return ModelChoice{Name: rec.Name}
+		}
+		return ModelChoice{Server: rec.Server, Model: rec.Model}
+	}
+	return ModelChoice{}
 }
 
 func unfinishedTools(events []log.Event) ([]log.ToolCall, error) {

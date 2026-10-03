@@ -147,7 +147,16 @@ Documents & out: a file sent to Google Drive; on disk: a document pandoc wrote &
 \section{Models}
 
 The control model answers \code{(model-turn)}; any other model you configure
-under \code{[models.NAME]} answers \code{(model-turn "NAME")}. Each request
+under \code{[models.NAME]} answers \code{(model-turn "NAME")}. Which model
+the control model is, is a choice of the conversation, not of the machine
+(\adr{40}): a task starts on \code{[control]} or on a model you pick for it,
+and may be moved to another one between turns\,---\,a
+\code{[models.NAME]} entry, or any model a configured server offers, which
+needs no entry of its own. The choice is a record in the session's log
+(\code{session.model}), so the task talks to it again when it is resumed,
+and the key does not change: another model on the same server is the same
+key and the same binding, and one on another server brings that server's
+key, its binding checked on every request. Each request
 sends the window built from the log: by default the whole conversation, or,
 when a strategy has called \code{narrow-context}, only the task and the plan
 it chose. What comes back is text, the model's thinking, and tool calls,

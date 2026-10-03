@@ -86,9 +86,10 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 	if err != nil {
 		return nil, err
 	}
-	pol := l.cfg.Window
-	if headroom && l.cfg.Ceiling > pol.HighWater {
-		pol.HighWater = l.cfg.Ceiling
+	pol, ceiling := l.policy()
+	highWater := pol.HighWater
+	if headroom && ceiling > pol.HighWater {
+		pol.HighWater = ceiling
 	}
 	w := window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, pol)
 	if !hasUserMessage(w.Messages) {
@@ -115,7 +116,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		NoTools: offer.none, OfferedTools: offer.only, MaxOutput: ep.MaxOutput,
 		Temperature: ep.Temperature, Seed: ep.Seed, Withheld: withheld,
 	}
-	if pol.HighWater != l.cfg.Window.HighWater {
+	if pol.HighWater != highWater {
 		rec.HighWater = pol.HighWater
 	}
 	if name != ControlModel {
@@ -165,13 +166,17 @@ func hasUserMessage(msgs []llm.Message) bool {
 
 // endpoint resolves a model name in the registry.
 func (l *Loop) endpoint(name string) (Endpoint, error) {
-	if ep, ok := l.cfg.Models[name]; ok {
+	l.controlMu.RLock()
+	ep, ok := l.cfg.Models[name]
+	if ok {
+		l.controlMu.RUnlock()
 		return ep, nil
 	}
 	names := make([]string, 0, len(l.cfg.Models))
 	for n := range l.cfg.Models {
 		names = append(names, n)
 	}
+	l.controlMu.RUnlock()
 	sort.Strings(names)
 	return Endpoint{}, fmt.Errorf("no model %q is configured; configured models: %s", name, strings.Join(names, ", "))
 }

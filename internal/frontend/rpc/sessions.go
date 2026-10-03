@@ -67,16 +67,19 @@ type budgetInfo struct {
 	Cost budget.Limit `json:"cost"`
 }
 type sessionDetails struct {
-	Bindings   []binding.Binding `json:"bindings"`
-	ID         string            `json:"id"`
-	Repo       string            `json:"repo"`
-	Busy       bool              `json:"busy"`
-	Tools      []llm.Tool        `json:"tools"`
-	Budgets    budgetInfo        `json:"budgets"`
-	Commands   []string          `json:"allowed_commands"`
-	Writes     []string          `json:"allowed_writes"`
-	TurnWrites bool              `json:"turn_writes"`
-	TurnActor  string            `json:"turn_actor,omitempty"`
+	Bindings []binding.Binding `json:"bindings"`
+	ID       string            `json:"id"`
+	Repo     string            `json:"repo"`
+	Busy     bool              `json:"busy"`
+	Tools    []llm.Tool        `json:"tools"`
+	Budgets  budgetInfo        `json:"budgets"`
+	// Model is the model this conversation talks to now (ADR 40): the
+	// configured or chosen one, never a key.
+	Model      core.ModelState `json:"model"`
+	Commands   []string        `json:"allowed_commands"`
+	Writes     []string        `json:"allowed_writes"`
+	TurnWrites bool            `json:"turn_writes"`
+	TurnActor  string          `json:"turn_actor,omitempty"`
 	// ApproveAll: "don't ask" is on, ordinary writes and commands approved
 	// without a prompt (session.approve_all), turned on by ApproveActor.
 	ApproveAll   bool   `json:"approve_all"`
@@ -96,7 +99,7 @@ func (s *server) details(session *core.Session) sessionDetails {
 	limits := session.Limits()
 	trust, actor := session.TurnApproval()
 	all, allActor := session.ApproveAll()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
 }
 
 func orEmpty[T any](list []T) []T {
@@ -166,6 +169,7 @@ var methodTable = map[string]handler{
 	"mcp.pull":                (*server).mcpMethod,
 	"session.open":            (*server).open,
 	"session.resume":          (*server).resume,
+	"session.model.set":       (*server).model,
 	"session.info":            (*server).info,
 	"session.close":           (*server).closeSession,
 	"session.rename":          (*server).rename,
@@ -268,10 +272,14 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 	return result, nil
 }
 
-func (s *server) open(req request, _ *peer) (any, *rpcError) {
+func (s *server) open(req request, client *peer) (any, *rpcError) {
 	var p openParams
-	if err := params(req.Params, &p, "repo"); err != nil {
+	if err := params(req.Params, &p, "repo", "name", "server", "model"); err != nil {
 		return nil, err
+	}
+	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Actor: client.actor}
+	if why := deviceModelRefusal(client.actor, choice); why != nil {
+		return nil, why
 	}
 	if !filepath.IsAbs(p.Repo) {
 		return nil, failure(-32602, "repo must be an absolute directory")
@@ -287,6 +295,7 @@ func (s *server) open(req request, _ *peer) (any, *rpcError) {
 	}
 	options := s.options
 	options.Repo = p.Repo
+	options.Model = choice
 	session, err := core.New(options)
 	if err != nil {
 		return nil, failure(-32000, err.Error())
@@ -316,6 +325,53 @@ func (s *server) resume(req request, _ *peer) (any, *rpcError) {
 	}
 	s.own(session)
 	return s.details(session), nil
+}
+
+// session.model.set moves a conversation to another model, from its next turn
+// on (ADR 40). It names a [models.NAME] entry, config.toml's [control] model,
+// or a model on a configured [servers.NAME]; the conversation's key does not
+// change, and every request still checks its binding. It is this computer's
+// act: another device steers an open task but does not decide where its
+// content goes next (ADR 30).
+func (s *server) model(req request, client *peer) (any, *rpcError) {
+	var p modelSetParams
+	if err := params(req.Params, &p, "id", "name", "server", "model"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	if p.Name == "" && p.Server == "" && p.Model == "" {
+		return nil, failure(-32602, "give the name of a configured model, or a server and the model on it")
+	}
+	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Actor: client.actor}
+	if why := deviceModelRefusal(client.actor, choice); why != nil {
+		return nil, why
+	}
+	owned, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before switching the model")
+	}
+	state, err := owned.session.SetModel(choice)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return state, nil
+}
+
+// deviceModelRefusal says why a paired device may not choose the model a
+// conversation talks to, opening it or moving it: where its content goes is
+// chosen on the computer nodwyn runs on (ADR 30, ADR 40). A device opens a
+// task on config.toml's [control] model. The bridge relays a paired device's
+// name as via, so its actor carries " via ", as unwatchedRefusal reads it.
+func deviceModelRefusal(actor string, c core.ModelChoice) *rpcError {
+	if (c.Name != "" || c.Server != "" || c.Model != "") && strings.Contains(actor, " via ") {
+		return failure(-32602, "The model a task talks to is chosen on the computer nodwyn runs on, not from a paired device")
+	}
+	return nil
 }
 
 func (s *server) info(req request, _ *peer) (any, *rpcError) {

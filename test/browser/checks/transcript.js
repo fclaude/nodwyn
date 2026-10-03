@@ -1,7 +1,8 @@
 // The transcript's runs of commands, drawn from events written here rather
 // than from a scripted model: the order of reads and commands, a run's
 // header while a command runs, waits for an answer and fails, and a clock
-// that stops when its transcript leaves the page. The console's own module
+// that stops when its transcript leaves the page, and the context gauge
+// following a conversation moved to another model. The console's own module
 // is imported from the demo's console, so this is the code people run. The
 // waits of 1.3 s in the page are what is tested: the run's one-second clock.
 const { start, line, launch, watch, check } = require("../lib");
@@ -16,7 +17,7 @@ check(async () => {
   // and the ones it imports load as they do in the console.
   await page.goto(`${base}/transcript.js`);
   const results = await page.evaluate(async () => {
-    const { Transcript } = await import("/transcript.js");
+    const { Transcript, contextGauge } = await import("/transcript.js");
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const fresh = () => {
       const root = document.createElement("div");
@@ -95,6 +96,17 @@ check(async () => {
       await sleep(1300);
       out.left = { clock: t.clock };
     }
+    // A conversation moved to another model is measured against the window
+    // sized for that model, from the switch on (ADR 40).
+    {
+      const before = [
+        { kind: "session.start", payload: { context: { high_water: 61440 } } },
+        { kind: "user.msg", payload: { text: "go" } },
+        { kind: "llm.req", payload: { est_tokens: 4100 } },
+      ];
+      const moved = { kind: "session.model", payload: { model: "long", server: "or", context: { high_water: 86016 } } };
+      out.gauge = { before: contextGauge(before).high, after: contextGauge([...before, moved]).high, est: contextGauge([...before, moved]).est };
+    }
     return out;
   });
   console.log(JSON.stringify(results, null, 1));
@@ -112,6 +124,7 @@ check(async () => {
   want(f.failed.header === "Ran 1 command | in 0.3 s · 1 failed" && f.failed.run && f.failed.row, `failed: ${JSON.stringify(f.failed)}`);
   want(f.refused.header === "Ran 1 command | in 0.0 s · 1 failed" && f.refused.run && f.refused.row, `refused: ${JSON.stringify(f.refused)}`);
   want(results.left.clock === null, `the clock outlived its transcript: ${JSON.stringify(results.left)}`);
+  want(results.gauge.before === 61440 && results.gauge.after === 86016 && results.gauge.est === 4100, `gauge across a switch: ${JSON.stringify(results.gauge)}`);
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
 });

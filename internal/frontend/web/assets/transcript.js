@@ -645,7 +645,8 @@ export function usd(c, estimated) {
 // window's estimate of the latest control-model request made in the
 // conversation itself (not in a planner's or sub-agent's narrowed context),
 // what the provider counted for that request's prompt, the window's high
-// water from the session's start, and the compactions so far.
+// water (the session's, or the model's it was moved to), and the
+// compactions so far.
 export function contextGauge(events) {
   const g = { est: 0, reported: 0, high: 0, compactions: 0 };
   let depth = 0;
@@ -655,6 +656,7 @@ export function contextGauge(events) {
     switch (e.kind) {
       case "session.start":
       case "session.resume":
+      case "session.model": // the window sized for the model it was moved to (ADR 40)
         if (p.context?.high_water) g.high = p.context.high_water;
         break;
       case "user.msg":

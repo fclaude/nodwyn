@@ -44,11 +44,21 @@ type Session struct {
 	// image's confirm (attach.go); no turn starts meanwhile.
 	attaching    bool
 	attachCancel context.CancelFunc
-	closed       bool
-	closing      bool
-	turns        sync.WaitGroup // includes final event delivery after Busy becomes false
-	closeOnce    sync.Once
-	closeErr     error
+	// switching: a model switch is in progress (ADR 40); no turn or
+	// attachment starts meanwhile, since the switch records what it is about
+	// to do before it changes the model.
+	switching bool
+	closed    bool
+	closing   bool
+	turns     sync.WaitGroup // includes final event delivery after Busy becomes false
+	closeOnce sync.Once
+	closeErr  error
+
+	// model is the model this conversation talks to now (ADR 40): config.toml's
+	// [control] model, or the one a person chose for it. It changes only
+	// between turns, under mu, and opts.Config.Control always keeps the
+	// configured [control] model, so a conversation can be moved back to it.
+	model config.Model
 
 	// The plan a turn must record before it may do anything irreversible
 	// (SendPlanned; plan.go).
@@ -229,6 +239,10 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 	if s.attaching {
 		s.mu.Unlock()
 		return errors.New("core: an attachment is in progress; send when it is done")
+	}
+	if s.switching {
+		s.mu.Unlock()
+		return errors.New("core: the model is being switched; send when it is done")
 	}
 	limits, err := s.limits()
 	if err != nil {

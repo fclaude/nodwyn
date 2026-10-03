@@ -38,4 +38,10 @@ func TestContextGauge(t *testing.T) {
 	if r := g.report(); !strings.Contains(r, "Compactions in this session: 1") || !strings.Contains(r, "~59,000 → ~4,100") {
 		t.Fatalf("report:\n%s", r)
 	}
+	// Moved to another model, the conversation is trimmed by the window
+	// sized for that model (ADR 40).
+	feed(log.KindSessionModel, log.SessionModel{Model: "long", Context: &log.WindowContext{HighWater: 86016}})
+	if got := g.title(); got != "context ~4k of ~86k" {
+		t.Fatalf("after a switch %q", got)
+	}
 }

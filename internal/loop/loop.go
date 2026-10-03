@@ -68,7 +68,9 @@ type Config struct {
 	MaxOutput int
 	// Models are the models a strategy may ask by name: the [control] model
 	// as ControlModel, which (model-turn) asks, and the configured registry
-	// with (model-turn "NAME").
+	// with (model-turn "NAME"). The control model may be swapped between
+	// turns (SetControl), when a person chooses another model for this
+	// conversation (ADR 40).
 	Models         map[string]Endpoint
 	RequestTimeout time.Duration // per model request
 	// Root is the workspace root, under which attached images are stored
@@ -94,6 +96,10 @@ type Loop struct {
 	// turn is the turn in progress, nil between turns. The session runs one
 	// turn at a time, so a field suffices.
 	turn *turnState
+
+	// controlMu guards what SetControl replaces between turns: the control
+	// model's slot in cfg.Models, the window's water marks and the ceiling.
+	controlMu sync.RWMutex
 
 	// vision caches, per model name, whether the model takes images.
 	visionMu sync.Mutex
@@ -410,11 +416,60 @@ func (l *Loop) record(kind log.Kind, payload any) error {
 	return nil
 }
 
+// SetControl makes ep the model (model-turn) asks, from the next request on,
+// with the window sized for it (marks' water marks and result cap, and
+// ceiling): a person chose another model for this conversation (ADR 40).
+// record is given the recipe the requests that follow are built by, before
+// anything changes, and nothing does if it fails. The caller must not have a
+// turn running: a turn under way reads the control model, and a switch must
+// not change the request it is making.
+func (l *Loop) SetControl(ep Endpoint, marks window.Policy, ceiling int, record func(*log.WindowContext) error) error {
+	l.controlMu.Lock()
+	defer l.controlMu.Unlock()
+	pol := l.cfg.Window
+	pol.HighWater, pol.LowWater, pol.MaxResultTokens = marks.HighWater, marks.LowWater, marks.MaxResultTokens
+	if err := record(l.recipe(ep, pol)); err != nil {
+		return err
+	}
+	// Only the marks change: the prompts' headers stay the session's.
+	l.cfg.Models[ControlModel], l.cfg.Ceiling = ep, ceiling
+	l.cfg.Window.HighWater, l.cfg.Window.LowWater, l.cfg.Window.MaxResultTokens = pol.HighWater, pol.LowWater, pol.MaxResultTokens
+	// Whether a model takes images is asked of the model, not of the name
+	// it answers to: the next model is asked again.
+	l.visionMu.Lock()
+	delete(l.vision, ControlModel)
+	l.visionMu.Unlock()
+	return nil
+}
+
+// policy is the window's policy and ceiling now, which a switch may change
+// between turns.
+func (l *Loop) policy() (window.Policy, int) {
+	l.controlMu.RLock()
+	defer l.controlMu.RUnlock()
+	return l.cfg.Window, l.cfg.Ceiling
+}
+
+// WindowTokens is the window's estimate of the next model-turn's request
+// were the window's water marks and result cap marks': what choosing another
+// model compares with the context that model reads (ADR 40).
+func (l *Loop) WindowTokens(marks window.Policy) int {
+	pol, _ := l.policy()
+	pol.HighWater, pol.LowWater, pol.MaxResultTokens = marks.HighWater, marks.LowWater, marks.MaxResultTokens
+	return window.Build(l.host.EventsSoFar(), l.system, l.toolsLen, pol).EstTokens
+}
+
 // WindowContext is the immutable, redacted recipe needed to replay requests.
 // Tool schema marshaling already succeeded in Freeze.
 func (l *Loop) WindowContext() *log.WindowContext {
+	l.controlMu.RLock()
+	defer l.controlMu.RUnlock()
+	return l.recipe(l.cfg.Models[ControlModel], l.cfg.Window)
+}
+
+// recipe is the recipe of requests to control built with the window pol.
+func (l *Loop) recipe(control Endpoint, pol window.Policy) *log.WindowContext {
 	tools, _ := json.Marshal(l.tools)
-	control := l.cfg.Models[ControlModel]
-	return &log.WindowContext{Version: window.RecipeVersion, System: l.system, Tools: tools, HighWater: l.cfg.Window.HighWater, LowWater: l.cfg.Window.LowWater, MaxResultTokens: l.cfg.Window.MaxResultTokens, NumCtx: control.NumCtx, KeepAlive: control.KeepAlive,
-		TaskHeader: l.cfg.Window.TaskHeader, PlanHeader: l.cfg.Window.PlanHeader, MaxOutput: l.cfg.MaxOutput}
+	return &log.WindowContext{Version: window.RecipeVersion, System: l.system, Tools: tools, HighWater: pol.HighWater, LowWater: pol.LowWater, MaxResultTokens: pol.MaxResultTokens, NumCtx: control.NumCtx, KeepAlive: control.KeepAlive,
+		TaskHeader: pol.TaskHeader, PlanHeader: pol.PlanHeader, MaxOutput: l.cfg.MaxOutput}
 }

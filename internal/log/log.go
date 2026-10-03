@@ -37,6 +37,7 @@ const (
 	KindRunCheckpoint  Kind = "run.checkpoint"
 	KindSessionStart   Kind = "session.start"   // session identity: version, cwd, config summary
 	KindSessionResume  Kind = "session.resume"  // restarted process, same conversation
+	KindSessionModel   Kind = "session.model"   // the model the conversation talks to changed (ADR 40)
 	KindTurnCheckpoint Kind = "turn.checkpoint" // budget state and operator answer
 	KindTurnEnd        Kind = "turn.end"        // durable end of a submitted turn
 	KindSessionEnd     Kind = "session.end"     // clean shutdown; absent after a crash
@@ -77,7 +78,7 @@ const (
 
 var kinds = map[Kind]bool{
 	KindRunState: true, KindRunTurn: true, KindRunCheckpoint: true,
-	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindTurnEnd: true, KindTurnCheckpoint: true,
+	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindSessionModel: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindHarnessMsg: true, KindContextNarrow: true, KindContextWiden: true, KindContextFold: true, KindResultFold: true, KindContextCompact: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSettingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,

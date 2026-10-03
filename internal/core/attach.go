@@ -110,7 +110,7 @@ func (s *Session) attachImage(ctx context.Context, path, name, actor string) (lo
 	}
 	digest := sha256.Sum256(data)
 	tokens := window.ImageTokens(img.Width, img.Height)
-	control := s.opts.Config.Control
+	control := s.currentModel()
 	host := modelHost(control.URL)
 	waiting, cancel := context.WithTimeout(ctx, imageConfirmWait)
 	defer cancel()
@@ -196,7 +196,7 @@ func imagePrompt(name string, img extract.Image, size, tokens int, model, host s
 // noVision says why an image cannot be attached to this session, and how
 // to change that.
 func (s *Session) noVision(name string) error {
-	c := s.opts.Config.Control
+	c := s.currentModel()
 	switch {
 	case c.URL == "" || c.Model == "":
 		return fmt.Errorf("attach: %s is an image, and no control model is configured to take it; add [control] to %s with a model that takes images", name, s.opts.Paths.ConfigFile)
@@ -275,6 +275,8 @@ func (s *Session) beginAttach() (context.Context, func(), error) {
 		return nil, nil, errors.New("attach: wait until the current turn ends")
 	case s.attaching:
 		return nil, nil, errors.New("attach: another attachment is in progress; wait until it is done")
+	case s.switching:
+		return nil, nil, errors.New("attach: the model is being switched; wait until it is done")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.attaching, s.attachCancel = true, cancel
