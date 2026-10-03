@@ -219,7 +219,10 @@ what the model asked for, ask again, until a reply has no tool calls. When
 nobody reviews the work as it happens (\code{(unattended?)}, or a run's
 turn), \code{evidence-loop} runs instead: it ends the turn on evidence, so
 a reply that stops before anything changed, or with a change and no test
-run after it, is answered with a reminder, at most twice.
+run after it, is answered with a reminder, at most twice. Both loops count
+the rounds that only read and search (\code{reading-rounds}): after twelve,
+the model is told to write down what it found, as a plan or, when a person
+reads the answer, as the answer to a question.
 
 \begin{scm}
 (define (nodwyn-turn request)
@@ -235,12 +238,13 @@ run after it, is answered with a reminder, at most twice.
   (plan-gate request)
   (if (or (unattended?) (plan-required?))
       (evidence-loop request)
-      (let loop ((reply (ask-model)))
+      (let loop ((reply (ask-model)) (reading 0))
         (let ((calls (assoc-ref reply 'tool-calls '())))
           (unless (null? calls)
             (run-calls calls)
             (maybe-compact request reply)
-            (loop (ask-model)))))))
+            (let ((reading (reading-rounds calls reading)))
+              (loop (ask-model) reading)))))))
 \end{scm}
 
 \code{ask-model} is \code{model-turn}, asked again when a reply was cut at

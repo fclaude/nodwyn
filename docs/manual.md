@@ -489,7 +489,10 @@ skipped with the `plan-step` tool, and the console's plan panel (`:plan` in
 the TUI) shows its progress; a mark is the model's word, and the transcript
 is the evidence. Without a plan from the gate, the model writes its own with
 `plan-write`, which pins it the same way: its thinking is not kept from one
-request to the next, and a written plan is. A plan made with the judge or
+request to the next, and a written plan is. A model that only reads and
+searches for twelve rounds in a row is told to write down what it found:
+its plan, or, in a chat whose request asks a question or needs your
+decision, its answer. A plan made with the judge or
 without one hands the explorer's findings to the model too, so it does not
 read the same files again.
 Every Jev call is a guarded egress: bound credential, L1 redaction of

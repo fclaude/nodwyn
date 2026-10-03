@@ -97,6 +97,7 @@ So you can redefine any of it:
 \code{(plan-system-prompt repo)}, \code{(plan-draft-prompt request)}\ldots & the planner's prompts (Chapter~\ref{ch:plans}) \\
 \code{compact-summary-prompt} & the request for a handover note (Chapter~\ref{ch:contexts}) \\
 \code{finish-no-change-message}\ldots & what the evidence loop says to a model that stops early \\
+\code{(reading-reminder-message n)}\ldots & what the default loop says to a model whose last \code{n} rounds only read \\
 \code{(run-turn-prompt task complete-line turn max-turns)} & each turn's message in a supervised run \\
 \bottomrule
 \end{tabularx}

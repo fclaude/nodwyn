@@ -45,12 +45,40 @@
   (plan-gate request)
   (if (or (unattended?) (plan-required?))
       (evidence-loop request)
-      (let loop ((reply (ask-model)))
+      (let loop ((reply (ask-model)) (reading 0))
         (let ((calls (assoc-ref reply 'tool-calls '())))
           (unless (null? calls)
             (run-calls calls)
             (maybe-compact request reply)
-            (loop (ask-model)))))))
+            (let ((reading (reading-rounds calls reading)))
+              (loop (ask-model) reading)))))))
+
+;; Tools that only look at the repository: a round whose calls are all
+;; among them neither changes nor runs anything. A project that adds tools
+;; of its own that only look may add them to the list.
+(define look-tools
+  '("fs-read" "fs-list" "fs-find" "index-grep" "read-definition" "git-status" "git-diff"))
+
+(define (look-call? call) (member (assoc-ref call 'name) look-tools))
+
+;; Rounds in a row that only look, after which the model is told to write
+;; down what it found and answer or plan (reading-reminder-message). A chat
+;; turn (ADR 32, amended 2026-10-02) had what it needed by its sixth round
+;; and read on for 34 more, saying nothing: its thinking is not sent back,
+;; so every request began again from the tool results and read more to
+;; confirm the same conclusion. 0 turns the reminder off.
+(define reading-reminder-after 12)
+
+;; The rounds in a row that only looked, counting this round's calls: when
+;; they reach reading-reminder-after the reminder is added, after the
+;; calls are answered, and the count starts again.
+(define (reading-rounds calls reading)
+  (cond ((or (<= reading-reminder-after 0) (pair? (filter (lambda (c) (not (look-call? c))) calls))) 0)
+        ((< (+ reading 1) reading-reminder-after) (+ reading 1))
+        (else (add-message (if (reviewed?)
+                               (reading-reminder-reviewed-message reading-reminder-after)
+                               (reading-reminder-message reading-reminder-after)))
+              0)))
 
 ;; When nobody reviews the work as it happens (unattended, or a supervised
 ;; run), a turn ends on evidence, not on the model's word: something changed,
@@ -188,8 +216,9 @@
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
+    ;; reading: the rounds in a row that only looked (reading-rounds).
     (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0)
-               (scripts '()) (written '()) (noted #f) (excused #f))
+               (scripts '()) (written '()) (noted #f) (excused #f) (reading 0))
       (let ((calls (assoc-ref reply 'tool-calls '())))
         (if (pair? calls)
             (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs)
@@ -211,9 +240,11 @@
                              (else (walk (cdr cs) (cdr rs) edited tested failed scripts written)))))
                     (else
                      (maybe-compact request reply)
-                     (let ((stuck (and (not offered) (>= failed unrunnable-after))))
+                     (let ((stuck (and (not offered) (>= failed unrunnable-after)))
+                           (reading (reading-rounds calls reading)))
                        (when stuck (add-message (finish-unrunnable-message failed)))
-                       (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted excused)))))
+                       (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted excused
+                             reading)))))
             (let* ((now (and before (git-state)))
                    (new-lines (if now (filter (lambda (l) (not (member l before))) now) '()))
                    ;; With git: a tracked file changed, the file tools wrote
@@ -234,7 +265,7 @@
               (cond ((and gap (< reminders finish-reminders))
                      (add-message gap)
                      (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted
-                           (or excused (and (not changed) reviewed))))
+                           (or excused (and (not changed) reviewed)) 0))
                     ((pair? new)
                      (add-message (finish-new-files-message new))
-                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused)))))))))
+                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0)))))))))

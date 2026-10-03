@@ -199,6 +199,20 @@
    "These files are new in the repository and git does not track them: " (string-join files ", ")
    ". Remove the ones that are not part of the change (a script, notes, output, a backup, what a run left behind; throwaway files belong in $TMPDIR), keep the ones the change needs, then finish."))
 
+;; What the default loop says after rounds that only read and searched
+;; (strategy.scm, reading-reminder-after): the thinking behind them is
+;; lost, so write it down. When a person reads the answer before anything
+;; else happens ((reviewed?)), a request that asks, reports or needs their
+;; decision is answered now.
+(define (reading-reminder-message rounds)
+  (string-append
+   "You have only read and searched for the last " (number->string rounds)
+   " rounds. Your thinking is not kept from one request to the next, so what you found is lost unless you write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan."))
+(define (reading-reminder-reviewed-message rounds)
+  (string-append
+   "You have only read and searched for the last " (number->string rounds)
+   " rounds. Your thinking is not kept from one request to the next, so what you found is lost unless you write it down. If the request asks a question or needs a decision from the person (whether to build what it says is missing, or which way to build it), answer now: say what exists, what is missing and what you propose, and finish; a person reads your answer before anything else happens. Otherwise write your plan with plan-write now and start the change, and read more only for a step of the plan."))
+
 ;; The planner's system prompt.
 (define (plan-system-prompt repo)
   (string-append "You are nodwyn's planner for the repository at " repo ". Return only the plan text."))

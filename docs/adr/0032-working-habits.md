@@ -258,3 +258,44 @@ None of this has run on the 121-task cohort. The working rules grow by
 386 characters in both system prompts and `(git-rule)` by 87 in a git work
 tree; the interactive prompt grows by 217 more. On the benchmark's tasks
 there is no page to check.
+
+## Amendment 2026-10-02: rounds that only read get a reminder
+
+A chat request ("we seem to have support for worktrees, but the UI doesn't
+seem to allow me to enable that", session `20261003T052943Z-4e994237`,
+meta/muse-spark-1.3) ran for nine minutes and 40 requests, 99 calls, every
+one a read, a search or a listing, and was stopped without a word to the
+person: every reply's text was empty. Its thinking at the sixth request
+already said what the answer was (ADR 34 is proposed, and only the git work
+tree check exists); at each of the next 34 it said the same thing in other
+words and read more to confirm it. The rule that the thinking is not kept
+(amendment above) did not apply: it tells the model to write its plan once
+it knows what to change, and this model never decided whether there was
+anything to change. A fold at request 34 then took out 33 reads, and it read
+five of those files again. The pattern is not one session's: the jev-key
+chat (`20261003T002506Z-f564a28c`) made 402 requests with five replies that
+said anything, its first edit at the 30th.
+
+Nothing in the loop looked at this. The plain loop asks again while a reply
+calls tools, and the evidence loop acts only on a reply that calls none. So
+both now count the rounds in a row whose calls all only look
+(`look-tools`: `fs-read`, `fs-list`, `fs-find`, `index-grep`,
+`read-definition`, `git-status`, `git-diff`; this repository adds its
+`grep-repo`, `find-files`, `read-adr` and `git-log`), and after
+`reading-reminder-after` (12) add a message: the thinking behind them is
+lost, so write it down now, with `plan-write`, and start; when a person
+reads the answer (`(reviewed?)`), answer now if the request asks a question
+or needs the person's decision. Any other call starts the count again, and
+so does the reminder, which comes again after twelve more.
+
+Twelve is the explorer's budget before a plan (`plan-explore-rounds`), and
+twice the rounds the worktree turn needed. Counted over the last nine
+sessions on this repository, the reminder would have come four times in the
+worktree turn (at its 12th request, not its 40th), twice in the first turn
+of two of the three "give me 5 things this harness is missing" questions,
+which ask for an answer and no change, and in nine of the fifteen jev-key
+turns, where it asks for what the prompt already asks: a written plan. Four
+sessions never read for twelve rounds in a row.
+
+None of this has run on the 121-task cohort, where the evidence loop runs
+too: a task that reads for twelve rounds now gets the unreviewed reminder.

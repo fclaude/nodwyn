@@ -163,3 +163,79 @@ func TestHygieneWatchesTheProvidersCache(t *testing.T) {
 		t.Fatalf("serves at 15%% = %s", got)
 	}
 }
+
+// look is a round that calls one tool that only looks at the repository.
+func look(id, name string, args map[string]any) fake.Turn {
+	return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: name, Args: args}}}
+}
+
+// After rounds that only read and search, a chat's model is told to write
+// down what it found, and to answer now if the request asks or needs the
+// person's decision (strategy.scm, reading-reminder-after).
+func TestReadingRoundsGetAReminder(t *testing.T) {
+	r := strategyRig(t, "(define reading-reminder-after 3)\n", 10,
+		look("a", "fs-read", map[string]any{"path": "main.go"}),
+		look("b", "fs-list", map[string]any{"path": "."}),
+		look("c", "index-grep", map[string]any{"path": ".", "pattern": "package"}),
+		fake.Turn{Content: "There is nothing to enable yet."},
+	)
+	if err := r.turn("the UI does not let me enable worktrees"); err != "" {
+		t.Fatal(err)
+	}
+	for i := 1; i < 3; i++ {
+		if got := lastMessage(r, i); strings.Contains(got, "You have only read") {
+			t.Fatalf("reminded after %d rounds: %q", i, got)
+		}
+	}
+	if got := lastMessage(r, 3); !strings.HasPrefix(got, "You have only read and searched for the last 3 rounds.") || !strings.Contains(got, "answer now") {
+		t.Fatalf("no reminder after 3 rounds: %q", got)
+	}
+}
+
+// A round that runs or changes something starts the count again.
+func TestReadingCountStartsAgainOnARun(t *testing.T) {
+	r := strategyRig(t, "(define reading-reminder-after 3)\n", 10,
+		look("a", "fs-read", map[string]any{"path": "main.go"}),
+		look("b", "fs-read", map[string]any{"path": "main.go"}),
+		shellArgs("s", "true"),
+		look("c", "fs-read", map[string]any{"path": "main.go"}),
+		look("d", "fs-read", map[string]any{"path": "main.go"}),
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("look around"); err != "" {
+		t.Fatal(err)
+	}
+	for i := range r.srv.Requests {
+		if got := lastMessage(r, i); strings.Contains(got, "You have only read") {
+			t.Fatalf("request %d reminded: %q", i, got)
+		}
+	}
+}
+
+// The evidence loop counts too, and a turn whose answer nobody reads before
+// it ends is told to plan and start the change, with no way out.
+func TestUnreviewedReadingRoundsAreToldToPlan(t *testing.T) {
+	turns := []fake.Turn{
+		{Content: "main.go declares package main."}, // the explorer
+		{Content: "1. Edit main.go."},               // the planner
+	}
+	for i := 0; i < 12; i++ {
+		turns = append(turns, look(fmt.Sprint("r", i), "index-grep", map[string]any{"path": ".", "pattern": fmt.Sprint("word", i)}))
+	}
+	turns = append(turns, fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"})
+	r := newRigWith(t, true, func(c *config.Config) { c.Loop.MaxToolCalls = 20 }, turns...)
+	if err := r.s.SendPlanned("change main.go"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if len(r.srv.Requests) != 17 {
+		t.Fatalf("%d requests, want 17", len(r.srv.Requests))
+	}
+	if got := lastMessage(r, 13); strings.Contains(got, "You have only read") {
+		t.Fatalf("reminded after 11 rounds: %q", got)
+	}
+	want := "You have only read and searched for the last 12 rounds. Your thinking is not kept from one request to the next, so what you found is lost unless you write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan."
+	if got := lastMessage(r, 14); got != want {
+		t.Fatalf("after 12 rounds: %q", got)
+	}
+}

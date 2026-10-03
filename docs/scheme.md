@@ -563,6 +563,17 @@ since the turn began that git does not track get
 `(finish-new-files-message files)` once before the turn ends: whatever is
 left in the repository is in the change.
 
+Both loops, the chat's and `evidence-loop`, count the rounds in a row whose
+calls only look at the repository: every call names one of `look-tools`
+(`fs-read`, `fs-list`, `fs-find`, `index-grep`, `read-definition`,
+`git-status`, `git-diff`; a project adds the tools of its own that only
+look). After `reading-reminder-after` (12) such rounds the model gets
+`(reading-reminder-message n)`, or `(reading-reminder-reviewed-message n)`
+when `(reviewed?)`: its thinking is not kept, so write down what it found
+now, as a plan with `plan-write`, or, when a person reads the answer and the
+request asks a question or needs their decision, as the answer. Any other
+call starts the count again, and so does the reminder; 0 turns it off.
+
 | | |
 |---|---|
 | `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`). `[approval]` (ADR 35) does not make it true: a chat whose commands the judge answers still has a person to ask |
@@ -619,6 +630,7 @@ strings (§1.1):
 | `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5), and the draft request that carries what it found |
 | `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)` | what the evidence loop tells the model (§9) |
+| `(reading-reminder-message n)`, `(reading-reminder-reviewed-message n)` | what the default loop tells a model whose last `n` rounds only looked (§9) |
 | `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5) |
 | `task-header` `plan-header` | the headers under which the window adds the user's latest request and its plan to the system prompt, where they are never trimmed away |
 | `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for. It asks for the plan's next unmarked step and says the plan carries over to the next turn (§9.5) |

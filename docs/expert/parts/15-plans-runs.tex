@@ -162,6 +162,30 @@ Otherwise the evidence loop will keep telling the model it has not tested,
 however many times it runs your test script.
 \end{tip}
 
+\section{Rounds that only read}
+
+A model's thinking is not sent back, so a model that reads without saying
+anything starts every request from the tool results alone. One chat turn
+had what it needed after six rounds and read for thirty-four more,
+confirming the same conclusion each time. Both loops, the plain one and
+the evidence loop, count the rounds in a row whose calls all name one of
+\code{look-tools} (\code{fs-read}, \code{fs-list}, \code{fs-find},
+\code{index-grep}, \code{read-definition}, \code{git-status},
+\code{git-diff}). After \code{reading-reminder-after} (12) of them the model
+gets \code{(reading-reminder-message n)}: write down the plan with
+\code{plan-write} and start. When a person reads the answer
+(\code{(reviewed?)}) it gets \code{(reading-reminder-reviewed-message n)}
+instead, which also says to answer now when the request asks a question or
+needs the person's decision. Any other call starts the count again;
+\code{(define reading-reminder-after 0)} turns the reminder off.
+
+\begin{tip}
+Tools of your own that only look belong in the list:
+\begin{scm}
+(define look-tools (append look-tools '("grep-repo" "read-adr")))
+\end{scm}
+\end{tip}
+
 \section{The unattended system prompt}
 
 \code{(system-prompt repo)} returns \code{(unattended-system-prompt repo)}
