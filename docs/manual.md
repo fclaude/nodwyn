@@ -492,7 +492,9 @@ is the evidence. Without a plan from the gate, the model writes its own with
 request to the next, and a written plan is. A model that only reads and
 searches for twelve rounds in a row is told to write down what it found:
 its plan, or, in a chat whose request asks a question or needs your
-decision, its answer. A plan made with the judge or
+decision, its answer. In a chat a question gets an answer, and a request
+for something the model finds was never built gets told so, with what it
+would build, before it builds anything. A plan made with the judge or
 without one hands the explorer's findings to the model too, so it does not
 read the same files again.
 Every Jev call is a guarded egress: bound credential, L1 redaction of

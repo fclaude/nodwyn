@@ -195,7 +195,10 @@ tells the model that the user follows its work and may be asked to approve
 a command, so it should say in one short line what it is about to do before
 calling a tool; its answer says what changed, how it was checked and what was
 not, and when the user goes ahead without answering a question it asked, it
-chooses and says what it chose. The unattended one is about how to work instead (understand
+chooses and says what it chose. A question gets an answer, and a request
+that expects something never built is told so (what exists, what is
+missing, what it would build) before anything is built, as soon as what the
+model has read settles it. The unattended one is about how to work instead (understand
 the request, set up a check that runs, make the whole change, validate by
 running it, report honestly). Both include \code{working-rules}
 (Chapter~\ref{ch:habits}).

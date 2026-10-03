@@ -259,7 +259,7 @@ None of this has run on the 121-task cohort. The working rules grow by
 tree; the interactive prompt grows by 217 more. On the benchmark's tasks
 there is no page to check.
 
-## Amendment 2026-10-02: rounds that only read get a reminder
+## Amendment 2026-10-02: rounds that only read get a reminder, a question an answer
 
 A chat request ("we seem to have support for worktrees, but the UI doesn't
 seem to allow me to enable that", session `20261003T052943Z-4e994237`,
@@ -299,3 +299,14 @@ sessions never read for twelve rounds in a row.
 
 None of this has run on the 121-task cohort, where the evidence loop runs
 too: a task that reads for twelve rounds now gets the unreviewed reminder.
+
+The reminder comes after twelve rounds; the interactive prompt now says
+what to do before them. The worktree request expected something that had
+only been designed, and the model went back and forth between saying so
+and building it. A question is answered; a request that expects something
+never built is told so, with what exists, what is missing and what the
+model would build, before anything is built; and either is answered as
+soon as what the model has read settles it. A request that reports a
+defect in something that exists is still fixed. The rule, 357
+characters, is in the interactive prompt alone, so the benchmark, which
+runs unattended, does not see it.

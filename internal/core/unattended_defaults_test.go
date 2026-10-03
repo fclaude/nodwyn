@@ -55,6 +55,12 @@ func TestUnattendedSessionsGetTheUnattendedPrompt(t *testing.T) {
 	if sys := i.s.loop.WindowContext().System; strings.Contains(sys, "You work unattended") {
 		t.Fatal("an interactive session got the unattended prompt")
 	}
+	// A person reads a chat's answer, so a chat answers a question before
+	// building; nobody reads an unattended one, which makes the change.
+	const answer = "When the request asks a question, answer it."
+	if !strings.Contains(i.s.loop.WindowContext().System, answer) || strings.Contains(u.s.loop.WindowContext().System, answer) {
+		t.Fatal("the rule on questions is not the interactive prompt's alone")
+	}
 }
 
 // Unattended, a turn ends on evidence: a change, then a test run after it.
