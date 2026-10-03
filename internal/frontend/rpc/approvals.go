@@ -1,5 +1,7 @@
 package rpc
 
+import "strings"
+
 // Shared parameter types also generate the wire schema. Credentials are only
 // decoded here, never included in a response, model message or diagnostic.
 type answerParams struct {
@@ -15,6 +17,10 @@ type approvalParams struct {
 type bindingParams struct {
 	ID       string `json:"id"`
 	PromptID string `json:"prompt_id"`
+}
+type approveAllParams struct {
+	ID string `json:"id"`
+	On bool   `json:"on"`
 }
 type secretParams struct {
 	ID       string `json:"id"`
@@ -69,6 +75,32 @@ func (s *server) answer(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32002, "Session is not open in this daemon")
 	}
 	if err := apply(); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return struct{}{}, nil
+}
+
+// approveAll turns "don't ask" on or off for an open session: its ordinary
+// writes and commands are approved without a prompt. Turning it on widens
+// what the session does unasked, so like a run that answers itself it is
+// for the computer nodwyn runs on (ADR 30): a paired device's relayed actor
+// may only turn it off.
+func (s *server) approveAll(req request, client *peer) (any, *rpcError) {
+	if client.actor == "" {
+		return nil, failure(-32003, "Peer identity is unavailable")
+	}
+	var p approveAllParams
+	if err := params(req.Params, &p, "id", "on"); err != nil {
+		return nil, err
+	}
+	open, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	if p.On && strings.Contains(client.actor, " via ") {
+		return nil, failure(-32602, "Approving without asking is turned on only on the computer nodwyn runs on, not from a paired device")
+	}
+	if err := open.session.SetApproveAll(p.On, client.actor); err != nil {
 		return nil, failure(-32000, err.Error())
 	}
 	return struct{}{}, nil

@@ -854,6 +854,9 @@
         "kind": {
           "type": "string"
         },
+        "off": {
+          "type": "boolean"
+        },
         "prefix": {
           "type": "string"
         },
@@ -2501,6 +2504,9 @@
           "$ref": "#/$defs/request.session.approval.create"
         },
         {
+          "$ref": "#/$defs/request.session.approve_all"
+        },
+        {
           "$ref": "#/$defs/request.session.attach"
         },
         {
@@ -3485,6 +3491,37 @@
       ],
       "type": "object"
     },
+    "request.session.approve_all": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.approve_all"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.approveAllParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.attach": {
       "properties": {
         "id": {
@@ -4455,6 +4492,11 @@
       "required": [],
       "type": "object"
     },
+    "result.session.approve_all": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
     "result.session.attach": {
       "$ref": "#/$defs/log.Attach"
     },
@@ -4610,6 +4652,21 @@
         "id",
         "prompt_id",
         "scope"
+      ],
+      "type": "object"
+    },
+    "rpc.approveAllParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "on"
       ],
       "type": "object"
     },
@@ -5702,6 +5759,12 @@
             "null"
           ]
         },
+        "approve_actor": {
+          "type": "string"
+        },
+        "approve_all": {
+          "type": "boolean"
+        },
         "bindings": {
           "items": {
             "$ref": "#/$defs/binding.Binding"
@@ -5764,6 +5827,7 @@
         "allowed_commands",
         "allowed_writes",
         "turn_writes",
+        "approve_all",
         "workspace",
         "git",
         "mcp"

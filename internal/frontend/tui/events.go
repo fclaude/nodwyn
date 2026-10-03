@@ -138,7 +138,7 @@ func (m *model) consume(e rpc.ClientEvent) {
 		var p log.ApprovalChange
 		p, err = decode[log.ApprovalChange](e.Payload)
 		if err == nil {
-			m.append(fmt.Sprintf("approval requested: %s %s %s by %s", p.Scope, p.Kind, p.Prefix, p.Actor))
+			m.append(strings.Trim(plain.ApprovalSummary(p), "[]") + " by " + p.Actor)
 		}
 	case string(log.KindSummary):
 		var p log.Summary

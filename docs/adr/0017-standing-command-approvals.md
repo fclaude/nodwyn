@@ -49,3 +49,28 @@ before this, it could.
   only at the next session start.
 - "a" persists nothing: standing approvals that should outlive a session are
   written down by the user, where they can be reviewed.
+
+## Amendment 2026-10-02: "don't ask", a switch only a person reaches
+
+The console offers one switch under the composer, **Don't ask: approve
+writes and commands**: while it is on, every confirm a standing approval
+could answer, an ordinary write or command (`ApprovalOptions().Session`), is
+answered yes as the person who turned it on, with scope `all` in the guard
+decision; the confirm pending when it is turned on is answered too. It
+installs no prefix. Security confirms (a write that looks like a credential,
+a command built from tool output), protected paths and every refusal are
+untouched: it answers questions, it never overrules the guard. MCP tools,
+uploads and egress keep their own questions.
+
+The point is who can reach it. It is a field of the Go session with one
+writer, `Session.SetApproveAll`, called only by the daemon's
+`session.approve_all` with the authenticated peer as actor. No primitive
+reads or writes it, whatever the Scheme's origin: user origin is not enough,
+since a repository's `.nodwyn/init.scm` runs as user-origin Scheme.
+`scripts/lint-boundaries.sh` fails a build that calls `SetApproveAll` outside
+`internal/frontend/rpc` or touches the field outside `internal/core/confirm.go`.
+Turning it on is refused to a paired device (ADR 30), as starting a run that
+answers itself is, and to a session whose confirms are not asked of a person.
+Like "a", it persists nothing: it ends with the session, a resume starts it
+off, and each switch is an `approval.change` (`kind: "all"`, `off` when it is
+turned off) in the log.

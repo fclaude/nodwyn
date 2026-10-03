@@ -136,6 +136,11 @@ own); for a command, its prefix (\code{go test},
 \code{rg}\ldots). \code{t} approves every further write until the turn ends,
 which is right when you plan to review everything with \code{git diff}
 afterwards; each auto-approved diff is still logged and shown, dimmed.
+In the console, \textbf{Don't ask: approve writes and commands} under the
+composer goes further for one task: every ordinary write and command is
+approved until you uncheck it or the task closes. Protected paths and
+writes that look like a key still ask. No Scheme can turn it on, not even a
+folder's \file{init.scm}, and a resumed task starts asking again.
 
 \begin{tip}
 Read the bullet lines. \emph{``command line names a path outside the

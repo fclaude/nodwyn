@@ -77,7 +77,9 @@ the task's spend limit in millionths of a US dollar, counted over the whole
 task rather than a turn; a `hard` of 0 is none. These are the
 configured limits, including the legacy tool-call override; this
 protocol does not expose live turn counters. Details also include
-`allowed_commands`, `allowed_writes`, `turn_writes`, and optional `turn_actor`.
+`allowed_commands`, `allowed_writes`, `turn_writes`, optional `turn_actor`,
+`approve_all` ("don't ask" is on) and optional `approve_actor` (who turned it
+on).
 Session details also contain `bindings`, a copied array of loaded metadata rows
 with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
 `Scopes` (OAuth2 scopes the row allows, ADR 24) fields. No credential values are
@@ -181,6 +183,7 @@ queued on the connection.
 | `session.answer` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","reply":"y"}` | `{}` when a one-time answer or budget choice is accepted |
 | `session.approval.create` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","scope":"session"}` | `{}` when an explicit scope choice is accepted |
 | `session.binding.create` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID"}` | `{}` when an exact pending binding choice is accepted |
+| `session.approve_all` | `{"id":"SESSION_ID","on":true}` | `{}` when "don't ask" is turned on or off |
 | `session.secret` | `{"id":"SESSION_ID","prompt_id":"PROMPT_ID","secret":"VALUE"}` | `{}` when a credential reply is accepted |
 
 Ordinary `session.answer` accepts `y`/`yes` or `n`/`no`, case-insensitively.
@@ -209,6 +212,22 @@ that file. `scope: "turn"` applies to ordinary writes until the turn ends.
 Clients cannot submit arbitrary prefixes. Security confirmations, protected
 paths and budget checkpoints cannot create standing approvals. Turn-wide and
 session approvals never waive security confirmations or denials.
+
+`session.approve_all` turns "don't ask" on or off for an open session: while
+it is on, every confirmation a standing approval could answer (an ordinary
+write or command) is answered yes without a prompt, as the person who turned
+it on, recorded in the `guard.decision` with `scope: "all"`; a confirmation
+pending when it is turned on is answered too, and nothing is installed.
+Security confirmations and protected paths still prompt, and denials stand.
+It lives in the daemon's memory for that session only: no Scheme primitive
+reads or changes it, whatever the code's origin (a repository's
+`.nodwyn/init.scm` runs as user-origin Scheme), a resumed session starts
+with it off, and it is never written to configuration. Turning it on is
+refused to an actor relayed `via` a paired device, which may only turn it
+off, and to a session whose confirmations are not asked of a person
+(`--yolo`, a judge, `--no-confirm`, an unattended run). Each switch is an
+`approval.change` with `kind: "all"`, `scope: "session"`, `prefix: "*"` and,
+when it is turned off, `off: true`.
 
 Prompt IDs are opaque, generated afresh, and not reused on resume. A reply is
 consumed once. Missing, canceled or already answered IDs fail without changing

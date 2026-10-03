@@ -133,6 +133,7 @@ export class TaskView {
         this.info = info;
         this.aside();
         this.header();
+        this.controls();
       }
     } catch {
       /* a closed session has no current details */
@@ -180,6 +181,8 @@ export class TaskView {
     const follow = view.scrollHeight - view.scrollTop - view.clientHeight < 120;
     view.querySelector(":scope > [data-placeholder]")?.remove();
     if (p.prompt_id && ["guard.decision", "turn.checkpoint", "cred.register", "run.checkpoint", "setting.change"].includes(event.kind)) this.resolve(p.prompt_id);
+    // "Don't ask" switched, here or on another screen: show it as it is.
+    if (event.kind === "approval.change" && p.kind === "all" && !this.loading && this.item?.open) this.loadInfo();
     switch (event.kind) {
       case "prompt.confirm":
       case "prompt.secret":
@@ -309,11 +312,20 @@ export class TaskView {
     this.files = new Attachments(() => this.controls());
     this.files.task = this.item?.id;
     this.files.files = kept;
+    // "Don't ask" is the session's, in Go: no Scheme reaches it, and only
+    // this computer turns it on (session.approve_all; a paired device's
+    // hello does not list the method).
+    const dontAsk = h(
+      "label",
+      { class: "dont-ask", title: "Writes and commands in this task are approved without asking until you uncheck this or the task closes. Protected files, writes that look like a key and commands built from tool output still ask; what the guard refuses stays refused." },
+      h("input", { type: "checkbox", onchange: (event) => this.setApproveAll(event.target.checked) }),
+      h("span", {}, "Don't ask: approve writes and commands"),
+    );
     const form = h(
       "form",
       { class: "reply", onsubmit: (event) => { event.preventDefault(); this.send(); } },
       h("label", { class: "sr-only", for: "reply" }, "Reply to nodwyn"),
-      h("div", { class: "reply-body" }, this.files.list, reply),
+      h("div", { class: "reply-body" }, this.files.list, reply, dontAsk),
       this.files.button(),
       send,
     );
@@ -323,7 +335,7 @@ export class TaskView {
     const side = h("aside", { class: "task-aside", "aria-label": "Task details" });
     const head = h("header", { class: "task-head" });
     this.root.replaceChildren(head, h("div", { class: "task-body" }, main, side));
-    this.el = { head, transcript, reply, send, form, side, inspector, main };
+    this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk };
     this.transcript = new Transcript(transcript);
   }
   controls() {
@@ -343,6 +355,29 @@ export class TaskView {
     this.el.send.disabled = !canSend || this.busy || prompt || !this.el.reply.value.trim();
     for (const b of this.el.form.querySelectorAll("[aria-label='Attach a file']")) b.disabled = !canSend || this.busy || prompt;
     for (const control of this.el.transcript.querySelectorAll(".ask-card button, .ask-card input")) control.disabled = this.acting || !this.conn.live;
+    // A run that answers its own confirms has no questions to stop asking.
+    const run = this.item?.run;
+    const box = this.el.dontAsk;
+    box.hidden = !this.conn.has("session.approve_all") || !open || !!(run && (run.auto_approve || run.unattended || run.judge));
+    const check = box.querySelector("input");
+    check.checked = !!this.info?.approve_all;
+    check.disabled = !this.info || this.switching || !this.conn.live;
+    box.classList.toggle("on", check.checked);
+  }
+  async setApproveAll(on) {
+    const id = this.item?.id;
+    if (!id) return;
+    this.switching = true;
+    this.controls();
+    try {
+      await this.conn.call("session.approve_all", { id, on });
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      this.switching = false;
+    }
+    await this.loadInfo();
+    this.controls();
   }
   async send() {
     if (this.el.send.disabled) return;

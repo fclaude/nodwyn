@@ -368,8 +368,10 @@ type ApprovalChange struct {
 	Actor    string `json:"actor,omitempty"`
 	PromptID string `json:"prompt_id"`
 	Scope    string `json:"scope"`
-	Kind     string `json:"kind"` // command or write
+	Kind     string `json:"kind"` // command or write; all for "don't ask" (every ordinary write and command)
 	Prefix   string `json:"prefix"`
+	// Off: the approval ends here, as "don't ask" turned off does.
+	Off bool `json:"off,omitempty"`
 }
 
 // EvalRequest/EvalResult are user-origin history, never model messages.

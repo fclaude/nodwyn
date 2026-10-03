@@ -113,6 +113,60 @@ func (s *Session) Allowed() []string { return s.allow.List() }
 // AllowedWrites lists the write paths with a standing approval.
 func (s *Session) AllowedWrites() []string { return s.writes.List() }
 
+// ApproveAll reports whether "don't ask" is on, ordinary writes and
+// commands approved without a prompt, and who turned it on.
+func (s *Session) ApproveAll() (bool, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.approveAll, s.approveActor
+}
+
+// SetApproveAll turns "don't ask" on or off for this session, as actor, the
+// person at a front-end's authenticated transport. Only a front-end calls
+// it: no Scheme primitive reads or changes it, whatever its origin, since a
+// repository's init.scm runs as user-origin Scheme. It answers only the
+// confirms a standing approval could answer (ordinary writes and commands);
+// security confirms and protected paths still ask, and nothing the guard
+// refuses is allowed. It is never saved: a resumed session starts with it
+// off. A session whose confirms something else answers (--yolo, a judge,
+// --no-confirm, an unattended run) refuses it.
+func (s *Session) SetApproveAll(on bool, actor string) error {
+	if actor == "" {
+		return fmt.Errorf("core: answering actor is required")
+	}
+	if s.opts.NoConfirm || s.opts.AutoApprove || s.opts.JudgeApprove || s.opts.Unattended {
+		return fmt.Errorf("core: this session's confirms are not asked of a person, so there is nothing to stop asking")
+	}
+	s.mu.Lock()
+	same := s.approveAll == on
+	s.mu.Unlock()
+	if same {
+		return nil
+	}
+	if _, err := s.Record(log.KindApprovalChange, log.ApprovalChange{Actor: actor, Scope: "session", Kind: "all", Prefix: "*", Off: !on}); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.approveAll, s.approveActor = on, actor
+	if !on {
+		s.approveActor = ""
+	}
+	s.mu.Unlock()
+	if on {
+		// What is waiting for an answer now that it would have answered.
+		s.promptMu.Lock()
+		for id, pending := range s.prompts {
+			if pending.checkpoint == nil && pending.choice == nil && pending.reply != nil && pending.prompt.ApprovalOptions().Session &&
+				(pending.ctx == nil || pending.ctx.Err() == nil) {
+				delete(s.prompts, id)
+				pending.reply <- guard.Approval{Allowed: true, Actor: actor, PromptID: id, Scope: "all"}
+			}
+		}
+		s.promptMu.Unlock()
+	}
+	return nil
+}
+
 // TurnApproval reports whether ordinary writes are approved for the rest of
 // the current turn, and who approved them.
 func (s *Session) TurnApproval() (bool, string) {
@@ -153,6 +207,11 @@ func (s *Session) confirmPrompt(ctx context.Context, p guard.Prompt) (guard.Appr
 			return guard.Approval{Allowed: true, Actor: actor, Scope: "turn"}, nil
 		}
 	}
+	// "Don't ask" answers what a standing approval could: an ordinary write
+	// or command, never a security confirm or a protected path.
+	if on, actor := s.ApproveAll(); on && p.ApprovalOptions().Session {
+		return guard.Approval{Allowed: true, Actor: actor, Scope: "all"}, nil
+	}
 	s.promptMu.Lock()
 	id := "p" + rand.Text()
 	ch := make(chan guard.Approval, 1)
@@ -170,7 +229,9 @@ func (s *Session) confirmPrompt(ctx context.Context, p guard.Prompt) (guard.Appr
 		if err := ctx.Err(); err != nil {
 			return a, err
 		}
-		if a.Allowed && a.Scope != "once" {
+		// An answer from "don't ask" (scope all) installs nothing: the
+		// switch itself is the approval.
+		if a.Allowed && a.Scope != "once" && a.Scope != "all" {
 			if err := s.installApproval(ctx, p, a); err != nil {
 				return a, err
 			}

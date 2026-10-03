@@ -364,6 +364,11 @@ export class Transcript {
         else this.audit(`${name}: ${value} was not saved`, p.error || p, "bad");
         break;
       }
+      case "approval.change":
+        // "Don't ask" switched, rather than one standing answer.
+        if (p.kind === "all") this.audit(p.off ? "Don't ask: off, writes and commands ask again" : "Don't ask: on, writes and commands approved without asking", p, p.off ? "" : "warn");
+        else this.audit(auditLabels[event.kind], p);
+        break;
       default:
         if (auditLabels[event.kind]) this.audit(auditLabels[event.kind], p);
     }
@@ -424,6 +429,7 @@ export class Transcript {
     else if (p.checker === "standing") text = "standing approval";
     else if (p.decision === "confirm" && p.actor === "judge") text = p.answer === "yes" ? "the judge allowed" : "the judge refused";
     else if (p.decision === "confirm" && p.actor === "unattended") text = "declined: nobody to ask";
+    else if (p.decision === "confirm" && p.scope === "all") text = "allowed: don't ask";
     else if (p.decision === "confirm") text = p.answer === "yes" ? (p.scope && p.scope !== "once" ? `you allowed · ${p.scope}` : "you allowed once") : p.answer === "turn" ? "allowed for this turn" : "you denied";
     if (!c || p.origin !== "model") {
       // A decision outside a tool call (user-origin, a checker's own prompt)

@@ -71,6 +71,10 @@ type sessionDetails struct {
 	Writes     []string          `json:"allowed_writes"`
 	TurnWrites bool              `json:"turn_writes"`
 	TurnActor  string            `json:"turn_actor,omitempty"`
+	// ApproveAll: "don't ask" is on, ordinary writes and commands approved
+	// without a prompt (session.approve_all), turned on by ApproveActor.
+	ApproveAll   bool   `json:"approve_all"`
+	ApproveActor string `json:"approve_actor,omitempty"`
 	// Workspace is what the session loaded from .nodwyn/workspace.toml.
 	Workspace config.Workspace `json:"workspace"`
 	// Git says a git work tree is the undo at the root; otherwise nodwyn
@@ -85,7 +89,8 @@ func (s *server) details(session *core.Session) sessionDetails {
 	// since it opened, and a run's spend limit is its own.
 	limits := session.Limits()
 	trust, actor := session.TurnApproval()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
+	all, allActor := session.ApproveAll()
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
 }
 
 func orEmpty[T any](list []T) []T {
@@ -118,6 +123,7 @@ var methodTable = map[string]handler{
 	"session.secret":          (*server).answer,
 	"session.approval.create": (*server).answer,
 	"session.binding.create":  (*server).answer,
+	"session.approve_all":     (*server).approveAll,
 	"session.watch":           (*server).subscribeState,
 	"session.list":            (*server).list,
 	"attention.list":          (*server).attentionList,

@@ -186,7 +186,8 @@ for this turn, or for the session, as the core offers; it can also restore a
 kept file version (through the usual approval), save project notes, read the
 policy files, see the credentials, and start, stop or resume a run whose
 requests a person answers. It cannot start or resume a run that answers its
-own requests (unattended, judged, or saying yes), save a credential binding,
+own requests (unattended, judged, or saying yes), turn on "don't ask", save a
+credential binding,
 write a policy file, unlock or create the keychain or change its passphrase,
 add, replace, allow, authorize or remove a credential, change Settings, the
 model or how
@@ -245,7 +246,15 @@ arguments, egress scope, and the existing write diff (additions/deletions colore
 without changing the diff algorithm). Allow once and Deny answer only that live
 prompt. Eligible ordinary calls also offer the displayed command/write prefix for
 this session, or ordinary writes for this turn. Security and protected-path
-confirmations remain one-time only; no grant overrides a denial. The daemon sends
+confirmations remain one-time only; no grant overrides a denial. Under the
+composer, **Don't ask: approve writes and commands** answers every ordinary
+write and command in that task without asking, and the question waiting when
+it is checked, until it is unchecked or the task closes; security and
+protected-path questions still ask, the conversation says when it was switched
+and each call it approved says so. It is the daemon's, not Scheme's
+(`session.approve_all`, [protocol](protocol.md)), it is never saved, so a
+resumed task starts asking again, and only this computer turns it on: a
+paired device does not see it. The daemon sends
 derived scope labels in optional prompt metadata and validates the actual pending
 prompt again when an answer arrives. An older daemon without this metadata gets
 only one-time browser buttons.

@@ -380,3 +380,42 @@ func TestPeerIdentityFromDifferentProcess(t *testing.T) {
 		t.Fatalf("peer process: %v\n%s", err, out)
 	}
 }
+
+// "Don't ask" is turned on from the computer nodwyn runs on: session.info
+// says so and who did it, and a write goes through unasked. A paired
+// device may turn it off, never on.
+func TestApproveAllOverTheProtocol(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	me := identity(t, c)
+	repo := t.TempDir()
+	id := opened(t, c, repo)
+	subscribed(t, c, id, 0, 100)
+	c.ok("session.approve_all", map[string]any{"id": id, "on": true})
+	var info sessionDetails
+	json.Unmarshal(c.ok("session.info", map[string]any{"id": id}), &info)
+	if !info.ApproveAll || info.ApproveActor != me {
+		t.Fatalf("info: %v %q", info.ApproveAll, info.ApproveActor)
+	}
+	eval(c, id, `(fs-write "a.txt" "a")`)
+	if result := finishEval(t, c); result.Error != "" {
+		t.Fatal(result.Error)
+	}
+	if b, err := os.ReadFile(filepath.Join(repo, "a.txt")); err != nil || string(b) != "a" {
+		t.Fatalf("a.txt: %q %v", b, err)
+	}
+	phone := connect(t, path)
+	phone.ok("hello", map[string]any{"protocol": 1, "via": "web:phone"})
+	if r := phone.call("session.approve_all", map[string]any{"id": id, "on": true}); r.Error == nil || !strings.Contains(r.Error.Message, "not from a paired device") {
+		t.Fatalf("a paired device turned it on: %+v", r.Error)
+	}
+	phone.ok("session.approve_all", map[string]any{"id": id, "on": false})
+	json.Unmarshal(c.ok("session.info", map[string]any{"id": id}), &info)
+	if info.ApproveAll {
+		t.Fatal("still on after the device turned it off")
+	}
+	if r := c.call("session.approve_all", map[string]any{"id": id}); r.Error == nil {
+		t.Fatal("accepted without on")
+	}
+}

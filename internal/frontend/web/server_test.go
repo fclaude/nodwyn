@@ -537,7 +537,7 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	if _, ok := s.b.authenticated(r); ok {
 		t.Fatal("revoked device still paired")
 	}
-	for _, method := range []string{"session.binding.create", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
+	for _, method := range []string{"session.binding.create", "session.approve_all", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
 		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize"} {
 		if s.b.allowed(method, true) {
 			t.Fatalf("remote device may call %s", method)

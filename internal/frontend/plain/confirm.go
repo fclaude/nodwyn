@@ -29,6 +29,18 @@ func EgressSummary(scope *guard.EgressScope) string {
 	return fmt.Sprintf("Credential class: %s\nDestination host: %s\nMethod: %s\nPosition: %s%s\nThese are the credential scope facts for this call.", known(scope.Class), known(scope.Host), known(scope.Method), known(scope.Position), scopes)
 }
 
+// ApprovalSummary is an approval change as the terminal clients show it:
+// one standing answer, or "don't ask" switched on or off.
+func ApprovalSummary(p log.ApprovalChange) string {
+	if p.Kind == "all" {
+		if p.Off {
+			return "[don't ask: off, writes and commands ask again]"
+		}
+		return "[don't ask: on, writes and commands approved without asking]"
+	}
+	return fmt.Sprintf("[approval requested: %s %s %s]", p.Scope, p.Kind, p.Prefix)
+}
+
 // BindingSummary distinguishes a requested change from a persisted outcome.
 func BindingSummary(p log.BindingChange) string {
 	scopes := ""

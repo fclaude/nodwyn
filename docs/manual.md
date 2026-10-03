@@ -380,6 +380,13 @@ the run is `--unattended`.
 
 ### Standing approvals
 
+In the console, **Don't ask: approve writes and commands** under the composer
+stops the questions for one task: its ordinary writes and commands are
+approved without asking until you uncheck it or the task closes. Protected
+paths and writes that look like a key still ask, and nothing the guard
+refuses is allowed. No Scheme can turn it on, a repository's `init.scm`
+included, and it is never saved: a resumed task asks again.
+
 Commands you never want to be asked about go in one of two files:
 
 ```toml

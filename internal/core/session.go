@@ -82,6 +82,13 @@ type Session struct {
 	// ("t" at a write prompt). Reset when the turn goes idle.
 	turnTrust bool
 	turnActor string
+	// approveAll: ordinary writes and commands are approved without a
+	// prompt until it is turned off or the session closes, as the person
+	// who turned it on (approveActor) chose. Go only: no primitive reads or
+	// changes it, since a repository's init.scm runs as user-origin Scheme
+	// (confirm.go, SetApproveAll).
+	approveAll   bool
+	approveActor string
 
 	// P3 egress.
 	keychain *keychain.Store

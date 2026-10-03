@@ -279,7 +279,7 @@ func (c *Chat) show(ev event.Event) {
 	case string(log.KindApprovalChange):
 		endStream()
 		p := ev.Payload.(log.ApprovalChange)
-		fmt.Fprintf(c.Out, "[approval requested: %s %s %s]\n", p.Scope, p.Kind, p.Prefix)
+		fmt.Fprintln(c.Out, ApprovalSummary(p))
 	case string(log.KindNote):
 		endStream()
 		fmt.Fprintf(c.Out, "note: %s\n", ev.Payload.(log.Note).Text)
@@ -545,7 +545,11 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 		case log.KindApprovalChange:
 			var p log.ApprovalChange
 			_ = ev.Decode(&p)
-			fmt.Fprintf(w, "[approval %s %s %s by %s]\n", p.Scope, p.Kind, p.Prefix, p.Actor)
+			if p.Kind == "all" {
+				fmt.Fprintf(w, "%s by %s\n", ApprovalSummary(p), p.Actor)
+			} else {
+				fmt.Fprintf(w, "[approval %s %s %s by %s]\n", p.Scope, p.Kind, p.Prefix, p.Actor)
+			}
 
 		case log.KindUserMsg:
 			var p log.UserMsg
