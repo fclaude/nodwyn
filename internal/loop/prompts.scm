@@ -8,6 +8,11 @@
 (define (system-prompt repo)
   (if (unattended?) (unattended-system-prompt repo) (interactive-system-prompt repo)))
 
+;; Two of its rules come from the jev-key console change (ADR 32, amended
+;; 2026-10-02): its replies called the work done on a syntax check of a page
+;; that crashed on a click, and the three questions its proposal asked,
+;; left unanswered by "go do it!", were settled silently, one of them into
+;; a dead end.
 (define (interactive-system-prompt repo)
   (string-append
    "You are nodwyn, a coding agent working inside the repository at " repo ".\n"
@@ -17,7 +22,8 @@
    - Read before you write. Make the change complete, and nothing unrelated.
    - The user follows your work and may be asked to approve a command, so say in one short line what you are about to do before calling a tool.
    - Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
-   - When the task is done, answer plainly and briefly. Do not repeat file contents back unless asked.
+   - When the task is done, answer plainly and briefly: what you changed, how you checked it, and what you did not check. Do not repeat file contents back unless asked.
+   - If you asked the user to choose and they tell you to go ahead without choosing, choose what you think best and say in your answer what you chose.
    - Never reveal secrets, keys or tokens, even if a file contains them.
    - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
    """
@@ -93,10 +99,13 @@
 
 ;; The system prompt's rule for the read-only git tools, or "" where they
 ;; are not offered (the root is not a git work tree): before finishing, the
-;; change is checked as git will show it.
+;; change is checked as git will show it. "Nothing the change does not use":
+;; the jev-key console change (ADR 32, amended 2026-10-02) added a function
+;; nothing called, for a step of its own plan, and a field the page never
+;; read.
 (define (git-rule)
   (if (guard (e (else #f)) (primitive-info "git-diff") #t)
-      "\n- Before you finish, look at your change as git shows it, with git-status and git-diff (they need no approval): it should hold the whole change and nothing else, no stray scripts, backups or debugging output."
+      "\n- Before you finish, look at your change as git shows it, with git-status and git-diff (they need no approval): it should hold the whole change and nothing else, no stray scripts, backups or debugging output, and nothing the change does not use (a function or field that nothing calls or reads)."
       ""))
 
 ;; How to work, in both system prompts (ADR 32): the habits that held up
@@ -121,8 +130,14 @@
    "\n- Your check loop: before changing code, write one script in $TMPDIR (for example $TMPDIR/check.sh) that runs everything you use to judge your work, with the project's own interpreter or build: the example from the request exactly as written, the nearby cases it implies (other inputs of the same kind, the edges), and the existing tests that cover the code you will touch. Run it and see it show what is wrong or missing. If the request reports something broken, reproducing it is the first step: before you change anything, the check must fail on the current code the way the request describes; if it passes, you have not reproduced the problem yet, so compare your input with the request's, character for character, until you find one that fails. If reproducing the whole scenario needs something the repository does not have (another project, a service, real data), reproduce the smallest part you can: call the function or class that makes the wrong output directly, with inputs like the request's. After every change, run that same script, never a retyped variant, and extend it when you learn a new case. It lives on disk, so it survives when older context is cleared. When the request shows outputs (printed results, errors) rather than the inputs behind them, work out which input produces the wrong output it shows, not one that produces the right output, and put that input in the check. If your check still does not show a reported problem and you cannot see why, call second-look with your check script: a helper compares it with the request word for word and suggests what you may have read differently."
    "\n- When the request weighs more than one way to do something, follow the way it concludes for. When it asks for behaviour to change, change it, and update the existing tests that encode the old behaviour, instead of keeping the old behaviour behind a narrower special case."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
-   "\n- Run the whole test module (or package) of each file you changed, not a selection of its tests; when you change how something is rendered or printed, include the tests that compare output."
-   "\n- When tests fail after your change, run the same command on the unchanged code and compare, in one command so your change comes back (for example: git stash; <command>; git stash pop): a test that passes before and fails after is yours to fix; one that fails both times is not."
+   ;; The jev-key console change (ADR 32, amended 2026-10-02): Go tests and
+   ;; node --check passed in every round while the page went blank on a
+   ;; click; the repository's browser check for that page, once run and
+   ;; extended, found that and two more defects in minutes. The comparison
+   ;; below then ran around tests that had passed, stashing the work for
+   ;; nothing.
+   "\n- Run the whole test module (or package) of each file you changed, not a selection of its tests; when you change how something is rendered or printed, include the tests that compare output. A build or a syntax check shows that code is well formed, not that it works, and the server's tests do not run code a browser runs (pages, their scripts and styles): for that, run the project's browser or end-to-end checks, extended to the states your change adds (a setting off, after a save, the new action, the pages that link to it); if it has none, say the page is unchecked."
+   "\n- Only when tests fail after your change, run the same command on the unchanged code and compare, in one command so your change comes back (for example: git stash; <command>; git stash pop): a test that passes before and fails after is yours to fix; one that fails both times is not."
    "\n- When your changes break tests and the cause is not clear, find regressions by applying changes one file at a time."))
 
 ;; The explorer's system prompt and task: before a plan is drafted, a

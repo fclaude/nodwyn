@@ -615,7 +615,7 @@ strings (§1.1):
 
 | | |
 |---|---|
-| `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver |
+| `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5), and the draft request that carries what it found |
 | `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)` | what the evidence loop tells the model (§9) |
 | `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5) |
@@ -629,8 +629,8 @@ strings (§1.1):
 | `(optimizer-system-prompt)`, `(optimizer-task history focus)` | the optimizer's system prompt and task (§9.4) |
 | `plan-score-rubric` | the judge's instruction for scoring a plan |
 | `plan-score-levels` | the rubric's 2–10 levels, worst first |
-| `working-rules` | how to work, added to both system prompts (§9.6): shell command lines, programs that keep running or may hang (`shell-start`), the project's environment, reading with the file tools, a plan as a first guess, the check loop, following the request's conclusion, widening in general form, whole test modules, comparing failures with the unchanged code, finding regressions file by file |
-| `(git-rule)` | in both system prompts after `working-rules`, only where `git-diff` is offered: look at the change with `git-status` and `git-diff` before finishing |
+| `working-rules` | how to work, added to both system prompts (§9.6): shell command lines, programs that keep running or may hang (`shell-start`), the project's environment, reading with the file tools, a plan as a first guess, the check loop, following the request's conclusion, widening in general form, whole test modules (and code a browser runs checked by the project's browser checks; a build or a syntax check is not a check that it works), comparing failures with the unchanged code only when tests fail, finding regressions file by file |
+| `(git-rule)` | in both system prompts after `working-rules`, only where `git-diff` is offered: look at the change with `git-status` and `git-diff` before finishing; it holds nothing it does not use |
 
 ```scheme
 (define base-system-prompt system-prompt)      ; keep the default to extend it

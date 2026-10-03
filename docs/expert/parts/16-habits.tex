@@ -19,10 +19,13 @@ anything ran as a first guess; keep \textbf{one check script} in
 \code{\$TMPDIR} that shows the problem before the fix and is rerun
 unchanged after every change; follow the conclusion of a request that
 weighs options; widen a fix in the general form, not just for the example;
-run whole test modules; compare failures against the unchanged code with
-\code{git stash}; bisect regressions file by file. In a git work tree,
+run whole test modules, and check code a browser runs with the project's
+browser checks, since a build or a syntax check only shows it is well
+formed; compare failures against the unchanged code with \code{git stash},
+only when tests fail; bisect regressions file by file. In a git work tree,
 \code{(git-rule)} adds one more: look at the change with \code{git-status}
-and \code{git-diff} before finishing.
+and \code{git-diff} before finishing, and leave nothing in it that nothing
+uses.
 
 If your project has its own rules, add them after these rather than
 replacing them (Chapter~\ref{ch:checks}).

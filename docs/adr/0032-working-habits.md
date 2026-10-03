@@ -206,3 +206,55 @@ in the harness, not in the request:
   globs, and `git-status` names every file (ADR 28, amended).
 - **nodwyn's own tests failed when nodwyn ran them**, for reasons the
   model could not tell from its own breakage (ADR 28, amended).
+
+## Amendment 2026-10-02: a change is checked where it runs
+
+The same jev-key request, done in a chat once the harness fixes above were
+in (session `20261003T002506Z-f564a28c`, meta/muse-spark-1.3), was
+reviewed four times, and each review found what the model's own checks
+could not:
+
+- **The page crashed on a click.** One edit named a text `detail` in the
+  function that also called the module's `detail()`, so storing the judge
+  key or opening its row blanked the Credentials tab. Go's tests and
+  `node --check` passed in every round: neither runs the console's
+  JavaScript. The repository's browser check for that tab
+  (`test/browser/checks/credentials.js`) was not run until the fourth
+  turn; once it was run, and extended to the judge panel, it found the two
+  defects that were left within minutes.
+- **The replies reported checks that could not show what they claimed.**
+  "All review items fixed" rested on `node --check`.
+- **Unanswered questions were settled silently.** The proposal ended with
+  three questions; told "go do it!", the model chose without saying so, and
+  one choice (no key field while the judge is off) left Settings linking to
+  a panel without a field.
+- **It added what nothing used**: a function for a step of its own plan,
+  and a field the page did not read.
+- **It stashed the work around tests that had passed**, to compare with
+  the unchanged code, which the rule asks for only when tests fail.
+
+So the prompts change:
+
+- The working rule on whole test modules adds that a build or a syntax
+  check shows code is well formed, not that it works, and that code a
+  browser runs is checked by the project's browser or end-to-end checks,
+  extended to the states the change adds; with none, the page is reported
+  unchecked.
+- The comparison with the unchanged code is "only when tests fail".
+- `(git-rule)`: the change holds nothing it does not use.
+- The interactive prompt: the answer says what changed, how it was checked
+  and what was not, and when the user goes ahead without answering a
+  choice, the model chooses and says what it chose.
+
+The system prompt's test no longer pins its text byte for byte. The copy
+showed that the move of the prompts into Scheme (2026-09-26) reproduced the
+Go strings; after that it only made every edit twice. The test now checks
+that the session sends what `(system-prompt repo)` builds, that two
+sessions of one repository send the same prompt (the prefix ADR 9 caches),
+that sections that do not apply are left out, and what the planner's and
+runs' prompts must carry.
+
+None of this has run on the 121-task cohort. The working rules grow by
+386 characters in both system prompts and `(git-rule)` by 87 in a git work
+tree; the interactive prompt grows by 217 more. On the benchmark's tasks
+there is no page to check.
