@@ -88,7 +88,7 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   await page.screenshot({ path: `${out}/credentials-judge.png`, fullPage: true });
 
   // Settings › Judge: with the key stored, the Key row says so and offers
-  // no second add, even though the judge itself is off in the demo.
+  // no second add.
   await go("#/settings");
   await page.waitForSelector("text=Stored in the keychain.", { timeout: 10000 });
   if (await page.isVisible("a:has-text('Judge key')")) throw new Error("Settings still offers to add a stored judge key");
