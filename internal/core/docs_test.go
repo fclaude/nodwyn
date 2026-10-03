@@ -104,7 +104,7 @@ func docsRig(t *testing.T, drive *fakedrive.Server, setup docsSetup) (*rig, conf
 			t.Fatal(err)
 		}
 	}
-	srv := fake.New(setup.turns...)
+	srv := fake.NewT(t, setup.turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"

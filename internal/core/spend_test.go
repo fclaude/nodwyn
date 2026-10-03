@@ -69,7 +69,7 @@ func price(f float64) *float64 { return &f }
 // output priced so), with a spend limit of soft..hard dollars.
 func spendRig(t *testing.T, soft, hard float64, priced bool, turns ...fake.Turn) (*Session, Options, *fake.Server) {
 	t.Helper()
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	o := diskOptions(t)
 	o.NoConfirm = false

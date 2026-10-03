@@ -252,22 +252,24 @@ func TestReaderErrors(t *testing.T) {
 	}
 }
 
-// TestTailCalls: 200k iterations of a tail-recursive loop, in every tail
+// TestTailCalls: 20k iterations of a tail-recursive loop, in every tail
 // position the doc lists, under an 8 MB Go stack cap — any recursion in a
-// tail position would overflow it (a fatal, unmistakable failure).
+// tail position would overflow it (a fatal, unmistakable failure). A loop
+// whose call is not in a tail position overflows it before 5k iterations,
+// with or without -race (2026-10-03); 200k took 18 s under -race.
 func TestTailCalls(t *testing.T) {
 	old := debug.SetMaxStack(8 << 20)
 	defer debug.SetMaxStack(old)
 	cases := []string{
-		`(define (loop n) (if (= n 0) 'done (loop (- n 1)))) (loop 200000)`,
-		`(define (loop n) (cond ((= n 0) 'done) (else (loop (- n 1))))) (loop 200000)`,
-		`(define (loop n) (and #t (if (= n 0) 'done (loop (- n 1))))) (loop 200000)`,
-		`(define (loop n) (or #f (if (= n 0) 'done (loop (- n 1))))) (loop 200000)`,
-		`(define (loop n) (let ((m (- n 1))) (if (< m 0) 'done (loop m)))) (loop 200000)`,
-		`(define (loop n) (let* ((m (- n 1))) (if (< m 0) 'done (loop m)))) (loop 200000)`,
-		`(define (loop n) (begin 0 (if (= n 0) 'done (loop (- n 1))))) (loop 200000)`,
-		`(let loop ((n 200000)) (if (= n 0) 'done (loop (- n 1))))`,
-		`(define (even2? n) (if (= n 0) #t (odd2? (- n 1)))) (define (odd2? n) (if (= n 0) #f (even2? (- n 1)))) (if (even2? 200000) 'done 'wrong)`,
+		`(define (loop n) (if (= n 0) 'done (loop (- n 1)))) (loop 20000)`,
+		`(define (loop n) (cond ((= n 0) 'done) (else (loop (- n 1))))) (loop 20000)`,
+		`(define (loop n) (and #t (if (= n 0) 'done (loop (- n 1))))) (loop 20000)`,
+		`(define (loop n) (or #f (if (= n 0) 'done (loop (- n 1))))) (loop 20000)`,
+		`(define (loop n) (let ((m (- n 1))) (if (< m 0) 'done (loop m)))) (loop 20000)`,
+		`(define (loop n) (let* ((m (- n 1))) (if (< m 0) 'done (loop m)))) (loop 20000)`,
+		`(define (loop n) (begin 0 (if (= n 0) 'done (loop (- n 1))))) (loop 20000)`,
+		`(let loop ((n 20000)) (if (= n 0) 'done (loop (- n 1))))`,
+		`(define (even2? n) (if (= n 0) #t (odd2? (- n 1)))) (define (odd2? n) (if (= n 0) #f (even2? (- n 1)))) (if (even2? 20000) 'done 'wrong)`,
 	}
 	for _, src := range cases {
 		in := New()

@@ -73,7 +73,7 @@ func modelRig(t *testing.T, init string, models map[string]config.Model, o Optio
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Models = models

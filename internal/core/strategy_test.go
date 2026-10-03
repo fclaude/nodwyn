@@ -26,7 +26,7 @@ func strategyRig(t *testing.T, init string, maxToolCalls int, turns ...fake.Turn
 	os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Loop.MaxToolCalls = maxToolCalls
@@ -45,6 +45,21 @@ func (r *rig) turn(text string) string {
 	if err := r.s.Send(text); err != nil {
 		r.t.Fatal(err)
 	}
+	return r.failure()
+}
+
+// planned is turn for a turn that must plan first (SendPlanned).
+func (r *rig) planned(text string) string {
+	r.t.Helper()
+	if err := r.s.SendPlanned(text); err != nil {
+		r.t.Fatal(err)
+	}
+	return r.failure()
+}
+
+// failure drains the turn and returns its error, "" if it ended cleanly.
+func (r *rig) failure() string {
+	r.t.Helper()
 	for _, ev := range r.drain("n") {
 		if ev.Kind == event.Error {
 			return ev.Payload.(event.ErrorInfo).Err
@@ -311,7 +326,7 @@ func TestStrategyCannotCatchLogFailure(t *testing.T) {
   (let retry ((n 0))
     (guard (e (else (if (< n 100) (retry (+ n 1)) 'gave-up)))
       (model-turn))))`), 0o644)
-	srv := fake.New(fake.Turn{Content: "never asked"})
+	srv := fake.NewT(t, fake.Turn{Content: "never asked"})
 	t.Cleanup(srv.Close)
 	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &failAfterUserMsg{}})
 	if err != nil {

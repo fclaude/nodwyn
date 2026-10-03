@@ -18,7 +18,7 @@ import (
 // when the session closes; a resumed session gets a new, empty one. The
 // system prompt names $TMPDIR, not the per-session path.
 func TestScratchDirectory(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "ok"}, fake.Turn{Content: "ok"})
+	srv := fake.NewT(t, fake.Turn{Content: "ok"}, fake.Turn{Content: "ok"})
 	defer srv.Close()
 	o := diskOptions(t) // NoConfirm: any prompt would be refused
 	o.Provider = llm.NewOllama(srv.URL)
@@ -129,7 +129,7 @@ func TestScratchDirectoryWithTheDefaultLayout(t *testing.T) {
 	if paths.DataDir != filepath.Join(home, ".local", "share", "nodwyn") {
 		t.Fatalf("data directory %q", paths.DataDir)
 	}
-	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{
+	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{
 		{ID: "w", Name: "fs-write", Args: map[string]any{"path": "$TMPDIR/a.py", "content": "print(1)\n"}},
 		{ID: "r", Name: "fs-read", Args: map[string]any{"path": "$TMPDIR/a.py"}},
 	}}, fake.Turn{Content: "done"})
@@ -209,7 +209,7 @@ func TestDenylistFollowsTheConfiguredDirectories(t *testing.T) {
 // $TMPDIR, and a write there needs no approval. A turn marks the directory
 // in use for the sweep.
 func TestTmpdirNamesTheScratchDirectoryInEveryTool(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "ok"})
+	srv := fake.NewT(t, fake.Turn{Content: "ok"})
 	defer srv.Close()
 	o := diskOptions(t) // NoConfirm: any prompt would be refused
 	o.Provider = llm.NewOllama(srv.URL)

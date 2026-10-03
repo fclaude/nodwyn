@@ -11,6 +11,10 @@
 //	go run ./test/browser/demo -seed      # also starts tasks so every view has content
 //	go run ./test/browser/demo -docs      # a Google credential, and a fake Drive to upload to
 //	go run ./test/browser/demo -oauth-only  # only a fake OAuth2 provider, for Connections › Credentials
+//
+// The scripted model waits 400 ms before each reply, so a person watching
+// sees the work go step by step; the browser checks pass -pace=0, since none
+// of them looks at a step in between.
 package main
 
 import (
@@ -42,6 +46,9 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
+// pace is how long the scripted model waits before each reply.
+var pace time.Duration
+
 // notesImage is the image of the demo's contained server.
 const notesImage = "ghcr.io/example/mcp-notes@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
@@ -53,6 +60,7 @@ func main() {
 	modelOnly := flag.Bool("model-only", false, "run only the scripted model server and print its URL")
 	docs := flag.Bool("docs", false, "keep a Google credential in a throwaway keychain, bound to a fake Drive that takes uploads")
 	oauthOnly := flag.Bool("oauth-only", false, "run only a fake OAuth2 provider (client id demo-client) and print its endpoints")
+	flag.DurationVar(&pace, "pace", 400*time.Millisecond, "how long the scripted model waits before each reply")
 	flag.Parse()
 	if *oauthOnly {
 		provider := fakeoauth.New("demo-client")
@@ -261,7 +269,11 @@ func writeRepo(dir, name string) error {
 	return nil
 }
 
-// seedTasks starts one task that stops at an approval and one that finishes.
+// seedTasks starts one task that finishes and one that stops at an
+// approval, and returns once both have: what the URL then opens has
+// settled, so a check looks at it without waiting for a guess at how long
+// the model takes. The finished one goes first so that the order is
+// always the same.
 func seedTasks(ctx context.Context, socket string, repos map[string]string) error {
 	dial, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -270,20 +282,62 @@ func seedTasks(ctx context.Context, socket string, repos map[string]string) erro
 		return err
 	}
 	defer client.Close()
-	start := func(repo, text string) error {
+	start := func(repo, text string) (string, error) {
 		var info struct {
 			ID string `json:"id"`
 		}
 		if err := client.Call(ctx, "session.open", map[string]any{"repo": repo}, &info); err != nil {
-			return err
+			return "", err
 		}
-		return client.Call(ctx, "session.send", map[string]any{"id": info.ID, "text": text}, nil)
+		return info.ID, client.Call(ctx, "session.send", map[string]any{"id": info.ID, "text": text}, nil)
 	}
-	if err := start(repos["receipts"], "Summarize what is in this folder"); err != nil {
+	// until asks the daemon every 20 ms whether the task has got there;
+	// session.send returns with the task busy, so "not busy" is its end.
+	until := func(what string, there func() (bool, error)) error {
+		for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+			if ok, err := there(); ok || err != nil {
+				return err
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("demo: the seeded task never %s", what)
+			}
+		}
+	}
+	id, err := start(repos["receipts"], "Summarize what is in this folder")
+	if err != nil {
 		return err
 	}
-	time.Sleep(1500 * time.Millisecond)
-	return start(repos["console"], "The session list shows each session's first message, cut short, so two sessions that start the same way look identical. Make them easy to tell apart. Keep the change inside the web console.")
+	if err := until("finished", func() (bool, error) {
+		var list []struct {
+			ID   string `json:"id"`
+			Busy bool   `json:"busy"`
+		}
+		err := client.Call(ctx, "session.list", map[string]any{}, &list)
+		for _, s := range list {
+			if s.ID == id {
+				return !s.Busy, err
+			}
+		}
+		return false, err
+	}); err != nil {
+		return err
+	}
+	if id, err = start(repos["console"], "The session list shows each session's first message, cut short, so two sessions that start the same way look identical. Make them easy to tell apart. Keep the change inside the web console."); err != nil {
+		return err
+	}
+	return until("asked", func() (bool, error) {
+		var asking []struct {
+			ID      string            `json:"id"`
+			Pending []json.RawMessage `json:"pending"`
+		}
+		err := client.Call(ctx, "attention.list", map[string]any{}, &asking)
+		for _, s := range asking {
+			if s.ID == id && len(s.Pending) > 0 {
+				return true, err
+			}
+		}
+		return false, err
+	})
 }
 
 // chatServer is a fake team-chat MCP server: search and list read, posting
@@ -337,7 +391,7 @@ func respond(req fake.Request) fake.Turn {
 			rounds++
 		}
 	}
-	time.Sleep(400 * time.Millisecond)
+	time.Sleep(pace)
 	if len(req.Tools) == 0 {
 		// The plan names its change, its test, its docs and its check, as
 		// the planner is asked to (prompts.scm, plan-shape).

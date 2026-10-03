@@ -1,32 +1,23 @@
 // The task list (ADR 39): tasks under their folders, the folder last active
 // first; a task renamed, archived and brought back, and deleted, each kept
 // across a reload, which reads the list from the daemon again.
-const { chromium } = require("playwright");
-const { spawn } = require("child_process");
-const out = process.argv[2];
-(async () => {
-  const demo = spawn(process.env.DEMO, ["-seed"], { stdio: ["pipe", "pipe", "inherit"] });
-  process.on("exit", () => demo.kill("SIGKILL"));
+const assert = require("assert");
+const { out, start: run, line, launch, watch, requests, until, check } = require("../lib");
+
+check(async () => {
+  const demo = run(process.env.DEMO, ["-seed", "-pace=0"]);
   const step = (m) => console.log("step:", m);
-  let buf = "";
-  const [url, consoleRepo] = await new Promise((resolve) =>
-    demo.stdout.on("data", (d) => {
-      buf += d;
-      const u = /URL (\S+)/.exec(buf), r = /REPO (\S+)/.exec(buf);
-      if (u && r) resolve([u[1], r[1]]);
-    }),
-  );
+  const [url] = await line(demo, /URL (\S+)/);
+  const [consoleRepo] = await line(demo, /REPO (\S+)/);
   const repos = { console: consoleRepo, receipts: consoleRepo.replace(/\/console$/, "/receipts") };
-  const browser = await chromium.launch();
+  const browser = await launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const page = await ctx.newPage();
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-  const fail = async (why) => {
-    await page.screenshot({ path: `${out}/tasks-failed.png` });
+  const page = watch(await ctx.newPage());
+  const sent = requests(page);
+  const fail = (why) => {
     throw new Error(why);
   };
+  const ready = () => page.waitForSelector("html[data-ready]", { timeout: 15000 });
   // What the sidebar shows: the tasks waiting for an answer, each folder with
   // its tasks in order, and the archive.
   const sidebar = () =>
@@ -42,14 +33,11 @@ const out = process.argv[2];
       const a = document.querySelector(".nav-group.archived");
       return { needs, folders, archived: a ? { n: a.querySelector(".folder-head .n").textContent, tasks: titles(a) } : null };
     });
-  const until = async (what, ok, tries = 40) => {
+  // settled waits until the sidebar shows what ok wants, and returns it.
+  const settled = async (what, ok) => {
     let last;
-    for (let i = 0; i < tries; i++) {
-      last = await sidebar();
-      if (ok(last)) return last;
-      await page.waitForTimeout(250);
-    }
-    await fail(`${what}: ${JSON.stringify(last)}`);
+    await until(what, async () => ok((last = await sidebar()))).catch((e) => fail(`${e.message}: ${JSON.stringify(last)}`));
+    return last;
   };
   const folder = (s, name) => s.folders.find((f) => f.name === name);
   const idle = () => page.waitForFunction(() => document.querySelector(".task-head .pill")?.textContent === "Idle", null, { timeout: 15000 });
@@ -64,32 +52,56 @@ const out = process.argv[2];
   };
   const openTask = async (title) => {
     const row = `.sidebar .nav-task:has(.title span:text-is("${title}"))`;
-    if (!(await page.$(row))) for (const more of await page.$$(".nav-more")) await more.click();
+    // Each Show more redraws the sidebar, so each is found again.
+    while (!(await page.$(row)) && (await page.$(".nav-more"))) await page.click(".nav-more");
     await page.click(row);
     await page.waitForFunction((t) => document.querySelector(".task-head h1")?.textContent === t, title);
   };
   const button = (label) => page.click(`.task-actions button:text-is("${label}")`);
 
   await page.goto(url);
-  await page.waitForSelector(".sidebar .nav-task", { timeout: 15000 });
-  let s = await until("the seeded tasks", (s) => s.needs.length === 1 && folder(s, "receipts")?.tasks.length === 1);
+  await ready();
+  // A refresh of the list that a newer one overtakes waits for it: whoever
+  // awaited the older finds what the newer list holds. A task just started
+  // was otherwise "No such task" now and then. Drawn with the console's own
+  // Desk, on a connection whose first list comes back after the second was
+  // asked for.
+  const overtaken = await page.evaluate(async () => {
+    const { Desk } = await import("/desk.js");
+    const lists = [];
+    const conn = { has: () => false, onEvent: () => {}, call: (method) => (method === "session.list" ? new Promise((resolve) => lists.push(resolve)) : Promise.resolve([])) };
+    const desk = new Desk(conn);
+    const older = desk.refresh();
+    desk.refresh();
+    let seen = null;
+    older.then(() => (seen = desk.sessions.has("new")));
+    lists[0]([]);
+    await new Promise((r) => setTimeout(r, 0));
+    const before = seen;
+    lists[1]([{ id: "new" }]);
+    await older;
+    return { before, seen };
+  });
+  // Nothing before the newer list came back; then the new task.
+  assert.deepStrictEqual(overtaken, { before: null, seen: true }, "an overtaken refresh did not wait for the newer list");
+  let s = await settled("the seeded tasks", (s) => s.needs.length === 1 && folder(s, "receipts")?.tasks.length === 1);
   step(`seeded: ${JSON.stringify(s)}`);
 
   // Five more tasks in receipts, then one in console: console's folder, the
   // latest active, comes first, and receipts shows five of its six.
   for (let i = 1; i <= 5; i++) await start("receipts", `Receipt question ${i}`);
   await start("console", "Hello from the console");
-  s = await until("folders by activity", (s) => s.folders.map((f) => f.name).join() === "console,receipts" && folder(s, "receipts").tasks.length === 5);
+  s = await settled("folders by activity", (s) => s.folders.map((f) => f.name).join() === "console,receipts" && folder(s, "receipts").tasks.length === 5);
   if (folder(s, "receipts").more !== "Show 1 more" || folder(s, "receipts").tasks[0] !== "Receipt question 5") await fail(`receipts: ${JSON.stringify(folder(s, "receipts"))}`);
   await page.screenshot({ path: `${out}/tasks-grouped.png` });
   await page.click('.folder:has(.name:text-is("receipts")) .nav-more');
-  await until("show more", (s) => folder(s, "receipts").tasks.length === 6 && !folder(s, "receipts").more);
+  await settled("show more", (s) => folder(s, "receipts").tasks.length === 6 && !folder(s, "receipts").more);
   // A message in an older task makes its folder the latest active again.
   await openTask("Summarize what is in this folder");
   await page.fill("#reply", "Thanks");
   await page.keyboard.press("Enter");
   await idle();
-  s = await until("receipts first after a message", (s) => s.folders.map((f) => f.name).join() === "receipts,console" && folder(s, "receipts").tasks[0] === "Summarize what is in this folder");
+  s = await settled("receipts first after a message", (s) => s.folders.map((f) => f.name).join() === "receipts,console" && folder(s, "receipts").tasks[0] === "Summarize what is in this folder");
   step("ordered by last activity");
 
   // Rename from the heading: Escape keeps the name, Enter saves it.
@@ -100,8 +112,10 @@ const out = process.argv[2];
   await page.click(".rename-btn");
   await page.fill(".title-input", "Receipts overview");
   await page.press(".title-input", "Enter");
-  await until("renamed in the sidebar", (s) => folder(s, "receipts").tasks[0] === "Receipts overview");
+  await settled("renamed in the sidebar", (s) => folder(s, "receipts").tasks[0] === "Receipts overview");
   if ((await page.textContent(".task-head h1")) !== "Receipts overview") await fail("heading not renamed");
+  const renamed = sent.of("session.rename");
+  assert.deepStrictEqual(renamed.map((r) => r.title), ["Receipts overview"], "Escape sent no rename");
   await page.screenshot({ path: `${out}/tasks-renamed.png` });
   step("renamed");
 
@@ -111,14 +125,16 @@ const out = process.argv[2];
   await button("Close");
   await page.waitForSelector('.task-actions button:text-is("Archive")');
   await button("Archive");
-  s = await until("archived", (s) => !folder(s, "receipts").tasks.includes("Receipts overview") && s.archived?.n === "1");
+  s = await settled("archived", (s) => !folder(s, "receipts").tasks.includes("Receipts overview") && s.archived?.n === "1");
   if (!s.archived.tasks.includes("Receipts overview") || !(await page.$('.task-head .badge:text-is("archived")'))) await fail(`archive: ${JSON.stringify(s.archived)}`);
+  assert.deepStrictEqual(sent.of("session.archive"), [{ id: renamed[0].id, archived: true }]);
   await page.screenshot({ path: `${out}/tasks-archived.png` });
   await page.reload();
-  await page.waitForSelector(".sidebar .nav-task", { timeout: 15000 });
-  s = await until("archived after reload", (s) => s.archived?.n === "1" && s.archived.tasks.includes("Receipts overview") && !folder(s, "receipts").tasks.includes("Receipts overview"));
+  await ready();
+  s = await settled("archived after reload", (s) => s.archived?.n === "1" && s.archived.tasks.includes("Receipts overview") && !folder(s, "receipts").tasks.includes("Receipts overview"));
   await button("Unarchive");
-  s = await until("unarchived", (s) => !s.archived && folder(s, "receipts").tasks.includes("Receipts overview"));
+  s = await settled("unarchived", (s) => !s.archived && folder(s, "receipts").tasks.includes("Receipts overview"));
+  assert.deepStrictEqual(sent.of("session.archive").map((a) => a.archived), [true, false]);
   step("archived and brought back");
 
   // Delete asks first; Cancel keeps the task, Delete removes it for good.
@@ -128,41 +144,37 @@ const out = process.argv[2];
   await button("Delete…");
   await page.click('.delete-confirm button:text-is("Cancel")');
   if (await page.$(".delete-confirm")) await fail("Cancel left the question");
+  assert.strictEqual(sent.of("session.delete").length, 0, "Cancel deleted");
   await button("Delete…");
   await page.screenshot({ path: `${out}/tasks-delete.png` });
   await page.click('.delete-confirm button:text-is("Delete")');
   await page.waitForFunction(() => location.hash === "#/");
-  await until("deleted", (s) => !folder(s, "receipts").tasks.includes("Receipt question 1"));
+  await settled("deleted", (s) => !folder(s, "receipts").tasks.includes("Receipt question 1"));
+  assert.strictEqual(sent.of("session.delete").length, 1, "one delete");
   await page.reload();
-  await page.waitForSelector(".sidebar .nav-task", { timeout: 15000 });
-  s = await until("deleted after reload", (s) => folder(s, "receipts") && !folder(s, "receipts").tasks.includes("Receipt question 1") && folder(s, "receipts").tasks.includes("Receipts overview"));
+  await ready();
+  s = await settled("deleted after reload", (s) => folder(s, "receipts") && !folder(s, "receipts").tasks.includes("Receipt question 1") && folder(s, "receipts").tasks.includes("Receipts overview"));
   step("deleted");
 
   // A folded folder stays folded across a reload, in this browser.
   await page.click('.folder-head:has(.name:text-is("console"))');
-  await until("folded", (s) => !folder(s, "console").open && folder(s, "console").tasks.length === 0);
+  await settled("folded", (s) => !folder(s, "console").open && folder(s, "console").tasks.length === 0);
   await page.reload();
-  await page.waitForSelector(".sidebar .folder-head", { timeout: 15000 });
-  await until("folded after reload", (s) => folder(s, "console") && !folder(s, "console").open);
+  await ready();
+  await settled("folded after reload", (s) => folder(s, "console") && !folder(s, "console").open);
   await page.click('.folder-head:has(.name:text-is("console"))');
-  await until("unfolded", (s) => folder(s, "console").open && folder(s, "console").tasks.length === 1);
+  await settled("unfolded", (s) => folder(s, "console").open && folder(s, "console").tasks.length === 1);
   // A search shows its matches in every folder, the archive included.
   await page.click('.sidebar-top button[aria-label="Search tasks"]');
   await page.fill(".search input", "question 2");
-  await until("search", (s) => s.folders.length === 1 && folder(s, "receipts").tasks.join() === "Receipt question 2");
+  await settled("search", (s) => s.folders.length === 1 && folder(s, "receipts").tasks.join() === "Receipt question 2");
   await page.screenshot({ path: `${out}/tasks-search.png` });
 
   // The same list at phone width, in the drawer.
   await page.fill(".search input", "");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.click("#menu");
-  await page.waitForTimeout(400);
+  await page.waitForSelector(".shell.menu-open");
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState === "finished"));
   await page.screenshot({ path: `${out}/tasks-phone.png` });
-  console.log(errors.length ? errors.join("\n") : "no page errors");
-  await browser.close();
-  demo.kill("SIGTERM");
-  if (errors.length) process.exit(1);
-})().catch((e) => {
-  console.error("FAILED", e.message);
-  process.exit(1);
 });

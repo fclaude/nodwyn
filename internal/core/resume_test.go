@@ -29,7 +29,7 @@ func diskOptions(t *testing.T) Options {
 }
 
 func TestResumeConversation(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "remembered answer"}, fake.Turn{Content: "continued answer"})
+	srv := fake.NewT(t, fake.Turn{Content: "remembered answer"}, fake.Turn{Content: "continued answer"})
 	defer srv.Close()
 	o := diskOptions(t)
 	o.Provider = llm.NewOllama(srv.URL)
@@ -230,7 +230,7 @@ func TestResumeAfterProcessKilled(t *testing.T) {
 		t.Fatalf("write: %q %v", marker, err)
 	}
 	id, _ := os.ReadFile(filepath.Join(dir, "session-id"))
-	next := fake.New(fake.Turn{Content: "the marker was already written"})
+	next := fake.NewT(t, fake.Turn{Content: "the marker was already written"})
 	defer next.Close()
 	o := Options{Paths: crashPaths(dir), Config: config.Default(), Provider: llm.NewOllama(next.URL), NoConfirm: true}
 	info, err := (Store{Dir: o.Paths.SessionsDir}).Info(string(id))
@@ -295,7 +295,7 @@ func TestUnfinishedToolsWithReusedIDs(t *testing.T) {
 // tools it defines now apply, and a request made before the resume still
 // replays under the recipe it was made with.
 func TestResumeRereadsInit(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "first"}, fake.Turn{Content: "second"})
+	srv := fake.NewT(t, fake.Turn{Content: "first"}, fake.Turn{Content: "second"})
 	defer srv.Close()
 	o := diskOptions(t)
 	o.Provider = llm.NewOllama(srv.URL)

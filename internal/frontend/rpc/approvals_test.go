@@ -375,7 +375,8 @@ func TestPeerIdentityFromDifferentProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(binary, "-test.run=^TestPeerIdentityFromDifferentProcess$")
-	cmd.Env = append(os.Environ(), "NODWYN_TEST_PEER_SOCKET="+path)
+	// Without the race detector's one-second sleep as it exits.
+	cmd.Env = append(os.Environ(), "NODWYN_TEST_PEER_SOCKET="+path, "GORACE="+strings.TrimSpace(os.Getenv("GORACE")+" atexit_sleep_ms=0"))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("peer process: %v\n%s", err, out)
 	}

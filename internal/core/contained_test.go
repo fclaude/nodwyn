@@ -133,7 +133,7 @@ func (w *containedWorld) save(server config.MCPServer) {
 
 func (w *containedWorld) session(turns ...fake.Turn) *rig {
 	w.t.Helper()
-	srv := fake.New(turns...)
+	srv := fake.NewT(w.t, turns...)
 	w.t.Cleanup(srv.Close)
 	o := w.options()
 	o.Config.Control.URL, o.Config.Control.Model = srv.URL, "test-model"
@@ -411,7 +411,7 @@ func TestContainedServerUnavailable(t *testing.T) {
 	if _, err := ContainerRuntime(o); err == nil {
 		t.Fatal("found a runtime on an empty PATH")
 	}
-	srv := fake.New()
+	srv := fake.NewT(t)
 	defer srv.Close()
 	o.Config.Control.URL, o.Config.Control.Model, o.Provider, o.LogWriter = srv.URL, "test-model", llm.NewOllama(srv.URL), &bytes.Buffer{}
 	s, err := New(o)

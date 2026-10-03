@@ -16,6 +16,7 @@ export class Desk {
     this.workspaces = []; // workspace.list: folders the person named
     this.listeners = new Set();
     this.version = 0;
+    this.latest = null; // the newest refresh, which an older one waits for
     this.notifier = new Notifier();
     this.attentionTimer = 0;
     conn.onEvent((frame) => {
@@ -43,12 +44,22 @@ export class Desk {
       const states = await this.conn.call("session.watch");
       for (const state of states || []) this.watch(state, false);
     }
-    this.refreshModels();
+    // An unreachable model answers slowly, so the first page does not wait
+    // for the models; this says when they have answered.
+    this.modelsChecked = this.refreshModels();
   }
-  async refresh() {
-    const version = ++this.version;
+  refresh() {
+    this.latest = this.load(++this.version);
+    return this.latest;
+  }
+  // load reads the list for refresh. When a newer refresh has started
+  // meanwhile, its list wins, and this one waits for it: whoever awaited a
+  // refresh then finds at least what the list held when they asked. A task
+  // just started, whose state notifications each start a refresh, was
+  // otherwise "No such task" when its page awaited one that was overtaken.
+  async load(version) {
     const list = (await this.conn.call("session.list")) || [];
-    if (version !== this.version) return;
+    if (version !== this.version) return this.latest;
     this.sessions.clear();
     for (const item of list) {
       const state = this.states.get(item.id);

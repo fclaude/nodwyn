@@ -129,7 +129,7 @@ func TestJudgeFailsClosed(t *testing.T) {
 
 // Judged approval needs a judge.
 func TestJudgeApproveNeedsAJudge(t *testing.T) {
-	srv := fake.New()
+	srv := fake.NewT(t)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "m"

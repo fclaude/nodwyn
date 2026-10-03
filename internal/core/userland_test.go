@@ -118,7 +118,7 @@ func TestUserlandPlanCycle(t *testing.T) {
 	call := func(id, name string, args map[string]any) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: name, Args: args}}}
 	}
-	srv := fake.New(
+	srv := fake.NewT(t,
 		call("w0", "fs-write", map[string]any{"path": "a.txt", "content": "hi\n"}),
 		call("p1", "submit-plan", map[string]any{"steps": []any{step("write a.txt", "read it back")}}),
 		call("p2", "submit-plan", map[string]any{"steps": []any{step("write a.txt", "it exists"), step("read a.txt", "it says hi")}}),

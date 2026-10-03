@@ -2,21 +2,16 @@
 // than from a scripted model: the order of reads and commands, a run's
 // header while a command runs, waits for an answer and fails, and a clock
 // that stops when its transcript leaves the page. The console's own module
-// is imported from the demo's console, so this is the code people run.
-const { chromium } = require("playwright");
-const { spawn } = require("child_process");
-const out = process.argv[2];
-(async () => {
-  const demo = spawn(process.env.DEMO, [], { stdio: ["pipe", "pipe", "inherit"] });
-  process.on("exit", () => demo.kill("SIGKILL"));
-  let buf = "";
-  const url = await new Promise((resolve) => demo.stdout.on("data", (d) => { buf += d; const m = /URL (\S+)/.exec(buf); if (m) resolve(m[1]); }));
+// is imported from the demo's console, so this is the code people run. The
+// waits of 1.3 s in the page are what is tested: the run's one-second clock.
+const { start, line, launch, watch, check } = require("../lib");
+
+check(async () => {
+  const demo = start(process.env.DEMO, ["-pace=0"]);
+  const [url] = await line(demo, /URL (\S+)/);
   const base = url.split("/#")[0];
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  const browser = await launch();
+  const page = watch(await browser.newPage({ viewport: { width: 1280, height: 900 } }));
   // Any file of the console puts the page on its origin, where the module
   // and the ones it imports load as they do in the console.
   await page.goto(`${base}/transcript.js`);
@@ -118,12 +113,5 @@ const out = process.argv[2];
   want(f.refused.header === "Ran 1 command | in 0.0 s · 1 failed" && f.refused.run && f.refused.row, `refused: ${JSON.stringify(f.refused)}`);
   want(results.left.clock === null, `the clock outlived its transcript: ${JSON.stringify(results.left)}`);
   await page.setContent("");
-  await browser.close();
-  demo.kill("SIGTERM");
-  console.log(errors.length ? errors.join("\n") : "no page errors");
-  if (fail.length) {
-    console.error("FAILED\n" + fail.join("\n"));
-    process.exit(1);
-  }
-  if (errors.length) process.exit(1);
-})().catch((e) => { console.error("FAILED", e.message); process.exit(1); });
+  if (fail.length) throw new Error(fail.join("\n"));
+});

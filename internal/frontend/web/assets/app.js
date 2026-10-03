@@ -45,7 +45,9 @@ function gate(content) {
 const local = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
 function showPairing(message = "") {
   const input = h("input", { class: "input", id: "pair-code", type: "password", autocomplete: "off", spellcheck: false, required: true });
-  const device = h("input", { class: "input", id: "pair-device", autocomplete: "off", spellcheck: false, required: !local, pattern: "[a-z0-9][a-z0-9._-]{0,31}", placeholder: "for example phone" });
+  // Browsers compile a pattern with the v flag, where a hyphen in a class
+  // must be escaped: unescaped, the pattern is ignored.
+  const device = h("input", { class: "input", id: "pair-device", autocomplete: "off", spellcheck: false, required: !local, pattern: "[a-z0-9][a-z0-9._\\-]{0,31}", placeholder: "for example phone" });
   const error = h("p", { class: "error", role: "alert" }, message);
   gate([
     h("div", { class: "brand" }, "nodwyn", h("span", {}, ".")),
@@ -150,12 +152,17 @@ conn.onState(async (state, detail) => {
     else $("offline").hidden = false;
   } else if (state === "live") {
     lastRoute = "";
+    delete document.documentElement.dataset.ready;
     try {
       await desk.start();
     } catch (error) {
       toast(error.message);
     }
     render(true);
+    // The browser checks wait for this mark before they look at a page: the
+    // desk's first refresh is drawn and the models have answered.
+    await desk.modelsChecked;
+    if (conn.state === "live") document.documentElement.dataset.ready = "";
   }
 });
 setInterval(() => {

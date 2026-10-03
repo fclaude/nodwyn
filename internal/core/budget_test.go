@@ -49,7 +49,7 @@ func TestBudgetCustomCheckpointAndHardBatchStop(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		calls = append(calls, fake.ToolCall{ID: fmt.Sprint(i), Name: "fs-list", Args: map[string]any{"path": "."}})
 	}
-	srv := fake.New(fake.Turn{ToolCalls: calls}, fake.Turn{Content: "next turn"})
+	srv := fake.NewT(t, fake.Turn{ToolCalls: calls}, fake.Turn{Content: "next turn"})
 	defer srv.Close()
 	o := diskOptions(t)
 	o.NoConfirm = false
@@ -115,7 +115,7 @@ func TestBudgetNestedActionsCannotBeCaughtOrHidden(t *testing.T) {
  (guard (e (else (fs-write "caught" "should not run")))
   (fs-write "a" "one") (fs-write "b" "two") (fs-write "c" "three")))
  '((doc . "Write files") (params . ())))`), 0600)
-	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "wrapped", Name: "write-many", Args: map[string]any{}}}})
+	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "wrapped", Name: "write-many", Args: map[string]any{}}}})
 	defer srv.Close()
 	o.Provider = llm.NewOllama(srv.URL)
 	s, err := New(o)
@@ -169,7 +169,7 @@ func TestBudgetNoninteractiveAndTokenStop(t *testing.T) {
 				o.Config.Budget.TokensSoft = 100
 				o.Config.Budget.TokensHard = 200
 			}
-			srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}})
+			srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}})
 			defer srv.Close()
 			o.Provider = llm.NewOllama(srv.URL)
 			s, err := New(o)
@@ -235,7 +235,7 @@ func TestBudgetAbortCheckpointRemovesPendingReply(t *testing.T) {
 	o.NoConfirm = false
 	o.Config.Budget.ToolCallsSoft = 1
 	o.Config.Budget.ToolCallsHard = 3
-	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}})
+	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "b", Name: "fs-list", Args: map[string]any{"path": "."}}}})
 	defer srv.Close()
 	o.Provider = llm.NewOllama(srv.URL)
 	s, err := New(o)
@@ -271,7 +271,7 @@ func TestDeniedCallsDoNotConsumeActionBudget(t *testing.T) {
 	os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
 	os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
 (register-check "no-a" "deny" (lambda (name args) (and (equal? name "fs-write") (equal? (car args) "a"))))`), 0600)
-	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-write", Args: map[string]any{"path": "a", "content": "denied"}}, {ID: "b", Name: "fs-write", Args: map[string]any{"path": "b", "content": "allowed"}}}}, fake.Turn{Content: "done"})
+	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-write", Args: map[string]any{"path": "a", "content": "denied"}}, {ID: "b", Name: "fs-write", Args: map[string]any{"path": "b", "content": "allowed"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()
 	o.Provider = llm.NewOllama(srv.URL)
 	s, err := New(o)

@@ -43,9 +43,9 @@ are faster.
 - **The console** (`internal/frontend/web/assets`: JS, CSS): Go's tests do not
   run it. Run its browser check, `bash test/browser/run.sh <check>`
   (`screens`, `transcript`, `approve`, `firstrun`, `remote`, `mcp`,
-  `credentials`; screenshots land in `test/browser/out`), and extend the
-  check to the states your change adds: a setting off, after a save, the new
-  action, the page that links to it. The
+  `credentials`, `tasks`; screenshots land in `test/browser/out/<check>`),
+  and extend the check to the states your change adds: a setting off, after
+  a save, the new action, the page that links to it. The
   check performs the new action and checks what it did (the request sent,
   the state after it): one that only finds an element passes on a feature
   that does nothing. If Chromium is missing: `cd test/browser && npx
@@ -73,7 +73,9 @@ A plan's `Docs:` steps name every file this list asks for the change.
 
 - Tests and checks never use a paid model, a real key or a passphrase: the
   fakes in `test/fakes` (ollama, jev, mcp, oauth, drive, container) stand in.
-  `make smoke` talks to the real control plane; run it only when asked.
+  A scripted fake model is `ollama.NewT(t, ...)`, which fails the test if the
+  loop asks after the script ran out. `make smoke` talks to the real control
+  plane; run it only when asked.
 - Commit, push and `make promote` only when asked. A commit's subject is a
   sentence saying what is now true ("Browser checks exit when they are
   done"); its body says why, with the evidence. No AI attribution lines

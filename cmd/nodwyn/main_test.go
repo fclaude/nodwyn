@@ -10,6 +10,12 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
+// quickExit spares the CLI, run as this test binary built with -race, the
+// race detector's one-second sleep as it exits: a second for every command a
+// test runs, which was two thirds of this package's time (2026-10-03).
+// test/fakes/container does the same.
+var quickExit = "GORACE=" + strings.TrimSpace(os.Getenv("GORACE")+" atexit_sleep_ms=0")
+
 // Invoke the real CLI entry point in a subprocess, including flag parsing and
 // configuration discovery, while retaining the test binary's race instrumentation.
 func TestCLIHelper(t *testing.T) {
@@ -35,7 +41,7 @@ func TestCLIResume(t *testing.T) {
 		t.Helper()
 		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--"}, args...)...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 		cmd.Stdin = strings.NewReader(input)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -72,7 +78,7 @@ func TestCLIBudgetCheckpoint(t *testing.T) {
 	os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("[budget]\ntool_calls_soft=1\ntool_calls_hard=3\n"), 0600)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestCLIHelper$", "--", "--url", srv.URL, "--model", "test-model", "--no-keychain", "--budget-wall", "2h", "--budget-actions", "10")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+	cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 	cmd.Stdin = strings.NewReader("list twice\n4\n3\n:q\n")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

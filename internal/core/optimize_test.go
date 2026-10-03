@@ -22,7 +22,7 @@ func diskSession(t *testing.T, o Options, init string, turns ...fake.Turn) *rig 
 		os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0o755)
 		os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
 	}
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	o.Provider = llm.NewOllama(srv.URL)
 	s, err := New(o)

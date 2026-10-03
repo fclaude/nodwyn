@@ -114,3 +114,65 @@ turns, so a chat had none.
   - a chat turn that changes a file and finishes without validating.
 
   Each was checked to fail when the part it covers is removed.
+
+## Amendment 2026-10-03: checks that fail on what they claim, in a third of the time
+
+Measured on 2026-10-03, warm: `make validate` for a console change took
+about three and a half minutes. `make accept` took 1m34s, set by
+`internal/core` (101 s under `-race`), and the six browser checks 1m30s, run
+one after another and mostly waiting on fixed sleeps (`screens` alone 50 s).
+Five of the six checks printed a page's errors and still exited 0, so a page
+that threw passed validation; several printed what an action did without
+asserting it.
+
+- **The browser checks fail on what they claim.** They share
+  `test/browser/lib.js`:
+  - a check fails on any error a page throws or logs. An error it provokes
+    on purpose (a refused request) it names first with `expectError`, once
+    each time; warnings are printed and do not fail it. The first run found
+    one at once: browsers rejected the pairing page's device-name pattern
+    (an unescaped hyphen under the `v` flag) and so checked nothing; it is
+    escaped now;
+  - each action is asserted by what it did: the JSON-RPC requests the page
+    sent over its socket, the files the daemon wrote, what the page shows
+    after. The screenshots are for people and are compared with nothing;
+  - whatever ends a check, it stops what it started and removes its
+    temporary folders, which are under `TMPDIR` (a socket's folder falls
+    back to `/tmp` when `TMPDIR` is too long for a socket path); a failure
+    leaves a screenshot of each page;
+  - `remote` listens on a port the system picked, not a random one.
+  - Without the scripted model's pause, `tasks` found a console race about
+    one run in eight: a task just started showed "No such task". Each state
+    notification of a task the desk did not list yet started a refresh, and
+    a refresh that a newer one overtook returned at once, so the task's page
+    read a list without it. An overtaken refresh now waits for the newest.
+- **They wait for conditions, never for a time.** The console sets
+  `<html data-ready>` once the desk's first refresh is drawn and the models
+  have answered, and `.task[data-loaded]` once a task's log, details and
+  notes are; nothing else reads them. `demo -seed` prints its URL once its
+  tasks have settled, and the checks pass `-pace=0` to its scripted model,
+  which otherwise waits 400 ms a reply for people watching.
+- **`run.sh` runs the checks at once.** Each has its own folder for
+  screenshots and its own log; the logs print in the order the checks were
+  named, each with how long it took.
+- **A scripted model that runs out fails the test.** `ollama.NewT` fails a
+  test whose loop asks after its script ran out, which the client otherwise
+  retried for six seconds a turn before an error the test never read.
+  `internal/core`'s tests use it. Six ran out (27 requests); their scripts
+  now end their turns, and three of them assert what they were named for:
+  `TestAbortDuringConfirm` never reached a confirm to abort,
+  `TestUploadSettingWhenNobodyAsks` made both uploads in its first turn, and
+  `TestPlanAndEphemeralRedaction` recorded "done" as its plan.
+- **Other slow tests.** The CLI tests run their subprocesses with
+  `GORACE=atexit_sleep_ms=0`, as `test/fakes/container` already did: the race
+  detector otherwise sleeps a second as each exits. `TestTailCalls` runs 20k
+  iterations, not 200k: a loop whose call is not in a tail position
+  overflows its 8 MB stack before 5k, with or without `-race`.
+- **Not done.** `internal/core`'s tests stay sequential. Marked parallel
+  they took about 10 s, but one run in three failed to lock a session log
+  that another test's child process may briefly hold (a flock shared across
+  fork); that is for its own change.
+
+After it, on the same machine: the browser checks take about 10 s together
+(`screens` 6.5 s alone), `go test -race ./internal/core/` 30 s, and `make
+accept` 39 s.

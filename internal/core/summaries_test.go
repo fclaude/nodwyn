@@ -14,7 +14,7 @@ import (
 )
 
 func TestSummaryStoreIsExclusiveAppendOnlyAndRedacted(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "first answer"}, fake.Turn{Content: "second answer"}, fake.Turn{Content: "third answer"})
+	srv := fake.NewT(t, fake.Turn{Content: "first answer"}, fake.Turn{Content: "second answer"}, fake.Turn{Content: "third answer"})
 	defer srv.Close()
 	o := diskOptions(t)
 	o.Provider = llm.NewOllama(srv.URL)
@@ -110,7 +110,7 @@ func TestSummaryTextCannotBeSilentlyTruncated(t *testing.T) {
 }
 
 func TestSummaryAndRevocationReachProviderAndRemainReplayable(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "alpha answer"}, fake.Turn{Content: "beta answer"}, fake.Turn{Content: "gamma answer"}, fake.Turn{Content: "delta answer"}, fake.Turn{Content: "epsilon answer"})
+	srv := fake.NewT(t, fake.Turn{Content: "alpha answer"}, fake.Turn{Content: "beta answer"}, fake.Turn{Content: "gamma answer"}, fake.Turn{Content: "delta answer"}, fake.Turn{Content: "epsilon answer"})
 	defer srv.Close()
 	capture := &captureRequests{Provider: llm.NewOllama(srv.URL)}
 	o := diskOptions(t)

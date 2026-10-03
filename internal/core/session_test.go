@@ -40,7 +40,7 @@ func newRigWith(t *testing.T, noConfirm bool, adjust func(*config.Config), turns
 	t.Helper()
 	repo := t.TempDir()
 	os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL = srv.URL
@@ -242,31 +242,41 @@ func TestHardStop(t *testing.T) {
 	}
 }
 
+// An abort while a write waits for its confirm ends the turn with an error,
+// writes nothing, and leaves the session usable.
 func TestAbortDuringConfirm(t *testing.T) {
-	r := newRig(t, false,
+	r := newAskingRig(t,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "a", "content": "b"}}}},
+		fake.Turn{Content: "ok"},
 	)
 	r.s.Send("write")
 	var evs []event.Event
+	asked, failed := false, ""
 	for ev := range r.s.Events() {
 		evs = append(evs, ev)
 		if ev.Kind == event.PromptConfirm {
+			asked = true
 			r.s.Abort()
+		}
+		if ev.Kind == event.Error {
+			failed = ev.Payload.(event.ErrorInfo).Err
 		}
 		if ev.Kind == event.Status && ev.Payload.(event.StatusInfo).State == "idle" {
 			break
 		}
 	}
-	if !strings.Contains(kinds(evs), "error") {
-		t.Fatalf("abort should surface as an error: %s", kinds(evs))
+	if !asked || !strings.Contains(failed, "context canceled") {
+		t.Fatalf("abort at the confirm should surface as an error: asked %v, error %q, events %s", asked, failed, kinds(evs))
+	}
+	if _, err := os.Stat(filepath.Join(r.repo, "a")); err == nil {
+		t.Fatal("the aborted write ran")
 	}
 	if r.s.Busy() {
 		t.Fatal("still busy after abort")
 	}
-	if err := r.s.Send("again"); err != nil {
-		t.Fatalf("session unusable after abort: %v", err)
+	if e := r.turn("again"); e != "" {
+		t.Fatalf("session unusable after abort: %s", e)
 	}
-	r.drain("n")
 }
 
 func TestSendWhileBusyAndEval(t *testing.T) {
@@ -296,7 +306,7 @@ func TestInitFileRegistersTools(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (register-tool "greet" (lambda (name) (string-append "hello " name))
   '((doc . "Greet someone") (params . (("name" "string" "who")))))`), 0o644)
-	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "g", Name: "greet", Args: map[string]any{"name": "fc"}}}}, fake.Turn{Content: "done"})
+	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "g", Name: "greet", Args: map[string]any{"name": "fc"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()
 	cfg := config.Default()
 	s, err := New(Options{Config: cfg, Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
@@ -387,7 +397,7 @@ func TestRegisterCheckTruthyPredicateMatches(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, "x.txt"), []byte("x"), 0o644)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (register-check "no-reads" "deny" (lambda (name args) (member name '("fs-read"))))`), 0o644)
-	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": "x.txt"}}}}, fake.Turn{Content: "done"})
+	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": "x.txt"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()
 	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
 	if err != nil {
@@ -408,7 +418,7 @@ func TestInitRegisterCheckSurvivesGuardSetup(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, "x.txt"), []byte("x"), 0o644)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
 (register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0o644)
-	srv := fake.New(fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": "x.txt"}}}}, fake.Turn{Content: "done"})
+	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": "x.txt"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()
 	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
 	if err != nil {

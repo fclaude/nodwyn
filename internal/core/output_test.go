@@ -67,7 +67,7 @@ func TestCutRepliesAreRetriedAtMostTwice(t *testing.T) {
 // A model's own max_output caps its replies instead of the window's, which a
 // remote reasoning model may need; the request records it, so it replays.
 func TestAModelMayCapItsOwnReplies(t *testing.T) {
-	srv := fake.New(fake.Turn{Thinking: "long thinking", DoneReason: "length"}, fake.Turn{Content: "done"})
+	srv := fake.NewT(t, fake.Turn{Thinking: "long thinking", DoneReason: "length"}, fake.Turn{Content: "done"})
 	defer srv.Close()
 	cfg := config.Default()
 	cfg.Control.MaxOutput = 2048
@@ -103,7 +103,7 @@ func TestAModelMayCapItsOwnReplies(t *testing.T) {
 // A model's temperature and seed go with each of its requests, in ollama's
 // options, and are recorded so the request replays; unset, nothing is sent.
 func TestAModelMaySetSampling(t *testing.T) {
-	srv := fake.New(fake.Turn{Content: "done"})
+	srv := fake.NewT(t, fake.Turn{Content: "done"})
 	defer srv.Close()
 	cfg := config.Default()
 	temperature, seed := 0.0, int64(42)

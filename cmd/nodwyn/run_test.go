@@ -56,7 +56,7 @@ func TestCLIBoundedRun(t *testing.T) {
 		callCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
 		cmd := exec.CommandContext(callCtx, os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--", "run"}, args...)...)
-		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "cli-config"), "XDG_DATA_HOME="+filepath.Join(dir, "cli-data"))
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "cli-config"), "XDG_DATA_HOME="+filepath.Join(dir, "cli-data"))
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		out, err := cmd.Output()

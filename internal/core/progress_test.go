@@ -30,7 +30,7 @@ func TestProgressStopsTurnAndAllowsNextMessage(t *testing.T) {
 				turns = append(turns, fake.Turn{ToolCalls: []fake.ToolCall{{ID: fmt.Sprint(i), Name: scenario.tool, Args: scenario.args(i)}}})
 			}
 			turns = append(turns, fake.Turn{Content: "fresh turn"})
-			srv := fake.New(turns...)
+			srv := fake.NewT(t, turns...)
 			defer srv.Close()
 			o := diskOptions(t)
 			o.Provider = llm.NewOllama(srv.URL)
@@ -77,7 +77,7 @@ func TestProgressStopCompletesBatchWithoutExecutingRemainder(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		batch = append(batch, fake.ToolCall{ID: fmt.Sprint(i), Name: "fs-list", Args: map[string]any{"path": "."}})
 	}
-	srv := fake.New(fake.Turn{ToolCalls: batch}, fake.Turn{Content: "new approach"})
+	srv := fake.NewT(t, fake.Turn{ToolCalls: batch}, fake.Turn{Content: "new approach"})
 	defer srv.Close()
 	o := diskOptions(t)
 	o.Provider = llm.NewOllama(srv.URL)

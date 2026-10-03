@@ -68,7 +68,7 @@ func mcpRig(t *testing.T, server *fakemcp.Server, approve, keyed bool, after fun
 	if after != nil {
 		after()
 	}
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
@@ -295,7 +295,7 @@ func TestMCPServerWithAnOAuth2Credential(t *testing.T) {
 		Manifest: mcp.Manifest(tools), Workspaces: []string{repo}, Tools: map[string]config.MCPTool{"search": {Effect: config.EffectRead, On: true}}}); err != nil {
 		t.Fatal(err)
 	}
-	srv := fake.New()
+	srv := fake.NewT(t)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"

@@ -1,35 +1,34 @@
 // First run of `nodwyn app`: no config, no keychain. Set up a model from the
-// page, create a keychain, start a task in a folder, and answer it.
-const { chromium } = require("playwright");
-const { spawn } = require("child_process");
+// page, create a keychain, switch to another model on the saved server, add
+// a documents workspace and others, attach a file with a secret in it, start
+// a task in the folder and answer it; then History stays open through the
+// redraws that follow-ups cause, and restores the file it edited, and notes
+// being edited keep what was typed through them.
+const assert = require("assert");
 const fs = require("fs");
-const out = process.argv[2];
-const env = { ...process.env };
-(async () => {
-  const root = fs.mkdtempSync("/tmp/nodwyn-first-");
-  for (const d of ["config", "data", "run", "work"]) fs.mkdirSync(`${root}/${d}`, { mode: 0o700 });
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, shows, until, check } = require("../lib");
+
+check(async () => {
+  const root = tempDir("nodwyn-first-");
+  for (const d of ["config", "data", "work"]) fs.mkdirSync(`${root}/${d}`, { mode: 0o700 });
   fs.writeFileSync(`${root}/work/hello.txt`, "hello\n");
   const original = 'function sessionRow(session) {\n  const row = node("button", "", "session");\n  row.append(node("span", session.first, "title"));\n  row.append(node("span", session.repo, "meta"));\n  return row;\n}\n';
   fs.writeFileSync(`${root}/work/app.js`, original);
-  const kids = [];
-  process.on("exit", () => kids.forEach((k) => k.kill("SIGKILL")));
-  const line = (proc, re, stream = "stdout") => new Promise((resolve) => { let b = ""; proc[stream].on("data", (d) => { b += d; const m = re.exec(b); if (m) resolve(m[1]); }); });
-  const model = spawn(env.DEMO, ["-model-only"]); kids.push(model);
-  const modelURL = await line(model, /MODEL (\S+)/);
-  const app = spawn(env.NODWYN, ["app", "--no-open"], { env: { ...env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: `${root}/run` } }); kids.push(app);
-  let log = ""; app.stderr.on("data", (d) => (log += d));
-  const url = await line(app, /app: open (\S+)/, "stderr");
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  const model = start(process.env.DEMO, ["-model-only", "-pace=0"]);
+  const [modelURL] = await line(model, /MODEL (\S+)/);
+  const app = start(process.env.NODWYN, ["app", "--no-open"], { env: { ...process.env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: runtimeDir() } });
+  const [url] = await line(app, /app: open (\S+)/, "stderr");
+  const browser = await launch();
+  const page = watch(await browser.newPage({ viewport: { width: 1280, height: 860 } }));
+  const sent = requests(page);
   const step = (m) => console.log("step:", m);
   // The console's socket goes through here, so that replies to
   // versions.list can be held back while `holding` is set: a History list
-  // answered after the panel was redrawn.
-  let holding = false, socket = null;
-  const asked = new Set(), held = [];
+  // answered after the panel was redrawn. While `pausing` is set, everything
+  // the daemon sends waits in `paused`, so that what it then redraws comes
+  // after what the check did meanwhile.
+  let holding = false, pausing = false, socket = null;
+  const asked = new Set(), held = [], paused = [];
   await page.routeWebSocket(/\/socket$/, (ws) => {
     const server = ws.connectToServer();
     socket = ws;
@@ -41,6 +40,7 @@ const env = { ...process.env };
     server.onMessage((m) => {
       const frame = JSON.parse(m);
       if (!frame.method && asked.has(frame.id)) held.push(m);
+      else if (pausing) paused.push(m);
       else ws.send(m);
     });
   });
@@ -52,9 +52,11 @@ const env = { ...process.env };
   await page.fill("#model-name", "demo");
   await page.click("text=Save and check");
   await page.waitForSelector("#task", { timeout: 10000 });
-  step("model saved; composer shown");
+  assert.deepStrictEqual(sent.of("settings.control.write"), [{ provider: "ollama", url: modelURL, model: "demo" }]);
   const cfg = fs.readFileSync(`${root}/config/nodwyn/config.toml`, "utf8");
-  if (!cfg.includes(`[servers.127-0-0-1]\nprovider = "ollama"\nurl = "${modelURL}"\n`) || !cfg.includes('[control]\nserver = "127-0-0-1"\nmodel = "demo"\n')) throw new Error("config not written: " + cfg);
+  assert.ok(cfg.includes(`[servers.127-0-0-1]\nprovider = "ollama"\nurl = "${modelURL}"\n`) && cfg.includes('[control]\nserver = "127-0-0-1"\nmodel = "demo"\n'), "config not written: " + cfg);
+  step("model saved; composer shown");
+
   // Settings: create a keychain.
   await page.evaluate(() => (location.hash = "#/settings"));
   await page.waitForSelector("#keychain-pass");
@@ -62,24 +64,28 @@ const env = { ...process.env };
   await page.fill("#keychain-again", "family passphrase");
   await page.click("text=Create the keychain");
   await page.waitForSelector("text=Unlocked", { timeout: 20000 });
+  assert.deepStrictEqual(sent.of("keychain.create"), [{ passphrase: "family passphrase" }]);
+  assert.ok(fs.existsSync(`${root}/config/nodwyn/keychain`), "no keychain on disk");
   step("keychain created");
   await page.screenshot({ path: `${out}/firstrun-settings.png`, fullPage: true });
+
   // Settings › Models: the server saved above is chosen by its name, its
   // models are what it lists, and another of them is saved by the name.
   await page.click("summary:has-text('Change the main model')");
   await page.waitForSelector("button.chip[aria-pressed=true]:has-text('127-0-0-1')");
-  if (await page.isVisible("#model-url")) throw new Error("a saved server asks for its address again");
+  assert.ok(!(await page.isVisible("#model-url")), "a saved server asks for its address again");
   await page.focus("#model-name");
   await page.waitForFunction(() => [...document.querySelectorAll("#model-options option")].map((o) => o.value).join() === "demo,fake", null, { timeout: 10000 });
-  console.log("offered:", await page.textContent("#model-offered"));
   await page.fill("#model-name", "fake");
   await page.screenshot({ path: `${out}/firstrun-model.png` });
   await page.click("text=Save and check");
   await page.waitForSelector("text=Saved. The model answers.", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.control.write")[1], { server: "127-0-0-1", model: "fake" });
   const switched = fs.readFileSync(`${root}/config/nodwyn/config.toml`, "utf8");
-  if (!switched.includes('[control]\nserver = "127-0-0-1"\nmodel = "fake"\n') || switched.split(modelURL).length !== 2) throw new Error("another model on the server: " + switched);
+  assert.ok(switched.includes('[control]\nserver = "127-0-0-1"\nmodel = "fake"\n') && switched.split(modelURL).length === 2, "another model on the server: " + switched);
   step("another model on the saved server chosen by name");
-  // Start a task in a folder typed by hand.
+
+  // A documents workspace, added from Home with a folder typed by hand.
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#task");
   await page.click("text=Add a folder");
@@ -88,8 +94,10 @@ const env = { ...process.env };
   await page.click("button:has-text('Documents')");
   await page.click("button:has-text('Add this folder')");
   await page.waitForSelector("#work-in button[aria-pressed=true]:has-text('Family papers')");
+  assert.deepStrictEqual(sent.of("workspace.save"), [{ path: `${root}/work`, name: "Family papers", kind: "docs", mounts: [] }]);
+  assert.match(fs.readFileSync(`${root}/work/.nodwyn/workspace.toml`, "utf8"), /kind = "docs"/);
   step("documents workspace added");
-  if (!fs.readFileSync(`${root}/work/.nodwyn/workspace.toml`, "utf8").includes('kind = "docs"')) throw new Error("workspace.toml");
+
   // Workspaces: two more added there, and one of them removed.
   for (const d of ["receipts", "letters"]) fs.mkdirSync(`${root}/${d}`);
   await page.evaluate(() => (location.hash = "#/workspaces"));
@@ -103,28 +111,40 @@ const env = { ...process.env };
   await page.click("button[aria-label='Remove Letters']");
   await page.click(".ws-row .end button.danger:not([aria-label])");
   await page.waitForSelector(".ws-row strong:has-text('Letters')", { state: "detached" });
+  assert.deepStrictEqual(sent.of("workspace.save").map((w) => w.name), ["Family papers", "Receipts", "Letters"]);
+  assert.deepStrictEqual(sent.of("workspace.remove"), [{ path: `${root}/letters` }]);
   const registry = fs.readFileSync(`${root}/config/nodwyn/workspaces.toml`, "utf8");
-  if (!registry.includes("Family papers") || !registry.includes("Receipts") || registry.includes("Letters")) throw new Error("workspaces.toml: " + registry);
-  if (!fs.existsSync(`${root}/letters`)) throw new Error("removing a workspace touched its folder");
+  assert.ok(registry.includes("Family papers") && registry.includes("Receipts") && !registry.includes("Letters"), "workspaces.toml: " + registry);
+  assert.ok(fs.existsSync(`${root}/letters`), "removing a workspace touched its folder");
   step("workspaces added and removed on Workspaces");
   await page.screenshot({ path: `${out}/firstrun-workspaces.png` });
+
+  // A task in the documents workspace, with an attachment holding a token.
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#work-in button[aria-pressed=true]:has-text('Family papers')");
   fs.writeFileSync(`${root}/roadmap.md`, "# Roadmap\nShip cowork.\ntoken: ghp_" + "A1b2C3d4".repeat(5) + "\n");
+  const uploads = [];
+  page.on("request", (r) => r.method() === "POST" && new URL(r.url()).pathname === "/attach" && uploads.push(Object.fromEntries(new URL(r.url()).searchParams)));
   await page.setInputFiles(".ask input[type=file]", `${root}/roadmap.md`);
   await page.waitForSelector(".ask .attach-chip");
   await page.fill("#task", "The session list shows each session's first message. Make them easy to tell apart.");
   await page.click("button[aria-label='Start the task']");
-  await page.waitForSelector(".ask-card", { timeout: 20000 });
-  await page.keyboard.press("y");
-  for (let i = 0; i < 40 && !(await page.$(".prose strong")); i++) {
-    if (await page.$(".ask-card")) await page.keyboard.press("y");
-    await page.waitForTimeout(400);
+  // The edit goes ahead in the folder (ADR 35): the two commands ask.
+  for (const command of ["Run ls -la", "Run wc -l app.js"]) {
+    await page.waitForSelector(`.ask-card h2:has-text('${command}')`, { timeout: 20000 });
+    await page.keyboard.press("y");
   }
-  step("edit approved; task answered");
-  console.log("attachment chip:", await page.textContent(".turn.user .attach-chip"));
-  if (fs.readFileSync(`${root}/work/app.js`, "utf8") === original) throw new Error("edit not written");
+  await page.waitForSelector(".prose strong", { timeout: 20000 });
+  const [{ id }] = sent.of("session.send");
+  assert.deepStrictEqual(sent.of("session.open"), [{ repo: `${root}/work` }]);
+  assert.deepStrictEqual(uploads, [{ id, name: "roadmap.md" }], "the attachment uploaded to the task");
+  assert.deepStrictEqual(sent.of("session.answer").map((a) => [a.id, a.reply]), [[id, "y"], [id, "y"]]);
+  assert.strictEqual(await page.$(".ask-card"), null, "a third question");
+  step("edit went ahead; commands approved; task answered");
+  assert.strictEqual(await page.textContent(".turn.user .attach-chip"), "roadmap.mdtext · 1 hidden");
+  assert.notStrictEqual(fs.readFileSync(`${root}/work/app.js`, "utf8"), original, "edit not written");
   await page.screenshot({ path: `${out}/firstrun-task.png` });
+
   // Every event redraws the side panel. A follow-up's events, as those that
   // come just after a turn ends, must leave an open History list open, and
   // its Restore enabled once the turn is over (a run refuses a restore).
@@ -134,22 +154,22 @@ const env = { ...process.env };
     await page.waitForFunction((n) => (document.querySelector(".transcript").innerText.match(/Glad that helps/g) || []).length >= n, replies, { timeout: 20000 });
     await page.waitForSelector(".task-head .pill:has-text('Idle')", { timeout: 10000 });
   };
+  await page.waitForSelector(".task-head .pill:has-text('Idle')", { timeout: 10000 });
   await page.click(".file-row button:has-text('History')");
   await page.waitForSelector(".versions button:has-text('Restore')");
   let drawn = await page.$(".versions");
   await followUp("Thanks", 1);
-  if (await drawn.evaluate((n) => n.isConnected)) throw new Error("the follow-up did not redraw the Changes panel");
-  if (!(await page.$(".versions button:has-text('Restore'):enabled"))) throw new Error("History closed when a follow-up redrew the Changes panel");
+  assert.ok(!(await drawn.evaluate((n) => n.isConnected)), "the follow-up did not redraw the Changes panel");
+  assert.ok(await page.$(".versions button:has-text('Restore'):enabled"), "History closed when a follow-up redrew the Changes panel");
   step("History stayed open through a follow-up");
   // Closed, it stays closed. Reopened, a reply that comes after a redraw
   // fills the list that is in the page.
   await page.click(".file-row button:has-text('History')");
-  if (await page.$(".versions > *")) throw new Error("History did not close");
+  assert.strictEqual(await page.$(".versions > *"), null, "History did not close");
   holding = true;
   await page.click(".file-row button:has-text('History')");
   await page.waitForSelector(".versions p:has-text('Reading kept versions')");
-  for (let i = 0; i < 50 && !held.length; i++) await page.waitForTimeout(100);
-  if (!held.length) throw new Error("no versions.list reply to hold");
+  await until("a versions.list reply to hold", () => held.length, 5000);
   drawn = await page.$(".versions");
   await followUp("Thanks again", 2);
   holding = false;
@@ -158,15 +178,18 @@ const env = { ...process.env };
   await page.waitForSelector(".versions button:has-text('Restore'):enabled", { timeout: 5000 }).catch(() => {
     throw new Error("a versions.list reply that came after a redraw did not fill History");
   });
-  if (await drawn.evaluate((n) => n.isConnected)) throw new Error("the second follow-up did not redraw the Changes panel");
+  assert.ok(!(await drawn.evaluate((n) => n.isConnected)), "the second follow-up did not redraw the Changes panel");
+  assert.deepStrictEqual(sent.of("session.send").map((s) => s.text), ["The session list shows each session's first message. Make them easy to tell apart.", "Thanks", "Thanks again"]);
   step("a History reply after a redraw filled the list");
   await page.screenshot({ path: `${out}/firstrun-history.png` });
+
   // A write in the folder goes ahead without asking (ADR 35), a restore too.
   await page.click(".versions button:has-text('Restore')");
-  for (let i = 0; i < 25 && fs.readFileSync(`${root}/work/app.js`, "utf8") !== original; i++) await page.waitForTimeout(200);
+  await until("app.js restored", () => fs.readFileSync(`${root}/work/app.js`, "utf8") === original);
+  assert.deepStrictEqual(sent.of("session.restore").map((r) => [r.id, r.path]), [[id, "app.js"]]);
   step("restored without asking");
   await page.screenshot({ path: `${out}/firstrun-restore.png` });
-  console.log("restored:", fs.readFileSync(`${root}/work/app.js`, "utf8") === original);
+
   // Every event redraws the side panel. Notes being edited must come
   // through a follow-up's events, as those that come just after a turn
   // ends, with what was typed, and the field typed in keeps the focus.
@@ -176,37 +199,36 @@ const env = { ...process.env };
   await page.click(`${notesPanel} button:has-text('Edit')`);
   await page.fill(notes, "Tests: node app.test.js");
   const before = await replies();
+  pausing = true;
   await page.fill("#reply", "Thanks");
   await page.keyboard.press("Enter");
+  await until("the follow-up sent", () => sent.of("session.send").length === 4);
   await page.focus(notes);
   await page.keyboard.press("Control+End");
   const typedIn = await page.$(notes);
-  await page.waitForFunction((n) => (document.querySelector(".transcript").innerText.match(/Glad that helps/g) || []).length > n, before, { timeout: 20000 });
+  pausing = false;
+  for (const m of paused.splice(0)) socket.send(m);
+  await until("the follow-up's answer", async () => (await replies()) > before, 20000);
   await page.waitForSelector(".task-head .pill:has-text('Idle')", { timeout: 10000 });
-  if (await typedIn.evaluate((n) => n.isConnected)) throw new Error("the follow-up did not redraw the notes panel");
-  const kept = await page.inputValue(notes);
-  if (kept !== "Tests: node app.test.js") throw new Error(`notes typed before a follow-up were lost when it redrew the panel: ${JSON.stringify(kept)}`);
+  assert.ok(!(await typedIn.evaluate((n) => n.isConnected)), "the follow-up did not redraw the notes panel");
+  assert.strictEqual(await page.inputValue(notes), "Tests: node app.test.js", "notes typed before a follow-up were lost when it redrew the panel");
   await page.keyboard.type(", from the folder");
-  const typed = await page.inputValue(notes);
-  if (typed !== "Tests: node app.test.js, from the folder") throw new Error(`the redrawn notes field did not keep the focus: ${JSON.stringify(typed)}`);
+  assert.strictEqual(await page.inputValue(notes), "Tests: node app.test.js, from the folder", "the redrawn notes field did not keep the focus");
   step("notes being edited kept what was typed, and the focus, through a follow-up");
   await page.screenshot({ path: `${out}/firstrun-notes.png` });
   await page.click(`${notesPanel} button:has-text('Save')`);
   await page.waitForSelector(`${notesPanel} pre:has-text('Tests: node app.test.js, from the folder')`, { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("session.notes.write").map((w) => w.text), ["Tests: node app.test.js, from the folder"]);
   step("the notes saved are what was typed");
   // Cancelled, a draft is dropped: Edit starts again from the saved notes.
   await page.click(`${notesPanel} button:has-text('Edit')`);
   await page.fill(notes, "a draft to drop");
   await page.click(`${notesPanel} button:has-text('Cancel')`);
   await page.click(`${notesPanel} button:has-text('Edit')`);
-  const again = await page.inputValue(notes);
-  if (again !== "Tests: node app.test.js, from the folder") throw new Error(`Edit after Cancel did not start from the saved notes: ${JSON.stringify(again)}`);
+  assert.strictEqual(await page.inputValue(notes), "Tests: node app.test.js, from the folder", "Edit after Cancel did not start from the saved notes");
   await page.click(`${notesPanel} button:has-text('Cancel')`);
+  assert.strictEqual(sent.of("session.notes.write").length, 1, "a cancelled draft was saved");
   step("a cancelled draft is dropped");
-  console.log(errors.length ? "ERRORS\n" + errors.join("\n") : "no page errors");
-  await browser.close();
   app.kill("SIGTERM");
-  await new Promise((r) => app.on("exit", r));
-  console.log("app exited; log tail:", log.split("\n").slice(-4).join(" | "));
-  process.exit(0); // the exit handler kills the scripted model, which would keep node running
-})().catch((e) => { console.error("FAILED", e.message); process.exit(1); });
+  assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
+});

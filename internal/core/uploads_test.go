@@ -177,15 +177,18 @@ func TestUploadSettingWhenNobodyAsks(t *testing.T) {
 		{"ask", func(o *Options) { o.AutoApprove = true }, 0},
 		{"allow", func(o *Options) { o.Unattended = true }, 2},
 	} {
-		r, _, drive := uploadRig(t, docsSetup{upload: tc.upload, adjust: tc.adjust})
-		r.s.Send("upload the notes")
-		if seen := r.answering("allow", "terminal", "y"); len(seen) != 0 {
-			t.Fatalf("%s: asked %v", tc.upload, seen)
-		}
-		r.s.Send("again")
-		r.answering("allow", "terminal", "y")
-		if drive.Requests() != tc.uploads {
-			t.Fatalf("%s: uploads %d, want %d", tc.upload, drive.Requests(), tc.uploads)
+		// Each turn uploads once and changes no file, so it is reminded
+		// once before it ends (an unattended or --yolo turn).
+		turns := []fake.Turn{uploadCall("u1", "notes.txt", "Notes"), {Content: "done"}, {Content: "done"}, uploadCall("u2", "notes.txt", "Notes"), {Content: "done again"}, {Content: "done again"}}
+		r, _, drive := uploadRig(t, docsSetup{upload: tc.upload, adjust: tc.adjust, turns: turns})
+		for i, text := range []string{"upload the notes", "again"} {
+			r.s.Send(text)
+			if seen := r.answering("allow", "terminal", "y"); len(seen) != 0 {
+				t.Fatalf("%s: asked %v", tc.upload, seen)
+			}
+			if want := tc.uploads * (i + 1) / 2; drive.Requests() != want {
+				t.Fatalf("%s: after turn %d, uploads %d, want %d", tc.upload, i+1, drive.Requests(), want)
+			}
 		}
 	}
 	r, _, _ := uploadRig(t, docsSetup{upload: "deny", turns: []fake.Turn{{Content: "nothing"}}})

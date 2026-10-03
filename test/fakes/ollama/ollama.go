@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"testing"
 )
 
 // Turn is one scripted model output.
@@ -55,6 +56,9 @@ type Server struct {
 	// and tools, unless SetCapabilities says otherwise.
 	capabilities []string
 	shows        int
+	// exhausted is the last message of each request that came after the
+	// script ran out.
+	exhausted []string
 }
 
 // SetCapabilities sets what /api/show reports, such as "vision" for a
@@ -79,6 +83,31 @@ func NewFunc(respond func(Request) Turn) *Server {
 	s := New()
 	s.respond = respond
 	return s
+}
+
+// NewT is New for a test, which fails if anything asks the fake after its
+// script has run out. Such a request is answered 500, the client retries it
+// after two seconds and again after four, and the turn ends in an error the
+// test may never look at: on 2026-10-03 six tests in internal/core spent
+// six seconds a turn that way, and two of them passed without doing what
+// they were named for.
+func NewT(t testing.TB, turns ...Turn) *Server {
+	t.Helper()
+	s := New(turns...)
+	t.Cleanup(func() {
+		if asked := s.Exhausted(); len(asked) > 0 {
+			t.Errorf("fake ollama: %d request(s) after the script ran out; the first asked after %q", len(asked), asked[0])
+		}
+	})
+	return s
+}
+
+// Exhausted returns the last message of each request that came after the
+// script ran out, in order.
+func (s *Server) Exhausted() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.exhausted...)
 }
 
 // New starts a fake with the given script.
@@ -135,6 +164,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		t = s.respond(req)
 	} else if s.next >= len(s.turns) {
+		s.exhausted = append(s.exhausted, lastMessage(req))
 		s.mu.Unlock()
 		http.Error(w, `{"error":"fake ollama: script exhausted"}`, 500)
 		return
@@ -206,4 +236,21 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		"prompt_eval_count": 279 + 10*len(req.Messages), "prompt_eval_duration": int64(120e6),
 		"eval_count": 44, "eval_duration": int64(1400e6),
 	})
+}
+
+// lastMessage is the content of the request's last message, cut to 200
+// bytes: what the loop asked about when the script had nothing left.
+func lastMessage(req Request) string {
+	if len(req.Messages) == 0 {
+		return ""
+	}
+	var m struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	_ = json.Unmarshal(req.Messages[len(req.Messages)-1], &m)
+	if len(m.Content) > 200 {
+		m.Content = m.Content[:200]
+	}
+	return m.Role + ": " + m.Content
 }

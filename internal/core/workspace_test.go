@@ -27,7 +27,7 @@ func TestDocsWorkspaceHasEveryTool(t *testing.T) {
 	if _, err := config.SaveWorkspace(repo, config.Workspace{Kind: config.KindDocs, Mounts: []config.Mount{{Path: ref, Access: "read"}}}); err != nil {
 		t.Fatal(err)
 	}
-	srv := fake.New(
+	srv := fake.NewT(t,
 		fake.Turn{ToolCalls: []fake.ToolCall{
 			{ID: "r", Name: "fs-read", Args: map[string]any{"path": filepath.Join(ref, "contract.txt")}},
 			{ID: "w", Name: "fs-write", Args: map[string]any{"path": "status.md", "content": "new status\n"}},
@@ -100,7 +100,8 @@ func TestUnattendedPromptNamesMounts(t *testing.T) {
 	if _, err := config.SaveWorkspace(repo, config.Workspace{Mounts: []config.Mount{{Path: ref, Access: "read"}}}); err != nil {
 		t.Fatal(err)
 	}
-	srv := fake.New(fake.Turn{Content: "done"})
+	// A --yolo turn that changes nothing is reminded once.
+	srv := fake.NewT(t, fake.Turn{Content: "done"}, fake.Turn{Content: "done"})
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
@@ -110,8 +111,9 @@ func TestUnattendedPromptNamesMounts(t *testing.T) {
 	}
 	t.Cleanup(func() { s.Close() })
 	r := &rig{t: t, s: s, srv: srv, repo: repo}
-	s.Send("look")
-	r.drain("y")
+	if e := r.turn("look"); e != "" {
+		t.Fatal(e)
+	}
 	raw := string(srv.Requests[0].Raw)
 	if !strings.Contains(raw, "You work unattended") || !strings.Contains(raw, ref) {
 		t.Fatal("the unattended prompt does not name the mounted folder")

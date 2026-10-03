@@ -96,7 +96,7 @@ func judgedRigWith(t *testing.T, judge *fakeJudge, content, init string, adjust 
 	init = "(define plan-explore-rounds 0)\n" + init
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Jev.Content = content
@@ -236,11 +236,12 @@ func TestPlanGateDegradesWhenTheJudgeFails(t *testing.T) {
 // A run's turn plans whatever the judge would say, and does not ask it.
 func TestRequiredPlanSkipsTheQuestion(t *testing.T) {
 	judge := newFakeJudge(t, score(3.2))
-	r := judgedRig(t, judge, "", fake.Turn{Content: "1. required plan"}, fake.Turn{Content: "done"})
-	if err := r.s.SendPlanned("work"); err != nil {
-		t.Fatal(err)
+	// The finish check reminds a planned turn that changed nothing twice.
+	done := fake.Turn{Content: "done"}
+	r := judgedRig(t, judge, "", fake.Turn{Content: "1. required plan"}, done, done, done)
+	if e := r.planned("work"); e != "" {
+		t.Fatal(e)
 	}
-	r.drain("n")
 	plans := r.gatePlans()
 	if len(plans) != 1 || plans[0].Noul != "plan" || plans[0].Plan != "1. required plan" {
 		t.Fatalf("plans %+v", plans)
@@ -274,11 +275,11 @@ func TestRequiredPlanBlocksActionUntilRecorded(t *testing.T) {
 // A model sometimes answers the planner with thinking only; one empty sample
 // must not end a run that requires a plan, so it is asked again, noted.
 func TestPlanGateAsksAgainForAnEmptyPlan(t *testing.T) {
-	r := judgedRig(t, nil, "", fake.Turn{Content: ""}, fake.Turn{Content: "1. read\n2. fix"}, fake.Turn{Content: "done"})
-	if err := r.s.SendPlanned("work"); err != nil {
-		t.Fatal(err)
+	done := fake.Turn{Content: "done"}
+	r := judgedRig(t, nil, "", fake.Turn{Content: ""}, fake.Turn{Content: "1. read\n2. fix"}, done, done, done)
+	if e := r.planned("work"); e != "" {
+		t.Fatal(e)
 	}
-	r.drain("n")
 	plans := r.gatePlans()
 	if len(plans) != 1 || plans[0].Plan != "1. read\n2. fix" {
 		t.Fatalf("plans %+v", plans)

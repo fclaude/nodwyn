@@ -98,7 +98,7 @@ func TestSystemPromptIsTheSameAcrossSessions(t *testing.T) {
 func TestAgentsFileJoinsTheSystemPrompt(t *testing.T) {
 	repo := t.TempDir()
 	os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte("# Working here\n\n- Validate with make accept.\n"), 0o644)
-	srv := fake.New()
+	srv := fake.NewT(t)
 	defer srv.Close()
 	for _, unattended := range []bool{false, true} {
 		cfg := config.Default()
@@ -205,7 +205,7 @@ func TestMalformedPromptFailsTheSession(t *testing.T) {
 		repo := t.TempDir()
 		os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 		os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
-		srv := fake.New()
+		srv := fake.NewT(t)
 		s, err := New(Options{Config: config.Default(), Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
 		if s != nil {
 			s.Close()

@@ -29,7 +29,7 @@ import (
 // taking images when vision is set; adjust changes the options first.
 func imageRig(t *testing.T, vision bool, adjust func(*Options), turns ...fake.Turn) *rig {
 	t.Helper()
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	if vision {
 		srv.SetCapabilities("completion", "tools", "vision")
@@ -352,7 +352,7 @@ func TestChangedOrMissingImageIsSaidSo(t *testing.T) {
 // gets a line saying the image is not for it.
 func TestImagesStayOutOfNarrowedContextsAndTheJudge(t *testing.T) {
 	judge := newFakeJudge(t, noul(0.9), score(3.6))
-	other := fake.New(fake.Turn{Content: "I see no image."})
+	other := fake.NewT(t, fake.Turn{Content: "I see no image."})
 	t.Cleanup(other.Close)
 	other.SetCapabilities("completion", "vision")
 	r := imageRig(t, true, func(o *Options) {

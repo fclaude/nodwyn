@@ -56,6 +56,7 @@ export class TaskView {
   // ---------- lifecycle ----------
   async open(id) {
     const version = ++this.version;
+    delete this.root.dataset.loaded;
     const previous = this.item;
     if (previous) drafts.set(previous.id, this.el?.reply.value || "");
     if (previous?.open && previous.id !== id) this.conn.call("session.unsubscribe", { id: previous.id }).catch(() => {});
@@ -117,11 +118,14 @@ export class TaskView {
       for (const event of pending) this.render(event);
       for (const event of this.queued) this.render(event);
       this.queued = [];
-      if (item.open) this.loadInfo();
-      this.loadNotes();
+      const details = Promise.all([item.open ? this.loadInfo() : null, this.loadNotes()]);
       if (this.transcript.empty) this.el.transcript.prepend(h("p", { class: "hint", dataset: { placeholder: "1" } }, item.open ? "Nothing yet. Say what you want done." : "This task has no conversation."));
       this.el.transcript.scrollTop = this.el.transcript.scrollHeight;
       this.refreshAll();
+      // The browser checks wait for this mark before they look at a task:
+      // its conversation, its details and its notes are drawn.
+      await details;
+      if (version === this.version) this.root.dataset.loaded = "";
     } catch (error) {
       if (version !== this.version) return;
       // A failed load must not enable sending against uncertain state.

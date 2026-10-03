@@ -34,7 +34,7 @@ func TestCLISummaryLifecycle(t *testing.T) {
 	run := func(success bool, args ...string) string {
 		t.Helper()
 		cmd := exec.Command(os.Args[0], append([]string{"-test.run=^TestCLIHelper$", "--", "summary"}, args...)...)
-		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
+		cmd.Env = append(os.Environ(), "NODWYN_TEST_CLI=1", quickExit, "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "XDG_DATA_HOME="+filepath.Join(dir, "data"))
 		raw, err := cmd.CombinedOutput()
 		if (err == nil) != success {
 			t.Fatalf("args=%v err=%v output=%s", args, err, raw)

@@ -81,7 +81,7 @@ func TestContainedWithPodman(t *testing.T) {
 		if err := config.SaveMCPServer(config.MCPFile(paths), server); err != nil {
 			t.Fatal(err)
 		}
-		srv := fake.New()
+		srv := fake.NewT(t)
 		t.Cleanup(srv.Close)
 		o := options()
 		o.Config.Control.URL, o.Config.Control.Model, o.Provider = srv.URL, "test-model", llm.NewOllama(srv.URL)

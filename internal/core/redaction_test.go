@@ -79,18 +79,23 @@ func TestIngressCanary(t *testing.T) {
 // nor records one the model writes into its plan.
 func TestPlanAndEphemeralRedaction(t *testing.T) {
 	const key = "sk-ant-abcdefgh1234"
-	r := newRig(t, true, fake.Turn{Content: "1. call the API with " + key}, fake.Turn{Content: "done"})
-	if err := r.s.SendPlanned("use " + key + " to call the API"); err != nil {
-		t.Fatal(err)
+	// The planner looks around first, then drafts a plan with the key in it;
+	// the planned turn that changes nothing is reminded twice.
+	done := fake.Turn{Content: "done"}
+	r := newRig(t, true, fake.Turn{Content: "nothing to report"}, fake.Turn{Content: "1. call the API with " + key}, done, done, done)
+	if e := r.planned("use " + key + " to call the API"); e != "" {
+		t.Fatal(e)
 	}
-	r.drain("n")
 	for i, req := range r.srv.Requests {
 		if strings.Contains(string(req.Raw), key) {
 			t.Fatalf("request %d carried the key", i)
 		}
 	}
-	if !strings.Contains(r.logb.String(), `"kind":"gate.plan"`) || strings.Contains(r.logb.String(), key) {
-		t.Fatal("the plan was not recorded, or was recorded with the key")
+	if plans := r.gatePlans(); len(plans) != 1 || plans[0].Plan != "1. call the API with [REDACTED anthropic-key]" {
+		t.Fatalf("plans %+v", plans)
+	}
+	if strings.Contains(r.logb.String(), key) {
+		t.Fatal("the key was recorded")
 	}
 	r.s.Emit(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: key}})
 	ev := <-r.s.Events()

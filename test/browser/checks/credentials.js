@@ -4,38 +4,34 @@
 // account connected through a fake provider, a credential removed, the
 // passphrase set and removed again; and after a restart, a keychain
 // without a passphrase is open without anyone unlocking it.
-const { chromium } = require("playwright");
-const { spawn } = require("child_process");
+const assert = require("assert");
 const fs = require("fs");
-const out = process.argv[2];
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, check } = require("../lib");
 const env = { ...process.env };
 const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
-(async () => {
-  const root = fs.mkdtempSync("/tmp/nodwyn-cred-");
-  for (const d of ["config", "data", "run"]) fs.mkdirSync(`${root}/${d}`, { mode: 0o700 });
-  const kids = [];
-  process.on("exit", () => kids.forEach((k) => k.kill("SIGKILL")));
-  const line = (proc, re, stream = "stdout") => new Promise((resolve) => { let b = ""; proc[stream].on("data", (d) => { b += d; const m = re.exec(b); if (m) resolve(m.slice(1)); }); });
-  const model = spawn(env.DEMO, ["-model-only"]); kids.push(model);
+check(async () => {
+  const root = tempDir("nodwyn-cred-");
+  for (const d of ["config", "data"]) fs.mkdirSync(`${root}/${d}`, { mode: 0o700 });
+  const model = start(env.DEMO, ["-model-only", "-pace=0"]);
   const [modelURL] = await line(model, /MODEL (\S+)/);
-  const provider = spawn(env.DEMO, ["-oauth-only"]); kids.push(provider);
+  const provider = start(env.DEMO, ["-oauth-only"]);
   const [authURL, tokenURL, revokeURL] = await line(provider, /OAUTH (\S+) (\S+) (\S+)/);
   fs.mkdirSync(`${root}/config/nodwyn`, { mode: 0o700 });
   fs.writeFileSync(`${root}/config/nodwyn/config.toml`, `[control]\nprovider = "ollama"\nurl = "${modelURL}"\nmodel = "demo"\n`);
-  const xdg = { ...env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: `${root}/run` };
+  const xdg = { ...env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: runtimeDir() };
   const startApp = async () => {
-    const app = spawn(env.NODWYN, ["app", "--no-open"], { env: xdg }); kids.push(app);
-    app.log = ""; app.stderr.on("data", (d) => (app.log += d));
+    const app = start(env.NODWYN, ["app", "--no-open"], { env: xdg });
     const [url] = await line(app, /app: open (\S+)/, "stderr");
     return { app, url };
   };
-  const stopApp = async (app) => { app.kill("SIGTERM"); await new Promise((r) => app.on("exit", r)); };
-  const browser = await chromium.launch();
+  const stopApp = async (app) => {
+    app.kill("SIGTERM");
+    assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
+  };
+  const browser = await launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const page = await context.newPage();
-  const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  const page = watch(await context.newPage());
+  const sent = requests(page);
   const step = (m) => console.log("step:", m);
   const go = (hash) => page.evaluate((h) => (location.hash = h), hash);
 
@@ -49,6 +45,7 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   if (await page.isVisible("#keychain-pass")) throw new Error("passphrase still asked for");
   await page.click("text=Create the keychain");
   await page.waitForSelector("text=no passphrase", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("keychain.create"), [{ no_passphrase: true }]);
   step("keychain created without a passphrase");
   await page.screenshot({ path: `${out}/credentials-settings.png`, fullPage: true });
 
@@ -61,13 +58,16 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   await page.fill("#cred-dest", "api.github.com");
   await page.click("button:has-text('Store the key')");
   await page.waitForSelector(".cred-detail td:has-text('api.github.com')", { timeout: 10000 });
-  step("key stored and allowed for api.github.com");
+  assert.deepStrictEqual(sent.of("credentials.add"), [{ class: "github-token", value: canary, dest: "api.github.com", methods: ["GET", "POST"], position: "header:Authorization:Bearer" }]);
   const bindings = fs.readFileSync(`${root}/config/nodwyn/bindings.toml`, "utf8");
-  if (!bindings.includes('class = "github-token"') || !bindings.includes('dest = "api.github.com"')) throw new Error("bindings.toml: " + bindings);
+  assert.ok(bindings.includes('class = "github-token"') && bindings.includes('dest = "api.github.com"'), "bindings.toml: " + bindings);
+  step("key stored and allowed for api.github.com");
   await page.screenshot({ path: `${out}/credentials-key.png`, fullPage: true });
   await page.fill(".cred-detail input[type=password]", canary + "-rotated");
   await page.click(".cred-detail button:has-text('Replace')");
   await page.waitForSelector("text=has its new value", { timeout: 10000 });
+  const [replaced] = sent.of("credentials.replace");
+  assert.deepStrictEqual(sent.of("credentials.replace"), [{ id: replaced.id, value: canary + "-rotated" }]);
   step("key replaced");
 
   // The Judge panel: store the judge key through its own field. Its details
@@ -78,6 +78,7 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   await page.waitForSelector("#judge .cred-row:has-text('jev-key')", { timeout: 10000 });
   await page.waitForSelector("#judge .cred-detail td", { timeout: 10000 });
   if (!(await page.isVisible("#judge .cred-detail"))) throw new Error("the judge key's details opened outside its panel");
+  assert.deepStrictEqual(sent.of("credentials.add")[1], { class: "jev-key", value: "sk-judge-canary-0001", dest: "api.typesafe.ai", methods: ["POST"], position: "header:Authorization:Bearer" });
   step("judge key stored through its own panel, details inside it");
   // And through its row: closing and reopening must keep the tab alive too.
   await page.click("#judge .cred-row:has-text('jev-key')");
@@ -118,11 +119,14 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   await tab.close();
   await page.waitForSelector(".cred-detail strong:has-text('drive')", { timeout: 10000 });
   await page.waitForSelector(".cred-detail >> text=refreshed before use");
+  assert.deepStrictEqual(sent.of("credentials.authorize"), [{ provider: "custom", client_id: "demo-client", class: "drive", scopes: ["files.read"], auth_url: authURL, token_url: tokenURL, revoke_url: revokeURL }]);
   step("OAuth2 account connected");
   if ((await page.inputValue(".cred-detail details[open] input.input")) !== "") throw new Error("a custom provider has no API host to suggest");
   await page.fill(".cred-detail details[open] input.input", "api.example.com");
   await page.click(".cred-detail button:has-text('Allow')");
   await page.waitForSelector(".cred-detail td:has-text('files.read')", { timeout: 10000 });
+  const [bound] = sent.of("credentials.bind");
+  assert.deepStrictEqual(sent.of("credentials.bind"), [{ id: bound.id, dest: "api.example.com", methods: ["GET", "POST"], position: "header:Authorization:Bearer" }]);
   step("account allowed for a host, with its scopes");
   await page.screenshot({ path: `${out}/credentials-oauth.png`, fullPage: true });
 
@@ -131,6 +135,7 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   await page.click(".cred-detail button:has-text('Remove…')");
   await page.click(".cred-detail .callout button:text-is('Remove')");
   await page.waitForSelector(".cred-row:has-text('github-token')", { state: "detached", timeout: 10000 });
+  assert.deepStrictEqual(sent.of("credentials.remove"), [{ id: replaced.id, revoke: false }], "the key replaced is the key removed");
   step("key removed");
   const html = await page.content();
   if (html.includes("canary")) throw new Error("a key value reached the page");
@@ -149,26 +154,25 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
   await page.fill("#keychain-current", "family passphrase");
   await page.click("button:has-text('Remove the passphrase')");
   await page.waitForSelector("text=· no passphrase", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("keychain.passphrase"), [{ passphrase: "family passphrase" }, { current: "family passphrase", no_passphrase: true }]);
   step("passphrase removed with the current one");
 
   // Restarted, the keychain without a passphrase is open by itself.
   await stopApp(app);
   ({ app, url } = await startApp());
-  if (!app.log.includes("the keychain has no passphrase; opened it")) throw new Error("app log: " + app.log);
+  if (!app.stderrText.includes("the keychain has no passphrase; opened it")) throw new Error("app log: " + app.stderrText);
   await page.goto(url);
   await page.waitForSelector("#task", { timeout: 10000 });
   await go("#/connections/credentials");
   await page.waitForSelector(".cred-row:has-text('drive')", { timeout: 10000 });
   step("restarted: open without unlocking");
   // At phone width, from a page opened there.
-  const phone = await context.newPage();
-  phone.on("pageerror", (e) => errors.push(e.message));
+  const phone = watch(await context.newPage(), "phone");
   await phone.setViewportSize({ width: 390, height: 844 });
   await phone.goto(url.split("#")[0] + "#/connections/credentials");
   await phone.waitForSelector(".cred-row:has-text('drive')", { timeout: 10000 });
   await phone.click(".cred-row:has-text('drive')");
-  await phone.waitForSelector(".cred-detail");
-  await phone.waitForTimeout(300);
+  await phone.waitForSelector(".cred-detail td");
   await phone.screenshot({ path: `${out}/credentials-phone.png`, fullPage: true });
   const overflow = await phone.evaluate(() => [document.documentElement, document.querySelector(".page")].map((n) => n.scrollWidth - n.clientWidth));
   if (overflow.some((px) => px > 0)) {
@@ -176,10 +180,5 @@ const canary = "ghp_canary" + "Q7w3E9r1T5y8".repeat(2);
     throw new Error(`the page scrolls sideways at phone width (${overflow}): ${wide.join("; ")}`);
   }
   await phone.close();
-
-  console.log(errors.length ? "ERRORS\n" + errors.join("\n") : "no page errors");
-  await browser.close();
   await stopApp(app);
-  fs.rmSync(root, { recursive: true, force: true });
-  process.exit(errors.length ? 1 : 0); // the exit handler kills the model and the provider, which would keep node running
-})().catch((e) => { console.error("FAILED", e.message); process.exit(1); });
+});

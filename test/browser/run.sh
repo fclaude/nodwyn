@@ -2,9 +2,10 @@
 # Browser acceptance checks for the console (ADR 21, ADR 30). Each check
 # starts its own synthetic world: a scripted model, temporary directories,
 # a daemon or the app, and a headless Chromium. Nothing touches real
-# sessions, keys or folders.
+# sessions, keys or folders, and no two checks share a port or a folder, so
+# they run at the same time.
 #
-#   test/browser/run.sh            # all checks; screenshots in test/browser/out
+#   test/browser/run.sh            # all checks; screenshots in test/browser/out/<check>
 #   test/browser/run.sh firstrun   # one check
 #
 # Needs Node and Playwright's Chromium (npm install; npx playwright install chromium).
@@ -15,21 +16,44 @@ out="$here/out"
 mkdir -p "$out"
 (cd "$root" && go build -o "$out/nodwyn" ./cmd/nodwyn && go build -o "$out/demo" ./test/browser/demo)
 [ -d "$here/node_modules/playwright" ] || (cd "$here" && npm install --silent)
-checks=${*:-screens transcript approve firstrun remote mcp credentials tasks}
-status=0
-pid=
-trap '[ -n "$pid" ] && kill -KILL -- "-$pid" 2>/dev/null; exit 130' INT TERM
-for check in $checks; do
-	echo "== $check"
+read -r -a checks <<<"${*:-screens transcript approve firstrun remote mcp credentials tasks}"
+declare -A group took code
+stop() {
+	for pid in "${group[@]}"; do kill -KILL -- "-$pid" 2>/dev/null || true; done
+}
+trap 'stop; exit 130' INT TERM
+for check in "${checks[@]}"; do
+	rm -rf "${out:?}/$check"
+	mkdir -p "$out/$check"
 	# timeout leads a process group of its own, which the check's demo and
-	# Chromium join. A check that throws exits without stopping its demo,
+	# Chromium join. A check that throws can exit without stopping its demo,
 	# which then holds this script's output open, so a caller reading it
 	# through a pipe waits forever: the whole group goes when the check ends.
-	(cd "$here" && DEMO="$out/demo" NODWYN="$out/nodwyn" exec timeout 180 node "checks/$check.js" "$out") &
-	pid=$!
-	if ! wait "$pid"; then
-		status=1
-	fi
-	kill -KILL -- "-$pid" 2>/dev/null || true
+	(cd "$here" && DEMO="$out/demo" NODWYN="$out/nodwyn" exec timeout 180 node "checks/$check.js" "$out/$check" >"$out/$check.log" 2>&1) &
+	group[$check]=$!
+	took[$check]=$EPOCHREALTIME
+done
+# Each check's log is printed once it and every check before it have
+# ended, so the output reads in the order the checks were named.
+status=0
+next=0
+while [ "$next" -lt "${#checks[@]}" ]; do
+	if wait -n -p ended "${group[@]}"; then rc=0; else rc=$?; fi
+	for check in "${!group[@]}"; do
+		if [ "${group[$check]}" = "$ended" ]; then
+			kill -KILL -- "-$ended" 2>/dev/null || true
+			unset "group[$check]"
+			code[$check]=$rc
+			took[$check]=$(awk "BEGIN { printf \"%.1f\", $EPOCHREALTIME - ${took[$check]} }")
+		fi
+	done
+	while [ "$next" -lt "${#checks[@]}" ] && [ -n "${code[${checks[$next]}]+set}" ]; do
+		check=${checks[$next]}
+		if [ "${code[$check]}" = 0 ]; then result=ok; else result="FAILED (exit ${code[$check]})"; status=1; fi
+		echo "== $check"
+		cat "$out/$check.log"
+		echo "== $check: $result in ${took[$check]}s"
+		next=$((next + 1))
+	done
 done
 exit $status

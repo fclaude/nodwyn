@@ -22,7 +22,7 @@ func unattendedRig(t *testing.T, turns ...fake.Turn) *rig {
 // unattendedRigIn is unattendedRig on a repository made beforehand.
 func unattendedRigIn(t *testing.T, repo string, turns ...fake.Turn) *rig {
 	t.Helper()
-	srv := fake.New(turns...)
+	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	logb := &bytes.Buffer{}
 	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: logb})

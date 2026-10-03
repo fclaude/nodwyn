@@ -26,7 +26,7 @@ func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 		{config.JevContentPlan, true, false},
 		{config.JevContentFull, false, false},
 	} {
-		srv := fake.New()
+		srv := fake.NewT(t)
 		t.Cleanup(srv.Close)
 		cfg := config.Default()
 		cfg.Jev.Content = tc.content

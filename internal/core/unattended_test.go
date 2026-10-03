@@ -23,7 +23,7 @@ func TestUnattendedRunNeverWritesProtectedPaths(t *testing.T) {
 	// Unattended, a turn that ends with its change untested is reminded twice
 	// (the default evidence loop) before it ends.
 	done := fake.Turn{Content: "done"}
-	srv := fake.New(write("n", ".nodwyn/init.scm"), write("g", ".git/hooks/pre-commit"), write("s", "src/ok.txt"), done, done, done)
+	srv := fake.NewT(t, write("n", ".nodwyn/init.scm"), write("g", ".git/hooks/pre-commit"), write("s", "src/ok.txt"), done, done, done)
 	t.Cleanup(srv.Close)
 	logb := &bytes.Buffer{}
 	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: logb})

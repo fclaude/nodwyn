@@ -11,7 +11,7 @@ import (
 )
 
 func TestCloseWaitsForFinalIdleDelivery(t *testing.T) {
-	model := fake.New(fake.Turn{Content: "finished"})
+	model := fake.NewT(t, fake.Turn{Content: "finished"})
 	defer model.Close()
 	o := diskOptions(t)
 	o.Provider = llm.NewOllama(model.URL)
