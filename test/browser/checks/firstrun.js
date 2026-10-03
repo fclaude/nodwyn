@@ -167,6 +167,42 @@ const env = { ...process.env };
   step("restored without asking");
   await page.screenshot({ path: `${out}/firstrun-restore.png` });
   console.log("restored:", fs.readFileSync(`${root}/work/app.js`, "utf8") === original);
+  // Every event redraws the side panel. Notes being edited must come
+  // through a follow-up's events, as those that come just after a turn
+  // ends, with what was typed, and the field typed in keeps the focus.
+  const notesPanel = "section.panel:has(h2:has-text('What nodwyn knows here'))";
+  const notes = `${notesPanel} textarea[aria-label='Project notes']`;
+  const replies = () => page.evaluate(() => (document.querySelector(".transcript").innerText.match(/Glad that helps/g) || []).length);
+  await page.click(`${notesPanel} button:has-text('Edit')`);
+  await page.fill(notes, "Tests: node app.test.js");
+  const before = await replies();
+  await page.fill("#reply", "Thanks");
+  await page.keyboard.press("Enter");
+  await page.focus(notes);
+  await page.keyboard.press("Control+End");
+  const typedIn = await page.$(notes);
+  await page.waitForFunction((n) => (document.querySelector(".transcript").innerText.match(/Glad that helps/g) || []).length > n, before, { timeout: 20000 });
+  await page.waitForSelector(".task-head .pill:has-text('Idle')", { timeout: 10000 });
+  if (await typedIn.evaluate((n) => n.isConnected)) throw new Error("the follow-up did not redraw the notes panel");
+  const kept = await page.inputValue(notes);
+  if (kept !== "Tests: node app.test.js") throw new Error(`notes typed before a follow-up were lost when it redrew the panel: ${JSON.stringify(kept)}`);
+  await page.keyboard.type(", from the folder");
+  const typed = await page.inputValue(notes);
+  if (typed !== "Tests: node app.test.js, from the folder") throw new Error(`the redrawn notes field did not keep the focus: ${JSON.stringify(typed)}`);
+  step("notes being edited kept what was typed, and the focus, through a follow-up");
+  await page.screenshot({ path: `${out}/firstrun-notes.png` });
+  await page.click(`${notesPanel} button:has-text('Save')`);
+  await page.waitForSelector(`${notesPanel} pre:has-text('Tests: node app.test.js, from the folder')`, { timeout: 10000 });
+  step("the notes saved are what was typed");
+  // Cancelled, a draft is dropped: Edit starts again from the saved notes.
+  await page.click(`${notesPanel} button:has-text('Edit')`);
+  await page.fill(notes, "a draft to drop");
+  await page.click(`${notesPanel} button:has-text('Cancel')`);
+  await page.click(`${notesPanel} button:has-text('Edit')`);
+  const again = await page.inputValue(notes);
+  if (again !== "Tests: node app.test.js, from the folder") throw new Error(`Edit after Cancel did not start from the saved notes: ${JSON.stringify(again)}`);
+  await page.click(`${notesPanel} button:has-text('Cancel')`);
+  step("a cancelled draft is dropped");
   console.log(errors.length ? "ERRORS\n" + errors.join("\n") : "no page errors");
   await browser.close();
   app.kill("SIGTERM");

@@ -27,7 +27,10 @@ export class TaskView {
     this.resolved = new Set();
     this.info = null;
     this.notes = null;
-    this.notesEditing = false;
+    // The project notes being edited, or null when they are not. Every
+    // event redraws the side panel, so the field is drawn from here and
+    // what was typed outlives the redraw.
+    this.notesDraft = null;
     // The Changes panel's open History lists, by path: what versions.list
     // answered, or an empty record while it has not. Every event redraws the
     // panel, so each list is drawn from here and outlives the redraw.
@@ -74,7 +77,7 @@ export class TaskView {
     this.resolved = new Set();
     this.info = null;
     this.notes = null;
-    this.notesEditing = false;
+    this.notesDraft = null;
     this.histories.clear();
     this.inspecting = null;
     this.renaming = false;
@@ -638,8 +641,18 @@ export class TaskView {
   aside() {
     if (!this.el || !this.item) return;
     const side = this.el.side;
+    // A redraw replaces the notes field being typed in: the new one takes
+    // the focus and the caret, so typing carries on where it was.
+    const typing = side.querySelector("textarea[data-notes]");
+    const caret = typing && document.activeElement === typing ? [typing.selectionStart, typing.selectionEnd, typing.scrollTop] : null;
     const panels = [this.planPanel(), this.turnPanel(), this.changesPanel(), this.toolsPanel(), this.attachmentsPanel(), this.notesPanel(), this.workspacePanel(), this.detailsPanel()];
     side.replaceChildren(...panels.filter(Boolean));
+    const area = caret && side.querySelector("textarea[data-notes]");
+    if (area) {
+      area.focus({ preventScroll: true });
+      area.setSelectionRange(caret[0], caret[1]);
+      area.scrollTop = caret[2];
+    }
   }
   planPanel() {
     const turn = this.lastTurn();
@@ -841,18 +854,18 @@ export class TaskView {
   notesPanel() {
     if (this.notes === null) return null;
     const canEdit = this.item.open && this.conn.has("session.notes.write") && !this.busy;
-    const edit = canEdit && !this.notesEditing ? h("button", { type: "button", onclick: () => { this.notesEditing = true; this.aside(); } }, "Edit") : null;
+    const edit = canEdit && this.notesDraft === null ? h("button", { type: "button", onclick: () => { this.notesDraft = this.notes; this.aside(); } }, "Edit") : null;
     const panel = h("section", { class: "panel" }, h("h2", {}, "What nodwyn knows here", edit));
-    if (this.notesEditing) {
-      const area = h("textarea", { class: "input", rows: 8, spellcheck: true, "aria-label": "Project notes" });
-      area.value = this.notes;
+    if (this.notesDraft !== null) {
+      const area = h("textarea", { class: "input", rows: 8, spellcheck: true, "aria-label": "Project notes", dataset: { notes: "1" }, oninput: (event) => (this.notesDraft = event.target.value) });
+      area.value = this.notesDraft;
       panel.append(
         area,
         h(
           "div",
           { class: "row-actions" },
-          h("button", { type: "button", class: "btn small dark", onclick: () => this.saveNotes(area.value) }, "Save"),
-          h("button", { type: "button", class: "btn small ghost", onclick: () => { this.notesEditing = false; this.aside(); } }, "Cancel"),
+          h("button", { type: "button", class: "btn small dark", onclick: () => this.saveNotes(this.notesDraft) }, "Save"),
+          h("button", { type: "button", class: "btn small ghost", onclick: () => { this.notesDraft = null; this.aside(); } }, "Cancel"),
         ),
       );
     } else if (this.notes.trim()) panel.append(h("div", { class: "box" }, h("pre", {}, this.notes.trim())));
@@ -867,7 +880,7 @@ export class TaskView {
       this.expect(started.operation_id, (result) => {
         if (result.Err) toast(`Notes not saved: ${result.Err}`);
         else {
-          this.notesEditing = false;
+          this.notesDraft = null;
           toast("Notes saved.");
           this.loadNotes();
         }
