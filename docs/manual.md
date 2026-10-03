@@ -254,6 +254,19 @@ Kept versions are the undo for what git cannot give back: before a write,
 nodwyn keeps a file's content unless git has it committed and unchanged
 (`nodwyn versions`, `nodwyn undo`).
 
+### Naming, archiving and deleting tasks
+
+A task is listed by the first sentence of its first message until you name
+it. In the console, the pencil beside a task's heading renames it; a closed
+task can be archived, which takes it off the task list until you unarchive
+or resume it, or deleted, which removes its conversation and log for good
+and leaves the files it changed. The sidebar lists tasks under their
+folders, the folder with the latest activity first ([the browser
+view](browser.md), "Tasks, folders and files"; ADR 39). The names and the
+archive are records in each session's log, so they last across restarts and
+every console reads them; `nodwyn sessions` and the TUI still list first
+messages.
+
 ### The scratch directory
 
 Each session gets a scratch directory outside the repository, a private

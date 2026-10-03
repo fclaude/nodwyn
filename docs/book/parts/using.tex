@@ -122,14 +122,16 @@ takes them.
   limits, the model and its tuning, the judge and the keychain. Every task
   it starts is a chat, and a long request is a message like any other
   (\adr{35}); it starts no runs, but shows one that \code{nodwyn run}
-  started.
+  started. Its sidebar lists tasks under their folders, the latest active
+  first; a task can be named, and a closed one archived or deleted
+  (\adr{39}).
 \item[\code{nodwyn app}] The daemon, the console and a window in one
   program. It attaches to a daemon if one is running, and otherwise serves
   one itself until you close it.
 \item[A phone] \code{nodwyn ui --listen ADDR} serves other devices as well.
   Each pairs with the printed code and a name, may send messages and answer
   prompts, and may not change settings, policy files, the keychain,
-  workspaces or MCP servers. \code{nodwyn devices revoke NAME} unpairs one.
+  workspaces or MCP servers, or delete a task. \code{nodwyn devices revoke NAME} unpairs one.
 \end{description}
 
 \chapter{A session}

@@ -21,6 +21,16 @@ type openParams struct {
 type idParams struct {
 	ID string `json:"id"`
 }
+
+// renameParams name a session; an empty title takes the name back (ADR 39).
+type renameParams struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+type archiveParams struct {
+	ID       string `json:"id"`
+	Archived bool   `json:"archived"`
+}
 type sendParams struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`

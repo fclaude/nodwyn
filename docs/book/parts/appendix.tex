@@ -39,6 +39,7 @@ Kind & What it records \\
 \code{file.version} & a file's previous content, kept in \file{.nodwyn/versions/} before a write: its path, size and hash \\
 \code{doc.upload} & a document sent to Google Drive: file, size, hash, destination, the document's id or why nothing was sent; never content or a token \\
 \code{setting.change} & a setting a person chose at a prompt, such as how uploads to Google Docs are handled: who, the value, whether \file{config.toml} took it \\
+\code{session.title}, \code{session.archive} & the name a person gave the task, and whether it is archived (\adr{39}): who, and the name or the state; the latest of each counts \\
 \code{eval.req}, \code{eval.result} & Scheme you evaluated, and its redacted result \\
 \code{note} & free-form: hard stops, standing approvals, turn trust \\
 \bottomrule

@@ -1,11 +1,14 @@
 package rpc
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/budget"
@@ -14,6 +17,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/frontend/run"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 type ownedSession struct {
@@ -50,6 +54,8 @@ type sessionInfo struct {
 	Started time.Time  `json:"started"`
 	Changes []string   `json:"changes"`
 	Run     *run.State `json:"run,omitempty"`
+	// Archived: a person put the session away (ADR 39).
+	Archived bool `json:"archived"`
 }
 type budgetInfo struct {
 	ToolCalls budget.Limit `json:"tool_calls"`
@@ -161,6 +167,9 @@ var methodTable = map[string]handler{
 	"session.resume":          (*server).resume,
 	"session.info":            (*server).info,
 	"session.close":           (*server).closeSession,
+	"session.rename":          (*server).rename,
+	"session.archive":         (*server).archive,
+	"session.delete":          (*server).deleteSession,
 	"session.abort":           (*server).abort,
 	"session.unsubscribe":     (*server).unsubscribeSession,
 	"session.friction":        (*server).friction,
@@ -243,7 +252,7 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 		owned, open := s.sessions[i.ID]
 		busy := open && (owned.session.Busy() || owned.driver.Active())
 		entry := sessionInfo{ID: i.ID, Repo: i.Repo, Open: open, Busy: busy, FirstMessage: i.FirstMessage, LastEvent: i.LastEvent, InFlight: i.InFlight, Truncated: i.Truncated,
-			Title: i.Title(), Started: i.Started, Changes: i.Changes}
+			Title: i.Title(), Started: i.Started, Changes: i.Changes, Archived: i.Archived}
 		if entry.Changes == nil {
 			entry.Changes = []string{}
 		}
@@ -349,6 +358,73 @@ func (s *server) closeSession(req request, _ *peer) (any, *rpcError) {
 	delete(s.sessions, id)
 	if closeErr != nil {
 		return nil, failure(-32000, closeErr.Error())
+	}
+	return struct{}{}, nil
+}
+
+// maxName bounds the name a person gives a session: a line in a list.
+const maxName = 120
+
+// rename names a session (ADR 39). An open session records the name in its
+// own log, so a console showing it hears of it; a closed one is named
+// through the store, whose lock refuses a session another process has open.
+func (s *server) rename(req request, client *peer) (any, *rpcError) {
+	var p renameParams
+	if err := params(req.Params, &p, "id", "title"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	title := strings.Join(strings.Fields(p.Title), " ")
+	if utf8.RuneCountInString(title) > maxName {
+		return nil, failure(-32602, fmt.Sprintf("A name has at most %d characters", maxName))
+	}
+	var err error
+	if owned, open := s.sessions[p.ID]; open {
+		_, err = owned.session.Record(log.KindSessionTitle, log.SessionTitle{Actor: client.actor, Title: title})
+	} else {
+		err = s.store().Rename(p.ID, title, client.actor)
+	}
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return struct{}{}, nil
+}
+
+// archive puts a closed session away or brings it back (ADR 39). An open
+// one is refused: a task that can ask for an answer is never hidden.
+func (s *server) archive(req request, client *peer) (any, *rpcError) {
+	var p archiveParams
+	if err := params(req.Params, &p, "id", "archived"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	if _, open := s.sessions[p.ID]; open {
+		return nil, failure(-32000, "Close the task before archiving it")
+	}
+	if err := s.store().Archive(p.ID, p.Archived, client.actor); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return struct{}{}, nil
+}
+
+// deleteSession removes a closed session's log for good (ADR 39).
+func (s *server) deleteSession(req request, _ *peer) (any, *rpcError) {
+	var p idParams
+	if err := params(req.Params, &p, "id"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	if _, open := s.sessions[p.ID]; open {
+		return nil, failure(-32000, "Close the task before deleting it")
+	}
+	if err := s.store().Delete(p.ID); err != nil {
+		return nil, failure(-32000, err.Error())
 	}
 	return struct{}{}, nil
 }

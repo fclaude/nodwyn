@@ -522,8 +522,12 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	}
 	switch method {
 	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
-		"session.notes.write", "run.start", "run.stop", "run.resume", "session.restore":
+		"session.notes.write", "run.start", "run.stop", "run.resume", "session.restore", "session.rename", "session.archive":
 		return true
+	// A log is the record of what a session did, devices included: only
+	// this computer removes one (ADR 39).
+	case "session.delete":
+		return !remote
 	case "session.binding.create", "session.approve_all", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write",
 		"workspace.save", "workspace.remove", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
 		return !remote

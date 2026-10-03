@@ -134,6 +134,9 @@ export class Desk {
       return;
     }
     Object.assign(item, { open: state.open, busy: state.busy, needs_answer: state.needs_answer });
+    // A turn that ended or a task that closed has new activity, and perhaps
+    // a title: the list, ordered by activity, is read again.
+    if (notify && previous && ((previous.busy && !state.busy) || (previous.open && !state.open))) this.refresh().catch(() => {});
     if (!state.open || !state.needs_answer) this.pending.delete(state.id);
     if (!!previous?.needs_answer !== !!state.needs_answer || state.needs_answer) this.scheduleAttention();
     this.notifier.update(state, previous, notify, item);
@@ -150,7 +153,11 @@ export class Desk {
     return this.all().filter((s) => s.open && !s.needs_answer && (s.busy || s.run?.status === "running"));
   }
   recent() {
-    return this.all().filter((s) => !(s.open && (s.needs_answer || s.busy || s.run?.status === "running")));
+    return this.all().filter((s) => !s.archived && !(s.open && (s.needs_answer || s.busy || s.run?.status === "running")));
+  }
+  // archived: the tasks a person put away (ADR 39).
+  archived() {
+    return this.all().filter((s) => s.archived);
   }
   // Folders to work in: named workspaces first, then folders tasks used,
   // most recent first.

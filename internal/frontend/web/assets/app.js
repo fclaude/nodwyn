@@ -119,7 +119,7 @@ function render(routeChanged = false, what = "") {
       // The list changed: keep the conversation, refresh what the task shows.
       const fresh = desk.sessions.get(route.id);
       if (fresh && task.item && task.item.id === fresh.id) {
-        Object.assign(task.item, { open: fresh.open, run: fresh.run, title: fresh.title });
+        Object.assign(task.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived });
         task.refreshAll();
       }
     }

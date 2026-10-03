@@ -309,6 +309,8 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
   padding: 18px 12px 14px; background: var(--sidebar); border-right: 1px solid var(--line);
   overflow-y: auto;
 }
+/* A long task list scrolls the sidebar; nothing in it is squeezed instead. */
+.sidebar > * { flex-shrink: 0; }
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
 .new-task {
   display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px;
@@ -337,6 +339,23 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .nav-task .sub { font-size: 12px; color: var(--faint); }
 .nav-task.dotted .sub { padding-left: 15px; }
 .nav-task.plain .title { font-weight: 400; }
+/* Every task not waiting for you sits under its folder (ADR 39). */
+.folders { display: flex; flex-direction: column; gap: 12px; }
+.folder-head {
+  display: flex; align-items: center; gap: 6px; width: 100%; height: 26px; padding: 0 10px 0 6px;
+  border: none; border-radius: 7px; background: transparent; color: var(--muted);
+  font-size: 12.5px; font-weight: 600; text-align: left;
+}
+.folder-head:hover:not(:disabled) { background: var(--selected); color: var(--ink); }
+.folder-head:disabled { cursor: default; opacity: 1; }
+.folder-head .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-head .n { font-size: 11px; font-weight: 500; color: var(--faint); }
+.nav-more {
+  align-self: flex-start; height: 26px; margin-left: 4px; padding: 0 8px; border: none; border-radius: 7px;
+  background: transparent; color: var(--faint); font-size: 12px;
+}
+.nav-more:hover { background: var(--selected); color: var(--ink); }
+.nav-group.archived .nav-task .title { color: var(--muted); }
 .nav-links { display: flex; flex-direction: column; gap: 2px; margin-top: auto; }
 .nav-link {
   display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px;
@@ -442,7 +461,16 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .task-meta { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 .task-meta strong { font-weight: 500; color: var(--ink); }
 .task-meta .mono { font-size: 12px; }
-.task-actions { display: flex; gap: 8px; align-items: center; }
+.task-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.title-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.title-row h1 { min-width: 0; }
+/* The pencil shows where a pointer can hover, and always on a touch screen. */
+.rename-btn { flex-shrink: 0; opacity: 0; }
+.title-row:hover .rename-btn, .rename-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .rename-btn { opacity: 1; } }
+.rename { display: flex; }
+.rename .title-input { flex: 1; min-width: 0; height: 36px; font-family: var(--serif); font-size: 21px; }
+.delete-confirm { flex-basis: 100%; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .task-body { flex-grow: 1; min-height: 0; display: flex; }
 .task-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; }
 .transcript {

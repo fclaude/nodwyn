@@ -106,3 +106,112 @@ func TestSessionTitleIsShort(t *testing.T) {
 		t.Errorf("run title %q", got)
 	}
 }
+
+// closedSession writes the log of a session no process has open.
+func closedSession(t *testing.T, o Options, id, message string) string {
+	t.Helper()
+	path := log.SessionPath(o.Paths.SessionsDir, id)
+	w, err := log.Create(path, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Append(log.KindSessionStart, log.SessionStart{Repo: o.Repo}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Append(log.KindUserMsg, log.UserMsg{Text: message}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// A closed session is named, archived and deleted through the store (ADR
+// 38), and a process that has it open keeps it: its lock refuses all three.
+func TestStoreNamesArchivesAndDeletesClosedSessions(t *testing.T) {
+	o := diskOptions(t)
+	store := Store{Dir: o.Paths.SessionsDir}
+	path := closedSession(t, o, "named", "Fix the flaky test. It fails on CI.")
+	info := func() SessionInfo {
+		t.Helper()
+		i, err := store.Info("named")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return i
+	}
+	if err := store.Rename("named", "Flaky test, second try", "tester"); err != nil {
+		t.Fatal(err)
+	}
+	if got := info().Title(); got != "Flaky test, second try" {
+		t.Fatalf("named title %q", got)
+	}
+	const canary = "sk-ant-abcdefgh1234"
+	if err := store.Rename("named", "Deploy with "+canary, "tester"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info().Title(); strings.Contains(got, canary) || strings.Contains(string(raw), canary) || !strings.HasPrefix(got, "Deploy with ") {
+		t.Fatalf("a key in a name: title %q", got)
+	}
+	// An empty name gives the session back the title its message gives it.
+	if err := store.Rename("named", "", "tester"); err != nil {
+		t.Fatal(err)
+	}
+	if got := info(); got.Title() != "Fix the flaky test" || got.Name != "" || got.Archived {
+		t.Fatalf("name taken back: %q %+v", got.Title(), got)
+	}
+	if err := store.Archive("named", true, "tester"); err != nil {
+		t.Fatal(err)
+	}
+	if !info().Archived {
+		t.Fatal("archive not recorded")
+	}
+	held, err := log.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.Rename("named", "Taken", "tester") == nil || store.Archive("named", false, "tester") == nil || store.Delete("named") == nil {
+		t.Fatal("changed a session another writer holds")
+	}
+	if err := held.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := info(); got.Title() != "Fix the flaky test" || !got.Archived {
+		t.Fatalf("held session changed: %+v", got)
+	}
+	if err := store.Delete("named"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("log still there: %v", err)
+	}
+	if list, err := store.List(); err != nil || len(list) != 0 {
+		t.Fatalf("list after delete: %+v %v", list, err)
+	}
+}
+
+// Resuming an archived session takes it out of the archive (ADR 39).
+func TestResumeBringsAnArchivedSessionBack(t *testing.T) {
+	o := diskOptions(t)
+	store := Store{Dir: o.Paths.SessionsDir}
+	closedSession(t, o, "archived", "Tidy the receipts")
+	if err := store.Archive("archived", true, "tester"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Resume(o, "archived")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := store.Info("archived")
+	if err != nil || info.Archived {
+		t.Fatalf("after resume: %+v %v", info, err)
+	}
+}

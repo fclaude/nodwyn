@@ -34,12 +34,20 @@ type SessionInfo struct {
 	// Run is the last recorded run.state, nil for a session that never ran
 	// as a supervised run.
 	Run *log.RunState
+	// Name is the latest name a person gave the session (session.title),
+	// "" when it has none. Archived is the latest session.archive (ADR 39).
+	Name     string
+	Archived bool
 }
 
-// Title is what a person reads a session by: the first sentence of the
-// first message when it is short, else its first words. A run's first
-// message is the run's prompt around its task, so a run is read by the task.
+// Title is what a person reads a session by: the name they gave it, else
+// the first sentence of the first message when it is short, else its first
+// words. A run's first message is the run's prompt around its task, so a
+// run is read by the task.
 func (i SessionInfo) Title() string {
+	if i.Name != "" {
+		return i.Name
+	}
 	text := i.FirstMessage
 	if i.Run != nil && strings.TrimSpace(i.Run.Task) != "" {
 		text = i.Run.Task
@@ -136,6 +144,16 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 				r.Task = redact.Redact(r.Task, nil).Text
 				info.Run = &r
 			}
+		case log.KindSessionTitle:
+			var t log.SessionTitle
+			if ev.Decode(&t) == nil {
+				info.Name = redact.Redact(t.Title, nil).Text
+			}
+		case log.KindSessionArchive:
+			var a log.SessionArchive
+			if ev.Decode(&a) == nil {
+				info.Archived = a.Archived
+			}
 		case log.KindUserMsg:
 			var msg log.UserMsg
 			if err := ev.Decode(&msg); err != nil {
@@ -161,6 +179,61 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 		}
 	}
 	return info, events, nil
+}
+
+// Rename gives a session no process has open its name, or with "" takes
+// the name back (ADR 39). The log's lock refuses a session another process
+// has open; the one that has it records the name itself.
+func (s Store) Rename(id, title, actor string) error {
+	return s.record(id, log.KindSessionTitle, log.SessionTitle{Actor: actor, Title: title})
+}
+
+// Archive archives a session no process has open, or brings it back.
+func (s Store) Archive(id string, archived bool, actor string) error {
+	return s.record(id, log.KindSessionArchive, log.SessionArchive{Actor: actor, Archived: archived})
+}
+
+// record appends one record to a closed session's log, as recordSummary
+// does: through the log's redaction boundary, holding its lock.
+func (s Store) record(id string, kind log.Kind, payload any) error {
+	path, err := s.path(id)
+	if err != nil {
+		return err
+	}
+	info, _, err := s.read(id)
+	if err != nil {
+		return err
+	}
+	if info.Truncated {
+		return fmt.Errorf("core: resume the session to recover its incomplete log first")
+	}
+	writer, err := log.Open(path)
+	if err != nil {
+		if writer != nil {
+			writer.Close()
+		}
+		return err
+	}
+	defer writer.Close()
+	_, err = writer.Append(kind, payload)
+	return err
+}
+
+// Delete removes a session's log, which is all nodwyn keeps of a closed
+// session: its scratch directory went when it closed (ADR 28). A session a
+// process has open is refused by the lock that process holds.
+func (s Store) Delete(id string) error {
+	path, err := s.path(id)
+	if err != nil {
+		return err
+	}
+	if err := log.Remove(path); err != nil {
+		return err
+	}
+	infoCache.mu.Lock()
+	delete(infoCache.entries, path)
+	infoCache.mu.Unlock()
+	return nil
 }
 
 // Info reads one session's metadata without opening it for append. A log

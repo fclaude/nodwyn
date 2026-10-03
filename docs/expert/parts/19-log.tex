@@ -43,6 +43,7 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
 \begin{tabularx}{\linewidth}{lX}
 \toprule
 \code{session.start}, \code{session.resume}, \code{session.end} & lifecycle; no \code{session.end} after a crash \\
+\code{session.title}, \code{session.archive} & the name you gave the task, and whether it is archived (\adr{39}); the latest of each counts \\
 \code{user.msg}, \code{harness.msg} & what you sent; what a strategy added with \code{add-message} \\
 \code{llm.req}, \code{llm.resp} & each model request (with its hash and recipe) and reply, with its usage: tokens, and cached tokens and cost when known \\
 \code{tool.call}, \code{tool.result} & each call and its one result \\

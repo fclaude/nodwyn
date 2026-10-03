@@ -64,6 +64,9 @@ IDs are transport data and are echoed unchanged.
 | `session.resume` | `{"id":"SESSION_ID"}` | Open-session details |
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
 | `session.close` | `{"id":"SESSION_ID"}` | `{}` after releasing the session writer |
+| `session.rename` | `{"id":"SESSION_ID","title":"…"}` | `{}` after recording the name; `""` takes it back |
+| `session.archive` | `{"id":"SESSION_ID","archived":true}` | `{}` after archiving a closed session, or bringing it back |
+| `session.delete` | `{"id":"SESSION_ID"}` | `{}` after removing a closed session's log |
 
 List entries contain `id`, `repo`, `open`, `busy`, `first_message`, `last_event`
 (RFC 3339), `in_flight` and `truncated`. `open` means this daemon owns the
@@ -94,6 +97,17 @@ offered or why they are withheld: `state` is `ready`, `unapproved`,
 `container`, `host` `mcp:NAME` and its `network` hosts).
 The approval fields report current effective prefix lists and turn-wide write approval;
 file-backed and session-only prefixes share the lists. They are not setters.
+
+`session.rename`, `session.archive` and `session.delete` let a person keep
+the task list (ADR 39). A name is trimmed to one line and has at most 120
+characters (`-32602` otherwise); an open session records it as a
+`session.title` event its subscribers receive, and a closed one through
+the store. Archiving and deleting refuse a session this daemon has open
+(`-32000`: close it first); all three refuse a session another process has
+open, by its writer lock. Resuming an archived session brings it back.
+Deleting removes the log for good; the files the session changed stay. The
+browser bridge lets a paired device rename and archive, and only this
+computer delete.
 
 `session.resume` returns the already-open session if this daemon owns it.
 Otherwise it uses `core.Resume`, including its exclusive writer lock, recovery
@@ -347,8 +361,9 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
 | `settings.write` | `{"set": {"budget.tokens_hard": 20000000, "budget.cost_hard": null, …}}` | Settings after changing those settings in `config.toml` together |
 
-`session.list` entries also carry `title` (the first sentence of the first
-message, shortened), `started`, `changes` (files the guard allowed the session
+`session.list` entries also carry `title` (the name a person gave the
+session, else the first sentence of the first message, shortened),
+`archived` (ADR 39), `started`, `changes` (files the guard allowed the session
 to write, first 50, from `guard.decision` records, which now carry `path`) and
 `run` (the live run, or the last recorded `run.state`). `models.status` sends
 no credential: it asks each server for its model list and reports whether it

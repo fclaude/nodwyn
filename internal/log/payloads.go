@@ -352,6 +352,21 @@ type Note struct {
 	Text string `json:"text"`
 }
 
+// SessionTitle is the name a person gave a session (ADR 39). The latest one
+// is the session's title; an empty one takes the name back, and the session
+// is read by its first message again.
+type SessionTitle struct {
+	Actor string `json:"actor,omitempty"`
+	Title string `json:"title"`
+}
+
+// SessionArchive records a person archiving a session or bringing it back
+// (ADR 39). The latest one says whether the task list leaves it out.
+type SessionArchive struct {
+	Actor    string `json:"actor,omitempty"`
+	Archived bool   `json:"archived"`
+}
+
 // TurnCheckpoint records a budget decision, including cancellation and the
 // unchanged hard ceiling. Text is redacted by the ordinary Record boundary.
 type TurnCheckpoint struct {

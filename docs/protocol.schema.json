@@ -1725,6 +1725,20 @@
       ],
       "type": "object"
     },
+    "log.SessionArchive": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "archived": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "archived"
+      ],
+      "type": "object"
+    },
     "log.SessionEnd": {
       "properties": {
         "reason": {
@@ -1774,6 +1788,20 @@
         "model",
         "url",
         "tools"
+      ],
+      "type": "object"
+    },
+    "log.SessionTitle": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
       ],
       "type": "object"
     },
@@ -2326,6 +2354,9 @@
     "payload.run.turn": {
       "$ref": "#/$defs/log.RunTurn"
     },
+    "payload.session.archive": {
+      "$ref": "#/$defs/log.SessionArchive"
+    },
     "payload.session.end": {
       "$ref": "#/$defs/log.SessionEnd"
     },
@@ -2337,6 +2368,9 @@
     },
     "payload.session.state": {
       "$ref": "#/$defs/rpc.sessionState"
+    },
+    "payload.session.title": {
+      "$ref": "#/$defs/log.SessionTitle"
     },
     "payload.setting.change": {
       "$ref": "#/$defs/log.SettingChange"
@@ -2507,6 +2541,9 @@
           "$ref": "#/$defs/request.session.approve_all"
         },
         {
+          "$ref": "#/$defs/request.session.archive"
+        },
+        {
           "$ref": "#/$defs/request.session.attach"
         },
         {
@@ -2514,6 +2551,9 @@
         },
         {
           "$ref": "#/$defs/request.session.close"
+        },
+        {
+          "$ref": "#/$defs/request.session.delete"
         },
         {
           "$ref": "#/$defs/request.session.eval"
@@ -2538,6 +2578,9 @@
         },
         {
           "$ref": "#/$defs/request.session.policy.write"
+        },
+        {
+          "$ref": "#/$defs/request.session.rename"
         },
         {
           "$ref": "#/$defs/request.session.restore"
@@ -3522,6 +3565,37 @@
       ],
       "type": "object"
     },
+    "request.session.archive": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.archive"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.archiveParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.attach": {
       "properties": {
         "id": {
@@ -3598,6 +3672,37 @@
         },
         "method": {
           "const": "session.close"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.idParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.session.delete": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.delete"
         },
         "params": {
           "allOf": [
@@ -3852,6 +3957,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.policyWriteParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.session.rename": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.rename"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.renameParams"
             }
           ],
           "unevaluatedProperties": false
@@ -4497,6 +4633,11 @@
       "required": [],
       "type": "object"
     },
+    "result.session.archive": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
     "result.session.attach": {
       "$ref": "#/$defs/log.Attach"
     },
@@ -4506,6 +4647,11 @@
       "type": "object"
     },
     "result.session.close": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "result.session.delete": {
       "properties": {},
       "required": [],
       "type": "object"
@@ -4541,6 +4687,11 @@
     },
     "result.session.policy.write": {
       "$ref": "#/$defs/rpc.inspectionStarted"
+    },
+    "result.session.rename": {
+      "properties": {},
+      "required": [],
+      "type": "object"
     },
     "result.session.restore": {
       "$ref": "#/$defs/rpc.inspectionStarted"
@@ -4667,6 +4818,21 @@
       "required": [
         "id",
         "on"
+      ],
+      "type": "object"
+    },
+    "rpc.archiveParams": {
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "archived"
       ],
       "type": "object"
     },
@@ -5664,6 +5830,21 @@
       ],
       "type": "object"
     },
+    "rpc.renameParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "type": "object"
+    },
     "rpc.restoreParams": {
       "properties": {
         "hash": {
@@ -5923,6 +6104,9 @@
     },
     "rpc.sessionInfo": {
       "properties": {
+        "archived": {
+          "type": "boolean"
+        },
         "busy": {
           "type": "boolean"
         },
@@ -5986,7 +6170,8 @@
         "truncated",
         "title",
         "started",
-        "changes"
+        "changes",
+        "archived"
       ],
       "type": "object"
     },
@@ -7171,6 +7356,30 @@
               "type": "string"
             },
             "kind": {
+              "const": "session.archive"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionArchive"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
               "const": "session.end"
             },
             "payload": {
@@ -7247,6 +7456,30 @@
             },
             "payload": {
               "$ref": "#/$defs/rpc.sessionState"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "session.title"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionTitle"
             },
             "seq": {
               "minimum": 0,

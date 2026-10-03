@@ -15,7 +15,7 @@ out="$here/out"
 mkdir -p "$out"
 (cd "$root" && go build -o "$out/nodwyn" ./cmd/nodwyn && go build -o "$out/demo" ./test/browser/demo)
 [ -d "$here/node_modules/playwright" ] || (cd "$here" && npm install --silent)
-checks=${*:-screens approve firstrun remote mcp credentials}
+checks=${*:-screens approve firstrun remote mcp credentials tasks}
 status=0
 pid=
 trap '[ -n "$pid" ] && kill -KILL -- "-$pid" 2>/dev/null; exit 130' INT TERM

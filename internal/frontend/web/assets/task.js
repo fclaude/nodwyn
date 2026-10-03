@@ -33,6 +33,9 @@ export class TaskView {
     this.early = new Map(); // results that arrived before their id
     this.busy = false;
     this.acting = false;
+    this.renaming = false; // the heading is a field for the task's name
+    this.deleting = false; // the heading asks whether to delete the task
+    this.renameBox = null;
     this.uploading = false; // attachments on their way, an image perhaps waiting for its confirm
     this.timer = 0;
     this.root = h("div", { class: "task" });
@@ -69,6 +72,8 @@ export class TaskView {
     this.notes = null;
     this.notesEditing = false;
     this.inspecting = null;
+    this.renaming = false;
+    this.deleting = false;
     this.operations.clear();
     this.early.clear();
     this.busy = !!item.busy;
@@ -183,6 +188,8 @@ export class TaskView {
     if (p.prompt_id && ["guard.decision", "turn.checkpoint", "cred.register", "run.checkpoint", "setting.change"].includes(event.kind)) this.resolve(p.prompt_id);
     // "Don't ask" switched, here or on another screen: show it as it is.
     if (event.kind === "approval.change" && p.kind === "all" && !this.loading && this.item?.open) this.loadInfo();
+    // A name given here or on another screen: the list and the heading follow.
+    if (event.kind === "session.title" && !this.loading) this.desk.refresh().catch(() => {});
     switch (event.kind) {
       case "prompt.confirm":
       case "prompt.secret":
@@ -458,25 +465,127 @@ export class TaskView {
       close.title = "Close the task. Its conversation is kept and can be resumed.";
       actions.append(close);
     }
+    // A closed task is archived or deleted (ADR 39); an open one is closed
+    // first, so a task that can ask is never put away.
+    if (!item.open && this.conn.has("session.archive")) actions.append(button(item.archived ? "Unarchive" : "Archive", "", () => this.archive(!item.archived), "ghost"));
+    if (!item.open && this.conn.has("session.delete")) actions.append(button("Delete…", "", () => { this.deleting = true; this.header(); }, "danger"));
     const title = item.title || item.first_message || "Untitled task";
-    this.el.head.replaceChildren(
-      h(
+    const meta = h(
+      "div",
+      { class: "task-meta" },
+      icon("folder", 15),
+      h("strong", {}, this.desk.folderName(item.repo)),
+      h("span", { class: "mono" }, shortPath(item.repo, home)),
+      item.started ? h("span", { class: "started" }, `· started ${sameDay(item.started) ? clock(item.started) : ago(item.started)}`) : null,
+      item.archived ? h("span", { class: "badge plain" }, "archived") : null,
+    );
+    const canRename = this.conn.has("session.rename");
+    let titles;
+    if (this.renaming) titles = this.renameBox ||= h("div", { class: "titles" }, this.renameForm(), meta);
+    else {
+      this.renameBox = null;
+      titles = h(
         "div",
         { class: "titles" },
-        h("h1", {}, title),
-        h(
-          "div",
-          { class: "task-meta" },
-          icon("folder", 15),
-          h("strong", {}, this.desk.folderName(item.repo)),
-          h("span", { class: "mono" }, shortPath(item.repo, home)),
-          item.started ? h("span", { class: "started" }, `· started ${sameDay(item.started) ? clock(item.started) : ago(item.started)}`) : null,
-        ),
-      ),
+        h("div", { class: "title-row" }, h("h1", { ondblclick: canRename ? () => this.startRename() : undefined }, title), canRename ? h("button", { type: "button", class: "icon-btn rename-btn", "aria-label": "Rename task", title: "Rename", onclick: () => this.startRename() }, icon("pencil", 15)) : null),
+        meta,
+      );
+    }
+    const rest = [
       st.label ? h("span", { class: `pill ${st.cls}` }, st.cls ? h("span", { class: `dot ${st.cls}` }) : null, st.label) : "",
       actions,
+      this.deleting && !item.open
+        ? h(
+            "div",
+            { class: "callout delete-confirm", role: "alert" },
+            h("span", {}, "Delete this task for good? Its conversation and its log go; the files it changed stay as they are."),
+            h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small dark", disabled: this.acting, onclick: () => this.remove() }, "Delete"), h("button", { type: "button", class: "btn small ghost", onclick: () => { this.deleting = false; this.header(); } }, "Cancel")),
+          )
+        : "",
       keysLocked ? h("details", { class: "callout", open: true }, h("summary", {}, "Unlock your keys to resume: this task's model needs one."), keychainForm({ conn: this.conn, desk: this.desk }, { onDone: () => this.header() })) : "",
-    );
+    ];
+    // While a name is typed, the heading around it is redrawn but the field
+    // stays, with its text and its focus.
+    if (titles === this.el.head.firstChild) {
+      while (this.el.head.lastChild !== titles) this.el.head.lastChild.remove();
+      this.el.head.append(...rest);
+    } else this.el.head.replaceChildren(titles, ...rest);
+  }
+  startRename() {
+    this.renaming = true;
+    this.header();
+  }
+  // renameForm is the field the heading becomes: Enter or leaving it saves,
+  // Escape keeps the name as it was. An empty name gives the task back the
+  // title its first message gives it.
+  renameForm() {
+    const item = this.item;
+    const input = h("input", { class: "input title-input", value: item.title || "", maxlength: "120", "aria-label": "Task name", placeholder: "Name this task", autocomplete: "off" });
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      this.renaming = false;
+      const name = input.value.trim();
+      if (save && name !== (item.title || "")) this.rename(item, name);
+      else if (this.item === item) this.header();
+    };
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener("blur", () => finish(true));
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+    return h("form", { class: "rename", onsubmit: (event) => { event.preventDefault(); finish(true); } }, input);
+  }
+  async rename(item, name) {
+    if (name) item.title = name;
+    if (this.item === item) this.header();
+    try {
+      await this.conn.call("session.rename", { id: item.id, title: name });
+    } catch (error) {
+      toast(error.message);
+    }
+    await this.desk.refresh().catch(() => {});
+  }
+  async archive(archived) {
+    const item = this.item;
+    this.acting = true;
+    this.controls();
+    try {
+      await this.conn.call("session.archive", { id: item.id, archived });
+      toast(archived ? "Archived. It waits under Archived in the sidebar." : "Back in the task list.");
+      await this.desk.refresh();
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      this.acting = false;
+      this.refreshAll();
+    }
+  }
+  async remove() {
+    const item = this.item;
+    this.acting = true;
+    this.header();
+    try {
+      await this.conn.call("session.delete", { id: item.id });
+    } catch (error) {
+      toast(error.message);
+      this.acting = false;
+      this.refreshAll();
+      return;
+    }
+    this.acting = false;
+    this.deleting = false;
+    toast("Deleted the task.");
+    this.navigate("#/");
+    await this.desk.refresh().catch(() => {});
+    drafts.delete(item.id);
   }
   async act(method, message) {
     const item = this.item;

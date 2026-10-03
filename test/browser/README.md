@@ -12,6 +12,7 @@ leaves screenshots in `out/`. Nothing touches real sessions, keys or folders.
 | `remote` | `nodwyn ui --listen` with another host name: a phone pairs by name, answers, and the log records `via web:phone`; launch tickets are refused remotely |
 | `mcp` | Connections adds, reviews and approves an MCP server; an undeclared tool asks every call without a standing answer; a read tool is gathered silently |
 | `credentials` | A keychain created without a passphrase; Connections › Credentials stores a key allowed for one host, replaces it, connects an OAuth2 account through a fake provider and allows it with its scopes, removes the key; Settings sets and removes the passphrase; restarted, the keychain is open without unlocking; nothing sideways at phone width |
+| `tasks` | Tasks sit under their folders, the latest active first, and a message moves its folder up; a folder shows five and Show more, folds and stays folded across a reload; a task renamed from its heading (Escape keeps the name), archived, brought back and deleted after a confirm, each still so after a reload; search reaches every folder; the list at phone width |
 
 `go run ./test/browser/demo -seed` starts the same world by hand and prints a
 launch URL; `-oauth-only` runs just a fake OAuth2 provider (client id

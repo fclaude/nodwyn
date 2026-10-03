@@ -12,6 +12,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
 func TestAttentionListCarriesPendingPromptsAndListCarriesChanges(t *testing.T) {
@@ -151,5 +152,63 @@ func TestViaNamesTheScreenAfterTheKernelIdentity(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("decision does not name the screen")
+	}
+}
+
+// A person names, archives and deletes tasks (ADR 39). An open task records
+// its name where a console showing it hears of it; it is neither archived
+// nor deleted until it is closed.
+func TestTasksAreNamedArchivedAndDeleted(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	id := opened(t, c, t.TempDir())
+	subscribed(t, c, id, 0, 100)
+	listed := func() sessionInfo {
+		t.Helper()
+		var list []sessionInfo
+		if err := json.Unmarshal(c.ok("session.list", map[string]any{}), &list); err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range list {
+			if s.ID == id {
+				return s
+			}
+		}
+		return sessionInfo{}
+	}
+	c.ok("session.rename", map[string]any{"id": id, "title": "  Flaky test,\n second try "})
+	named := c.until(string(log.KindSessionTitle))
+	if p := decodePayload[log.SessionTitle](t, named[len(named)-1].Payload); p.Title != "Flaky test, second try" || p.Actor == "" {
+		t.Fatalf("recorded name: %+v", p)
+	}
+	if got := listed(); got.Title != "Flaky test, second try" || got.Archived {
+		t.Fatalf("listed: %+v", got)
+	}
+	if r := c.call("session.rename", map[string]any{"id": id, "title": strings.Repeat("x", maxName+1)}); r.Error == nil || r.Error.Code != -32602 {
+		t.Fatalf("long name: %+v", r.Error)
+	}
+	if r := c.call("session.archive", map[string]any{"id": id, "archived": true}); r.Error == nil {
+		t.Fatal("archived an open task")
+	}
+	if r := c.call("session.delete", map[string]any{"id": id}); r.Error == nil {
+		t.Fatal("deleted an open task")
+	}
+	c.ok("session.close", map[string]any{"id": id})
+	c.ok("session.archive", map[string]any{"id": id, "archived": true})
+	c.ok("session.rename", map[string]any{"id": id, "title": "Put away"})
+	if got := listed(); got.Title != "Put away" || !got.Archived {
+		t.Fatalf("closed, archived and renamed: %+v", got)
+	}
+	c.ok("session.delete", map[string]any{"id": id})
+	if _, err := os.Stat(log.SessionPath(o.Paths.SessionsDir, id)); !os.IsNotExist(err) {
+		t.Fatalf("log after delete: %v", err)
+	}
+	if got := listed(); got.ID != "" {
+		t.Fatalf("deleted task listed: %+v", got)
+	}
+	if r := c.call("session.rename", map[string]any{"id": id, "title": "Gone"}); r.Error == nil {
+		t.Fatal("renamed a deleted task")
 	}
 }

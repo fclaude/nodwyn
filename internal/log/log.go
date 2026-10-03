@@ -71,6 +71,8 @@ const (
 	KindFileVersion    Kind = "file.version"    // a file's previous content kept before a write (ADR 22)
 	KindAttach         Kind = "attach"          // a file the person attached: its extracted, redacted text (ADR 22)
 	KindDocUpload      Kind = "doc.upload"      // a document sent to a document service: file, size, hash, destination, the document's id; never content (W5)
+	KindSessionTitle   Kind = "session.title"   // the name a person gave the session; an empty one gives it back its first message (ADR 39)
+	KindSessionArchive Kind = "session.archive" // a person archived the session or brought it back (ADR 39)
 )
 
 var kinds = map[Kind]bool{
@@ -80,7 +82,7 @@ var kinds = map[Kind]bool{
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSettingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,
 	KindJevReq: true, KindCredRegister: true, KindCredRefresh: true, KindMCPEgress: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true, KindAttach: true,
-	KindDocUpload: true,
+	KindDocUpload: true, KindSessionTitle: true, KindSessionArchive: true,
 }
 
 // Known reports whether k is one of the fixed event kinds.
@@ -371,6 +373,24 @@ func NewSessionID(now time.Time) string {
 // SessionPath returns the log path for a session under dir.
 func SessionPath(dir, session string) string {
 	return filepath.Join(dir, session+".jsonl")
+}
+
+// Remove deletes a session log no process has open. It takes the writer's
+// lock first, so a log another process appends to is refused rather than
+// removed from under it.
+func Remove(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("log: remove: %w", err)
+	}
+	defer f.Close()
+	if err := lock(f); err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("log: remove: %w", err)
+	}
+	return nil
 }
 
 // lock gives one process exclusive append ownership until the file is closed.

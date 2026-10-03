@@ -176,3 +176,16 @@ from `[jev] price_input` and `price_output` (the API reports no cost),
 absent without prices. Both are absent when no answer came back. A turn's
 budget state gains `judge_calls`, `judge_tokens`, `judge_cost` and
 `judge_unpriced`. All optional; an older record reads as unknown.
+
+## Amendment — 2026-10-03: `session.title` and `session.archive`
+
+`session.title` records the name a person gave a session (ADR 39): who
+gave it (`actor`) and the `title`, empty when the name is taken back. The
+latest one is the session's title. `session.archive` records a person
+archiving a session or bringing it back: `actor` and `archived`; the
+latest one counts, and resuming an archived session records `archived`
+false. Both may be appended to a closed session's log by whoever holds
+its lock, as `summary` records are, through the same redaction boundary.
+The window ignores them. `session.delete` removes a whole log, which this
+ADR's writer otherwise never does; it takes the writer's lock first, so a
+log another process has open is refused, not removed.

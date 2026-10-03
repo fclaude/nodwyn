@@ -40,3 +40,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0036](./0036-agents-md-in-the-system-prompt.md) — A repository's AGENTS.md joins the system prompt
 - [0037](./0037-validate-before-done.md) — Work on nodwyn is validated before it is called done
 - [0038](./0038-several-edits-in-one-call.md) — fs-edit takes several edits to one file in one call
+- [0039](./0039-named-archived-deleted-tasks.md) — Tasks are named, archived and deleted, and listed by folder (amends 2)

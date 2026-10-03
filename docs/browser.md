@@ -82,6 +82,24 @@ Workspaces. The name is kept in `workspaces.toml` in the config directory;
 the kind and mounts in the folder's `.nodwyn/workspace.toml` (a code folder
 with no mounts needs none). They apply to tasks started afterwards.
 
+**The task list.** The sidebar puts what needs your answer first, across
+folders. Every other task is under its folder, newest activity first, and
+the folder whose task worked last comes first; the order follows as turns
+end and tasks close. A folder shows five tasks and **Show N more**, and
+its heading folds it (this browser remembers which). Search matches
+titles and folder paths in every folder and in the archive
+([ADR 39](adr/0039-named-archived-deleted-tasks.md)).
+
+A task is read by its first message until you name it: the pencil beside
+its heading (or a double click on it) turns the heading into a field;
+Enter or clicking away saves, Escape keeps the name, and an empty name
+gives back the first message. A closed task has **Archive**, which moves
+it under **Archived** at the end of the list (**Unarchive**, or resuming
+it, brings it back), and **Delete…**, which asks, then removes its
+conversation and log for good and leaves the files it changed as they
+are. An open task is closed first. A paired phone renames and archives;
+only this computer deletes.
+
 **Attaching.** The paperclip in either composer attaches files to the next
 message (at most 20 MB each): text formats, `.docx`, `.xlsx`, `.pptx`, PDF
 when `pdftotext` is installed, and images (PNG, JPEG, GIF, WebP; at most
