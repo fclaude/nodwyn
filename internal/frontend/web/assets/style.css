@@ -480,6 +480,8 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 .streaming { white-space: pre-wrap; }
 .thinking { font-size: 13px; color: var(--faint); }
+/* Hidden unless Settings › This browser shows it (settings.js). */
+:root:not([data-thinking="shown"]) .thinking { display: none; }
 /* One line, its first line of thought after the label, cut to the width. */
 .thinking summary { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .thinking summary .gist { color: var(--muted); margin-left: 8px; }

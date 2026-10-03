@@ -7,9 +7,10 @@ import { renderSidebar } from "./sidebar.js";
 import { renderHome } from "./home.js";
 import { TaskView } from "./task.js";
 import { renderWorkspaces, renderConnections } from "./pages.js";
-import { renderSettings, applyTheme, storedTheme } from "./settings.js";
+import { renderSettings, applyTheme, storedTheme, applyThinking, storedThinking } from "./settings.js";
 
 applyTheme(storedTheme());
+applyThinking(storedThinking());
 const conn = new Connection();
 const desk = new Desk(conn);
 const task = new TaskView(conn, desk, navigate);

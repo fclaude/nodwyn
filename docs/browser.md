@@ -54,8 +54,8 @@ you wrote it. Its sections:
 - **Context window** — the water marks between which a task's context is
   summarized or trimmed, the largest tool result shown whole, and the room
   kept for each reply.
-- The keychain, paired devices, this browser's appearance and
-  notifications, and this connection.
+- The keychain, paired devices, this browser's appearance, whether it
+  shows the model's thinking, and its notifications, and this connection.
 
 A field left empty takes its default, which it shows; clearing one puts the
 default back. Changes wait in a bar at the bottom of the page and are saved
@@ -229,11 +229,12 @@ port and code; with it, the port is yours and a device's cookie survives
 restarts.
 
 The desk shows saved and open sessions, their repository and last activity,
-recorded conversations, streamed text, collapsed thinking, tool arguments and
-results, guard decisions, and model usage. Reads and searches in a row fold
-into one group; a reply that only thinks and reads puts its thinking in that
-group, between the calls, under the thought's first line, rather than in a
-line of its own. It reads a fixed log prefix in pages
+recorded conversations, streamed text, tool arguments and results, guard
+decisions, and model usage. Reads and searches in a row fold into one group.
+The model's thinking is hidden, as in the TUI without `:thinking`, unless
+Settings › This browser › The model's thinking is **Shown** (kept in this
+browser); shown, a reply that only thinks and reads puts its thinking in
+that group, between the calls, under the thought's first line. It reads a fixed log prefix in pages
 before applying live events, deduplicating durable sequence numbers. Reloading
 the page reads that prefix again. A reconnect never retries an operation. Browser
 reload retains pairing through the session cookie, and the address keeps the

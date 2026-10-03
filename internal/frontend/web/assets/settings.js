@@ -28,6 +28,29 @@ export function applyTheme(mode) {
   }
 }
 
+// ---------- the model's thinking (a per-browser convenience; hidden unless chosen) ----------
+// Most of the time nobody reads it, and a row per reply buries the work, so
+// the transcript keeps it out of sight, as the TUI does without :thinking.
+// Shown or hidden is a class on the page, so it applies to what is already
+// drawn without drawing it again.
+export function storedThinking() {
+  try {
+    return localStorage.getItem("nodwyn-thinking") === "shown";
+  } catch {
+    return false;
+  }
+}
+export function applyThinking(shown) {
+  if (shown) document.documentElement.dataset.thinking = "shown";
+  else delete document.documentElement.dataset.thinking;
+  try {
+    if (shown) localStorage.setItem("nodwyn-thinking", "shown");
+    else localStorage.removeItem("nodwyn-thinking");
+  } catch {
+    /* a browser that refuses storage still gets the choice for this tab */
+  }
+}
+
 // What a task does without asking: [approval] in config.toml (ADR 35).
 const writeChoices = [["allow", "Without asking"], ["ask", "Ask me"]];
 const commandChoices = [["judge", "The judge, then me"], ["ask", "Ask me"], ["allow", "Without asking"]];
@@ -588,6 +611,8 @@ function browserSection(ctx) {
   const { conn, desk, rerender } = ctx;
   const theme = storedTheme();
   const themeButton = (mode, label) => h("button", { type: "button", class: "chip", "aria-pressed": String(theme === mode), onclick: () => { applyTheme(mode); rerender(); } }, label);
+  const shown = storedThinking();
+  const thinkingButton = (value, label) => h("button", { type: "button", class: "chip", "aria-pressed": String(shown === value), onclick: () => { applyThinking(value); rerender(); } }, label);
   const notifier = desk.notifier;
   const notifyNote = !notifier.available
     ? "This browser can't show desktop notifications here (they need a secure page)."
@@ -599,6 +624,7 @@ function browserSection(ctx) {
     "This browser",
     "",
     ...row("Appearance", h("div", { class: "row-actions" }, themeButton("dark", "Dark"), themeButton("light", "Light"), themeButton("system", "Match the system")), h("p", { class: "hint" }, "Dark unless you choose otherwise. Kept in this browser only.")),
+    ...row("The model's thinking", h("div", { class: "row-actions" }, thinkingButton(false, "Hidden"), thinkingButton(true, "Shown")), h("p", { class: "hint" }, "Hidden unless you choose otherwise: shown, it sits with the calls it led to, under its first line. The log keeps it either way. Kept in this browser only.")),
     ...row(
       "Desktop notifications",
       h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", disabled: !notifier.available || !conn.live, onclick: async () => { await notifier.toggle(); rerender(); } }, notifier.enabled ? "Turn off for this tab" : "Turn on for this tab")),

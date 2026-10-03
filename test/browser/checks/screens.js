@@ -41,16 +41,39 @@ const out = process.argv[2];
     await page.waitForSelector(".ask-card", { timeout: 10000 });
     await page.waitForTimeout(800);
   };
-  await shoot("task", { width: 1440, height: 1080 }, "light", null, taskHash);
+  // Thinking is hidden unless this browser chose to show it.
+  const visibleThinking = (page) => page.$$eval(".thinking", (ns) => ns.filter((n) => n.getClientRects().length > 0).length);
+  await shoot("task", { width: 1440, height: 1080 }, "light", null, async (page) => {
+    await taskHash(page);
+    const thoughts = await page.$$eval(".thinking", (ns) => ns.length);
+    if (thoughts !== 2 || (await visibleThinking(page)) !== 0) throw new Error(`by default ${await visibleThinking(page)} of ${thoughts} thinking rows show`);
+  });
+  // Settings › This browser shows it and hides it again, and remembers.
+  const showThinking = async (page) => {
+    await page.evaluate(() => (location.hash = "#/settings"));
+    await page.click('button.chip:has-text("Shown")');
+    const shown = await page.evaluate(() => [document.documentElement.dataset.thinking, localStorage.getItem("nodwyn-thinking")]);
+    if (shown.join() !== "shown,shown") throw new Error(`after Shown: ${shown}`);
+  };
+  await shoot("settings-thinking", { width: 1280, height: 800 }, "light", null, async (page) => {
+    await showThinking(page);
+    await page.click('button.chip:has-text("Hidden")');
+    const hidden = await page.evaluate(() => [document.documentElement.dataset.thinking, localStorage.getItem("nodwyn-thinking")]);
+    if (hidden[0] !== undefined || hidden[1] !== null) throw new Error(`after Hidden: ${hidden}`);
+    await page.click('button.chip:has-text("Shown")');
+    await page.locator('button.chip:has-text("Shown")').scrollIntoViewIfNeeded();
+  });
   // A reply that only thinks and reads goes with its reads: its thinking is
   // a row in their group, never a line of its own under it.
   const activity = async (page) => {
+    await showThinking(page);
     await taskHash(page);
     await page.click(".turn.agent .activity > summary");
     await page.locator(".turn.agent .activity").scrollIntoViewIfNeeded();
     const inGroup = await page.$$eval(".turn.agent .activity-body > .thinking", (ns) => ns.map((n) => n.querySelector("summary").textContent));
     const alone = await page.$$eval(".turn.agent > .thinking", (ns) => ns.length);
     if (inGroup.length !== 2 || alone !== 0) throw new Error(`thinking in the group: ${JSON.stringify(inGroup)}; on its own: ${alone}`);
+    if ((await visibleThinking(page)) !== 2) throw new Error(`shown, ${await visibleThinking(page)} thinking rows show`);
     if (inGroup[0] !== "ThinkingStart by finding where the list is drawn.") throw new Error(`thinking row reads ${JSON.stringify(inGroup[0])}`);
   };
   await shoot("task-activity", { width: 1440, height: 1080 }, "dark", null, activity);
