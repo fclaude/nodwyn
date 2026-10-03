@@ -115,9 +115,10 @@ answered (a daemon client's identity, `judge` or `unattended`). An
 
 ### Where each phase lives
 
-Every phase of [plan.md](../plan.md) up to P10 is built except the optional
-P8. This is where to start reading each, and where P8 and contained local
-MCP servers would go.
+Every phase of the v0 plan up to P10 is built except the optional P8 (the
+book's part "How it was built, and what is next" tells how). This is where
+to start reading each, where P8 would go, and where contained local MCP
+servers (W3b) live.
 
 | Phase | Where it lives |
 |---|---|

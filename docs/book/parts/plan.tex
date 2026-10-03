@@ -83,8 +83,8 @@ took a third of the tool calls.
 \chapter{What was built}
 
 The spec's build order was followed, except for the optional L3, with the
-phase names of \file{plan.md}. The promotion tags record what shipped;
-their numbers drifted from the plan's names.
+build plan's phase names. The promotion tags record what shipped; their
+numbers drifted from the plan's names.
 
 \begin{center}
 \small
@@ -133,10 +133,23 @@ or only the hosts an egress proxy lets through; and, last, a chat as the
 one way to work in the console, in which writes in the folder go ahead,
 the judge answers commands before you are asked, and soft limits no longer
 interrupt a turn, with \code{nodwyn run} kept as a batch tool (\adr{35}).
+After it came the judge's key and the model keys in panels of their own in
+Connections \textrightarrow{} Credentials, working rules drawn from a review
+of that change (\adr{32}), and a repository's \file{AGENTS.md} in the
+system prompt (\adr{36}).
 
 \chapter{What is next}
 
+\file{plan.md} keeps the order and the reasons; in short:
+
 \begin{description}[leftmargin=1.6em]
+\item[Worktrees] (\adr{34}, WT0--WT5): each session on its own linked
+  worktree and branch, so sessions on one repository stop sharing a working
+  tree, and a session commits, rebases and, when asked, pushes \code{main}'s
+  new head.
+\item[Measurement] the benchmark cohort again on the current defaults, and
+  the leave-one-out ablation of the working habits (\adr{32}): the prompts
+  and the loop have changed since the one run they were adopted on.
 \item[L3] (P8, optional): a calibrated classifier for the class-unknown
   residual, which feeds the decision with binding and never decides alone.
 \item[Go 1.27] (dated): raise the Go base once the build machine's

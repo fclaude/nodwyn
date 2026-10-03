@@ -5,7 +5,7 @@ embedded in it for orchestration, one guard at the only Scheme→Go exit, and
 a binding table as the sole authority over where a secret may go.
 
 - [SPEC.md](SPEC.md) — the architecture and its invariants
-- [plan.md](plan.md) — the bootstrap-then-self-host build plan
+- [plan.md](plan.md) — what is built next, in order, and why
 - [docs/manual.md](docs/manual.md) — how to read the code and how to use nodwyn
 - [docs/expert/expert.pdf](docs/expert/expert.pdf) — *Becoming a nodwyn Expert*, a field guide from first session to your own strategies in Scheme (`make expert` rebuilds it)
 - [docs/adr/](docs/adr/) — decision records

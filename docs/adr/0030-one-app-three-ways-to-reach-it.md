@@ -1,6 +1,6 @@
 # ADR 0030: One app, three ways to reach it — desktop, browser, phone
 
-- Status: **accepted** (implementation tracked as the D track in plan.md)
+- Status: **accepted**; implemented as D1–D9, 2026-09-30 to 2026-10-01
 - Date: 2026-09-30
 
 ## Context

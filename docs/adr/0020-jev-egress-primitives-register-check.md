@@ -151,8 +151,8 @@ Jev — crosses the guard as a Scheme application.
 - The exfil suite gains a scenario: a Jev call with an unbound credential
   ⇒ Deny; a Jev call with a bound credential whose payload contains a
   canary ⇒ the canary is redacted in the sent payload and in `jev.req`.
-- The repo layout in plan.md drops `internal/jev/`; the Jev handler lives
-  in `internal/prim/` alongside the other host primitives.
+- There is no `internal/jev/`: the Jev handler lives in `internal/prim/`
+  alongside the other host primitives.
 
 
 ## Fixed request scope implemented — 2026-09-22
