@@ -84,6 +84,30 @@ function detailsBlock(label, value) {
   return h("details", {}, h("summary", {}, label), h("pre", {}, typeof value === "string" ? value : JSON.stringify(value, null, 2)));
 }
 
+// spanWords says how long something took the way a person would: tenths of
+// a second while it is short, then seconds, minutes and hours.
+function spanWords(ms) {
+  if (ms < 10000) return `${(Math.max(0, ms) / 1000).toFixed(1)} s`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return s % 60 ? `${m} m ${s % 60} s` : `${m} m`;
+  const hr = Math.floor(m / 60);
+  return m % 60 ? `${hr} h ${m % 60} m` : `${hr} h`;
+}
+
+// commandHeader is what a folded run of commands says, as [label, what]: how
+// many ran and for how long together, whether one is running now or waiting
+// for an answer, and how many failed. The time is the calls' own, as each
+// row shows it, so a wait for an answer counts once the command has run.
+function commandHeader(g, now) {
+  const ran = (n) => `Ran ${n} ${n === 1 ? "command" : "commands"}`;
+  const failed = g.failed ? `${g.failed} failed` : "";
+  if (g.waiting) return [g.done ? `${ran(g.done)}, waiting for your answer` : "Waiting for your answer", failed];
+  if (g.startedAt) return [g.done ? `${ran(g.done)}, running another` : "Running a command", [spanWords(g.ms + now - g.startedAt), failed].filter(Boolean).join(" · ")];
+  return [ran(g.done), [`in ${spanWords(g.ms)}`, failed].filter(Boolean).join(" · ")];
+}
+
 // The upload setting's values as Settings and the question name them.
 export const uploadLabels = { ask: "allow by hand", allow: "always allow", deny: "deny" };
 
@@ -123,6 +147,7 @@ export class Transcript {
     this.streamThinking = null;
     this.thought = null;
     this.usage = null;
+    this.closeCommands();
   }
   get empty() {
     return !this.el.querySelector(".turn");
@@ -135,6 +160,7 @@ export class Transcript {
     this.streamThinking = null;
     this.thought = null;
     this.usage = null;
+    this.closeCommands();
   }
   agent() {
     if (!this.turn) {
@@ -143,11 +169,47 @@ export class Transcript {
     }
     return this.turn;
   }
+  // closeCommands ends the run of commands in view: the next command starts
+  // a run of its own, and the clock stops.
+  closeCommands() {
+    this.commandGroup = null;
+    this.stopClock();
+  }
+  stopClock() {
+    if (this.clock) {
+      clearInterval(this.clock);
+      this.clock = null;
+    }
+  }
+  // paintCommands writes a run's header from its state and the clock.
+  paintCommands(g) {
+    const [label, what] = commandHeader(g, Date.now());
+    g.label.textContent = label;
+    g.what.textContent = what;
+  }
+  // tickClock repaints the open run once a second while a command in it
+  // runs or waits (the header says which). A transcript no longer on the
+  // page (the person left the task) stops its clock: no result will come to
+  // stop it.
+  tickClock() {
+    const g = this.commandGroup;
+    if (!g || !g.startedAt || !this.el.isConnected) {
+      this.stopClock();
+      return;
+    }
+    this.paintCommands(g);
+  }
+  // startClock keeps one timer per transcript while a command runs.
+  startClock() {
+    if (this.clock) return;
+    this.clock = setInterval(() => this.tickClock(), 1000);
+  }
   audit(label, payload, cls = "") {
     const node = h("details", { class: `audit ${cls}` }, h("summary", {}, label));
     if (payload !== undefined) node.append(h("pre", {}, typeof payload === "string" ? payload : JSON.stringify(payload, null, 2)));
     this.agent().append(node);
     this.group = null;
+    this.closeCommands();
     return node;
   }
   // render draws one event; it returns nothing and decides nothing.
@@ -185,6 +247,7 @@ export class Transcript {
           this.streamText = h("div", { class: "prose streaming" });
           this.agent().append(this.streamText);
           this.group = null;
+          this.closeCommands();
         }
         this.streamText.textContent += p.Text ?? p.text ?? "";
         break;
@@ -212,9 +275,11 @@ export class Transcript {
           // A reply that only thinks and calls tools goes with its calls: into
           // the group of reads it continues, or the one its reads will start.
           // In rows of their own, forty such replies stacked forty "Thinking"
-          // lines under one group.
+          // lines under one group. Commands fold the same way.
+          const first = (p.tool_calls || [])[0];
+          const open = category(first?.name) === "command" ? this.commandGroup : this.group;
           if (p.content) turn.append(node);
-          else if (this.group) this.group.body.append(node);
+          else if (open) open.body.append(node);
           else {
             turn.append(node);
             this.thought = node;
@@ -223,6 +288,7 @@ export class Transcript {
         if (p.content) {
           turn.append(markdown(p.content));
           this.group = null;
+          this.closeCommands();
         }
         if (p.usage) {
           const u = p.usage;
@@ -399,6 +465,7 @@ export class Transcript {
     const kind = category(p.name);
     const summaryText = argSummary(p.args);
     if (kind === "read") {
+      this.closeCommands();
       if (!this.group) {
         const label = h("span", { class: "label" }, isMCP(p.name) ? "Gathered" : "Looked around");
         const what = h("span", { class: "what" });
@@ -424,11 +491,38 @@ export class Transcript {
       this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), group: g };
       return;
     }
+    if (kind === "command") {
+      // Commands in a row fold into one run, as reads fold into "Looked
+      // around": the header says how many ran and for how long, whether one
+      // is running now or waiting for an answer, and how many failed; each
+      // command keeps its row inside. A read, a write or a reply's text ends
+      // the run, so the transcript keeps its order.
+      this.group = null;
+      if (!this.commandGroup) {
+        const label = h("span", { class: "label" });
+        const what = h("span", { class: "what" });
+        const body = h("div", { class: "activity-body" });
+        const el = h("details", { class: "activity commands" }, h("summary", {}, h("span", { class: "chev" }, icon("right", 14)), label, what), body);
+        this.agent().append(el);
+        if (this.thought) body.append(this.thought);
+        this.thought = null;
+        this.commandGroup = { el, body, what, label, done: 0, failed: 0, ms: 0, startedAt: 0, waiting: false };
+      }
+      const g = this.commandGroup;
+      const row = h("details", { class: "call" }, h("summary", {}, h("span", { class: "name" }, commandLine(p.args) || summaryText), h("span", { class: "stat" }, "running…")), h("div", { class: "call-body" }, detailsBlock("Arguments", p.args)));
+      g.body.append(row);
+      g.startedAt = Date.now();
+      g.waiting = false;
+      this.paintCommands(g);
+      this.startClock();
+      this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), commandGroup: g };
+      return;
+    }
     this.group = null;
+    this.closeCommands();
     this.thought = null;
     let line;
-    if (kind === "command") line = [icon("terminal", 15), h("span", { class: "mono" }, commandLine(p.args) || summaryText)];
-    else if (kind === "write") {
+    if (kind === "write") {
       const a = argsObject(p.args);
       const verb = { "fs-edit": "Edit", "doc-export": "Export" }[p.name] || "Write";
       line = [icon("file", 15), h("span", {}, verb), h("span", { class: "mono" }, a.path || a.target || summaryText)];
@@ -441,9 +535,21 @@ export class Transcript {
     this.agent().append(step, detail);
     this.call = { id: p.id, name: p.name, kind, step, result, note, detail };
   }
-  // waiting marks the call in progress as stopped at a question, or not.
+  // waiting marks the call in progress as stopped at a question, or not. It
+  // is called each time the page places its prompts, so only a change of
+  // state repaints. A command waiting for an answer is not running: its run
+  // says it waits until the answer comes.
   waiting(on) {
     const c = this.call;
+    if (c?.commandGroup) {
+      const g = c.commandGroup;
+      if (g.waiting === on) return;
+      g.waiting = on;
+      c.stat.textContent = on ? "waiting for your answer" : "running…";
+      this.paintCommands(g);
+      this.startClock();
+      return;
+    }
     if (!c?.result || c.result.className !== "result") return;
     c.result.textContent = on ? "waiting for your answer" : "running…";
   }
@@ -489,6 +595,24 @@ export class Transcript {
         c.group.counts.failed = (c.group.counts.failed || 0) + 1;
         c.group.what.textContent = describe(c.group.counts);
       }
+    } else if (c.kind === "command") {
+      // A finished command freezes its row and adds to its run. A failed or
+      // refused one opens its row and the run around it, so it is seen
+      // without looking for it.
+      const g = c.commandGroup;
+      const status = p.ok ? exitStatus(body) : null;
+      const failed = !p.ok || (status !== null && status !== 0);
+      g.done++;
+      if (failed) g.failed++;
+      g.ms += typeof p.ms === "number" ? p.ms : Date.now() - g.startedAt;
+      g.startedAt = 0;
+      g.waiting = false;
+      c.stat.textContent = [!p.ok ? "failed" : status !== null ? `exit ${status}` : "done", ms, c.stat.dataset.decision].filter(Boolean).join(" · ");
+      c.stat.className = `stat ${failed ? "failed" : "ok"}`;
+      c.body.append(detailsBlock(p.ok ? "Result" : "Error", body));
+      if (failed) c.row.open = g.el.open = true;
+      this.paintCommands(g);
+      this.stopClock();
     } else {
       const status = p.ok ? exitStatus(body) : null;
       c.result.replaceChildren();

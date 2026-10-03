@@ -41,10 +41,11 @@ are faster.
   nothing either way: say so. Setup whose errors are ignored (an unchecked
   `os.WriteFile`) lets a test pass on a state that never existed.
 - **The console** (`internal/frontend/web/assets`: JS, CSS): Go's tests do not
-  run it. Run its browser check, `bash test/browser/run.sh <check>` (`screens`,
-  `approve`, `firstrun`, `remote`, `mcp`, `credentials`; screenshots land in
-  `test/browser/out`), and extend the check to the states your change adds: a
-  setting off, after a save, the new action, the page that links to it. The
+  run it. Run its browser check, `bash test/browser/run.sh <check>`
+  (`screens`, `transcript`, `approve`, `firstrun`, `remote`, `mcp`,
+  `credentials`; screenshots land in `test/browser/out`), and extend the
+  check to the states your change adds: a setting off, after a save, the new
+  action, the page that links to it. The
   check performs the new action and checks what it did (the request sent,
   the state after it): one that only finds an element passes on a feature
   that does nothing. If Chromium is missing: `cd test/browser && npx

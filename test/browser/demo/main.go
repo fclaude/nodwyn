@@ -431,12 +431,15 @@ func respond(req fake.Request) fake.Turn {
 			{ID: "w1", Name: "fs-edit", Args: map[string]any{"path": "app.js", "old": "  row.append(node(\"span\", session.repo, \"meta\"));\n", "new": "  const when = ago(session.lastEvent);\n  const state = session.inFlight ? \"running\" : \"idle\";\n  const meta = [session.repo, when, state].join(\" · \");\n  row.append(node(\"span\", meta, \"meta\"));\n  row.title = session.id;\n"}},
 		}}
 	case 3:
-		// Two steps are marked before the command that asks for approval
-		// and two after it, so the browser check sees the count change.
+		// Two steps are marked before the commands that ask for approval
+		// and two after them, so the browser check sees the count change.
+		// The two commands in a row fold into one run in the transcript
+		// (approve.js checks what it says while one waits and once both ran).
 		return fake.Turn{ToolCalls: []fake.ToolCall{
 			planStep("p1", 1, "done", "app.js shows when it changed and whether it is running"),
 			planStep("p2", 2, "done", "failed before the change, passes after it"),
 			{ID: "x1", Name: "shell-exec", Args: map[string]any{"cmd": "ls", "args": []any{"-la"}}},
+			{ID: "x2", Name: "shell-exec", Args: map[string]any{"cmd": "wc", "args": []any{"-l", "app.js"}}},
 			planStep("p3", 3, "skipped", "the notes are the person's list: left to them"),
 			planStep("p4", 4, "done", "ls shows app.js changed; the demo has no phone to check on"),
 		}}

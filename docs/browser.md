@@ -253,10 +253,16 @@ restarts.
 The desk shows saved and open sessions, their repository and last activity,
 recorded conversations, streamed text, tool arguments and results, guard
 decisions, and model usage. Reads and searches in a row fold into one group.
+Commands in a row fold the same way, into one run whose header says how many
+ran and for how long together, counts up each second while one runs, says
+when one waits for your answer, and counts those that failed; a failed or
+refused command opens its row and the run. A read, a write or the model's
+text ends a run, so the transcript keeps its order.
 The model's thinking is hidden, as in the TUI without `:thinking`, unless
 Settings › This browser › The model's thinking is **Shown** (kept in this
-browser); shown, a reply that only thinks and reads puts its thinking in
-that group, between the calls, under the thought's first line. It reads a fixed log prefix in pages
+browser); shown, a reply that only thinks and calls tools puts its thinking
+in the group or run its calls join, between the calls, under the thought's
+first line. It reads a fixed log prefix in pages
 before applying live events, deduplicating durable sequence numbers. Reloading
 the page reads that prefix again. A reconnect never retries an operation. Browser
 reload retains pairing through the session cookie, and the address keeps the

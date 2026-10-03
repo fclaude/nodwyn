@@ -19,7 +19,7 @@ const out = process.argv[2];
   await page.waitForSelector(".ask-card");
   // The plan panel shows every step of the planner's plan, each with its
   // kind, Test: and Docs: included, and counts the steps the model marks:
-  // two before the command it asks about, two more once it is approved.
+  // two before the commands it asks about, two more once they are approved.
   const planPanel = () =>
     page.evaluate(() => ({
       head: [...document.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.textContent.startsWith("Plan"))?.querySelector("h2")?.textContent,
@@ -30,17 +30,41 @@ const out = process.argv[2];
   console.log(JSON.stringify(before));
   if (before.steps.map((s) => s.split(":")[0]).join() !== "Change,Test,Docs,Check" || !/fails today: /.test(before.steps[1]) || before.head !== "Plan2 of 4 done · drafted" || before.items.join() !== "done,done,next,")
     throw new Error("the plan panel does not show the plan's steps, two marked, at the approval");
+  // The edit goes ahead without asking; the two commands after it ask
+  // first. While one waits, the run they fold into says so, through the
+  // clock's ticks.
+  const run = () => page.evaluate(() => {
+    const g = [...document.querySelectorAll(".activity.commands")].pop();
+    return g && { label: g.querySelector(".label").textContent, what: g.querySelector(".what").textContent, open: g.open, rows: [...g.querySelectorAll(".call")].map((r) => ({ name: r.querySelector(".name").textContent, stat: r.querySelector(".stat").textContent })) };
+  });
+  await page.waitForTimeout(1200);
+  const waits = [await run()];
   // Keyboard answer, as the terminal does.
   step("card shown");
   await page.keyboard.press("y");
   step("pressed y");
-  try { await page.waitForSelector(".step .result.ok", { timeout: 15000 }); } catch (e) { await page.screenshot({ path: `${out}/stuck.png` }); console.log(await page.evaluate(() => document.querySelector(".transcript").innerText.slice(-1500))); throw e; }
+  try { await page.waitForSelector(".activity.commands .call .stat.ok", { state: "attached", timeout: 15000 }); } catch (e) { await page.screenshot({ path: `${out}/stuck.png` }); console.log(await page.evaluate(() => document.querySelector(".transcript").innerText.slice(-1500))); throw e; }
   step("command finished");
   for (let i = 0; i < 40; i++) {
     if (await page.$(".prose strong")) break;
-    if (await page.$(".ask-card")) { step("another question: " + (await page.textContent(".ask-card h2"))); await page.screenshot({ path: `${out}/second-ask.png` }); await page.keyboard.press("y"); }
+    if (await page.$(".ask-card")) {
+      step("another question: " + (await page.textContent(".ask-card h2")));
+      await page.waitForTimeout(1200);
+      waits.push(await run());
+      await page.screenshot({ path: `${out}/second-ask.png` });
+      await page.keyboard.press("y");
+    }
     await page.waitForTimeout(500);
   }
+  console.log("while asking:", JSON.stringify(waits.map((w) => w && `${w.label} | ${w.what}`)));
+  if (waits.length !== 2 || waits[0]?.label !== "Waiting for your answer" || waits[1]?.label !== "Ran 1 command, waiting for your answer") throw new Error(`the run did not say it waits: ${JSON.stringify(waits)}`);
+  if (waits[0].rows[0]?.stat !== "waiting for your answer" || waits[1].rows[1]?.stat !== "waiting for your answer") throw new Error(`the waiting command's row: ${JSON.stringify(waits[1].rows)}`);
+  // Both ran: one run, folded, each command in its own row.
+  const ran = await run();
+  console.log("after:", JSON.stringify(ran));
+  const groups = await page.$$eval(".activity.commands", (gs) => gs.length);
+  if (groups !== 1 || ran.label !== "Ran 2 commands" || !/^in \d+\.\d s$/.test(ran.what) || ran.open) throw new Error(`the commands did not fold into one finished run: ${groups} runs, ${JSON.stringify(ran)}`);
+  if (ran.rows.length !== 2 || !/ls -la/.test(ran.rows[0].name) || !/wc -l app\.js/.test(ran.rows[1].name) || !ran.rows.every((r) => /^exit 0/.test(r.stat))) throw new Error(`the run's rows: ${JSON.stringify(ran.rows)}`);
   await page.waitForTimeout(1000);
   const checks = await page.evaluate(() => ({
     card: !!document.querySelector(".ask-card"),
@@ -125,4 +149,5 @@ const out = process.argv[2];
   console.log(errors.length ? errors.join("\n") : "no page errors");
   await browser.close();
   demo.kill("SIGTERM");
+  if (errors.length) process.exit(1);
 })().catch((e) => { console.error("FAILED", e.message); process.exit(1); });

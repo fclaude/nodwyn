@@ -68,9 +68,9 @@ const out = process.argv[2];
   const activity = async (page) => {
     await showThinking(page);
     await taskHash(page);
-    await page.click(".turn.agent .activity > summary");
-    await page.locator(".turn.agent .activity").scrollIntoViewIfNeeded();
-    const inGroup = await page.$$eval(".turn.agent .activity-body > .thinking", (ns) => ns.map((n) => n.querySelector("summary").textContent));
+    await page.click(".turn.agent .activity:not(.commands) > summary");
+    await page.locator(".turn.agent .activity:not(.commands)").scrollIntoViewIfNeeded();
+    const inGroup = await page.$$eval(".turn.agent .activity:not(.commands) .activity-body > .thinking", (ns) => ns.map((n) => n.querySelector("summary").textContent));
     const alone = await page.$$eval(".turn.agent > .thinking", (ns) => ns.length);
     if (inGroup.length !== 2 || alone !== 0) throw new Error(`thinking in the group: ${JSON.stringify(inGroup)}; on its own: ${alone}`);
     if ((await visibleThinking(page)) !== 2) throw new Error(`shown, ${await visibleThinking(page)} thinking rows show`);
