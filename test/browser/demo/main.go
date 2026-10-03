@@ -380,7 +380,7 @@ func respond(req fake.Request) fake.Turn {
 			{ID: "r2", Name: "index-grep", Args: map[string]any{"path": ".", "pattern": "sessionRow"}},
 		}}
 	case 1:
-		return fake.Turn{ToolCalls: []fake.ToolCall{
+		return fake.Turn{Thinking: "sessionRow draws the title alone; read it and the notes.", ToolCalls: []fake.ToolCall{
 			{ID: "r3", Name: "fs-read", Args: map[string]any{"path": "app.js"}},
 			{ID: "r4", Name: "fs-read", Args: map[string]any{"path": "notes/todo.md"}},
 			planStep("p1", 1, "done", "sessionRow in app.js draws each row"),

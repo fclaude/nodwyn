@@ -230,7 +230,10 @@ restarts.
 
 The desk shows saved and open sessions, their repository and last activity,
 recorded conversations, streamed text, collapsed thinking, tool arguments and
-results, guard decisions, and model usage. It reads a fixed log prefix in pages
+results, guard decisions, and model usage. Reads and searches in a row fold
+into one group; a reply that only thinks and reads puts its thinking in that
+group, between the calls, under the thought's first line, rather than in a
+line of its own. It reads a fixed log prefix in pages
 before applying live events, deduplicating durable sequence numbers. Reloading
 the page reads that prefix again. A reconnect never retries an operation. Browser
 reload retains pairing through the session cookie, and the address keeps the

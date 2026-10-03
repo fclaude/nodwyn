@@ -480,8 +480,12 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 .streaming { white-space: pre-wrap; }
 .thinking { font-size: 13px; color: var(--faint); }
-.thinking summary { cursor: pointer; }
+/* One line, its first line of thought after the label, cut to the width. */
+.thinking summary { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thinking summary .gist { color: var(--muted); margin-left: 8px; }
 .thinking pre { font-family: var(--sans); color: var(--muted); padding: 8px 0 0 14px; font-size: 13px; }
+/* Inside a group of reads, a reply's thinking is a row like its calls. */
+.activity-body .thinking { padding: 6px 12px; }
 
 .activity {
   border: 1px solid var(--line); border-radius: 10px; background: var(--surface);

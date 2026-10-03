@@ -102,6 +102,13 @@ const auditLabels = {
   note: "Note",
 };
 
+// thinking is a reply's thinking, folded, under its first line, so a row
+// says what the model was thinking without opening it.
+function thinking(text) {
+  const gist = text.trim().split("\n")[0];
+  return h("details", { class: "thinking" }, h("summary", {}, h("span", { class: "label" }, "Thinking"), gist ? h("span", { class: "gist" }, gist) : null), h("pre", {}, text));
+}
+
 export class Transcript {
   constructor(container) {
     this.el = container;
@@ -114,6 +121,7 @@ export class Transcript {
     this.call = null;
     this.streamText = null;
     this.streamThinking = null;
+    this.thought = null;
     this.usage = null;
   }
   get empty() {
@@ -125,6 +133,7 @@ export class Transcript {
     this.call = null;
     this.streamText = null;
     this.streamThinking = null;
+    this.thought = null;
     this.usage = null;
   }
   agent() {
@@ -197,7 +206,20 @@ export class Transcript {
         this.streamText = null;
         this.streamThinking = null;
         const turn = this.agent();
-        if (p.thinking) turn.append(h("details", { class: "thinking" }, h("summary", {}, "Thinking"), h("pre", {}, p.thinking)));
+        this.thought = null;
+        if (p.thinking) {
+          const node = thinking(p.thinking);
+          // A reply that only thinks and calls tools goes with its calls: into
+          // the group of reads it continues, or the one its reads will start.
+          // In rows of their own, forty such replies stacked forty "Thinking"
+          // lines under one group.
+          if (p.content) turn.append(node);
+          else if (this.group) this.group.body.append(node);
+          else {
+            turn.append(node);
+            this.thought = node;
+          }
+        }
         if (p.content) {
           turn.append(markdown(p.content));
           this.group = null;
@@ -384,6 +406,8 @@ export class Transcript {
         const body = h("div", { class: "activity-body" });
         const el = h("details", { class: "activity" }, h("summary", {}, h("span", { class: "chev" }, icon("right", 14)), label, what, names), body);
         this.agent().append(el);
+        if (this.thought) body.append(this.thought);
+        this.thought = null;
         this.group = { el, body, what, names, label, counts: {}, tools: new Set(), servers: new Set() };
       }
       const g = this.group;
@@ -401,6 +425,7 @@ export class Transcript {
       return;
     }
     this.group = null;
+    this.thought = null;
     let line;
     if (kind === "command") line = [icon("terminal", 15), h("span", { class: "mono" }, commandLine(p.args) || summaryText)];
     else if (kind === "write") {

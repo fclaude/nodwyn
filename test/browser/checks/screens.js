@@ -42,6 +42,19 @@ const out = process.argv[2];
     await page.waitForTimeout(800);
   };
   await shoot("task", { width: 1440, height: 1080 }, "light", null, taskHash);
+  // A reply that only thinks and reads goes with its reads: its thinking is
+  // a row in their group, never a line of its own under it.
+  const activity = async (page) => {
+    await taskHash(page);
+    await page.click(".turn.agent .activity > summary");
+    await page.locator(".turn.agent .activity").scrollIntoViewIfNeeded();
+    const inGroup = await page.$$eval(".turn.agent .activity-body > .thinking", (ns) => ns.map((n) => n.querySelector("summary").textContent));
+    const alone = await page.$$eval(".turn.agent > .thinking", (ns) => ns.length);
+    if (inGroup.length !== 2 || alone !== 0) throw new Error(`thinking in the group: ${JSON.stringify(inGroup)}; on its own: ${alone}`);
+    if (inGroup[0] !== "ThinkingStart by finding where the list is drawn.") throw new Error(`thinking row reads ${JSON.stringify(inGroup[0])}`);
+  };
+  await shoot("task-activity", { width: 1440, height: 1080 }, "dark", null, activity);
+  await shoot("phone-activity", { width: 390, height: 844 }, "light", null, activity);
   await shoot("task-dark", { width: 1440, height: 1080 }, "dark", null, taskHash);
   await shoot("home-dark", { width: 1440, height: 900 }, "dark");
   await shoot("phone", { width: 390, height: 844 }, "light", null, taskHash);
