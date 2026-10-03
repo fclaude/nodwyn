@@ -649,7 +649,13 @@ how to split it. Otherwise:
   \item It has its own process group. A cancellation or the timeout
     (\code{shell\_timeout} in the \code{[loop]} table of
     \file{config.toml}, 10 minutes by default) kills the whole group, not
-    only the parent.
+    only the parent. When the program ends, whatever it left running in
+    the group (a server started with \code{\&}) is stopped too: SIGTERM,
+    then SIGKILL two seconds later. A program meant to keep running goes
+    to \code{shell-start}.
+  \item A \code{bash -c} command line runs with \code{pipefail}, so a
+    pipeline's status is that of its last command that failed:
+    \code{make test | tail -n 40} reports the tests' failure.
   \item The result is \code{(("status" . n) ("stdout" . s) ("stderr" .
     s))}; a child killed by a signal has status 128.
 \end{itemize}

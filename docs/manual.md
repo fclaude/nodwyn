@@ -233,7 +233,11 @@ a chat: a request that takes long is a message like any other.
 
 ### Programs that keep running
 
-`shell-exec` runs a command to completion. For a server, a watcher or a
+`shell-exec` runs a command to completion, and stops whatever it left
+running in the background when it ends (SIGTERM, then SIGKILL two seconds
+later): a server started with `&` does not outlive the call. A `bash -c`
+command line runs with `pipefail`, so `make test | tail -n 40` reports the
+tests' failure rather than `tail`'s success. For a server, a watcher or a
 program to talk to, the model has `shell-start` (asks, like `shell-exec`),
 `shell-read` to see new output (optionally waiting up to 60 s),
 `shell-send` to type into it (asks every time: typing into a shell is running

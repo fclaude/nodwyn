@@ -190,7 +190,8 @@ func (ps *Procs) start(o Options, name string, args []string) (*proc, error) {
 	}
 	ps.next++
 	p := &proc{id: fmt.Sprintf("p%d", ps.next), line: strings.Join(append([]string{name}, args...), " "), started: time.Now(), changed: make(chan struct{})}
-	cmd := exec.Command(name, args...)
+	// A bash -c line reports its pipeline's failure, as shell-exec's does.
+	cmd := exec.Command(name, pipefail(name, args)...)
 	cmd.Dir = o.Root
 	cmd.Env = scrubEnv(o.EnvAllow)
 	if o.Scratch != "" {

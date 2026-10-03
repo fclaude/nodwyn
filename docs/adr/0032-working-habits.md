@@ -428,3 +428,29 @@ change's commit. Compare:
   test file or test before the first edit outside the tests, and its exit
   status. The patch alone cannot show it: the bridge builds it with
   `git diff`, so a new test file is not in it.
+
+## Amendment 2026-10-03: a piped command reports its failure, and leaves nothing running
+
+The shell rule above says to keep long output short with `| tail -n 40`.
+A pipeline's status is its last command's, so a check piped that way
+reported 0 when it failed. In session `20261003T190332Z-547f0bd6` two runs
+of a failing browser check came back as status 0. The model read the text
+that time, but the evidence loop's `ran-ok?` counts a piped test run by its
+status. A `bash -c` command line through `shell-exec` or `shell-start` now
+runs with `pipefail`, so its status is that of its last command that
+failed. The rule's text is unchanged. Only bash's `-c` form changes: a
+script keeps its own options, and `sh` may be a shell without `pipefail`.
+A pipeline into `head` can now end in 141 when `head` stops reading early,
+which is why the rule says `tail`.
+
+`shell-exec` ran its command in a process group of its own, but killed the
+group only on a timeout. The same session started the browser checks' demo
+with `&`, and it kept running after the session ended. A child that kept
+the output open made the call wait five seconds and then fail with "WaitDelay
+expired". Now the call returns when the program ends, and what it left in
+its group is stopped: SIGTERM, then SIGKILL two seconds later, as
+`shell-stop` does. A program meant to keep running goes to `shell-start`,
+as the rule above already says.
+
+Neither change has been measured on the benchmark. The working rules are
+unchanged; `shell-exec`'s own description now says both.
