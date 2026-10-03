@@ -8,7 +8,7 @@ leaves screenshots in `out/`. Nothing touches real sessions, keys or folders.
 |---|---|
 | `screens` | Home, a task with its approval, dark mode, phone width, Settings and Connections render without console errors |
 | `approve` | The edit goes ahead and Y answers the command's inline approval; both steps show their outcomes; the reply renders as Markdown; a follow-up sends |
-| `firstrun` | `nodwyn app` with no config: model setup and keychain creation from the page, a documents workspace, an attachment with a hidden secret, a versioned edit made and restored without asking |
+| `firstrun` | `nodwyn app` with no config: model setup and keychain creation from the page, a documents workspace, an attachment with a hidden secret, a versioned edit made and restored without asking; History stays open while follow-ups redraw the panel, and a kept-versions reply held back past a redraw still fills it |
 | `remote` | `nodwyn ui --listen` with another host name: a phone pairs by name, answers, and the log records `via web:phone`; launch tickets are refused remotely |
 | `mcp` | Connections adds, reviews and approves an MCP server; an undeclared tool asks every call without a standing answer; a read tool is gathered silently |
 | `credentials` | A keychain created without a passphrase; Connections › Credentials stores a key allowed for one host, replaces it, connects an OAuth2 account through a fake provider and allows it with its scopes, removes the key; Settings sets and removes the passphrase; restarted, the keychain is open without unlocking; nothing sideways at phone width |

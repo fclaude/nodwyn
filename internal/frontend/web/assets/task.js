@@ -28,6 +28,10 @@ export class TaskView {
     this.info = null;
     this.notes = null;
     this.notesEditing = false;
+    // The Changes panel's open History lists, by path: what versions.list
+    // answered, or an empty record while it has not. Every event redraws the
+    // panel, so each list is drawn from here and outlives the redraw.
+    this.histories = new Map();
     this.inspecting = null;
     this.operations = new Map(); // guarded operation id -> handler
     this.early = new Map(); // results that arrived before their id
@@ -71,6 +75,7 @@ export class TaskView {
     this.info = null;
     this.notes = null;
     this.notesEditing = false;
+    this.histories.clear();
     this.inspecting = null;
     this.renaming = false;
     this.deleting = false;
@@ -790,7 +795,6 @@ export class TaskView {
     const rows = [
       ...pending.map((path) => h("div", { class: "file-row" }, icon("file", 15), h("span", { class: "mono", title: path }, path), h("span", { class: "badge" }, "proposed"))),
       ...written.slice(-12).flatMap((path) => {
-        const versions = h("div", { class: "versions" });
         const row = h(
           "div",
           { class: "file-row" },
@@ -798,10 +802,10 @@ export class TaskView {
           h("span", { class: "mono", title: path }, path),
           // In git too: a file git cannot give back keeps a version (ADR 35).
           this.info && this.conn.has("versions.list")
-            ? h("button", { type: "button", class: "btn small ghost", style: "margin-left:auto", onclick: () => this.history(path, versions) }, "History")
+            ? h("button", { type: "button", class: "btn small ghost", style: "margin-left:auto", onclick: () => this.history(path) }, "History")
             : h("span", { class: "badge plain" }, "written"),
         );
-        return [row, versions];
+        return [row, h("div", { class: "versions" }, this.historyList(path))];
       }),
     ];
     const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git and kept versions are the undo" : this.info ? "previous versions kept" : "writes nodwyn was allowed";
@@ -886,26 +890,39 @@ export class TaskView {
     const undo = this.info ? (this.info.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the previous version of anything else before it writes. Restore it from Changes." : "Not a git repository, so nodwyn keeps the previous version of a file before it writes. Restore it from Changes.") : "";
     return h("section", { class: "panel" }, h("h2", {}, "Workspace", kind ? h("span", { class: "note" }, kindLabel(kind)) : null), rows, undo ? h("p", { class: "hint" }, undo) : null);
   }
-  async history(path, node) {
-    if (node.childElementCount) {
-      node.replaceChildren();
+  async history(path) {
+    if (this.histories.has(path)) {
+      this.histories.delete(path);
+      this.aside();
       return;
     }
-    node.append(h("p", { class: "hint" }, "Reading kept versions…"));
-    let versions = [];
+    const version = this.version;
+    const asked = {};
+    this.histories.set(path, asked);
+    this.aside();
+    let answer;
     try {
-      versions = await this.conn.call("versions.list", { repo: this.item.repo, path });
+      answer = { versions: await this.conn.call("versions.list", { repo: this.item.repo, path }) };
     } catch (error) {
-      node.replaceChildren(h("p", { class: "error" }, error.message));
-      return;
+      answer = { error: error.message };
     }
-    if (!versions.length) {
-      node.replaceChildren(h("p", { class: "hint" }, "No earlier version is kept: the file did not exist before, or git has it committed and is its undo."));
-      return;
-    }
+    // The list may have been closed, reopened or left for another task
+    // while it was read: only the request that opened it now fills it.
+    if (version !== this.version || this.histories.get(path) !== asked) return;
+    this.histories.set(path, answer);
+    this.aside();
+  }
+  // historyList draws an open History list from what versions.list answered,
+  // with Restore as the task is now: a run refuses a restore.
+  historyList(path) {
+    const answer = this.histories.get(path);
+    if (!answer) return null;
+    if (answer.error) return h("p", { class: "error" }, answer.error);
+    if (!answer.versions) return h("p", { class: "hint" }, "Reading kept versions…");
+    if (!answer.versions.length) return h("p", { class: "hint" }, "No earlier version is kept: the file did not exist before, or git has it committed and is its undo.");
     const canRestore = this.item.open && this.conn.has("session.restore");
-    node.replaceChildren(
-      ...versions.slice(0, 8).map((v) =>
+    return [
+      ...answer.versions.slice(0, 8).map((v) =>
         h(
           "div",
           { class: "kv" },
@@ -914,7 +931,7 @@ export class TaskView {
         ),
       ),
       canRestore ? h("p", { class: "hint" }, "Restoring is a write like any other: it shows the change, and asks first only if writes ask (Settings › Approvals). The current content is kept too.") : h("p", { class: "hint" }, "Resume the task to restore a version."),
-    );
+    ];
   }
   async restore(path, hash) {
     try {

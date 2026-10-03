@@ -25,6 +25,25 @@ const env = { ...process.env };
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   const step = (m) => console.log("step:", m);
+  // The console's socket goes through here, so that replies to
+  // versions.list can be held back while `holding` is set: a History list
+  // answered after the panel was redrawn.
+  let holding = false, socket = null;
+  const asked = new Set(), held = [];
+  await page.routeWebSocket(/\/socket$/, (ws) => {
+    const server = ws.connectToServer();
+    socket = ws;
+    ws.onMessage((m) => {
+      const frame = JSON.parse(m);
+      if (holding && frame.method === "versions.list") asked.add(frame.id);
+      server.send(m);
+    });
+    server.onMessage((m) => {
+      const frame = JSON.parse(m);
+      if (!frame.method && asked.has(frame.id)) held.push(m);
+      else ws.send(m);
+    });
+  });
   await page.goto(url);
   await page.waitForSelector("#model-url", { timeout: 10000 });
   step("setup shown without a pairing code");
@@ -91,7 +110,42 @@ const env = { ...process.env };
   console.log("attachment chip:", await page.textContent(".turn.user .attach-chip"));
   if (fs.readFileSync(`${root}/work/app.js`, "utf8") === original) throw new Error("edit not written");
   await page.screenshot({ path: `${out}/firstrun-task.png` });
+  // Every event redraws the side panel. A follow-up's events, as those that
+  // come just after a turn ends, must leave an open History list open, and
+  // its Restore enabled once the turn is over (a run refuses a restore).
+  const followUp = async (text, replies) => {
+    await page.fill("#reply", text);
+    await page.keyboard.press("Enter");
+    await page.waitForFunction((n) => (document.querySelector(".transcript").innerText.match(/Glad that helps/g) || []).length >= n, replies, { timeout: 20000 });
+    await page.waitForSelector(".task-head .pill:has-text('Idle')", { timeout: 10000 });
+  };
   await page.click(".file-row button:has-text('History')");
+  await page.waitForSelector(".versions button:has-text('Restore')");
+  let drawn = await page.$(".versions");
+  await followUp("Thanks", 1);
+  if (await drawn.evaluate((n) => n.isConnected)) throw new Error("the follow-up did not redraw the Changes panel");
+  if (!(await page.$(".versions button:has-text('Restore'):enabled"))) throw new Error("History closed when a follow-up redrew the Changes panel");
+  step("History stayed open through a follow-up");
+  // Closed, it stays closed. Reopened, a reply that comes after a redraw
+  // fills the list that is in the page.
+  await page.click(".file-row button:has-text('History')");
+  if (await page.$(".versions > *")) throw new Error("History did not close");
+  holding = true;
+  await page.click(".file-row button:has-text('History')");
+  await page.waitForSelector(".versions p:has-text('Reading kept versions')");
+  for (let i = 0; i < 50 && !held.length; i++) await page.waitForTimeout(100);
+  if (!held.length) throw new Error("no versions.list reply to hold");
+  drawn = await page.$(".versions");
+  await followUp("Thanks again", 2);
+  holding = false;
+  asked.clear();
+  for (const m of held.splice(0)) socket.send(m);
+  await page.waitForSelector(".versions button:has-text('Restore'):enabled", { timeout: 5000 }).catch(() => {
+    throw new Error("a versions.list reply that came after a redraw did not fill History");
+  });
+  if (await drawn.evaluate((n) => n.isConnected)) throw new Error("the second follow-up did not redraw the Changes panel");
+  step("a History reply after a redraw filled the list");
+  await page.screenshot({ path: `${out}/firstrun-history.png` });
   // A write in the folder goes ahead without asking (ADR 35), a restore too.
   await page.click(".versions button:has-text('Restore')");
   for (let i = 0; i < 25 && fs.readFileSync(`${root}/work/app.js`, "utf8") !== original; i++) await page.waitForTimeout(200);
