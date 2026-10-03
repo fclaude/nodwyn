@@ -178,7 +178,7 @@ func toWire(req Request) wireRequest {
 		}
 	}
 	for _, m := range req.Messages {
-		wm := wireMessage{Role: m.Role, Content: m.Content, ToolName: m.ToolName, ToolCallID: m.ToolCallID}
+		wm := wireMessage{Role: m.Role, Content: m.Content, Thinking: m.Thinking, ToolName: m.ToolName, ToolCallID: m.ToolCallID}
 		for _, tc := range m.ToolCalls {
 			var wt wireToolCall
 			wt.ID = tc.ID

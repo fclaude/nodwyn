@@ -320,7 +320,7 @@ func (s *Session) initialize() (err error) {
 	models := s.models()
 	win, ceiling := s.sizeWindow(models)
 	s.loop, err = loop.New(s, s.interp, loop.Config{
-		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens},
+		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens, Thinking: true},
 		Ceiling:        ceiling,
 		MaxOutput:      o.Config.Window.OutputReserve,
 		Models:         models,

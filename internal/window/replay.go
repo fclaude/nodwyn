@@ -21,10 +21,11 @@ import (
 // (llm.req high_water), v11 narrowings that outlast their turn
 // (context.narrow lasting), v12 attached images (an attach record of
 // type image, carried by digest) and the images a request withheld
-// (llm.req withheld_images), and v13 a run's plan carried into a later
-// turn with the steps already marked (gate.plan marks); an older log has
-// none of them, so Build rebuilds it unchanged.
-const RecipeVersion = "window-v13"
+// (llm.req withheld_images), v13 a run's plan carried into a later
+// turn with the steps already marked (gate.plan marks), and v14 the
+// model's thinking on the replies it came with (Policy.Thinking); an older
+// log has none of them, so Build rebuilds it unchanged.
+const RecipeVersion = "window-v14"
 
 // RequestHash fingerprints the provider-neutral request, including tool schemas
 // and model options. It verifies reconstruction; it is not a tamper-proof seal.
@@ -64,8 +65,13 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 			if c == nil || rec.RequestHash == "" {
 				return zero, fmt.Errorf("window replay: this legacy request lacks recorded context or a request hash")
 			}
+			// Replies logged their thinking before v14 too; only v14 sends
+			// it back.
+			thinking := false
 			switch c.Version {
-			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", "window-v8", "window-v9", "window-v10", "window-v11", "window-v12", RecipeVersion:
+			case "window-v1", "window-v2", "window-v3", "window-v4", "window-v5", "window-v6", "window-v7", "window-v8", "window-v9", "window-v10", "window-v11", "window-v12", "window-v13":
+			case RecipeVersion:
+				thinking = true
 			default:
 				return zero, fmt.Errorf("window replay: unsupported recipe %q", c.Version)
 			}
@@ -82,7 +88,7 @@ func ReplayRequest(events []log.Event, seq uint64) (llm.Request, error) {
 				build = buildV1
 			}
 			pol := Policy{HighWater: c.HighWater, LowWater: c.LowWater, MaxResultTokens: c.MaxResultTokens,
-				TaskHeader: c.TaskHeader, PlanHeader: c.PlanHeader}
+				TaskHeader: c.TaskHeader, PlanHeader: c.PlanHeader, Thinking: thinking}
 			if rec.HighWater > 0 {
 				pol.HighWater = rec.HighWater
 			}

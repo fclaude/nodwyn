@@ -104,3 +104,33 @@ func TestReplayDoesNotExposeSecretsFromUnverifiedHistory(t *testing.T) {
 		t.Fatal("unsafe unverifiable output")
 	}
 }
+
+// Replies logged their thinking before recipe v14, which first sent it
+// back: an older recipe replays without it, to the hash it recorded.
+func TestReplayLeavesThinkingOutOfOlderRecipes(t *testing.T) {
+	for _, version := range []string{"window-v13", RecipeVersion} {
+		t.Run(version, func(t *testing.T) {
+			s := newSession()
+			recipe := log.WindowContext{Version: version, System: "sys", Tools: json.RawMessage(`[]`), HighWater: pol.HighWater, LowWater: pol.LowWater, MaxResultTokens: pol.MaxResultTokens}
+			s.w.Append(log.KindSessionStart, log.SessionStart{Context: &recipe, Model: "test"})
+			s.w.Append(log.KindUserMsg, log.UserMsg{Text: "question"})
+			s.w.Append(log.KindLLMResp, log.LLMResp{Thinking: "look first", ToolCalls: []log.ToolCall{{ID: "c", Name: "fs-read", Args: json.RawMessage(`{"path":"x"}`)}}})
+			s.w.Append(log.KindToolResult, log.ToolResult{ID: "c", Name: "fs-read", OK: true, Value: "x"})
+			p := pol
+			p.Thinking = version == RecipeVersion
+			built := Build(s.events(t), "sys", Estimate("[]"), p)
+			digest, err := RequestHash(llm.Request{Model: "test", Messages: built.Messages, Tools: []llm.Tool{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ev, _ := s.w.Append(log.KindLLMReq, log.LLMReq{Model: "test", RequestHash: digest})
+			got, err := ReplayRequest(s.events(t), ev.Seq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sent := got.Messages[2].Thinking; (sent != "") != p.Thinking {
+				t.Fatalf("%s replayed with thinking %q", version, sent)
+			}
+		})
+	}
+}

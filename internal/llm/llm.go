@@ -20,7 +20,7 @@ const (
 type Message struct {
 	Role       string     `json:"role"`
 	Content    string     `json:"content"`
-	Thinking   string     `json:"thinking,omitempty"` // never sent back (ADR 9); present on responses
+	Thinking   string     `json:"thinking,omitempty"` // on a response, and sent back on the reply it came with (window recipe v14, ADR 9)
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolName   string     `json:"tool_name,omitempty"`    // role=tool
 	ToolCallID string     `json:"tool_call_id,omitempty"` // role=tool

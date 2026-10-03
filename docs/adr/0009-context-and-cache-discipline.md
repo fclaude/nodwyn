@@ -140,3 +140,42 @@ only (`header`), for servers that refuse unknown fields, or not at all
 and replay are unchanged. Whether the key reaches Meta's replicas is not
 documented; the cached share of append-only requests in the next session's
 log is the test.
+
+## Amendment 2026-10-02: thinking goes back on its reply
+
+The decision above kept the model's thinking out of the window when the
+model was a local Ollama with a 98,304-token context, where every token of
+it crowded out a tool result. The control model is now usually a remote one
+with a context of a million tokens, and keeping the thinking out has a cost
+of its own. In a chat turn about worktrees (session
+`20261003T052943Z-4e994237`, meta/muse-spark-1.3 through OpenRouter) every
+reply's text was empty, so each of 40 requests began from the tool results
+alone: the thinking said what the answer was at the sixth and restated it,
+in other words, at each of the next 34 (ADR 32, amended 2026-10-02).
+
+From window recipe v14 an assistant message carries the thinking its
+`llm.resp` recorded, redacted as everything in the log is
+(`window.Policy.Thinking`). The prefix stays byte-stable: a reply's
+thinking is part of it from the first request that shows the reply, and
+trimming elides it with the reply, never on its own. It counts toward the
+window's estimate. Ollama gets it as `thinking`; a chat-completions server
+as `reasoning_content`, the field DeepSeek, vLLM and Qwen's chat templates
+read and an alias OpenRouter takes for `reasoning`. A recipe before v14
+replays without it, so its requests still match the hashes they recorded.
+
+Only the text goes back. OpenRouter also returns `reasoning_details`, which
+for some models carry the reasoning encrypted, and wants them back
+unchanged. nodwyn does not keep them: the log is the source of truth and
+redacts what looks like a key, and an encrypted blob in base64url looks
+like one, so the copy the window would send back could be altered. What
+muse-spark reports as thinking is a one-line summary per reply, so for it
+this gives back little; a model that reports its whole reasoning gets all
+of it. The working rules no longer say the thinking is not kept: they say
+it comes back only as the server reported it, often a summary or nothing,
+and still ask for a written plan.
+
+The cost is the thinking's tokens on every later request, less what the
+provider caches. In the worktree turn the 40 replies reported 6,938
+bytes of thinking in all. A server that refuses fields it does not know
+would refuse `reasoning_content`, but only after it sent thinking itself,
+which such servers (OpenAI's) do not.

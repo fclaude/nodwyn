@@ -142,9 +142,11 @@
    ;; plan.scm writes its plan without running anything; on one task the
    ;; model reverted a right edit to follow it.
    "\n- A plan may be given before you start. It was written by someone who read the code but could not run it: treat it as a first guess, and when your own checks contradict it, follow the evidence and say so."
-   ;; plan.scm: thinking is not sent back, and a model re-derived one
-   ;; design at every request of a turn without changing anything.
-   "\n- Your thinking is not kept from one request to the next, and neither is a reply that only calls tools. Once you know what to change, write your plan with plan-write instead of working it out again at every step, then make the change."
+   ;; plan.scm: thinking was not sent back, and a model re-derived one
+   ;; design at every request of a turn without changing anything. It is
+   ;; sent back since window recipe v14, but only as the server reported
+   ;; it (ADR 9, amended 2026-10-02).
+   "\n- Your thinking comes back to you only as the server reported it, often as a summary or not at all, and a reply that only calls tools keeps nothing else. Once you know what to change, write your plan with plan-write instead of working it out again at every step, then make the change."
    "\n- Your check loop: before changing code, write one script in $TMPDIR (for example $TMPDIR/check.sh) that runs everything you use to judge your work, with the project's own interpreter or build: the example from the request exactly as written, the nearby cases it implies (other inputs of the same kind, the edges), and the existing tests that cover the code you will touch. Run it and see it show what is wrong or missing. If the request reports something broken, reproducing it is the first step: before you change anything, the check must fail on the current code the way the request describes; if it passes, you have not reproduced the problem yet, so compare your input with the request's, character for character, until you find one that fails. If reproducing the whole scenario needs something the repository does not have (another project, a service, real data), reproduce the smallest part you can: call the function or class that makes the wrong output directly, with inputs like the request's. After every change, run that same script, never a retyped variant, and extend it when you learn a new case. It lives on disk, so it survives when older context is cleared. When the request shows outputs (printed results, errors) rather than the inputs behind them, work out which input produces the wrong output it shows, not one that produces the right output, and put that input in the check. If your check still does not show a reported problem and you cannot see why, call second-look with your check script: a helper compares it with the request word for word and suggests what you may have read differently."
    "\n- When the request weighs more than one way to do something, follow the way it concludes for. When it asks for behaviour to change, change it, and update the existing tests that encode the old behaviour, instead of keeping the old behaviour behind a narrower special case."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
@@ -212,11 +214,11 @@
 (define (reading-reminder-message rounds)
   (string-append
    "You have only read and searched for the last " (number->string rounds)
-   " rounds. Your thinking is not kept from one request to the next, so what you found is lost unless you write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan."))
+   " rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan."))
 (define (reading-reminder-reviewed-message rounds)
   (string-append
    "You have only read and searched for the last " (number->string rounds)
-   " rounds. Your thinking is not kept from one request to the next, so what you found is lost unless you write it down. If the request asks a question or needs a decision from the person (whether to build what it says is missing, or which way to build it), answer now: say what exists, what is missing and what you propose, and finish; a person reads your answer before anything else happens. Otherwise write your plan with plan-write now and start the change, and read more only for a step of the plan."))
+   " rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you write it down. If the request asks a question or needs a decision from the person (whether to build what it says is missing, or which way to build it), answer now: say what exists, what is missing and what you propose, and finish; a person reads your answer before anything else happens. Otherwise write your plan with plan-write now and start the change, and read more only for a step of the plan."))
 
 ;; The planner's system prompt.
 (define (plan-system-prompt repo)

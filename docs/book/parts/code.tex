@@ -1606,8 +1606,10 @@ proves the reconstruction; it is not a tamper seal. A log written before
 the recipe was recorded (v0.27) still replays as a transcript, but cannot
 be rebuilt request by request.
 
-Model thinking is stored on \code{llm.resp} and never sent back:
-\code{Build} reads only the content and the tool calls. A key held in the
+Model thinking is stored on \code{llm.resp}. From recipe v14
+\code{Build} sends it back on its reply (\code{Policy.Thinking}), as the
+log recorded it; for an older recipe it reads only the content and the
+tool calls, so those requests replay to the hashes they recorded. A key held in the
 keychain appears only as its class and a handle id (\code{cred.register},
 and \code{cred.refresh} for an OAuth2 token refreshed before a use).
 Every payload is redacted at \code{Record} and again at \code{Append},

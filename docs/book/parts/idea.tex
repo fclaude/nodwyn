@@ -168,7 +168,8 @@ request is to send the conversation.
 
 The reply is buffered until it is complete, then redacted, then shown and
 recorded, so a key split across two streamed chunks is still caught. Thinking
-is recorded and may be shown, but is never sent back to a model.
+is recorded and may be shown, and goes back to the model with the reply it
+came with, as recorded, so redacted like everything else.
 
 \section{MCP servers}
 

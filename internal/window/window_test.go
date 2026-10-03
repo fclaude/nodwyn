@@ -369,3 +369,37 @@ func TestCarriedPlanShowsItsMarks(t *testing.T) {
 		t.Fatalf("marks outlived their turn: %q", sys)
 	}
 }
+
+// From recipe v14 a reply carries the thinking it came with, and counts
+// it; trimming takes the thinking out with the reply. Without the policy,
+// as for an older recipe, replies carry none.
+func TestRepliesCarryTheirThinking(t *testing.T) {
+	s := newSession()
+	for i := range 3 {
+		s.w.Append(log.KindUserMsg, log.UserMsg{Text: fmt.Sprintf("question %d", i)})
+		s.w.Append(log.KindLLMResp, log.LLMResp{Thinking: fmt.Sprintf("thought %d ", i) + strings.Repeat("t", 3000),
+			ToolCalls: []log.ToolCall{{ID: fmt.Sprint("c", i), Name: "fs-read", Args: json.RawMessage(`{"path":"x"}`)}}})
+		s.w.Append(log.KindToolResult, log.ToolResult{ID: fmt.Sprint("c", i), Name: "fs-read", OK: true, Value: "x"})
+		s.w.Append(log.KindLLMResp, log.LLMResp{Content: fmt.Sprintf("answer %d", i), Thinking: "done"})
+	}
+	roomy := Policy{HighWater: 100000, LowWater: 50000, MaxResultTokens: 100000}
+	without := Build(s.events(t), "sys", 10, roomy)
+	roomy.Thinking = true
+	with := Build(s.events(t), "sys", 10, roomy)
+	for _, m := range without.Messages {
+		if m.Thinking != "" {
+			t.Fatalf("thinking without the policy: %+v", m)
+		}
+	}
+	if !strings.HasPrefix(with.Messages[2].Thinking, "thought 0 ") || with.Messages[4].Thinking != "done" {
+		t.Fatalf("replies without their thinking: %+v", with.Messages)
+	}
+	if with.EstTokens-without.EstTokens != 3*(Estimate("thought 0 "+strings.Repeat("t", 3000))+Estimate("done")) {
+		t.Fatalf("thinking not counted: %d with, %d without", with.EstTokens, without.EstTokens)
+	}
+	tight := Policy{HighWater: 2000, LowWater: 1000, MaxResultTokens: 100000, Thinking: true}
+	trimmed := Build(s.events(t), "sys", 10, tight)
+	if !trimmed.Trimmed || trimmed.Messages[2].Content != "[elided seq=2]" || trimmed.Messages[2].Thinking != "" {
+		t.Fatalf("an elided reply kept its thinking: %+v", trimmed.Messages[2])
+	}
+}

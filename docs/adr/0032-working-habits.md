@@ -310,3 +310,9 @@ soon as what the model has read settles it. A request that reports a
 defect in something that exists is still fixed. The rule, 357
 characters, is in the interactive prompt alone, so the benchmark, which
 runs unattended, does not see it.
+
+ADR 9 (amended 2026-10-02) now sends the thinking back on its reply, as the
+server reported it. The working rule, the reading reminders and
+`plan-write`'s description said "your thinking is not kept"; they now say it
+comes back only as the server reported it, often a summary or not at all,
+which is true of every provider, and still ask for the plan in writing.

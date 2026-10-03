@@ -91,9 +91,10 @@ Without a plan from the gate (an interactive turn with no judge), the model
 writes its own with the \code{plan-write} tool: numbered steps, recorded as
 \code{gate.plan} with decision \code{model} and pinned under
 \code{plan-header} like any other plan. It matters more than it looks: a
-model's thinking is not sent back to it, and a reply that only calls tools
-says nothing, so a design worked out in thinking is worked out again at
-every request until it is written down. Writing the plan again revises it.
+model's thinking comes back to it only as the server reported it, often a
+summary or nothing, and a reply that only calls tools says nothing, so a
+design worked out in thinking is worked out again at every request until it
+is written down. Writing the plan again revises it.
 
 \subsection{Progress through the plan}
 
@@ -164,8 +165,9 @@ however many times it runs your test script.
 
 \section{Rounds that only read}
 
-A model's thinking is not sent back, so a model that reads without saying
-anything starts every request from the tool results alone. One chat turn
+A model's thinking comes back to it only as the server reported it, often
+a summary, so a model that reads without saying anything starts every
+request from little more than the tool results. One chat turn
 had what it needed after six rounds and read for thirty-four more,
 confirming the same conclusion each time. Both loops, the plain one and
 the evidence loop, count the rounds in a row whose calls all name one of

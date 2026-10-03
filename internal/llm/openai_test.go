@@ -30,7 +30,7 @@ func TestOpenAIRoundTrip(t *testing.T) {
 		Model: "m",
 		Messages: []Message{
 			{Role: RoleSystem, Content: "sys"},
-			{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "c1", Name: "fs-list", Args: json.RawMessage(`{"path":"."}`)}}},
+			{Role: RoleAssistant, Thinking: "list first", ToolCalls: []ToolCall{{ID: "c1", Name: "fs-list", Args: json.RawMessage(`{"path":"."}`)}}},
 			{Role: RoleTool, Content: "a.go", ToolName: "fs-list", ToolCallID: "c1"},
 		},
 		Tools:     []Tool{{Name: "fs-read", Description: "read", Parameters: map[string]any{"type": "object"}}},
@@ -44,6 +44,10 @@ func TestOpenAIRoundTrip(t *testing.T) {
 	call := msgs[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)["function"].(map[string]any)
 	if call["arguments"] != `{"path":"."}` {
 		t.Fatalf("arguments sent as %v", call["arguments"])
+	}
+	// A reply's thinking goes back on it, as reasoning_content.
+	if msgs[1].(map[string]any)["reasoning_content"] != "list first" || msgs[0].(map[string]any)["reasoning_content"] != nil {
+		t.Fatalf("thinking sent as %v", msgs)
 	}
 	if msgs[2].(map[string]any)["tool_call_id"] != "c1" || got["stream"] != false || got["max_completion_tokens"] != float64(16384) || got["max_tokens"] != nil {
 		t.Fatalf("request: %v", got)

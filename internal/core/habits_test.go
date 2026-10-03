@@ -234,7 +234,7 @@ func TestUnreviewedReadingRoundsAreToldToPlan(t *testing.T) {
 	if got := lastMessage(r, 13); strings.Contains(got, "You have only read") {
 		t.Fatalf("reminded after 11 rounds: %q", got)
 	}
-	want := "You have only read and searched for the last 12 rounds. Your thinking is not kept from one request to the next, so what you found is lost unless you write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan."
+	want := "You have only read and searched for the last 12 rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan."
 	if got := lastMessage(r, 14); got != want {
 		t.Fatalf("after 12 rounds: %q", got)
 	}

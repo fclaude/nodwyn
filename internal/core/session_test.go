@@ -105,13 +105,14 @@ func TestTurnWithToolCall(t *testing.T) {
 	if got := kinds(evs); got != want {
 		t.Fatalf("events:\n got %s\nwant %s", got, want)
 	}
-	// The second request carried the tool result verbatim and no thinking.
+	// The second request carried the tool result verbatim, and the thinking
+	// on the reply it came with (window recipe v14).
 	raw := string(r.srv.Requests[1].Raw)
 	if !strings.Contains(raw, `"role":"tool","content":"package main\n","tool_name":"fs-read","tool_call_id":"c1"`) {
 		t.Fatalf("tool result not fed back:\n%s", raw)
 	}
-	if strings.Contains(raw, "need the file") {
-		t.Fatal("thinking was fed back")
+	if !strings.Contains(raw, `"role":"assistant","content":"","thinking":"need the file","tool_calls":[`) {
+		t.Fatalf("thinking not fed back on its reply:\n%s", raw)
 	}
 	// Prefix stability: request 2 starts with request 1's messages.
 	m1, m2 := r.srv.Requests[0].Messages, r.srv.Requests[1].Messages

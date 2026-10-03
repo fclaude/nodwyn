@@ -49,6 +49,10 @@ type Policy struct {
 	// every window had before recipe v6.
 	TaskHeader string
 	PlanHeader string
+	// Thinking puts the model's thinking back on the replies it came with,
+	// as the log recorded it, redacted (recipe v14, ADR 9 amended
+	// 2026-10-02). An older recipe's replies carry none.
+	Thinking bool
 }
 
 // The default headers for the task and its plan: what a recipe that records
@@ -237,6 +241,9 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 			var p log.LLMResp
 			if ev.Decode(&p) == nil {
 				m := llm.Message{Role: llm.RoleAssistant, Content: p.Content}
+				if pol.Thinking {
+					m.Thinking = p.Thinking
+				}
 				for _, tc := range p.ToolCalls {
 					m.ToolCalls = append(m.ToolCalls, llm.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args})
 				}
@@ -288,6 +295,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	var elided []uint64
 	elide := func(i int) {
 		entries[i].msg.Content = fmt.Sprintf("[elided seq=%d]", entries[i].seq)
+		entries[i].msg.Thinking = ""
 		entries[i].msg.ToolCalls = nil
 		entries[i].msg.Images, entries[i].image = nil, nil
 		entries[i].size = estimate(entries[i].msg)
@@ -368,7 +376,7 @@ func contains(xs []uint64, x uint64) bool {
 func Estimate(s string) int { return (len(s) + 2) / 3 }
 
 func estimate(m llm.Message) int {
-	n := Estimate(m.Content) + 6
+	n := Estimate(m.Content) + Estimate(m.Thinking) + 6
 	for _, tc := range m.ToolCalls {
 		n += Estimate(tc.Name) + Estimate(string(tc.Args)) + 6
 	}

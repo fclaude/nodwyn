@@ -122,7 +122,12 @@ type oaiMessage struct {
 	ToolCalls  []oaiToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string        `json:"tool_call_id,omitempty"`
 	// Reasoning is where servers that expose a model's thinking put it;
-	// the name varies (DeepSeek and vLLM: reasoning_content).
+	// the name varies (DeepSeek and vLLM: reasoning_content). A reply's
+	// thinking goes back as reasoning_content: the name DeepSeek, vLLM and
+	// Qwen's templates read, and an alias OpenRouter takes for reasoning.
+	// Only the text goes back; OpenRouter's reasoning_details, which carry
+	// encrypted reasoning, are not kept, since the log redacts what looks
+	// like a key and would break them (ADR 9, amended 2026-10-02).
 	Reasoning        string `json:"reasoning,omitempty"`
 	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
@@ -269,7 +274,7 @@ func usage(raw json.RawMessage) Usage {
 func toOpenAI(req Request) oaiRequest {
 	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed}
 	for _, m := range req.Messages {
-		om := oaiMessage{Role: m.Role, Content: openAIContent(m), ToolCallID: m.ToolCallID}
+		om := oaiMessage{Role: m.Role, Content: openAIContent(m), ToolCallID: m.ToolCallID, ReasoningContent: m.Thinking}
 		for _, tc := range m.ToolCalls {
 			var ot oaiToolCall
 			ot.ID, ot.Type = tc.ID, "function"

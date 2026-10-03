@@ -172,10 +172,12 @@
     (guard (e (else (string-append "plan-step failed: " (format "~a" (assoc-ref e 'message "")))))
       (plan-step-answer call args))))
 
-;; The model's own plan. Its thinking is not kept from one request to the
-;; next, and a reply that only calls tools keeps nothing either, so a design
-;; worked out in thinking was worked out again at every request (a chat
-;; turn re-derived one 30 times and changed nothing). plan-write records the
+;; The model's own plan. Its thinking was not sent back, and a reply that
+;; only calls tools keeps nothing either, so a design worked out in
+;; thinking was worked out again at every request (a chat turn re-derived
+;; one 30 times and changed nothing). It is sent back now (window recipe
+;; v14), but only as the server reported it, which may be a summary or
+;; nothing, and the window may trim it. plan-write records the
 ;; model's plan, decision "model", where the window pins it under
 ;; plan-header for the rest of the turn and plan-step marks it. Writing it
 ;; again revises it, and its marks start over; in a run it becomes the
@@ -191,7 +193,7 @@
                            ". It stays in front of you; mark each step with plan-step as you finish it."))))))
 
 (define-agent-tool "plan-write"
-  "Write down your plan for the task: numbered steps, each naming the file or command involved. Your thinking is not kept from one request to the next; the plan is, in front of you for the rest of the task, and plan-step marks its steps. Write it once you know what to change, before changing it, and write it again only when it must change."
+  "Write down your plan for the task: numbered steps, each naming the file or command involved. Your thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps. Write it once you know what to change, before changing it, and write it again only when it must change."
   '(("plan" "string" "the numbered steps"))
   (lambda (call args)
     (guard (e (else (string-append "plan-write failed: " (format "~a" (assoc-ref e 'message "")))))

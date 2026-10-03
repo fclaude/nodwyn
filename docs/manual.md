@@ -488,8 +488,9 @@ project may redefine. As the model works it marks the plan's steps done or
 skipped with the `plan-step` tool, and the console's plan panel (`:plan` in
 the TUI) shows its progress; a mark is the model's word, and the transcript
 is the evidence. Without a plan from the gate, the model writes its own with
-`plan-write`, which pins it the same way: its thinking is not kept from one
-request to the next, and a written plan is. A model that only reads and
+`plan-write`, which pins it the same way: its thinking comes back to it
+only as the server reported it, often a summary or nothing, and a written
+plan stays. A model that only reads and
 searches for twelve rounds in a row is told to write down what it found:
 its plan, or, in a chat whose request asks a question or needs your
 decision, its answer. In a chat a question gets an answer, and a request
@@ -1081,6 +1082,14 @@ Setting `high_water` or `low_water` in `[window]` keeps the window at your
 size. A larger window sends more with every request: on a paid model, a
 request near the high water costs that many prompt tokens, less what the
 provider caches.
+
+The model's thinking goes back to it on the reply it came with, as the
+server reported it and redacted: ollama gets it as `thinking`, a
+chat-completions server as `reasoning_content` (OpenRouter reads it as
+`reasoning`). It counts toward the window and is trimmed with its reply. A
+server that reports only a summary of the thinking, or none, gives back
+only that; encrypted reasoning (OpenRouter's `reasoning_details`) is not
+kept.
 
 `window.output_reserve` (16384 by default) is also the cap on each reply,
 thinking included: ollama gets it as `num_predict`, a chat-completions server

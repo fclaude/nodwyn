@@ -64,9 +64,9 @@
 ;; Rounds in a row that only look, after which the model is told to write
 ;; down what it found and answer or plan (reading-reminder-message). A chat
 ;; turn (ADR 32, amended 2026-10-02) had what it needed by its sixth round
-;; and read on for 34 more, saying nothing: its thinking is not sent back,
-;; so every request began again from the tool results and read more to
-;; confirm the same conclusion. 0 turns the reminder off.
+;; and read on for 34 more, saying nothing: its thinking was not sent back
+;; then, and is a summary when it is, so every request began again from
+;; the tool results and read more to confirm the same conclusion. 0 turns the reminder off.
 (define reading-reminder-after 12)
 
 ;; The rounds in a row that only looked, counting this round's calls: when
