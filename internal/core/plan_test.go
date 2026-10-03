@@ -146,6 +146,7 @@ func score(n float64) map[string]any { return map[string]any{"score": n, "confid
 func noul(p float64) map[string]any  { return map[string]any{"noul": p} }
 
 func TestPlanGateWithoutAJudgeDoesNothing(t *testing.T) {
+	t.Parallel()
 	r := judgedRig(t, nil, "", fake.Turn{Content: "done"})
 	if e := r.turn("do a thing"); e != "" {
 		t.Fatal(e)
@@ -156,6 +157,7 @@ func TestPlanGateWithoutAJudgeDoesNothing(t *testing.T) {
 }
 
 func TestPlanGateProceedsWhenNoPlanIsNeeded(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2))
 	r := judgedRig(t, judge, "", fake.Turn{Content: "done"})
 	if e := r.turn("what is this?"); e != "" {
@@ -171,6 +173,7 @@ func TestPlanGateProceedsWhenNoPlanIsNeeded(t *testing.T) {
 }
 
 func TestPlanGateAcceptsAGoodPlan(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(3.6))
 	r := judgedRig(t, judge, "", fake.Turn{Content: "1. the plan"}, fake.Turn{Content: "done"})
 	if e := r.turn("build it"); e != "" {
@@ -192,6 +195,7 @@ func TestPlanGateAcceptsAGoodPlan(t *testing.T) {
 }
 
 func TestPlanGateRevisesUntilThePlanScores(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(0.8), score(2), score(3.4))
 	r := judgedRig(t, judge, "", fake.Turn{Content: "v1"}, fake.Turn{Content: "v2"}, fake.Turn{Content: "v3"}, fake.Turn{Content: "done"})
 	if e := r.turn("hard task"); e != "" {
@@ -207,6 +211,7 @@ func TestPlanGateRevisesUntilThePlanScores(t *testing.T) {
 }
 
 func TestPlanGateStopsAtTheRevisionBound(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(0.4), score(0.4), score(0.4), score(0.4))
 	r := judgedRig(t, judge, "", fake.Turn{Content: "v0"}, fake.Turn{Content: "v1"}, fake.Turn{Content: "v2"}, fake.Turn{Content: "v3"}, fake.Turn{Content: "done"})
 	if e := r.turn("impossible"); e != "" {
@@ -222,6 +227,7 @@ func TestPlanGateStopsAtTheRevisionBound(t *testing.T) {
 }
 
 func TestPlanGateDegradesWhenTheJudgeFails(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, http.StatusServiceUnavailable)
 	r := judgedRig(t, judge, "", fake.Turn{Content: "1. degraded plan"}, fake.Turn{Content: "done"})
 	if e := r.turn("do it"); e != "" {
@@ -235,6 +241,7 @@ func TestPlanGateDegradesWhenTheJudgeFails(t *testing.T) {
 
 // A run's turn plans whatever the judge would say, and does not ask it.
 func TestRequiredPlanSkipsTheQuestion(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, score(3.2))
 	// The finish check reminds a planned turn that changed nothing twice.
 	done := fake.Turn{Content: "done"}
@@ -254,6 +261,7 @@ func TestRequiredPlanSkipsTheQuestion(t *testing.T) {
 // A project that replaces turn, the only way past the gate, still cannot act
 // in a turn that must plan until it records a plan.
 func TestRequiredPlanBlocksActionUntilRecorded(t *testing.T) {
+	t.Parallel()
 	r := judgedRig(t, nil, `(define (nodwyn-turn request) (fs-write "x.txt" "y"))`)
 	if err := r.s.SendPlanned("work"); err != nil {
 		t.Fatal(err)
@@ -275,6 +283,7 @@ func TestRequiredPlanBlocksActionUntilRecorded(t *testing.T) {
 // A model sometimes answers the planner with thinking only; one empty sample
 // must not end a run that requires a plan, so it is asked again, noted.
 func TestPlanGateAsksAgainForAnEmptyPlan(t *testing.T) {
+	t.Parallel()
 	done := fake.Turn{Content: "done"}
 	r := judgedRig(t, nil, "", fake.Turn{Content: ""}, fake.Turn{Content: "1. read\n2. fix"}, done, done, done)
 	if e := r.planned("work"); e != "" {
@@ -292,6 +301,7 @@ func TestPlanGateAsksAgainForAnEmptyPlan(t *testing.T) {
 // A revision that comes back empty keeps the best plan instead of replacing
 // it with nothing.
 func TestPlanGateKeepsTheBestPlanWhenARevisionIsEmpty(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(0.8))
 	r := judgedRig(t, judge, "", fake.Turn{Content: "first plan"}, fake.Turn{Content: ""}, fake.Turn{Content: ""}, fake.Turn{Content: ""}, fake.Turn{Content: "done"})
 	if e := r.turn("work"); e != "" {
@@ -307,6 +317,7 @@ func TestPlanGateKeepsTheBestPlanWhenARevisionIsEmpty(t *testing.T) {
 // turn plans first. The planner is offered no tools, and its request, like
 // the strategy's, replays from the log.
 func TestCustomStrategyIsPlannedInARun(t *testing.T) {
+	t.Parallel()
 	r := judgedRig(t, nil, `(define (agent-turn request)
   (let loop ((reply (model-turn)))
     (let ((calls (assoc-ref reply 'tool-calls '())))
@@ -347,6 +358,7 @@ func TestCustomStrategyIsPlannedInARun(t *testing.T) {
 // The turn's plan flags end with it: an evaluation after a required turn that
 // failed unplanned is not held to that turn's plan.
 func TestPlanFlagsEndWithTheTurn(t *testing.T) {
+	t.Parallel()
 	r := judgedRig(t, nil, `(define (nodwyn-turn request) (fs-write "x.txt" "y"))`)
 	if err := r.s.SendPlanned("work"); err != nil {
 		t.Fatal(err)

@@ -156,6 +156,7 @@ func (r *rig) replaysAll() {
 }
 
 func TestCompactionHandsOverInANarrowedContext(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10,
 		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "big.txt")}},
 		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
@@ -207,6 +208,7 @@ func TestCompactionHandsOverInANarrowedContext(t *testing.T) {
 // Compaction is on by default, late: just under the window's high water
 // (ADR 32), so a short turn never compacts.
 func TestCompactionDefaultsUnderTheHighWater(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10,
 		fake.Turn{ToolCalls: []fake.ToolCall{readCall("a")}},
 		fake.Turn{ToolCalls: []fake.ToolCall{readCall("b")}},
@@ -227,6 +229,7 @@ func TestCompactionDefaultsUnderTheHighWater(t *testing.T) {
 // after compact-attempts replies compaction gives up, the turn goes on in
 // the full context, and it is not retried until the context grows.
 func TestCompactionGivesUpWithoutANote(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10,
 		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "big.txt")}},
 		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
@@ -316,6 +319,7 @@ func reader(files ...string) func(fake.Request) fake.Turn {
 // prompt-tokens, the threshold was never reached before the window elided
 // the oldest reads.
 func TestCompactionComesBeforeTheWindowTrims(t *testing.T) {
+	t.Parallel()
 	high := baseTokens(t) + 20000
 	// Each read adds about a hundredth of the high water, so one lands
 	// between the threshold, a twenty-fifth below the high water, and the
@@ -361,6 +365,7 @@ func TestCompactionComesBeforeTheWindowTrims(t *testing.T) {
 // trimmed when the model's context has room above the window: the note
 // request may use it, up to the ceiling. Without that room it is trimmed.
 func TestCompactionUsesTheRoomAboveTheHighWater(t *testing.T) {
+	t.Parallel()
 	high := baseTokens(t) + 3000
 	for _, tc := range []struct {
 		name    string
@@ -408,6 +413,7 @@ func TestCompactionUsesTheRoomAboveTheHighWater(t *testing.T) {
 // the session's system prompt with its own request, not from the whole
 // conversation again.
 func TestCompactionLastsIntoTheNextTurn(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10,
 		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "big.txt")}},
 		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
@@ -439,6 +445,7 @@ func TestCompactionLastsIntoTheNextTurn(t *testing.T) {
 // model writes a handover note for the latest request before it, the turn
 // ends there, and the next message goes on from the note.
 func TestCompactOnRequest(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10,
 		fake.Turn{ToolCalls: []fake.ToolCall{readCall("a")}},
 		fake.Turn{Content: "main.go declares package main."},
@@ -500,6 +507,7 @@ func TestCompactOnRequest(t *testing.T) {
 // hands over the latest request that is not a /compact, and the new note is
 // written from the old.
 func TestCompactOnRequestHandsOverTheLatestRequest(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10,
 		fake.Turn{Content: "hello"},
 		fake.Turn{Content: "NOTE 1"},
@@ -536,6 +544,7 @@ func TestCompactOnRequestHandsOverTheLatestRequest(t *testing.T) {
 // A strategy asks for compaction at the next round with compact-next-round,
 // whatever the context's size; the request is used once.
 func TestCompactNextRound(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define base-run-calls run-calls)
 (define (run-calls calls)
@@ -565,6 +574,7 @@ func TestCompactNextRound(t *testing.T) {
 
 // narrow-context's options are strict: a slip is an error, not a silent no.
 func TestNarrowContextOptions(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define refusals '())
 (define (agent-turn request)

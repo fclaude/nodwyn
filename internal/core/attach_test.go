@@ -10,6 +10,7 @@ import (
 )
 
 func TestAttachmentReachesTheModelAsRedactedData(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, false, fake.Turn{Content: "It is a roadmap."})
 	secret := "ghp_" + strings.Repeat("A1b2C3d4", 5)
 	src := filepath.Join(t.TempDir(), "roadmap.md")

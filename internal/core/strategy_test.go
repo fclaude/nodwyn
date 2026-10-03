@@ -106,6 +106,7 @@ func readCall(id string) fake.ToolCall {
 }
 
 func TestStrategyRedefinedInInit(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define asked #f)
 (define (agent-turn request)
@@ -137,6 +138,7 @@ func TestStrategyRedefinedInInit(t *testing.T) {
 // A strategy that catches everything still cannot keep a turn going past a
 // stop: the budgets and the progress guard are not the strategy's to waive.
 func TestStrategyCannotCatchStops(t *testing.T) {
+	t.Parallel()
 	const swallow = `
 (define (agent-turn request)
   (let loop ((reply (model-turn)))
@@ -166,6 +168,7 @@ func TestStrategyCannotCatchStops(t *testing.T) {
 }
 
 func TestStrategyCannotFabricateCalls(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define (agent-turn request)
   (model-turn)
@@ -186,6 +189,7 @@ func TestStrategyCannotFabricateCalls(t *testing.T) {
 // Refusing one call in a batch refuses the batch: the calls before it are
 // not left claimed with no result.
 func TestStrategyCannotRewriteArgs(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define (agent-turn request)
   (let* ((calls (assoc-ref (model-turn) 'tool-calls))
@@ -210,6 +214,7 @@ func TestStrategyCannotRewriteArgs(t *testing.T) {
 // Every call gets exactly one result, whatever the strategy did with it, so
 // the next request is well-formed.
 func TestStrategyUnansweredCallsAreClosed(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define (agent-turn request)
   (model-turn)
@@ -236,6 +241,7 @@ func TestStrategyUnansweredCallsAreClosed(t *testing.T) {
 }
 
 func TestLoopPrimitivesAreNotForTools(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (register-tool "again" (lambda () (model-turn))
   '((doc . "Ask the model from inside a tool") (params . ())))`, 10,
@@ -256,6 +262,7 @@ func TestLoopPrimitivesAreNotForTools(t *testing.T) {
 // Tool results reach the strategy with the provenance of what the tool
 // produced, and the strategy cannot wipe it.
 func TestStrategyResultsKeepProvenance(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define seen '())
 (define (agent-turn request)
@@ -275,6 +282,7 @@ func TestStrategyResultsKeepProvenance(t *testing.T) {
 
 // The example in docs/manual.md, "Changing the loop".
 func TestStrategyStopsBatchAtFirstFailure(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define (run-until-failure calls)
   (unless (null? calls)
@@ -319,6 +327,7 @@ func (w *failAfterUserMsg) Write(p []byte) (int, error) {
 
 // A strategy cannot catch a log failure and carry on unrecorded.
 func TestStrategyCannotCatchLogFailure(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
@@ -345,6 +354,7 @@ func TestStrategyCannotCatchLogFailure(t *testing.T) {
 // add-message is how a strategy speaks when the model has not called a
 // tool: the model reads it as a user message, and the task stays the user's.
 func TestAddMessageReachesTheModel(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define (agent-turn request)
   (model-turn)
@@ -371,6 +381,7 @@ func TestAddMessageReachesTheModel(t *testing.T) {
 // A tool call must be followed by its result, so a strategy cannot speak
 // between them.
 func TestAddMessageRefusedWhileCallsAreUnanswered(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define (agent-turn request)
   (model-turn)
@@ -388,6 +399,7 @@ func TestAddMessageRefusedWhileCallsAreUnanswered(t *testing.T) {
 // The host calls nodwyn-turn, so a project's own turn, even one that is not a
 // procedure, does not break every turn.
 func TestAProjectMayDefineTurn(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `(define turn 0)`, 10, fake.Turn{Content: "hello"})
 	if err := r.turn("hi"); err != "" {
 		t.Fatal(err)
@@ -397,6 +409,7 @@ func TestAProjectMayDefineTurn(t *testing.T) {
 // '((tools #f)) is a list, not #f: it is an error, where it used to leave
 // the tools on silently.
 func TestModelTurnToolsOptionIsStrict(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `(define (agent-turn request) (model-turn "control" '((tools #f))))`, 10, fake.Turn{Content: "x"})
 	if err := r.turn("hi"); !strings.Contains(err, "the tools option is #f (no tools)") {
 		t.Fatalf("error %q", err)
@@ -406,6 +419,7 @@ func TestModelTurnToolsOptionIsStrict(t *testing.T) {
 // A mistyped tool name gets the likely one: models invent names in the
 // family's style (fs-grep for index-grep, fs_edit for fs-edit).
 func TestUnknownToolSuggestsTheLikelyOne(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "g", Name: "fs-grep", Args: map[string]any{"path": ".", "pattern": "x"}}, {ID: "e", Name: "fs_edit", Args: map[string]any{}}, {ID: "z", Name: "zap", Args: map[string]any{}}}},
 		fake.Turn{Content: "done"},
@@ -422,6 +436,7 @@ func TestUnknownToolSuggestsTheLikelyOne(t *testing.T) {
 // A strategy may fold a tool result: later windows show its text instead,
 // the log keeps the result, and the folded request replays byte for byte.
 func TestFoldResultShowsTextInLaterWindows(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define errors '())
 (define (try thunk)

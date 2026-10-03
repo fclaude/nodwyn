@@ -9,6 +9,7 @@ import (
 )
 
 func TestBindingInspectionCannotMutateAuthorization(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.Paths.Bindings = "" // explicitly in-memory test policy
 	o.Bindings = binding.Table{Bind: []binding.Binding{{Class: "service", Dest: "api.example.test", Positions: []string{"header:Authorization"}, Methods: []string{"POST"}}}}
@@ -31,6 +32,7 @@ func TestBindingInspectionCannotMutateAuthorization(t *testing.T) {
 }
 
 func TestBindingEligibilityRequiresVisibleMatchingScope(t *testing.T) {
+	t.Parallel()
 	s := &Session{opts: Options{Paths: config.PathsUnder(t.TempDir(), t.TempDir())}}
 	scope := guard.EgressScope{Class: "service", Host: "api.test", Method: "POST", Position: "body"}
 	row, err := binding.Exact(scope.Class, scope.Host, scope.Method, scope.Position)

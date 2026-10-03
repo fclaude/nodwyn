@@ -15,6 +15,7 @@ import (
 )
 
 func TestIngressCanary(t *testing.T) {
+	t.Parallel()
 	const key = "sk-ant-abcdefgh1234"
 	const placeholder = "[REDACTED anthropic-key]"
 	r := newRig(t, false,
@@ -78,6 +79,7 @@ func TestIngressCanary(t *testing.T) {
 // The plan gate (plan.scm) neither sends a key in the request to the model
 // nor records one the model writes into its plan.
 func TestPlanAndEphemeralRedaction(t *testing.T) {
+	t.Parallel()
 	const key = "sk-ant-abcdefgh1234"
 	// The planner looks around first, then drafts a plan with the key in it;
 	// the planned turn that changes nothing is reminded twice.
@@ -105,6 +107,7 @@ func TestPlanAndEphemeralRedaction(t *testing.T) {
 }
 
 func TestSplitSchemeOutput(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true)
 	_, err := r.s.Eval(context.Background(), `(begin (display "sk-ant-") (display "abcdefgh1234"))`)
 	if err != nil {
@@ -120,6 +123,7 @@ func TestSplitSchemeOutput(t *testing.T) {
 // Scheme escapes such as \n must not merge a secret with a preceding letter
 // before scanning. Scan the actual string leaves, including nested values.
 func TestEvalResultRedactsBeforeQuoting(t *testing.T) {
+	t.Parallel()
 	const canary = "AKIAABCDEFGHIJKLMNOP"
 	for _, source := range []string{
 		`(fs-read "notes.txt")`,

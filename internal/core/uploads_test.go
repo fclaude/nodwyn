@@ -83,6 +83,7 @@ func (r *rig) settingChanges() []log.SettingChange {
 // allow" sends this one without a confirm, is saved in config.toml and in
 // the log, and the next upload asks nothing.
 func TestFirstUploadAsksAndAlwaysAllowIsSaved(t *testing.T) {
+	t.Parallel()
 	r, paths, drive := uploadRig(t, docsSetup{upload: "unset"})
 	r.s.Send("upload the notes")
 	if seen := r.answering("allow", "terminal", "y"); strings.Join(seen, " ") != "prompt.choice" {
@@ -110,6 +111,7 @@ func TestFirstUploadAsksAndAlwaysAllowIsSaved(t *testing.T) {
 // "Deny" refuses this upload and every later one; "allow by hand" asks
 // about this one, and each after it.
 func TestFirstUploadDenyAndAllowByHand(t *testing.T) {
+	t.Parallel()
 	r, _, drive := uploadRig(t, docsSetup{upload: "unset"})
 	r.s.Send("upload the notes")
 	r.answering("deny", "terminal", "y")
@@ -140,6 +142,7 @@ func TestFirstUploadDenyAndAllowByHand(t *testing.T) {
 // A paired device may not choose "always allow": it widens what nodwyn does
 // without asking, which only this machine may decide.
 func TestPairedDeviceCannotChooseAlwaysAllow(t *testing.T) {
+	t.Parallel()
 	r, _, _ := uploadRig(t, docsSetup{upload: "unset"})
 	r.s.Send("upload the notes")
 	timeout := time.After(10 * time.Second)
@@ -168,6 +171,7 @@ func TestPairedDeviceCannotChooseAlwaysAllow(t *testing.T) {
 // allow by hand, refuses the upload without a prompt; "always allow" uploads
 // even there; "deny" is not offered the tool at all.
 func TestUploadSettingWhenNobodyAsks(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		upload  string
 		adjust  func(*Options)

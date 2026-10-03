@@ -17,6 +17,7 @@ import (
 // the session starts with a jev-key stored and jev.content = "full"; the
 // handle-taking jev-* primitives are never offered.
 func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		content string
 		key     bool
@@ -62,6 +63,7 @@ func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 // prices, and counted in the task's spend; its tokens stay out of the
 // token budget, which counts model tokens.
 func TestJudgeUsageIsRecordedAndPriced(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), noul(0.75))
 	r := judgedRigWith(t, judge, config.JevContentFull, "", func(o *Options) {
 		in, out := 1000.0, 2000.0
@@ -102,6 +104,7 @@ func TestJudgeUsageIsRecordedAndPriced(t *testing.T) {
 // jev-key's binding, the key is injected, the answer comes back as the
 // tool's result, and jev.req says the model sent it.
 func TestModelCallsTheJudge(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), noul(0.75))
 	r := judgedRigAt(t, judge, config.JevContentFull, "",
 		fake.Turn{ToolCalls: []fake.ToolCall{{Name: "judge-noul", Args: map[string]any{"state": "the diff", "instructions": "is it complete?"}}}},

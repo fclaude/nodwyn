@@ -47,6 +47,7 @@ func lastMessage(r *rig, i int) string {
 }
 
 func TestUnattendedSessionsGetTheUnattendedPrompt(t *testing.T) {
+	t.Parallel()
 	u := unattendedRig(t)
 	if sys := u.s.loop.WindowContext().System; !strings.Contains(sys, "You work unattended") || !strings.Contains(sys, "Set up a way to check your work") {
 		t.Fatalf("unattended system prompt:\n%s", sys)
@@ -65,6 +66,7 @@ func TestUnattendedSessionsGetTheUnattendedPrompt(t *testing.T) {
 
 // Unattended, a turn ends on evidence: a change, then a test run after it.
 func TestUnattendedTurnEndsOnEvidence(t *testing.T) {
+	t.Parallel()
 	r := unattendedRig(t,
 		fake.Turn{Content: "done"},         // nothing changed: reminded
 		writeFile("w"),                     // a change
@@ -90,6 +92,7 @@ func TestUnattendedTurnEndsOnEvidence(t *testing.T) {
 // asked for a proposal may end unchanged once the model says so: the
 // reminder says it may, once.
 func TestReviewedTurnMayEndUnchanged(t *testing.T) {
+	t.Parallel()
 	r := unattendedRig(t,
 		fake.Turn{Content: "Proposal: split the tab."},                         // nothing changed: reminded, with the way out
 		fake.Turn{Content: "You asked for a proposal first; nothing changed."}, // ends
@@ -106,6 +109,7 @@ func TestReviewedTurnMayEndUnchanged(t *testing.T) {
 // before it ends: it changes something or runs out of reminders, and the
 // reminder offers no way out.
 func TestUnreviewedTurnIsNotOfferedAWayOut(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true,
 		fake.Turn{Content: "main.go declares package main."}, // the explorer
 		fake.Turn{Content: "1. Edit main.go."},               // the planner
@@ -160,6 +164,7 @@ func gitWorkTree(t *testing.T) string {
 // The check script lives in the scratch directory: writing it is not a
 // change, and running it is a test run, failing or not.
 func TestCheckScriptIsATestNotAChange(t *testing.T) {
+	t.Parallel()
 	r := unattendedRig(t,
 		write("c", "$TMPDIR/check.sh", "exit 1\n"), // the check, failing
 		fake.Turn{Content: "done"},                 // nothing changed yet: reminded
@@ -181,6 +186,7 @@ func TestCheckScriptIsATestNotAChange(t *testing.T) {
 // A check fails until the work is done: its failing runs are not test
 // commands that cannot run, so they never offer the way out.
 func TestFailingCheckRunsAreNotUnrunnable(t *testing.T) {
+	t.Parallel()
 	turns := []fake.Turn{write("c", "$TMPDIR/check.sh", "exit 1\n"), writeFile("w")}
 	for i := 0; i < 6; i++ {
 		turns = append(turns, shellArgs("t"+string(rune('a'+i)), "bash", "$TMPDIR/check.sh", string(rune('a'+i))))
@@ -204,6 +210,7 @@ func TestFailingCheckRunsAreNotUnrunnable(t *testing.T) {
 // is no change, nor is a file a run leaves behind, and an edit through the
 // shell is one. The leftover is named before the turn ends.
 func TestGitSaysWhatChanged(t *testing.T) {
+	t.Parallel()
 	r := unattendedRigIn(t, gitWorkTree(t),
 		write("same", "tracked.txt", "one\n"), // the same content: no change
 		shell("o", "touch run.log"),           // a run's leftover: no change
@@ -230,6 +237,7 @@ func TestGitSaysWhatChanged(t *testing.T) {
 // An edit to a file git showed before the turn leaves the status as it was;
 // the edit still counts, and the file is not new.
 func TestEditToAFileGitShowedIsAChange(t *testing.T) {
+	t.Parallel()
 	r := unattendedRigIn(t, gitWorkTree(t),
 		write("w", "notes.txt", "mine, edited\n"), // untracked before the turn
 		shell("t", "true # pytest"),
@@ -246,6 +254,7 @@ func TestEditToAFileGitShowedIsAChange(t *testing.T) {
 // Files new since the turn began that git does not track are named once
 // before the turn ends; files untracked before it are not.
 func TestNewUntrackedFilesAreNamedOnce(t *testing.T) {
+	t.Parallel()
 	r := unattendedRigIn(t, gitWorkTree(t),
 		write("w", "repro.py", "print(1)\n"), // a stray script in the repository
 		shell("t", "true # pytest"),          // a test run after it
@@ -267,6 +276,7 @@ func TestNewUntrackedFilesAreNamedOnce(t *testing.T) {
 // Test commands that keep failing to run get one way out: report the change
 // as unverified instead of spending the budget.
 func TestUnrunnableTestsGetAWayOut(t *testing.T) {
+	t.Parallel()
 	turns := []fake.Turn{writeFile("w")}
 	for i := 0; i < 6; i++ {
 		// Different each time: the same call four times in a row is a
@@ -286,6 +296,7 @@ func TestUnrunnableTestsGetAWayOut(t *testing.T) {
 // Before a plan is drafted, a read-only explorer looks at the repository and
 // the planner is told what it found.
 func TestPlannerExploresFirst(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true,
 		fake.Turn{Content: "main.go declares package main; tests run with go test ./..."},
 		fake.Turn{Content: "1. Edit main.go."},

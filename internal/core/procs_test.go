@@ -15,6 +15,7 @@ import (
 // shell-start asks like shell-exec, and a session's background processes
 // end with it.
 func TestBackgroundProcessesAskAndEndWithTheSession(t *testing.T) {
+	t.Parallel()
 	start := fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "shell-start", Args: map[string]any{"cmd": "sh", "args": []any{"-c", "echo $$ > pid; echo up; exec sleep 60"}}}}}
 	refused := newRig(t, true, start, fake.Turn{Content: "done"})
 	refused.s.Send("serve")

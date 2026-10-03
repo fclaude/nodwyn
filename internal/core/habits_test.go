@@ -16,6 +16,7 @@ import (
 
 // A strategy reads the models' and the window's properties (ADR 32).
 func TestModelAndWindowPrimitives(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10)
 	for src, want := range map[string]string{
 		"(assoc-ref (model-info) 'name)":              `"control"`,
@@ -38,6 +39,7 @@ func TestModelAndWindowPrimitives(t *testing.T) {
 // A command line sent through cmd/args is answered, unrun, with the bash -c
 // call that runs it (shell.scm).
 func TestShellCommandLineIsRedirected(t *testing.T) {
+	t.Parallel()
 	pipe := fake.ToolCall{ID: "p", Name: "shell-exec", Args: map[string]any{"cmd": "ls", "args": []any{"-1", "|", "head"}}}
 	r := strategyRig(t, "", 10, fake.Turn{ToolCalls: []fake.ToolCall{pipe}}, fake.Turn{Content: "done"})
 	if err := r.turn("list the files"); err != "" {
@@ -53,6 +55,7 @@ func TestShellCommandLineIsRedirected(t *testing.T) {
 // read-definition returns a definition by name with its line range
 // (readdef.scm).
 func TestReadDefinitionByName(t *testing.T) {
+	t.Parallel()
 	call := fake.ToolCall{ID: "d", Name: "read-definition", Args: map[string]any{"path": "lib.py", "name": "shout"}}
 	r := strategyRig(t, "", 10, fake.Turn{ToolCalls: []fake.ToolCall{call}}, fake.Turn{Content: "done"})
 	src := "import re\n\n\ndef shout(s):\n    return s.upper()\n\n\ndef whisper(s):\n    return s.lower()\n"
@@ -95,6 +98,7 @@ func hygieneRun(t *testing.T, init string, paths ...string) *rig {
 // must read again after it, when the cache is not serving the context, or
 // when the context is filling the window. Otherwise it stays (hygiene.scm).
 func TestHygieneFoldsWhenItPays(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, init string
 		paths      []string
@@ -118,6 +122,7 @@ func TestHygieneFoldsWhenItPays(t *testing.T) {
 
 // (context-tokens result) is the window from that result on.
 func TestContextTokensFromAResult(t *testing.T) {
+	t.Parallel()
 	r := hygieneRun(t, "", "big.py", "bigger.py", "small.py")
 	whole, first, second := r.eval("(context-tokens)"), r.eval(`(context-tokens "r0")`), r.eval(`(context-tokens "r1")`)
 	var w, a, b int
@@ -135,6 +140,7 @@ func TestContextTokensFromAResult(t *testing.T) {
 // The provider's cache counts of the main context's requests judge whether
 // its cache serves the context (hygiene.scm); a sub-agent's do not.
 func TestHygieneWatchesTheProvidersCache(t *testing.T) {
+	t.Parallel()
 	cached := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cached += 30
@@ -173,6 +179,7 @@ func look(id, name string, args map[string]any) fake.Turn {
 // down what it found, and to answer now if the request asks or needs the
 // person's decision (strategy.scm, reading-reminder-after).
 func TestReadingRoundsGetAReminder(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "(define reading-reminder-after 3)\n", 10,
 		look("a", "fs-read", map[string]any{"path": "main.go"}),
 		look("b", "fs-list", map[string]any{"path": "."}),
@@ -197,6 +204,7 @@ func TestReadingRoundsGetAReminder(t *testing.T) {
 // asked for the plan it had, a model wrote it again, which starts its marks
 // over (prompts.scm, reading-reminder-plan).
 func TestReadingRoundsWithAPlanGoOnWithIt(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "(define reading-reminder-after 2)\n", 10,
 		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
 		look("a", "fs-read", map[string]any{"path": "main.go"}),
@@ -216,6 +224,7 @@ func TestReadingRoundsWithAPlanGoOnWithIt(t *testing.T) {
 
 // A round that runs or changes something starts the count again.
 func TestReadingCountStartsAgainOnARun(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "(define reading-reminder-after 3)\n", 10,
 		look("a", "fs-read", map[string]any{"path": "main.go"}),
 		look("b", "fs-read", map[string]any{"path": "main.go"}),
@@ -238,6 +247,7 @@ func TestReadingCountStartsAgainOnARun(t *testing.T) {
 // it ends is told to start the change, with no way out: on the plan it has,
 // here the gate's.
 func TestUnreviewedReadingRoundsAreToldToPlan(t *testing.T) {
+	t.Parallel()
 	turns := []fake.Turn{
 		{Content: "main.go declares package main."}, // the explorer
 		{Content: "1. Edit main.go."},               // the planner

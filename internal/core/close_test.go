@@ -11,6 +11,7 @@ import (
 )
 
 func TestCloseWaitsForFinalIdleDelivery(t *testing.T) {
+	t.Parallel()
 	model := fake.NewT(t, fake.Turn{Content: "finished"})
 	defer model.Close()
 	o := diskOptions(t)

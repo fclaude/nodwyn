@@ -108,6 +108,7 @@ func replayAll(t *testing.T, logb *bytes.Buffer) int {
 }
 
 func TestModelTurnByName(t *testing.T) {
+	t.Parallel()
 	impl := newFakeOpenAI(t, oaiCall("c1", "fs-list", `{"path":"."}`), oaiText("listed"))
 	r := modelRig(t, `
 (define (agent-turn request)
@@ -139,6 +140,7 @@ func TestModelTurnByName(t *testing.T) {
 // routes by it can keep them on one prompt cache; cache_key = "off" sends
 // none (ADR 9).
 func TestModelRequestsCarryTheSessionsCacheKey(t *testing.T) {
+	t.Parallel()
 	init := `
 (define (agent-turn request)
   (let loop ((reply (model-turn "impl")))
@@ -168,6 +170,7 @@ func TestModelRequestsCarryTheSessionsCacheKey(t *testing.T) {
 }
 
 func TestModelTurnUnknownName(t *testing.T) {
+	t.Parallel()
 	r := modelRig(t, `(define (agent-turn request) (model-turn "gpt-9"))`,
 		map[string]config.Model{"impl": {Provider: "ollama", URL: "http://127.0.0.1:1", Model: "m"}}, Options{})
 	if err := r.turn("hi"); !strings.Contains(err, `no model "gpt-9" is configured; configured models: control, impl`) {
@@ -178,6 +181,7 @@ func TestModelTurnUnknownName(t *testing.T) {
 // A keyed model gets its key only where the key is bound, like any other
 // credential; the check is logged and the key never is.
 func TestKeyedModelNeedsItsBinding(t *testing.T) {
+	t.Parallel()
 	const secret = "sk-model-canary-0042"
 	for _, bound := range []bool{false, true} {
 		impl := newFakeOpenAI(t, oaiText("hello"))
@@ -215,6 +219,7 @@ func TestKeyedModelNeedsItsBinding(t *testing.T) {
 // pointed, the request is not sent again, and neither the key nor the
 // window reaches the other host.
 func TestKeyedModelRedirectIsNotFollowed(t *testing.T) {
+	t.Parallel()
 	const secret, window = "sk-model-redirect-canary-3141", "window-redirect-canary-3141"
 	var mu sync.Mutex
 	var elsewhere []string
@@ -267,6 +272,7 @@ func jsonMarshal(v any) ([]byte, error) { return json.Marshal(v) }
 // Without a [control] model a session still opens, to replay or evaluate;
 // its first model request says what to add, and is not retried.
 func TestMissingControlFailsAtTheFirstModelRequest(t *testing.T) {
+	t.Parallel()
 	logb := &bytes.Buffer{}
 	s, err := New(Options{Config: config.Default(), Repo: t.TempDir(), NoConfirm: true, LogWriter: logb})
 	if err != nil {
@@ -285,6 +291,7 @@ func TestMissingControlFailsAtTheFirstModelRequest(t *testing.T) {
 // The control model is built like any configured model, so it may be a
 // keyed chat-completions server whose key is bound.
 func TestKeyedControlModel(t *testing.T) {
+	t.Parallel()
 	const secret = "sk-control-canary-7788"
 	ctl := newFakeOpenAI(t, oaiText("hello from a keyed control model"))
 	kc, err := keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p"))
@@ -320,6 +327,7 @@ func TestKeyedControlModel(t *testing.T) {
 // An ollama model without num_ctx is asked for the window's size, not left to
 // Ollama's own default context, which would cut the prompt silently.
 func TestOllamaIsAskedForTheWindowsContext(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10, fake.Turn{Content: "done"})
 	if r.turn("hello") != "" {
 		t.Fatal("turn failed")
@@ -334,6 +342,7 @@ func TestOllamaIsAskedForTheWindowsContext(t *testing.T) {
 // server's model list says of its context; a model the list does not give
 // a length for keeps the default window, and the log says why.
 func TestWindowSizedFromTheModelList(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/models":

@@ -58,6 +58,7 @@ func (r *rig) decision(prim, path string) log.GuardDecision {
 // diff in the log (ADR 35); a protected path and credential-shaped content
 // still ask the person.
 func TestWritesInTheFolderGoAhead(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, false,
 		writeTurn("1", "notes/plan.md", "first step\n"),
 		writeTurn("2", "Makefile", "all:\n"),
@@ -83,6 +84,7 @@ func TestWritesInTheFolderGoAhead(t *testing.T) {
 
 // Without a judge, a command is the person's to answer.
 func TestCommandsAskWithoutAJudge(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, false, shellTurn("1", "true"), fake.Turn{Content: "done"})
 	asked := r.asked("run it", "y")
 	if len(asked) != 1 || asked[0].Prompt.Prim != "shell-exec" {
@@ -96,6 +98,7 @@ func TestCommandsAskWithoutAJudge(t *testing.T) {
 // With a judge, it answers a command first; when it refuses, the person is
 // asked and told what it answered.
 func TestJudgeAnswersCommandsThenThePerson(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		allow float64
 		asks  bool
@@ -126,6 +129,7 @@ func TestJudgeAnswersCommandsThenThePerson(t *testing.T) {
 // A write is approval.writes', so the judge is never asked about one: with
 // writes that ask, the person answers it.
 func TestJudgeIsNotAskedAboutWrites(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2))
 	r := judgedRigWith(t, judge, config.JevContentPlan, "", func(o *Options) {
 		o.NoConfirm = false
@@ -142,6 +146,7 @@ func TestJudgeIsNotAskedAboutWrites(t *testing.T) {
 // approval.commands = "allow" answers ordinary confirms yes, attributed to
 // the setting; a security confirm still asks the person.
 func TestCommandsAllowedBySetting(t *testing.T) {
+	t.Parallel()
 	r := newRigWith(t, false, func(c *config.Config) { c.Approval.Commands = config.ApproveAllow },
 		shellTurn("1", "true"), writeTurn("2", ".nodwyn/init.scm", "(define x 1)\n"), fake.Turn{Content: "done"})
 	asked := r.asked("run it, then configure", "n")
@@ -155,6 +160,7 @@ func TestCommandsAllowedBySetting(t *testing.T) {
 
 // approval.commands = "ask" asks the person even with a judge set up.
 func TestCommandsAskBySetting(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2))
 	r := judgedRigWith(t, judge, config.JevContentPlan, "", func(o *Options) {
 		o.NoConfirm = false
@@ -171,6 +177,7 @@ func TestCommandsAskBySetting(t *testing.T) {
 // With "don't ask" on, a command is approved by the switch and the judge is
 // not asked about it.
 func TestDontAskSkipsTheJudge(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2))
 	r := judgedRigWith(t, judge, config.JevContentPlan, "", func(o *Options) { o.NoConfirm = false },
 		shellTurn("1", "true"), fake.Turn{Content: "done"})

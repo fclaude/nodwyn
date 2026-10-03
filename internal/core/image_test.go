@@ -136,6 +136,7 @@ func (r *rig) attachRecords() []log.Attach {
 }
 
 func TestImageAttachedAfterItsConfirmReachesTheModel(t *testing.T) {
+	t.Parallel()
 	r := imageRig(t, true, nil, fake.Turn{Content: "A grey gradient."})
 	path, data := picture(t, "shot.png", 1200, 800)
 	receipt, asked, err := r.attachAnswering(path, "shot.png", "y")
@@ -190,6 +191,7 @@ func TestImageAttachedAfterItsConfirmReachesTheModel(t *testing.T) {
 }
 
 func TestImageNotAttachedWithoutAYes(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, want string
 		adjust     func(*Options)
@@ -219,6 +221,7 @@ func TestImageNotAttachedWithoutAYes(t *testing.T) {
 // While an image waits for its confirm no turn starts, and stopping the
 // session's work cancels it.
 func TestImageConfirmHoldsTheSession(t *testing.T) {
+	t.Parallel()
 	r := imageRig(t, true, nil)
 	path, _ := picture(t, "wait.png", 8, 8)
 	done := make(chan error, 1)
@@ -250,6 +253,7 @@ func TestImageConfirmHoldsTheSession(t *testing.T) {
 }
 
 func TestImageRefusedWhenTheControlModelTakesNone(t *testing.T) {
+	t.Parallel()
 	r := imageRig(t, false, nil)
 	path, _ := picture(t, "chart.png", 32, 32)
 	_, asked, err := r.attachAnswering(path, "chart.png", "y")
@@ -292,6 +296,7 @@ func TestImageRefusedWhenTheControlModelTakesNone(t *testing.T) {
 }
 
 func TestImageAttachmentChecksTheFile(t *testing.T) {
+	t.Parallel()
 	r := imageRig(t, true, nil)
 	fakePNG := filepath.Join(t.TempDir(), "photo.png")
 	os.WriteFile(fakePNG, []byte("GIF89a\x01\x00\x01\x00"), 0o600)
@@ -310,6 +315,7 @@ func TestImageAttachmentChecksTheFile(t *testing.T) {
 // A stored image that changes or disappears is never sent silently: the
 // request says so instead, and still replays.
 func TestChangedOrMissingImageIsSaidSo(t *testing.T) {
+	t.Parallel()
 	r := imageRig(t, true, nil, fake.Turn{Content: "one"}, fake.Turn{Content: "two"}, fake.Turn{Content: "three"})
 	path, data := picture(t, "plan.png", 40, 30)
 	receipt, _, err := r.attachAnswering(path, "plan.png", "y")
@@ -351,6 +357,7 @@ func TestChangedOrMissingImageIsSaidSo(t *testing.T) {
 // The planner, a sub-agent and the judge never get an image; another host
 // gets a line saying the image is not for it.
 func TestImagesStayOutOfNarrowedContextsAndTheJudge(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(3.6))
 	other := fake.NewT(t, fake.Turn{Content: "I see no image."})
 	t.Cleanup(other.Close)

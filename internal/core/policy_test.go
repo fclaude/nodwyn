@@ -41,6 +41,7 @@ func policyDone(t *testing.T, s *Session, answer func(event.Confirm)) event.Poli
 }
 
 func TestPolicyWritesRequireOneTimeReviewAndCurrentRevision(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"bindings", "approvals"} {
 		for _, mode := range []string{"allow", "deny", "abort", "stale"} {
 			t.Run(name+"/"+mode, func(t *testing.T) {
@@ -149,6 +150,7 @@ func TestPolicyWritesRequireOneTimeReviewAndCurrentRevision(t *testing.T) {
 }
 
 func TestPolicyRejectsUnknownTargetsSecretsAndModelOrigin(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	s, err := New(o)
 	if err != nil {
@@ -184,6 +186,7 @@ func TestPolicyRejectsUnknownTargetsSecretsAndModelOrigin(t *testing.T) {
 }
 
 func TestPolicyApprovalsCannotFollowRepositoryEscape(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	s, err := New(o)
 	if err != nil {

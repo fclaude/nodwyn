@@ -13,6 +13,7 @@ import (
 )
 
 func TestProgressStopsTurnAndAllowsNextMessage(t *testing.T) {
+	t.Parallel()
 	for _, scenario := range []struct {
 		name   string
 		count  int
@@ -73,6 +74,7 @@ func TestProgressStopsTurnAndAllowsNextMessage(t *testing.T) {
 }
 
 func TestProgressStopCompletesBatchWithoutExecutingRemainder(t *testing.T) {
+	t.Parallel()
 	var batch []fake.ToolCall
 	for i := 0; i < 5; i++ {
 		batch = append(batch, fake.ToolCall{ID: fmt.Sprint(i), Name: "fs-list", Args: map[string]any{"path": "."}})

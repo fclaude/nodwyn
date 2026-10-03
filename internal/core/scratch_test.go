@@ -18,6 +18,7 @@ import (
 // when the session closes; a resumed session gets a new, empty one. The
 // system prompt names $TMPDIR, not the per-session path.
 func TestScratchDirectory(t *testing.T) {
+	t.Parallel()
 	srv := fake.NewT(t, fake.Turn{Content: "ok"}, fake.Turn{Content: "ok"})
 	defer srv.Close()
 	o := diskOptions(t) // NoConfirm: any prompt would be refused
@@ -79,6 +80,7 @@ func TestScratchDirectory(t *testing.T) {
 // A scratch directory a crashed session left behind is swept once it is a
 // week old; a recent one is kept.
 func TestScratchSweep(t *testing.T) {
+	t.Parallel()
 	data := t.TempDir()
 	root := scratchRoot(data)
 	os.MkdirAll(filepath.Join(root, "nodwyn-scratch-old-1"), 0o700)
@@ -209,6 +211,7 @@ func TestDenylistFollowsTheConfiguredDirectories(t *testing.T) {
 // $TMPDIR, and a write there needs no approval. A turn marks the directory
 // in use for the sweep.
 func TestTmpdirNamesTheScratchDirectoryInEveryTool(t *testing.T) {
+	t.Parallel()
 	srv := fake.NewT(t, fake.Turn{Content: "ok"})
 	defer srv.Close()
 	o := diskOptions(t) // NoConfirm: any prompt would be refused
@@ -259,6 +262,7 @@ func TestTmpdirNamesTheScratchDirectoryInEveryTool(t *testing.T) {
 // than in the repository: redacted, capped, and shown in later sessions'
 // system prompts as leads to check. Another repository does not see them.
 func TestProjectNotesCarryAcrossSessions(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.Provider = llm.NewOllama("http://127.0.0.1:1")
 	s, err := New(o)

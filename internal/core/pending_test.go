@@ -15,6 +15,7 @@ import (
 )
 
 func TestPendingPromptsUseCurrentStateAndRedact(t *testing.T) {
+	t.Parallel()
 	const canary = "sk-ant-abcdefgh1234"
 	s := &Session{
 		prompts: map[string]pendingConfirmation{
@@ -64,6 +65,7 @@ func TestPendingPromptsUseCurrentStateAndRedact(t *testing.T) {
 }
 
 func TestCanceledPromptsRejectRepliesBeforeCleanup(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	s := &Session{
@@ -85,6 +87,7 @@ func TestCanceledPromptsRejectRepliesBeforeCleanup(t *testing.T) {
 }
 
 func TestTurnApprovalCannotWaiveSecurityConfirmation(t *testing.T) {
+	t.Parallel()
 	r := newAskingRig(t)
 	source := `(begin (fs-write "ordinary.txt" "ordinary") (fs-write "secret.txt" "sk-ant-abcdefgh1234"))`
 	if err := r.s.StartEval(source, "test-actor"); err != nil {

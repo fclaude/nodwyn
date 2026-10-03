@@ -9,6 +9,7 @@ import (
 )
 
 func TestReadLogPagesLegacyRedactionAndPartialTail(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	path := log.SessionPath(o.Paths.SessionsDir, "page")
 	w, err := log.Create(path, "page")

@@ -82,6 +82,7 @@ const planCycle = `
 `
 
 func TestUserlandPlanCycle(t *testing.T) {
+	t.Parallel()
 	const secret = "sk-judge-canary-4711"
 	var mu sync.Mutex
 	var oracleCalls int
@@ -211,6 +212,7 @@ const routeImplementation = `
 `
 
 func TestUserlandRouteImplementation(t *testing.T) {
+	t.Parallel()
 	impl := newFakeOpenAI(t,
 		oaiCall("i1", "fs-write", `{"path":"hello.txt","content":"helo\n"}`),
 		oaiText("wrote hello.txt"),

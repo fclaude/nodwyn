@@ -19,6 +19,7 @@ func stepCall(id string, step any, state, note string) fake.ToolCall {
 // plan.step and answered with the next unmarked step; a step the plan does
 // not have is refused in the answer and recorded nowhere.
 func TestModelMarksPlanSteps(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(3.6))
 	r := judgedRig(t, judge, "",
 		fake.Turn{Content: "1. read main.go\n2. edit it\n3. run the tests"},
@@ -69,6 +70,7 @@ func TestModelMarksPlanSteps(t *testing.T) {
 
 // Without a plan there is nothing to mark, and nothing is recorded.
 func TestPlanStepWithoutAPlan(t *testing.T) {
+	t.Parallel()
 	r := judgedRig(t, nil, "",
 		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("a", 1, "done", "")}},
 		fake.Turn{Content: "done"})
@@ -98,6 +100,7 @@ const shapedPlan = "1. Change: main.go main — print the greeting.\n" +
 // it is recorded (decision "model"), pinned in the next request's system
 // prompt, and plan-step marks it. Writing it again revises it.
 func TestModelWritesItsOwnPlan(t *testing.T) {
+	t.Parallel()
 	revised := strings.Replace(shapedPlan, "go test ./...", "go vet ./...", 1)
 	r := judgedRig(t, nil, "",
 		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
@@ -142,6 +145,8 @@ func TestModelWritesItsOwnPlan(t *testing.T) {
 // marked so far, pinned with them, and plan-step goes on from them. A turn
 // that finishes leaves none: the message after it is a new request.
 func TestAnUnfinishedTurnLeavesItsPlan(t *testing.T) {
+	// llm.RetryDelay is the whole process's, so this test is not parallel:
+	// no other session runs while it is shortened.
 	defer func(d time.Duration) { llm.RetryDelay = d }(llm.RetryDelay)
 	llm.RetryDelay = time.Millisecond
 	rateLimited := fake.Turn{Status: 429}

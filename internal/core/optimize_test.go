@@ -52,6 +52,7 @@ func evalValue(t *testing.T, r *rig, src string) (scheme.Value, error) {
 }
 
 func TestSessionHistoryIsThisRepositorys(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	mine := past(t, o, "first task", "first answer")
 	other := o
@@ -75,6 +76,7 @@ func TestSessionHistoryIsThisRepositorys(t *testing.T) {
 }
 
 func TestReloadAppliesWhatTheSessionAllows(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	r := diskSession(t, o, `
 (register-tool "greet" (lambda (who) "hi") '((doc . "Greet someone") (params . (("who" "string" "whom")))))
@@ -110,6 +112,7 @@ func TestReloadAppliesWhatTheSessionAllows(t *testing.T) {
 }
 
 func TestOptimizeImprovesInitFromHistory(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.NoConfirm = false
 	past(t, o, "run the tests", "I ran pytest with the system python; the imports failed.")

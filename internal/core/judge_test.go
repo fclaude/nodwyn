@@ -52,6 +52,7 @@ func (r *rig) fsWriteDecision() log.GuardDecision {
 // task, the plan and the call's target, never at the default level what it
 // would write, and the call runs only if it allows it.
 func TestJudgeApprovesAndRefusesCalls(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		allow float64
 		want  bool
@@ -88,6 +89,7 @@ func TestJudgeApprovesAndRefusesCalls(t *testing.T) {
 
 // At jev.content = "full" the judge also sees what the call would do.
 func TestJudgeSeesTheCallAtFullContent(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), choice(0.95))
 	r := judgedRigWith(t, judge, config.JevContentFull, quiet, judged,
 		writeCall("out.txt", "hello-judge-7\n"), fake.Turn{Content: "done"})
@@ -102,6 +104,7 @@ func TestJudgeSeesTheCallAtFullContent(t *testing.T) {
 // A judge that fails declines, and a security confirm is declined without
 // asking the judge at all.
 func TestJudgeFailsClosed(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), 500)
 	r := judgedRigWith(t, judge, config.JevContentPlan, quiet, judged, writeCall("out.txt", "x\n"), fake.Turn{Content: "done"})
 	if e := r.turn("write it"); e != "" {
@@ -129,6 +132,7 @@ func TestJudgeFailsClosed(t *testing.T) {
 
 // Judged approval needs a judge.
 func TestJudgeApproveNeedsAJudge(t *testing.T) {
+	t.Parallel()
 	srv := fake.NewT(t)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
@@ -147,6 +151,7 @@ func TestJudgeApproveNeedsAJudge(t *testing.T) {
 // that defines an always-yes approve-call, or shadows jev-choice with one
 // that always allows, changes nothing.
 func TestSchemeCannotApproveWhatTheJudgeRefused(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), choice(0.3))
 	init := quiet +
 		"(define (approve-call call) '((allow . #t) (score . 1.0) (reason . \"yes\")))\n" +
@@ -166,6 +171,7 @@ func TestSchemeCannotApproveWhatTheJudgeRefused(t *testing.T) {
 // approve-refuse? can only refuse: it declines a call the judge allowed, a
 // failing hook declines too, and the threshold is the user's config.
 func TestApproveRefuseOnlyTightens(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, init string
 		threshold  float64

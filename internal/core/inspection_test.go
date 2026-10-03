@@ -12,6 +12,7 @@ import (
 )
 
 func TestFrictionReadUsesGuardAndRedactedEvents(t *testing.T) {
+	t.Parallel()
 	const canary = "AKIAABCDEFGHIJKLMNOP"
 	for _, mode := range []string{"allow", "deny", "confirm", "cancel"} {
 		t.Run(mode, func(t *testing.T) {

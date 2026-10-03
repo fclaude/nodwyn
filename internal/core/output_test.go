@@ -18,6 +18,7 @@ import (
 // no tool call to answer, asked again with a note to be briefer. Both
 // requests replay from the log.
 func TestOutputIsCappedAndACutReplyIsAskedAgain(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, "", 10,
 		fake.Turn{Thinking: "long thinking", DoneReason: "length"},
 		fake.Turn{Content: "done"},
@@ -54,6 +55,7 @@ func TestOutputIsCappedAndACutReplyIsAskedAgain(t *testing.T) {
 // Cuts are asked about at most output-cut-retries times; then the reply
 // stands, as any reply without calls does.
 func TestCutRepliesAreRetriedAtMostTwice(t *testing.T) {
+	t.Parallel()
 	cut := fake.Turn{Thinking: "long thinking", DoneReason: "length"}
 	r := strategyRig(t, "", 10, cut, cut, cut, fake.Turn{Content: "never asked"})
 	if e := r.turn("fix it"); e != "" {
@@ -67,6 +69,7 @@ func TestCutRepliesAreRetriedAtMostTwice(t *testing.T) {
 // A model's own max_output caps its replies instead of the window's, which a
 // remote reasoning model may need; the request records it, so it replays.
 func TestAModelMayCapItsOwnReplies(t *testing.T) {
+	t.Parallel()
 	srv := fake.NewT(t, fake.Turn{Thinking: "long thinking", DoneReason: "length"}, fake.Turn{Content: "done"})
 	defer srv.Close()
 	cfg := config.Default()
@@ -103,6 +106,7 @@ func TestAModelMayCapItsOwnReplies(t *testing.T) {
 // A model's temperature and seed go with each of its requests, in ollama's
 // options, and are recorded so the request replays; unset, nothing is sent.
 func TestAModelMaySetSampling(t *testing.T) {
+	t.Parallel()
 	srv := fake.NewT(t, fake.Turn{Content: "done"})
 	defer srv.Close()
 	cfg := config.Default()

@@ -45,6 +45,7 @@ func followBudget(t *testing.T, s *Session, answer func(event.Checkpoint)) []eve
 }
 
 func TestBudgetCustomCheckpointAndHardBatchStop(t *testing.T) {
+	t.Parallel()
 	var calls []fake.ToolCall
 	for i := 0; i < 4; i++ {
 		calls = append(calls, fake.ToolCall{ID: fmt.Sprint(i), Name: "fs-list", Args: map[string]any{"path": "."}})
@@ -105,6 +106,7 @@ func TestBudgetCustomCheckpointAndHardBatchStop(t *testing.T) {
 }
 
 func TestBudgetNestedActionsCannotBeCaughtOrHidden(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.NoConfirm = false
 	o.Config.Budget.ActionsSoft = 1
@@ -159,6 +161,7 @@ func TestBudgetNestedActionsCannotBeCaughtOrHidden(t *testing.T) {
 }
 
 func TestBudgetNoninteractiveAndTokenStop(t *testing.T) {
+	t.Parallel()
 	for _, dimension := range []string{"tool_calls", "tokens"} {
 		t.Run(dimension, func(t *testing.T) {
 			o := diskOptions(t)
@@ -208,6 +211,7 @@ func (waitingProvider) Chat(ctx context.Context, _ llm.Request, _ func(llm.Delta
 }
 
 func TestBudgetWallCancelsBlockedModel(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.Provider = waitingProvider{}
 	o.Config.Budget.WallSoft = "50ms"
@@ -231,6 +235,7 @@ func TestBudgetWallCancelsBlockedModel(t *testing.T) {
 }
 
 func TestBudgetAbortCheckpointRemovesPendingReply(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.NoConfirm = false
 	o.Config.Budget.ToolCallsSoft = 1
@@ -264,6 +269,7 @@ func TestBudgetAbortCheckpointRemovesPendingReply(t *testing.T) {
 }
 
 func TestDeniedCallsDoNotConsumeActionBudget(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.Config.Budget.ActionsSoft = 1
 	o.Config.Budget.ActionsHard = 1
@@ -290,6 +296,7 @@ func TestDeniedCallsDoNotConsumeActionBudget(t *testing.T) {
 }
 
 func TestCheckpointRedactsEventAndHistory(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.NoConfirm = false
 	s, err := New(o)

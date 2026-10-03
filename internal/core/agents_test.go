@@ -15,6 +15,7 @@ import (
 // A strategy's sub-agent works in its own context; once it answers, the
 // caller's context is as it was, plus what the strategy does with the answer.
 func TestSubAgentFoldsAway(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define (agent-turn request)
   (let ((reply (model-turn)))
@@ -45,6 +46,7 @@ func TestSubAgentFoldsAway(t *testing.T) {
 // An agent tool is called by the model like any tool and answered by a
 // sub-agent, which may use only the tools it was given.
 func TestAgentToolAnswersFromSubAgent(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define-agent-tool "ask-expert" "Ask an expert who can read files."
   '(("question" "string" "what to ask"))
@@ -95,6 +97,7 @@ func TestAgentToolAnswersFromSubAgent(t *testing.T) {
 // A sub-agent given a list of tools is offered only those, and the log
 // records the offer, so replay rebuilds the same request.
 func TestSubAgentIsOfferedOnlyItsTools(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define-agent-tool "ask-expert" "Ask an expert who can read files."
   '(("question" "string" "what to ask"))
@@ -148,6 +151,7 @@ func TestSubAgentIsOfferedOnlyItsTools(t *testing.T) {
 // A tools option naming a tool that does not exist is an error that lists
 // the tools there are.
 func TestModelTurnRejectsUnknownToolNames(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `(define (agent-turn request) (model-turn "control" '((tools "no-such-tool"))))`, 10,
 		fake.Turn{Content: "done"})
 	if err := r.turn("hello"); !strings.Contains(err, `no tool named "no-such-tool"`) || !strings.Contains(err, "fs-read") {
@@ -159,6 +163,7 @@ func TestModelTurnRejectsUnknownToolNames(t *testing.T) {
 // answer without tools, before the core's progress stop would end the whole
 // turn.
 func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
+	t.Parallel()
 	read := func(id string) fake.Turn { return fake.Turn{ToolCalls: []fake.ToolCall{readCall(id)}} }
 	r := strategyRig(t, `
 (define-agent-tool "ask-expert" "Ask an expert who can read files."
@@ -196,6 +201,7 @@ func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
 // A sub-agent out of rounds is asked, without tools, for what it found, so
 // its work is not lost with its last tool calls.
 func TestSubAgentOutOfRoundsStillAnswers(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define sub-agent-max-rounds 1)
 (define-agent-tool "ask-expert" "Ask an expert who can read files."
@@ -229,6 +235,7 @@ func TestSubAgentOutOfRoundsStillAnswers(t *testing.T) {
 // call; the call is skipped and it is asked again, so the sub-agent still
 // folds and its caller gets an answer, not an error.
 func TestSubAgentWrapUpSurvivesAToolCall(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define sub-agent-max-rounds 1)
 (define-agent-tool "ask-expert" "Ask an expert who can read files."
@@ -257,6 +264,7 @@ func TestSubAgentWrapUpSurvivesAToolCall(t *testing.T) {
 // waits for it is answered right after the call and the transcript stays
 // well-formed for the next turn.
 func TestTurnEndFoldsContextsWithWaitingCalls(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define (agent-turn request)
   (if (equal? request "start")
@@ -292,6 +300,7 @@ func TestTurnEndFoldsContextsWithWaitingCalls(t *testing.T) {
 // A sub-agent given no tools ('()) is offered none, rather than every tool
 // with each call then skipped.
 func TestSubAgentWithNoToolsIsOfferedNone(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define-agent-tool "ask-reader" "Ask someone who only thinks."
   '(("question" "string" "what to ask"))

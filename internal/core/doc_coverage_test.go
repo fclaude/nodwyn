@@ -11,6 +11,7 @@ import (
 // only the interpreter's builtins (TestDocCoverage in internal/scheme):
 // host primitives and the loop's too (ADR 7).
 func TestSessionPrimitivesAreDocumented(t *testing.T) {
+	t.Parallel()
 	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "scheme.md"))
 	if err != nil {
 		t.Fatal(err)

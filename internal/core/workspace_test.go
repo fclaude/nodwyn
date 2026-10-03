@@ -21,6 +21,7 @@ import (
 // by absolute path, read-only ones refuse writes, and the previous content
 // of a replaced file is kept where git is not the undo.
 func TestDocsWorkspaceHasEveryTool(t *testing.T) {
+	t.Parallel()
 	repo, ref := t.TempDir(), t.TempDir()
 	os.WriteFile(filepath.Join(repo, "status.md"), []byte("old status\n"), 0o644)
 	os.WriteFile(filepath.Join(ref, "contract.txt"), []byte("terms\n"), 0o644)
@@ -96,6 +97,7 @@ func mustJSON(t *testing.T, v any) []byte {
 
 // Unattended sessions are told about mounted folders too.
 func TestUnattendedPromptNamesMounts(t *testing.T) {
+	t.Parallel()
 	repo, ref := t.TempDir(), t.TempDir()
 	if _, err := config.SaveWorkspace(repo, config.Workspace{Mounts: []config.Mount{{Path: ref, Access: "read"}}}); err != nil {
 		t.Fatal(err)

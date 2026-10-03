@@ -58,6 +58,7 @@ func planWriteTurns(t *testing.T, turns ...[]string) ([]string, []log.GatePlan) 
 
 // A plan with no Test: step is turned down, saying so, and not recorded.
 func TestPlanWithoutATestStepIsTurnedDown(t *testing.T) {
+	t.Parallel()
 	answers, plans := planWriteTurns(t, []string{"1. Change: main.go main — print the greeting.\n2. Docs: none — no doc describes main.go.\n3. Check: go test ./..."})
 	if len(plans) != 0 {
 		t.Fatalf("recorded %+v", plans)
@@ -70,6 +71,7 @@ func TestPlanWithoutATestStepIsTurnedDown(t *testing.T) {
 // A Test: step that does not say how its test fails today is turned down
 // by its number, and so is a step without a kind.
 func TestPlanWithAnUnexplainedTestIsTurnedDown(t *testing.T) {
+	t.Parallel()
 	answers, plans := planWriteTurns(t, []string{"1. Change: main.go main — print the greeting.\n" +
 		"2. Test: main_test.go TestGreeting — main prints it.\n" +
 		"3. Read main.go again\n" +
@@ -88,6 +90,7 @@ func TestPlanWithAnUnexplainedTestIsTurnedDown(t *testing.T) {
 // A plan with no Docs: step, or one that does not end with a Check:, is
 // turned down.
 func TestPlanWithoutDocsOrACheckIsTurnedDown(t *testing.T) {
+	t.Parallel()
 	answers, plans := planWriteTurns(t, []string{
 		"1. Change: main.go main — print the greeting.\n2. Test: main_test.go TestGreeting — main prints it; fails today: main prints nothing.\n3. Check: go test ./...",
 		"1. Change: main.go main — print the greeting.\n2. Check: go test ./...\n3. Test: main_test.go TestGreeting — main prints it; fails today: main prints nothing.\n4. Docs: README.md — say what main prints.",
@@ -107,6 +110,7 @@ func TestPlanWithoutDocsOrACheckIsTurnedDown(t *testing.T) {
 // that is accepted. This passes on the unchanged code too, which recorded
 // any plan: it guards the exception.
 func TestNoneStepsAreAccepted(t *testing.T) {
+	t.Parallel()
 	answers, plans := planWriteTurns(t, []string{"1. Change: README.md — fix the install command.\n2. **Test:** none — only docs change.\n3. Docs: none — README.md is the doc, changed in step 1.\n4. Check: git diff"})
 	if len(plans) != 1 || answers[0] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as you finish it." {
 		t.Fatalf("plans %+v, answer %q", plans, answers[0])
@@ -117,6 +121,7 @@ func TestNoneStepsAreAccepted(t *testing.T) {
 // what it still lacks, so a model that cannot get the shape right is not
 // kept from the work; the next turn checks again.
 func TestThirdShapelessPlanIsRecorded(t *testing.T) {
+	t.Parallel()
 	shapeless := "1. read main.go\n2. edit it"
 	answers, plans := planWriteTurns(t, []string{shapeless, shapeless, shapeless}, []string{shapeless})
 	for i := 0; i < 2; i++ {
@@ -141,6 +146,7 @@ func TestThirdShapelessPlanIsRecorded(t *testing.T) {
 // is named with its kind. This passes on the unchanged code too: it guards
 // reading a plan whose steps start with a kind and a colon.
 func TestPlanStepMarksATestStep(t *testing.T) {
+	t.Parallel()
 	r := judgedRig(t, nil, "",
 		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
 		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("a", 2, "done", "failed before the change, passes after")}},
@@ -181,6 +187,7 @@ func TestPlanStepMarksATestStep(t *testing.T) {
 // do not say what they check, or that leaves out the docs, does not reach
 // the rubric's top level.
 func TestPlannerAndJudgeAskForTheShape(t *testing.T) {
+	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(2), score(3.6))
 	r := judgedRig(t, judge, "", fake.Turn{Content: "1. edit main.go"}, fake.Turn{Content: "1. edit main.go and test it"}, fake.Turn{Content: "done"})
 	if e := r.turn("make main print a greeting"); e != "" {

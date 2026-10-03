@@ -161,6 +161,7 @@ func toolNames(s *Session) string {
 // credential stored, since the tool list is fixed for the session;
 // doc-export is offered to every one.
 func TestGoogleDocUploadOfferedOnlyWithACredential(t *testing.T) {
+	t.Parallel()
 	drive := fakedrive.New()
 	t.Cleanup(drive.Close)
 	with, _ := docsRig(t, drive, docsSetup{})
@@ -181,6 +182,7 @@ func TestGoogleDocUploadOfferedOnlyWithACredential(t *testing.T) {
 // key, the metadata asking for a Google Doc, and the file's bytes, returns
 // the document's id and URL, and records doc.upload. No key in the log.
 func TestGoogleDocUploadSendsTheDocument(t *testing.T) {
+	t.Parallel()
 	drive := fakedrive.New()
 	t.Cleanup(drive.Close)
 	r, _ := docsRig(t, drive, docsSetup{turns: []fake.Turn{uploadCall("u", "report.docx", "Q3 report"), {Content: "uploaded"}}})
@@ -242,6 +244,7 @@ func TestGoogleDocUploadSendsTheDocument(t *testing.T) {
 // Without a binding for the upload host, the guard denies the call before
 // anything is asked or sent.
 func TestGoogleDocUploadUnboundIsDenied(t *testing.T) {
+	t.Parallel()
 	drive := fakedrive.New()
 	t.Cleanup(drive.Close)
 	r, _ := docsRig(t, drive, docsSetup{unbound: true, turns: []fake.Turn{uploadCall("u", "report.docx", ""), {Content: "refused"}}})
@@ -269,6 +272,7 @@ func TestGoogleDocUploadUnboundIsDenied(t *testing.T) {
 // package and across the runs Word splits text into. The same key bound
 // for the upload host may go, as for any payload.
 func TestGoogleDocUploadRefusesADocumentHoldingAKey(t *testing.T) {
+	t.Parallel()
 	const key = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv"
 	drive := fakedrive.New()
 	t.Cleanup(drive.Close)
@@ -318,6 +322,7 @@ func TestGoogleDocUploadRefusesADocumentHoldingAKey(t *testing.T) {
 // before the upload, through the session's sink, and the refresh is
 // logged; Drive gets the fresh token, and no token reaches the log.
 func TestGoogleDocUploadRefreshesAStaleOAuth2Token(t *testing.T) {
+	t.Parallel()
 	provider := fakeoauth.New("nodwyn-test")
 	t.Cleanup(provider.Close)
 	drive := fakedrive.New()
@@ -359,6 +364,7 @@ func TestGoogleDocUploadRefreshesAStaleOAuth2Token(t *testing.T) {
 // Drive's refusal (a token without the scope it needs) is the tool's
 // error, in Drive's words, and doc.upload says the request was sent.
 func TestGoogleDocUploadReportsDrivesRefusal(t *testing.T) {
+	t.Parallel()
 	drive := fakedrive.New()
 	t.Cleanup(drive.Close)
 	drive.Refuse(403)

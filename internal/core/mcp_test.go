@@ -101,6 +101,7 @@ func (r *rig) mcpDecisions(prim string) []log.GuardDecision {
 }
 
 func TestMCPToolsCrossTheGuard(t *testing.T) {
+	t.Parallel()
 	server := fakemcp.New(mcpTools()...)
 	defer server.Close()
 	r, _ := mcpRig(t, server, true, true, nil,
@@ -153,6 +154,7 @@ func TestMCPToolsCrossTheGuard(t *testing.T) {
 }
 
 func TestMCPManifestChangeOffersNothing(t *testing.T) {
+	t.Parallel()
 	server := fakemcp.New(mcpTools()...)
 	defer server.Close()
 	changed := mcpTools()
@@ -178,6 +180,7 @@ func TestMCPManifestChangeOffersNothing(t *testing.T) {
 // judges one in an http-request body, nested in an object or not: refused
 // unless its class is bound for the server's host.
 func TestMCPArgumentsAreScannedForKeys(t *testing.T) {
+	t.Parallel()
 	const key = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv"
 	server := fakemcp.New(mcpTools()...)
 	defer server.Close()
@@ -220,6 +223,7 @@ func TestMCPArgumentsAreScannedForKeys(t *testing.T) {
 // An MCP result is external:mcp; content from outside may go to the server
 // because a binding names its host.
 func TestMCPResultsAreExternal(t *testing.T) {
+	t.Parallel()
 	server := fakemcp.New(mcpTools()...)
 	defer server.Close()
 	r, _ := mcpRig(t, server, true, true, nil)
@@ -240,6 +244,7 @@ func TestMCPResultsAreExternal(t *testing.T) {
 // from outside may go there (guard.TestApprovedDestinationIsThePrimsOwn
 // shows no other primitive gains by it).
 func TestMCPWithoutAKeyIsANamedDestination(t *testing.T) {
+	t.Parallel()
 	server := fakemcp.New(mcpTools()...)
 	defer server.Close()
 	r, _ := mcpRig(t, server, true, false, nil)
@@ -263,6 +268,7 @@ func TestMCPWithoutAKeyIsANamedDestination(t *testing.T) {
 // session has started, and the refresh is recorded once it has; the server
 // gets the fresh token, and no token reaches the log.
 func TestMCPServerWithAnOAuth2Credential(t *testing.T) {
+	t.Parallel()
 	provider := fakeoauth.New("nodwyn-test")
 	t.Cleanup(provider.Close)
 	server := fakemcp.New(mcpTools()...)

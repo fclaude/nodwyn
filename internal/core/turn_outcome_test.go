@@ -13,6 +13,7 @@ import (
 )
 
 func TestTurnOutcome(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		err  error
@@ -42,6 +43,7 @@ func TestTurnOutcome(t *testing.T) {
 }
 
 func TestRequiredPlanPrecedesExecution(t *testing.T) {
+	t.Parallel()
 	for _, empty := range []bool{false, true} {
 		t.Run(fmt.Sprint(empty), func(t *testing.T) {
 			// The explorer looks first, then the planner drafts; a run's turn

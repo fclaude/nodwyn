@@ -65,6 +65,7 @@ func approvalChanges(t *testing.T, s *Session) []log.ApprovalChange {
 // turned it on, and installs nothing; a protected path still asks, and
 // turned off, everything asks again. Each switch is in the log.
 func TestApproveAllAnswersOrdinaryWritesAndCommands(t *testing.T) {
+	t.Parallel()
 	r := newAskingRig(t)
 	a := answering(t, r.s, "n")
 	ctx := context.Background()
@@ -123,6 +124,7 @@ func TestApproveAllAnswersOrdinaryWritesAndCommands(t *testing.T) {
 
 // Turned on while an ordinary write waits for an answer, it answers it.
 func TestApproveAllAnswersWhatIsWaiting(t *testing.T) {
+	t.Parallel()
 	r := newAskingRig(t)
 	a := answering(t, r.s, "")
 	done := make(chan error, 1)
@@ -155,6 +157,7 @@ func TestApproveAllAnswersWhatIsWaiting(t *testing.T) {
 // as user-origin Scheme, as the person's own evaluations do. No primitive
 // names it, and what Scheme can define changes nothing.
 func TestApproveAllIsNotScheme(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define approve-all #t)\n(define dont-ask #t)\n"), 0o644)
@@ -182,6 +185,7 @@ func TestApproveAllIsNotScheme(t *testing.T) {
 
 // A session whose confirms nobody is asked has nothing to stop asking.
 func TestApproveAllNeedsAPersonAsked(t *testing.T) {
+	t.Parallel()
 	for _, o := range []Options{{NoConfirm: true}, {AutoApprove: true}, {Unattended: true}} {
 		o.Repo, o.Paths, o.Config = t.TempDir(), diskOptions(t).Paths, diskOptions(t).Config
 		s, err := New(o)
@@ -200,6 +204,7 @@ func TestApproveAllNeedsAPersonAsked(t *testing.T) {
 
 // It is never saved: a resumed session starts asking again.
 func TestApproveAllEndsWithTheSession(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	o.NoConfirm = false
 	s, err := New(o)

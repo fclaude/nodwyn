@@ -29,6 +29,10 @@ import (
 // A session with neither a LogWriter nor Paths logs to the working
 // directory, which under go test is this package's. A run that leaves a log
 // here fails, so a stray log is not committed with the change that made it.
+//
+// Tests call t.Parallel unless they change what the whole process shares:
+// the environment (t.Setenv) or a package variable (llm.RetryDelay). Those
+// run first, one at a time, and the parallel ones start after them.
 func TestMain(m *testing.M) {
 	fakecontainer.Main(containedTools()...)
 	// A home of its own (test/fakes/home): nodwyn's denylist, git's

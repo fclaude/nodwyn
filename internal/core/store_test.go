@@ -10,6 +10,7 @@ import (
 )
 
 func TestResumeRedactsLegacyHistory(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	path := log.SessionPath(o.Paths.SessionsDir, "legacy")
 	w, err := log.Create(path, "legacy")
@@ -50,6 +51,7 @@ func TestResumeRedactsLegacyHistory(t *testing.T) {
 }
 
 func TestStoreRejectsInvalidLogs(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"missing", "corrupt", "mixed", "symlink", "no-start"} {
 		t.Run(kind, func(t *testing.T) {
 			o := diskOptions(t)
@@ -88,6 +90,7 @@ func TestStoreRejectsInvalidLogs(t *testing.T) {
 }
 
 func TestSessionTitleIsShort(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"Fix the flaky test":                  "Fix the flaky test",
 		"Fix the flaky test. It fails on CI.": "Fix the flaky test",
@@ -130,6 +133,7 @@ func closedSession(t *testing.T, o Options, id, message string) string {
 // A closed session is named, archived and deleted through the store (ADR
 // 38), and a process that has it open keeps it: its lock refuses all three.
 func TestStoreNamesArchivesAndDeletesClosedSessions(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	store := Store{Dir: o.Paths.SessionsDir}
 	path := closedSession(t, o, "named", "Fix the flaky test. It fails on CI.")
@@ -197,6 +201,7 @@ func TestStoreNamesArchivesAndDeletesClosedSessions(t *testing.T) {
 
 // Resuming an archived session takes it out of the archive (ADR 39).
 func TestResumeBringsAnArchivedSessionBack(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	store := Store{Dir: o.Paths.SessionsDir}
 	closedSession(t, o, "archived", "Tidy the receipts")

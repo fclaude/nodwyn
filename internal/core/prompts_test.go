@@ -21,6 +21,7 @@ import (
 // the move to Scheme (2026-09-26) reproduced the Go strings; after that it
 // only made every edit to prompts.scm twice.
 func TestDefaultPrompts(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true)
 	system := r.s.loop.WindowContext().System
 	if built := evalText(t, r, `(system-prompt (repository))`); system != built {
@@ -75,6 +76,7 @@ func TestDefaultPrompts(t *testing.T) {
 // caches (ADR 9): two sessions of one repository send the same one, so it
 // names $TMPDIR, never a session's own scratch directory.
 func TestSystemPromptIsTheSameAcrossSessions(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true)
 	cfg := config.Default()
 	cfg.Control.URL = r.srv.URL
@@ -96,6 +98,7 @@ func TestSystemPromptIsTheSameAcrossSessions(t *testing.T) {
 // A repository's AGENTS.md joins both system prompts, interactive and
 // unattended, after the working rules (ADR 36).
 func TestAgentsFileJoinsTheSystemPrompt(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte("# Working here\n\n- Validate with make accept.\n"), 0o644)
 	srv := fake.NewT(t)
@@ -122,6 +125,7 @@ func TestAgentsFileJoinsTheSystemPrompt(t *testing.T) {
 // like the system prompt, and recorded so a replay rebuilds requests that
 // used a project's own.
 func TestTaskHeaderIsSchemeAndReplays(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `(define task-header "THE ASK:")`, 0, fake.Turn{Content: "done"})
 	if e := r.turn("add a flag"); e != "" {
 		t.Fatal(e)
@@ -145,6 +149,7 @@ func evalText(t *testing.T, r *rig, src string) string {
 }
 
 func TestInitRedefinesPromptsWithRawStrings(t *testing.T) {
+	t.Parallel()
 	r := strategyRig(t, `
 (define base-system-prompt system-prompt)
 (define (system-prompt repo)
@@ -183,6 +188,7 @@ func TestInitRedefinesPromptsWithRawStrings(t *testing.T) {
 }
 
 func TestPromptsAreFixedOnceTheSessionStarts(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true)
 	before := r.s.loop.WindowContext().System
 	r.eval(`(define (system-prompt repo) "changed")`)
@@ -195,6 +201,7 @@ func TestPromptsAreFixedOnceTheSessionStarts(t *testing.T) {
 }
 
 func TestMalformedPromptFailsTheSession(t *testing.T) {
+	t.Parallel()
 	// Only the system prompt is read at the start; every other prompt is
 	// ordinary Scheme, read when it is used.
 	for name, init := range map[string]string{

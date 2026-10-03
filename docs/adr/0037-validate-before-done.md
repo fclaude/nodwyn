@@ -176,3 +176,17 @@ asserting it.
 After it, on the same machine: the browser checks take about 10 s together
 (`screens` 6.5 s alone), `go test -race ./internal/core/` 30 s, and `make
 accept` 39 s.
+
+## Amendment 2026-10-03: `internal/core`'s tests run in parallel
+
+The session log a test failed to lock (the amendment above) was held by a
+child that another test's goroutine forked: a flock belongs to the open
+file description, which the child shares until its exec. Closing a writer
+now unlocks first (ADR 2's amendment of the same date). With that fixed,
+219 of `internal/core`'s 228 tests call `t.Parallel`. The nine that change
+what the whole process shares stay sequential and run first: the six
+contained-server tests and the two scratch tests that set environment
+variables, and `TestAnUnfinishedTurnLeavesItsPlan`, which sets
+`llm.RetryDelay`. Six runs of each, alternated on the same machine:
+`go test -race -count=1 ./internal/core/` took 27.1 to 27.7 s
+sequential and 6.6 to 7.6 s parallel, none failing.

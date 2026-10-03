@@ -8,6 +8,7 @@ import (
 )
 
 func TestJevOptionsPreserveDefaults(t *testing.T) {
+	t.Parallel()
 	for _, timeout := range []string{"", "invalid"} {
 		got := jevOptions(config.Jev{URL: "https://judge.example", Model: "test-model", Timeout: timeout})
 		if got.URL != "https://judge.example" || got.Model != "test-model" || got.Content != "plan" || got.Timeout != 10*time.Second {

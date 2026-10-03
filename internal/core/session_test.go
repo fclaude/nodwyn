@@ -93,6 +93,7 @@ func kinds(evs []event.Event) string {
 }
 
 func TestTurnWithToolCall(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, false,
 		fake.Turn{Thinking: "need the file", ToolCalls: []fake.ToolCall{{ID: "c1", Name: "fs-read", Args: map[string]any{"path": "main.go"}}}},
 		fake.Turn{Content: "It is a Go main package.", Chunk: 4},
@@ -132,6 +133,7 @@ func TestTurnWithToolCall(t *testing.T) {
 }
 
 func TestConfirmYesAndNo(t *testing.T) {
+	t.Parallel()
 	r := newAskingRig(t,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w1", Name: "fs-write", Args: map[string]any{"path": "new.txt", "content": "hi\n"}}}},
 		fake.Turn{Content: "written"},
@@ -168,6 +170,7 @@ func TestConfirmYesAndNo(t *testing.T) {
 // an edit's fields, the call asks once with one diff of the file all the
 // edits leave, and the file is written with every one of them.
 func TestFsEditWithEditsAsksOnceWithOneDiff(t *testing.T) {
+	t.Parallel()
 	r := newAskingRig(t,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "e1", Name: "fs-edit", Args: map[string]any{"path": "main.go", "edits": []any{
 			map[string]any{"old": "package main\n", "new": "package main\n\nfunc a() {}\n"},
@@ -201,6 +204,7 @@ func TestFsEditWithEditsAsksOnceWithOneDiff(t *testing.T) {
 }
 
 func TestNoConfirmDeniesWithoutPrompt(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s1", Name: "shell-exec", Args: map[string]any{"cmd": "true", "args": []any{}}}}},
 		fake.Turn{Content: "ok"},
@@ -216,6 +220,7 @@ func TestNoConfirmDeniesWithoutPrompt(t *testing.T) {
 }
 
 func TestUnknownToolAndBadArgsAreResults(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "x", Name: "car", Args: map[string]any{}}}},
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "y", Name: "fs-read", Args: map[string]any{"file": "main.go"}}}},
@@ -232,6 +237,7 @@ func TestUnknownToolAndBadArgsAreResults(t *testing.T) {
 }
 
 func TestHardStop(t *testing.T) {
+	t.Parallel()
 	call := fake.Turn{ToolCalls: []fake.ToolCall{{ID: "c", Name: "fs-list", Args: map[string]any{"path": "."}}}}
 	r := newRig(t, true, call, call, call, call, call)
 	r.s.Send("loop forever")
@@ -245,6 +251,7 @@ func TestHardStop(t *testing.T) {
 // An abort while a write waits for its confirm ends the turn with an error,
 // writes nothing, and leaves the session usable.
 func TestAbortDuringConfirm(t *testing.T) {
+	t.Parallel()
 	r := newAskingRig(t,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "a", "content": "b"}}}},
 		fake.Turn{Content: "ok"},
@@ -280,6 +287,7 @@ func TestAbortDuringConfirm(t *testing.T) {
 }
 
 func TestSendWhileBusyAndEval(t *testing.T) {
+	t.Parallel()
 	r := newRig(t, true, fake.Turn{Content: "hi", Chunk: 1})
 	r.s.Send("a")
 	if err := r.s.Send("b"); err == nil {
@@ -301,6 +309,7 @@ func TestSendWhileBusyAndEval(t *testing.T) {
 }
 
 func TestInitFileRegistersTools(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(`
@@ -330,6 +339,7 @@ func TestInitFileRegistersTools(t *testing.T) {
 }
 
 func TestTurnTrustAndStandingWrites(t *testing.T) {
+	t.Parallel()
 	w := func(id, path, content string) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-write", Args: map[string]any{"path": path, "content": content}}}}
 	}
@@ -392,6 +402,7 @@ func TestTurnTrustAndStandingWrites(t *testing.T) {
 // A predicate matches with any true value, not only #t: one ending in
 // (member …) returns a list, and must not fail open.
 func TestRegisterCheckTruthyPredicateMatches(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, "x.txt"), []byte("x"), 0o644)
@@ -413,6 +424,7 @@ func TestRegisterCheckTruthyPredicateMatches(t *testing.T) {
 }
 
 func TestInitRegisterCheckSurvivesGuardSetup(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, "x.txt"), []byte("x"), 0o644)

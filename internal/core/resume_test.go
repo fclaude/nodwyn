@@ -29,6 +29,7 @@ func diskOptions(t *testing.T) Options {
 }
 
 func TestResumeConversation(t *testing.T) {
+	t.Parallel()
 	srv := fake.NewT(t, fake.Turn{Content: "remembered answer"}, fake.Turn{Content: "continued answer"})
 	defer srv.Close()
 	o := diskOptions(t)
@@ -72,6 +73,7 @@ func TestResumeConversation(t *testing.T) {
 }
 
 func TestResumeMissingResultsAndApprovals(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	s, err := New(o)
 	if err != nil {
@@ -130,6 +132,7 @@ func TestResumeMissingResultsAndApprovals(t *testing.T) {
 }
 
 func TestResumeRejectsWrongRepoAndUnsafeIDs(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	s, err := New(o)
 	if err != nil {
@@ -163,6 +166,7 @@ func crashPaths(dir string) config.Paths {
 }
 
 func TestResumeCrashHelper(t *testing.T) {
+	t.Parallel()
 	dir := os.Getenv("NODWYN_TEST_CRASH_DIR")
 	if dir == "" {
 		return
@@ -188,6 +192,7 @@ func TestResumeCrashHelper(t *testing.T) {
 }
 
 func TestResumeAfterProcessKilled(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	waiting := make(chan struct{})
 	release := make(chan struct{})
@@ -265,6 +270,7 @@ func TestResumeAfterProcessKilled(t *testing.T) {
 }
 
 func TestUnfinishedToolsWithReusedIDs(t *testing.T) {
+	t.Parallel()
 	var data bytes.Buffer
 	writer := log.New(&data, "reused")
 	writer.Append(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: "call_0", Name: "fs-write", Args: json.RawMessage(`{"path":"interrupted"}`)}}})
@@ -295,6 +301,7 @@ func TestUnfinishedToolsWithReusedIDs(t *testing.T) {
 // tools it defines now apply, and a request made before the resume still
 // replays under the recipe it was made with.
 func TestResumeRereadsInit(t *testing.T) {
+	t.Parallel()
 	srv := fake.NewT(t, fake.Turn{Content: "first"}, fake.Turn{Content: "second"})
 	defer srv.Close()
 	o := diskOptions(t)

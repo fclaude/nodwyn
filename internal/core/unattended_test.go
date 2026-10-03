@@ -16,6 +16,7 @@ import (
 // protected path: .nodwyn/init.scm runs as the user at the next reload, and a
 // git hook at the user's next commit.
 func TestUnattendedRunNeverWritesProtectedPaths(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	write := func(id, path string) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-write", Args: map[string]any{"path": path, "content": "x\n"}}}}

@@ -28,6 +28,7 @@ import (
 // its tools probe the isolation from inside. With NODWYN_CONTAINER_TESTS_NET=1
 // it also reaches example.com, a listed host, through the proxy.
 func TestContainedWithPodman(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("NODWYN_CONTAINER_TESTS") != "1" {
 		t.Skip("set NODWYN_CONTAINER_TESTS=1 to run contained servers with podman")
 	}

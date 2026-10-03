@@ -34,6 +34,7 @@ func (p *captureRequests) Chat(ctx context.Context, req llm.Request, onDelta fun
 }
 
 func TestRequestReplayMatchesActualProviderAcrossResume(t *testing.T) {
+	t.Parallel()
 	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "read", Name: "fs-read", Args: map[string]any{"path": "note"}}}}, fake.Turn{Content: "first answer"}, fake.Turn{Content: "resumed answer"})
 	defer srv.Close()
 	capture := &captureRequests{Provider: llm.NewOllama(srv.URL)}

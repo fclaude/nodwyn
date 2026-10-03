@@ -19,6 +19,7 @@ import (
 // without a report, configured prices give an estimate marked as one, and
 // neither gives nothing.
 func TestModelSpendReachesTheLog(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, usage string
 		prices      bool
@@ -120,6 +121,7 @@ func spendOf(s *Session) (requests, checkpoints int, outcome string, notes []str
 // stops at the hard one; the next turn starts past it and stops before it
 // asks the model anything.
 func TestSpendLimitAsksThenStopsTheTask(t *testing.T) {
+	t.Parallel()
 	s, _, _ := spendRig(t, 1, 2, true, grep("1", "a"), grep("2", "b"), grep("3", "c"), grep("4", "d"), fake.Turn{Content: "never"})
 	s.Send("look around")
 	var used []int64
@@ -144,6 +146,7 @@ func TestSpendLimitAsksThenStopsTheTask(t *testing.T) {
 // A soft limit raised at a checkpoint is the task's, and holds for the
 // turns after it.
 func TestSpendSoftLimitRaisedHoldsForLaterTurns(t *testing.T) {
+	t.Parallel()
 	s, _, _ := spendRig(t, 1, 10, true, grep("1", "a"), grep("2", "b"), fake.Turn{Content: "done"}, grep("3", "c"), fake.Turn{Content: "done again"})
 	asked := 0
 	answer := func(p event.Checkpoint) {
@@ -161,6 +164,7 @@ func TestSpendSoftLimitRaisedHoldsForLaterTurns(t *testing.T) {
 
 // A limit that cannot see a request's cost says so, once.
 func TestSpendLimitSaysWhatItCannotCount(t *testing.T) {
+	t.Parallel()
 	s, _, _ := spendRig(t, 0, 1, false, fake.Turn{Content: "one"}, fake.Turn{Content: "two"})
 	for _, text := range []string{"first", "second"} {
 		s.Send(text)
@@ -180,6 +184,7 @@ func TestSpendLimitSaysWhatItCannotCount(t *testing.T) {
 
 // A resumed task counts what it spent before: its log is the record.
 func TestSpendLimitCountsAResumedTasksHistory(t *testing.T) {
+	t.Parallel()
 	s, o, _ := spendRig(t, 0, 5, true, fake.Turn{Content: "one"}, fake.Turn{Content: "never"})
 	s.Send("first")
 	followBudget(t, s, func(p event.Checkpoint) {})

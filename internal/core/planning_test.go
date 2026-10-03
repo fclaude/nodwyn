@@ -17,6 +17,7 @@ func (p *planningProvider) Chat(context.Context, llm.Request, func(llm.Delta)) (
 	return &llm.Response{Message: llm.Message{Role: llm.RoleAssistant, Content: "1. Inspect files."}, Usage: llm.Usage{PromptTokens: 6, OutputTokens: 4}}, nil
 }
 func TestRequiredPlanningTokensStopBeforeExecution(t *testing.T) {
+	t.Parallel()
 	o := diskOptions(t)
 	p := &planningProvider{}
 	o.Provider = p
