@@ -282,7 +282,7 @@ export class Transcript {
           p.noul === "plan" || p.noul === "required"
             ? `Made a plan${steps.length ? ` · ${steps.length} steps` : ""}${p.score ? ` · scored ${Number(p.score).toFixed(2)}` : ""}`
             : p.noul === "carried"
-              ? `Went on with the run's plan · ${(p.marks || []).length} of ${steps.length} steps marked`
+              ? `Went on with the plan · ${(p.marks || []).length} of ${steps.length} steps marked`
               : p.noul === "model"
                 ? `Wrote its plan${steps.length ? ` · ${steps.length} steps` : ""}`
                 : p.noul === "proceed"

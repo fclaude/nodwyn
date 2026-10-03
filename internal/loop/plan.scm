@@ -16,6 +16,14 @@
 ;; run goes on, does a turn plan again, told how the last plan went. A model
 ;; that finds the plan wrong marks the steps that no longer apply skipped.
 ;;
+;; A chat's turn that did not finish (an error, a limit or the person's Stop
+;; ended it) leaves its plan to the next message, "continue" or a
+;; correction, which carries it the same way (unfinished-plan). Without
+;; that the plan went with the turn: plan-step refused to mark its steps,
+;; and the model read the repository again and wrote the plan again, its
+;; done steps included. A turn that finished, its answer given, leaves none:
+;; the next message is a new request.
+;;
 ;; A project may redefine any of these, or plan-gate itself.
 
 (define plan-needed-threshold 0.5) ; the judge's "needs a plan" probability at which a request gets one
@@ -110,12 +118,17 @@
   (unless (string-empty? (string-trim findings))
     (add-message (plan-findings-message findings))))
 
-;; A run's later turn: the run's plan again, with the marks its earlier
-;; turns made, so the steps keep their numbers and the window shows what is
-;; done.
+;; A run's later turn, or the turn after one that did not finish: the plan
+;; again, with the marks the earlier turns made, so the steps keep their
+;; numbers and the window shows what is done.
 (define (plan-carry run)
   (record-plan (list (cons 'decision "carried") (cons 'plan (assoc-ref run 'plan))
                      (cons 'marks (assoc-ref run 'marks '())))))
+
+;; The plan a turn that did not finish left with a step unmarked, or #f.
+(define (plan-left)
+  (let ((left (unfinished-plan)))
+    (and left (assoc-ref left 'next #f) left)))
 
 (define (plan-gate request)
   (let ((judge (plan-judge)))
@@ -127,6 +140,7 @@
                  (let ((plan (plan-best judge (plan-run-request request run) (if judge "plan" "required"))))
                    (when (string-empty? (string-trim plan))
                      (error "required plan: the planner returned an empty plan"))))))
+          ((plan-left) => plan-carry)
           ((not judge) #f)
           (else
            (let ((p (guard (e (else e)) (jev-noul judge request plan-needed-question))))
@@ -181,7 +195,7 @@
 ;; model's plan, decision "model", where the window pins it under
 ;; plan-header for the rest of the turn and plan-step marks it. Writing it
 ;; again revises it, and its marks start over; in a run it becomes the
-;; run's plan.
+;; run's plan, and a turn that does not finish leaves it to the next.
 (define (plan-write-answer call args)
   (let ((plan (string-trim (format "~a" (assoc-ref args "plan" "")))))
     (if (string-empty? plan)

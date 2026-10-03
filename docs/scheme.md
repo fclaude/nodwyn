@@ -571,7 +571,10 @@ look). After `reading-reminder-after` (12) such rounds the model gets
 `(reading-reminder-message n)`, or `(reading-reminder-reviewed-message n)`
 when `(reviewed?)`: its thinking may not come back to it, so write down what it found
 now, as a plan with `plan-write`, or, when a person reads the answer and the
-request asks a question or needs their decision, as the answer. Any other
+request asks a question or needs their decision, as the answer. A turn that
+has a plan (`(plan-recorded?)`) is told instead to make the change for the
+plan's next unmarked step, and to write the plan again only if it must
+change, since that starts its marks over. Any other
 call starts the count again, and so does the reminder; 0 turns it off.
 
 | | |
@@ -602,7 +605,7 @@ conversation (`model-turn`, `run-tools`, `skip-tools`, `answer-call`,
 a turn and from model-originated code; the ones that only describe the session (`model-info`, `model-names`,
 `window-limits`, `session-system-prompt`, `session-requests`,
 `context-tokens`, `unattended?`, `reviewed?`, `plan-required?`, `plan-recorded?`, `run-plan`,
-`session-list`, `session-events`) answer at any time (`session-system-prompt`
+`unfinished-plan`, `session-list`, `session-events`) answer at any time (`session-system-prompt`
 and `context-tokens` once the session has started), which
 is how `compact.scm` reads `(window-limits)` as it loads. The strategy runs with harness origin, so it cannot
 strip provenance or change policy (`wipe`, `register-check` and `policy-write`
@@ -858,6 +861,14 @@ on does a turn draft a new one, from the request with the previous plan and
 how each step went (`plan-run-request`). A model that finds the plan wrong
 marks the steps that no longer apply skipped, saying why.
 
+A chat's plan is carried the same way past a turn that did not finish. When
+an error, a limit or the person's Stop ended the turn, the next message
+("continue", or a correction) carries its plan with the steps marked so far
+(`unfinished-plan`, then `plan-carry`), so the model goes on from the next
+unmarked step instead of reading the repository again and writing the plan
+again. A turn that finished, its answer given, leaves no plan: the next
+message is a new request, gated as usual.
+
 | | |
 |---|---|
 | `plan-needed-threshold` | the judge's probability of "needs a plan" at which a request gets one (0.5) |
@@ -866,16 +877,17 @@ marks the steps that no longer apply skipped, saying why.
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
 | `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
 | `(record-compaction facts)` | record a compaction as `context.compact`, from an alist: `trigger` (`auto`, `command` or `requested`), `compacted`, `before` (the size `(context-tokens)` gave before it), `threshold` and `focus`. The size after and the note's reply are read when it is called, so call it once the handover is in place, as `compact-context` does |
-| `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded`, `required`, `carried` or `model`), `plan`, `score`, `revisions`, `reason`, and `marks`, the steps of the plan already marked, each an alist of `step`, `state` and `note` as `run-plan` gives them; the turn's `record-step` and the window start from them. An error for a step the plan does not have, another state, a step marked twice, or marks without a plan |
+| `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded`, `required`, `carried` or `model`), `plan`, `score`, `revisions`, `reason`, and `marks`, the steps of the plan already marked, each an alist of `step`, `state` and `note` as `run-plan` and `unfinished-plan` give them; the turn's `record-step` and the window start from them. An error for a step the plan does not have, another state, a step marked twice, or marks without a plan |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(reviewed?)` | true when a person reads this turn's answer before anything else happens: a chat's turn, and a supervised run's turn that a run checkpoint follows; false in an unattended run, in a run's last turn (no checkpoint follows it) and outside a turn. The evidence loop lets a reviewed turn end unchanged when the request asks for no change yet |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
 | `(run-plan)` | the plan of the run this turn belongs to, as its earlier turns left it, read from the log: `((plan . text) (steps . list) (marks . list) (next . n))`, where `marks` are the latest mark per step, in step order, each `((step . n) (state . s) (note . t))`, and `next` is the first unmarked step, or `#f` when every step is marked. `#f` when this turn is not a run's (its `user.msg` follows no `run.turn`) or no turn of the run has recorded a plan. Only the run's turns count: a chat turn between leaves its plan alone, a resume keeps it, and a run started afresh has none |
-| `(plan-carry run)` | record `run`'s plan, from `(run-plan)`, as this turn's, decision `carried`, with its marks |
+| `(unfinished-plan)` | the plan a turn that did not finish left to this one, read from the log, in the shape `run-plan` gives. A turn did not finish when an error, a limit or the person's Stop ended it (its `turn.end` outcome is `error`, `stopped`, `hard_budget`, `spend_limit` or `canceled`), or when nothing ended it; its plan, with every mark made since, goes on through such turns. `#f` when the latest turn that ended finished (outcome `completed`, or none recorded, as in an older log) or no turn since has recorded a plan. `plan-gate` carries it in a chat's turn when a step is unmarked (`plan-left`) |
+| `(plan-carry run)` | record `run`'s plan, from `(run-plan)` or `(unfinished-plan)`, as this turn's, decision `carried`, with its marks |
 | `(plan-run-request request run)` | the planner's request when a run's plan has every step marked: `request`, the previous plan and how each step went; `request` alone when `run` is `#f` |
 | `(plan-steps)` | the steps of the plan recorded in this turn, as strings: its numbered or bulleted lines, in order, or the whole plan when it is prose (one step); `'()` before a plan is recorded. The console reads a plan's steps the same way |
 | `(record-step n state note)` | record that step `n` (from 1) of this turn's plan is `"done"` or `"skipped"`, with a note saying what shows it, as `plan.step`; a later mark of the same step replaces it, one a carried plan brought included. Returns `((done . k) (of . n) (next . m))`: the steps marked so far, carried ones included, the plan's steps, and the first unmarked one, or `#f`. An error without a plan, for a step the plan does not have, or for another state |
-| `plan-write` | the model's tool for a plan of its own, an agent tool answered by `plan-write-answer`: `{"plan"}`, recorded with `record-plan`, decision `model`, so the window pins it under `plan-header` and `plan-step` marks it. The model's thinking comes back to it only as the server reported it (window recipe v14), often a summary or nothing, and a reply that only calls tools keeps nothing else: without a written plan a design is worked out again at every request. Writing it again revises it and its marks start over; in a run it becomes the run's plan. The working rules ask for it once the model knows what to change |
+| `plan-write` | the model's tool for a plan of its own, an agent tool answered by `plan-write-answer`: `{"plan"}`, recorded with `record-plan`, decision `model`, so the window pins it under `plan-header` and `plan-step` marks it. The model's thinking comes back to it only as the server reported it (window recipe v14), often a summary or nothing, and a reply that only calls tools keeps nothing else: without a written plan a design is worked out again at every request. Writing it again revises it and its marks start over; in a run it becomes the run's plan, and a turn that does not finish leaves it to the next. The working rules ask for it once the model knows what to change |
 | `plan-step` | the model's tool for those marks, an agent tool (`define-agent-tool`) answered by `plan-step-answer`: `{"step", "state", "note"}`, answered with what was marked and the next unmarked step. The plan header (`plan-header`) and a run's turn prompt ask the model to use it. A mark is the model's word, not a proof: the console shows it as such, and the evidence is the transcript |
 | `(repository)` | the repository's root, for a prompt to name (the planner's system prompt does) |
 | `(workspace)` | the workspace's kind and mounted folders from `.nodwyn/workspace.toml` (ADR 22), as `(("kind" . "docs") ("mounts" (("path" . P) ("access" . "read")) …))`. The kind is a label: every kind has the same tools. Both default system prompts add a section naming the mounted folders, so a plain repository's prompt is unchanged; mounted folders are reached by absolute path, and a read-only one refuses every write. Before `fs-write` or `fs-edit` replaces a file, its previous content is kept in `.nodwyn/versions/` and a `file.version` record names it, unless a git work tree at the root has the file committed and unchanged (ADR 35) |

@@ -217,7 +217,7 @@ func TestPlanViewShowsACarriedPlansMarks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"The run's plan, carried from an earlier turn · 2 of 3 steps marked there", "Steps (2 of 3 done, as the model marked them):", "[x] 1. read (read main.go)", "[x] 2. edit (edited)", "[ ] 3. test"} {
+	for _, want := range []string{"The plan, carried from an earlier turn · 2 of 3 steps marked there", "Steps (2 of 3 done, as the model marked them):", "[x] 1. read (read main.go)", "[x] 2. edit (edited)", "[ ] 3. test"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q in:\n%s", want, got)
 		}

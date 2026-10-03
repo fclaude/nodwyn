@@ -97,7 +97,7 @@ export function renderInspector(
     else if (p.noul === "degraded")
       container.append(text("p", "Gate fallback; no plan score recorded."));
     else if (p.noul === "carried")
-      container.append(text("p", "The run's plan, carried from an earlier turn."));
+      container.append(text("p", "The plan, carried from an earlier turn."));
     else if (p.noul === "model")
       container.append(text("p", "The model wrote this plan itself (plan-write)."));
     if (p.reason) container.append(text("p", p.reason));

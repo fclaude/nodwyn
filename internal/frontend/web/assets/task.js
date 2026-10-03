@@ -549,7 +549,7 @@ export class TaskView {
               ? `required, scored ${Number(p.score).toFixed(2)}`
               : "required for this run"
             : p.noul === "carried"
-              ? "the run's plan, carried over"
+              ? "carried over from an earlier turn"
               : p.noul === "model"
                 ? "written by the model"
                 : "judge unavailable";

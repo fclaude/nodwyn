@@ -94,7 +94,7 @@ func (l *Loop) install() error {
 		{
 			Name: "record-plan",
 			Meta: scheme.Meta{
-				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded, required or carried), plan, score, revisions, reason, and marks, the steps of the plan already marked, each an alist of step, state and note, as run-plan gives them (a run's later turn carries its plan with them). The window shows a recorded plan, and the marks it carries, to the model for the rest of the turn.",
+				Doc:    "Record the plan gate's outcome as gate.plan, from an alist: decision (plan, proceed, degraded, required or carried), plan, score, revisions, reason, and marks, the steps of the plan already marked, each an alist of step, state and note, as run-plan and unfinished-plan give them (a run's later turn, and the turn after one that did not finish, carry a plan with them). The window shows a recorded plan, and the marks it carries, to the model for the rest of the turn.",
 				Params: []scheme.Param{{Name: "outcome", Type: "alist", Doc: "the gate's decision and plan"}},
 				Hidden: true,
 				Origin: "builtin",
@@ -118,6 +118,15 @@ func (l *Loop) install() error {
 				Origin: "builtin",
 			},
 			Handler: l.runPlanPrim,
+		},
+		{
+			Name: "unfinished-plan",
+			Meta: scheme.Meta{
+				Doc:    "The plan a turn that did not finish left to this one, read from the log, as run-plan gives a run's: an alist of plan, steps, marks and next. A turn did not finish when an error, a limit or the person's Stop ended it (turn.end outcome error, stopped, hard_budget, spend_limit or canceled), or when nothing ended it; its plan, with every mark made since, goes on through such turns. #f when the latest turn that ended finished (outcome completed, or none recorded), or no turn since recorded a plan.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.unfinishedPlanPrim,
 		},
 		{
 			Name: "record-step",
@@ -648,6 +657,25 @@ func (l *Loop) runPlanPrim(c *scheme.Call) (scheme.Value, error) {
 	if !ok {
 		return scheme.False, nil
 	}
+	return planAlist(plan, marks), nil
+}
+
+// unfinishedPlanPrim is (unfinished-plan), read from the log like
+// (run-plan), so a resumed session finds the plan its last turn left.
+func (l *Loop) unfinishedPlanPrim(c *scheme.Call) (scheme.Value, error) {
+	if c.Origin == scheme.OriginModel {
+		return scheme.Void, errors.New("not callable from a model-originated evaluation")
+	}
+	plan, marks, ok := unfinishedPlan(l.host.EventsSoFar())
+	if !ok {
+		return scheme.False, nil
+	}
+	return planAlist(plan, marks), nil
+}
+
+// planAlist is a plan carried from earlier turns as the strategy reads it:
+// plan, steps, marks and next, the first unmarked step or #f.
+func planAlist(plan string, marks []log.PlanStep) scheme.Value {
 	steps := log.GatePlan{Plan: plan}.Steps()
 	stepValues := make([]scheme.Value, len(steps))
 	for i, s := range steps {
@@ -675,7 +703,7 @@ func (l *Loop) runPlanPrim(c *scheme.Call) (scheme.Value, error) {
 		scheme.Cons(scheme.Sym("steps"), scheme.List(stepValues...)),
 		scheme.Cons(scheme.Sym("marks"), scheme.List(markValues...)),
 		scheme.Cons(scheme.Sym("next"), next),
-	), nil
+	)
 }
 
 // runPlan is the plan of the run the latest turn belongs to, as the run's
@@ -717,11 +745,59 @@ func runPlan(events []log.Event) (plan string, marks []log.PlanStep, ok bool) {
 	if !inRun || plan == "" {
 		return "", nil, false
 	}
+	return plan, inStepOrder(byStep), true
+}
+
+// unfinishedPlan is the plan the turns that did not finish left to the
+// latest one: the latest plan recorded since the last turn that finished,
+// and the latest mark per step since, the marks it carried included, in
+// step order. A turn finished when its turn.end says completed, or says
+// nothing (an older log); one that an error, a limit or the person's Stop
+// ended, or that nothing ended, leaves its plan to the next. ok is false
+// when no turn since the last one that finished recorded a plan.
+func unfinishedPlan(events []log.Event) (plan string, marks []log.PlanStep, ok bool) {
+	var byStep map[int]log.PlanStep
+	for _, ev := range events {
+		switch ev.Kind {
+		case log.KindTurnEnd:
+			var p log.TurnEnd
+			if ev.Decode(&p) != nil {
+				continue
+			}
+			switch p.Outcome {
+			case "error", "stopped", "hard_budget", "spend_limit", "canceled":
+			default:
+				plan, byStep = "", nil
+			}
+		case log.KindGatePlan:
+			var p log.GatePlan
+			if ev.Decode(&p) == nil && strings.TrimSpace(p.Plan) != "" {
+				plan, byStep = p.Plan, map[int]log.PlanStep{}
+				for _, m := range p.Marks {
+					byStep[m.Step] = m
+				}
+			}
+		case log.KindPlanStep:
+			var p log.PlanStep
+			if plan != "" && ev.Decode(&p) == nil {
+				byStep[p.Step] = p
+			}
+		}
+	}
+	if plan == "" {
+		return "", nil, false
+	}
+	return plan, inStepOrder(byStep), true
+}
+
+// inStepOrder is the marks, one per step, in step order.
+func inStepOrder(byStep map[int]log.PlanStep) []log.PlanStep {
+	var marks []log.PlanStep
 	for _, m := range byStep {
 		marks = append(marks, m)
 	}
 	sort.Slice(marks, func(i, j int) bool { return marks[i].Step < marks[j].Step })
-	return plan, marks, true
+	return marks
 }
 
 // narrowContext is (narrow-context system). The narrowing is an event in

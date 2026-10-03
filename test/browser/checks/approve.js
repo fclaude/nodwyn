@@ -41,6 +41,33 @@ const out = process.argv[2];
   await page.fill("#reply", "Thanks");
   await page.keyboard.press("Enter");
   await page.waitForTimeout(2500);
+  // A turn that a rate limit ends leaves its plan to "continue", which
+  // goes on from the step it marked.
+  const transcript = () => page.evaluate(() => document.querySelector(".transcript").innerText);
+  const until = async (what, ok) => {
+    for (let i = 0; i < 40; i++) {
+      if (ok(await transcript())) return;
+      await page.waitForTimeout(500);
+    }
+    await page.screenshot({ path: `${out}/stuck.png` });
+    throw new Error(`no ${what}:\n${(await transcript()).slice(-1500)}`);
+  };
+  await page.fill("#reply", "Tidy the notes");
+  await page.keyboard.press("Enter");
+  await until("rate limit", (t) => t.includes("Stopped by an error"));
+  step("rate limited");
+  await page.fill("#reply", "continue");
+  await page.keyboard.press("Enter");
+  await until("answer after continue", (t) => t.includes("Tidied"));
+  await page.waitForTimeout(800);
+  const carried = await page.evaluate(() => ({
+    went: [...document.querySelectorAll(".transcript *")].some((e) => e.children.length === 0 && /Went on with the plan · 1 of 2 steps marked/.test(e.textContent)),
+    plan: [...document.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.textContent.startsWith("Plan"))?.querySelector("h2")?.textContent,
+    items: [...document.querySelectorAll("ol.plan li")].map((li) => li.className),
+  }));
+  console.log(JSON.stringify(carried));
+  if (!carried.went || carried.plan !== "Plan2 of 2 done · carried over from an earlier turn" || carried.items.join() !== "done,done") throw new Error("the plan was not carried");
+  await page.screenshot({ path: `${out}/carried-plan.png` });
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}/home-after.png` });

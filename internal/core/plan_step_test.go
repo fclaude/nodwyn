@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -123,6 +125,65 @@ func TestModelWritesItsOwnPlan(t *testing.T) {
 	}
 	if answers["w"] != "Plan recorded: 2 steps. It stays in front of you; mark each step with plan-step as you finish it." ||
 		answers["a"] != "Step 1 is done. Next unmarked: 2. edit it" {
+		t.Fatalf("answers %q", answers)
+	}
+}
+
+// A chat's turn that a failed model request ends leaves its plan to the
+// next message: "continue" carries it (decision "carried") with the steps
+// marked so far, pinned with them, and plan-step goes on from them. A turn
+// that finishes leaves none: the message after it is a new request.
+func TestAnUnfinishedTurnLeavesItsPlan(t *testing.T) {
+	defer func(d time.Duration) { llm.RetryDelay = d }(llm.RetryDelay)
+	llm.RetryDelay = time.Millisecond
+	rateLimited := fake.Turn{Status: 429}
+	r := judgedRig(t, nil, "",
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", "1. read main.go\n2. edit it\n3. test it")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("a", 1, "done", "read it")}},
+		rateLimited, rateLimited, rateLimited,
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("b", 2, "done", "edited")}},
+		fake.Turn{Content: "edited; testing is next"},
+		fake.Turn{Content: "main.go is the entry point"})
+	if e := r.turn("change main.go"); !strings.Contains(e, "429") {
+		t.Fatalf("the first turn ended with %q, want the model's 429", e)
+	}
+	if e := r.turn("continue"); e != "" {
+		t.Fatal(e)
+	}
+	sys := requestMessages(t, r.srv.Requests[5])[0].Content
+	if !strings.HasSuffix(sys, "\n1. read main.go\n2. edit it\n3. test it\n\nMarked in earlier turns of this task:\nStep 1 done: read it") {
+		t.Fatalf("the carried plan is not pinned with its marks:\n%s", sys)
+	}
+	if e := r.turn("what is main.go?"); e != "" {
+		t.Fatal(e)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plans []log.GatePlan
+	var turnOf []int
+	turns := 0
+	answers := map[string]string{}
+	for _, ev := range evs {
+		switch ev.Kind {
+		case log.KindUserMsg:
+			turns++
+		case log.KindGatePlan:
+			var p log.GatePlan
+			ev.Decode(&p)
+			plans, turnOf = append(plans, p), append(turnOf, turns)
+		case log.KindToolResult:
+			var tr log.ToolResult
+			ev.Decode(&tr)
+			answers[tr.ID] = tr.Value + tr.Error
+		}
+	}
+	if len(plans) != 2 || plans[1].Noul != "carried" || turnOf[1] != 2 || plans[1].Plan != plans[0].Plan ||
+		len(plans[1].Marks) != 1 || plans[1].Marks[0] != (log.PlanStep{Step: 1, Of: 3, State: "done", Note: "read it"}) {
+		t.Fatalf("plans %+v in turns %v", plans, turnOf)
+	}
+	if answers["b"] != "Step 2 is done. Next unmarked: 3. test it" {
 		t.Fatalf("answers %q", answers)
 	}
 }

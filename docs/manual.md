@@ -490,10 +490,16 @@ the TUI) shows its progress; a mark is the model's word, and the transcript
 is the evidence. Without a plan from the gate, the model writes its own with
 `plan-write`, which pins it the same way: its thinking comes back to it
 only as the server reported it, often a summary or nothing, and a written
-plan stays. A model that only reads and
+plan stays. When a turn does not finish (a model error such as a provider's
+rate limit, a limit, or your Stop), your next message, "continue" or a
+correction, carries its plan with the steps marked so far, and the model
+goes on from the next unmarked step; the plan panel says "carried over from
+an earlier turn". After a turn that finished, the next message is a new
+request. A model that only reads and
 searches for twelve rounds in a row is told to write down what it found:
 its plan, or, in a chat whose request asks a question or needs your
-decision, its answer. In a chat a question gets an answer, and a request
+decision, its answer. One that already has a plan is told to make the
+change for its next unmarked step. In a chat a question gets an answer, and a request
 for something the model finds was never built gets told so, with what it
 would build, before it builds anything. A plan made with the judge or
 without one hands the explorer's findings to the model too, so it does not

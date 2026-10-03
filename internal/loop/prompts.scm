@@ -211,14 +211,32 @@
 ;; lost, so write it down. When a person reads the answer before anything
 ;; else happens ((reviewed?)), a request that asks, reports or needs their
 ;; decision is answered now.
+;;
+;; A turn that has a plan ((plan-recorded?)) is told to go on with it
+;; instead. Asked for the plan it had, a chat's model wrote it again, which
+;; starts its marks over, and the second time wrote "[done]" into the
+;; steps' text, so the console showed none of them marked (ADR 32, amended
+;; 2026-10-03).
+(define (reading-reminder-lost rounds)
+  (string-append
+   "You have only read and searched for the last " (number->string rounds)
+   " rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you "))
+(define reading-reminder-plan
+  "your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change, since that starts its marks over.")
 (define (reading-reminder-message rounds)
   (string-append
-   "You have only read and searched for the last " (number->string rounds)
-   " rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan."))
+   (reading-reminder-lost rounds)
+   (if (plan-recorded?)
+       (string-append "act on it, and " reading-reminder-plan)
+       "write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan.")))
 (define (reading-reminder-reviewed-message rounds)
   (string-append
-   "You have only read and searched for the last " (number->string rounds)
-   " rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you write it down. If the request asks a question or needs a decision from the person (whether to build what it says is missing, or which way to build it), answer now: say what exists, what is missing and what you propose, and finish; a person reads your answer before anything else happens. Otherwise write your plan with plan-write now and start the change, and read more only for a step of the plan."))
+   (reading-reminder-lost rounds)
+   (if (plan-recorded?) "act on it." "write it down.")
+   " If the request asks a question or needs a decision from the person (whether to build what it says is missing, or which way to build it), answer now: say what exists, what is missing and what you propose, and finish; a person reads your answer before anything else happens. "
+   (if (plan-recorded?)
+       (string-append "Otherwise " reading-reminder-plan)
+       "Otherwise write your plan with plan-write now and start the change, and read more only for a step of the plan.")))
 
 ;; The planner's system prompt.
 (define (plan-system-prompt repo)

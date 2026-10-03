@@ -178,7 +178,9 @@ gets \code{(reading-reminder-message n)}: write down the plan with
 \code{plan-write} and start. When a person reads the answer
 (\code{(reviewed?)}) it gets \code{(reading-reminder-reviewed-message n)}
 instead, which also says to answer now when the request asks a question or
-needs the person's decision. Any other call starts the count again;
+needs the person's decision. A turn that has a plan is told instead to make
+the change for its next unmarked step: asked for the plan it had, a model
+wrote it again, which starts its marks over. Any other call starts the count again;
 \code{(define reading-reminder-after 0)} turns the reminder off.
 
 \begin{tip}
@@ -240,6 +242,15 @@ the planner is told the previous plan and how each step went
 (\code{plan-run-request}). To set a plan aside, the model marks the steps
 that no longer apply \code{skipped}, saying why. A project that wants a new
 plan every turn redefines \code{plan-gate}.
+
+A chat carries its plan the same way past a turn that did not finish: when
+an error, a limit or the person's Stop ended it (\code{turn.end} with an
+outcome other than \code{completed}), \code{(unfinished-plan)} reads the
+plan it left with the steps marked so far, and the next message's turn
+carries it. Without that a provider's rate limit cost the plan: told
+``continue'', the model read the repository again and wrote its plan again,
+done steps included. After a turn that finished, the next message is a new
+request.
 
 Between turns you get a \textbf{run checkpoint}: a yes continues and grants
 nothing else, no file, command or network permission. The run ends when:

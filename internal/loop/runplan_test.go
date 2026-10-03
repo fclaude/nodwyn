@@ -108,3 +108,62 @@ func TestRunPlanBelongsToTheRun(t *testing.T) {
 		t.Fatal("a fresh run inherited a plan")
 	}
 }
+
+func (r *runLog) end(outcome string) {
+	r.w.Append(log.KindTurnEnd, log.TurnEnd{Text: "turn ended", Outcome: outcome})
+}
+
+func (r *runLog) unfinishedPlan(t *testing.T) (string, []log.PlanStep, bool) {
+	t.Helper()
+	evs, err := log.Read(bytes.NewReader(r.buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return unfinishedPlan(evs)
+}
+
+// A turn that an error, a limit or the person's Stop ended, or that nothing
+// ended, leaves its plan to the next, with every mark made since, through
+// as many such turns as follow. A turn that finished leaves none, and
+// neither does one from a log that recorded no outcome.
+func TestUnfinishedPlanOutlivesTurnsThatDidNotFinish(t *testing.T) {
+	r := newRunLog()
+	r.chat("change it")
+	r.plan(log.GatePlan{Noul: "model", Plan: threeSteps})
+	r.mark(1, "done", "read it")
+	r.end("error")
+	r.chat("continue")
+	plan, marks, ok := r.unfinishedPlan(t)
+	want := []log.PlanStep{{Step: 1, Of: 3, State: "done", Note: "read it"}}
+	if !ok || plan != threeSteps || !reflect.DeepEqual(marks, want) {
+		t.Fatalf("after an error: %q %+v %v", plan, marks, ok)
+	}
+	r.plan(log.GatePlan{Noul: "carried", Plan: threeSteps, Marks: want})
+	r.mark(2, "done", "edited")
+	r.end("canceled")
+	r.chat("no, use the other file") // nothing ends this turn: the process died
+	r.chat("continue")
+	want = append(want, log.PlanStep{Step: 2, Of: 3, State: "done", Note: "edited"})
+	if _, marks, ok := r.unfinishedPlan(t); !ok || !reflect.DeepEqual(marks, want) {
+		t.Fatalf("after a Stop: %+v %v", marks, ok)
+	}
+	for _, outcome := range []string{"completed", ""} {
+		r.chat("change it")
+		r.plan(log.GatePlan{Noul: "model", Plan: threeSteps})
+		r.end(outcome)
+		r.chat("what is this?")
+		if _, _, ok := r.unfinishedPlan(t); ok {
+			t.Fatalf("a turn that ended %q left its plan", outcome)
+		}
+	}
+	for _, outcome := range []string{"stopped", "hard_budget", "spend_limit"} {
+		r.chat("change it")
+		r.plan(log.GatePlan{Noul: "model", Plan: "1. finish"})
+		r.end(outcome)
+		r.chat("continue")
+		if plan, marks, ok := r.unfinishedPlan(t); !ok || plan != "1. finish" || len(marks) != 0 {
+			t.Fatalf("a turn that ended %q: %q %+v %v", outcome, plan, marks, ok)
+		}
+		r.end("completed")
+	}
+}

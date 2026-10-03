@@ -316,3 +316,25 @@ server reported it. The working rule, the reading reminders and
 `plan-write`'s description said "your thinking is not kept"; they now say it
 comes back only as the server reported it, often a summary or not at all,
 which is true of every provider, and still ask for the plan in writing.
+
+## Amendment 2026-10-03: a turn with a plan is told to go on with it
+
+The reading reminder (amendment above) said "write your plan with
+`plan-write` now" whether or not the turn had one. Writing a plan again
+starts its marks over. In session `20261003T063228Z-73791682`, after the
+turn whose plan it lost to a provider's rate limit (ADR 35, amended the
+same day), the model had written its plan again and marked three of five
+steps. It then read for twelve rounds, every one of them for step 4, and
+was told to write its plan. It wrote it again (seq 6042) with "[done]"
+typed after the first three steps, since the marks were gone. The
+console's plan panel showed no step marked. Earlier in the session the
+reminder at seq 3496 had the model rewrite an unchanged plan.
+
+A turn that has a plan (`(plan-recorded?)`) is now told that the plan is
+in front of it: make the change for its next unmarked step, read more only
+for that step, and write the plan again only if it must change, since that
+starts its marks over. Without a plan the reminder is as before, word for
+word. This includes the unreviewed reminder of the evidence loop, so on
+the benchmark it changes only for turns that have a plan. A run's turns
+always do, and there the reminder no longer asks for a plan the gate
+already drafted.

@@ -219,13 +219,13 @@ type EgressCheck struct {
 
 // GatePlan is the P5 gate outcome for one user message: the noul verdict,
 // whether a plan was required, the Seam A score, and the revision count.
-// A run's later turn carries the run's plan instead of drafting one
-// ("carried"), with Marks, the steps its earlier turns marked, the latest
-// mark per step in step order. The model may write its own plan ("model",
-// with plan-write).
+// A run's later turn, and the turn after one that did not finish, carry
+// the plan instead of drafting one ("carried"), with Marks, the steps the
+// earlier turns marked, the latest mark per step in step order. The model
+// may write its own plan ("model", with plan-write).
 type GatePlan struct {
 	Origin    string     `json:"origin"`
-	Noul      string     `json:"noul"` // "plan" | "proceed" | "degraded" | "required" (a run's turn, no judge) | "carried" (a run's later turn) | "model" (plan-write)
+	Noul      string     `json:"noul"` // "plan" | "proceed" | "degraded" | "required" (a run's turn, no judge) | "carried" (a run's later turn, or the one after a turn that did not finish) | "model" (plan-write)
 	Plan      string     `json:"plan,omitempty"`
 	Score     float64    `json:"score,omitempty"`
 	Revisions int        `json:"revisions,omitempty"`

@@ -187,8 +187,30 @@ func TestReadingRoundsGetAReminder(t *testing.T) {
 			t.Fatalf("reminded after %d rounds: %q", i, got)
 		}
 	}
-	if got := lastMessage(r, 3); !strings.HasPrefix(got, "You have only read and searched for the last 3 rounds.") || !strings.Contains(got, "answer now") {
+	if got := lastMessage(r, 3); !strings.HasPrefix(got, "You have only read and searched for the last 3 rounds.") || !strings.Contains(got, "answer now") ||
+		!strings.HasSuffix(got, "Otherwise write your plan with plan-write now and start the change, and read more only for a step of the plan.") {
 		t.Fatalf("no reminder after 3 rounds: %q", got)
+	}
+}
+
+// A turn that has a plan is told to go on with it, not to write it again:
+// asked for the plan it had, a model wrote it again, which starts its marks
+// over (prompts.scm, reading-reminder-plan).
+func TestReadingRoundsWithAPlanGoOnWithIt(t *testing.T) {
+	r := strategyRig(t, "(define reading-reminder-after 2)\n", 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "plan-write", Args: map[string]any{"plan": "1. read main.go\n2. edit it"}}}},
+		look("a", "fs-read", map[string]any{"path": "main.go"}),
+		look("b", "fs-list", map[string]any{"path": "."}),
+		fake.Turn{Content: "done"},
+	)
+	if err := r.turn("change main.go"); err != "" {
+		t.Fatal(err)
+	}
+	got := lastMessage(r, 3)
+	if !strings.HasPrefix(got, "You have only read and searched for the last 2 rounds.") ||
+		!strings.HasSuffix(got, "Otherwise your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change, since that starts its marks over.") ||
+		strings.Contains(got, "write your plan with plan-write now") {
+		t.Fatalf("after 2 rounds with a plan: %q", got)
 	}
 }
 
@@ -213,7 +235,8 @@ func TestReadingCountStartsAgainOnARun(t *testing.T) {
 }
 
 // The evidence loop counts too, and a turn whose answer nobody reads before
-// it ends is told to plan and start the change, with no way out.
+// it ends is told to start the change, with no way out: on the plan it has,
+// here the gate's.
 func TestUnreviewedReadingRoundsAreToldToPlan(t *testing.T) {
 	turns := []fake.Turn{
 		{Content: "main.go declares package main."}, // the explorer
@@ -234,7 +257,7 @@ func TestUnreviewedReadingRoundsAreToldToPlan(t *testing.T) {
 	if got := lastMessage(r, 13); strings.Contains(got, "You have only read") {
 		t.Fatalf("reminded after 11 rounds: %q", got)
 	}
-	want := "You have only read and searched for the last 12 rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you write it down: write your plan with plan-write now and start the change, and read more only for a step of the plan."
+	want := "You have only read and searched for the last 12 rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you act on it, and your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change, since that starts its marks over."
 	if got := lastMessage(r, 14); got != want {
 		t.Fatalf("after 12 rounds: %q", got)
 	}

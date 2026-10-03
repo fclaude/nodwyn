@@ -1,6 +1,6 @@
 # ADR 0035: A chat is the way to work, and it asks less
 
-- Status: accepted; implemented 2026-10-02
+- Status: accepted; implemented 2026-10-02; amended 2026-10-03 (a turn that did not finish leaves its plan to the next message)
 - Date: 2026-10-02
 - Amends: ADR 17 (writes need no approval in the folder), ADR 18 (soft
   limits; runs from the console), ADR 30 (what a device may start)
@@ -143,3 +143,37 @@ tokens, 200 actions and 4 hours. So no checkpoint asks.
 - ADR 18's driver is unchanged as a CLI tool. Its unattended runs get
   writes in the folder too, since a standing approval was always enough
   for them (§5).
+
+## Amendment 2026-10-03: a turn that did not finish leaves its plan to the next message
+
+A chat is a run whose "continue" a person types (§1), but only a run's plan
+outlived its turn (ADR 18, "The plan is the run's"). A chat's plan was the
+turn's: the window pins the plan recorded after the latest `user.msg`, and
+`plan-step` marks only that. In session `20261003T063228Z-73791682`
+(meta/muse-spark-1.3 through OpenRouter) the turn "do it!" wrote a plan of
+five steps with `plan-write` and marked two done. Then the provider
+answered 429, three times with the retries, and the turn ended with an
+error. The person typed "continue". That turn had no plan: the console's
+plan panel said "none recorded for this ask", and the model began again
+from `git status` and twelve reads. 47 requests later it wrote the plan
+again and marked steps 1 and 2 a second time ("WT1 landed (same note as
+above)").
+
+A turn that did not finish now leaves its plan to the next message. When
+its `turn.end` outcome is `error`, `stopped`, `hard_budget`, `spend_limit`
+or `canceled`, or nothing ended it, `plan-gate` carries the plan into the
+next turn as a run's later turn carries one: `gate.plan` decision
+`carried`, with the marks made so far. The steps keep their numbers, the
+window shows the marks under the plan, and `plan-step` goes on from the
+next unmarked step. `(unfinished-plan)` reads that plan from the log, in
+the shape `(run-plan)` gives, and the plan goes on through as many such
+turns as follow. A turn that finished (`completed`, or no outcome, as in
+an older log) leaves none. Its answer was given, so the next message is a
+new request, gated as before. A plan whose steps are all marked is not
+carried either.
+
+The person's Stop counts as not finishing. So "stop it to steer", as the
+console's composer says, keeps the plan for the correction that follows.
+The model revises the plan with `plan-write` if the correction changes it.
+The window's rule and its recipe are unchanged. The front-ends no longer
+say "the run's plan" for a carried one.

@@ -31,7 +31,7 @@ func formatPlan(events []log.Event) (string, error) {
 			if err := events[i].Decode(&gate); err != nil {
 				return "", err
 			}
-			// A carried plan brings the marks of the run's earlier turns.
+			// A carried plan brings the marks of the earlier turns.
 			marks := map[int]log.PlanStep{}
 			for _, m := range gate.Marks {
 				marks[m.Step] = m
@@ -61,7 +61,7 @@ func formatGatePlan(gate log.GatePlan) string {
 	case "degraded":
 		out.WriteString("Gate fallback; no plan score recorded.\n")
 	case "carried":
-		fmt.Fprintf(&out, "The run's plan, carried from an earlier turn · %d of %d steps marked there\n", len(gate.Marks), len(gate.Steps()))
+		fmt.Fprintf(&out, "The plan, carried from an earlier turn · %d of %d steps marked there\n", len(gate.Marks), len(gate.Steps()))
 	case "model":
 		out.WriteString("The model wrote this plan itself (plan-write).\n")
 	}

@@ -34,6 +34,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 	webui "github.com/fclaude/nodwyn/internal/frontend/web"
 	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
 	fakedrive "github.com/fclaude/nodwyn/test/fakes/drive"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
@@ -86,6 +87,9 @@ func run(seed bool, port int, docs bool) error {
 	defer os.RemoveAll(root)
 	model := fake.NewFunc(respond)
 	defer model.Close()
+	// "Tidy" ends on a provider's rate limit: retry it quickly, so the
+	// turn stops in a second rather than six.
+	llm.RetryDelay = 100 * time.Millisecond
 	model.SetCapabilities("completion", "tools", "vision") // images may be attached
 	chat := chatServer()
 	defer chat.Close()
@@ -237,9 +241,10 @@ func writeRepo(dir, name string) error {
 	if name == "console" {
 		// The demo has no judge, so its coding task would get no plan: plan
 		// it anyway, without exploring first, so the plan panel has a plan
-		// and the model's step marks to show.
+		// and the model's step marks to show. A turn that did not finish
+		// leaves its plan to the next, as the default gate does.
 		files["status.txt"] = "Week of 28 September: cowork workspaces, attachments that read PDFs, phone approvals.\n"
-		files[".nodwyn/init.scm"] = "(define plan-explore-rounds 0)\n(define (plan-gate request) (if (plan-recorded?) #f (plan-best #f request \"plan\")))\n"
+		files[".nodwyn/init.scm"] = "(define plan-explore-rounds 0)\n(define (plan-gate request) (cond ((plan-recorded?) #f) ((plan-left) => plan-carry) (else (plan-best #f request \"plan\"))))\n"
 	}
 	for rel, body := range files {
 		path := filepath.Join(dir, rel)
@@ -369,6 +374,24 @@ func respond(req fake.Request) fake.Turn {
 		default:
 			return fake.Turn{Content: "Noted.", Chunk: 12}
 		}
+	}
+	if strings.HasPrefix(last, "Tidy") {
+		// A turn that a rate limit ends after one step of its plan, so
+		// "continue" carries the plan with that step marked.
+		switch rounds {
+		case 0:
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "t1", Name: "plan-write", Args: map[string]any{"plan": "1. Read the notes\n2. Tidy them"}}}}
+		case 1:
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "t2", Name: "fs-read", Args: map[string]any{"path": "notes/todo.md"}}, planStep("t3", 1, "done", "two open items")}}
+		default:
+			return fake.Turn{Status: http.StatusTooManyRequests}
+		}
+	}
+	if last == "continue" {
+		if rounds == 0 {
+			return fake.Turn{ToolCalls: []fake.ToolCall{planStep("t4", 2, "done", "nothing to tidy")}}
+		}
+		return fake.Turn{Content: "Tidied: the notes were already in order.", Chunk: 12}
 	}
 	if !strings.HasPrefix(last, "The session list") {
 		return fake.Turn{Content: "Glad that helps. Anything else in this folder?", Chunk: 12}
