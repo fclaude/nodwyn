@@ -100,19 +100,17 @@ func destOf(f egressFacts) string {
 }
 
 // taintedRoles returns the union of the taint carried by payload-role and
-// argv-role arguments.
+// argv-role arguments, and by the fields with those roles in a list
+// parameter's elements (fs-edit's edits).
 func taintedRoles(p *scheme.Prim, args []scheme.Value) (payload, argv scheme.Taint) {
-	for i, pa := range p.Meta.Params {
-		if i >= len(args) {
-			break
-		}
-		switch pa.Role {
+	p.EachRole(args, func(role string, v scheme.Value) {
+		switch role {
 		case "payload":
-			payload = scheme.Union(payload, deepTaint(args[i]))
+			payload = scheme.Union(payload, deepTaint(v))
 		case "argv":
-			argv = scheme.Union(argv, deepTaint(args[i]))
+			argv = scheme.Union(argv, deepTaint(v))
 		}
-	}
+	})
 	return payload, argv
 }
 

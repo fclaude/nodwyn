@@ -111,24 +111,19 @@ func firstKnown(fs []l1.Finding) (l1.Finding, bool) {
 
 // secretText collects the payload-role and argv-role text of an
 // application: every string in it, however nested (header pairs, argv
-// lists, and the alists of a JSON object, as an MCP argument).
+// lists, and the alists of a JSON object, as an MCP argument), and the
+// fields with those roles in a list parameter's elements (each new text of
+// fs-edit's edits, not the old text it replaces).
 func secretText(p *scheme.Prim, args []scheme.Value) (payload, argv string) {
 	var pb, ab strings.Builder
-	for i, pa := range p.Meta.Params {
-		if i >= len(args) {
-			break
-		}
-		var b *strings.Builder
-		switch pa.Role {
+	p.EachRole(args, func(role string, v scheme.Value) {
+		switch role {
 		case "payload":
-			b = &pb
+			collect(&pb, v)
 		case "argv":
-			b = &ab
-		default:
-			continue
+			collect(&ab, v)
 		}
-		collect(b, args[i])
-	}
+	})
 	return pb.String(), ab.String()
 }
 

@@ -335,6 +335,12 @@ every session. A prompt looks like this (a write, with `writes = "ask"`):
 allow? [y/N]
 ```
 
+Several changes to one file come as one `fs-edit` call with a list of
+edits (ADR 38). It asks once, its diff is the whole file's with every edit
+applied, and the header shows the call in Scheme's positional form,
+`fs-edit ("x.go" "" "" #f ((("old" . "…") ("new" . "…")) …))`. Nothing is
+written unless every edit applies.
+
 - `y` — once. `N` or anything else — no; the model is told `denied: not
   confirmed by the user` and moves on.
 - `a` — yes, and a **standing approval for this session**: for a command

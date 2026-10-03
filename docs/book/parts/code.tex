@@ -641,9 +641,9 @@ irreversible; \code{RepoPin} and \code{PathDenylist} check the path;
 \code{WritePreview} attaches the diff; \code{WriteAllow} may turn the
 confirm into an allow if the directory has a standing approval, and
 \code{FolderWrites} would for any path the pin let through (in this
-session it is not installed); L1 scans the replacement text and makes a
-credential-shaped one a security confirm, which no standing approval
-waives.
+session it is not installed); L1 scans the replacement text (each
+edit's, when the call carries several) and makes a credential-shaped one a
+security confirm, which no standing approval waives.
 \code{Before} then records the \code{guard.decision}. An allow is recorded
 for any tool or any primitive that is host, egress, irreversible or
 audited; pure builtins such as \code{car} and \code{+} are allowed
@@ -729,8 +729,10 @@ func (r RepoPin) Resolve(raw string) string {
 \section{The primitive runs}
 
 \file{internal/prim/fs.go}. \code{fs-edit} replaces exactly one occurrence,
-or every one with \code{replace\_all}. Its \code{Preview} renders the diff
-the confirm shows, using the same \code{applyEdit} the handler uses. The
+or every one with \code{replace\_all}; given a list of \code{edits}, it makes
+each in order on the text the one before left, and writes nothing unless
+all apply (\adr{38}). Its \code{Preview} renders the diff the confirm
+shows, using the same \code{applyEdit} the handler uses, once per edit. The
 handler resolves the path again (the guard already denied an escape; this
 is defence in depth), keeps the previous version unless git has the file
 committed and unchanged (logged as \code{file.version}), and writes.

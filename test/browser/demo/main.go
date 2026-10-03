@@ -244,6 +244,9 @@ func writeRepo(dir, name string) error {
 		// and the model's step marks to show. A turn that did not finish
 		// leaves its plan to the next, as the default gate does.
 		files["status.txt"] = "Week of 28 September: cowork workspaces, attachments that read PDFs, phone approvals.\n"
+		// A protected path, so an edit of it asks even though writes in the
+		// folder go ahead: "Quiet the build" edits it twice in one call.
+		files["Makefile"] = "build:\n\tgo build ./...\n\ntest:\n\tgo test ./...\n"
 		files[".nodwyn/init.scm"] = "(define plan-explore-rounds 0)\n(define (plan-gate request) (cond ((plan-recorded?) #f) ((plan-left) => plan-carry) (else (plan-best #f request \"plan\"))))\n"
 	}
 	for rel, body := range files {
@@ -391,6 +394,17 @@ func respond(req fake.Request) fake.Turn {
 		default:
 			return fake.Turn{Status: http.StatusTooManyRequests}
 		}
+	}
+	if strings.HasPrefix(last, "Quiet") {
+		// Two changes to one file in one fs-edit call (ADR 38): one
+		// confirm, one diff, one write.
+		if rounds == 0 {
+			return fake.Turn{Content: "I'll silence the echo of both commands in one edit.", ToolCalls: []fake.ToolCall{{ID: "q1", Name: "fs-edit", Args: map[string]any{"path": "Makefile", "edits": []any{
+				map[string]any{"old": "\tgo build ./...\n", "new": "\t@go build ./...\n"},
+				map[string]any{"old": "\tgo test ./...\n", "new": "\t@go test ./... >/dev/null\n"},
+			}}}}}
+		}
+		return fake.Turn{Content: "Quieted: make no longer echoes either command, and the tests print only failures.", Chunk: 16}
 	}
 	if last == "continue" {
 		if rounds == 0 {

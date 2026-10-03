@@ -41,16 +41,22 @@ type ToolSchema struct {
 }
 
 type toolSchemaProp struct {
-	Type        string `json:"type,omitempty"`
-	Description string `json:"description,omitempty"`
+	Type        string      `json:"type,omitempty"`
+	Description string      `json:"description,omitempty"`
+	Items       *ToolSchema `json:"items,omitempty"`
 }
 
 // Schema builds the JSON schema for p's parameters. Variadic extras are not
 // representable and are omitted; tools meant for the model should declare a
 // list parameter instead.
-func (p *Prim) Schema() ToolSchema {
+func (p *Prim) Schema() ToolSchema { return paramsSchema(p.Meta.Params) }
+
+// paramsSchema is the object schema of params. A list parameter with Items
+// gets an item schema, so the model sees an element's fields as it sees a
+// tool's parameters.
+func paramsSchema(params []Param) ToolSchema {
 	s := ToolSchema{Type: "object", Properties: map[string]toolSchemaProp{}, Required: []string{}}
-	for _, pa := range p.Meta.Params {
+	for _, pa := range params {
 		prop := toolSchemaProp{Description: pa.Doc}
 		switch pa.Type {
 		case "string", "integer", "number", "boolean":
@@ -59,6 +65,10 @@ func (p *Prim) Schema() ToolSchema {
 			prop.Type = "array"
 		case "alist":
 			prop.Type = "object"
+		}
+		if len(pa.Items) > 0 {
+			items := paramsSchema(pa.Items)
+			prop.Items = &items
 		}
 		s.Properties[pa.Name] = prop
 		if !pa.Optional {

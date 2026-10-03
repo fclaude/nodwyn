@@ -244,6 +244,12 @@ reason and, for a write, a diff; this one is a write with \code{writes =
 allow? [y/N/a=always under internal//t=all writes this turn]
 \end{txt}
 
+Several changes to one file come as one \code{fs-edit} call with a list of
+edits (\adr{38}): it asks once, its diff is the whole file's with every edit
+applied, and nothing is written unless every edit applies. The header then
+shows the call in Scheme's positional form, the list after an empty
+\code{old}, an empty \code{new} and \code{\#f}.
+
 \begin{description}[leftmargin=2.2em]
 \item[\code{y}] once.
 \item[\code{N}] (or anything else) no. The model is told

@@ -21,6 +21,54 @@ type Param struct {
 	// before any of them: the handler sees fewer arguments, never a
 	// placeholder, and branches on len(c.Args). Go-only for now.
 	Optional bool
+	// Items describes the fields of each element of a list parameter whose
+	// elements are objects (alists with string keys, as json-parse makes
+	// them): the tool schema shows them to the model, and the guard reads a
+	// field's Role as it reads a parameter's (EachRole). Go-only.
+	Items []Param
+}
+
+// EachRole calls fn with every argument that has a role and, inside a list
+// parameter with Items, every element's field that has one: fs-edit's
+// edits carry each replacement as a payload, as its new does. A field
+// carries the taint of the list and the element around it too, since a
+// list parsed from tool output may carry that taint only on the outside.
+func (p *Prim) EachRole(args []Value, fn func(role string, v Value)) {
+	for i, pa := range p.Meta.Params {
+		if i >= len(args) {
+			return
+		}
+		if pa.Role != "" {
+			fn(pa.Role, args[i])
+		}
+		if len(pa.Items) > 0 {
+			eachItemRole(pa.Items, args[i], fn)
+		}
+	}
+}
+
+// eachItemRole walks a list of alists for the fields that have a role.
+// Pairs are immutable, so the walk ends.
+func eachItemRole(fields []Param, list Value, fn func(role string, v Value)) {
+	outer := list.Taint
+	for l := list; l.Kind == KPair; l = l.P.Cdr {
+		outer = Union(outer, l.Taint)
+		inner := Union(outer, l.P.Car.Taint)
+		for f := l.P.Car; f.Kind == KPair; f = f.P.Cdr {
+			inner = Union(inner, f.Taint)
+			kv := f.P.Car
+			if kv.Kind != KPair || kv.P.Car.Kind != KString {
+				continue
+			}
+			for _, fp := range fields {
+				if fp.Role != "" && fp.Name == kv.P.Car.S {
+					v := kv.P.Cdr
+					v.Taint = Union(v.Taint, inner, kv.Taint)
+					fn(fp.Role, v)
+				}
+			}
+		}
+	}
 }
 
 // required is how many of p's parameters every call must give.

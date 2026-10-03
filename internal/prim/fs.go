@@ -353,12 +353,127 @@ func normalizeLine(l string) string {
 	return strings.Join(strings.Fields(l), " ")
 }
 
-func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
-	preview := func(args []scheme.Value) string {
-		if len(args) < 3 || args[0].Kind != scheme.KString || args[1].Kind != scheme.KString || args[2].Kind != scheme.KString {
-			return ""
+// edit is one replacement in an fs-edit call.
+type edit struct {
+	old, new string
+	all      bool
+}
+
+// editsOf reads an fs-edit call's arguments. (path old new [replace_all])
+// is one edit; (path "" "" #f edits) is a list of them, applied in order,
+// which is what a call naming only path and edits becomes (ArgsFromJSON
+// gives skipped options their empty values). list reports the second
+// form. Exactly one form must be given.
+func editsOf(args []scheme.Value) (edits []edit, list bool, err error) {
+	if len(args) < 5 {
+		switch {
+		case len(args) < 2:
+			return nil, false, errors.New("give old and new, or edits (a list of {old, new}): neither was given")
+		case len(args) < 3:
+			return nil, false, errors.New("new is missing: give old and new, or edits (a list of {old, new})")
+		case args[1].Kind != scheme.KString || args[2].Kind != scheme.KString:
+			return nil, false, fmt.Errorf("old and new must be strings, got %s and %s", scheme.Write(args[1]), scheme.Write(args[2]))
 		}
 		all := len(args) > 3 && scheme.Equal(args[3], scheme.True)
+		return []edit{{old: args[1].S, new: args[2].S, all: all}}, false, nil
+	}
+	if !scheme.Equal(args[1], scheme.Str("")) || !scheme.Equal(args[2], scheme.Str("")) || scheme.Equal(args[3], scheme.True) {
+		return nil, true, errors.New("give either old and new (with replace_all) or edits, not both; replace_all goes inside each edit")
+	}
+	items, ok := args[4].Slice()
+	switch {
+	case !ok:
+		return nil, true, fmt.Errorf("edits must be a list of {old, new}, got %s", scheme.Write(args[4]))
+	case len(items) == 0:
+		return nil, true, errors.New("edits is empty: give at least one {old, new}")
+	}
+	for i, it := range items {
+		e, err := editOf(it)
+		if err != nil {
+			return nil, true, fmt.Errorf("edit %d: %w", i+1, err)
+		}
+		edits = append(edits, e)
+	}
+	return edits, true, nil
+}
+
+// editOf reads one element of edits: an alist with string keys, as
+// json-parse makes a JSON object. A field the guard would not read as the
+// edit's (a symbol key, a repeated name) is an error, not ignored, so what
+// is written is what the guard judged.
+func editOf(v scheme.Value) (edit, error) {
+	fields, ok := v.Slice()
+	if !ok || len(fields) == 0 {
+		return edit{}, fmt.Errorf("expected an object with old and new, got %s", scheme.Write(v))
+	}
+	var e edit
+	seen := map[string]bool{}
+	for _, f := range fields {
+		if f.Kind != scheme.KPair || f.P.Car.Kind != scheme.KString {
+			return edit{}, fmt.Errorf("expected an object with old and new, got %s", scheme.Write(v))
+		}
+		key, val := f.P.Car.S, f.P.Cdr
+		if seen[key] {
+			return edit{}, fmt.Errorf("%s is given twice", key)
+		}
+		seen[key] = true
+		switch key {
+		case "old", "new":
+			if val.Kind != scheme.KString {
+				return edit{}, fmt.Errorf("%s must be a string, got %s", key, scheme.Write(val))
+			}
+			if key == "old" {
+				e.old = val.S
+			} else {
+				e.new = val.S
+			}
+		case "replace_all":
+			switch {
+			case scheme.Equal(val, scheme.True):
+				e.all = true
+			case scheme.Equal(val, scheme.False), scheme.Equal(val, scheme.Sym("null")):
+			default:
+				return edit{}, fmt.Errorf("replace_all must be true or false, got %s", scheme.Write(val))
+			}
+		default:
+			return edit{}, fmt.Errorf("unknown field %q: an edit has old, new and replace_all", key)
+		}
+	}
+	if !seen["old"] || !seen["new"] {
+		return edit{}, errors.New("an edit needs both old and new")
+	}
+	return e, nil
+}
+
+// applyEdits runs applyEdit over edits in order, each on the text the one
+// before left, so the file is written once or not at all. In the list form
+// a failure names the edit.
+func applyEdits(content string, edits []edit, list bool) (string, error) {
+	for i, e := range edits {
+		next, err := applyEdit(content, e.old, e.new, e.all)
+		switch {
+		case err == nil:
+			content = next
+		case !list:
+			return "", err
+		case i == 0:
+			return "", fmt.Errorf("edit 1 of %d failed, so nothing was written: %w", len(edits), err)
+		default:
+			return "", fmt.Errorf("edit %d of %d failed, so nothing was written (it is matched against the text the edits before it leave): %w", i+1, len(edits), err)
+		}
+	}
+	return content, nil
+}
+
+func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
+	preview := func(args []scheme.Value) string {
+		if len(args) < 1 || args[0].Kind != scheme.KString {
+			return ""
+		}
+		edits, list, err := editsOf(args)
+		if err != nil {
+			return "edit would fail: " + err.Error()
+		}
 		abs := pin.Resolve(args[0].S)
 		if abs == "" {
 			return ""
@@ -367,7 +482,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 		if err != nil {
 			return "cannot read " + args[0].S + ": " + err.Error()
 		}
-		next, err := applyEdit(string(cur), args[1].S, args[2].S, all)
+		next, err := applyEdits(string(cur), edits, list)
 		if err != nil {
 			return "edit would fail: " + err.Error()
 		}
@@ -376,12 +491,17 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-edit",
 		Meta: scheme.Meta{
-			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate. If old is not found but matches when whitespace is ignored, the error quotes the file's exact text. Prefer this over fs-write for changes to existing files.",
+			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate. Several changes to one file: one call with edits, a list of {old, new, replace_all} given instead of old and new; they apply in order, each to the text the one before left, and nothing is written unless every one applies. If old is not found but matches when whitespace is ignored, the error quotes the file's exact text. Prefer this over fs-write for changes to existing files.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
-				{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all)"},
-				{Name: "new", Type: "string", Doc: "the replacement text", Role: "payload"},
+				{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all); not with edits", Optional: true},
+				{Name: "new", Type: "string", Doc: "the replacement text; not with edits", Role: "payload", Optional: true},
 				{Name: "replace_all", Type: "boolean", Doc: "replace every occurrence of old instead of exactly one (default false)", Optional: true},
+				{Name: "edits", Type: "list", Doc: "several changes to this file, in order, instead of old and new", Optional: true, Items: []scheme.Param{
+					{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all)"},
+					{Name: "new", Type: "string", Doc: "the replacement text", Role: "payload"},
+					{Name: "replace_all", Type: "boolean", Doc: "replace every occurrence of old instead of exactly one (default false)", Optional: true},
+				}},
 			},
 			Host:         true,
 			Irreversible: true,
@@ -392,11 +512,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			old, err := c.String(1)
-			if err != nil {
-				return scheme.Value{}, err
-			}
-			repl, err := c.String(2)
+			edits, list, err := editsOf(c.Args)
 			if err != nil {
 				return scheme.Value{}, err
 			}
@@ -404,8 +520,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			all := len(c.Args) > 3 && scheme.Equal(c.Args[3], scheme.True)
-			next, err := applyEdit(string(cur), old, repl, all)
+			next, err := applyEdits(string(cur), edits, list)
 			if err != nil {
 				return scheme.Value{}, err
 			}

@@ -143,3 +143,32 @@ func TestApprovedDestinationIsThePrimsOwn(t *testing.T) {
 		t.Fatalf("approval followed a destination argument: %+v", d)
 	}
 }
+
+// A list parameter whose elements are objects carries its payload in the
+// fields Items marks, as fs-edit's edits carry each new text: taint on the
+// second element's payload counts, taint on a field with no role does not,
+// and taint on the list around them, as json-parse of tool output leaves
+// it, reaches every field inside.
+func TestTaintInAListParametersItems(t *testing.T) {
+	ck := guard.Taint{Policy: "deny"}
+	p := &scheme.Prim{Name: "post-edits", Meta: scheme.Meta{Egress: true, Params: []scheme.Param{
+		{Name: "url", Type: "string", Role: "dest"},
+		{Name: "edits", Type: "list", Items: []scheme.Param{{Name: "old", Type: "string"}, {Name: "new", Type: "string", Role: "payload"}}},
+	}}}
+	edit := func(old, new scheme.Value) scheme.Value {
+		return scheme.List(scheme.Cons(scheme.Str("old"), old), scheme.Cons(scheme.Str("new"), new))
+	}
+	clean := edit(scheme.Str("a"), scheme.Str("b"))
+	call := func(edits scheme.Value) guard.Decision {
+		return ck.Check(context.Background(), p, []scheme.Value{scheme.Str("https://collect.example/x"), edits})
+	}
+	if d := call(scheme.List(clean, edit(scheme.Str("c"), taintedStr("file contents", fileTaint)))); d.Verdict != guard.Deny || !strings.Contains(d.Reason, "external:file") {
+		t.Fatalf("taint in the second edit's payload: %+v", d)
+	}
+	if d := call(scheme.List(clean, edit(taintedStr("file contents", fileTaint), scheme.Str("d")))); d.Verdict != guard.Allow {
+		t.Fatalf("taint in a field with no role: %+v", d)
+	}
+	if d := call(scheme.Tainted(scheme.List(clean), fileTaint)); d.Verdict != guard.Deny {
+		t.Fatalf("taint on the list: %+v", d)
+	}
+}

@@ -1,5 +1,6 @@
 const { chromium } = require("playwright");
 const { spawn } = require("child_process");
+const fs = require("fs");
 const out = process.argv[2];
 (async () => {
   const demo = spawn(process.env.DEMO, ["-seed"], { stdio: ["pipe", "pipe", "inherit"] });
@@ -85,6 +86,39 @@ const out = process.argv[2];
   if (!went || carried.head !== "Plan4 of 4 done · carried over from an earlier turn" || carried.items.join() !== "done,done,done,done" || carried.steps.map((s) => s.split(":")[0]).join() !== "Change,Test,Docs,Check")
     throw new Error("the plan was not carried");
   await page.screenshot({ path: `${out}/carried-plan.png` });
+  // Two changes to one file in one fs-edit call (ADR 38). The Makefile is
+  // a protected path, so the call asks although writes in the folder go
+  // ahead: the card shows one diff with both edits, nothing is written
+  // before the answer, and after it the file holds both.
+  const makefile = `${/REPO (\S+)/.exec(buf)[1]}/Makefile`;
+  const original = "build:\n\tgo build ./...\n\ntest:\n\tgo test ./...\n";
+  await page.fill("#reply", "Quiet the build");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector(".ask-card .diff", { timeout: 15000 });
+  const card = await page.evaluate(() => ({
+    title: document.querySelector(".ask-card h2")?.textContent,
+    security: !!document.querySelector(".ask-card .badge.bad"),
+    added: [...document.querySelectorAll(".ask-card .diff-line.add .t")].map((e) => e.textContent),
+    removed: [...document.querySelectorAll(".ask-card .diff-line.del .t")].map((e) => e.textContent),
+  }));
+  console.log(JSON.stringify(card));
+  if (card.title !== "Edit Makefile" || !card.security) throw new Error("not the Makefile's security confirm");
+  if (card.added.join("|") !== "\t@go build ./...|\t@go test ./... >/dev/null" || card.removed.join("|") !== "\tgo build ./...|\tgo test ./...") throw new Error("the card does not show one diff of both edits");
+  await page.screenshot({ path: `${out}/edits-ask.png` });
+  if (fs.readFileSync(makefile, "utf8") !== original) throw new Error("the Makefile changed before the answer");
+  // Focus is still in the reply box, where y would be typed: click.
+  await page.click(".ask-card button[data-key='Y']");
+  await until("answer after the edits", (t) => t.includes("Quieted"));
+  const edited = fs.readFileSync(makefile, "utf8");
+  if (edited !== "build:\n\t@go build ./...\n\ntest:\n\t@go test ./... >/dev/null\n") throw new Error(`the Makefile after the answer: ${JSON.stringify(edited)}`);
+  const row = await page.evaluate(() => {
+    const step = [...document.querySelectorAll(".step")].find((s) => /Edit\s*Makefile/.test(s.textContent));
+    return step && { text: step.textContent.replace(/\s+/g, " ").trim(), args: step.nextElementSibling?.querySelector("pre")?.textContent };
+  });
+  console.log(JSON.stringify(row));
+  if (!row || !row.text.includes("written") || !row.args?.includes('"edits"')) throw new Error("the transcript does not show the edit and its arguments");
+  step("edits written");
+  await page.screenshot({ path: `${out}/edits-written.png` });
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}/home-after.png` });

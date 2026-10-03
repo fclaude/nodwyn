@@ -164,6 +164,42 @@ func TestConfirmYesAndNo(t *testing.T) {
 	}
 }
 
+// Several changes to one file go in one fs-edit call: the tool list shows
+// an edit's fields, the call asks once with one diff of the file all the
+// edits leave, and the file is written with every one of them.
+func TestFsEditWithEditsAsksOnceWithOneDiff(t *testing.T) {
+	r := newAskingRig(t,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "e1", Name: "fs-edit", Args: map[string]any{"path": "main.go", "edits": []any{
+			map[string]any{"old": "package main\n", "new": "package main\n\nfunc a() {}\n"},
+			map[string]any{"old": "func a() {}\n", "new": "func a() {}\n\nfunc b() {}\n"},
+		}}}}},
+		fake.Turn{Content: "added a and b"},
+	)
+	r.s.Send("add a and b")
+	evs := r.drain("y")
+	var prompts []event.Confirm
+	for _, e := range evs {
+		if e.Kind == event.PromptConfirm {
+			prompts = append(prompts, e.Payload.(event.Confirm))
+		}
+	}
+	if len(prompts) != 1 || prompts[0].Prompt.Prim != "fs-edit" {
+		t.Fatalf("confirms: %+v", prompts)
+	}
+	if d := prompts[0].Prompt.Detail; !strings.Contains(d, "+func a() {}\n") || !strings.Contains(d, "+func b() {}\n") || strings.Count(d, "@@ ") != 1 {
+		t.Fatalf("the confirm does not show one diff of both edits:\n%s", d)
+	}
+	if b, _ := os.ReadFile(filepath.Join(r.repo, "main.go")); string(b) != "package main\n\nfunc a() {}\n\nfunc b() {}\n" {
+		t.Fatalf("main.go: %q", b)
+	}
+	if tools := string(r.srv.Requests[0].Raw); !strings.Contains(tools, `"edits":{"description":`) || !strings.Contains(tools, `"required":["old","new"],"type":"object"},"type":"array"}`) {
+		t.Fatalf("the tool list does not show an edit's fields:\n%s", tools)
+	}
+	if raw := string(r.srv.Requests[1].Raw); !strings.Contains(raw, `"role":"tool","content":"ok","tool_name":"fs-edit"`) {
+		t.Fatalf("the result fed back:\n%s", raw)
+	}
+}
+
 func TestNoConfirmDeniesWithoutPrompt(t *testing.T) {
 	r := newRig(t, true,
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s1", Name: "shell-exec", Args: map[string]any{"cmd": "true", "args": []any{}}}}},
