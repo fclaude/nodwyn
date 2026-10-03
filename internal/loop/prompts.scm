@@ -169,7 +169,7 @@
 (define (plan-explore-task request)
   (string-append
    "Request:\n" request
-   "\n\nReport what a plan for this request needs to know: the files, functions and tests involved (with paths), conventions and helpers to reuse, and how the project runs its tests. Facts only, briefly; no plan."))
+   "\n\nReport what a plan for this request needs to know: the files, functions and tests involved (with paths), the documentation that describes them and what the repository's instructions for coding agents (such as AGENTS.md) ask a change to include, conventions and helpers to reuse, and how the project runs its tests. Facts only, briefly; no plan."))
 
 ;; The explorer's report, handed to the model that does the work once the
 ;; plan is recorded (plan.scm).
@@ -276,12 +276,24 @@
                                     (let ((note (assoc-ref m 'note "")))
                                       (if (string-empty? note) "" (string-append ": " note)))))
                    (assoc-ref run 'marks '())))
-       "\n\nPlan what remains of the task.")))
+       "\n\nPlan what remains of the task, in the same shape.")))
+
+;; The shape every plan is asked for, built from plan-kinds (plan.scm), so
+;; the planner is asked for what plan-write checks (ADR 32, amended
+;; 2026-10-03).
+(define (plan-shape)
+  (string-append
+   "Each step starts with its kind:"
+   (apply string-append (map (lambda (k) (string-append "\n- " (car k) ": " (cdr k) ".")) plan-kinds))
+   (if plan-last-kind (string-append "\nThe last step is a " plan-last-kind ": step.") "")
+   " A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."))
 
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)
   (string-append
-   "Write a short, concrete plan for the following request: numbered steps, each naming the file or command involved, nothing else.\n\nRequest:\n"
+   "Write a short, concrete plan for the following request: numbered steps, nothing else. "
+   (plan-shape)
+   "\n\nRequest:\n"
    request))
 
 ;; A score between 0 and 1 with two decimals, as the revision prompt shows it.
@@ -295,24 +307,28 @@
 (define (plan-revise-prompt request plan score)
   (string-append
    "Your plan for the request below scored " (format-score score)
-   " out of 1 for completeness, concreteness and order. Revise it: fix what is missing or vague, remove what is unnecessary. Return only the revised numbered plan.\n\nRequest:\n"
+   " out of 1 for completeness, concreteness and order. Revise it: fix what is missing or vague, such as a test that does not say why it fails on the unchanged code or a doc the change makes wrong, and remove what is unnecessary. Return only the revised numbered plan. "
+   (plan-shape)
+   "\n\nRequest:\n"
    request "\n\nPrevious plan:\n" plan))
 
 ;; The judge's yes/no question: does this request need a plan?
 (define plan-needed-question
   "Does carrying out this request take several distinct steps, touch more than one file or system, or have consequences that are hard to undo? Answer yes if a short plan would make the work safer or better; no if it is a single, obvious action or a question.")
 
-;; The judge's rubric instruction for scoring a plan.
+;; The judge's rubric instruction for scoring a plan, and its levels,
+;; worst first. They ask for the shape plan-write checks (plan.scm): a plan
+;; whose tests do not say what they check, or that leaves out the docs,
+;; does not reach the top level (ADR 32, amended 2026-10-03).
 (define plan-score-rubric
-  "The text is a plan written for the request quoted at its top. Rate how well the plan fulfils the request: complete, concrete, in a sensible order, with nothing unnecessary or unsafe.")
+  "The text is a plan written for the request quoted at its top. Rate how well the plan fulfils the request: complete, concrete, in a sensible order, with nothing unnecessary or unsafe. Each step should start with its kind: Change: a file and what changes in it; Test: a test, the behaviour it checks, and why it fails on the unchanged code; Docs: each document the change makes wrong or incomplete; and, last, Check: the command that shows the whole change works. A plan with no test or no doc to change should say why.")
 
-;; The rubric's levels for scoring a plan, worst first.
 (define plan-score-levels
   '("misses or contradicts the request"
     "addresses part of the request; major steps missing or wrong"
-    "covers the request but vaguely, out of order, or with unnecessary steps"
+    "covers the request but vaguely, out of order, or with unnecessary steps; or its tests do not say what they check and why they fail today, or it leaves out the docs"
     "complete and concrete with minor gaps"
-    "complete, concrete, minimal and safe"))
+    "complete, concrete, minimal and safe: each test says what it checks and why it fails today, the docs the change makes wrong are named, and it ends with its check"))
 
 ;; The optimizer's system prompt (optimize.scm).
 (define (optimizer-system-prompt)

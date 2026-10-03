@@ -336,7 +336,12 @@ func respond(req fake.Request) fake.Turn {
 	}
 	time.Sleep(400 * time.Millisecond)
 	if len(req.Tools) == 0 {
-		return fake.Turn{Content: "1. Find where the list is drawn\n2. Check what a saved session records\n3. Show when it changed and whether it's running\n4. Check it at phone width", Chunk: 24}
+		// The plan names its change, its test, its docs and its check, as
+		// the planner is asked to (prompts.scm, plan-shape).
+		return fake.Turn{Content: "1. Change: app.js sessionRow — under each title, show when the session last changed and whether it's running, and its id on hover.\n" +
+			"2. Test: app.test.js \"rows tell sessions apart\" — two sessions that start alike get different rows; fails today: a row shows only the title and the repository.\n" +
+			"3. Docs: notes/todo.md — tick off \"tell sessions apart\".\n" +
+			"4. Check: ls -la, then the list at phone width.", Chunk: 24}
 	}
 	if strings.HasPrefix(last, "Describe") {
 		return fake.Turn{Content: fmt.Sprintf("This request carries %d image(s). The demo model does not look at them.", images), Chunk: 16}
@@ -380,16 +385,16 @@ func respond(req fake.Request) fake.Turn {
 		// "continue" carries the plan with that step marked.
 		switch rounds {
 		case 0:
-			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "t1", Name: "plan-write", Args: map[string]any{"plan": "1. Read the notes\n2. Tidy them"}}}}
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "t1", Name: "plan-write", Args: map[string]any{"plan": "1. Change: notes/todo.md — put the open items in order.\n2. Test: none — the notes are not code.\n3. Docs: none — the notes are the doc.\n4. Check: cat notes/todo.md"}}}}
 		case 1:
-			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "t2", Name: "fs-read", Args: map[string]any{"path": "notes/todo.md"}}, planStep("t3", 1, "done", "two open items")}}
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "t2", Name: "fs-read", Args: map[string]any{"path": "notes/todo.md"}}, planStep("t3", 1, "done", "two open items, already in order")}}
 		default:
 			return fake.Turn{Status: http.StatusTooManyRequests}
 		}
 	}
 	if last == "continue" {
 		if rounds == 0 {
-			return fake.Turn{ToolCalls: []fake.ToolCall{planStep("t4", 2, "done", "nothing to tidy")}}
+			return fake.Turn{ToolCalls: []fake.ToolCall{planStep("t4", 2, "done", "no code changed"), planStep("t5", 3, "done", "the notes are the doc"), planStep("t6", 4, "done", "two open items, in order")}}
 		}
 		return fake.Turn{Content: "Tidied: the notes were already in order.", Chunk: 12}
 	}
@@ -406,18 +411,20 @@ func respond(req fake.Request) fake.Turn {
 		return fake.Turn{Thinking: "sessionRow draws the title alone; read it and the notes.", ToolCalls: []fake.ToolCall{
 			{ID: "r3", Name: "fs-read", Args: map[string]any{"path": "app.js"}},
 			{ID: "r4", Name: "fs-read", Args: map[string]any{"path": "notes/todo.md"}},
-			planStep("p1", 1, "done", "sessionRow in app.js draws each row"),
 		}}
 	case 2:
 		return fake.Turn{Content: "A saved session already records its repository, when it last changed and whether a turn was still running. I'll put when it changed and whether it's running under each title, and the session id on hover.", ToolCalls: []fake.ToolCall{
-			planStep("p2", 2, "done", "a saved session records its repository, last change and whether a turn runs"),
 			{ID: "w1", Name: "fs-edit", Args: map[string]any{"path": "app.js", "old": "  row.append(node(\"span\", session.repo, \"meta\"));\n", "new": "  const when = ago(session.lastEvent);\n  const state = session.inFlight ? \"running\" : \"idle\";\n  const meta = [session.repo, when, state].join(\" · \");\n  row.append(node(\"span\", meta, \"meta\"));\n  row.title = session.id;\n"}},
 		}}
 	case 3:
+		// Two steps are marked before the command that asks for approval
+		// and two after it, so the browser check sees the count change.
 		return fake.Turn{ToolCalls: []fake.ToolCall{
-			planStep("p3", 3, "done", "app.js shows when it changed and whether it is running"),
+			planStep("p1", 1, "done", "app.js shows when it changed and whether it is running"),
+			planStep("p2", 2, "done", "failed before the change, passes after it"),
 			{ID: "x1", Name: "shell-exec", Args: map[string]any{"cmd": "ls", "args": []any{"-la"}}},
-			planStep("p4", 4, "skipped", "the demo has no phone to check on"),
+			planStep("p3", 3, "skipped", "the notes are the person's list: left to them"),
+			planStep("p4", 4, "done", "ls shows app.js changed; the demo has no phone to check on"),
 		}}
 	default:
 		return fake.Turn{Content: "Done. Each row now shows **when it last changed** and **whether it's running**:\n\n```js\nconst meta = [session.repo, when, state].join(\" · \");\n```\n\nHover a row to see its id.", Chunk: 20}

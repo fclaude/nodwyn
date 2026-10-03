@@ -66,6 +66,8 @@ are faster.
 - **The book and the expert guide:** `make book`, `make expert` (texlive). If
   they cannot build here, say so.
 
+A plan's `Docs:` steps name every file this list asks for the change.
+
 ## Rules of the house
 
 - Tests and checks never use a paid model, a real key or a passphrase: the

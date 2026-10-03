@@ -16,6 +16,19 @@ const out = process.argv[2];
   await page.waitForSelector(".nav-task.dotted", { timeout: 15000 });
   await page.click(".nav-task.dotted");
   await page.waitForSelector(".ask-card");
+  // The plan panel shows every step of the planner's plan, each with its
+  // kind, Test: and Docs: included, and counts the steps the model marks:
+  // two before the command it asks about, two more once it is approved.
+  const planPanel = () =>
+    page.evaluate(() => ({
+      head: [...document.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.textContent.startsWith("Plan"))?.querySelector("h2")?.textContent,
+      steps: [...document.querySelectorAll("ol.plan li .text")].map((s) => s.textContent),
+      items: [...document.querySelectorAll("ol.plan li")].map((li) => li.className),
+    }));
+  const before = await planPanel();
+  console.log(JSON.stringify(before));
+  if (before.steps.map((s) => s.split(":")[0]).join() !== "Change,Test,Docs,Check" || !/fails today: /.test(before.steps[1]) || before.head !== "Plan2 of 4 done · drafted" || before.items.join() !== "done,done,next,")
+    throw new Error("the plan panel does not show the plan's steps, two marked, at the approval");
   // Keyboard answer, as the terminal does.
   step("card shown");
   await page.keyboard.press("y");
@@ -36,6 +49,10 @@ const out = process.argv[2];
     code: document.querySelector(".prose pre code")?.textContent,
   }));
   console.log(JSON.stringify(checks, null, 1));
+  const after = await planPanel();
+  console.log(JSON.stringify(after));
+  if (after.steps.join("\n") !== before.steps.join("\n") || after.head !== "Plan3 of 4 done · drafted" || after.items.join() !== "done,done,skipped,done")
+    throw new Error("the plan panel does not count the steps marked after the approval");
   await page.screenshot({ path: `${out}/after.png` });
   // Home shows it finished; follow-up message in the same task.
   await page.fill("#reply", "Thanks");
@@ -60,13 +77,13 @@ const out = process.argv[2];
   await page.keyboard.press("Enter");
   await until("answer after continue", (t) => t.includes("Tidied"));
   await page.waitForTimeout(800);
-  const carried = await page.evaluate(() => ({
-    went: [...document.querySelectorAll(".transcript *")].some((e) => e.children.length === 0 && /Went on with the plan · 1 of 2 steps marked/.test(e.textContent)),
-    plan: [...document.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.textContent.startsWith("Plan"))?.querySelector("h2")?.textContent,
-    items: [...document.querySelectorAll("ol.plan li")].map((li) => li.className),
-  }));
-  console.log(JSON.stringify(carried));
-  if (!carried.went || carried.plan !== "Plan2 of 2 done · carried over from an earlier turn" || carried.items.join() !== "done,done") throw new Error("the plan was not carried");
+  // The model's plan-write was recorded (its plan has every kind), carried,
+  // and the steps "continue" marked are counted.
+  const went = await page.evaluate(() => [...document.querySelectorAll(".transcript *")].some((e) => e.children.length === 0 && /Went on with the plan · 1 of 4 steps marked/.test(e.textContent)));
+  const carried = await planPanel();
+  console.log(JSON.stringify({ went, ...carried }));
+  if (!went || carried.head !== "Plan4 of 4 done · carried over from an earlier turn" || carried.items.join() !== "done,done,done,done" || carried.steps.map((s) => s.split(":")[0]).join() !== "Change,Test,Docs,Check")
+    throw new Error("the plan was not carried");
   await page.screenshot({ path: `${out}/carried-plan.png` });
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForTimeout(800);

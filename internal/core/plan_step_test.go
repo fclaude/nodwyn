@@ -87,19 +87,27 @@ func planWriteCall(id, plan string) fake.ToolCall {
 	return fake.ToolCall{ID: id, Name: "plan-write", Args: map[string]any{"plan": plan}}
 }
 
+// shapedPlan has the shape plan-write asks for (plan.scm): a step of each
+// kind, the test saying why it fails today, and a check last.
+const shapedPlan = "1. Change: main.go main — print the greeting.\n" +
+	"2. Test: main_test.go TestGreeting — main prints it; fails today: main prints nothing.\n" +
+	"3. Docs: none — no doc describes main.go.\n" +
+	"4. Check: go test ./..."
+
 // Without a plan from the gate, the model writes its own with plan-write:
 // it is recorded (decision "model"), pinned in the next request's system
 // prompt, and plan-step marks it. Writing it again revises it.
 func TestModelWritesItsOwnPlan(t *testing.T) {
+	revised := strings.Replace(shapedPlan, "go test ./...", "go vet ./...", 1)
 	r := judgedRig(t, nil, "",
-		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", "1. read main.go\n2. edit it")}},
-		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("a", 1, "done", "read it")}},
-		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("v", "1. edit main.go")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("a", 1, "done", "edited")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("v", revised)}},
 		fake.Turn{Content: "done"})
 	if e := r.turn("change main.go"); e != "" {
 		t.Fatal(e)
 	}
-	if sys := requestMessages(t, r.srv.Requests[1])[0].Content; !strings.HasSuffix(sys, "say so if you must deviate):\n1. read main.go\n2. edit it") {
+	if sys := requestMessages(t, r.srv.Requests[1])[0].Content; !strings.HasSuffix(sys, "say so if you must deviate):\n"+shapedPlan) {
 		t.Fatalf("the plan is not pinned:\n%s", sys)
 	}
 	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
@@ -120,11 +128,11 @@ func TestModelWritesItsOwnPlan(t *testing.T) {
 			answers[tr.ID] = tr.Value + tr.Error
 		}
 	}
-	if len(plans) != 2 || plans[0].Noul != "model" || plans[1].Plan != "1. edit main.go" {
+	if len(plans) != 2 || plans[0].Noul != "model" || plans[1].Plan != revised {
 		t.Fatalf("plans %+v", plans)
 	}
-	if answers["w"] != "Plan recorded: 2 steps. It stays in front of you; mark each step with plan-step as you finish it." ||
-		answers["a"] != "Step 1 is done. Next unmarked: 2. edit it" {
+	if answers["w"] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as you finish it." ||
+		answers["a"] != "Step 1 is done. Next unmarked: 2. Test: main_test.go TestGreeting — main prints it; fails today: main prints nothing." {
 		t.Fatalf("answers %q", answers)
 	}
 }
@@ -138,11 +146,11 @@ func TestAnUnfinishedTurnLeavesItsPlan(t *testing.T) {
 	llm.RetryDelay = time.Millisecond
 	rateLimited := fake.Turn{Status: 429}
 	r := judgedRig(t, nil, "",
-		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", "1. read main.go\n2. edit it\n3. test it")}},
-		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("a", 1, "done", "read it")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("a", 1, "done", "edited")}},
 		rateLimited, rateLimited, rateLimited,
-		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("b", 2, "done", "edited")}},
-		fake.Turn{Content: "edited; testing is next"},
+		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("b", 2, "done", "failed before, passes now")}},
+		fake.Turn{Content: "tested; the docs are next"},
 		fake.Turn{Content: "main.go is the entry point"})
 	if e := r.turn("change main.go"); !strings.Contains(e, "429") {
 		t.Fatalf("the first turn ended with %q, want the model's 429", e)
@@ -151,7 +159,7 @@ func TestAnUnfinishedTurnLeavesItsPlan(t *testing.T) {
 		t.Fatal(e)
 	}
 	sys := requestMessages(t, r.srv.Requests[5])[0].Content
-	if !strings.HasSuffix(sys, "\n1. read main.go\n2. edit it\n3. test it\n\nMarked in earlier turns of this task:\nStep 1 done: read it") {
+	if !strings.HasSuffix(sys, "\n"+shapedPlan+"\n\nMarked in earlier turns of this task:\nStep 1 done: edited") {
 		t.Fatalf("the carried plan is not pinned with its marks:\n%s", sys)
 	}
 	if e := r.turn("what is main.go?"); e != "" {
@@ -180,10 +188,10 @@ func TestAnUnfinishedTurnLeavesItsPlan(t *testing.T) {
 		}
 	}
 	if len(plans) != 2 || plans[1].Noul != "carried" || turnOf[1] != 2 || plans[1].Plan != plans[0].Plan ||
-		len(plans[1].Marks) != 1 || plans[1].Marks[0] != (log.PlanStep{Step: 1, Of: 3, State: "done", Note: "read it"}) {
+		len(plans[1].Marks) != 1 || plans[1].Marks[0] != (log.PlanStep{Step: 1, Of: 4, State: "done", Note: "edited"}) {
 		t.Fatalf("plans %+v in turns %v", plans, turnOf)
 	}
-	if answers["b"] != "Step 2 is done. Next unmarked: 3. test it" {
+	if answers["b"] != "Step 2 is done. Next unmarked: 3. Docs: none — no doc describes main.go." {
 		t.Fatalf("answers %q", answers)
 	}
 }

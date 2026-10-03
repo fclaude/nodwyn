@@ -182,8 +182,9 @@ the server reports it. A budget checkpoint says what the turn has cost so
 far, ``at least'' when some requests had no known cost.
 
 The full-screen client takes the same commands and adds inspectors:
-\code{:plan} shows the turn's plan gate, its plan, and each step as the
-model marked it, done (\code{[x]}), skipped (\code{[-]}) or not yet
+\code{:plan} shows the turn's plan gate, its plan, and each step (each
+starts with its kind: \code{Change:}, \code{Test:}, \code{Docs:} or
+\code{Check:}) as the model marked it, done (\code{[x]}), skipped (\code{[-]}) or not yet
 (\code{[ ]}), with its note; \code{:budget} shows the configured limits,
 what the latest turn's model requests cost as far as known, and its
 checkpoints; \code{:replay}, \code{:bindings} and \code{:friction} show

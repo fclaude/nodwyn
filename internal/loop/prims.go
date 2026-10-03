@@ -104,7 +104,8 @@ func (l *Loop) install() error {
 		{
 			Name: "plan-steps",
 			Meta: scheme.Meta{
-				Doc:    "The steps of the plan recorded in this turn, in order, as strings: its numbered or bulleted lines, or the whole plan when it is prose. '() when no plan was recorded.",
+				Doc:    "The steps of the plan recorded in this turn, in order, as strings: its numbered or bulleted lines, or the whole plan when it is prose. '() when no plan was recorded. With a plan's text, the steps of that text, read the same way: plan-write checks a plan's steps before it records it.",
+				Params: []scheme.Param{{Name: "plan", Type: "string", Doc: "a plan's text, not yet recorded", Optional: true}},
 				Hidden: true,
 				Origin: "builtin",
 			},
@@ -559,14 +560,24 @@ func (l *Loop) recordCompaction(c *scheme.Call) (scheme.Value, error) {
 	return scheme.Void, l.record(log.KindContextCompact, rec)
 }
 
-// planSteps is (plan-steps): the steps of the plan recorded this turn.
+// planSteps is (plan-steps [plan]): the steps of the plan recorded this
+// turn, or of plan's text, read as a recorded plan is, so that a step
+// plan-write checks is the step plan-step will mark.
 func (l *Loop) planSteps(c *scheme.Call) (scheme.Value, error) {
 	t, err := l.active(c)
 	if err != nil {
 		return scheme.Void, err
 	}
-	out := make([]scheme.Value, len(t.steps))
-	for i, s := range t.steps {
+	steps := t.steps
+	if len(c.Args) > 0 {
+		plan, err := c.String(0)
+		if err != nil {
+			return scheme.Void, err
+		}
+		steps = log.GatePlan{Plan: plan}.Steps()
+	}
+	out := make([]scheme.Value, len(steps))
+	for i, s := range steps {
 		out[i] = scheme.Str(s)
 	}
 	return scheme.List(out...), nil

@@ -580,7 +580,11 @@ configured (\adr{27}).
 The default procedure runs a plan gate first. With a judge configured, the
 judge says whether the request needs a plan; if it does, a read-only
 sub-agent looks around, the model drafts a plan, the judge scores it against
-the ask, and the model revises it at most three times. The outcome is
+the ask, and the model revises it at most three times. A plan's steps each
+start with their kind: the change, each test with why it fails on today's
+code, the docs the change makes wrong, and last the check that shows it
+works; the judge scores that shape, and a plan the model writes itself
+without it is turned down. The outcome is
 recorded per message, and the plan stays in the model's view for the rest
 of the turn. A supervised run's turns always plan, and until a plan is
 recorded the core refuses anything irreversible.

@@ -143,5 +143,7 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
   the model's \code{price\_*} prices adds nothing to it.
 \item A plan step marked done is the model's word. An unattended run
   (\code{nodwyn run -{}-unattended}) goes on from turn to turn on those
-  marks, and nothing checks them against the transcript.
+  marks, and nothing checks them against the transcript. A \code{Test:}
+  step must say why its test fails on today's code, but nothing runs the
+  test there to see that it does.
 \end{itemize}

@@ -198,7 +198,7 @@ func TestReadingRoundsGetAReminder(t *testing.T) {
 // over (prompts.scm, reading-reminder-plan).
 func TestReadingRoundsWithAPlanGoOnWithIt(t *testing.T) {
 	r := strategyRig(t, "(define reading-reminder-after 2)\n", 10,
-		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "plan-write", Args: map[string]any{"plan": "1. read main.go\n2. edit it"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("w", shapedPlan)}},
 		look("a", "fs-read", map[string]any{"path": "main.go"}),
 		look("b", "fs-list", map[string]any{"path": "."}),
 		fake.Turn{Content: "done"},

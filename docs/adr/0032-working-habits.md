@@ -338,3 +338,93 @@ word. This includes the unreviewed reminder of the evidence loop, so on
 the benchmark it changes only for turns that have a plan. A run's turns
 always do, and there the reminder no longer asks for a plan the gate
 already drafted.
+
+## Amendment 2026-10-03: plans name their tests and docs
+
+The worktree sessions of 2026-10-03 (`20261003T143916Z-48f31857` and
+`20261003T063228Z-73791682`, reviewed and reverted) planned in stage
+labels. The plan recorded at seq 1344 of `48f31857` read "2. WT0:
+repository-behind-checkout lookup (git common dir) and key project data on
+repository, with tests", and its last step was "Docs (manual, scheme,
+protocol, browser, ADRs) and full validation". No step said which test or
+which doc, and what followed shows what that cost:
+
+- ADR 34's specific clauses (the stash habit, the `.gitignore`) never
+  became steps, and were dropped.
+- A test written for "a clean close keeps attachments" passed on the code
+  that deleted them.
+- The browser check only looked for the new checkbox, so it passed while
+  the toggle did nothing.
+- A new primitive was missing from the book's and the expert guide's
+  tables, and a new working rule had no amendment here.
+
+The plans that worked, the handoffs written after those reviews, all had
+one shape: steps that change code, test steps that each say what they check
+and why they fail on today's code, docs steps that name the files, and a
+last step that runs the checks.
+
+So every plan is asked for in that shape: numbered steps, each starting
+with its kind, `Change:` (a file or function and what changes in it),
+`Test:` (the test file and name, the behaviour it checks, and "fails
+today: …", or "passes today: guards …" for a test of behaviour that already
+works), `Docs:` (each file a person or a later session reads that the
+change makes wrong or incomplete) and, last, `Check:` (the command that
+shows the whole change works). A plan with no test or no doc to change says
+so in a step, with the reason (`Test: none — only docs change`).
+
+- `plan-write` checks the shape (`plan-problems`, over the steps
+  `(plan-steps plan)` reads, the same reading `plan-step` marks). A step of
+  no known kind, no `Change:`, `Test:` or `Docs:` step, a last step that is
+  not a `Check:`, or a `Test:` step that says neither "fails today" nor
+  "passes today" (or the same "on the unchanged code") turns the plan down,
+  unrecorded, with each problem by step number and what to add. After two
+  refusals in a turn (`plan-write-refusals`) the next plan is recorded as
+  written, answered `Plan recorded: ` and what it still lacks, so a model
+  that cannot get the shape right is not kept from the work. Its description
+  states the shape with a two-line example.
+- `plan-step`'s description says a `Test:` step is done once its test has
+  failed without the change and passes with it, and the note names both
+  runs.
+- The gate's planner is asked for the shape (`(plan-shape)`, built from
+  `plan-kinds`, in `plan-draft-prompt` and `plan-revise-prompt`; a run's
+  replanning asks for what remains in the same shape), and the explorer
+  reports the docs involved and what the repository's agent instructions
+  ask a change to include, since the planner sees nothing else. The
+  judge's rubric asks for the shape, and a plan whose tests do not say what
+  they check, or that leaves out the docs, does not reach its top level.
+- The working rules and the reading reminders still say "write your plan
+  with `plan-write`" and nothing more: the tool's description and its
+  refusals carry the shape, and the rules stay short.
+- The kinds, the wording a `Test:` step may use, the refusal count and the
+  messages are definitions in `plan.scm`, so a project redefines them in
+  `.nodwyn/init.scm`; `(define (plan-problems steps) '())` turns the check
+  off. `record-plan` checks nothing: project code is trusted as written.
+
+The check reads what a step says, not what it does: nothing runs a
+`Test:` step's test on the unchanged code to see it fail.
+
+This has not been measured on the 121-task cohort. There every instance is
+a supervised one-turn run, and in pil's run (`nibb-1fd0696-d-pi121-pil`)
+all 121 recorded a gate plan, decision `required`, unscored (no judge), and
+none called `plan-write`. So the benchmark sees the planner's draft prompt
+(138 characters before the request, now 656), the explorer's task (215,
+now 355), `plan-write`'s description in every request's tool list (382,
+now 1028), and its check whenever the model writes a plan of its own; the
+rubric and its levels (182 characters, now 517) apply only with a judge.
+
+To measure it, run the cohort twice on the same model and instances as
+pil (Qwen3.8 27B at Q4, `qwen3.8-27b-96k:latest`, the 121 tasks, one
+attempt each): once at the commit before this change and once at this
+change's commit. Compare:
+
+- the resolved rate, from each run's tagged eval (`resolved_ids`);
+- requests per instance, `llm.req` events per session log (pil: mean 50.7,
+  median 41), main context and sub-agents apart;
+- how often plans were turned down: `plan-write` results that start "Plan
+  not recorded", and those recorded "as written" after two refusals, per
+  instance;
+- whether `Test:` steps' tests fail on the unchanged code: for each
+  `Test:` step in a recorded plan, the first `shell-exec` that names its
+  test file or test before the first edit outside the tests, and its exit
+  status. The patch alone cannot show it: the bridge builds it with
+  `git diff`, so a new test file is not in it.
