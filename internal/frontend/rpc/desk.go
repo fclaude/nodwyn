@@ -3,9 +3,12 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -221,4 +224,78 @@ func probe(name string, m config.Model) modelStatus {
 		}
 	}
 	return status
+}
+
+type offeredParams struct {
+	Server string `json:"server"` // a [servers.NAME] in config.toml
+}
+
+// listClient asks for a server's model list, which can be long
+// (OpenRouter's lists hundreds of models).
+var listClient = &http.Client{Timeout: 10 * time.Second, Transport: probeClient.Transport}
+
+// modelsOffered answers models.offered: the models a configured server
+// lists, for choosing one there. Like models.status it sends no credential:
+// a server that lists its models only to a key says so, and the model's
+// name is typed instead.
+func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
+	var p offeredParams
+	if err := params(req.Params, &p, "server"); err != nil {
+		return nil, err
+	}
+	srv, ok := s.options.Config.Servers[p.Server]
+	if !ok {
+		return nil, failure(-32602, "No server "+strconv.Quote(p.Server)+" is configured")
+	}
+	// As the probes do, the request runs without the lifecycle lock.
+	s.mu.Unlock()
+	names, err := offered(srv)
+	s.mu.Lock()
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return names, nil
+}
+
+func offered(srv config.Server) ([]string, error) {
+	base := strings.TrimRight(srv.URL, "/")
+	host := base
+	if u, err := url.Parse(base); err == nil {
+		host = u.Host
+	}
+	endpoint := base + "/models"
+	if providerName(srv.Provider) == "ollama" {
+		endpoint = base + "/api/tags"
+	}
+	response, err := listClient.Get(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("%s does not answer", host)
+	}
+	defer response.Body.Close()
+	switch {
+	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
+		return nil, fmt.Errorf("%s lists its models only to a key, and nodwyn asks without one", host)
+	case response.StatusCode != http.StatusOK:
+		return nil, fmt.Errorf("%s did not list its models: %s", host, response.Status)
+	}
+	var list struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"` // ollama's /api/tags
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"` // a chat-completions server's /models
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&list); err != nil {
+		return nil, fmt.Errorf("%s's model list does not read: %v", host, err)
+	}
+	names := []string{}
+	for _, m := range list.Models {
+		names = append(names, m.Name)
+	}
+	for _, m := range list.Data {
+		names = append(names, m.ID)
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
 }

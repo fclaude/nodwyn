@@ -138,3 +138,34 @@ to any other configured model, at another host, carries a line saying the
 image is not for it. Routing is still user code; the image's consent is not
 stretched by it. A narrowed context, the planner's or a sub-agent's, starts
 after the attachment and so carries no image.
+
+## Amendment: a server holds a provider's address and key (2026-10-03)
+
+A model's table carried the provider, the URL and the key's class along
+with the model's id, so the models one provider offers repeated those three
+in every table, and a new key or address meant finding each of them. In the
+app, choosing another model on the same server meant typing its address
+again and its id from memory.
+
+- `config.toml` gains `[servers.NAME]`: `provider`, `url` and `credential`.
+  A model, `[control]` or `[models.NAME]`, names one with `server = "NAME"`
+  and takes those three from it; one that also sets any of them, or names a
+  server with no table, is refused. Loading copies the three into the
+  model, so the loop, the egress check, the log and replay read a model as
+  they did, and a request records where it went. A model may still give the
+  three itself.
+- A server is a destination like a model: only the user configures one, in
+  their own config. Its key is injected only where it is bound, checked on
+  every request, as a model's was.
+- The app saves servers. `settings.control.write` takes a configured
+  server's name with the model, or a provider and an address: then the main
+  model names the server `config.toml` has at that address (read as the
+  file is now, so a server added by hand is found and never written over),
+  or a new one named after its host. A key given with it becomes the
+  server's credential, so every model on the server sends it.
+  `models.offered` lists the models a configured server offers, asked
+  without a key as `models.status` asks, so the console suggests the
+  model's id; a server that lists its models only to a key says so, and the
+  id is typed.
+- Not built: adding and removing `[models.NAME]` tables and servers from the
+  app. They are written in `config.toml` by hand.

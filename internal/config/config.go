@@ -14,6 +14,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"net/url"
@@ -86,6 +87,10 @@ type Config struct {
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].
 	Models map[string]Model `toml:"models"`
+	// Servers are the model servers models may name instead of giving an
+	// address and a key each: [servers.NAME], so the models one provider
+	// offers share its address and its key.
+	Servers map[string]Server `toml:"servers"`
 }
 
 // MCP is how nodwyn runs contained MCP servers (ADR 23 W3b). The servers
@@ -148,6 +153,11 @@ const ControlModel = "control"
 // (bindings.toml, POST at header:Authorization:Bearer); that is checked on
 // every request.
 type Model struct {
+	// Server names the [servers.NAME] the model is on. Parse copies the
+	// server's provider, URL and credential into the model, so the rest of
+	// nodwyn reads a model alone; a model that names a server sets none of
+	// the three itself.
+	Server     string `toml:"server"`
 	Provider   string `toml:"provider"`   // "ollama" (the default when unset), or "openai" for any chat-completions server
 	URL        string `toml:"url"`        // base URL; for openai including the version, e.g. https://api.openai.com/v1
 	Model      string `toml:"model"`      // model id as the provider names it
@@ -187,6 +197,15 @@ type Model struct {
 	PriceInput       *float64 `toml:"price_input"`
 	PriceCachedInput *float64 `toml:"price_cached_input"`
 	PriceOutput      *float64 `toml:"price_output"`
+}
+
+// Server is a model server: where its models are reached and the key they
+// are reached with. A provider offers many models at one address under one
+// key, so the models on it name the server rather than repeat the three.
+type Server struct {
+	Provider   string `toml:"provider"`   // as Model.Provider
+	URL        string `toml:"url"`        // as Model.URL
+	Credential string `toml:"credential"` // as Model.Credential
 }
 
 // The cache_key settings.
@@ -445,10 +464,47 @@ func Parse(raw []byte) (Config, error) {
 	if md.IsDefined("loop", "max_tool_calls") && md.IsDefined("budget", "tool_calls_hard") {
 		return Config{}, fmt.Errorf("set budget.tool_calls_hard or legacy loop.max_tool_calls, not both")
 	}
+	if err := c.resolveServers(); err != nil {
+		return Config{}, err
+	}
 	if err := c.Validate(); err != nil {
 		return Config{}, err
 	}
 	return c, nil
+}
+
+// resolveServers gives each model that names a server the server's
+// provider, URL and credential. A model that also sets one of them is
+// refused rather than one of the two winning: either reading would surprise
+// whoever wrote the other.
+func (c *Config) resolveServers() error {
+	resolve := func(where string, m *Model) error {
+		if m.Server == "" {
+			return nil
+		}
+		s, ok := c.Servers[m.Server]
+		if !ok {
+			return fmt.Errorf("%s: server %q is not configured: add a [servers.%s] table with its provider, url and credential", where, m.Server, m.Server)
+		}
+		for _, f := range []struct{ key, value string }{{"provider", m.Provider}, {"url", m.URL}, {"credential", m.Credential}} {
+			if f.value != "" {
+				return fmt.Errorf("%s: %s comes from server %q; set it in [servers.%s], not here", where, f.key, m.Server, m.Server)
+			}
+		}
+		m.Provider, m.URL, m.Credential = s.Provider, s.URL, s.Credential
+		return nil
+	}
+	if err := resolve("control", &c.Control); err != nil {
+		return err
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.Models)) {
+		m := c.Models[name]
+		if err := resolve("models."+name, &m); err != nil {
+			return err
+		}
+		c.Models[name] = m
+	}
+	return nil
 }
 
 // Validate rejects configurations the harness must not run with.
@@ -467,7 +523,7 @@ func (c Config) Validate() error {
 			if len(missing) > 1 {
 				verb = "are"
 			}
-			return fmt.Errorf("control: %s %s required: nodwyn has no built-in control model (it no longer assumes ollama at http://localhost:11434); set provider, url, model and num_ctx in [control]",
+			return fmt.Errorf("control: %s %s required: nodwyn has no built-in control model (it no longer assumes ollama at http://localhost:11434); set provider, url, model and num_ctx in [control], or a server from [servers] and a model",
 				strings.Join(missing, " and "), verb)
 		}
 		if err := c.Control.validate(); err != nil {
@@ -485,6 +541,11 @@ func (c Config) Validate() error {
 	for name, m := range c.Models {
 		if err := m.validate(); err != nil {
 			return fmt.Errorf("models.%s: %w", name, err)
+		}
+	}
+	for name, s := range c.Servers {
+		if err := s.validate(); err != nil {
+			return fmt.Errorf("servers.%s: %w", name, err)
 		}
 	}
 	if c.Window.HighWater <= 0 || c.Window.LowWater <= 0 || c.Window.OutputReserve <= 0 || c.Window.MaxResultTokens <= 0 {
@@ -561,24 +622,33 @@ func (l Loop) Durations() (request, shell time.Duration) {
 	return request, shell
 }
 
-func (m Model) validate() error {
-	switch m.Provider {
+// validate checks a server's own settings, which a model that does not
+// name a server sets itself.
+func (s Server) validate() error {
+	switch s.Provider {
 	case "", "ollama", "openai": // unset is ollama
 	default:
-		return fmt.Errorf("provider %q is not supported (ollama, openai)", m.Provider)
+		return fmt.Errorf("provider %q is not supported (ollama, openai)", s.Provider)
 	}
-	u, err := url.Parse(m.URL)
+	u, err := url.Parse(s.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return fmt.Errorf("url %q must be an http or https URL", m.URL)
+		return fmt.Errorf("url %q must be an http or https URL", s.URL)
+	}
+	if s.Provider != "openai" && s.Credential != "" {
+		return errors.New("credential is not supported for ollama")
+	}
+	return nil
+}
+
+func (m Model) validate() error {
+	if err := (Server{Provider: m.Provider, URL: m.URL, Credential: m.Credential}).validate(); err != nil {
+		return err
 	}
 	if m.Model == "" {
 		return errors.New("model is required")
 	}
 	if m.NumCtx < 0 {
 		return errors.New("num_ctx must not be negative")
-	}
-	if m.Provider != "openai" && m.Credential != "" {
-		return errors.New("credential is not supported for ollama")
 	}
 	if m.MaxOutput < 0 {
 		return errors.New("max_output must not be negative")

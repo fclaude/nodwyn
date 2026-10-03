@@ -55,6 +55,7 @@ func contracts() map[string]methodContract {
 		"notes.read":              {notesParams{}, notesResult{}},
 		"session.notes.write":     {notesWriteParams{}, inspectionStarted{}},
 		"models.status":           {struct{}{}, []modelStatus{}},
+		"models.offered":          {offeredParams{}, []string{}},
 		"keychain.status":         {struct{}{}, keychainStatus{}},
 		"keychain.create":         {keychainCreateParams{}, keychainStatus{}},
 		"keychain.unlock":         {passphraseParams{}, keychainStatus{}},

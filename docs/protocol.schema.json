@@ -330,6 +330,9 @@
             }
           ]
         },
+        "Server": {
+          "type": "string"
+        },
         "Temperature": {
           "anyOf": [
             {
@@ -348,6 +351,7 @@
         }
       },
       "required": [
+        "Server",
         "Provider",
         "URL",
         "Model",
@@ -2511,6 +2515,9 @@
           "$ref": "#/$defs/request.mcp.save"
         },
         {
+          "$ref": "#/$defs/request.models.offered"
+        },
+        {
           "$ref": "#/$defs/request.models.status"
         },
         {
@@ -3242,6 +3249,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.mcpSaveParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.models.offered": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "models.offered"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.offeredParams"
             }
           ],
           "unevaluatedProperties": false
@@ -4587,6 +4625,15 @@
     "result.mcp.save": {
       "$ref": "#/$defs/config.MCPServer"
     },
+    "result.models.offered": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
     "result.models.status": {
       "items": {
         "$ref": "#/$defs/rpc.modelStatus"
@@ -5001,13 +5048,14 @@
         "provider": {
           "type": "string"
         },
+        "server": {
+          "type": "string"
+        },
         "url": {
           "type": "string"
         }
       },
       "required": [
-        "provider",
-        "url",
         "model"
       ],
       "type": "object"
@@ -5651,6 +5699,28 @@
       ],
       "type": "object"
     },
+    "rpc.modelServer": {
+      "properties": {
+        "credential": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "provider",
+        "url"
+      ],
+      "type": "object"
+    },
     "rpc.modelStatus": {
       "properties": {
         "detail": {
@@ -5715,6 +5785,17 @@
       "required": [
         "id",
         "text"
+      ],
+      "type": "object"
+    },
+    "rpc.offeredParams": {
+      "properties": {
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server"
       ],
       "type": "object"
     },
@@ -6250,6 +6331,15 @@
             "null"
           ]
         },
+        "servers": {
+          "items": {
+            "$ref": "#/$defs/rpc.modelServer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "values": {
           "additionalProperties": {
             "$ref": "#/$defs/rpc.settingValue"
@@ -6264,6 +6354,7 @@
         "config_file",
         "control",
         "models",
+        "servers",
         "keychain",
         "docs",
         "values",

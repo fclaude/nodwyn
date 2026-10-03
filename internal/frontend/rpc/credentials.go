@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -366,8 +367,9 @@ func (s *server) credentials() credentialsResult {
 }
 
 // modelClasses are the credential classes the configured models send: the
-// control model and one per strategy model. The console groups its Model
-// keys panel by these instead of parsing the UsedBy labels.
+// control model and one per strategy model, and the servers' keys, which a
+// model sends once it names the server. The console groups its Model keys
+// panel by these instead of parsing the UsedBy labels.
 func modelClasses(cfg config.Config) map[string]bool {
 	out := map[string]bool{}
 	if cfg.Control.Credential != "" {
@@ -376,6 +378,11 @@ func modelClasses(cfg config.Config) map[string]bool {
 	for _, m := range cfg.Models {
 		if m.Credential != "" {
 			out[m.Credential] = true
+		}
+	}
+	for _, s := range cfg.Servers {
+		if s.Credential != "" {
+			out[s.Credential] = true
 		}
 	}
 	return out
@@ -454,6 +461,10 @@ func (s *server) credentialUsers() credentialUsers {
 	slices.Sort(names)
 	for _, name := range names {
 		use(cfg.Models[name].Credential, "model "+name, true)
+	}
+	// A server's key is missed only by the models that name the server.
+	for _, name := range slices.Sorted(maps.Keys(cfg.Servers)) {
+		use(cfg.Servers[name].Credential, "server "+name, false)
 	}
 	if servers, err := config.LoadMCP(config.MCPFile(s.options.Paths)); err == nil {
 		for _, server := range servers {

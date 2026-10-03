@@ -34,17 +34,22 @@ to, and without it \nodwyn{} prints the table to add. The first run of
 \code{nodwyn app} asks for it and writes it for you. The rest has defaults:
 
 \begin{txt}
-[control]
+[servers.local]                     # where models are, and their key
 provider = "ollama"                 # or "openai": any chat-completions server
 url      = "http://localhost:11434"
-model    = "qwen3:8b"
-# credential = "openai-key"         # a keychain class, for a keyed server
 
-[models.coder]                      # another model a strategy may ask by name
+[servers.openai]
 provider   = "openai"
 url        = "https://api.openai.com/v1"
-model      = "gpt-5.1-codex"
-credential = "openai-key"
+credential = "openai-key"           # a keychain class, for a keyed server
+
+[control]
+server = "local"
+model  = "qwen3:8b"
+
+[models.coder]                      # another model a strategy may ask by name
+server = "openai"
+model  = "gpt-5.1-codex"
 
 [window]
 high_water        = 61440   # trim above this (estimated tokens); grows with
@@ -91,6 +96,12 @@ google_upload = "ask"         # ask | allow | deny; unset, the first upload asks
 # runtime = "podman"        # or "docker"; unset: podman if on PATH, else docker
 # egress = "..."            # nodwyn-egress; unset: next to the nodwyn binary
 \end{txt}
+
+A provider offers many models at one address under one key, so a server
+holds the three (\code{provider}, \code{url}, \code{credential}) and its
+models name it; a model may give them itself instead. The app saves a
+server the first time you choose a model on it, and after that lists the
+models the server offers.
 
 A model may also set \code{num\_ctx} (sent to Ollama; for \code{[control]}
 it also sizes the window) and \code{keep\_alive} (Ollama),

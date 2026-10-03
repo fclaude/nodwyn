@@ -54,7 +54,7 @@ const env = { ...process.env };
   await page.waitForSelector("#task", { timeout: 10000 });
   step("model saved; composer shown");
   const cfg = fs.readFileSync(`${root}/config/nodwyn/config.toml`, "utf8");
-  if (!cfg.includes(modelURL)) throw new Error("config not written: " + cfg);
+  if (!cfg.includes(`[servers.127-0-0-1]\nprovider = "ollama"\nurl = "${modelURL}"\n`) || !cfg.includes('[control]\nserver = "127-0-0-1"\nmodel = "demo"\n')) throw new Error("config not written: " + cfg);
   // Settings: create a keychain.
   await page.evaluate(() => (location.hash = "#/settings"));
   await page.waitForSelector("#keychain-pass");
@@ -64,6 +64,21 @@ const env = { ...process.env };
   await page.waitForSelector("text=Unlocked", { timeout: 20000 });
   step("keychain created");
   await page.screenshot({ path: `${out}/firstrun-settings.png`, fullPage: true });
+  // Settings › Models: the server saved above is chosen by its name, its
+  // models are what it lists, and another of them is saved by the name.
+  await page.click("summary:has-text('Change the main model')");
+  await page.waitForSelector("button.chip[aria-pressed=true]:has-text('127-0-0-1')");
+  if (await page.isVisible("#model-url")) throw new Error("a saved server asks for its address again");
+  await page.focus("#model-name");
+  await page.waitForFunction(() => [...document.querySelectorAll("#model-options option")].map((o) => o.value).join() === "demo,fake", null, { timeout: 10000 });
+  console.log("offered:", await page.textContent("#model-offered"));
+  await page.fill("#model-name", "fake");
+  await page.screenshot({ path: `${out}/firstrun-model.png` });
+  await page.click("text=Save and check");
+  await page.waitForSelector("text=Saved. The model answers.", { timeout: 10000 });
+  const switched = fs.readFileSync(`${root}/config/nodwyn/config.toml`, "utf8");
+  if (!switched.includes('[control]\nserver = "127-0-0-1"\nmodel = "fake"\n') || switched.split(modelURL).length !== 2) throw new Error("another model on the server: " + switched);
+  step("another model on the saved server chosen by name");
   // Start a task in a folder typed by hand.
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#task");

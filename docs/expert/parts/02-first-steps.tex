@@ -22,8 +22,11 @@ so does any server that speaks the OpenAI chat-completions protocol.
 
 Open \file{Nodwyn.app} (or run \code{nodwyn app}). The first time, Home asks
 which model to use: an Ollama address or an OpenAI-compatible server, and
-for the latter a key. The choice is written to the \code{[control]} table of
-your \file{config.toml}; a key never goes there. It goes into the encrypted
+for the latter a key. The server is written to a \code{[servers.NAME]}
+table of your \file{config.toml}, and the model, naming it, to
+\code{[control]}; to choose another model on the same server later,
+Settings offers the server by name and the models it lists. A key never
+goes into \file{config.toml}. It goes into the encrypted
 keychain, which the app asks you to create with a passphrase, and a
 \emph{binding} allows that key only for that server's host.
 

@@ -976,24 +976,46 @@ that ends with its input, as MCP servers do; anything left shows in
 
 The control model (`[control]`) answers `(model-turn)`. Any other model a
 strategy may use is an entry in `config.toml`, asked by name with
-`(model-turn "NAME")`:
+`(model-turn "NAME")`. A provider offers many models at one address under
+one key, so the address and the key belong to a server, `[servers.NAME]`,
+and each model names its server and says which of its models it is:
 
 ```toml
-[models.coder]
+[servers.openai]
 provider = "openai"                 # any chat-completions server
 url = "https://api.openai.com/v1"   # including the version
-model = "gpt-5.1-codex"
 credential = "openai-key"           # keychain class; omit for a local server
 
-[models.local]
+[servers.local]
 provider = "ollama"
 url = "http://localhost:11434"
+
+[control]
+server = "openai"
+model = "gpt-5.1"
+
+[models.coder]
+server = "openai"
+model = "gpt-5.1-codex"
+
+[models.small]
+server = "local"
 model = "qwen3:8b"
 num_ctx = 81920
 ```
 
-A keyed model needs its key stored (`(credential-register "openai-key")`)
-and bound to the model's host, like any credential:
+A model that names a server takes its `provider`, `url` and `credential`
+from the server and sets none of them itself; the rest (context length,
+reply cap, sampling, prices, `vision`) is the model's own. A model may also
+give the three itself instead of naming a server, as every model did before
+servers. In the app, Settings saves the server the first time you choose a
+model on it, named after its host (`openrouter` for `openrouter.ai`), with
+its key; after that you pick the server by name and the model from the
+list the server gives (asked without the key: a server that lists its
+models only to a key says so, and you type the model's name).
+
+A keyed server needs its key stored (`(credential-register "openai-key")`)
+and bound to the server's host, like any credential:
 
 ```toml
 # bindings.toml
@@ -1094,8 +1116,9 @@ model = "qwen3:8b"
 num_ctx = 81920                   # at least window.high_water + window.output_reserve
 ```
 
-`url` and `model` are required; nodwyn has no built-in control model. Unset,
-`num_ctx` asks an ollama model for exactly the window's size
+`model` is required, with a `server` or a `url`; nodwyn has no built-in
+control model. Unset, `num_ctx` asks an ollama model for exactly the
+window's size
 (`window.high_water + window.output_reserve`, 77824 by default) rather than
 leaving Ollama at its own, usually smaller, default, which would cut the
 prompt silently; a chat-completions server decides its own. Set, the window

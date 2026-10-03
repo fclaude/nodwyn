@@ -8,18 +8,88 @@ const presets = {
   openai: { url: "https://api.openai.com/v1", hint: "Any server that speaks the OpenAI chat-completions API. Its key is kept in the keychain." },
 };
 
+const hostOf = (address) => {
+  try {
+    return new URL(address).host;
+  } catch {
+    return address;
+  }
+};
+
+// modelForm chooses the main model: a model on a server config.toml already
+// has, picked from what the server lists, or one on another server, which
+// the daemon then saves as a server of its own with its key.
 export function modelForm(ctx, { onSaved, compact = false } = {}) {
   const { conn, desk } = ctx;
   const current = desk.settings?.control || {};
-  let provider = current.Provider || current.provider || "ollama";
-  const url = h("input", { class: "input", id: "model-url", required: true, spellcheck: false, autocomplete: "off" });
-  url.value = current.URL || current.url || presets[provider].url;
-  const model = h("input", { class: "input", id: "model-name", required: true, spellcheck: false, autocomplete: "off", placeholder: provider === "ollama" ? "for example qwen3:32b" : "for example gpt-5" });
+  const servers = desk.settings?.servers || [];
+  // server is the configured server chosen, or "" for another one.
+  let server = servers.some((s) => s.name === current.Server) ? current.Server : "";
+  let provider = server ? "ollama" : current.Provider || current.provider || "ollama";
+  const url = h("input", { class: "input", id: "model-url", spellcheck: false, autocomplete: "off" });
+  url.value = (!server && (current.URL || current.url)) || presets[provider].url;
+  const options = h("datalist", { id: "model-options" });
+  const model = h("input", { class: "input", id: "model-name", list: "model-options", required: true, spellcheck: false, autocomplete: "off", onfocus: () => list() });
   model.value = current.Model || current.model || "";
+  const offered = h("p", { class: "hint", id: "model-offered" });
   const key = h("input", { class: "input", id: "model-key", type: "password", autocomplete: "off", spellcheck: false, placeholder: current.Credential || current.credential ? "leave empty to keep the saved key" : "" });
-  const keyField = h("div", { class: "field" }, h("label", { for: "model-key" }, "API key"), key, h("p", { class: "hint" }, "Stored encrypted in the keychain and sent only to this server's address."));
-  const hint = h("p", { class: "hint" }, presets[provider].hint);
+  const keyField = h("div", { class: "field" }, h("label", { for: "model-key" }, "API key"), key, h("p", { class: "hint" }, "Stored encrypted in the keychain and sent only to this server's address. Every model you choose on this server uses it."));
+  const hint = h("p", { class: "hint" });
   const error = h("p", { class: "error", role: "alert" });
+  const kind = (id) => servers.find((s) => s.name === id)?.provider || provider;
+
+  // What the chosen server lists fills the model's suggestions, asked for
+  // when the model field is reached: Settings redraws this form often, and
+  // a list can be long. Another server is listed once it is saved.
+  let listed = null;
+  let asked = 0;
+  const list = async () => {
+    if (listed === server) return;
+    listed = server;
+    const ask = ++asked;
+    options.replaceChildren();
+    offered.textContent = "";
+    if (!server || !conn.has("models.offered")) return;
+    offered.textContent = `Asking ${server} for its models…`;
+    try {
+      const names = await conn.call("models.offered", { server });
+      if (ask !== asked) return;
+      options.replaceChildren(...names.map((n) => h("option", { value: n })));
+      offered.textContent = names.length ? `${server} offers ${names.length} model${names.length === 1 ? "" : "s"}: type to pick one.` : `${server} lists no models.`;
+    } catch (e) {
+      if (ask === asked) offered.textContent = `${e.message}. Type the model's name.`;
+    }
+  };
+  const show = () => {
+    const other = !server;
+    newServer.hidden = !other;
+    keyField.hidden = !other || provider !== "openai";
+    url.required = other;
+    const s = servers.find((s) => s.name === server);
+    hint.textContent = other ? presets[provider].hint : `${s.provider === "openai" ? "OpenAI-compatible" : "Ollama"} at ${hostOf(s.url)}${s.credential ? ", with its key from the keychain" : ""}.`;
+    model.placeholder = kind(server) === "ollama" ? "for example qwen3:32b" : "for example gpt-5";
+  };
+  const pressed = (event) => {
+    for (const b of event.currentTarget.parentElement.children) b.setAttribute("aria-pressed", String(b === event.currentTarget));
+  };
+  const serverChoice = (id, label, sub) =>
+    h(
+      "button",
+      {
+        type: "button",
+        class: "chip",
+        "aria-pressed": String(server === id),
+        onclick: (event) => {
+          pressed(event);
+          if (server !== id) model.value = "";
+          server = id;
+          show();
+          list();
+        },
+      },
+      label,
+      sub ? h("span", { class: "sub" }, ` ${sub}`) : null,
+    );
   const choice = (id, label) =>
     h(
       "button",
@@ -28,16 +98,20 @@ export function modelForm(ctx, { onSaved, compact = false } = {}) {
         class: "chip",
         "aria-pressed": String(provider === id),
         onclick: (event) => {
+          pressed(event);
           provider = id;
-          for (const b of event.target.parentElement.children) b.setAttribute("aria-pressed", String(b === event.target));
           if (Object.values(presets).some((p) => p.url === url.value) || !url.value) url.value = presets[id].url;
-          hint.textContent = presets[id].hint;
-          keyField.hidden = id !== "openai";
+          show();
         },
       },
       label,
     );
-  keyField.hidden = provider !== "openai";
+  const newServer = h(
+    "div",
+    { class: "fields" },
+    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of model server" }, choice("ollama", "Ollama"), choice("openai", "OpenAI-compatible")),
+    h("div", { class: "field" }, h("label", { for: "model-url" }, "Server address"), url),
+  );
   const save = h("button", { type: "submit", class: "btn accent big" }, "Save and check");
   const form = h(
     "form",
@@ -50,8 +124,8 @@ export function modelForm(ctx, { onSaved, compact = false } = {}) {
         const apiKey = key.value;
         key.value = "";
         try {
-          const params = { provider, url: url.value.trim(), model: model.value.trim() };
-          if (provider === "openai" && apiKey) params.api_key = apiKey;
+          const params = server ? { server, model: model.value.trim() } : { provider, url: url.value.trim(), model: model.value.trim() };
+          if (!server && provider === "openai" && apiKey) params.api_key = apiKey;
           desk.settings = await conn.call("settings.control.write", params);
           await desk.refreshModels();
           const status = desk.control();
@@ -64,15 +138,23 @@ export function modelForm(ctx, { onSaved, compact = false } = {}) {
         }
       },
     },
-    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of model server" }, choice("ollama", "Ollama"), choice("openai", "OpenAI-compatible")),
+    servers.length
+      ? h(
+          "div",
+          { class: "row-actions", role: "group", "aria-label": "Model server" },
+          servers.map((s) => serverChoice(s.name, s.name, hostOf(s.url))),
+          serverChoice("", "Another server"),
+        )
+      : null,
     hint,
-    h("div", { class: "field" }, h("label", { for: "model-url" }, "Server address"), url),
-    h("div", { class: "field" }, h("label", { for: "model-name" }, "Model"), model),
+    newServer,
     keyField,
+    h("div", { class: "field" }, h("label", { for: "model-name" }, "Model"), model, options, offered),
     error,
     h("div", { class: "row-actions" }, save),
   );
   if (compact) form.classList.add("compact");
+  show();
   return form;
 }
 

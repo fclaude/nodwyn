@@ -41,10 +41,14 @@ you wrote it. Its sections:
   task, in dollars, off until you set where it stops; and how long a model
   reply and a command may take.
 - **Models** — whether each configured model answers, the main model, and
-  its tuning: context length, reply cap, temperature and seed, how long
-  Ollama keeps it loaded, whether a chat-completions model takes images,
-  which field caps its reply and how its requests name their session (the
-  manual, "Keeping the cache warm"), and its prices.
+  its tuning. The main model is chosen on a server saved before, by its
+  name, from the models that server lists (when it lists them without a
+  key; otherwise its name is typed), or on another server, whose address
+  and key are then saved for every model on it. The tuning is: context
+  length, reply cap, temperature and seed, how long Ollama keeps it
+  loaded, whether a chat-completions model takes images, which field caps
+  its reply and how its requests name their session (the manual, "Keeping
+  the cache warm"), and its prices.
 - **Judge** — whether a judge is available, what it may be shown, the
   probability at which it lets a command run, and how long it may take.
 - **Documents** — how uploads to Google Docs are handled (the manual,
@@ -150,8 +154,8 @@ connection its proxy refused shows in the task.
 Keychain › Manage credentials) lists what the keychain holds: each
 credential's class, kind (an API key, or an OAuth2 account with its provider
 and granted scopes, and when its access token runs out), what is configured
-to send it (the main model, another model, an MCP server, Google Docs, the
-judge) and the binding rows that allow it somewhere. A credential allowed
+to send it (the main model, another model, a model server, an MCP server,
+Google Docs, the judge) and the binding rows that allow it somewhere. A credential allowed
 nowhere is marked: nodwyn refuses every request that would carry it. A class
 a model or an MCP server sends that the keychain does not hold is named at
 the top, with a button to add it; so is a keychain without a passphrase.

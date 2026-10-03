@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -195,11 +198,15 @@ func (s *server) lockedKeyRefusal() string {
 }
 
 type settingsResult struct {
-	ConfigFile string         `json:"config_file"`
-	Control    config.Model   `json:"control"`
-	Models     []string       `json:"models"`
-	Keychain   keychainStatus `json:"keychain"`
-	Docs       docsSettings   `json:"docs"`
+	ConfigFile string       `json:"config_file"`
+	Control    config.Model `json:"control"`
+	Models     []string     `json:"models"`
+	// Servers are the model servers config.toml names, by name: the main
+	// model may be any model one of them offers (settings.control.write
+	// with server, models.offered).
+	Servers  []modelServer  `json:"servers"`
+	Keychain keychainStatus `json:"keychain"`
+	Docs     docsSettings   `json:"docs"`
 	// Values are the settings settings.write may change, by dotted name.
 	Values map[string]settingValue `json:"values"`
 	// Judge says a judge can answer a run's confirms now: jev.content is
@@ -226,12 +233,27 @@ type docsParams struct {
 	GoogleUpload string `json:"google_upload"`
 }
 type controlParams struct {
-	Provider string `json:"provider"`
-	URL      string `json:"url"`
+	// Server names a configured server ([servers.NAME]) the model is on.
+	// Without it, Provider and URL say where the model is, and the server
+	// they make is saved under a name of its own, or found among those
+	// configured.
+	Server   string `json:"server,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	URL      string `json:"url,omitempty"`
 	Model    string `json:"model"`
-	// APIKey, when set, is stored in the keychain and bound to exactly the
-	// model's host, POST, as a bearer Authorization header.
+	// APIKey, when set with Provider and URL, is stored in the keychain
+	// and bound to exactly the server's host, POST, as a bearer
+	// Authorization header. Every model on the server is sent it.
 	APIKey string `json:"api_key,omitempty"`
+}
+
+// modelServer is a [servers.NAME] table as Settings shows it: its key's
+// keychain class, never the key.
+type modelServer struct {
+	Name       string `json:"name"`
+	Provider   string `json:"provider"`
+	URL        string `json:"url"`
+	Credential string `json:"credential,omitempty"`
 }
 
 func (s *server) settings() settingsResult {
@@ -247,7 +269,12 @@ func (s *server) settings() settingsResult {
 	}
 	judge := s.options.Config.Jev.Enabled() && s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
 	stored := s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
-	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Keychain: s.keychainStatus(),
+	servers := make([]modelServer, 0, len(s.options.Config.Servers))
+	for _, name := range slices.Sorted(maps.Keys(s.options.Config.Servers)) {
+		sv := s.options.Config.Servers[name]
+		servers = append(servers, modelServer{Name: name, Provider: providerName(sv.Provider), URL: sv.URL, Credential: sv.Credential})
+	}
+	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: servers, Keychain: s.keychainStatus(),
 		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge,
 		JevHost: prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL}), JevStored: stored}
 }
@@ -291,53 +318,54 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		return s.settings(), nil
 	}
 	var p controlParams
-	if err := params(req.Params, &p, "provider", "url", "model", "api_key"); err != nil {
+	if err := params(req.Params, &p, "server", "provider", "url", "model", "api_key"); err != nil {
 		return nil, err
 	}
 	key := []byte(p.APIKey)
 	defer clear(key)
-	if p.Provider != "ollama" && p.Provider != "openai" {
-		return nil, failure(-32602, `provider must be "ollama" or "openai"`)
-	}
-	parsed, err := url.Parse(p.URL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return nil, failure(-32602, "url must be an http or https address, such as http://localhost:11434")
-	}
-	if strings.TrimSpace(p.Model) == "" {
+	model := strings.TrimSpace(p.Model)
+	if model == "" {
 		return nil, failure(-32602, "model is required")
-	}
-	m := config.Model{Provider: p.Provider, URL: strings.TrimRight(p.URL, "/"), Model: strings.TrimSpace(p.Model)}
-	// Keep a credential already configured for the same host, unless a new
-	// key replaces it.
-	// A key goes only over https, except to this computer.
-	if (len(key) > 0 || s.options.Config.Control.Credential != "") && parsed.Scheme != "https" && !loopback(parsed.Hostname()) {
-		if len(key) > 0 || sameHost(s.options.Config.Control.URL, m.URL) {
-			return nil, failure(-32602, "a model with a key must be reached over https")
-		}
-	}
-	if old := s.options.Config.Control; old.Credential != "" && sameHost(old.URL, m.URL) && len(key) == 0 {
-		m.Credential = old.Credential
-	}
-	// Saving the same model on the same server keeps what was tuned by hand
-	// in config.toml; choosing another model starts from its defaults.
-	if old := s.options.Config.Control; providerName(old.Provider) == providerName(m.Provider) && strings.TrimRight(old.URL, "/") == m.URL && old.Model == m.Model {
-		m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
-		m.Temperature, m.Seed, m.Vision, m.CacheKey = old.Temperature, old.Seed, old.Vision, old.CacheKey
-		m.PriceInput, m.PriceCachedInput, m.PriceOutput = old.PriceInput, old.PriceCachedInput, old.PriceOutput
 	}
 	raw, err := os.ReadFile(s.options.Paths.ConfigFile)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, failure(-32000, err.Error())
+	}
+	// The servers are config.toml's as it is now, so a server added there
+	// by hand since nodwyn started is found, never written over.
+	current, err := config.Parse(raw)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	old := s.options.Config.Control
+	name, srv, host, write, rerr := controlServer(p, current.Servers, old, len(key) > 0)
+	if rerr != nil {
+		return nil, rerr
+	}
+	m := config.Model{Server: name, Model: model}
+	// Saving the same model on the same server keeps what was tuned by hand
+	// in config.toml; choosing another model starts from its defaults.
+	if providerName(old.Provider) == providerName(srv.Provider) && strings.TrimRight(old.URL, "/") == strings.TrimRight(srv.URL, "/") && old.Model == m.Model {
+		m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
+		m.Temperature, m.Seed, m.Vision, m.CacheKey = old.Temperature, old.Seed, old.Vision, old.CacheKey
+		m.PriceInput, m.PriceCachedInput, m.PriceOutput = old.PriceInput, old.PriceCachedInput, old.PriceOutput
 	}
 	var class string
 	if len(key) > 0 {
 		if s.options.Keychain == nil {
 			return nil, failure(-32000, "Unlock or create the keychain first: the key is kept there, never in config.toml")
 		}
-		class = s.freeClass("model-" + hostClass(parsed.Hostname()))
-		m.Credential = class
+		class = s.freeClass("model-" + hostClass(host))
+		srv.Credential = class
+		write = true
 	}
-	text, cfg, err := config.SetControl(raw, m)
+	text := raw
+	if write {
+		if text, _, err = config.SetServer(raw, name, srv); err != nil {
+			return nil, failure(-32602, err.Error())
+		}
+	}
+	text, cfg, err := config.SetControl(text, m)
 	if err != nil {
 		return nil, failure(-32602, err.Error())
 	}
@@ -347,7 +375,7 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		if _, err := s.options.Keychain.Add(class, key); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
-		row, err := binding.Exact(class, parsed.Hostname(), "POST", "header:Authorization:Bearer")
+		row, err := binding.Exact(class, host, "POST", "header:Authorization:Bearer")
 		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
@@ -369,6 +397,73 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 	probeCache.key = ""
 	probeCache.mu.Unlock()
 	return s.settings(), nil
+}
+
+// controlServer is the server settings.control.write puts the main model
+// on, under its name among servers, and the host of the address p gives
+// (none for a server named). write says the server's table must be
+// written: it is new, or (keyed) gets a key. old is the main model until
+// now.
+func controlServer(p controlParams, servers map[string]config.Server, old config.Model, keyed bool) (name string, srv config.Server, host string, write bool, _ *rpcError) {
+	if p.Server != "" {
+		if p.Provider != "" || p.URL != "" || keyed {
+			return "", srv, "", false, failure(-32602, "Give a configured server, or a provider and url, not both")
+		}
+		srv, ok := servers[p.Server]
+		if !ok {
+			return "", srv, "", false, failure(-32602, fmt.Sprintf("No server %q is configured", p.Server))
+		}
+		return p.Server, srv, "", false, nil
+	}
+	if p.Provider != "ollama" && p.Provider != "openai" {
+		return "", srv, "", false, failure(-32602, `provider must be "ollama" or "openai"`)
+	}
+	parsed, err := url.Parse(p.URL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return "", srv, "", false, failure(-32602, "url must be an http or https address, such as http://localhost:11434")
+	}
+	host = parsed.Hostname()
+	srv = config.Server{Provider: p.Provider, URL: strings.TrimRight(p.URL, "/")}
+	found := false
+	for _, n := range slices.Sorted(maps.Keys(servers)) {
+		if sv := servers[n]; providerName(sv.Provider) == p.Provider && strings.TrimRight(sv.URL, "/") == srv.URL {
+			name, srv, found = n, sv, true
+			break
+		}
+	}
+	if !found {
+		name = serverName(host)
+		for n := 2; servers[name] != (config.Server{}); n++ {
+			name = fmt.Sprintf("%s-%d", serverName(host), n)
+		}
+		// Keep a key the main model already sends to this host, unless a
+		// new one replaces it.
+		if old.Credential != "" && sameHost(old.URL, srv.URL) {
+			srv.Credential = old.Credential
+		}
+		write = true
+	}
+	// A key goes only over https, except to this computer.
+	if (keyed || (write && srv.Credential != "")) && parsed.Scheme != "https" && !loopback(host) {
+		return "", srv, "", false, failure(-32602, "a model with a key must be reached over https")
+	}
+	return name, srv, host, write, nil
+}
+
+// serverName names a new server after its host: openrouter for
+// openrouter.ai, openai for api.openai.com, an address by its digits.
+func serverName(host string) string {
+	if net.ParseIP(host) == nil {
+		labels := strings.Split(host, ".")
+		if len(labels) > 1 {
+			labels = labels[:len(labels)-1]
+		}
+		if len(labels) > 1 && (labels[0] == "api" || labels[0] == "www") {
+			labels = labels[1:]
+		}
+		host = strings.Join(labels, ".")
+	}
+	return hostClass(host)
 }
 
 func sameHost(a, b string) bool {

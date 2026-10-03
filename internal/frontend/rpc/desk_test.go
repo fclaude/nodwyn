@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/log"
+	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
 func TestAttentionListCarriesPendingPromptsAndListCarriesChanges(t *testing.T) {
@@ -117,6 +119,50 @@ func TestModelsStatusProbesWithoutCredentials(t *testing.T) {
 	}
 	if states["control"] != "ready" || states["other"] != "missing" || states["gone"] != "unreachable" || sawAuth.Load() {
 		t.Fatalf("status: %+v (auth sent: %v)", status, sawAuth.Load())
+	}
+}
+
+// models.offered lists what a configured server offers, asking without a
+// key as models.status does; a server that lists only to a key says so.
+func TestModelsOfferedByAServer(t *testing.T) {
+	var sawAuth atomic.Bool
+	openai := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			sawAuth.Store(true)
+		}
+		if r.URL.Path == "/v1/models" {
+			w.Write([]byte(`{"data":[{"id":"z-model"},{"id":"a-model"}]}`))
+			return
+		}
+		http.Error(w, "no", http.StatusUnauthorized)
+	}))
+	defer openai.Close()
+	ollama := fake.New()
+	defer ollama.Close()
+	o := options(t)
+	o.Config.Servers = map[string]config.Server{
+		"router": {Provider: "openai", URL: openai.URL + "/v1/", Credential: "router-key"},
+		"locked": {Provider: "openai", URL: openai.URL + "/v2"},
+		"local":  {URL: ollama.URL},
+	}
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	for server, want := range map[string][]string{"router": {"a-model", "z-model"}, "local": {"demo", "fake"}} {
+		var names []string
+		json.Unmarshal(c.ok("models.offered", map[string]any{"server": server}), &names)
+		if !slices.Equal(names, want) {
+			t.Errorf("%s offers %v", server, names)
+		}
+	}
+	if r := c.call("models.offered", map[string]any{"server": "locked"}); r.Error == nil || !strings.Contains(r.Error.Message, "lists its models only to a key") {
+		t.Fatalf("locked: %+v", r.Error)
+	}
+	if r := c.call("models.offered", map[string]any{"server": "nowhere"}); r.Error == nil {
+		t.Fatal("listed an unconfigured server")
+	}
+	if sawAuth.Load() {
+		t.Fatal("a key was sent")
 	}
 }
 

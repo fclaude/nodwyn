@@ -485,7 +485,7 @@ function modelsSection(ctx, root) {
             { class: "box", open: modelOpen, ontoggle: (event) => (modelOpen = event.target.open) },
             h("summary", {}, "Change the main model"),
             modelForm(ctx, { onSaved: () => renderSettings(root, ctx) }),
-            h("p", { class: "hint" }, `Saved in ${desk.settings?.config_file || "config.toml"}; other settings there are kept. Saving the same model keeps its tuning below; another model starts from its defaults. Tasks already open keep the model they started with.`),
+            h("p", { class: "hint" }, `Saved in ${desk.settings?.config_file || "config.toml"}; other settings there are kept. A server's address and key are saved once, under its name: choose it again for another of its models. Saving the same model keeps its tuning below; another model starts from its defaults. Tasks already open keep the model they started with.`),
           )
         : null,
     ),

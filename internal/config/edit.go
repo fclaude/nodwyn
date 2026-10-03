@@ -23,9 +23,32 @@ var tableHeader = regexp.MustCompile(`^\s*\[\[?\s*([A-Za-z0-9_."-]+)\s*\]\]?\s*(
 // replaced by m, keeping every other line — comments included — as written.
 // A file without [control] gains one at the end. The result is parsed and
 // validated before it is returned, so a caller never writes a file nodwyn
-// would refuse to load.
+// would refuse to load. A model that names a server is written with the
+// server's name, not the provider, URL and credential Parse copied from it.
 func SetControl(raw []byte, m Model) ([]byte, Config, error) {
-	block := controlBlock(m)
+	return setTable(raw, "control", controlBlock(m))
+}
+
+// SetServer returns raw with its [servers.NAME] table replaced by s, as
+// SetControl does for [control]. The models that name the server reach it
+// at its new address and with its new key.
+func SetServer(raw []byte, name string, s Server) ([]byte, Config, error) {
+	if !keyName.MatchString(name) {
+		return nil, Config{}, fmt.Errorf("config: %q is not a server name: use letters, digits, - and _", name)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "[servers.%s]\n", name)
+	for _, f := range []struct{ key, value string }{{"provider", s.Provider}, {"url", s.URL}, {"credential", s.Credential}} {
+		if f.value != "" {
+			fmt.Fprintf(&b, "%s = %s\n", f.key, quote(f.value))
+		}
+	}
+	b.WriteString("\n")
+	return setTable(raw, "servers."+name, b.String())
+}
+
+// setTable replaces table, and any table under it, with block.
+func setTable(raw []byte, table, block string) ([]byte, Config, error) {
 	lines := strings.SplitAfter(string(raw), "\n")
 	var out strings.Builder
 	replaced, skipping := false, false
@@ -35,7 +58,7 @@ func SetControl(raw []byte, m Model) ([]byte, Config, error) {
 			if skipping {
 				skipping = false
 			}
-			if name == "control" || strings.HasPrefix(name, "control.") {
+			if name == table || strings.HasPrefix(name, table+".") {
 				if !replaced {
 					out.WriteString(block)
 					replaced = true
@@ -251,14 +274,20 @@ func controlBlock(m Model) string {
 			fmt.Fprintf(&b, "%s = %s\n", name, quote(value))
 		}
 	}
-	field("provider", m.Provider)
-	field("url", m.URL)
+	if m.Server != "" {
+		field("server", m.Server)
+	} else {
+		field("provider", m.Provider)
+		field("url", m.URL)
+	}
 	field("model", m.Model)
 	if m.NumCtx > 0 {
 		fmt.Fprintf(&b, "num_ctx = %d\n", m.NumCtx)
 	}
 	field("keep_alive", m.KeepAlive)
-	field("credential", m.Credential)
+	if m.Server == "" {
+		field("credential", m.Credential)
+	}
 	if m.MaxOutput > 0 {
 		fmt.Fprintf(&b, "max_output = %d\n", m.MaxOutput)
 	}

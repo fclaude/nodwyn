@@ -193,9 +193,12 @@ file, where you can read it and remove it.
 
 A model with a \code{credential} is a keyed destination like any other, and
 the same binding must allow its host. Every request is checked and logged
-as \code{egress.check}. When the app sets up a model for you, it writes
-exactly that binding: the server's host, \code{POST}, a bearer
-\code{Authorization} header.
+as \code{egress.check}. The key usually belongs to a server, a
+\code{[servers.NAME]} table with the provider, the address and the
+credential, which the models on it name with \code{server = "NAME"}: one
+key and one binding for every model a provider offers. When the app sets up
+a model for you, it saves the server and writes exactly that binding: the
+server's host, \code{POST}, a bearer \code{Authorization} header.
 
 An attached image is egress of a kind no binding governs: its pixels cannot
 be redacted. It goes to the control model's host only, and only after a
@@ -215,10 +218,8 @@ per million tokens, and \nodwyn{} estimates:
 
 \begin{toml}
 [models.coder]
-provider = "openai"
-url = "https://api.openai.com/v1"
+server = "openai"               # a [servers.openai] with the url and key
 model = "gpt-5.1-codex"
-credential = "openai-key"
 price_input = 1.25              # example prices: copy your provider's
 price_cached_input = 0.125      # unset: cached tokens cost price_input
 price_output = 10

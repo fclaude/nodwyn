@@ -352,12 +352,13 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `notes.read` | `{"repo":"/absolute/repository"}` | `{text}`: that repository's project notes; needs no session |
 | `session.notes.write` | `{"id":"SESSION_ID","text":"…"}` | `{operation_id}`; a `policy.result` event named `notes` reports the guarded save |
 | `models.status` | `{}` | Each configured model: `name`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`), `detail` |
+| `models.offered` | `{"server"}` | The model ids a configured server (`[servers.NAME]`) lists, sorted; an error saying why when it lists none |
 | `keychain.status` | `{}` | `{exists, unlocked, credentials, no_passphrase?}`; `no_passphrase` is set when the open keychain has none |
 | `keychain.create` | `{"passphrase":"…"}` or `{"no_passphrase":true}` | Keychain status; tasks opened afterwards receive the keychain. A passphrase has at least 8 characters |
 | `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain. `""` opens a keychain without a passphrase |
 | `keychain.passphrase` | `{"current"?, "passphrase"?, "no_passphrase"?}` | Keychain status after setting, changing or (`no_passphrase`) removing the open keychain's passphrase; `current` is required when it has one, and a wrong one waits a second as `keychain.unlock` does |
-| `settings.read` | `{}` | `{config_file, control, models, keychain, docs, values, judge}` |
-| `settings.control.write` | `{"provider","url","model","api_key"?}` | Settings after replacing `[control]` in `config.toml` |
+| `settings.read` | `{}` | `{config_file, control, models, servers, keychain, docs, values, judge}` |
+| `settings.control.write` | `{"server","model"}` or `{"provider","url","model","api_key"?}` | Settings after replacing `[control]` in `config.toml`, and saving the server it names |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
 | `settings.write` | `{"set": {"budget.tokens_hard": 20000000, "budget.cost_hard": null, …}}` | Settings after changing those settings in `config.toml` together |
 
@@ -367,11 +368,22 @@ session, else the first sentence of the first message, shortened),
 to write, first 50, from `guard.decision` records, which now carry `path`) and
 `run` (the live run, or the last recorded `run.state`). `models.status` sends
 no credential: it asks each server for its model list and reports whether it
-answered. `settings.control.write` keeps every other line of `config.toml`,
-validates the result as the loader would, writes it atomically (0600), and
-applies it to sessions opened afterwards. An `api_key` goes to the unlocked
-keychain under a fresh class, with one binding row: that host, `POST`,
-`header:Authorization:Bearer`. Passphrases, keys and client secrets are
+answered. `models.offered` asks the same list of one configured server, also
+without a credential, so a server that lists its models only to a key
+answers with an error saying so. `servers` in the settings are the
+`[servers.NAME]` tables of `config.toml`: `{name, provider, url,
+credential?}`, `credential` being the key's keychain class. `control` is the
+main model with its server's `Provider`, `URL` and `Credential` filled in,
+and `Server` naming that server. `settings.control.write` keeps every other
+line of `config.toml`, validates the result as the loader would, writes it
+atomically (0600), and applies it to sessions opened afterwards. With
+`server`, `[control]` names that server and the model. With `provider` and
+`url`, it names the server `config.toml` has at that address (as it is now,
+so one added by hand is found), or a new one it saves as `[servers.NAME]`,
+named after the host (`openrouter` for `openrouter.ai`, `-2` when that name
+is taken). An `api_key` goes to the unlocked keychain under a fresh class,
+with one binding row: that host, `POST`, `header:Authorization:Bearer`, and
+becomes the server's `credential`, so every model on the server sends it. Passphrases, keys and client secrets are
 `writeOnly` in the schema and never echoed. `docs` in the settings is `{google, google_upload}`:
 whether a Google credential class is configured, and the upload setting as
 `config.toml` has it now (`""` until the first upload or `settings.docs.write`
