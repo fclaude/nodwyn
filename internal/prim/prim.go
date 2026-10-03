@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/guard"
@@ -101,7 +102,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), projectNotes(o), projectNotesSave(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), projectNotes(o), projectNotesSave(o), projectInstructions(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -256,6 +257,60 @@ func projectNotes(o Options) *scheme.Prim {
 				return scheme.Value{}, err
 			}
 			return scheme.Str(string(b)), nil
+		},
+	}
+}
+
+// instructionFiles are the names a repository's instructions for coding
+// agents go by, in the order they are looked for: AGENTS.md, as the
+// convention spells it, then in lower case.
+var instructionFiles = []string{"AGENTS.md", "agents.md"}
+
+// maxProjectInstructions caps what of AGENTS.md rides in every session's
+// system prompt; the rest stays in the file for fs-read.
+const maxProjectInstructions = 32 << 10
+
+// projectInstructions builds (project-instructions): the repository's
+// AGENTS.md, its instructions for coding agents, "" when it has none. The
+// file is the repository's, so it may be anything a clone brought: it is
+// read only as a regular file inside the root after links are followed and
+// past the credential denylist under both names, a link to a key elsewhere
+// reads as no file, and secrets in it are redacted, since the text goes to
+// the model with every request.
+func projectInstructions(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "project-instructions",
+		Meta: scheme.Meta{Doc: "The repository's AGENTS.md, its instructions for coding agents (at most 32 KiB; secrets are redacted), \"\" when it has none.", Hidden: true},
+		Handler: func(*scheme.Call) (scheme.Value, error) {
+			if o.Root == "" {
+				return scheme.Str(""), nil
+			}
+			pin, deny := guard.RepoPin{Root: o.Root}, denylist(o)
+			for _, name := range instructionFiles {
+				path := filepath.Join(o.Root, name)
+				real, err := filepath.EvalSymlinks(path)
+				if err != nil {
+					continue
+				}
+				st, err := os.Stat(real)
+				if err != nil || !st.Mode().IsRegular() || pin.Resolve(path) == "" || deny.Denies(path) != "" || deny.Denies(real) != "" {
+					continue
+				}
+				b, err := os.ReadFile(real)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				text := strings.ToValidUTF8(string(b), "")
+				if len(text) > maxProjectInstructions {
+					cut := strings.LastIndexByte(text[:maxProjectInstructions], '\n')
+					if cut < 0 {
+						cut = maxProjectInstructions
+					}
+					text = strings.ToValidUTF8(text[:cut], "") + "\n[" + name + " is longer: read the rest with fs-read]"
+				}
+				return scheme.Str(redact.Redact(text, nil).Text), nil
+			}
+			return scheme.Str(""), nil
 		},
 	}
 }

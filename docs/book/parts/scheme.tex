@@ -597,6 +597,7 @@ Primitive & What it does \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a new Google Doc; only with a stored \code{google} credential, and asks or not as \code{docs.google\_upload} says (unset: the first call asks which) \\
 \code{(scratch-dir)}, \code{(repository)}, \code{(workspace)} & the session's scratch directory; the repository's root; its kind and mounted folders \\
 \code{(project-notes)}, \code{(project-notes-save text)} & this repository's notes kept across sessions \\
+\code{(project-instructions)} & the repository's \file{AGENTS.md}, its instructions for coding agents, which the system prompt carries \\
 \code{(credential class)}, \code{(credential-register class)} & the handle of a stored key, or \code{\#f}; store a new key (Section~\ref{sch:keys}) \\
 \code{(http-request cred url method position headers body)} & a keyed request, checked against the binding table \\
 \code{(jev-noul ...)}, \code{(jev-score ...)}, \code{(jev-choice ...)} & ask the configured judge a question about a text; hidden, they take the key's handle \\
@@ -1088,6 +1089,7 @@ Git          git-status git-diff                   (in a git work tree)
 Processes    shell-exec shell-start shell-read shell-send shell-stop
 Documents    doc-export; google-doc-upload             (with a google credential)
 Session      scratch-dir repository workspace project-notes project-notes-save
+             project-instructions
 Keys         credential; with a keychain, credential-register http-request
 Judge        jev-noul jev-score jev-choice         (with a judge configured)
              judge-noul judge-score judge-choice   (the model's; jev.content = "full")

@@ -31,6 +31,7 @@
    working-rules
    (git-rule)
    (workspace-section)
+   (project-instructions-section)
    (project-notes-section)))
 
 ;; What the workspace adds to the system prompt (ADR 22): the folders
@@ -48,6 +49,17 @@
                        (string-append "\n- " (assoc-ref m "path")
                                       (if (equal? (assoc-ref m "access") "write") " (read and write)" " (read only: never write there)")))
                      mounts))))))
+
+;; The repository's AGENTS.md (ADR 36), or "" when it has none: its
+;; maintainers' instructions for coding agents, how to build, test and
+;; validate a change there. It is read once, when the session starts, like
+;; the rest of the system prompt, so an edit to it shows in the next
+;; session. The request wins where the two differ.
+(define (project-instructions-section)
+  (let ((text (guard (e (else "")) (string-trim (project-instructions)))))
+    (if (string-empty? text)
+        ""
+        (string-append "\n\nInstructions from the repository's AGENTS.md, written by its maintainers for coding agents. Follow them where they apply; where the request says otherwise, follow the request.\n" text))))
 
 ;; The repository's notes from earlier sessions, or "" when there are none.
 ;; They are the agent's own notes (how tests run, where things are,
@@ -85,6 +97,7 @@
    working-rules
    (git-rule)
    (workspace-section)
+   (project-instructions-section)
    (project-notes-section)))
 
 ;; The system prompt's rule for the session's scratch directory, or "" when

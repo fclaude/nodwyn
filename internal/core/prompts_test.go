@@ -32,8 +32,9 @@ func TestDefaultPrompts(t *testing.T) {
 	if rules := evalText(t, r, "working-rules"); !strings.Contains(system, rules) || !strings.Contains(system, "$TMPDIR") {
 		t.Fatalf("system prompt lacks the working rules or the scratch rule:\n%s", system)
 	}
-	// A plain directory: no git work tree, no mounted folders, no notes.
-	for _, absent := range []string{"git-status and git-diff", "Folders outside it", "Notes kept from earlier sessions"} {
+	// A plain directory: no git work tree, no mounted folders, no notes, no
+	// AGENTS.md.
+	for _, absent := range []string{"git-status and git-diff", "Folders outside it", "Notes kept from earlier sessions", "AGENTS.md"} {
 		if strings.Contains(system, absent) {
 			t.Errorf("system prompt has %q, which does not apply here", absent)
 		}
@@ -89,6 +90,31 @@ func TestSystemPromptIsTheSameAcrossSessions(t *testing.T) {
 	}
 	if strings.Contains(first, r.s.scratch) {
 		t.Fatalf("system prompt names the session's scratch directory %s", r.s.scratch)
+	}
+}
+
+// A repository's AGENTS.md joins both system prompts, interactive and
+// unattended, after the working rules (ADR 36).
+func TestAgentsFileJoinsTheSystemPrompt(t *testing.T) {
+	repo := t.TempDir()
+	os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte("# Working here\n\n- Validate with make accept.\n"), 0o644)
+	srv := fake.New()
+	defer srv.Close()
+	for _, unattended := range []bool{false, true} {
+		cfg := config.Default()
+		cfg.Control.URL = srv.URL
+		s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, AutoApprove: unattended, LogWriter: &bytes.Buffer{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		system := s.loop.WindowContext().System
+		s.Close()
+		rules := strings.Index(system, "find regressions by applying changes one file at a time")
+		section := strings.Index(system, "\n\nInstructions from the repository's AGENTS.md")
+		if rules < 0 || section < rules || !strings.HasSuffix(system, "\n# Working here\n\n- Validate with make accept.") ||
+			strings.Contains(system, "You work unattended") != unattended {
+			t.Fatalf("unattended=%v: system prompt:\n%s", unattended, system)
+		}
 	}
 }
 

@@ -283,6 +283,19 @@ is capped at 8 KiB and redacted, and content that looks like a credential
 needs your approval. The console's task view shows them and lets you edit
 them ("What nodwyn knows here"), through the same guarded save.
 
+### Instructions in AGENTS.md
+
+A repository's `AGENTS.md` (or `agents.md`) at its root is its maintainers'
+instructions for coding agents: how to build, test and validate a change
+there, and the rules of the house. Both system prompts carry it after the
+working rules and before the project notes, under a heading that says to
+follow it where it applies and the request where the two differ (ADR 36).
+It is read when a session starts, so an edit shows in the next session;
+at most 32 KiB of it, redacted. A link that leads outside the repository or
+to a file on the credential denylist reads as no file. A project that
+wants it left out redefines `(project-instructions-section)` in
+`.nodwyn/init.scm`.
+
 ### Confirms
 
 What asks you is `[approval]` in `config.toml`, which Settings › Approvals
