@@ -12,6 +12,7 @@ commands = [
   "make test",
   "make exfil",
   "make accept",
+  "make validate",
   "make build",
   "git status",
   "git diff",

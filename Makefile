@@ -2,7 +2,7 @@ MODULE  := github.com/fclaude/nodwyn
 VERSION := $(shell git describe --always --dirty --abbrev=12 --exclude='*' 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build build-webview egress app test lint exfil accept promote selfcheck smoke book expert clean
+.PHONY: build build-webview egress app test lint exfil accept validate promote selfcheck smoke book expert clean
 
 build: egress
 	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
@@ -34,6 +34,10 @@ exfil:
 
 ## accept: everything a candidate must pass before promotion (ADR 13)
 accept: lint test exfil
+
+## validate: the checks what changed since upstream needs, before work is called done (ADR 37)
+validate:
+	@go run ./scripts/validate
 
 ## promote: accept + selfcheck, then swap in nodwyn-stable (the webview build where it can be built); its version is the commit
 promote:

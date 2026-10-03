@@ -17,10 +17,19 @@ mkdir -p "$out"
 [ -d "$here/node_modules/playwright" ] || (cd "$here" && npm install --silent)
 checks=${*:-screens approve firstrun remote mcp credentials}
 status=0
+pid=
+trap '[ -n "$pid" ] && kill -KILL -- "-$pid" 2>/dev/null; exit 130' INT TERM
 for check in $checks; do
 	echo "== $check"
-	if ! (cd "$here" && DEMO="$out/demo" NODWYN="$out/nodwyn" timeout 180 node "checks/$check.js" "$out"); then
+	# timeout leads a process group of its own, which the check's demo and
+	# Chromium join. A check that throws exits without stopping its demo,
+	# which then holds this script's output open, so a caller reading it
+	# through a pipe waits forever: the whole group goes when the check ends.
+	(cd "$here" && DEMO="$out/demo" NODWYN="$out/nodwyn" exec timeout 180 node "checks/$check.js" "$out") &
+	pid=$!
+	if ! wait "$pid"; then
 		status=1
 	fi
+	kill -KILL -- "-$pid" 2>/dev/null || true
 done
 exit $status
