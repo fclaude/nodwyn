@@ -77,8 +77,18 @@ function line(kid, re, stream = "stdout", from = 0) {
 
 // tempDir makes a folder under the system's temporary directory: TMPDIR,
 // which is the session's scratch directory when nodwyn runs its own checks.
+// The scratch lives inside nodwyn's data directory, and a daemon refuses a
+// task rooted in its own config or data ("which nodwyn never works in"), so
+// a world placed there fails every check that starts a task in it; /tmp
+// stands in, as the demo's own root already does.
 function tempDir(prefix) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  let base = os.tmpdir();
+  const home = os.homedir();
+  for (const sub of [".local/share/nodwyn", ".config/nodwyn"]) {
+    const dir = path.join(home, sub);
+    if (base === dir || base.startsWith(dir + path.sep)) base = "/tmp";
+  }
+  const dir = fs.mkdtempSync(path.join(base, prefix));
   dirs.push(dir);
   return dir;
 }
