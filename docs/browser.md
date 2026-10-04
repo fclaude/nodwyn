@@ -126,9 +126,11 @@ its heading folds it (this browser remembers which). Search matches
 titles and folder paths in every folder and in the archive
 ([ADR 39](adr/0039-named-archived-deleted-tasks.md)).
 
-**Switching.** An open task's page is kept while another is shown: it
-stays subscribed, draws what happens meanwhile, and comes back at once as
-it was, without reading the conversation again. The eight most recently
+**Switching.** A task picked from the list puts the focus in its message
+box, so the next word goes to its reply, and a word not sent is kept for
+it. An open task's page is kept while another is shown: it stays
+subscribed, draws what happens meanwhile, and comes back at once as it
+was, without reading the conversation again. The eight most recently
 shown are kept; a saved task's page, or one past those, is read from its
 log when it is opened. A key typed into a request card is cleared when you
 switch away.

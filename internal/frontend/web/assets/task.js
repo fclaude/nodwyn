@@ -143,6 +143,7 @@ export class TaskView {
       if (this.transcript.empty) this.el.transcript.prepend(h("p", { class: "hint", dataset: { placeholder: "1" } }, item.open ? "Nothing yet. Say what you want done." : "This task has no conversation."));
       this.el.transcript.scrollTop = this.el.transcript.scrollHeight;
       this.refreshAll();
+      this.focusReply();
       // The browser checks wait for this mark before they look at a task:
       // its conversation, its details and its notes are drawn.
       await details;
@@ -203,6 +204,18 @@ export class TaskView {
     const t = this.el.transcript;
     t.scrollTop = !this.scroll || this.scroll.end ? t.scrollHeight : this.scroll.top;
     this.scroll = null;
+    this.focusReply();
+  }
+  // focusReply puts the focus in the message box once the switch is drawn,
+  // on the next frame so the box is in the new layout: a word typed now
+  // goes to the task's reply. A load that failed, or a view whose box is
+  // hidden or disabled, has nothing to answer in yet. A question that is
+  // waiting is answered from its card, not the box: its keyboard answers
+  // (y, n, …) would be typed as text if the focus were in a field, so the
+  // box stays out of the way while one is up.
+  focusReply() {
+    if (this.failed || this.el?.form.hidden || this.el?.reply.disabled || this.activePrompt()) return;
+    setTimeout(() => this.el?.reply?.focus(), 0);
   }
   async loadInfo() {
     const version = this.version;

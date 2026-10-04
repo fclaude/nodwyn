@@ -119,6 +119,27 @@ check(async () => {
   await page.screenshot({ path: `${out}/tasks-renamed.png` });
   step("renamed");
 
+  // A task picked from the sidebar takes the focus to its message box,
+  // ready for a word, and a word typed goes to that task. Coming back to a
+  // kept task does the same, and a word not sent is kept.
+  await page.fill("#reply", "Not sent yet");
+  const replyFocused = () => page.waitForFunction(() => document.activeElement?.id === "reply", null, { timeout: 15000 });
+  await openTask("Hello from the console");
+  await replyFocused().catch((e) => fail(`focus not in the message box when switching to the console task: ${e.message}`));
+  await page.screenshot({ path: `${out}/tasks-switch-focus.png` });
+  await page.fill("#reply", "Still here");
+  await page.keyboard.press("Enter");
+  await idle();
+  if (sent.of("session.send").at(-1)?.text !== "Still here") await fail(`the word typed on a switched task went somewhere else: ${JSON.stringify(sent.of("session.send").at(-1))}`);
+  s = await settled("console first after the reply", (s) => s.folders.map((f) => f.name).join() === "console,receipts");
+  if (!folder(s, "console").tasks.includes("Hello from the console")) await fail(`console: ${JSON.stringify(folder(s, "console"))}`);
+  await openTask("Receipts overview");
+  await replyFocused().catch((e) => fail(`focus not in the message box when coming back to the kept task: ${e.message}`));
+  if ((await page.inputValue("#reply")) !== "Not sent yet") await fail("the word not sent was lost by the switch");
+  await page.evaluate(() => (document.getElementById("reply").value = ""));
+  await idle();
+  step("the message box is focused on the task you switch to");
+
   // Archive: an open task is closed first; then it leaves its folder for
   // the archive, and Unarchive brings it back.
   if (await page.$('.task-actions button:text-is("Archive")')) await fail("an open task offers Archive");
