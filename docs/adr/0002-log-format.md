@@ -122,6 +122,16 @@ as), `cache_write_tokens`, `reasoning_tokens`, `cost` (USD) and
 `cached_tokens`. An older record reads as unknown, never as free or as 0%
 cached.
 
+## Amendment — 2026-10-04: how fast the model answered
+
+No new kind. `llm.resp` `usage` gains optional `wall_ms`: how long the
+request took as the host measured it, from the sending to the reply's
+complete arrival, the successful attempt only (a retry's earlier failures
+are not the model's time). The provider's own timings — Ollama's
+`prompt_eval_ms`, `eval_ms`, `total_ms`, `load_ms` — stay what it reported;
+`wall_ms` is the one timing every provider gets, and output tokens over it
+is the request's tok/s. An older record reads as unmeasured.
+
 ## Amendment — 2026-10-01: `mcp.egress`
 
 `mcp.egress` records one attempt of a contained MCP server to reach a host

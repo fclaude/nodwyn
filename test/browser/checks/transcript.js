@@ -143,6 +143,17 @@ check(async () => {
       const moved = { kind: "session.model", payload: { model: "long", server: "or", context: { high_water: 86016 } } };
       out.gauge = { before: contextGauge(before).high, after: contextGauge([...before, moved]).high, est: contextGauge([...before, moved]).est };
     }
+    // A reply's speed: tok/s from the requests' wall time, summed over the
+    // stretch's requests the way the line's tokens and time are; a log
+    // without wall_ms shows no speed, as before.
+    {
+      const { root, t } = fresh();
+      t.render({ kind: "llm.resp", payload: { content: "one", usage: { prompt_tokens: 100, output_tokens: 800, wall_ms: 4000 } } });
+      t.render({ kind: "llm.resp", payload: { content: "two", usage: { prompt_tokens: 100, output_tokens: 800, wall_ms: 1000 } } });
+      const old = fresh();
+      old.t.render({ kind: "llm.resp", payload: { content: "x", usage: { prompt_tokens: 10, output_tokens: 2, total_ms: 0 } } });
+      out.speed = { line: root.querySelector(".usage")?.textContent, old: old.root.querySelector(".usage")?.textContent };
+    }
     // A burst through the task's event listener changes its text once per
     // frame, without replacing unrelated panels. The real TaskView and Desk
     // use a synthetic connection so no model's timing decides this check.
@@ -378,6 +389,53 @@ check(async () => {
       };
       task.dispose();
     }
+
+    // The Totals panel's model speed: output tokens over the wall time of
+    // the requests that reported tokens — wall_ms where the reply carries
+    // it, the records' timestamps where it does not (an older log).
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const listeners = new Set();
+      const conn = {
+        live: true,
+        methods: new Set(["session.send", "session.abort", "session.answer"]),
+        has(method) { return this.methods.has(method); },
+        onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        async call(method) {
+          if (method === "session.subscribe") return {
+            page: {
+              events: [
+                { seq: 1, kind: "user.msg", payload: { text: "Begin" }, ts: "2026-01-01T00:00:00Z" },
+                { seq: 2, kind: "llm.req", payload: { model: "m", est_tokens: 100 }, ts: "2026-01-01T00:00:01Z" },
+                { seq: 3, kind: "llm.resp", payload: { content: "one", usage: { prompt_tokens: 100, output_tokens: 800, wall_ms: 4000 } }, ts: "2026-01-01T00:00:06Z" },
+                { seq: 4, kind: "llm.req", payload: { model: "m", est_tokens: 100 }, ts: "2026-01-01T00:00:07Z" },
+                { seq: 5, kind: "llm.resp", payload: { content: "two", usage: { prompt_tokens: 100, output_tokens: 800 } }, ts: "2026-01-01T00:00:08Z" },
+              ],
+              through: 5,
+              more: false,
+            },
+            busy: false,
+          };
+          if (method === "session.info") return {};
+          if (method === "session.unsubscribe") return {};
+          throw new Error(`unexpected request: ${method}`);
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("speed", { id: "speed", repo: "/tmp/speed", open: true, busy: false });
+      const task = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(task.root);
+      await task.open("speed");
+      const panel = [...task.el.side.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.childNodes[0].textContent === "Totals");
+      const meter = (name) => {
+        const m = [...(panel?.querySelectorAll(".meter") || [])].find((n) => n.querySelector(".meter-head span")?.textContent === name);
+        const head = m?.querySelector(".meter-head");
+        return head ? `${head.children[0].textContent} | ${head.children[1].textContent}` : null;
+      };
+      out.totals = { speed: meter("Model speed"), wait: meter("Model wait"), tools: meter("Tool time") };
+      task.dispose();
+    }
     return out;
   });
   console.log(JSON.stringify(results, null, 1));
@@ -399,6 +457,7 @@ check(async () => {
   want(l.status === "exit 1 · 1.2 s · allowed: don't ask", `long command status: ${JSON.stringify(l)}`);
   want(l.nameClipped && l.nameInside && l.statInside && l.scroll, `long command stays inside its card: ${JSON.stringify(l)}`);
   want(results.gauge.before === 61440 && results.gauge.after === 86016 && results.gauge.est === 4100, `gauge across a switch: ${JSON.stringify(results.gauge)}`);
+  want(results.speed.line === "200 → 1,600 tokens over 2 requests · largest prompt 100 · 320.0 tok/s" && !results.speed.old.includes("tok/s"), `reply speed: ${JSON.stringify(results.speed)}`);
   const s = results.streaming;
   want(s.burst.beforeFrame === "Start: " && s.burst.text === "Start: " + "x".repeat(40) && s.burst.updates === 1 && s.burst.sameHead && s.burst.samePanel, `stream burst: ${JSON.stringify(s.burst)}`);
   want(s.thoughts[0].text === "hidden:thought " && !s.thoughts[0].visible && s.thoughts[1].text === "hidden:thought shown:thought " && s.thoughts[1].visible, `streamed thinking setting: ${JSON.stringify(s.thoughts)}`);
@@ -408,6 +467,7 @@ check(async () => {
   want(s.unchangedAway && s.caughtUp, `parked stream: unchanged=${s.unchangedAway}, caught up=${s.caughtUp}`);
   want(s.reloaded && s.disposed, `queued streams outlived reload or disposal: ${JSON.stringify(s)}`);
   want(s.closed && s.closedOnce, "session closure lost or duplicated its queued text, or left the reply enabled");
+  want(results.totals.speed === "Model speed | 320.0 tok/s · 2 requests" && results.totals.wait && results.totals.tools, `totals speed: ${JSON.stringify(results.totals)}`);
   const tb = results.tabs;
   want(tb.names.join() === "Live,Changes,Workspace,Notes" && tb.first === "Live", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
   want(tb.live.join() === "This turn,Plan,Totals", `Live tab panels: ${JSON.stringify(tb.live)}`);

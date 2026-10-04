@@ -21,6 +21,12 @@ func TestUsageLine(t *testing.T) {
 		{log.Usage{PromptTokens: 12400, OutputTokens: 800, CachedTokens: &cached, Cost: &cost}, "12,400→800 tok · 78% cached · $0.012"},
 		// An estimate from configured prices is marked.
 		{log.Usage{PromptTokens: 100, OutputTokens: 10, Cost: &cost, CostEstimated: true}, "100→10 tok · ≈$0.012"},
+		// The request's wall time gives every provider a tok/s, beside
+		// whatever the provider itself reported.
+		{log.Usage{PromptTokens: 1000, OutputTokens: 44, WallMS: 2000}, "1,000→44 tok · 22.0 tok/s"},
+		{log.Usage{PromptTokens: 12400, OutputTokens: 800, WallMS: 4000, TotalMS: 3900, Cost: &cost}, "12,400→800 tok · $0.012 · 200.0 tok/s · 3.9s"},
+		// No tokens reported, no speed to read.
+		{log.Usage{Unreported: true, WallMS: 2000}, "tokens not reported"},
 	} {
 		if got := UsageLine(tc.u); got != tc.want {
 			t.Errorf("got %q, want %q", got, tc.want)

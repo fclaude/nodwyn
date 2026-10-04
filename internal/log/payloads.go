@@ -171,6 +171,12 @@ type Usage struct {
 	EvalMS       int64 `json:"eval_ms"`
 	TotalMS      int64 `json:"total_ms"`
 	LoadMS       int64 `json:"load_ms"`
+	// WallMS is how long the request took as this machine saw it, from send
+	// to the reply's complete arrival, the successful attempt only (a
+	// retry's earlier failures are not the model's time). Host-measured, so
+	// a provider that reports no timings of its own has it too. Older logs
+	// lack it.
+	WallMS int64 `json:"wall_ms,omitempty"`
 	// CachedTokens are the prompt tokens the provider read from its cache,
 	// when it reports them: absent (an older log, Ollama) is unknown, not 0.
 	CachedTokens     *int `json:"cached_tokens,omitempty"`

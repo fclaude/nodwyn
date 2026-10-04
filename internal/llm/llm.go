@@ -86,6 +86,12 @@ type Usage struct {
 	EvalMS       int64
 	TotalMS      int64
 	LoadMS       int64
+	// WallMS is how long the request took as this machine saw it, from send
+	// to the reply's complete arrival, the successful attempt only (a
+	// retry's earlier failures are not the model's time). Host-measured, so
+	// every provider has it; the fields above are what the provider
+	// reported. tok/s is OutputTokens per WallMS/1000.
+	WallMS int64
 	// CachedTokens is how many of PromptTokens the provider read from its
 	// prompt cache, when it says; nil when it does not (Ollama), which is
 	// not the same as a reported 0. CacheWriteTokens are prompt tokens it

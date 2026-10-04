@@ -292,7 +292,7 @@ export class Transcript {
         }
         if (p.usage) {
           const u = p.usage;
-          const fresh = { in: 0, out: 0, ms: 0, cachedIn: 0, cached: 0, cost: 0, priced: 0, unpriced: 0, estimated: false, requests: 0, largest: 0, reasoning: 0 };
+          const fresh = { in: 0, out: 0, ms: 0, wall: 0, cachedIn: 0, cached: 0, cost: 0, priced: 0, unpriced: 0, estimated: false, requests: 0, largest: 0, reasoning: 0 };
           this.tokens = (this.usage ? this.tokens : fresh) || fresh;
           this.tokens.in += u.prompt_tokens || 0;
           this.tokens.out += u.output_tokens || 0;
@@ -301,6 +301,10 @@ export class Transcript {
           this.tokens.largest = Math.max(this.tokens.largest || 0, u.prompt_tokens || 0);
           this.tokens.reasoning += u.reasoning_tokens || 0;
           this.tokens.ms += u.total_ms || 0;
+          // The request's wall time, host-measured (newer logs), counts only
+          // for a request that reported tokens: the speed below is tokens
+          // over the time that produced them.
+          if (!u.unreported) this.tokens.wall += u.wall_ms || 0;
           // A provider that reports its prompt cache and cost (OpenRouter)
           // says so; absent is unknown, never 0% or free.
           if (u.cached_tokens !== undefined) {
@@ -320,6 +324,10 @@ export class Transcript {
           // among them) reports none, so no time rather than "0.0 s".
           const time = this.tokens.ms > 0 ? ` · ${(this.tokens.ms / 1000).toFixed(1)} s with the model` : "";
           const t = this.tokens;
+          // tok/s is output tokens over the wall time the requests took,
+          // host-measured: every provider gets one, unlike total_ms, which
+          // only Ollama reports.
+          const speed = t.wall > 0 && t.out > 0 ? ` · ${(t.out / (t.wall / 1000)).toFixed(1)} tok/s` : "";
           const cache = t.cachedIn > 0 ? ` · ${Math.round((100 * t.cached) / t.cachedIn)}% cached` : "";
           const cost = t.priced > 0 ? ` · ${t.unpriced > 0 ? "at least " : ""}${usd(t.cost, t.estimated)}` : "";
           // Each request sends the whole prompt again, so over several the
@@ -328,7 +336,7 @@ export class Transcript {
           const reasoning = t.reasoning > 0 ? ` (${t.reasoning.toLocaleString()} reasoning)` : "";
           const over = t.requests > 1 ? ` over ${t.requests} requests · largest prompt ${t.largest.toLocaleString()}` : "";
           const silent = t.unreported ? ` · ${t.unreported === t.requests ? "the server reported no tokens" : `${t.unreported} of them reported no tokens`}` : "";
-          this.usage.textContent = t.unreported === t.requests ? `tokens not reported${cost}${time}` : `${t.in.toLocaleString()} → ${t.out.toLocaleString()} tokens${reasoning}${over}${silent}${cache}${cost}${time}`;
+          this.usage.textContent = t.unreported === t.requests ? `tokens not reported${cost}${time}` : `${t.in.toLocaleString()} → ${t.out.toLocaleString()} tokens${reasoning}${over}${silent}${cache}${cost}${speed}${time}`;
         }
         this.call = null;
         break;

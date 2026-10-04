@@ -2092,6 +2092,9 @@
         },
         "unreported": {
           "type": "boolean"
+        },
+        "wall_ms": {
+          "type": "integer"
         }
       },
       "required": [

@@ -39,8 +39,9 @@ The conversation shows user and model text, tool calls/results, guard outcomes,
 plan scores, the steps the model marks done or skipped (`plan-step`),
 attachments, document uploads and evaluation output. After each reply a
 usage line gives its tokens and, when known, the share of the prompt read
-from the provider's cache, its cost and the model's time (`12,400→800 tok ·
-78% cached · $0.012`; [the manual](manual.md), "Choosing models"). The title
+from the provider's cache, its cost, the model's time and the request's
+speed in tokens a second (`12,400→800 tok ·
+78% cached · $0.012 · 200.0 tok/s`; [the manual](manual.md), "Choosing models"). The title
 says how full the conversation's context is (`context ~45k of ~61k`: nodwyn's
 estimate of the latest request against the window's high water), a
 compaction is one line with the size before and after, and `:budget` adds

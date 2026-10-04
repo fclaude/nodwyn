@@ -1117,7 +1117,11 @@ console show its tokens, and when the provider says so, how much of the
 prompt came from its cache and what the request cost:
 `12,400→800 tok · 78% cached · $0.012`, with the reasoning share of the
 output when the provider reports it (`800 tok (300 reasoning)`). A server
-that sends no token counts reads `tokens not reported`, not `0→0`. Over a
+that sends no token counts reads `tokens not reported`, not `0→0`. The
+request's wall time, as this machine measured it from the sending to the
+reply's complete arrival, gives a speed too — `22.0 tok/s` — and it is the
+one speed every provider gets, prompt processing included, which is what
+makes providers and models comparable. Over a
 turn of several requests, the console adds them up, and since each request
 sends the whole prompt again it also gives the largest single prompt, which
 is how big the context got (`405,467 → 4,936 tokens over 12 requests ·
@@ -1184,7 +1188,11 @@ judge or an unattended run gave by themselves count as working. Two more
 figures say where that time went: "Model wait", each request to a model
 from its sending to its reply, streaming included; and "Tool time", each
 tool call from its start to its result, with the wait for your approval
-taken back out. All are in tenths of a second while short. A turn still
+taken back out. A third, "Model speed", says how fast the models answered:
+output tokens per second of that wall time, added up over the requests that
+reported tokens, with the request count — the speed the session
+experienced, whichever model answered, and the figure to compare providers
+and models by. All are in tenths of a second while short. A turn still
 running counts up to now, into the running time even while it waits for
 you and into the working time only while it does not; a request or a tool
 still open stops at the log's last record while a prompt holds the

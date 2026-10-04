@@ -36,7 +36,13 @@ func ChatRetrying(ctx context.Context, p Provider, req Request,
 	delay := RetryDelay
 	for attempt := 0; ; attempt++ {
 		actx, cancel := attemptCtx(ctx)
+		start := time.Now()
 		resp, err := p.Chat(actx, req, nil)
+		if err == nil && resp != nil {
+			// The request's wall time as this machine saw it, this attempt
+			// alone: a retry's earlier failures are not the model's time.
+			resp.Usage.WallMS = time.Since(start).Milliseconds()
+		}
 		cancel()
 		var permanent permanentError
 		if err == nil || attempt == Retries || ctx.Err() != nil || errors.As(err, &permanent) {

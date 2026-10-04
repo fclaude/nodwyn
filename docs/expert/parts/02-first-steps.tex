@@ -243,7 +243,10 @@ After each reply the terminal shows what the request used:
 That is the prompt's tokens, the reply's, the share of the prompt the
 provider read from its cache, and what the request cost. The cache share
 and the cost appear only when they are known (Chapter~\ref{ch:keys}), and
-the timings only when the server reports them, as Ollama does. A
+the timings only when the server reports them, as Ollama does. The
+request's wall time, as this machine measured it, gives a speed whenever
+there are tokens to divide by — \code{22.0~tok/s} — the one speed every
+provider gets, prompt processing included. A
 checkpoint also says what the turn has cost so far. Cached tokens count in
 full against the token budget, which measures context, not money.
 

@@ -1044,6 +1044,13 @@ export class TaskView {
         { class: "meter", title: "How long the task waited for answers from models, each request from its sending to its reply; streaming counts as waiting, and a request still being answered counts up to now" },
         h("div", { class: "meter-head" }, h("span", {}, "Model wait"), h("span", { dataset: { model: "1" } }, spanWords(t.model))),
       ),
+      t.speed
+        ? h(
+            "div",
+            { class: "meter", title: "How fast the models answered: output tokens per second of wall time, from each request to its reply, added up over the requests that reported tokens; whichever model answered, this is the speed the session experienced" },
+            h("div", { class: "meter-head" }, h("span", {}, "Model speed"), h("span", {}, `${t.speed.tps.toFixed(1)} tok/s · ${t.speed.replies} request${t.speed.replies === 1 ? "" : "s"}`)),
+          )
+        : null,
       h(
         "div",
         { class: "meter", title: "How long the task's tool calls took to run, from a call to its result, with the wait for a person's approval left out; the time waiting for you to answer is in no figure here" },
@@ -1052,18 +1059,18 @@ export class TaskView {
     );
   }
   // totals adds the task up over its whole log: what its requests cost, as
-  // far as the log prices them, how long it ran and worked, and how much of
-  // that went waiting for a model and running tools. Null before the first
-  // turn: nothing has run to add up.
+  // far as the log prices them, how long it ran and worked, how much of
+  // that went waiting for a model and running tools, and how fast the
+  // models answered. Null before the first turn: nothing has run to add up.
   totals(evs = this.events()) {
-    const { spend, split } = this.tally(evs);
+    const { spend, split, speed } = this.tally(evs);
     if (!spend) return null;
     // A request or tool still open counts on to now, or stops at the log's
     // last record when a prompt holds the session: nobody's time then.
     const until = this.clockUntil(evs);
     const model = split.model + (split.openModel !== null ? Math.max(0, until - split.openModel) : 0);
     const tools = Math.max(0, split.tools + (split.openTool !== null ? Math.max(0, until - split.openTool) : 0));
-    return { ...spend, ...this.turnClocks(evs), model, tools };
+    return { ...spend, ...this.turnClocks(evs), model, tools, speed };
   }
   // turnClocks is how long the task ran and worked (walkTurns), and a turn
   // still here in a busy session counts up to now — running time always,
@@ -1081,7 +1088,7 @@ export class TaskView {
   // once a second, so the log is walked once per new event (events() hands
   // out one list until one arrives), not on every redraw and tick.
   tally(evs) {
-    if (this.tallied?.evs !== evs) this.tallied = { evs, spend: spendOf(evs), run: walkTurns(evs), split: splitTime(evs) };
+    if (this.tallied?.evs !== evs) this.tallied = { evs, spend: spendOf(evs), run: walkTurns(evs), split: splitTime(evs), speed: speedOf(evs) };
     return this.tallied;
   }
 
@@ -1426,6 +1433,38 @@ function spendOf(evs) {
   // A judge cost is an estimate from [jev] prices, never a report.
   estimated ||= j.cost > 0;
   return { cost, unpriced, estimated };
+}
+
+// speedOf is how fast the task's models answered: output tokens per second
+// of wall time, added up over the replies that reported tokens — Σ tokens
+// over Σ seconds, the speed the session experienced, not a mean of
+// per-request speeds. A request's wall time is its own record (wall_ms,
+// newer logs) or the log's timestamps from the request to the reply
+// (older logs); a reply with neither, or with no tokens reported, stays
+// out, so an open request counts no speed yet.
+function speedOf(evs) {
+  let out = 0,
+    ms = 0,
+    replies = 0;
+  let open = null;
+  for (const e of evs) {
+    const ts = tsOf(e);
+    if (e.kind === "llm.req") {
+      if (ts > 0) open = ts;
+    } else if (e.kind === "llm.resp") {
+      const u = e.payload?.usage || {};
+      let wall = u.wall_ms || 0;
+      if (!wall && open !== null && ts > open) wall = ts - open;
+      open = null;
+      if (wall > 0 && !u.unreported && u.output_tokens > 0) {
+        out += u.output_tokens;
+        ms += wall;
+        replies++;
+      }
+    }
+  }
+  if (!ms) return null;
+  return { out, ms, replies, tps: out / (ms / 1000) };
 }
 
 // tsOf is a record's time in milliseconds; a record without one is time 0.

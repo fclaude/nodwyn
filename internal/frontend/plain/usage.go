@@ -30,6 +30,14 @@ func UsageLine(u log.Usage) string {
 	if u.Cost != nil {
 		parts = append(parts, USD(*u.Cost, u.CostEstimated))
 	}
+	// tok/s is output tokens per second of the request's wall time,
+	// host-measured (wall_ms): every provider gets one, unlike total_ms,
+	// which only Ollama reports. Comparing providers and models is the
+	// point of the figure, so it counts the whole request, prompt
+	// processing included, for all of them alike.
+	if u.WallMS > 0 && u.OutputTokens > 0 && !u.Unreported {
+		parts = append(parts, fmt.Sprintf("%.1f tok/s", float64(u.OutputTokens)/(float64(u.WallMS)/1000)))
+	}
 	if u.TotalMS > 0 {
 		parts = append(parts, fmt.Sprintf("%.1fs", float64(u.TotalMS)/1000))
 	}

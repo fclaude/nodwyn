@@ -316,7 +316,11 @@ person gets carries the judge's answer among its reasons.
 `llm.resp` `usage` may carry `cached_tokens` (the prompt tokens the
 provider read from its cache; absent is unknown, not 0), `cache_write_tokens`,
 `reasoning_tokens`, and `cost` in USD with `cost_estimated` when it comes
-from the model's configured prices rather than the provider. A budget
+from the model's configured prices rather than the provider. It may also
+carry `wall_ms`, how long the request took as the host measured it, from
+the sending to the reply's complete arrival, the successful attempt only
+(a retry's earlier failures are not the model's time); output tokens over
+it is the request's tok/s, the one speed every provider gets. A budget
 checkpoint's `state` carries `cost`, `priced`, `unpriced` and
 `cached_tokens` for the turn so far. All are optional and additive.
 
