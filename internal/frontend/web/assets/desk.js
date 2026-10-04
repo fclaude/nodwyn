@@ -14,6 +14,7 @@ export class Desk {
     this.settings = null; // settings.read: the daemon's model configuration
     this.keychain = null; // keychain.status
     this.workspaces = []; // workspace.list: folders the person named
+    this.last = ""; // workspace.active: the folder the daemon last saw picked for a new task
     this.listeners = new Set();
     this.version = 0;
     this.latest = null; // the newest refresh, which an older one waits for
@@ -87,6 +88,10 @@ export class Desk {
     try {
       if (this.conn.has("settings.read")) this.settings = await this.conn.call("settings.read");
       if (this.conn.has("keychain.status")) this.keychain = await this.conn.call("keychain.status");
+      // The window's console is on a new loopback port every launch (ADR
+      // 30), so the browser's own memory cannot carry the folder picked
+      // last across an app restart; the daemon's can.
+      if (this.conn.has("workspace.active")) this.last = (await this.conn.call("workspace.active", {})).path || "";
       await this.refreshWorkspaces();
     } catch {
       /* an older daemon: setup happens in config.toml */

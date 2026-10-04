@@ -106,6 +106,46 @@ type registry struct {
 // RegistryFile is where named workspaces are kept.
 func RegistryFile(p Paths) string { return filepath.Join(p.ConfigDir, "workspaces.toml") }
 
+// LastWorkspaceFile is where the folder the console last picked for a new
+// task is kept, beside the registry it belongs to: what a window or tab
+// that has not picked yet starts in. Only the daemon writes it, on a
+// workspace.active from a console on this computer, and the person may edit
+// it by hand; the config directory is private to the guard, so neither a
+// model nor a repository can (ADR 22).
+func LastWorkspaceFile(p Paths) string { return filepath.Join(p.ConfigDir, "last-workspace.toml") }
+
+// LoadLastWorkspace reads the folder the console last picked for a new
+// task; missing is none.
+func LoadLastWorkspace(path string) (string, error) {
+	var last struct {
+		Folder string `toml:"folder"`
+	}
+	_, err := toml.DecodeFile(path, &last)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("last workspace: %w", err)
+	}
+	if last.Folder == "" {
+		return "", nil
+	}
+	return filepath.Clean(last.Folder), nil
+}
+
+// SaveLastWorkspace records the folder the console last picked for a new
+// task, or forgets the pick when folder is empty.
+func SaveLastWorkspace(path, folder string) error {
+	if folder != "" && !filepath.IsAbs(folder) {
+		return errors.New("last workspace: path must be absolute")
+	}
+	var b strings.Builder
+	b.WriteString("# The folder the console last picked for a new task, which a fresh\n")
+	b.WriteString("# window or tab starts in. The daemon writes it; editing it by hand is fine.\n")
+	fmt.Fprintf(&b, "folder = %s\n", quote(folder))
+	return WriteFile(path, []byte(b.String()))
+}
+
 // LoadRegistry reads the named workspaces; missing is none.
 func LoadRegistry(path string) ([]Registered, error) {
 	var r registry

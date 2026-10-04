@@ -2757,6 +2757,9 @@
           "$ref": "#/$defs/request.versions.list"
         },
         {
+          "$ref": "#/$defs/request.workspace.active"
+        },
+        {
           "$ref": "#/$defs/request.workspace.list"
         },
         {
@@ -4577,6 +4580,37 @@
       ],
       "type": "object"
     },
+    "request.workspace.active": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workspace.active"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.workspaceActiveParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.workspace.list": {
       "properties": {
         "id": {
@@ -4992,6 +5026,9 @@
         "array",
         "null"
       ]
+    },
+    "result.workspace.active": {
+      "$ref": "#/$defs/rpc.workspaceActiveResult"
     },
     "result.workspace.list": {
       "items": {
@@ -6688,6 +6725,26 @@
       },
       "required": [
         "repo",
+        "path"
+      ],
+      "type": "object"
+    },
+    "rpc.workspaceActiveParams": {
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "rpc.workspaceActiveResult": {
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
         "path"
       ],
       "type": "object"

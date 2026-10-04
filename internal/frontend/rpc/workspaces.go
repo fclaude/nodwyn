@@ -30,6 +30,12 @@ type workspaceSaveParams struct {
 type workspacePathParams struct {
 	Path string `json:"path"`
 }
+type workspaceActiveParams struct {
+	Path string `json:"path,omitempty"` // absent reads the pick
+}
+type workspaceActiveResult struct {
+	Path string `json:"path"`
+}
 type versionsParams struct {
 	Repo string `json:"repo"`
 	Path string `json:"path"`
@@ -66,6 +72,34 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 			result = append(result, describeWorkspace(r))
 		}
 		return result, nil
+	case "workspace.active":
+		// The folder the console last picked for a new task, which a window
+		// or tab that has not picked yet starts in. The window's console is
+		// on a new loopback port every launch (ADR 30), so the browser's own
+		// memory cannot carry the pick across a restart; the daemon's can.
+		var p workspaceActiveParams
+		if err := params(req.Params, &p, "path"); err != nil {
+			return nil, err
+		}
+		last := config.LastWorkspaceFile(s.options.Paths)
+		if p.Path == "" {
+			folder, err := config.LoadLastWorkspace(last)
+			if err != nil {
+				return nil, failure(-32000, err.Error())
+			}
+			return workspaceActiveResult{Path: folder}, nil
+		}
+		if !filepath.IsAbs(p.Path) {
+			return nil, failure(-32602, "path must be absolute")
+		}
+		p.Path = filepath.Clean(p.Path)
+		if info, err := os.Stat(p.Path); err != nil || !info.IsDir() {
+			return nil, failure(-32602, "path must be an existing folder")
+		}
+		if err := config.SaveLastWorkspace(last, p.Path); err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		return workspaceActiveResult(p), nil
 	case "workspace.remove":
 		var p workspacePathParams
 		if err := params(req.Params, &p, "path"); err != nil {

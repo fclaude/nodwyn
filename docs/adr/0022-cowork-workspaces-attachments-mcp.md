@@ -455,3 +455,22 @@ folder (for a worktree, its repository's, ADR 34), and none for a folder
 nobody named. A `.nodwyn/workspace.toml` in a folder is not read: mounts
 kept there before are added again on Workspaces. Nothing about a workspace
 is written into its folder, so naming one adds nothing to its diff.
+
+## Amendment 2026-10-04: the folder the console picked last
+
+The console remembers which folder the person picked last for a new task
+(Home's "Work in" chips, a workspace's "New task here"), because the folder
+a fresh task opens in starts there. It used to be kept in the browser only,
+under the console's origin — and the app's window gets a console on a new
+loopback port every launch (ADR 30), so a browser's own storage never
+carried the pick across an app restart. The pick is now told to the daemon
+too, by `workspace.active` (local consoles only, like `workspace.save`),
+which keeps it in `last-workspace.toml` beside `workspaces.toml` in the
+config directory. Who writes that file: the daemon, on a `workspace.active`
+from a console on this computer, or the person by hand; the config directory
+is private to the guard, so neither a model nor a repository can (ADR 22,
+amended 2026-10-03). A tab that has picked keeps its own choice; a tab that
+has not starts in the folder picked last — this browser's, else the
+daemon's — and in the first folder of the list when neither has one. The
+file names a folder, never a policy: it only preselects, and a task opened
+there goes through the same root checks as any other.

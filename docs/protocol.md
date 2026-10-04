@@ -502,6 +502,7 @@ name.
 | Method | Params | Result |
 |---|---|---|
 | `workspace.list` | `{}` | Named workspaces: `[{name, path, mounts, git}]` |
+| `workspace.active` | `{}` reads, `{"path"}` records | `{"path"}`: the folder the console last picked for a new task, which a window or tab that has not picked starts in; kept in `last-workspace.toml` beside `workspaces.toml`, since the app's window has a console on a new port every launch and the browser remembers nothing across a restart |
 | `workspace.save` | `{"path","name","mounts"}` (all required; `mounts` may be `[]`) | The saved workspace. The name and the mounts go to `workspaces.toml` in the config directory; nothing is written into the folder |
 | `workspace.remove` | `{"path"}` | `{}`; forgets the name and its mounts, never the folder |
 | `versions.list` | `{"repo","path"}` | A file's kept previous versions (outside git); `repo` must be a named workspace or a folder a task has used |
@@ -523,7 +524,7 @@ its approved manifest; any other change needs approval again.
 
 `settings.control.write`, `settings.docs.write`, `settings.write`, `keychain.create`,
 `keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `workspace.save`,
-`workspace.remove`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
+`workspace.active`, `workspace.remove`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
 `mcp.remove` and `mcp.pull` methods, and every `credentials.*` method but
 `credentials.list` are refused to a paired remote device in
 the web console (browser.md); `mcp.runtime` and `credentials.list` only read. The console never

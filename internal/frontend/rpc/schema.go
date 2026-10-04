@@ -73,6 +73,7 @@ func contracts() map[string]methodContract {
 		"settings.docs.write":     {docsParams{}, settingsResult{}},
 		"settings.write":          {settingsWriteParams{}, settingsResult{}},
 		"workspace.list":          {struct{}{}, []workspaceInfo{}},
+		"workspace.active":        {workspaceActiveParams{}, workspaceActiveResult{}},
 		"workspace.save":          {workspaceSaveParams{}, workspaceInfo{}},
 		"workspace.remove":        {workspacePathParams{}, struct{}{}},
 		"versions.list":           {versionsParams{}, []prim.Version{}},

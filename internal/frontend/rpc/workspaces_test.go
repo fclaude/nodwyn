@@ -113,6 +113,46 @@ func TestRestoreAKeptVersionAsksFirst(t *testing.T) {
 	}
 }
 
+// The folder the console last picked for a new task is the daemon's to
+// keep: the window's console is on a new loopback port every launch (ADR
+// 30), so the browser's own memory cannot carry a pick across a restart,
+// and the next daemon reads it back from the config directory.
+func TestWorkspaceActiveSurvivesRestart(t *testing.T) {
+	o := options(t)
+	path, stop := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	var got workspaceActiveResult
+	json.Unmarshal(c.ok("workspace.active", map[string]any{}), &got)
+	if got.Path != "" {
+		t.Fatalf("picked before anything was: %q", got.Path)
+	}
+	folder := t.TempDir()
+	json.Unmarshal(c.ok("workspace.active", map[string]any{"path": folder}), &got)
+	if got.Path != folder {
+		t.Fatalf("a pick was reported as %q, not %q", got.Path, folder)
+	}
+	if stored, err := config.LoadLastWorkspace(config.LastWorkspaceFile(o.Paths)); err != nil || stored != folder {
+		t.Fatalf("on disk: %q %v", stored, err)
+	}
+	if r := c.call("workspace.active", map[string]any{"path": "notes"}); r.Error == nil {
+		t.Fatal("accepted a relative folder")
+	}
+	if r := c.call("workspace.active", map[string]any{"path": filepath.Join(folder, "gone")}); r.Error == nil {
+		t.Fatal("accepted a folder that does not exist")
+	}
+	// A restart is a new daemon on the same config directory: it reads the
+	// pick back, and a window that has not picked starts there.
+	stop()
+	path, _ = start(t, o)
+	c = connect(t, path)
+	c.hello()
+	json.Unmarshal(c.ok("workspace.active", map[string]any{}), &got)
+	if got.Path != folder {
+		t.Fatalf("after a restart: %q, not %q", got.Path, folder)
+	}
+}
+
 func TestUnsafeRootsAreRefused(t *testing.T) {
 	o := options(t)
 	os.MkdirAll(o.Paths.ConfigDir, 0o700)

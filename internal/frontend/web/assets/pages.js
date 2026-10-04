@@ -47,7 +47,7 @@ export function renderWorkspaces(root, ctx) {
             h("button", { type: "button", class: "btn small ghost", onclick: () => { removing = ""; redraw(); } }, "Keep"),
           ]
         : [
-            h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder); navigate("#/"); } }, "New task here"),
+            h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder, desk); navigate("#/"); } }, "New task here"),
             canEdit ? h("button", { type: "button", class: "btn small ghost", onclick: () => { editing = editing === folder ? "" : folder; addingWorkspace = false; removing = ""; redraw(); } }, ws ? "Edit" : "Name it") : null,
             ws && canRemove ? h("button", { type: "button", class: "btn small danger", "aria-label": `Remove ${ws.name}`, onclick: () => { removing = folder; redraw(); } }, "Remove") : null,
           ];

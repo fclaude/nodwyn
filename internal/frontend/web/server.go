@@ -533,7 +533,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	case "session.delete":
 		return !remote
 	case "session.binding.create", "session.approve_all", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write",
-		"workspace.save", "workspace.remove", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
+		"workspace.save", "workspace.active", "workspace.remove", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
 		return !remote
 	// Keys and the passphrase are typed here, and an OAuth2 provider sends
 	// the person back to a listener on this computer's loopback.

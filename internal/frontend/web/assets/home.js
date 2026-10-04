@@ -5,9 +5,10 @@ import { modelForm, keychainForm } from "./setup.js";
 import { Attachments, isImage } from "./attach.js";
 import { keepDraft } from "./task.js";
 
-// The folder the next task starts in, for this tab. The folder picked last
-// is kept in this browser (like the theme and the folded folders) and is
-// what a tab that has not picked yet starts in.
+// The folder the next task starts in, for this tab. A tab that has not
+// picked yet starts in the folder picked last: this browser's, else the
+// daemon's — which survives an app restart, where the window's console is
+// on a new loopback port and this browser remembers nothing (ADR 30).
 const LAST_KEY = "nodwyn-last-folder";
 let chosen = "";
 let draft = "";
@@ -19,15 +20,18 @@ let starting = false; // a start is in flight: one task per ask
 const inWorktree = new Set();
 
 // setFolder picks the folder the next task starts in, in this tab, and
-// remembers it as the one a fresh tab starts in.
-function setFolder(folder) {
+// remembers it — in this browser for a fresh tab, and with the daemon
+// (workspace.active, local consoles only) for a fresh window or tab that
+// this browser has never seen.
+function setFolder(folder, desk) {
   chosen = folder;
   localStorage.setItem(LAST_KEY, folder);
+  if (desk?.conn?.has("workspace.active")) desk.conn.call("workspace.active", { path: folder }).catch(() => {});
 }
 
 // chooseFolder preselects the folder the next task starts in.
-export function chooseFolder(folder) {
-  setFolder(folder);
+export function chooseFolder(folder, desk) {
+  setFolder(folder, desk);
 }
 
 // forgetFolder stops preselecting a folder that left the list, and drops it
@@ -40,8 +44,9 @@ export function forgetFolder(folder) {
 export function renderHome(root, ctx) {
   const { conn, desk, navigate, pickFolder } = ctx;
   const folders = desk.folders();
-  // A tab that has not picked yet starts in the folder picked last.
-  if (!chosen) chosen = localStorage.getItem(LAST_KEY) || "";
+  // A tab that has not picked yet starts in the folder picked last: this
+  // browser's, else the daemon's, which an app restart keeps.
+  if (!chosen) chosen = localStorage.getItem(LAST_KEY) || desk.last || "";
   if (!chosen || !folders.includes(chosen)) chosen = chosen && !folders.includes(chosen) && chosen.startsWith("/") ? chosen : folders[0] || "";
   const control = desk.control();
   // Every task is a chat (ADR 35): a long request is a message like any
@@ -244,7 +249,7 @@ export function renderHome(root, ctx) {
     chips.append(
       h(
         "button",
-        { type: "button", class: "chip", "aria-pressed": String(folder === chosen), title: folder, onclick: () => { setFolder(folder); renderHome(root, ctx); } },
+        { type: "button", class: "chip", "aria-pressed": String(folder === chosen), title: folder, onclick: () => { setFolder(folder, desk); renderHome(root, ctx); } },
         desk.folderName(folder),
       ),
     );
@@ -281,7 +286,7 @@ export function renderHome(root, ctx) {
         return;
       }
     }
-    setFolder(path);
+    setFolder(path, desk);
     renderHome(root, { ...ctx, keepTop: false });
   });
   chips.append(

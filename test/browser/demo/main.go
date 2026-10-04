@@ -58,6 +58,7 @@ func main() {
 	fakecontainer.Main(notesTools()...)
 	seed := flag.Bool("seed", false, "start demo tasks so every view has content")
 	port := flag.Int("port", 0, "loopback port for the console (0 picks one)")
+	dir := flag.String("dir", "", "reuse this root from a previous run, as an app restart reuses its setup")
 	modelOnly := flag.Bool("model-only", false, "run only the scripted model server and print its URL")
 	docs := flag.Bool("docs", false, "keep a Google credential in a throwaway keychain, bound to a fake Drive that takes uploads")
 	oauthOnly := flag.Bool("oauth-only", false, "run only a fake OAuth2 provider (client id demo-client) and print its endpoints")
@@ -82,18 +83,28 @@ func main() {
 		model.Close()
 		return
 	}
-	if err := run(*seed, *port, *docs); err != nil {
+	if err := run(*seed, *port, *docs, *dir); err != nil {
 		fmt.Fprintln(os.Stderr, "demo:", err)
 		os.Exit(1)
 	}
 }
 
-func run(seed bool, port int, docs bool) error {
-	root, err := os.MkdirTemp("/tmp", "nodwyn-demo-")
-	if err != nil {
-		return err
+func run(seed bool, port int, docs bool, given string) error {
+	root, kept := given, given != ""
+	if !kept {
+		var err error
+		if root, err = os.MkdirTemp("/tmp", "nodwyn-demo-"); err != nil {
+			return err
+		}
 	}
-	defer os.RemoveAll(root)
+	defer func() {
+		// A root the run made itself is throwaway; one given with -dir
+		// belongs to whoever passed it (the checks reuse one to restart the
+		// app), so this run leaves it in place.
+		if !kept {
+			os.RemoveAll(root)
+		}
+	}()
 	model := fake.NewFunc(respond)
 	defer model.Close()
 	// "Tidy" ends on a provider's rate limit: retry it quickly, so the
@@ -162,6 +173,12 @@ func run(seed bool, port int, docs bool) error {
 		return err
 	}
 	socket := filepath.Join(root, "run", "sock")
+	if kept {
+		// Listen refuses an existing socket, even a stale one, and a run on
+		// a given root starts after the run that made it (the checks wait
+		// for the old demo to exit first), so this run removes its socket.
+		os.Remove(socket)
+	}
 	listener, err := rpc.Listen(socket)
 	if err != nil {
 		return err
@@ -171,20 +188,24 @@ func run(seed bool, port int, docs bool) error {
 	daemonDone := make(chan error, 1)
 	go func() { daemonDone <- rpc.Serve(ctx, listener, options) }()
 
-	repos := map[string]string{}
-	for _, name := range []string{"console", "receipts"} {
-		dir := filepath.Join(root, "work", name)
-		repos[name] = dir
-		if err := writeRepo(dir, name); err != nil {
-			return err
-		}
-	}
 	// A git repository with one commit, for tasks in worktrees of their
 	// own (ADR 34); the other folders stay plain folders, as the checks
 	// that look at them expect.
 	project := filepath.Join(root, "work", "project")
-	if err := writeGitRepo(project); err != nil {
-		return err
+	repos := map[string]string{"console": filepath.Join(root, "work", "console")}
+	// A root reused for a restart keeps the world a previous run made:
+	// rewriting the folders would undo what its tasks did to them.
+	if _, err := os.Stat(filepath.Join(root, "work", "console")); err != nil {
+		for _, name := range []string{"console", "receipts"} {
+			dir := filepath.Join(root, "work", name)
+			repos[name] = dir
+			if err := writeRepo(dir, name); err != nil {
+				return err
+			}
+		}
+		if err := writeGitRepo(project); err != nil {
+			return err
+		}
 	}
 	if seed {
 		if err := seedTasks(ctx, socket, repos); err != nil {
