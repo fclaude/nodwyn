@@ -231,3 +231,17 @@ benchmarked with the request and plan in the system prompt. Whether a model
 follows a plan as well from a message is for the next benchmark run to
 show; the cached share of the next session's later turns is the test of
 the rest.
+
+## Amendment 2026-10-04: reasoning response fields do not imply history support
+
+The 2026-10-02 amendment assumed a server exposing thinking would accept
+`reasoning_content` in its history. Cerebras disproves that: it returns
+`reasoning` and rejects `reasoning_content` on the next request. ADR 8's
+server dialect now chooses the outgoing field independently of response
+parsing. `cerebras` sends `reasoning`; the default `compatible` dialect
+keeps `reasoning_content`. Ollama continues to send `thinking`.
+
+The log's thinking, redaction, window recipe and request hashes are
+unchanged. Dialect selection changes only the final wire representation;
+reasoning is not discarded to recover from a validation error. Encrypted
+reasoning remains unsupported for the reasons in the earlier amendment.

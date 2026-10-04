@@ -97,14 +97,14 @@ func resolveModel(cfg config.Config, c ModelChoice) (config.Model, error) {
 		if !ok {
 			return config.Model{}, fmt.Errorf("no server named %q is configured; the servers are %s", c.Server, strings.Join(serverNames(cfg), ", "))
 		}
-		return config.Model{Server: c.Server, Provider: srv.Provider, URL: srv.URL, Credential: srv.Credential, Model: c.Model}, nil
+		return config.Model{Server: c.Server, Provider: srv.Provider, Dialect: srv.Dialect, URL: srv.URL, Credential: srv.Credential, Model: c.Model}, nil
 	}
 }
 
 // withServer completes a model that names a server: config.Parse copies the
-// server's provider, url and credential into every model that names one, so a
-// choice resolves the same way whether config.toml was parsed or the config
-// was built in memory.
+// server's provider, dialect, url and credential into every model naming
+// one, so a choice resolves the same way whether config.toml was parsed or
+// the config was built in memory.
 func withServer(cfg config.Config, m config.Model) config.Model {
 	srv, ok := cfg.Servers[m.Server]
 	if m.Server == "" || !ok {
@@ -115,6 +115,9 @@ func withServer(cfg config.Config, m config.Model) config.Model {
 	}
 	if m.Provider == "" {
 		m.Provider = srv.Provider
+	}
+	if m.Dialect == "" {
+		m.Dialect = srv.Dialect
 	}
 	if m.Credential == "" {
 		m.Credential = srv.Credential

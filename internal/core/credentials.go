@@ -278,6 +278,7 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 			auth = s.authorize(m.Credential)
 		}
 		oai := llm.NewOpenAI(m.URL, auth)
+		oai.Dialect = m.Dialect
 		oai.MaxTokensField = m.OutputField
 		oai.Images = m.Vision
 		if m.CacheKey != config.CacheKeyOff {

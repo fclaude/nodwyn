@@ -1052,15 +1052,45 @@ model = "qwen3:8b"
 num_ctx = 81920
 ```
 
-A model that names a server takes its `provider`, `url` and `credential`
-from the server and sets none of them itself; the rest (context length,
-reply cap, sampling, prices, `vision`) is the model's own. A model may also
-give the three itself instead of naming a server, as every model did before
-servers. In the app, Settings saves the server the first time you choose a
+A model that names a server takes its `provider`, `dialect`, `url` and
+`credential` from the server and sets none of them itself; the rest
+(context length, reply cap, sampling, prices, `vision`) is the model's own.
+A model may also give those settings itself instead of naming a server,
+as every model did before servers. In the app, Settings saves the server the first time you choose a
 model on it, named after its host (`openrouter` for `openrouter.ai`), with
 its key; after that you pick the server by name and the model from the
 list the server gives (asked without the key: a server that lists its
 models only to a key says so, and you type the model's name).
+
+**Chat Completions dialects.** `provider = "openai"` chooses the protocol;
+`dialect` chooses the server's interpretation of it. For Cerebras, add the
+setting to its server in your user-owned `config.toml`:
+
+```toml
+[servers.cerebras]
+provider = "openai"
+dialect = "cerebras"
+url = "https://api.cerebras.ai/v1"
+credential = "cerebras-key"
+
+[control]
+server = "cerebras"
+model = "YOUR_MODEL_ID"              # a model enabled on your account
+```
+
+Cerebras receives prior assistant thinking as `reasoning`; without this
+setting it rejects `reasoning_content` after the first reasoning reply.
+Omitting `dialect`, or setting it to `"compatible"`, keeps the existing
+`reasoning_content` encoding. Unknown dialects and a dialect on an Ollama
+server are refused. No dialect is inferred from the URL or the model name.
+This setting changes the wire encoding only: thinking stays in the log and
+window, and the address, key binding, output cap and cache settings keep
+their existing rules. Ollama continues to use its native protocol.
+
+Set the dialect in the file before starting nodwyn. Settings can select
+that server and save another model on it without losing the dialect; it
+also preserves an inline control model's dialect when saving it as a server
+at the same endpoint. There is no dialect selector in the console yet.
 
 A keyed server needs its key stored (`(credential-register "openai-key")`)
 and bound to the server's host, like any credential:
@@ -1252,7 +1282,7 @@ provider caches.
 The model's thinking goes back to it on the reply it came with, as the
 server reported it and redacted: ollama gets it as `thinking`, a
 chat-completions server as `reasoning_content` (OpenRouter reads it as
-`reasoning`). It counts toward the window and is trimmed with its reply. A
+`reasoning`), or as `reasoning` with `dialect = "cerebras"`. It counts toward the window and is trimmed with its reply. A
 server that reports only a summary of the thinking, or none, gives back
 only that; encrypted reasoning (OpenRouter's `reasoning_details`) is not
 kept.

@@ -272,6 +272,9 @@
         "Credential": {
           "type": "string"
         },
+        "Dialect": {
+          "type": "string"
+        },
         "KeepAlive": {
           "type": "string"
         },
@@ -5944,6 +5947,9 @@
     "rpc.modelServer": {
       "properties": {
         "credential": {
+          "type": "string"
+        },
+        "dialect": {
           "type": "string"
         },
         "name": {

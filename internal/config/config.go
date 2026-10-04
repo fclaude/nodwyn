@@ -27,6 +27,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/fclaude/nodwyn/internal/detect/l1"
+	"github.com/fclaude/nodwyn/internal/llm"
 )
 
 // Paths are the directories and files nodwyn uses.
@@ -154,16 +155,17 @@ const ControlModel = "control"
 // every request.
 type Model struct {
 	// Server names the [servers.NAME] the model is on. Parse copies the
-	// server's provider, URL and credential into the model, so the rest of
-	// nodwyn reads a model alone; a model that names a server sets none of
-	// the three itself.
-	Server     string `toml:"server"`
-	Provider   string `toml:"provider"`   // "ollama" (the default when unset), or "openai" for any chat-completions server
-	URL        string `toml:"url"`        // base URL; for openai including the version, e.g. https://api.openai.com/v1
-	Model      string `toml:"model"`      // model id as the provider names it
-	NumCtx     int    `toml:"num_ctx"`    // context length; sent to ollama; for [control] it also sizes the window (Window.Sized)
-	KeepAlive  string `toml:"keep_alive"` // ollama only
-	Credential string `toml:"credential"` // keychain class of the API key; empty for none
+	// server's provider, dialect, URL and credential into the model, so the
+	// rest of nodwyn reads a model alone; a model that names a server sets none of
+	// these itself.
+	Server     string          `toml:"server"`
+	Dialect    llm.ChatDialect `toml:"dialect" json:",omitempty"` // Chat Completions dialect; inherited from Server when named.
+	Provider   string          `toml:"provider"`                  // "ollama" (the default when unset), or "openai" for any chat-completions server
+	URL        string          `toml:"url"`                       // base URL; for openai including the version, e.g. https://api.openai.com/v1
+	Model      string          `toml:"model"`                     // model id as the provider names it
+	NumCtx     int             `toml:"num_ctx"`                   // context length; sent to ollama; for [control] it also sizes the window (Window.Sized)
+	KeepAlive  string          `toml:"keep_alive"`                // ollama only
+	Credential string          `toml:"credential"`                // keychain class of the API key; empty for none
 	// MaxOutput caps this model's replies, thinking included, instead of
 	// window.output_reserve: a remote reasoning model may need more. 0 uses
 	// the window's.
@@ -201,11 +203,12 @@ type Model struct {
 
 // Server is a model server: where its models are reached and the key they
 // are reached with. A provider offers many models at one address under one
-// key, so the models on it name the server rather than repeat the three.
+// key, so the models on it name the server rather than repeat them.
 type Server struct {
-	Provider   string `toml:"provider"`   // as Model.Provider
-	URL        string `toml:"url"`        // as Model.URL
-	Credential string `toml:"credential"` // as Model.Credential
+	Dialect    llm.ChatDialect `toml:"dialect"`    // Empty keeps the compatible dialect; never inferred from the URL.
+	Provider   string          `toml:"provider"`   // as Model.Provider
+	URL        string          `toml:"url"`        // as Model.URL
+	Credential string          `toml:"credential"` // as Model.Credential
 }
 
 // The cache_key settings.
@@ -474,7 +477,7 @@ func Parse(raw []byte) (Config, error) {
 }
 
 // resolveServers gives each model that names a server the server's
-// provider, URL and credential. A model that also sets one of them is
+// provider, dialect, URL and credential. A model that also sets one of them is
 // refused rather than one of the two winning: either reading would surprise
 // whoever wrote the other.
 func (c *Config) resolveServers() error {
@@ -486,12 +489,12 @@ func (c *Config) resolveServers() error {
 		if !ok {
 			return fmt.Errorf("%s: server %q is not configured: add a [servers.%s] table with its provider, url and credential", where, m.Server, m.Server)
 		}
-		for _, f := range []struct{ key, value string }{{"provider", m.Provider}, {"url", m.URL}, {"credential", m.Credential}} {
+		for _, f := range []struct{ key, value string }{{"provider", m.Provider}, {"dialect", string(m.Dialect)}, {"url", m.URL}, {"credential", m.Credential}} {
 			if f.value != "" {
 				return fmt.Errorf("%s: %s comes from server %q; set it in [servers.%s], not here", where, f.key, m.Server, m.Server)
 			}
 		}
-		m.Provider, m.URL, m.Credential = s.Provider, s.URL, s.Credential
+		m.Provider, m.Dialect, m.URL, m.Credential = s.Provider, s.Dialect, s.URL, s.Credential
 		return nil
 	}
 	if err := resolve("control", &c.Control); err != nil {
@@ -630,6 +633,12 @@ func (s Server) validate() error {
 	default:
 		return fmt.Errorf("provider %q is not supported (ollama, openai)", s.Provider)
 	}
+	if err := s.Dialect.Validate(); err != nil {
+		return err
+	}
+	if s.Provider != "openai" && s.Dialect != "" {
+		return errors.New("dialect is for openai servers; ollama uses its native protocol")
+	}
 	u, err := url.Parse(s.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("url %q must be an http or https URL", s.URL)
@@ -641,7 +650,7 @@ func (s Server) validate() error {
 }
 
 func (m Model) validate() error {
-	if err := (Server{Provider: m.Provider, URL: m.URL, Credential: m.Credential}).validate(); err != nil {
+	if err := (Server{Provider: m.Provider, Dialect: m.Dialect, URL: m.URL, Credential: m.Credential}).validate(); err != nil {
 		return err
 	}
 	if m.Model == "" {

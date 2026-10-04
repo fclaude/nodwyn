@@ -200,6 +200,18 @@ key and one binding for every model a provider offers. When the app sets up
 a model for you, it saves the server and writes exactly that binding: the
 server's host, \code{POST}, a bearer \code{Authorization} header.
 
+The server may also set \code{dialect = "cerebras"} alongside
+\code{provider = "openai"}. Set it in the user's \file{config.toml}
+before starting \nodwyn{}: Cerebras reads assistant thinking in history as
+\code{reasoning} and rejects the default \code{reasoning\_content}.
+Omitting the dialect or using \code{"compatible"} preserves the existing
+encoding. A model with no server may set its own dialect; a model naming a
+server inherits it. Unknown dialects and dialects on Ollama are refused.
+Settings saves and model choices retain the dialect, including moving an
+inline control into a server at the same endpoint. No URL inference or
+console selector is involved. The log, window and credential binding keep
+their existing rules (\adr{8}, \adr{9}).
+
 A conversation may be moved to another model between turns
 (\adr{40}). The choice names a \code{[models.NAME]} entry, config.toml's
 \code{[control]} model, or a server and one of its models, so the key

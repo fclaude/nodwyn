@@ -17,8 +17,9 @@ import (
 // streamed: output is only shown once whole anyway, because a credential
 // can be split across tokens (ADR 25).
 type OpenAI struct {
-	URL    string // base including the version, e.g. https://api.openai.com/v1
-	Client *http.Client
+	Dialect ChatDialect
+	URL     string // base including the version, e.g. https://api.openai.com/v1
+	Client  *http.Client
 	// Authorize adds the request's credentials, or refuses to send it. It
 	// is how a key reaches the request without the provider holding it:
 	// the core injects it from the keychain after checking its binding.
@@ -122,9 +123,8 @@ type oaiMessage struct {
 	ToolCalls  []oaiToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string        `json:"tool_call_id,omitempty"`
 	// Reasoning is where servers that expose a model's thinking put it;
-	// the name varies (DeepSeek and vLLM: reasoning_content). A reply's
-	// thinking goes back as reasoning_content: the name DeepSeek, vLLM and
-	// Qwen's templates read, and an alias OpenRouter takes for reasoning.
+	// the name varies (DeepSeek and vLLM: reasoning_content). The dialect
+	// chooses the field for history separately from reading these aliases.
 	// Only the text goes back; OpenRouter's reasoning_details, which carry
 	// encrypted reasoning, are not kept, since the log redacts what looks
 	// like a key and would break them (ADR 9, amended 2026-10-02).
@@ -271,10 +271,11 @@ func usage(raw json.RawMessage) Usage {
 	return u
 }
 
-func toOpenAI(req Request) oaiRequest {
+func toOpenAI(req Request, dialect ChatDialect) oaiRequest {
 	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed}
 	for _, m := range req.Messages {
-		om := oaiMessage{Role: m.Role, Content: openAIContent(m), ToolCallID: m.ToolCallID, ReasoningContent: m.Thinking}
+		om := oaiMessage{Role: m.Role, Content: openAIContent(m), ToolCallID: m.ToolCallID}
+		dialect.setThinking(&om, m.Thinking)
 		for _, tc := range m.ToolCalls {
 			var ot oaiToolCall
 			ot.ID, ot.Type = tc.ID, "function"
@@ -301,7 +302,10 @@ func toOpenAI(req Request) oaiRequest {
 // Chat sends one chat completion. onDelta is called once with the whole
 // output, since the request is not streamed.
 func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*Response, error) {
-	wire := toOpenAI(req)
+	if err := o.Dialect.Validate(); err != nil {
+		return nil, Permanent(err)
+	}
+	wire := toOpenAI(req, o.Dialect)
 	if o.MaxTokensField == "max_tokens" {
 		wire.MaxTokens, wire.MaxCompletionTokens = wire.MaxCompletionTokens, 0
 	}

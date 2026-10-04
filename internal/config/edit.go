@@ -24,7 +24,7 @@ var tableHeader = regexp.MustCompile(`^\s*\[\[?\s*([A-Za-z0-9_."-]+)\s*\]\]?\s*(
 // A file without [control] gains one at the end. The result is parsed and
 // validated before it is returned, so a caller never writes a file nodwyn
 // would refuse to load. A model that names a server is written with the
-// server's name, not the provider, URL and credential Parse copied from it.
+// server's name, not the provider, dialect, URL and credential Parse copied from it.
 func SetControl(raw []byte, m Model) ([]byte, Config, error) {
 	return setTable(raw, "control", controlBlock(m))
 }
@@ -38,7 +38,7 @@ func SetServer(raw []byte, name string, s Server) ([]byte, Config, error) {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "[servers.%s]\n", name)
-	for _, f := range []struct{ key, value string }{{"provider", s.Provider}, {"url", s.URL}, {"credential", s.Credential}} {
+	for _, f := range []struct{ key, value string }{{"provider", s.Provider}, {"dialect", string(s.Dialect)}, {"url", s.URL}, {"credential", s.Credential}} {
 		if f.value != "" {
 			fmt.Fprintf(&b, "%s = %s\n", f.key, quote(f.value))
 		}
@@ -278,6 +278,7 @@ func controlBlock(m Model) string {
 		field("server", m.Server)
 	} else {
 		field("provider", m.Provider)
+		field("dialect", string(m.Dialect))
 		field("url", m.URL)
 	}
 	field("model", m.Model)

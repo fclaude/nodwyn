@@ -98,10 +98,19 @@ google_upload = "ask"         # ask | allow | deny; unset, the first upload asks
 \end{txt}
 
 A provider offers many models at one address under one key, so a server
-holds the three (\code{provider}, \code{url}, \code{credential}) and its
-models name it; a model may give them itself instead. The app saves a
+holds \code{provider}, \code{dialect}, \code{url} and \code{credential},
+and its models name it; a model may give them itself instead. The app saves a
 server the first time you choose a model on it, and after that lists the
 models the server offers.
+
+Chat Completions servers may interpret extensions differently. For Cerebras,
+set \code{dialect = "cerebras"} beside \code{provider = "openai"} in its
+server table, or on a model that names no server, before starting \nodwyn{}.
+It sends prior assistant thinking as \code{reasoning}; the default,
+\code{"compatible"}, keeps \code{reasoning\_content}. Unknown dialects
+and dialects on Ollama are refused. Settings preserves the choice when
+saving that server's model, but has no dialect selector. The choice changes
+neither the key's binding nor what the conversation log records.
 
 A model may also set \code{num\_ctx} (sent to Ollama; for \code{[control]}
 it also sizes the window) and \code{keep\_alive} (Ollama),

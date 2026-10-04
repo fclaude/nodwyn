@@ -425,10 +425,14 @@ no credential: it asks each server for its model list and reports whether it
 answered. `models.offered` asks the same list of one configured server, also
 without a credential, so a server that lists its models only to a key
 answers with an error saying so. `servers` in the settings are the
-`[servers.NAME]` tables of `config.toml`: `{name, provider, url,
-credential?}`, `credential` being the key's keychain class. `control` is the
-main model with its server's `Provider`, `URL` and `Credential` filled in,
-and `Server` naming that server. `settings.control.write` keeps every other
+`[servers.NAME]` tables of `config.toml`: `{name, provider, dialect?, url,
+credential?}`, `credential` being the key's keychain class. `dialect`, when
+configured, is `compatible` or `cerebras`; it selects Chat Completions
+history encoding independently of the protocol. `control` is the main
+model with its server's `Provider`, optional `Dialect`, `URL` and
+`Credential` filled in, and `Server` naming that server. Set a dialect in
+config.toml; `settings.control.write` preserves it when selecting a saved
+server, or moving an inline control to a server at the same endpoint. `settings.control.write` keeps every other
 line of `config.toml`, validates the result as the loader would, writes it
 atomically (0600), and applies it to sessions opened afterwards. With
 `server`, `[control]` names that server and the model. With `provider` and

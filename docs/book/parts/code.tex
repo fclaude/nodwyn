@@ -1617,7 +1617,11 @@ be rebuilt request by request.
 
 Model thinking is stored on \code{llm.resp}. From recipe v14
 \code{Build} sends it back on its reply (\code{Policy.Thinking}), as the
-log recorded it; for an older recipe it reads only the content and the
+log recorded it. The provider's dialect chooses the outgoing field:
+\code{thinking} for native Ollama, \code{reasoning} for Cerebras and
+\code{reasoning\_content} for the default Chat Completions dialect.
+This conversion leaves the canonical request and its hash unchanged;
+for an older recipe it reads only the content and the
 tool calls, so those requests replay to the hashes they recorded. A key held in the
 keychain appears only as its class and a handle id (\code{cred.register},
 and \code{cred.refresh} for an OAuth2 token refreshed before a use).

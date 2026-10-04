@@ -250,6 +250,7 @@ type controlParams struct {
 // modelServer is a [servers.NAME] table as Settings shows it: its key's
 // keychain class, never the key.
 type modelServer struct {
+	Dialect    string `json:"dialect,omitempty"`
 	Name       string `json:"name"`
 	Provider   string `json:"provider"`
 	URL        string `json:"url"`
@@ -272,7 +273,7 @@ func (s *server) settings() settingsResult {
 	servers := make([]modelServer, 0, len(s.options.Config.Servers))
 	for _, name := range slices.Sorted(maps.Keys(s.options.Config.Servers)) {
 		sv := s.options.Config.Servers[name]
-		servers = append(servers, modelServer{Name: name, Provider: providerName(sv.Provider), URL: sv.URL, Credential: sv.Credential})
+		servers = append(servers, modelServer{Name: name, Provider: providerName(sv.Provider), Dialect: string(sv.Dialect), URL: sv.URL, Credential: sv.Credential})
 	}
 	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: servers, Keychain: s.keychainStatus(),
 		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge,
@@ -435,6 +436,11 @@ func controlServer(p controlParams, servers map[string]config.Server, old config
 		name = serverName(host)
 		for n := 2; servers[name] != (config.Server{}); n++ {
 			name = fmt.Sprintf("%s-%d", serverName(host), n)
+		}
+		// Moving an inline model into a server keeps its wire dialect only
+		// at the same endpoint; another address may speak a different one.
+		if providerName(old.Provider) == p.Provider && strings.TrimRight(old.URL, "/") == srv.URL {
+			srv.Dialect = old.Dialect
 		}
 		// Keep a key the main model already sends to this host, unless a
 		// new one replaces it.
