@@ -18,6 +18,15 @@ check(async () => {
   await page.goto(`${base}/transcript.js`);
   const results = await page.evaluate(async () => {
     const { Transcript, contextGauge } = await import("/transcript.js");
+    // The console's own stylesheet, so the rows below are measured as the
+    // console lays them out; this page otherwise holds no styles.
+    await new Promise((ok) => {
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = "/style.css";
+      css.onload = ok;
+      document.head.append(css);
+    });
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const fresh = () => {
       const root = document.createElement("div");
@@ -87,6 +96,31 @@ check(async () => {
       const g2 = r2.root.querySelector(".activity.commands");
       out.failed = { failed, refused: { header: header(r2.root), run: g2.open, row: g2.querySelector(".call").open } };
     }
+    // A long command line stays inside its run: the row truncates with an
+    // ellipsis and the status beside it holds the card's right edge, instead
+    // of the line running past the card and a horizontal scrollbar with it.
+    {
+      const { root, t } = fresh();
+      // The transcript as a task page holds it at this viewport: the main
+      // column, the aside open, the console's 48px padding each side.
+      root.className = "transcript";
+      root.style.width = "936px";
+      const command = "bash -c go test ./internal/frontend/rpc/ -run TestSessionModelSet -count=1 2>&1 | tail -n 20";
+      const id = call(t, "shell-exec", { cmd: "bash", args: ["-c", command] });
+      t.render({ kind: "guard.decision", payload: { origin: "model", decision: "confirm", scope: "all" } });
+      done(t, id, "shell-exec", JSON.stringify({ status: 1, stdout: "", stderr: "" }), 1200);
+      const card = root.querySelector(".activity.commands");
+      const name = card.querySelector(".call .name");
+      const stat = card.querySelector(".call .stat");
+      const cardBox = card.getBoundingClientRect();
+      out.longCommand = {
+        status: stat.textContent,
+        nameClipped: name.scrollWidth > name.clientWidth,
+        nameInside: name.getBoundingClientRect().right <= cardBox.right - 11,
+        statInside: stat.getBoundingClientRect().right <= cardBox.right - 11,
+        scroll: root.scrollWidth <= root.clientWidth + 1,
+      };
+    }
     // A transcript taken off the page while a command runs (the person left
     // the task) stops its clock at the next tick.
     {
@@ -124,6 +158,9 @@ check(async () => {
   want(f.failed.header === "Ran 1 command | in 0.3 s · 1 failed" && f.failed.run && f.failed.row, `failed: ${JSON.stringify(f.failed)}`);
   want(f.refused.header === "Ran 1 command | in 0.0 s · 1 failed" && f.refused.run && f.refused.row, `refused: ${JSON.stringify(f.refused)}`);
   want(results.left.clock === null, `the clock outlived its transcript: ${JSON.stringify(results.left)}`);
+  const l = results.longCommand;
+  want(l.status === "exit 1 · 1.2 s · allowed: don't ask", `long command status: ${JSON.stringify(l)}`);
+  want(l.nameClipped && l.nameInside && l.statInside && l.scroll, `long command stays inside its card: ${JSON.stringify(l)}`);
   want(results.gauge.before === 61440 && results.gauge.after === 86016 && results.gauge.est === 4100, `gauge across a switch: ${JSON.stringify(results.gauge)}`);
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
