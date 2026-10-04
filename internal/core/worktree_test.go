@@ -217,28 +217,32 @@ func TestWorktreeGoesOnCloseOnlyWhenNothingIsLost(t *testing.T) {
 	}
 }
 
-// The folder's untracked workspace settings come along; nothing else does,
-// and the session is told how many uncommitted files it does not have.
-func TestWorktreeCopiesOnlyTheWorkspaceSettings(t *testing.T) {
+// Nothing uncommitted comes along to a worktree, and the session is told how
+// many uncommitted files it does not have. Its mounted folders are its
+// repository's, from the workspace list (ADR 22): nothing is copied for them.
+func TestWorktreeCopiesNothingAndUsesTheRepositorysMounts(t *testing.T) {
 	t.Parallel()
 	repo, _ := gitRepo(t)
-	settings := "kind = \"docs\"\n"
-	if err := os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for path, text := range map[string]string{".nodwyn/workspace.toml": settings, ".env": "TOKEN=x\n", "README": "changed\n"} {
+	ref := t.TempDir()
+	for path, text := range map[string]string{".env": "TOKEN=x\n", "README": "changed\n"} {
 		if err := os.WriteFile(filepath.Join(repo, path), []byte(text), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	o := worktreeOptions(t, repo)
+	if err := os.MkdirAll(o.Paths.ConfigDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.SaveRegistered(config.RegistryFile(o.Paths), config.Registered{Name: "repo", Path: repo, Mounts: []config.Mount{{Path: ref, Access: "read"}}}); err != nil {
+		t.Fatal(err)
+	}
 	s, err := New(o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	w := *s.Worktree()
-	if b, _ := os.ReadFile(filepath.Join(w.Path, ".nodwyn", "workspace.toml")); string(b) != settings || s.Workspace().Kind != "docs" {
-		t.Fatalf("workspace.toml %q, kind %q", b, s.Workspace().Kind)
+	if got := s.Workspace().Mounts; len(got) != 1 || got[0] != (config.Mount{Path: ref, Access: "read"}) {
+		t.Fatalf("the worktree's mounts: %+v", got)
 	}
 	if _, err := os.Stat(filepath.Join(w.Path, ".env")); err == nil {
 		t.Fatal(".env was copied")
@@ -252,15 +256,13 @@ func TestWorktreeCopiesOnlyTheWorkspaceSettings(t *testing.T) {
 			t.Fatal(ev.Payload)
 		}
 	}
-	// .env and the change to README are not in the worktree; the settings,
-	// copied, are.
+	// .env and the change to README are not in the worktree.
 	if made.Uncommitted != 2 {
 		t.Fatalf("uncommitted: %d", made.Uncommitted)
 	}
-	// The copied settings alone do not keep the worktree.
 	s.Close()
 	if _, err := os.Stat(w.Path); !os.IsNotExist(err) {
-		t.Fatal("the copied settings kept the worktree")
+		t.Fatal("an untouched worktree was kept")
 	}
 }
 

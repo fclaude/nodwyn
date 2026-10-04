@@ -8,48 +8,50 @@ things back.
 
 \section{A workspace}
 
-A \textbf{workspace} is a folder plus a small settings file,
-\file{<folder>/.nodwyn/workspace.toml}. Without the file, a folder is a
-plain code workspace: that folder, writable, nothing else.
+A \textbf{workspace} is a folder you named, with the other folders its
+tasks may use: its \emph{mounts}. Both are kept in \file{workspaces.toml}
+in the config directory, never in the folder. A folder nobody named is a
+plain workspace: that folder, writable, nothing else.
 
 \begin{toml}
-# <folder>/.nodwyn/workspace.toml
-kind = "docs"
+# ~/.config/nodwyn/workspaces.toml
+[[workspace]]
+name = "Garden"
+path = "/home/me/garden"
 
-[[mount]]
-path = "~/Reference/garden-books"
+[[workspace.mount]]
+path = "/home/me/Reference/garden-books"
 access = "read"
 
-[[mount]]
+[[workspace.mount]]
 path = "/Volumes/Shared/seed-orders"
 access = "write"
 \end{toml}
 
-\begin{description}[leftmargin=1.2em,labelindent=0pt]
-  \item[kind] \code{code}, \code{docs} or \code{mixed}. It is a
-    \emph{label}: the console shows it, and it says what the folder holds.
-    Every kind has the same tools and the same guard.
-  \item[mounts] other folders a task may use, by absolute path (or
-    \code{\textasciitilde/}), \code{read} or \code{write}. A read-only mount
-    refuses every write. Mounts may not overlap the workspace or each
-    other, and \code{/} or your whole home folder is refused as too broad.
-\end{description}
+A mount is another folder a task may use, by absolute path (or
+\code{\textasciitilde/}), \code{read} or \code{write}. A read-only mount
+refuses every write. Mounts may not overlap the workspace or each other, and
+\code{/} or your whole home folder is refused as too broad. A task in a
+git worktree of its own has its repository's mounts.
 
-The console's \textbf{Workspaces} page edits this for you and names the
-folder in a registry, so Home can offer it. From Scheme:
+The console's \textbf{Workspaces} page edits this for you, and Home offers
+the folders it names. From Scheme:
 
 \begin{txt}
 you> :eval (workspace)
-(("kind" . "code") ("mounts"))
+(("mounts" (("path" . "/home/me/Reference/garden-books") ("access" . "read")) ...))
 \end{txt}
 
 When a workspace has mounts, the default system prompt adds a section
 naming them, so the model knows to reach them by absolute path.
 
 \begin{careful}
-\file{workspace.toml} lives under \file{.nodwyn/}, a protected path: the
-model cannot widen its own mounts. Changing them is your decision, in the
-console or by editing the file, and applies to tasks started afterwards.
+The mounts live in the config directory, which the guard keeps from the
+model: it cannot widen its own mounts, and a repository cannot either, since
+nothing in a folder is read for them (\adr{22}). A
+\file{.nodwyn/workspace.toml} from an older \nodwyn{} is ignored; add its
+mounts again on Workspaces. Changing them is your decision, in the console
+or by editing the file, and applies to tasks started afterwards.
 \end{careful}
 
 \section{Undo where git is not the undo}
@@ -225,8 +227,9 @@ task's edit shows up in another's test run. On Home, \textbf{In a
 worktree} beside the folder starts a task in a git worktree of its own
 instead (\adr{34}): \file{.nodwyn/worktrees/<id>/} on a new branch
 \code{nodwyn/<id>}, from the repository's \code{HEAD}. The worktree is the
-task's root, with its own \file{.nodwyn/} settings; the notes, MCP servers
-and history are the repository's, and the task is listed under it.
+task's root, with its own \file{.nodwyn/} settings; the notes, mounted
+folders, MCP servers and history are the repository's, and the task is
+listed under it.
 Uncommitted changes are not carried over, and the conversation says how
 many there were. \code{(worktree)} tells a strategy where the task works,
 and the system prompt tells the model, with a warning against
@@ -244,7 +247,7 @@ worktree was removed makes it again.
 \toprule
 \textbf{what} & \textbf{where} \\
 \midrule
-workspace settings & \file{<folder>/.nodwyn/workspace.toml} \\
+workspace names and mounts & \file{workspaces.toml} in the config directory \\
 project tools and strategy & \file{<folder>/.nodwyn/init.scm} (and what it loads) \\
 standing approvals & \file{<folder>/.nodwyn/allow.toml}, \file{config.toml} \\
 kept versions & \file{<folder>/.nodwyn/versions/} (what git cannot give back) \\

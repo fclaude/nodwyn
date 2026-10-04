@@ -339,3 +339,13 @@ checks that closing keeps a worktree with work in it. The core tests run
 real git in temporary repositories: the removal rules, restore,
 refusals, the link check and the shared project.
 
+
+## Amendment 2026-10-03: nothing is copied into a worktree
+
+A folder's `.nodwyn/workspace.toml` is no longer read (ADR 22, amended
+2026-10-03): a worktree's mounted folders are its repository's, from the
+workspace list in the config directory. So nothing untracked is copied into
+a new worktree, the refusal of a `.nodwyn` link in the new checkout, which
+guarded only that copy, goes with it, and close treats every untracked or
+ignored file alike: any of them keeps the worktree. The `uncommitted`
+count of `worktree.create` counts every line `git status` gives.

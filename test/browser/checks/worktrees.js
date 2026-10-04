@@ -67,10 +67,10 @@ check(async () => {
   }
   await shows(page, ".task-head .task-meta", "project", branches[second]);
   await shows(page, ".transcript", `Working in a git worktree of its own, on ${branches[second]}, from main`);
-  // Adding the folder wrote its settings, untracked, which the worktree got
-  // a copy of: nothing is said to be missing.
-  assert.ok(fs.existsSync(path.join(repo, ".nodwyn", "workspace.toml")), "the folder has no settings of its own");
-  assert.ok(!(await page.innerText(".transcript")).includes("uncommitted"), "the copied settings were counted as left behind");
+  // Adding the folder wrote nothing into it (ADR 22): the repository has
+  // nothing untracked, so nothing is said to be left behind.
+  assert.ok(!fs.existsSync(path.join(repo, ".nodwyn", "workspace.toml")), "naming the folder wrote a workspace file into it");
+  assert.ok(!(await page.innerText(".transcript")).includes("uncommitted"), "something was counted as left behind");
   await shows(page, ".task-aside", "Branch", branches[second], `Its changes stay on ${branches[second]} until it is merged into main`);
   await page.screenshot({ path: `${out}/worktree-task.png` });
   // Both are listed under the repository, which Home offers once.

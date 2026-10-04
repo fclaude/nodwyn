@@ -430,18 +430,23 @@ task closes.
 \chapter{Workspaces, attachments and undo}\label{ch:undo}
 
 A session's root is the directory it was started in. A workspace can also
-\emph{mount} other folders, read-only or writable, in
-\file{.nodwyn/workspace.toml}:
+\emph{mount} other folders, read-only or writable. The mounts are yours,
+kept with the workspace's name in \file{workspaces.toml} in the config
+directory, never in the folder, so a repository someone else commits cannot
+mount anything (\adr{22}):
 
 \begin{txt}
-kind = "docs"                          # a label: every kind has the same tools
-[[mount]]
-path = "~/Reference/contracts"
+[[workspace]]
+name = "Contracts"
+path = "/home/me/work/contracts"
+
+[[workspace.mount]]
+path = "/home/me/Reference/contracts"
 access = "read"
 \end{txt}
 
 The console's Workspaces page adds, names and removes folders and edits
-their mounts; removing one forgets its name, never the folder.
+their mounts; removing one forgets its name and mounts, never the folder.
 Attachments come in through the console's composers (or
 \code{session.attach} over the protocol); Chapter~\ref{ch:io} says what
 happens to them.

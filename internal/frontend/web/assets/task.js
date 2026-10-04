@@ -5,7 +5,6 @@
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
 import { Transcript, planSteps, usd, contextGauge, judgeTally } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
-import { kindLabel } from "./home.js";
 import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
@@ -943,7 +942,6 @@ export class TaskView {
     const tools = this.info?.tools?.length;
     const ws = this.info?.workspace;
     const named = this.desk.workspace(this.desk.project(item));
-    const kind = ws?.kind || named?.kind;
     const rows = [h("div", { class: "kv" }, h("span", { class: "mono", title: item.repo }, shortPath(item.repo, this.desk.home)), h("span", {}, "write"))];
     for (const m of ws?.mounts || named?.mounts || []) rows.push(h("div", { class: "kv" }, h("span", { class: "mono", title: m.path }, shortPath(m.path, this.desk.home)), h("span", {}, m.access === "write" ? "write" : "read only")));
     if (tools) rows.push(h("div", { class: "kv" }, h("span", {}, "Tools"), h("span", {}, `${tools} offered to the model`)));
@@ -956,7 +954,7 @@ export class TaskView {
     }
     const worktree = w ? `This task works in a git worktree of its own, so other tasks and you can work in ${this.desk.folderName(w.repository)} meanwhile. Its changes stay on ${w.branch} until it is merged${w.base ? ` into ${w.base}` : ""}; closing the task removes the worktree only when nothing in it would be lost.` : "";
     const undo = this.info ? (this.info.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the previous version of anything else before it writes. Restore it from Changes." : "Not a git repository, so nodwyn keeps the previous version of a file before it writes. Restore it from Changes.") : "";
-    return h("section", { class: "panel" }, h("h2", {}, "Workspace", kind ? h("span", { class: "note" }, kindLabel(kind)) : null), rows, worktree ? h("p", { class: "hint" }, worktree) : null, undo ? h("p", { class: "hint" }, undo) : null);
+    return h("section", { class: "panel" }, h("h2", {}, "Workspace"), rows, worktree ? h("p", { class: "hint" }, worktree) : null, undo ? h("p", { class: "hint" }, undo) : null);
   }
   async history(path) {
     if (this.histories.has(path)) {

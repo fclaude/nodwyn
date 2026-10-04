@@ -23,10 +23,9 @@ type Options struct {
 	Root      string // repository root; every path is pinned under it
 	Scratch   string // the session's scratch directory, outside Root; "" for none
 	NotesFile string // this repository\'s notes kept across sessions, outside Root; "" for none
-	// Workspace (ADR 22): its kind (a label: every kind has the same tools),
-	// the folders outside Root it may use, and the version store that keeps a
-	// file's previous content before a write where git is not the undo.
-	Kind     string
+	// Workspace (ADR 22): the folders outside Root it may use, and the
+	// version store that keeps a file's previous content before a write where
+	// git is not the undo.
 	Mounts   []guard.Mount
 	Versions *Versions
 	// Worktree is the git worktree Root is, when the session was given one
@@ -213,17 +212,13 @@ func repository(o Options) *scheme.Prim {
 	}
 }
 
-// workspace builds (workspace): the workspace's kind and its mounted
-// folders, as an alist: (("kind" . "docs") ("mounts" (("path" . P) ("access" . A)) …)).
+// workspace builds (workspace): the workspace's mounted folders, as an
+// alist: (("mounts" (("path" . P) ("access" . A)) …)).
 func workspace(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "workspace",
-		Meta: scheme.Meta{Doc: "This workspace's kind (code, docs or mixed) and the folders outside it it may use.", Hidden: true},
+		Meta: scheme.Meta{Doc: "The folders outside this workspace it may use.", Hidden: true},
 		Handler: func(*scheme.Call) (scheme.Value, error) {
-			kind := o.Kind
-			if kind == "" {
-				kind = "code"
-			}
 			var mounts []scheme.Value
 			for _, m := range o.Mounts {
 				access := "read"
@@ -232,7 +227,7 @@ func workspace(o Options) *scheme.Prim {
 				}
 				mounts = append(mounts, scheme.List(scheme.Cons(scheme.Str("path"), scheme.Str(m.Path)), scheme.Cons(scheme.Str("access"), scheme.Str(access))))
 			}
-			return scheme.List(scheme.Cons(scheme.Str("kind"), scheme.Str(kind)), scheme.Cons(scheme.Str("mounts"), scheme.List(mounts...))), nil
+			return scheme.List(scheme.Cons(scheme.Str("mounts"), scheme.List(mounts...))), nil
 		},
 	}
 }

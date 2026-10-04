@@ -270,11 +270,12 @@ branch out there; the notes, MCP servers and session history are the
 repository's, and the task is listed under it. The folder ignores itself
 (`.nodwyn/worktrees/.gitignore` is `*`), so the repository's `git status`
 stays clean. What is uncommitted in the repository is not in the worktree
-(the conversation says how many files), and nothing untracked is copied but
-an untracked `.nodwyn/workspace.toml`; a first build or install there starts
-from nothing. The model is told it is in a worktree, that others may be
-working beside it, and to compare with the unchanged code on a copy of the
-last commit rather than with `git stash`, which every worktree shares.
+(the conversation says how many files), and nothing untracked is copied; a
+first build or install there starts from nothing. The task has the
+repository's mounted folders, from the workspace list. The model is told it
+is in a worktree, that others may be working beside it, and to compare with
+the unchanged code on a copy of the last commit rather than with `git
+stash`, which every worktree shares.
 
 The work stays on the branch until it is merged, for example with `git
 merge nodwyn/<id>` in the repository. Closing the task removes the worktree

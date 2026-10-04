@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,18 +17,30 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
-// A docs workspace (ADR 22) has every tool a code workspace has, the
-// defaults' own included, and evaluates Scheme; mounted folders are reached
-// by absolute path, read-only ones refuse writes, and the previous content
-// of a replaced file is kept where git is not the undo.
-func TestDocsWorkspaceHasEveryTool(t *testing.T) {
+// mounted registers repo in a workspace list of its own with mounts, as
+// the console's workspace.save does, and returns the paths to open it with.
+func mounted(t *testing.T, repo string, mounts ...config.Mount) config.Paths {
+	t.Helper()
+	paths := config.PathsUnder(t.TempDir(), t.TempDir())
+	if err := os.MkdirAll(paths.ConfigDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.SaveRegistered(config.RegistryFile(paths), config.Registered{Name: "work", Path: repo, Mounts: mounts}); err != nil {
+		t.Fatal(err)
+	}
+	return paths
+}
+
+// A workspace with mounted folders (ADR 22) has every tool, the defaults'
+// own included, and evaluates Scheme; mounted folders are reached by
+// absolute path, read-only ones refuse writes, and the previous content of
+// a replaced file is kept where git is not the undo.
+func TestWorkspaceUsesItsMountedFolders(t *testing.T) {
 	t.Parallel()
 	repo, ref := t.TempDir(), t.TempDir()
 	os.WriteFile(filepath.Join(repo, "status.md"), []byte("old status\n"), 0o644)
 	os.WriteFile(filepath.Join(ref, "contract.txt"), []byte("terms\n"), 0o644)
-	if _, err := config.SaveWorkspace(repo, config.Workspace{Kind: config.KindDocs, Mounts: []config.Mount{{Path: ref, Access: "read"}}}); err != nil {
-		t.Fatal(err)
-	}
+	paths := mounted(t, repo, config.Mount{Path: ref, Access: "read"})
 	srv := fake.NewT(t,
 		fake.Turn{ToolCalls: []fake.ToolCall{
 			{ID: "r", Name: "fs-read", Args: map[string]any{"path": filepath.Join(ref, "contract.txt")}},
@@ -39,7 +52,7 @@ func TestDocsWorkspaceHasEveryTool(t *testing.T) {
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
-	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: &bytes.Buffer{}})
+	s, err := New(Options{Config: cfg, Repo: repo, Paths: paths, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: &bytes.Buffer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,11 +63,11 @@ func TestDocsWorkspaceHasEveryTool(t *testing.T) {
 	}
 	for _, name := range []string{"shell-exec", "read-definition", "second-look"} {
 		if !offered[name] {
-			t.Fatalf("a docs workspace does not offer %s", name)
+			t.Fatalf("a workspace does not offer %s", name)
 		}
 	}
 	if v, err := s.Eval(context.Background(), `(+ 1 2)`); err != nil || scheme.Write(v) != "3" {
-		t.Fatalf("a docs workspace did not evaluate Scheme: %v %v", v, err)
+		t.Fatalf("a workspace did not evaluate Scheme: %v %v", v, err)
 	}
 	r := &rig{t: t, s: s, srv: srv, repo: repo}
 	s.Send("update the status")
@@ -99,15 +112,13 @@ func mustJSON(t *testing.T, v any) []byte {
 func TestUnattendedPromptNamesMounts(t *testing.T) {
 	t.Parallel()
 	repo, ref := t.TempDir(), t.TempDir()
-	if _, err := config.SaveWorkspace(repo, config.Workspace{Mounts: []config.Mount{{Path: ref, Access: "read"}}}); err != nil {
-		t.Fatal(err)
-	}
+	paths := mounted(t, repo, config.Mount{Path: ref, Access: "read"})
 	// A --yolo turn that changes nothing is reminded once.
 	srv := fake.NewT(t, fake.Turn{Content: "done"}, fake.Turn{Content: "done"})
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
-	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: &bytes.Buffer{}})
+	s, err := New(Options{Config: cfg, Repo: repo, Paths: paths, Version: "test", Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: &bytes.Buffer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,5 +130,48 @@ func TestUnattendedPromptNamesMounts(t *testing.T) {
 	raw := string(srv.Requests[0].Raw)
 	if !strings.Contains(raw, "You work unattended") || !strings.Contains(raw, ref) {
 		t.Fatal("the unattended prompt does not name the mounted folder")
+	}
+}
+
+// A folder's own .nodwyn/workspace.toml, which whoever commits to it writes,
+// grants nothing: a session there reads only its folder and what the
+// person's workspace list mounts, and every confirm answered no changes
+// none of that (ADR 22, amended 2026-10-03).
+func TestAFoldersOwnWorkspaceFileGrantsNothing(t *testing.T) {
+	t.Parallel()
+	repo, outside := t.TempDir(), t.TempDir()
+	secret := filepath.Join(outside, "private.txt")
+	if err := os.WriteFile(secret, []byte("someone else's notes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".nodwyn", "workspace.toml"), []byte("kind = \"docs\"\n\n[[mount]]\npath = "+strconv.Quote(outside)+"\naccess = \"write\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": secret}}}}, fake.Turn{Content: "done"})
+	t.Cleanup(srv.Close)
+	cfg := config.Default()
+	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
+	paths := config.PathsUnder(t.TempDir(), t.TempDir())
+	s, err := New(Options{Config: cfg, Repo: repo, Paths: paths, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	if ws := s.Workspace(); len(ws.Mounts) != 0 {
+		t.Fatalf("the folder's own file mounted %+v", ws.Mounts)
+	}
+	r := &rig{t: t, s: s, srv: srv, repo: repo}
+	if e := r.turn("read it"); e != "" {
+		t.Fatal(e)
+	}
+	raw := string(mustJSON(t, s.EventsSoFar()))
+	if strings.Contains(raw, "someone else's notes") || !strings.Contains(raw, "outside the repository") {
+		t.Fatal("a file outside the folder was read on the folder's own say-so")
+	}
+	if v, err := s.Eval(context.Background(), `(workspace)`); err != nil || scheme.Write(v) != `(("mounts"))` {
+		t.Fatalf("(workspace) is %s %v", scheme.Write(v), err)
 	}
 }

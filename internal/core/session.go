@@ -105,8 +105,8 @@ type Session struct {
 	bindings *binding.Live
 	scratch  string      // the session's scratch directory (scratch.go)
 	procs    *prim.Procs // background processes; stopped when the session closes
-	// workspace is the repository's .nodwyn/workspace.toml as loaded at
-	// construction: its kind and mounted folders (ADR 22).
+	// workspace is the folders outside the root the session may use, as
+	// the workspace list named them at construction (ADR 22).
 	workspace config.Workspace
 	// worktree is the git worktree made for the session, which is its root;
 	// nil when it works in the folder itself (ADR 34, worktree.go).

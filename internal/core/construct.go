@@ -93,7 +93,7 @@ func New(o Options) (*Session, error) {
 		secrets: map[string]pendingSecret{},
 	}
 	// The worktree comes first: it is the root everything else loads from
-	// (workspace.toml, init.scm, allow.toml). A session that never starts
+	// (init.scm, allow.toml). A session that never starts
 	// takes it away again, with its branch.
 	var made log.WorktreeChange
 	if o.Worktree {
@@ -219,7 +219,6 @@ func (s *Session) primitiveOptions() prim.Options {
 	if w := s.worktree; w != nil {
 		po.Worktree = &prim.Worktree{Repository: w.Repository, Branch: w.Branch, Base: w.Base, BaseCommit: w.BaseCommit}
 	}
-	po.Kind = s.workspace.Kind
 	for _, m := range s.workspace.Mounts {
 		po.Mounts = append(po.Mounts, guard.Mount{Path: m.Path, Write: m.Access == "write"})
 	}
@@ -340,7 +339,14 @@ func (s *Session) initialize() (err error) {
 			removeScratch(s.scratch)
 		}
 	}()
-	if s.workspace, err = config.LoadWorkspace(o.Repo); err != nil {
+	// The folders outside the root it may use are the person's, named in the
+	// config directory for the project (ADR 22): a worktree's are its
+	// repository's. A session with no config directory has none.
+	registry := ""
+	if o.Paths.ConfigDir != "" {
+		registry = config.RegistryFile(o.Paths)
+	}
+	if s.workspace, err = config.LoadWorkspace(registry, s.project()); err != nil {
 		return fmt.Errorf("core: %w", err)
 	}
 	// The model this conversation talks to: config.toml's [control] model,

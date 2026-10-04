@@ -13,10 +13,6 @@ let starting = false; // a start is in flight: one task per ask
 // this tab only: a choice made once for a folder holds for its next tasks.
 const inWorktree = new Set();
 
-export function kindLabel(kind) {
-  return { docs: "documents", code: "code", mixed: "code and documents" }[kind] || kind || "";
-}
-
 // chooseFolder preselects the folder the next task starts in.
 export function chooseFolder(folder) {
   chosen = folder;
@@ -104,7 +100,7 @@ export function renderHome(root, ctx) {
     h(
       "div",
       { class: "ask-bar" },
-      h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder"), chosen && desk.workspace(chosen) ? h("span", { class: "muted" }, kindLabel(desk.workspace(chosen).kind)) : null),
+      h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder")),
       attach,
       worktreeBox,
       h("span", { class: "where" }, where),
@@ -116,33 +112,27 @@ export function renderHome(root, ctx) {
   const chips = h("div", { class: "work-in", id: "work-in" }, h("span", {}, "Work in"));
   const listed = [chosen, ...folders.filter((f) => f !== chosen)].filter(Boolean);
   for (const folder of listed.slice(0, 6)) {
-    const ws = desk.workspace(folder);
     chips.append(
       h(
         "button",
         { type: "button", class: "chip", "aria-pressed": String(folder === chosen), title: folder, onclick: () => { chosen = folder; renderHome(root, ctx); } },
         desk.folderName(folder),
-        ws ? h("span", { class: "sub" }, kindLabel(ws.kind)) : null,
       ),
     );
   }
   // The rest are on Workspaces, each with New task here.
   if (listed.length > 6) chips.append(h("a", { class: "chip", href: "#/workspaces", style: "text-decoration:none", title: "Every folder, on Workspaces" }, `${listed.length - 6} more`));
-  // Adding a folder names it and says what kind of work it holds; where the
-  // console may save workspaces, the folder joins the list for next time.
+  // Adding a folder names it; where the console may save workspaces, the
+  // folder joins the list for next time.
   const adding = h("form", { class: "add-folder card", hidden: true });
   const pathInput = h("input", { class: "input", id: "add-path", placeholder: "/absolute/path/to/a/folder", spellcheck: false, autocomplete: "off", required: true });
   const nameInput = h("input", { class: "input", id: "add-name", placeholder: "for example Receipts 2026", autocomplete: "off" });
-  let kind = "docs";
-  const kindChoice = (id, label) =>
-    h("button", { type: "button", class: "chip", "aria-pressed": String(kind === id), onclick: (e) => { kind = id; for (const b of e.target.parentElement.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b === e.target)); } }, label);
   const addError = h("p", { class: "error", role: "alert" });
   const canSave = conn.has("workspace.save");
   adding.append(
     h("div", { class: "field" }, h("label", { for: "add-path" }, "Folder"), h("div", { class: "row-actions" }, pathInput, pickFolder ? h("button", { type: "button", class: "btn", onclick: async () => { const p = await pickFolder(); if (p) { pathInput.value = p; if (!nameInput.value) nameInput.value = p.split("/").pop(); } } }, "Choose…") : null)),
     canSave ? h("div", { class: "field" }, h("label", { for: "add-name" }, "Name"), nameInput) : null,
-    canSave ? h("div", { class: "field" }, h("label", {}, "What's in it"), h("div", { class: "row-actions" }, kindChoice("docs", "Documents"), kindChoice("code", "Code"), kindChoice("mixed", "Both"))) : null,
-    canSave ? h("p", { class: "hint" }, "Either way nodwyn reads, writes and organizes files and can run programs. Unless git has a file committed and unchanged, it keeps the previous version before changing it.") : null,
+    canSave ? h("p", { class: "hint" }, "nodwyn reads, writes and organizes the files there and can run programs. Unless git has a file committed and unchanged, it keeps the previous version before changing it.") : null,
     addError,
     h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, canSave ? "Add this folder" : "Use this folder"), h("button", { type: "button", class: "btn ghost", onclick: () => (adding.hidden = true) }, "Cancel")),
   );
@@ -155,7 +145,7 @@ export function renderHome(root, ctx) {
     }
     if (canSave) {
       try {
-        await conn.call("workspace.save", { path, name: nameInput.value.trim(), kind, mounts: [] });
+        await conn.call("workspace.save", { path, name: nameInput.value.trim(), mounts: [] });
         await desk.refreshWorkspaces();
       } catch (e) {
         addError.textContent = e.message;

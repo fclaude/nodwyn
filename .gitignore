@@ -9,6 +9,9 @@ coverage.out
 /.claude/settings.local.json
 /.claude/worktrees/
 
+# the workspace file older versions of nodwyn wrote; none is read now (ADR 22)
+/.nodwyn/workspace.toml
+
 # OS
 .DS_Store
 

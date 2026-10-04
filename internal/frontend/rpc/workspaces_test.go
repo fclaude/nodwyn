@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -11,35 +12,47 @@ import (
 	"github.com/fclaude/nodwyn/internal/prim"
 )
 
-func TestWorkspaceSaveListAndDocsSessions(t *testing.T) {
+// A workspace's name and mounted folders go to the workspace list in the
+// config directory, never into the folder; a task opened there has its
+// mounts and every tool; a kind is no longer a thing to send (ADR 22).
+func TestWorkspaceSaveListAndSessions(t *testing.T) {
 	o := options(t)
 	path, _ := start(t, o)
 	c := connect(t, path)
 	c.hello()
 	code, docs, ref := t.TempDir(), t.TempDir(), t.TempDir()
 	var info workspaceInfo
-	json.Unmarshal(c.ok("workspace.save", map[string]any{"path": code, "name": "nodwyn", "kind": "code", "mounts": []any{}}), &info)
-	if _, err := os.Stat(config.WorkspaceFile(code)); err == nil {
-		t.Fatal("naming a code repository wrote a workspace file into it")
-	}
-	json.Unmarshal(c.ok("workspace.save", map[string]any{"path": docs, "name": "Receipts 2026", "kind": "docs", "mounts": []any{map[string]any{"path": ref, "access": "read"}}}), &info)
-	if info.Kind != "docs" || len(info.Mounts) != 1 {
+	json.Unmarshal(c.ok("workspace.save", map[string]any{"path": code, "name": "nodwyn", "mounts": []any{}}), &info)
+	json.Unmarshal(c.ok("workspace.save", map[string]any{"path": docs, "name": "Receipts 2026", "mounts": []any{map[string]any{"path": ref, "access": "read"}}}), &info)
+	if info.Name != "Receipts 2026" || len(info.Mounts) != 1 || info.Mounts[0].Path != ref {
 		t.Fatalf("saved: %+v", info)
 	}
-	if r := c.call("workspace.save", map[string]any{"path": filepath.Join(docs, "missing"), "name": "x", "kind": "docs", "mounts": []any{}}); r.Error == nil {
+	for _, folder := range []string{code, docs} {
+		if entries, _ := os.ReadDir(folder); len(entries) != 0 {
+			t.Fatalf("saving a workspace wrote into %s: %v", folder, entries)
+		}
+	}
+	registry, err := os.ReadFile(config.RegistryFile(o.Paths))
+	if err != nil || !strings.Contains(string(registry), "[[workspace.mount]]") || !strings.Contains(string(registry), ref) {
+		t.Fatalf("workspaces.toml: %s %v", registry, err)
+	}
+	if r := c.call("workspace.save", map[string]any{"path": filepath.Join(docs, "missing"), "name": "x", "mounts": []any{}}); r.Error == nil {
 		t.Fatal("saved a folder that does not exist")
 	}
-	if r := c.call("workspace.save", map[string]any{"path": docs, "name": "x", "kind": "shell", "mounts": []any{}}); r.Error == nil {
-		t.Fatal("saved an unknown kind")
+	if r := c.call("workspace.save", map[string]any{"path": docs, "name": "x", "mounts": []any{map[string]any{"path": "/", "access": "read"}}}); r.Error == nil {
+		t.Fatal("saved a mount of /")
+	}
+	if r := c.call("workspace.save", map[string]any{"path": docs, "name": "x", "kind": "docs", "mounts": []any{}}); r.Error == nil || !strings.Contains(r.Error.Message, "kind") {
+		t.Fatalf("a kind was accepted: %+v", r.Error)
 	}
 	var list []workspaceInfo
 	json.Unmarshal(c.ok("workspace.list", map[string]any{}), &list)
-	if len(list) != 2 || list[1].Name != "Receipts 2026" || list[1].Kind != "docs" {
+	if len(list) != 2 || list[1].Name != "Receipts 2026" || len(list[1].Mounts) != 1 {
 		t.Fatalf("list: %+v", list)
 	}
 	var details sessionDetails
 	json.Unmarshal(c.ok("session.open", map[string]any{"repo": docs}), &details)
-	if details.Workspace.Kind != "docs" || len(details.Workspace.Mounts) != 1 {
+	if len(details.Workspace.Mounts) != 1 || details.Workspace.Mounts[0].Path != ref {
 		t.Fatalf("session workspace: %+v", details.Workspace)
 	}
 	shell := false
@@ -47,10 +60,10 @@ func TestWorkspaceSaveListAndDocsSessions(t *testing.T) {
 		shell = shell || tool.Name == "shell-exec"
 	}
 	if !shell {
-		t.Fatal("a docs session does not offer shell-exec")
+		t.Fatal("a workspace session does not offer shell-exec")
 	}
 	if r := c.call("session.eval", map[string]any{"id": details.ID, "source": "(+ 1 2)"}); r.Error != nil {
-		t.Fatalf("a docs session refused Scheme: %+v", r.Error)
+		t.Fatalf("a workspace session refused Scheme: %+v", r.Error)
 	}
 	c.ok("workspace.remove", map[string]any{"path": code})
 	json.Unmarshal(c.ok("workspace.list", map[string]any{}), &list)

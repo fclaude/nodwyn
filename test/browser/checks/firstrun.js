@@ -1,6 +1,7 @@
 // First run of `nodwyn app`: no config, no keychain. Set up a model from the
 // page, create a keychain, switch to another model on the saved server, add
-// a documents workspace and others, attach a file with a secret in it, start
+// workspaces (one with a mounted folder, kept in the workspace list and not
+// in the folder), attach a file with a secret in it, start
 // a task in the folder and answer it; then History stays open through the
 // redraws that follow-ups cause, and restores the file it edited, and notes
 // being edited keep what was typed through them.
@@ -85,29 +86,38 @@ check(async () => {
   assert.ok(switched.includes('[control]\nserver = "127-0-0-1"\nmodel = "fake"\n') && switched.split(modelURL).length === 2, "another model on the server: " + switched);
   step("another model on the saved server chosen by name");
 
-  // A documents workspace, added from Home with a folder typed by hand.
+  // A workspace, added from Home with a folder typed by hand: a name, and
+  // no kind to choose (ADR 22).
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#task");
   await page.click("text=Add a folder");
   await page.fill("#add-path", `${root}/work`);
   await page.fill("#add-name", "Family papers");
-  await page.click("button:has-text('Documents')");
+  assert.strictEqual(await page.locator("text=What's in it").count(), 0, "the add form still asks what a folder holds");
   await page.click("button:has-text('Add this folder')");
   await page.waitForSelector("#work-in button[aria-pressed=true]:has-text('Family papers')");
-  assert.deepStrictEqual(sent.of("workspace.save"), [{ path: `${root}/work`, name: "Family papers", kind: "docs", mounts: [] }]);
-  assert.match(fs.readFileSync(`${root}/work/.nodwyn/workspace.toml`, "utf8"), /kind = "docs"/);
-  step("documents workspace added");
+  assert.deepStrictEqual(sent.of("workspace.save"), [{ path: `${root}/work`, name: "Family papers", mounts: [] }]);
+  assert.ok(!fs.existsSync(`${root}/work/.nodwyn`), "naming a folder wrote into it");
+  step("workspace added from Home");
 
-  // Workspaces: two more added there, and one of them removed.
-  for (const d of ["receipts", "letters"]) fs.mkdirSync(`${root}/${d}`);
+  // Workspaces: two more added there, one with a mounted folder, and one of
+  // them removed. The mount is kept in the workspace list, not the folder.
+  for (const d of ["receipts", "letters", "reference"]) fs.mkdirSync(`${root}/${d}`);
   await page.evaluate(() => (location.hash = "#/workspaces"));
   for (const [d, name] of [["receipts", "Receipts"], ["letters", "Letters"]]) {
     await page.click("text=Add a workspace");
     await page.fill("#ws-path", `${root}/${d}`);
     await page.fill("#ws-name", name);
+    if (d === "receipts") {
+      await page.fill("input[aria-label='Folder to mount']", `${root}/reference`);
+      await page.click("form.setup-form button.small:text-is('Add')");
+    }
     await page.click("button:has-text('Add this folder')");
     await page.waitForSelector(`.ws-row strong:has-text('${name}')`);
   }
+  assert.deepStrictEqual(sent.of("workspace.save")[1], { path: `${root}/receipts`, name: "Receipts", mounts: [{ path: `${root}/reference`, access: "read" }] });
+  assert.ok(!fs.existsSync(`${root}/receipts/.nodwyn`), "a mount was written into the folder");
+  await page.waitForSelector(".ws-row:has-text('Receipts') >> text=read only");
   await page.click("button[aria-label='Remove Letters']");
   await page.click(".ws-row .end button.danger:not([aria-label])");
   await page.waitForSelector(".ws-row strong:has-text('Letters')", { state: "detached" });
@@ -115,11 +125,12 @@ check(async () => {
   assert.deepStrictEqual(sent.of("workspace.remove"), [{ path: `${root}/letters` }]);
   const registry = fs.readFileSync(`${root}/config/nodwyn/workspaces.toml`, "utf8");
   assert.ok(registry.includes("Family papers") && registry.includes("Receipts") && !registry.includes("Letters"), "workspaces.toml: " + registry);
+  assert.ok(registry.includes(`[[workspace.mount]]\npath = "${root}/reference"\naccess = "read"`), "the mount is not in workspaces.toml: " + registry);
   assert.ok(fs.existsSync(`${root}/letters`), "removing a workspace touched its folder");
   step("workspaces added and removed on Workspaces");
   await page.screenshot({ path: `${out}/firstrun-workspaces.png` });
 
-  // A task in the documents workspace, with an attachment holding a token.
+  // A task in the first workspace, with an attachment holding a token.
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#work-in button[aria-pressed=true]:has-text('Family papers')");
   fs.writeFileSync(`${root}/roadmap.md`, "# Roadmap\nShip cowork.\ntoken: ghp_" + "A1b2C3d4".repeat(5) + "\n");

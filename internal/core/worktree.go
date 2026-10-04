@@ -34,10 +34,6 @@ func worktreesDir(repository string) string {
 	return filepath.Join(repository, config.FolderDir, "worktrees")
 }
 
-// copiedWorkspace is the one file a new worktree gets from the folder
-// besides its commit: the folder's settings, not its content.
-var copiedWorkspace = filepath.Join(config.FolderDir, "workspace.toml")
-
 var errNoGit = errors.New("git is not installed")
 
 // gitIn runs git with fixed arguments in dir, with the scrubbed environment
@@ -132,15 +128,10 @@ func newWorktree(repo, id string) (log.WorktreeChange, error) {
 	if _, err := gitIn(repository, "worktree", "add", "--quiet", "-b", w.Branch, w.Path, commit); err != nil {
 		return none, err
 	}
-	copied, err := copyWorkspace(repo, w.Path)
-	if err != nil {
-		discardWorktree(w)
-		return none, err
-	}
-	// What the worktree does not have: the copied settings it does.
+	// What the worktree does not have.
 	left := 0
 	for _, line := range strings.Split(status, "\n") {
-		if line != "" && !(copied && len(line) > 3 && filepath.FromSlash(line[3:]) == copiedWorkspace) {
+		if line != "" {
 			left++
 		}
 	}
@@ -200,34 +191,6 @@ func ensureWorktreesDir(repository string) (string, error) {
 	return dir, nil
 }
 
-// copyWorkspace gives a worktree whose commit has no .nodwyn/workspace.toml
-// the folder's own: it is the folder's settings (its kind, its mounted
-// folders), not its content. Nothing else is copied. The worktree's
-// .nodwyn, if its commit has one, must be a folder: a link would write the
-// copy wherever it points. It reports whether it copied the file.
-func copyWorkspace(from, to string) (bool, error) {
-	src, dst := filepath.Join(from, copiedWorkspace), filepath.Join(to, copiedWorkspace)
-	if st, err := os.Lstat(src); err != nil || !st.Mode().IsRegular() {
-		return false, nil
-	}
-	if _, err := os.Lstat(dst); err == nil {
-		return false, nil
-	}
-	b, err := os.ReadFile(src)
-	if err != nil {
-		return false, err
-	}
-	folder := filepath.Dir(dst)
-	if st, err := os.Lstat(folder); errors.Is(err, os.ErrNotExist) {
-		if err := os.Mkdir(folder, 0o755); err != nil {
-			return false, err
-		}
-	} else if err != nil || !st.IsDir() {
-		return false, fmt.Errorf("%s in the new worktree is not a folder, so its workspace settings were not copied", config.FolderDir)
-	}
-	return true, os.WriteFile(dst, b, 0o644)
-}
-
 // discardWorktree removes a worktree nothing has happened in yet, with its
 // branch: the session it was made for never started.
 func discardWorktree(w log.Worktree) {
@@ -261,15 +224,7 @@ func removeLanded(w log.Worktree) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	copied := ""
-	for _, line := range strings.Split(status, "\n") {
-		if line == "" {
-			continue
-		}
-		if (strings.HasPrefix(line, "?? ") || strings.HasPrefix(line, "!! ")) && filepath.FromSlash(line[3:]) == copiedWorkspace && sameFile(filepath.Join(w.Path, copiedWorkspace), filepath.Join(w.Repository, copiedWorkspace)) {
-			copied = filepath.Join(w.Path, copiedWorkspace)
-			continue
-		}
+	if strings.TrimSpace(status) != "" {
 		return false, nil
 	}
 	tip := w.BaseCommit
@@ -287,11 +242,6 @@ func removeLanded(w log.Worktree) (bool, error) {
 	if ahead != "0" {
 		return false, nil
 	}
-	if copied != "" {
-		if err := os.Remove(copied); err != nil {
-			return false, err
-		}
-	}
 	if _, err := gitIn(w.Repository, "worktree", "remove", w.Path); err != nil {
 		return false, err
 	}
@@ -301,13 +251,6 @@ func removeLanded(w log.Worktree) (bool, error) {
 		}
 	}
 	return true, nil
-}
-
-// sameFile reports whether a and b are regular files with the same bytes.
-func sameFile(a, b string) bool {
-	x, errA := os.ReadFile(a)
-	y, errB := os.ReadFile(b)
-	return errA == nil && errB == nil && bytes.Equal(x, y)
 }
 
 // restoreWorktree makes a resumed session's worktree again when it is
@@ -342,9 +285,6 @@ func restoreWorktree(w log.Worktree) (bool, error) {
 	}
 	if _, err := gitIn(w.Repository, args...); err != nil {
 		return false, err
-	}
-	if _, err := copyWorkspace(w.Repository, w.Path); err != nil {
-		return true, err
 	}
 	return true, nil
 }

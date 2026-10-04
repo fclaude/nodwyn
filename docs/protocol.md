@@ -113,8 +113,9 @@ with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
 included; configuration edits reload before egress. Inspection reports the
 last validated snapshot; invalid reloads deny egress. Older daemons may
 omit this additive field, which clients must distinguish from an empty array.
-Details also contain `workspace` (the folder's kind and mounts, from
-`.nodwyn/workspace.toml`), `git` (whether the root is a git work tree) and
+Details also contain `workspace` (`mounts`: the folders outside the root
+the session may use, from the workspace list in the config directory),
+`git` (whether the root is a git work tree) and
 `mcp` (each MCP server offered in this workspace, with whether its tools are
 offered or why they are withheld: `state` is `ready`, `unapproved`,
 `changed`, `unavailable` or `error`; a contained server has `transport`
@@ -143,7 +144,8 @@ branch of its own (ADR 34): `repo/.nodwyn/worktrees/<id>` on
 `repo`'s `HEAD`. The worktree is the session's root; notes, MCP servers'
 workspaces and the history strategies read are the repository's.
 Uncommitted changes in `repo` are not carried (`worktree.create` counts
-them); an untracked `.nodwyn/workspace.toml` is copied, and nothing else.
+them), and nothing untracked is copied: its mounted folders are the
+repository's, from the workspace list.
 A folder that is not a git repository's top folder, a bare repository and
 one with no commit are refused (`-32000`) with a sentence saying so.
 `repo` may itself be such a worktree: the new one is its sibling, from its
@@ -499,9 +501,9 @@ name.
 
 | Method | Params | Result |
 |---|---|---|
-| `workspace.list` | `{}` | Named workspaces: `[{name, path, kind, mounts, git, error?}]` |
-| `workspace.save` | `{"path","name","kind","mounts"}` (all required; `mounts` may be `[]`) | The saved workspace. The name goes to `workspaces.toml` in the config directory; a `code` folder with no mounts keeps no `.nodwyn/workspace.toml`, anything else is written there |
-| `workspace.remove` | `{"path"}` | `{}`; forgets the name, never the folder |
+| `workspace.list` | `{}` | Named workspaces: `[{name, path, mounts, git}]` |
+| `workspace.save` | `{"path","name","mounts"}` (all required; `mounts` may be `[]`) | The saved workspace. The name and the mounts go to `workspaces.toml` in the config directory; nothing is written into the folder |
+| `workspace.remove` | `{"path"}` | `{}`; forgets the name and its mounts, never the folder |
 | `versions.list` | `{"repo","path"}` | A file's kept previous versions (outside git); `repo` must be a named workspace or a folder a task has used |
 | `session.restore` | `{"id","path","hash"}` | `{operation_id}`; writes a kept version back through the ordinary approval, keeping the current content as a version too |
 | `session.attach` | `{"id","path","name"?}` | The attachment's receipt; `path` is absolute (the web console stages uploads itself). An image returns once its security confirm is answered (see below) |

@@ -11,17 +11,13 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// A workspace (ADR 22 §1) is a root directory plus a user-owned mount table,
-// kept in <root>/.nodwyn/workspace.toml. Without the file a workspace is
-// today's repository: kind "code", the root writable, nothing else.
-
-// Workspace kinds. The kind describes what a folder holds, for the person
-// choosing it; every kind has the same tools and the same guard.
-const (
-	KindCode  = "code"
-	KindDocs  = "docs"
-	KindMixed = "mixed"
-)
+// A workspace (ADR 22 §1) is a root directory plus a mount table: the
+// folders outside it a session there may use. The table is the person's,
+// kept with the workspace's name in workspaces.toml in the config directory,
+// which only the console on this computer writes and no model can reach: a
+// folder holds no settings of its own, so a repository someone else commits
+// cannot widen what a session there may read or write (ADR 22, amended
+// 2026-10-03). A folder nobody named has no mounts.
 
 // Mount is a directory outside the root a workspace may use.
 type Mount struct {
@@ -29,48 +25,32 @@ type Mount struct {
 	Access string `toml:"access" json:"access"` // "read" or "write"
 }
 
-// Workspace is .nodwyn/workspace.toml.
+// Workspace is what a session's folder may use beyond itself.
 type Workspace struct {
-	Kind   string  `toml:"kind" json:"kind"`
-	Mounts []Mount `toml:"mount" json:"mounts"`
+	Mounts []Mount `json:"mounts"`
 }
 
-// WorkspaceFile is where a root's workspace settings live.
-func WorkspaceFile(root string) string { return filepath.Join(root, ".nodwyn", "workspace.toml") }
-
-// LoadWorkspace reads root's workspace settings; a missing file is the
-// default code workspace. Mount paths come back absolute and cleaned.
-func LoadWorkspace(root string) (Workspace, error) {
-	raw, err := os.ReadFile(WorkspaceFile(root))
-	if errors.Is(err, os.ErrNotExist) {
-		return Workspace{Kind: KindCode}, nil
+// LoadWorkspace is the workspace at root as the registry at registry names
+// it: its mounts, absolute and cleaned, or none for a folder it does not
+// name. An empty registry path is no registry.
+func LoadWorkspace(registry, root string) (Workspace, error) {
+	if registry == "" {
+		return Workspace{}, nil
 	}
+	list, err := LoadRegistry(registry)
 	if err != nil {
 		return Workspace{}, err
 	}
-	return ParseWorkspace(raw, root)
-}
-
-// ParseWorkspace validates a workspace file's contents for root.
-func ParseWorkspace(raw []byte, root string) (Workspace, error) {
-	var ws Workspace
-	md, err := toml.Decode(string(raw), &ws)
-	if err != nil {
-		return Workspace{}, fmt.Errorf("workspace: %w", err)
+	root = filepath.Clean(root)
+	for _, r := range list {
+		if filepath.Clean(r.Path) == root {
+			return Workspace{Mounts: r.Mounts}.normalize(root)
+		}
 	}
-	if undec := md.Undecoded(); len(undec) > 0 {
-		return Workspace{}, fmt.Errorf("workspace: unknown keys: %v", undec)
-	}
-	return ws.normalize(root)
+	return Workspace{}, nil
 }
 
 func (ws Workspace) normalize(root string) (Workspace, error) {
-	if ws.Kind == "" {
-		ws.Kind = KindCode
-	}
-	if ws.Kind != KindCode && ws.Kind != KindDocs && ws.Kind != KindMixed {
-		return Workspace{}, fmt.Errorf("workspace: kind must be code, docs or mixed, not %q", ws.Kind)
-	}
 	home, _ := os.UserHomeDir()
 	seen := map[string]bool{}
 	out := ws.Mounts[:0:0]
@@ -110,30 +90,13 @@ func (ws Workspace) normalize(root string) (Workspace, error) {
 	return ws, nil
 }
 
-// SaveWorkspace writes root's workspace settings atomically (0600).
-func SaveWorkspace(root string, ws Workspace) (Workspace, error) {
-	ws, err := ws.normalize(root)
-	if err != nil {
-		return Workspace{}, err
-	}
-	var b strings.Builder
-	b.WriteString("# This workspace's kind and the folders outside it nodwyn may use (ADR 22).\n")
-	fmt.Fprintf(&b, "kind = %s\n", quote(ws.Kind))
-	for _, m := range ws.Mounts {
-		fmt.Fprintf(&b, "\n[[mount]]\npath = %s\naccess = %s\n", quote(m.Path), quote(m.Access))
-	}
-	path := WorkspaceFile(root)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return Workspace{}, err
-	}
-	return ws, WriteFile(path, []byte(b.String()))
-}
-
 // Registered is a workspace the person named (workspaces.toml in the
-// config directory): what the console lists and offers to start in.
+// config directory): what the console lists and offers to start in, and the
+// folders outside it its sessions may use.
 type Registered struct {
-	Name string `toml:"name" json:"name"`
-	Path string `toml:"path" json:"path"`
+	Name   string  `toml:"name" json:"name"`
+	Path   string  `toml:"path" json:"path"`
+	Mounts []Mount `toml:"mount" json:"mounts"`
 }
 
 type registry struct {
@@ -156,22 +119,28 @@ func LoadRegistry(path string) ([]Registered, error) {
 	return r.Workspace, nil
 }
 
-// SaveRegistered adds or renames the workspace at entry.Path.
-func SaveRegistered(path string, entry Registered) error {
+// SaveRegistered adds the workspace at entry.Path, or renames it and sets
+// its mounts, and returns it as saved: its mounts absolute and cleaned.
+func SaveRegistered(path string, entry Registered) (Registered, error) {
 	entry.Name = strings.TrimSpace(entry.Name)
 	if entry.Name == "" || len(entry.Name) > 60 || strings.ContainsAny(entry.Name, "\n\r\t") {
-		return errors.New("workspaces: a name of at most 60 characters on one line is required")
+		return Registered{}, errors.New("workspaces: a name of at most 60 characters on one line is required")
 	}
 	if !filepath.IsAbs(entry.Path) {
-		return errors.New("workspaces: path must be absolute")
+		return Registered{}, errors.New("workspaces: path must be absolute")
 	}
+	ws, err := Workspace{Mounts: entry.Mounts}.normalize(filepath.Clean(entry.Path))
+	if err != nil {
+		return Registered{}, err
+	}
+	entry.Mounts = ws.Mounts
 	list, err := LoadRegistry(path)
 	if err != nil {
-		return err
+		return Registered{}, err
 	}
 	list = slices.DeleteFunc(list, func(r Registered) bool { return r.Path == entry.Path })
 	list = append(list, entry)
-	return writeRegistry(path, list)
+	return entry, writeRegistry(path, list)
 }
 
 // RemoveRegistered forgets a workspace; its folder and files are untouched.
@@ -189,9 +158,13 @@ func RemoveRegistered(path, root string) error {
 
 func writeRegistry(path string, list []Registered) error {
 	var b strings.Builder
-	b.WriteString("# Workspaces nodwyn lists by name. Removing one here forgets the name, not the folder.\n")
+	b.WriteString("# Workspaces nodwyn lists by name, and the folders outside each its tasks may use.\n")
+	b.WriteString("# Removing one here forgets the name and its mounts, not the folder.\n")
 	for _, r := range list {
 		fmt.Fprintf(&b, "\n[[workspace]]\nname = %s\npath = %s\n", quote(r.Name), quote(r.Path))
+		for _, m := range r.Mounts {
+			fmt.Fprintf(&b, "\n[[workspace.mount]]\npath = %s\naccess = %s\n", quote(m.Path), quote(m.Access))
+		}
 	}
 	return WriteFile(path, []byte(b.String()))
 }

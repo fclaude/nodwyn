@@ -428,3 +428,30 @@ Not done: Google Docs beyond creating one (updating a document, folders,
 sharing), a resumable upload for files over 5 MiB, `.odt` attachments
 (`internal/extract` reads an `.odt` only for this scan), and Markdown
 straight to Drive (it goes through `doc-export` first).
+
+## Amendment 2026-10-03: no kind, and the mounts are the person's, not the folder's
+
+Since the amendment of 2026-09-30 the kind (`code`, `docs`, `mixed`) changed
+nothing, yet the console still asked what a folder holds, and any answer
+but Code wrote `.nodwyn/workspace.toml` into the folder. The kind is
+dropped: the console asks nothing about it, `workspace.save`,
+`workspace.list` and session details carry none, and `(workspace)` reports
+only the mounts.
+
+The mount table moves out of the folder. §1 calls it user-owned, but
+`.nodwyn/workspace.toml` is written by whoever commits to the folder, a
+stranger's clone included, and its mounts went straight into the pin: a
+repository could mount a folder outside itself, for reading or writing,
+and a session there used it without a confirm. A test reproduced it with
+every confirm answered no. Mounts are now kept with the workspace's name
+in `workspaces.toml` in the config directory (`[[workspace.mount]]`, `path`
+and `access`). Who writes that file: the daemon, on a `workspace.save` from
+a console on this computer (the bridge does not offer it to a paired
+device), or the person by hand. The config directory is private to the
+guard, so neither a model nor a repository can. The mounts are checked
+again as a session reads them, so one written by hand is held to the same
+rules. A session loads the mounts of the workspace named at its project's
+folder (for a worktree, its repository's, ADR 34), and none for a folder
+nobody named. A `.nodwyn/workspace.toml` in a folder is not read: mounts
+kept there before are added again on Workspaces. Nothing about a workspace
+is written into its folder, so naming one adds nothing to its diff.

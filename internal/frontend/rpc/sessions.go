@@ -87,7 +87,8 @@ type sessionDetails struct {
 	// without a prompt (session.approve_all), turned on by ApproveActor.
 	ApproveAll   bool   `json:"approve_all"`
 	ApproveActor string `json:"approve_actor,omitempty"`
-	// Workspace is what the session loaded from .nodwyn/workspace.toml.
+	// Workspace is the folders outside the root the session may use, as the
+	// workspace list named them when it opened (ADR 22).
 	Workspace config.Workspace `json:"workspace"`
 	// Git says a git work tree is the undo at the root; otherwise nodwyn
 	// keeps previous versions of files it replaces.

@@ -82,9 +82,10 @@ Workspaces page lists every named folder: **Add a workspace** names another,
 a task may read, or read and write, by absolute path), and **Remove** takes
 it off the list after a confirm, leaving the folder, its files and its tasks
 as they were. Home offers the first six folders; the rest are a click away on
-Workspaces. The name is kept in `workspaces.toml` in the config directory;
-the kind and mounts in the folder's `.nodwyn/workspace.toml` (a code folder
-with no mounts needs none). They apply to tasks started afterwards.
+Workspaces. The name and the mounted folders are kept in `workspaces.toml`
+in the config directory, never in the folder, so a folder someone else
+commits cannot mount anything (ADR 22). They apply to tasks started
+afterwards.
 
 **In a worktree.** Beside the folder, **In a worktree** starts the task in
 a git worktree of its own

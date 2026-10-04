@@ -2,7 +2,7 @@
 // settings.js). They show what the daemon reports; where it reports nothing
 // yet, they say so.
 import { h, icon, repoName, shortPath, ago, toast } from "./dom.js";
-import { chooseFolder, forgetFolder, kindLabel } from "./home.js";
+import { chooseFolder, forgetFolder } from "./home.js";
 import { modelRows } from "./settings.js";
 import { renderCredentials } from "./credentials.js";
 
@@ -21,8 +21,8 @@ export function renderWorkspaces(root, ctx) {
   const canEdit = conn.has("workspace.save");
   const canRemove = conn.has("workspace.remove");
   const redraw = () => renderWorkspaces(root, ctx);
-  // Removing forgets the name; the folder, its files and its
-  // .nodwyn/workspace.toml stay, and tasks there keep their history.
+  // Removing forgets the name and the mounted folders; the folder and its
+  // files stay, and tasks there keep their history.
   const remove = async (ws) => {
     try {
       await conn.call("workspace.remove", { path: ws.path });
@@ -58,10 +58,9 @@ export function renderWorkspaces(root, ctx) {
       h(
         "div",
         { class: "main" },
-        h("strong", {}, ws ? ws.name : desk.folderName(folder), ws ? h("span", { class: "badge plain", style: "margin-left:8px" }, kindLabel(ws.kind)) : null),
+        h("strong", {}, ws ? ws.name : desk.folderName(folder)),
         h("span", { class: "mono", title: folder }, shortPath(folder, desk.home)),
         mounts.length ? h("span", {}, mounts.map((m) => `${shortPath(m.path, desk.home)} (${m.access === "write" ? "read and write" : "read only"})`).join(" · ")) : null,
-        ws?.error ? h("span", { class: "error" }, ws.error) : null,
         ws ? h("span", {}, ws.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the rest." : "Not a git repository: nodwyn keeps the previous version of a file before it changes it.") : null,
         h("span", { class: "ws-count" }, count ? `${count.tasks} task${count.tasks === 1 ? "" : "s"} · ${ago(count.last)}` : "No tasks yet"),
       ),
@@ -69,10 +68,9 @@ export function renderWorkspaces(root, ctx) {
     );
     return editing === folder ? [node, editor(folder, ws)] : [node];
   };
-  // editor names a folder and says what it holds; with no folder it adds
-  // one, and asks for its path first.
+  // editor names a folder and the folders outside it its tasks may use;
+  // with no folder it adds one, and asks for its path first.
   const editor = (folder, ws) => {
-    let kind = ws?.kind || (folder ? "code" : "docs");
     const mounts = (ws?.mounts || []).map((m) => ({ ...m }));
     const name = h("input", { class: "input", id: "ws-name", value: ws?.name || (folder ? desk.folderName(folder) : ""), placeholder: folder ? "" : "for example Receipts 2026", autocomplete: "off" });
     const pathInput = folder ? null : h("input", { class: "input", id: "ws-path", placeholder: "/absolute/path/to/a/folder", spellcheck: false, autocomplete: "off", required: true });
@@ -96,7 +94,6 @@ export function renderWorkspaces(root, ctx) {
       );
     drawMounts();
     const mountPath = h("input", { class: "input", placeholder: "/absolute/path or ~/folder", "aria-label": "Folder to mount", spellcheck: false });
-    const kindChoice = (id, label) => h("button", { type: "button", class: "chip", "aria-pressed": String(kind === id), onclick: (e) => { kind = id; for (const b of e.target.parentElement.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b === e.target)); } }, label);
     const form = h(
       "form",
       {
@@ -115,7 +112,7 @@ export function renderWorkspaces(root, ctx) {
             return;
           }
           try {
-            await conn.call("workspace.save", { path, name: name.value.trim(), kind, mounts });
+            await conn.call("workspace.save", { path, name: name.value.trim(), mounts });
             editing = "";
             addingWorkspace = false;
             await desk.refreshWorkspaces();
@@ -128,9 +125,8 @@ export function renderWorkspaces(root, ctx) {
       },
       folder ? null : h("div", { class: "field" }, h("label", { for: "ws-path" }, "Folder"), h("div", { class: "row-actions" }, pathInput, ctx.pickFolder ? h("button", { type: "button", class: "btn", onclick: async () => { try { const p = await ctx.pickFolder(); if (p) setPath(p); } catch (e) { error.textContent = String(e?.message || e); } } }, "Choose…") : null)),
       h("div", { class: "field" }, h("label", { for: "ws-name" }, "Name"), name),
-      h("div", { class: "field" }, h("label", {}, "What's in it"), h("div", { class: "row-actions" }, kindChoice("docs", "Documents"), kindChoice("code", "Code"), kindChoice("mixed", "Both"))),
       h("div", { class: "field" }, h("label", {}, "Other folders nodwyn may use here"), list, h("div", { class: "row-actions" }, mountPath, ctx.pickFolder ? h("button", { type: "button", class: "btn small", onclick: async () => { const p = await ctx.pickFolder(); if (p) mountPath.value = p; } }, "Choose…") : null, h("button", { type: "button", class: "btn small", onclick: () => { const p = mountPath.value.trim(); if (p) { mounts.push({ path: p, access: "read" }); mountPath.value = ""; drawMounts(); } } }, "Add"))),
-      h("p", { class: "hint" }, "Kept in this folder's .nodwyn/workspace.toml, which nodwyn itself never writes. A read-only folder can be read but never changed."),
+      h("p", { class: "hint" }, "Kept on this computer with the workspace's name, not in the folder. A read-only folder can be read but never changed."),
       error,
       h(
         "div",
@@ -197,7 +193,7 @@ export async function renderConnections(root, ctx) {
   }
   if (connectionsTab === "workspaces") {
     const rows = desk.workspaces.map((w) =>
-      h("div", { class: "list-row" }, icon("folder", 18), h("div", { class: "main" }, h("strong", {}, w.name), h("span", {}, `${kindLabel(w.kind)} · ${shortPath(w.path, desk.home)}${w.mounts?.length ? ` · ${w.mounts.length} mounted folder${w.mounts.length === 1 ? "" : "s"}` : ""}`))),
+      h("div", { class: "list-row" }, icon("folder", 18), h("div", { class: "main" }, h("strong", {}, w.name), h("span", {}, `${shortPath(w.path, desk.home)}${w.mounts?.length ? ` · ${w.mounts.length} mounted folder${w.mounts.length === 1 ? "" : "s"}` : ""}`))),
     );
     body.append(
       rows.length ? h("div", { class: "list" }, rows) : h("p", { class: "hint" }, "No named workspaces yet."),

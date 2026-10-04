@@ -5,7 +5,6 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/guard"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/fclaude/nodwyn/internal/config"
@@ -13,21 +12,19 @@ import (
 )
 
 // Workspaces (ADR 22 W1) as the console manages them: the named list in
-// workspaces.toml, and each folder's kind and mounts in its own
-// .nodwyn/workspace.toml. Tasks opened afterwards load them.
+// workspaces.toml in the config directory, each with the folders outside it
+// its tasks may use. Tasks opened afterwards load them. Nothing is written
+// into the folder itself.
 
 type workspaceInfo struct {
 	Name   string         `json:"name"`
 	Path   string         `json:"path"`
-	Kind   string         `json:"kind"`
 	Mounts []config.Mount `json:"mounts"`
 	Git    bool           `json:"git"`
-	Error  string         `json:"error,omitempty"`
 }
 type workspaceSaveParams struct {
 	Path   string         `json:"path"`
 	Name   string         `json:"name"`
-	Kind   string         `json:"kind"`
 	Mounts []config.Mount `json:"mounts"`
 }
 type workspacePathParams struct {
@@ -43,19 +40,12 @@ type restoreParams struct {
 	Hash string `json:"hash"`
 }
 
-func describeWorkspace(name, path string) workspaceInfo {
-	info := workspaceInfo{Name: name, Path: path, Mounts: []config.Mount{}}
-	_, err := os.Stat(filepath.Join(path, ".git"))
+func describeWorkspace(r config.Registered) workspaceInfo {
+	info := workspaceInfo{Name: r.Name, Path: r.Path, Mounts: []config.Mount{}}
+	_, err := os.Stat(filepath.Join(r.Path, ".git"))
 	info.Git = err == nil
-	_, _ = config.MigrateFolder(path) // a folder named before ADR 31 keeps its settings
-	ws, err := config.LoadWorkspace(path)
-	if err != nil {
-		info.Kind, info.Error = config.KindCode, err.Error()
-		return info
-	}
-	info.Kind = ws.Kind
-	if ws.Mounts != nil {
-		info.Mounts = ws.Mounts
+	if r.Mounts != nil {
+		info.Mounts = r.Mounts
 	}
 	return info
 }
@@ -73,7 +63,7 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 		}
 		result := []workspaceInfo{}
 		for _, r := range list {
-			result = append(result, describeWorkspace(r.Name, r.Path))
+			result = append(result, describeWorkspace(r))
 		}
 		return result, nil
 	case "workspace.remove":
@@ -87,7 +77,7 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 		return struct{}{}, nil
 	}
 	var p workspaceSaveParams
-	if err := params(req.Params, &p, "path", "name", "kind", "mounts"); err != nil {
+	if err := params(req.Params, &p, "path", "name", "mounts"); err != nil {
 		return nil, err
 	}
 	if !filepath.IsAbs(p.Path) {
@@ -100,35 +90,15 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 	if why := s.rootRefusal(p.Path); why != "" {
 		return nil, failure(-32602, why)
 	}
-	if p.Kind == "" {
-		p.Kind = config.KindCode
-	}
-	// A plain code repository keeps no workspace file: naming it must not
-	// add a file to its diff. Anything else is written to the folder's
-	// .nodwyn/workspace.toml, which the model cannot write (.nodwyn/ is protected).
-	if _, err := config.MigrateFolder(p.Path); err != nil {
-		return nil, failure(-32000, err.Error())
-	}
-	current, err := config.LoadWorkspace(p.Path)
-	if err != nil {
-		return nil, failure(-32000, err.Error())
-	}
-	_, statErr := os.Stat(config.WorkspaceFile(p.Path))
-	if statErr == nil || p.Kind != config.KindCode || len(p.Mounts) > 0 {
-		if current.Kind != p.Kind || !slices.Equal(current.Mounts, p.Mounts) || statErr != nil {
-			if _, err := config.SaveWorkspace(p.Path, config.Workspace{Kind: p.Kind, Mounts: p.Mounts}); err != nil {
-				return nil, failure(-32602, err.Error())
-			}
-		}
-	}
 	name := strings.TrimSpace(p.Name)
 	if name == "" {
 		name = filepath.Base(p.Path)
 	}
-	if err := config.SaveRegistered(registry, config.Registered{Name: name, Path: p.Path}); err != nil {
+	saved, err := config.SaveRegistered(registry, config.Registered{Name: name, Path: p.Path, Mounts: p.Mounts})
+	if err != nil {
 		return nil, failure(-32602, err.Error())
 	}
-	return describeWorkspace(name, p.Path), nil
+	return describeWorkspace(saved), nil
 }
 
 func (s *server) versions(req request, client *peer) (any, *rpcError) {
