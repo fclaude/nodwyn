@@ -1,10 +1,12 @@
 // The transcript's runs of commands, drawn from events written here rather
 // than from a scripted model: the order of reads and commands, a run's
 // header while a command runs, waits for an answer and fails, and a clock
-// that stops when its transcript leaves the page, and the context gauge
-// following a conversation moved to another model. The console's own module
-// is imported from the demo's console, so this is the code people run. The
-// waits of 1.3 s in the page are what is tested: the run's one-second clock.
+// that stops when its transcript leaves the page, the context gauge
+// following a conversation moved to another model, and the task side's
+// tabs keeping their choice through an event's redraw. The console's own
+// module is imported from the demo's console, so this is the code people
+// run. The waits of 1.3 s in the page are what is tested: the run's
+// one-second clock.
 const { start, line, launch, watch, check } = require("../lib");
 
 check(async () => {
@@ -256,6 +258,69 @@ check(async () => {
       const disposed = !task.el.transcript.textContent.includes("discard on disposal");
       out.streaming = { burst, thoughts, followed, stayed, final, afterFinalFrame, promptOrder, unchangedAway, caughtUp, reloaded, closed, closedOnce, disposed };
     }
+
+    // The side's tabs: Live first with the ticking panels, the chosen tab
+    // kept through the redraw every event makes, an empty tab saying so,
+    // and the arrow keys moving the choice.
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const listeners = new Set();
+      const conn = {
+        live: true,
+        methods: new Set(["session.send", "session.abort", "session.answer"]),
+        has(method) { return this.methods.has(method); },
+        onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        async call(method) {
+          if (method === "session.subscribe") return { page: { events: [{ seq: 1, kind: "user.msg", payload: { text: "Begin" } }], through: 1, more: false }, busy: false };
+          if (method === "session.info") return {};
+          if (method === "session.unsubscribe") return {};
+          throw new Error(`unexpected request: ${method}`);
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("tabs", { id: "tabs", repo: "/tmp/tabs", open: true, busy: false });
+      const task = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(task.root);
+      await task.open("tabs");
+      const emit = (kind, payload, seq = 0) => {
+        for (const fn of listeners) fn({ method: "session.event", params: { id: "tabs", kind, payload, seq } });
+      };
+      const bar = () => task.el.side.querySelector("[role=tablist]");
+      const chosen = () => bar().querySelector("[aria-selected=true]")?.textContent;
+      const shown = () => {
+        const body = task.el.side.querySelector("[role=tabpanel]");
+        const panels = [...body.querySelectorAll(".panel h2")];
+        return panels.length ? panels.map((h2) => h2.childNodes[0].textContent) : body.firstElementChild.textContent;
+      };
+      const pick = (label) => [...bar().querySelectorAll("[role=tab]")].find((b) => b.textContent === label).click();
+      const tabs = {};
+      tabs.names = [...bar().querySelectorAll("[role=tab]")].map((b) => b.textContent);
+      tabs.first = chosen();
+      tabs.live = shown();
+      pick("Changes");
+      tabs.changes = { chosen: chosen(), shown: shown() };
+      // A recorded event redraws the side; the tab it chose stands.
+      emit("llm.resp", { content: "Working" }, 2);
+      tabs.afterEvent = { chosen: chosen(), shown: shown() };
+      pick("Workspace");
+      tabs.workspace = { chosen: chosen(), shown: shown() };
+      pick("Notes");
+      tabs.notes = { chosen: chosen(), shown: shown() };
+      // The arrows move both the choice and the focus, from wherever the
+      // reader is, Home jumping to the first tab.
+      const press = (key) => {
+        const at = [...bar().querySelectorAll("[role=tab]")].find((b) => b.textContent === chosen());
+        at.focus();
+        at.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+        return { chosen: chosen(), focused: document.activeElement.textContent };
+      };
+      tabs.left = press("ArrowLeft");
+      tabs.leftTwice = press("ArrowLeft");
+      tabs.home = press("Home");
+      task.dispose();
+      out.tabs = tabs;
+    }
     return out;
   });
   console.log(JSON.stringify(results, null, 1));
@@ -286,6 +351,14 @@ check(async () => {
   want(s.unchangedAway && s.caughtUp, `parked stream: unchanged=${s.unchangedAway}, caught up=${s.caughtUp}`);
   want(s.reloaded && s.disposed, `queued streams outlived reload or disposal: ${JSON.stringify(s)}`);
   want(s.closed && s.closedOnce, "session closure lost or duplicated its queued text, or left the reply enabled");
+  const tb = results.tabs;
+  want(tb.names.join() === "Live,Changes,Workspace,Notes" && tb.first === "Live", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
+  want(tb.live.join() === "This turn,Plan,Totals", `Live tab panels: ${JSON.stringify(tb.live)}`);
+  want(tb.changes.chosen === "Changes" && tb.changes.shown === "Nothing written yet.", `Changes tab: ${JSON.stringify(tb.changes)}`);
+  want(tb.afterEvent.chosen === "Changes" && tb.afterEvent.shown === "Nothing written yet.", `the tab kept through an event's redraw: ${JSON.stringify(tb.afterEvent)}`);
+  want(tb.workspace.chosen === "Workspace" && tb.workspace.shown.join() === "Workspace,Details", `Workspace tab: ${JSON.stringify(tb.workspace)}`);
+  want(tb.notes.chosen === "Notes" && tb.notes.shown === "Reading the notes…", `Notes tab: ${JSON.stringify(tb.notes)}`);
+  want(tb.left.chosen === "Workspace" && tb.left.focused === "Workspace" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Live" && tb.home.focused === "Live", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
 });

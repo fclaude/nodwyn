@@ -1174,19 +1174,24 @@ whose cost nobody knows is not counted, and a note says so the first time.
 The README has the details; `--budget-cost USD` sets it for one session or
 run.
 
-The console's side panel adds the task up in "Totals": "Total spend", what
-its model and judge requests cost as far as the log prices them (the same
-accounting a spend limit counts; with a limit set, the total is shown
-against it); "Total running time", how long its turns took, the time it
-spent waiting for your answers included; and "Total working time", how
-long they took with those waits left out — answers its judge or an
-unattended run gave by themselves count as working. Both are in tenths of
-a second while short. A turn still running counts up to now, into the
-running time even while it waits for you and into the working time only
-while it does not; one a crash or a stopped daemon cut off ends where its
-log does, so the time until the task was resumed is not counted. A run
-that went on by itself counts the time between its turns, one you answered
-or brought back does not. Where the log was truncated, the panel says its
+The console's side panel adds the task up in "Totals", in its Live tab:
+"Total spend", what its model and judge requests cost as far as the log
+prices them (the same accounting a spend limit counts; with a limit set,
+the total is shown against it); "Total running time", how long its turns
+took, the time it spent waiting for your answers included; and "Total
+working time", how long they took with those waits left out — answers its
+judge or an unattended run gave by themselves count as working. Two more
+figures say where that time went: "Model wait", each request to a model
+from its sending to its reply, streaming included; and "Tool time", each
+tool call from its start to its result, with the wait for your approval
+taken back out. All are in tenths of a second while short. A turn still
+running counts up to now, into the running time even while it waits for
+you and into the working time only while it does not; a request or a tool
+still open stops at the log's last record while a prompt holds the
+session. A turn a crash or a stopped daemon cut off ends where its log
+does, so the time until the task was resumed is not counted. A run that
+went on by itself counts the time between its turns, one you answered or
+brought back does not. Where the log was truncated, the panel says its
 totals cover what remains.
 
 No keyed request follows a redirect (`http-request`, Jev, MCP), and no model

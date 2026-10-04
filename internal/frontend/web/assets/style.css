@@ -630,9 +630,13 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .reply .send-round { width: 36px; height: 36px; background: var(--invert-bg); color: var(--invert-fg); }
 
 .task-aside {
-  width: 344px; flex-shrink: 0; padding: 28px 24px; display: flex; flex-direction: column; gap: 28px;
+  width: 344px; flex-shrink: 0; padding: 28px 24px; display: flex; flex-direction: column; gap: 16px;
   background: var(--aside); border-left: 1px solid var(--line); overflow-y: auto;
 }
+/* The panels of the tab showing live in one column of their own, so they
+   keep the roomy spacing the side had when it stacked them all. */
+.aside-panel { display: flex; flex-direction: column; gap: 28px; }
+.task-aside .tabs button { padding: 7px 10px; font-size: 13px; }
 .panel { display: flex; flex-direction: column; gap: 10px; }
 .panel h2 {
   margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px;

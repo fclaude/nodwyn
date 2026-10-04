@@ -1,7 +1,7 @@
 // The task view: one session's conversation with its approval inline, and
-// beside it the plan, this turn's budget, the changes, the project notes and
-// the workspace. Every figure comes from the log or from session.info; a
-// panel with no source says so instead of guessing.
+// beside it, in tabs, the plan, this turn's budget, the changes, the
+// project notes and the workspace. Every figure comes from the log or from
+// session.info; a panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
 import { Transcript, planSteps, stepTitle, usd, contextGauge, judgeTally, spanWords } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
@@ -762,14 +762,83 @@ export class TaskView {
     // the focus and the caret, so typing carries on where it was.
     const typing = side.querySelector("textarea[data-notes]");
     const caret = typing && document.activeElement === typing ? [typing.selectionStart, typing.selectionEnd, typing.scrollTop] : null;
-    const panels = [this.totalsPanel(), this.planPanel(), this.turnPanel(), this.changesPanel(), this.toolsPanel(), this.attachmentsPanel(), this.notesPanel(), this.workspacePanel(), this.detailsPanel()];
-    side.replaceChildren(...panels.filter(Boolean));
+    // A tab button the reader is on keeps the focus across the redraw, as
+    // the notes field keeps its caret.
+    const focusing = side.querySelector("[role=tab]:focus");
+    const tabs = this.asideTabs();
+    this.tab ||= tabs[0].id;
+    let at = tabs.findIndex((t) => t.id === this.tab);
+    if (at < 0) {
+      at = 0;
+      this.tab = tabs[0].id;
+    }
+    const bar = h(
+      "div",
+      { class: "tabs aside-tabs", role: "tablist", "aria-label": "Task details" },
+      tabs.map((t, i) =>
+        h(
+          "button",
+          {
+            type: "button",
+            role: "tab",
+            id: `aside-tab-${t.id}`,
+            "aria-selected": String(i === at),
+            "aria-controls": "aside-panel",
+            tabindex: i === at ? 0 : -1,
+            onclick: () => {
+              this.tab = t.id;
+              this.aside();
+            },
+            onkeydown: (event) => this.tabKey(event),
+          },
+          t.label,
+        ),
+      ),
+    );
+    const shown = tabs[at].draw().filter(Boolean);
+    const body = h(
+      "div",
+      { class: "aside-panel", role: "tabpanel", id: "aside-panel", "aria-labelledby": `aside-tab-${tabs[at].id}` },
+      ...(shown.length ? shown : [h("p", { class: "hint" }, tabs[at].empty)]),
+    );
+    side.replaceChildren(bar, body);
+    if (focusing) side.querySelector(`#${focusing.id}`)?.focus();
     const area = caret && side.querySelector("textarea[data-notes]");
     if (area) {
       area.focus({ preventScroll: true });
       area.setSelectionRange(caret[0], caret[1]);
       area.scrollTop = caret[2];
     }
+  }
+
+  // asideTabs names the side's four tabs and the panels each holds. The
+  // grouping is by what a reader comes for: Live holds everything that
+  // ticks while the task works, Changes what it has written and brought
+  // in, Workspace where it works and what it may reach, and Notes what
+  // nodwyn knows here. A tab whose panels all come out empty says so
+  // instead of showing nothing at all.
+  asideTabs() {
+    return [
+      { id: "live", label: "Live", draw: () => [this.turnPanel(), this.planPanel(), this.totalsPanel()], empty: "Nothing has run yet." },
+      { id: "changes", label: "Changes", draw: () => [this.changesPanel(), this.attachmentsPanel()], empty: "Nothing written yet." },
+      { id: "workspace", label: "Workspace", draw: () => [this.workspacePanel(), this.toolsPanel(), this.detailsPanel()], empty: "Nothing to show." },
+      { id: "notes", label: "Notes", draw: () => [this.notesPanel()], empty: "Reading the notes…" },
+    ];
+  }
+
+  // The tabs follow the arrow keys, the tab that takes focus being the one
+  // shown (roving tabindex).
+  tabKey(event) {
+    const step = { ArrowLeft: -1, ArrowRight: 1, Home: -Infinity, End: Infinity }[event.key];
+    if (step === undefined) return;
+    const tabs = [...(this.el?.side?.querySelectorAll("[role=tab]") || [])];
+    if (tabs.length < 2) return;
+    const at = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+    const next = step === -Infinity ? 0 : step === Infinity ? tabs.length - 1 : Math.max(0, Math.min(tabs.length - 1, at + step));
+    if (next === at) return;
+    event.preventDefault();
+    tabs[next].click();
+    this.el.side.querySelector(`#${tabs[next].id}`)?.focus();
   }
   planPanel() {
     const turn = this.lastTurn();
@@ -870,6 +939,7 @@ export class TaskView {
     const endTS = ended ? new Date(ended.ts || ended.TS).getTime() : this.busy ? Date.now() : new Date(turn.tail.at(-1)?.ts || startTS).getTime();
     const elapsed = startTS ? Math.max(0, endTS - startTS) : 0;
     const calls = turn.tail.filter((e) => e.kind === "tool.call").length;
+    const split = this.turnSplit(turn);
     // As the token budget counts them (budget.CountedPrompt): a prompt
     // token read from the provider's cache counts a tenth.
     let tokens = 0;
@@ -892,6 +962,8 @@ export class TaskView {
     node.replaceChildren(
       ...[
         meter("Time", elapsed, budgets ? budgets.wall_ns.soft / 1e6 : 0, (ms) => minutes(ms)),
+        split.model ? meter("Model wait", split.model, 0, (ms) => minutes(ms)) : null,
+        split.tools ? meter("Tool time", split.tools, 0, (ms) => minutes(ms)) : null,
         meter("Tool calls", calls, budgets?.tool_calls.soft || 0),
         // The budget counts every request's whole prompt, cached tokens at a
         // tenth, so this adds the context up once per request; Context below
@@ -901,6 +973,19 @@ export class TaskView {
         this.judgeLine(),
       ].filter(Boolean),
     );
+  }
+  // turnSplit is splitTime over one turn's own records: how much of the
+  // turn went waiting for a model and how much running tools, its open
+  // pairs counting to now while the turn runs and no prompt holds it.
+  turnSplit(turn) {
+    const ended = turn.tail.find((e) => e.kind === "turn.end");
+    const records = [turn.start, ...turn.tail];
+    const until = ended ? tsOf(ended) : this.clockUntil(records);
+    const { model, tools, openModel, openTool } = splitTime(records);
+    return {
+      model: model + (openModel !== null ? Math.max(0, until - openModel) : 0),
+      tools: Math.max(0, tools + (openTool !== null ? Math.max(0, until - openTool) : 0)),
+    };
   }
   // judgeLine is what the judge has used in this task, when it was asked at
   // all: its calls, tokens and, with [jev] prices, what they cost.
@@ -954,14 +1039,31 @@ export class TaskView {
         { class: "meter", title: "How long the task's turns took, with the time it spent waiting for a person's answer left out; a turn still running counts up to now unless it waits for one" },
         h("div", { class: "meter-head" }, h("span", {}, "Total working time"), h("span", { dataset: { working: "1" } }, spanWords(t.work))),
       ),
+      h(
+        "div",
+        { class: "meter", title: "How long the task waited for answers from models, each request from its sending to its reply; streaming counts as waiting, and a request still being answered counts up to now" },
+        h("div", { class: "meter-head" }, h("span", {}, "Model wait"), h("span", { dataset: { model: "1" } }, spanWords(t.model))),
+      ),
+      h(
+        "div",
+        { class: "meter", title: "How long the task's tool calls took to run, from a call to its result, with the wait for a person's approval left out; the time waiting for you to answer is in no figure here" },
+        h("div", { class: "meter-head" }, h("span", {}, "Tool time"), h("span", { dataset: { tools: "1" } }, spanWords(t.tools))),
+      ),
     );
   }
   // totals adds the task up over its whole log: what its requests cost, as
-  // far as the log prices them, and how long it ran and worked. Null before
-  // the first turn: nothing has run to add up.
+  // far as the log prices them, how long it ran and worked, and how much of
+  // that went waiting for a model and running tools. Null before the first
+  // turn: nothing has run to add up.
   totals(evs = this.events()) {
-    const { spend } = this.tally(evs);
-    return spend && { ...spend, ...this.turnClocks(evs) };
+    const { spend, split } = this.tally(evs);
+    if (!spend) return null;
+    // A request or tool still open counts on to now, or stops at the log's
+    // last record when a prompt holds the session: nobody's time then.
+    const until = this.clockUntil(evs);
+    const model = split.model + (split.openModel !== null ? Math.max(0, until - split.openModel) : 0);
+    const tools = Math.max(0, split.tools + (split.openTool !== null ? Math.max(0, until - split.openTool) : 0));
+    return { ...spend, ...this.turnClocks(evs), model, tools };
   }
   // turnClocks is how long the task ran and worked (walkTurns), and a turn
   // still here in a busy session counts up to now — running time always,
@@ -979,8 +1081,16 @@ export class TaskView {
   // once a second, so the log is walked once per new event (events() hands
   // out one list until one arrives), not on every redraw and tick.
   tally(evs) {
-    if (this.tallied?.evs !== evs) this.tallied = { evs, spend: spendOf(evs), run: walkTurns(evs) };
+    if (this.tallied?.evs !== evs) this.tallied = { evs, spend: spendOf(evs), run: walkTurns(evs), split: splitTime(evs) };
     return this.tallied;
+  }
+
+  // clockUntil is when a pair still open may count to: now while the
+  // session works and no prompt holds it, the log's last record otherwise —
+  // the rule turnClocks applies to a running turn's working time.
+  clockUntil(evs) {
+    if (this.busy && !this.prompts.size) return Date.now();
+    return evs.length ? tsOf(evs.at(-1)) : 0;
   }
   // tickTotals redraws the running and working time while the task works;
   // the second tick that moves the turn's meters moves these with it.
@@ -990,8 +1100,12 @@ export class TaskView {
     if (!panel) return;
     const run = panel.querySelector("[data-running]");
     const worked = panel.querySelector("[data-working]");
+    const waited = panel.querySelector("[data-model]");
+    const tooled = panel.querySelector("[data-tools]");
     if (run) run.textContent = spanWords(t.ms);
     if (worked) worked.textContent = spanWords(t.work);
+    if (waited) waited.textContent = spanWords(t.model);
+    if (tooled) tooled.textContent = spanWords(t.tools);
   }
   changesPanel() {
     const written = [];
@@ -1314,6 +1428,23 @@ function spendOf(evs) {
   return { cost, unpriced, estimated };
 }
 
+// tsOf is a record's time in milliseconds; a record without one is time 0.
+const tsOf = (e) => new Date(e.ts || e.TS || 0).getTime();
+
+// waitedOn says whether a record ends a wait for a person's answer: the
+// judge and an unattended run answer their confirms themselves, so their
+// span is the session working, not a person being asked.
+function waitedOn(e) {
+  const p = e.payload || {};
+  if (p.actor === "judge" || p.actor === "unattended") return false;
+  if (e.kind === "guard.decision") return p.decision === "confirm";
+  if (e.kind === "turn.checkpoint") return true;
+  // run.checkpoint, cred.register and setting.change end a prompt's
+  // wait only when a prompt was asked (prompt_id); without one they
+  // record a decision made without asking.
+  return !!p.prompt_id;
+}
+
 // walkTurns walks the log as the session lived it: how long its turns ran
 // all in (total) and how long they ran without a person's wait (work), plus
 // the start of a turn still open at its end (open, else null) with the time
@@ -1327,20 +1458,6 @@ function spendOf(evs) {
 // (session.resume, or a session.end) ends it, and the time before that,
 // when nothing ran, is nobody's.
 function walkTurns(evs) {
-  const tsOf = (e) => new Date(e.ts || e.TS || 0).getTime();
-  // The judge and an unattended run answer their confirms themselves:
-  // their span is the session working, not a person being asked.
-  const machine = (p) => p?.actor === "judge" || p?.actor === "unattended";
-  const asked = (e) => {
-    const p = e.payload || {};
-    if (machine(p)) return false;
-    if (e.kind === "guard.decision") return p.decision === "confirm";
-    if (e.kind === "turn.checkpoint") return true;
-    // run.checkpoint, cred.register and setting.change end a prompt's
-    // wait only when a prompt was asked (prompt_id); without one they
-    // record a decision made without asking.
-    return !!p.prompt_id;
-  };
   let total = 0,
     work = 0,
     prev = null,
@@ -1354,14 +1471,14 @@ function walkTurns(evs) {
     if (prev !== null && ts > prev && open !== null && !cut) {
       const span = ts - prev;
       total += span;
-      if (!asked(e)) work += span;
+      if (!waitedOn(e)) work += span;
     }
     if (cut) {
       open = null;
       gap = null;
     }
     if (open === null && gap !== null) {
-      if (asked(e)) gapWaited = true;
+      if (waitedOn(e)) gapWaited = true;
       // A run brought back by a person, or one that ended, leaves the gap
       // before it to the person who read and decided.
       if (e.kind === "session.resume" || e.kind === "run.state") gapResumed = true;
@@ -1385,4 +1502,74 @@ function walkTurns(evs) {
     prev = ts;
   }
   return { total, work, open, prev };
+}
+
+// splitTime adds a stretch of the log up by what the session was doing in
+// it: model is the time from each request to a model to its reply, tools
+// the time from each tool.call to its tool.result, with the wait for a
+// person's approval taken back out — the ask and the answer sit between a
+// call and its result, and work leaves them out the same way. A request
+// and its reply are paired in order, a result with its own call by id;
+// stretches that overlap are merged, so a pair inside another is not
+// counted twice. A pair still open at the stretch's end is not counted
+// here: its start comes back as openModel or openTool (null when none),
+// and the caller, which knows whether the session still works, counts it
+// on to now.
+function splitTime(evs) {
+  const model = [],
+    tools = [],
+    waits = [];
+  const open = []; // requests to models waiting for their reply, in order
+  const calls = new Map(); // tool calls waiting for their result, by id
+  let prev = null;
+  for (const e of evs) {
+    const ts = tsOf(e);
+    if (e.kind === "llm.req") {
+      if (ts > 0) open.push(ts);
+    } else if (e.kind === "llm.resp") {
+      const start = open.pop();
+      if (start !== undefined && ts > start) model.push([start, ts]);
+    } else if (e.kind === "tool.call") {
+      if (ts > 0) calls.set(e.payload?.id, ts);
+    } else if (e.kind === "tool.result") {
+      const start = calls.get(e.payload?.id);
+      calls.delete(e.payload?.id);
+      if (start !== undefined && ts > start) tools.push([start, ts]);
+    } else if (prev !== null && ts > prev && waitedOn(e)) waits.push([prev, ts]);
+    prev = ts;
+  }
+  // A span that begins inside another extends it instead of adding a
+  // second count of the same time.
+  const merge = (spans) => {
+    const out = [];
+    for (const s of spans.sort((a, b) => a[0] - b[0])) {
+      const last = out[out.length - 1];
+      if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]);
+      else out.push([...s]);
+    }
+    return out;
+  };
+  const sum = (spans) => spans.reduce((n, s) => n + s[1] - s[0], 0);
+  // What two merged, sorted lists both count: the part of a tool's stretch
+  // that was the wait for an approval.
+  const overlap = (a, b) => {
+    let n = 0,
+      i = 0,
+      j = 0;
+    while (i < a.length && j < b.length) {
+      const from = Math.max(a[i][0], b[j][0]),
+        to = Math.min(a[i][1], b[j][1]);
+      if (to > from) n += to - from;
+      if (a[i][1] < b[j][1]) i++;
+      else j++;
+    }
+    return n;
+  };
+  const ran = merge(tools);
+  return {
+    model: sum(merge(model)),
+    tools: sum(ran) - overlap(ran, merge(waits)),
+    openModel: open.length ? open[open.length - 1] : null,
+    openTool: calls.size ? Math.min(...calls.values()) : null,
+  };
 }

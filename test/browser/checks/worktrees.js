@@ -71,6 +71,8 @@ check(async () => {
   // nothing untracked, so nothing is said to be left behind.
   assert.ok(!fs.existsSync(path.join(repo, ".nodwyn", "workspace.toml")), "naming the folder wrote a workspace file into it");
   assert.ok(!(await page.innerText(".transcript")).includes("uncommitted"), "something was counted as left behind");
+  // The workspace's details live in the Workspace tab.
+  await page.click(".task-aside [role=tab]:has-text('Workspace')");
   await shows(page, ".task-aside", "Branch", branches[second], `Its changes stay on ${branches[second]} until it is merged into main`);
   await page.screenshot({ path: `${out}/worktree-task.png` });
   // Both are listed under the repository, which Home offers once.

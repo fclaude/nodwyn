@@ -166,6 +166,9 @@ check(async () => {
     await page.waitForSelector(".task-head .pill:has-text('Idle')", { timeout: 10000 });
   };
   await page.waitForSelector(".task-head .pill:has-text('Idle')", { timeout: 10000 });
+  // The Changes panel lives in its tab now; the tab stays chosen while the
+  // follow-up's events redraw the side.
+  await page.click(".task-aside [role=tab]:has-text('Changes')");
   await page.click(".file-row button:has-text('History')");
   await page.waitForSelector(".versions button:has-text('Restore')");
   let drawn = await page.$(".versions");
@@ -204,6 +207,8 @@ check(async () => {
   // Every event redraws the side panel. Notes being edited must come
   // through a follow-up's events, as those that come just after a turn
   // ends, with what was typed, and the field typed in keeps the focus.
+  // Notes live in their tab too.
+  await page.click(".task-aside [role=tab]:has-text('Notes')");
   const notesPanel = "section.panel:has(h2:has-text('What nodwyn knows here'))";
   const notes = `${notesPanel} textarea[aria-label='Project notes']`;
   const replies = () => page.evaluate(() => (document.querySelector(".transcript").innerText.match(/Glad that helps/g) || []).length);

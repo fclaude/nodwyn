@@ -125,6 +125,8 @@ check(async () => {
   assert.strictEqual(ran.open, false, "the finished run is folded");
   assert.deepStrictEqual(ran.rows.map((r) => r.name.replace(/\s+/g, " ").trim()), ["ls -la", "wc -l app.js"]);
   assert.ok(ran.rows.every((r) => /^exit 0/.test(r.stat)), `the run's rows: ${JSON.stringify(ran.rows)}`);
+  // The changes are in their tab now; Live comes back for the plan below.
+  await page.click(".task-aside [role=tab]:has-text('Changes')");
   const after = await page.evaluate(() => ({
     card: !!document.querySelector(".ask-card"),
     edit: [...document.querySelectorAll(".step")].map((s) => s.textContent.replace(/\s+/g, " ").trim()).find((t) => t.startsWith("Edit")),
@@ -135,6 +137,7 @@ check(async () => {
   assert.match(after.edit, /^Editapp\.jswritten.*went ahead: a write in the folder$/);
   assert.deepStrictEqual(after.changes, ["app.jsHistory"]);
   assert.strictEqual(after.code, 'const meta = [session.repo, when, state].join(" · ");');
+  await page.click(".task-aside [role=tab]:has-text('Live')");
   const marked = await planPanel();
   assert.deepStrictEqual(marked.steps, before.steps, "the plan's steps after the approvals");
   assert.strictEqual(marked.head, "Plan3 of 4 done · drafted");

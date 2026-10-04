@@ -3,8 +3,12 @@
 The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
-beside it the plan, this turn's budget, the changes, the attachments, the
-project notes and the workspace. The plan shows the model's progress through
+beside it four tabs: **Live** holds this turn's budget, the plan and the
+task's totals, everything that moves while the task works; **Changes**
+holds what it has written, each file's kept versions and the attachments;
+**Workspace** holds where it works, the tools it was offered and the
+Details inspectors; **Notes** holds the project notes. The plan shows the
+model's progress through
 it: the steps it marked done (with what it says shows it), the ones it
 skipped, and the next. A step folds to its title, the clause up to its
 first dash, and the mark's note waits behind the fold too, so the plan
@@ -17,12 +21,16 @@ sends the whole prompt again. The side panel's Context meter shows how full
 the conversation's context is against the window's high water, with what the
 provider counted and how often it was compacted; "Tokens sent" is the token
 budget's count, every request's prompt, a token read from the provider's
-cache counted as a tenth. A compaction is one line in
+cache counted as a tenth. Beside them the turn's clock is split: "Model
+wait", each request to a model from its sending to its reply, and "Tool
+time", each tool call from its start to its result, the wait for your
+approval left out. A compaction is one line in
 the conversation: what set it off, and the context's size before and after.
 **Connections** (tools, credentials, workspaces, models),
 **Workspaces** and **Settings** hold the rest; Settings also creates,
 unlocks and sets the passphrase of the keychain. The
-U3 inspectors described below sit under a task's **Details**. For the app
+U3 inspectors described below sit under a task's **Details**, in the
+Workspace tab. For the app
 window and first-run setup see [app.md](app.md).
 
 ## Settings
