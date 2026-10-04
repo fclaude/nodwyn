@@ -52,7 +52,9 @@ func (s *Session) registerHistory() error {
 				slices.Reverse(infos) // IDs sort by start time
 				var out []scheme.Value
 				for _, info := range infos {
-					if info.Repo != s.opts.Repo {
+					// A repository's sessions include those in its
+					// worktrees (ADR 34).
+					if info.Project() != s.project() {
 						continue
 					}
 					if limit >= 0 && len(out) == limit {
@@ -108,7 +110,7 @@ func (s *Session) registerHistory() error {
 				if err != nil {
 					return scheme.Void, err
 				}
-				if info.Repo != s.opts.Repo {
+				if info.Project() != s.project() {
 					return scheme.Void, fmt.Errorf("session %s belongs to another repository", id)
 				}
 				var out []scheme.Value

@@ -13,7 +13,13 @@ applyTheme(storedTheme());
 applyThinking(storedThinking());
 const conn = new Connection();
 const desk = new Desk(conn);
-const task = new TaskView(conn, desk, navigate);
+// One view per task. An open task's view is kept when another page is shown:
+// its subscription stays and its events go on drawing into it, so coming
+// back shows it at once instead of reading its whole log again, which took
+// seconds for a long task. The least recently shown go past keptViews.
+const views = new Map(); // task id -> TaskView, least recently shown first
+const keptViews = 8;
+let task = null; // the view on screen, when a task is
 let route = parse();
 let homeState = null;
 
@@ -30,7 +36,7 @@ function navigate(hash) {
 }
 window.addEventListener("hashchange", () => {
   const next = parse();
-  if (route.name === "task" && (next.name !== "task" || next.id !== route.id)) task.leave();
+  if (route.name === "task" && (next.name !== "task" || next.id !== route.id)) putAway(task);
   route = next;
   closeMenu();
   render(true);
@@ -98,6 +104,51 @@ function openMenu() {
   $("shell").append(scrim);
 }
 
+// showTask puts task id's view on screen: the kept one as it is, or one
+// that reads the conversation.
+function showTask(id) {
+  let view = views.get(id);
+  views.delete(id);
+  if (task && task !== view) putAway(task);
+  if (view?.keeps(id)) {
+    views.set(id, view);
+    task = view;
+    $("view").replaceChildren(view.root);
+    view.show(desk.sessions.get(id));
+  } else {
+    view ||= new TaskView(conn, desk, navigate);
+    views.set(id, view);
+    task = view;
+    $("view").replaceChildren(view.root);
+    view.open(id);
+  }
+  for (const [other, kept] of views) {
+    if (views.size <= keptViews) break;
+    if (kept === task) continue;
+    kept.dispose();
+    views.delete(other);
+  }
+}
+// putAway takes a task's view off screen: kept while its task is open,
+// ended otherwise, since a saved task's view has nothing coming to it.
+function putAway(view) {
+  if (!view) return;
+  const id = view.item?.id;
+  if (id && view.keeps(id)) view.park();
+  else {
+    view.dispose();
+    for (const [key, kept] of views) if (kept === view) views.delete(key);
+  }
+  if (task === view) task = null;
+}
+// dropViews ends every view: a new connection has none of their
+// subscriptions, so there is nothing to unsubscribe.
+function dropViews() {
+  for (const view of views.values()) view.dispose(false);
+  views.clear();
+  task = null;
+}
+
 let lastRoute = "";
 // render draws the shell and the route. what is the desk change that asked
 // for it ("" when something else did).
@@ -114,14 +165,12 @@ function render(routeChanged = false, what = "") {
   const key = route.name === "task" ? `task:${route.id}` : route.name;
   const ctx = { conn, desk, navigate, rerender: () => render(), pickFolder: window.nodwynPickFolder };
   if (route.name === "task") {
-    if (key !== lastRoute || routeChanged) {
-      view.replaceChildren(task.root);
-      task.open(route.id);
-    } else {
+    if (key !== lastRoute || routeChanged || !task) showTask(route.id);
+    else {
       // The list changed: keep the conversation, refresh what the task shows.
       const fresh = desk.sessions.get(route.id);
       if (fresh && task.item && task.item.id === fresh.id) {
-        Object.assign(task.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived });
+        Object.assign(task.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived, worktree: fresh.worktree });
         task.refreshAll();
       }
     }
@@ -151,6 +200,7 @@ conn.onState(async (state, detail) => {
     if ($("shell").hidden) showDown(detail);
     else $("offline").hidden = false;
   } else if (state === "live") {
+    dropViews();
     lastRoute = "";
     delete document.documentElement.dataset.ready;
     try {

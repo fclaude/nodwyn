@@ -35,9 +35,29 @@
    (scratch-rule (scratch-dir))
    working-rules
    (git-rule)
+   (worktree-section)
    (workspace-section)
    (project-instructions-section)
    (project-notes-section)))
+
+;; What a session in a git worktree of its own adds to the system prompt
+;; (ADR 34), or "" outside one, so every other prompt is unchanged: where
+;; the work goes, and that others work beside it. The stash is shared by
+;; every worktree of a repository, so working-rules' comparison through
+;; git stash could bring another session's work into this one, or hand
+;; this one's to it; here the unchanged code is a copy of the last commit
+;; (ADR 32, amended 2026-10-03).
+(define (worktree-section)
+  (let ((w (guard (e (else #f)) (worktree))))
+    (if (not w)
+        ""
+        (let ((base (assoc-ref w "base" "")))
+          (string-append
+           "\n\nThis folder is a git worktree made for this session, on its own branch " (assoc-ref w "branch" "")
+           ", started from " (if (string-empty? base) "the commit" base) " of the repository at " (assoc-ref w "repository" "") "."
+           " Other sessions may be working at the same time in other worktrees of that repository: work only in this folder, and leave branches you did not make alone."
+           " Your changes reach the repository only through this branch, so when you finish, say that they are on it."
+           "\n- Never use git stash here: every worktree of the repository shares one stash, so it can take another session's work or give yours away. To compare with the unchanged code, run the command on a copy of the last commit instead: mkdir -p \"$TMPDIR/base\" && git archive HEAD | tar -x -C \"$TMPDIR/base\", then the same command in $TMPDIR/base.")))))
 
 ;; What the workspace adds to the system prompt (ADR 22): the folders
 ;; outside it the session may use, or nothing without mounted folders, so a
@@ -101,6 +121,7 @@
    (scratch-rule (scratch-dir))
    working-rules
    (git-rule)
+   (worktree-section)
    (workspace-section)
    (project-instructions-section)
    (project-notes-section)))

@@ -258,6 +258,35 @@ Kept versions are the undo for what git cannot give back: before a write,
 nodwyn keeps a file's content unless git has it committed and unchanged
 (`nodwyn versions`, `nodwyn undo`).
 
+### Several tasks on one repository: worktrees
+
+Tasks in one folder share its files, its git index and its stash: one
+task's edit shows up in another's test run. In the console, **In a
+worktree** beside the folder on Home starts a task in a git worktree of its
+own instead (ADR 34): `<repo>/.nodwyn/worktrees/<id>` on a new branch
+`nodwyn/<id>`, from the repository's `HEAD`. The task's tools, commands and
+`.nodwyn/` settings are the worktree's, exactly as if you had checked the
+branch out there; the notes, MCP servers and session history are the
+repository's, and the task is listed under it. The folder ignores itself
+(`.nodwyn/worktrees/.gitignore` is `*`), so the repository's `git status`
+stays clean. What is uncommitted in the repository is not in the worktree
+(the conversation says how many files), and nothing untracked is copied but
+an untracked `.nodwyn/workspace.toml`; a first build or install there starts
+from nothing. The model is told it is in a worktree, that others may be
+working beside it, and to compare with the unchanged code on a copy of the
+last commit rather than with `git stash`, which every worktree shares.
+
+The work stays on the branch until it is merged, for example with `git
+merge nodwyn/<id>` in the repository. Closing the task removes the worktree
+and its branch when nothing would be lost (no change, no untracked or
+ignored file, no commit its base lacks); otherwise both stay and resuming
+works in them again, and a removed worktree is made again on resume.
+Committing from a task is `git commit` through `shell-exec`, which asks.
+Not built yet: `--worktree` for the plain CLI, `nodwyn run` and the TUI;
+`nodwyn worktree list` and `remove`; and the git tools that would let a
+task commit, rebase and land its branch itself (ADR 34, amended
+2026-10-03).
+
 ### Naming, archiving and deleting tasks
 
 A task is listed by the first sentence of its first message until you name
@@ -294,7 +323,8 @@ does not escape it (ADR 28).
 A repository can keep notes from one session to the next: how its tests run,
 where things are, runbooks. A strategy saves them with `project-notes-save`
 (docs/scheme.md); they live in nodwyn's data directory, keyed by the
-repository's path, and never in the repository or its diff. The next session
+repository's path (a task in a worktree has its repository's), and never in
+the repository or its diff. The next session
 in the same repository shows them in its system prompt, under a heading that
 calls them the agent's own notes: leads to check, not instructions. A save
 is capped at 8 KiB and redacted, and content that looks like a credential

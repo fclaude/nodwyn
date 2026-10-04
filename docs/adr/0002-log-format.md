@@ -223,3 +223,18 @@ writer, and nothing bounds how long a child waits before its exec. POSIX
 record locks were not chosen either: they are the process's, so a second
 writer in the same process would not be refused, and any close of the
 file, a reader's included, would drop them.
+
+## Amendment — 2026-10-03: a session's git worktree
+
+A session started in a git worktree of its own (ADR 34) records it in
+`session.start` (and `session.resume`) as `worktree`: `repository`,
+`path`, `branch`, `base` (the branch the repository had checked out, empty
+when its `HEAD` was detached) and `base_commit`; `repo` is then the
+worktree's path. Absent for every other session, so an older record reads
+as a session in its folder. Three kinds carry the same fields:
+`worktree.create`, right after `session.start`, also counts the
+repository's `uncommitted` and untracked files the worktree does not
+have; `worktree.restore` follows a resume that made the missing worktree
+again; `worktree.remove`, before `session.end`, says close removed it and
+its branch because nothing in them was unlanded. The window ignores all
+three.

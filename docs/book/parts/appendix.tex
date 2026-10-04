@@ -41,6 +41,7 @@ Kind & What it records \\
 \code{setting.change} & a setting a person chose at a prompt, such as how uploads to Google Docs are handled: who, the value, whether \file{config.toml} took it \\
 \code{session.title}, \code{session.archive} & the name a person gave the task, and whether it is archived (\adr{39}): who, and the name or the state; the latest of each counts \\
 \code{session.model} & the model the conversation talks to, chosen as it opened or changed between turns (\adr{40}): from, to, where it is reached, who chose it, and the window's recipe sized for it; the latest one counts \\
+\code{worktree.create}, \code{worktree.restore}, \code{worktree.remove} & the task's own git worktree (\adr{34}): made, with its repository, path, branch, base and the uncommitted files it does not have; made again by a resume; removed on close with its branch, when nothing in them was unlanded \\
 \code{eval.req}, \code{eval.result} & Scheme you evaluated, and its redacted result \\
 \code{note} & free-form: hard stops, standing approvals, turn trust \\
 \bottomrule
@@ -95,7 +96,7 @@ ADR & Title & Status \\
 31 & The project is renamed \nodwyn{} & accepted \\
 32 & The default loop works the way pil did & accepted \\
 33 & Go 1.26 is the base & accepted \\
-34 & Sessions in git worktrees & proposed \\
+34 & Sessions in git worktrees & partly implemented \\
 35 & A chat is the way to work, and it asks less (amends 17, 18, 30) & accepted \\
 \bottomrule
 \end{longtable}}

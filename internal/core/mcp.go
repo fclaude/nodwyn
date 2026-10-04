@@ -54,7 +54,9 @@ func (s *Session) connectMCP() {
 		return
 	}
 	for _, server := range servers {
-		if !server.In(s.opts.Repo) {
+		// A server is the project's: a worktree's session has the
+		// repository's (ADR 34).
+		if !server.In(s.project()) {
 			continue
 		}
 		s.mcp = append(s.mcp, s.connectServer(server))

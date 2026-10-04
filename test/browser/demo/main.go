@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -178,6 +179,13 @@ func run(seed bool, port int, docs bool) error {
 			return err
 		}
 	}
+	// A git repository with one commit, for tasks in worktrees of their
+	// own (ADR 34); the other folders stay plain folders, as the checks
+	// that look at them expect.
+	project := filepath.Join(root, "work", "project")
+	if err := writeGitRepo(project); err != nil {
+		return err
+	}
 	if seed {
 		if err := seedTasks(ctx, socket, repos); err != nil {
 			return err
@@ -198,7 +206,7 @@ func run(seed bool, port int, docs bool) error {
 		return err
 	}
 	url := "http://" + web.Addr().String()
-	fmt.Printf("URL %s/#ticket=%s\nCODE %s\nREPO %s\nMCP %s\nIMAGE %s\n", url, ticket, code, repos["console"], chat.URL, notesImage)
+	fmt.Printf("URL %s/#ticket=%s\nCODE %s\nREPO %s\nMCP %s\nIMAGE %s\nGIT %s\n", url, ticket, code, repos["console"], chat.URL, notesImage, project)
 	go func() {
 		// More tickets for automated checks: one per line on stdin.
 		buf := make([]byte, 1)
@@ -264,6 +272,24 @@ func writeRepo(dir, name string) error {
 		}
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// writeGitRepo makes dir a git repository on main with the demo's files
+// committed, by an identity of its own and unsigned, whatever the person's
+// git configuration says.
+func writeGitRepo(dir string) error {
+	if err := writeRepo(dir, "project"); err != nil {
+		return err
+	}
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"-c", "commit.gpgsign=false", "commit", "-q", "-m", "first"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=demo", "GIT_AUTHOR_EMAIL=demo@nodwyn.invalid", "GIT_COMMITTER_NAME=demo", "GIT_COMMITTER_EMAIL=demo@nodwyn.invalid")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("demo: git %v: %v: %s", args, err, out)
 		}
 	}
 	return nil
@@ -459,6 +485,14 @@ func respond(req fake.Request) fake.Turn {
 			}}}}}
 		}
 		return fake.Turn{Content: "Quieted: make no longer echoes either command, and the tests print only failures.", Chunk: 16}
+	}
+	if strings.HasPrefix(last, "Write") {
+		// A task in a worktree writes a file there, never in the
+		// repository's own checkout (ADR 34).
+		if rounds == 0 {
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "f1", Name: "fs-write", Args: map[string]any{"path": "notes/" + strings.ToLower(strings.Fields(last)[len(strings.Fields(last))-1]) + ".md", "content": last + "\n"}}}}
+		}
+		return fake.Turn{Content: "Written.", Chunk: 12}
 	}
 	if last == "continue" {
 		if rounds == 0 {

@@ -454,3 +454,21 @@ as the rule above already says.
 
 Neither change has been measured on the benchmark. The working rules are
 unchanged; `shell-exec`'s own description now says both.
+
+## Amendment 2026-10-03: in a worktree, no stash
+
+A session started in a git worktree of its own (ADR 34) adds
+`(worktree-section)` to both system prompts, after `(git-rule)`. Besides
+naming the branch and saying that other sessions may work in other
+worktrees of the repository, it overrides one working rule there: compare
+with the unchanged code on a copy of the last commit (`git archive HEAD |
+tar -x -C "$TMPDIR/base"`), never with `git stash`. The failure it comes
+from is ADR 34's: every worktree of a repository shares one stash, so the
+rule's `git stash; <command>; git stash pop` pops whatever another session
+stashed last, bringing its work into this one or taking this one's away.
+A session working on nodwyn itself is warned of the same trap in
+`AGENTS.md`. Outside a worktree the section is `""`, so the measured
+prompts are unchanged byte for byte; `working-rules` keeps its stash
+example. The section has not been measured on the benchmark, whose runs
+start in a folder of their own.
+

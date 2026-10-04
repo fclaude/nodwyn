@@ -86,6 +86,24 @@ Workspaces. The name is kept in `workspaces.toml` in the config directory;
 the kind and mounts in the folder's `.nodwyn/workspace.toml` (a code folder
 with no mounts needs none). They apply to tasks started afterwards.
 
+**In a worktree.** Beside the folder, **In a worktree** starts the task in
+a git worktree of its own
+([ADR 34](adr/0034-sessions-in-git-worktrees.md)): a checkout of the
+repository on a branch of its own, `nodwyn/<id>`, in
+`.nodwyn/worktrees/<id>`, so several tasks can work on one repository at
+once without touching each other's files or the ones you are editing. The
+choice is kept for that folder in this tab. Only a git repository's top
+folder with a commit can have one; any other is refused, in a sentence,
+when the task starts. Uncommitted changes in the folder are not in the
+worktree, and the conversation says how many. The task is listed under
+its repository; its heading shows the branch, and its Workspace panel the
+branch and where it started. Its changes stay on that branch until it is
+merged. Closing the task removes the worktree and its branch only when
+nothing in them would be lost: no change, no untracked or ignored file (an
+attachment is one), no commit its base lacks. Otherwise both stay, and
+resuming the task works in them again; a worktree that was removed is made
+again on resume.
+
 **The task list.** The sidebar puts what needs your answer first, across
 folders. Every other task is under its folder, newest activity first, and
 the folder whose task worked last comes first; the order follows as turns
@@ -93,6 +111,13 @@ end and tasks close. A folder shows five tasks and **Show N more**, and
 its heading folds it (this browser remembers which). Search matches
 titles and folder paths in every folder and in the archive
 ([ADR 39](adr/0039-named-archived-deleted-tasks.md)).
+
+**Switching.** An open task's page is kept while another is shown: it
+stays subscribed, draws what happens meanwhile, and comes back at once as
+it was, without reading the conversation again. The eight most recently
+shown are kept; a saved task's page, or one past those, is read from its
+log when it is opened. A key typed into a request card is cleared when you
+switch away.
 
 A task is read by its first message until you name it: the pencil beside
 its heading (or a double click on it) turns the heading into a field;

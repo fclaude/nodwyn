@@ -143,10 +143,11 @@ system prompt (\adr{36}).
 \file{plan.md} keeps the order and the reasons; in short:
 
 \begin{description}[leftmargin=1.6em]
-\item[Worktrees] (\adr{34}, WT0--WT5): each session on its own linked
-  worktree and branch, so sessions on one repository stop sharing a working
-  tree, and a session commits, rebases and, when asked, pushes \code{main}'s
-  new head.
+\item[Worktrees] (\adr{34}, WT0--WT5): a task started from the console
+  can have its own linked worktree and branch, so tasks on one repository
+  stop sharing a working tree. Next are the same for the terminal and runs,
+  listing and removing worktrees, and a session that commits, rebases and,
+  when asked, pushes \code{main}'s new head.
 \item[Measurement] the benchmark cohort again on the current defaults, and
   the leave-one-out ablation of the working habits (\adr{32}): the prompts
   and the loop have changed since the one run they were adopted on.

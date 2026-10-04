@@ -56,6 +56,9 @@ type sessionInfo struct {
 	Run     *run.State `json:"run,omitempty"`
 	// Archived: a person put the session away (ADR 39).
 	Archived bool `json:"archived"`
+	// Worktree is the git worktree made for the session, whose path is
+	// Repo; a list groups the task under its repository (ADR 34).
+	Worktree *log.Worktree `json:"worktree,omitempty"`
 }
 type budgetInfo struct {
 	ToolCalls budget.Limit `json:"tool_calls"`
@@ -91,6 +94,8 @@ type sessionDetails struct {
 	Git bool `json:"git"`
 	// MCP is what the session made of each configured server.
 	MCP []core.MCPServer `json:"mcp"`
+	// Worktree is the git worktree Repo is, made for this session (ADR 34).
+	Worktree *log.Worktree `json:"worktree,omitempty"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
@@ -99,7 +104,7 @@ func (s *server) details(session *core.Session) sessionDetails {
 	limits := session.Limits()
 	trust, actor := session.TurnApproval()
 	all, allActor := session.ApproveAll()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP())}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree()}
 }
 
 func orEmpty[T any](list []T) []T {
@@ -168,6 +173,7 @@ var methodTable = map[string]handler{
 	"mcp.runtime":             (*server).mcpMethod,
 	"mcp.pull":                (*server).mcpMethod,
 	"session.open":            (*server).open,
+	"worktree.open":           (*server).open,
 	"session.resume":          (*server).resume,
 	"session.model.set":       (*server).model,
 	"session.info":            (*server).info,
@@ -257,7 +263,7 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 		owned, open := s.sessions[i.ID]
 		busy := open && (owned.session.Busy() || owned.driver.Active())
 		entry := sessionInfo{ID: i.ID, Repo: i.Repo, Open: open, Busy: busy, FirstMessage: i.FirstMessage, LastEvent: i.LastEvent, InFlight: i.InFlight, Truncated: i.Truncated,
-			Title: i.Title(), Started: i.Started, Changes: i.Changes, Archived: i.Archived}
+			Title: i.Title(), Started: i.Started, Changes: i.Changes, Archived: i.Archived, Worktree: i.Worktree}
 		if entry.Changes == nil {
 			entry.Changes = []string{}
 		}
@@ -272,6 +278,10 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 	return result, nil
 }
 
+// open starts a session in a folder: session.open in the folder itself,
+// worktree.open in a new git worktree of it, on a branch of its own (ADR
+// 34), which core makes and refuses for a folder that is not a whole
+// repository with a commit. Both take the same model choice (ADR 40).
 func (s *server) open(req request, client *peer) (any, *rpcError) {
 	var p openParams
 	if err := params(req.Params, &p, "repo", "name", "server", "model"); err != nil {
@@ -296,6 +306,7 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	options := s.options
 	options.Repo = p.Repo
 	options.Model = choice
+	options.Worktree = req.Method == "worktree.open"
 	session, err := core.New(options)
 	if err != nil {
 		return nil, failure(-32000, err.Error())

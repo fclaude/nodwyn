@@ -108,6 +108,9 @@ type Session struct {
 	// workspace is the repository's .nodwyn/workspace.toml as loaded at
 	// construction: its kind and mounted folders (ADR 22).
 	workspace config.Workspace
+	// worktree is the git worktree made for the session, which is its root;
+	// nil when it works in the folder itself (ADR 34, worktree.go).
+	worktree *log.Worktree
 	// MCP servers this session connected to (mcp.go); checks made while the
 	// session was being built wait for session.start.
 	mcpMu     sync.Mutex
@@ -338,6 +341,9 @@ func (s *Session) Close() error {
 		// Contained MCP servers stop before session.end, so their last
 		// proxy reports are recorded.
 		s.closeMCP()
+		// Nothing runs in the worktree any more: it can go if that loses
+		// nothing.
+		s.closeWorktree()
 		_, _ = s.logw.Append(log.KindSessionEnd, log.SessionEnd{Reason: "closed"})
 		s.closeErr = s.logw.Close()
 		removeScratch(s.scratch)

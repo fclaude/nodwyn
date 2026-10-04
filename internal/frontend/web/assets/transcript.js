@@ -452,6 +452,17 @@ export class Transcript {
         else this.audit(`${name}: ${value} was not saved`, p.error || p, "bad");
         break;
       }
+      case "worktree.create":
+      case "worktree.restore":
+      case "worktree.remove": {
+        // Where the task works, when it has a git worktree of its own (ADR 34).
+        const from = p.base ? `${p.base} at ${String(p.base_commit || "").slice(0, 7)}` : `commit ${String(p.base_commit || "").slice(0, 7)}`;
+        const left = p.uncommitted ? ` ${p.uncommitted} uncommitted file${p.uncommitted === 1 ? " is" : "s are"} in the repository but not here.` : "";
+        if (event.kind === "worktree.create") this.audit(`Working in a git worktree of its own, on ${p.branch}, from ${from}.${left}`, p.path);
+        else if (event.kind === "worktree.restore") this.audit(`Made its worktree again, on ${p.branch}`, p.path);
+        else this.audit(`Removed its worktree and ${p.branch}: nothing in them was unlanded`, p.path);
+        break;
+      }
       case "approval.change":
         // "Don't ask" switched, rather than one standing answer.
         if (p.kind === "all") this.audit(p.off ? "Don't ask: off, writes and commands ask again" : "Don't ask: on, writes and commands approved without asking", p, p.off ? "" : "warn");

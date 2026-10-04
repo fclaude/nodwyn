@@ -38,6 +38,9 @@ type SessionInfo struct {
 	// "" when it has none. Archived is the latest session.archive (ADR 39).
 	Name     string
 	Archived bool
+	// Worktree is the git worktree made for the session, whose path is
+	// Repo; nil for a session in the folder itself (ADR 34).
+	Worktree *log.Worktree
 }
 
 // Title is what a person reads a session by: the name they gave it, else
@@ -120,6 +123,7 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 		return info, nil, fmt.Errorf("core: session %s has no absolute repository path", id)
 	}
 	info.Repo = start.Repo
+	info.Worktree = start.Worktree
 	first := false
 	written := map[string]bool{}
 	for i, ev := range events {

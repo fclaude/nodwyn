@@ -62,6 +62,14 @@ func Resume(o Options, id string) (_ *Session, err error) {
 			o.Model = c
 		}
 	}
+	// A worktree close removed, or a person deleted, is made again: the
+	// conversation goes on where its files are (ADR 34).
+	restored := false
+	if info.Worktree != nil {
+		if restored, err = restoreWorktree(*info.Worktree); err != nil {
+			return nil, err
+		}
+	}
 	st, err := os.Stat(o.Repo)
 	if err != nil {
 		return nil, err
@@ -77,7 +85,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if err != nil {
 		return nil, err
 	}
-	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+4), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}}
+	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree}
 	if err = s.restoreHistory(history); err != nil {
 		return nil, err
 	}
@@ -95,8 +103,13 @@ func Resume(o Options, id string) (_ *Session, err error) {
 			return nil, err
 		}
 	}
-	if _, err = s.Record(log.KindSessionResume, log.SessionStart{Context: s.loop.WindowContext(), Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(), Model: s.model.Model, URL: s.model.URL, Tools: len(s.loop.Tools())}); err != nil {
+	if _, err = s.Record(log.KindSessionResume, log.SessionStart{Context: s.loop.WindowContext(), Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(), Model: s.model.Model, URL: s.model.URL, Tools: len(s.loop.Tools()), Worktree: s.worktree}); err != nil {
 		return nil, err
+	}
+	if restored {
+		if _, err = s.Record(log.KindWorktreeRestore, log.WorktreeChange{Worktree: *s.worktree}); err != nil {
+			return nil, err
+		}
 	}
 	if _, err = s.Record(log.KindNote, log.Note{Text: "Session resumed; session-only approvals and Scheme state were reset. No interrupted tool was rerun."}); err != nil {
 		return nil, err

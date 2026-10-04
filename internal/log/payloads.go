@@ -22,6 +22,29 @@ type SessionStart struct {
 	Model    string         `json:"model"`
 	URL      string         `json:"url"`
 	Tools    int            `json:"tools"`
+	// Worktree is the git worktree the session works in (ADR 34); Repo is
+	// then its path. nil for a session in the folder itself.
+	Worktree *Worktree `json:"worktree,omitempty"`
+}
+
+// Worktree is a session's own linked git worktree (ADR 34): made for it in
+// Repository's .nodwyn/worktrees/, on Branch, from Base (the branch the
+// repository had checked out, "" when its HEAD was detached) at BaseCommit.
+type Worktree struct {
+	Repository string `json:"repository"`
+	Path       string `json:"path"`
+	Branch     string `json:"branch"`
+	Base       string `json:"base"`
+	BaseCommit string `json:"base_commit"`
+}
+
+// WorktreeChange records a session's worktree made (worktree.create), made
+// again on resume (worktree.restore) or removed on close (worktree.remove).
+// Uncommitted counts the repository's uncommitted and untracked files when
+// it was made, which the worktree does not have.
+type WorktreeChange struct {
+	Worktree
+	Uncommitted int `json:"uncommitted,omitempty"`
 }
 
 // SessionEnd is written on clean shutdown.

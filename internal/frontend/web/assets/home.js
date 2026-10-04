@@ -9,6 +9,9 @@ let draft = "";
 let current = null;
 let files = null; // the files chosen for the next task, kept across redraws
 let starting = false; // a start is in flight: one task per ask
+// The folders whose next task starts in a git worktree of its own (ADR 34),
+// this tab only: a choice made once for a folder holds for its next tasks.
+const inWorktree = new Set();
 
 export function kindLabel(kind) {
   return { docs: "documents", code: "code", mixed: "code and documents" }[kind] || kind || "";
@@ -54,6 +57,20 @@ export function renderHome(root, ctx) {
   files ||= new Attachments();
   const attach = files.button("Attach");
   const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
+  // A task in a worktree works on its own checkout and branch, so several
+  // can work on one repository without touching each other's files or the
+  // one you work in. Only a daemon that offers worktree.open, and a bridge
+  // that lets it through, shows the choice; a folder that is not a git
+  // repository is refused with a sentence when the task starts.
+  const worktree = () => conn.has("worktree.open") && inWorktree.has(chosen);
+  const worktreeBox = conn.has("worktree.open") && chosen
+    ? h(
+        "label",
+        { class: "worktree-toggle", title: "Start this task in a new git worktree of the folder, on a branch of its own: it does not touch the files you or other tasks are working on. Its changes stay on that branch until it is merged." },
+        h("input", { type: "checkbox", checked: inWorktree.has(chosen), onchange: (event) => { if (event.target.checked) inWorktree.add(chosen); else inWorktree.delete(chosen); } }),
+        h("span", {}, "In a worktree"),
+      )
+    : null;
   const form = h(
     "form",
     {
@@ -64,7 +81,7 @@ export function renderHome(root, ctx) {
         starting = true;
         submit.disabled = true;
         try {
-          const info = await conn.call("session.open", { repo: chosen });
+          const info = await conn.call(worktree() ? "worktree.open" : "session.open", { repo: chosen });
           // An image waits for its own confirm, which the task's page shows.
           if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
           if (files.files.length) await files.upload(info.id);
@@ -89,6 +106,7 @@ export function renderHome(root, ctx) {
       { class: "ask-bar" },
       h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder"), chosen && desk.workspace(chosen) ? h("span", { class: "muted" }, kindLabel(desk.workspace(chosen).kind)) : null),
       attach,
+      worktreeBox,
       h("span", { class: "where" }, where),
       submit,
     ),
@@ -233,7 +251,7 @@ export function renderHome(root, ctx) {
           "div",
           { style: "display:flex;flex-direction:column;gap:3px" },
           h("div", { class: "card-title" }, h("span", {}, s.title), stats ? [h("span", { class: "plus" }, `+${stats.plus}`), h("span", { class: "minus" }, `−${stats.minus}`)] : null),
-          h("div", { class: "card-sub" }, `${item.title || "Untitled task"} · ${desk.folderName(item.repo)}`),
+          h("div", { class: "card-sub" }, `${item.title || "Untitled task"} · ${desk.folderName(desk.project(item))}`),
         ),
         actions,
       ),
@@ -264,7 +282,7 @@ export function renderHome(root, ctx) {
               h(
                 "div",
                 { class: "what" },
-                item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${desk.folderName(item.repo)}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${desk.folderName(item.repo)}`)],
+                item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${desk.folderName(desk.project(item))}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${desk.folderName(desk.project(item))}`)],
               ),
             ),
           ),
@@ -301,7 +319,7 @@ export function renderHome(root, ctx) {
         { style: "display:flex;flex-direction:column;gap:4px" },
         h("div", { style: "display:flex;align-items:center;gap:10px" }, h("span", { class: "run-dot" }), h("a", { href: `#/task/${item.id}`, style: "font-size:15px;font-weight:600;text-decoration:none" }, item.title || "Untitled task")),
         // A run comes from nodwyn run, a batch tool for scripts (ADR 35).
-        h("div", { class: "card-sub", style: "padding-left:18px" }, run ? `${run.unattended ? "Unattended run" : "Run"} from nodwyn run · ${desk.folderName(item.repo)}` : `Working · ${desk.folderName(item.repo)}`),
+        h("div", { class: "card-sub", style: "padding-left:18px" }, run ? `${run.unattended ? "Unattended run" : "Run"} from nodwyn run · ${desk.folderName(desk.project(item))}` : `Working · ${desk.folderName(desk.project(item))}`),
       ),
     );
     if (run) {
@@ -310,7 +328,7 @@ export function renderHome(root, ctx) {
         h("div", { class: "meter" }, h("div", { class: "meter-head" }, h("span", {}, label), h("span", {}, value)), h("div", { class: "meter-track" }, h("div", { class: "meter-fill", style: `width:${Math.max(0, Math.min(100, pct))}%` })));
       card.append(h("div", { class: "meters" }, meter("Turns", `${run.turns} / ${run.max_turns}`, (run.turns / run.max_turns) * 100), meter("Time left", left > 0 ? minutes(left) : "expired", 0)));
     }
-    card.append(h("div", { class: "card-foot" }, icon("folder", 15), h("span", { class: "mono", style: "color:var(--ink)" }, shortPath(item.repo, desk.home)), h("span", { style: "margin-left:auto" }, `active ${ago(item.last_event)}`)));
+    card.append(h("div", { class: "card-foot" }, icon("folder", 15), h("span", { class: "mono", style: "color:var(--ink)" }, shortPath(desk.project(item), desk.home)), item.worktree ? h("span", { class: "mono branch" }, item.worktree.branch) : null, h("span", { style: "margin-left:auto" }, `active ${ago(item.last_event)}`)));
     return card;
   }
 }

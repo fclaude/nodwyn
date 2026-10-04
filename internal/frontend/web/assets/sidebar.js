@@ -37,8 +37,10 @@ function saveFolded() {
 function byFolder(desk, items) {
   const groups = new Map();
   for (const item of items) {
-    if (!groups.has(item.repo)) groups.set(item.repo, []);
-    groups.get(item.repo).push(item);
+    // A task in a worktree is listed under its repository (ADR 34).
+    const folder = desk.project(item);
+    if (!groups.has(folder)) groups.set(folder, []);
+    groups.get(folder).push(item);
   }
   const seen = new Map();
   for (const repo of groups.keys()) {
@@ -54,7 +56,7 @@ function byFolder(desk, items) {
 
 export function renderSidebar(nav, { desk, route, conn, rerender }) {
   const current = route.name === "task" ? route.id : "";
-  const matches = (item) => !filter || `${item.title} ${item.repo}`.toLowerCase().includes(filter.toLowerCase());
+  const matches = (item) => !filter || `${item.title} ${item.repo} ${item.worktree?.branch || ""}`.toLowerCase().includes(filter.toLowerCase());
   const row = (item, sub, dot) =>
     h(
       "a",
@@ -69,7 +71,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
 
   const needs = desk.needsYou().filter(matches).map((item) => {
     const first = desk.pending.get(item.id)?.[0];
-    return row(item, `${first ? summary(first).title : "Waiting for your answer"} · ${desk.folderName(item.repo)}`, "warn");
+    return row(item, `${first ? summary(first).title : "Waiting for your answer"} · ${desk.folderName(desk.project(item))}`, "warn");
   });
   const taskRow = (item) => {
     const running = item.open && (item.busy || item.run?.status === "running");
@@ -105,7 +107,7 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
         "div",
         { class: "nav-group folder archived" },
         heading("Archived", "", archived.length, archiveOpen, filter ? null : () => { showArchived = !archiveOpen; rerender(); }),
-        archiveOpen ? archived.map((item) => row(item, `${desk.folderName(item.repo)} · ${ago(item.last_event)}`, "")) : null,
+        archiveOpen ? archived.map((item) => row(item, `${desk.folderName(desk.project(item))} · ${ago(item.last_event)}`, "")) : null,
       )
     : null;
 

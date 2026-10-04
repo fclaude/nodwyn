@@ -76,6 +76,13 @@ const (
 	KindSessionArchive Kind = "session.archive" // a person archived the session or brought it back (ADR 39)
 )
 
+// A session's git worktree (ADR 34).
+const (
+	KindWorktreeCreate  Kind = "worktree.create"  // made for the session: repository, path, branch, base
+	KindWorktreeRestore Kind = "worktree.restore" // made again by a resume that found it missing
+	KindWorktreeRemove  Kind = "worktree.remove"  // removed on close, with its branch: it held nothing unlanded
+)
+
 var kinds = map[Kind]bool{
 	KindRunState: true, KindRunTurn: true, KindRunCheckpoint: true,
 	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindSessionModel: true, KindTurnEnd: true, KindTurnCheckpoint: true,
@@ -84,6 +91,7 @@ var kinds = map[Kind]bool{
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSettingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,
 	KindJevReq: true, KindCredRegister: true, KindCredRefresh: true, KindMCPEgress: true, KindRedact: true, KindSummary: true, KindNote: true, KindFileVersion: true, KindAttach: true,
 	KindDocUpload: true, KindSessionTitle: true, KindSessionArchive: true,
+	KindWorktreeCreate: true, KindWorktreeRestore: true, KindWorktreeRemove: true,
 }
 
 // Known reports whether k is one of the fixed event kinds.

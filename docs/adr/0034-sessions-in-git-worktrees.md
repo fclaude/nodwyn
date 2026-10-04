@@ -1,6 +1,8 @@
 # ADR 0034: Sessions in git worktrees
 
-- Status: **proposed** (location and git authority decided 2026-10-02)
+- Status: **partly implemented** (location and git authority decided
+  2026-10-02; a session in a worktree from the console built 2026-10-03,
+  see the amendment)
 - Date: 2026-10-01
 - Amends: ADR 17 (no standing approval for commits or pushes) and plan §4
   B3 (the operator commits), in worktree sessions only
@@ -250,3 +252,90 @@ What the guard still holds:
 2. When the user's own checkout has `main` checked out and is clean, should
    a push to `main` fast-forward it (proposed), or leave the local `main`
    for the user to pull?
+
+## Amendment 2026-10-03: a worktree from the console
+
+The console needed several tasks on one repository without them seeing
+each other's edits. This slice builds that end to end, from the ask bar to
+git, and leaves the rest of the decision for later. Clause by clause:
+
+**§1, one worktree per session.**
+- Built: `core.Options.Worktree` makes
+  `<repo>/.nodwyn/worktrees/<id>` on `nodwyn/<id>` from `HEAD` before
+  anything of the session loads, with the `*` `.gitignore`, the scrubbed
+  environment, `GIT_TERMINAL_PROMPT=0` and the repository's hooks. A
+  worktree's sibling comes from that worktree's `HEAD`. A folder below the
+  top level, a bare repository and one with no commit are refused in a
+  sentence. An untracked `.nodwyn/workspace.toml` is copied, and nothing
+  else. `worktree.create` and `SessionStart.worktree` carry the
+  repository, path, branch, base and base commit, and `Store`,
+  `session.list` and resume read them. The base is the branch the
+  repository had checked out, `""` when its `HEAD` was detached.
+- Built, beyond the clause: a link on the way (`.nodwyn` or
+  `.nodwyn/worktrees` committed as a link) is refused, since `git worktree
+  add` would check the tree out wherever it points. So is a `.nodwyn` link
+  in the new checkout, when the settings are copied.
+- Changed: "the session's start says so" about uncommitted changes is
+  `worktree.create`'s `uncommitted` count, which the conversation shows.
+- Not built: `--worktree` and `--worktree-base` for the plain CLI, `tui`
+  and `run`, and the task-root refusal moving into core. Only RPC makes a
+  worktree, after its `rootRefusal` passed the repository; the worktree is
+  inside it.
+
+**§2, the repository is the project.**
+- Built for the worktrees nodwyn makes: project notes, MCP servers'
+  `workspaces`, and `session-list` and `session-events` key on the
+  recorded repository. So do the console's folders and its task list.
+- Not built: the `git rev-parse --git-common-dir` lookup for every git
+  root. A worktree made by hand is still a project of its own.
+- Unchanged: `knownFolder`. `versions.list` reads a task's root, the
+  worktree, which is a folder a task used.
+
+**§3, close keeps it, removal is explicit.**
+- Built: close removes the worktree and its branch when nothing would be
+  lost, and records `worktree.remove`. Resume makes a missing one again,
+  with `git worktree prune` first, and records `worktree.restore`.
+- Changed: "clean" counts ignored and untracked files too. An upload in
+  `.nodwyn/attachments/` is ignored, and `git worktree remove` without
+  `--force` deletes ignored files, so the first attempt at this slice lost
+  them. The one exception is the copied `workspace.toml`, unchanged. A
+  commit counts as unlanded when it is on the branch or at the worktree's
+  `HEAD` and not on its base.
+- Not built: `nodwyn worktree list` and `nodwyn worktree remove`.
+
+**§4, the model commits, rebases and pushes.** Not built (WT3), and its
+two questions stay open. In a worktree session, `git commit` through
+`shell-exec` asks, as it does everywhere else; the work reaches `main`
+when a person merges the branch.
+
+**§5, the model is told.**
+- Built: `(worktree)` and `(worktree-section)`, which names the branch,
+  its base and the repository, and says others may work beside it and
+  that the changes reach the repository only through the branch.
+- Changed: the stash habit is overridden in the section rather than
+  replaced in `working-rules`, so the prompts measured outside worktrees
+  stay as they were (ADR 32, amended 2026-10-03).
+- Not built: the section describes no git tools, since §4 is not built.
+
+**§6, front-ends.**
+- Built: `worktree.open {repo}` (no `base`), listed in the bridge's
+  allowlist for this computer and paired devices alike. `sessionInfo` and
+  `sessionDetails` gain `worktree`, with `base_commit` beside the fields
+  named here. In the console: **In a worktree** in the ask bar, kept per
+  folder for the tab; the branch in the task's heading and Workspace
+  panel; worktree tasks listed under their repository; the three records
+  in the conversation.
+- Changed: the toggle shows for every folder when the daemon offers
+  `worktree.open`, since the console cannot tell a git folder before a task
+  opens there; the daemon refuses any other folder in a sentence.
+- Not built: `worktree.list`, `worktree.remove`, `run.start`'s
+  `worktree`, commits ahead and the last push, Remove, and the TUI's row and
+  title.
+
+The browser check `worktrees` starts two tasks in worktrees of one
+repository from the ask bar. It checks the requests sent, where each
+task's file landed, the sidebar's grouping and the branch shown. It also
+checks that closing keeps a worktree with work in it. The core tests run
+real git in temporary repositories: the removal rules, restore,
+refusals, the link check and the shared project.
+

@@ -14,9 +14,9 @@ export function renderWorkspaces(root, ctx) {
   const { desk, navigate, conn } = ctx;
   const counts = new Map();
   for (const item of desk.all()) {
-    const entry = counts.get(item.repo) || { tasks: 0, last: item.last_event };
+    const entry = counts.get(desk.project(item)) || { tasks: 0, last: item.last_event };
     entry.tasks++;
-    counts.set(item.repo, entry);
+    counts.set(desk.project(item), entry);
   }
   const canEdit = conn.has("workspace.save");
   const canRemove = conn.has("workspace.remove");
@@ -226,7 +226,7 @@ function credentials(body, info, open, desk) {
   }
   const rows = (info.bindings || []).map((b) => h("tr", {}, h("td", {}, h("span", { class: "mono" }, b.Class)), h("td", {}, b.Dest), h("td", {}, (b.Methods || []).join(", ")), h("td", {}, (b.Positions || []).join(", "))));
   body.append(
-    h("p", { class: "hint" }, `As loaded by “${open.title || open.id}” in ${desk.folderName(open.repo)}.`),
+    h("p", { class: "hint" }, `As loaded by “${open.title || open.id}” in ${desk.folderName(desk.project(open))}.`),
     rows.length
       ? h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Credential"), h("th", {}, "Only for"), h("th", {}, "Methods"), h("th", {}, "Added as"))), h("tbody", {}, rows))
       : h("div", { class: "callout plain" }, "No credential bindings. A credential is used only where a binding allows it; nodwyn adds it at the last step and the model never sees the value."),

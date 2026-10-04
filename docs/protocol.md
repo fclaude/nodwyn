@@ -61,6 +61,7 @@ IDs are transport data and are echoed unchanged.
 |---|---|---|
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
 | `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"` | Open-session details |
+| `worktree.open` | as `session.open` | Open-session details of a session in a new git worktree of `repo` |
 | `session.resume` | `{"id":"SESSION_ID"}` | Open-session details |
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
 | `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"` | The model the conversation talks to now |
@@ -72,7 +73,9 @@ IDs are transport data and are echoed unchanged.
 List entries contain `id`, `repo`, `open`, `busy`, `first_message`, `last_event`
 (RFC 3339), `in_flight` and `truncated`. `open` means this daemon owns the
 session. `in_flight` describes durable history, not process liveness; a session
-owned by a different process still appears with `open: false`.
+owned by a different process still appears with `open: false`. A session in a
+git worktree of its own also has `worktree` (below); its `repo` is the
+worktree, and a list shows it under `worktree.repository`.
 
 Open-session details contain `id`, `repo`, `busy`, `tools` (the existing model
 tool schemas) and `budgets`. Budgets contain `tool_calls`, `tokens`, `actions`,
@@ -115,7 +118,10 @@ Details also contain `workspace` (the folder's kind and mounts, from
 `mcp` (each MCP server offered in this workspace, with whether its tools are
 offered or why they are withheld: `state` is `ready`, `unapproved`,
 `changed`, `unavailable` or `error`; a contained server has `transport`
-`container`, `host` `mcp:NAME` and its `network` hosts).
+`container`, `host` `mcp:NAME` and its `network` hosts), and, for a session
+in a git worktree of its own, `worktree`: `repository`, `path` (the same as
+`repo`), `branch`, `base` (the branch the repository had checked out, `""`
+when its `HEAD` was detached) and `base_commit`.
 The approval fields report current effective prefix lists and turn-wide write approval;
 file-backed and session-only prefixes share the lists. They are not setters.
 
@@ -129,6 +135,24 @@ open, by its writer lock. Resuming an archived session brings it back.
 Deleting removes the log for good; the files the session changed stay. The
 browser bridge lets a paired device rename and archive, and only this
 computer delete.
+
+`worktree.open` takes `session.open`'s parameters, the model choice
+included, and starts the session in a new git worktree of `repo`, on a
+branch of its own (ADR 34): `repo/.nodwyn/worktrees/<id>` on
+`nodwyn/<id>`, where `<id>` is the random end of the session's id, from
+`repo`'s `HEAD`. The worktree is the session's root; notes, MCP servers'
+workspaces and the history strategies read are the repository's.
+Uncommitted changes in `repo` are not carried (`worktree.create` counts
+them); an untracked `.nodwyn/workspace.toml` is copied, and nothing else.
+A folder that is not a git repository's top folder, a bare repository and
+one with no commit are refused (`-32000`) with a sentence saying so.
+`repo` may itself be such a worktree: the new one is its sibling, from its
+`HEAD`. Closing the session removes the worktree and its branch when
+nothing in them is unlanded (no change, no untracked or ignored file, no
+commit its base lacks) and keeps it otherwise; `session.resume` makes a
+missing one again, on its branch if that still exists. A client offers the
+choice only when `hello` lists the method; a paired device may call it,
+as it may call `session.open`.
 
 `session.resume` returns the already-open session if this daemon owns it.
 Otherwise it uses `core.Resume`, including its exclusive writer lock, recovery

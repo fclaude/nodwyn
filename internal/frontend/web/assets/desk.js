@@ -171,15 +171,23 @@ export class Desk {
     return this.all().filter((s) => s.archived);
   }
   // Folders to work in: named workspaces first, then folders tasks used,
-  // most recent first.
+  // most recent first. A task in a worktree used its repository.
   folders() {
     const seen = new Set(this.workspaces.map((w) => w.path));
     const out = this.workspaces.map((w) => w.path);
-    for (const s of this.all()) if (s.repo && !seen.has(s.repo)) {
-      seen.add(s.repo);
-      out.push(s.repo);
+    for (const s of this.all()) {
+      const folder = this.project(s);
+      if (folder && !seen.has(folder)) {
+        seen.add(folder);
+        out.push(folder);
+      }
     }
     return out;
+  }
+  // project is the folder a task belongs to: the repository, for a task
+  // working in a git worktree of its own (ADR 34), else its folder.
+  project(item) {
+    return item?.worktree?.repository || item?.repo || "";
   }
   // home is the user's home directory as the task folders suggest it, so
   // paths can be shown as ~/…; the protocol does not report it.

@@ -25,7 +25,11 @@ formed; compare failures against the unchanged code with \code{git stash},
 only when tests fail; bisect regressions file by file. In a git work tree,
 \code{(git-rule)} adds one more: look at the change with \code{git-status}
 and \code{git-diff} before finishing, and leave nothing in it that nothing
-uses.
+uses. In a task started in a git worktree of its own,
+\code{(worktree-section)} names its branch, says other tasks may work in
+other worktrees meanwhile, and replaces the \code{git stash} comparison,
+since every worktree shares one stash, with one on a copy of the last
+commit (\adr{34}).
 
 If your project has its own rules, add them after these rather than
 replacing them (Chapter~\ref{ch:checks}).

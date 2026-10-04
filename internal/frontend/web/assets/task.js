@@ -45,12 +45,15 @@ export class TaskView {
     this.renameBox = null;
     this.uploading = false; // attachments on their way, an image perhaps waiting for its confirm
     this.timer = 0;
+    this.failed = false; // the last load failed: the view is not to be kept
+    this.scroll = null; // where the conversation was when another page was shown
     this.root = h("div", { class: "task" });
-    conn.onEvent((frame) => this.onFrame(frame));
-    document.addEventListener("keydown", (event) => {
+    this.unlisten = conn.onEvent((frame) => this.onFrame(frame));
+    this.onKey = (event) => {
       if (!this.root.isConnected || this.inspecting || !this.item || this.loading) return;
       shortcut(this.el?.transcript.querySelector(".ask-card"), event);
-    });
+    };
+    document.addEventListener("keydown", this.onKey);
   }
 
   // ---------- lifecycle ----------
@@ -72,6 +75,8 @@ export class TaskView {
     }
     this.item = item;
     this.loading = true;
+    this.failed = false;
+    this.scroll = null;
     this.queued = [];
     this.seen = new Map();
     this.prompts = new Map();
@@ -130,17 +135,54 @@ export class TaskView {
       if (version !== this.version) return;
       // A failed load must not enable sending against uncertain state.
       this.loading = true;
+      this.failed = true;
       this.queued = [];
       toast(error.message);
       this.controls();
     }
   }
-  leave() {
+  // leave stops showing the task; with unsubscribe false it leaves the
+  // subscription alone, as on a new connection, which never had it.
+  leave(unsubscribe = true) {
     if (this.item) drafts.set(this.item.id, this.el?.reply.value || "");
-    if (this.item?.open) this.conn.call("session.unsubscribe", { id: this.item.id }).catch(() => {});
+    if (unsubscribe && this.item?.open && this.conn.live) this.conn.call("session.unsubscribe", { id: this.item.id }).catch(() => {});
     this.version++;
     this.item = null;
     clearInterval(this.timer);
+  }
+  // dispose ends the view for good: it stops listening, and leaves its task.
+  dispose(unsubscribe = true) {
+    this.leave(unsubscribe);
+    this.unlisten();
+    document.removeEventListener("keydown", this.onKey);
+  }
+  // keeps says whether this view can be shown again for task id as it is,
+  // without reading the conversation again: the task is open and still
+  // subscribed here, so every event since reached the view, drawn while it
+  // was off screen, and nothing failed to load.
+  keeps(id) {
+    return this.item?.id === id && !!this.item.open && !this.failed && this.conn.live;
+  }
+  // park takes the view off screen and keeps it: its subscription stays,
+  // and its events go on drawing into it.
+  park() {
+    if (!this.el || !this.item) return;
+    drafts.set(this.item.id, this.el.reply.value || "");
+    const t = this.el.transcript;
+    this.scroll = { top: t.scrollTop, end: t.scrollHeight - t.scrollTop - t.clientHeight < 120 };
+    clearInterval(this.timer);
+    // A key being typed is never kept off screen: switching tasks clears it,
+    // as it always did (browser.md).
+    for (const input of this.root.querySelectorAll("input[type=password]")) input.value = "";
+  }
+  // show puts a kept view back on screen with the list's newest word on the
+  // task, where its conversation was, or at its end if it followed it.
+  show(fresh) {
+    if (fresh && this.item) Object.assign(this.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived, worktree: fresh.worktree });
+    this.refreshAll();
+    const t = this.el.transcript;
+    t.scrollTop = !this.scroll || this.scroll.end ? t.scrollHeight : this.scroll.top;
+    this.scroll = null;
   }
   async loadInfo() {
     const version = this.version;
@@ -160,7 +202,8 @@ export class TaskView {
     if (!this.conn.has("notes.read") || !this.item?.repo) return;
     const version = this.version;
     try {
-      const notes = await this.conn.call("notes.read", { repo: this.item.repo });
+      // Notes are the project's: a task in a worktree has its repository's.
+      const notes = await this.conn.call("notes.read", { repo: this.desk.project(this.item) });
       if (version === this.version) {
         this.notes = notes.text;
         this.aside();
@@ -178,7 +221,7 @@ export class TaskView {
       this.busy = false;
       this.prompts.clear();
       this.refreshAll();
-      toast("This task was closed. Its conversation is kept.");
+      if (this.root.isConnected) toast("This task was closed. Its conversation is kept.");
       return;
     }
     if (frame.method !== "session.event" || frame.params?.id !== this.item.id || frame.params.kind === "session.state") return;
@@ -440,7 +483,8 @@ export class TaskView {
     this.aside();
     this.controls();
     clearInterval(this.timer);
-    if (this.busy) this.timer = setInterval(() => this.meters(), 1000);
+    // A view kept off screen draws its events but counts no seconds.
+    if (this.busy && this.root.isConnected) this.timer = setInterval(() => this.meters(), 1000);
   }
   status() {
     const item = this.item;
@@ -486,8 +530,9 @@ export class TaskView {
       "div",
       { class: "task-meta" },
       icon("folder", 15),
-      h("strong", {}, this.desk.folderName(item.repo)),
-      h("span", { class: "mono" }, shortPath(item.repo, home)),
+      h("strong", {}, this.desk.folderName(this.desk.project(item))),
+      h("span", { class: "mono" }, shortPath(this.desk.project(item), home)),
+      item.worktree ? h("span", { class: "badge plain mono", title: `In its own git worktree at ${item.worktree.path}` }, icon("commit", 13), item.worktree.branch) : null,
       item.started ? h("span", { class: "started" }, `· started ${sameDay(item.started) ? clock(item.started) : ago(item.started)}`) : null,
       item.archived ? h("span", { class: "badge plain" }, "archived") : null,
     );
@@ -897,15 +942,21 @@ export class TaskView {
     const item = this.item;
     const tools = this.info?.tools?.length;
     const ws = this.info?.workspace;
-    const named = this.desk.workspace(item.repo);
+    const named = this.desk.workspace(this.desk.project(item));
     const kind = ws?.kind || named?.kind;
     const rows = [h("div", { class: "kv" }, h("span", { class: "mono", title: item.repo }, shortPath(item.repo, this.desk.home)), h("span", {}, "write"))];
     for (const m of ws?.mounts || named?.mounts || []) rows.push(h("div", { class: "kv" }, h("span", { class: "mono", title: m.path }, shortPath(m.path, this.desk.home)), h("span", {}, m.access === "write" ? "write" : "read only")));
     if (tools) rows.push(h("div", { class: "kv" }, h("span", {}, "Tools"), h("span", {}, `${tools} offered to the model`)));
     if (this.info?.allowed_writes?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Writes without asking"), h("span", { class: "mono" }, this.info.allowed_writes.join(", "))));
     if (this.info?.allowed_commands?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Commands without asking"), h("span", {}, `${this.info.allowed_commands.length} prefixes`)));
+    const w = item.worktree;
+    if (w) {
+      rows.push(h("div", { class: "kv" }, h("span", {}, "Branch"), h("span", { class: "mono" }, w.branch)));
+      rows.push(h("div", { class: "kv" }, h("span", {}, "From"), h("span", { class: "mono" }, w.base ? `${w.base} at ${w.base_commit.slice(0, 7)}` : w.base_commit.slice(0, 7))));
+    }
+    const worktree = w ? `This task works in a git worktree of its own, so other tasks and you can work in ${this.desk.folderName(w.repository)} meanwhile. Its changes stay on ${w.branch} until it is merged${w.base ? ` into ${w.base}` : ""}; closing the task removes the worktree only when nothing in it would be lost.` : "";
     const undo = this.info ? (this.info.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the previous version of anything else before it writes. Restore it from Changes." : "Not a git repository, so nodwyn keeps the previous version of a file before it writes. Restore it from Changes.") : "";
-    return h("section", { class: "panel" }, h("h2", {}, "Workspace", kind ? h("span", { class: "note" }, kindLabel(kind)) : null), rows, undo ? h("p", { class: "hint" }, undo) : null);
+    return h("section", { class: "panel" }, h("h2", {}, "Workspace", kind ? h("span", { class: "note" }, kindLabel(kind)) : null), rows, worktree ? h("p", { class: "hint" }, worktree) : null, undo ? h("p", { class: "hint" }, undo) : null);
   }
   async history(path) {
     if (this.histories.has(path)) {

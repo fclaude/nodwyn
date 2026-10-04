@@ -26,9 +26,12 @@ type Options struct {
 	// Workspace (ADR 22): its kind (a label: every kind has the same tools),
 	// the folders outside Root it may use, and the version store that keeps a
 	// file's previous content before a write where git is not the undo.
-	Kind         string
-	Mounts       []guard.Mount
-	Versions     *Versions
+	Kind     string
+	Mounts   []guard.Mount
+	Versions *Versions
+	// Worktree is the git worktree Root is, when the session was given one
+	// of its own (ADR 34); nil otherwise.
+	Worktree     *Worktree
 	MaxReadBytes int64 // fs-read refuses larger files, unless it reads a line range
 	// MaxRangeBytes caps what a ranged fs-read returns: whole lines up to
 	// this many bytes, so the window never cuts a ranged read (the core
@@ -102,7 +105,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), projectNotes(o), projectNotesSave(o), projectInstructions(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -230,6 +233,31 @@ func workspace(o Options) *scheme.Prim {
 				mounts = append(mounts, scheme.List(scheme.Cons(scheme.Str("path"), scheme.Str(m.Path)), scheme.Cons(scheme.Str("access"), scheme.Str(access))))
 			}
 			return scheme.List(scheme.Cons(scheme.Str("kind"), scheme.Str(kind)), scheme.Cons(scheme.Str("mounts"), scheme.List(mounts...))), nil
+		},
+	}
+}
+
+// Worktree is a session's own git worktree (ADR 34): Root is a linked
+// worktree of Repository on Branch, made from Base at BaseCommit.
+type Worktree struct{ Repository, Branch, Base, BaseCommit string }
+
+// worktree builds (worktree): #f, or the session's worktree as an alist, for
+// a prompt or a strategy to say where the work goes.
+func worktree(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "worktree",
+		Meta: scheme.Meta{Doc: "The git worktree made for this session: its repository, branch, base branch and base commit; #f when the session works in the folder itself.", Hidden: true},
+		Handler: func(*scheme.Call) (scheme.Value, error) {
+			w := o.Worktree
+			if w == nil {
+				return scheme.False, nil
+			}
+			return scheme.List(
+				scheme.Cons(scheme.Str("repository"), scheme.Str(w.Repository)),
+				scheme.Cons(scheme.Str("branch"), scheme.Str(w.Branch)),
+				scheme.Cons(scheme.Str("base"), scheme.Str(w.Base)),
+				scheme.Cons(scheme.Str("base-commit"), scheme.Str(w.BaseCommit)),
+			), nil
 		},
 	}
 }

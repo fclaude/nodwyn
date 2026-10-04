@@ -599,6 +599,7 @@ Primitive & What it does \\
 \code{(scratch-dir)}, \code{(repository)}, \code{(workspace)} & the session's scratch directory; the repository's root; its kind and mounted folders \\
 \code{(project-notes)}, \code{(project-notes-save text)} & this repository's notes kept across sessions \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, its instructions for coding agents, which the system prompt carries \\
+\code{(worktree)} & \code{\#f}, or the git worktree made for this session: its repository, branch, base branch and base commit (\adr{34}) \\
 \code{(credential class)}, \code{(credential-register class)} & the handle of a stored key, or \code{\#f}; store a new key (Section~\ref{sch:keys}) \\
 \code{(http-request cred url method position headers body)} & a keyed request, checked against the binding table \\
 \code{(jev-noul ...)}, \code{(jev-score ...)}, \code{(jev-choice ...)} & ask the configured judge a question about a text; hidden, they take the key's handle \\

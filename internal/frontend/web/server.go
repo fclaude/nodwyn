@@ -521,7 +521,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		return false
 	}
 	switch method {
-	case "session.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
+	case "session.open", "worktree.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
 		"session.notes.write", "run.start", "run.stop", "run.resume", "session.restore", "session.rename", "session.archive":
 		return true
 	// Choosing a conversation's model decides where its content goes next,

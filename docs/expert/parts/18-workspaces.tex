@@ -218,6 +218,25 @@ said. A contract or a salary list has no shape: what keeps it home is your
 ``no''.
 \end{careful}
 
+\section{Several tasks on one repository}
+
+Tasks in one folder share its files, its git index and its stash, so one
+task's edit shows up in another's test run. On Home, \textbf{In a
+worktree} beside the folder starts a task in a git worktree of its own
+instead (\adr{34}): \file{.nodwyn/worktrees/<id>/} on a new branch
+\code{nodwyn/<id>}, from the repository's \code{HEAD}. The worktree is the
+task's root, with its own \file{.nodwyn/} settings; the notes, MCP servers
+and history are the repository's, and the task is listed under it.
+Uncommitted changes are not carried over, and the conversation says how
+many there were. \code{(worktree)} tells a strategy where the task works,
+and the system prompt tells the model, with a warning against
+\code{git stash}, which every worktree shares.
+
+The work stays on the branch until you merge it. Closing the task removes
+the worktree and its branch only when nothing would be lost: no change, no
+untracked or ignored file, no commit its base lacks. Resuming a task whose
+worktree was removed makes it again.
+
 \section{Notes, scratch and versions: where things live}
 
 \begin{center}
@@ -230,6 +249,7 @@ project tools and strategy & \file{<folder>/.nodwyn/init.scm} (and what it loads
 standing approvals & \file{<folder>/.nodwyn/allow.toml}, \file{config.toml} \\
 kept versions & \file{<folder>/.nodwyn/versions/} (what git cannot give back) \\
 attachments & \file{<folder>/.nodwyn/attachments/} \\
+worktrees & \file{<folder>/.nodwyn/worktrees/<id>/}, one per task started in one \\
 project notes & \nodwyn's data directory, keyed by the folder's path \\
 session logs & \file{\textasciitilde/.local/share/nodwyn/sessions/} \\
 scratch & \nodwyn's data directory; removed when the session closes \\

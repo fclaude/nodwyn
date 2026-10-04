@@ -71,6 +71,10 @@ type Options struct {
 	// W3b); nil: the one config.toml names, else podman, else docker, as
 	// found on PATH. Tests give a fake.
 	Containers *container.Runtime
+	// Worktree starts the session in a new git worktree of Repo, on a
+	// branch of its own, instead of in Repo (ADR 34). The person asks for
+	// it; nothing the model does can.
+	Worktree bool
 }
 
 // New assembles a session, loads initialization under the guard, freezes the
@@ -88,6 +92,24 @@ func New(o Options) (*Session, error) {
 		prompts: map[string]pendingConfirmation{},
 		secrets: map[string]pendingSecret{},
 	}
+	// The worktree comes first: it is the root everything else loads from
+	// (workspace.toml, init.scm, allow.toml). A session that never starts
+	// takes it away again, with its branch.
+	var made log.WorktreeChange
+	if o.Worktree {
+		if made, err = newWorktree(o.Repo, s.id); err != nil {
+			return nil, err
+		}
+		s.worktree = &made.Worktree
+		o.Repo = made.Path
+		s.opts.Repo = made.Path
+	}
+	started := false
+	defer func() {
+		if !started && s.worktree != nil {
+			discardWorktree(*s.worktree)
+		}
+	}()
 	created := ""
 	if o.LogWriter != nil {
 		s.logw = log.New(o.LogWriter, s.id)
@@ -114,6 +136,7 @@ func New(o Options) (*Session, error) {
 		Context: recipe,
 		Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(),
 		Model: s.model.Model, URL: s.model.URL, Tools: len(s.loop.Tools()),
+		Worktree: s.worktree,
 	})
 	if c := s.opts.Model; err == nil && c.Name != loop.ControlModel {
 		// A conversation opened on a chosen model records the choice as a
@@ -125,6 +148,10 @@ func New(o Options) (*Session, error) {
 		s.logw.Close()
 		removeScratch(s.scratch)
 		return nil, err
+	}
+	started = true
+	if s.worktree != nil {
+		_, _ = s.Record(log.KindWorktreeCreate, made)
 	}
 	s.markStarted()
 	return s, nil
@@ -186,7 +213,12 @@ func (s *Session) primitiveOptions() prim.Options {
 	po.Scratch = s.scratch
 	po.Private = []string{o.Paths.ConfigDir, o.Paths.DataDir}
 	po.Procs = s.procs
-	po.NotesFile = notesFile(o.Paths.DataDir, o.Repo)
+	// Notes are the project's, so a worktree's session shares them with
+	// the repository's (ADR 34).
+	po.NotesFile = notesFile(o.Paths.DataDir, s.project())
+	if w := s.worktree; w != nil {
+		po.Worktree = &prim.Worktree{Repository: w.Repository, Branch: w.Branch, Base: w.Base, BaseCommit: w.BaseCommit}
+	}
 	po.Kind = s.workspace.Kind
 	for _, m := range s.workspace.Mounts {
 		po.Mounts = append(po.Mounts, guard.Mount{Path: m.Path, Write: m.Access == "write"})

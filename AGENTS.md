@@ -43,7 +43,8 @@ are faster.
 - **The console** (`internal/frontend/web/assets`: JS, CSS): Go's tests do not
   run it. Run its browser check, `bash test/browser/run.sh <check>`
   (`screens`, `transcript`, `approve`, `firstrun`, `remote`, `mcp`,
-  `credentials`, `tasks`; screenshots land in `test/browser/out/<check>`),
+  `credentials`, `tasks`, `worktrees`; screenshots land in
+  `test/browser/out/<check>`),
   and extend the check to the states your change adds: a setting off, after
   a save, the new action, the page that links to it. The
   check performs the new action and checks what it did (the request sent,

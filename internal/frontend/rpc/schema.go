@@ -31,6 +31,7 @@ func contracts() map[string]methodContract {
 		"hello":                   {helloParams{}, helloResult{}},
 		"session.list":            {struct{}{}, []sessionInfo{}},
 		"session.open":            {openParams{}, sessionDetails{}},
+		"worktree.open":           {openParams{}, sessionDetails{}},
 		"session.resume":          {idParams{}, sessionDetails{}},
 		"session.model.set":       {modelSetParams{}, core.ModelState{}},
 		"session.info":            {idParams{}, sessionDetails{}},
@@ -145,6 +146,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindRunState): log.RunState{}, string(log.KindRunTurn): log.RunTurn{}, string(log.KindRunCheckpoint): log.RunCheckpoint{},
 		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{}, string(log.KindAttach): log.Attach{}, string(log.KindDocUpload): log.DocUpload{},
 		string(log.KindSessionTitle): log.SessionTitle{}, string(log.KindSessionArchive): log.SessionArchive{}, string(log.KindSessionModel): log.SessionModel{},
+		string(log.KindWorktreeCreate): log.WorktreeChange{}, string(log.KindWorktreeRestore): log.WorktreeChange{}, string(log.KindWorktreeRemove): log.WorktreeChange{},
 		string(log.KindRedact): struct {
 			Source uint64         `json:"source_seq"`
 			Events []redact.Event `json:"events"`

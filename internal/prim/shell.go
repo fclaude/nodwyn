@@ -210,6 +210,11 @@ func scrubEnv(allow []string) []string {
 	return out
 }
 
+// ScrubEnv is the environment the host gives a program it runs itself
+// outside a primitive (git making a session's worktree, ADR 34), built as
+// a primitive's is.
+func ScrubEnv(allow []string) []string { return scrubEnv(allow) }
+
 // capped writes at most n bytes and then appends a truncation marker once.
 type capped struct {
 	buf *bytes.Buffer

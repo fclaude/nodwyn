@@ -816,6 +816,9 @@ select.input { height: 34px; padding: 0 8px; }
 .dont-ask input { margin: 0; }
 .dont-ask.on { color: var(--warn-ink); }
 .dont-ask[hidden] { display: none; }
+.worktree-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+.worktree-toggle input { margin: 0; }
+.branch { font-size: 12px; color: var(--muted); }
 .reply-body textarea { width: 100%; }
 .turn.user .attach-list { justify-content: flex-start; }
 

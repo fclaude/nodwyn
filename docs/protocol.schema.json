@@ -1836,6 +1836,16 @@
         },
         "version": {
           "type": "string"
+        },
+        "worktree": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.Worktree"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -2155,6 +2165,63 @@
       ],
       "type": "object"
     },
+    "log.Worktree": {
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "base_commit": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "path",
+        "branch",
+        "base",
+        "base_commit"
+      ],
+      "type": "object"
+    },
+    "log.WorktreeChange": {
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "base_commit": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "uncommitted": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "repository",
+        "path",
+        "branch",
+        "base",
+        "base_commit"
+      ],
+      "type": "object"
+    },
     "mcp.Annotations": {
       "properties": {
         "destructiveHint": {
@@ -2465,6 +2532,15 @@
     "payload.user.msg": {
       "$ref": "#/$defs/log.UserMsg"
     },
+    "payload.worktree.create": {
+      "$ref": "#/$defs/log.WorktreeChange"
+    },
+    "payload.worktree.remove": {
+      "$ref": "#/$defs/log.WorktreeChange"
+    },
+    "payload.worktree.restore": {
+      "$ref": "#/$defs/log.WorktreeChange"
+    },
     "prim.Version": {
       "properties": {
         "bytes": {
@@ -2692,6 +2768,9 @@
         },
         {
           "$ref": "#/$defs/request.workspace.save"
+        },
+        {
+          "$ref": "#/$defs/request.worktree.open"
         }
       ]
     },
@@ -4596,6 +4675,37 @@
       ],
       "type": "object"
     },
+    "request.worktree.open": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "worktree.open"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.openParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "response": {
       "oneOf": [
         {
@@ -4903,6 +5013,9 @@
     },
     "result.workspace.save": {
       "$ref": "#/$defs/rpc.workspaceInfo"
+    },
+    "result.worktree.open": {
+      "$ref": "#/$defs/rpc.sessionDetails"
     },
     "rpc.answerParams": {
       "properties": {
@@ -6267,6 +6380,16 @@
         },
         "workspace": {
           "$ref": "#/$defs/config.Workspace"
+        },
+        "worktree": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.Worktree"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -6364,6 +6487,16 @@
         },
         "truncated": {
           "type": "boolean"
+        },
+        "worktree": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/log.Worktree"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -7985,6 +8118,78 @@
             },
             "payload": {
               "$ref": "#/$defs/log.UserMsg"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "worktree.create"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.WorktreeChange"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "worktree.remove"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.WorktreeChange"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "worktree.restore"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.WorktreeChange"
             },
             "seq": {
               "minimum": 0,
