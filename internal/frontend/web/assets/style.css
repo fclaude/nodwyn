@@ -650,8 +650,8 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
   width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--ghost); flex-shrink: 0;
   font-size: 10.5px; font-weight: 600; color: var(--faint); display: flex; align-items: center; justify-content: center;
 }
-.plan li > span { display: flex; flex-direction: column; gap: 2px; }
-.plan li small { font-size: 12px; color: var(--faint); }
+.plan li > span { display: block; min-width: 0; }
+.plan li small { display: none; font-size: 12px; color: var(--faint); }
 /* The model's marks (plan.step): done, skipped, and the first unmarked step. */
 .plan li.done::before { content: "\2713"; border-color: var(--ok); color: var(--ok); }
 .plan li.skipped { color: var(--faint); }
@@ -659,14 +659,16 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .plan li.skipped::before { content: "\2013"; }
 .plan li.next { color: var(--ink); }
 .plan li.next::before { border-color: var(--accent); color: var(--accent); }
-/* A step longer than its title folds (task.js): the chevron says it opens,
-   and an opened step shows the whole of it in place of its title. */
+/* A step with more to say than its title, or a mark's note, folds (task.js):
+   the chevron sits on the title's line, and an opened step shows the whole
+   of it in place of its title, with the note under it. */
 .plan li.fold { cursor: pointer; }
 .plan li.fold > span::before { content: "\25B8 "; color: var(--faint); }
 .plan li.fold.open > span::before { content: "\25BE "; }
 .plan li.fold .more { display: none; }
 .plan li.fold.open .more { display: block; }
-.plan li.fold.open .text { display: none; }
+.plan li.fold.alt.open .text { display: none; }
+.plan li.fold.open small { display: block; margin-top: 3px; }
 .box {
   padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   font-size: 13px; line-height: 1.55; color: var(--ink-2);

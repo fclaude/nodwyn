@@ -36,28 +36,39 @@ check(async () => {
       steps: [...document.querySelectorAll("ol.plan li .text")].map((s) => s.textContent),
       items: [...document.querySelectorAll("ol.plan li")].map((li) => li.className),
       folds: [...document.querySelectorAll("ol.plan li")].map((li) => {
+        if (!li.classList.contains("fold")) return null;
+        const text = li.querySelector(".text");
         const more = li.querySelector(".more");
-        return more
-          ? { open: li.classList.contains("open"), body: more.textContent, shown: getComputedStyle(more).display !== "none", titleShown: getComputedStyle(li.querySelector(".text")).display !== "none" }
-          : null;
+        const note = li.querySelector("small");
+        return {
+          open: li.classList.contains("open"),
+          body: more?.textContent,
+          shown: more ? getComputedStyle(more).display !== "none" : undefined,
+          noteShown: note ? getComputedStyle(note).display !== "none" : undefined,
+          titleShown: getComputedStyle(text).display !== "none",
+          // The title sits on the chevron's line: the fold's arrow is not
+          // a row of its own above it.
+          line: Math.round(text.getBoundingClientRect().top - li.getBoundingClientRect().top),
+        };
       }),
     }));
   const before = await planPanel();
   assert.deepStrictEqual(before.steps.map((s) => s.split(":")[0]), ["Change", "Test", "Docs", "Check"], "the plan's steps");
   assert.strictEqual(before.head, "Plan2 of 4 done · drafted");
-  assert.deepStrictEqual(before.items, ["done fold", "done fold", "next fold", ""]);
-  // A step longer than its title folds: the title stands, the whole step
-  // waits hidden until the step is clicked. The Check step says all it has
-  // to say in its title, so it does not fold; the Test step's fold holds
-  // why its test fails on the unchanged code.
-  assert.ok(before.folds.slice(0, 3).every((f) => f && !f.open && !f.shown && f.titleShown), `the folded steps: ${JSON.stringify(before.folds)}`);
+  assert.deepStrictEqual(before.items, ["done fold alt", "done fold alt", "next fold alt", ""]);
+  // A step longer than its title folds: the title stands on the chevron's
+  // line, the whole step and the mark's note wait hidden until the step is
+  // clicked. The Check step says all it has to say in its title and is not
+  // marked yet, so it does not fold; the Test step's fold holds why its
+  // test fails on the unchanged code.
+  assert.ok(before.folds.slice(0, 3).every((f) => f && !f.open && !f.shown && f.titleShown && !f.noteShown && f.line < 4), `the folded steps: ${JSON.stringify(before.folds)}`);
   assert.strictEqual(before.folds[3], null, "the Check step does not fold");
   assert.match(before.folds[1].body, /fails today: /, "the Test step's fold");
   // Clicking a step opens it and shows the whole of it in place of its
-  // title; clicking it again folds it back.
+  // title, the mark's note with it; clicking it again folds it back.
   await page.evaluate(() => document.querySelectorAll("ol.plan li")[0].click());
   const opened = await planPanel();
-  assert.ok(opened.folds[0].open && opened.folds[0].shown && !opened.folds[0].titleShown, `the opened step: ${JSON.stringify(opened.folds[0])}`);
+  assert.ok(opened.folds[0].open && opened.folds[0].shown && !opened.folds[0].titleShown && opened.folds[0].noteShown, `the opened step: ${JSON.stringify(opened.folds[0])}`);
   assert.match(opened.folds[0].body, /^Change: app\.js sessionRow — under each title/);
   step("a step opens on click");
   await page.evaluate(() => document.querySelectorAll("ol.plan li")[0].click());
@@ -124,7 +135,14 @@ check(async () => {
   const marked = await planPanel();
   assert.deepStrictEqual(marked.steps, before.steps, "the plan's steps after the approvals");
   assert.strictEqual(marked.head, "Plan3 of 4 done · drafted");
-  assert.deepStrictEqual(marked.items, ["done fold", "done fold", "skipped fold", "done"]);
+  assert.deepStrictEqual(marked.items, ["done fold alt", "done fold alt", "skipped fold alt", "done fold"]);
+  // The Check step's title is its whole text; marked with a note, the note
+  // goes behind its fold, and the title stays when it opens.
+  await page.evaluate(() => document.querySelectorAll("ol.plan li")[3].click());
+  const noted = await planPanel();
+  assert.ok(noted.folds[3].open && noted.folds[3].noteShown && noted.folds[3].titleShown && !noted.folds[3].shown, `the Check step's fold: ${JSON.stringify(noted.folds[3])}`);
+  await page.evaluate(() => document.querySelectorAll("ol.plan li")[3].click());
+  assert.ok(!(await planPanel()).folds[3].open, "the Check step folded again");
   await page.screenshot({ path: `${out}/after.png` });
 
   // A follow-up in the same task.
@@ -149,7 +167,7 @@ check(async () => {
     answer: (await transcript()).includes("Tidied"),
     ...(await planPanel()),
   });
-  const want = { went: true, answer: true, head: "Plan4 of 4 done · carried over from an earlier turn", items: ["done fold", "done fold", "done fold", "done"] };
+  const want = { went: true, answer: true, head: "Plan4 of 4 done · carried over from an earlier turn", items: ["done fold alt", "done fold alt", "done fold alt", "done fold"] };
   await until("the carried plan", async () => {
     const got = await carried();
     return JSON.stringify({ ...got, steps: undefined, folds: undefined }) === JSON.stringify({ ...want, steps: undefined, folds: undefined });

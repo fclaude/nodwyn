@@ -817,16 +817,19 @@ export class TaskView {
         const m = marks.get(i + 1);
         const state = m ? m.state : i === next ? "next" : "";
         const said = m ? (m.state === "done" ? "Marked done" : "Skipped") + (m.note ? `: ${m.note}` : "") : undefined;
-        // A step with more to say than its title folds: the title stands,
-        // and clicking the step shows the whole of it in its place.
+        // A step with more to say than its title — a detail, or the note
+        // the model marked it with — folds: the title stands, and clicking
+        // the step shows the whole of it and the note. By default neither
+        // shows, so the plan reads at a glance.
         const title = stepTitle(s);
-        if (title === s)
-          return h("li", { class: state || undefined, title: said }, h("span", {}, h("span", { class: "text" }, s), m?.note ? h("small", {}, m.note) : null));
+        if (title === s && !m?.note)
+          return h("li", { class: state || undefined, title: said }, h("span", {}, h("span", { class: "text" }, s)));
+        const alt = title !== s;
         const open = opened.has(s);
         const li = h(
           "li",
           {
-            class: [state, "fold", open && "open"].filter(Boolean).join(" "),
+            class: [state, "fold", alt && "alt", open && "open"].filter(Boolean).join(" "),
             title: said,
             onclick: () => {
               // Read the set, not the open the render captured: a click
@@ -835,7 +838,7 @@ export class TaskView {
               li.classList.toggle("open");
             },
           },
-          h("span", {}, h("span", { class: "text" }, title), h("span", { class: "more" }, s), m?.note ? h("small", {}, m.note) : null)
+          h("span", {}, h("span", { class: "text" }, title), alt ? h("span", { class: "more" }, s) : null, m?.note ? h("small", {}, m.note) : null)
         );
         return li;
       });
