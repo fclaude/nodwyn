@@ -420,6 +420,15 @@ func planStep(id string, step int, state, note string) fake.ToolCall {
 // respond is the scripted model. A request offering no tools is the planner;
 // otherwise the reply depends on how many tool rounds this ask has had.
 func respond(req fake.Request) fake.Turn {
+	// Recipe v15 (ADR 9 amended 2026-10-04) carries the person's request
+	// and the recorded plan as user messages under their headers
+	// (prompts.scm's task-header and plan-header): the ask is the text
+	// under the task header, and the plan message continues the request it
+	// plans, so it says nothing new to this script.
+	const (
+		taskHeader = "Current task (the user's latest request):\n"
+		planHeader = "Plan for the current task"
+	)
 	var last string
 	rounds, images := 0, 0
 	for _, raw := range req.Messages {
@@ -432,6 +441,10 @@ func respond(req fake.Request) fake.Turn {
 		_ = json.Unmarshal(raw, &m)
 		images += len(m.Images)
 		switch {
+		case m.Role == "user" && strings.HasPrefix(m.Content, taskHeader):
+			last, rounds = m.Content[len(taskHeader):], 0
+		case m.Role == "user" && strings.HasPrefix(m.Content, planHeader):
+			// The plan the turn is working: last and rounds stay.
 		case m.Role == "user" && !strings.HasPrefix(m.Content, "["):
 			last, rounds = m.Content, 0
 		case m.Role == "assistant" && len(m.ToolCalls) > 0:
