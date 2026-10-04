@@ -72,7 +72,9 @@ they are set where they are reviewed, or in `config.toml`.
 
 ## Tasks, folders and files
 
-**Starting.** Home's composer starts a task in the chosen folder. **Add a
+**Starting.** Home's composer starts a task in the folder picked last,
+which this browser remembers like the theme; until a folder has been
+picked, it starts in the first one on the list. **Add a
 folder** names one and says what it holds — documents, code or both — and,
 in the app window, opens the system's folder chooser. The kind is a label: every
 kind has the same tools and the same guard (see

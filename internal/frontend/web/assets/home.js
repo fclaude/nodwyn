@@ -4,7 +4,11 @@ import { summary } from "./prompts.js";
 import { modelForm, keychainForm } from "./setup.js";
 import { Attachments, isImage } from "./attach.js";
 
-let chosen = ""; // the folder the next task starts in, for this tab
+// The folder the next task starts in, for this tab. The folder picked last
+// is kept in this browser (like the theme and the folded folders) and is
+// what a tab that has not picked yet starts in.
+const LAST_KEY = "nodwyn-last-folder";
+let chosen = "";
 let draft = "";
 let current = null;
 let files = null; // the files chosen for the next task, kept across redraws
@@ -13,19 +17,30 @@ let starting = false; // a start is in flight: one task per ask
 // this tab only: a choice made once for a folder holds for its next tasks.
 const inWorktree = new Set();
 
-// chooseFolder preselects the folder the next task starts in.
-export function chooseFolder(folder) {
+// setFolder picks the folder the next task starts in, in this tab, and
+// remembers it as the one a fresh tab starts in.
+function setFolder(folder) {
   chosen = folder;
+  localStorage.setItem(LAST_KEY, folder);
 }
 
-// forgetFolder stops preselecting a folder that left the list.
+// chooseFolder preselects the folder the next task starts in.
+export function chooseFolder(folder) {
+  setFolder(folder);
+}
+
+// forgetFolder stops preselecting a folder that left the list, and drops it
+// as the last pick, so a fresh tab does not start there either.
 export function forgetFolder(folder) {
   if (chosen === folder) chosen = "";
+  if (localStorage.getItem(LAST_KEY) === folder) localStorage.removeItem(LAST_KEY);
 }
 
 export function renderHome(root, ctx) {
   const { conn, desk, navigate, pickFolder } = ctx;
   const folders = desk.folders();
+  // A tab that has not picked yet starts in the folder picked last.
+  if (!chosen) chosen = localStorage.getItem(LAST_KEY) || "";
   if (!chosen || !folders.includes(chosen)) chosen = chosen && !folders.includes(chosen) && chosen.startsWith("/") ? chosen : folders[0] || "";
   const control = desk.control();
   // Every task is a chat (ADR 35): a long request is a message like any
@@ -115,7 +130,7 @@ export function renderHome(root, ctx) {
     chips.append(
       h(
         "button",
-        { type: "button", class: "chip", "aria-pressed": String(folder === chosen), title: folder, onclick: () => { chosen = folder; renderHome(root, ctx); } },
+        { type: "button", class: "chip", "aria-pressed": String(folder === chosen), title: folder, onclick: () => { setFolder(folder); renderHome(root, ctx); } },
         desk.folderName(folder),
       ),
     );
@@ -152,7 +167,7 @@ export function renderHome(root, ctx) {
         return;
       }
     }
-    chosen = path;
+    setFolder(path);
     renderHome(root, { ...ctx, keepTop: false });
   });
   chips.append(
