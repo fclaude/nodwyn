@@ -364,7 +364,8 @@ func TestCompactionComesBeforeTheWindowTrims(t *testing.T) {
 
 // A round that jumps past the high water is still compacted rather than
 // trimmed when the model's context has room above the window: the note
-// request may use it, up to the ceiling. Without that room it is trimmed.
+// request may use it, up to the ceiling. Without that room the normal trim
+// rules apply, but these two recent call/result pairs are still protected.
 func TestCompactionUsesTheRoomAboveTheHighWater(t *testing.T) {
 	t.Parallel()
 	high := baseTokens(t) + 3000
@@ -400,8 +401,8 @@ func TestCompactionUsesTheRoomAboveTheHighWater(t *testing.T) {
 			if tc.numCtx > 0 && (len(note.Elided) > 0 || note.HighWater != tc.ceiling) {
 				t.Fatalf("the note request was trimmed (%v) or not recorded with the ceiling (%d)", note.Elided, note.HighWater)
 			}
-			if tc.numCtx == 0 && (len(note.Elided) == 0 || note.HighWater != 0) {
-				t.Fatalf("with no room the note request should trim at the high water: elided %v, high water %d", note.Elided, note.HighWater)
+			if tc.numCtx == 0 && (len(note.Elided) != 0 || note.HighWater != 0) {
+				t.Fatalf("without headroom the recent results must still keep their calls: elided %v, high water %d", note.Elided, note.HighWater)
 			}
 			if n := replayAll(t, r.logb); n != 4 {
 				t.Fatalf("replayed %d requests", n)

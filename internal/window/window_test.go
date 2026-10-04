@@ -16,7 +16,7 @@ var pol = Policy{HighWater: 3000, LowWater: 1500, MaxResultTokens: 100000}
 
 // current is p as the current recipe (RecipeVersion) builds with it.
 func current(p Policy) Policy {
-	p.Thinking, p.InConversation = true, true
+	p.Thinking, p.InConversation, p.PairTools = true, true, true
 	return p
 }
 

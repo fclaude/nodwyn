@@ -111,7 +111,13 @@ Event kinds are listed in [internal/log/log.go](../internal/log/log.go).
 strategy and plan gate), `decision`, `checker`,
 `reason` and, for confirms, `answer` and, when recorded, `actor`: who
 answered (a daemon client's identity, `judge` or `unattended`). An
-`llm.req` has `elided`: the seqs whose content was replaced in the window.
+`llm.req` has `elided`: the seqs whose content was replaced or omitted in
+the window. From recipe v16, trimming an assistant's tool-call batch also
+omits its matching results, so no `tool` reply is left without its call.
+A result among the four recent entries protects its whole calling batch.
+The original events stay in the log; older requests still replay with the
+recipe they recorded. Restarting and resuming a task uses the new recipe,
+including repairing tool pairs left orphaned by an earlier trim.
 
 ### Where each phase lives
 

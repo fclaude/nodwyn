@@ -362,7 +362,7 @@ if total() > pol.HighWater {
     protect := len(entries) - Keep
     for _, kind := range []string{"attach", "tool", "assistant"} {
         for i := 0; i < protect && total() > pol.LowWater; i++ {
-            if entries[i].kind == kind && !isElided(i) {
+            if entries[i].kind == kind && !isElided(i) && !protected(i) {
                 elide(i)
             }
         }
@@ -372,8 +372,14 @@ if total() > pol.HighWater {
 
 Attachments go first, then tool results, then assistant turns; the last
 \code{Keep} (four) entries and all user and harness messages are never
-elided. An elided entry reads \code{[elided seq=N]}. A single tool result
-larger than \code{MaxResultTokens} is shown head and tail with a marker.
+elided. From recipe v16, a recent tool result also protects its entire
+calling batch. An elided assistant entry reads \code{[elided seq=N]}; when
+its calls are removed, their results are omitted as well, and their seqs
+join the sticky elided set. The model never receives those results without
+their calls. A result whose call is still present may be elided in place;
+a single result larger than \code{MaxResultTokens} is shown head and tail
+with a marker. Older recipes replay their original shape, and resuming a
+session applies v16 to its next requests, including earlier sticky elisions.
 The same fold applies the events that shape the context: a strategy's
 \code{context.narrow} starts a window with its own system prompt, its
 \code{context.fold} drops a finished sub-agent's context, its

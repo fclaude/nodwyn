@@ -637,8 +637,12 @@ Summary records now have typed `from`, `through`, `source_hash` and `text`
 payloads. `summary.drop` names `summary_seq`. These are durable history, not
 permission or mutation RPCs. The first editing surface is the local `nodwyn
 summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
-Recipes from `window-v2` on are summary-aware; new runtimes record `window-v15`,
-and exact replay supports every recipe from `window-v1` to it.
+Recipes from `window-v2` on are summary-aware; new runtimes record `window-v16`,
+and exact replay supports every recipe from `window-v1` to it. Version 16
+omits the matching tool results when their assistant call batch is elided,
+and protects the calls while any result is recent. `llm.req.elided` includes
+those omitted results. Earlier recipes retain their exact historical shape,
+even where a trim left orphaned tool messages; a resumed runtime uses v16.
 
 
 ### Prompt scope metadata

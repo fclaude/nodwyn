@@ -16,7 +16,9 @@
 //     the log as llm.req.elided) stays elided. Nothing ever comes back, so
 //     the prefix never changes behind the model's back.
 //   - Hysteresis: above HighWater the window is trimmed, oldest first, down
-//     to LowWater, then left alone until it crosses HighWater again. Between
+//     to LowWater, then left alone until it crosses HighWater again. From
+//     recipe v16 an elided call batch takes its results with it, and any
+//     protected result keeps the whole calling batch. Between
 //     trims every request is a byte-identical prefix plus a delta.
 //   - Tool results larger than MaxResultTokens are shown head+tail with a
 //     marker; the model re-reads what it needs.
@@ -63,6 +65,10 @@ type Policy struct {
 	// (recipe v15, ADR 9 amended 2026-10-04), so that neither a new turn
 	// nor a plan changes the system prompt and loses the cached prefix.
 	InConversation bool
+	// PairTools removes the results with an elided call batch, and protects
+	// the batch while any of its results is recent (recipe v16). Older
+	// recipes keep their original, potentially orphaned tool messages.
+	PairTools bool
 }
 
 // The default headers for the task and its plan: what a recipe that records
@@ -166,11 +172,12 @@ func Build(events []log.Event, system string, fixedTokens int, pol Policy) Resul
 // buildV1 preserves the pre-summary recipe for exact historical request replay.
 func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Result {
 	type entry struct {
-		seq   uint64
-		msg   llm.Message
-		kind  string // "user" | "assistant" | "tool" | "attach"
-		size  int
-		image *log.Attach // an attached image the message carries
+		seq     uint64
+		msg     llm.Message
+		kind    string // "user" | "assistant" | "tool" | "attach"
+		size    int
+		image   *log.Attach // an attached image the message carries
+		omitted bool        // a result whose calling reply was elided
 	}
 	var entries []entry
 	sticky := map[uint64]bool{}
@@ -341,8 +348,32 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		sys, entries = frames[n-1].system, entries[frames[n-1].at:]
 	}
 
+	// Link results before applying sticky elision, while the original calls
+	// are still present. A reused ID belongs to its latest assistant batch,
+	// not every earlier call with that ID. Narrowing and folding have already
+	// selected the conversation this request will send.
+	results := map[int][]int{}
+	if pol.PairTools {
+		pending := map[string]int{}
+		for i, e := range entries {
+			if e.msg.Role == llm.RoleAssistant {
+				clear(pending)
+				for _, call := range e.msg.ToolCalls {
+					pending[call.ID] = i
+				}
+			} else if e.msg.Role == llm.RoleTool {
+				if owner, ok := pending[e.msg.ToolCallID]; ok {
+					results[owner] = append(results[owner], i)
+					delete(pending, e.msg.ToolCallID)
+				}
+			}
+		}
+	}
 	var elided []uint64
-	elide := func(i int) {
+	mark := func(i int) {
+		if contains(elided, entries[i].seq) {
+			return
+		}
 		entries[i].msg.Content = fmt.Sprintf("[elided seq=%d]", entries[i].seq)
 		entries[i].msg.Thinking = ""
 		entries[i].msg.ToolCalls = nil
@@ -350,12 +381,21 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		entries[i].size = estimate(entries[i].msg)
 		elided = append(elided, entries[i].seq)
 	}
+	elide := func(i int) {
+		mark(i)
+		for _, j := range results[i] {
+			mark(j)
+			entries[j].omitted, entries[j].size = true, 0
+		}
+	}
 	for i := range entries {
 		entries[i].size = estimate(entries[i].msg)
 		if img := entries[i].image; img != nil {
 			// What the image costs, recorded when it was attached.
 			entries[i].size += imageTokens(*img)
 		}
+	}
+	for i := range entries {
 		if sticky[entries[i].seq] {
 			elide(i)
 		}
@@ -373,10 +413,25 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	if total() > pol.HighWater {
 		trimmed = true
 		protect := len(entries) - Keep
+		protected := func(i int) bool {
+			if pol.PairTools && len(entries[i].msg.ToolCalls) > 0 {
+				// A batch is indivisible: keep its calls if any result is
+				// protected, or if it has not been completely answered.
+				if len(results[i]) != len(entries[i].msg.ToolCalls) {
+					return true
+				}
+				for _, j := range results[i] {
+					if j >= protect {
+						return true
+					}
+				}
+			}
+			return false
+		}
 		// Pass 1: oldest tool results. Pass 2: oldest assistant turns.
 		for _, kind := range []string{"attach", "tool", "assistant"} {
 			for i := 0; i < protect && total() > pol.LowWater; i++ {
-				if entries[i].kind == kind && !isElided(i) {
+				if entries[i].kind == kind && !isElided(i) && !protected(i) {
 					elide(i)
 				}
 			}
@@ -386,6 +441,9 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	out := Result{Elided: elided, EstTokens: total(), Trimmed: trimmed, Task: task}
 	out.Messages = append(out.Messages, llm.Message{Role: llm.RoleSystem, Content: sys})
 	for _, e := range entries {
+		if e.omitted {
+			continue
+		}
 		if e.image != nil {
 			out.Images = append(out.Images, imageRef(e.seq, len(out.Messages), *e.image))
 		}

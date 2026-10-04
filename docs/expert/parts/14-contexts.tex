@@ -26,7 +26,14 @@ is room kept for compaction's note. \code{(context-tokens)} is the size of
 the next request, counted as the window counts.
 
 \code{output-reserve} is also the cap on each reply. Trimming never touches
-the log; it only changes what the next request contains.
+the log; it only changes what the next request contains. From recipe v16,
+removing an assistant's tool calls also omits their matching results;
+a result among the four recent entries protects its whole calling batch.
+This prevents an orphan \code{tool} message that strict servers such as
+Cerebras reject. Protected batches can keep a window above its low-water
+target. Old requests still replay exactly as recorded; restart and resume
+a stopped session to apply the new rule to its next requests, including
+repairing pairs an older trim left orphaned.
 
 \begin{tip}
 The model server caches the start of the prompt between requests, and a

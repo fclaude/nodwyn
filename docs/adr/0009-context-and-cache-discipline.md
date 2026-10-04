@@ -245,3 +245,35 @@ The log's thinking, redaction, window recipe and request hashes are
 unchanged. Dialect selection changes only the final wire representation;
 reasoning is not discarded to recover from a validation error. Encrypted
 reasoning remains unsupported for the reasons in the earlier amendment.
+
+## Amendment 2026-10-04: trimming preserves tool-call pairs
+
+In session `20261004T180305Z-f53d94b0` (Cerebras, qwen-3.8-27b), request
+668 crossed the window's high water while asking for a compaction handover.
+Recipe v15 elided old assistant replies, clearing their tool calls, but
+kept their results as `tool` messages. Cerebras rejected the orphaned
+results with HTTP 400. The reasoning-field dialect was already correct.
+
+From recipe v16, the window links each result to its calling assistant
+batch before applying elision, after narrowing and folding have selected
+the conversation. A reused call ID refers to its latest batch. Eliding an
+assistant batch clears it as before and omits its matching results from
+the request; their seqs join the sticky elided set and their tokens leave
+the estimate. A result may still be shortened or elided in place while its
+calls remain. If any result is among the four protected recent entries,
+the calling batch is also protected. An incomplete batch is not newly
+elided. Protected history may prevent reaching the low-water target.
+
+This is shared window behaviour for every provider, with no new setting
+or change to credentials, tool execution or the source log. Older recipes
+replay with their original shape, including malformed old requests. A
+resume records v16 and rebuilds the next request from the original events;
+it removes the results of calls an earlier recipe had already elided,
+even without a new high-water crossing. The change cannot restore context
+already removed by compaction.
+
+The regressions first reproduced the orphan results in both direct window
+builds and a strict fake Cerebras server's compaction request. They cover
+multi-call batches, result order, repeated IDs across batches, failed
+results, recent-result protection, sticky estimates and a v15-to-v16
+resume whose old and new requests both replay to their recorded hashes.
