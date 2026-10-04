@@ -51,7 +51,9 @@ are the prompts: \code{plan-system-prompt}, \code{plan-draft-prompt},
 \subsection{The shape of a plan}
 
 Every plan, the planner's and the model's own, is asked for in one shape:
-numbered steps, each starting with its kind. A \code{Change:} step names a
+numbered steps, each starting with its kind and a short name for what it
+does, then a dash (—) and the detail after it; a step that says all it
+should in its name needs no dash. A \code{Change:} step names a
 file (or function) and what changes in it; a \code{Test:} step the test
 file and name, the behaviour it checks, and why it fails on the unchanged
 code (``fails today: \ldots''), or ``passes today: guards \ldots'' for a
@@ -61,13 +63,17 @@ and the last step, \code{Check:}, the command that shows the whole change
 works. A plan with no test or no doc to change says so in a step, and why.
 
 \begin{txt}
-1. Change: internal/prim/fs.go fsEdit - take an optional edits list.
-2. Test: internal/prim/fs_test.go TestEditsApplyInOrder - the second edit
+1. Change: internal/prim/fs.go fsEdit — take an optional edits list.
+2. Test: internal/prim/fs_test.go TestEditsApplyInOrder — the second edit
    matches text the first inserted; fails today: fs-edit has no edits
    parameter.
 3. Docs: docs/scheme.md fs-edit row; docs/book/parts/scheme.tex.
 4. Check: make validate
 \end{txt}
+
+The name is what the console's plan panel shows of a step: it folds each
+step to the clause before its first dash and hides the rest behind that
+fold, so a step whose name runs on shows the work itself as its title.
 
 Plans written in stage labels (``2. WT0: repository lookup \ldots, with
 tests'') said which tests and which docs nowhere, and what followed showed
@@ -77,7 +83,8 @@ The planner's prompts carry the shape, built from \code{plan-kinds} by
 \code{(plan-shape)}; the judge's rubric asks for it, and a plan whose tests
 do not say what they check, or that leaves out the docs, does not reach its
 top level. \code{plan-write} checks it (next section). The kinds, the
-wording a \code{Test:} step may use, and the messages are definitions too:
+wording a \code{Test:} step may use, the name's cap and its boundaries,
+and the messages are definitions too:
 
 \begin{scm}
 ;; This repository's changes carry no docs of their own.
@@ -137,8 +144,10 @@ until it is written down. Writing the plan again revises it.
 \code{plan-write} reads the steps as \code{(plan-steps plan)} does and
 checks them with \code{(plan-problems steps)}. A step of no known kind, no
 \code{Change:}, \code{Test:} or \code{Docs:} step, a last step that is
-not a \code{Check:}, or a \code{Test:} step that says neither how it fails
-today nor that it guards what already works: the plan is turned down,
+not a \code{Check:}, a \code{Test:} step that says neither how it fails
+today nor that it guards what already works, or a step of a known kind
+whose name before its first boundary --- the clause the console folds on
+--- runs past 80 characters, the console's cap: the plan is turned down,
 unrecorded, and the answer names each problem by step number and what to
 add. After \code{plan-write-refusals} (2) refusals in a turn, the next plan
 is recorded as written, answered ``Plan recorded: '' and what it still

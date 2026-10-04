@@ -195,7 +195,13 @@
 ;; new primitive was missing from the book's tables. Each step starts with
 ;; its kind, the word before its first ":" in any case; plan-kinds says
 ;; what a step of each kind names, and the messages below say it the same
-;; way. A project may redefine any of these, or plan-problems.
+;; way. Each step also gives a short name for what it does before the
+;; detail, which the console folds away (transcript.js stepTitle): the
+;; plans of 2026-10-03 the person screenshotted read "Change: read
+;; internal/frontend/rpc/workspaces.go, the desk state builder and …", the
+;; whole work as the title, cut at the console's cap, with nothing to fold
+;; to. plan-name-cap says how long a name may be, over the boundaries the
+;; console folds on. A project may redefine any of these, or plan-problems.
 (define plan-kinds
   '(("Change" . "a file (or function) and what changes in it")
     ("Test" . "the test file and name, the behaviour it checks, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works")
@@ -235,6 +241,29 @@
     (or (and (member "Test" plan-none-kinds) (string-prefix? "none" said))
         (pair? (filter (lambda (r) (string-contains? said (string-downcase r))) plan-test-reasons)))))
 
+;; A step's short name ends at the first boundary the console folds a step
+;; on (transcript.js stepTitle): a dash with a space before it, or a
+;; sentence end or semicolon with a space after. A step with no boundary is
+;; its own name, so it must be short to show whole.
+(define plan-name-cap 80)
+(define plan-name-boundaries '(" —" " –" " --" ". " "; "))
+
+;; The index of a step's first name boundary, or #f when there is none.
+(define (plan-name-at step)
+  (let scan ((i 0) (n (string-length step)))
+    (cond ((>= i n) #f)
+          ((let find ((bs plan-name-boundaries))
+             (and (pair? bs)
+                  (or (string-prefix? (car bs) (substring step i n))
+                      (find (cdr bs)))))
+           i)
+          (else (scan (+ i 1) n)))))
+
+;; A step's short name in characters: everything before its first boundary,
+;; or the whole step when there is none.
+(define (plan-name-length step)
+  (or (plan-name-at step) (string-length step)))
+
 ;; "Change:, Test:, Docs: or Check:", from plan-kinds.
 (define (plan-kind-names)
   (let ((names (map (lambda (k) (string-append (car k) ":")) plan-kinds)))
@@ -253,6 +282,8 @@
                    (cond ((not kind) (list (plan-kind-problem (+ i 1))))
                          ((and (equal? kind "Test") (not (plan-test-explained? step)))
                           (list (plan-test-problem (+ i 1))))
+                         ((> (plan-name-length step) plan-name-cap)
+                          (list (plan-name-problem (+ i 1))))
                          (else '())))
                  (iota n) steps kinds))
      (map plan-missing-problem (filter (lambda (k) (not (member k kinds))) plan-required-kinds))
@@ -267,6 +298,9 @@
   (string-append "Step " (number->string n) " has no kind: start it with " (plan-kind-names)))
 (define (plan-test-problem n)
   (string-append "Step " (number->string n) " is a Test: step that does not say why its test fails on the unchanged code: add \"fails today: …\", or \"passes today: guards …\" for a test of behaviour that already works"))
+(define (plan-name-problem n)
+  (string-append "Step " (number->string n) " has no short name: name what it does within " (number->string plan-name-cap)
+                 " characters, then a dash (—) and the detail after it"))
 (define (plan-missing-problem kind)
   (string-append "There is no " kind ": step: add one naming " (plan-kind-description kind)
                  (if (member kind plan-none-kinds)
@@ -326,8 +360,8 @@
                 (plan-recorded-message (length (plan-steps)) problems)))))))
 
 (define-agent-tool "plan-write"
-  "Write down your plan for the task: numbered steps, each starting with its kind. Change: a file (or function) and what changes in it. Test: the test file and name, the behaviour it checks, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works. Docs: each file a person or a later session reads that the change makes wrong or incomplete. Check: the command that shows the whole change works, as the last step. With no test or no doc to change, say so and why (\"Test: none — only docs change\"). For example:\n1. Change: src/flags.go parseFlags — accept --verbose.\n2. Test: src/flags_test.go TestVerboseFlag — --verbose sets Verbose; fails today: the flag is unknown.\nYour thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps as the work happens. Write it once you know what to change, before changing it, and write it again only when it must change."
-  '(("plan" "string" "the numbered steps, each starting with Change:, Test:, Docs: or Check:, the last a Check:"))
+  "Write down your plan for the task: numbered steps, each starting with its kind and a short name for what it does, then a dash (—) and the detail after it. Change: a file (or function) and what changes in it. Test: the test file and name, the behaviour it checks, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works. Docs: each file a person or a later session reads that the change makes wrong or incomplete. Check: the command that shows the whole change works, as the last step. With no test or no doc to change, say so and why (\"Test: none — only docs change\"). For example:\n1. Change: src/flags.go parseFlags — accept --verbose.\n2. Test: src/flags_test.go TestVerboseFlag — --verbose sets Verbose; fails today: the flag is unknown.\nYour thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps as the work happens. Write it once you know what to change, before changing it, and write it again only when it must change."
+  '(("plan" "string" "the numbered steps, each starting with Change:, Test:, Docs: or Check:, a short name for what it does, then — and the detail; the last a Check:"))
   (lambda (call args)
     (guard (e (else (string-append "plan-write failed: " (format "~a" (assoc-ref e 'message "")))))
       (plan-write-answer call args))))

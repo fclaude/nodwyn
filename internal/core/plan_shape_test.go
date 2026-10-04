@@ -106,6 +106,35 @@ func TestPlanWithoutDocsOrACheckIsTurnedDown(t *testing.T) {
 	}
 }
 
+// A step of a known kind that runs on past the console's title cap, with
+// no short name before a dash, is turned down with the step's number, and
+// so is a step whose name before its dash is that long. This fails on the
+// unchanged code, which recorded the plan: it tests the short-name check.
+func TestPlanWithoutShortNamesIsTurnedDown(t *testing.T) {
+	t.Parallel()
+	answers, plans := planWriteTurns(t, []string{"1. Change: read internal/frontend/rpc/workspaces.go, the desk state builder and the fields it puts in the desk state\n" +
+		"2. Test: workspaces_test.go TestDeskStateNamesWorktree — the desk state names the worktree; fails today: it does not.\n" +
+		"3. Docs: none — no doc describes the desk state.\n" +
+		"4. Check: go build ./... && gofmt -l internal cmd test && go vet ./... && go test -race ./internal/frontend/rpc/",
+		"1. Change: internal/frontend/rpc/workspaces.go readWorkspacesDeskState readWorkspacesDeskStateFields and the worktree resolver it consults through the repository layer — gather the desk state's fields.\n" +
+			"2. Test: workspaces_test.go TestDeskStateNamesWorktree — the desk state names the worktree; fails today: it does not.\n" +
+			"3. Docs: none — no doc describes the desk state.\n" +
+			"4. Check: go test ./..."})
+	if len(plans) != 0 {
+		t.Fatalf("recorded %+v", plans)
+	}
+	for i := range answers {
+		if !strings.HasPrefix(answers[i], "Plan not recorded") {
+			t.Fatalf("attempt %d: %q", i+1, answers[i])
+		}
+		if !strings.Contains(answers[i], "Step 1 has no short name") ||
+			strings.Contains(answers[i], "Step 2") || strings.Contains(answers[i], "Step 3") ||
+			(i == 0 && strings.Contains(answers[i], "Step 4")) || (i == 1 && strings.Contains(answers[i], "Check:")) {
+			t.Fatalf("attempt %d: %q", i+1, answers[i])
+		}
+	}
+}
+
 // A plan says it has no test or no doc to change with a "none" step, and
 // that is accepted. This passes on the unchanged code too, which recorded
 // any plan: it guards the exception.
@@ -196,7 +225,7 @@ func TestPlannerAndJudgeAskForTheShape(t *testing.T) {
 	for i, what := range []string{"draft", "revision"} {
 		msgs := requestMessages(t, r.srv.Requests[i])
 		asked := msgs[len(msgs)-1].Content
-		for _, want := range []string{"\n- Change: a file", "\n- Test: the test file and name", "fails today", "\n- Docs: each file", "\n- Check: the command", "The last step is a Check: step."} {
+		for _, want := range []string{"a short name", "\n- Change: a file", "\n- Test: the test file and name", "fails today", "\n- Docs: each file", "\n- Check: the command", "The last step is a Check: step."} {
 			if !strings.Contains(asked, want) {
 				t.Errorf("the planner's %s request lacks %q:\n%s", what, want, asked)
 			}
@@ -219,7 +248,7 @@ func TestPlannerAndJudgeAskForTheShape(t *testing.T) {
 		t.Fatalf("no levels in the judge's request:\n%s", body)
 	}
 	top := q.Criteria[len(q.Criteria)-1]
-	for _, want := range []string{"Change:", "Test:", "why it fails on the unchanged code", "Docs:", "Check:"} {
+	for _, want := range []string{"Change:", "a short name", "Test:", "why it fails on the unchanged code", "Docs:", "Check:"} {
 		if !strings.Contains(q.Instructions, want) {
 			t.Errorf("the rubric lacks %q: %s", want, q.Instructions)
 		}

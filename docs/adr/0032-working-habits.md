@@ -491,4 +491,40 @@ says why — whoever follows the task sees the plan's progress move as the
 work happens — and `plan-write`'s description says its marks follow the
 work. The working rules are unchanged, so the prompts measured on the
 benchmark stay byte for byte; this wording has not been measured there.
+## Amendment 2026-10-04: plans give each step a short name
+
+The plan panel folds each step to its title, the clause before its first
+dash, and hides the rest behind that fold. The plans the person
+screenshotted on 2026-10-03 had no such clause: steps read "Change: read
+internal/frontend/rpc/workspaces.go, the desk state builder and …", the
+work itself as the title, cut at the console's 80-character cap, with
+nothing to fold to. The kinds were right; the shape said nothing about the
+name, so neither the planner nor `plan-write` asked for one.
+
+Now each step gives a short name for what it does, then a dash (—) and the
+detail after it; a step that says all it should in its name needs no dash.
+The name is what comes before the first boundary the console folds a step
+on (a dash with a space before it, or a sentence end or semicolon with a
+space after), the kind included, and it stays within 80 characters, the
+console's cap, so what `plan-write` accepts is what the panel shows whole.
+A step of a known kind whose name runs past that turns the plan down with
+the other shape faults: `plan-name-cap` and `plan-name-boundaries` hold
+the number and the boundaries, `plan-name-length` measures a step's name,
+and `plan-name-problem` answers with the step's number and what to write;
+after `plan-write-refusals` the plan is recorded as written, as before.
+The planner is asked for the name in `(plan-shape)`, and the judge's
+rubric and its top level ask for it too. `plan-write`'s description and
+its `plan` parameter say the shape; the example in the description already
+carried the dash.
+
+The check reads what a step says, as the others do: nothing runs the
+console to see what it would fold. A step with no boundary that stays
+within the cap is its own name and is accepted, so `Check: go test ./...`
+needs no dash.
+
+This has not been measured on the 121-task cohort; the caveats of the
+amendment that asked plans to name their tests and docs apply. The
+benchmark sees `plan-write`'s description grow by about 75 characters in
+every request's tool list, and its `plan` parameter by about 55; the
+planner's draft prompt grows by about 135.
 

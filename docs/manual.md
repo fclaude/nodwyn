@@ -548,7 +548,9 @@ is the evidence. Without a plan from the gate, the model writes its own with
 `plan-write`, which pins it the same way: its thinking comes back to it
 only as the server reported it, often a summary or nothing, and a written
 plan stays. Every plan has one shape: numbered steps that each start with
-their kind, `Change:` (a file and what changes in it), `Test:` (the test,
+their kind and a short name for what it does, then — and the detail after
+it (a step that says all it should in its name needs no dash), `Change:`
+(a file and what changes in it), `Test:` (the test,
 what it checks and why it fails on today's code, "fails today: …"),
 `Docs:` (each document the change makes wrong or incomplete) and, last,
 `Check:` (the command that shows the whole change works); a plan with no
@@ -556,8 +558,9 @@ test or no doc to change says why in a step (`Test: none — only docs
 change`). The judge scores the gate's plans against it, and `plan-write`
 turns down a plan without it, saying what is missing, at most twice in a
 turn: the third is recorded as written, with what it still lacks. The plan
-panel shows each step folded to its title, the clause up to its first dash;
-clicking a step shows the whole of it. When a turn does not finish (a model error such as a provider's
+panel shows each step folded to its title, the clause up to its first dash
+(or the whole of a step that has none, while it fits); clicking a step
+shows the whole of it. When a turn does not finish (a model error such as a provider's
 rate limit, a limit, or your Stop), your next message, "continue" or a
 correction, carries its plan with the steps marked so far, and the model
 goes on from the next unmarked step; the plan panel says "carried over from

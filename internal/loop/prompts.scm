@@ -301,13 +301,14 @@
 
 ;; The shape every plan is asked for, built from plan-kinds (plan.scm), so
 ;; the planner is asked for what plan-write checks (ADR 32, amended
-;; 2026-10-03).
+;; 2026-10-03): each step gives a short name for what it does, before the
+;; detail the console folds away.
 (define (plan-shape)
   (string-append
-   "Each step starts with its kind:"
+   "Each step starts with its kind and a short name for what it does, then a dash (—) and the detail after it:"
    (apply string-append (map (lambda (k) (string-append "\n- " (car k) ": " (cdr k) ".")) plan-kinds))
    (if plan-last-kind (string-append "\nThe last step is a " plan-last-kind ": step.") "")
-   " A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."))
+   " A step that says all it should in its name needs no dash. A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."))
 
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)
@@ -339,17 +340,18 @@
 
 ;; The judge's rubric instruction for scoring a plan, and its levels,
 ;; worst first. They ask for the shape plan-write checks (plan.scm): a plan
-;; whose tests do not say what they check, or that leaves out the docs,
-;; does not reach the top level (ADR 32, amended 2026-10-03).
+;; whose tests do not say what they check, that leaves out the docs, or
+;; whose steps give no short name before their detail, does not reach the
+;; top level (ADR 32, amended 2026-10-03).
 (define plan-score-rubric
-  "The text is a plan written for the request quoted at its top. Rate how well the plan fulfils the request: complete, concrete, in a sensible order, with nothing unnecessary or unsafe. Each step should start with its kind: Change: a file and what changes in it; Test: a test, the behaviour it checks, and why it fails on the unchanged code; Docs: each document the change makes wrong or incomplete; and, last, Check: the command that shows the whole change works. A plan with no test or no doc to change should say why.")
+  "The text is a plan written for the request quoted at its top. Rate how well the plan fulfils the request: complete, concrete, in a sensible order, with nothing unnecessary or unsafe. Each step should start with its kind and a short name for what it does, then a dash (—) and the detail after it: Change: a file and what changes in it; Test: a test, the behaviour it checks, and why it fails on the unchanged code; Docs: each document the change makes wrong or incomplete; and, last, Check: the command that shows the whole change works. A plan with no test or no doc to change should say why.")
 
 (define plan-score-levels
   '("misses or contradicts the request"
     "addresses part of the request; major steps missing or wrong"
     "covers the request but vaguely, out of order, or with unnecessary steps; or its tests do not say what they check and why they fail today, or it leaves out the docs"
     "complete and concrete with minor gaps"
-    "complete, concrete, minimal and safe: each test says what it checks and why it fails today, the docs the change makes wrong are named, and it ends with its check"))
+    "complete, concrete, minimal and safe: each step names what it does before its detail, each test says what it checks and why it fails today, the docs the change makes wrong are named, and it ends with its check"))
 
 ;; The optimizer's system prompt (optimize.scm).
 (define (optimizer-system-prompt)
