@@ -46,6 +46,106 @@ export function renderHome(root, ctx) {
   // Every task is a chat (ADR 35): a long request is a message like any
   // other, and goes on until it is done.
   const canStart = conn.has("session.open") && conn.has("session.send");
+  const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
+
+  // Needs you: each waiting task says what it asks.
+  const needs = h("section", { class: "home-section", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
+  const waiting = desk.needsYou();
+  if (!waiting.length) needs.append(h("p", { class: "empty-note" }, "Nothing is waiting for you."));
+  for (const item of waiting) {
+    const events = desk.pending.get(item.id) || [];
+    const first = events[0];
+    const s = first ? summary(first) : { kind: "Approval", tool: "", title: "Waiting for your answer" };
+    const stats = s.detail ? diffStats(s.detail) : null;
+    const since = first ? desk.firstSeen.get(first.payload.ID) : null;
+    const actions = h("div", { class: "card-actions" }, h("a", { class: "btn small dark", href: `#/task/${item.id}` }, s.path ? "Review the change" : "Review"));
+    if (first?.kind === "prompt.confirm" && conn.has("session.answer")) {
+      actions.append(
+        h(
+          "button",
+          {
+            type: "button",
+            class: "btn small",
+            onclick: async (event) => {
+              event.target.disabled = true;
+              try {
+                await conn.call("session.answer", { id: item.id, prompt_id: first.payload.ID, reply: "y" });
+                toast("Allowed once.");
+                desk.scheduleAttention();
+              } catch (error) {
+                toast(`${error.message} Nothing was retried.`);
+                event.target.disabled = false;
+              }
+            },
+          },
+          "Allow once",
+        ),
+      );
+    }
+    needs.append(
+      h(
+        "article",
+        { class: "card warn" },
+        h("div", { class: "card-head" }, h("span", { class: "badge" }, s.kind), s.tool ? h("span", { class: "mono", style: "font-size:12px;color:var(--warn-ink-2)" }, s.tool) : null, since ? h("span", { class: "when" }, ago(since)) : null),
+        h(
+          "div",
+          { style: "display:flex;flex-direction:column;gap:3px" },
+          h("div", { class: "card-title" }, h("span", {}, s.title), stats ? [h("span", { class: "plus" }, `+${stats.plus}`), h("span", { class: "minus" }, `−${stats.minus}`)] : null),
+          h("div", { class: "card-sub" }, `${item.title || "Untitled task"} · ${desk.folderName(desk.project(item))}`),
+        ),
+        actions,
+      ),
+    );
+  }
+
+  const running = h("section", { class: "home-section", "aria-labelledby": "running" }, h("h2", { class: "eyebrow", id: "running" }, "Running"));
+  const active = desk.running();
+  if (!active.length) running.append(h("p", { class: "empty-note" }, "Nothing is running."));
+  for (const item of active) running.append(runningCard(item));
+
+  const done = h("section", { class: "home-section", "aria-labelledby": "done" }, h("h2", { class: "eyebrow", id: "done" }, "Recently finished"));
+  const recent = desk.recent().slice(0, 5);
+  if (!recent.length) done.append(h("p", { class: "empty-note" }, "Finished tasks will appear here."));
+  else
+    done.append(
+      h(
+        "ul",
+        { class: "finished" },
+        recent.map((item) =>
+          h(
+            "li",
+            {},
+            h(
+              "a",
+              { href: `#/task/${item.id}` },
+              h("div", { class: "row" }, h("span", {}, item.title || "Untitled task"), h("span", {}, ago(item.last_event))),
+              h(
+                "div",
+                { class: "what" },
+                item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${desk.folderName(desk.project(item))}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${desk.folderName(desk.project(item))}`)],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+  const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, done));
+  // The ask being typed survives updates: while focus is in the top half,
+  // only the lists below are replaced. This is decided before the composer
+  // is built, and the composer is built only for a full redraw: the form
+  // carries the shared attach input and attachment list, and building it
+  // while the old top stays would steal both out of the live form, leaving
+  // an attachment on the page that cannot be seen or removed.
+  const main = root.querySelector(":scope > main.home");
+  const keepTop = main && ctx.keepTop && main.firstChild?.contains(document.activeElement);
+  if (keepTop) {
+    main.classList.toggle("urgent", waiting.length > 0);
+    main.replaceChild(grid, main.lastChild);
+    const label = main.querySelector(".ask-bar .where");
+    if (label) label.textContent = where;
+    return current;
+  }
 
   const task = h("textarea", {
     id: "task",
@@ -67,7 +167,6 @@ export function renderHome(root, ctx) {
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: true }, icon("up", 18, 2));
   files ||= new Attachments();
   const attach = files.button("Attach");
-  const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
   // A task in a worktree works on its own checkout and branch, so several
   // can work on one repository without touching each other's files or the
   // one you work in. Only a daemon that offers worktree.open, and a bridge
@@ -213,100 +312,6 @@ export function renderHome(root, ctx) {
         canStart ? adding : null,
       );
 
-  // Needs you: each waiting task says what it asks.
-  const needs = h("section", { class: "home-section", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
-  const waiting = desk.needsYou();
-  if (!waiting.length) needs.append(h("p", { class: "empty-note" }, "Nothing is waiting for you."));
-  for (const item of waiting) {
-    const events = desk.pending.get(item.id) || [];
-    const first = events[0];
-    const s = first ? summary(first) : { kind: "Approval", tool: "", title: "Waiting for your answer" };
-    const stats = s.detail ? diffStats(s.detail) : null;
-    const since = first ? desk.firstSeen.get(first.payload.ID) : null;
-    const actions = h("div", { class: "card-actions" }, h("a", { class: "btn small dark", href: `#/task/${item.id}` }, s.path ? "Review the change" : "Review"));
-    if (first?.kind === "prompt.confirm" && conn.has("session.answer")) {
-      actions.append(
-        h(
-          "button",
-          {
-            type: "button",
-            class: "btn small",
-            onclick: async (event) => {
-              event.target.disabled = true;
-              try {
-                await conn.call("session.answer", { id: item.id, prompt_id: first.payload.ID, reply: "y" });
-                toast("Allowed once.");
-                desk.scheduleAttention();
-              } catch (error) {
-                toast(`${error.message} Nothing was retried.`);
-                event.target.disabled = false;
-              }
-            },
-          },
-          "Allow once",
-        ),
-      );
-    }
-    needs.append(
-      h(
-        "article",
-        { class: "card warn" },
-        h("div", { class: "card-head" }, h("span", { class: "badge" }, s.kind), s.tool ? h("span", { class: "mono", style: "font-size:12px;color:var(--warn-ink-2)" }, s.tool) : null, since ? h("span", { class: "when" }, ago(since)) : null),
-        h(
-          "div",
-          { style: "display:flex;flex-direction:column;gap:3px" },
-          h("div", { class: "card-title" }, h("span", {}, s.title), stats ? [h("span", { class: "plus" }, `+${stats.plus}`), h("span", { class: "minus" }, `−${stats.minus}`)] : null),
-          h("div", { class: "card-sub" }, `${item.title || "Untitled task"} · ${desk.folderName(desk.project(item))}`),
-        ),
-        actions,
-      ),
-    );
-  }
-
-  const running = h("section", { class: "home-section", "aria-labelledby": "running" }, h("h2", { class: "eyebrow", id: "running" }, "Running"));
-  const active = desk.running();
-  if (!active.length) running.append(h("p", { class: "empty-note" }, "Nothing is running."));
-  for (const item of active) running.append(runningCard(item));
-
-  const done = h("section", { class: "home-section", "aria-labelledby": "done" }, h("h2", { class: "eyebrow", id: "done" }, "Recently finished"));
-  const recent = desk.recent().slice(0, 5);
-  if (!recent.length) done.append(h("p", { class: "empty-note" }, "Finished tasks will appear here."));
-  else
-    done.append(
-      h(
-        "ul",
-        { class: "finished" },
-        recent.map((item) =>
-          h(
-            "li",
-            {},
-            h(
-              "a",
-              { href: `#/task/${item.id}` },
-              h("div", { class: "row" }, h("span", {}, item.title || "Untitled task"), h("span", {}, ago(item.last_event))),
-              h(
-                "div",
-                { class: "what" },
-                item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${desk.folderName(desk.project(item))}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${desk.folderName(desk.project(item))}`)],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-  const grid = h("div", { class: "home-grid" }, needs, h("div", {}, running, done));
-  // The ask being typed survives updates: while focus is in the top half,
-  // only the lists below are replaced.
-  const main = root.querySelector(":scope > main.home");
-  const keepTop = main && ctx.keepTop && main.firstChild?.contains(document.activeElement);
-  if (keepTop) {
-    main.classList.toggle("urgent", waiting.length > 0);
-    main.replaceChild(grid, main.lastChild);
-    const label = main.querySelector(".ask-bar .where");
-    if (label) label.textContent = where;
-    return current;
-  }
   // The composer on the page is this one now.
   files.onChange = () => (submit.disabled = !ready());
   root.replaceChildren(h("main", { class: waiting.length ? "home urgent" : "home" }, top, grid));
