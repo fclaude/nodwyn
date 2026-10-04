@@ -84,3 +84,15 @@ answers itself is, and to a session whose confirms are not asked of a person.
 Like "a", it persists nothing: it ends with the session, a resume starts it
 off, and each switch is an `approval.change` (`kind: "all"`, `off` when it is
 turned off) in the log.
+
+## Amendment 2026-10-04: the switch's record names the ask it answered
+
+A switch that answered an ask which was waiting records its
+`approval.change` with that ask's `prompt_id`, as every log event that
+resolves a prompt carries the prompt it resolved. Without it the console's
+Totals clocks read the switch's record as an event that did not end a
+wait, and the whole wait — the time the task sat waiting for the answer
+the switch then gave — was added to the working time, which made the
+working time match the running time at the answer and lost the split the
+panel keeps (reported on a session that answered a command's confirm with
+the switch).

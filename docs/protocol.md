@@ -288,7 +288,10 @@ refused to an actor relayed `via` a paired device, which may only turn it
 off, and to a session whose confirmations are not asked of a person
 (`--yolo`, a judge, `--no-confirm`, an unattended run). Each switch is an
 `approval.change` with `kind: "all"`, `scope: "session"`, `prefix: "*"` and,
-when it is turned off, `off: true`.
+when it is turned off, `off: true`; when it answered an ask that was
+waiting, it carries that ask's `prompt_id`, as every log event that
+resolves a prompt does — the console's Totals clocks read it to keep the
+wait out of the working time.
 
 Prompt IDs are opaque, generated afresh, and not reused on resume. A reply is
 consumed once. Missing, canceled or already answered IDs fail without changing

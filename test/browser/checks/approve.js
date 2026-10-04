@@ -1,13 +1,16 @@
-// The seeded task's approvals: the edit went ahead, and Y answers each of
-// the two commands' inline approvals, one answer each; the run they fold
-// into says when one waits, then how many ran and for how long; the plan
+// The seeded task's approvals: the edit went ahead, the first command's
+// inline approval is answered by the "Don't ask" switch while it waits
+// and the second then runs without a card; the runs say when one waits
+// and what ran for how long; the plan
 // panel counts the steps marked; the Totals panel holds its running time
-// still while an ask waits and moves as the work goes on, and its rules
-// are checked on crafted logs; the reply renders as Markdown; a follow-up
-// sends and is answered; a turn a rate limit ends leaves its plan to
-// "continue"; two edits to a protected file in one call ask once and write
-// both; Home then has nothing waiting; and a task started from Home with an
-// image whose confirm is denied, or stopped, is idle and takes a message.
+// still while an ask waits and moves as the work goes on, one ask answered
+// by the "Don't ask" switch keeps its wait out of the working time, and
+// the rules behind both are checked on crafted logs; the reply renders as
+// Markdown; a follow-up sends and is answered; a turn a rate limit ends
+// leaves its plan to "continue"; two edits to a protected file in one call
+// ask once and write both; Home then has nothing waiting; and a task
+// started from Home with an image whose confirm is denied, or stopped, is
+// idle and takes a message.
 const assert = require("assert");
 const fs = require("fs");
 const { out, start, line, tempDir, launch, watch, expectError, requests, shows, until, check } = require("../lib");
@@ -26,6 +29,15 @@ check(async () => {
   await page.click(".nav-task.dotted");
   await page.waitForSelector(".task[data-loaded]");
   const id = decodeURIComponent((await page.evaluate(() => location.hash)).replace("#/task/", ""));
+  // The demo's throwaway world lives under /tmp/nodwyn-demo-*; the session's
+  // log there is what the Totals panel adds up.
+  const sessionLog = (sid) => {
+    for (const root of fs.readdirSync("/tmp").filter((d) => d.startsWith("nodwyn-demo-"))) {
+      const p = `/tmp/${root}/data/sessions/${sid}.jsonl`;
+      if (fs.existsSync(p)) return p;
+    }
+    throw new Error(`no session log for ${sid}`);
+  };
   // The plan panel shows every step of the planner's plan, each with its
   // kind, Test: and Docs: included, folded to its title until it is
   // clicked, and counts the steps the model marks: two before the commands
@@ -106,24 +118,66 @@ check(async () => {
   assert.notStrictEqual(still.running, held.running, `the running time held while the ask waited: ${held.running}`);
   assert.strictEqual(still.working, held.working, `the working time grew while the ask waited: ${held.working} then ${still.working}`);
   step("totals split while the ask waits");
-  // Keyboard answers, as the terminal does.
-  await page.keyboard.press("y");
-  await page.waitForSelector(".ask-card h2:has-text('Run wc -l app.js')", { timeout: 15000 });
-  await until("the run saying one ran and one waits", async () => (await run())?.label === "Ran 1 command, waiting for your answer");
-  assert.strictEqual((await run()).rows[1].stat, "waiting for your answer");
-  await page.screenshot({ path: `${out}/second-ask.png` });
-  await page.keyboard.press("y");
+  // The ask is answered through the "Don't ask" switch, as a person
+  // stopping the asking does. While it waits the clocks split as with any
+  // ask; the switch's record names the question whose wait it ended
+  // (prompt_id), so the wait stays out of the working time and the
+  // working line keeps its gap below the running one — where a wait
+  // folded into the work would make the two match, as the report's
+  // session showed. What the switch answered, nothing asks again: the
+  // second command runs without a card.
+  await page.$eval(".dont-ask input", (el) => el.click());
+  await until("the ask cleared by the switch", async () => !(await page.$(".ask-card")));
+  await page.screenshot({ path: `${out}/switched.png` });
   await page.waitForSelector(".prose strong", { timeout: 15000 });
   await until("the turn's end", async () => (await page.textContent(".task-head .pill")) === "Idle");
-  assert.deepStrictEqual(sent.of("session.answer").map((a) => [a.id, a.reply]), [[id, "y"], [id, "y"]], "one Y for each command");
-  step("both commands approved; task answered");
-  // Both ran: one run, folded, each command in its own row.
+  assert.deepStrictEqual(sent.of("session.answer").map((a) => [a.id, a.reply]), [], "the switch answered; no Y was sent");
+  step("the ask answered by the switch; task answered");
+  // The panel ticks only while the turn runs, and a turn faster than a
+  // tick leaves it stale, so a tab away and back redraws it from the
+  // settled log before the two lines are read. What must hold is that
+  // the working time stays below the running one by the switch's wait,
+  // where a wait folded into the work would make the two read the same,
+  // as the report's session showed. The heads carry their labels, so the
+  // values are what compare.
+  const value = (head) => head.replace(/^Total (running|working) time/, "");
+  await page.click(".task-aside [role=tab]:has-text('Changes')");
+  await page.click(".task-aside [role=tab]:has-text('Live')");
+  const switched = await totals();
+  assert.notStrictEqual(value(switched.working), value(switched.running), `the working time matched the running time once the switch answered: ${switched.running} / ${switched.working}`);
+  // The same on the log the panel adds up: the switch's wait, read off
+  // the log as the span from the command's call to its confirm, stays out
+  // of the working time. A switch whose answer folded its wait in would
+  // leave the working time within the span of the running one.
+  const events = fs.readFileSync(sessionLog(id), "utf8").trim().split("\n").map((l) => JSON.parse(l)).map(({ seq, ts, kind, payload }) => ({ seq, ts, kind, payload }));
+  const at = (e) => new Date(e.ts).getTime();
+  let asked1 = null,
+    waited = 0;
+  for (const e of events) {
+    if (e.kind === "tool.call" && e.payload?.name === "shell-exec") asked1 = at(e);
+    if (asked1 !== null && e.kind === "guard.decision" && e.payload?.decision === "confirm") {
+      waited += at(e) - asked1;
+      asked1 = null;
+    }
+  }
+  const clocks = await page.evaluate(async (events) => {
+    const { TaskView } = await import("/task.js");
+    const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
+    view.busy = false;
+    view.prompts = new Map();
+    return view.tally(events).run;
+  }, events);
+  assert.ok(clocks.total - clocks.work >= waited - 500, `the switch's wait (${waited} ms) stayed out of the working time: ${clocks.work} of ${clocks.total}`);
+
+  // Both ran: the switch's note between them ends the run they would
+  // fold into, so each shows in a run of its own (commands folding into
+  // one run is the transcript check's).
   const ran = await run();
-  assert.strictEqual(await page.$$eval(".activity.commands", (gs) => gs.length), 1, "the commands fold into one run");
-  assert.strictEqual(ran.label, "Ran 2 commands");
+  assert.strictEqual(await page.$$eval(".activity.commands", (gs) => gs.length), 2, "the switch's note between the commands ends the run");
+  assert.strictEqual(ran.label, "Ran 1 command");
   assert.match(ran.what, /^in \d+\.\d s$/);
   assert.strictEqual(ran.open, false, "the finished run is folded");
-  assert.deepStrictEqual(ran.rows.map((r) => r.name.replace(/\s+/g, " ").trim()), ["ls -la", "wc -l app.js"]);
+  assert.deepStrictEqual(ran.rows.map((r) => r.name.replace(/\s+/g, " ").trim()), ["wc -l app.js"]);
   assert.ok(ran.rows.every((r) => /^exit 0/.test(r.stat)), `the run's rows: ${JSON.stringify(ran.rows)}`);
   // The changes are in their tab now; Live comes back for the plan below.
   await page.click(".task-aside [role=tab]:has-text('Changes')");
@@ -208,11 +262,15 @@ check(async () => {
   assert.deepStrictEqual(card, { title: "Edit Makefile", security: true, added: ["\t@go build ./...", "\t@go test ./... >/dev/null"], removed: ["\tgo build ./...", "\tgo test ./..."] }, "the Makefile's security confirm, one diff of both edits");
   await page.screenshot({ path: `${out}/edits-ask.png` });
   assert.strictEqual(fs.readFileSync(makefile, "utf8"), original, "the Makefile changed before the answer");
-  // Focus is still in the reply box, where y would be typed: click.
-  await page.click(".ask-card button[data-key='Y']");
+  // Keyboard answers, as the terminal does — the reply box's focus let go
+  // first, since a key pressed into a text field is text, not an answer.
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press("y");
+  await until("answer after the edits", async () => (await transcript()).includes("Quieted"));
+  await until("answer after the edits", async () => (await transcript()).includes("Quieted"));
   await until("answer after the edits", async () => (await transcript()).includes("Quieted"));
   assert.strictEqual(fs.readFileSync(makefile, "utf8"), "build:\n\t@go build ./...\n\ntest:\n\t@go test ./... >/dev/null\n", "the Makefile after the answer");
-  assert.deepStrictEqual(sent.of("session.answer").map((a) => a.reply), ["y", "y", "y"]);
+  assert.deepStrictEqual(sent.of("session.answer").map((a) => a.reply), ["y"]);
   const row = await page.evaluate(() => {
     const step = [...document.querySelectorAll(".step")].find((s) => /Edit\s*Makefile/.test(s.textContent));
     return step && { text: step.textContent.replace(/\s+/g, " ").trim(), args: step.nextElementSibling?.querySelector("pre")?.textContent };
@@ -248,6 +306,7 @@ check(async () => {
       live: run([ev(0, "user.msg"), ev(2, "llm.req")], true, 1),
       bridged: run([...turn([ev(4, "turn.end")]), ev(4.5, "run.checkpoint", { number: 1, allowed: true, actor: "unattended" }), ev(5, "run.turn", { number: 2 }), ev(9, "turn.end")]),
       asked: run([...turn([ev(4, "turn.end")]), ev(4.5, "run.checkpoint", { number: 1, allowed: true, prompt_id: "p1" }), ev(5, "run.turn", { number: 2 }), ev(9, "turn.end")]),
+      switched: run(turn([ev(3, "tool.call", { id: "c1", name: "shell-exec" }), ev(8, "approval.change", { kind: "all", scope: "session", prompt_id: "p1" }), ev(8, "guard.decision", { decision: "confirm", answer: "yes", prompt_id: "p1" }), ev(9, "tool.result", { id: "c1", ok: true }), ev(10, "turn.end")])),
       resumed: run([...turn([ev(4, "turn.end")]), ev(30, "session.resume"), ev(31, "run.state", { status: "running" }), ev(32, "run.turn", { number: 1 }), ev(36, "turn.end")]),
       stopped: run([...turn([ev(4, "turn.end")]), ev(4.5, "run.checkpoint", { number: 1, allowed: false, actor: "unattended" }), ev(40, "session.resume"), ev(41, "run.state", { status: "running" }), ev(42, "run.turn", { number: 1 }), ev(46, "turn.end")]),
       crashed: run([...turn([]), ev(1000, "session.resume"), ev(1001, "user.msg", { text: "again" }), ev(1002, "llm.req"), ev(1004, "turn.end")]),
@@ -266,6 +325,8 @@ check(async () => {
   assert.strictEqual(rules.bridged.work, 9000, `a run that went on by itself worked through the gap: ${rules.bridged.work}`);
   assert.strictEqual(rules.asked.ms, 8000, `a checkpoint the person answered leaves the gap to them: ${rules.asked.ms}`);
   assert.strictEqual(rules.asked.work, 8000, `a checkpoint the person answered leaves the gap to them: ${rules.asked.work}`);
+  assert.strictEqual(rules.switched.ms, 10000, `a switch that answered a waiting ask keeps the wait in the running time: ${rules.switched.ms}`);
+  assert.strictEqual(rules.switched.work, 5000, `a switch that answered a waiting ask keeps the wait out of the working time: ${rules.switched.work}`);
   assert.strictEqual(rules.resumed.ms, 8000, `a gap across a resume was the person's: ${rules.resumed.ms}`);
   assert.strictEqual(rules.resumed.work, 8000, `a gap across a resume was the person's: ${rules.resumed.work}`);
   assert.strictEqual(rules.stopped.ms, 8000, `a run that stopped at its checkpoint left the gap to the person: ${rules.stopped.ms}`);

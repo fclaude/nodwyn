@@ -132,8 +132,9 @@ func TestApproveAllAnswersWhatIsWaiting(t *testing.T) {
 		_, err := r.s.Eval(context.Background(), `(fs-write "a.txt" "a")`)
 		done <- err
 	}()
+	var promptID string
 	select {
-	case <-a.seen:
+	case promptID = <-a.seen:
 	case <-time.After(5 * time.Second):
 		t.Fatal("not asked")
 	}
@@ -150,6 +151,13 @@ func TestApproveAllAnswersWhatIsWaiting(t *testing.T) {
 	}
 	if len(r.s.AllowedWrites()) != 0 {
 		t.Fatalf("installed %v", r.s.AllowedWrites())
+	}
+	// The switch's record names the question whose wait it ended, as every
+	// log event that resolves a prompt does: the console's clocks read
+	// prompt_id to keep the wait out of the working time.
+	changes := approvalChanges(t, r.s)
+	if len(changes) != 1 || changes[0].PromptID != promptID {
+		t.Fatalf("the switch's record does not name the question it answered: %+v (prompt %s)", changes, promptID)
 	}
 }
 

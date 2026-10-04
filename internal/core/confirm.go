@@ -143,7 +143,29 @@ func (s *Session) SetApproveAll(on bool, actor string) error {
 	if same {
 		return nil
 	}
-	if _, err := s.Record(log.KindApprovalChange, log.ApprovalChange{Actor: actor, Scope: "session", Kind: "all", Prefix: "*", Off: !on}); err != nil {
+	// What the switch would answer now: an ordinary write or command
+	// waiting for a person, never a checkpoint, a choice or a spent
+	// context.
+	answers := func(p pendingConfirmation) bool {
+		return p.checkpoint == nil && p.choice == nil && p.reply != nil && p.prompt.ApprovalOptions().Session &&
+			(p.ctx == nil || p.ctx.Err() == nil)
+	}
+	// The record names the question whose wait the switch ends, as every
+	// log event that resolves a prompt does: the console's clocks keep a
+	// person's wait out of the working time by reading prompt_id on the
+	// event that ends it. Several may wait; the smallest id stands in the
+	// record, and each answer the switch gives carries its own.
+	var first string
+	if on {
+		s.promptMu.Lock()
+		for id, pending := range s.prompts {
+			if answers(pending) && (first == "" || id < first) {
+				first = id
+			}
+		}
+		s.promptMu.Unlock()
+	}
+	if _, err := s.Record(log.KindApprovalChange, log.ApprovalChange{Actor: actor, PromptID: first, Scope: "session", Kind: "all", Prefix: "*", Off: !on}); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -156,8 +178,7 @@ func (s *Session) SetApproveAll(on bool, actor string) error {
 		// What is waiting for an answer now that it would have answered.
 		s.promptMu.Lock()
 		for id, pending := range s.prompts {
-			if pending.checkpoint == nil && pending.choice == nil && pending.reply != nil && pending.prompt.ApprovalOptions().Session &&
-				(pending.ctx == nil || pending.ctx.Err() == nil) {
+			if answers(pending) {
 				delete(s.prompts, id)
 				pending.reply <- guard.Approval{Allowed: true, Actor: actor, PromptID: id, Scope: "all"}
 			}
