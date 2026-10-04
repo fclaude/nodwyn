@@ -193,8 +193,12 @@ func (s *server) startRun(session *core.Session, state run.State, actor string) 
 		return nil, failure(-32000, err.Error())
 	}
 	s.own(session, driver)
+	// The reply is the run as started, not whatever execute has already done
+	// by the time this goroutine is scheduled: it may already have begun the
+	// next turn, and progress is watched with run.info and subscriptions.
+	started := driver.Info()
 	driver.Start(actor)
-	return runResult{session.ID(), driver.Info()}, nil
+	return runResult{session.ID(), started}, nil
 }
 func readRunHistory(dir, id string) ([]log.Event, error) {
 	store := core.Store{Dir: dir}

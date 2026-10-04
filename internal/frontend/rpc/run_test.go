@@ -99,9 +99,14 @@ func TestRunDetachCheckpointAndResume(t *testing.T) {
 	c.hello()
 	before := runInfo(t, c, started.ID)
 	var resumed runResult
+	// The reply is the run as resumed, before it goes on: its limits are the
+	// ones from before, and it is already running.
 	json.Unmarshal(c.ok("run.resume", idParams{started.ID}), &resumed)
 	if resumed.State.Turns != 1 || resumed.State.MaxTurns != 3 || !resumed.State.Deadline.Equal(before.Deadline) {
 		t.Fatalf("limits reset: before=%+v after=%+v", before, resumed.State)
+	}
+	if resumed.State.Status != "running" {
+		t.Fatalf("resume reply not running: %+v", resumed.State)
 	}
 	final := waitRun(t, c, started.ID, "completed")
 	if final.Turns != 2 {
