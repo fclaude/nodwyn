@@ -483,7 +483,11 @@ export class TaskView {
     this.controls();
     clearInterval(this.timer);
     // A view kept off screen draws its events but counts no seconds.
-    if (this.busy && this.root.isConnected) this.timer = setInterval(() => this.meters(), 1000);
+    if (this.busy && this.root.isConnected)
+      this.timer = setInterval(() => {
+        this.meters();
+        this.tickTotals();
+      }, 1000);
   }
   status() {
     const item = this.item;
@@ -693,7 +697,7 @@ export class TaskView {
     // the focus and the caret, so typing carries on where it was.
     const typing = side.querySelector("textarea[data-notes]");
     const caret = typing && document.activeElement === typing ? [typing.selectionStart, typing.selectionEnd, typing.scrollTop] : null;
-    const panels = [this.planPanel(), this.turnPanel(), this.changesPanel(), this.toolsPanel(), this.attachmentsPanel(), this.notesPanel(), this.workspacePanel(), this.detailsPanel()];
+    const panels = [this.totalsPanel(), this.planPanel(), this.turnPanel(), this.changesPanel(), this.toolsPanel(), this.attachmentsPanel(), this.notesPanel(), this.workspacePanel(), this.detailsPanel()];
     side.replaceChildren(...panels.filter(Boolean));
     const area = caret && side.querySelector("textarea[data-notes]");
     if (area) {
@@ -803,8 +807,6 @@ export class TaskView {
         tokens ? meter("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
         this.contextMeter(meter),
         this.judgeLine(),
-        // The spend limit counts the whole task, not this turn.
-        budgets?.cost?.hard ? meter("Spend, this task", this.knownSpend(), budgets.cost.soft / 1e6, (c) => usd(c, false)) : null,
       ].filter(Boolean),
     );
   }
@@ -832,12 +834,119 @@ export class TaskView {
     node.title = "nodwyn's estimate of the latest request in the conversation; older context is trimmed past the window's high water, and compaction comes just before it";
     return node;
   }
-  // knownSpend is what the task's model requests cost, as far as known: the
-  // cost its llm.resp records carry, as the spend limit counts it.
-  knownSpend() {
-    let cost = 0;
-    for (const e of this.events()) if (e.kind === "llm.resp" && e.payload.usage?.cost > 0) cost += e.payload.usage.cost;
-    return cost;
+  // totalsPanel is the task's whole-life figures, first in the aside: what
+  // its requests cost and how long it ran, added up over the whole log. A
+  // spend limit shows itself as the bar behind the total.
+  totalsPanel() {
+    const t = this.totals();
+    if (!t) return null;
+    const limit = this.info?.budgets?.cost?.hard ? this.info.budgets.cost.soft / 1e6 : 0;
+    const pct = limit ? Math.min(100, (t.cost / limit) * 100) : 0;
+    return h(
+      "section",
+      { class: "panel", dataset: { totals: "1" } },
+      h("h2", {}, "Totals", h("span", { class: "note" }, this.truncated ? "from the log that remains" : "")),
+      h(
+        "div",
+        { class: "meter", title: "What the task's model and judge requests cost, as far as the log prices them and as a spend limit counts them; a request without a known cost makes this a lower bound" },
+        h("div", { class: "meter-head" }, h("span", {}, "Total spend"), h("span", {}, `${t.unpriced ? "at least " : ""}${usd(t.cost, t.estimated)}${limit ? ` / ${usd(limit, false)}` : ""}`)),
+        limit ? h("div", { class: "meter-track" }, h("div", { class: `meter-fill${t.cost > limit ? " over" : ""}`, style: `width:${pct}%` })) : null,
+      ),
+      h(
+        "div",
+        { class: "meter", title: "How long the task's turns took, with the time it spent waiting for an answer left out; a turn still running counts up to now" },
+        h("div", { class: "meter-head" }, h("span", {}, "Total running time"), h("span", { dataset: { running: "1" } }, minutes(t.ms))),
+      ),
+    );
+  }
+  // totals adds the task up over its whole log: what its requests cost, as
+  // far as the log prices them, and how long it ran. Null before the first
+  // turn: nothing has run to add up.
+  totals(evs = this.events()) {
+    let cost = 0,
+      unpriced = 0,
+      estimated = false,
+      started = false;
+    for (const e of evs) {
+      if (e.kind === "user.msg" || e.kind === "eval.req" || e.kind === "run.turn") started = true;
+      if (e.kind !== "llm.resp") continue;
+      const u = e.payload?.usage || {};
+      // Absent is unknown, never free, as the spend limit counts it.
+      if (u.cost !== undefined) {
+        cost += u.cost;
+        estimated ||= !!u.cost_estimated;
+      } else unpriced++;
+    }
+    if (!started) return null;
+    const j = judgeTally(evs);
+    cost += j.cost;
+    unpriced += j.unpriced;
+    // A judge cost is an estimate from [jev] prices, never a report.
+    estimated ||= j.cost > 0;
+    return { cost, unpriced, estimated, ms: this.runningMs(evs) };
+  }
+  // runningMs walks the log as the session lived it. A turn runs from its
+  // start to its turn.end; a run's next turn bridges the gap between, when
+  // the run went on by itself; every interval a person was being asked in
+  // stays out. Prompts are never logged (they are ephemeral events): a wait
+  // is known only from the record that ended it — a guard decision, a
+  // checkpoint — so it runs from the event before that record to the record
+  // itself, which is the ask plus the answer. A wait still open is this
+  // view's pending prompt.
+  runningMs(evs) {
+    const tsOf = (e) => new Date(e.ts || e.TS || 0).getTime();
+    // The judge and an unattended run answer their confirms themselves:
+    // their span is the session working, not a person being asked.
+    const machine = (p) => p?.actor === "judge" || p?.actor === "unattended";
+    const asked = (e) => {
+      const p = e.payload || {};
+      if (machine(p)) return false;
+      if (e.kind === "guard.decision") return p.decision === "confirm";
+      if (e.kind === "turn.checkpoint") return true;
+      // run.checkpoint, cred.register and setting.change end a prompt's
+      // wait only when a prompt was asked (prompt_id); without one they
+      // record a decision made without asking.
+      return !!p.prompt_id;
+    };
+    let ms = 0,
+      prev = null,
+      open = null; // open: the running turn's start
+    let gap = null,
+      gapWaited = false,
+      gapResumed = false; // between turns
+    for (const e of evs) {
+      const ts = tsOf(e);
+      if (prev !== null && ts > prev && open !== null) ms += asked(e) ? 0 : ts - prev;
+      if (open === null && gap !== null) {
+        if (asked(e)) gapWaited = true;
+        // A run brought back by a person, or one that ended, leaves the gap
+        // before it to the person who read and decided.
+        if (e.kind === "session.resume" || e.kind === "run.state") gapResumed = true;
+        if (e.kind === "run.checkpoint" && e.payload?.allowed === false) gap = null;
+      }
+      if (e.kind === "turn.end") {
+        open = null;
+        gap = ts;
+        gapWaited = false;
+        gapResumed = false;
+      } else if (e.kind === "user.msg" || e.kind === "eval.req" || e.kind === "run.turn") {
+        // A run that went on by itself ran through the gap between its turns.
+        if (open === null && gap !== null && e.kind === "run.turn" && !gapWaited && !gapResumed) ms += Math.max(0, ts - gap);
+        gap = null;
+        open = ts;
+      }
+      prev = ts;
+    }
+    // A turn still open runs to now, unless its tail is a prompt's wait.
+    if (open !== null && !(this.busy && this.prompts.size)) ms += Math.max(0, Date.now() - Math.max(prev ?? open, open));
+    return ms;
+  }
+  // tickTotals redraws the running time while the task works; the second
+  // tick that moves the turn's meters moves this with it.
+  tickTotals() {
+    const t = this.totals();
+    const node = t && this.el?.side.querySelector("[data-totals] [data-running]");
+    if (node) node.textContent = minutes(t.ms);
   }
   changesPanel() {
     const written = [];

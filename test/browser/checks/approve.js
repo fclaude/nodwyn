@@ -1,7 +1,9 @@
 // The seeded task's approvals: the edit went ahead, and Y answers each of
 // the two commands' inline approvals, one answer each; the run they fold
 // into says when one waits, then how many ran and for how long; the plan
-// panel counts the steps marked; the reply renders as Markdown; a follow-up
+// panel counts the steps marked; the Totals panel holds its running time
+// still while an ask waits and moves as the work goes on, and its rules
+// are checked on crafted logs; the reply renders as Markdown; a follow-up
 // sends and is answered; a turn a rate limit ends leaves its plan to
 // "continue"; two edits to a protected file in one call ask once and write
 // both; Home then has nothing waiting.
@@ -50,6 +52,23 @@ check(async () => {
   await until("the run saying it waits", async () => (await run())?.label === "Waiting for your answer");
   assert.strictEqual((await run()).rows[0].stat, "waiting for your answer");
   step("card shown");
+  // The Totals panel: the task's whole spend and running time. While the
+  // ask waits, the running time holds still — waiting for an answer is not
+  // running — and it moves as the work goes on.
+  const totals = () =>
+    page.evaluate(() => {
+      const panel = [...document.querySelectorAll(".panel")].find((p) => p.dataset.totals);
+      if (!panel) return null;
+      const heads = [...panel.querySelectorAll(".meter-head")].map((m) => m.textContent);
+      return { spend: heads[0], time: heads[1] };
+    });
+  const held = await totals();
+  assert.match(held.spend, /^Total spendat least \$0\.0000$/, `the unpriced spend: ${held.spend}`);
+  assert.match(held.time, /^Total running time\d/, `the running time: ${held.time}`);
+  await new Promise((r) => setTimeout(r, 2300));
+  const still = await totals();
+  assert.strictEqual(still.time, held.time, `the running time grew while the ask waited: ${held.time} then ${still.time}`);
+  step("totals hold while the ask waits");
   // Keyboard answers, as the terminal does.
   await page.keyboard.press("y");
   await page.waitForSelector(".ask-card h2:has-text('Run wc -l app.js')", { timeout: 15000 });
@@ -117,6 +136,10 @@ check(async () => {
   assert.deepStrictEqual((await planPanel()).steps.map((s) => s.split(":")[0]), ["Change", "Test", "Docs", "Check"]);
   step("plan carried");
   await page.screenshot({ path: `${out}/carried-plan.png` });
+  // The work since the first ask (the commands, the follow-up and the
+  // rate-limited turn) moved the running time on.
+  const moved = await totals();
+  assert.notStrictEqual(moved.time, held.time, `the running time did not move with the work: ${held.time}`);
 
   // Two changes to one file in one fs-edit call (ADR 38). The Makefile is
   // a protected path, so the call asks although writes in the folder go
@@ -149,6 +172,43 @@ check(async () => {
   assert.deepStrictEqual(sent.of("session.send").map((s) => s.text), ["Thanks", "Tidy the notes", "continue", "Quiet the build"]);
   step("edits written");
   await page.screenshot({ path: `${out}/edits-written.png` });
+
+  // The rules the running time adds up with, against the console's own
+  // module on crafted logs: a person's wait stays out, the judge's and a
+  // run's own answers are not waits, a run that went on by itself ran
+  // through the gap between its turns, and a gap across a resume was the
+  // person's who read and resumed.
+  const rules = await page.evaluate(async () => {
+    const { TaskView } = await import("/task.js");
+    const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
+    const base = Date.now() - 3600_000;
+    const ev = (s, kind, payload = {}) => ({ seq: s, ts: new Date(base + s * 1000).toISOString(), kind, payload });
+    const run = (events, busy = false, prompts = 0) => {
+      view.busy = busy;
+      view.prompts = new Map(prompts ? [["p", {}]] : []);
+      return view.runningMs(events);
+    };
+    const turn = (extra) => [ev(0, "user.msg", { text: "go" }), ev(1, "llm.req"), ev(2, "llm.resp", { usage: {} }), ...extra];
+    return {
+      plain: run(turn([ev(4, "turn.end")])),
+      waited: run(turn([ev(3, "tool.call", { id: "c1", name: "shell-exec" }), ev(8, "guard.decision", { decision: "confirm", answer: "yes" }), ev(9, "tool.result", { id: "c1", ok: true }), ev(10, "turn.end")])),
+      judged: run(turn([ev(3, "tool.call", { id: "c1", name: "shell-exec" }), ev(8, "guard.decision", { decision: "confirm", answer: "yes", actor: "judge" }), ev(9, "tool.result", { id: "c1", ok: true }), ev(10, "turn.end")])),
+      live: run([ev(0, "user.msg"), ev(2, "llm.req")], true, 1),
+      bridged: run([...turn([ev(4, "turn.end")]), ev(4.5, "run.checkpoint", { number: 1, allowed: true, actor: "unattended" }), ev(5, "run.turn", { number: 2 }), ev(9, "turn.end")]),
+      asked: run([...turn([ev(4, "turn.end")]), ev(4.5, "run.checkpoint", { number: 1, allowed: true, prompt_id: "p1" }), ev(5, "run.turn", { number: 2 }), ev(9, "turn.end")]),
+      resumed: run([...turn([ev(4, "turn.end")]), ev(30, "session.resume"), ev(31, "run.state", { status: "running" }), ev(32, "run.turn", { number: 1 }), ev(36, "turn.end")]),
+      stopped: run([...turn([ev(4, "turn.end")]), ev(4.5, "run.checkpoint", { number: 1, allowed: false, actor: "unattended" }), ev(40, "session.resume"), ev(41, "run.state", { status: "running" }), ev(42, "run.turn", { number: 1 }), ev(46, "turn.end")]),
+    };
+  });
+  assert.strictEqual(rules.plain, 4000, `a turn with no wait: ${rules.plain}`);
+  assert.strictEqual(rules.waited, 5000, `a person's wait stays out: ${rules.waited}`);
+  assert.strictEqual(rules.judged, 10000, `the judge's deciding is running, not a wait: ${rules.judged}`);
+  assert.strictEqual(rules.live, 2000, `a prompt still pending holds the open turn: ${rules.live}`);
+  assert.strictEqual(rules.bridged, 9000, `a run that went on by itself ran through the gap: ${rules.bridged}`);
+  assert.strictEqual(rules.asked, 8000, `a checkpoint the person answered is a wait: ${rules.asked}`);
+  assert.strictEqual(rules.resumed, 8000, `a gap across a resume was the person's: ${rules.resumed}`);
+  assert.strictEqual(rules.stopped, 8000, `a run that stopped at its checkpoint left the gap to the person: ${rules.stopped}`);
+  step("totals rules");
 
   // Home: nothing waits for an answer now, and the task is with the finished.
   await page.evaluate(() => (location.hash = "#/"));

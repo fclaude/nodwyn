@@ -1161,6 +1161,15 @@ whose cost nobody knows is not counted, and a note says so the first time.
 The README has the details; `--budget-cost USD` sets it for one session or
 run.
 
+The console's side panel adds the task up in "Totals": "Total spend", what
+its model and judge requests cost as far as the log prices them (the same
+accounting a spend limit counts; with a limit set, the total is shown
+against it), and "Total running time", how long its turns took with the
+time it spent waiting for your answers left out. A turn still running
+counts up to now; a run that went on by itself counts the time between its
+turns, one you answered or brought back does not. Where the log was
+truncated, the panel says its totals cover what remains.
+
 No keyed request follows a redirect (`http-request`, Jev, MCP), and no model
 request does, keyed or not: the binding was checked for the host the request
 went to, and a redirect would take the key and the body (for a model, the
