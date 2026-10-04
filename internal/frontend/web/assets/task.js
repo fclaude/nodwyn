@@ -249,10 +249,12 @@ export class TaskView {
       case "prompt.secret":
       case "prompt.checkpoint":
       case "prompt.choice":
+        // A request is not a turn: an image's confirm comes before any, and
+        // no idle follows its answer. Only a status says a turn runs, or the
+        // page stayed Working with nothing to stop.
         if (!this.resolved.has(p.ID)) {
           this.prompts.set(p.ID, event);
           if (!this.desk.firstSeen.has(p.ID)) this.desk.firstSeen.set(p.ID, Date.now());
-          this.busy = true;
         }
         break;
       case "status": {
@@ -506,10 +508,11 @@ export class TaskView {
     const actions = h("div", { class: "task-actions" });
     const button = (label, iconName, handler, cls = "") => h("button", { type: "button", class: `btn ${cls}`, disabled: !this.conn.live || this.acting, onclick: handler }, iconName ? icon(iconName, 15) : null, label);
     // A run comes from nodwyn run (ADR 35): Stop ends it, and a message
-    // afterwards goes on with the task as a chat.
+    // afterwards goes on with the task as a chat. A request waiting outside
+    // a turn, an image's confirm, is stopped too: it is declined.
     if (item.open && this.conn.has("session.abort")) {
       const stop = button("Stop", "stop", () => this.act("session.abort", "Stopping…"));
-      stop.disabled = stop.disabled || !this.busy;
+      stop.disabled = stop.disabled || (!this.busy && !this.activePrompt());
       actions.append(stop);
     }
     const keysLocked = !item.open && this.desk.keysLocked;
@@ -520,7 +523,7 @@ export class TaskView {
     }
     if (item.open && this.conn.has("session.close")) {
       const close = button("Close", "", () => this.act("session.close", "Closing the task; its conversation is kept."), "ghost");
-      close.disabled = close.disabled || this.busy;
+      close.disabled = close.disabled || this.busy || !!this.activePrompt();
       close.title = "Close the task. Its conversation is kept and can be resumed.";
       actions.append(close);
     }

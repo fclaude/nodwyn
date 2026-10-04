@@ -6,10 +6,11 @@
 // are checked on crafted logs; the reply renders as Markdown; a follow-up
 // sends and is answered; a turn a rate limit ends leaves its plan to
 // "continue"; two edits to a protected file in one call ask once and write
-// both; Home then has nothing waiting.
+// both; Home then has nothing waiting; and a task started from Home with an
+// image whose confirm is denied, or stopped, is idle and takes a message.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, launch, watch, requests, shows, until, check } = require("../lib");
+const { out, start, line, tempDir, launch, watch, expectError, requests, shows, until, check } = require("../lib");
 
 check(async () => {
   const demo = start(process.env.DEMO, ["-seed", "-pace=0"]);
@@ -217,4 +218,55 @@ check(async () => {
   assert.ok(!sidebar.includes("NEEDS YOU"), `the sidebar still has a task waiting:\n${sidebar}`);
   await shows(page, "#view", "RECENTLY FINISHED", "The session list shows");
   await page.screenshot({ path: `${out}/home-after.png` });
+
+  // An image's confirm comes before any turn (ADR 22), so no idle follows
+  // its answer. A task started from Home with an image, denied or stopped,
+  // is idle afterwards, not Working with nothing to stop: the image is left
+  // out, the message unsent, and the task takes the next one.
+  const shot = `${tempDir("nodwyn-shot-")}/shot.png`;
+  fs.writeFileSync(shot, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"));
+  const head = () =>
+    page.evaluate(() => {
+      const button = (label) => [...document.querySelectorAll(".task-actions button")].find((b) => b.textContent.trim() === label);
+      return { pill: document.querySelector(".task-head .pill")?.textContent, stop: button("Stop")?.disabled, close: button("Close")?.disabled };
+    });
+  const settles = (what, want) =>
+    until(what, async () => JSON.stringify(await head()) === JSON.stringify(want)).catch(async (e) => {
+      throw new Error(`${e.message}: ${JSON.stringify(await head())}`);
+    });
+  const withImage = async (text) => {
+    await page.evaluate(() => (location.hash = "#/"));
+    await page.waitForSelector("#task");
+    await page.click(`button.chip[title="${repo}"]`);
+    await page.fill("#task", text);
+    await page.setInputFiles(".ask input[type=file]", shot);
+    await page.waitForSelector(".ask .attach-chip");
+    // The bridge answers the refused upload 422, which the page logs.
+    expectError(/^Failed to load resource: the server responded with a status of 422 \(Unprocessable Entity\)$/);
+    await page.press("#task", "Control+Enter");
+    await page.waitForSelector(".ask-card h2:has-text('Send the image shot.png to the model?')", { timeout: 15000 });
+    await settles("Stop while the image's confirm waits", { pill: "Waiting for you", stop: false, close: true });
+    return decodeURIComponent((await page.evaluate(() => location.hash)).replace("#/task/", ""));
+  };
+  const idle = { pill: "Idle", stop: true, close: false };
+  const denied = await withImage("Describe this screenshot");
+  await page.click(".ask-card button[data-key='N']");
+  await settles("the task idle after the image was denied", idle);
+  await until("the note that the image was declined", async () => (await page.textContent(".transcript")).includes("image not attached: shot.png, declined"));
+  assert.deepStrictEqual(sent.of("session.answer").map((a) => [a.id, a.reply]).at(-1), [denied, "n"]);
+  assert.ok(!sent.of("session.send").some((s) => s.id === denied), "the message went without its image");
+  await page.screenshot({ path: `${out}/image-denied.png` });
+  await page.fill("#reply", "Describe the folder instead");
+  await page.keyboard.press("Enter");
+  await until("the answer without the image", async () => (await transcript()).includes("This request carries 0 image(s)"));
+  await settles("the task idle after its answer", idle);
+  step("image denied; the task went on");
+
+  const stopped = await withImage("Describe this screenshot again");
+  await page.click(".task-actions button:has-text('Stop')");
+  await settles("the task idle after Stop", idle);
+  await until("the note that the image was canceled", async () => (await page.textContent(".transcript")).includes("image not attached: shot.png, canceled"));
+  assert.deepStrictEqual(sent.of("session.abort").at(-1), { id: stopped });
+  assert.ok(!sent.of("session.send").some((s) => s.id === stopped), "the message went without its image");
+  step("image stopped");
 });
