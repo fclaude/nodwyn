@@ -141,6 +141,121 @@ check(async () => {
       const moved = { kind: "session.model", payload: { model: "long", server: "or", context: { high_water: 86016 } } };
       out.gauge = { before: contextGauge(before).high, after: contextGauge([...before, moved]).high, est: contextGauge([...before, moved]).est };
     }
+    // A burst through the task's event listener changes its text once per
+    // frame, without replacing unrelated panels. The real TaskView and Desk
+    // use a synthetic connection so no model's timing decides this check.
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const listeners = new Set();
+      const conn = {
+        live: true,
+        methods: new Set(["session.send", "session.abort", "session.answer"]),
+        has(method) { return this.methods.has(method); },
+        onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        async call(method) {
+          if (method === "session.subscribe") return { page: { events: [{ seq: 1, kind: "user.msg", payload: { text: "Begin" } }], through: 1, more: false }, busy: true };
+          if (method === "session.info") return {};
+          if (method === "session.unsubscribe") return {};
+          throw new Error(`unexpected request: ${method}`);
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("stream", { id: "stream", repo: "/tmp/stream", open: true, busy: true });
+      const task = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(task.root);
+      await task.open("stream");
+      const emit = (kind, payload, seq = 0) => {
+        for (const fn of listeners) fn({ method: "session.event", params: { id: "stream", kind, payload, seq } });
+      };
+      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      const text = () => task.el.transcript.querySelector(".streaming")?.textContent || "";
+      const t = task.el.transcript;
+      t.style.cssText = "height:240px;max-height:240px;min-height:0;flex:none;overflow:auto";
+      emit("stream.text", { Text: "Start: " });
+      await frame();
+      const head = task.el.head.firstChild, panel = task.el.side.firstChild;
+      let mutations = [];
+      const observer = new MutationObserver((records) => mutations.push(...records));
+      observer.observe(task.root, { childList: true, subtree: true, characterData: true });
+      for (let i = 0; i < 40; i++) emit("stream.text", { text: "x" });
+      const beforeFrame = text();
+      await frame();
+      mutations.push(...observer.takeRecords());
+      observer.disconnect();
+      const updates = mutations.filter((m) => m.target === t.querySelector(".streaming")).length;
+      const burst = { beforeFrame, text: text(), updates, sameHead: head === task.el.head.firstChild, samePanel: panel === task.el.side.firstChild };
+
+      // Thinking keeps every fragment with the setting both hidden and
+      // shown, and alternating stream kinds retain their own text.
+      const thoughts = [];
+      for (const setting of ["hidden", "shown"]) {
+        document.documentElement.dataset.thinking = setting;
+        emit("stream.thinking", { Text: setting + ":" });
+        emit("stream.text", { Text: " reply " });
+        emit("stream.thinking", { Text: "thought " });
+        await frame();
+        const thinking = t.querySelector(".thinking");
+        thoughts.push({ text: thinking.querySelector("pre").textContent, visible: thinking.getClientRects().length > 0 });
+      }
+      delete document.documentElement.dataset.thinking;
+
+      // Following the bottom stays at the bottom; reading earlier text
+      // keeps its scroll position as the next batch arrives.
+      emit("stream.text", { Text: "\nA line of streamed text.".repeat(100) });
+      await frame();
+      const followed = Math.abs(t.scrollHeight - t.clientHeight - t.scrollTop) <= 1;
+      t.scrollTop = 0;
+      emit("stream.text", { Text: "\nMore text.".repeat(20) });
+      await frame();
+      const stayed = t.scrollTop === 0 && t.scrollHeight > t.clientHeight + 120;
+
+      // A final response supersedes queued text and thinking immediately,
+      // before a frame, and the cancelled frame cannot append stale text.
+      emit("stream.thinking", { Text: "provisional thought" });
+      emit("stream.text", { Text: "provisional reply" });
+      emit("llm.resp", { content: "Finished reply", thinking: "Finished thought" }, 2);
+      const finished = () => ({ prose: [...t.querySelectorAll(".prose")].map((n) => n.textContent.trim()), thinking: t.querySelector(".thinking pre")?.textContent, streams: t.querySelectorAll(".streaming").length });
+      const final = finished();
+      await frame();
+      const afterFinalFrame = finished();
+
+      // Questions keep their place after the text that led to them, even
+      // when both arrive before the next display frame.
+      emit("stream.text", { Text: "Before the question" });
+      emit("prompt.confirm", { ID: "ask", Prompt: { Prim: "shell-exec", Argv: ["ls"], Reasons: ["Confirm the command"] } });
+      const promptOrder = text() === "Before the question" && t.lastElementChild.matches(".ask-card") && task.el.send.disabled;
+      emit("prompt.closed", { ID: "ask" });
+
+      // Parked tasks collect fragments without mutating their detached
+      // transcript; returning catches up without another subscription.
+      task.park();
+      task.root.remove();
+      const parked = text();
+      emit("stream.text", { Text: " while away" });
+      await frame();
+      const unchangedAway = text() === parked;
+      document.body.append(task.root);
+      task.show(desk.sessions.get("stream"));
+      const caughtUp = text() === "Before the question while away";
+
+      // Reloading a view and disposing it each cancel a queued frame, so
+      // old fragments cannot leak into a freshly read conversation.
+      emit("stream.text", { Text: " discard on reload" });
+      await task.open("stream");
+      await frame();
+      const reloaded = !task.el.transcript.textContent.includes("discard on reload");
+      emit("stream.text", { Text: "Last fragment before closing" });
+      for (const fn of listeners) fn({ method: "session.closed", params: { id: "stream" } });
+      const closed = text() === "Last fragment before closing" && task.el.reply.disabled && task.el.head.querySelector(".pill")?.textContent === "Saved";
+      await frame();
+      const closedOnce = text() === "Last fragment before closing";
+      emit("stream.text", { Text: " discard on disposal" });
+      task.dispose();
+      await frame();
+      const disposed = !task.el.transcript.textContent.includes("discard on disposal");
+      out.streaming = { burst, thoughts, followed, stayed, final, afterFinalFrame, promptOrder, unchangedAway, caughtUp, reloaded, closed, closedOnce, disposed };
+    }
     return out;
   });
   console.log(JSON.stringify(results, null, 1));
@@ -162,6 +277,15 @@ check(async () => {
   want(l.status === "exit 1 · 1.2 s · allowed: don't ask", `long command status: ${JSON.stringify(l)}`);
   want(l.nameClipped && l.nameInside && l.statInside && l.scroll, `long command stays inside its card: ${JSON.stringify(l)}`);
   want(results.gauge.before === 61440 && results.gauge.after === 86016 && results.gauge.est === 4100, `gauge across a switch: ${JSON.stringify(results.gauge)}`);
+  const s = results.streaming;
+  want(s.burst.beforeFrame === "Start: " && s.burst.text === "Start: " + "x".repeat(40) && s.burst.updates === 1 && s.burst.sameHead && s.burst.samePanel, `stream burst: ${JSON.stringify(s.burst)}`);
+  want(s.thoughts[0].text === "hidden:thought " && !s.thoughts[0].visible && s.thoughts[1].text === "hidden:thought shown:thought " && s.thoughts[1].visible, `streamed thinking setting: ${JSON.stringify(s.thoughts)}`);
+  want(s.followed && s.stayed, `stream scrolling: followed=${s.followed}, stayed=${s.stayed}`);
+  want(s.final.prose.join() === "Finished reply" && s.final.thinking === "Finished thought" && s.final.streams === 0 && JSON.stringify(s.final) === JSON.stringify(s.afterFinalFrame), `final reply after queued fragments: ${JSON.stringify(s.final)}, later ${JSON.stringify(s.afterFinalFrame)}`);
+  want(s.promptOrder, "a question overtook its queued text or enabled sending");
+  want(s.unchangedAway && s.caughtUp, `parked stream: unchanged=${s.unchangedAway}, caught up=${s.caughtUp}`);
+  want(s.reloaded && s.disposed, `queued streams outlived reload or disposal: ${JSON.stringify(s)}`);
+  want(s.closed && s.closedOnce, "session closure lost or duplicated its queued text, or left the reply enabled");
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
 });

@@ -304,6 +304,11 @@ archive are records in each session's log, so they last across restarts and
 every console reads them; `nodwyn sessions` and the TUI still list first
 messages.
 
+The console batches streamed text and thinking for the next display frame,
+keeping the heading and detail panels in place. Tasks kept off screen
+catch up when shown; replies and questions flush preceding fragments
+immediately. Reading earlier text keeps your scroll position.
+
 ### The scratch directory
 
 Each session gets a scratch directory outside the repository, a private

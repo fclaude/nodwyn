@@ -57,6 +57,8 @@ export class TaskView {
     this.renameBox = null;
     this.uploading = false; // attachments on their way, an image perhaps waiting for its confirm
     this.timer = 0;
+    this.streams = [];
+    this.streamFrame = 0;
     this.failed = false; // the last load failed: the view is not to be kept
     this.scroll = null; // where the conversation was when another page was shown
     this.root = h("div", { class: "task" });
@@ -71,6 +73,7 @@ export class TaskView {
 
   // ---------- lifecycle ----------
   async open(id) {
+    this.clearStreams();
     const version = ++this.version;
     delete this.root.dataset.loaded;
     const previous = this.item;
@@ -157,6 +160,7 @@ export class TaskView {
   // leave stops showing the task; with unsubscribe false it leaves the
   // subscription alone, as on a new connection, which never had it.
   leave(unsubscribe = true) {
+    this.clearStreams();
     if (this.item) drafts.set(this.item.id, this.el?.reply.value || "");
     if (unsubscribe && this.item?.open && this.conn.live) this.conn.call("session.unsubscribe", { id: this.item.id }).catch(() => {});
     this.version++;
@@ -172,15 +176,16 @@ export class TaskView {
   }
   // keeps says whether this view can be shown again for task id as it is,
   // without reading the conversation again: the task is open and still
-  // subscribed here, so every event since reached the view, drawn while it
-  // was off screen, and nothing failed to load.
+  // subscribed here, so every event since reached the view, and nothing
+  // failed to load. Provisional fragments may still be waiting to be drawn.
   keeps(id) {
     return this.item?.id === id && !!this.item.open && !this.failed && this.conn.live;
   }
-  // park takes the view off screen and keeps it: its subscription stays,
-  // and its events go on drawing into it.
+  // park takes the view off screen and keeps its subscription. Recorded
+  // events keep drawing; provisional fragments wait until they are needed.
   park() {
     if (!this.el || !this.item) return;
+    this.flushStreams();
     drafts.set(this.item.id, this.el.reply.value || "");
     const t = this.el.transcript;
     this.scroll = { top: t.scrollTop, end: t.scrollHeight - t.scrollTop - t.clientHeight < 120 };
@@ -193,6 +198,7 @@ export class TaskView {
   // task, where its conversation was, or at its end if it followed it.
   show(fresh) {
     if (fresh && this.item) Object.assign(this.item, { open: fresh.open, run: fresh.run, title: fresh.title, archived: fresh.archived, worktree: fresh.worktree });
+    this.flushStreams();
     this.refreshAll();
     const t = this.el.transcript;
     t.scrollTop = !this.scroll || this.scroll.end ? t.scrollHeight : this.scroll.top;
@@ -231,6 +237,7 @@ export class TaskView {
   onFrame(frame) {
     if (!this.item) return;
     if (frame.method === "session.closed" && frame.params?.id === this.item.id) {
+      this.flushStreams();
       this.item.open = false;
       this.busy = false;
       this.prompts.clear();
@@ -241,9 +248,45 @@ export class TaskView {
     if (frame.method !== "session.event" || frame.params?.id !== this.item.id || frame.params.kind === "session.state") return;
     if (this.loading) this.queued.push(frame.params);
     else {
+      if (frame.params.kind === "stream.text" || frame.params.kind === "stream.thinking") {
+        this.queueStream(frame.params);
+        return;
+      }
+      // A recorded reply or a question must follow every preceding fragment,
+      // even when a background tab has stopped receiving animation frames.
+      this.flushStreams();
       this.render(frame.params);
       this.refreshAll();
     }
+  }
+  // Fragments change only the transcript. Joining them before the next
+  // frame avoids rebuilding the heading and every panel for each token.
+  queueStream(event) {
+    let last = this.streams.at(-1);
+    if (!last || last.kind !== event.kind) {
+      last = { kind: event.kind, chunks: [] };
+      this.streams.push(last);
+    }
+    last.chunks.push(event.payload?.Text ?? event.payload?.text ?? "");
+    // A kept view is caught up when shown, or before the next non-stream
+    // event; drawing its provisional text while detached serves no reader.
+    if (!this.streamFrame && this.root.isConnected) this.streamFrame = requestAnimationFrame(() => this.flushStreams());
+  }
+  clearStreams() {
+    cancelAnimationFrame(this.streamFrame);
+    this.streamFrame = 0;
+    this.streams = [];
+  }
+  flushStreams() {
+    const streams = this.streams;
+    this.clearStreams();
+    if (!streams.length) return;
+    const view = this.el.transcript;
+    const follow = this.root.isConnected && view.scrollHeight - view.scrollTop - view.clientHeight < 120;
+    view.querySelector(":scope > [data-placeholder]")?.remove();
+    for (const stream of streams) this.transcript.render({ kind: stream.kind, payload: { Text: stream.chunks.join("") } });
+    const placed = this.placePrompt();
+    if (follow && !placed) view.scrollTop = view.scrollHeight;
   }
   render(event) {
     if (event.seq && this.seen.has(event.seq)) return;

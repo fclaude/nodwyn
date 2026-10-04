@@ -14,8 +14,8 @@ applyThinking(storedThinking());
 const conn = new Connection();
 const desk = new Desk(conn);
 // One view per task. An open task's view is kept when another page is shown:
-// its subscription stays and its events go on drawing into it, so coming
-// back shows it at once instead of reading its whole log again, which took
+// its subscription stays and its events keep arriving, so coming back
+// catches up at once instead of reading its whole log again, which took
 // seconds for a long task. The least recently shown go past keptViews.
 const views = new Map(); // task id -> TaskView, least recently shown first
 const keptViews = 8;

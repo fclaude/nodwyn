@@ -124,6 +124,13 @@ shown are kept; a saved task's page, or one past those, is read from its
 log when it is opened. A key typed into a request card is cleared when you
 switch away.
 
+Streamed text and thinking are joined for the next display frame, without
+redrawing the task's heading and detail panels for each fragment. A task
+kept off screen buffers those fragments until it is shown or another kind
+of event arrives. Replies and questions flush preceding fragments at once,
+so their order does not depend on a background tab receiving frames. The
+conversation follows new text only while you are already near its end.
+
 A task is read by its first message until you name it: the pencil beside
 its heading (or a double click on it) turns the heading into a field;
 Enter or clicking away saves, Escape keeps the name, and an empty name

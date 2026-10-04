@@ -160,3 +160,25 @@ nodwyn runs on, as "always allow" for uploads is: a device reads them and
 cannot change them, and its tasks ask what they say. A device's console
 starts only chats; `run.start` and `run.resume` with `auto_approve`,
 `judge` or `unattended` stay refused to it.
+
+## Amendment 2026-10-03: Batch provisional transcript updates
+
+A live CPU profile of the Linux app found roughly 37% of sampled host
+cycles in the GTK main loop, mostly repainting. The console rebuilt a
+task's heading and all its detail panels for every streamed fragment,
+although those fragments changed only the transcript. Each fragment also
+read the transcript's layout before and after changing it.
+
+Join adjacent fragments of the same kind and draw them on the next
+animation frame, with one scroll check for the batch and no heading or
+detail-panel refresh. Keep fragments for a detached task until it is shown
+or another event arrives. Flush before non-stream events, including a
+recorded reply, a question and session closure, so a background tab whose
+animation frames are paused still processes them in order. Reloading or
+disposing a view discards its pending frame and provisional fragments.
+
+This changes display scheduling only. It neither drops durable events nor
+changes the daemon, the event protocol or guard checks. The transcript
+browser check measures DOM mutations for a fragment burst and exercises
+scroll following, questions, final responses, switching, reload and
+disposal; energy savings still require a separate power measurement.
