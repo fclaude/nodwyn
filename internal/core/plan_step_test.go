@@ -8,6 +8,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -101,8 +102,8 @@ const shapedPlan = "1. Change: main.go main — print the greeting.\n" +
 	"4. Check: go test ./..."
 
 // Without a plan from the gate, the model writes its own with plan-write:
-// it is recorded (decision "model"), pinned in the next request's system
-// prompt, and plan-step marks it. Writing it again revises it.
+// it is recorded (decision "model"), the next request shows it after
+// plan-write's answer, and plan-step marks it. Writing it again revises it.
 func TestModelWritesItsOwnPlan(t *testing.T) {
 	t.Parallel()
 	revised := strings.Replace(shapedPlan, "go test ./...", "go vet ./...", 1)
@@ -114,8 +115,9 @@ func TestModelWritesItsOwnPlan(t *testing.T) {
 	if e := r.turn("change main.go"); e != "" {
 		t.Fatal(e)
 	}
-	if sys := requestMessages(t, r.srv.Requests[1])[0].Content; !strings.HasSuffix(sys, "say so if you must deviate):\n"+shapedPlan) {
-		t.Fatalf("the plan is not pinned:\n%s", sys)
+	if msgs := requestMessages(t, r.srv.Requests[1]); msgs[len(msgs)-2].Role != "tool" ||
+		!strings.HasSuffix(msgs[len(msgs)-1].Content, "say so if you must deviate):\n"+shapedPlan) {
+		t.Fatalf("the plan does not follow plan-write's answer: %+v", msgs)
 	}
 	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
 	if err != nil {
@@ -146,7 +148,7 @@ func TestModelWritesItsOwnPlan(t *testing.T) {
 
 // A chat's turn that a failed model request ends leaves its plan to the
 // next message: "continue" carries it (decision "carried") with the steps
-// marked so far, pinned with them, and plan-step goes on from them. A turn
+// marked so far, shown with them, and plan-step goes on from them. A turn
 // that finishes leaves none: the message after it is a new request.
 func TestAnUnfinishedTurnLeavesItsPlan(t *testing.T) {
 	// llm.RetryDelay is the whole process's, so this test is not parallel:
@@ -167,9 +169,10 @@ func TestAnUnfinishedTurnLeavesItsPlan(t *testing.T) {
 	if e := r.turn("continue"); e != "" {
 		t.Fatal(e)
 	}
-	sys := requestMessages(t, r.srv.Requests[5])[0].Content
-	if !strings.HasSuffix(sys, "\n"+shapedPlan+"\n\nMarked in earlier turns of this task:\nStep 1 done: edited") {
-		t.Fatalf("the carried plan is not pinned with its marks:\n%s", sys)
+	msgs := requestMessages(t, r.srv.Requests[5])
+	if !strings.HasSuffix(msgs[len(msgs)-1].Content, "\n"+shapedPlan+"\n\nMarked in earlier turns of this task:\nStep 1 done: edited") ||
+		msgs[len(msgs)-2].Content != window.DefaultTaskHeader+"\ncontinue" {
+		t.Fatalf("the carried plan does not follow the request with its marks: %+v", msgs)
 	}
 	if e := r.turn("what is main.go?"); e != "" {
 		t.Fatal(e)

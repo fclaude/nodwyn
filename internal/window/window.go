@@ -2,11 +2,16 @@
 // derived view: rebuilt from the events on every request, never the other
 // way round.
 //
-// The policy is shaped for a prefix cache on a single shared model slot:
+// The policy is shaped for a prefix cache:
 //
-//   - The system prompt carries the current task (the user message that
-//     started the turn), so the ask is never trimmed away and the prefix
-//     changes only when a new turn starts.
+//   - The system prompt never changes (recipe v15). The user's request is
+//     their message, under the task header, and a recorded plan is a
+//     message of its own, under the plan header, where it was recorded
+//     once the tool calls it came with are answered. Both are user
+//     messages, never trimmed. A new turn or a plan adds to the prefix
+//     rather than rewriting its first message. Before v15 the system
+//     prompt carried them, and the prefix changed at every new turn and
+//     every plan.
 //   - Elision is sticky: every earlier request's elided set (recorded in
 //     the log as llm.req.elided) stays elided. Nothing ever comes back, so
 //     the prefix never changes behind the model's back.
@@ -26,8 +31,8 @@
 //     is handed a task without the conversation that led to it.
 //   - A lasting narrowing, such as a compaction's, outlasts its turn: if it
 //     is still open when the user speaks again, the conversation starts
-//     there from then on, under the session's system prompt with the task
-//     and plan. What came before stays in the log, never in the window.
+//     there from then on, under the session's system prompt. What came
+//     before stays in the log, never in the window.
 package window
 
 import (
@@ -39,7 +44,7 @@ import (
 )
 
 // Policy is the window's tuning (config [window]), and the headers under
-// which the user's latest request and its plan enter the system prompt.
+// which the user's latest request and its plan enter the window.
 type Policy struct {
 	HighWater       int
 	LowWater        int
@@ -53,6 +58,11 @@ type Policy struct {
 	// as the log recorded it, redacted (recipe v14, ADR 9 amended
 	// 2026-10-02). An older recipe's replies carry none.
 	Thinking bool
+	// InConversation puts the user's request and its plan in the
+	// conversation, where they arrive, instead of in the system prompt
+	// (recipe v15, ADR 9 amended 2026-10-04), so that neither a new turn
+	// nor a plan changes the system prompt and loses the cached prefix.
+	InConversation bool
 }
 
 // The default headers for the task and its plan: what a recipe that records
@@ -65,9 +75,9 @@ const (
 )
 
 // carriedMarks is what a run's later turn is told of its plan's progress:
-// the steps its earlier turns marked, under the plan in the system prompt.
-// They are fixed when the plan is carried, so the prompt stays the same
-// for the rest of the turn; marks made during it are in the conversation.
+// the steps its earlier turns marked, under the plan. They are fixed when
+// the plan is carried, so the plan reads the same for the rest of the
+// turn; marks made during it are in the conversation.
 // Recipe v13; an older log carries no marks.
 func carriedMarks(marks []log.PlanStep) string {
 	if len(marks) == 0 {
@@ -174,6 +184,27 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		lasting bool
 	}
 	var frames []frame
+	taskHeader, planHeader := pol.TaskHeader, pol.PlanHeader
+	if taskHeader == "" {
+		taskHeader = DefaultTaskHeader
+	}
+	if planHeader == "" {
+		planHeader = DefaultPlanHeader
+	}
+	// held is a plan for the conversation (InConversation) waiting for its
+	// place: a plan-write is recorded before its call is answered, and no
+	// message may come between a reply's calls and their results. It joins
+	// the conversation before the next message of the context it was
+	// recorded in (heldDepth narrowings deep) that is not a result, or at
+	// the end, which is the same place in every later window.
+	var held *entry
+	heldDepth := 0
+	add := func(e entry) {
+		if held != nil && e.kind != "tool" && heldDepth == len(frames) {
+			entries, held = append(entries, *held), nil
+		}
+		entries = append(entries, e)
+	}
 	folded := map[uint64]string{}
 	for _, ev := range events {
 		if ev.Kind == log.KindResultFold {
@@ -188,6 +219,13 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		case log.KindUserMsg:
 			var p log.UserMsg
 			if ev.Decode(&p) == nil {
+				// A plan whose turn ended before another reply is where it
+				// was in that turn's windows; one recorded outside a
+				// narrowing still open is not in them, and goes.
+				if held != nil && heldDepth == len(frames) {
+					entries = append(entries, *held)
+				}
+				held = nil
 				// A new turn sees the whole conversation, which starts at
 				// the innermost lasting narrowing still open, if any.
 				for i := len(frames) - 1; i >= 0; i-- {
@@ -197,7 +235,11 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 					}
 				}
 				frames = nil
-				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
+				content := p.Text
+				if pol.InConversation {
+					content = taskHeader + "\n" + p.Text
+				}
+				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: content}})
 				task, plan, marks = p.Text, "", nil
 			}
 		case log.KindContextNarrow:
@@ -206,10 +248,13 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 				frames = append(frames, frame{at: len(entries), system: p.System, lasting: p.Lasting})
 			}
 		case log.KindContextWiden:
-			frames = nil
+			frames, heldDepth = nil, 0
 		case log.KindContextFold:
 			if n := len(frames); n > 0 {
 				entries, frames = entries[:frames[n-1].at], frames[:n-1]
+				if heldDepth > len(frames) {
+					held = nil // recorded in the folded context, it goes with it
+				}
 			}
 		case log.KindAttach:
 			// An attachment reads as a message from the person, framed as
@@ -223,19 +268,26 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 					e.image = &p
 					e.msg.Images = []llm.Image{{MediaType: p.MediaType, SHA256: p.SHA256}}
 				}
-				entries = append(entries, e)
+				add(e)
 			}
 		case log.KindHarnessMsg:
 			// Shown as a user message, but not the task: the ask is still
 			// the user's.
 			var p log.HarnessMsg
 			if ev.Decode(&p) == nil {
-				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
+				add(entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: p.Text}})
 			}
 		case log.KindGatePlan:
 			var p log.GatePlan
 			if ev.Decode(&p) == nil && p.Plan != "" {
 				plan, marks = p.Plan, p.Marks // the gate's plan for the current task (P5)
+				if pol.InConversation {
+					// A user message, like the harness's, so it is never
+					// trimmed. A plan written again in the same batch of
+					// calls replaces it before any window shows it.
+					held = &entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: planHeader + "\n" + p.Plan + carriedMarks(p.Marks)}}
+					heldDepth = len(frames)
+				}
 			}
 		case log.KindLLMResp:
 			var p log.LLMResp
@@ -247,7 +299,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 				for _, tc := range p.ToolCalls {
 					m.ToolCalls = append(m.ToolCalls, llm.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args})
 				}
-				entries = append(entries, entry{seq: ev.Seq, kind: "assistant", msg: m})
+				add(entry{seq: ev.Seq, kind: "assistant", msg: m})
 			}
 		case log.KindToolResult:
 			var p log.ToolResult
@@ -260,7 +312,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 					content = text
 				}
 				content = capResult(content, pol.MaxResultTokens)
-				entries = append(entries, entry{seq: ev.Seq, kind: "tool", msg: llm.Message{Role: llm.RoleTool, Content: content, ToolName: p.Name, ToolCallID: p.ID}})
+				add(entry{seq: ev.Seq, kind: "tool", msg: llm.Message{Role: llm.RoleTool, Content: content, ToolName: p.Name, ToolCallID: p.ID}})
 			}
 		case log.KindLLMReq:
 			var p log.LLMReq
@@ -272,23 +324,20 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		}
 	}
 
-	taskHeader, planHeader := pol.TaskHeader, pol.PlanHeader
-	if taskHeader == "" {
-		taskHeader = DefaultTaskHeader
-	}
-	if planHeader == "" {
-		planHeader = DefaultPlanHeader
+	if held != nil && heldDepth == len(frames) {
+		entries = append(entries, *held)
 	}
 	sys := system
-	if task != "" {
+	if !pol.InConversation && task != "" {
 		sys = system + "\n\n" + taskHeader + "\n" + task
 	}
-	if plan != "" {
+	if !pol.InConversation && plan != "" {
 		sys += "\n\n" + planHeader + "\n" + plan + carriedMarks(marks)
 	}
 	if n := len(frames); n > 0 {
-		// The strategy's system prompt replaces the session's, task and plan
-		// included: it says what this model needs to know.
+		// The strategy's system prompt replaces the session's, and before
+		// recipe v15 the task and plan with it: it says what this model
+		// needs to know.
 		sys, entries = frames[n-1].system, entries[frames[n-1].at:]
 	}
 

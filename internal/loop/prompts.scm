@@ -263,9 +263,11 @@
 (define (plan-system-prompt repo)
   (string-append "You are nodwyn's planner for the repository at " repo ". Return only the plan text."))
 
-;; The headers under which the window adds the user's latest request, and
-;; the plan for it, to the system prompt, where they are never trimmed away.
-;; Read once, like the system prompt.
+;; The headers under which the window shows the user's request, at the
+;; head of their message, and the plan for it, as a message of its own
+;; where it was recorded; neither is ever trimmed away, and the system
+;; prompt stays the same, so a new request or a plan keeps the cached
+;; prefix (window recipe v15). Read once, like the system prompt.
 (define task-header "Current task (the user's latest request):")
 (define plan-header "Plan for the current task (follow it; mark each step with plan-step as its work is done, before you start the next — never several together at the end; say so if you must deviate):")
 

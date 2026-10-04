@@ -18,7 +18,7 @@ func TestReplayKeepsHistoricalWindowAcrossLaterTurns(t *testing.T) {
 	trimmed := false
 	for range 6 {
 		s.turn(3000)
-		built := Build(s.events(t), "sys", Estimate("[]"), pol)
+		built := Build(s.events(t), "sys", Estimate("[]"), current(pol))
 		trimmed = trimmed || built.Trimmed
 		req := llm.Request{Model: "test", Messages: built.Messages, Tools: []llm.Tool{}, NumCtx: 9000, KeepAlive: "5m"}
 		digest, err := RequestHash(req)
@@ -106,9 +106,10 @@ func TestReplayDoesNotExposeSecretsFromUnverifiedHistory(t *testing.T) {
 }
 
 // Replies logged their thinking before recipe v14, which first sent it
-// back: an older recipe replays without it, to the hash it recorded.
-func TestReplayLeavesThinkingOutOfOlderRecipes(t *testing.T) {
-	for _, version := range []string{"window-v13", RecipeVersion} {
+// back, and the system prompt carried the request until v15: an older
+// recipe replays without them, to the hash it recorded.
+func TestReplayBuildsOlderRecipesTheirWay(t *testing.T) {
+	for _, version := range []string{"window-v13", "window-v14", RecipeVersion} {
 		t.Run(version, func(t *testing.T) {
 			s := newSession()
 			recipe := log.WindowContext{Version: version, System: "sys", Tools: json.RawMessage(`[]`), HighWater: pol.HighWater, LowWater: pol.LowWater, MaxResultTokens: pol.MaxResultTokens}
@@ -117,7 +118,8 @@ func TestReplayLeavesThinkingOutOfOlderRecipes(t *testing.T) {
 			s.w.Append(log.KindLLMResp, log.LLMResp{Thinking: "look first", ToolCalls: []log.ToolCall{{ID: "c", Name: "fs-read", Args: json.RawMessage(`{"path":"x"}`)}}})
 			s.w.Append(log.KindToolResult, log.ToolResult{ID: "c", Name: "fs-read", OK: true, Value: "x"})
 			p := pol
-			p.Thinking = version == RecipeVersion
+			p.Thinking = version != "window-v13"
+			p.InConversation = version == RecipeVersion
 			built := Build(s.events(t), "sys", Estimate("[]"), p)
 			digest, err := RequestHash(llm.Request{Model: "test", Messages: built.Messages, Tools: []llm.Tool{}})
 			if err != nil {
@@ -130,6 +132,9 @@ func TestReplayLeavesThinkingOutOfOlderRecipes(t *testing.T) {
 			}
 			if sent := got.Messages[2].Thinking; (sent != "") != p.Thinking {
 				t.Fatalf("%s replayed with thinking %q", version, sent)
+			}
+			if inSystem := strings.HasSuffix(got.Messages[0].Content, "question"); inSystem == p.InConversation {
+				t.Fatalf("%s replayed with the request in the system prompt: %v", version, inSystem)
 			}
 		})
 	}

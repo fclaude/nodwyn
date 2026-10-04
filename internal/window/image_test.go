@@ -171,7 +171,7 @@ func TestReplayVerifiesRequestsWithImages(t *testing.T) {
 	s.w.Append(log.KindAttach, attach)
 	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "look"})
 	send := func(gaps []log.ImageGap) (uint64, []byte) {
-		r := Build(s.events(t), "sys", Estimate("[]"), pol)
+		r := Build(s.events(t), "sys", Estimate("[]"), current(pol))
 		for _, ref := range r.Images {
 			if data, why := ReadImage(root, ref); why == "" {
 				r.SetImage(ref.Seq, data)

@@ -626,7 +626,7 @@ Summary records now have typed `from`, `through`, `source_hash` and `text`
 payloads. `summary.drop` names `summary_seq`. These are durable history, not
 permission or mutation RPCs. The first editing surface is the local `nodwyn
 summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
-Recipes from `window-v2` on are summary-aware; new runtimes record `window-v14`,
+Recipes from `window-v2` on are summary-aware; new runtimes record `window-v15`,
 and exact replay supports every recipe from `window-v1` to it.
 
 

@@ -112,7 +112,7 @@ func TestSummaryAwareRequestReplayAndV1Isolation(t *testing.T) {
 	recipe := log.WindowContext{Version: RecipeVersion, System: "sys", Tools: json.RawMessage(`[]`), HighWater: 100000, LowWater: 50000, MaxResultTokens: 10000}
 	s.w.Append(log.KindSessionStart, log.SessionStart{Context: &recipe})
 	ev := addTestSummary(t, s, from, through, "replay summary")
-	built := Build(s.events(t), "sys", Estimate("[]"), Policy{HighWater: 100000, LowWater: 50000, MaxResultTokens: 10000})
+	built := Build(s.events(t), "sys", Estimate("[]"), current(Policy{HighWater: 100000, LowWater: 50000, MaxResultTokens: 10000}))
 	req := llm.Request{Messages: built.Messages, Tools: []llm.Tool{}}
 	hash, _ := RequestHash(req)
 	request, _ := s.w.Append(log.KindLLMReq, log.LLMReq{RequestHash: hash})

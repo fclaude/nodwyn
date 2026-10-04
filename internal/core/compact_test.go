@@ -14,6 +14,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/window"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -410,7 +411,7 @@ func TestCompactionUsesTheRoomAboveTheHighWater(t *testing.T) {
 }
 
 // A compaction lasts: the next turn goes on from the handover note, under
-// the session's system prompt with its own request, not from the whole
+// the session's system prompt, with its own request, not from the whole
 // conversation again.
 func TestCompactionLastsIntoTheNextTurn(t *testing.T) {
 	t.Parallel()
@@ -431,8 +432,8 @@ func TestCompactionLastsIntoTheNextTurn(t *testing.T) {
 	}
 	next := requestMessages(t, r.srv.Requests[4])
 	system := r.s.loop.WindowContext().System
-	if len(next) != 4 || !strings.HasPrefix(next[0].Content, system) || !strings.HasSuffix(next[0].Content, "\nwhat does it print?") ||
-		!strings.HasPrefix(next[1].Content, "make main.go print hello") || next[2].Content != "done" || next[3].Content != "what does it print?" {
+	if len(next) != 4 || next[0].Content != system ||
+		!strings.HasPrefix(next[1].Content, "make main.go print hello") || next[2].Content != "done" || next[3].Content != window.DefaultTaskHeader+"\nwhat does it print?" {
 		t.Fatalf("the turn after a compaction: %+v", next)
 	}
 	if strings.Contains(string(r.srv.Requests[4].Raw), strings.TrimSuffix(bigLine, "\n")) {
@@ -489,8 +490,7 @@ func TestCompactOnRequest(t *testing.T) {
 	}
 	after := requestMessages(t, r.srv.Requests[3])
 	system := r.s.loop.WindowContext().System
-	if len(after) != 3 || !strings.HasPrefix(after[0].Content, system) || !strings.HasSuffix(after[0].Content, "\ndoes it print anything?") ||
-		after[2].Content != "does it print anything?" {
+	if len(after) != 3 || after[0].Content != system || after[2].Content != window.DefaultTaskHeader+"\ndoes it print anything?" {
 		t.Fatalf("the turn after /compact: %+v", after)
 	}
 	if handover := after[1].Content; !strings.HasPrefix(handover, "what does main.go do?") ||

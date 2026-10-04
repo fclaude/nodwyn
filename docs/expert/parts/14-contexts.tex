@@ -8,9 +8,9 @@ different model.
 
 \section{The window, briefly}
 
-By default the window holds the system prompt (with your latest request
-and its plan pinned into it, where they are never trimmed away), then the
-conversation. When it grows past the \emph{high water} mark, the oldest
+By default the window holds the system prompt, then the conversation:
+each of your requests under the task header, and its plan, if it has one,
+as a message of its own, neither of which is ever trimmed away. When it grows past the \emph{high water} mark, the oldest
 tool results are elided in place, down to the \emph{low water} mark. A tool
 result longer than a cap is shortened. The sizes are in the config, grow
 with a model whose context is larger than the defaults assume, and are
@@ -30,7 +30,9 @@ the log; it only changes what the next request contains.
 
 \begin{tip}
 The model server caches the start of the prompt between requests, and a
-cached prefix is what makes the second request in a turn fast. Everything
+cached prefix is what makes every request after the first fast, the first
+of your next turn included: a request or a plan is added at the end, and
+the system prompt never changes. Everything
 in this chapter that changes \emph{old} parts of the window (folding an
 early result, narrowing, compacting) makes the server re-read from that
 point once. Do it in batches, or near the end, not on every round.

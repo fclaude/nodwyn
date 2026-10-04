@@ -341,10 +341,15 @@ so fragments are never shown (\adr{25}).
 \section{The window is a fold over the log}
 
 \file{internal/window/window.go}. \code{Build} turns \code{user.msg},
-\code{harness.msg}, \code{attach}, \code{llm.resp} and \code{tool.result}
-events into messages, and applies a policy shaped for a prefix cache on one
-shared model slot. The system prompt carries the \emph{current task}, the
-latest user message, so the ask is never trimmed. Elision is
+\code{harness.msg}, \code{attach}, \code{gate.plan}, \code{llm.resp} and
+\code{tool.result} events into messages, and applies a policy shaped for a
+prefix cache. The system prompt never changes: each request is its user
+message under the task header, and a plan is a message of its own under
+the plan header, placed once the tool calls it came with are answered.
+Neither is ever trimmed, and a new turn or a plan adds to the prefix
+instead of rewriting its first message (recipe v15; before it the system
+prompt carried both, and every turn read the whole conversation again,
+\adr{9}). Elision is
 \emph{sticky}: every seq an earlier \code{llm.req} recorded as elided stays
 elided. And \emph{hysteresis} trims above a high-water mark down to a
 low-water mark, oldest first, then holds until the next crossing. Between

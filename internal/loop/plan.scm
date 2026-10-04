@@ -333,8 +333,8 @@
 ;; one 30 times and changed nothing). It is sent back now (window recipe
 ;; v14), but only as the server reported it, which may be a summary or
 ;; nothing, and the window may trim it. plan-write records the
-;; model's plan, decision "model", where the window pins it under
-;; plan-header for the rest of the turn and plan-step marks it. Writing it
+;; model's plan, decision "model", which the window shows under
+;; plan-header once the call is answered, and plan-step marks it. Writing it
 ;; again revises it, and its marks start over; in a run it becomes the
 ;; run's plan, and a turn that does not finish leaves it to the next.
 ;;

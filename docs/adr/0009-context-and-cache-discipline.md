@@ -38,7 +38,9 @@ user messages), down to `low_water`, then left alone until it crosses
 `high_water` again; (3) tool results over `max_result_tokens` are shown
 head+tail with an omission marker, deterministically; (4) the system prompt
 carries the **current task** (the user message that started the turn), so
-the ask is never trimmed and the prefix changes only at turn boundaries.
+the ask is never trimmed and the prefix changes only at turn boundaries
+(replaced from recipe v15 by the amendment of 2026-10-04: the task and its
+plan are messages, and the system prompt never changes).
 Defaults: 60Ki / 30Ki / 3Ki. Expected cost: one full prefill per trim
 (every ~30K tokens of growth) and one per user turn, instead of one per
 request.
@@ -179,3 +181,53 @@ provider caches. In the worktree turn the 40 replies reported 6,938
 bytes of thinking in all. A server that refuses fields it does not know
 would refuse `reasoning_content`, but only after it sent thinking itself,
 which such servers (OpenAI's) do not.
+
+## Amendment 2026-10-04: the request and its plan join the conversation
+
+The 2026-09-21 amendment put the user's request, and later its plan, in the
+system prompt, and expected one full prefill per user turn. That was cheap
+with a 60Ki window on a local server. A window sized for a million-token
+context now grows far past that, and the system prompt is the first thing
+in the prefix. Every new request and every plan rewrote it, so the server
+read the whole conversation again. In session `20261004T063427Z-97214b45`
+(z-ai/glm-5.3-flash through OpenRouter, recipe v14), the person's second
+message read none of its 120,906 prompt tokens from the cache, and cost
+$0.0104. The request after it, 122,613 tokens with 120,896 cached, cost
+$0.0027. The request after the model's `plan-write` read none of its 51,433
+tokens from the cache either. Rebuilt with `nodwyn replay --window`, both
+were their predecessor with messages appended, except message 0: the plan
+added to it at seq 145, and at seq 1120 the new request in place of the old
+one, with the plan gone. A third miss in that session (seq 943, 100,555
+tokens) had a byte-identical prefix: that one is the server's, as in the
+amendment of 2026-10-02.
+
+From window recipe v15 (`window.Policy.InConversation`) the system prompt is
+the session's alone and never changes:
+
+- Each request is the person's message under `task-header`. Earlier
+  requests keep the header they had, so the window reads as it did when
+  each was the latest. The request is no longer sent twice, once in the
+  system prompt and once as the message.
+- A recorded plan (`gate.plan`) is a user message of its own under
+  `plan-header`, with a carried plan's marks, where it was recorded.
+  `plan-write` records it while its call is being answered, and no message
+  may come between a reply's calls and their results. So the plan waits
+  until the next message of the context it was recorded in that is not a
+  result, or the end of the window: that is the same place in every later
+  window. A plan written again in the same batch replaces it before any
+  window shows it. A plan recorded in a context that is then folded goes
+  with that context.
+- Both are user messages, which are never trimmed, as the system prompt
+  never was. A turn's plan stays in the conversation after the turn,
+  followed by the next request; before, it left with the turn.
+- A narrowing's own system prompt still replaces the session's. A plan
+  written inside a compacted context now shows; before, the narrowing's
+  system prompt hid it.
+
+A new request, or a plan, now adds to the cached prefix instead of starting
+it again. An older recipe replays as it was built, with the request and the
+plan in the system prompt. Not measured: the working rules (ADR 32) were
+benchmarked with the request and plan in the system prompt. Whether a model
+follows a plan as well from a message is for the next benchmark run to
+show; the cached share of the next session's later turns is the test of
+the rest.

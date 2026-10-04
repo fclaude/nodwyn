@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -12,6 +13,12 @@ import (
 )
 
 var pol = Policy{HighWater: 3000, LowWater: 1500, MaxResultTokens: 100000}
+
+// current is p as the current recipe (RecipeVersion) builds with it.
+func current(p Policy) Policy {
+	p.Thinking, p.InConversation = true, true
+	return p
+}
 
 // session writes n turns of user -> tool call -> tool result -> answer, with
 // tool results of resultSize bytes, and records llm.req events the way the
@@ -401,5 +408,57 @@ func TestRepliesCarryTheirThinking(t *testing.T) {
 	trimmed := Build(s.events(t), "sys", 10, tight)
 	if !trimmed.Trimmed || trimmed.Messages[2].Content != "[elided seq=2]" || trimmed.Messages[2].Thinking != "" {
 		t.Fatalf("an elided reply kept its thinking: %+v", trimmed.Messages[2])
+	}
+}
+
+// From recipe v15 the system prompt never changes: the user's request is
+// their message, under the task header, and a plan is a message of its
+// own, under the plan header. A plan-write is recorded before its call is
+// answered, so its plan follows the batch's results, a sub-agent's
+// included, and the sub-agent does not see it. Each window then begins
+// with the one before it.
+func TestRequestAndPlanJoinTheConversation(t *testing.T) {
+	p := current(pol)
+	s := newSession()
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "change it"})
+	first := Build(s.events(t), "sys", 0, p).Messages
+	if len(first) != 2 || first[0].Content != "sys" || first[1].Content != DefaultTaskHeader+"\nchange it" {
+		t.Fatalf("the request: %+v", first)
+	}
+
+	s.w.Append(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{
+		{ID: "w", Name: "plan-write", Args: json.RawMessage(`{}`)},
+		{ID: "x", Name: "ask-expert", Args: json.RawMessage(`{}`)}}})
+	s.w.Append(log.KindGatePlan, log.GatePlan{Noul: "model", Plan: "1. edit"})
+	s.w.Append(log.KindToolResult, log.ToolResult{ID: "w", Name: "plan-write", OK: true, Value: "Plan recorded"})
+	s.w.Append(log.KindContextNarrow, log.ContextNarrow{System: "You are an expert."})
+	s.w.Append(log.KindHarnessMsg, log.HarnessMsg{Text: "the question"})
+	if inner := Build(s.events(t), "sys", 0, p).Messages; len(inner) != 2 || inner[1].Content != "the question" {
+		t.Fatalf("the sub-agent's context: %+v", inner)
+	}
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: "the answer"})
+	s.w.Append(log.KindContextFold, log.ContextFold{})
+	s.w.Append(log.KindToolResult, log.ToolResult{ID: "x", Name: "ask-expert", OK: true, Value: "the answer"})
+	planned := Build(s.events(t), "sys", 0, p).Messages
+	if len(planned) != 6 || planned[3].ToolCallID != "w" || planned[4].ToolCallID != "x" ||
+		planned[5].Role != llm.RoleUser || planned[5].Content != DefaultPlanHeader+"\n1. edit" {
+		t.Fatalf("the plan after the batch: %+v", planned)
+	}
+
+	s.w.Append(log.KindLLMResp, log.LLMResp{Content: "edited"})
+	s.w.Append(log.KindPlanStep, log.PlanStep{Step: 1, Of: 1, State: "done"})
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "go on"})
+	s.w.Append(log.KindGatePlan, log.GatePlan{Noul: "carried", Plan: "1. edit", Marks: []log.PlanStep{{Step: 1, Of: 1, State: "done", Note: "edited"}}})
+	next := Build(s.events(t), "sys", 0, p).Messages
+	if n := len(next); n != 9 || next[7].Content != DefaultTaskHeader+"\ngo on" ||
+		next[8].Content != DefaultPlanHeader+"\n1. edit\n\nMarked in earlier turns of this task:\nStep 1 done: edited" {
+		t.Fatalf("the next turn: %+v", next)
+	}
+	for _, w := range [][]llm.Message{first, planned} {
+		for i := range w {
+			if !reflect.DeepEqual(w[i], next[i]) {
+				t.Fatalf("message %d changed: %+v became %+v", i, w[i], next[i])
+			}
+		}
 	}
 }

@@ -27,7 +27,7 @@ func TestCLIReplayWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	built := window.Build(events, recipe.System, window.Estimate("[]"), window.Policy{HighWater: 1000, LowWater: 500, MaxResultTokens: 100})
+	built := window.Build(events, recipe.System, window.Estimate("[]"), window.Policy{HighWater: 1000, LowWater: 500, MaxResultTokens: 100, Thinking: true, InConversation: true})
 	hash, err := window.RequestHash(llm.Request{Messages: built.Messages, Tools: []llm.Tool{}})
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestCLIReplayWindow(t *testing.T) {
 		if err := json.NewDecoder(strings.NewReader(string(raw))).Decode(&req); err != nil {
 			t.Fatal(string(raw), err)
 		}
-		if len(req.Messages) != 2 || !strings.Contains(req.Messages[0].Content, "test system") || req.Messages[1].Content != "test message" {
+		if len(req.Messages) != 2 || req.Messages[0].Content != "test system" || req.Messages[1].Content != window.DefaultTaskHeader+"\ntest message" {
 			t.Fatal(req)
 		}
 	}
