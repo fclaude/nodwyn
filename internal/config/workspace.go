@@ -129,7 +129,11 @@ func SaveRegistered(path string, entry Registered) (Registered, error) {
 	if !filepath.IsAbs(entry.Path) {
 		return Registered{}, errors.New("workspaces: path must be absolute")
 	}
-	ws, err := Workspace{Mounts: entry.Mounts}.normalize(filepath.Clean(entry.Path))
+	// A folder is one entry however its path is spelled, as LoadWorkspace
+	// finds it: another spelling replaces it rather than adding one that
+	// no session reads.
+	entry.Path = filepath.Clean(entry.Path)
+	ws, err := Workspace{Mounts: entry.Mounts}.normalize(entry.Path)
 	if err != nil {
 		return Registered{}, err
 	}
@@ -138,7 +142,7 @@ func SaveRegistered(path string, entry Registered) (Registered, error) {
 	if err != nil {
 		return Registered{}, err
 	}
-	list = slices.DeleteFunc(list, func(r Registered) bool { return r.Path == entry.Path })
+	list = slices.DeleteFunc(list, func(r Registered) bool { return filepath.Clean(r.Path) == entry.Path })
 	list = append(list, entry)
 	return entry, writeRegistry(path, list)
 }
@@ -149,7 +153,8 @@ func RemoveRegistered(path, root string) error {
 	if err != nil {
 		return err
 	}
-	kept := slices.DeleteFunc(slices.Clone(list), func(r Registered) bool { return r.Path == root })
+	root = filepath.Clean(root)
+	kept := slices.DeleteFunc(slices.Clone(list), func(r Registered) bool { return filepath.Clean(r.Path) == root })
 	if len(kept) == len(list) {
 		return fmt.Errorf("workspaces: %s is not registered", root)
 	}

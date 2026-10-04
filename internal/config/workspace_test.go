@@ -93,6 +93,39 @@ func TestRegistry(t *testing.T) {
 	}
 }
 
+// A folder is one workspace however its path is spelled: saving it again
+// as /a/./b or /a//b/ replaces its entry rather than adding a second one
+// that sessions never read, and removing it by another spelling removes it.
+func TestRegistryKeysOnTheCleanPath(t *testing.T) {
+	root, before, after := t.TempDir(), t.TempDir(), t.TempDir()
+	registry := filepath.Join(t.TempDir(), "workspaces.toml")
+	if _, err := SaveRegistered(registry, Registered{Name: "w", Path: root, Mounts: []Mount{{Path: before, Access: "read"}}}); err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Dir(root) + "/./" + filepath.Base(root) + "//"
+	saved, err := SaveRegistered(registry, Registered{Name: "w", Path: other, Mounts: []Mount{{Path: after, Access: "write"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Path != root {
+		t.Fatalf("saved as %s, not %s", saved.Path, root)
+	}
+	list, err := LoadRegistry(registry)
+	if err != nil || len(list) != 1 || list[0].Path != root {
+		t.Fatalf("registry: %+v %v", list, err)
+	}
+	ws, err := LoadWorkspace(registry, root)
+	if err != nil || len(ws.Mounts) != 1 || ws.Mounts[0].Path != after || ws.Mounts[0].Access != "write" {
+		t.Fatalf("a session there has %+v %v; want the mounts saved last", ws, err)
+	}
+	if err := RemoveRegistered(registry, filepath.Dir(root)+"//"+filepath.Base(root)); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := LoadRegistry(registry); len(list) != 0 {
+		t.Fatalf("left after removing: %+v", list)
+	}
+}
+
 func TestNestedMountsRefused(t *testing.T) {
 	root, outer := t.TempDir(), t.TempDir()
 	registry := filepath.Join(t.TempDir(), "workspaces.toml")
