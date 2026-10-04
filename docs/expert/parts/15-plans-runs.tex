@@ -148,8 +148,8 @@ like the house plan above, is trusted as written.
 
 \subsection{Progress through the plan}
 
-The plan header asks the model to mark each step as it finishes it, with
-the \code{plan-step} tool: a step's number, \code{done} or
+The plan header asks the model to mark each step as its work is done, before
+starting the next, with the \code{plan-step} tool: a step's number, \code{done} or
 \code{skipped}, and a note saying what shows it. The strategy answers the
 call (it is an agent tool) with \code{record-step}, which records
 \code{plan.step} and returns how many steps are marked and which is next;
@@ -275,7 +275,8 @@ just a message (below). Without \code{-{}-unattended} it is a
 \begin{enumerate}
   \item sends the message \code{(run-turn-prompt task complete-line turn
     max-turns)} makes: the task, and a request to do the plan's next
-    unmarked step, mark it with \code{plan-step}, and report;
+    unmarked step, mark it with \code{plan-step} as its work is done, and
+    report;
   \item must plan (\code{plan-required?} is true), so \code{nodwyn-turn}
     runs the plan gate first, with or without a judge;
   \item runs the evidence loop, since nobody watches each call.

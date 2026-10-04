@@ -472,3 +472,23 @@ prompts are unchanged byte for byte; `working-rules` keeps its stash
 example. The section has not been measured on the benchmark, whose runs
 start in a folder of their own.
 
+## Amendment 2026-10-04: plan marks move as the work happens
+
+The plan header asked for each mark "as you finish it", and the model read
+that as a summary to make at the end. In session
+`20261004T053047Z-1b4c67dc` (meta/muse-spark-1.3 through OpenRouter) the
+gate recorded a plan of six steps at 05:36:43 and the model marked steps
+1–5 together at 06:34:25–06:34:42 and step 6 at 06:36:53: the last two and
+a half minutes of work that had run for an hour. Whoever followed it saw
+the console's plan panel sit at 0 of 6 until the work was over, which is
+the progress the marks are there to show.
+
+The wording that asks for the marks now says when: `plan-header`,
+`plan-recorded-message` (both branches), `plan-step`'s description and the
+run turn prompt say to mark each step as its work is done, before starting
+the next, never several together at the end; `plan-step`'s description
+says why — whoever follows the task sees the plan's progress move as the
+work happens — and `plan-write`'s description says its marks follow the
+work. The working rules are unchanged, so the prompts measured on the
+benchmark stay byte for byte; this wording has not been measured there.
+

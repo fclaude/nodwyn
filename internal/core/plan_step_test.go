@@ -29,8 +29,12 @@ func TestModelMarksPlanSteps(t *testing.T) {
 	if e := r.turn("change it"); e != "" {
 		t.Fatal(e)
 	}
-	// The main request shows the plan under a header that asks for marks.
-	if main := string(r.srv.Requests[1].Raw); !strings.Contains(main, "mark each step with plan-step") {
+	// The main request shows the plan under a header that asks for marks
+	// as the work happens, not at the end: a plan marked all at once left
+	// the console's plan panel at 0 of 6 for the whole hour of session
+	// 20261004T053047Z-1b4c67dc (ADR 32, amended 2026-10-04).
+	if main := string(r.srv.Requests[1].Raw); !strings.Contains(main, "mark each step with plan-step") ||
+		!strings.Contains(main, "never several together at the end") {
 		t.Fatalf("plan header:\n%s", main)
 	}
 	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
@@ -134,7 +138,7 @@ func TestModelWritesItsOwnPlan(t *testing.T) {
 	if len(plans) != 2 || plans[0].Noul != "model" || plans[1].Plan != revised {
 		t.Fatalf("plans %+v", plans)
 	}
-	if answers["w"] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as you finish it." ||
+	if answers["w"] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as its work is done, before you start the next — never several together at the end." ||
 		answers["a"] != "Step 1 is done. Next unmarked: 2. Test: main_test.go TestGreeting — main prints it; fails today: main prints nothing." {
 		t.Fatalf("answers %q", answers)
 	}

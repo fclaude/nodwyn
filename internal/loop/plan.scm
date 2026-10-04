@@ -178,7 +178,7 @@
                                 "Every step of the plan is marked.")))))))
 
 (define-agent-tool "plan-step"
-  "Mark a step of the current plan done when you have finished it, or skipped when you decided against it, with what shows it: a test that passed, the file you changed, or why you skipped it. A Test: step is done once its test has failed without your change and passes with it (or passed both times, for one that guards behaviour that already works): the note names both runs. Steps are numbered from 1, as in the plan. Whoever follows the task sees the plan's progress."
+  "Mark a step of the current plan done as soon as its work is done, before you start the next step — never several together at the end: whoever follows the task sees the plan's progress move as the work happens. Mark it skipped when you decided against it, with what shows it: a test that passed, the file you changed, or why you skipped it. A Test: step is done once its test has failed without your change and passes with it (or passed both times, for one that guards behaviour that already works): the note names both runs. Steps are numbered from 1, as in the plan."
   '(("step" "integer" "the step's number in the plan")
     ("state" "string" "done or skipped")
     ("note" "string" "what shows it"))
@@ -283,10 +283,10 @@
 (define (plan-recorded-message n problems)
   (string-append "Plan recorded: " (number->string n) (if (= n 1) " step" " steps")
                  (if (null? problems)
-                     ". It stays in front of you; mark each step with plan-step as you finish it."
+                     ". It stays in front of you; mark each step with plan-step as its work is done, before you start the next — never several together at the end."
                      (string-append ", as written, since plan-write has turned down " (number->string plan-write-refusals)
                                     " plans in this turn. Still missing:" (plan-problem-lines problems)
-                                    "\nIt stays in front of you: cover what is missing as you work, and mark each step with plan-step as you finish it."))))
+                                    "\nIt stays in front of you: cover what is missing as you work, and mark each step with plan-step as its work is done, before you start the next — never several together at the end."))))
 
 ;; plan-write's refusals in a turn: the turn, as the number of the person's
 ;; messages so far (read from the log, so a project that redefines
@@ -326,7 +326,7 @@
                 (plan-recorded-message (length (plan-steps)) problems)))))))
 
 (define-agent-tool "plan-write"
-  "Write down your plan for the task: numbered steps, each starting with its kind. Change: a file (or function) and what changes in it. Test: the test file and name, the behaviour it checks, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works. Docs: each file a person or a later session reads that the change makes wrong or incomplete. Check: the command that shows the whole change works, as the last step. With no test or no doc to change, say so and why (\"Test: none — only docs change\"). For example:\n1. Change: src/flags.go parseFlags — accept --verbose.\n2. Test: src/flags_test.go TestVerboseFlag — --verbose sets Verbose; fails today: the flag is unknown.\nYour thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps. Write it once you know what to change, before changing it, and write it again only when it must change."
+  "Write down your plan for the task: numbered steps, each starting with its kind. Change: a file (or function) and what changes in it. Test: the test file and name, the behaviour it checks, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works. Docs: each file a person or a later session reads that the change makes wrong or incomplete. Check: the command that shows the whole change works, as the last step. With no test or no doc to change, say so and why (\"Test: none — only docs change\"). For example:\n1. Change: src/flags.go parseFlags — accept --verbose.\n2. Test: src/flags_test.go TestVerboseFlag — --verbose sets Verbose; fails today: the flag is unknown.\nYour thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps as the work happens. Write it once you know what to change, before changing it, and write it again only when it must change."
   '(("plan" "string" "the numbered steps, each starting with Change:, Test:, Docs: or Check:, the last a Check:"))
   (lambda (call args)
     (guard (e (else (string-append "plan-write failed: " (format "~a" (assoc-ref e 'message "")))))
