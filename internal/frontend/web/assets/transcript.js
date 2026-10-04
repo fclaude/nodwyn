@@ -86,7 +86,7 @@ function detailsBlock(label, value) {
 
 // spanWords says how long something took the way a person would: tenths of
 // a second while it is short, then seconds, minutes and hours.
-function spanWords(ms) {
+export function spanWords(ms) {
   if (ms < 10000) return `${(Math.max(0, ms) / 1000).toFixed(1)} s`;
   const s = Math.round(ms / 1000);
   if (s < 60) return `${s} s`;

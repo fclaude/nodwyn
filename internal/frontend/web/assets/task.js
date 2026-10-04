@@ -3,7 +3,7 @@
 // the workspace. Every figure comes from the log or from session.info; a
 // panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
-import { Transcript, planSteps, stepTitle, usd, contextGauge, judgeTally } from "./transcript.js";
+import { Transcript, planSteps, stepTitle, usd, contextGauge, judgeTally, spanWords } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
 import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
@@ -686,8 +686,12 @@ export class TaskView {
   }
 
   // ---------- aside ----------
+  // events is the conversation in log order. Every panel reads it on each
+  // redraw, so it is sorted once per new event, and the same list, which
+  // nothing changes, is handed out until one arrives.
   events() {
-    return [...this.seen.values()].sort((a, b) => a.seq - b.seq);
+    if (this.sorted?.from !== this.seen || this.sorted.size !== this.seen.size) this.sorted = { from: this.seen, size: this.seen.size, list: [...this.seen.values()].sort((a, b) => a.seq - b.seq) };
+    return this.sorted.list;
   }
   lastTurn() {
     const events = this.events();
@@ -883,7 +887,7 @@ export class TaskView {
       h(
         "div",
         { class: "meter", title: "How long the task's turns took, with the time it spent waiting for an answer left out; a turn still running counts up to now" },
-        h("div", { class: "meter-head" }, h("span", {}, "Total running time"), h("span", { dataset: { running: "1" } }, minutes(t.ms))),
+        h("div", { class: "meter-head" }, h("span", {}, "Total running time"), h("span", { dataset: { running: "1" } }, spanWords(t.ms))),
       ),
     );
   }
@@ -891,90 +895,31 @@ export class TaskView {
   // far as the log prices them, and how long it ran. Null before the first
   // turn: nothing has run to add up.
   totals(evs = this.events()) {
-    let cost = 0,
-      unpriced = 0,
-      estimated = false,
-      started = false;
-    for (const e of evs) {
-      if (e.kind === "user.msg" || e.kind === "eval.req" || e.kind === "run.turn") started = true;
-      if (e.kind !== "llm.resp") continue;
-      const u = e.payload?.usage || {};
-      // Absent is unknown, never free, as the spend limit counts it.
-      if (u.cost !== undefined) {
-        cost += u.cost;
-        estimated ||= !!u.cost_estimated;
-      } else unpriced++;
-    }
-    if (!started) return null;
-    const j = judgeTally(evs);
-    cost += j.cost;
-    unpriced += j.unpriced;
-    // A judge cost is an estimate from [jev] prices, never a report.
-    estimated ||= j.cost > 0;
-    return { cost, unpriced, estimated, ms: this.runningMs(evs) };
+    const { spend } = this.tally(evs);
+    return spend && { ...spend, ms: this.runningMs(evs) };
   }
-  // runningMs walks the log as the session lived it. A turn runs from its
-  // start to its turn.end; a run's next turn bridges the gap between, when
-  // the run went on by itself; every interval a person was being asked in
-  // stays out. Prompts are never logged (they are ephemeral events): a wait
-  // is known only from the record that ended it — a guard decision, a
-  // checkpoint — so it runs from the event before that record to the record
-  // itself, which is the ask plus the answer. A wait still open is this
-  // view's pending prompt.
+  // runningMs is how long the task ran (walkTurns), and a turn running here
+  // now counts up to now, unless its tail is a prompt's wait. A turn the log
+  // leaves open in a task nothing runs in was cut off by a crash: it ends
+  // where its log does, and does not count up to now.
   runningMs(evs) {
-    const tsOf = (e) => new Date(e.ts || e.TS || 0).getTime();
-    // The judge and an unattended run answer their confirms themselves:
-    // their span is the session working, not a person being asked.
-    const machine = (p) => p?.actor === "judge" || p?.actor === "unattended";
-    const asked = (e) => {
-      const p = e.payload || {};
-      if (machine(p)) return false;
-      if (e.kind === "guard.decision") return p.decision === "confirm";
-      if (e.kind === "turn.checkpoint") return true;
-      // run.checkpoint, cred.register and setting.change end a prompt's
-      // wait only when a prompt was asked (prompt_id); without one they
-      // record a decision made without asking.
-      return !!p.prompt_id;
-    };
-    let ms = 0,
-      prev = null,
-      open = null; // open: the running turn's start
-    let gap = null,
-      gapWaited = false,
-      gapResumed = false; // between turns
-    for (const e of evs) {
-      const ts = tsOf(e);
-      if (prev !== null && ts > prev && open !== null) ms += asked(e) ? 0 : ts - prev;
-      if (open === null && gap !== null) {
-        if (asked(e)) gapWaited = true;
-        // A run brought back by a person, or one that ended, leaves the gap
-        // before it to the person who read and decided.
-        if (e.kind === "session.resume" || e.kind === "run.state") gapResumed = true;
-        if (e.kind === "run.checkpoint" && e.payload?.allowed === false) gap = null;
-      }
-      if (e.kind === "turn.end") {
-        open = null;
-        gap = ts;
-        gapWaited = false;
-        gapResumed = false;
-      } else if (e.kind === "user.msg" || e.kind === "eval.req" || e.kind === "run.turn") {
-        // A run that went on by itself ran through the gap between its turns.
-        if (open === null && gap !== null && e.kind === "run.turn" && !gapWaited && !gapResumed) ms += Math.max(0, ts - gap);
-        gap = null;
-        open = ts;
-      }
-      prev = ts;
-    }
-    // A turn still open runs to now, unless its tail is a prompt's wait.
-    if (open !== null && !(this.busy && this.prompts.size)) ms += Math.max(0, Date.now() - Math.max(prev ?? open, open));
+    const { ms, open, prev } = this.tally(evs).run;
+    if (open !== null && this.busy && !this.prompts.size) return ms + Math.max(0, Date.now() - Math.max(prev ?? open, open));
     return ms;
+  }
+  // tally is the log added up. Totals redraws on every event and ticks
+  // once a second, so the log is walked once per new event (events() hands
+  // out one list until one arrives), not on every redraw and tick.
+  tally(evs) {
+    if (this.tallied?.evs !== evs) this.tallied = { evs, spend: spendOf(evs), run: walkTurns(evs) };
+    return this.tallied;
   }
   // tickTotals redraws the running time while the task works; the second
   // tick that moves the turn's meters moves this with it.
   tickTotals() {
     const t = this.totals();
     const node = t && this.el?.side.querySelector("[data-totals] [data-running]");
-    if (node) node.textContent = minutes(t.ms);
+    if (node) node.textContent = spanWords(t.ms);
   }
   changesPanel() {
     const written = [];
@@ -1270,3 +1215,92 @@ function sameDay(when) {
 }
 
 export { summary, basename };
+
+// spendOf is what the task's requests cost, as far as the log prices them:
+// null before the first turn, when nothing has run to add up.
+function spendOf(evs) {
+  let cost = 0,
+    unpriced = 0,
+    estimated = false,
+    started = false;
+  for (const e of evs) {
+    if (e.kind === "user.msg" || e.kind === "eval.req" || e.kind === "run.turn") started = true;
+    if (e.kind !== "llm.resp") continue;
+    const u = e.payload?.usage || {};
+    // Absent is unknown, never free, as the spend limit counts it.
+    if (u.cost !== undefined) {
+      cost += u.cost;
+      estimated ||= !!u.cost_estimated;
+    } else unpriced++;
+  }
+  if (!started) return null;
+  const j = judgeTally(evs);
+  cost += j.cost;
+  unpriced += j.unpriced;
+  // A judge cost is an estimate from [jev] prices, never a report.
+  estimated ||= j.cost > 0;
+  return { cost, unpriced, estimated };
+}
+
+// walkTurns walks the log as the session lived it: how long its turns ran
+// (ms), and the start of a turn still open at its end (open, else null)
+// with the time of its last event (prev). A turn runs from its start to
+// its turn.end; a run's next turn bridges the gap between, when the run
+// went on by itself; every interval a person was being asked in stays out.
+// Prompts are never logged (they are ephemeral events): a wait is known
+// only from the record that ended it — a guard decision, a checkpoint — so
+// it runs from the event before that record to the record itself, which is
+// the ask plus the answer. A turn a crash cut off has no turn.end: the
+// session's next start (session.resume, or a session.end) ends it, and the
+// time before that, when nothing ran, is nobody's.
+function walkTurns(evs) {
+  const tsOf = (e) => new Date(e.ts || e.TS || 0).getTime();
+  // The judge and an unattended run answer their confirms themselves:
+  // their span is the session working, not a person being asked.
+  const machine = (p) => p?.actor === "judge" || p?.actor === "unattended";
+  const asked = (e) => {
+    const p = e.payload || {};
+    if (machine(p)) return false;
+    if (e.kind === "guard.decision") return p.decision === "confirm";
+    if (e.kind === "turn.checkpoint") return true;
+    // run.checkpoint, cred.register and setting.change end a prompt's
+    // wait only when a prompt was asked (prompt_id); without one they
+    // record a decision made without asking.
+    return !!p.prompt_id;
+  };
+  let ms = 0,
+    prev = null,
+    open = null; // open: the running turn's start
+  let gap = null,
+    gapWaited = false,
+    gapResumed = false; // between turns
+  for (const e of evs) {
+    const ts = tsOf(e);
+    const cut = open !== null && (e.kind === "session.resume" || e.kind === "session.end");
+    if (prev !== null && ts > prev && open !== null && !cut) ms += asked(e) ? 0 : ts - prev;
+    if (cut) {
+      open = null;
+      gap = null;
+    }
+    if (open === null && gap !== null) {
+      if (asked(e)) gapWaited = true;
+      // A run brought back by a person, or one that ended, leaves the gap
+      // before it to the person who read and decided.
+      if (e.kind === "session.resume" || e.kind === "run.state") gapResumed = true;
+      if (e.kind === "run.checkpoint" && e.payload?.allowed === false) gap = null;
+    }
+    if (e.kind === "turn.end") {
+      open = null;
+      gap = ts;
+      gapWaited = false;
+      gapResumed = false;
+    } else if (e.kind === "user.msg" || e.kind === "eval.req" || e.kind === "run.turn") {
+      // A run that went on by itself ran through the gap between its turns.
+      if (open === null && gap !== null && e.kind === "run.turn" && !gapWaited && !gapResumed) ms += Math.max(0, ts - gap);
+      gap = null;
+      open = ts;
+    }
+    prev = ts;
+  }
+  return { ms, open, prev };
+}

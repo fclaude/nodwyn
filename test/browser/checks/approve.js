@@ -200,7 +200,9 @@ check(async () => {
   // module on crafted logs: a person's wait stays out, the judge's and a
   // run's own answers are not waits, a run that went on by itself ran
   // through the gap between its turns, and a gap across a resume was the
-  // person's who read and resumed.
+  // person's who read and resumed. A turn a crash cut off (no turn.end)
+  // ends where the log does: the time until the resume was nobody's, and a
+  // task nothing runs in now does not count up to now.
   const rules = await page.evaluate(async () => {
     const { TaskView } = await import("/task.js");
     const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
@@ -221,6 +223,8 @@ check(async () => {
       asked: run([...turn([ev(4, "turn.end")]), ev(4.5, "run.checkpoint", { number: 1, allowed: true, prompt_id: "p1" }), ev(5, "run.turn", { number: 2 }), ev(9, "turn.end")]),
       resumed: run([...turn([ev(4, "turn.end")]), ev(30, "session.resume"), ev(31, "run.state", { status: "running" }), ev(32, "run.turn", { number: 1 }), ev(36, "turn.end")]),
       stopped: run([...turn([ev(4, "turn.end")]), ev(4.5, "run.checkpoint", { number: 1, allowed: false, actor: "unattended" }), ev(40, "session.resume"), ev(41, "run.state", { status: "running" }), ev(42, "run.turn", { number: 1 }), ev(46, "turn.end")]),
+      crashed: run([...turn([]), ev(1000, "session.resume"), ev(1001, "user.msg", { text: "again" }), ev(1002, "llm.req"), ev(1004, "turn.end")]),
+      saved: run(turn([])),
     };
   });
   assert.strictEqual(rules.plain, 4000, `a turn with no wait: ${rules.plain}`);
@@ -231,6 +235,24 @@ check(async () => {
   assert.strictEqual(rules.asked, 8000, `a checkpoint the person answered is a wait: ${rules.asked}`);
   assert.strictEqual(rules.resumed, 8000, `a gap across a resume was the person's: ${rules.resumed}`);
   assert.strictEqual(rules.stopped, 8000, `a run that stopped at its checkpoint left the gap to the person: ${rules.stopped}`);
+  assert.strictEqual(rules.crashed, 5000, `a turn a crash cut off ends at the resume: ${rules.crashed}`);
+  assert.strictEqual(rules.saved, 2000, `a cut-off turn in a task nothing runs in does not count up to now: ${rules.saved}`);
+  // The panel's tick, once a second while a turn runs, adds up a long log
+  // once, not on every tick: a thousand ticks over 20,000 events take a
+  // moment, where walking and sorting the log each time took seconds.
+  const ticks = await page.evaluate(async () => {
+    const { TaskView } = await import("/task.js");
+    const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
+    const base = Date.now() - 3600_000;
+    for (let s = 1; s <= 20000; s++) view.seen.set(s, { seq: s, ts: new Date(base + s * 100).toISOString(), kind: s === 1 ? "user.msg" : "llm.resp", payload: { usage: { cost: 0.001 } } });
+    view.busy = true;
+    const first = view.totals();
+    const began = performance.now();
+    for (let i = 0; i < 1000; i++) view.totals();
+    return { ms: performance.now() - began, cost: first.cost };
+  });
+  assert.ok(Math.abs(ticks.cost - 19.999) < 1e-6, `the long log's spend: ${ticks.cost}`);
+  assert.ok(ticks.ms < 250, `a thousand ticks over a long log took ${Math.round(ticks.ms)} ms`);
   step("totals rules");
 
   // Home: nothing waits for an answer now, and the task is with the finished.
