@@ -946,26 +946,34 @@ export class TaskView {
       ),
       h(
         "div",
-        { class: "meter", title: "How long the task's turns took, with the time it spent waiting for an answer left out; a turn still running counts up to now" },
+        { class: "meter", title: "How long the task's turns took, wall clock, the time it spent waiting for answers included; a turn still running counts up to now" },
         h("div", { class: "meter-head" }, h("span", {}, "Total running time"), h("span", { dataset: { running: "1" } }, spanWords(t.ms))),
+      ),
+      h(
+        "div",
+        { class: "meter", title: "How long the task's turns took, with the time it spent waiting for a person's answer left out; a turn still running counts up to now unless it waits for one" },
+        h("div", { class: "meter-head" }, h("span", {}, "Total working time"), h("span", { dataset: { working: "1" } }, spanWords(t.work))),
       ),
     );
   }
   // totals adds the task up over its whole log: what its requests cost, as
-  // far as the log prices them, and how long it ran. Null before the first
-  // turn: nothing has run to add up.
+  // far as the log prices them, and how long it ran and worked. Null before
+  // the first turn: nothing has run to add up.
   totals(evs = this.events()) {
     const { spend } = this.tally(evs);
-    return spend && { ...spend, ms: this.runningMs(evs) };
+    return spend && { ...spend, ...this.turnClocks(evs) };
   }
-  // runningMs is how long the task ran (walkTurns), and a turn running here
-  // now counts up to now, unless its tail is a prompt's wait. A turn the log
-  // leaves open in a task nothing runs in was cut off by a crash: it ends
-  // where its log does, and does not count up to now.
-  runningMs(evs) {
-    const { ms, open, prev } = this.tally(evs).run;
-    if (open !== null && this.busy && !this.prompts.size) return ms + Math.max(0, Date.now() - Math.max(prev ?? open, open));
-    return ms;
+  // turnClocks is how long the task ran and worked (walkTurns), and a turn
+  // still here in a busy session counts up to now — running time always,
+  // working time only while no prompt holds it, a person's wait being
+  // neither. A turn the log leaves open in a task nothing runs in was cut
+  // off by a crash: it ends where its log does, and does not count up to
+  // now.
+  turnClocks(evs) {
+    const { total, work, open, prev } = this.tally(evs).run;
+    if (open === null || !this.busy) return { ms: total, work };
+    const live = Math.max(0, Date.now() - Math.max(prev ?? open, open));
+    return { ms: total + live, work: this.prompts.size ? work : work + live };
   }
   // tally is the log added up. Totals redraws on every event and ticks
   // once a second, so the log is walked once per new event (events() hands
@@ -974,12 +982,16 @@ export class TaskView {
     if (this.tallied?.evs !== evs) this.tallied = { evs, spend: spendOf(evs), run: walkTurns(evs) };
     return this.tallied;
   }
-  // tickTotals redraws the running time while the task works; the second
-  // tick that moves the turn's meters moves this with it.
+  // tickTotals redraws the running and working time while the task works;
+  // the second tick that moves the turn's meters moves these with it.
   tickTotals() {
     const t = this.totals();
-    const node = t && this.el?.side.querySelector("[data-totals] [data-running]");
-    if (node) node.textContent = spanWords(t.ms);
+    const panel = t && this.el?.side.querySelector("[data-totals]");
+    if (!panel) return;
+    const run = panel.querySelector("[data-running]");
+    const worked = panel.querySelector("[data-working]");
+    if (run) run.textContent = spanWords(t.ms);
+    if (worked) worked.textContent = spanWords(t.work);
   }
   changesPanel() {
     const written = [];
@@ -1303,16 +1315,17 @@ function spendOf(evs) {
 }
 
 // walkTurns walks the log as the session lived it: how long its turns ran
-// (ms), and the start of a turn still open at its end (open, else null)
-// with the time of its last event (prev). A turn runs from its start to
-// its turn.end; a run's next turn bridges the gap between, when the run
-// went on by itself; every interval a person was being asked in stays out.
+// all in (total) and how long they ran without a person's wait (work), plus
+// the start of a turn still open at its end (open, else null) with the time
+// of its last event (prev). A turn runs from its start to its turn.end; a
+// run's next turn bridges the gap between, when the run went on by itself.
 // Prompts are never logged (they are ephemeral events): a wait is known
 // only from the record that ended it — a guard decision, a checkpoint — so
 // it runs from the event before that record to the record itself, which is
-// the ask plus the answer. A turn a crash cut off has no turn.end: the
-// session's next start (session.resume, or a session.end) ends it, and the
-// time before that, when nothing ran, is nobody's.
+// the ask plus the answer; work leaves that interval out, total counts it.
+// A turn a crash cut off has no turn.end: the session's next start
+// (session.resume, or a session.end) ends it, and the time before that,
+// when nothing ran, is nobody's.
 function walkTurns(evs) {
   const tsOf = (e) => new Date(e.ts || e.TS || 0).getTime();
   // The judge and an unattended run answer their confirms themselves:
@@ -1328,7 +1341,8 @@ function walkTurns(evs) {
     // record a decision made without asking.
     return !!p.prompt_id;
   };
-  let ms = 0,
+  let total = 0,
+    work = 0,
     prev = null,
     open = null; // open: the running turn's start
   let gap = null,
@@ -1337,7 +1351,11 @@ function walkTurns(evs) {
   for (const e of evs) {
     const ts = tsOf(e);
     const cut = open !== null && (e.kind === "session.resume" || e.kind === "session.end");
-    if (prev !== null && ts > prev && open !== null && !cut) ms += asked(e) ? 0 : ts - prev;
+    if (prev !== null && ts > prev && open !== null && !cut) {
+      const span = ts - prev;
+      total += span;
+      if (!asked(e)) work += span;
+    }
     if (cut) {
       open = null;
       gap = null;
@@ -1356,11 +1374,15 @@ function walkTurns(evs) {
       gapResumed = false;
     } else if (e.kind === "user.msg" || e.kind === "eval.req" || e.kind === "run.turn") {
       // A run that went on by itself ran through the gap between its turns.
-      if (open === null && gap !== null && e.kind === "run.turn" && !gapWaited && !gapResumed) ms += Math.max(0, ts - gap);
+      if (open === null && gap !== null && e.kind === "run.turn" && !gapWaited && !gapResumed) {
+        const span = Math.max(0, ts - gap);
+        total += span;
+        work += span;
+      }
       gap = null;
       open = ts;
     }
     prev = ts;
   }
-  return { ms, open, prev };
+  return { total, work, open, prev };
 }

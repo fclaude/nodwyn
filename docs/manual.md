@@ -1177,13 +1177,17 @@ run.
 The console's side panel adds the task up in "Totals": "Total spend", what
 its model and judge requests cost as far as the log prices them (the same
 accounting a spend limit counts; with a limit set, the total is shown
-against it), and "Total running time", how long its turns took with the
-time it spent waiting for your answers left out, in tenths of a second
-while it is short. A turn still running counts up to now; one a crash or a
-stopped daemon cut off ends where its log does, so the time until the task
-was resumed is not counted. A run that went on by itself counts the time
-between its turns, one you answered or brought back does not. Where the
-log was truncated, the panel says its totals cover what remains.
+against it); "Total running time", how long its turns took, the time it
+spent waiting for your answers included; and "Total working time", how
+long they took with those waits left out — answers its judge or an
+unattended run gave by themselves count as working. Both are in tenths of
+a second while short. A turn still running counts up to now, into the
+running time even while it waits for you and into the working time only
+while it does not; one a crash or a stopped daemon cut off ends where its
+log does, so the time until the task was resumed is not counted. A run
+that went on by itself counts the time between its turns, one you answered
+or brought back does not. Where the log was truncated, the panel says its
+totals cover what remains.
 
 No keyed request follows a redirect (`http-request`, Jev, MCP), and no model
 request does, keyed or not: the binding was checked for the host the request

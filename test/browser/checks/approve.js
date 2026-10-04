@@ -86,23 +86,26 @@ check(async () => {
   await until("the run saying it waits", async () => (await run())?.label === "Waiting for your answer");
   assert.strictEqual((await run()).rows[0].stat, "waiting for your answer");
   step("card shown");
-  // The Totals panel: the task's whole spend and running time. While the
-  // ask waits, the running time holds still — waiting for an answer is not
-  // running — and it moves as the work goes on.
+  // The Totals panel: the task's whole spend, its running time (a wait for
+  // an answer still runs) and its working time (a wait is not work). While
+  // the ask waits the running line moves and the working line holds; the
+  // work after the answers moves both.
   const totals = () =>
     page.evaluate(() => {
       const panel = [...document.querySelectorAll(".panel")].find((p) => p.dataset.totals);
       if (!panel) return null;
       const heads = [...panel.querySelectorAll(".meter-head")].map((m) => m.textContent);
-      return { spend: heads[0], time: heads[1] };
+      return { spend: heads[0], running: heads[1], working: heads[2] };
     });
   const held = await totals();
   assert.match(held.spend, /^Total spendat least \$0\.0000$/, `the unpriced spend: ${held.spend}`);
-  assert.match(held.time, /^Total running time\d/, `the running time: ${held.time}`);
+  assert.match(held.running, /^Total running time\d/, `the running time: ${held.running}`);
+  assert.match(held.working, /^Total working time\d/, `the working time: ${held.working}`);
   await new Promise((r) => setTimeout(r, 2300));
   const still = await totals();
-  assert.strictEqual(still.time, held.time, `the running time grew while the ask waited: ${held.time} then ${still.time}`);
-  step("totals hold while the ask waits");
+  assert.notStrictEqual(still.running, held.running, `the running time held while the ask waited: ${held.running}`);
+  assert.strictEqual(still.working, held.working, `the working time grew while the ask waited: ${held.working} then ${still.working}`);
+  step("totals split while the ask waits");
   // Keyboard answers, as the terminal does.
   await page.keyboard.press("y");
   await page.waitForSelector(".ask-card h2:has-text('Run wc -l app.js')", { timeout: 15000 });
@@ -178,9 +181,11 @@ check(async () => {
   step("plan carried");
   await page.screenshot({ path: `${out}/carried-plan.png` });
   // The work since the first ask (the commands, the follow-up and the
-  // rate-limited turn) moved the running time on.
+  // rate-limited turn) moved both clocks on: the wait counted for running,
+  // not for working, and the work after it counted for both.
   const moved = await totals();
-  assert.notStrictEqual(moved.time, held.time, `the running time did not move with the work: ${held.time}`);
+  assert.notStrictEqual(moved.running, held.running, `the running time did not move with the wait and the work: ${held.running}`);
+  assert.notStrictEqual(moved.working, held.working, `the working time did not move with the work: ${held.working}`);
 
   // Two changes to one file in one fs-edit call (ADR 38). The Makefile is
   // a protected path, so the call asks although writes in the folder go
@@ -214,13 +219,14 @@ check(async () => {
   step("edits written");
   await page.screenshot({ path: `${out}/edits-written.png` });
 
-  // The rules the running time adds up with, against the console's own
-  // module on crafted logs: a person's wait stays out, the judge's and a
-  // run's own answers are not waits, a run that went on by itself ran
-  // through the gap between its turns, and a gap across a resume was the
-  // person's who read and resumed. A turn a crash cut off (no turn.end)
-  // ends where the log does: the time until the resume was nobody's, and a
-  // task nothing runs in now does not count up to now.
+  // The rules both clocks add up with, against the console's own module on
+  // crafted logs: a person's wait stays out of the working time and stays
+  // in the running time, the judge's and a run's own answers are not waits,
+  // a run that went on by itself ran through the gap between its turns, and
+  // a gap across a resume was the person's who read and resumed. A turn a
+  // crash cut off (no turn.end) ends where the log does: the time until the
+  // resume was nobody's, and a task nothing runs in now does not count up
+  // to now.
   const rules = await page.evaluate(async () => {
     const { TaskView } = await import("/task.js");
     const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
@@ -229,7 +235,7 @@ check(async () => {
     const run = (events, busy = false, prompts = 0) => {
       view.busy = busy;
       view.prompts = new Map(prompts ? [["p", {}]] : []);
-      return view.runningMs(events);
+      return view.turnClocks(events);
     };
     const turn = (extra) => [ev(0, "user.msg", { text: "go" }), ev(1, "llm.req"), ev(2, "llm.resp", { usage: {} }), ...extra];
     return {
@@ -245,16 +251,26 @@ check(async () => {
       saved: run(turn([])),
     };
   });
-  assert.strictEqual(rules.plain, 4000, `a turn with no wait: ${rules.plain}`);
-  assert.strictEqual(rules.waited, 5000, `a person's wait stays out: ${rules.waited}`);
-  assert.strictEqual(rules.judged, 10000, `the judge's deciding is running, not a wait: ${rules.judged}`);
-  assert.strictEqual(rules.live, 2000, `a prompt still pending holds the open turn: ${rules.live}`);
-  assert.strictEqual(rules.bridged, 9000, `a run that went on by itself ran through the gap: ${rules.bridged}`);
-  assert.strictEqual(rules.asked, 8000, `a checkpoint the person answered is a wait: ${rules.asked}`);
-  assert.strictEqual(rules.resumed, 8000, `a gap across a resume was the person's: ${rules.resumed}`);
-  assert.strictEqual(rules.stopped, 8000, `a run that stopped at its checkpoint left the gap to the person: ${rules.stopped}`);
-  assert.strictEqual(rules.crashed, 5000, `a turn a crash cut off ends at the resume: ${rules.crashed}`);
-  assert.strictEqual(rules.saved, 2000, `a cut-off turn in a task nothing runs in does not count up to now: ${rules.saved}`);
+  assert.strictEqual(rules.plain.ms, 4000, `a turn with no wait runs 4 s: ${rules.plain.ms}`);
+  assert.strictEqual(rules.plain.work, 4000, `a turn with no wait works 4 s: ${rules.plain.work}`);
+  assert.strictEqual(rules.waited.ms, 10000, `a person's wait stays in the running time: ${rules.waited.ms}`);
+  assert.strictEqual(rules.waited.work, 5000, `a person's wait stays out of the working time: ${rules.waited.work}`);
+  assert.strictEqual(rules.judged.ms, 10000, `the judge's deciding runs: ${rules.judged.ms}`);
+  assert.strictEqual(rules.judged.work, 10000, `the judge's deciding is working, not a wait: ${rules.judged.work}`);
+  assert.ok(rules.live.ms > 3500000, `a prompt still pending holds the working time, not the running time: ${rules.live.ms}`);
+  assert.strictEqual(rules.live.work, 2000, `a prompt still pending holds the working time: ${rules.live.work}`);
+  assert.strictEqual(rules.bridged.ms, 9000, `a run that went on by itself ran through the gap: ${rules.bridged.ms}`);
+  assert.strictEqual(rules.bridged.work, 9000, `a run that went on by itself worked through the gap: ${rules.bridged.work}`);
+  assert.strictEqual(rules.asked.ms, 8000, `a checkpoint the person answered leaves the gap to them: ${rules.asked.ms}`);
+  assert.strictEqual(rules.asked.work, 8000, `a checkpoint the person answered leaves the gap to them: ${rules.asked.work}`);
+  assert.strictEqual(rules.resumed.ms, 8000, `a gap across a resume was the person's: ${rules.resumed.ms}`);
+  assert.strictEqual(rules.resumed.work, 8000, `a gap across a resume was the person's: ${rules.resumed.work}`);
+  assert.strictEqual(rules.stopped.ms, 8000, `a run that stopped at its checkpoint left the gap to the person: ${rules.stopped.ms}`);
+  assert.strictEqual(rules.stopped.work, 8000, `a run that stopped at its checkpoint left the gap to the person: ${rules.stopped.work}`);
+  assert.strictEqual(rules.crashed.ms, 5000, `a turn a crash cut off ends at the resume: ${rules.crashed.ms}`);
+  assert.strictEqual(rules.crashed.work, 5000, `a turn a crash cut off ends at the resume: ${rules.crashed.work}`);
+  assert.strictEqual(rules.saved.ms, 2000, `a cut-off turn in a task nothing runs in does not count up to now: ${rules.saved.ms}`);
+  assert.strictEqual(rules.saved.work, 2000, `a cut-off turn in a task nothing runs in does not count up to now: ${rules.saved.work}`);
   // The panel's tick, once a second while a turn runs, adds up a long log
   // once, not on every tick: a thousand ticks over 20,000 events take a
   // moment, where walking and sorting the log each time took seconds.
