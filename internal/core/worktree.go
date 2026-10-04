@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -170,15 +171,16 @@ func samePath(a, b string) bool {
 func ensureWorktreesDir(repository string) (string, error) {
 	dir := worktreesDir(repository)
 	for _, d := range []string{filepath.Dir(dir), dir} {
-		st, err := os.Lstat(d)
-		switch {
-		case errors.Is(err, os.ErrNotExist):
-			if err := os.Mkdir(d, 0o755); err != nil {
-				return "", err
-			}
-		case err != nil:
+		// Another task's worktree may be made at the same moment: a folder
+		// that exists is fine, and a link is refused whoever made it.
+		if err := os.Mkdir(d, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
 			return "", err
-		case !st.IsDir():
+		}
+		st, err := os.Lstat(d)
+		if err != nil {
+			return "", err
+		}
+		if !st.IsDir() {
 			return "", fmt.Errorf("%s is not a folder: nodwyn makes worktrees only in a folder of the repository's own", d)
 		}
 	}
@@ -219,8 +221,10 @@ func removeLanded(w log.Worktree) (bool, error) {
 		return false, nil
 	}
 	// No file system monitor: the worktree's configuration is the
-	// repository's, and status runs at close without anyone asking.
-	status, err := gitIn(w.Path, "-c", "core.fsmonitor=false", "status", "--porcelain", "--ignored", "--untracked-files=all")
+	// repository's, and status runs at close without anyone asking. Any
+	// line keeps the worktree, so a folder of untracked or ignored files is
+	// one line, not every file in it (a node_modules is thousands).
+	status, err := gitIn(w.Path, "-c", "core.fsmonitor=false", "status", "--porcelain", "--ignored=traditional", "--untracked-files=normal")
 	if err != nil {
 		return false, err
 	}
@@ -270,10 +274,18 @@ func restoreWorktree(w log.Worktree) (bool, error) {
 	if _, err := ensureWorktreesDir(w.Repository); err != nil {
 		return false, err
 	}
-	// A worktree deleted by hand is still registered until pruned, and its
-	// branch counts as checked out there.
-	if _, err := gitIn(w.Repository, "worktree", "prune"); err != nil {
+	// A worktree deleted by hand is still registered, and its branch counts
+	// as checked out there. Only its own registration is cleared: a prune
+	// would also drop every other worktree whose folder is away for now,
+	// the person's on a disk not mounted included.
+	listed, err := gitIn(w.Repository, "worktree", "list", "--porcelain")
+	if err != nil {
 		return false, err
+	}
+	if slices.Contains(strings.Split(listed, "\n"), "worktree "+w.Path) {
+		if _, err := gitIn(w.Repository, "worktree", "remove", w.Path); err != nil {
+			return false, err
+		}
 	}
 	args := []string{"worktree", "add", "--quiet", w.Path, w.Branch}
 	if !branchExists(w.Repository, w.Branch) {
@@ -306,6 +318,15 @@ func (s *Session) project() string {
 		return s.worktree.Repository
 	}
 	return s.opts.Repo
+}
+
+// versionsDir is where the session keeps a file's previous content before
+// it writes (ADR 22 §2): the project's store, so a worktree's versions are
+// kept with its repository's, outside the worktree. They are nodwyn's undo,
+// not work left in it: they keep no worktree from going on close, and they
+// outlast it (ADR 34).
+func (s *Session) versionsDir() string {
+	return prim.VersionsDir(s.project())
 }
 
 // Project is the folder the session's project is: the repository its

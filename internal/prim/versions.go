@@ -23,7 +23,7 @@ import (
 // <root>/.nodwyn/versions/objects and an append-only index. It is capped per
 // file and in total; the oldest versions go first.
 type Versions struct {
-	Dir string // <root>/.nodwyn/versions
+	Dir string // <root>/.nodwyn/versions; a worktree session's is its repository's
 	// Skip reports paths another undo already covers (a git work tree).
 	Skip func(abs string) bool
 	// Record is told of every kept version, for the session log.

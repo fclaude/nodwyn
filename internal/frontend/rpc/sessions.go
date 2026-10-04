@@ -37,6 +37,9 @@ type server struct {
 	// authorizations are the OAuth2 authorizations started from the
 	// console (credentials.go).
 	authorizations map[string]*authorization
+	// resuming holds, for each task being resumed without the lock, a
+	// channel closed when that resume is done.
+	resuming map[string]chan struct{}
 }
 type sessionInfo struct {
 	ID           string    `json:"id"`
@@ -308,7 +311,14 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	options.Repo = p.Repo
 	options.Model = choice
 	options.Worktree = req.Method == "worktree.open"
+	// Making a session can take a while (a worktree is checked out, with
+	// the repository's hooks and filters), so it is made without the
+	// lifecycle lock, as the model probes run: other methods go on, and the
+	// session joins the list once it exists. Serve closes the sessions only
+	// after every method has returned, so one made meanwhile is not missed.
+	s.mu.Unlock()
 	session, err := core.New(options)
+	s.mu.Lock()
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}
@@ -320,6 +330,15 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 // described, so a client may call resume without checking first.
 func (s *server) resume(req request, _ *peer) (any, *rpcError) {
 	owned, id, err := s.session(req)
+	// Another client is resuming it: wait for that, then describe what it
+	// opened, as for a task already open.
+	for err != nil && s.resuming[id] != nil {
+		done := s.resuming[id]
+		s.mu.Unlock()
+		<-done
+		s.mu.Lock()
+		owned, id, err = s.session(req)
+	}
 	if err == nil {
 		return s.details(owned.session), nil
 	}
@@ -331,7 +350,18 @@ func (s *server) resume(req request, _ *peer) (any, *rpcError) {
 	}
 	options := s.options
 	options.Repo = ""
+	// As open does, without the lifecycle lock: a resume may make the
+	// task's worktree again. A second resume of the task waits for this one.
+	done := make(chan struct{})
+	if s.resuming == nil {
+		s.resuming = make(map[string]chan struct{})
+	}
+	s.resuming[id] = done
+	s.mu.Unlock()
 	session, resumeErr := core.Resume(options, id)
+	s.mu.Lock()
+	delete(s.resuming, id)
+	close(done)
 	if resumeErr != nil {
 		return nil, failure(-32000, resumeErr.Error())
 	}

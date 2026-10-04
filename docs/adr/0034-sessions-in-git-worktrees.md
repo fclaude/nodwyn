@@ -349,3 +349,48 @@ a new worktree, the refusal of a `.nodwyn` link in the new checkout, which
 guarded only that copy, goes with it, and close treats every untracked or
 ignored file alike: any of them keeps the worktree. The `uncommitted`
 count of `worktree.create` counts every line `git status` gives.
+
+## Amendment 2026-10-03: nodwyn's own copies leave the worktree, and git runs beside other methods
+
+A review of the first slice found four ways it failed what §3 promises or
+held up everything else.
+
+- **Kept versions are the repository's.** A worktree session kept a file's
+  previous content (ADR 22 §2) in the worktree's own `.nodwyn/versions/`,
+  which its `.gitignore` ignores. Any file written twice, or a new one
+  written again, left such a copy, and an ignored file keeps the worktree
+  on close, so almost every task's worktree and branch outlived their
+  merge. A worktree session's store is now its repository's
+  `.nodwyn/versions/` (§2: the repository is the project). The copies are
+  nodwyn's undo, not work left in the worktree. They keep nothing on close,
+  outlast the worktree, and Restore finds them after a resume made it
+  again. `versions.list` names a task's folder; for a worktree it reads its
+  repository's store, which replaces "Unchanged: `knownFolder`" above.
+  Uploads in `.nodwyn/attachments/` stay in the worktree and still keep
+  it: later requests read them from there.
+- **Restore clears only its own registration.** `git worktree prune`
+  before making a missing worktree again dropped every registered worktree
+  whose folder was away at that moment, a person's on a disk not mounted
+  included. Restore now runs `git worktree remove <path>` for its own
+  worktree when git still lists it, and nothing else.
+- **Close's status lists folders, not files.** `--ignored=traditional
+  --untracked-files=normal` gives a folder of untracked or ignored files
+  as one line. Any line keeps the worktree as before, but close no longer
+  lists every file of a `node_modules`.
+- **A checkout does not hold the daemon.** `worktree.open` and
+  `session.open` make the session, and `session.resume` resumes it,
+  without the RPC server's lifecycle lock, as the model probes run. A
+  checkout runs the repository's hooks and filters for up to two minutes,
+  and every other method of every client waited on it. Serve closes
+  sessions only after every method has returned, so one made meanwhile is
+  owned before shutdown. A second resume of the same task waits for the
+  first and then describes what it opened. Two worktrees made at once may
+  both create `.nodwyn/worktrees/`; an existing folder is accepted, a link
+  still refused. Close still holds the lock while the session ends.
+
+Tests: `TestWorktreeGoesOnCloseWithItsVersionsKept`,
+`TestWorktreeRestoreLeavesOtherWorktreesRegistered` (core),
+`TestVersionsListReadsAWorktreesVersionsFromItsRepository` and
+`TestWorktreeCheckoutDoesNotHoldOtherMethods` (rpc), each failing on the
+code before this amendment. The last holds a `post-checkout` hook until
+`session.list` from another client has been answered.

@@ -107,14 +107,15 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 		if err := params(req.Params, &p, "repo", "path"); err != nil {
 			return nil, err
 		}
-		if !filepath.IsAbs(p.Repo) || !s.knownFolder(filepath.Clean(p.Repo)) {
+		store, known := s.versionStore(filepath.Clean(p.Repo))
+		if !filepath.IsAbs(p.Repo) || !known {
 			return nil, failure(-32602, "repo must be a folder nodwyn works in")
 		}
 		abs := p.Path
 		if !filepath.IsAbs(abs) {
 			abs = filepath.Join(p.Repo, abs)
 		}
-		list, err := prim.ListVersions(prim.VersionsDir(filepath.Clean(p.Repo)), filepath.Clean(abs))
+		list, err := prim.ListVersions(store, filepath.Clean(abs))
 		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
@@ -229,21 +230,23 @@ func evalOr(p string) string {
 	}
 }
 
-// knownFolder reports whether root is a named workspace or a folder a task
-// used: what versions.list may read.
-func (s *server) knownFolder(root string) bool {
-	if list, err := config.LoadRegistry(config.RegistryFile(s.options.Paths)); err == nil {
-		for _, r := range list {
-			if r.Path == root {
-				return true
-			}
-		}
-	}
+// versionStore is where the versions of files under root are kept, and
+// whether root is a named workspace or a folder a task used: what
+// versions.list may read. A task's worktree keeps them with its
+// repository's (ADR 34).
+func (s *server) versionStore(root string) (string, bool) {
 	infos, _ := s.store().List()
 	for _, i := range infos {
 		if i.Repo == root {
-			return true
+			return prim.VersionsDir(i.Project()), true
 		}
 	}
-	return false
+	if list, err := config.LoadRegistry(config.RegistryFile(s.options.Paths)); err == nil {
+		for _, r := range list {
+			if r.Path == root {
+				return prim.VersionsDir(root), true
+			}
+		}
+	}
+	return "", false
 }

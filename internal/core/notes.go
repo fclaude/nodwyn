@@ -88,11 +88,11 @@ func (s *Session) Restore(path, hash, actor string) (string, error) {
 		abs = filepath.Join(s.opts.Repo, abs)
 	}
 	abs = filepath.Clean(abs)
-	content, err := prim.ReadVersion(prim.VersionsDir(s.opts.Repo), hash)
+	content, err := prim.ReadVersion(s.versionsDir(), hash)
 	if err != nil {
 		return "", err
 	}
-	known, err := prim.ListVersions(prim.VersionsDir(s.opts.Repo), abs)
+	known, err := prim.ListVersions(s.versionsDir(), abs)
 	if err != nil {
 		return "", err
 	}

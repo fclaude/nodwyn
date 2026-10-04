@@ -10,6 +10,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/internal/prim"
 	"github.com/fclaude/nodwyn/internal/scheme"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -214,6 +215,84 @@ func TestWorktreeGoesOnCloseOnlyWhenNothingIsLost(t *testing.T) {
 	last.Close()
 	if _, err := os.Stat(w.Path); !os.IsNotExist(err) || branchExists(repo, w.Branch) {
 		t.Fatal("a landed worktree was kept")
+	}
+}
+
+// nodwyn's own undo is not work left in a worktree: a file written twice
+// keeps its first content as a version, and once the branch has landed the
+// worktree still goes on close. The version is kept with the repository's,
+// outside the worktree, so it outlasts it and a restore still finds it.
+func TestWorktreeGoesOnCloseWithItsVersionsKept(t *testing.T) {
+	t.Parallel()
+	repo, git := gitRepo(t)
+	o := worktreeOptions(t, repo,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w1", Name: "fs-write", Args: map[string]any{"path": "new.txt", "content": "one\n"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w2", Name: "fs-write", Args: map[string]any{"path": "new.txt", "content": "two\n"}}}},
+		fake.Turn{Content: "written"},
+	)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := *s.Worktree()
+	if err := s.Send("write new.txt twice"); err != nil {
+		t.Fatal(err)
+	}
+	(&rig{t: t, s: s}).drain("y")
+	kept, err := prim.ListVersions(prim.VersionsDir(repo), filepath.Join(w.Path, "new.txt"))
+	if err != nil || len(kept) != 1 {
+		t.Fatalf("versions of new.txt in the repository's store: %+v %v", kept, err)
+	}
+	if b, err := prim.ReadVersion(prim.VersionsDir(repo), kept[0].Hash); err != nil || string(b) != "one\n" {
+		t.Fatalf("the kept version: %q %v", b, err)
+	}
+	git(w.Path, "add", "new.txt")
+	git(w.Path, "commit", "-q", "-m", "new")
+	git(repo, "merge", "-q", "--ff-only", w.Branch)
+	s.Close()
+	if _, err := os.Stat(w.Path); !os.IsNotExist(err) || branchExists(repo, w.Branch) {
+		t.Fatalf("a landed worktree was kept for nodwyn's own versions: %v", err)
+	}
+	if st := git(repo, "status", "--porcelain"); st != "" {
+		t.Fatalf("the repository's status is not clean:\n%s", st)
+	}
+}
+
+// A resume that makes a worktree deleted by hand again clears only that
+// worktree's registration: a worktree of the person's whose folder is away
+// for now (on a disk not mounted) stays registered, its branch with it.
+func TestWorktreeRestoreLeavesOtherWorktreesRegistered(t *testing.T) {
+	t.Parallel()
+	repo, git := gitRepo(t)
+	o := worktreeOptions(t, repo)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := *s.Worktree()
+	// Work in it keeps it on close; then a person deletes its folder.
+	if err := os.WriteFile(filepath.Join(w.Path, "draft.txt"), []byte("draft\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	mine := filepath.Join(t.TempDir(), "mine")
+	git(repo, "worktree", "add", "-q", "-b", "mine", mine)
+	for _, dir := range []string{w.Path, mine} {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	o.Repo = ""
+	resumed, err := Resume(o, s.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumed.Close()
+	if got := git(w.Path, "rev-parse", "--abbrev-ref", "HEAD"); got != w.Branch {
+		t.Fatalf("the restored worktree is on %s", got)
+	}
+	if list := git(repo, "worktree", "list", "--porcelain"); !strings.Contains(list, "worktree "+mine+"\n") {
+		t.Fatalf("the person's worktree is no longer registered:\n%s", list)
 	}
 }
 

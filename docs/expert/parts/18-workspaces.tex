@@ -238,7 +238,9 @@ and the system prompt tells the model, with a warning against
 The work stays on the branch until you merge it. Closing the task removes
 the worktree and its branch only when nothing would be lost: no change, no
 untracked or ignored file, no commit its base lacks. Resuming a task whose
-worktree was removed makes it again.
+worktree was removed makes it again. The versions \nodwyn{} keeps of a
+worktree task's files are the repository's, in its
+\file{.nodwyn/versions/}: they never keep a worktree, and outlast it.
 
 \section{Notes, scratch and versions: where things live}
 
@@ -250,7 +252,7 @@ worktree was removed makes it again.
 workspace names and mounts & \file{workspaces.toml} in the config directory \\
 project tools and strategy & \file{<folder>/.nodwyn/init.scm} (and what it loads) \\
 standing approvals & \file{<folder>/.nodwyn/allow.toml}, \file{config.toml} \\
-kept versions & \file{<folder>/.nodwyn/versions/} (what git cannot give back) \\
+kept versions & \file{<folder>/.nodwyn/versions/} (what git cannot give back); a worktree task's in its repository's \\
 attachments & \file{<folder>/.nodwyn/attachments/} \\
 worktrees & \file{<folder>/.nodwyn/worktrees/<id>/}, one per task started in one \\
 project notes & \nodwyn's data directory, keyed by the folder's path \\

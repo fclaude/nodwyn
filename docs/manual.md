@@ -281,7 +281,10 @@ The work stays on the branch until it is merged, for example with `git
 merge nodwyn/<id>` in the repository. Closing the task removes the worktree
 and its branch when nothing would be lost (no change, no untracked or
 ignored file, no commit its base lacks); otherwise both stay and resuming
-works in them again, and a removed worktree is made again on resume.
+works in them again, and a removed worktree is made again on resume. The
+previous versions nodwyn keeps of the task's files are kept with the
+repository's, in its `.nodwyn/versions/`, so they never keep a worktree and
+outlast it.
 Committing from a task is `git commit` through `shell-exec`, which asks.
 Not built yet: `--worktree` for the plain CLI, `nodwyn run` and the TUI;
 `nodwyn worktree list` and `remove`; and the git tools that would let a
