@@ -27,19 +27,41 @@ check(async () => {
   await page.waitForSelector(".task[data-loaded]");
   const id = decodeURIComponent((await page.evaluate(() => location.hash)).replace("#/task/", ""));
   // The plan panel shows every step of the planner's plan, each with its
-  // kind, Test: and Docs: included, and counts the steps the model marks:
-  // two before the commands it asks about, two more once they are approved.
+  // kind, Test: and Docs: included, folded to its title until it is
+  // clicked, and counts the steps the model marks: two before the commands
+  // it asks about, two more once they are approved.
   const planPanel = () =>
     page.evaluate(() => ({
       head: [...document.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.textContent.startsWith("Plan"))?.querySelector("h2")?.textContent,
       steps: [...document.querySelectorAll("ol.plan li .text")].map((s) => s.textContent),
       items: [...document.querySelectorAll("ol.plan li")].map((li) => li.className),
+      folds: [...document.querySelectorAll("ol.plan li")].map((li) => {
+        const more = li.querySelector(".more");
+        return more
+          ? { open: li.classList.contains("open"), body: more.textContent, shown: getComputedStyle(more).display !== "none", titleShown: getComputedStyle(li.querySelector(".text")).display !== "none" }
+          : null;
+      }),
     }));
   const before = await planPanel();
   assert.deepStrictEqual(before.steps.map((s) => s.split(":")[0]), ["Change", "Test", "Docs", "Check"], "the plan's steps");
-  assert.match(before.steps[1], /fails today: /);
   assert.strictEqual(before.head, "Plan2 of 4 done · drafted");
-  assert.deepStrictEqual(before.items, ["done", "done", "next", ""]);
+  assert.deepStrictEqual(before.items, ["done fold", "done fold", "next fold", ""]);
+  // A step longer than its title folds: the title stands, the whole step
+  // waits hidden until the step is clicked. The Check step says all it has
+  // to say in its title, so it does not fold; the Test step's fold holds
+  // why its test fails on the unchanged code.
+  assert.ok(before.folds.slice(0, 3).every((f) => f && !f.open && !f.shown && f.titleShown), `the folded steps: ${JSON.stringify(before.folds)}`);
+  assert.strictEqual(before.folds[3], null, "the Check step does not fold");
+  assert.match(before.folds[1].body, /fails today: /, "the Test step's fold");
+  // Clicking a step opens it and shows the whole of it in place of its
+  // title; clicking it again folds it back.
+  await page.evaluate(() => document.querySelectorAll("ol.plan li")[0].click());
+  const opened = await planPanel();
+  assert.ok(opened.folds[0].open && opened.folds[0].shown && !opened.folds[0].titleShown, `the opened step: ${JSON.stringify(opened.folds[0])}`);
+  assert.match(opened.folds[0].body, /^Change: app\.js sessionRow — under each title/);
+  step("a step opens on click");
+  await page.evaluate(() => document.querySelectorAll("ol.plan li")[0].click());
+  assert.ok(!(await planPanel()).folds[0].open, "the step folded again");
 
   // The edit goes ahead without asking; the two commands after it ask
   // first. While one waits, the run they fold into says so (that it still
@@ -102,7 +124,7 @@ check(async () => {
   const marked = await planPanel();
   assert.deepStrictEqual(marked.steps, before.steps, "the plan's steps after the approvals");
   assert.strictEqual(marked.head, "Plan3 of 4 done · drafted");
-  assert.deepStrictEqual(marked.items, ["done", "done", "skipped", "done"]);
+  assert.deepStrictEqual(marked.items, ["done fold", "done fold", "skipped fold", "done"]);
   await page.screenshot({ path: `${out}/after.png` });
 
   // A follow-up in the same task.
@@ -127,10 +149,10 @@ check(async () => {
     answer: (await transcript()).includes("Tidied"),
     ...(await planPanel()),
   });
-  const want = { went: true, answer: true, head: "Plan4 of 4 done · carried over from an earlier turn", items: ["done", "done", "done", "done"] };
+  const want = { went: true, answer: true, head: "Plan4 of 4 done · carried over from an earlier turn", items: ["done fold", "done fold", "done fold", "done"] };
   await until("the carried plan", async () => {
     const got = await carried();
-    return JSON.stringify({ ...got, steps: undefined }) === JSON.stringify({ ...want, steps: undefined });
+    return JSON.stringify({ ...got, steps: undefined, folds: undefined }) === JSON.stringify({ ...want, steps: undefined, folds: undefined });
   }).catch(async (e) => {
     throw new Error(`${e.message}: ${JSON.stringify(await carried())}`);
   });

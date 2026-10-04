@@ -659,6 +659,14 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .plan li.skipped::before { content: "\2013"; }
 .plan li.next { color: var(--ink); }
 .plan li.next::before { border-color: var(--accent); color: var(--accent); }
+/* A step longer than its title folds (task.js): the chevron says it opens,
+   and an opened step shows the whole of it in place of its title. */
+.plan li.fold { cursor: pointer; }
+.plan li.fold > span::before { content: "\25B8 "; color: var(--faint); }
+.plan li.fold.open > span::before { content: "\25BE "; }
+.plan li.fold .more { display: none; }
+.plan li.fold.open .more { display: block; }
+.plan li.fold.open .text { display: none; }
 .box {
   padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   font-size: 13px; line-height: 1.55; color: var(--ink-2);

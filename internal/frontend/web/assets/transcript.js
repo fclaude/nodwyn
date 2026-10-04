@@ -725,3 +725,21 @@ export function planSteps(plan) {
   if (steps.length) return steps;
   return lines.length ? [lines.join(" ")] : [];
 }
+
+// stepTitle is the clause of a step that names it: the plan's shape asks
+// each step to start "Kind: what it touches — what changes", so the text up
+// to the first dash (or, without one, the first sentence or semicolon) is
+// the title and the rest reads behind the fold. A step with no boundary
+// stays whole while it fits the cap; longer, it is cut at a word and the
+// ellipsis says the fold holds the rest.
+export function stepTitle(step) {
+  const s = String(step || "").trim();
+  const at = s.search(/(?:\s+—|\s+–|\s+--|\.\s|;\s)/);
+  const head = at < 0 ? s : s.slice(0, at).trimEnd();
+  if (head.length > 80) {
+    const cut = head.slice(0, 80);
+    const word = cut.lastIndexOf(" ");
+    return (word > 40 ? cut.slice(0, word) : cut).trimEnd() + " …";
+  }
+  return head || s;
+}

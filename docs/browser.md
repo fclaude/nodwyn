@@ -6,7 +6,9 @@ finished; a **task** shows its conversation with the approval inline, and
 beside it the plan, this turn's budget, the changes, the attachments, the
 project notes and the workspace. The plan shows the model's progress through
 it: the steps it marked done (with what it says shows it), the ones it
-skipped, and the next. After each reply the conversation shows its tokens,
+skipped, and the next. A step folds to its title, the clause up to its
+first dash, so the plan reads at a glance; clicking a step shows the whole
+of it. After each reply the conversation shows its tokens,
 and when the provider reports them or the model has prices, how much of the
 prompt came from the cache and what it cost (the manual, "Choosing models");
 over several requests, the largest single prompt too, since each request

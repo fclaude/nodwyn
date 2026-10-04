@@ -3,7 +3,7 @@
 // the workspace. Every figure comes from the log or from session.info; a
 // panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
-import { Transcript, planSteps, usd, contextGauge, judgeTally } from "./transcript.js";
+import { Transcript, planSteps, stepTitle, usd, contextGauge, judgeTally } from "./transcript.js";
 import { askCard, shortcut, summary } from "./prompts.js";
 import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
@@ -11,6 +11,7 @@ import { policyChoices, renderPolicyEditor } from "./policy.js";
 import { keychainForm } from "./setup.js";
 
 const drafts = new Map(); // per task, this tab only
+const openSteps = new Map(); // per task, the plan steps the reader unfolded, this tab only
 
 export class TaskView {
   constructor(conn, desk, navigate) {
@@ -747,11 +748,35 @@ export class TaskView {
     panel.append(h("h2", {}, "Plan", h("span", { class: "note" }, note)));
     if (steps.length) {
       const next = marks.size ? steps.findIndex((_, i) => !marks.has(i + 1)) : -1;
+      // The side is redrawn on every event, so a step the reader opened
+      // would fold again at the next one; the fold lives here, per task.
+      const opened = openSteps.get(this.item?.id) || new Set();
+      openSteps.set(this.item?.id ?? "", opened);
       const items = steps.map((s, i) => {
         const m = marks.get(i + 1);
         const state = m ? m.state : i === next ? "next" : "";
         const said = m ? (m.state === "done" ? "Marked done" : "Skipped") + (m.note ? `: ${m.note}` : "") : undefined;
-        return h("li", { class: state || undefined, title: said }, h("span", {}, h("span", { class: "text" }, s), m?.note ? h("small", {}, m.note) : null));
+        // A step with more to say than its title folds: the title stands,
+        // and clicking the step shows the whole of it in its place.
+        const title = stepTitle(s);
+        if (title === s)
+          return h("li", { class: state || undefined, title: said }, h("span", {}, h("span", { class: "text" }, s), m?.note ? h("small", {}, m.note) : null));
+        const open = opened.has(s);
+        const li = h(
+          "li",
+          {
+            class: [state, "fold", open && "open"].filter(Boolean).join(" "),
+            title: said,
+            onclick: () => {
+              // Read the set, not the open the render captured: a click
+              // that lands after a redraw would act on a stale boolean.
+              opened.has(s) ? opened.delete(s) : opened.add(s);
+              li.classList.toggle("open");
+            },
+          },
+          h("span", {}, h("span", { class: "text" }, title), h("span", { class: "more" }, s), m?.note ? h("small", {}, m.note) : null)
+        );
+        return li;
       });
       panel.append(h("ol", { class: "plan" }, items));
     } else if (p.reason) panel.append(h("p", { class: "hint" }, p.reason));

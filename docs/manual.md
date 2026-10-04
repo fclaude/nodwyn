@@ -552,8 +552,9 @@ what it checks and why it fails on today's code, "fails today: …"),
 test or no doc to change says why in a step (`Test: none — only docs
 change`). The judge scores the gate's plans against it, and `plan-write`
 turns down a plan without it, saying what is missing, at most twice in a
-turn: the third is recorded as written, with what it still lacks. The
-plan panel shows each step with its kind. When a turn does not finish (a model error such as a provider's
+turn: the third is recorded as written, with what it still lacks. The plan
+panel shows each step folded to its title, the clause up to its first dash;
+clicking a step shows the whole of it. When a turn does not finish (a model error such as a provider's
 rate limit, a limit, or your Stop), your next message, "continue" or a
 correction, carries its plan with the steps marked so far, and the model
 goes on from the next unmarked step; the plan panel says "carried over from
