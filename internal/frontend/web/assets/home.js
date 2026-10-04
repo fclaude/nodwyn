@@ -3,6 +3,7 @@ import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, basename 
 import { summary } from "./prompts.js";
 import { modelForm, keychainForm } from "./setup.js";
 import { Attachments, isImage } from "./attach.js";
+import { keepDraft } from "./task.js";
 
 // The folder the next task starts in, for this tab. The folder picked last
 // is kept in this browser (like the theme and the folded folders) and is
@@ -190,17 +191,31 @@ export function renderHome(root, ctx) {
         if (!ready()) return;
         starting = true;
         submit.disabled = true;
+        let opened = "",
+          sending = false;
         try {
           const info = await conn.call(worktree() ? "worktree.open" : "session.open", { repo: chosen });
+          opened = info.id;
           // An image waits for its own confirm, which the task's page shows.
           if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
           if (files.files.length) await files.upload(info.id);
+          sending = true;
           await conn.call("session.send", { id: info.id, text: task.value });
           draft = "";
           await desk.refresh();
           navigate(`#/task/${info.id}`);
         } catch (error) {
-          toast(`${error.message} Nothing was retried; check the task list before starting again.`);
+          if (opened && !sending) {
+            // The task opened, but an attachment was refused (an image's
+            // confirm declined) before the message went: the message waits
+            // in the task's reply box, to send there with or without the
+            // files, and Home starts afresh rather than asking again.
+            keepDraft(opened, task.value);
+            draft = "";
+            files.clear();
+            toast(`${error.message} The message was not sent: it waits in the task's reply box.`);
+            navigate(`#/task/${opened}`);
+          } else toast(`${error.message} Nothing was retried; check the task list before starting again.`);
           desk.refresh().catch(() => {});
         } finally {
           starting = false;

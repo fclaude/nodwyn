@@ -146,8 +146,10 @@ secret-like strings were hidden.
 An image cannot be redacted, so before it is attached the task asks, as a
 security request card: it names the file, the model and its host, and
 whether that host is this computer. Sending waits for your answer; from
-Home the task opens first, so the card is in front of you. **Deny** leaves
-the image out and keeps your message unsent. An attached image shows as
+Home the task opens first, so the card is in front of you. **Deny** (or
+**Stop**) leaves the image out and keeps your message unsent, in the task's
+reply box: send it there, with or without attaching again. Home starts
+afresh, so the same image is not asked about twice. An attached image shows as
 "image · 1200×800 · ~1,105 tokens": what it costs the context. It goes only
 to the host you allowed, never to the judge.
 

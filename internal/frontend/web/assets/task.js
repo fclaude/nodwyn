@@ -12,6 +12,18 @@ import { keychainForm } from "./setup.js";
 
 const drafts = new Map(); // per task, this tab only
 const openSteps = new Map(); // per task, the plan steps the reader unfolded, this tab only
+const views = new Set(); // every view not disposed, for keepDraft
+
+// keepDraft puts a message that was not sent into task id's reply box: at
+// once in a view that has the task, else when one opens it.
+export function keepDraft(id, text) {
+  drafts.set(id, text);
+  for (const view of views) {
+    if (view.item?.id !== id || !view.el) continue;
+    view.el.reply.value = text;
+    view.controls();
+  }
+}
 
 export class TaskView {
   constructor(conn, desk, navigate) {
@@ -49,6 +61,7 @@ export class TaskView {
     this.scroll = null; // where the conversation was when another page was shown
     this.root = h("div", { class: "task" });
     this.unlisten = conn.onEvent((frame) => this.onFrame(frame));
+    views.add(this);
     this.onKey = (event) => {
       if (!this.root.isConnected || this.inspecting || !this.item || this.loading) return;
       shortcut(this.el?.transcript.querySelector(".ask-card"), event);
@@ -153,6 +166,7 @@ export class TaskView {
   // dispose ends the view for good: it stops listening, and leaves its task.
   dispose(unsubscribe = true) {
     this.leave(unsubscribe);
+    views.delete(this);
     this.unlisten();
     document.removeEventListener("keydown", this.onKey);
   }

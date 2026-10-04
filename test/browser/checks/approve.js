@@ -299,12 +299,20 @@ check(async () => {
   await until("the note that the image was declined", async () => (await page.textContent(".transcript")).includes("image not attached: shot.png, declined"));
   assert.deepStrictEqual(sent.of("session.answer").map((a) => [a.id, a.reply]).at(-1), [denied, "n"]);
   assert.ok(!sent.of("session.send").some((s) => s.id === denied), "the message went without its image");
+  // The message that was not sent waits in the task's reply box, where the
+  // person is, and Home starts afresh: no draft, and no image chosen to be
+  // asked about again.
+  await until("the message in the task's reply box", async () => (await page.inputValue("#reply")) === "Describe this screenshot");
   await page.screenshot({ path: `${out}/image-denied.png` });
   await page.fill("#reply", "Describe the folder instead");
   await page.keyboard.press("Enter");
   await until("the answer without the image", async () => (await transcript()).includes("This request carries 0 image(s)"));
   await settles("the task idle after its answer", idle);
-  step("image denied; the task went on");
+  await page.evaluate(() => (location.hash = "#/"));
+  await page.waitForSelector("#task");
+  const home = await page.evaluate(() => ({ draft: document.querySelector("#task").value, chosen: document.querySelectorAll(".ask .attach-chip").length }));
+  assert.deepStrictEqual(home, { draft: "", chosen: 0 }, "Home after the message went to the task");
+  step("image denied; the message waited in the task, which went on");
 
   const stopped = await withImage("Describe this screenshot again");
   await page.click(".task-actions button:has-text('Stop')");
