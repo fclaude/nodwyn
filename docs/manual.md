@@ -1188,8 +1188,10 @@ taken back out. All are in tenths of a second while short. A turn still
 running counts up to now, into the running time even while it waits for
 you and into the working time only while it does not; a request or a tool
 still open stops at the log's last record while a prompt holds the
-session. A turn a crash or a stopped daemon cut off ends where its log
-does, so the time until the task was resumed is not counted. A run that
+session. A request that never got its reply — a failed one records none —
+and a tool its turn left behind when it ended count nothing. A turn a
+crash or a stopped daemon cut off ends where its log does, so the time
+until the task was resumed is not counted. A run that
 went on by itself counts the time between its turns, one you answered or
 brought back does not. Where the log was truncated, the panel says its
 totals cover what remains.

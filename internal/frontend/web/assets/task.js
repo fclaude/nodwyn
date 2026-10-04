@@ -1514,7 +1514,10 @@ function walkTurns(evs) {
 // counted twice. A pair still open at the stretch's end is not counted
 // here: its start comes back as openModel or openTool (null when none),
 // and the caller, which knows whether the session still works, counts it
-// on to now.
+// on to now. A pair a turn left behind — a request whose reply never
+// came, a tool its turn outlived — is dropped at the turn's end and the
+// session's resume and end: the time a turn that ended left open is
+// nobody's, the rule walkTurns applies to a turn it cut off.
 function splitTime(evs) {
   const model = [],
     tools = [],
@@ -1525,6 +1528,12 @@ function splitTime(evs) {
   for (const e of evs) {
     const ts = tsOf(e);
     if (e.kind === "llm.req") {
+      // Requests are sequential: a second one cannot begin while a first
+      // waits, so anything still open here never got its reply — a failed
+      // request records no reply (model.go records a note instead) — and
+      // its wait ended where nobody recorded it. It is nobody's time, not
+      // time up to now.
+      open.length = 0;
       if (ts > 0) open.push(ts);
     } else if (e.kind === "llm.resp") {
       const start = open.pop();
@@ -1535,6 +1544,13 @@ function splitTime(evs) {
       const start = calls.get(e.payload?.id);
       calls.delete(e.payload?.id);
       if (start !== undefined && ts > start) tools.push([start, ts]);
+    } else if (e.kind === "turn.end" || e.kind === "session.resume" || e.kind === "session.end") {
+      // The turn is over: a request it never answered or a tool it never
+      // finished is nobody's time, the rule walkTurns applies to a turn a
+      // crash cut off. What the next turn opens counts from itself, and a
+      // pair of the turn that is still running here is untouched.
+      open.length = 0;
+      calls.clear();
     } else if (prev !== null && ts > prev && waitedOn(e)) waits.push([prev, ts]);
     prev = ts;
   }

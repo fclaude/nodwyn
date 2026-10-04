@@ -238,3 +238,15 @@ have; `worktree.restore` follows a resume that made the missing worktree
 again; `worktree.remove`, before `session.end`, says close removed it and
 its branch because nothing in them was unlanded. The window ignores all
 three.
+
+## Amendment — 2026-11-12: a resume's recovery results follow its lifecycle record
+
+A resume records `session.resume` before the recovery `tool.result`s for
+the calls a crash left unfinished, not after them as it first did. The
+recovery result is recorded at the resume, so placed before the lifecycle
+record it bridged the dead time between the crash and the resume into the
+tool's time in the log's readers — the console's tool time, and its
+running and working time, which a turn a crash cut off leaves to nobody.
+Nothing reads the earlier order: the recovery result
+still discharges the interrupted call for a later resume, and the model's
+transcript receives it before the next turn's message either way.

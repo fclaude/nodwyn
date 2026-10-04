@@ -92,12 +92,6 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if err = s.initialize(); err != nil {
 		return nil, err
 	}
-	// Resolve missing results for the model's transcript without executing them.
-	for _, call := range pending {
-		if _, err = s.Record(log.KindToolResult, log.ToolResult{ID: call.ID, Name: call.Name, OK: false, Error: "Interrupted before a durable result was recorded. Outcome unknown; inspect the current state before deciding whether to retry."}); err != nil {
-			return nil, err
-		}
-	}
 	if truncated {
 		if _, err = s.Record(log.KindNote, log.Note{Text: "Discarded an incomplete final log line while resuming."}); err != nil {
 			return nil, err
@@ -105,6 +99,15 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	}
 	if _, err = s.Record(log.KindSessionResume, log.SessionStart{Context: s.loop.WindowContext(), Version: o.Version, Repo: o.Repo, Provider: s.opts.Provider.Name(), Model: s.model.Model, URL: s.model.URL, Tools: len(s.loop.Tools()), Worktree: s.worktree}); err != nil {
 		return nil, err
+	}
+	// Resolve missing results for the model's transcript without executing
+	// them, after session.resume: recorded before it, a recovery result
+	// would bridge the dead time between the crash and the resume into the
+	// tool's time and the running and working time, which are nobody's.
+	for _, call := range pending {
+		if _, err = s.Record(log.KindToolResult, log.ToolResult{ID: call.ID, Name: call.Name, OK: false, Error: "Interrupted before a durable result was recorded. Outcome unknown; inspect the current state before deciding whether to retry."}); err != nil {
+			return nil, err
+		}
 	}
 	if restored {
 		if _, err = s.Record(log.KindWorktreeRestore, log.WorktreeChange{Worktree: *s.worktree}); err != nil {

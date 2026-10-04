@@ -131,6 +131,50 @@ func TestResumeMissingResultsAndApprovals(t *testing.T) {
 	}
 }
 
+// The resume's lifecycle record comes before the recovery results it
+// accounts for: a recovery tool.result recorded before session.resume
+// would bridge the dead time between the crash and the resume into the
+// tool's time, the running time and the working time, which are nobody's.
+func TestResumeRecordsLifecycleBeforeRecoveryResults(t *testing.T) {
+	t.Parallel()
+	o := diskOptions(t)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := s.ID()
+	if _, err := s.Record(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{
+		{ID: "orphan", Name: "fs-read", Args: json.RawMessage(`{}`)},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	resumed, err := Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumed.Close()
+	atResume, firstResult := -1, -1
+	for i, ev := range resumed.EventsSoFar() {
+		switch ev.Kind {
+		case log.KindSessionResume:
+			if atResume < 0 {
+				atResume = i
+			}
+		case log.KindToolResult:
+			if firstResult < 0 {
+				firstResult = i
+			}
+		}
+	}
+	if atResume < 0 || firstResult < 0 {
+		t.Fatalf("resume recorded no lifecycle record or no recovery result: session.resume at %d, first result at %d", atResume, firstResult)
+	}
+	if firstResult < atResume {
+		t.Fatalf("a recovery result at %d precedes session.resume at %d: the time until the resume would count as the tool's", firstResult, atResume)
+	}
+}
+
 func TestResumeRejectsWrongRepoAndUnsafeIDs(t *testing.T) {
 	t.Parallel()
 	o := diskOptions(t)

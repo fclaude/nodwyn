@@ -321,6 +321,63 @@ check(async () => {
       task.dispose();
       out.tabs = tabs;
     }
+
+    // The side's clocks: only pairs the log answers count. A request that
+    // failed records no reply and a crash leaves its tool's result to the
+    // resume; neither may be counted on to now. The log below is written
+    // in the order a resume records: session.resume first, then the
+    // recovery result, so the time between the crash and the resume stays
+    // nobody's. Without this the stale request counts from its sending to
+    // the log's last record, and the recovery result bridges the dead time.
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const base = Date.now() - 120000;
+      const at = (ms) => new Date(base + ms).toISOString();
+      const events = [
+        { seq: 1, kind: "user.msg", ts: at(0), payload: { text: "Fix the bug" } },
+        { seq: 2, kind: "llm.req", ts: at(1000), payload: {} },
+        { seq: 3, kind: "note", ts: at(2000), payload: { text: "model request failed: connection refused" } },
+        { seq: 4, kind: "tool.call", ts: at(2500), payload: { id: "orphan", name: "fs-read", args: {} } },
+        { seq: 5, kind: "turn.end", ts: at(3000), payload: { outcome: "error" } },
+        { seq: 6, kind: "user.msg", ts: at(10000), payload: { text: "Go on" } },
+        { seq: 7, kind: "llm.req", ts: at(11000), payload: {} },
+        { seq: 8, kind: "llm.resp", ts: at(14000), payload: { content: "Working", usage: { prompt_tokens: 10, output_tokens: 5 } } },
+        { seq: 9, kind: "turn.end", ts: at(15000), payload: { outcome: "completed" } },
+        { seq: 10, kind: "session.resume", ts: at(16000), payload: {} },
+        { seq: 11, kind: "tool.result", ts: at(16000), payload: { id: "orphan", name: "fs-read", ok: false, error: "Interrupted before a durable result was recorded." } },
+        { seq: 12, kind: "user.msg", ts: at(20000), payload: { text: "And again" } },
+        { seq: 13, kind: "llm.req", ts: at(21000), payload: {} },
+        { seq: 14, kind: "llm.resp", ts: at(23000), payload: { content: "Done", usage: { prompt_tokens: 10, output_tokens: 5 } } },
+        { seq: 15, kind: "turn.end", ts: at(24000), payload: { outcome: "completed" } },
+      ];
+      const listeners = new Set();
+      const conn = {
+        live: true,
+        methods: new Set(["session.send", "session.abort", "session.answer"]),
+        has(method) { return this.methods.has(method); },
+        onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        async call(method) {
+          if (method === "session.subscribe") return { page: { events, through: events.length, more: false }, busy: false };
+          if (method === "session.info") return {};
+          if (method === "session.unsubscribe") return {};
+          throw new Error(`unexpected request: ${method}`);
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("clocks", { id: "clocks", repo: "/tmp/clocks", open: true, busy: false });
+      const task = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(task.root);
+      await task.open("clocks");
+      const totals = task.el.side.querySelector("[data-totals]");
+      out.clocks = {
+        model: totals?.querySelector("[data-model]")?.textContent,
+        tools: totals?.querySelector("[data-tools]")?.textContent,
+        running: totals?.querySelector("[data-running]")?.textContent,
+        working: totals?.querySelector("[data-working]")?.textContent,
+      };
+      task.dispose();
+    }
     return out;
   });
   console.log(JSON.stringify(results, null, 1));
@@ -359,6 +416,9 @@ check(async () => {
   want(tb.workspace.chosen === "Workspace" && tb.workspace.shown.join() === "Workspace,Details", `Workspace tab: ${JSON.stringify(tb.workspace)}`);
   want(tb.notes.chosen === "Notes" && tb.notes.shown === "Reading the notes…", `Notes tab: ${JSON.stringify(tb.notes)}`);
   want(tb.left.chosen === "Workspace" && tb.left.focused === "Workspace" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Live" && tb.home.focused === "Live", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
+  const c = results.clocks;
+  want(c.model === "5.0 s" && c.tools === "0.0 s", `the clocks count only answered pairs: ${JSON.stringify(c)}`);
+  want(c.running === "12 s" && c.working === "12 s", `running and working stay at the turns' own spans: ${JSON.stringify(c)}`);
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
 });
