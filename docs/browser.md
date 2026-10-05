@@ -118,8 +118,9 @@ it, else takes that model's own default, and says so.
   model that cannot be used is said so and a task is not started on it; one
   removed from the list is said to be gone, and the page does not pick another.
 - *A conversation.* The selects show what the next message is answered with
-  and change it (`session.model.set`). The lines under them say that a change
-  takes effect from the next message; while a response runs, that it keeps the
+  and change it (`session.model.set`). After a choice, the lines under them
+  say that the change takes effect from the next message; an unchanged running
+  response shows no change notice. When a choice is queued, they say it keeps the
   model and effort it started with and the choice waits for it, naming both,
   and, if the choice could not be applied when it ended, why. A conversation
   whose model is no longer offered shows *Choose a model…* and its reply box

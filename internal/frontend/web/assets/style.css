@@ -929,6 +929,21 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .mp-note.error { color: var(--bad); }
 .mp-note a { color: inherit; text-decoration: underline; }
 .ask-bar .model-picker { margin-left: auto; }
+/* The New task controls sit quietly beside the folder and attachment buttons. */
+.ask-bar .mp-controls {
+  display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 0;
+  width: 320px; max-width: 100%; padding: 3px 0; border-radius: 10px; background: var(--bg);
+}
+.ask-bar .mp-field { position: relative; gap: 0; padding: 0 10px; font-weight: 500; letter-spacing: normal; line-height: 12px; }
+.ask-bar .mp-field + .mp-field { border-left: 1px solid var(--line); }
+.ask-bar .mp-field::after {
+  content: ""; position: absolute; right: 13px; bottom: 11px; width: 5px; height: 5px;
+  border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); pointer-events: none;
+}
+.ask-bar .mp-field:has(select:disabled)::after { opacity: .4; }
+.ask-bar .mp-select { appearance: none; height: 24px; max-width: 100%; padding: 0 20px 0 0; text-overflow: ellipsis; cursor: pointer; }
+.ask-bar .mp-select:hover:not(:disabled) { background: var(--surface); }
+.ask-bar .mp-select:disabled { cursor: default; }
 .reply-opts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; }
 @media (max-width: 760px) {
   .ask-bar .model-picker { margin-left: 0; flex-basis: 100%; }

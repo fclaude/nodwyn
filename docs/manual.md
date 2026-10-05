@@ -1221,7 +1221,8 @@ not answer is a warning, since it may be back).
   and change notices remain visible when the selects are collapsed; if a
   model must be chosen before continuing, the selects open automatically.
   Changing either takes effect from the next message,
-  and a line says so. While a response is running it keeps the model and effort
+  and a line says so after a choice; an unchanged running response shows no
+  change notice. While a response is running it keeps the model and effort
   it started with, and what you choose waits for it to end (the line says so,
   naming both); if it cannot be applied then, because the conversation has
   outgrown that model's context, say, the conversation keeps what it had and

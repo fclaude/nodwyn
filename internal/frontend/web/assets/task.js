@@ -550,7 +550,6 @@ export class TaskView {
     const canChoose = this.conn.has("session.model.set");
     const notes = [];
     if (m.queued) notes.push({ text: `Chosen while a response is running: ${words(m.queued)} takes effect from your next message. The response now running keeps ${words(m)}.` });
-    else if (this.busy) notes.push({ text: `The response now running keeps ${words(m)}. A change takes effect from your next message.` });
     else if (this.modelChanged) notes.push({ text: `Takes effect from your next message: ${words(m)}.` });
     if (m.notice) notes.push({ kind: "error", text: `The model chosen while the response ran could not be applied: ${m.notice}. The conversation keeps ${words(m)}.` });
     if (m.unavailable) notes.push({ kind: "error", text: `This conversation's model is not available (${m.unavailable}). Nothing is sent until you choose one.` });

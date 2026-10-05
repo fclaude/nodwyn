@@ -170,3 +170,12 @@ model's entry. Whether a model takes images was set the same way.
 Not built: reading a context length or a price from a catalogue other than
 the model's own server's list (OpenRouter's lists OpenAI's models, but asking
 it for a model on another server would send a request nobody configured).
+
+## Amendment 2026-10-05: change notices follow a choice
+
+The conversation picker showed that the running response kept its model and
+that a change would apply to the next message even when nobody had changed
+anything. That hypothetical notice was noise. Timing notices now describe
+actual model or effort choices: a queued choice names both the running and
+chosen selections, and a choice between messages says when it applies. An
+unchanged running response shows no change notice; warnings and errors remain.

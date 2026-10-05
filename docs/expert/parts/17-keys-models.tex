@@ -289,7 +289,9 @@ summary, opened by a click or by focusing it and pressing Enter. Warnings and
 change notices remain visible when collapsed, and an unavailable conversation
 opens the selects automatically so a model can be chosen. In a
 conversation a change is a \code{session.model.set}; naming the model it is on
-changes the effort alone, and nothing is sized again. While a response runs the
+changes the effort alone, and nothing is sized again. Timing notices describe
+actual choices; an unchanged running response shows no change notice.
+While a response runs the
 change is \emph{queued}: recorded at once without a window recipe, reported in
 \code{session.info}, and applied as the turn ends, before it is idle. If it
 cannot apply (the conversation outgrew the target's context, the model left the

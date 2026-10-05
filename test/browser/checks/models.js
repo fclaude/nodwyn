@@ -382,7 +382,9 @@ check(async () => {
   await page.fill("#reply", "Slowly");
   await page.press("#reply", "Enter");
   await until("the request to be held", async () => (await (await fetch(`${chatBase}/_fake/waiting`)).json()) === 1);
-  await page.waitForFunction(() => document.querySelector(".reply-opts .mp-notes")?.textContent.includes("The response now running keeps"));
+  await page.waitForFunction(() => document.querySelector(".task-head .pill")?.textContent !== "Idle");
+  const unchanged = await noteText();
+  assert.ok(!unchanged.includes("The response now running keeps") && !unchanged.includes("next message"), "an unchanged running response shows a change notice: " + unchanged);
   await openPicker();
   await page.selectOption("#task-model-effort", "medium");
   await page.waitForFunction(() => document.querySelector(".reply-opts .mp-notes")?.textContent.includes("Chosen while a response is running"));

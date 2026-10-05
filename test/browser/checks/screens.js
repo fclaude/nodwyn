@@ -40,6 +40,26 @@ check(async () => {
   const home = async (page) => {
     await shows(page, "#sidebar", "NEEDS YOU", "Run ls -la · console", "receipts", "Summarize what is in this folder", "ready");
     await shows(page, "#view", "What should we get done?", "Run ls -la", "Allow once", "RECENTLY FINISHED", "Summarize what is in this folder");
+    const picker = await page.$eval("#new-task-model .mp-controls", (el) => {
+      const box = el.getBoundingClientRect();
+      const fields = [...el.querySelectorAll(".mp-field")];
+      const selects = fields.map((field) => field.querySelector("select").getBoundingClientRect());
+      return {
+        height: box.height,
+        divider: getComputedStyle(fields[1]).borderLeftWidth,
+        contained: selects.every((r) => r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom),
+      };
+    });
+    assert.ok(picker.height <= 46, `the Home picker is ${picker.height}px tall, not a slim paired control`);
+    assert.strictEqual(picker.divider, "1px", "a divider separates model and effort");
+    assert.ok(picker.contained, "the dropdowns extend outside their paired control");
+    await page.focus("#new-task-model-model");
+    const focus = await page.$eval("#new-task-model-model", (el) => ({ visible: el.matches(":focus-visible"), outline: getComputedStyle(el).outlineStyle }));
+    assert.ok(focus.visible && focus.outline !== "none", "the model has no visible keyboard focus");
+    await page.keyboard.press("Tab");
+    // The synthetic world's model takes no effort, so Tab skips that disabled control.
+    assert.ok(await page.$eval("#new-task-model-effort", (el) => el.disabled), "the model with no efforts should leave effort disabled");
+    assert.ok(await page.$eval("button[aria-label='Start the task']", (el) => el.disabled), "an empty task should not be sent");
   };
   await shoot("home", { width: 1440, height: 900 }, "light", home);
 
@@ -94,6 +114,8 @@ check(async () => {
   await shoot("phone-activity", { width: 390, height: 844 }, "light", activity);
   await shoot("task-dark", { width: 1440, height: 1080 }, "dark", task);
   await shoot("home-dark", { width: 1440, height: 900 }, "dark", home);
+  await shoot("home-phone", { width: 390, height: 844 }, "light", home);
+  await shoot("home-phone-dark", { width: 390, height: 844 }, "dark", home);
   await shoot("phone", { width: 390, height: 844 }, "light", task);
   await shoot("settings", { width: 1280, height: 800 }, "light", async (page) => {
     await go(page, "#/settings");
