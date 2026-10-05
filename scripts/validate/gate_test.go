@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -161,5 +162,46 @@ func turn(t *testing.T, s *core.Session, text string) {
 		case <-timeout:
 			t.Fatal("no idle after 60s")
 		}
+	}
+}
+
+// A turn that only commits what validate already checked is not told to
+// validate again: the change is measured against the commit the turn began
+// on, and a commit moves nothing out of it. Measured against HEAD, every
+// commit-only turn was told to (at least ten times in the local sessions of
+// 2026-10-04 and 05).
+func TestACommitAloneIsNoChangeToValidate(t *testing.T) {
+	repo := fixture(t, map[string]string{
+		"README.md": "fixture\n",
+		"Makefile":  "validate:\n\t@echo 'validate: PASS (0 warnings)'\n",
+	})
+	copyInit(t, repo)
+	srv := fake.New(
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "README.md", "content": "fixture, changed\n"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "v", Name: "validate", Args: map[string]any{}}}},
+		fake.Turn{Content: "validate: PASS (0 warnings)"},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "c", Name: "shell-exec", Args: map[string]any{"cmd": "git", "args": []string{"-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-qam", "the change"}}}}},
+		fake.Turn{Content: "Committed."},
+	)
+	defer srv.Close()
+	cfg := config.Default()
+	cfg.Control.URL = srv.URL
+	cfg.Control.Model = "test-model"
+	logb := &bytes.Buffer{}
+	s, err := core.New(core.Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: logb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	turn(t, s, "Change the README.")
+	turn(t, s, "Commit it.")
+	if out, err := exec.Command("git", "-C", repo, "status", "--porcelain", "--untracked-files=no").Output(); err != nil || strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("the commit did not happen: %q %v\n%s", out, err, logb.String())
+	}
+	if len(srv.Requests) != 5 {
+		t.Fatalf("%d model requests, want 5: a commit-only turn was asked something more", len(srv.Requests))
+	}
+	if strings.Contains(string(srv.Requests[4].Raw), "validate has not run since your last change") {
+		t.Fatal("a commit-only turn was told to validate again")
 	}
 }

@@ -589,7 +589,7 @@ Primitive & What it does \\
 \code{(fs-list path)} & a directory's names, sorted; directories end in \code{/} \\
 \code{(fs-find path glob)} & file names under a directory matching a glob, at most 500 \\
 \code{(index-grep path pattern [glob [context]])} & search contents with an RE2 regular expression, walked and matched in Go \\
-\code{(git-status)}, \code{(git-diff [path [staged]])} & in a git work tree only: status and uncommitted changes; read-only, no approval \\
+\code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree only: status, and the changes since the last commit or since \code{against}; the commit HEAD is on; read-only, no approval \\
 \code{(shell-exec cmd args)} & run a program and wait for it; irreversible \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background; irreversible \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\

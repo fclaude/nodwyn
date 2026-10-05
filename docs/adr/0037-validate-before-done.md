@@ -190,3 +190,36 @@ variables, and `TestAnUnfinishedTurnLeavesItsPlan`, which sets
 `llm.RetryDelay`. Six runs of each, alternated on the same machine:
 `go test -race -count=1 ./internal/core/` took 27.1 to 27.7 s
 sequential and 6.6 to 7.6 s parallel, none failing.
+
+## Amendment 2026-10-05: a worktree's work is measured from where it left main, and a failing browser check is sorted
+
+Three things the local session logs of 2026-10-03 to 10-05 showed validate
+getting wrong in the worktrees most work now runs in (ADR 34):
+
+- A worktree's branch has no upstream, so validate measured from HEAD, and
+  once the work was committed it said "nothing changed since HEAD … PASS"
+  (20261004T080135Z-aef239e9 seq 1769, 20261004T144303Z-219d1111 seq 4385,
+  20261004T160126Z-dfc828d6 seq 2528, 20261005T151325Z-d9519026 seq 5649):
+  models re-pointed the branch's upstream by hand or re-ran make accept and
+  the browser checks. A branch with no upstream is now measured from where it
+  left the main line (the branch origin's HEAD names, then main, then master,
+  local before remote); the main line itself, with no upstream, still
+  measures from HEAD.
+- This repository's finish check compared git's status lines and the diff
+  against HEAD before and after a turn, so a turn that only committed what
+  validate had already checked was told to validate again, at least ten
+  times (20261005T035352Z-5a76f6e4 seq 556, 20261005T040401Z-cb8a1bdf 482,
+  20261005T042752Z-871dfe24 575, 20261004T141038Z-b6cc7b4f 1015, ...). It now
+  compares the untracked files and the diff against the worktree's base
+  commit, or the commit HEAD named when the turn began (`git-head`, and
+  `git-diff`'s new `against`), so a commit changes nothing.
+- A failing browser check's summary was the end of the log, which held the
+  checks that passed, and telling a failure the unchanged code has too took
+  2.5 to 6 minutes a time, once with a wrong diagnosis
+  (20261004T032020Z-442c04d4, 20261004T035536Z-cd08f00d,
+  20261004T073130Z-40187c24). validate now names the checks that failed with
+  their FAILED lines, runs them once more (one that passes then is flaky),
+  and runs those that fail again, as the unchanged code has them, on a copy
+  of it with this checkout's Playwright. It fails only for a check that
+  fails with the change and passes without it; flaky checks and checks that
+  fail on the unchanged code too are a warning to answer.

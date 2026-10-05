@@ -50,7 +50,7 @@ func TestPlanFollowsTheChangedFiles(t *testing.T) {
 		{[]string{"internal/core/deleted.go"}, []string{"make accept"}},
 	} {
 		var got []string
-		for _, ch := range plan(c.changed) {
+		for _, ch := range plan("", c.changed) {
 			got = append(got, ch.name)
 		}
 		if !slices.Equal(got, c.want) {
@@ -325,5 +325,84 @@ func TestDocRulesSayWhatIsMissing(t *testing.T) {
 	}
 	if got := docRules("", []string{"internal/loop/prompts.scm", "docs/adr/0032-working-habits.md", "docs/protocol.schema.json", "docs/protocol.md", "internal/core/strategy_test.go"}); len(got) != 0 {
 		t.Fatalf("a complete change: %+v", got)
+	}
+}
+
+// A branch with no upstream, as a session's worktree branch is, is measured
+// from where it left the main line, so its committed work is still a change
+// to check: on 2026-10-04 validate said "nothing changed since HEAD" after
+// every commit in a worktree, and models re-ran make accept and the browser
+// checks by hand. On the main line itself, with no upstream, a commit is
+// not a change, as before.
+func TestABranchWithoutUpstreamIsMeasuredFromTheMainLine(t *testing.T) {
+	repo := fixture(t, map[string]string{"a.txt": "a\n"})
+	gitIn(t, repo, "checkout", "-q", "-b", "nodwyn/task")
+	writeAll(t, repo, map[string]string{"b.txt": "b\n"})
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-q", "-m", "the task's work")
+	t.Chdir(repo)
+	base, against, err := baseCommit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	main, _ := git("rev-parse", "main")
+	if base != main || against != "main" {
+		t.Fatalf("measured from %s (%s), want main's %s", base, against, main)
+	}
+	if changed, err := changedFiles(base); err != nil || !slices.Equal(changed, []string{"b.txt"}) {
+		t.Fatalf("changed %v, %v", changed, err)
+	}
+	gitIn(t, repo, "checkout", "-q", "main")
+	head, _ := git("rev-parse", "HEAD")
+	if base, against, err := baseCommit(); err != nil || base != head || against != "HEAD" {
+		t.Fatalf("on main: %s (%s), %v", base, against, err)
+	}
+}
+
+// A browser check that fails is named with its FAILED line, run once more
+// (one that passes then is flaky) and, failing again, run on the unchanged
+// code: one that fails there too is not the change's. Only a check that
+// fails with the change and passes without it fails validate. Until
+// 2026-10-05 the summary showed the end of the log, the checks that passed,
+// and telling a failure the unchanged code has too took sessions minutes
+// (20261004T032020Z-442c04d4, with a wrong diagnosis).
+func TestFailingBrowserChecksAreNamedAndSorted(t *testing.T) {
+	out := `== screens
+step: home
+no page errors
+== screens: ok in 9.1s
+== approve
+step: card shown
+FAILED Error: no the switch offered after 10000 ms
+    at until (lib.js:177:33)
+== approve: FAILED (exit 1) in 14.5s
+== models
+FAILED Error: models.js:300 the task did not load
+== models: FAILED (exit 1) in 21.0s
+== remote
+FAILED AssertionError: the pairing code
+== remote: FAILED (exit 1) in 3.0s
+`
+	failed := failedChecks(out)
+	if !slices.Equal(failed, []string{"approve", "models", "remote"}) {
+		t.Fatalf("failed: %v", failed)
+	}
+	why := failureLines(out, failed)
+	for _, want := range []string{"approve: FAILED Error: no the switch offered", "models: FAILED Error: models.js:300", "remote: FAILED AssertionError"} {
+		if !strings.Contains(why, want) {
+			t.Errorf("the failure lines lack %q:\n%s", want, why)
+		}
+	}
+	// approve fails again and passes without the change: the change's.
+	// models passed when run again: flaky. remote fails without the
+	// change too.
+	r := browserVerdict(failed, []string{"approve", "remote"}, []string{"remote"}, why)
+	if r.status != "FAIL" || !strings.Contains(r.detail, "fail with the change and pass on the unchanged code: approve") ||
+		!strings.Contains(r.detail, "(flaky): models") || !strings.Contains(r.detail, "not because of the change: remote") || r.tail != why {
+		t.Fatalf("verdict: %+v", r)
+	}
+	// None of them the change's: a warning to answer, not a failure.
+	if r := browserVerdict([]string{"models", "remote"}, []string{"remote"}, []string{"remote"}, ""); r.status != "WARN" || !strings.Contains(r.detail, "Say so in your answer") {
+		t.Fatalf("verdict: %+v", r)
 	}
 }

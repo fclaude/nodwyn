@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -48,10 +49,11 @@ func gitPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 		{
 			Name: "git-diff",
 			Meta: scheme.Meta{
-				Doc: "Show the uncommitted changes as a unified diff: the working tree against the index, or with staged the index against the last commit. Untracked files are not in a diff: git-status lists them. Read-only; needs no approval.",
+				Doc: "Show the uncommitted changes as a unified diff: the working tree against the index, or with staged the index against the last commit; with against, the working tree (or with staged, the index) against that commit or branch instead, committed changes included. Untracked files are not in a diff: git-status lists them. Read-only; needs no approval.",
 				Params: []scheme.Param{
 					{Name: "path", Type: "string", Doc: "a file or directory to limit the diff to; \".\" for the whole repository", Role: "path", Optional: true},
 					{Name: "staged", Type: "boolean", Doc: "true for the staged changes (git diff --cached)", Optional: true},
+					{Name: "against", Type: "string", Doc: "a commit or branch to compare with instead of the last commit, such as the base a worktree started from: what changed since, committed or not", Optional: true},
 				},
 				Host: true, TaintSource: scheme.TagFile,
 			},
@@ -75,6 +77,14 @@ func gitPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 						args = append(args, "--cached")
 					}
 				}
+				if len(c.Args) > 2 && !(c.Args[2].Kind == scheme.KString && c.Args[2].S == "") && !scheme.Equal(c.Args[2], scheme.False) {
+					if c.Args[2].Kind != scheme.KString || !revision.MatchString(c.Args[2].S) {
+						return scheme.Value{}, fmt.Errorf("git-diff: against must be a commit or branch name, got %s", scheme.Write(c.Args[2]))
+					}
+					// Never an option: git would read --output=FILE as one
+					// and write the file.
+					args = append(args, "--end-of-options", c.Args[2].S)
+				}
 				args = append(args, "--", filepath.ToSlash(rel))
 				hidden, err := deniedChanges(c.Ctx, o, args)
 				if err != nil {
@@ -90,8 +100,27 @@ func gitPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 				return scheme.Str(out), nil
 			},
 		},
+		{
+			Name: "git-head",
+			Meta: scheme.Meta{
+				Doc:  "The commit HEAD names now, as its full hash; #f before the first commit. A strategy measures a turn's change against the commit it started on, so a commit made in the turn moves nothing out of it.",
+				Host: true, Hidden: true,
+			},
+			Handler: func(c *scheme.Call) (scheme.Value, error) {
+				out, err := runGit(c.Ctx, o, "rev-parse", "--verify", "--quiet", "HEAD")
+				if err != nil || strings.TrimSpace(out) == "" {
+					return scheme.False, nil
+				}
+				return scheme.Str(strings.TrimSpace(out)), nil
+			},
+		},
 	}
 }
+
+// revision is what git-diff takes to compare with: a hash, a branch or a
+// tag, with git's ~, ^ and @{} suffixes; never anything that starts like an
+// option.
+var revision = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/~^@{}-]*$`)
 
 // deniedChanges are pathspecs that leave out of the diff diffArgs asks
 // for (its arguments from "diff" on) each changed file fs-read refuses, as

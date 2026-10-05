@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 220 of 426 tracked Go files: every non-test Go file, 48,336 of 87,855 Go source lines (55.0\% by lines). It also includes all 34 tracked Scheme files (2,759 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 221 of 427 tracked Go files: every non-test Go file, 48,567 of 88,242 Go source lines (55.0\% by lines). It also includes all 34 tracked Scheme files (2,774 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -589,6 +589,8 @@ Read the policy document representation and update rules alongside the guarded p
 Read main, changes, checks, base and runner in that order. This is the program behind make validate and the project's Scheme wrapper. Check selection follows changed paths; regression testing compares changed Go tests against unchanged code. The report distinguishes failures, skipped work and warnings so an agent can describe what actually ran.
 
 \sourcefile{scripts/validate/base.go}{Go}
+
+\sourcefile{scripts/validate/browser.go}{Go}
 
 \sourcefile{scripts/validate/changes.go}{Go}
 

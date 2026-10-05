@@ -305,3 +305,38 @@ func TestChangedFilesSinceBaseStopsWhenCancelled(t *testing.T) {
 		t.Fatal("a cancelled review returned without an error")
 	}
 }
+
+// git-diff against a commit shows what changed since it, committed or not,
+// so a commit moves nothing out of a change measured against its base; it
+// takes a commit or branch, never anything git would read as an option
+// (--output= writes a file). git-head names the commit HEAD is on.
+func TestGitDiffAgainstACommitAndGitHead(t *testing.T) {
+	root, in := gitRepo(t)
+	eval := func(src string) (scheme.Value, error) { return in.EvalString(context.Background(), src) }
+	head, err := eval(`(git-head)`)
+	if err != nil || len(head.S) != 40 {
+		t.Fatalf("git-head: %v %v", head, err)
+	}
+	os.WriteFile(filepath.Join(root, "plants.txt"), []byte("tomato\nbasil\n"), 0o600)
+	cmd := exec.Command("git", "commit", "-qam", "second")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v\n%s", err, out)
+	}
+	if v, _ := eval(`(git-diff)`); v.S != "(no changes)" {
+		t.Fatalf("against HEAD after the commit: %q", v.S)
+	}
+	v, err := eval(fmt.Sprintf(`(git-diff "." #f %q)`, head.S))
+	if err != nil || !strings.Contains(v.S, "+basil") {
+		t.Fatalf("against the first commit: %q %v", v.S, err)
+	}
+	if now, _ := eval(`(git-head)`); now.S == head.S {
+		t.Fatal("git-head did not move with the commit")
+	}
+	for _, bad := range []string{"--output=/tmp/x", "-p", "a b", "HEAD;id"} {
+		if _, err := eval(fmt.Sprintf(`(git-diff "." #f %q)`, bad)); err == nil || !strings.Contains(err.Error(), "against must be a commit or branch") {
+			t.Errorf("against %q: %v", bad, err)
+		}
+	}
+}

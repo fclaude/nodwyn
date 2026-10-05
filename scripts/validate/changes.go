@@ -2,14 +2,21 @@ package main
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 )
 
 // baseCommit is what the change is measured against: where the branch left
-// its upstream, so work committed but not yet pushed counts too, or HEAD
-// when the branch has no upstream.
+// its upstream, so work committed but not yet pushed counts too; else, for a
+// branch with no upstream, where it left the repository's main line, as a
+// session's worktree branch left main; else HEAD. A worktree's branch has
+// no upstream, so once its work was committed validate said "nothing
+// changed since HEAD", and models re-ran make accept and the browser checks
+// by hand (20261004T080135Z-aef239e9 seq 1769, 20261004T144303Z-219d1111
+// seq 4385, 20261004T160126Z-dfc828d6 seq 2528; ADR 37, amended
+// 2026-10-05).
 func baseCommit() (commit, against string, err error) {
 	if up, err := git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"); err == nil && up != "" {
 		if mb, err := git("merge-base", "HEAD", up); err == nil {
@@ -17,7 +24,34 @@ func baseCommit() (commit, against string, err error) {
 		}
 	}
 	head, err := git("rev-parse", "HEAD")
-	return head, "HEAD", err
+	if err != nil {
+		return head, "HEAD", err
+	}
+	for _, line := range mainLines() {
+		if mb, err := git("merge-base", "HEAD", line); err == nil && mb != head {
+			return mb, strings.TrimPrefix(strings.TrimPrefix(line, "refs/heads/"), "refs/remotes/"), nil
+		}
+	}
+	return head, "HEAD", nil
+}
+
+// mainLines are the names the repository's main line may go by, the local
+// branch before the remote one: what origin's HEAD names, then main and
+// master.
+func mainLines() []string {
+	names := []string{"main", "master"}
+	if ref, err := git("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil && strings.HasPrefix(ref, "origin/") {
+		names = append([]string{strings.TrimPrefix(ref, "origin/")}, names...)
+	}
+	var out []string
+	for _, n := range names {
+		for _, ref := range []string{"refs/heads/" + n, "refs/remotes/origin/" + n} {
+			if _, err := git("rev-parse", "--verify", "--quiet", ref); err == nil && !slices.Contains(out, ref) {
+				out = append(out, ref)
+			}
+		}
+	}
+	return out
 }
 
 // changedFiles lists every path that differs from base: committed since,

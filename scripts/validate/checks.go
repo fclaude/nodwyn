@@ -21,7 +21,7 @@ type check struct {
 // reads needs none; anything else needs make accept, which is what
 // promotion runs; the console, its contract and its checks need the
 // browser checks, since Go's tests do not run the console.
-func plan(changed []string) []check {
+func plan(base string, changed []string) []check {
 	var checks []check
 	var goFiles, jsFiles []string
 	accept, browser, book, expert := false, false, false, false
@@ -55,7 +55,7 @@ func plan(changed []string) []check {
 		}})
 	}
 	if browser {
-		checks = append(checks, check{"browser checks", browserChecks})
+		checks = append(checks, check{"browser checks", func(logs string) result { return browserChecks(base, logs) }})
 	}
 	if book {
 		checks = append(checks, check{"make book", func(logs string) result { return latex("make book", "book", "docs/book/nodwyn.pdf", logs) }})
@@ -121,19 +121,6 @@ func nodeCheck(files []string) result {
 		return result{status: "FAIL", name: "node --check", detail: "does not parse: " + strings.Join(bad, " "), tail: tail.String()}
 	}
 	return result{status: "PASS", name: "node --check", detail: fmt.Sprintf("%d changed scripts parse", len(files))}
-}
-
-// browserChecks runs every browser check. Without Node or Playwright it
-// fails rather than skips: a console change is done when it has run in a
-// browser, and the summary says how to install what is missing.
-func browserChecks(logs string) result {
-	if _, err := exec.LookPath("node"); err != nil {
-		return result{status: "FAIL", name: "browser checks", detail: "node is not installed, so the console cannot be checked here"}
-	}
-	if st, err := os.Stat("test/browser/node_modules/playwright"); err != nil || !st.IsDir() {
-		return result{status: "FAIL", name: "browser checks", detail: "Playwright is not installed: cd test/browser && npm install && npx playwright install chromium"}
-	}
-	return step("browser checks", "test/browser/run.sh, every check", logs, 30*time.Minute, "bash", "test/browser/run.sh")
 }
 
 // latex builds the book or the expert guide when its sources changed. A

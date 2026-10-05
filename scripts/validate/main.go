@@ -50,7 +50,7 @@ func main() {
 	}
 	fmt.Printf("validate: %d changed files since %s (%s); full output in %s\n", len(changed), short(base), against, logs)
 	var results []result
-	for _, c := range plan(changed) {
+	for _, c := range plan(base, changed) {
 		results = append(results, c.run(logs))
 	}
 	results = append(results, againstBase(base, changed, logs)...)

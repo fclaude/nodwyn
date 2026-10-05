@@ -16,12 +16,26 @@
 ;; shell-start, since make accept and the browser checks together can pass
 ;; shell-exec's ten minutes, and reads until make exits.
 
-;; The repository as the finish check compares it: git's status lines and
-;; the diff of tracked files, so a second edit to a file already changed
-;; counts too. An untracked file edited again keeps its status line, and is
-;; missed.
+;; The repository as the finish check compares it: the files git does not
+;; track, and the diff of the tracked ones against the change's base, so a
+;; second edit to a file already changed counts too and a commit changes
+;; nothing. The base is the commit a session's worktree started from, else
+;; the one HEAD named when the turn began (validation-base): against HEAD,
+;; a commit emptied the diff, and every commit-only turn was told to
+;; validate again (at least ten times in the local sessions of 2026-10-04
+;; and 05:
+;; 20261005T035352Z-5a76f6e4 seq 556, cb8a1bdf 482, 871dfe24 575, ...). An
+;; untracked file edited again keeps its status line, and is missed.
+(define validation-base (guard (e (else #f)) validation-base))
+
+(define (validation-against)
+  (or (guard (e (else #f)) (let ((w (worktree))) (and w (assoc-ref w "base-commit" #f))))
+      validation-base
+      "HEAD"))
+
 (define (validation-state)
-  (list (git-state) (guard (e (else "")) (format "~a" (git-diff)))))
+  (list (filter (lambda (l) (string-prefix? "?? " l)) (or (git-state) '()))
+        (guard (e (else "")) (format "~a" (git-diff "." #f (validation-against))))))
 
 ;; What the repository looked like when validate last finished; kept across
 ;; a reload.
@@ -85,6 +99,7 @@
         (loop (ask-model) (reading-rounds calls reading))))))
 
 (define (default-agent-turn request)
+  (set! validation-base (guard (e (else #f)) (git-head)))
   (let ((before (validation-state)))
     (validate-base-agent-turn request)
     (let remind ((left validate-reminders))
