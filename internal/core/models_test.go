@@ -360,7 +360,7 @@ func TestWindowSizedFromTheModelList(t *testing.T) {
 		note             string
 	}{
 		{"long", 774144, 1032192, 1048576, "sized for long's context of 1048576 tokens"},
-		{"quiet", 61440, 61440, 0, "set num_ctx in [control]"},
+		{"quiet", 61440, 61440, 0, "set it for the model in Settings › Models, or as num_ctx in its entry"},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			cfg := config.Default()

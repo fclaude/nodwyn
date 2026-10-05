@@ -86,18 +86,6 @@ const specs = {
   "budget.cost_hard": { kind: "decimal", label: "Spend, stop at" },
   "loop.request_timeout": { kind: "duration", label: "A model reply" },
   "loop.shell_timeout": { kind: "duration", label: "A command" },
-  "control.num_ctx": { kind: "count", label: "Context length" },
-  "control.max_output": { kind: "count", label: "Reply cap" },
-  "control.temperature": { kind: "decimal", label: "Temperature" },
-  "control.seed": { kind: "integer", label: "Seed" },
-  "control.keep_alive": { kind: "text", label: "Keep loaded" },
-  "control.vision": { kind: "choice", label: "Takes images" },
-  "control.output_field": { kind: "choice", label: "Reply cap field" },
-  "control.cache_key": { kind: "choice", label: "Session key" },
-  "control.cache_control": { kind: "choice", label: "Prompt cache" },
-  "control.price_input": { kind: "decimal", label: "Price of input" },
-  "control.price_cached_input": { kind: "decimal", label: "Price of cached input" },
-  "control.price_output": { kind: "decimal", label: "Price of output" },
   "jev.content": { kind: "choice", label: "What the judge sees" },
   "jev.approve_threshold": { kind: "decimal", label: "Allows a command at" },
   "jev.price_input": { kind: "decimal", label: "Judge price of input" },
@@ -407,7 +395,7 @@ function limitsSection(ctx) {
         h("div", { class: "limit-head" }, "Stop at"),
         ...pair("The whole task", "budget.cost_soft", "budget.cost_hard", { soft: { prefix: "$", placeholder: costOn ? "the stop" : "—" }, hard: { prefix: "$", placeholder: "off" } }),
       ),
-      h("p", { class: "hint" }, "In US dollars, for what a task's model requests cost as far as known: as the provider reports it, or from the model's prices below. It counts every turn of a task, and is off until “stop at” is set. A request nobody priced isn't counted."),
+      h("p", { class: "hint" }, "In US dollars, for what a task's model requests cost as far as known: as the provider reports it, or from each model's own prices (Models, below). It counts every turn of a task, and is off until “stop at” is set. A request nobody priced isn't counted."),
     ),
     ...row(
       "Waiting",
@@ -438,50 +426,11 @@ export function modelRows(desk) {
 }
 
 function modelsSection(ctx, root) {
-  const { desk } = ctx;
-  const control = desk.settings?.control || {};
-  const provider = control.Provider || control.provider || "ollama";
-  const configured = !!(control.Model || control.model);
-  const v = values(desk);
-  const reserve = v["window.output_reserve"]?.value;
-  const tuning =
-    configured && desk.settings?.values
-      ? h(
-          "div",
-          { class: "settings-grid nested" },
-          ...row("Context length", input(ctx, "control.num_ctx", { placeholder: provider === "ollama" ? "the window's size" : "the server's" }), h("p", { class: "hint" }, "Tokens the model holds at once. It also sizes the conversation window.")),
-          ...row("Reply cap", input(ctx, "control.max_output", { placeholder: reserve ? `${grouped(reserve)}, the window's reserve` : "the window's reserve" }), h("p", { class: "hint" }, "The most a reply may take, thinking included. A remote reasoning model may need more.")),
-          ...row("Sampling", h("div", { class: "row-actions" }, h("span", { class: "muted" }, "Temperature"), input(ctx, "control.temperature", { width: "narrow", placeholder: "server's" }), h("span", { class: "muted" }, "seed"), input(ctx, "control.seed", { width: "narrow", placeholder: "none" })), h("p", { class: "hint" }, "Temperature is 0 to 2; empty leaves both to the server. 0 with a seed makes replies as repeatable as the server allows.")),
-          provider === "ollama"
-            ? row("Keep loaded", input(ctx, "control.keep_alive", { width: "narrow", placeholder: "Ollama's" }), h("p", { class: "hint" }, "How long Ollama keeps the model in memory between requests, such as 30m, or -1 for always."))
-            : [
-                ...row("Takes images", choice(ctx, "control.vision", [[true, "Yes"], [false, "No"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "Whether an attached image may be sent to this model. A chat-completions server doesn't say, so you do.")),
-                ...row("Reply cap field", choice(ctx, "control.output_field", [["", "max_completion_tokens"], ["max_tokens", "max_tokens"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "Reasoning models refuse the older max_tokens; some servers know only that one.")),
-                ...row("Session key", choice(ctx, "control.cache_key", [["", "Header and field"], ["header", "Header only"], ["off", "Not sent"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "Names the session to the server, so it can keep the requests on the replica that holds their prompt cache. Header only for a server that refuses fields it doesn't know.")),
-                ...row("Prompt cache", choice(ctx, "control.cache_control", [["", "Not asked"], ["ephemeral", "5 minutes"], ["1h", "1 hour"]], () => renderSettings(root, ctx)), h("p", { class: "hint" }, "A Claude model, through OpenRouter or another provider, caches its prompt only when asked: without this every request is billed in full, however little changed. Asking has the provider cache the conversation so far for the time chosen, and read it back at a tenth of the price (a write costs a quarter more). Leave it off for a model that caches by itself, which is most others, and for a server that refuses fields it doesn't know.")),
-              ],
-          ...row(
-            "Prices",
-            h(
-              "div",
-              { class: "row-actions" },
-              input(ctx, "control.price_input", { width: "narrow", prefix: "$", placeholder: "unknown" }),
-              h("span", { class: "muted" }, "input,"),
-              input(ctx, "control.price_cached_input", { width: "narrow", prefix: "$", placeholder: "as input" }),
-              h("span", { class: "muted" }, "cached input,"),
-              input(ctx, "control.price_output", { width: "narrow", prefix: "$", placeholder: "unknown" }),
-              h("span", { class: "muted" }, "output"),
-            ),
-            h("p", { class: "hint" }, "US dollars per million tokens, to estimate what a request cost when the provider doesn't report it. They feed the spend limit; nothing else is enforced with them."),
-          ),
-        )
-      : null;
   return section(
     "models",
     "Models",
-    "The providers nodwyn talks to, the models you choose between, and what new tasks start on. Saved in config.toml with its other lines kept; a key goes to the keychain. Tasks already open keep the model and effort they have, and change them under their own message box.",
+    "The providers nodwyn talks to, the models you choose between with each one's own settings, and what new tasks start on. Saved in config.toml with its other lines kept; a key goes to the keychain. Tasks already open keep the model and effort they have, and change them under their own message box.",
     ...modelsRows(ctx, () => renderSettings(root, ctx)),
-    tuning ? row("Default model tuning", tuning) : [],
   );
 }
 

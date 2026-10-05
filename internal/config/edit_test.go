@@ -137,7 +137,7 @@ func TestEditTypedValuesTogether(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "# low") || cfg.Budget.TokensSoft != 500 || cfg.Budget.TokensHard != 1000 || cfg.Budget.CostHard != 2 || !cfg.Control.Vision || cfg.Approval.Commands != "ask" {
+	if strings.Contains(text, "# low") || cfg.Budget.TokensSoft != 500 || cfg.Budget.TokensHard != 1000 || cfg.Budget.CostHard != 2 || cfg.Control.Vision == nil || !*cfg.Control.Vision || cfg.Approval.Commands != "ask" {
 		t.Fatalf("parsed %+v from:\n%s", cfg, text)
 	}
 	// Each change alone is checked only with the others.
@@ -191,7 +191,7 @@ func TestKeysAndValues(t *testing.T) {
 		want       any
 	}{
 		{"budget", "cost_hard", 3.5}, {"budget", "tokens_hard", int64(10_000_000)}, {"budget", "wall_soft", "4h"},
-		{"control", "seed", int64(7)}, {"control", "temperature", nil}, {"control", "vision", false},
+		{"control", "seed", int64(7)}, {"control", "temperature", nil}, {"control", "vision", nil},
 		{"approval", "writes", "allow"}, {"approval", "commands", "judge"}, {"policy.l1", "enabled", true},
 	} {
 		if got, ok := cfg.Value(c.table, c.key); !ok || got != c.want {

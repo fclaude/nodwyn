@@ -863,8 +863,6 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .settings-section { display: flex; flex-direction: column; gap: 12px; padding-top: 22px; border-top: 1px solid var(--line); scroll-margin-top: 16px; }
 .settings-section h2 { margin: 0; font-family: var(--serif); font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
 .settings-section .hint.intro { font-size: 13.5px; color: var(--muted); max-width: 680px; }
-.settings-grid.nested { grid-template-columns: 150px minmax(0, 1fr); gap: 12px 16px; }
-.settings-grid.nested > .label { font-size: 13px; font-weight: 500; color: var(--ink-2); padding-top: 8px; }
 .input.setting { height: 34px; width: min(320px, 100%); }
 .input.setting.narrow { width: 9em; }
 .input.setting::placeholder { color: var(--faint-2); }
@@ -888,8 +886,6 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .ws-row { display: grid; grid-template-columns: 18px minmax(0, 1fr); }
   .ws-row .end { grid-column: 2; margin-left: 0; justify-content: flex-start; }
   .ws-row .confirm-text { text-align: left; }
-  .settings-grid.nested { grid-template-columns: minmax(0, 1fr); }
-  .settings-grid.nested > .label { padding-top: 0; }
   .limits { grid-template-columns: minmax(0, 1fr) 7.5em 7.5em; }
 }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); }
@@ -952,6 +948,9 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .default-badge { margin-left: 8px; vertical-align: 1px; }
 .form-title { margin: 0; font-size: 15px; font-weight: 600; }
 .provider-form, .model-form { padding: 16px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
+.model-row .model-settings { color: var(--faint); }
+.more-settings > summary { cursor: pointer; font-weight: 500; font-size: 13px; color: var(--ink-2); }
+.more-settings > .field { margin-top: 14px; }
 .test-result { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 13px; color: var(--ink-2); }
 .test-result .dot { margin-top: 5px; }
 .test-result.bad { color: var(--bad); }

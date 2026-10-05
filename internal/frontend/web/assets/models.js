@@ -48,7 +48,7 @@ let ui = fresh();
 function fresh() {
   return {
     provider: null, // the provider form being filled in: {mode, name, preset, kind, url, dialect, key, error, saving}
-    model: null, // the model form: {mode, name, server, model, set, custom, effort, isDefault, error, saving}
+    model: null, // the model form: {mode, name, server, model, set, custom, effort, isDefault, settings, more, error, saving}
     removing: "", // "provider:NAME" or "model:NAME" waiting for its confirm
     results: new Map(), // "provider:NAME" | "model:NAME" | "form" -> the last test, or {pending: true}
     offered: new Map(), // provider name -> model ids it lists, or the reason it does not
@@ -309,6 +309,7 @@ function modelRows(ctx, redraw) {
           { class: "main" },
           h("strong", {}, c.model, c.default ? h("span", { class: "badge plain default-badge" }, "default") : null),
           h("span", {}, `${c.server || c.host} · ${c.efforts?.length ? `effort: ${c.efforts.map(effortLabel).join(" · ")}${c.effort ? `, starts at ${effortLabel(c.effort)}` : ""}` : "no effort setting"}`),
+          h("span", { class: "model-settings" }, settingsLine(c.settings, c.provider)),
           status && status.state !== "ready" ? h("span", { class: "warn-text" }, status.detail || state.words[status.state]) : null,
         ),
         h("div", { class: "end" }, status ? h("span", { class: "state-word" }, state.words[status.state] || status.state) : h("span", { class: "state-word" }, "checking")),
@@ -320,7 +321,7 @@ function modelRows(ctx, redraw) {
         editable && !inline ? h("button", { type: "button", class: "btn small", onclick: () => openModel(c, redraw) }, "Edit") : null,
         editable && !inline && !c.default ? (confirming ? [h("span", { class: "muted" }, "Remove it from the list?"), h("button", { type: "button", class: "btn small danger", onclick: () => removeModel(ctx, c.name, redraw) }, "Remove"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((ui.removing = ""), redraw()) }, "Cancel")] : h("button", { type: "button", class: "btn small danger", onclick: () => ((ui.removing = key), redraw()) }, "Remove")) : null,
       ),
-      inline ? h("p", { class: "hint" }, "Gives its own address in config.toml, so its efforts are set there. Choosing it as the default on a provider above moves it to one.") : null,
+      inline ? h("p", { class: "hint" }, "Gives its own address in config.toml, so its efforts and settings are set there. Choosing it as the default on a provider above moves it to one.") : null,
       resultLine(result),
     );
   });
@@ -329,8 +330,145 @@ function modelRows(ctx, redraw) {
     choices.length ? h("div", { class: "models" }, list) : h("p", { class: "hint" }, "No model yet."),
     ui.model ? modelForm(ctx, redraw) : null,
     editable && !ui.model ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "add-model", disabled: !(desk.settings?.servers || []).some((p) => !p.inline), title: (desk.settings?.servers || []).some((p) => !p.inline) ? "" : "Add a provider first", onclick: () => openModel(null, redraw) }, icon("plus", 14), "Add a model")) : null,
-    h("p", { class: "hint" }, "These are the models the New task window and a conversation offer. A model takes an effort setting only if you say which: nodwyn never guesses it from the model's name or the provider, and sends none to a model that declares none."),
+    h("p", { class: "hint" }, "These are the models the New task window and a conversation offer. Each has its own settings: its efforts, its context length, its prices and whether it takes images. A model takes an effort setting only if you say which: nodwyn never guesses it from the model's name or the provider, and sends none to a model that declares none."),
   );
+}
+
+// settingsLine says briefly what a model's own settings are: how large its
+// context is, what it costs and whether it takes images, as far as said.
+function settingsLine(s = {}, kind) {
+  const parts = [];
+  parts.push(s.num_ctx ? `context ${s.num_ctx.toLocaleString("en-US")} tokens` : kind === "ollama" ? "context the window's size" : "context as the provider says");
+  parts.push(s.price_input !== undefined && s.price_output !== undefined ? `$${s.price_input} in, $${s.price_output} out per million tokens` : "no prices");
+  if (s.vision === false) parts.push("takes no images");
+  return parts.join(" · ");
+}
+
+// settingsForm is a model's settings as its form holds them: numbers as
+// typed, so a redraw keeps what is half-typed.
+function settingsForm(s = {}) {
+  const text = (v) => (v === undefined || v === null ? "" : String(v));
+  const count = (v) => (v ? v.toLocaleString("en-US") : "");
+  return {
+    num_ctx: count(s.num_ctx),
+    max_output: count(s.max_output),
+    temperature: text(s.temperature),
+    seed: text(s.seed),
+    keep_alive: s.keep_alive || "",
+    vision: s.vision !== false,
+    output_field: s.output_field || "",
+    cache_key: s.cache_key || "",
+    cache_control: s.cache_control || "",
+    price_input: text(s.price_input),
+    price_cached_input: text(s.price_cached_input),
+    price_output: text(s.price_output),
+  };
+}
+
+// settingsOf reads a form's settings for settings.model.write, all of them:
+// what is empty is left out, which leaves it unset, and what only the other
+// kind of server reads is not sent. A number that does not read is refused
+// here, in words, before anything is sent; the daemon judges the rest.
+function settingsOf(f, kind) {
+  const s = f.settings;
+  const out = {};
+  const number = (name, label, { whole = false, signed = false } = {}) => {
+    const raw = s[name].replace(/[,_\s]/g, "");
+    if (!raw) return;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || (whole && !Number.isInteger(n)) || (!signed && n < 0)) {
+      throw new Error(`${label} takes ${whole ? "a whole number" : "a number"}${signed ? "" : " of 0 or more"}, not “${s[name]}”.`);
+    }
+    out[name] = n;
+  };
+  number("num_ctx", "Context length", { whole: true });
+  number("max_output", "Reply cap", { whole: true });
+  number("temperature", "Temperature");
+  number("seed", "Seed", { whole: true, signed: true });
+  number("price_input", "The price of input");
+  number("price_cached_input", "The price of cached input");
+  number("price_output", "The price of output");
+  if (kind === "ollama") {
+    if (s.keep_alive.trim()) out.keep_alive = s.keep_alive.trim();
+    return out;
+  }
+  // Yes is the default, so only No is written (vision = false).
+  if (!s.vision) out.vision = false;
+  for (const name of ["output_field", "cache_key", "cache_control"]) if (s[name]) out[name] = s[name];
+  return out;
+}
+
+// settingsFields are the model form's fields for its own settings: the three
+// a person most often needs first (its context, its prices, images), the rest
+// folded under More settings.
+function settingsFields(f, kind, redraw) {
+  const s = f.settings;
+  const field = (forId, label, control, hint) => h("div", { class: "field" }, h("label", { for: forId }, label), control, hint ? h("p", { class: "hint" }, hint) : null);
+  const box = (name, label, { placeholder = "", prefix = "", suffix = "", numeric = true, width = "narrow" } = {}) => {
+    const node = h("input", { class: `input setting ${width}`, id: `model-${name}`, "aria-label": label, inputmode: numeric ? "decimal" : null, autocomplete: "off", spellcheck: false, placeholder, oninput: () => (s[name] = node.value) });
+    node.value = s[name];
+    if (!prefix && !suffix) return node;
+    return h("span", { class: "affix" }, prefix ? h("span", { class: "unit" }, prefix) : null, node, suffix ? h("span", { class: "unit" }, suffix) : null);
+  };
+  const chips = (name, label, options) =>
+    h(
+      "div",
+      { class: "row-actions", role: "group", "aria-label": label },
+      options.map(([value, text]) => h("button", { type: "button", class: "chip", id: `model-${name}-${value === "" ? "default" : String(value)}`, "aria-pressed": String(s[name] === value), onclick: () => ((s[name] = value), redraw()) }, text)),
+    );
+  const openai = kind !== "ollama";
+  return [
+    field(
+      "model-num_ctx",
+      "Context length",
+      box("num_ctx", "Context length", { placeholder: openai ? "the provider's" : "the window's", suffix: "tokens", width: "" }),
+      openai
+        ? "How many tokens the model holds at once; the conversation window is sized for it. Empty asks the provider's model list: OpenRouter's says, OpenAI's and Cerebras' don't, so give it here for them."
+        : "How many tokens the model holds at once; the conversation window is sized for it. Empty asks Ollama for the window's size.",
+    ),
+    h(
+      "div",
+      { class: "field" },
+      h("label", { for: "model-price_input" }, "Prices"),
+      h(
+        "div",
+        { class: "row-actions" },
+        box("price_input", "Price of input", { prefix: "$", placeholder: "unknown" }),
+        h("span", { class: "muted" }, "input,"),
+        box("price_cached_input", "Price of cached input", { prefix: "$", placeholder: "as input" }),
+        h("span", { class: "muted" }, "cached input,"),
+        box("price_output", "Price of output", { prefix: "$", placeholder: "unknown" }),
+        h("span", { class: "muted" }, "output"),
+      ),
+      h("p", { class: "hint" }, "US dollars per million tokens, to estimate what a request cost when the provider doesn't report it: OpenRouter reports it, OpenAI and Cerebras don't. They feed the spend limit; nothing else is enforced with them."),
+    ),
+    openai ? field("model-vision-true", "Takes images", chips("vision", "Takes images", [[true, "Yes"], [false, "No"]]), "Whether an attached image may be sent to this model. A chat-completions server doesn't say, so a model is taken to read images unless you say No: one that can't fails that request, and what you wrote is kept.") : null,
+    h(
+      "details",
+      { class: "more-settings", open: f.more, ontoggle: (event) => (f.more = event.target.open) },
+      h("summary", {}, "More settings"),
+      field("model-max_output", "Reply cap", box("max_output", "Reply cap", { placeholder: "the window's reserve", suffix: "tokens", width: "" }), "The most a reply may take, thinking included. A remote reasoning model may need more."),
+      h(
+        "div",
+        { class: "field" },
+        h("label", { for: "model-temperature" }, "Sampling"),
+        h("div", { class: "row-actions" }, h("span", { class: "muted" }, "Temperature"), box("temperature", "Temperature", { placeholder: "server's" }), h("span", { class: "muted" }, "seed"), box("seed", "Seed", { placeholder: "none" })),
+        h("p", { class: "hint" }, "Temperature is 0 to 2; empty leaves both to the server. 0 with a seed makes replies as repeatable as the server allows."),
+      ),
+      openai
+        ? [
+            field("model-output_field-default", "Reply cap field", chips("output_field", "Reply cap field", [["", "max_completion_tokens"], ["max_tokens", "max_tokens"]]), "Reasoning models refuse the older max_tokens; some servers know only that one."),
+            field("model-cache_key-default", "Session key", chips("cache_key", "Session key", [["", "Header and field"], ["header", "Header only"], ["off", "Not sent"]]), "Names the session to the server, so it can keep the requests on the replica that holds their prompt cache. Header only for a server that refuses fields it doesn't know."),
+            field(
+              "model-cache_control-default",
+              "Prompt cache",
+              chips("cache_control", "Prompt cache", [["", "Not asked"], ["ephemeral", "5 minutes"], ["1h", "1 hour"]]),
+              "A Claude model, through OpenRouter or another provider, caches its prompt only when asked: without this every request is billed in full, however little changed. Asking has the provider cache the conversation so far for the time chosen, and read it back at a tenth of the price (a write costs a quarter more). Leave it off for a model that caches by itself, which is most others, and for a server that refuses fields it doesn't know.",
+            ),
+          ]
+        : field("model-keep_alive", "Keep loaded", box("keep_alive", "Keep loaded", { placeholder: "Ollama's", numeric: false }), "How long Ollama keeps the model in memory between requests, such as 30m, or -1 for always."),
+    ),
+  ];
 }
 
 function setOf(efforts) {
@@ -340,8 +478,8 @@ function setOf(efforts) {
 
 function openModel(c, redraw) {
   ui.model = c
-    ? { mode: "edit", name: c.name, server: c.server, model: c.model, set: setOf(c.efforts || []), custom: (c.efforts || []).join(", "), effort: c.effort || "", isDefault: !!c.default, error: "" }
-    : { mode: "add", name: "", server: "", model: "", set: "none", custom: "", effort: "", isDefault: false, error: "" };
+    ? { mode: "edit", name: c.name, server: c.server, model: c.model, set: setOf(c.efforts || []), custom: (c.efforts || []).join(", "), effort: c.effort || "", isDefault: !!c.default, settings: settingsForm(c.settings), more: false, error: "" }
+    : { mode: "add", name: "", server: "", model: "", set: "none", custom: "", effort: "", isDefault: false, settings: settingsForm(), more: false, error: "" };
   redraw();
 }
 
@@ -394,6 +532,11 @@ function modelForm(ctx, redraw) {
         redraw();
         try {
           const params = { server: f.server, model: f.model.trim(), efforts };
+          // The form holds all of a model's settings, so a change sends them
+          // all; a model added with none typed sends none, which keeps those of
+          // a model the list has already.
+          const settings = settingsOf(f, providerOf(desk, f.server)?.provider);
+          if (!adding || Object.keys(settings).length) params.settings = settings;
           // The default model's own effort is the default's above; a model
           // of the list starts at the one chosen here.
           if (!f.isDefault && f.effort) params.effort = f.effort;
@@ -423,6 +566,7 @@ function modelForm(ctx, redraw) {
     ),
     efforts.length && !f.isDefault ? field("model-effort", "Starts at", effort, "The effort a task asks of this model unless one is chosen.") : null,
     efforts.length && f.isDefault ? h("p", { class: "hint" }, "The effort a new task starts at is the default's, above.") : null,
+    settingsFields(f, providerOf(desk, f.server)?.provider, redraw),
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
     resultLine(testing),
     h("div", { class: "row-actions" }, save, testButton, h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.model = null), redraw()) }, "Cancel")),

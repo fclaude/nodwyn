@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -244,8 +245,9 @@ type docsParams struct {
 	GoogleUpload string `json:"google_upload"`
 }
 type controlParams struct {
-	// Name chooses a [models.NAME] entry as the default model, with the
-	// settings it carries. Without it, Server names a configured server
+	// Name chooses a [models.NAME] entry as the default model, whose
+	// settings stay in the entry and are the default's (config.Tuned).
+	// Without it, Server names a configured server
 	// ([servers.NAME]) the model is on, or Provider and URL say where it is,
 	// and the server they make is saved under a name of its own, or found
 	// among those configured.
@@ -306,6 +308,9 @@ type modelChoice struct {
 	Effort  string   `json:"effort,omitempty"`
 	// Default marks the model new tasks start on.
 	Default bool `json:"default,omitempty"`
+	// Settings are the model's: its entry's own, and for the default those
+	// of the entry it names (config.Tuned).
+	Settings modelSettings `json:"settings"`
 }
 
 func (s *server) settings() settingsResult {
@@ -392,8 +397,8 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		m          config.Model
 	)
 	if p.Name != "" {
-		// A model already in the list is the default as it is there, tuning
-		// and efforts included.
+		// A model already in the list is the default as it is there, its
+		// settings and efforts included, which its entry keeps.
 		if p.Server != "" || p.Provider != "" || p.URL != "" || model != "" || len(key) > 0 {
 			return nil, failure(-32602, "Give a model from the list by name, or a server and a model, not both")
 		}
@@ -405,11 +410,11 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 			return nil, failure(-32602, fmt.Sprintf("No model named %q is configured", p.Name))
 		}
 		m = entry
-		// Its efforts are the entry's to list: a copy here would go stale when
-		// the entry changes, and win over it (Config.Efforts). [control] keeps
-		// only what it declared itself.
+		// Its settings and efforts are the entry's: a copy here would go stale
+		// when the entry changes, and win over it (Config.Tuned,
+		// Config.Efforts). [control] keeps only what it declared itself.
 		if p.Name != config.ControlModel {
-			m.Efforts = nil
+			m = entry.Choice()
 		}
 	} else {
 		var rerr *rpcError
@@ -491,8 +496,13 @@ func keepPreviousDefault(text []byte, cfg config.Config, previous config.Model) 
 	if previous.URL == "" && previous.Server == "" || previous.Model == "" || cfg.SameModel(previous, cfg.Control) {
 		return text, cfg, nil
 	}
-	for _, listed := range cfg.Models {
-		if cfg.SameModel(previous, listed) {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Models)) {
+		if listed := cfg.Models[name]; cfg.SameModel(previous, listed) {
+			// What the default held itself fills what its entry leaves unset,
+			// so a setting made on [control] is not lost with it.
+			if merged := listed.WithSettings(previous); !reflect.DeepEqual(merged, listed) {
+				return config.SetModel(text, name, merged)
+			}
 			return text, cfg, nil
 		}
 	}

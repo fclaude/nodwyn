@@ -1066,6 +1066,10 @@ num_ctx = 81920
 A model that names a server takes its `provider`, `dialect`, `url` and
 `credential` from the server and sets none of them itself; the rest
 (context length, reply cap, sampling, prices, `vision`) is the model's own.
+`[control]` names the default model; each of those settings it leaves unset
+comes from the first `[models.NAME]` for the same model at the same address,
+as its efforts do, so a model's settings are said once, in its own entry, and
+a model chosen in a picker has the same settings as when it is the default.
 A model may also give those settings itself instead of naming a server,
 as every model did before servers. In the app, Settings saves the server the first time you choose a
 model on it, named after its host (`openrouter` for `openrouter.ai`), with
@@ -1181,9 +1185,17 @@ this computer only:
   `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
   own list, asked without a key, fills in suggestions) and the efforts it
   takes, with shortcuts (low · medium · high, minimal added, off · on) and any
-  other words, and the effort it starts at. Tuning the file knows (context
-  length, prices) stays while the entry is the same model. **Test it** tries a
-  model before it is saved.
+  other words, and the effort it starts at. Each model has its own settings in
+  its form: its **context length** (which sizes the conversation window; OpenAI
+  and Cerebras do not say it, OpenRouter does), its **prices** per million
+  tokens (which price a request when the provider reports no cost, as only
+  OpenRouter does), whether it **takes images** (yes unless you say no), and,
+  under *More settings*, the reply cap, sampling, the reply cap field, the
+  session key and the prompt cache for a chat-completions model, or how long
+  Ollama keeps it loaded. The row says the context and prices it has. Editing
+  the default model saves them in its entry, not in `[control]`, so they stay
+  with the model when another becomes the default. **Test it** tries a model
+  before it is saved.
 - *Default for new tasks* is a model from that list and its default effort.
   Choosing another default keeps the one it replaces in the list.
 
@@ -1256,7 +1268,8 @@ next turn — `(model-turn)` asks the new model, while `(model-turn "NAME")`
 still asks a named one for a turn (ADR 27). The window is then sized for the
 new model, as it would be had the task been opened on it: from its
 `num_ctx`, or from the context the server's model list gives (OpenRouter's
-does), and a note in the transcript says how. A choice made while a turn runs
+does; OpenAI's and Cerebras' do not, so set it for those models in Settings ›
+Models), and a note in the transcript says how. A choice made while a turn runs
 waits for it (above): it is queued, and applied as the turn ends. It is
 refused while an attachment is being added or a run is active, and, once it
 applies, when the conversation would not fit the new model's context less its
@@ -1293,7 +1306,8 @@ is how big the context got (`405,467 → 4,936 tokens over 12 requests ·
 largest prompt 58,412`). The token budget adds them up the same way.
 OpenRouter reports cache use and cost in every
 response, cost in USD included; nothing has to be asked for. A server that
-reports no cost can be priced in its model entry, per million tokens:
+reports no cost (OpenAI, Cerebras, any other but OpenRouter) can be priced in
+Settings › Models, in the model's Prices, or in its entry, per million tokens:
 
 ```toml
 [models.coder]
@@ -1357,8 +1371,8 @@ Settings › Models › Test says so, with what to turn off, before a task does.
 A request that reuses what the last one wrote reports `cached_tokens`, read at
 a tenth of the input price on Anthropic's usual terms; the write costs a
 quarter more, and a cache lasts the time chosen, so a pause longer than that
-pays for a write again. Settings has it as Prompt cache, with the default
-model's tuning.
+pays for a write again. Settings has it as Prompt cache, under the model's More
+settings.
 
 A spend limit, `cost_soft` and `cost_hard` in `[budget]` (US dollars), is
 off unless you set it. It counts the known cost of the whole task, every
@@ -1434,7 +1448,9 @@ to three quarters of the context less the reply cap, and the low water to
 half of that: a 1M-token model trims past 774144 and compacts just under it.
 The last quarter is room for compaction's handover note (docs/scheme.md §9.2),
 so a long task is summarized before anything is trimmed. The session log
-notes the size it chose, or that the server did not say; set `num_ctx` then.
+notes the size it chose, or that the server did not say (OpenAI's and
+Cerebras' never do); set the model's context length in Settings › Models then,
+or `num_ctx` in its entry.
 Setting `high_water` or `low_water` in `[window]` keeps the window at your
 size. A larger window sends more with every request: on a paid model, a
 request near the high water costs that many prompt tokens, less what the
@@ -1493,18 +1509,23 @@ seed = 42
 
 **Images.** Files are attached from the console's composer
 ([the browser view](browser.md), "Attaching"). An image can be attached
-only when the control model takes images. Ollama says whether a model does (`ollama show MODEL` lists `vision`
-among its capabilities), and nodwyn asks it once per session. A
-chat-completions server does not say, so you do:
+when the conversation's model takes images. Ollama says whether a model does
+(`ollama show MODEL` lists `vision` among its capabilities), and nodwyn asks it
+once per session. A chat-completions server does not say, so a model on one is
+taken to read images unless its entry says it does not (Settings › Models ›
+Takes images: No):
 
 ```toml
-[control]
-provider = "openai"
-url = "https://api.example.com/v1"
-model = "some-vision-model"
-credential = "example-key"
-vision = true                     # it reads images; openai only
+[models.text-only]
+server = "openrouter"
+model = "some-text-model"
+vision = false                    # it reads no images; openai only
 ```
+
+A model that cannot read one refuses that request, and the turn ends saying
+the model may not take images and what to do: choose another model for the
+conversation, and say No for this one. What you wrote stays in the
+conversation.
 
 Attaching an image (PNG, JPEG, GIF or WebP, decided by its content; at most
 10 MB and 8000 pixels a side) asks a security confirm of its own. It names
@@ -1523,11 +1544,12 @@ never get it. The window counts an image as about 85 tokens plus 170 per
 is deleted, later requests say so instead of sending it, which is also how
 to take an image out of a conversation.
 
-The console's Settings page writes `[control]` for you, and tunes it under
-Models › Default model tuning. Saving the same model
-on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
-`max_output`, `output_field`, `temperature`, `seed`, `vision`, `cache_key`, `cache_control`
-and the `price_*` entries); choosing another model starts from its defaults.
+The console's Settings page writes `[control]` for you: which model is the
+default and the effort it starts at. The model's settings are its entry's,
+set in its form under Models; saving the default model moves any it had in
+`[control]` (from an older console, or written by hand) to its entry, filling
+only what the entry leaves unset. Choosing another default keeps the one it
+replaces in the list with its settings.
 
 The line-mode `nodwyn` refuses to start without it, printing the table to
 add, and checks at start that an Ollama control server answers. A daemon

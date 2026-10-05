@@ -432,7 +432,7 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}`, or `{"provider","url","model","api_key"?,"effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on), and saving the server it names; the model it replaces stays in the list |
 | `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?}` | Settings after adding a provider (`[servers.NAME]`, named after its host) or changing the one `name` names; the key goes to the keychain |
 | `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model is on |
-| `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts and starting effort |
+| `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?,"settings"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts, starting effort and settings |
 | `settings.model.remove` | `{"name"}` | Settings after removing a model from the list; the default model is not removed |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
 | `settings.write` | `{"set": {"budget.tokens_hard": 20000000, "budget.cost_hard": null, …}}` | Settings after changing those settings in `config.toml` together |
@@ -462,8 +462,19 @@ the keychain says of it without asking the server (`ready`, `needs_key`,
 the models on it. `choices` are the models a task can be started on or moved to,
 `[control]` first as `control` with `default: true`, then each `[models.NAME]`
 that is not the default model again: `{name, server?, provider, model, host,
-efforts?, effort?, default?}`, where `efforts` are the efforts the model takes
-and `effort` the one it starts with (ADR 41). `dialect`, when
+efforts?, effort?, default?, settings}`, where `efforts` are the efforts the
+model takes, `effort` the one it starts with (ADR 41), and `settings` the
+model's own settings, `{num_ctx?, max_output?, output_field?, keep_alive?,
+temperature?, seed?, vision?, cache_key?, cache_control?, price_input?,
+price_cached_input?, price_output?}`: its entry's, and for `control` those of
+the entry it names (ADR 41, amended 2026-10-05). `settings.model.write` takes
+the same object as `settings`, all of the model's settings at once: one left
+out is unset (`vision` unset is a chat-completions model that takes images,
+`false` one that does not; ADR 22, amended 2026-10-05), a name it does not know
+is refused, and `settings` left out keeps the entry's own. They are written to
+the model's `[models.NAME]`; when the model is the default, what `[control]`
+held of them moves to the entry, and `[control]` keeps only the model and its
+effort. `dialect`, when
 configured, is `compatible`, `cerebras` or `responses`; the first two select
 Chat Completions history encoding, and `responses` sends requests to OpenAI's
 Responses API instead (ADR 8, amended 2026-10-05). `control` is the main
@@ -488,16 +499,14 @@ lock sessions take when they save the same answer, and writes it 0600.
 
 `values` in the settings maps each setting `settings.write` may change, by
 dotted name, to `{value, default, set}`: the value tasks opened now get
-(`null` for an optional one left unset, such as `control.temperature`), its
+(`null` for an optional one left unset, such as `jev.price_input`), its
 default, and whether `config.toml` sets it. `judge` says whether a judge can
 answer confirms now: `jev.content` is not `none` and a `jev-key` is in the
 unlocked keychain. `settings.write` takes `set`, from those names to new
 values; `null` removes a key so its default applies. It accepts only
 `approval.writes` and `approval.commands` (what a task does without asking,
 ADR 35), the `budget.*` limits, `loop.request_timeout`
-and `loop.shell_timeout`, the `window.*` marks, the `[control]` model's
-tuning (`num_ctx`, `max_output`, `output_field`, `keep_alive`,
-`temperature`, `seed`, `vision`, `cache_key`, `cache_control` and the `price_*` entries), `jev.content`,
+and `loop.shell_timeout`, the `window.*` marks, `jev.content`,
 `jev.approve_threshold`, `jev.timeout`, `jev.model` and `mcp.runtime`;
 never an address, a credential, the egress proxy or `[policy]`. The
 changes are made together and only their result is validated, as the

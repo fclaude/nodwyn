@@ -189,7 +189,7 @@ type registryEntry struct {
 func (s *server) registry() []registryEntry {
 	cfg := s.options.Config
 	var entries []registryEntry
-	if c := cfg.Resolve(cfg.Control); c.URL != "" && c.Model != "" {
+	if c := cfg.Tuned(cfg.Resolve(cfg.Control)); c.URL != "" && c.Model != "" {
 		entries = append(entries, registryEntry{config.ControlModel, c})
 	}
 	for _, name := range slices.Sorted(maps.Keys(cfg.Models)) {

@@ -129,18 +129,20 @@ not), and the log records it on each request (\adr{41}).
 In the console, Settings $\to$ Models does all of this without the file:
 providers with their address, dialect and key, and whether each can be used and
 why not; a test request that says whether the key was accepted; the models to
-choose between, with their efforts; and the default model and effort new tasks
-start on. Under the message box of the New task window, a Model and an Effort
-select change what the next message is answered with. In a conversation they
-are tucked behind a compact model-and-effort summary: click it, or focus it
+choose between, each with its efforts and its own settings (its context
+length, its prices, whether it takes images); and the default model and effort
+new tasks start on. Under the message box of the New task window, a Model and an
+Effort select change what the next message is answered with. In a conversation
+they are tucked behind a compact model-and-effort summary: click it, or focus it
 and press Enter, to expand them. Warnings and change notices remain visible
 when collapsed, and a task that needs a model chosen opens the selects for
 you. A change made while a response is running waits for it, and the
 page says so. A task whose model has gone from the list asks nothing until you
 choose one for it.
 
-A model may also set \code{num\_ctx} (sent to Ollama; for \code{[control]}
-it also sizes the window) and \code{keep\_alive} (Ollama),
+A model may also set \code{num\_ctx} (sent to Ollama; for the model a
+conversation is on it also sizes the window, and OpenAI's and Cerebras' model
+lists do not say it, where OpenRouter's does) and \code{keep\_alive} (Ollama),
 \code{max\_output} and \code{output\_field} (servers that need them),
 \code{temperature} and \code{seed}, \code{cache\_control} (\code{"ephemeral"}
 or \code{"1h"}: a Claude model caches its prompt only when the request asks, and
@@ -149,10 +151,13 @@ nothing is inferred from its name; \adr{9}), and \code{price\_input},
 million tokens, from which a request's cost is estimated when the provider
 does not report it (cached input unset is priced as input). Each request
 records the settings it was sent with, so \code{nodwyn replay --window} can
-rebuild it. A
-chat-completions model that reads images says so with \code{vision = true};
-Ollama reports it itself. Images can be attached only when the control model
-takes them.
+rebuild it. These settings are the model's own: \code{[control]} names the
+default model, and each one it leaves unset comes from the model's
+\code{[models.NAME]} entry, as its efforts do, so the model has the same
+settings whether it is the default or chosen in a picker (\adr{41}, amended).
+A chat-completions model is taken to read images unless its entry says
+\code{vision = false}: a provider that cannot read one refuses that request,
+and the turn says so (\adr{22}, amended). Ollama reports it itself.
 
 \chapter{Ways in}
 
@@ -168,7 +173,7 @@ takes them.
   approvals inline with their diffs, plans, budgets, changes and their
   history, attachments, notes; Connections for MCP servers, Workspaces for
   folders, Settings for what a task does without asking (Approvals), its
-  limits, the model and its tuning, the judge and the keychain. Every task
+  limits, the models and their settings, the judge and the keychain. Every task
   it starts is a chat, and a long request is a message like any other
   (\adr{35}); it starts no runs, but shows one that \code{nodwyn run}
   started. Its sidebar lists tasks under their folders, the latest active

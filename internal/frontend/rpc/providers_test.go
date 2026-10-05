@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"reflect"
 	"strings"
@@ -418,11 +419,12 @@ func TestChoosingAnotherDefaultKeepsThePreviousOne(t *testing.T) {
 	}
 }
 
-// Settings sets whether a model's provider is asked to cache its prompt,
-// next to the tuning it saves with the rest, and refuses what means nothing.
-func TestSettingsWriteSetsCacheControl(t *testing.T) {
+// A model's entry says whether its provider is asked to cache its prompt,
+// next to the rest of its settings, and the default model, which names the
+// entry, is asked the same; a word that means nothing is refused.
+func TestModelWriteSetsCacheControl(t *testing.T) {
 	o := options(t)
-	raw := "[control]\nprovider = \"openai\"\nurl = \"https://openrouter.ai/api/v1\"\nmodel = \"anthropic/claude-sonnet-5.5\"\n"
+	raw := "[servers.openrouter]\nprovider = \"openai\"\nurl = \"https://openrouter.ai/api/v1\"\n\n[control]\nserver = \"openrouter\"\nmodel = \"anthropic/claude-sonnet-5.5\"\n"
 	if err := os.MkdirAll(o.Paths.ConfigDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -436,26 +438,49 @@ func TestSettingsWriteSetsCacheControl(t *testing.T) {
 	path, _ := start(t, o)
 	c := connect(t, path)
 	c.hello()
+	model := map[string]any{"server": "openrouter", "model": "anthropic/claude-sonnet-5.5"}
+	with := func(settings map[string]any) map[string]any {
+		p := maps.Clone(model)
+		p["settings"] = settings
+		return p
+	}
 	var settings settingsResult
-	into(t, c.ok("settings.write", map[string]any{"set": map[string]any{"control.cache_control": "1h"}}), &settings)
-	if v := settings.Values["control.cache_control"]; v.Value != "1h" || !v.Set {
-		t.Fatalf("after setting it: %+v", v)
+	into(t, c.ok("settings.model.write", with(map[string]any{"cache_control": "1h"})), &settings)
+	if got := choice(t, settings, "control").Settings.CacheControl; got != "1h" {
+		t.Fatalf("the default model's cache_control after setting it: %q", got)
 	}
-	if !strings.Contains(read(t, o.Paths.ConfigFile), "cache_control = \"1h\"") {
-		t.Fatalf("not saved:\n%s", read(t, o.Paths.ConfigFile))
+	cfg, err := config.Parse([]byte(read(t, o.Paths.ConfigFile)))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if r := c.call("settings.write", map[string]any{"set": map[string]any{"control.cache_control": "forever"}}); r.Error == nil || !strings.Contains(r.Error.Message, "cache_control") {
+	if cfg.Control.CacheControl != "" || cfg.Models["openrouter-anthropic-claude-sonnet-5-5"].CacheControl != "1h" {
+		t.Fatalf("not saved in the model's entry alone:\n%s", read(t, o.Paths.ConfigFile))
+	}
+	if r := c.call("settings.model.write", with(map[string]any{"cache_control": "forever"})); r.Error == nil || !strings.Contains(r.Error.Message, "cache_control") {
 		t.Fatalf("a word nobody sends: %+v", r.Error)
 	}
-	// Saving the same model again keeps it, as it keeps the rest of its tuning.
-	c.ok("settings.control.write", map[string]any{"provider": "openai", "url": "https://openrouter.ai/api/v1", "model": "anthropic/claude-sonnet-5.5"})
+	// Saving the same model as the default again keeps it, as it keeps the
+	// rest of the model's settings.
+	c.ok("settings.control.write", model)
 	if !strings.Contains(read(t, o.Paths.ConfigFile), "cache_control = \"1h\"") {
 		t.Fatalf("saving the model dropped it:\n%s", read(t, o.Paths.ConfigFile))
 	}
-	into(t, c.ok("settings.write", map[string]any{"set": map[string]any{"control.cache_control": nil}}), &settings)
-	if strings.Contains(read(t, o.Paths.ConfigFile), "cache_control") {
+	into(t, c.ok("settings.model.write", with(map[string]any{})), &settings)
+	if strings.Contains(read(t, o.Paths.ConfigFile), "cache_control") || choice(t, settings, "control").Settings.CacheControl != "" {
 		t.Fatalf("not removed:\n%s", read(t, o.Paths.ConfigFile))
 	}
+}
+
+// choice is the model named name among settings' choices.
+func choice(t *testing.T, settings settingsResult, name string) modelChoice {
+	t.Helper()
+	for _, c := range settings.Choices {
+		if c.Name == name {
+			return c
+		}
+	}
+	t.Fatalf("no choice %q in %+v", name, settings.Choices)
+	return modelChoice{}
 }
 
 // A test request asks what a task's would: a model set to have its prompt
@@ -466,7 +491,7 @@ func TestModelTestCarriesTheAskToCache(t *testing.T) {
 	c.ok("settings.provider.write", map[string]any{"provider": "openai", "url": srv.V1(), "api_key": "sk-good-key-123456"})
 	var result testResult
 	c.ok("settings.control.write", map[string]any{"server": "127-0-0-1", "model": "claude"})
-	c.ok("settings.write", map[string]any{"set": map[string]any{"control.cache_control": "ephemeral"}})
+	c.ok("settings.model.write", map[string]any{"server": "127-0-0-1", "model": "claude", "settings": map[string]any{"cache_control": "ephemeral"}})
 	into(t, c.ok("models.test", map[string]any{"name": "control"}), &result)
 	if !result.OK || result.CacheControl != "ephemeral" {
 		t.Fatalf("a model that caches when asked: %+v", result)
@@ -476,7 +501,7 @@ func TestModelTestCarriesTheAskToCache(t *testing.T) {
 	}
 	// Another model starts from its own defaults; asked to cache it is refused.
 	c.ok("settings.control.write", map[string]any{"server": "127-0-0-1", "model": "thinker"})
-	c.ok("settings.write", map[string]any{"set": map[string]any{"control.cache_control": "ephemeral"}})
+	c.ok("settings.model.write", map[string]any{"server": "127-0-0-1", "model": "thinker", "settings": map[string]any{"cache_control": "ephemeral"}})
 	into(t, c.ok("models.test", map[string]any{"name": "control"}), &result)
 	if result.OK || result.State != "refused" || result.Status != 400 || !strings.Contains(result.Detail, "turn Prompt cache off") {
 		t.Fatalf("a provider that refuses the ask: %+v", result)

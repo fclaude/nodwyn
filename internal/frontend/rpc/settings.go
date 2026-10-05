@@ -21,7 +21,6 @@ const (
 	text settingKind = iota
 	whole
 	number
-	flag
 )
 
 // settable is what Settings may change in config.toml (settings.write), by
@@ -31,7 +30,9 @@ const (
 // decides where content goes is not: the model's address and key
 // (settings.control.write), the judge's address, credentials and bindings,
 // the egress proxy and the [policy] table are set where they are reviewed,
-// or in config.toml by hand.
+// or in config.toml by hand. A model's own settings (its context length,
+// prices, whether it takes images) are not here either: each model has its
+// own, set with settings.model.write (ADR 41, amended 2026-10-05).
 var settable = map[string]settingKind{
 	"approval.writes": text, "approval.commands": text,
 
@@ -45,10 +46,6 @@ var settable = map[string]settingKind{
 	"window.high_water": whole, "window.low_water": whole,
 	"window.max_result_tokens": whole, "window.output_reserve": whole,
 
-	"control.num_ctx": whole, "control.max_output": whole, "control.output_field": text, "control.vision": flag,
-	"control.keep_alive": text, "control.temperature": number, "control.seed": whole, "control.cache_key": text, "control.cache_control": text,
-	"control.price_input": number, "control.price_cached_input": number, "control.price_output": number,
-
 	"jev.content": text, "jev.approve_threshold": number, "jev.timeout": text, "jev.model": text,
 	"jev.price_input": number, "jev.price_output": number,
 
@@ -56,7 +53,7 @@ var settable = map[string]settingKind{
 }
 
 // decode reads a setting's new value: nil (null) to remove it, else a
-// string, int64, float64 or bool, as config.Change takes them.
+// string, int64 or float64, as config.Change takes them.
 func (k settingKind) decode(raw json.RawMessage) (any, error) {
 	if string(raw) == "null" {
 		return nil, nil
@@ -74,12 +71,6 @@ func (k settingKind) decode(raw json.RawMessage) (any, error) {
 			return nil, fmt.Errorf("takes a number")
 		}
 		return f, nil
-	case flag:
-		var b bool
-		if json.Unmarshal(raw, &b) != nil {
-			return nil, fmt.Errorf("takes true or false")
-		}
-		return b, nil
 	}
 	var s string
 	if json.Unmarshal(raw, &s) != nil {
@@ -176,9 +167,6 @@ func (s *server) settingsWrite(req request, _ *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	s.options.Config = next
-	if tables["control"] {
-		forgetProbes()
-	}
 	return s.settings(), nil
 }
 
@@ -194,8 +182,6 @@ func withTables(held, parsed config.Config, tables map[string]bool) config.Confi
 			held.Loop = parsed.Loop
 		case "window":
 			held.Window = parsed.Window
-		case "control":
-			held.Control = parsed.Control
 		case "jev":
 			held.Jev = parsed.Jev
 		case "mcp":

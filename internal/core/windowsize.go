@@ -25,7 +25,7 @@ func (s *Session) sizeWindow(control loop.Endpoint) (loop.Endpoint, config.Windo
 	if oai, ok := control.Provider.(*llm.OpenAI); ok && control.NumCtx == 0 {
 		n, err := contextLength(oai, control.Model)
 		if err != nil {
-			return control, w, w.HighWater, fmt.Sprintf("the window keeps its default size: %s; set num_ctx in [control] to size it for the model's context", err)
+			return control, w, w.HighWater, fmt.Sprintf("the window keeps its default size, since %s's context length is not known (%s); set it for the model in Settings › Models, or as num_ctx in its entry in config.toml", control.Model, err)
 		}
 		control.NumCtx = n
 	}

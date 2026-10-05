@@ -333,8 +333,10 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 	if v := settings.Values["budget.tokens_hard"]; v.Value != float64(200) || v.Default != float64(10_000_000) || !v.Set {
 		t.Fatalf("tokens_hard read: %+v", v)
 	}
-	if v := settings.Values["control.temperature"]; v.Value != nil || v.Set {
-		t.Fatalf("unset temperature: %+v", v)
+	for name := range settings.Values {
+		if strings.HasPrefix(name, "control.") {
+			t.Fatalf("%s is a setting of every model at once; a model's settings are its own (settings.model.write)", name)
+		}
 	}
 	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{
 		"budget.tokens_soft": 500, "budget.tokens_hard": 1000, "budget.cost_hard": 2.5,
@@ -387,7 +389,8 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 		{"approval.commands": "sometimes"},
 		{"approval.writes": ""},
 		{"tasks.mode": "chat"},
-		{"control.vision": "yes"},
+		{"control.vision": true},
+		{"control.price_input": 1.5},
 		{"jev.price_output": -1},
 	} {
 		if r := c.call("settings.write", map[string]any{"set": set}); r.Error == nil {

@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -62,6 +63,56 @@ type modelWriteParams struct {
 	// starts with: one of Efforts, or none.
 	Efforts []string `json:"efforts,omitempty"`
 	Effort  string   `json:"effort,omitempty"`
+	// Settings are the model's own settings, all of them: what is left out
+	// is unset. Left out altogether, the entry keeps those it has.
+	Settings *modelSettings `json:"settings,omitempty"`
+}
+
+// modelSettings are a model's own settings, as Settings › Models edits them
+// (ADR 41, amended 2026-10-05): each model has its own, and the default model
+// has those of its entry. One left out is unset: the server decides, the
+// window's defaults apply, or the model is not priced.
+type modelSettings struct {
+	// NumCtx is how many tokens the model's context holds; it sizes the
+	// window. Unset, an OpenAI-compatible server's model list is asked
+	// (OpenRouter's says; OpenAI's and Cerebras' do not), and an Ollama model
+	// is asked for the window's size.
+	NumCtx int `json:"num_ctx,omitempty"`
+	// MaxOutput caps each reply, thinking included; unset is the window's
+	// output reserve. OutputField is the request field that carries it to a
+	// chat-completions server: max_completion_tokens unless "max_tokens".
+	MaxOutput   int    `json:"max_output,omitempty"`
+	OutputField string `json:"output_field,omitempty"`
+	// KeepAlive is how long Ollama keeps the model loaded. Ollama only.
+	KeepAlive   string   `json:"keep_alive,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
+	Seed        *int64   `json:"seed,omitempty"`
+	// Vision false says the model takes no images; unset, a chat-completions
+	// model is sent them (config.Model.TakesImages), since its server does
+	// not say. CacheKey and CacheControl are config.Model's. OpenAI-compatible
+	// servers only.
+	Vision       *bool  `json:"vision,omitempty"`
+	CacheKey     string `json:"cache_key,omitempty"`
+	CacheControl string `json:"cache_control,omitempty"`
+	// The prices, USD per million tokens, that estimate what a request cost
+	// when the provider does not report it, as only OpenRouter does.
+	PriceInput       *float64 `json:"price_input,omitempty"`
+	PriceCachedInput *float64 `json:"price_cached_input,omitempty"`
+	PriceOutput      *float64 `json:"price_output,omitempty"`
+}
+
+// settingsOf is m's settings as the wire carries them.
+func settingsOf(m config.Model) modelSettings {
+	return modelSettings{NumCtx: m.NumCtx, MaxOutput: m.MaxOutput, OutputField: m.OutputField, KeepAlive: m.KeepAlive, Temperature: m.Temperature, Seed: m.Seed,
+		Vision: m.Vision, CacheKey: m.CacheKey, CacheControl: m.CacheControl, PriceInput: m.PriceInput, PriceCachedInput: m.PriceCachedInput, PriceOutput: m.PriceOutput}
+}
+
+// on is m with these settings in place of its own.
+func (p modelSettings) on(m config.Model) config.Model {
+	m.NumCtx, m.MaxOutput, m.OutputField, m.KeepAlive, m.Temperature, m.Seed = p.NumCtx, p.MaxOutput, p.OutputField, p.KeepAlive, p.Temperature, p.Seed
+	m.Vision, m.CacheKey, m.CacheControl = p.Vision, p.CacheKey, p.CacheControl
+	m.PriceInput, m.PriceCachedInput, m.PriceOutput = p.PriceInput, p.PriceCachedInput, p.PriceOutput
+	return m
 }
 
 // providers lists the model providers as Settings shows them: each
@@ -141,7 +192,7 @@ func (s *server) choices() []modelChoice {
 			host = u.Host
 		}
 		out = append(out, modelChoice{Name: e.name, Server: e.model.Server, Provider: providerName(e.model.Provider), Model: e.model.Model, Host: host,
-			Efforts: cfg.Efforts(e.model), Effort: e.model.Effort, Default: e.name == config.ControlModel})
+			Efforts: cfg.Efforts(e.model), Effort: e.model.Effort, Default: e.name == config.ControlModel, Settings: settingsOf(e.model)})
 	}
 	return out
 }
@@ -338,12 +389,17 @@ func modelName(server, model string) string {
 }
 
 // modelWrite answers settings.model.write: it adds a model to the list a
-// person chooses from, or changes the provider, id, efforts or default effort
-// of one that is there. Whatever else the entry sets (context length, prices)
-// stays, unless it is another model now.
+// person chooses from, or changes the provider, id, efforts, default effort or
+// settings of one that is there. Settings left out stay as the entry has them,
+// unless it is another model now. The entry of the default model holds its
+// settings: [control] keeps only which model it is and its effort, and what it
+// held besides moves to the entry, so a change here is what the default gets.
 func (s *server) modelWrite(req request, _ *peer) (any, *rpcError) {
 	var p modelWriteParams
-	if err := params(req.Params, &p, "name", "server", "model", "efforts", "effort"); err != nil {
+	if err := params(req.Params, &p, "name", "server", "model", "efforts", "effort", "settings"); err != nil {
+		return nil, err
+	}
+	if err := knownSettings(req.Params); err != nil {
 		return nil, err
 	}
 	p.Model = strings.TrimSpace(p.Model)
@@ -378,8 +434,29 @@ func (s *server) modelWrite(req request, _ *peer) (any, *rpcError) {
 		if entry.Server != p.Server || entry.Model != p.Model {
 			entry = config.Model{}
 		}
+		// The default takes its settings from the first entry for its model in
+		// name order (config.Tuned); when that is this one, what [control]
+		// held itself moves here.
+		model := config.Model{Server: p.Server, Model: p.Model}
+		isDefault := current.SameModel(current.Control, model)
+		for other, m := range current.Models {
+			if other < name && current.SameModel(m, model) {
+				isDefault = false
+			}
+		}
+		if isDefault {
+			// The default's settings move to its entry: those [control] held
+			// itself fill what the entry leaves unset.
+			entry = entry.WithSettings(current.Control)
+		}
+		if p.Settings != nil {
+			entry = p.Settings.on(entry)
+		}
 		entry.Server, entry.Model, entry.Efforts, entry.Effort = p.Server, p.Model, p.Efforts, p.Effort
 		text, cfg, err := config.SetModel(raw, name, entry)
+		if err == nil && isDefault {
+			text, cfg, err = config.SetControl(text, current.Control.Choice())
+		}
 		if err != nil {
 			return nil, config.Config{}, failure(-32602, err.Error())
 		}
@@ -389,6 +466,23 @@ func (s *server) modelWrite(req request, _ *peer) (any, *rpcError) {
 		return nil, rerr
 	}
 	return s.settings(), nil
+}
+
+// knownSettings refuses a setting settings.model.write does not know, which
+// would otherwise be dropped without a word.
+func knownSettings(raw json.RawMessage) *rpcError {
+	var p struct {
+		Settings json.RawMessage `json:"settings"`
+	}
+	if json.Unmarshal(raw, &p) != nil || len(p.Settings) == 0 {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(p.Settings))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&modelSettings{}); err != nil {
+		return failure(-32602, "settings: "+err.Error())
+	}
+	return nil
 }
 
 // modelRemove answers settings.model.remove. The default model is not removed

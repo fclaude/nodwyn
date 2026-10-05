@@ -330,8 +330,8 @@ func modelBlock(table string, m Model) string {
 	if m.Seed != nil {
 		fmt.Fprintf(&b, "seed = %d\n", *m.Seed)
 	}
-	if m.Vision {
-		b.WriteString("vision = true\n")
+	if m.Vision != nil {
+		fmt.Fprintf(&b, "vision = %t\n", *m.Vision)
 	}
 	field("cache_key", m.CacheKey)
 	field("cache_control", m.CacheControl)

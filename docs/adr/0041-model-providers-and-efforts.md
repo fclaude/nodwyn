@@ -122,3 +122,51 @@ incompatibility.
   remembering the New task window's choice across an app restart (the window's
   console is on a new loopback port each launch, ADR 30, so the browser
   remembers nothing; new tasks start on the default).
+
+## Amendment 2026-10-05: a model's settings are its own
+
+Session `20261005T035352Z-5a76f6e4`, gpt-6.1-sol at `api.openai.com`, kept
+the window at its default size ("openai: model list: 401 Unauthorized") and
+priced none of its 21 replies; session `20261004T182412Z-747045aa`, on
+Cerebras, did the same with a 403. Neither can be fixed by asking better:
+OpenAI's and Cerebras' model objects are `id`, `object`, `created` and
+`owned_by` (OpenAI's also `shutdown_date`), with no context length and no
+price, and neither API reports what a request cost. OpenRouter's list says
+both, and its replies carry their cost, which is why the same models worked
+there. So a model's context and prices are said by the person, as its efforts
+are. Settings could say them only for the default, as `[control]`'s own
+"Default model tuning": a copy that a model chosen in a picker did not have,
+that choosing another default replaced, and that went stale beside the
+model's entry. Whether a model takes images was set the same way.
+
+- **A model's settings are its entry's.** `num_ctx`, `max_output`,
+  `output_field`, `keep_alive`, `temperature`, `seed`, `vision`, `cache_key`,
+  `cache_control` and the `price_*` entries of a `[models.NAME]` are that
+  model's. `settings.model.write` takes them as `settings`, all of them (one
+  left out is unset; `settings` left out keeps the entry's own), and each
+  choice in `settings.read` reports them. Settings › Models edits them in each
+  model's form: its context length, its prices and whether it takes images,
+  the rest under More settings. The Default model tuning section and the
+  `control.*` names in `settings.write` are gone.
+- **The default names its entry.** `[control]` keeps which model it is and
+  the effort it starts at; each setting it leaves unset comes from the first
+  `[models.NAME]` for the same model at the same address (`Config.Tuned`), as
+  its efforts do (`Config.Efforts`). What a hand-written `[control]` sets
+  itself still stands. Choosing a default by name writes only the choice
+  (`Model.Choice`); saving the model that is the default moves what
+  `[control]` held to its entry, filling only what the entry leaves unset, and
+  leaves `[control]` without; choosing another default fills the old one's
+  entry the same way, so nothing set is lost. A model chosen by server and id
+  gets its entry's settings too. An entry borrows nothing from another entry
+  for the same model: two entries for one model, such as one with a smaller
+  context, are two sets of settings.
+- **Nothing is inferred from a model's name**, as before: nodwyn has no table
+  of context lengths or prices. A conversation on a model whose context
+  nobody said keeps the default window, and its note now says to set the
+  model's context length in Settings › Models (it named `[control]`, which was
+  wrong for any other model), and the note a spend limit leaves for a request
+  of unknown cost says the same of prices.
+
+Not built: reading a context length or a price from a catalogue other than
+the model's own server's list (OpenRouter's lists OpenAI's models, but asking
+it for a model on another server would send a request nobody configured).

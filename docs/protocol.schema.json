@@ -365,7 +365,14 @@
           "type": "string"
         },
         "Vision": {
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -6226,13 +6233,17 @@
         },
         "server": {
           "type": "string"
+        },
+        "settings": {
+          "$ref": "#/$defs/rpc.modelSettings"
         }
       },
       "required": [
         "name",
         "provider",
         "model",
-        "host"
+        "host",
+        "settings"
       ],
       "type": "object"
     },
@@ -6307,6 +6318,90 @@
       ],
       "type": "object"
     },
+    "rpc.modelSettings": {
+      "properties": {
+        "cache_control": {
+          "type": "string"
+        },
+        "cache_key": {
+          "type": "string"
+        },
+        "keep_alive": {
+          "type": "string"
+        },
+        "max_output": {
+          "type": "integer"
+        },
+        "num_ctx": {
+          "type": "integer"
+        },
+        "output_field": {
+          "type": "string"
+        },
+        "price_cached_input": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "price_input": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "price_output": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "vision": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
     "rpc.modelStatus": {
       "properties": {
         "detail": {
@@ -6362,6 +6457,16 @@
         },
         "server": {
           "type": "string"
+        },
+        "settings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/rpc.modelSettings"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

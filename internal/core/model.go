@@ -127,8 +127,9 @@ func resolveModel(cfg config.Config, c ModelChoice) (config.Model, error) {
 	case c.Name == loop.ControlModel || (c.Name == "" && c.Server == "" && c.Model == ""):
 		// The [control] model, configured or not: a session may open
 		// without one, to replay or evaluate, and its first model request
-		// says what to add (MissingControl).
-		return cfg.Resolve(cfg.Control), nil
+		// says what to add (MissingControl). Its settings are those of the
+		// model's own entry, which it names (config.Tuned).
+		return cfg.Tuned(cfg.Resolve(cfg.Control)), nil
 	case c.Name != "":
 		m, ok := cfg.Models[c.Name]
 		if !ok {
@@ -144,7 +145,7 @@ func resolveModel(cfg config.Config, c ModelChoice) (config.Model, error) {
 		if !ok {
 			return config.Model{}, fmt.Errorf("no server named %q is configured; the servers are %s", c.Server, strings.Join(serverNames(cfg), ", "))
 		}
-		return config.Model{Server: c.Server, Provider: srv.Provider, Dialect: srv.Dialect, URL: srv.URL, Credential: srv.Credential, Model: c.Model}, nil
+		return cfg.Tuned(config.Model{Server: c.Server, Provider: srv.Provider, Dialect: srv.Dialect, URL: srv.URL, Credential: srv.Credential, Model: c.Model}), nil
 	}
 }
 

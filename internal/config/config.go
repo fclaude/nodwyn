@@ -182,10 +182,13 @@ type Model struct {
 	// options, a chat-completions server's fields).
 	Temperature *float64 `toml:"temperature"`
 	Seed        *int64   `toml:"seed"`
-	// Vision says the model takes images, so an attached image may be sent
-	// to it (ADR 22 §3). openai only: a chat-completions server does not
-	// say, while ollama reports it (/api/show).
-	Vision bool `toml:"vision"`
+	// Vision says whether the model takes images, so an attached image may
+	// be sent to it (ADR 22 §3). openai only: a chat-completions server does
+	// not say, while ollama reports it (/api/show). Unset, the model is taken
+	// to (TakesImages): a provider that refuses an image fails that request,
+	// which costs less than refusing an image a person has prepared a message
+	// around (ADR 22, amended 2026-10-05). false says it does not.
+	Vision *bool `toml:"vision"`
 	// CacheKey is how requests name their session to a chat-completions
 	// server, so one that routes by it keeps a session on the replica that
 	// holds its prompt cache (ADR 9): "session" (the default) sends a key
@@ -223,6 +226,10 @@ type Model struct {
 	// default model, which a new task starts with.
 	Effort string `toml:"effort"`
 }
+
+// TakesImages says whether an image may be sent to m, a chat-completions
+// model: unless its entry says it does not (Vision).
+func (m Model) TakesImages() bool { return m.Vision == nil || *m.Vision }
 
 // isZero says whether m is the empty model, as an unset [control] is. Model
 // holds a slice, so it is not comparable with ==.
@@ -712,7 +719,7 @@ func (m Model) validate() error {
 	if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
 		return fmt.Errorf("temperature %v must be between 0 and 2", *m.Temperature)
 	}
-	if m.Provider != "openai" && m.Vision {
+	if m.Provider != "openai" && m.Vision != nil {
 		return errors.New("vision is for openai servers; ollama says itself whether a model takes images")
 	}
 	switch m.CacheKey {
@@ -808,6 +815,73 @@ func (c Config) SameModel(a, b Model) bool {
 		return m.Provider
 	}
 	return a.Model != "" && a.Model == b.Model && provider(a) == provider(b) && strings.TrimRight(a.URL, "/") == strings.TrimRight(b.URL, "/")
+}
+
+// Tuned is m, a model that is not itself a [models.NAME] entry ([control], or
+// a model chosen by its server and id), with each setting it leaves unset
+// (num_ctx, keep_alive, max_output, output_field, temperature, seed, vision,
+// cache_key, cache_control and the price_* entries) taken from the first
+// [models.NAME], in name order, for the same model at the same address. A
+// model's settings are said once, in its own entry (ADR 41, amended
+// 2026-10-05), so the [control] that names it as the default cannot hold a
+// copy that goes stale beside it. What m sets itself stands. An entry has
+// its own settings and borrows none: two entries for one model, such as one
+// with a smaller context, are two sets of settings.
+func (c Config) Tuned(m Model) Model {
+	for _, name := range slices.Sorted(maps.Keys(c.Models)) {
+		if o := c.Models[name]; c.SameModel(m, o) {
+			return m.WithSettings(o)
+		}
+	}
+	return m
+}
+
+// WithSettings is m with each setting it leaves unset taken from o.
+func (m Model) WithSettings(o Model) Model {
+	if m.NumCtx == 0 {
+		m.NumCtx = o.NumCtx
+	}
+	if m.KeepAlive == "" {
+		m.KeepAlive = o.KeepAlive
+	}
+	if m.MaxOutput == 0 {
+		m.MaxOutput = o.MaxOutput
+	}
+	if m.OutputField == "" {
+		m.OutputField = o.OutputField
+	}
+	if m.Temperature == nil {
+		m.Temperature = o.Temperature
+	}
+	if m.Seed == nil {
+		m.Seed = o.Seed
+	}
+	if m.Vision == nil {
+		m.Vision = o.Vision
+	}
+	if m.CacheKey == "" {
+		m.CacheKey = o.CacheKey
+	}
+	if m.CacheControl == "" {
+		m.CacheControl = o.CacheControl
+	}
+	if m.PriceInput == nil {
+		m.PriceInput = o.PriceInput
+	}
+	if m.PriceCachedInput == nil {
+		m.PriceCachedInput = o.PriceCachedInput
+	}
+	if m.PriceOutput == nil {
+		m.PriceOutput = o.PriceOutput
+	}
+	return m
+}
+
+// Choice is m without its settings and its efforts: which model it is, where,
+// and the effort it starts at. It is what [control] keeps of a model that has
+// an entry of its own, which holds the rest (Tuned, Efforts).
+func (m Model) Choice() Model {
+	return Model{Server: m.Server, Provider: m.Provider, Dialect: m.Dialect, URL: m.URL, Credential: m.Credential, Model: m.Model, Effort: m.Effort}
 }
 
 // Efforts are the efforts m takes: its own, else those declared by another

@@ -23,7 +23,7 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC)
 - [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (amends plan P5; implemented, amended for the judge tools and judged approval)
 - [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (implemented)
-- [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented)
+- [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented; amended: a chat-completions model takes images unless it says not)
 - [0023](./0023-untrusted-mcp-servers.md) — Untrusted MCP servers: isolation, pinning, fail-closed (implemented: remote servers, and contained ones in podman or docker)
 - [0024](./0024-oauth2-credentials.md) — OAuth2 credentials: acquisition, refresh, scopes (implemented, from the console too; W5 builds on it)
 - [0025](./0025-ingress-redaction.md) — Log-derived ingress redaction and buffered model output
@@ -42,4 +42,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0038](./0038-several-edits-in-one-call.md) — fs-edit takes several edits to one file in one call
 - [0039](./0039-named-archived-deleted-tasks.md) — Tasks are named, archived and deleted, and listed by folder (amends 2)
 - [0040](./0040-a-conversations-model-is-a-choice.md) — A conversation's model is a choice
-- [0041](./0041-model-providers-and-efforts.md) — Providers, models and efforts are chosen in the console (amends 8, 40)
+- [0041](./0041-model-providers-and-efforts.md) — Providers, models and efforts are chosen in the console (amends 8, 40; amended: a model's settings are its own)

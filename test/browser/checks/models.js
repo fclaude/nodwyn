@@ -11,6 +11,11 @@
 //   the provider moved to it is asked there, with the model's effort.
 // - Two models are added, one with its efforts; the default is changed to it,
 //   with an effort, and the model it replaces stays in the list.
+// - Each model has its own settings: the default is given a context length,
+//   prices and the ask to cache its prompt, which its entry holds and not
+//   [control]; the other model is said to take no images, and nothing of
+//   either reaches the other. A task on the default is sized for that context
+//   and priced at those prices, though the provider reports neither.
 // - The New task window offers the models, shows each one's efforts (none for
 //   the model that takes none), starts a task on the choice, and the provider
 //   sees that model with that effort. A choice left unsent survives going to
@@ -211,14 +216,59 @@ check(async () => {
   assert.ok((await selected("#default-model-model")).startsWith("reasoner (default)"), "the default is shown");
   step("default chosen with its effort; the previous default is still listed");
 
+  // ---------- each model's own settings ----------
   // The default is a Claude route, which caches a prompt only when asked
-  // (ADR 9, 2026-10-05): Settings has the ask, and saves it with the tuning.
-  await page.click('[id="set-control.cache_control-ephemeral"]');
-  await page.click(".save-bar button:text-is('Save')");
-  await page.waitForSelector("text=Saved. Tasks you start from now on use these settings.", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "control.cache_control": "ephemeral" } });
-  assert.ok(config().includes('cache_control = "ephemeral"'), "the ask to cache is not in config.toml:\n" + config());
-  step("the ask to cache the prompt is saved with the default model's tuning");
+  // (ADR 9, 2026-10-05), on a server that, as OpenAI's and Cerebras' do, says
+  // neither how large the model's context is nor what a request cost: the
+  // model's own settings say all three (ADR 41, amended 2026-10-05).
+  const block = (table) => (config().split(`[${table}]\n`)[1] || "").split("\n[")[0];
+  await shows("[data-model='control']", "context as the provider says · no prices");
+  await page.click("[data-model='control'] button:text-is('Edit')");
+  await page.waitForSelector("#model-form");
+  assert.strictEqual(await page.getAttribute("#model-vision-true", "aria-pressed"), "true", "a model is not taken to read images until it is said not to");
+  await page.fill("#model-num_ctx", "1,050,000");
+  await page.fill("#model-price_input", "5");
+  await page.fill("#model-price_cached_input", "0.5");
+  await page.fill("#model-price_output", "lots");
+  await page.click("#model-save");
+  await shows("#model-form .error", "The price of output takes a number");
+  await page.fill("#model-price_output", "40");
+  await page.click("#model-form .more-settings > summary");
+  await page.click("#model-cache_control-ephemeral");
+  await page.locator("#model-form").screenshot({ path: `${out}/models-settings-form.png` });
+  await page.click("#model-save");
+  await page.waitForSelector("#model-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), {
+    server: "127-0-0-1",
+    model: "reasoner",
+    efforts: ["low", "medium", "high"],
+    settings: { num_ctx: 1050000, price_input: 5, price_cached_input: 0.5, price_output: 40, cache_control: "ephemeral" },
+  });
+  const reasonerBlock = block("models.127-0-0-1-reasoner");
+  for (const line of ["num_ctx = 1050000", 'cache_control = "ephemeral"', "price_input = 5", "price_cached_input = 0.5", "price_output = 40"]) {
+    assert.ok(reasonerBlock.includes(line + "\n"), `the model's entry lacks ${line}:\n` + config());
+  }
+  assert.ok(!/num_ctx|price_|cache_control|vision/.test(block("control")), "[control] holds a copy of the model's settings:\n" + config());
+  await shows("[data-model='control']", "context 1,050,000 tokens · $5 in, $40 out per million tokens");
+  await shows("[data-model='127-0-0-1-fast']", "context as the provider says · no prices");
+  // The form shows what was saved.
+  await page.click("[data-model='control'] button:text-is('Edit')");
+  assert.strictEqual(await page.inputValue("#model-num_ctx"), "1,050,000");
+  assert.strictEqual(await page.inputValue("#model-price_output"), "40");
+  await page.click("#model-form .more-settings > summary");
+  assert.strictEqual(await page.getAttribute("#model-cache_control-ephemeral", "aria-pressed"), "true");
+  await page.click("#model-form >> text=Cancel");
+  // The other model takes no images: said for it alone.
+  await page.click("[data-model='127-0-0-1-fast'] button:text-is('Edit')");
+  await page.click("#model-vision-false");
+  await page.click("#model-save");
+  await page.waitForSelector("#model-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "127-0-0-1-fast", server: "127-0-0-1", model: "fast", efforts: [], settings: { vision: false } });
+  assert.ok(block("models.127-0-0-1-fast").includes("vision = false\n") && !/vision/.test(block("models.127-0-0-1-reasoner")), "vision is not the fast model's alone:\n" + config());
+  await shows("[data-model='127-0-0-1-fast']", "takes no images");
+  assert.ok(!(await page.innerText("[data-model='control']")).includes("takes no images"), "the default took the other model's word on images");
+  await page.locator("#section-models").screenshot({ path: `${out}/models-settings-per-model.png` });
+  step("each model has its own context, prices, images and ask to cache; [control] holds none of them");
 
   // ---------- the New task window ----------
   await go("#/");
@@ -296,6 +346,12 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#task-model-effort"), "low");
   await shows(".transcript", "Model: reasoner · low effort");
   step("a task started with an effort asks the provider for it");
+  // The provider says neither the context nor the cost; the model's own
+  // settings do: the window is sized for 1,050,000 tokens less the reply
+  // reserve, and the reply is priced (an estimate, ≈).
+  await page.waitForFunction(() => document.body.textContent.includes("775,212"), null, { timeout: 10000 });
+  await page.waitForFunction(() => /≈\$\d/.test(document.querySelector(".transcript").textContent), null, { timeout: 10000 });
+  step("the task on the default model is sized for its context and priced at its prices");
   assert.strictEqual(await page.isVisible("#task-model-model"), false, "chat choices start collapsed");
   await shows("#task-model summary", "reasoner");
   await shows("#task-model summary", "Low");

@@ -57,6 +57,12 @@ func Hint(err error) string {
 		if strings.Contains(se.Body, "/v1/responses") {
 			return "The server takes this request only on its Responses API: set the provider's protocol to OpenAI Responses in Settings › Models"
 		}
+		// A chat-completions model is sent images unless its entry says it
+		// takes none (ADR 22, amended 2026-10-05), so the first image is how a
+		// model that cannot read one is found.
+		if strings.Contains(strings.ToLower(se.Body), "image") {
+			return "The server refused an image: this model may not take images. Choose one that does from the picker under the message box, and set Takes images to No for this one in Settings › Models"
+		}
 		return "The server refused the request. If the effort is the cause, choose another effort, or the model's default, from the picker under the message box"
 	case http.StatusTooManyRequests:
 		return "The provider is limiting requests or the account is out of quota: wait, or choose another model"

@@ -270,7 +270,17 @@ through the same binding check a task's request passes, and reports a key the
 server did not accept, a model it does not have, or an effort it refuses.
 \emph{Models you can choose} is \code{[control]} and the \code{[models.NAME]}
 tables, with their efforts; the default is one of them, and choosing another
-keeps the old default in the list.
+keeps the old default in the list. Each model has its own settings, edited in
+its form: its context length, its prices, whether it takes images, and under
+More settings its reply cap, sampling and what its requests ask of the
+provider. They are its \code{[models.NAME]} entry's. \code{[control]} names
+the default and its effort, and takes each setting it leaves unset from the
+first entry for the same model at the same address (\code{Config.Tuned}), as
+it takes its efforts; saving the default moves what \code{[control]} held to
+the entry, so no copy goes stale beside it (\adr{41}, amended 2026-10-05).
+OpenAI's and Cerebras' model lists say no context length and their replies no
+cost, so a model there is sized and priced once its entry says so;
+OpenRouter's say both.
 
 The New task window and a conversation share one picker, a Model select
 grouped by provider and an Effort select of what that model takes. New task
@@ -302,7 +312,10 @@ computer's act, not a paired device's, whether the task is being opened or
 moved. The window is sized for the model that will answer, as opening the task
 on it would size it (from \code{num\_ctx}, or the context the server's model
 list gives), and a switch is refused when the conversation would not fit it.
-Whether a model takes images is asked of each model the task is moved to.
+Whether a model takes images is asked of each model the task is moved to: Ollama
+says, and a chat-completions model is taken to unless its entry says
+\code{vision = false}, since a refused request costs less than an image
+refused after a message was written around it (\adr{22}, amended).
 
 An attached image is egress of a kind no binding governs: its pixels cannot
 be redacted. It goes to the control model's host only, and only after a
@@ -317,8 +330,9 @@ prompt it has seen, at a lower price. For each reply, \nodwyn{} records
 what the provider reports: the prompt and reply tokens, how many prompt
 tokens came from its cache, and the cost in US dollars (OpenRouter reports
 all of them).
-For a provider that reports no cost, give the model its prices, in dollars
-per million tokens, and \nodwyn{} estimates:
+For a provider that reports no cost (OpenAI, Cerebras), give the model its
+prices, in dollars per million tokens, in its Settings form or its entry, and
+\nodwyn{} estimates:
 
 \begin{toml}
 [models.coder]

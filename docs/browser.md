@@ -55,7 +55,7 @@ you wrote it. Its sections:
   on (by default it doesn't); the spend limit on a whole
   task, in dollars, off until you set where it stops; and how long a model
   reply and a command may take.
-- **Models** (ADR 41) — three things, then the default model's tuning.
+- **Models** (ADR 41) — three things.
   *Default for new tasks* is a model from the list and its default effort,
   saved on its own button, since it is a write to `config.toml` that the bar
   below does not carry. *Providers* lists each model server with whether it can
@@ -65,17 +65,22 @@ you wrote it. Its sections:
   every server now; **Add a provider** and **Edit** take a kind, an address, a
   dialect and an API key (kept in the keychain with one binding row, never in
   the page again), with presets that only fill the form. *Models you can
-  choose* is the list the pickers offer, each with the efforts it takes;
-  **Add a model** takes a provider, a model id (suggested from what the
-  provider lists, asked without a key) and its efforts. These forms are drawn
-  from state kept for the visit, so the readiness checks that arrive while
-  one is being typed into redraw the page without losing what was typed, and
-  leaving Settings drops it, a key included. The default model's tuning is:
-  context length, reply cap, temperature and seed, how long Ollama keeps it
-  loaded, whether a chat-completions model takes images, which field caps
-  its reply, how its requests name their session and whether they ask the
-  provider to cache the prompt, which a Claude model needs (the manual,
-  "Keeping the cache warm"), and its prices.
+  choose* is the list the pickers offer, each with the efforts it takes and
+  a line saying its context length and prices; **Add a model** and **Edit**
+  take a provider, a model id (suggested from what the provider lists, asked
+  without a key), its efforts and its own settings (ADR 41, amended
+  2026-10-05): its context length, which OpenAI and Cerebras do not say, its
+  prices, which price a request when the provider reports no cost, and
+  whether it takes images (yes unless you say no); under *More settings* its
+  reply cap, temperature and seed, and for a chat-completions model which
+  field caps its reply, how its requests name their session and whether they
+  ask the provider to cache the prompt, which a Claude model needs (the
+  manual, "Keeping the cache warm"), or for Ollama how long it stays loaded.
+  The default model's settings are its entry's, so editing it changes the
+  model wherever it is chosen. These forms are drawn from state kept for the
+  visit, so the readiness checks that arrive while one is being typed into
+  redraw the page without losing what was typed, and leaving Settings drops
+  it, a key included.
 - **Judge** — whether a judge is available, what it may be shown, the
   probability at which it lets a command run, and how long it may take.
 - **Documents** — how uploads to Google Docs are handled (the manual,

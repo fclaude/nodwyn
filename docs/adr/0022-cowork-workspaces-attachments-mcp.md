@@ -474,3 +474,19 @@ has not starts in the folder picked last — this browser's, else the
 daemon's — and in the first folder of the list when neither has one. The
 file names a folder, never a policy: it only preselects, and a task opened
 there goes through the same root checks as any other.
+
+## Amendment 2026-10-05: a chat-completions model takes images unless it says not
+
+An image was refused at attach time on a chat-completions model whose
+configuration did not say `vision = true`, and the way out was Settings, which
+cost the person the message they had prepared around the image. A model is now
+taken to read images unless its entry says `vision = false` (Settings ›
+Models › Takes images: No; ADR 41, amended 2026-10-05, makes it the model's
+own): a provider that cannot read one refuses that request, which costs a
+failed request instead of the message, and the turn's advice says the model
+may not take images and what to do (`llm.Hint`). `config.Model.Vision` is
+unset, true or false; unset reads as true for a chat-completions model
+(`Model.TakesImages`). Ollama is still asked (`/api/show`), and refuses the
+attachment when it says the model takes none. Nothing else changes: every
+image still asks its security confirm, names the host it goes to, and goes
+only there.

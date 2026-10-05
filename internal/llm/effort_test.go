@@ -109,6 +109,15 @@ func TestValidEffort(t *testing.T) {
 	}
 }
 
+// A model is sent images unless its entry says it takes none, so a refusal
+// that names an image says the model may take none, and what to do.
+func TestARefusedImageSaysTheModelMayTakeNone(t *testing.T) {
+	err := &StatusError{Provider: "openai", Status: http.StatusBadRequest, Text: "400 Bad Request", Body: `{"error":{"message":"Invalid content type. image_url is only supported by certain models."}}`}
+	if hint := Hint(err); !strings.Contains(hint, "may not take images") || !strings.Contains(hint, "Takes images to No") {
+		t.Fatalf("hint %q", hint)
+	}
+}
+
 // A provider's refusal says which it was, and one that sending again cannot
 // fix is not retried: a wrong key, a missing model or a refused field ends
 // the turn at once, with what to do about it, where a server error is tried

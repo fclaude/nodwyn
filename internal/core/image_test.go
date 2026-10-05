@@ -260,22 +260,26 @@ func TestImageRefusedWhenTheControlModelTakesNone(t *testing.T) {
 	if err == nil || asked != nil || !strings.Contains(err.Error(), "fake-vision does not take images") || !strings.Contains(err.Error(), "vision model") {
 		t.Fatalf("err %v, asked %v", err, asked)
 	}
-	// A chat-completions server does not say; its configuration does.
+	// A chat-completions server does not say, so a model is taken to take
+	// images unless its configuration says it does not: a provider that
+	// refuses one fails that request, which costs less than refusing an image
+	// a person has written a message around (ADR 22, amended 2026-10-05).
+	no := false
 	oai := newFakeOpenAI(t, oaiText("A chart."))
 	r = imageRig(t, false, func(o *Options) {
 		o.Provider = nil
-		o.Config.Control = config.Model{Provider: "openai", URL: oai.URL + "/v1", Model: "gpt-vision"}
+		o.Config.Control = config.Model{Provider: "openai", URL: oai.URL + "/v1", Model: "gpt-text", Vision: &no}
 	})
-	if _, _, err := r.attachAnswering(path, "chart.png", "y"); err == nil || !strings.Contains(err.Error(), "add vision = true to [control]") {
-		t.Fatalf("openai without vision: %v", err)
+	if _, _, err := r.attachAnswering(path, "chart.png", "y"); err == nil || !strings.Contains(err.Error(), "set Takes images to Yes for it in Settings › Models (vision = false in its entry") {
+		t.Fatalf("openai with vision = false: %v", err)
 	}
 	seeing := newFakeOpenAI(t, oaiText("models"), oaiText("A chart."))
 	r = imageRig(t, false, func(o *Options) {
 		o.Provider = nil
-		o.Config.Control = config.Model{Provider: "openai", URL: seeing.URL + "/v1", Model: "gpt-vision", Vision: true}
+		o.Config.Control = config.Model{Provider: "openai", URL: seeing.URL + "/v1", Model: "gpt-vision"}
 	})
 	if _, asked, err := r.attachAnswering(path, "chart.png", "y"); err != nil || asked == nil {
-		t.Fatalf("openai with vision: %v", err)
+		t.Fatalf("openai that says nothing of images: %v", err)
 	}
 	if e := r.turn("read the chart"); e != "" {
 		t.Fatal(e)
