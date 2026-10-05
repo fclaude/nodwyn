@@ -1063,29 +1063,22 @@ export class TaskView {
       const cached = Math.min(Math.max(u.cached_tokens || 0, 0), prompt);
       tokens += prompt - cached + Math.floor(cached / 10) + (u.output_tokens || 0);
     }
-    const meter = (label, used, soft, fmt = String) => {
-      const pct = soft ? Math.min(100, (used / soft) * 100) : 0;
-      return h(
-        "div",
-        { class: "meter" },
-        h("div", { class: "meter-head" }, h("span", {}, label), h("span", {}, soft ? `${fmt(used)} / ${fmt(soft)}` : fmt(used))),
-        soft ? h("div", { class: "meter-track" }, h("div", { class: `meter-fill${used > soft ? " over" : ""}`, style: `width:${pct}%` })) : null,
-      );
-    };
-    node.replaceChildren(
-      ...[
-        meter("Time", elapsed, budgets ? budgets.wall_ns.soft / 1e6 : 0, (ms) => minutes(ms)),
-        split.model ? meter("Model wait", split.model, 0, (ms) => minutes(ms)) : null,
-        split.tools ? meter("Tool time", split.tools, 0, (ms) => minutes(ms)) : null,
-        meter("Tool calls", calls, budgets?.tool_calls.soft || 0),
-        // The budget counts every request's whole prompt, cached tokens at a
-        // tenth, so this adds the context up once per request; Context below
-        // is how big it is.
-        tokens ? meter("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
-        this.contextMeter(meter),
-        this.judgeLine(),
-      ].filter(Boolean),
-    );
+    const items = [
+      limited("Time", elapsed, budgets ? budgets.wall_ns.soft / 1e6 : 0, (ms) => minutes(ms)),
+      split.model ? statRow("Model wait", minutes(split.model)) : null,
+      split.tools ? statRow("Tool time", minutes(split.tools)) : null,
+      limited("Tool calls", calls, budgets?.tool_calls.soft || 0),
+      // The budget counts every request's whole prompt, cached tokens at a
+      // tenth, so this adds the context up once per request; Context below
+      // is how big it is.
+      tokens ? limited("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
+      this.contextMeter(),
+      this.judgeLine(),
+    ].filter(Boolean);
+    // The bars come first and the plain rows under them, so the panel reads
+    // as two groups, not as bars and counters taking turns.
+    const bars = (n) => n.classList.contains("meter");
+    node.replaceChildren(...items.filter(bars), ...items.filter((n) => !bars(n)));
   }
   // turnSplit is splitTime over one turn's own records: how much of the
   // turn went waiting for a model and how much running tools, its open
@@ -1106,22 +1099,25 @@ export class TaskView {
     const j = judgeTally(this.events());
     if (!j.calls) return null;
     const cost = j.tokens && j.unpriced === 0 ? ` · ${usd(j.cost, true)}` : j.cost > 0 ? ` · at least ${usd(j.cost, true)}` : j.unpriced ? " · not priced" : "";
-    return h(
-      "div",
-      { class: "meter", title: "The judge reports what it used, not what it cost; [jev] price_input and price_output estimate it. Its tokens are not in the token budget; its cost counts against a spend limit." },
-      h("div", { class: "meter-head" }, h("span", {}, "Judge, this task"), h("span", {}, `${j.calls} call${j.calls === 1 ? "" : "s"} · ${j.tokens.toLocaleString()} tokens${cost}`)),
+    return statRow(
+      "Judge, this task",
+      `${j.calls} call${j.calls === 1 ? "" : "s"} · ${j.tokens.toLocaleString()} tokens${cost}`,
+      {},
+      "The judge reports what it used, not what it cost; [jev] price_input and price_output estimate it. Its tokens are not in the token budget; its cost counts against a spend limit.",
     );
   }
   // contextMeter is how full the conversation's context is, against the
   // window's high water, past which older context is trimmed (compaction
   // comes just before). Estimates, the unit the window and compaction use.
-  contextMeter(meter) {
+  // The provider's own count stays a tooltip: it differs from the estimate
+  // and its line reflowed the panel on every reply. A log that does not say
+  // the high water has no limit to count against, so the figure is a row.
+  contextMeter() {
     const g = contextGauge(this.events());
     if (!g.est) return null;
-    const node = meter("Context", g.est, g.high, (n) => `~${n.toLocaleString()}`);
-    const said = [g.reported ? `the provider counted ${g.reported.toLocaleString()} tokens for the latest request` : "", g.compactions ? `compacted ${g.compactions === 1 ? "once" : `${g.compactions} times`}` : ""].filter(Boolean);
-    if (said.length) node.append(h("small", { class: "hint" }, said.join(" · ")));
-    node.title = "nodwyn's estimate of the latest request in the conversation; older context is trimmed past the window's high water, and compaction comes just before it";
+    const node = limited("Context", g.est, g.high, (n) => `~${n.toLocaleString()}`);
+    const said = [g.reported ? `the provider counted ${g.reported.toLocaleString()} tokens` : "", g.compactions ? `compacted ${g.compactions === 1 ? "once" : `${g.compactions} times`}` : ""].filter(Boolean);
+    node.title = ["nodwyn's estimate of the latest request in the conversation; older context is trimmed past the window's high water, and compaction comes just before it", ...said].join("; ");
     return node;
   }
   // totalsPanel is the task's whole-life figures, first in the aside: what
@@ -1131,44 +1127,25 @@ export class TaskView {
     const t = this.totals();
     if (!t) return null;
     const limit = this.info?.budgets?.cost?.hard ? this.info.budgets.cost.soft / 1e6 : 0;
-    const pct = limit ? Math.min(100, (t.cost / limit) * 100) : 0;
+    const spend = `${t.unpriced ? "at least " : ""}${usd(t.cost, t.estimated)}`;
+    const spendHint = "What the task's model and judge requests cost, as far as the log prices them and as a spend limit counts them; a request without a known cost makes this a lower bound";
     return h(
       "section",
       { class: "panel", dataset: { totals: "1" } },
       h("h2", {}, "Totals", h("span", { class: "note" }, this.truncated ? "from the log that remains" : "")),
-      h(
-        "div",
-        { class: "meter", title: "What the task's model and judge requests cost, as far as the log prices them and as a spend limit counts them; a request without a known cost makes this a lower bound" },
-        h("div", { class: "meter-head" }, h("span", {}, "Total spend"), h("span", {}, `${t.unpriced ? "at least " : ""}${usd(t.cost, t.estimated)}${limit ? ` / ${usd(limit, false)}` : ""}`)),
-        limit ? h("div", { class: "meter-track" }, h("div", { class: `meter-fill${t.cost > limit ? " over" : ""}`, style: `width:${pct}%` })) : null,
-      ),
-      h(
-        "div",
-        { class: "meter", title: "How long the task's turns took, wall clock, the time it spent waiting for answers included; a turn still running counts up to now" },
-        h("div", { class: "meter-head" }, h("span", {}, "Total running time"), h("span", { dataset: { running: "1" } }, spanWords(t.ms))),
-      ),
-      h(
-        "div",
-        { class: "meter", title: "How long the task's turns took, with the time it spent waiting for a person's answer left out; a turn still running counts up to now unless it waits for one" },
-        h("div", { class: "meter-head" }, h("span", {}, "Total working time"), h("span", { dataset: { working: "1" } }, spanWords(t.work))),
-      ),
-      h(
-        "div",
-        { class: "meter", title: "How long the task waited for answers from models, each request from its sending to its reply; streaming counts as waiting, and a request still being answered counts up to now" },
-        h("div", { class: "meter-head" }, h("span", {}, "Model wait"), h("span", { dataset: { model: "1" } }, spanWords(t.model))),
-      ),
+      limit ? meterBar("Total spend", `${spend} / ${usd(limit, false)}`, t.cost, limit, spendHint) : statRow("Total spend", spend, {}, spendHint),
+      statRow("Total running time", spanWords(t.ms), { dataset: { running: "1" } }, "How long the task's turns took, wall clock, the time it spent waiting for answers included; a turn still running counts up to now"),
+      statRow("Total working time", spanWords(t.work), { dataset: { working: "1" } }, "How long the task's turns took, with the time it spent waiting for a person's answer left out; a turn still running counts up to now unless it waits for one"),
+      statRow("Model wait", spanWords(t.model), { dataset: { model: "1" } }, "How long the task waited for answers from models, each request from its sending to its reply; streaming counts as waiting, and a request still being answered counts up to now"),
       t.speed
-        ? h(
-            "div",
-            { class: "meter", title: "How fast the models answered: output tokens per second of wall time, from each request to its reply, added up over the requests that reported tokens; whichever model answered, this is the speed the session experienced" },
-            h("div", { class: "meter-head" }, h("span", {}, "Model speed"), h("span", {}, `${t.speed.tps.toFixed(1)} tok/s · ${t.speed.replies} request${t.speed.replies === 1 ? "" : "s"}`)),
+        ? statRow(
+            "Model speed",
+            `${t.speed.tps.toFixed(1)} tok/s · ${t.speed.replies} request${t.speed.replies === 1 ? "" : "s"}`,
+            {},
+            "How fast the models answered: output tokens per second of wall time, from each request to its reply, added up over the requests that reported tokens; whichever model answered, this is the speed the session experienced",
           )
         : null,
-      h(
-        "div",
-        { class: "meter", title: "How long the task's tool calls took to run, from a call to its result, with the wait for a person's approval left out; the time waiting for you to answer is in no figure here" },
-        h("div", { class: "meter-head" }, h("span", {}, "Tool time"), h("span", { dataset: { tools: "1" } }, spanWords(t.tools))),
-      ),
+      statRow("Tool time", spanWords(t.tools), { dataset: { tools: "1" } }, "How long the task's tool calls took to run, from a call to its result, with the wait for a person's approval left out; the time waiting for you to answer is in no figure here"),
     );
   }
   // totals adds the task up over its whole log: what its requests cost, as
@@ -1521,6 +1498,26 @@ function sameDay(when) {
 }
 
 export { summary, basename };
+
+// Two shapes of figure fill the side panels. A meterBar is counted against a
+// limit: its label, how far it has got, and a track filling towards the
+// limit. A statRow has no limit behind it, so it is a label and a value and
+// never a bar without a track.
+function meterBar(label, text, used, soft, title = "") {
+  return h(
+    "div",
+    { class: "meter", title: title || undefined },
+    h("div", { class: "meter-head" }, h("span", {}, label), h("span", {}, text)),
+    h("div", { class: "meter-track" }, h("div", { class: `meter-fill${used > soft ? " over" : ""}`, style: `width:${Math.min(100, (used / soft) * 100)}%` })),
+  );
+}
+function statRow(label, value, attrs = {}, title = "") {
+  return h("div", { class: "kv", title: title || undefined }, h("span", {}, label), h("span", { class: "stat-value", ...attrs }, value));
+}
+// limited is a figure as a bar where a limit is known and as a row where not.
+function limited(label, used, soft, fmt = String) {
+  return soft ? meterBar(label, `${fmt(used)} / ${fmt(soft)}`, used, soft) : statRow(label, fmt(used));
+}
 
 // spendOf is what the task's requests cost, as far as the log prices them:
 // null before the first turn, when nothing has run to add up.

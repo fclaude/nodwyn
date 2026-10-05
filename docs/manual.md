@@ -1342,9 +1342,10 @@ run.
 The console's side panel adds the task up in "Totals", in its Live tab:
 "Total spend", what its model and judge requests cost as far as the log
 prices them (the same accounting a spend limit counts; with a limit set,
-the total is shown against it); "Total running time", how long its turns
-took, the time it spent waiting for your answers included; and "Total
-working time", how long they took with those waits left out — answers its
+the total is a bar against it, and every other figure here is a plain row);
+"Total running time", how long its turns took, the time it spent waiting
+for your answers included; and "Total working time", how long they took
+with those waits left out — answers its
 judge or an unattended run gave by themselves count as working. Two more
 figures say where that time went: "Model wait", each request to a model
 from its sending to its reply, streaming included; and "Tool time", each

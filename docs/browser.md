@@ -18,14 +18,18 @@ and when the provider reports them or the model has prices, how much of the
 prompt came from the cache and what it cost (the manual, "Choosing models");
 over several requests, the largest single prompt too, since each request
 sends the whole prompt again. The side panel's Context meter shows how full
-the conversation's context is against the window's high water, with what the
-provider counted and how often it was compacted; "Tokens sent" is the token
-budget's count, every request's prompt, a token read from the provider's
-cache counted as a tenth. Beside them the turn's clock is split: "Model
-wait", each request to a model from its sending to its reply, and "Tool
-time", each tool call from its start to its result, the wait for your
-approval left out. A compaction is one line in
-the conversation: what set it off, and the context's size before and after.
+the conversation's context is against the window's high water; what the
+provider counted and how often it was compacted are in its tooltip, so the
+panel does not shift on every reply. "Tokens sent" is the token budget's
+count, every request's prompt, a token read from the provider's cache
+counted as a tenth. Beside them the turn's clock is split: "Model wait",
+each request to a model from its sending to its reply, and "Tool time",
+each tool call from its start to its result, the wait for your approval
+left out. Only a figure with a limit behind it is a bar (Time, Tool calls,
+Tokens sent and Context, and the total spend when a spend limit is set);
+the bars come first and the rest are plain rows under them. A compaction is
+one line in the conversation: what set it off, and the context's size
+before and after.
 **Connections** (tools, credentials, workspaces, models),
 **Workspaces** and **Settings** hold the rest; Settings also creates,
 unlocks and sets the passphrase of the keychain. The

@@ -400,45 +400,74 @@ check(async () => {
       const { TaskView } = await import("/task.js");
       const { Desk } = await import("/desk.js");
       const listeners = new Set();
+      // The log's first record carries the window's high water, so the
+      // Context figure has a limit to count against (a seq of 0 is not a
+      // record the task keeps).
+      const log = [
+        { seq: 1, kind: "session.start", payload: { context: { high_water: 774143 } }, ts: "2026-01-01T00:00:00Z" },
+        { seq: 2, kind: "user.msg", payload: { text: "Begin" }, ts: "2026-01-01T00:00:00Z" },
+        { seq: 3, kind: "llm.req", payload: { model: "m", est_tokens: 100 }, ts: "2026-01-01T00:00:01Z" },
+        { seq: 4, kind: "llm.resp", payload: { content: "one", usage: { prompt_tokens: 100, output_tokens: 800, wall_ms: 4000 } }, ts: "2026-01-01T00:00:06Z" },
+        { seq: 5, kind: "llm.req", payload: { model: "m", est_tokens: 100 }, ts: "2026-01-01T00:00:07Z" },
+        { seq: 6, kind: "llm.resp", payload: { content: "two", usage: { prompt_tokens: 100, output_tokens: 800 } }, ts: "2026-01-01T00:00:08Z" },
+        { seq: 7, kind: "tool.call", payload: { id: "t1", name: "fs-read", args: {} }, ts: "2026-01-01T00:00:09Z" },
+        { seq: 8, kind: "tool.result", payload: { id: "t1", name: "fs-read", ok: true, value: "x", ms: 500 }, ts: "2026-01-01T00:00:10Z" },
+      ];
+      const logs = { speed: log, old: log.filter((e) => e.kind !== "session.start") };
       const conn = {
         live: true,
         methods: new Set(["session.send", "session.abort", "session.answer"]),
         has(method) { return this.methods.has(method); },
         onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
         onResult() { return () => {}; },
-        async call(method) {
+        async call(method, params) {
           if (method === "session.subscribe") return {
-            page: {
-              events: [
-                { seq: 1, kind: "user.msg", payload: { text: "Begin" }, ts: "2026-01-01T00:00:00Z" },
-                { seq: 2, kind: "llm.req", payload: { model: "m", est_tokens: 100 }, ts: "2026-01-01T00:00:01Z" },
-                { seq: 3, kind: "llm.resp", payload: { content: "one", usage: { prompt_tokens: 100, output_tokens: 800, wall_ms: 4000 } }, ts: "2026-01-01T00:00:06Z" },
-                { seq: 4, kind: "llm.req", payload: { model: "m", est_tokens: 100 }, ts: "2026-01-01T00:00:07Z" },
-                { seq: 5, kind: "llm.resp", payload: { content: "two", usage: { prompt_tokens: 100, output_tokens: 800 } }, ts: "2026-01-01T00:00:08Z" },
-              ],
-              through: 5,
-              more: false,
-            },
+            page: { events: logs[params.id], through: 8, more: false },
             busy: false,
           };
-          if (method === "session.info") return {};
+          if (method === "session.info") return { budgets: { wall_ns: { soft: 4 * 3600e9, hard: 8 * 3600e9 }, tool_calls: { soft: 5000, hard: 5000 }, tokens: { soft: 2000000, hard: 2000000 } } };
           if (method === "session.unsubscribe") return {};
           throw new Error(`unexpected request: ${method}`);
         },
       };
       const desk = new Desk(conn);
       desk.sessions.set("speed", { id: "speed", repo: "/tmp/speed", open: true, busy: false });
+      desk.sessions.set("old", { id: "old", repo: "/tmp/old", open: true, busy: false });
       const task = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(task.root);
       await task.open("speed");
       const panel = [...task.el.side.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.childNodes[0].textContent === "Totals");
-      const meter = (name) => {
-        const m = [...(panel?.querySelectorAll(".meter") || [])].find((n) => n.querySelector(".meter-head span")?.textContent === name);
+      const row = (name) => {
+        const m = [...(panel?.querySelectorAll(".meter,.kv") || [])].find((n) => n.firstElementChild?.textContent === name || n.querySelector(".meter-head span")?.textContent === name);
         const head = m?.querySelector(".meter-head");
-        return head ? `${head.children[0].textContent} | ${head.children[1].textContent}` : null;
+        if (head) return `${head.children[0].textContent} | ${head.children[1].textContent} | meter`;
+        const cells = m ? [...m.children].map((c) => c.textContent.trim()) : [];
+        return m ? `${cells[0]} | ${cells[1]} | row` : null;
       };
-      out.totals = { speed: meter("Model speed"), wait: meter("Model wait"), tools: meter("Tool time") };
+      out.totals = { speed: row("Model speed"), wait: row("Model wait"), tools: row("Tool time") };
+      // Only a figure with a limit is a bar, and the bars come first: the
+      // plain rows (Model wait, Tool time) follow them, not take turns with
+      // them. The provider's own count moved from a reflowing hint line into
+      // the Context bar's tooltip.
+      const metersNode = task.el.side.querySelector("[data-meters]");
+      const figure = (n) => `${n.className.split(" ")[0]}:${n.firstElementChild.firstElementChild?.textContent || n.firstElementChild.textContent}`;
+      out.meters = {
+        order: [...(metersNode?.children || [])].map(figure),
+        context: [...(metersNode?.querySelectorAll(".meter") || [])].find((m) => m.firstElementChild.firstElementChild.textContent === "Context")?.textContent,
+      };
+      out.context = {
+        hint: task.el.side.querySelector("[data-meters] small") ? true : null,
+        title: task.el.side.querySelector("[data-meters] .meter[title]")?.title,
+      };
       task.dispose();
+      // A log that does not give the high water has nothing to count the
+      // context against: a row with its estimate, never "/ ~0".
+      const older = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(older.root);
+      await older.open("old");
+      const unlimited = [...older.el.side.querySelectorAll("[data-meters] > *")].find((n) => n.textContent.startsWith("Context"));
+      out.noHighWater = { class: unlimited?.className, text: unlimited?.textContent };
+      older.dispose();
     }
     return out;
   });
@@ -471,7 +500,11 @@ check(async () => {
   want(s.unchangedAway && s.caughtUp, `parked stream: unchanged=${s.unchangedAway}, caught up=${s.caughtUp}`);
   want(s.reloaded && s.disposed, `queued streams outlived reload or disposal: ${JSON.stringify(s)}`);
   want(s.closed && s.closedOnce, "session closure lost or duplicated its queued text, or left the reply enabled");
-  want(results.totals.speed === "Model speed | 320.0 tok/s · 2 requests" && results.totals.wait && results.totals.tools, `totals speed: ${JSON.stringify(results.totals)}`);
+  want(results.totals.speed === "Model speed | 320.0 tok/s · 2 requests | row" && results.totals.wait?.endsWith("| row") && results.totals.tools?.endsWith("| row"), `totals speed: ${JSON.stringify(results.totals)}`);
+  want(results.meters.order.join() === "meter:Time,meter:Tool calls,meter:Tokens sent,meter:Context,kv:Model wait,kv:Tool time", `this turn: bars first, then rows: ${JSON.stringify(results.meters.order)}`);
+  want(results.meters.context === "Context~100 / ~774,143", `the context against the high water: ${results.meters.context}`);
+  want(results.context.hint === null && /the provider counted 100 tokens/.test(results.context.title || ""), `context hint: ${JSON.stringify(results.context)}`);
+  want(results.noHighWater.class === "kv" && results.noHighWater.text === "Context~100", `context without a high water: ${JSON.stringify(results.noHighWater)}`);
   const tb = results.tabs;
   want(tb.names.join() === "Live,Changes,Workspace,Notes" && tb.first === "Live", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
   want(tb.live.join() === "This turn,Plan,Totals", `Live tab panels: ${JSON.stringify(tb.live)}`);

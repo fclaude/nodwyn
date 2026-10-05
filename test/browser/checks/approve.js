@@ -106,8 +106,8 @@ check(async () => {
     page.evaluate(() => {
       const panel = [...document.querySelectorAll(".panel")].find((p) => p.dataset.totals);
       if (!panel) return null;
-      const heads = [...panel.querySelectorAll(".meter-head")].map((m) => m.textContent);
-      return { spend: heads[0], running: heads[1], working: heads[2] };
+      const text = (name) => [...panel.querySelectorAll(".meter,.kv")].find((n) => n.firstElementChild?.textContent === name || n.querySelector(".meter-head span")?.textContent === name)?.textContent;
+      return { spend: text("Total spend"), running: text("Total running time"), working: text("Total working time") };
     });
   const held = await totals();
   assert.match(held.spend, /^Total spendat least \$0\.0000$/, `the unpriced spend: ${held.spend}`);
