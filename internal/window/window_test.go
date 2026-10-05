@@ -191,6 +191,46 @@ func TestResultCapIsHeadTailAndDeterministic(t *testing.T) {
 	}
 }
 
+// From recipe v17 a result too large to show is cut at line ends, and the
+// marker names the lines left out: of the file, for an fs-read, as the
+// fs-read that brings them back (whole files or a ranged read's header);
+// of the result otherwise. Older recipes keep the old marker.
+func TestNamedCutsSayWhichLinesAreLeftOut(t *testing.T) {
+	var file strings.Builder
+	for i := 1; i <= 400; i++ {
+		fmt.Fprintf(&file, "line %03d of the file\n", i)
+	}
+	s := newSession()
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "read it"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: "a", Name: "fs-read"}, {ID: "b", Name: "fs-read"}, {ID: "c", Name: "shell-exec"}}})
+	s.w.Append(log.KindToolResult, log.ToolResult{ID: "a", Name: "fs-read", OK: true, Value: file.String()})
+	s.w.Append(log.KindToolResult, log.ToolResult{ID: "b", Name: "fs-read", OK: true, Value: "[lines 101-400 of 400]\n" + strings.Join(strings.SplitAfter(file.String(), "\n")[100:], "")})
+	s.w.Append(log.KindToolResult, log.ToolResult{ID: "c", Name: "shell-exec", OK: true, Value: file.String()})
+	named := Build(s.events(t), "sys", 0, Policy{HighWater: 1 << 20, LowWater: 1 << 19, MaxResultTokens: 1000, NamedCuts: true}).Messages
+	// The system prompt, the request, the calls, then the three results.
+	whole, ranged, shell := named[3].Content, named[4].Content, named[5].Content
+	for _, tc := range []struct{ name, got, marker, before, after string }{
+		// 21-byte lines, a 2,000-byte head and a 1,000-byte tail, cut at
+		// the line ends inside them.
+		{"whole file", whole, "[... lines 96-353 of the file left out here, about 1806 tokens: read them with fs-read, start 96, count 258 ...]\n", "line 095 of the file\n", "line 354 of the file\n"},
+		{"ranged read", ranged, "[... lines 195-353 of the file left out here, about 1113 tokens: read them with fs-read, start 195, count 159 ...]\n", "line 194 of the file\n", "line 354 of the file\n"},
+		{"command output", shell, "[... lines 96-353 of this result left out here, about 1806 tokens: narrow the command, or page through its output, for them ...]\n", "line 095 of the file\n", "line 354 of the file\n"},
+	} {
+		if !strings.Contains(tc.got, tc.before+tc.marker+tc.after) {
+			t.Errorf("%s: no %q between the lines around it:\n%s", tc.name, tc.marker, tc.got)
+		}
+	}
+	old := Build(s.events(t), "sys", 0, Policy{HighWater: 1 << 20, LowWater: 1 << 19, MaxResultTokens: 1000}).Messages
+	if !strings.Contains(old[3].Content, "tokens omitted; re-read the file") {
+		t.Errorf("recipe v16 changed its marker:\n%s", old[3].Content)
+	}
+	// One long line has no line end to cut at: the old marker stands.
+	long := capNamed(strings.Repeat("x", 9000), 1000, "fs-read")
+	if !strings.Contains(long, "tokens omitted") {
+		t.Errorf("one long line: %q", long[:80])
+	}
+}
+
 func TestErrorResultsBecomeJSON(t *testing.T) {
 	var buf bytes.Buffer
 	w := log.New(&buf, "s")

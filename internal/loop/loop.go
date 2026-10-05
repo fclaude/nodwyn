@@ -473,6 +473,13 @@ func (l *Loop) policy() (window.Policy, int) {
 	return l.cfg.Window, l.cfg.Ceiling
 }
 
+// ResultCap is the window's cap on one tool result now, in its tokens: a
+// switch to another model may change it.
+func (l *Loop) ResultCap() int {
+	pol, _ := l.policy()
+	return pol.MaxResultTokens
+}
+
 // WindowTokens is the window's estimate of the next model-turn's request
 // were the window's water marks and result cap marks': what choosing another
 // model compares with the context that model reads (ADR 40).

@@ -294,6 +294,37 @@ func TestWindowSizedForTheContext(t *testing.T) {
 	}
 }
 
+// The cap on one tool result grows with the window, a 48th of its high
+// water up to 16,384 tokens, unless config.toml sets it: at 3,072 a 1M
+// window cut 13% of the reads the local sessions made (ADR 9, amended
+// 2026-10-05). A window that does not grow keeps its cap.
+func TestResultCapGrowsWithTheWindow(t *testing.T) {
+	def := Default().Window
+	set, err := Parse([]byte("[window]\nmax_result_tokens = 4096\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name             string
+		w                Window
+		context, reserve int
+		want             int
+	}{
+		{"unknown context", def, 0, 16384, 3072},
+		{"a little room", def, 81920, 16384, 3072},
+		{"200K", def, 200000, 16384, 3072},
+		{"1M", def, 1048576, 16384, 16128},
+		{"1M with a 128K reply cap", def, 1000000, 128000, 13625},
+		{"2M", def, 2000000, 16384, 16384},
+		{"1M, set", set.Window, 1048576, 16384, 4096},
+		{"1M, water marks set", func() Window { w := def; w.Fixed = true; return w }(), 1048576, 16384, 3072},
+	} {
+		if w, _ := tc.w.Sized(tc.context, tc.reserve); w.MaxResultTokens != tc.want {
+			t.Errorf("%s: max_result_tokens %d, want %d", tc.name, w.MaxResultTokens, tc.want)
+		}
+	}
+}
+
 // A model's reply cap is its own max_output, else the window's
 // output_reserve, but no more than a quarter of a context too small for the
 // window and that reply; one that leaves nothing of the context is refused.

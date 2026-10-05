@@ -395,7 +395,21 @@ type Window struct {
 	// marks then stay as set, instead of growing with the model's context
 	// (Sized).
 	Fixed bool `toml:"-"`
+	// ResultsFixed is set when config.toml sets max_result_tokens: the cap
+	// then stays as set, instead of growing with the window (Sized).
+	ResultsFixed bool `toml:"-"`
 }
+
+// The cap on one tool result grows with the window it is shown in, a
+// resultShare-th of the high water, up to maxResultCap. At the default
+// 3,072 a whole-file read of more than about 9 KB lost its middle whatever
+// the window held: 496 of 3,701 reads (13%) in the local session logs of
+// 2026-09-30 to 10-05, with a 654k or 774k high water, 126 of them read
+// again in ranges straight after (ADR 9, amended 2026-10-05).
+const (
+	resultShare  = 48
+	maxResultCap = 16384
+)
 
 // Sized is the window for a control model whose context holds context
 // tokens (0 when unknown), reserve of them kept for its reply (ReplyCap),
@@ -407,7 +421,9 @@ type Window struct {
 // cannot hold would have every request past the high water refused. The
 // quarter left above the high water is room for the request that compacts
 // the context, so a long task is summarized before anything is trimmed
-// (compact.scm). With the context unknown, or leaving no room beside the
+// (compact.scm). A window that grows grows its cap on one tool result too,
+// to a resultShare-th of its high water, unless config.toml sets the cap
+// (ResultsFixed). With the context unknown, or leaving no room beside the
 // reply, the window stays and the ceiling is the high water. The window's
 // estimate counts bytes/3, usually more than a server's tokenizer, so the
 // ceiling rarely overfills the context.
@@ -418,6 +434,9 @@ func (w Window) Sized(context, reserve int) (Window, int) {
 	case !w.Fixed && room*3/4 > w.HighWater:
 		w.HighWater = room * 3 / 4
 		w.LowWater = max(w.LowWater, w.HighWater/2)
+		if !w.ResultsFixed {
+			w.MaxResultTokens = max(w.MaxResultTokens, min(w.HighWater/resultShare, maxResultCap))
+		}
 	case w.HighWater > room:
 		w.HighWater = room * 3 / 4
 		w.LowWater = min(w.LowWater, w.HighWater/2)
@@ -548,6 +567,7 @@ func Parse(raw []byte) (Config, error) {
 	}
 	c.Budget.softFollowsHard(md)
 	c.Window.Fixed = md.IsDefined("window", "high_water") || md.IsDefined("window", "low_water")
+	c.Window.ResultsFixed = md.IsDefined("window", "max_result_tokens")
 	if md.IsDefined("loop", "max_tool_calls") && c.Loop.MaxToolCalls <= 0 {
 		return Config{}, fmt.Errorf("loop.max_tool_calls must be positive when set")
 	}

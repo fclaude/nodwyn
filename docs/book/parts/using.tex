@@ -85,7 +85,8 @@ model  = "gpt-5.1-codex"
 [window]
 # high_water      = 61440   # unset, the window follows the model's context
 # low_water       = 30720   #   less its reply cap; set, this size where it fits
-max_result_tokens = 3072    # larger tool results are shown head and tail
+max_result_tokens = 3072    # larger results show head and tail; unset,
+                            #   grows to a 48th of a large window's high water
 output_reserve    = 16384   # the reply cap of a model with none set or published
 
 [policy]

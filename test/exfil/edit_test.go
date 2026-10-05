@@ -54,6 +54,11 @@ func TestEditThroughAPlaceholderLeaksNothing(t *testing.T) {
 	if b, _ := os.ReadFile(file); string(b) != "name: demo\ntoken: "+canary+" # kept\nmode: test\n" {
 		t.Fatalf("the credential did not stay in the file: %q", b)
 	}
+	// The edit answers with the line it changed, as the model reads it
+	// (seen holds the written form, its tab escaped).
+	if !strings.Contains(seen[0], `2\ttoken: [REDACTED openai-key] # kept`) {
+		t.Fatalf("the edit's answer: %s", seen[0])
+	}
 	// Refused edits: a copy, a half placeholder, and a guess that is not the credential.
 	for _, src := range []string{
 		`(fs-edit "config.txt" "token: [REDACTED openai-key] # kept" "token: [REDACTED openai-key]\ncopy: [REDACTED openai-key]")`,

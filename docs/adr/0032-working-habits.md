@@ -617,3 +617,22 @@ TestGoTestRunsAreNotFoldedAsRunningNothing runs a passing and a failing go
 test, a package that does not build and a pytest run: only the build is
 folded, and its fold names "[build failed]". On the unchanged code the two
 go test runs are folded instead.
+
+## Amendment 2026-10-05: the reads of a file being edited stay
+
+Hygiene folds a stale read (of a file edited since) two rounds after it, and
+any read eight rounds old. Both sent the model back to the file it was
+editing: transcript.js was read 49 times in session
+20261005T004207Z-f0ddf504, each fold followed by four or five ranged
+re-reads (seq 474-492, 560-578, 615-633, 704-722), and "old text not found"
+clustered after the folds.
+
+Neither rule now folds a read of a file edited in the last
+`hygiene-editing-rounds` (4) rounds: the file is being worked on. A read of
+it folds once the edits move on, as before. fs-edit answers with the lines it
+changed (ADR 43, amended the same day), so what the stale read no longer
+shows the edit's answer does.
+
+TestHygieneKeepsTheReadsOfAFileBeingEdited reads big.py and bigger.py,
+edits big.py twice: big.py's read stays, bigger.py's folds. On the unchanged
+code big.py's read folds two rounds after the first edit.

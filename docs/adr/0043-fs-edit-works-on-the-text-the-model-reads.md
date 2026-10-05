@@ -89,3 +89,23 @@ no cheaper than before. Everything the guard decides, it decides as before.
   loop, and neither a request nor the log holds it), `test/exfil` (a scenario
   that a denied file stays denied, and a test that an edit and its refusals leak
   a canary nowhere).
+
+## Amendment 2026-10-05: an edit answers with the lines it changed
+
+fs-edit answered "ok". A read of the file folds two rounds after an edit to
+it (hygiene.scm), so the model read the file again before its next edit, and
+an edit made from memory missed: transcript.js was read 49 times in session
+20261005T004207Z-f0ddf504, and 13 of the 29 failed edits in
+20261005T022232Z-7f4b86f7 quoted text that was in no read.
+
+A written edit now answers with the lines it changed as the file now reads
+them, numbered, with two unchanged lines around each run, runs that close
+shown as one: `edited PATH, now N lines (+D); the changed lines now read:`
+then a `LINE<tab>text` row each. A changed run longer than 40 lines shows its
+ends, and one answer shows at most 120 lines, naming where the rest start.
+The lines are the file's as the model reads it, before and after the edit:
+a credential in them is its `[REDACTED <class>]` placeholder, as in a read
+and in a failed edit's quote, so the answer never carries one (make exfil's
+TestEditThroughAPlaceholderLeaksNothing caught the first version, which
+quoted the file as written), and the next edit's `old` matches it as
+before.

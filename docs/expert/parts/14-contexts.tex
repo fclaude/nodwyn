@@ -37,7 +37,11 @@ This prevents an orphan \code{tool} message that strict servers such as
 Cerebras reject. Protected batches can keep a window above its low-water
 target. Old requests still replay exactly as recorded; restart and resume
 a stopped session to apply the new rule to its next requests, including
-repairing pairs an older trim left orphaned.
+repairing pairs an older trim left orphaned. From recipe v17 a result
+larger than \code{max\_result\_tokens} is cut at line ends, and the marker
+names the lines left out: of the file, as the \code{fs-read} that brings
+them back, or of the result. The cap grows with the window, to a 48th of
+its high water (at most 16,384), unless \file{config.toml} sets it.
 
 \begin{tip}
 The model server caches the start of the prompt between requests, and a

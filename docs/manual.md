@@ -118,6 +118,13 @@ A result among the four recent entries protects its whole calling batch.
 The original events stay in the log; older requests still replay with the
 recipe they recorded. Restarting and resuming a task uses the new recipe,
 including repairing tool pairs left orphaned by an earlier trim.
+A tool result larger than `window.max_result_tokens` is shown head and
+tail; from recipe v17 the cut is at line ends and says which lines it left
+out, as the `fs-read` that brings them back. The cap follows the window:
+3,072 tokens by default, a 48th of the high water once the window grows
+with a large context (16,128 at a 1M one, at most 16,384), unless you set
+it. An `fs-edit` answers with the lines it changed, numbered as the file
+now reads them.
 
 ### Where each phase lives
 

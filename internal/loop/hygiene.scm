@@ -8,6 +8,11 @@
 ;;   2. a read of a file edited since is stale: it is folded to its outline,
 ;;      noting the file changed;
 ;;   3. a read hygiene-age rounds old is folded to its outline.
+;; Rules 2 and 3 leave the reads of a file being worked on, one edited in
+;; the last hygiene-editing-rounds rounds: folding them sent the model back
+;; to read the file it was editing (transcript.js 49 times in session
+;; 20261005T004207Z-f0ddf504, "old text not found" clustering after the
+;; folds), and fs-edit's answer now shows the lines it changed.
 ;; Folding an old result makes a server with a prompt cache read all of the
 ;; prompt after it again at the full input price, where a cached token costs
 ;; a fraction of that (a fiftieth on meta/muse-spark-1.3): a fold that takes
@@ -21,6 +26,7 @@
 
 (define hygiene-age 8)            ; rounds before a read is old
 (define hygiene-stale-age 2)      ; rounds before a stale read may fold
+(define hygiene-editing-rounds 4) ; a file edited this many rounds ago or less is being worked on
 (define hygiene-min-bytes 24000)  ; fold reads only when this much can go at once
 (define hygiene-min-read 2000)    ; smaller reads stay as they are
 (define hygiene-outline-lines 40) ; outline lines kept per read
@@ -165,6 +171,13 @@
   (let ((e (assoc-ref hygiene-edits (list-ref r 1) #f)))
     (and e (> e (list-ref r 4)))))
 
+;; A read of a file edited in the last hygiene-editing-rounds rounds: the
+;; file is being worked on, and its reads stay. hygiene-edits holds the
+;; latest edit of a file first.
+(define (hygiene-editing? r)
+  (let ((e (assoc-ref hygiene-edits (list-ref r 1) #f)))
+    (and e (< (- hygiene-round e) hygiene-editing-rounds))))
+
 (define (hygiene-tokens s) (quotient (+ (string-length s) 2) 3)) ; the window's estimate
 
 ;; Whether the provider's prompt cache serves this context: it read at least
@@ -214,7 +227,8 @@
 ;; folding it pays (hygiene-fold-reason).
 (define (hygiene-sweep)
   (let* ((due (filter (lambda (r) (let ((age (- hygiene-round (list-ref r 4))))
-                                    (or (>= age hygiene-age) (and (hygiene-stale? r) (>= age hygiene-stale-age)))))
+                                    (and (not (hygiene-editing? r))
+                                         (or (>= age hygiene-age) (and (hygiene-stale? r) (>= age hygiene-stale-age))))))
                       hygiene-reads))
          (bytes (fold (lambda (n r) (+ n (string-length (list-ref r 3)))) 0 due))
          (why (and (pair? due) (>= bytes hygiene-min-bytes) (hygiene-fold-reason due))))

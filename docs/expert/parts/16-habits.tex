@@ -74,6 +74,10 @@ rules, main context only:
   \item a read \code{hygiene-age} (8) rounds old folds to its outline.
 \end{enumerate}
 
+Neither of the last two folds a read of a file edited in the last
+\code{hygiene-editing-rounds} (4) rounds: the file is being worked on, and
+\code{fs-edit} answers with the lines it changed, so its reads stay.
+
 An outline keeps the definition lines (\code{def}, \code{class},
 \code{func}, \code{fn}\ldots) with their line numbers, so the model can
 read any part back with a ranged \code{fs-read}. Reads fold in batches of

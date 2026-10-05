@@ -36,9 +36,13 @@ type Options struct {
 	// this many bytes, so the window never cuts a ranged read (the core
 	// sets it from window.max_result_tokens).
 	MaxRangeBytes int
-	MaxOutput     int           // shell-exec truncates stdout/stderr beyond this
-	ShellTimeout  time.Duration // per shell-exec cap
-	EnvAllow      []string      // environment variables children may see
+	// RangeBytes, when set, is that cap as it is now: the window's cap on
+	// a result grows with the model's context, which is known only once
+	// the session has sized its window, and changes with the model.
+	RangeBytes   func() int
+	MaxOutput    int           // shell-exec truncates stdout/stderr beyond this
+	ShellTimeout time.Duration // per shell-exec cap
+	EnvAllow     []string      // environment variables children may see
 	// Procs holds the session's background processes (shell-start and the
 	// rest); nil offers none, as in nodwyn repl.
 	Procs *Procs

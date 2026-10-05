@@ -378,8 +378,10 @@ its calls are removed, their results are omitted as well, and their seqs
 join the sticky elided set. The model never receives those results without
 their calls. A result whose call is still present may be elided in place;
 a single result larger than \code{MaxResultTokens} is shown head and tail
-with a marker. Older recipes replay their original shape, and resuming a
-session applies v16 to its next requests, including earlier sticky elisions.
+with a marker; from recipe v17 it is cut at line ends and the marker names
+the lines left out, of the file for an \code{fs-read}. Older recipes replay
+their original shape, and resuming a session applies v17 to its next
+requests, including earlier sticky elisions.
 The same fold applies the events that shape the context: a strategy's
 \code{context.narrow} starts a window with its own system prompt, its
 \code{context.fold} drops a finished sub-agent's context, its

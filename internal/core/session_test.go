@@ -198,7 +198,8 @@ func TestFsEditWithEditsAsksOnceWithOneDiff(t *testing.T) {
 	if tools := string(r.srv.Requests[0].Raw); !strings.Contains(tools, `"edits":{"description":`) || !strings.Contains(tools, `"required":["old","new"],"type":"object"},"type":"array"}`) {
 		t.Fatalf("the tool list does not show an edit's fields:\n%s", tools)
 	}
-	if raw := string(r.srv.Requests[1].Raw); !strings.Contains(raw, `"role":"tool","content":"ok","tool_name":"fs-edit"`) {
+	// It answers with the lines it changed as the file now reads them.
+	if raw := string(r.srv.Requests[1].Raw); !strings.Contains(raw, `"role":"tool","content":"edited main.go, now 5 lines (+4); the changed lines now read:\n1\tpackage main\n2\t\n3\tfunc a() {}\n4\t\n5\tfunc b() {}","tool_name":"fs-edit"`) {
 		t.Fatalf("the result fed back:\n%s", raw)
 	}
 }

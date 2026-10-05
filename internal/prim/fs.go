@@ -70,7 +70,11 @@ func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
 						return scheme.Value{}, err
 					}
 				}
-				text, err := readLines(abs, c.Args[0].S, start, count, o.MaxRangeBytes)
+				budget := o.MaxRangeBytes
+				if o.RangeBytes != nil {
+					budget = o.RangeBytes()
+				}
+				text, err := readLines(abs, c.Args[0].S, start, count, budget)
 				if err != nil {
 					return scheme.Value{}, err
 				}
@@ -517,7 +521,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-edit",
 		Meta: scheme.Meta{
-			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate. Several changes to one file: one call with edits, a list of {old, new, replace_all} given instead of old and new; they apply in order, each to the text the one before left, and nothing is written unless every one applies. If old is not found but matches when whitespace is ignored, the error quotes the file's exact text. A credential-shaped text in a file reads to you as [REDACTED <class>]: write that placeholder in old to match whatever the file holds there, and in new, in the same order, to keep it (leave it out of new to drop it). Prefer this over fs-write for changes to existing files.",
+			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate. Several changes to one file: one call with edits, a list of {old, new, replace_all} given instead of old and new; they apply in order, each to the text the one before left, and nothing is written unless every one applies. If old is not found but matches when whitespace is ignored, the error quotes the file's exact text. A credential-shaped text in a file reads to you as [REDACTED <class>]: write that placeholder in old to match whatever the file holds there, and in new, in the same order, to keep it (leave it out of new to drop it). It answers with the changed lines as the file now reads them, numbered, with two lines around each, so the next edit near them needs no new read. Prefer this over fs-write for changes to existing files.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
 				{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all); not with edits", Optional: true},
@@ -561,7 +565,9 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 			if err := os.WriteFile(abs, []byte(next), mode); err != nil {
 				return scheme.Value{}, err
 			}
-			return scheme.Void, nil
+			// The lines as the model reads them: a credential in them is its
+			// placeholder, as in any read and in a failed edit's quote.
+			return scheme.Str(editedRegions(c.Args[0].S, redact.Redact(string(cur), nil).Text, redact.Redact(next, nil).Text)), nil
 		},
 	}
 }

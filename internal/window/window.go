@@ -21,7 +21,8 @@
 //     protected result keeps the whole calling batch. Between
 //     trims every request is a byte-identical prefix plus a delta.
 //   - Tool results larger than MaxResultTokens are shown head+tail with a
-//     marker; the model re-reads what it needs.
+//     marker; the model re-reads what it needs. From recipe v17 the cut is
+//     at line ends and the marker names the lines left out.
 //   - User messages are never elided; they are small and they are the ask.
 //     Neither are harness messages (add-message): they are the loop's
 //     instructions to the model, and it reads them as user messages.
@@ -39,6 +40,8 @@ package window
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/fclaude/nodwyn/internal/llm"
@@ -69,6 +72,10 @@ type Policy struct {
 	// the batch while any of its results is recent (recipe v16). Older
 	// recipes keep their original, potentially orphaned tool messages.
 	PairTools bool
+	// NamedCuts cuts a result too large to show at line ends and names the
+	// lines it leaves out, the file's for an fs-read (capNamed, recipe v17).
+	// Older recipes keep capResult's marker, which names none.
+	NamedCuts bool
 }
 
 // The default headers for the task and its plan: what a recipe that records
@@ -318,7 +325,11 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 				if text, ok := folded[ev.Seq]; ok {
 					content = text
 				}
-				content = capResult(content, pol.MaxResultTokens)
+				if pol.NamedCuts {
+					content = capNamed(content, pol.MaxResultTokens, p.Name)
+				} else {
+					content = capResult(content, pol.MaxResultTokens)
+				}
 				add(entry{seq: ev.Seq, kind: "tool", msg: llm.Message{Role: llm.RoleTool, Content: content, ToolName: p.Name, ToolCallID: p.ID}})
 			}
 		case log.KindLLMReq:
@@ -467,6 +478,52 @@ func capResult(s string, max int) string {
 	}
 	omitted := Estimate(s[headBytes : len(s)-tailBytes])
 	return s[:headBytes] + fmt.Sprintf("\n[... about %d tokens omitted; re-read the file or narrow the command for the full content ...]\n", omitted) + s[len(s)-tailBytes:]
+}
+
+// rangeHeader is the first line of a ranged fs-read: "[lines A-B of N]".
+var rangeHeader = regexp.MustCompile(`^\[lines (\d+)-\d+ of \d+\]\n`)
+
+// capNamed shortens a tool result as capResult does, two thirds head and
+// one third tail, but cuts at line ends and says which lines it left out
+// (recipe v17, Policy.NamedCuts): of the file for an fs-read, whose text
+// starts at line 1 or at its "[lines A-B of N]" header's A, so the marker
+// is the fs-read that brings them back; of the result otherwise. A result
+// with no line end to cut at (one long line) gets capResult's marker.
+// Deterministic, so it never changes between requests.
+func capNamed(s string, max int, tool string) string {
+	if max <= 0 || Estimate(s) <= max {
+		return s
+	}
+	headBytes := max * 3 * 2 / 3
+	tailBytes := max * 3 / 3
+	if headBytes+tailBytes >= len(s) {
+		return s
+	}
+	h := strings.LastIndexByte(s[:headBytes], '\n') + 1
+	t := len(s) - tailBytes
+	if i := strings.IndexByte(s[t:], '\n'); i >= 0 {
+		t += i + 1
+	} else {
+		t = -1
+	}
+	if h == 0 || t < 0 || h >= t {
+		return capResult(s, max)
+	}
+	// Lines are counted in the result, 1-based; a file's are offset by
+	// where its text starts.
+	first := strings.Count(s[:h], "\n") + 1
+	last := strings.Count(s[:t], "\n")
+	omitted := Estimate(s[h:t])
+	if tool == "fs-read" {
+		offset := 0
+		if m := rangeHeader.FindStringSubmatch(s); m != nil {
+			start, _ := strconv.Atoi(m[1])
+			offset = start - 2 // the header is the result's line 1
+		}
+		first, last = first+offset, last+offset
+		return s[:h] + fmt.Sprintf("[... lines %d-%d of the file left out here, about %d tokens: read them with fs-read, start %d, count %d ...]\n", first, last, omitted, first, last-first+1) + s[t:]
+	}
+	return s[:h] + fmt.Sprintf("[... lines %d-%d of this result left out here, about %d tokens: narrow the command, or page through its output, for them ...]\n", first, last, omitted) + s[t:]
 }
 
 func contains(xs []uint64, x uint64) bool {

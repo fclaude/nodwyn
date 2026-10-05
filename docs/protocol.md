@@ -750,12 +750,18 @@ Summary records now have typed `from`, `through`, `source_hash` and `text`
 payloads. `summary.drop` names `summary_seq`. These are durable history, not
 permission or mutation RPCs. The first editing surface is the local `nodwyn
 summary` CLI on a closed session; daemon-owned logs retain exclusive ownership.
-Recipes from `window-v2` on are summary-aware; new runtimes record `window-v16`,
+Recipes from `window-v2` on are summary-aware; new runtimes record `window-v17`,
 and exact replay supports every recipe from `window-v1` to it. Version 16
 omits the matching tool results when their assistant call batch is elided,
 and protects the calls while any result is recent. `llm.req.elided` includes
-those omitted results. Earlier recipes retain their exact historical shape,
-even where a trim left orphaned tool messages; a resumed runtime uses v16.
+those omitted results. Version 17 cuts a result too large to show at line
+ends and names the lines it leaves out (`[... lines A-B of the file left
+out here, …: read them with fs-read, start A, count N ...]`, or `of this
+result` for other tools). Earlier recipes retain their exact historical
+shape, even where a trim left orphaned tool messages; a resumed runtime uses
+v17. The recorded `max_result_tokens` is the window's cap as sized for the
+model: a 48th of the high water when the window grows with a large context,
+up to 16,384, unless `config.toml` sets it.
 
 
 ### Prompt scope metadata

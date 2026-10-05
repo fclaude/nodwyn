@@ -335,3 +335,28 @@ Baseten routes requests by its own header, `X-Session-Affinity`, as OpenRouter
 does by `X-Session-Id`. The session key goes as both headers whenever it is
 sent (`cache_key` `session` or `header`), the model list asked without it. A
 server that knows neither ignores them; the key says nothing about the session.
+
+## Amendment 2026-10-05: the result cap follows the window, and a cut names its lines
+
+A tool result larger than `window.max_result_tokens` (3,072 by default) is
+shown head and tail. The cap stayed at 3,072 while the window grew with the
+model's context to a 654k or 774k high water, so a whole-file read of more
+than about 9 KB lost its middle: 496 of the 3,701 reads (13%) in the 75
+local session logs of 2026-09-30 to 10-05, and 126 of those were read again
+in ranges straight after, the marker saying only "about N tokens omitted;
+re-read the file". transcript.js was read 20 times in
+20261003T190332Z-547f0bd6 that way.
+
+- A window that grows with the model's context grows the cap with it, to a
+  48th of its high water and at most 16,384 tokens (16,128 at a 1M
+  context), unless `config.toml` sets `max_result_tokens`
+  (`Window.ResultsFixed`); a window that keeps its size keeps 3,072. The
+  session's recipe records the cap it ran with, as before.
+- A ranged `fs-read` stops within the cap as the window is sized now
+  (`prim.Options.RangeBytes`), not as the configuration had it before the
+  session sized its window, so the window still never cuts a ranged read.
+- Recipe v17 (`Policy.NamedCuts`) cuts a result at line ends and names the
+  lines it leaves out: of the file for an `fs-read`, counted from line 1 or
+  from a ranged read's `[lines A-B of N]` header, as the fs-read that brings
+  them back; of the result for anything else. A result with no line end to
+  cut at keeps the old marker, and older recipes replay with it.

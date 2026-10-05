@@ -232,8 +232,16 @@ func (s *Session) primitiveOptions() prim.Options {
 		_, _ = s.Record(log.KindFileVersion, log.FileVersion{Path: v.Path, Hash: v.Hash, Bytes: v.Bytes})
 	}}
 	// A ranged fs-read stays under the window's cut for one tool result
-	// (window.Estimate is bytes/3), with room for its header.
+	// (window.Estimate is bytes/3), with room for its header: the cut as
+	// the window is sized now, once the loop has it (ADR 9, amended
+	// 2026-10-05).
 	po.MaxRangeBytes = o.Config.Window.MaxResultTokens*3 - 256
+	po.RangeBytes = func() int {
+		if s.loop == nil {
+			return po.MaxRangeBytes
+		}
+		return s.loop.ResultCap()*3 - 256
+	}
 	po.BindingsPath = o.Paths.Bindings
 	po.ShellTimeout = shellTimeout
 	// P3 egress: the session is the CredentialStore (it owns the keychain,
@@ -397,7 +405,7 @@ func (s *Session) initialize() (err error) {
 		s.note(sizing)
 	}
 	s.loop, err = loop.New(s, s.interp, loop.Config{
-		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens, Thinking: true, InConversation: true, PairTools: true},
+		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens, Thinking: true, InConversation: true, PairTools: true, NamedCuts: true},
 		Ceiling:        ceiling,
 		MaxOutput:      o.Config.Window.OutputReserve,
 		Models:         models,

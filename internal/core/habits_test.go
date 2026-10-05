@@ -323,3 +323,59 @@ func TestGoTestRunsAreNotFoldedAsRunningNothing(t *testing.T) {
 		t.Fatalf("folded as running no test: %v", folded)
 	}
 }
+
+// A read of a file being edited stays in the window, stale or old: folding
+// it sent the model back to read the file it was editing (transcript.js 49
+// times in session 20261005T004207Z-f0ddf504). A read of a file left alone
+// folds as before (hygiene.scm, hygiene-editing-rounds).
+func TestHygieneKeepsTheReadsOfAFileBeingEdited(t *testing.T) {
+	t.Parallel()
+	edit := func(id, from, to string) fake.Turn {
+		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-edit", Args: map[string]any{"path": "big.py", "old": from, "new": to}}}}
+	}
+	read := func(id, path string) fake.Turn {
+		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-read", Args: map[string]any{"path": path}}}}
+	}
+	r := strategyRig(t, "(define hygiene-age 2) (define hygiene-min-bytes 1) (define hygiene-pressure 0.0001)", 20,
+		read("big", "big.py"),
+		read("other", "bigger.py"),
+		edit("e1", "first = 1", "first = 2"),
+		read("small", "small.py"),
+		edit("e2", "first = 2", "first = 3"),
+		read("small2", "small.py"),
+		fake.Turn{Content: "done"},
+	)
+	for name, size := range map[string]int{"big.py": 400, "bigger.py": 600, "small.py": 2} {
+		if err := os.WriteFile(filepath.Join(r.repo, name), []byte("first = 1\n"+strings.Repeat("value = 12345678\n", size)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.turn("work on big.py"); err != "" {
+		t.Fatal(err)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[uint64]string{}
+	folded := map[string]bool{}
+	for _, ev := range evs {
+		switch ev.Kind {
+		case log.KindToolResult:
+			var res log.ToolResult
+			if ev.Decode(&res) == nil {
+				ids[ev.Seq] = res.ID
+			}
+		case log.KindResultFold:
+			var f struct {
+				Seq uint64 `json:"seq"`
+			}
+			if ev.Decode(&f) == nil {
+				folded[ids[f.Seq]] = true
+			}
+		}
+	}
+	if folded["big"] || !folded["other"] {
+		t.Fatalf("folded %v: the read of big.py, being edited, must stay; bigger.py's must fold", folded)
+	}
+}
