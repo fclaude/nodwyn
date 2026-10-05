@@ -6,7 +6,9 @@ import { h, toast } from "./dom.js";
 const presets = {
   ollama: { url: "http://localhost:11434", hint: "Ollama on this computer, or another one on your network (for example http://workshop:11434)." },
   openai: { url: "https://api.openai.com/v1", hint: "Any server that speaks the OpenAI chat-completions API. Its key is kept in the keychain." },
+  anthropic: { url: "https://api.anthropic.com/v1", hint: "Claude on Anthropic's own API. Its key is kept in the keychain and sent in the x-api-key header." },
 };
+const kindLabel = { ollama: "Ollama", openai: "OpenAI-compatible", anthropic: "Anthropic" };
 
 const hostOf = (address) => {
   try {
@@ -63,11 +65,11 @@ export function modelForm(ctx, { onSaved, compact = false } = {}) {
   const show = () => {
     const other = !server;
     newServer.hidden = !other;
-    keyField.hidden = !other || provider !== "openai";
+    keyField.hidden = !other || provider === "ollama";
     url.required = other;
     const s = servers.find((s) => s.name === server);
-    hint.textContent = other ? presets[provider].hint : `${s.provider === "openai" ? "OpenAI-compatible" : "Ollama"} at ${hostOf(s.url)}${s.credential ? ", with its key from the keychain" : ""}.`;
-    model.placeholder = kind(server) === "ollama" ? "for example qwen3:32b" : "for example gpt-5";
+    hint.textContent = other ? presets[provider].hint : `${kindLabel[s.provider] || "Ollama"} at ${hostOf(s.url)}${s.credential ? ", with its key from the keychain" : ""}.`;
+    model.placeholder = { ollama: "for example qwen3:32b", anthropic: "for example claude-sonnet-5-5" }[kind(server)] || "for example gpt-5";
   };
   const pressed = (event) => {
     for (const b of event.currentTarget.parentElement.children) b.setAttribute("aria-pressed", String(b === event.currentTarget));
@@ -109,7 +111,7 @@ export function modelForm(ctx, { onSaved, compact = false } = {}) {
   const newServer = h(
     "div",
     { class: "fields" },
-    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of model server" }, choice("ollama", "Ollama"), choice("openai", "OpenAI-compatible")),
+    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of model server" }, choice("ollama", "Ollama"), choice("openai", "OpenAI-compatible"), choice("anthropic", "Anthropic")),
     h("div", { class: "field" }, h("label", { for: "model-url" }, "Server address"), url),
   );
   const save = h("button", { type: "submit", class: "btn accent big" }, "Save and check");
@@ -125,7 +127,7 @@ export function modelForm(ctx, { onSaved, compact = false } = {}) {
         key.value = "";
         try {
           const params = server ? { server, model: model.value.trim() } : { provider, url: url.value.trim(), model: model.value.trim() };
-          if (!server && provider === "openai" && apiKey) params.api_key = apiKey;
+          if (!server && provider !== "ollama" && apiKey) params.api_key = apiKey;
           desk.settings = await conn.call("settings.control.write", params);
           await desk.refreshModels();
           const status = desk.control();

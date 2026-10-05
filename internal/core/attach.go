@@ -200,7 +200,7 @@ func (s *Session) noVision(name string) error {
 	switch {
 	case c.URL == "" || c.Model == "":
 		return fmt.Errorf("attach: %s is an image, and no control model is configured to take it; add [control] to %s with a model that takes images", name, s.opts.Paths.ConfigFile)
-	case c.Provider == "openai":
+	case c.Provider == "openai" || c.Provider == "anthropic":
 		return fmt.Errorf("attach: %s is an image, and the model %s is set as taking no images; if it does, set Takes images to Yes for it in Settings › Models (vision = false in its entry in %s says it does not), or choose a model that does", name, c.Model, s.opts.Paths.ConfigFile)
 	}
 	return fmt.Errorf("attach: %s is an image, and the control model %s does not take images: ollama does not list vision among its capabilities (ollama show %s); choose a vision model for [control] in %s", name, c.Model, c.Model, s.opts.Paths.ConfigFile)

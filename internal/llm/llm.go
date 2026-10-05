@@ -136,3 +136,11 @@ type Provider interface {
 type VisionReporter interface {
 	Vision(ctx context.Context, model string) (bool, error)
 }
+
+// ContextReporter is a provider whose server's model list says how many
+// tokens a model's context holds (OpenAI-compatible servers that give it, and
+// Anthropic). Server is the address it asks, which names what it said.
+type ContextReporter interface {
+	Server() string
+	ContextLength(ctx context.Context, model string) (int, error)
+}

@@ -35,7 +35,7 @@ to, and without it \nodwyn{} prints the table to add. The first run of
 
 \begin{txt}
 [servers.local]                     # where models are, and their key
-provider = "ollama"                 # or "openai": any chat-completions server
+provider = "ollama"                 # or "openai": any chat-completions server, or "anthropic"
 url      = "http://localhost:11434"
 
 [servers.openai]
@@ -118,14 +118,25 @@ provider, where you can see it before saving, and keeps it when it saves
 another model on that server. The choice changes neither the key's binding
 nor what the conversation log records.
 
+\code{provider = "anthropic"} is Claude on Anthropic's own API, not one of
+those dialects: it speaks the Messages API, takes its key in the
+\code{x-api-key} header (so the key's binding is \code{header:x-api-key}),
+asks for an effort as \code{output\_config.effort} beside adaptive thinking,
+which Claude 4.6 and later take, and caches its prompt only when
+\code{cache\_control} says so. Its models take no \code{seed},
+\code{output\_field} or \code{cache\_key}, and a temperature of at most 1; its
+model list gives each model's context window (\adr{8}, amended 2026-10-05).
+Settings has presets for Anthropic, OpenAI, OpenRouter and Cerebras,
+and for Ollama and any other server.
+
 A reasoning model takes an effort, how hard it is asked to think. A provider
 decides which words it accepts, and may refuse a request that carries one it
 does not know, so a model takes the efforts its entry lists,
 \code{efforts = ["low", "medium", "high"]}, with \code{effort = "medium"} for
 the one a conversation starts with, else those its provider publishes (below).
 Nothing is inferred from a model's name.
-The word goes out as \code{reasoning\_effort} to a chat-completions server and
-as \code{think} to Ollama (\code{["off", "on"]} for a model that thinks or does
+The word goes out as \code{reasoning\_effort} to a chat-completions server, as
+\code{output\_config.effort} to Anthropic, and as \code{think} to Ollama (\code{["off", "on"]} for a model that thinks or does
 not), and the log records it on each request (\adr{41}).
 
 In the console, Settings $\to$ Models does all of this without the file:
@@ -144,8 +155,8 @@ A task whose model has gone from the list asks nothing until you
 choose one for it.
 
 OpenAI's and Cerebras' APIs say nothing of a model's context, its longest
-reply, its efforts or its price, so nodwyn carries a catalogue of what
-providers publish, a snapshot of models.dev built into it
+reply, its efforts or its price, and Anthropic's says little, so
+nodwyn carries a catalogue of what providers publish, a snapshot of models.dev built into it
 (\code{go generate ./internal/catalogue} renews it). A model on a provider it
 describes, found by its server's host and its exact id, takes from it what its
 entry leaves unset: gpt-6.1-sol at \code{api.openai.com} holds 1,050,000

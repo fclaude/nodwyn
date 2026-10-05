@@ -318,3 +318,15 @@ what a request asks for and not what a provider does with it. Not built: a
 breakpoint of its own on the system prompt, which would survive a hygiene fold
 that rewrites an earlier message; the docs do not say whether it combines with
 the top-level ask.
+
+## Amendment 2026-10-05: Anthropic's own cache
+
+Anthropic's own API (ADR 8, amended 2026-10-05) reads the same top-level
+`cache_control` and caches nothing without it, so `cache_control` is a setting
+of its models too; `models.test` sends it as a task does. Its usage reports
+`input_tokens` as only the prompt after the last breakpoint, so the prompt is
+that plus what was read from the cache and written to it, which keeps
+`cached_tokens`, the budget's tenth and the context meter as they were. A model
+added in Settings on an Anthropic provider starts with the five minute ask
+chosen, written to its entry like any setting: without it every request is
+billed in full, and nothing infers it from the model's name or later.

@@ -42,7 +42,7 @@ cache_control = "1h"
 func TestCacheControlRefusals(t *testing.T) {
 	for name, tc := range map[string]struct{ toml, want string }{
 		"a word nobody sends": {"[control]\nprovider = \"openai\"\nurl = \"https://h/v1\"\nmodel = \"m\"\ncache_control = \"forever\"\n", `cache_control "forever" is not supported (ephemeral, 1h)`},
-		"ollama":              {"[control]\nurl = \"http://h\"\nmodel = \"m\"\ncache_control = \"ephemeral\"\n", "cache_control is for openai servers"},
+		"ollama":              {"[control]\nurl = \"http://h\"\nmodel = \"m\"\ncache_control = \"ephemeral\"\n", "cache_control is for openai and anthropic servers"},
 	} {
 		if _, err := Parse([]byte(tc.toml)); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v, want an error saying %q", name, err, tc.want)

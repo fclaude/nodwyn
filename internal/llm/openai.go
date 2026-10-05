@@ -63,6 +63,9 @@ func NewOpenAI(base string, authorize func(*http.Request) error) *OpenAI {
 
 func (o *OpenAI) Name() string { return "openai" }
 
+// Server is the address the client asks (ContextReporter).
+func (o *OpenAI) Server() string { return o.URL }
+
 // Vision reports what the configuration says: whether the model takes
 // images.
 func (o *OpenAI) Vision(context.Context, string) (bool, error) { return o.Images, nil }
@@ -413,14 +416,19 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 
 // cacheControl is the request's ask to cache the prompt (CacheControl), or
 // nil to ask nothing.
-func (o *OpenAI) cacheControl() *oaiCacheControl {
-	switch o.CacheControl {
+func (o *OpenAI) cacheControl() *oaiCacheControl { return cacheAsk(o.CacheControl) }
+
+// cacheAsk is the request's ask to cache the prompt that a cache_control
+// setting names ("ephemeral" or "1h"), the same in both protocols that take
+// it: nil for "", which asks nothing.
+func cacheAsk(setting string) *oaiCacheControl {
+	switch setting {
 	case "":
 		return nil
 	case "1h":
 		return &oaiCacheControl{Type: "ephemeral", TTL: "1h"}
 	}
-	return &oaiCacheControl{Type: o.CacheControl}
+	return &oaiCacheControl{Type: setting}
 }
 
 // send makes one authorized request and returns a 200 response. A redirect

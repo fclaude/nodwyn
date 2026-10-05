@@ -110,3 +110,71 @@ its hash and replay are unchanged; the dialect transforms only the wire. A
 strict fake Responses server checks the wire, and the chat fake refuses an
 effort beside tools on chat completions as OpenAI does, so a conversation
 shows the failure on one dialect and the answer on the other.
+
+## Amendment 2026-10-05: Anthropic's Messages API is a provider kind
+
+Settings were built around servers that copy OpenAI's chat completions, and
+a person who wants Claude on Anthropic's own API had no provider to choose:
+`provider = "anthropic"` was refused. Anthropic's API is not a dialect of
+that protocol. It takes its key in `x-api-key`, names a version in every
+request, refuses a request without `max_tokens`, asks for an effort, thinking
+and a prompt cache in fields of its own, and reports `input_tokens` as only
+the prompt after the last cache breakpoint. So it is a third kind, beside
+`ollama` and `openai`, with a client of its own (`llm.Anthropic`) and not
+Anthropic's OpenAI-compatible endpoint, which has no effort, no thinking and
+no cache control.
+
+- **The wire.** `POST {url}/messages` with `anthropic-version: 2023-06-01`
+  (the one version the API has) and the key in `x-api-key`. The system messages
+  are the top-level `system`; each assistant turn is its text and its
+  `tool_use` blocks; each tool result is a `tool_result` block of a user
+  message, and a run of user messages and results is one message with the
+  results first, which the API requires. An id another provider issued, in a
+  conversation that moved between models (ADR 40), is changed to the
+  characters Anthropic accepts, the same way in a call and its result; a
+  message with nothing to say is left out (the API refuses an empty text
+  block); a call whose arguments are not a JSON object is sent with none,
+  since `input` must be an object, and the tool reports what the model sent.
+  `max_tokens` is the model's reply cap, 16,384 when a request names none.
+  Images are base64 `image` blocks. Not streamed, for ADR 25's reason, so a
+  very large cap with heavy thinking is one long request: streaming is not built.
+- **Effort.** The word is `output_config.effort`, and a request that has one
+  also sends `thinking: {"type": "adaptive", "display": "summarized"}`, since on
+  some models thinking is off until it is asked for and the summary is what
+  nodwyn shows. A model that declares no effort is sent neither (ADR 41).
+  Adaptive thinking exists on Claude 4.6 and later; a model before that (Opus
+  4.5 takes an effort, but with a token budget) refuses it with a 400, which
+  the test and the turn explain (`llm.Hint`, `models.test`): efforts the
+  catalogue publishes for Opus 4.5 are therefore offered and refused. A token
+  budget is not built; the budget is a number nodwyn has no way to choose.
+- **Thinking goes back as nothing.** The API takes a reply's thinking back only
+  with its signature, which nodwyn does not keep (ADR 9, amended 2026-10-02:
+  the log redacts what looks like a key and would break one). With adaptive
+  thinking a turn need not begin with a thinking block, so each request
+  reasons afresh from the conversation, as it does on the Responses API. The
+  summary of a reply is still its `Thinking` in the log and the window.
+- **Usage and done reasons.** The prompt is `input_tokens` plus the tokens
+  read from the cache plus those written to it; `cache_read_input_tokens` is
+  `cached_tokens` (a reported 0 is not an unknown), `cache_creation_input_tokens`
+  the cache write, `output_tokens_details.thinking_tokens` the reasoning. The
+  API reports no cost, so one is estimated from the prices; an hour's cache
+  write costs twice the input price and is estimated at the published (five
+  minute) write price. `max_tokens` is `length`; `tool_use` is `tool_calls`; a
+  `refusal` ends the turn with a reply saying the model declined and why.
+- **The key's position is the provider's.** `config.KeyPosition` says where
+  each kind reads its key, and the key's binding must allow exactly that:
+  `header:x-api-key` for Anthropic, a bearer `Authorization` for the others.
+  Core and Settings use it for the authorization of a request, the readiness
+  of a key, the rows saved with it and the key sent to list models, so a key
+  bound as a bearer token is not released to Anthropic and the page says
+  *key not allowed*. The rows are `POST` and `GET`, as for any model key.
+- **What config.toml takes.** An Anthropic server takes a `credential`;
+  its models take `vision`, `cache_control`, `temperature` (0 to 1) and prices,
+  and refuse a `dialect`, `cache_key`, `output_field` and `seed`, which the API
+  has no field for. A model's context is its entry's, the catalogue's, or the
+  `max_input_tokens` of Anthropic's model list, asked with the key.
+- **Not verified against Anthropic.** No key was used (AGENTS.md): the wire
+  follows Anthropic's documentation and a strict fake (`test/fakes/chat`,
+  `/v1/messages`) that refuses a bearer key, a missing version or `max_tokens`,
+  an unknown field and an effort without adaptive thinking. One request against
+  the real API, with Settings › Models › Test, is the check that remains.

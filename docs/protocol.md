@@ -431,7 +431,7 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `keychain.passphrase` | `{"current"?, "passphrase"?, "no_passphrase"?}` | Keychain status after setting, changing or (`no_passphrase`) removing the open keychain's passphrase; `current` is required when it has one, and a wrong one waits a second as `keychain.unlock` does |
 | `settings.read` | `{}` | `{config_file, control, models, servers, choices, keychain, docs, values, judge}` |
 | `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}`, or `{"provider","url","model","api_key"?,"effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on), and saving the server it names; the model it replaces stays in the list |
-| `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?}` | Settings after adding a provider (`[servers.NAME]`, named after its host) or changing the one `name` names; the key goes to the keychain |
+| `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?}` | Settings after adding a provider (`[servers.NAME]`, named after its host) or changing the one `name` names; `provider` is `ollama`, `openai` or `anthropic` (a dialect is for `openai` alone); the key goes to the keychain, bound for `POST` and `GET` at the host where the provider reads it (a bearer header; Anthropic's `x-api-key`) |
 | `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model is on |
 | `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?,"settings"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts, starting effort and settings |
 | `settings.model.remove` | `{"name"}` | Settings after removing a model from the list; the default model is not removed |
@@ -454,10 +454,12 @@ when it is not. It carries what the model's entry asks of its provider as a
 task's request would, `cache_control` included (ADR 9, 2026-10-05), so a
 provider that refuses it answers `refused` with what to turn off. `models.offered` asks one configured server for its list. Unlike
 `models.status`, a chat-completions server is asked with its key, after the
-same binding check a model's requests have, since OpenAI and Cerebras list
-their models only to one: a model key is bound for GET (the list) as well as
-POST, and the daemon adds the GET row at start to a key that config.toml
-names and that only POST was bound for, at the same host. Its errors say
+same binding check a model's requests have, since OpenAI, Cerebras and
+Anthropic list their models only to one: a model key is bound for GET (the
+list) as well as POST, and the daemon adds the GET row at start to a key that
+config.toml names for a chat-completions server and that only POST was bound
+for, at the same host. An Anthropic server's list gives each model's context
+window, which sizes a conversation whose model's entry and catalogue say none. Its errors say
 what to do: a server that wants a key and has none, a key it did not
 accept, or a key that was not sent (the keychain is locked, the binding
 refused it). `servers` in the settings are the model providers: the
@@ -480,7 +482,9 @@ published limit, at most a quarter of the context), and `settings` the
 model's own settings, `{num_ctx?, max_output?, output_field?, keep_alive?,
 temperature?, seed?, vision?, cache_key?, cache_control?, price_input?,
 price_cached_input?, price_output?}`: its entry's, and for `control` those of
-the entry it names (ADR 41, amended 2026-10-05). `settings.model.write` takes
+the entry it names (ADR 41, amended 2026-10-05). A model on an Anthropic
+server takes no `seed`, `output_field` or `cache_key`, and a `temperature` of
+at most 1, as config.toml's validation says. `settings.model.write` takes
 the same object as `settings`, all of the model's settings at once: one left
 out is unset (`vision` unset is a chat-completions model that takes images,
 `false` one that does not; ADR 22, amended 2026-10-05), a name it does not know

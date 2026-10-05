@@ -19,10 +19,14 @@ import { ModelPicker, choicesOf, effortLabel, statusOf, defaultSelection } from 
 const kinds = {
   ollama: { label: "Ollama", needs: "Ollama on this computer or your network. It needs an address, and no key." },
   openai: { label: "OpenAI-compatible", needs: "Any server that speaks OpenAI's API, chat completions or Responses. It needs an address and, for a hosted one, an API key, which is kept in the keychain." },
+  anthropic: { label: "Anthropic", needs: "Claude on Anthropic's own API, the Messages API. It needs its address and an API key, which is kept in the keychain and sent in the x-api-key header." },
 };
+// hasKey says whether a kind of server takes a key.
+const hasKey = (kind) => kind === "openai" || kind === "anthropic";
 const presets = [
   { id: "ollama", label: "Ollama", kind: "ollama", url: "http://localhost:11434", dialect: "" },
   { id: "openai", label: "OpenAI", kind: "openai", url: "https://api.openai.com/v1", dialect: "responses" },
+  { id: "anthropic", label: "Anthropic", kind: "anthropic", url: "https://api.anthropic.com/v1", dialect: "" },
   { id: "openrouter", label: "OpenRouter", kind: "openai", url: "https://openrouter.ai/api/v1", dialect: "" },
   { id: "cerebras", label: "Cerebras", kind: "openai", url: "https://api.cerebras.ai/v1", dialect: "cerebras" },
   { id: "other", label: "Other server", kind: "openai", url: "", dialect: "" },
@@ -39,6 +43,7 @@ const effortSets = [
   { id: "none", label: "Not configurable", efforts: [] },
   { id: "lmh", label: "Low · Medium · High", efforts: ["low", "medium", "high"] },
   { id: "mlmh", label: "Minimal · Low · Medium · High", efforts: ["minimal", "low", "medium", "high"] },
+  { id: "lmhxm", label: "Low · Medium · High · Extra high · Max", efforts: ["low", "medium", "high", "xhigh", "max"] },
   { id: "onoff", label: "Off · On (Ollama)", efforts: ["off", "on"] },
   { id: "custom", label: "Other…", efforts: null },
 ];
@@ -160,7 +165,7 @@ function providerRows(ctx, redraw) {
           "div",
           { class: "main" },
           h("strong", {}, p.inline ? p.host : p.name),
-          h("span", {}, `${kinds[p.provider]?.label || p.provider}${p.dialect ? ` (${p.dialect})` : ""} · ${p.host}${p.credential ? (p.key === "ready" ? " · key stored" : "") : p.provider === "openai" ? " · no key" : ""}`),
+          h("span", {}, `${kinds[p.provider]?.label || p.provider}${p.dialect ? ` (${p.dialect})` : ""} · ${p.host}${p.credential ? (p.key === "ready" ? " · key stored" : "") : hasKey(p.provider) ? " · no key" : ""}`),
           detail ? h("span", { class: status.state && status.state !== "ready" ? "warn-text" : "" }, detail) : null,
         ),
         h("div", { class: "end" }, status.state ? h("span", { class: "state-word" }, state.words[status.state] || status.state) : null),
@@ -237,7 +242,7 @@ function providerForm(ctx, redraw) {
           const params = { provider: f.kind, url: f.url.trim() };
           if (!adding) params.name = f.name;
           if (f.kind === "openai" && f.dialect) params.dialect = f.dialect;
-          if (f.kind === "openai" && apiKey) params.api_key = apiKey;
+          if (hasKey(f.kind) && apiKey) params.api_key = apiKey;
           desk.settings = await conn.call("settings.provider.write", params);
           const saved = (desk.settings.servers || []).find((s) => (adding ? s.url.replace(/\/+$/, "") === params.url.replace(/\/+$/, "") : s.name === f.name));
           // Its list is asked with its key, so a new key or address asks again.
@@ -255,11 +260,11 @@ function providerForm(ctx, redraw) {
     },
     h("h3", { class: "form-title" }, adding ? "Add a provider" : `Change ${f.name}`),
     adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), redraw()) }, p.label))) : null,
-    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai")),
+    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai"), kind("anthropic")),
     h("p", { class: "hint" }, kinds[f.kind].needs),
-    field("provider-url", "Address", url, f.kind === "openai" ? "Including the version, such as https://api.openai.com/v1." : "Such as http://localhost:11434, or http://workshop:11434 on your network."),
+    field("provider-url", "Address", url, f.kind === "ollama" ? "Such as http://localhost:11434, or http://workshop:11434 on your network." : `Including the version, such as ${f.kind === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"}.`),
     f.kind === "openai" ? field("provider-dialect", "How it reads the protocol", dialect, "Chosen by you, never guessed from the address. Cerebras needs its own for reasoning to survive tool calls; OpenAI needs Responses for a reasoning model to take an effort and tools together.") : null,
-    f.kind === "openai"
+    hasKey(f.kind)
       ? field(
           "provider-key",
           "API key",
@@ -271,10 +276,10 @@ function providerForm(ctx, redraw) {
               : "Stored encrypted and sent only to this address. Every model on this provider uses it.",
         )
       : null,
-    f.kind === "openai" && !keychainReady ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings", onclick: () => setTimeout(() => document.getElementById("section-keys")?.scrollIntoView({ block: "start" }), 0) }, "Open the keychain settings")) : null,
+    hasKey(f.kind) && !keychainReady ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings", onclick: () => setTimeout(() => document.getElementById("section-keys")?.scrollIntoView({ block: "start" }), 0) }, "Open the keychain settings")) : null,
     !sameHostNow && f.hasKey ? h("p", { class: "warn-text" }, "This is another host. The saved key is not sent there: type its key, or the provider is left without one.") : null,
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
-    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn accent", id: "provider-save", disabled: f.saving || (f.kind === "openai" && !!f.key && !keychainReady) }, f.saving ? "Saving…" : "Save the provider"), h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.provider = null), redraw()) }, "Cancel")),
+    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn accent", id: "provider-save", disabled: f.saving || (hasKey(f.kind) && !!f.key && !keychainReady) }, f.saving ? "Saving…" : "Save the provider"), h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.provider = null), redraw()) }, "Cancel")),
   );
   return form;
 }
@@ -411,7 +416,8 @@ function settingsOf(f, kind) {
   number("max_output", "Reply cap", { whole: true });
   if (out.num_ctx && out.max_output >= out.num_ctx) throw new Error(`The reply cap (${s.max_output}) must be below the context length (${s.num_ctx}): the reply comes out of it.`);
   number("temperature", "Temperature");
-  number("seed", "Seed", { whole: true, signed: true });
+  // Anthropic's API has no seed.
+  if (kind !== "anthropic") number("seed", "Seed", { whole: true, signed: true });
   number("price_input", "The price of input");
   number("price_cached_input", "The price of cached input");
   number("price_output", "The price of output");
@@ -423,7 +429,8 @@ function settingsOf(f, kind) {
   // publishes, so Yes can say a model reads images its catalogue entry says
   // it does not.
   if (s.vision !== undefined) out.vision = s.vision;
-  for (const name of ["output_field", "cache_key", "cache_control"]) if (s[name]) out[name] = s[name];
+  // Anthropic reads the ask to cache the prompt, and neither of the other two.
+  for (const name of kind === "anthropic" ? ["cache_control"] : ["output_field", "cache_key", "cache_control"]) if (s[name]) out[name] = s[name];
   return out;
 }
 
@@ -483,9 +490,10 @@ function settingsFields(f, kind, redraw, desk) {
     h(
       "div",
       { class: "row-actions", role: "group", "aria-label": label },
-      options.map(([value, text]) => h("button", { type: "button", class: "chip", id: `model-${name}-${value === "" ? "default" : String(value)}`, "aria-pressed": String(current === value), onclick: () => ((s[name] = value), redraw()) }, text)),
+      options.map(([value, text]) => h("button", { type: "button", class: "chip", id: `model-${name}-${value === "" ? "default" : String(value)}`, "aria-pressed": String(current === value), onclick: () => ((s[name] = value), name === "cache_control" && (f.cacheChosen = true), redraw()) }, text)),
     );
   const openai = kind !== "ollama";
+  const claude = kind === "anthropic";
   // The Responses API caps a reply with max_output_tokens whatever the reply
   // cap field says, and has no seed (internal/llm/responses.go).
   const responses = openai && providerOf(desk, f.server)?.dialect === "responses";
@@ -500,6 +508,8 @@ function settingsFields(f, kind, redraw, desk) {
       box("num_ctx", "Context length", { placeholder: count(published.num_ctx) || (openai ? "the provider's" : "the window's"), suffix: "tokens", width: "", sizes: true }),
       published.num_ctx
         ? `How many tokens the model holds at once, its replies included. Empty is the ${count(published.num_ctx)} its provider publishes.`
+        : claude
+          ? "How many tokens the model holds at once, its replies included. Empty asks Anthropic's model list, which gives each model's context window."
         : openai
           ? "How many tokens the model holds at once, its replies included. Empty asks the provider's model list, which OpenRouter's answers and OpenAI's and Cerebras' don't."
           : "How many tokens the model holds at once, its replies included. Empty asks Ollama for the window and a reply.",
@@ -542,7 +552,7 @@ function settingsFields(f, kind, redraw, desk) {
           chips("vision", "Takes images", [[true, "Yes"], [false, "No"]], s.vision ?? (f.published ? published.images : true)),
           f.published
             ? `Whether an attached image may be sent to this model. Unless you choose, it is what its provider publishes: ${published.images ? "it reads them" : "it reads none"}.`
-            : "Whether an attached image may be sent to this model. A chat-completions server doesn't say, so unless you choose No a model is taken to read images: one that can't fails that request, and what you wrote is kept.",
+            : `Whether an attached image may be sent to this model. ${claude ? "Anthropic's API doesn't" : "A chat-completions server doesn't"} say, so unless you choose No a model is taken to read images: one that can't fails that request, and what you wrote is kept.`,
         )
       : null,
     h(
@@ -553,24 +563,28 @@ function settingsFields(f, kind, redraw, desk) {
         "div",
         { class: "field" },
         h("label", { for: "model-temperature" }, "Sampling"),
-        h("div", { class: "row-actions" }, h("span", { class: "muted" }, "Temperature"), box("temperature", "Temperature", { placeholder: "server's" }), h("span", { class: "muted" }, "seed"), box("seed", "Seed", { placeholder: "none" })),
+        h("div", { class: "row-actions" }, h("span", { class: "muted" }, "Temperature"), box("temperature", "Temperature", { placeholder: "server's" }), claude ? null : [h("span", { class: "muted" }, "seed"), box("seed", "Seed", { placeholder: "none" })]),
         h(
           "p",
           { class: "hint" },
-          responses
+          claude
+            ? "Temperature is 0 to 1; empty leaves it to Anthropic, which is right for the newer Claude models: they refuse any temperature. Its API has no seed."
+            : responses
             ? "Temperature is 0 to 2; empty leaves it to the server. The Responses API has no seed: one set here is still sent, and a server that refuses it fails every request."
             : "Temperature is 0 to 2; empty leaves both to the server. 0 with a seed makes replies as repeatable as the server allows.",
         ),
       ),
       openai
         ? [
-            responses ? null : field("model-output_field-default", "Reply cap field", chips("output_field", "Reply cap field", [["", "max_completion_tokens"], ["max_tokens", "max_tokens"]]), "Reasoning models refuse the older max_tokens; some servers know only that one."),
-            field("model-cache_key-default", "Session key", chips("cache_key", "Session key", [["", "Header and field"], ["header", "Header only"], ["off", "Not sent"]]), "Names the session to the server, so it can keep the requests on the replica that holds their prompt cache. Header only for a server that refuses fields it doesn't know."),
+            responses || claude ? null : field("model-output_field-default", "Reply cap field", chips("output_field", "Reply cap field", [["", "max_completion_tokens"], ["max_tokens", "max_tokens"]]), "Reasoning models refuse the older max_tokens; some servers know only that one."),
+            claude ? null : field("model-cache_key-default", "Session key", chips("cache_key", "Session key", [["", "Header and field"], ["header", "Header only"], ["off", "Not sent"]]), "Names the session to the server, so it can keep the requests on the replica that holds their prompt cache. Header only for a server that refuses fields it doesn't know."),
             field(
               "model-cache_control-default",
               "Prompt cache",
               chips("cache_control", "Prompt cache", [["", "Not asked"], ["ephemeral", "5 minutes"], ["1h", "1 hour"]]),
-              "A Claude model, through OpenRouter or another provider, caches its prompt only when asked: without this every request is billed in full, however little changed. Asking has the provider cache the conversation so far for the time chosen, and read it back at a tenth of the price (a write costs a quarter more). Leave it off for a model that caches by itself, which is most others, and for a server that refuses fields it doesn't know.",
+              claude
+                ? "Claude caches its prompt only when asked: without this every request is billed in full, however little changed. Asking has Anthropic cache the conversation so far for the time chosen and read it back at a tenth of the price (a write costs a quarter more for 5 minutes, twice for an hour). A model you add here starts with 5 minutes chosen; Not asked leaves it off."
+                : "A Claude model, through OpenRouter or another provider, caches its prompt only when asked: without this every request is billed in full, however little changed. Asking has the provider cache the conversation so far for the time chosen, and read it back at a tenth of the price (a write costs a quarter more). Leave it off for a model that caches by itself, which is most others, and for a server that refuses fields it doesn't know.",
             ),
           ]
         : field("model-keep_alive", "Keep loaded", box("keep_alive", "Keep loaded", { placeholder: "Ollama's", numeric: false }), "How long Ollama keeps the model in memory between requests, such as 30m, or -1 for always."),
@@ -632,6 +646,11 @@ function modelForm(ctx, redraw) {
   const adding = f.mode === "add";
   const providers = (desk.settings?.servers || []).filter((p) => !p.inline);
   if (!f.server) f.server = providers[0]?.name || "";
+  // Claude is billed in full on every request unless it is asked to cache, so a
+  // form adding a model on Anthropic's API starts with the ask chosen, as it
+  // would be saved in the entry: nothing infers it later, and Not asked leaves
+  // it off.
+  if (adding && !f.cacheChosen) f.settings.cache_control = providerOf(desk, f.server)?.provider === "anthropic" ? "ephemeral" : "";
   const efforts = effortsOf(f);
   const server = h("select", { class: "input", id: "model-provider", disabled: !adding, onchange: () => ((f.server = server.value), askOffered(ctx, f.server, redraw), askPublished(ctx, f, redraw), redraw()) }, providers.map((p) => h("option", { value: p.name }, `${p.name} · ${p.host}`)));
   server.value = f.server;
@@ -700,7 +719,7 @@ function modelForm(ctx, redraw) {
         effortSets.filter((s) => s.id !== "published" || f.published?.efforts?.length).map((s) => h("button", { type: "button", class: "chip", id: `efforts-${s.id}`, "aria-pressed": String(f.set === s.id), onclick: () => ((f.set = s.id), (f.setChosen = true), redraw()) }, s.label)),
       ),
       f.set === "custom" ? custom : null,
-      h("p", { class: "hint" }, efforts.length ? `Offered as ${efforts.map(effortLabel).join(", ")}${f.set === "published" ? ", as its provider publishes them" : ""}. Sent as the provider's own words: reasoning_effort to a chat-completions server, think to Ollama.` : "No effort setting is sent to this model, and none is offered."),
+      h("p", { class: "hint" }, efforts.length ? `Offered as ${efforts.map(effortLabel).join(", ")}${f.set === "published" ? ", as its provider publishes them" : ""}. Sent as the provider's own words: ${{ anthropic: "output_config.effort, with adaptive thinking, to Anthropic (Claude 4.6 and later)", ollama: "think to Ollama" }[providerOf(desk, f.server)?.provider] || "reasoning_effort to a chat-completions server"}.` : "No effort setting is sent to this model, and none is offered."),
       // Efforts typed before nodwyn knew the provider's may have gone stale.
       f.set !== "published" && f.published?.efforts?.length ? h("p", { class: "hint", id: "efforts-published-differ" }, `Its provider publishes ${f.published.efforts.map(effortLabel).join(", ")}: As published follows them.`) : null,
     ),

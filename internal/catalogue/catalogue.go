@@ -65,9 +65,11 @@ type Provider struct {
 }
 
 // Providers are the providers nodwyn reads from models.dev: those with an
-// OpenAI-compatible API, at the address each documents.
+// OpenAI-compatible API, at the address each documents, and Anthropic, whose
+// own API is reached at its base.
 var Providers = []Provider{
 	{"openai", "https://api.openai.com/v1"},
+	{"anthropic", "https://api.anthropic.com/v1"},
 	{"openrouter", "https://openrouter.ai/api/v1"},
 	{"cerebras", "https://api.cerebras.ai/v1"},
 	{"groq", "https://api.groq.com/openai/v1"},

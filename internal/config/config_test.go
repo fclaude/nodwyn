@@ -78,7 +78,7 @@ func TestLoadRejectsBadValues(t *testing.T) {
 		"unknown key":       "[control]\napikey = \"x\"\n",
 		"reply cap >= ctx":  "[control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\nnum_ctx = 32768\nmax_output = 32768\n",
 		"low >= high":       "[window]\nlow_water = 70000\n",
-		"unknown provider":  "[control]\nprovider = \"anthropic\"\nurl = \"https://a.test\"\nmodel = \"m\"\nnum_ctx = 8192\n",
+		"unknown provider":  "[control]\nprovider = \"gemini\"\nurl = \"https://a.test\"\nmodel = \"m\"\nnum_ctx = 8192\n",
 		"partial control":   "[control]\nmodel = \"m\"\n",
 		"models.control":    "[models.control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\n",
 		"docs plain http":   "[docs]\ngoogle_upload_url = \"http://upload.example.com/files\"\n",

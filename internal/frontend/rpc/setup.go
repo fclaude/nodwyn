@@ -342,7 +342,7 @@ func (s *server) settings() settingsResult {
 	// A key stored but not allowed for the judge's host is refused by the
 	// guard on the judge's first request, so it is not ready.
 	jevHost := prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL})
-	jevKey, jevKeyDetail := s.keyCheck(prim.JevClass, jevHost)
+	jevKey, jevKeyDetail := s.keyCheck(prim.JevClass, jevHost, prim.JevPosition)
 	judge := s.options.Config.Jev.Enabled() && jevKey == stateReady
 	stored := s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
 	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: s.providers(), Choices: s.choices(), Keychain: s.keychainStatus(),
@@ -486,7 +486,7 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		if _, err := s.options.Keychain.Add(class, key); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
-		if err := s.bindKey(class, host); err != nil {
+		if err := s.bindKey(class, host, config.KeyPosition(srv.Provider)); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
 	}
@@ -560,8 +560,8 @@ func controlServer(p controlParams, servers map[string]config.Server, old config
 		}
 		return p.Server, srv, "", false, nil
 	}
-	if p.Provider != "ollama" && p.Provider != "openai" {
-		return "", srv, "", false, failure(-32602, `provider must be "ollama" or "openai"`)
+	if p.Provider != "ollama" && p.Provider != "openai" && p.Provider != "anthropic" {
+		return "", srv, "", false, failure(-32602, `provider must be "ollama", "openai" or "anthropic"`)
 	}
 	parsed, err := url.Parse(p.URL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {

@@ -57,6 +57,18 @@ func Hint(err error) string {
 		if strings.Contains(se.Body, "/v1/responses") {
 			return "The server takes this request only on its Responses API: set the provider's protocol to OpenAI Responses in Settings › Models"
 		}
+		// What Anthropic refuses for a model older than the request assumes:
+		// an effort asks for adaptive thinking (Claude 4.6 and later), and the
+		// newest models take no temperature.
+		if se.Provider == "anthropic" {
+			body := strings.ToLower(se.Body)
+			switch {
+			case strings.Contains(body, "adaptive"):
+				return "The model does not take adaptive thinking, which an effort asks for (Claude 4.6 and later do): choose the model's default effort, or remove its efforts in Settings › Models"
+			case strings.Contains(body, "temperature"):
+				return "The model takes no temperature: clear it for this model in Settings › Models"
+			}
+		}
 		// A chat-completions model is sent images unless its entry says it
 		// takes none (ADR 22, amended 2026-10-05), so the first image is how a
 		// model that cannot read one is found.

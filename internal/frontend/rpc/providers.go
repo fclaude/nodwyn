@@ -41,11 +41,12 @@ type providerParams struct {
 	URL      string `json:"url"`
 	// Dialect is how an OpenAI-compatible server reads the protocol
 	// ("compatible", "cerebras", or "responses" for OpenAI's Responses API);
-	// never inferred from the address.
+	// never inferred from the address. Anthropic's has none.
 	Dialect string `json:"dialect,omitempty"`
 	// APIKey is stored in the unlocked keychain and bound to exactly the
-	// provider's host, POST, as a bearer Authorization header. A provider that
-	// has a key already has it replaced in place.
+	// provider's host, POST and GET, where the provider reads it (a bearer
+	// Authorization header; Anthropic's x-api-key header). A provider that has
+	// a key already has it replaced in place.
 	APIKey string `json:"api_key,omitempty"`
 }
 
@@ -89,9 +90,9 @@ type modelSettings struct {
 	Temperature *float64 `json:"temperature,omitempty"`
 	Seed        *int64   `json:"seed,omitempty"`
 	// Vision says whether the model takes images; unset, it is what its
-	// provider publishes, else a chat-completions model is sent them
-	// (config.Model.TakesImages), since its server does not say. CacheKey and
-	// CacheControl are config.Model's. OpenAI-compatible
+	// provider publishes, else a chat-completions or Anthropic model is sent
+	// them (config.Model.TakesImages), since its server does not say. CacheKey
+	// and CacheControl are config.Model's: CacheKey for OpenAI-compatible
 	// servers only.
 	Vision       *bool  `json:"vision,omitempty"`
 	CacheKey     string `json:"cache_key,omitempty"`
@@ -128,7 +129,7 @@ func (s *server) providers() []modelServer {
 		host := m.URL
 		if u, err := url.Parse(m.URL); err == nil {
 			host = u.Host
-			if state, detail := s.keyCheck(m.Credential, u.Hostname()); state != "" {
+			if state, detail := s.keyCheck(m.Credential, u.Hostname(), config.KeyPosition(m.Provider)); state != "" {
 				m.Key, m.KeyDetail = state, detail
 			}
 		}
@@ -322,8 +323,8 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 	key := []byte(p.APIKey)
 	defer clear(key)
 	p.URL = strings.TrimRight(strings.TrimSpace(p.URL), "/")
-	if p.Provider != "ollama" && p.Provider != "openai" {
-		return nil, failure(-32602, `provider must be "ollama" or "openai"`)
+	if p.Provider != "ollama" && p.Provider != "openai" && p.Provider != "anthropic" {
+		return nil, failure(-32602, `provider must be "ollama", "openai" or "anthropic"`)
 	}
 	parsed, err := url.Parse(p.URL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
@@ -331,6 +332,9 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 	}
 	if p.Provider == "ollama" && (p.Dialect != "" || len(key) > 0) {
 		return nil, failure(-32602, "An Ollama server takes no dialect and no key")
+	}
+	if p.Provider == "anthropic" && p.Dialect != "" {
+		return nil, failure(-32602, "An Anthropic server takes no dialect: it speaks the Messages API")
 	}
 	host := parsed.Hostname()
 	rerr := s.rewriteConfig(func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError) {
@@ -353,7 +357,7 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 		srv := config.Server{Provider: p.Provider, URL: p.URL, Dialect: llm.ChatDialect(p.Dialect)}
 		// A key is the address's: it follows a change of path or port, and
 		// stays out of reach of a new host until one is given for it.
-		if exists && p.Provider == "openai" && sameHost(old.URL, p.URL) {
+		if exists && p.Provider != "ollama" && sameHost(old.URL, p.URL) {
 			srv.Credential = old.Credential
 		}
 		if (len(key) > 0 || srv.Credential != "") && parsed.Scheme != "https" && !loopback(host) {
@@ -384,7 +388,7 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 			if err != nil {
 				return nil, config.Config{}, failure(-32000, err.Error())
 			}
-			if err := s.bindKey(srv.Credential, host); err != nil {
+			if err := s.bindKey(srv.Credential, host, config.KeyPosition(srv.Provider)); err != nil {
 				return nil, config.Config{}, failure(-32000, err.Error())
 			}
 		}
@@ -402,14 +406,15 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 var modelKeyMethods = []string{http.MethodPost, http.MethodGet}
 
 // bindKey allows class for host as a model key: a row for each of
-// modelKeyMethods, as a bearer header, that the table does not have.
-func (s *server) bindKey(class, host string) error {
+// modelKeyMethods, at position (config.KeyPosition: where the provider reads
+// the key), that the table does not have.
+func (s *server) bindKey(class, host, position string) error {
 	var rows []binding.Binding
 	for _, method := range modelKeyMethods {
-		if bound, _ := s.bindingTable().Lookup(class, host, method, keyPosition); bound {
+		if bound, _ := s.bindingTable().Lookup(class, host, method, position); bound {
 			continue
 		}
-		row, err := binding.Exact(class, host, method, keyPosition)
+		row, err := binding.Exact(class, host, method, position)
 		if err != nil {
 			return err
 		}
@@ -418,9 +423,10 @@ func (s *server) bindKey(class, host string) error {
 	return s.appendRows(rows)
 }
 
-// bindModelLists gives each model key that config.toml names, on a server
-// or a model of its own, and that the binding table already allows to POST to
-// that address's host, the GET row its model list needs. Keys saved before
+// bindModelLists gives each model key that config.toml names, on a chat-
+// completions server or a model of its own, and that the binding table
+// already allows to POST to that address's host, the GET row its model list
+// needs; a key saved for Anthropic has both rows from the start. Keys saved before
 // modelKeyMethods had GET were bound for POST alone, so their servers' lists
 // were refused (401, 403); this adds no host, position or credential the
 // table did not already allow.
@@ -440,13 +446,13 @@ func (s *server) bindModelLists() error {
 			continue
 		}
 		host := strings.ToLower(u.Hostname())
-		if bound, _ := table.Lookup(srv.Credential, host, http.MethodPost, keyPosition); !bound {
+		if bound, _ := table.Lookup(srv.Credential, host, http.MethodPost, config.KeyPositionBearer); !bound {
 			continue
 		}
-		if bound, _ := table.Lookup(srv.Credential, host, http.MethodGet, keyPosition); bound {
+		if bound, _ := table.Lookup(srv.Credential, host, http.MethodGet, config.KeyPositionBearer); bound {
 			continue
 		}
-		row, err := binding.Exact(srv.Credential, host, http.MethodGet, keyPosition)
+		row, err := binding.Exact(srv.Credential, host, http.MethodGet, config.KeyPositionBearer)
 		if err != nil {
 			return err
 		}
@@ -685,17 +691,18 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 	if err != nil {
 		return nil, failure(-32602, "the model's address is not a URL")
 	}
-	if state, detail := s.keyCheck(m.Credential, u.Hostname()); state != "" && state != stateReady {
+	position := config.KeyPosition(m.Provider)
+	if state, detail := s.keyCheck(m.Credential, u.Hostname(), position); state != "" && state != stateReady {
 		result.State, result.Detail = state, detail
 		return result, nil
+	}
+	var authorize func(*http.Request) error
+	if m.Credential != "" {
+		authorize = authorizer(s.options.Keychain, s.bindingTable(), m.Credential, position)
 	}
 	var provider llm.Provider
 	switch m.Provider {
 	case "openai":
-		var authorize func(*http.Request) error
-		if m.Credential != "" {
-			authorize = authorizer(s.options.Keychain, s.bindingTable(), m.Credential)
-		}
 		oai := llm.NewOpenAI(m.URL, authorize)
 		oai.Dialect, oai.MaxTokensField = m.Dialect, m.OutputField
 		// As a task's request is: a provider that refuses the ask to cache is
@@ -703,6 +710,13 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 		oai.CacheControl = m.CacheControl
 		result.CacheControl = m.CacheControl
 		provider = oai
+	case "anthropic":
+		a := llm.NewAnthropic(m.URL, authorize)
+		// As a task's request is: a model that cannot take the ask to cache the
+		// prompt is found here.
+		a.CacheControl = m.CacheControl
+		result.CacheControl = m.CacheControl
+		provider = a
 	default:
 		provider = llm.NewOllama(m.URL)
 	}
@@ -714,15 +728,15 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 	cancel()
 	s.mu.Lock()
 	result.Ms = time.Since(started).Milliseconds()
-	classify(&result, err, u.Host)
+	classify(&result, err, u.Host, m.Provider)
 	return result, nil
 }
 
 // authorizer is how a request to a keyed model gets its key: the key goes in
-// only if class is bound to the request's host for its method, checked on
-// every request, as a task's is. The daemon holds neither key nor binding
-// table beyond the call.
-func authorizer(store *keychain.Store, table binding.Table, class string) func(*http.Request) error {
+// only if class is bound to the request's host for its method at position,
+// checked on every request, as a task's is. The daemon holds neither key nor
+// binding table beyond the call.
+func authorizer(store *keychain.Store, table binding.Table, class, position string) func(*http.Request) error {
 	return func(req *http.Request) error {
 		if store == nil {
 			return llm.Permanent(errors.New("the keychain is locked"))
@@ -731,16 +745,18 @@ func authorizer(store *keychain.Store, table binding.Table, class string) func(*
 		if h == nil {
 			return llm.Permanent(errors.New("no key in the keychain"))
 		}
-		if bound, reason := table.Lookup(class, strings.ToLower(req.URL.Hostname()), req.Method, keyPosition); !bound {
+		if bound, reason := table.Lookup(class, strings.ToLower(req.URL.Hostname()), req.Method, position); !bound {
 			return llm.Permanent(errors.New(reason))
 		}
-		_, name, prefix := binding.Position(keyPosition)
+		_, name, prefix := binding.Position(position)
 		return store.InjectHeader(h.ID, name, prefix, req)
 	}
 }
 
 // classify turns what a model test returned into the words Settings shows.
-func classify(r *testResult, err error, host string) {
+// provider is the kind of server the model is on: what to try differs when a
+// request it refuses was sent to Anthropic.
+func classify(r *testResult, err error, host, provider string) {
 	if err == nil {
 		r.OK, r.State, r.Detail = true, "ok", fmt.Sprintf("%s answered in %.1f s", r.Model, float64(r.Ms)/1000)
 		return
@@ -767,10 +783,12 @@ func classify(r *testResult, err error, host string) {
 		r.State, r.Detail = "limited", fmt.Sprintf("%s is limiting requests, or the account has no quota left (429). It said: %s", host, said)
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		hint := ""
-		if r.Effort != "" {
+		if r.Effort != "" && provider == "anthropic" {
+			hint = fmt.Sprintf(" If the effort %q is the cause: an effort asks for adaptive thinking, which Claude models before 4.6 do not have, and the levels a model takes differ; declare the efforts this model takes, or none.", r.Effort)
+		} else if r.Effort != "" {
 			hint = fmt.Sprintf(" If the effort %q is the cause, declare the efforts this model takes, or choose its default.", r.Effort)
 		}
-		if r.CacheControl != "" {
+		if r.CacheControl != "" && provider != "anthropic" {
 			hint += fmt.Sprintf(" If asking it to cache the prompt (cache_control %q) is the cause, turn Prompt cache off for this model: only a Claude route takes it.", r.CacheControl)
 		}
 		r.State, r.Detail = "refused", fmt.Sprintf("%s refused the request (%d).%s It said: %s", host, se.Status, hint, said)

@@ -203,7 +203,22 @@ as \code{egress.check}. The key usually belongs to a server, a
 credential, which the models on it name with \code{server = "NAME"}: one
 key and one binding for every model a provider offers. When the app sets up
 a model for you, it saves the server and writes exactly that binding: the
-server's host, \code{POST}, a bearer \code{Authorization} header.
+server's host, \code{POST} (and \code{GET}, for the model list), a bearer
+\code{Authorization} header; for Anthropic, the \code{x-api-key} header
+instead (\code{config.KeyPosition} says which a provider reads), and a key bound
+as a bearer token is not released to it.
+
+\code{provider = "anthropic"} is a kind of its own, the Messages API
+(\code{POST /messages}, \code{anthropic-version: 2023-06-01}) in
+\file{internal/llm/anthropic.go}: the system messages are the top-level
+\code{system}, a turn's tool results are \code{tool\_result} blocks of one
+user message, \code{max\_tokens} is always sent, an effort is
+\code{output\_config.effort} with adaptive thinking (Claude 4.6 and later; an
+older model's 400 is explained by \code{llm.Hint} and the Test), and a reply's
+thinking is not sent back, since its signature is not kept. A model takes
+\code{cache\_control} (Claude caches only when asked) and refuses
+\code{dialect}, \code{cache\_key}, \code{output\_field} and \code{seed}
+(\adr{8}, amended 2026-10-05).
 
 The server may also set \code{dialect = "cerebras"} alongside
 \code{provider = "openai"}. Set it in the user's \file{config.toml}
@@ -259,8 +274,9 @@ for, so the request still replays to its hash (\adr{41}).
 
 Settings $\to$ Models is the file's \code{[servers]}, \code{[models]} and
 \code{[control]} without the file. A \emph{provider} is a server: its kind, its
-address, its dialect and its key. A key goes to the keychain with one binding
-row (the host, \code{POST}, a bearer header), is replaced in place, goes only
+address, its dialect and its key. A key goes to the keychain with two binding
+rows (the host, \code{POST} and \code{GET}, a bearer header; Anthropic's
+\code{x-api-key}), is replaced in place, goes only
 over https or to this computer, and follows a change of path but never of host.
 Each provider says whether it can be used and what to fix: the key's state is
 read from the keychain and the binding table before the server is asked
@@ -280,7 +296,7 @@ first entry for the same model at the same address (\code{Config.Tuned}), as
 it takes its efforts; saving the default moves what \code{[control]} held to
 the entry, so no copy goes stale beside it (\adr{41}, amended 2026-10-05).
 OpenAI's and Cerebras' model lists say no context length and their replies no
-cost, so what their entries leave unset comes from \code{internal/catalogue}:
+cost (Anthropic's list gives the context, its replies no cost), so what their entries leave unset comes from \code{internal/catalogue}:
 a snapshot of models.dev built into nodwyn, matched by the host of the server's
 address (from a table in nodwyn's source, never from models.dev) and the
 model's exact id, which gives the context, the longest reply (the reply cap,
@@ -288,7 +304,7 @@ at most a quarter of the context), the efforts, whether it reads images and
 the prices, cache writes and a long prompt's tier included
 (\code{Config.WithPublished}, \code{Config.Efforts}, \code{models.published});
 OpenRouter's list and replies say both. A list is asked with the provider's key, through the
-same binding check, since OpenAI and Cerebras list their models only to one;
+same binding check, since OpenAI, Cerebras and Anthropic list their models only to one;
 a model key is bound for \code{GET} as well as \code{POST}.
 
 The New task window and a conversation share one picker, a Model select
@@ -358,7 +374,7 @@ price_output = 10
 A cache discount needs the provider to cache at all. Most hosted models cache
 the start of a prompt by themselves, and the session key only routes a request
 to the replica holding it; a Claude model through OpenRouter, Bedrock or
-Vertex caches nothing until the request asks, and is billed for its whole prompt
+Vertex, or on Anthropic's own API, caches nothing until the request asks, and is billed for its whole prompt
 on every request, reading \code{cached\_tokens: 0} with no cache write. Its
 entry says so, \code{cache\_control = "ephemeral"} (five minutes) or
 \code{"1h"}, and \nodwyn{} sends it as the request's top-level

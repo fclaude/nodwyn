@@ -207,15 +207,13 @@ func (s *Session) SecretReplyFrom(id string, secret []byte, actor string) error 
 	return nil
 }
 
-// modelKeyPosition is where a keyed model's key goes. A model's key must be
-// bound for it like any other credential.
-const modelKeyPosition = "header:Authorization:Bearer"
-
 // authorize returns how requests to a keyed model get their key. The key is
 // injected only if class is bound to the request's host for its method at
-// modelKeyPosition, checked on every request so a binding change applies at
-// once, and the check is logged like any egress.
-func (s *Session) authorize(class string) func(*http.Request) error {
+// position (config.KeyPosition: where the model's provider reads its key; a
+// model's key must be bound for it like any other credential), checked on
+// every request so a binding change applies at once, and the check is logged
+// like any egress.
+func (s *Session) authorize(class, position string) func(*http.Request) error {
 	return func(req *http.Request) error {
 		if s.keychain == nil {
 			return llm.Permanent(fmt.Errorf("the %s key is in the keychain, which was locked when this task opened: unlock it, then close and resume the task", class))
@@ -229,14 +227,14 @@ func (s *Session) authorize(class string) func(*http.Request) error {
 		}
 		host := strings.ToLower(req.URL.Hostname())
 		scopes := s.credentialScopes(class, h.ID)
-		bound, reason := s.bindings.Lookup(class, host, req.Method, modelKeyPosition, scopes...)
+		bound, reason := s.bindings.Lookup(class, host, req.Method, position, scopes...)
 		if _, err := s.Record(log.KindEgressCheck, log.EgressCheck{Prim: "model-turn", Class: class, Host: host, Method: req.Method, Scopes: scopes, Bound: bound, Reason: reason}); err != nil {
 			return err
 		}
 		if !bound {
 			return llm.Permanent(errors.New(reason))
 		}
-		_, name, prefix := binding.Position(modelKeyPosition)
+		_, name, prefix := binding.Position(position)
 		if err := s.InjectHeader(h.ID, name, prefix, req); err != nil {
 			return llm.Permanent(err)
 		}
@@ -275,13 +273,14 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 	// catalogue describes the model (ADR 41, amended 2026-10-05).
 	rates := s.opts.Config.Rates(m)
 	m = s.opts.Config.WithPublished(m)
+	// A keyed model gets its key where its provider reads it.
+	var auth func(*http.Request) error
+	if m.Credential != "" {
+		auth = s.authorize(m.Credential, config.KeyPosition(m.Provider))
+	}
 	var p llm.Provider
 	switch m.Provider {
 	case "openai":
-		var auth func(*http.Request) error
-		if m.Credential != "" {
-			auth = s.authorize(m.Credential)
-		}
 		oai := llm.NewOpenAI(m.URL, auth)
 		oai.Dialect = m.Dialect
 		oai.MaxTokensField = m.OutputField
@@ -292,6 +291,11 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 			oai.CacheKeyHeaderOnly = m.CacheKey == config.CacheKeyHeader
 		}
 		p = oai
+	case "anthropic":
+		a := llm.NewAnthropic(m.URL, auth)
+		a.Images = m.TakesImages()
+		a.CacheControl = m.CacheControl
+		p = a
 	default: // "ollama", which validation guarantees for any other value
 		p = llm.NewOllama(m.URL)
 		if m.NumCtx == 0 {

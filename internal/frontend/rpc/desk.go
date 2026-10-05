@@ -117,7 +117,7 @@ func (s *server) notesWrite(req request, client *peer) (any, *rpcError) {
 type modelStatus struct {
 	Name   string `json:"name"`
 	Server string `json:"server,omitempty"`
-	// Provider is the kind of server: ollama or openai.
+	// Provider is the kind of server: ollama, openai or anthropic.
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
 	Host     string `json:"host"`
@@ -140,10 +140,6 @@ const (
 	stateLocked       = "locked"
 	stateUnbound      = "unbound"
 )
-
-// keyPosition is where a model's key goes: a bearer header, as core sends it
-// and as the binding row a key is saved with allows.
-const keyPosition = "header:Authorization:Bearer"
 
 // serverProbe is what asking a server for its models found. It is kept
 // briefly, so a page that asks on every render does not become a stream of
@@ -297,6 +293,11 @@ func probe(m config.Model) serverProbe {
 		found.unreachable = err.Error()
 		return found
 	}
+	if provider == "anthropic" {
+		// Asked without a version, the API may answer 400 before it says the
+		// key is missing.
+		request.Header.Set("anthropic-version", llm.AnthropicVersion)
+	}
 	response, err := probeClient.Do(request)
 	if err != nil {
 		found.unreachable = "No answer from " + base.Host
@@ -322,8 +323,9 @@ func probe(m config.Model) serverProbe {
 
 // keyCheck says what can be known about a model's key without asking its
 // server: "" when it has none, stateReady when it is stored and allowed for
-// host, and otherwise why it cannot be used and what to do.
-func (s *server) keyCheck(class, host string) (state, detail string) {
+// host at position (where its provider reads it: config.KeyPosition), and
+// otherwise why it cannot be used and what to do.
+func (s *server) keyCheck(class, host, position string) (state, detail string) {
 	if class == "" {
 		return "", ""
 	}
@@ -336,7 +338,7 @@ func (s *server) keyCheck(class, host string) (state, detail string) {
 	if s.options.Keychain.HandleForClass(class) == nil {
 		return stateNeedsKey, "This provider's key is not in the keychain: add its API key"
 	}
-	if bound, reason := s.bindingTable().Lookup(class, host, http.MethodPost, keyPosition); !bound {
+	if bound, reason := s.bindingTable().Lookup(class, host, http.MethodPost, position); !bound {
 		return stateUnbound, fmt.Sprintf("The key is stored but not allowed for %s (%s): allow it in Connections › Credentials", host, reason)
 	}
 	return stateReady, ""
@@ -362,7 +364,7 @@ func (s *server) status(name string, m config.Model, p serverProbe) modelStatus 
 	}
 	if u, err := url.Parse(m.URL); err == nil {
 		status.Host = u.Host
-		if state, detail := s.keyCheck(m.Credential, u.Hostname()); state != "" && state != stateReady {
+		if state, detail := s.keyCheck(m.Credential, u.Hostname(), config.KeyPosition(m.Provider)); state != "" && state != stateReady {
 			status.State, status.Detail = state, detail
 			return status
 		}
@@ -404,7 +406,7 @@ func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 	}
 	var authorize func(*http.Request) error
 	if srv.Credential != "" {
-		authorize = authorizer(s.options.Keychain, s.bindingTable(), srv.Credential)
+		authorize = authorizer(s.options.Keychain, s.bindingTable(), srv.Credential, config.KeyPosition(srv.Provider))
 	}
 	// As the probes do, the request runs without the lifecycle lock.
 	s.mu.Unlock()
@@ -449,8 +451,9 @@ func offered(srv config.Server, authorize func(*http.Request) error) ([]string, 
 	return slices.Compact(names), nil
 }
 
-// listed is what a chat-completions server lists, asked as a model's
-// requests are (llm.OpenAI.Models), with what to do when it refuses.
+// listed is what a chat-completions or an Anthropic server lists, asked as a
+// model's requests are (llm.OpenAI.Models, llm.Anthropic.Models), with what to
+// do when it refuses.
 func listed(srv config.Server, host string, authorize func(*http.Request) error) ([]string, error) {
 	// A key that is not sent (the keychain is locked, the binding refuses it)
 	// is said as such, not as a server that does not answer.
@@ -459,10 +462,15 @@ func listed(srv config.Server, host string, authorize func(*http.Request) error)
 	if authorize != nil {
 		wrapped = func(r *http.Request) error { unsent = authorize(r); return unsent }
 	}
-	oai := llm.NewOpenAI(srv.URL, wrapped)
+	var lister interface {
+		Models(context.Context) ([]llm.ListedModel, error)
+	} = llm.NewOpenAI(srv.URL, wrapped)
+	if providerName(srv.Provider) == "anthropic" {
+		lister = llm.NewAnthropic(srv.URL, wrapped)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), listClient.Timeout)
 	defer cancel()
-	models, err := oai.Models(ctx)
+	models, err := lister.Models(ctx)
 	var se *llm.StatusError
 	var netErr net.Error
 	switch {

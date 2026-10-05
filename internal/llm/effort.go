@@ -12,9 +12,11 @@ import (
 // in, and none is inferred from a URL or a model name. The empty effort sends
 // nothing, which leaves the model to its provider's default.
 //
-// A chat-completions server is sent it as reasoning_effort. Ollama is sent it
-// as think: "on" and "off" are the booleans, and any other word is the level
-// a model such as gpt-oss takes ("low", "medium", "high").
+// A chat-completions server is sent it as reasoning_effort, the Responses API
+// as reasoning.effort, and Anthropic as output_config.effort beside adaptive
+// thinking (anthropic.go). Ollama is sent it as think: "on" and "off" are the
+// booleans, and any other word is the level a model such as gpt-oss takes
+// ("low", "medium", "high").
 var effortWord = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,15}$`)
 
 // ValidEffort says whether word may be declared as an effort: lower-case, as

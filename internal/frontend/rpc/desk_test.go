@@ -178,7 +178,7 @@ func TestModelsOfferedByAServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, class := range []string{"model-127-0-0-1", "inline-key"} {
-		if bound, why := table.Lookup(class, "127.0.0.1", http.MethodGet, keyPosition); !bound {
+		if bound, why := table.Lookup(class, "127.0.0.1", http.MethodGet, config.KeyPositionBearer); !bound {
 			t.Fatalf("%s was not bound for its list at start: %s", class, why)
 		}
 	}

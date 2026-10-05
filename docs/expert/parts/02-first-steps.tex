@@ -16,12 +16,13 @@ install yourself: exporting documents needs pandoc, and reading a PDF
 attachment needs \code{pdftotext}; Chapter~\ref{ch:workspaces}.) You also
 need a \textbf{model} to talk to: \nodwyn{} has no built-in model.
 Any Ollama server works, on your machine or another one on your network, and
-so does any server that speaks the OpenAI chat-completions protocol.
+so does any server that speaks the OpenAI chat-completions protocol, and
+Anthropic's own API for Claude.
 
 \section{The quickest start: the app}
 
 Open \file{Nodwyn.app} (or run \code{nodwyn app}). The first time, Home asks
-which model to use: an Ollama address or an OpenAI-compatible server, and
+which model to use: an Ollama address, Anthropic's API or an OpenAI-compatible server, and
 for the latter a key. The server is written to a \code{[servers.NAME]}
 table of your \file{config.toml}, and the model, naming it, to
 \code{[control]}; to choose another model on the same server later,
@@ -76,7 +77,7 @@ sessions: /home/you/.local/share/nodwyn/sessions
 \begin{toml}
 # ~/.config/nodwyn/config.toml
 [control]
-provider = "ollama"               # or "openai" for any chat-completions server
+provider = "ollama"               # or "openai" for any chat-completions server, or "anthropic"
 url = "http://localhost:11434"
 model = "qwen3:8b"
 num_ctx = 81920                   # at least the window plus the reply reserve

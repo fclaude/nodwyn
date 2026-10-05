@@ -15,8 +15,9 @@ import (
 // sizeWindow sizes the window for the control model's context less its
 // reply cap (config.Window.Sized, ReplyCap): its num_ctx or what its
 // provider publishes (endpoint fills both in), or, when neither says, what
-// an OpenAI-compatible server's model list says, which then
-// fills num_ctx so the session's recipe and (model-info) report it. It
+// its server's model list says (an OpenAI-compatible server's, or
+// Anthropic's), which then fills num_ctx so the session's recipe and
+// (model-info) report it. It
 // returns the control model so filled, its reply cap set when it is not the
 // window's default, the window, its ceiling, and a note saying how the
 // window was sized ("" when the defaults stand for a reason nothing needs
@@ -25,8 +26,8 @@ import (
 // (ADR 40).
 func (s *Session) sizeWindow(control loop.Endpoint) (loop.Endpoint, config.Window, int, string) {
 	w := s.opts.Config.Window
-	if oai, ok := control.Provider.(*llm.OpenAI); ok && control.NumCtx == 0 {
-		n, err := contextLength(oai, control.Model)
+	if reporter, ok := control.Provider.(llm.ContextReporter); ok && control.NumCtx == 0 {
+		n, err := contextLength(reporter, control.Model)
 		if err != nil {
 			return control, w, w.HighWater, fmt.Sprintf("the window keeps its default size, since %s's context length is not known (%s); set it for the model in Settings › Models, or as num_ctx in its entry in config.toml", control.Model, err)
 		}
@@ -68,16 +69,16 @@ func (s *Session) note(text string) {
 // a process that opens many sessions asks once.
 var contextLengths sync.Map
 
-// contextLength asks oai's model list for model's context length, briefly:
-// a server that does not answer leaves the window at its default size.
-func contextLength(oai *llm.OpenAI, model string) (int, error) {
-	key := oai.URL + "\x00" + model
+// contextLength asks the provider's model list for model's context length,
+// briefly: a server that does not answer leaves the window at its default size.
+func contextLength(p llm.ContextReporter, model string) (int, error) {
+	key := p.Server() + "\x00" + model
 	if n, ok := contextLengths.Load(key); ok {
 		return n.(int), nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	n, err := oai.ContextLength(ctx, model)
+	n, err := p.ContextLength(ctx, model)
 	if err != nil {
 		return 0, err
 	}

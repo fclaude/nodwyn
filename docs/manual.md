@@ -49,7 +49,7 @@ This is the spine. Read these in order and you have read the system.
 | `internal/scheme` | the language: values, reader, eval/apply, builtins, primitive table | [docs/scheme.md](scheme.md) then `interp.go` `Eval` |
 | `internal/guard` | the one decision point and its checkers | `guard.go` `Before` |
 | `internal/prim` | host primitives and the diff; the document tools; the judge's primitives and tools | `prim.go` `Register`, `Checkers`; `docs.go`; `jev.go` |
-| `internal/llm` | the provider seam, the Ollama and OpenAI-compatible clients, what a request cost | `llm.go` `Provider`; `cost.go` |
+| `internal/llm` | the provider seam, the Ollama, OpenAI-compatible and Anthropic clients, what a request cost | `llm.go` `Provider`; `cost.go` |
 | `internal/window` | the derived context | `Build` |
 | `internal/loop` | the loop's primitives and default strategy | the package comment's reading order, starting at `loop.go` `Turn` |
 | `internal/core` | the UI-agnostic session façade | `construct.go` `New`, `session.go` `Send`, `confirm.go` `confirm` |
@@ -1089,7 +1089,7 @@ and each model names its server and says which of its models it is:
 
 ```toml
 [servers.openai]
-provider = "openai"                 # any chat-completions server
+provider = "openai"                 # any chat-completions server; "anthropic" for Claude's own API
 url = "https://api.openai.com/v1"   # including the version
 credential = "openai-key"           # keychain class; omit for a local server
 
@@ -1177,13 +1177,56 @@ for that reason ends the turn saying so. It is never inferred from the address. 
 provider, or an inline control model as a server at the same endpoint, keeps
 it.
 
+**Anthropic.** `provider = "anthropic"` speaks Claude's own Messages API
+(`POST /messages`), which chat completions does not copy faithfully: an
+effort, thinking and the prompt cache are asked for in fields of its own.
+
+```toml
+[servers.anthropic]
+provider = "anthropic"
+url = "https://api.anthropic.com/v1"   # including the version
+credential = "model-api-anthropic-com"
+
+[models.sonnet]
+server = "anthropic"
+model = "claude-sonnet-5-5"
+cache_control = "ephemeral"            # Claude caches only when asked (below)
+```
+
+Its key goes in the `x-api-key` header, not as a bearer token, so the key's
+binding is `header:x-api-key` (Settings writes it; the example in "Choosing
+models" below shows the file's form), and every request names
+`anthropic-version: 2023-06-01`. The system prompt is the request's
+`system`; a tool call is a `tool_use` block, and all the results of one turn
+are `tool_result` blocks of a single user message. The Messages API refuses a
+request without `max_tokens`, so the model's reply cap always goes (16,384
+when a request names none). An effort is sent as `output_config.effort` with
+`thinking: {"type": "adaptive", "display": "summarized"}`, which is how a
+model is asked to think: it needs a model that takes adaptive thinking
+(Claude 4.6 and later), and the thinking summary is the reply's thinking. A
+model that declares no efforts is sent neither field. A reply's thinking is
+not sent back, which adaptive thinking allows (a turn need not begin with a
+thinking block) and which nodwyn would need a signature to do. A call whose
+arguments are not a JSON object is sent with none, since `input` must be one.
+A reply that stops as `refusal` ends the turn saying the model declined, with
+the reason the API gives.
+
+A server of this kind takes a key, `vision`, `cache_control`, `temperature`
+(0 to 1; the newest Claude models refuse any, so leave it empty) and prices; it
+takes no `dialect`, `cache_key`, `output_field` or `seed`, and config.toml
+refuses them. The model list (`GET /models`) gives each model's context window,
+so a model whose entry and catalogue say none is sized from it, asked with the
+key like a chat request. Requests are not streamed (a credential can be split
+across tokens, ADR 25), so a turn with a very large reply cap and heavy
+thinking is one long request.
+
 **What providers publish.** OpenAI's and Cerebras' APIs say nothing of a
 model's context, its longest reply, its efforts or its price, so nodwyn carries
 a catalogue of what providers publish, as [models.dev](https://models.dev)
 collects it: a snapshot built into nodwyn, regenerated with
 `go generate ./internal/catalogue`. A model on a provider it describes
-(OpenAI, OpenRouter, Cerebras, Groq, DeepSeek, Mistral, xAI, Together,
-Fireworks, DeepInfra, Moonshot, Z.ai, Ollama Cloud), found by the host of its
+(OpenAI, Anthropic, OpenRouter, Cerebras, Groq, DeepSeek, Mistral, xAI,
+Together, Fireworks, DeepInfra, Moonshot, Z.ai, Ollama Cloud), found by the host of its
 server's address and its exact id, takes from it each of these its entry
 leaves unset: its context length, its reply cap (the published longest reply,
 at most a quarter of the context), its efforts, whether it reads images and
@@ -1216,9 +1259,11 @@ model = "qwen3:8b"
 efforts = ["off", "on"]               # Ollama's think: on, off, or a level such as "high" for gpt-oss
 ```
 
-The word is sent as `reasoning_effort` to a chat-completions server and as
-`think` to Ollama (`off` and `on` are its booleans, any other word the level
-a model such as gpt-oss takes). Words are short and lower-case. `[control]`
+The word is sent as `reasoning_effort` to a chat-completions server, as
+`reasoning.effort` on the Responses API, as `output_config.effort` with
+adaptive thinking to Anthropic (Claude's levels are low, medium, high, xhigh
+and max, by model), and as `think` to Ollama (`off` and `on` are its booleans,
+any other word the level a model such as gpt-oss takes). Words are short and lower-case. `[control]`
 needs no `efforts` of its own when a `[models.NAME]` is the same model at the
 same address: it takes them from that entry, so they are listed once; its
 `effort` is the default effort of the default model, which a new task starts
@@ -1237,11 +1282,13 @@ this computer only:
   to that host), *not answering*, or *model not installed*. The key's state is
   read from the keychain and the binding table before the server is asked,
   since that is what to fix; **Check again** asks every server now. **Add a
-  provider** takes a kind (Ollama, or OpenAI-compatible), an address, for an
-  OpenAI-compatible one a dialect and an API key, and has presets (OpenAI,
-  OpenRouter, Cerebras) that only fill the form in. The key goes to the
-  keychain with one binding row for the address's host, `POST`, as a bearer
-  header, never into `config.toml`, never into the page; replacing it replaces
+  provider** takes a kind (Ollama, OpenAI-compatible, or Anthropic), an
+  address, for an OpenAI-compatible one a dialect, and an API key for either
+  of those, and has presets (OpenAI, Anthropic, OpenRouter, Cerebras,
+  Ollama, and Other) that only fill the form in. The key goes to the
+  keychain with two binding rows for the address's host, `POST` for the model
+  and `GET` for its model list, as a bearer header (Anthropic's: the `x-api-key`
+  header), never into `config.toml`, never into the page; replacing it replaces
   it in place. A key goes only over https, or to this computer. It follows a
   change of path or port, and never a change of host: a provider moved to
   another host has no key until you type one. **Test** sends one short request,
@@ -1268,8 +1315,10 @@ this computer only:
   else yes, until you choose), and,
   under *More settings*, sampling, the reply cap field, the session key and
   the prompt cache for a chat-completions model (no reply cap field on the
-  Responses API, which reads none, and a word that it has no seed), or how
-  long Ollama keeps it loaded. The row says the context, reply cap and prices it has, and *as
+  Responses API, which reads none, and a word that it has no seed), only the
+  sampling (temperature, no seed) and the prompt cache for a model on
+  Anthropic, whose form starts a model you add with the 5 minute ask chosen,
+  or how long Ollama keeps it loaded. The row says the context, reply cap and prices it has, and *as
   published* when they are its provider's. Editing
   the default model saves them in its entry, not in `[control]`, so they stay
   with the model when another becomes the default. **Test it** tries a model
@@ -1327,6 +1376,10 @@ positions = ["header:Authorization:Bearer"]
 methods = ["POST"]
 ```
 
+A key for Anthropic is bound where Anthropic reads it, which is
+`positions = ["header:x-api-key"]`; a row that lets a key go as a bearer token
+does not release it there, and Settings writes the right one.
+
 The binding is checked on every request and logged as `egress.check`; an
 unbound key is never sent. Configuring a model is consenting that what a
 strategy sends it leaves the machine: with `narrow-context` that can be just
@@ -1347,8 +1400,8 @@ next turn — `(model-turn)` asks the new model, while `(model-turn "NAME")`
 still asks a named one for a turn (ADR 27). The window is then sized for the
 new model, as it would be had the task been opened on it: from its
 `num_ctx`, or from the context the server's model list gives (OpenRouter's
-does; OpenAI's and Cerebras' do not, so set it for those models in Settings ›
-Models), and a note in the transcript says how. A choice made while a turn runs
+and Anthropic's do; OpenAI's and Cerebras' do not, so set it for those models
+in Settings › Models), and a note in the transcript says how. A choice made while a turn runs
 waits for it (above): it is queued, and applied as the turn ends. It is
 refused while an attachment is being added or a run is active, and, once it
 applies, when the conversation would not fit the new model's context less its
@@ -1436,9 +1489,9 @@ than it saves (`hygiene.scm`, docs/scheme.md §9.6).
 
 **Claude models cache when asked.** The key only routes to a cache that
 exists, and Anthropic's models have none until a request asks for one: a
-Claude model through OpenRouter, Bedrock or Vertex is billed for its whole
-prompt on every request, however little changed, and the log reads
-`cached_tokens: 0` with no cache write. Say so in the model's entry, and
+Claude model through OpenRouter, Bedrock or Vertex, or on Anthropic's own API,
+is billed for its whole prompt on every request, however little changed, and
+the log reads `cached_tokens: 0` with no cache write. Say so in the model's entry, and
 nodwyn sends the ask as a top-level `cache_control`, which the provider applies
 to the last block of the conversation and moves on as it grows:
 
@@ -1446,7 +1499,7 @@ to the last block of the conversation and moves on as it grows:
 [models.claude]
 server = "openrouter"
 model = "anthropic/claude-sonnet-5.5"
-cache_control = "ephemeral"   # five minutes; "1h" for an hour; openai only
+cache_control = "ephemeral"   # five minutes; "1h" for an hour; openai and anthropic only
 ```
 
 It is never inferred from the model's name. Leave it out for a model that
@@ -1457,7 +1510,12 @@ A request that reuses what the last one wrote reports `cached_tokens`, read at
 a tenth of the input price on Anthropic's usual terms; the write costs a
 quarter more, and a cache lasts the time chosen, so a pause longer than that
 pays for a write again. Settings has it as Prompt cache, under the model's More
-settings.
+settings; a model added on an Anthropic provider starts with it set to five
+minutes (the file is only ever written with what the form shows). On
+Anthropic's own API `cached_tokens` is what the reply says it read from the
+cache, and the prompt is that plus what it wrote and the uncached rest, which
+its `input_tokens` alone is; an hour's write costs twice the input price, but
+the estimate prices it at the published (five minute) write price.
 
 A spend limit, `cost_soft` and `cost_hard` in `[budget]` (US dollars), is
 off unless you set it. It counts the known cost of the whole task, every

@@ -26,7 +26,7 @@ integrations and front-ends:
 | `keychain`, `binding` | Hold encrypted credentials, acquire and refresh OAuth2 tokens, and inject them; authorize their destinations, methods, positions and scopes. |
 | `policyfile` | Lock and atomically publish policy-file changes after the caller validates and authorizes them; never interpret policy or grant permission. |
 | `scheme`, `guard`, `prim` | Evaluate extensions; authorize host operations; implement those operations. |
-| `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible) and price their requests; derive their context; redact text; detect credential shapes. |
+| `llm`, `window`, `redact`, `detect/l1` | Talk to models (Ollama, OpenAI-compatible, Anthropic) and price their requests; derive their context; redact text; detect credential shapes. |
 | `mcp`, `extract` | Talk to remote MCP servers (pinned manifests, bound keys); turn attached documents into redacted text, check attached images by their content, and read all a document carries before it is sent. |
 | `frontend/run` | Chain planned turns under a finite deadline and turn count; ask a person to continue, or, unattended, go on only after a turn that marked a plan step done. |
 | `frontend/plain`, `frontend/tui`, `frontend/web`, `frontend/rpc`, `config`, `cmd/nodwyn` | Render and answer events; own local RPC connections and sessions; load settings; wire the application together. |

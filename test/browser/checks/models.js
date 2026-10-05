@@ -31,6 +31,11 @@
 //   choice survives a reload.
 // - A closed task whose model was removed opens without a model: nothing is
 //   sent until one is chosen.
+// - Anthropic's own API is a provider kind of its own: its preset offers no
+//   dialect, its key is bound as x-api-key and not as a bearer token, a model
+//   added on it starts with the ask to cache its prompt chosen and is offered
+//   no seed and no reply cap field, and a test of it goes to /v1/messages
+//   with its effort as adaptive thinking.
 // - The app restarted with the keychain locked says which models need it, a
 //   conversation resumed after unlocking has the effort it was left on, and a
 //   provider that stops answering is said not to answer: a task started on it
@@ -230,7 +235,9 @@ check(async () => {
   assert.strictEqual(await page.isDisabled("#default-model-effort"), false);
   await page.selectOption("#default-model-effort", "high");
   await page.click("#default-save");
-  await page.waitForSelector("#default-save:disabled");
+  // The button is disabled from the moment it saves, so only the page's own
+  // word that the save is done says the default is drawn again.
+  await page.waitForSelector("text=Saved. New tasks start on this model and effort", { timeout: 10000 });
   assert.deepStrictEqual(sent.of("settings.control.write").at(-1), { name: "127-0-0-1-reasoner", effort: "high" });
   const cfg2 = config();
   assert.ok(cfg2.includes('[control]\nserver = "127-0-0-1"\nmodel = "reasoner"\neffort = "high"\n'), "default not written:\n" + cfg2);
@@ -559,6 +566,61 @@ check(async () => {
   await page.waitForFunction(() => ![...document.querySelectorAll("#task-model-model option")].some((o) => o.textContent.includes("keychain locked")));
   step("after a restart, locked keys are said and the effort comes back with the conversation");
 
+  // ---------- Anthropic's own API ----------
+  // A provider of the Anthropic kind reads its key in x-api-key, takes no
+  // dialect, and offers its models no seed and no reply cap field; a model
+  // added on it starts with the ask to cache its prompt chosen, and a test of
+  // it goes to the Messages API with its effort (ADR 8, amended 2026-10-05).
+  // The fake chat provider speaks that API at the same address.
+  await go("#/settings");
+  await page.waitForSelector("#add-provider");
+  await page.click("#add-provider");
+  await page.click("#preset-anthropic");
+  assert.strictEqual(await page.inputValue("#provider-url"), "https://api.anthropic.com/v1");
+  assert.strictEqual(await page.locator("#provider-dialect").count(), 0, "Anthropic is offered a dialect");
+  await page.fill("#provider-url", chatURL);
+  await page.fill("#provider-key", goodKey);
+  await page.click("#provider-save");
+  // Named after its host, and the host's name is taken by earlier providers.
+  await until("the provider to be written", async () => /\[servers\.[^\]]+\]\nprovider = "anthropic"/.test(config()));
+  const claude = /\[servers\.([^\]]+)\]\nprovider = "anthropic"/.exec(config())[1];
+  await page.waitForSelector(`#provider-${claude}`);
+  assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { provider: "anthropic", url: chatURL, api_key: goodKey });
+  assert.ok(config().includes(`[servers.${claude}]\nprovider = "anthropic"\nurl = "${chatURL}"\ncredential = "model-${claude}"\n`), "server not written:\n" + config());
+  const claudeBindings = fs.readFileSync(`${root}/config/nodwyn/bindings.toml`, "utf8");
+  assert.strictEqual(claudeBindings.split('positions = ["header:x-api-key"]').length - 1, 2, "binding rows for x-api-key:\n" + claudeBindings);
+  assert.ok(!config().includes(goodKey) && !claudeBindings.includes(goodKey) && !(await page.content()).includes(goodKey), "the key is in a file or in the page");
+  await shows(`#provider-${claude}`, "Anthropic", "key stored");
+  await page.click("#add-model");
+  await page.selectOption("#model-provider", claude);
+  // More settings are opened first: the form redraws as the provider answers
+  // what it lists and publishes, and keeps them open once they are.
+  await page.click("#model-form .more-settings > summary");
+  await page.fill("#model-id", "reasoner");
+  assert.strictEqual(await page.getAttribute("#model-cache_control-ephemeral", "aria-pressed"), "true", "a model on Anthropic does not start with the ask to cache");
+  for (const gone of ["#model-seed", "#model-output_field-default", "#model-cache_key-default"]) assert.strictEqual(await page.locator(gone).count(), 0, `${gone} is offered for Anthropic`);
+  await shows("#model-form", "Its API has no seed");
+  await page.click("#efforts-lmh");
+  await page.selectOption("#model-effort", "high");
+  await page.click("#model-save");
+  await page.waitForSelector(`[data-model='${claude}-reasoner']`);
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { server: "127-0-0-1-2", model: "reasoner", efforts: ["low", "medium", "high"], effort: "high", settings: { cache_control: "ephemeral" } });
+  assert.ok(!/seed|output_field|cache_key/.test(config().split("[models.127-0-0-1-2-reasoner]")[1] || ""), "a setting Anthropic does not read was written:\n" + config());
+  await page.click(`[data-model='${claude}-reasoner'] button:text-is('Test')`);
+  await page.waitForSelector(`[data-model='${claude}-reasoner'] .test-result.ok`, { timeout: 20000 });
+  await shows(`[data-model='${claude}-reasoner'] .test-result`, "reasoner answered", "with High effort");
+  const viaMessages = await lastRequest();
+  assert.deepStrictEqual([viaMessages.path, viaMessages.key_header, viaMessages.authenticated, viaMessages.effort, viaMessages.answered], ["/v1/messages", "x-api-key", true, "high", 200], "the Messages request: " + JSON.stringify(viaMessages));
+  assert.ok(viaMessages.thinking.includes("adaptive") && viaMessages.cache_control.includes("ephemeral"), "thinking or the ask to cache is missing: " + JSON.stringify(viaMessages));
+  await page.screenshot({ path: `${out}/models-settings-anthropic.png`, fullPage: true });
+  await page.click(`[data-model='${claude}-reasoner'] button:text-is('Remove')`);
+  await page.click(`[data-model='${claude}-reasoner'] button:text-is('Remove')`);
+  await page.waitForSelector(`[data-model='${claude}-reasoner']`, { state: "detached" });
+  await page.click(`#provider-${claude} button:text-is('Remove')`);
+  await page.click(`#provider-${claude} button:text-is('Remove')`);
+  await page.waitForSelector(`#provider-${claude}`, { state: "detached" });
+  step("an Anthropic provider has no dialect, its key bound as x-api-key, its models no seed or reply cap field, and a test goes to the Messages API with its effort");
+
   // ---------- a provider that does not answer ----------
   chat.kill("SIGTERM");
   await chat.exited;
@@ -610,7 +672,8 @@ check(async () => {
   // amended 2026-10-05): its context, its reply cap, its efforts, its prices.
   // The expectations are read from that snapshot, so regenerating it does not
   // change what this checks.
-  const published = JSON.parse(fs.readFileSync(`${__dirname}/../../../internal/catalogue/models.json`, "utf8")).providers.openai;
+  const snapshot = JSON.parse(fs.readFileSync(`${__dirname}/../../../internal/catalogue/models.json`, "utf8")).providers;
+  const published = snapshot.openai;
   const [first, second, third] = Object.keys(published)
     .filter((id) => published[id].context && published[id].output && published[id].price && published[id].efforts?.length > 1)
     .sort();
@@ -618,17 +681,20 @@ check(async () => {
   const textOnly = Object.keys(published)
     .filter((id) => published[id].context && !published[id].images)
     .sort()[0];
+  // A Claude model with efforts, found by its address.
+  const usable = (table) => Object.keys(table).filter((id) => table[id].context && table[id].output && table[id].price).sort();
+  const claudeModel = usable(snapshot.anthropic).find((id) => snapshot.anthropic[id].efforts?.length > 1);
   const n = (x) => x.toLocaleString("en-US");
   const label = (e) => (e === "xhigh" ? "Extra high" : e[0].toUpperCase() + e.slice(1));
-  const expect = (id) => {
-    const m = published[id];
+  const expect = (id, table = published) => {
+    const m = table[id];
     const cap = Math.min(m.output, Math.floor(m.context / 4));
     const tier = m.price.tiers?.length ? ` (more past ${n(m.price.tiers[0].above)})` : "";
     return { m, cap, line: `context ${n(m.context)} tokens · replies up to ${n(cap)} tokens · $${m.price.input} in, $${m.price.output} out per million tokens${tier}${m.images ? "" : " · takes no images"} · as published` };
   };
   app.kill("SIGTERM");
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
-  fs.writeFileSync(configFile, `${config()}\n[servers.openai]\nprovider = "openai"\ndialect = "responses"\nurl = "https://api.openai.com/v1"\n\n[models.openai-a]\nserver = "openai"\nmodel = "${first}"\n\n[models.openai-c]\nserver = "openai"\nmodel = "${third}"\nefforts = ["low", "high"]\n\n[models.openai-text]\nserver = "openai"\nmodel = "${textOnly}"\n`);
+  fs.writeFileSync(configFile, `${config()}\n[servers.openai]\nprovider = "openai"\ndialect = "responses"\nurl = "https://api.openai.com/v1"\n\n[models.openai-a]\nserver = "openai"\nmodel = "${first}"\n\n[models.openai-c]\nserver = "openai"\nmodel = "${third}"\nefforts = ["low", "high"]\n\n[models.openai-text]\nserver = "openai"\nmodel = "${textOnly}"\n\n[servers.anthropic]\nprovider = "anthropic"\nurl = "https://api.anthropic.com/v1"\n\n[models.claude-a]\nserver = "anthropic"\nmodel = "${claudeModel}"\n`);
   ({ app, url } = await startApp());
   await page.goto(url);
   await go("#/settings");
@@ -710,7 +776,17 @@ check(async () => {
     b.m.efforts,
     "the New task window does not offer the published efforts",
   );
-  step("a model OpenAI publishes has its context, reply cap, efforts and prices without any being typed, and nothing was sent to OpenAI");
+  // Anthropic's models are described the same way, by its own address; a
+  // Claude model's efforts read as what its API takes them for.
+  await go("#/settings");
+  await page.waitForSelector("[data-model='claude-a']");
+  await shows("[data-model='claude-a']", expect(claudeModel, snapshot.anthropic).line);
+  await page.click("[data-model='claude-a'] button:text-is('Edit')");
+  await page.waitForSelector("#model-form");
+  await shows("#model-form", `Offered as ${snapshot.anthropic[claudeModel].efforts.map(label).join(", ")}, as its provider publishes them`, "output_config.effort, with adaptive thinking, to Anthropic");
+  assert.strictEqual(await page.getAttribute("#model-price_input", "placeholder"), String(snapshot.anthropic[claudeModel].price.input));
+  await page.click("#model-form >> text=Cancel");
+  step("a model Anthropic publishes has its context, reply cap, efforts and prices without any being typed");
 
   // ---------- the judge's model settings, with the models' ----------
   // The judge's model, prices and wait are under Models, its prices'

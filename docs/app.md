@@ -30,14 +30,15 @@ pair with the code the app prints to its log.
 ## First run
 
 With no model configured (no `[control]` in `config.toml`), Home asks which model to use: an Ollama server (on this
-computer or another one on the network) or any OpenAI-compatible server. Once
+computer or another one on the network), Anthropic's own API or any OpenAI-compatible server. Once
 one is set up, Settings › Models adds more providers and models, and chooses
 the default model and its effort (the manual, "Choosing models"). The
 choice is written to the `[control]` table of `config.toml`; every other line
 of an existing file is kept, and saving the same model on the same server
 again keeps its hand-tuned settings (`num_ctx`, `temperature`, `seed`, prices, …). An API key is never written there: it goes into
 the encrypted keychain, and a binding row allows it only for that server's
-host, `POST`, as a bearer `Authorization` header. A model with a key must be
+host, `POST` (and `GET` for its model list), as a bearer `Authorization` header
+(Anthropic's: its `x-api-key` header). A model with a key must be
 reached over HTTPS, unless it runs on this computer. A keychain is created from
 Settings with a passphrase (at least 8 characters, not recoverable), or, if
 you tick "Don't protect it with a passphrase", without one (not recommended:

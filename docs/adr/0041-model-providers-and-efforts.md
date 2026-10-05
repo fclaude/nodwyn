@@ -339,3 +339,29 @@ Settings › Context window called `output_reserve` the *Default reply cap*,
 cap first has the one its provider publishes (above). It is now the
 *Fallback reply cap*, for a model with none of its own and none published,
 and the model form's hint names it.
+
+## Amendment 2026-10-05: Anthropic is a provider to choose
+
+Settings offered presets for Ollama, OpenAI, OpenRouter and Cerebras, and
+no way to use Claude on Anthropic's own API.
+
+- **Anthropic is a kind** beside Ollama and OpenAI-compatible (ADR 8, amended
+  2026-10-05): its preset fills in `https://api.anthropic.com/v1`, the form
+  offers no dialect, and the key is stored with `POST` and `GET` rows at
+  `header:x-api-key` instead of a bearer header. `settings.provider.write` and
+  `settings.control.write` take `provider: "anthropic"`; readiness, the test
+  request and the model list use the key where Anthropic reads it. The first-run
+  form offers it too. The model form offers an Anthropic model no seed, no
+  reply cap field and no session key (it has none of them), says temperature
+  is 0 to 1, offers the efforts Claude takes (low to max) among its shortcuts,
+  and starts a model added there with the prompt cache's five minute ask
+  chosen. The catalogue describes Anthropic's models at `api.anthropic.com`:
+  context, reply cap, efforts, whether it reads images, and the prices, cache
+  reads and writes included.
+- The snapshot was regenerated (`go generate ./internal/catalogue`): it adds
+  Anthropic, and refreshes the others' entries to models.dev as of today
+  (a handful of OpenRouter prices moved).
+- Not built: reading a model's efforts or image support from Anthropic's model
+  list (`capabilities`), which it reports and the catalogue also publishes;
+  Opus 4.5's effort with a thinking budget; Anthropic through Bedrock or
+  Vertex, which sign requests differently.

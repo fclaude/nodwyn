@@ -213,7 +213,7 @@ func TestProviderWriteRefusals(t *testing.T) {
 		want   string
 	}{
 		"the same address twice":  {"settings.provider.write", map[string]any{"provider": "openai", "url": srv.V1()}, `already configured, as "127-0-0-1"`},
-		"a provider kind":         {"settings.provider.write", map[string]any{"provider": "anthropic", "url": "http://h"}, "provider must be"},
+		"a provider kind":         {"settings.provider.write", map[string]any{"provider": "gemini", "url": "http://h"}, "provider must be"},
 		"not an address":          {"settings.provider.write", map[string]any{"provider": "openai", "url": "ftp://h"}, "http or https"},
 		"a key for Ollama":        {"settings.provider.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434", "api_key": "sk-x"}, "takes no dialect and no key"},
 		"a key over plain http":   {"settings.provider.write", map[string]any{"provider": "openai", "url": "http://api.example.test/v1", "api_key": "sk-x"}, "over https"},

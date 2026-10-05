@@ -157,8 +157,8 @@ const ControlModel = "control"
 // Model is one entry of the model registry, or the [control] model.
 // Configuring a model is consenting that what a strategy sends it leaves
 // the machine. A keyed model also needs its key bound to the URL's host
-// (bindings.toml, POST at header:Authorization:Bearer); that is checked on
-// every request.
+// (bindings.toml, POST at KeyPosition: a bearer header, or x-api-key for
+// Anthropic); that is checked on every request.
 type Model struct {
 	// Server names the [servers.NAME] the model is on. Parse copies the
 	// server's provider, dialect, URL and credential into the model, so the
@@ -166,7 +166,7 @@ type Model struct {
 	// these itself.
 	Server     string          `toml:"server"`
 	Dialect    llm.ChatDialect `toml:"dialect" json:",omitempty"` // Chat Completions dialect; inherited from Server when named.
-	Provider   string          `toml:"provider"`                  // "ollama" (the default when unset), or "openai" for any chat-completions server
+	Provider   string          `toml:"provider"`                  // "ollama" (the default when unset), "openai" for any chat-completions server, or "anthropic" for Claude's Messages API
 	URL        string          `toml:"url"`                       // base URL; for openai including the version, e.g. https://api.openai.com/v1
 	Model      string          `toml:"model"`                     // model id as the provider names it
 	NumCtx     int             `toml:"num_ctx"`                   // context length; sent to ollama; for [control] it also sizes the window (Window.Sized)
@@ -189,7 +189,7 @@ type Model struct {
 	Temperature *float64 `toml:"temperature"`
 	Seed        *int64   `toml:"seed"`
 	// Vision says whether the model takes images, so an attached image may
-	// be sent to it (ADR 22 §3). openai only: a chat-completions server does
+	// be sent to it (ADR 22 §3). openai and anthropic only: those servers do
 	// not say, while ollama reports it (/api/show). Unset, it is what the
 	// model's provider publishes (WithPublished), and for a model nothing is
 	// published of, the model is taken to (TakesImages): a provider that
@@ -211,7 +211,8 @@ type Model struct {
 	// needs it says so here; nothing is inferred from its name. Sent as the
 	// request's top-level cache_control, which OpenRouter and the providers it
 	// routes Claude to read, and which a provider that does not know it may
-	// refuse. openai only.
+	// refuse. Anthropic's own API reads it the same way and caches nothing
+	// without it. openai and anthropic only.
 	CacheControl string `toml:"cache_control"`
 	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
 	// per million tokens, in USD, for estimating what a request cost when
@@ -702,25 +703,45 @@ func (l Loop) Durations() (request, shell time.Duration) {
 	return request, shell
 }
 
+// The positions a model's key goes at: the chat-completions family takes it
+// as a bearer token, Anthropic's API in its own header, with no scheme.
+const (
+	KeyPositionBearer    = "header:Authorization:Bearer"
+	KeyPositionAnthropic = "header:x-api-key"
+)
+
+// KeyPosition is where a keyed model's key goes in its requests, which is the
+// position its binding must allow: the same for every request, since the
+// binding names the host, the method and this.
+func KeyPosition(provider string) string {
+	if provider == "anthropic" {
+		return KeyPositionAnthropic
+	}
+	return KeyPositionBearer
+}
+
+// isOllama says whether provider is Ollama, which is what an unset one means.
+func isOllama(provider string) bool { return provider == "" || provider == "ollama" }
+
 // validate checks a server's own settings, which a model that does not
 // name a server sets itself.
 func (s Server) validate() error {
 	switch s.Provider {
-	case "", "ollama", "openai": // unset is ollama
+	case "", "ollama", "openai", "anthropic": // unset is ollama
 	default:
-		return fmt.Errorf("provider %q is not supported (ollama, openai)", s.Provider)
+		return fmt.Errorf("provider %q is not supported (ollama, openai, anthropic)", s.Provider)
 	}
 	if err := s.Dialect.Validate(); err != nil {
 		return err
 	}
 	if s.Provider != "openai" && s.Dialect != "" {
-		return errors.New("dialect is for openai servers; ollama uses its native protocol")
+		return errors.New("dialect is for openai servers; ollama and anthropic use their own protocols")
 	}
 	u, err := url.Parse(s.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("url %q must be an http or https URL", s.URL)
 	}
-	if s.Provider != "openai" && s.Credential != "" {
+	if isOllama(s.Provider) && s.Credential != "" {
 		return errors.New("credential is not supported for ollama")
 	}
 	return nil
@@ -748,13 +769,19 @@ func (m Model) validate() error {
 		return fmt.Errorf("output_field %q is not supported (max_completion_tokens, max_tokens)", m.OutputField)
 	}
 	if m.Provider != "openai" && m.OutputField != "" {
-		return errors.New("output_field is for openai servers; ollama takes num_predict")
+		return errors.New("output_field is for openai servers; ollama takes num_predict and anthropic max_tokens")
 	}
 	if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
 		return fmt.Errorf("temperature %v must be between 0 and 2", *m.Temperature)
 	}
-	if m.Provider != "openai" && m.Vision != nil {
-		return errors.New("vision is for openai servers; ollama says itself whether a model takes images")
+	if m.Provider == "anthropic" && m.Temperature != nil && *m.Temperature > 1 {
+		return fmt.Errorf("temperature %v must be between 0 and 1 for anthropic", *m.Temperature)
+	}
+	if m.Provider == "anthropic" && m.Seed != nil {
+		return errors.New("seed is not supported for anthropic: the Messages API has none")
+	}
+	if isOllama(m.Provider) && m.Vision != nil {
+		return errors.New("vision is for openai and anthropic servers; ollama says itself whether a model takes images")
 	}
 	switch m.CacheKey {
 	case "", CacheKeySession, CacheKeyHeader, CacheKeyOff:
@@ -769,8 +796,8 @@ func (m Model) validate() error {
 	default:
 		return fmt.Errorf("cache_control %q is not supported (%s, %s)", m.CacheControl, CacheControlEphemeral, CacheControlHour)
 	}
-	if m.Provider != "openai" && m.CacheControl != "" {
-		return errors.New("cache_control is for openai servers; ollama keeps its own prompt cache")
+	if isOllama(m.Provider) && m.CacheControl != "" {
+		return errors.New("cache_control is for openai and anthropic servers; ollama keeps its own prompt cache")
 	}
 	for name, p := range map[string]*float64{"price_input": m.PriceInput, "price_cached_input": m.PriceCachedInput, "price_output": m.PriceOutput} {
 		if p != nil && (*p < 0 || math.IsNaN(*p) || math.IsInf(*p, 0)) {
@@ -946,7 +973,7 @@ func (c Config) Efforts(m Model) []string {
 // catalogue does not describe, an Ollama one included.
 func (c Config) Published(m Model) (catalogue.Model, bool) {
 	m = c.Resolve(m)
-	if m.Provider != "openai" {
+	if isOllama(m.Provider) {
 		return catalogue.Model{}, false
 	}
 	return c.catalogue().Lookup(m.URL, m.Model)
@@ -1058,8 +1085,8 @@ func MissingControl(configFile string) error {
 	return fmt.Errorf(`no control model is configured; add a [control] table to %s, for example:
 
 [control]
-provider = "ollama"               # or "openai" for any chat-completions server
-url = "http://localhost:11434"    # for openai, the base URL including /v1
+provider = "ollama"               # or "openai" for any chat-completions server, or "anthropic"
+url = "http://localhost:11434"    # for openai and anthropic, the base URL including /v1
 model = "qwen3:8b"
 num_ctx = 81920                   # at least window.high_water + window.output_reserve (77824 by default)
 # credential = "openai-key"       # keychain class of the API key, bound in bindings.toml`, where)

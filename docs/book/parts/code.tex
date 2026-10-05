@@ -441,8 +441,9 @@ The loop passes no \code{onDelta} (\code{llm.ChatRetrying} calls
 \code{Chat} with \code{nil}), for the reason given above. Calls that came
 without an id get \code{call\_0}, \code{call\_1}, \ldots{} so results can
 refer to them. \file{internal/llm/openai.go} speaks the chat-completions
-protocol and does not stream at all. Both implement \code{llm.Provider};
-nothing in the loop knows which one it is talking to.
+protocol and does not stream at all, and \file{internal/llm/anthropic.go}
+speaks Anthropic's Messages API, also without streaming. Each implements
+\code{llm.Provider}; nothing in the loop knows which one it is talking to.
 
 \section{run-tools claims the calls}
 

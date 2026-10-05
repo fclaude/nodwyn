@@ -8,8 +8,13 @@
 // (400, as OpenAI refuses gpt-6.1-sol), and a parameter /responses does not
 // know (400), so a test shows that a request carried exactly the effort
 // chosen, and none where none was meant, in the protocol it was meant for.
-// Every request is recorded; replies echo the model and effort that asked, so
-// a conversation shows which one answered. Hold keeps replies waiting until
+// Anthropic's Messages API is beside them at /v1/messages: it takes its key in
+// x-api-key (and refuses a bearer one), wants an anthropic-version, needs
+// max_tokens, takes an effort only as output_config.effort beside adaptive
+// thinking and only for a model that lists efforts, and answers in content
+// blocks with usage in its own fields, input_tokens being only the prompt after
+// the last cache breakpoint. Every request is recorded; replies echo the model
+// and effort that asked, so a conversation shows which one answered. Hold keeps replies waiting until
 // Release, to look at a response that is still running.
 //
 // It caches the way a Claude route does (ADR 9, amended 2026-10-05): a prompt
@@ -51,15 +56,22 @@ type Model struct {
 
 // Request is one chat completion the fake saw.
 type Request struct {
-	// Path is where it was sent: /v1/chat/completions or /v1/responses.
+	// Path is where it was sent: /v1/chat/completions, /v1/responses or
+	// /v1/messages.
 	Path  string `json:"path"`
 	Model string `json:"model"`
 	// Effort is the reasoning_effort sent; HasEffort tells "none" from "".
 	Effort    string `json:"effort"`
 	HasEffort bool   `json:"has_effort"`
 	// Authenticated says the right key came with it; the key is not kept.
-	Authenticated bool `json:"authenticated"`
-	Messages      int  `json:"messages"`
+	// KeyHeader says where it came: "bearer" (Authorization), "x-api-key", or
+	// "" for no key at all.
+	Authenticated bool   `json:"authenticated"`
+	KeyHeader     string `json:"key_header"`
+	// Thinking is the thinking parameter of a Messages request, as JSON; empty
+	// when it sent none.
+	Thinking string `json:"thinking"`
+	Messages int    `json:"messages"`
 	// CacheControl is the top-level cache_control sent, as JSON; empty when
 	// the request sent none.
 	CacheControl string `json:"cache_control"`
@@ -101,6 +113,7 @@ func New(key string, models ...Model) *Server {
 	mux.HandleFunc("/v1/models", s.list)
 	mux.HandleFunc("/v1/chat/completions", s.complete)
 	mux.HandleFunc("/v1/responses", s.respond)
+	mux.HandleFunc("/v1/messages", s.message)
 	mux.HandleFunc("/_fake/requests", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(s.Requests())
 	})
@@ -149,8 +162,33 @@ func (s *Server) Waiting() int {
 	return s.waiting
 }
 
+// authenticated says whether r carries the key where the protocol it is sent
+// in reads it: a bearer token for chat completions and Responses, x-api-key
+// for the Messages API. The model list is read by either kind of client.
 func (s *Server) authenticated(r *http.Request) bool {
-	return s.Key == "" || r.Header.Get("Authorization") == "Bearer "+s.Key
+	if s.Key == "" {
+		return true
+	}
+	bearer := r.Header.Get("Authorization") == "Bearer "+s.Key
+	header := r.Header.Get("x-api-key") == s.Key
+	switch r.URL.Path {
+	case "/v1/messages":
+		return header
+	case "/v1/models":
+		return bearer || header
+	}
+	return bearer
+}
+
+// keyHeader is where r carried the key, for the record.
+func keyHeader(r *http.Request) string {
+	switch {
+	case r.Header.Get("x-api-key") != "":
+		return "x-api-key"
+	case r.Header.Get("Authorization") != "":
+		return "bearer"
+	}
+	return ""
 }
 
 func refuse(w http.ResponseWriter, status int, code, message string) {
@@ -164,26 +202,31 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 		refuse(w, http.StatusUnauthorized, "invalid_api_key", "You must provide an API key to list models.")
 		return
 	}
+	// One list for both protocols: context_length is the OpenAI-compatible
+	// servers', max_input_tokens Anthropic's.
 	type entry struct {
-		ID            string `json:"id"`
-		ContextLength int    `json:"context_length,omitempty"`
+		ID             string `json:"id"`
+		Type           string `json:"type"`
+		ContextLength  int    `json:"context_length,omitempty"`
+		MaxInputTokens int    `json:"max_input_tokens,omitempty"`
 	}
 	var data []entry
 	s.mu.Lock()
 	for _, m := range s.models {
-		data = append(data, entry{m.ID, m.Context})
+		data = append(data, entry{m.ID, "model", m.Context, m.Context})
 	}
 	s.mu.Unlock()
-	_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": data, "has_more": false})
 }
 
 // asked is what a request asked, in either protocol.
 type asked struct {
 	model        string
-	messages     []json.RawMessage // chat messages, or Responses input items
+	messages     []json.RawMessage // chat messages, Responses input items, or Messages messages
 	effort       *string
 	tools        int
 	cacheControl json.RawMessage
+	thinking     json.RawMessage // Messages only
 }
 
 func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +241,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 		refuse(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
-	s.answer(w, r, asked{body.Model, body.Messages, body.Effort, len(body.Tools), body.CacheControl})
+	s.answer(w, r, asked{model: body.Model, messages: body.Messages, effort: body.Effort, tools: len(body.Tools), cacheControl: body.CacheControl})
 }
 
 // responsesParams are the parameters of a Responses request the fake knows:
@@ -238,8 +281,62 @@ func (s *Server) respond(w http.ResponseWriter, r *http.Request) {
 	s.answer(w, r, a)
 }
 
+// messagesParams are the parameters of a Messages request the fake knows:
+// those nodwyn may send. Anything else is refused as the API refuses an extra
+// input.
+var messagesParams = []string{"model", "max_tokens", "system", "messages", "tools", "temperature", "thinking", "output_config", "cache_control"}
+
+func (s *Server) message(w http.ResponseWriter, r *http.Request) {
+	var params map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		refuseMessages(w, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+	for k := range params {
+		if !slices.Contains(messagesParams, k) {
+			refuseMessages(w, http.StatusBadRequest, "invalid_request_error", k+": Extra inputs are not permitted")
+			return
+		}
+	}
+	if _, ok := params["max_tokens"]; !ok {
+		refuseMessages(w, http.StatusBadRequest, "invalid_request_error", "max_tokens: Field required")
+		return
+	}
+	var body struct {
+		Model        string            `json:"model"`
+		Messages     []json.RawMessage `json:"messages"`
+		Tools        []json.RawMessage `json:"tools"`
+		CacheControl json.RawMessage   `json:"cache_control"`
+		Thinking     json.RawMessage   `json:"thinking"`
+		OutputConfig *struct {
+			Effort *string `json:"effort"`
+		} `json:"output_config"`
+	}
+	raw, _ := json.Marshal(params)
+	if err := json.Unmarshal(raw, &body); err != nil {
+		refuseMessages(w, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+	a := asked{model: body.Model, messages: body.Messages, tools: len(body.Tools), cacheControl: body.CacheControl, thinking: body.Thinking}
+	if body.OutputConfig != nil {
+		a.effort = body.OutputConfig.Effort
+	}
+	s.answer(w, r, a)
+}
+
+// refuseMessages answers in the shape the Messages API refuses in.
+func refuseMessages(w http.ResponseWriter, status int, kind, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]any{"type": kind, "message": message}})
+}
+
 func (s *Server) answer(w http.ResponseWriter, r *http.Request, a asked) {
-	req := Request{Path: r.URL.Path, Model: a.model, Authenticated: s.authenticated(r), Messages: len(a.messages)}
+	messages := r.URL.Path == "/v1/messages"
+	req := Request{Path: r.URL.Path, Model: a.model, Authenticated: s.authenticated(r), KeyHeader: keyHeader(r), Messages: len(a.messages)}
+	if len(a.thinking) > 0 && string(a.thinking) != "null" {
+		req.Thinking = string(a.thinking)
+	}
 	if a.effort != nil {
 		req.Effort, req.HasEffort = *a.effort, true
 	}
@@ -257,11 +354,23 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request, a asked) {
 	s.mu.Unlock()
 	status, code, message := http.StatusOK, "", ""
 	switch {
+	case !req.Authenticated && messages:
+		status, code, message = http.StatusUnauthorized, "authentication_error", "invalid x-api-key"
 	case !req.Authenticated:
 		status, code, message = http.StatusUnauthorized, "invalid_api_key", "Incorrect API key provided."
+	case messages && r.Header.Get("anthropic-version") == "":
+		status, code, message = http.StatusBadRequest, "invalid_request_error", "anthropic-version: header is required"
+	case model == nil && messages:
+		status, code, message = http.StatusNotFound, "not_found_error", "model: "+a.model
 	case model == nil:
 		status, code, message = http.StatusNotFound, "model_not_found", fmt.Sprintf("The model `%s` does not exist or you do not have access to it.", a.model)
-	case req.CacheControl != "" && !model.Caches:
+	case messages && req.Thinking != "" && len(model.Efforts) == 0:
+		status, code, message = http.StatusBadRequest, "invalid_request_error", `"thinking.type.adaptive" is not supported for this model`
+	case messages && req.HasEffort && len(model.Efforts) == 0:
+		status, code, message = http.StatusBadRequest, "invalid_request_error", "output_config.effort: this model does not support effort"
+	case messages && req.HasEffort && !slices.Contains(model.Efforts, req.Effort):
+		status, code, message = http.StatusBadRequest, "invalid_request_error", fmt.Sprintf("output_config.effort: Input should be %s", strings.Join(model.Efforts, ", "))
+	case req.CacheControl != "" && !model.Caches && !messages:
 		status, code, message = http.StatusBadRequest, "unsupported_parameter", fmt.Sprintf("Unrecognized request argument supplied: cache_control (%s does not support it)", a.model)
 	case req.HasEffort && len(model.Efforts) == 0:
 		status, code, message = http.StatusBadRequest, "unsupported_parameter", fmt.Sprintf("Unrecognized request argument supplied: reasoning_effort (%s does not support it)", a.model)
@@ -289,6 +398,10 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request, a asked) {
 	}
 	s.requests = append(s.requests, req)
 	s.mu.Unlock()
+	if status != http.StatusOK && messages {
+		refuseMessages(w, status, code, message)
+		return
+	}
 	if status != http.StatusOK {
 		refuse(w, status, code, message)
 		return
@@ -298,6 +411,22 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request, a asked) {
 		effort = "default"
 	}
 	text := fmt.Sprintf("Answered by %s with %s effort.", a.model, effort)
+	if messages {
+		content := []any{}
+		if req.Thinking != "" {
+			content = append(content, map[string]any{"type": "thinking", "thinking": fmt.Sprintf("Thinking at %s effort.", effort), "signature": "fake"})
+		}
+		content = append(content, map[string]any{"type": "text", "text": text})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "msg_fake", "type": "message", "role": "assistant", "model": a.model, "content": content, "stop_reason": "end_turn",
+			// input_tokens is only the prompt after the last cache breakpoint.
+			"usage": map[string]any{
+				"input_tokens": req.PromptTokens - req.CachedTokens - req.CacheWriteTokens, "output_tokens": 8,
+				"cache_read_input_tokens": req.CachedTokens, "cache_creation_input_tokens": req.CacheWriteTokens,
+			},
+		})
+		return
+	}
 	if req.Path == "/v1/responses" {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status": "completed",

@@ -49,6 +49,15 @@ check(async () => {
   await page.waitForSelector("#model-url", { timeout: 10000 });
   step("setup shown without a pairing code");
   await page.screenshot({ path: `${out}/firstrun-setup.png` });
+  // The kind of server Anthropic is takes its own address and, like OpenAI, a
+  // key; Ollama takes none. Choosing back leaves the address as it was.
+  await page.click("text=Anthropic");
+  assert.strictEqual(await page.inputValue("#model-url"), "https://api.anthropic.com/v1");
+  assert.strictEqual(await page.isVisible("#model-key"), true, "Anthropic is not asked for a key");
+  assert.strictEqual(await page.getAttribute("#model-name", "placeholder"), "for example claude-sonnet-5-5");
+  await page.click("text=Ollama");
+  assert.strictEqual(await page.inputValue("#model-url"), "http://localhost:11434");
+  assert.strictEqual(await page.isVisible("#model-key"), false, "Ollama is asked for a key");
   await page.fill("#model-url", modelURL);
   await page.fill("#model-name", "demo");
   await page.click("text=Save and check");
