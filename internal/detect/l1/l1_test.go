@@ -283,6 +283,88 @@ func TestRedact(t *testing.T) {
 	}
 }
 
+// TestFindingsAreOrderedAndDisjoint: a credential before a PEM block used to
+// come after it in Scan's result, and Redact sliced backwards over it and
+// panicked. Whatever the mix, findings are in order of appearance and none
+// overlaps the next.
+func TestFindingsAreOrderedAndDisjoint(t *testing.T) {
+	s := New()
+	pem := "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----"
+	for _, in := range []string{
+		"AKIAIOSFODNN7EXAMPLE\n" + pem,
+		pem + "\nAKIAIOSFODNN7EXAMPLE",
+		"AKIAIOSFODNN7EXAMPLE\n" + pem + "\nghp_AbCdEfGhIjKlMnOpQrStUvWxYz",
+		pem + "\n" + pem,
+		pem + "\nAKIAIOSFODNN7EXAMPLE\n" + pem,
+	} {
+		fs := s.Scan(in)
+		if len(fs) < 2 {
+			t.Fatalf("%q: %+v, want a finding for each credential", in, fs)
+		}
+		for i := 1; i < len(fs); i++ {
+			if fs[i-1].End > fs[i].Start {
+				t.Errorf("%q: findings %+v and %+v are out of order or overlap", in, fs[i-1], fs[i])
+			}
+		}
+		if out, _ := s.Redact(in); strings.Contains(out, "AKIA") || strings.Contains(out, "MIIEvQ") || strings.Contains(out, "ghp_") {
+			t.Errorf("%q: Redact left a credential in %q", in, out)
+		}
+	}
+
+	got := s.Scan("AKIAIOSFODNN7EXAMPLE\n" + pem)
+	want := []Finding{{ClassAWS, 0, 20}, {ClassPEM, 21, 21 + len(pem)}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("a key before a block: got %+v, want %+v", got, want)
+	}
+	out, _ := s.Redact("AKIAIOSFODNN7EXAMPLE\n" + pem)
+	if out != "[REDACTED aws-access-key]\n[REDACTED pem]" {
+		t.Errorf("Redact: %q", out)
+	}
+}
+
+// TestTokensInsideAPEMBlockAreItsOwn: a run of token characters inside a
+// block (the header lines of a PGP key) is part of the block, not a finding
+// beside it, and the block still carries the guard's verdict by its class.
+func TestTokensInsideAPEMBlockAreItsOwn(t *testing.T) {
+	s := New()
+	in := "-----BEGIN PGP PRIVATE KEY BLOCK-----\nComment: AKIAIOSFODNN7EXAMPLE\nComment: A1b2-C3d4_E5f6-G7h8I9j0-kLmN0oPq\nMIIEvQ\n-----END PGP PRIVATE KEY BLOCK-----"
+	fs := s.Scan(in)
+	if len(fs) != 1 || fs[0].Class != ClassPEM || fs[0].Start != 0 || fs[0].End != len(in) {
+		t.Fatalf("got %+v, want the block alone", fs)
+	}
+	// With the class allowed the block is not a finding, and what is inside
+	// it is, as it was before blocks were joined with tokens.
+	s.AllowClass(ClassPEM)
+	fs = s.Scan(in)
+	if len(fs) != 2 || fs[0].Class != ClassAWS || fs[1].Class != ClassUnknownEntropy {
+		t.Errorf("block allowed: got %+v, want the key and the residual", fs)
+	}
+}
+
+// TestATokenAcrossAPEMEdge: a dash is a token character, so a key pasted up
+// against "-----BEGIN" is one run with it. The key is a credential, and the
+// block's span must cover it or Redact would leave it behind.
+func TestATokenAcrossAPEMEdge(t *testing.T) {
+	s := New()
+	pem := "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----"
+	in := "KEY=sk-ant-api03-AbCdEfGhIj" + pem
+	fs := s.Scan(in)
+	if len(fs) != 1 || fs[0].Class != ClassPEM || fs[0].Start != len("KEY=") || fs[0].End != len(in) {
+		t.Fatalf("got %+v, want one block from the start of the key", fs)
+	}
+	if out, _ := s.Redact(in); out != "KEY=[REDACTED pem]" {
+		t.Errorf("Redact: %q", out)
+	}
+	// The residual that touches a block is dropped, not made part of it:
+	// nothing redacts it, so the text beside the block stays as it was.
+	for _, in := range []string{pem + "A1b2-C3d4_E5f6-G7h8I9j0-kLmN0oPq", "A1b2-C3d4_E5f6-G7h8I9j0-kLmN0oPq" + pem} {
+		fs := s.Scan(in)
+		if len(fs) != 1 || fs[0].Class != ClassPEM || fs[0].End-fs[0].Start != len(pem) {
+			t.Errorf("%q: got %+v, want the block alone", in, fs)
+		}
+	}
+}
+
 // TestEntropy sanity-checks the helper.
 func TestEntropy(t *testing.T) {
 	if e := entropy("aaaa"); e != 0 {
@@ -338,12 +420,19 @@ func FuzzScan(f *testing.F) {
 	f.Add("Bearer ghp_AbCdEfGhIjKlMnOpQrStUvWxYz")
 	f.Add("")
 	f.Add("\x00\x01\xff")
+	f.Add("AKIAIOSFODNN7EXAMPLE\n-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----")
+	f.Add("sk-ant-api03-AbCdEfGhIj-----BEGIN PRIVATE KEY-----\nMIIEvQ\n-----END PRIVATE KEY-----A1b2-C3d4_E5f6-G7h8I9j0-kLmN0oPq")
 	s := New()
 	f.Fuzz(func(t *testing.T, data string) {
+		prev := 0
 		for _, fnd := range s.Scan(data) {
 			if fnd.Start < 0 || fnd.End > len(data) || fnd.Start >= fnd.End {
 				t.Fatalf("bad bounds %+v on %q", fnd, data)
 			}
+			if fnd.Start < prev {
+				t.Fatalf("finding %+v starts before the one before it ends (%d) on %q", fnd, prev, data)
+			}
+			prev = fnd.End
 		}
 		_, _ = s.Redact(data)
 	})

@@ -36,6 +36,40 @@ func TestRedactSkipsUnknownEntropy(t *testing.T) {
 	}
 }
 
+// A key ahead of a private key came out of Scan after it, and Redact sliced
+// the text backwards over it and panicked: in whatever logged, displayed or
+// sent text held both, such as a .env file.
+func TestRedactAKeyAheadOfAPrivateKey(t *testing.T) {
+	pem := "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----"
+	text := "AWS_KEY=AKIAIOSFODNN7EXAMPLE\nSSH_KEY=\"" + pem + "\"\nTOKEN=ghp_AbCdEfGhIjKlMnOpQrStUvWxYz\n"
+	got := Redact(text, l1.New())
+	want := "AWS_KEY=[REDACTED aws-access-key]\nSSH_KEY=\"[REDACTED pem]\"\nTOKEN=[REDACTED github-token]\n"
+	if got.Text != want {
+		t.Errorf("got %q, want %q", got.Text, want)
+	}
+	if len(got.Events) != 3 {
+		t.Fatalf("got %d events, want 3: %+v", len(got.Events), got.Events)
+	}
+	for i, e := range got.Events {
+		if i > 0 && got.Events[i-1].End > e.Start {
+			t.Errorf("events %+v and %+v overlap or are out of order", got.Events[i-1], e)
+		}
+		if text[e.Start:e.End] == "" {
+			t.Errorf("event %+v is empty", e)
+		}
+	}
+}
+
+// A credential inside a private key's block is the block's, and is replaced
+// once with it.
+func TestRedactACredentialInsideAPrivateKey(t *testing.T) {
+	text := "-----BEGIN PGP PRIVATE KEY BLOCK-----\nComment: AKIAIOSFODNN7EXAMPLE\nMIIEvQ\n-----END PGP PRIVATE KEY BLOCK-----\nafter"
+	got := Redact(text, l1.New())
+	if got.Text != "[REDACTED pem]\nafter" || len(got.Events) != 1 {
+		t.Errorf("got %q with %+v", got.Text, got.Events)
+	}
+}
+
 func TestRedactNone(t *testing.T) {
 	got := Redact("nothing secret here", l1.New())
 	if got.Text != "nothing secret here" || len(got.Events) != 0 {

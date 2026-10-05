@@ -18,7 +18,8 @@ import (
 //     for the destination host and method (for a contained MCP server,
 //     for every host it can reach), otherwise denied naming the class —
 //     the same authority the handle path uses (E3), applied to literal
-//     text;
+//     text. Every credential in the text must be bound, not only the
+//     first: a key bound for the host does not take a private key along;
 //   - argv of a command line: a known class is denied — a command can reach
 //     the network and the harness cannot see where the bytes go;
 //   - payload of an in-repository write (fs-write, fs-edit): a known class
@@ -52,14 +53,15 @@ func (ts TextSecret) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			// A contained server can send on to every host on its
 			// network list: a literal key goes only if its class is bound
 			// for all of them, and nowhere when it has no network.
-			f, ok := firstKnown(s.Scan(payload))
+			fs := s.Scan(payload)
+			first, ok := firstKnown(fs)
 			if !ok {
 				return Decision{Verdict: Allow}
 			}
-			if bound, reason := boundFor(ts.Table, p, facts, f.Class); !bound {
+			if f, reason, found := firstUnbound(fs, func(class string) (bool, string) { return boundFor(ts.Table, p, facts, class) }); found {
 				return Decision{Verdict: Deny, Reason: "literal secret of class " + f.Class + " in the request is not bound for " + destOf(facts) + " (" + reason + ")"}
 			}
-			return Decision{Verdict: Allow, Reason: "literal " + f.Class + " is bound for " + destOf(facts)}
+			return Decision{Verdict: Allow, Reason: "literal " + first.Class + " is bound for " + destOf(facts)}
 		}
 		return ts.Outgoing(payload, facts.Host, facts.Method)
 	}
@@ -76,7 +78,8 @@ func (ts TextSecret) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 // that sends what never was a Scheme value — a document's bytes, which
 // the guard does not see — asks it about that text before it sends.
 func (ts TextSecret) Outgoing(text, host, method string) Decision {
-	f, ok := firstKnown(ts.scanner().Scan(text))
+	fs := ts.scanner().Scan(text)
+	first, ok := firstKnown(fs)
 	if !ok {
 		return Decision{Verdict: Allow}
 	}
@@ -84,11 +87,11 @@ func (ts TextSecret) Outgoing(text, host, method string) Decision {
 	if table == nil {
 		table = binding.Table{}
 	}
-	bound, reason := table.Lookup(f.Class, host, method, "")
-	if bound {
-		return Decision{Verdict: Allow, Reason: "literal " + f.Class + " is bound for " + host}
+	f, reason, found := firstUnbound(fs, func(class string) (bool, string) { return table.Lookup(class, host, method, "") })
+	if found {
+		return Decision{Verdict: Deny, Reason: "literal secret of class " + f.Class + " in the request is not bound for " + host + " (" + reason + ")"}
 	}
-	return Decision{Verdict: Deny, Reason: "literal secret of class " + f.Class + " in the request is not bound for " + host + " (" + reason + ")"}
+	return Decision{Verdict: Allow, Reason: "literal " + first.Class + " is bound for " + host}
 }
 
 func (ts TextSecret) scanner() *l1.Scanner {
@@ -107,6 +110,21 @@ func firstKnown(fs []l1.Finding) (l1.Finding, bool) {
 		}
 	}
 	return l1.Finding{}, false
+}
+
+// firstUnbound returns the first known finding whose class bound refuses, and
+// why. Findings come in order of appearance, so judging only the first would
+// let a credential bound for the host carry along whatever follows it.
+func firstUnbound(fs []l1.Finding, bound func(class string) (bool, string)) (l1.Finding, string, bool) {
+	for _, f := range fs {
+		if f.Class == l1.ClassUnknownEntropy {
+			continue
+		}
+		if ok, reason := bound(f.Class); !ok {
+			return f, reason, true
+		}
+	}
+	return l1.Finding{}, "", false
 }
 
 // secretText collects the payload-role and argv-role text of an

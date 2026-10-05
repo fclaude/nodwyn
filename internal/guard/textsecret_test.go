@@ -168,3 +168,33 @@ func TestOutgoingTextFollowsTheBindingTable(t *testing.T) {
 		t.Fatalf("clean text: %+v", d)
 	}
 }
+
+// A text is judged by every credential in it, not the first: a key bound for
+// the host does not carry along a private key, or a token of another class,
+// that is not. Scan lists findings in order of appearance, so which one
+// comes first is where the model wrote it.
+func TestEveryLiteralCredentialMustBeBound(t *testing.T) {
+	const pem = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----"
+	const github = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz"
+	cs := guard.TextSecret{Table: bound, Scanner: l1.New()}
+	for name, body := range map[string]string{
+		"a private key after the bound key": anthropicKey + "\n" + pem,
+		"a private key before it":           pem + "\n" + anthropicKey,
+		"a token of another class after":    anthropicKey + " " + github,
+		"a token of another class before":   github + " " + anthropicKey,
+	} {
+		d := cs.Check(context.Background(), httpP(), httpArgs("https://api.anthropic.com/v1/messages", body))
+		if d.Verdict != guard.Deny {
+			t.Errorf("%s: %+v", name, d)
+		}
+		if d := cs.Outgoing(body, "api.anthropic.com", "POST"); d.Verdict != guard.Deny {
+			t.Errorf("%s, as outgoing text: %+v", name, d)
+		}
+	}
+	// Bound for the host, each of them, it goes.
+	both := binding.Table{Bind: append([]binding.Binding{{Class: "github-token", Dest: "api.anthropic.com", Positions: []string{"body"}, Methods: []string{"POST"}}}, bound.Bind...)}
+	cs = guard.TextSecret{Table: both, Scanner: l1.New()}
+	if d := cs.Outgoing(anthropicKey+" "+github, "api.anthropic.com", "POST"); d.Verdict != guard.Allow {
+		t.Errorf("both bound: %+v", d)
+	}
+}

@@ -13,8 +13,10 @@
 package l1
 
 import (
+	"cmp"
 	"math"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -36,7 +38,8 @@ const (
 
 // Finding is one candidate secret in s: the class it was classified as and
 // its [Start,End) byte range. Findings never overlap; Scan returns them in
-// order of appearance.
+// order of appearance, whatever their class, so a caller may walk them once
+// from left to right (Redact does).
 type Finding struct {
 	Class string
 	Start int
@@ -169,22 +172,24 @@ var starts = func() (t [256]bool) {
 var pemRe = regexp.MustCompile(`(?s)-----BEGIN [A-Z ]+-----.+?-----END [A-Z ]+-----`)
 
 // Scan returns every credential-shaped span in text that the allowlist does
-// not suppress: PEM blocks, then tokens matched by the class rules, in order.
+// not suppress, in order of appearance and never overlapping: PEM blocks and
+// the tokens matched by the class rules, joined by join.
 func (s *Scanner) Scan(text string) []Finding {
 	if len(text) < 8 {
 		return nil
 	}
-	out := make([]Finding, 0, 4)
+	var pems []Finding
 
 	// PEM blocks span lines; detect them over the full text.
-	for _, m := range pemRe.FindAllStringIndex(text, -1) {
-		if !s.suppressed("@" + ClassPEM) {
-			out = append(out, Finding{Class: ClassPEM, Start: m[0], End: m[1]})
+	if !s.suppressed("@" + ClassPEM) {
+		for _, m := range pemRe.FindAllStringIndex(text, -1) {
+			pems = append(pems, Finding{Class: ClassPEM, Start: m[0], End: m[1]})
 		}
 	}
 
 	// Manual tokenization: walk the string and extract maximal runs of
 	// secret-token characters. Avoids a regex scan over the whole input.
+	toks := make([]Finding, 0, 4)
 	i, n := 0, len(text)
 	for i < n {
 		// Skip separators.
@@ -198,7 +203,46 @@ func (s *Scanner) Scan(text string) []Finding {
 		for i < n && isTokenChar(text[i]) {
 			i++
 		}
-		out = s.scanRun(out, text, lo, i)
+		toks = s.scanRun(toks, text, lo, i)
+	}
+	return join(pems, toks)
+}
+
+// join puts the PEM findings and the token findings, each list in order and
+// without overlaps, into one list that is both. A token run can lie inside a
+// block (a "Comment:" header line of a PGP key) or run across its edge
+// ("xoxb-12345678-----BEGIN", since a dash is a token character), and a
+// redactor that walks the list once would slice backwards over either.
+//
+// A block takes in the tokens that overlap it and keeps its class: its span
+// grows to cover a known token that crosses its edge, because the text left
+// outside it would still be a credential, and the guard still names the block.
+// An unknown-entropy token that overlaps one is dropped instead: it is the
+// residual nothing redacts or decides on, and growing a block over it would
+// redact text no known class claims.
+func join(pems, toks []Finding) []Finding {
+	if len(pems) == 0 {
+		return toks
+	}
+	all := append(pems, toks...)
+	slices.SortFunc(all, func(a, b Finding) int { return cmp.Compare(a.Start, b.Start) })
+	out := all[:0]
+	for _, f := range all {
+		if len(out) == 0 || f.Start >= out[len(out)-1].End {
+			out = append(out, f)
+			continue
+		}
+		last := &out[len(out)-1]
+		switch {
+		case f.Class == ClassUnknownEntropy:
+		case last.Class == ClassUnknownEntropy:
+			*last = f
+		default:
+			last.End = max(last.End, f.End)
+			if f.Class == ClassPEM {
+				last.Class = ClassPEM
+			}
+		}
 	}
 	return out
 }
