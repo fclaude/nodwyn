@@ -195,13 +195,25 @@ type Usage struct {
 	Unreported bool `json:"unreported,omitempty"`
 }
 
+// ThinkingBlock is llm.ThinkingBlock as the log keeps it.
+type ThinkingBlock struct {
+	Type      string `json:"type"`
+	Thinking  string `json:"thinking,omitempty"`
+	Signature string `json:"signature,omitempty"`
+	Data      string `json:"data,omitempty"`
+	Before    int    `json:"before,omitempty"`
+}
+
 // LLMResp is the model's full output for one request.
 type LLMResp struct {
-	Content    string     `json:"content"`
-	Thinking   string     `json:"thinking,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	DoneReason string     `json:"done_reason"`
-	Usage      Usage      `json:"usage"`
+	Content  string `json:"content"`
+	Thinking string `json:"thinking,omitempty"`
+	// Blocks are the reply's reasoning as its provider signed it, kept to
+	// be given back with the reply (llm.ThinkingBlock, window recipe v18).
+	Blocks     []ThinkingBlock `json:"blocks,omitempty"`
+	ToolCalls  []ToolCall      `json:"tool_calls,omitempty"`
+	DoneReason string          `json:"done_reason"`
+	Usage      Usage           `json:"usage"`
 }
 
 // ToolCallEvent is written before a tool application is evaluated.

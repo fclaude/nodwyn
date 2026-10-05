@@ -76,6 +76,12 @@ type Policy struct {
 	// lines it leaves out, the file's for an fs-read (capNamed, recipe v17).
 	// Older recipes keep capResult's marker, which names none.
 	NamedCuts bool
+	// Blocks gives a reply's signed reasoning back with it (llm.Message
+	// Blocks, recipe v18), except where the window changed what came before
+	// the reply since it was made: a fold or an elision of an earlier entry
+	// after the reply, which the provider would find stale (ADR 9, amended
+	// 2026-10-05). Older recipes send none.
+	Blocks bool
 }
 
 // The default headers for the task and its plan: what a recipe that records
@@ -220,11 +226,30 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		entries = append(entries, e)
 	}
 	folded := map[uint64]string{}
+	// changed are the window's own edits of what it had sent: entry `at`
+	// folded, or elided, from the request or record at `when` on. A reply
+	// made before `when` whose entry comes after `at` was made with a
+	// conversation the window has since changed.
+	type change struct{ at, when uint64 }
+	var changed []change
+	elidedFrom := map[uint64]bool{}
 	for _, ev := range events {
-		if ev.Kind == log.KindResultFold {
+		switch ev.Kind {
+		case log.KindResultFold:
 			var p log.ResultFold
 			if ev.Decode(&p) == nil {
 				folded[p.Seq] = p.Text
+				changed = append(changed, change{p.Seq, ev.Seq})
+			}
+		case log.KindLLMReq:
+			var p log.LLMReq
+			if ev.Decode(&p) == nil {
+				for _, s := range p.Elided {
+					if !elidedFrom[s] {
+						elidedFrom[s] = true
+						changed = append(changed, change{s, ev.Seq})
+					}
+				}
 			}
 		}
 	}
@@ -310,6 +335,11 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 				if pol.Thinking {
 					m.Thinking = p.Thinking
 				}
+				if pol.Blocks {
+					for _, b := range p.Blocks {
+						m.Blocks = append(m.Blocks, llm.ThinkingBlock(b))
+					}
+				}
 				for _, tc := range p.ToolCalls {
 					m.ToolCalls = append(m.ToolCalls, llm.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args})
 				}
@@ -387,6 +417,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		}
 		entries[i].msg.Content = fmt.Sprintf("[elided seq=%d]", entries[i].seq)
 		entries[i].msg.Thinking = ""
+		entries[i].msg.Blocks = nil
 		entries[i].msg.ToolCalls = nil
 		entries[i].msg.Images, entries[i].image = nil, nil
 		entries[i].size = estimate(entries[i].msg)
@@ -449,6 +480,28 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		}
 	}
 
+	if pol.Blocks {
+		// A reply's blocks go only while what came before it is as it was
+		// when it was made: not after an entry folded or elided since, by
+		// an earlier request or by this one.
+		for _, s := range elided {
+			if !sticky[s] {
+				changed = append(changed, change{s, ^uint64(0)})
+			}
+		}
+		for i := range entries {
+			if len(entries[i].msg.Blocks) == 0 {
+				continue
+			}
+			for _, c := range changed {
+				if c.at < entries[i].seq && entries[i].seq < c.when {
+					entries[i].msg.Blocks = nil
+					entries[i].size = estimate(entries[i].msg)
+					break
+				}
+			}
+		}
+	}
 	out := Result{Elided: elided, EstTokens: total(), Trimmed: trimmed, Task: task}
 	out.Messages = append(out.Messages, llm.Message{Role: llm.RoleSystem, Content: sys})
 	for _, e := range entries {
@@ -541,6 +594,10 @@ func Estimate(s string) int { return (len(s) + 2) / 3 }
 
 func estimate(m llm.Message) int {
 	n := Estimate(m.Content) + Estimate(m.Thinking) + 6
+	// A signature carries the whole of the reasoning it stands for.
+	for _, b := range m.Blocks {
+		n += Estimate(b.Thinking) + Estimate(b.Signature) + Estimate(b.Data) + 6
+	}
 	for _, tc := range m.ToolCalls {
 		n += Estimate(tc.Name) + Estimate(string(tc.Args)) + 6
 	}

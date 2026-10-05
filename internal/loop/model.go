@@ -217,5 +217,8 @@ func responseRecord(resp *llm.Response, rates llm.Rates) log.LLMResp {
 	for _, tc := range resp.Message.ToolCalls {
 		rec.ToolCalls = append(rec.ToolCalls, log.ToolCall{ID: tc.ID, Name: tc.Name, Args: tc.Args})
 	}
+	for _, b := range resp.Message.Blocks {
+		rec.Blocks = append(rec.Blocks, log.ThinkingBlock(b))
+	}
 	return rec
 }

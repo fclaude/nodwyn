@@ -18,16 +18,33 @@ const (
 
 // Message is one entry of the conversation sent to the model.
 type Message struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content"`
-	Thinking   string     `json:"thinking,omitempty"` // on a response, and sent back on the reply it came with (window recipe v14, ADR 9)
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolName   string     `json:"tool_name,omitempty"`    // role=tool
-	ToolCallID string     `json:"tool_call_id,omitempty"` // role=tool
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	Thinking  string     `json:"thinking,omitempty"` // on a response, and sent back on the reply it came with (window recipe v14, ADR 9)
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	// Blocks are a reply's reasoning as its provider signed it, given back
+	// with the reply to a provider that reads it again (Anthropic; window
+	// recipe v18, ADR 9 amended 2026-10-05).
+	Blocks     []ThinkingBlock `json:"blocks,omitempty"`
+	ToolName   string          `json:"tool_name,omitempty"`    // role=tool
+	ToolCallID string          `json:"tool_call_id,omitempty"` // role=tool
 	// Images go with a user message to a model that takes them: an
 	// attached image (ADR 22 §3). Omitted when empty, so requests without
 	// one hash as before.
 	Images []Image `json:"images,omitempty"`
+}
+
+// ThinkingBlock is one block of a reply's reasoning as its provider gave
+// it, to go back unchanged with that reply: Anthropic signs each, and reads
+// the reasoning behind a signature again only from a block that comes back
+// as it was. Before is how many of the reply's tool calls came before it,
+// so it goes back where it was.
+type ThinkingBlock struct {
+	Type      string `json:"type"`                // "thinking" or "redacted_thinking"
+	Thinking  string `json:"thinking,omitempty"`  // the summary given, empty when none was
+	Signature string `json:"signature,omitempty"` // a thinking block's
+	Data      string `json:"data,omitempty"`      // a redacted_thinking block's
+	Before    int    `json:"before,omitempty"`
 }
 
 // Image is a picture sent with a message. Only its media type and digest

@@ -379,3 +379,39 @@ func TestHygieneKeepsTheReadsOfAFileBeingEdited(t *testing.T) {
 		t.Fatalf("folded %v: the read of big.py, being edited, must stay; bigger.py's must fold", folded)
 	}
 }
+
+// Three rounds in a row whose replies thought at length and changed nothing
+// get the stall message, once; a round that writes, or that thought little,
+// starts the count again (strategy.scm, stall-check). In session
+// 20261005T151325Z-d9519026, 14 calls in a row averaged about 19,000
+// reasoning tokens, each one read.
+func TestLongThinkingWithoutAnEditIsToldToWriteItDown(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, `
+(define trace '())
+(define (agent-turn request)
+  (for-each (lambda (step)
+              (set! last-reasoning (car step))
+              (stall-check (list (list (cons 'name (cdr step)))))
+              (set! trace (cons stalled trace)))
+            '((20000 . "fs-read") (20000 . "fs-read") (20000 . "fs-edit")
+              (20000 . "fs-read") (500 . "fs-read")
+              (20000 . "fs-read") (20000 . "fs-read") (20000 . "fs-read")
+              (20000 . "fs-read"))))`, 10)
+	if e := r.turn("work"); e != "" {
+		t.Fatal(e)
+	}
+	if got := r.eval("(reverse trace)"); got != "(1 2 0 1 0 1 2 0 1)" {
+		t.Fatalf("the count after each round: %s", got)
+	}
+	n := 0
+	for _, ev := range r.logged() {
+		var p log.HarnessMsg
+		if ev.Kind == log.KindHarnessMsg && ev.Decode(&p) == nil && strings.Contains(p.Text, "thought at length for several rounds") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("%d stall messages, want 1", n)
+	}
+}

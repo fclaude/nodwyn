@@ -23,10 +23,15 @@ import (
 // A request carries the whole conversation: the system prompt as the
 // top-level system, each tool result as a tool_result block of a user
 // message, and every call and result of one assistant turn in a single
-// message, as the API requires. A reply's thinking is not sent back: with
-// adaptive thinking a turn need not begin with a thinking block, and the
-// signature that would let the API take one back is not something nodwyn keeps
-// (ADR 9, amended 2026-10-02; ADR 8, amended 2026-10-05).
+// message, as the API requires. A reply's thinking goes back with it as the
+// API gave it, each block with its signature and in its place among the
+// calls (Message.Blocks), so a model that thought its way to a design does
+// not re-derive it at every call: in session 20261005T151325Z-d9519026,
+// with none sent back, 14 calls in a row averaged about 19,000 reasoning
+// tokens each, working out the same fix again (ADR 9, amended 2026-10-05).
+// A request that carries blocks asks the API to drop, not refuse, any whose
+// conversation changed since (block_binding, drop_block): the window drops
+// those it knows went stale itself.
 type Anthropic struct {
 	URL    string // base including the version, e.g. https://api.anthropic.com/v1
 	Client *http.Client
@@ -167,9 +172,21 @@ type anthRequest struct {
 }
 
 type anthThinking struct {
-	Type    string `json:"type"`    // "adaptive"
-	Display string `json:"display"` // "summarized"
+	Type         string       `json:"type"`    // "adaptive"
+	Display      string       `json:"display"` // "summarized"
+	BlockBinding *anthBinding `json:"block_binding,omitempty"`
 }
+
+// anthBinding says what the API does with a thinking block whose
+// conversation changed since it was made: "drop_block" drops it and the
+// blocks after it, where the default would refuse the request. It needs the
+// thinkingBindingBeta header.
+type anthBinding struct {
+	PrefixMismatchBehavior string `json:"prefix_mismatch_behavior"`
+}
+
+// thinkingBindingBeta is the beta a request naming block_binding needs.
+const thinkingBindingBeta = "thinking-binding-controls-2026-08-01"
 
 type anthOutputConfig struct {
 	Effort string `json:"effort"`
@@ -191,6 +208,30 @@ type anthBlock struct {
 	Input     json.RawMessage `json:"input,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   string          `json:"content,omitempty"`
+	Thinking  string          `json:"-"`
+	Signature string          `json:"-"`
+	Data      string          `json:"-"`
+}
+
+// MarshalJSON writes a thinking block with its thinking and signature
+// always there, as the API wants them back even when the thinking is empty,
+// and a redacted one with its data; any other block as it is.
+func (b anthBlock) MarshalJSON() ([]byte, error) {
+	switch b.Type {
+	case "thinking":
+		return json.Marshal(struct {
+			Type      string `json:"type"`
+			Thinking  string `json:"thinking"`
+			Signature string `json:"signature"`
+		}{b.Type, b.Thinking, b.Signature})
+	case "redacted_thinking":
+		return json.Marshal(struct {
+			Type string `json:"type"`
+			Data string `json:"data"`
+		}{b.Type, b.Data})
+	}
+	type plain anthBlock
+	return json.Marshal(plain(b))
 }
 
 type anthSource struct {
@@ -207,12 +248,14 @@ type anthTool struct {
 
 type anthResponse struct {
 	Content []struct {
-		Type     string          `json:"type"` // "text", "thinking", "redacted_thinking", "tool_use"
-		Text     string          `json:"text"`
-		Thinking string          `json:"thinking"`
-		ID       string          `json:"id"`
-		Name     string          `json:"name"`
-		Input    json.RawMessage `json:"input"`
+		Type      string          `json:"type"` // "text", "thinking", "redacted_thinking", "tool_use"
+		Text      string          `json:"text"`
+		Thinking  string          `json:"thinking"`
+		Signature string          `json:"signature"`
+		Data      string          `json:"data"`
+		ID        string          `json:"id"`
+		Name      string          `json:"name"`
+		Input     json.RawMessage `json:"input"`
 	} `json:"content"`
 	StopReason string `json:"stop_reason"`
 	StopDetail *struct {
@@ -249,6 +292,7 @@ func toAnthropic(req Request) anthRequest {
 		w.OutputConfig = &anthOutputConfig{Effort: req.Effort}
 	}
 	var system []string
+	replayed := false
 	// results counts the tool_result blocks at the start of the last message,
 	// when it is a user's: where the next one goes.
 	results := 0
@@ -280,16 +324,33 @@ func toAnthropic(req Request) anthRequest {
 			add("user", anthBlock{Type: "tool_result", ToolUseID: toolID(m.ToolCallID), Content: m.Content})
 		case RoleAssistant:
 			var blocks []anthBlock
+			// A reply's signed thinking goes first, and each block that
+			// came between its calls before the call it came before.
+			thought := func(before int) {
+				for _, tb := range m.Blocks {
+					if tb.Before == before && (tb.Signature != "" || tb.Data != "") {
+						blocks = append(blocks, anthBlock{Type: tb.Type, Thinking: tb.Thinking, Signature: tb.Signature, Data: tb.Data})
+						replayed = true
+					}
+				}
+			}
+			thought(0)
 			if m.Content != "" {
 				blocks = append(blocks, anthBlock{Type: "text", Text: m.Content})
 			}
-			for _, tc := range m.ToolCalls {
+			for i, tc := range m.ToolCalls {
+				if i > 0 {
+					thought(i)
+				}
 				input := tc.Args
 				var object map[string]json.RawMessage
 				if json.Unmarshal(input, &object) != nil || object == nil {
 					input = json.RawMessage("{}")
 				}
 				blocks = append(blocks, anthBlock{Type: "tool_use", ID: toolID(tc.ID), Name: tc.Name, Input: input})
+			}
+			if len(m.ToolCalls) > 0 {
+				thought(len(m.ToolCalls))
 			}
 			add("assistant", blocks...)
 		default:
@@ -306,6 +367,14 @@ func toAnthropic(req Request) anthRequest {
 		}
 	}
 	w.System = strings.Join(system, "\n\n")
+	if replayed {
+		// Blocks go back only to a model that thinks: the request asks for
+		// thinking as the API runs it anyway, so it reads them.
+		if w.Thinking == nil {
+			w.Thinking = &anthThinking{Type: "adaptive", Display: "summarized"}
+		}
+		w.Thinking.BlockBinding = &anthBinding{PrefixMismatchBehavior: "drop_block"}
+	}
 	for _, t := range req.Tools {
 		w.Tools = append(w.Tools, anthTool{Name: t.Name, Description: t.Description, InputSchema: t.Parameters})
 	}
@@ -323,7 +392,11 @@ func (a *Anthropic) Chat(ctx context.Context, req Request, onDelta func(Delta)) 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := a.send(ctx, http.MethodPost, "/messages", body)
+	beta := ""
+	if wire.Thinking != nil && wire.Thinking.BlockBinding != nil {
+		beta = thinkingBindingBeta
+	}
+	resp, err := a.sendBeta(ctx, http.MethodPost, "/messages", body, beta)
 	if err != nil {
 		return nil, err
 	}
@@ -342,6 +415,13 @@ func (a *Anthropic) Chat(ctx context.Context, req Request, onDelta func(Delta)) 
 			// Empty when the summary was not asked for or the model skipped it.
 			if b.Thinking != "" {
 				thinking = append(thinking, b.Thinking)
+			}
+			if b.Signature != "" {
+				out.Message.Blocks = append(out.Message.Blocks, ThinkingBlock{Type: b.Type, Thinking: b.Thinking, Signature: b.Signature, Before: len(out.Message.ToolCalls)})
+			}
+		case "redacted_thinking":
+			if b.Data != "" {
+				out.Message.Blocks = append(out.Message.Blocks, ThinkingBlock{Type: b.Type, Data: b.Data, Before: len(out.Message.ToolCalls)})
 			}
 		case "tool_use":
 			args := b.Input
@@ -433,11 +513,19 @@ func anthropicUsage(raw json.RawMessage) Usage {
 // OpenAI.send does: a redirect is a permanent error, and so is a refusal that
 // asking again would not change.
 func (a *Anthropic) send(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+	return a.sendBeta(ctx, method, path, body, "")
+}
+
+// sendBeta is send with an anthropic-beta header when beta is not empty.
+func (a *Anthropic) sendBeta(ctx context.Context, method, path string, body []byte, beta string) (*http.Response, error) {
 	hreq, err := http.NewRequestWithContext(ctx, method, a.URL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	hreq.Header.Set("anthropic-version", AnthropicVersion)
+	if beta != "" {
+		hreq.Header.Set("anthropic-beta", beta)
+	}
 	if body != nil {
 		hreq.Header.Set("Content-Type", "application/json")
 	}

@@ -502,3 +502,54 @@ func TestRequestAndPlanJoinTheConversation(t *testing.T) {
 		}
 	}
 }
+
+// From recipe v18 a reply's signed reasoning goes back with it, unless the
+// window changed what came before it since it was made: a fold or an
+// elision of an earlier entry, recorded after the reply, or made by this
+// request's trim. Such a block would be found stale (ADR 9, amended
+// 2026-10-05). A reply made after the change keeps its blocks.
+func TestBlocksGoBackUnlessWhatCameBeforeChanged(t *testing.T) {
+	sig := func(s string) []log.ThinkingBlock { return []log.ThinkingBlock{{Type: "thinking", Signature: s}} }
+	s := newSession()
+	s.w.Append(log.KindUserMsg, log.UserMsg{Text: "go"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{Blocks: sig("first"), ToolCalls: []log.ToolCall{{ID: "a", Name: "fs-read", Args: json.RawMessage(`{}`)}}})
+	read, _ := s.w.Append(log.KindToolResult, log.ToolResult{ID: "a", Name: "fs-read", OK: true, Value: "the file"})
+	s.w.Append(log.KindLLMResp, log.LLMResp{Blocks: sig("second"), ToolCalls: []log.ToolCall{{ID: "b", Name: "fs-list", Args: json.RawMessage(`{}`)}}})
+	s.w.Append(log.KindToolResult, log.ToolResult{ID: "b", Name: "fs-list", OK: true, Value: "a.go"})
+	pol := Policy{HighWater: 1 << 20, LowWater: 1 << 19, Blocks: true}
+	blocks := func(r Result) []string {
+		var out []string
+		for _, m := range r.Messages {
+			for _, b := range m.Blocks {
+				out = append(out, b.Signature)
+			}
+		}
+		return out
+	}
+	if got := blocks(Build(s.events(t), "sys", 0, pol)); strings.Join(got, ",") != "first,second" {
+		t.Fatalf("before any change: %v", got)
+	}
+	// The read the first reply asked for is folded: the second reply came
+	// after it, so its block is stale; the first came before it.
+	s.w.Append(log.KindResultFold, log.ResultFold{Seq: read.Seq, Text: "[folded]"})
+	if got := blocks(Build(s.events(t), "sys", 0, pol)); strings.Join(got, ",") != "first" {
+		t.Fatalf("after the fold: %v", got)
+	}
+	// A reply made after the fold keeps its blocks.
+	s.w.Append(log.KindLLMResp, log.LLMResp{Blocks: sig("third"), Content: "done"})
+	if got := blocks(Build(s.events(t), "sys", 0, pol)); strings.Join(got, ",") != "first,third" {
+		t.Fatalf("a reply after the fold: %v", got)
+	}
+	// A request that trims elides the oldest result: every reply after it
+	// was made before this request, and loses its blocks; the elided reply
+	// itself is shown as elided.
+	small := pol
+	small.HighWater, small.LowWater = Estimate("sys")+40, Estimate("sys")+20
+	if got := blocks(Build(s.events(t), "sys", 0, small)); len(got) > 1 || (len(got) == 1 && got[0] != "first") {
+		t.Fatalf("after a trim: %v", got)
+	}
+	// Older recipes send none.
+	if got := blocks(Build(s.events(t), "sys", 0, Policy{HighWater: 1 << 20, LowWater: 1 << 19})); len(got) != 0 {
+		t.Fatalf("recipe v17: %v", got)
+	}
+}

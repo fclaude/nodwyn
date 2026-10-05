@@ -1360,9 +1360,17 @@ when a request names none). An effort is sent as `output_config.effort` with
 `thinking: {"type": "adaptive", "display": "summarized"}`, which is how a
 model is asked to think: it needs a model that takes adaptive thinking
 (Claude 4.6 and later), and the thinking summary is the reply's thinking. A
-model that declares no efforts is sent neither field. A reply's thinking is
-not sent back, which adaptive thinking allows (a turn need not begin with a
-thinking block) and which nodwyn would need a signature to do. A call whose
+model that declares no efforts is sent neither field. A reply's thinking
+goes back with it as the API gave it, each block signed and in its place
+among the calls (recipe v18), so the model reads the reasoning behind it
+again instead of working its design out anew at every call; a request that
+carries blocks also asks for adaptive thinking, and asks the API to drop,
+not refuse, a block whose conversation changed since it was made
+(`block_binding` `drop_block`, beta `thinking-binding-controls-2026-08-01`).
+The window itself leaves out the blocks of a reply made before it folded or
+trimmed something earlier, which the API would find stale. The first
+request that carries blocks may miss the prompt cache once, since it adds
+the thinking setting. A call whose
 arguments are not a JSON object is sent with none, since `input` must be one.
 A reply that stops as `refusal` ends the turn saying the model declined, with
 the reason the API gives.
@@ -1784,7 +1792,11 @@ chat-completions server as `reasoning_content` (OpenRouter reads it as
 encrypted reasoning). It counts toward the window and is trimmed with its reply. A
 server that reports only a summary of the thinking, or none, gives back
 only that; encrypted reasoning (OpenRouter's `reasoning_details`) is not
-kept.
+kept. Anthropic's own API is the exception: its signed thinking blocks are
+kept and given back whole (above). A reply that thought at length three
+rounds in a row without changing anything (10,000 reasoning tokens or more
+each) gets a line asking the model to write down the design it reached and
+make the edit (`stall-rounds`, `stall-reasoning-tokens`).
 
 Each reply is capped, thinking included: ollama gets the cap as
 `num_predict`, a chat-completions server as `max_completion_tokens` (the

@@ -1630,6 +1630,15 @@
     },
     "log.LLMResp": {
       "properties": {
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/log.ThinkingBlock"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "content": {
           "type": "string"
         },
@@ -1998,6 +2007,29 @@
       },
       "required": [
         "summary_seq"
+      ],
+      "type": "object"
+    },
+    "log.ThinkingBlock": {
+      "properties": {
+        "before": {
+          "type": "integer"
+        },
+        "data": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
       ],
       "type": "object"
     },

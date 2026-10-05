@@ -667,3 +667,17 @@ main was meant (ADR 34, amended the same day). The section now tells the
 model to run validate and then call git-land when the request asks for the
 work to land, never to commit, rebase or push through the shell, and never
 to turn commit signing off.
+
+## Amendment 2026-10-05: long thinking without an edit is told to write it down
+
+In session 20261005T151325Z-d9519026, 14 calls in a row averaged about
+19,000 reasoning tokens each, each emitting one read and no text, the
+thinking working out the same fix again. The reply's thinking now goes back
+to a Claude model (ADR 9, amended the same day), but not to every model, and
+a model can think in circles anyway. Three rounds in a row whose reply
+thought for 10,000 reasoning tokens or more and whose calls wrote nothing
+now get a line asking the model to write the design it reached into a plan
+step's note or a plan, then make the edit (`stall-check` in strategy.scm,
+`stall-rounds`, `stall-reasoning-tokens`); `model-turn`'s reply carries
+`reasoning-tokens` for it. TestLongThinkingWithoutAnEditIsToldToWriteItDown
+covers the count.

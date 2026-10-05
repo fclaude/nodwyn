@@ -5,6 +5,7 @@
 ;; own way redefines nodwyn-turn.
 (define (nodwyn-turn request)
   (set! turn-stopping #f)
+  (set! stalled 0)
   (when (plan-required?) (plan-gate request))
   (agent-turn request))
 
@@ -36,7 +37,34 @@
              (> left 0))
         (begin (add-message output-cut-message)
                (again (apply model-turn args) (- left 1)))
-        reply)))
+        (begin (set! last-reasoning (assoc-ref reply 'reasoning-tokens 0))
+               reply))))
+
+;; Rounds in a row whose reply thought at length (stall-reasoning-tokens or
+;; more of reasoning) and changed nothing, after which the model is told to
+;; write down the design it reached and make the edit. In session
+;; 20261005T151325Z-d9519026, 14 calls in a row averaged about 19,000
+;; reasoning tokens each, each emitting one read and no text, the thinking
+;; working out the same fix again (ADR 32, amended 2026-10-05). Its thinking
+;; now goes back to it (ADR 9, amended the same day); this is for a model
+;; whose does not. 0 rounds turns it off.
+(define stall-rounds 3)
+(define stall-reasoning-tokens 10000)
+(define stall-message
+  "You have thought at length for several rounds in a row without changing anything, and that thinking may not reach your next request. Write the design you have reached in a few lines, as a plan step's note (plan-step) or a plan (plan-write), then make the edit it calls for.")
+(define last-reasoning 0) ; the reasoning tokens of the latest reply
+(define stalled 0)        ; the rounds in a row that thought at length and changed nothing
+
+;; After a round's calls are answered: count it if its reply thought at
+;; length and none of its calls wrote anything, and say stall-message once
+;; the count reaches stall-rounds.
+(define (stall-check calls)
+  (if (or (<= stall-rounds 0) (< last-reasoning stall-reasoning-tokens) (pair? (filter edit-call? calls)))
+      (set! stalled 0)
+      (begin (set! stalled (+ stalled 1))
+             (when (>= stalled stall-rounds)
+               (add-message stall-message)
+               (set! stalled 0)))))
 
 ;; A knob that depends on the model is a number, which holds for every
 ;; model, or a table: rows of (family . value) and a (default . value) row,
@@ -116,6 +144,7 @@
 ;; they reach reading-reminder-after the reminder is added, after the
 ;; calls are answered, and the count starts again.
 (define (reading-rounds calls reading)
+  (stall-check calls)
   (let ((after (tuned reading-reminder-after)))
     (cond ((or (<= after 0) (pair? (filter (lambda (c) (not (look-call? c))) calls))) 0)
           ((< (+ reading 1) after) (+ reading 1))

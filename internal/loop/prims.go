@@ -1009,6 +1009,7 @@ func replyValue(resp *llm.Response, cost *float64) scheme.Value {
 		scheme.Cons(scheme.Sym("prompt-tokens"), scheme.Int(int64(resp.Usage.PromptTokens))),
 		scheme.Cons(scheme.Sym("output-tokens"), scheme.Int(int64(resp.Usage.OutputTokens))),
 		scheme.Cons(scheme.Sym("cached-tokens"), optionalInt(resp.Usage.CachedTokens)),
+		scheme.Cons(scheme.Sym("reasoning-tokens"), scheme.Int(int64(resp.Usage.ReasoningTokens))),
 		scheme.Cons(scheme.Sym("cost"), optionalFloat(cost)),
 	)
 }

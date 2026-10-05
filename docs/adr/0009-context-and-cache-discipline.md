@@ -360,3 +360,38 @@ re-read the file". transcript.js was read 20 times in
   from a ranged read's `[lines A-B of N]` header, as the fs-read that brings
   them back; of the result for anything else. A result with no line end to
   cut at keeps the old marker, and older recipes replay with it.
+
+## Amendment 2026-10-05: a Claude reply's signed thinking goes back with it
+
+A reply's thinking went back on its reply from recipe v14, as text, which
+Anthropic's API does not read: it reads a thinking block only as it gave
+it, with its signature, which nodwyn did not keep. In session
+20261005T151325Z-d9519026 (claude-sonnet-5-5, $13.77), 446,000 of the
+569,000 output tokens were reasoning; in its fourth turn 14 calls in a row
+averaged about 19,000 reasoning tokens each, each emitting one read and no
+text, the thinking summaries working out the same parseDiff fix again
+(seq 4073, 4110, 4117, 4144): that turn cost $9.29.
+
+- An Anthropic reply's thinking and redacted thinking blocks are kept as
+  given, signature or data included, with where each came among the reply's
+  calls (`llm.ThinkingBlock`, `llm.resp` `blocks`).
+- Recipe v18 (`Policy.Blocks`) gives them back with their reply, each
+  where it was. The API checks that what came before a block is what it was
+  when the block was made, and this window edits what it sent: it folds old
+  results and elides old entries. So a reply made before a fold, or an
+  elision, of an earlier entry goes back without its blocks; one made after
+  it keeps them, since its conversation already had the change. Removing a
+  stale run while keeping later blocks made without it keeps the chain the
+  API checks.
+- A request that carries blocks names `thinking.block_binding`
+  `prefix_mismatch_behavior: "drop_block"` (beta
+  `thinking-binding-controls-2026-08-01`), so a block the window missed is
+  dropped by the API rather than failing the request, and asks for adaptive
+  thinking when the effort did not, as the models that make such blocks
+  run anyway. That first request may miss the prompt cache once.
+- The blocks count toward the window's estimate, their signatures included,
+  and go with their reply when it is trimmed.
+
+The window's own staleness rule was written from the API's documented check,
+and nothing here was run against Anthropic's API: the tests use recorded
+shapes.

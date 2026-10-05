@@ -398,3 +398,68 @@ func TestAnthropicHints(t *testing.T) {
 		t.Errorf("hint for another provider: %q", got)
 	}
 }
+
+// A reply's signed thinking goes back with it, each block where it was
+// among the calls, so the model reads the reasoning behind it again rather
+// than re-deriving its design at every call (session
+// 20261005T151325Z-d9519026: 14 calls in a row at about 19,000 reasoning
+// tokens each). A request that carries blocks asks the API to drop, not
+// refuse, one whose conversation changed (drop_block, with its beta), and
+// asks for thinking as the API runs it, so it reads them. A reply keeps its
+// blocks, signature and all.
+func TestAnthropicThinkingGoesBackSigned(t *testing.T) {
+	srv := newAnthropicServer(t, 200, `{"content":[
+		{"type":"thinking","thinking":"read it first","signature":"sig-1"},
+		{"type":"tool_use","id":"toolu_1","name":"fs-read","input":{"path":"a.go"}},
+		{"type":"redacted_thinking","data":"opaque"},
+		{"type":"tool_use","id":"toolu_2","name":"fs-read","input":{"path":"b.go"}}],
+		"stop_reason":"tool_use","usage":{"input_tokens":12,"output_tokens":3}}`)
+	a := NewAnthropic(srv.URL+"/v1", withKey("sk-ant-test"))
+	resp, err := a.Chat(context.Background(), Request{Model: "claude-x", Messages: []Message{{Role: RoleUser, Content: "read them"}}, MaxTokens: 100}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ThinkingBlock{{Type: "thinking", Thinking: "read it first", Signature: "sig-1"}, {Type: "redacted_thinking", Data: "opaque", Before: 1}}
+	if len(resp.Message.Blocks) != 2 || resp.Message.Blocks[0] != want[0] || resp.Message.Blocks[1] != want[1] {
+		t.Fatalf("blocks: %+v", resp.Message.Blocks)
+	}
+	if srv.header.Get("anthropic-beta") != "" || srv.body["thinking"] != nil {
+		t.Fatalf("a request with no blocks to give back asked for %q %v", srv.header.Get("anthropic-beta"), srv.body["thinking"])
+	}
+	// The reply goes back in the next request, its blocks where they were.
+	msgs := []Message{{Role: RoleUser, Content: "read them"}, resp.Message,
+		{Role: RoleTool, Content: "a", ToolCallID: "toolu_1"}, {Role: RoleTool, Content: "b", ToolCallID: "toolu_2"}}
+	if _, err := a.Chat(context.Background(), Request{Model: "claude-x", Messages: msgs, MaxTokens: 100}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if srv.header.Get("anthropic-beta") != "thinking-binding-controls-2026-08-01" {
+		t.Fatalf("beta: %q", srv.header.Get("anthropic-beta"))
+	}
+	th := srv.body["thinking"].(map[string]any)
+	if th["type"] != "adaptive" || th["block_binding"].(map[string]any)["prefix_mismatch_behavior"] != "drop_block" {
+		t.Fatalf("thinking: %v", th)
+	}
+	blocks := srv.body["messages"].([]any)[1].(map[string]any)["content"].([]any)
+	var types []string
+	for _, b := range blocks {
+		types = append(types, b.(map[string]any)["type"].(string))
+	}
+	if strings.Join(types, ",") != "thinking,tool_use,redacted_thinking,tool_use" {
+		t.Fatalf("assistant blocks: %v", types)
+	}
+	if b := blocks[0].(map[string]any); b["thinking"] != "read it first" || b["signature"] != "sig-1" {
+		t.Fatalf("thinking block: %v", b)
+	}
+	if b := blocks[2].(map[string]any); b["data"] != "opaque" || len(b) != 2 {
+		t.Fatalf("redacted block: %v", b)
+	}
+	// An empty summary still goes back with its thinking field.
+	msgs[1].Blocks = []ThinkingBlock{{Type: "thinking", Signature: "sig-2"}}
+	if _, err := a.Chat(context.Background(), Request{Model: "claude-x", Messages: msgs, MaxTokens: 100}, nil); err != nil {
+		t.Fatal(err)
+	}
+	b := srv.body["messages"].([]any)[1].(map[string]any)["content"].([]any)[0].(map[string]any)
+	if _, ok := b["thinking"]; !ok || b["signature"] != "sig-2" {
+		t.Fatalf("an empty summary: %v", b)
+	}
+}

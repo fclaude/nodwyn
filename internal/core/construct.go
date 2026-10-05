@@ -406,7 +406,7 @@ func (s *Session) initialize() (err error) {
 		s.note(sizing)
 	}
 	s.loop, err = loop.New(s, s.interp, loop.Config{
-		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens, Thinking: true, InConversation: true, PairTools: true, NamedCuts: true},
+		Window:         window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens, Thinking: true, InConversation: true, PairTools: true, NamedCuts: true, Blocks: true},
 		Ceiling:        ceiling,
 		MaxOutput:      o.Config.Window.OutputReserve,
 		Models:         models,

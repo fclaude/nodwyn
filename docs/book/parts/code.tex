@@ -1645,7 +1645,11 @@ log recorded it. The provider's dialect chooses the outgoing field:
 \code{thinking} for native Ollama, \code{reasoning} for Cerebras and
 \code{reasoning\_content} for the default Chat Completions dialect. The
 \code{responses} dialect (OpenAI's Responses API, \file{responses.go})
-sends none, since that API takes reasoning back only encrypted.
+sends none, since that API takes reasoning back only encrypted. From recipe
+v18 an Anthropic reply's signed thinking blocks go back too
+(\code{Policy.Blocks}): \file{anthropic.go} puts each where it was among
+the calls, and \code{Build} leaves out the blocks of a reply made before a
+fold or an elision of an earlier entry, which the API would find stale.
 This conversion leaves the canonical request and its hash unchanged;
 for an older recipe it reads only the content and the
 tool calls, so those requests replay to the hashes they recorded. A key held in the
