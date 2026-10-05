@@ -27,7 +27,7 @@ import (
 func (s *Session) sizeWindow(control loop.Endpoint) (loop.Endpoint, config.Window, int, string) {
 	w := s.opts.Config.Window
 	if reporter, ok := control.Provider.(llm.ContextReporter); ok && control.NumCtx == 0 {
-		n, err := contextLength(reporter, control.Model)
+		n, err := contextLength(reporter, control.Server, control.Model)
 		if err != nil {
 			return control, w, w.HighWater, fmt.Sprintf("the window keeps its default size, since %s's context length is not known (%s); set it for the model in Settings › Models, or as num_ctx in its entry in config.toml", control.Model, err)
 		}
@@ -65,14 +65,15 @@ func (s *Session) note(text string) {
 	_, _ = s.Record(log.KindNote, log.Note{Text: text})
 }
 
-// contextLengths holds what servers' model lists said, by URL and model, so
-// a process that opens many sessions asks once.
+// contextLengths holds what servers' model lists said, by server name, URL
+// and model, so a process that opens many sessions asks once, and two servers
+// at one address (an API key and a ChatGPT plan) do not share an answer.
 var contextLengths sync.Map
 
 // contextLength asks the provider's model list for model's context length,
 // briefly: a server that does not answer leaves the window at its default size.
-func contextLength(p llm.ContextReporter, model string) (int, error) {
-	key := p.Server() + "\x00" + model
+func contextLength(p llm.ContextReporter, server, model string) (int, error) {
+	key := server + "\x00" + p.Server() + "\x00" + model
 	if n, ok := contextLengths.Load(key); ok {
 		return n.(int), nil
 	}

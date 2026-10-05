@@ -234,6 +234,33 @@ check(async () => {
   assert.ok(!config().includes("dialect"), "the standard dialect left one in config.toml:\n" + config());
   step("a provider on OpenAI's Responses API is asked there, with the model's effort, and moved back");
 
+  // ---------- a second provider at an address already in use ----------
+  const providersBefore = await page.locator("[data-provider]").count();
+  await page.click("#add-provider");
+  await page.click("#preset-other");
+  await page.fill("#provider-url", chatURL);
+  await page.click("#provider-save");
+  await page.waitForFunction((n) => document.querySelectorAll("[data-provider]").length === n, providersBefore + 1);
+  assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { name: "openai", provider: "openai", url: chatURL });
+  await page.click("#add-provider");
+  await page.click("#preset-other");
+  await page.fill("#provider-url", chatURL);
+  await page.fill("#provider-name", "127-0-0-1");
+  await page.click("#provider-save");
+  await page.waitForSelector("#provider-form .error");
+  assert.ok((await page.innerText("#provider-form .error")).includes("exists"), "a name in use was accepted");
+  await page.fill("#provider-name", "plan-test");
+  await page.click("#provider-save");
+  await page.waitForSelector("#provider-plan-test");
+  assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { name: "plan-test", provider: "openai", url: chatURL });
+  assert.strictEqual((await page.locator("[data-provider]").count()), providersBefore + 2, "two servers at one address were merged");
+  for (const name of ["openai", "plan-test"]) {
+    await page.click(`#provider-${name} button:text-is('Remove')`);
+    await page.click(`#provider-${name} button:text-is('Remove')`);
+    await page.waitForSelector(`#provider-${name}`, { state: "detached" });
+  }
+  step("a second provider can share an address, and a name in use is refused");
+
   // ---------- the default model and its effort ----------
   await page.selectOption("#default-model-model", "127-0-0-1-reasoner");
   assert.strictEqual(await page.isDisabled("#default-model-effort"), false);

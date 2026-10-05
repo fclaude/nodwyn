@@ -201,7 +201,9 @@ the same binding must allow its host. Every request is checked and logged
 as \code{egress.check}. The key usually belongs to a server, a
 \code{[servers.NAME]} table with the provider, the address and the
 credential, which the models on it name with \code{server = "NAME"}: one
-key and one binding for every model a provider offers. When the app sets up
+key and one binding for every model a provider offers. A server is known by
+its name, not its address, so an API-key server and a ChatGPT plan server can
+both sit at \code{https://api.openai.com/v1}. When the app sets up
 a model for you, it saves the server and writes exactly that binding: the
 server's host, \code{POST} (and \code{GET}, for the model list), a bearer
 \code{Authorization} header; for Anthropic, the \code{x-api-key} header

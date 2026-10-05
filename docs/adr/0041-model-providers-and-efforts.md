@@ -371,3 +371,25 @@ no way to use Claude on Anthropic's own API or a model on Baseten.
   list (`capabilities`), which it reports and the catalogue also publishes;
   Opus 4.5's effort with a thinking budget; Anthropic through Bedrock or
   Vertex, which sign requests differently.
+
+## Amendment 2026-10-06: servers are keyed by name, not by address
+
+A `[servers.NAME]` is known by its name. Two can share an address, which is
+how an API-key server and a ChatGPT plan server both sit at
+`https://api.openai.com/v1`; `settings.provider.write` no longer refuses a
+second server at an address that has one, only a name already in use is
+changed rather than added. A request without `name` still finds the server by
+its address when exactly one is there, and is refused, naming them, when
+several are.
+
+- A model on a server names it (`server`), and everything keyed by that
+  server follows the name: `Config.SameModel`, `Tuned` and `Efforts` compare
+  the server name when both models have one (provider and address only for an
+  inline model), the probe cache and the window-size cache include it, and
+  `settings.control.write` keeps the server the main model names when the
+  address is given again.
+- The console's Add a provider form takes a name and shows the server by it;
+  a second provider can be added at an address in use.
+- Not changed: the catalogue still describes a model by its address's host,
+  so both servers at OpenAI publish the same prices and efforts. The log's
+  `server` name (ADR 2) was already the name, and still is.

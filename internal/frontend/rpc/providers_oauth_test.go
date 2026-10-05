@@ -214,4 +214,17 @@ func TestProviderSelectsChatGPTCredentialAndPreservesItWhenSwitchingToKey(t *tes
 	if err != nil || info.Kind != keychain.KindOAuth2 {
 		t.Fatal("switching destroyed the connected account")
 	}
+	// The plan comes back as a second server at the same address, beside the
+	// API-key one, and neither disturbs the other.
+	into(t, c.ok("settings.provider.write", map[string]any{"name": "chatgpt-plan", "provider": "openai", "url": p.URL, "dialect": "responses", "credential": id}), &settings)
+	if len(settings.Servers) != 2 {
+		t.Fatalf("servers: %+v", settings.Servers)
+	}
+	byName := map[string]modelServer{}
+	for _, sv := range settings.Servers {
+		byName[sv.Name] = sv
+	}
+	if byName[p.Name].Credential == "chatgpt" || byName[p.Name].Authentication != "" || byName["chatgpt-plan"].Credential != "chatgpt" || byName["chatgpt-plan"].Authentication != "chatgpt" {
+		t.Fatalf("the two servers share a credential: %+v", byName)
+	}
 }

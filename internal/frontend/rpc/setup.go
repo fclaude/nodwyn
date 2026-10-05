@@ -572,11 +572,22 @@ func controlServer(p controlParams, servers map[string]config.Server, old config
 	host = parsed.Hostname()
 	srv = config.Server{Provider: p.Provider, URL: strings.TrimRight(p.URL, "/")}
 	found := false
+	// Servers are keyed by name, so several can be at this address: the one
+	// the main model names is kept, and the address picks only when one is
+	// there.
+	var at []string
 	for _, n := range slices.Sorted(maps.Keys(servers)) {
 		if sv := servers[n]; providerName(sv.Provider) == p.Provider && strings.TrimRight(sv.URL, "/") == srv.URL {
-			name, srv, found = n, sv, true
-			break
+			at = append(at, n)
 		}
+	}
+	switch {
+	case old.Server != "" && slices.Contains(at, old.Server):
+		name, srv, found = old.Server, servers[old.Server], true
+	case len(at) == 1:
+		name, srv, found = at[0], servers[at[0]], true
+	case len(at) > 1:
+		return "", srv, "", false, failure(-32602, fmt.Sprintf("%s has several servers (%s): give the name of the one to use", srv.URL, strings.Join(at, ", ")))
 	}
 	if !found {
 		name = serverName(host)

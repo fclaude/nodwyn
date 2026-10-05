@@ -1196,7 +1196,9 @@ The control model (`[control]`) answers `(model-turn)`. Any other model a
 strategy may use is an entry in `config.toml`, asked by name with
 `(model-turn "NAME")`. A provider offers many models at one address under
 one key, so the address and the key belong to a server, `[servers.NAME]`,
-and each model names its server and says which of its models it is:
+and each model names its server and says which of its models it is. A
+server is known by its name, not its address: two can share one, such as an
+API-key server and a ChatGPT plan server at `https://api.openai.com/v1`.
 
 ```toml
 [servers.openai]
@@ -1393,7 +1395,10 @@ this computer only:
   to that host), *not answering*, or *model not installed*. The key's state is
   read from the keychain and the binding table before the server is asked,
   since that is what to fix; **Check again** asks every server now. **Add a
-  provider** takes a kind (Ollama, OpenAI-compatible, or Anthropic), an
+  provider** takes a name (left empty, one is chosen from its kind, such as
+  `openai` or `ollama`; a name already in use is refused, and a second
+  provider can share an address under another name, such as an API key and a
+  ChatGPT plan at OpenAI), a kind (Ollama, OpenAI-compatible, or Anthropic), an
   address, for an OpenAI-compatible one a dialect, and an API key for either
   of those (an OpenAI-compatible one can use a ChatGPT plan credential instead),
   and has presets (OpenAI, Anthropic, Baseten, OpenRouter, Cerebras,

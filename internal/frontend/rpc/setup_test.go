@@ -309,6 +309,27 @@ func TestSettingsControlOnAServer(t *testing.T) {
 	}
 }
 
+// With two servers at one address, the main model keeps the one it names when
+// the address is given again, and an address alone is refused as ambiguous.
+func TestControlModelKeepsNamedServer(t *testing.T) {
+	o := options(t)
+	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	os.WriteFile(o.Paths.ConfigFile, []byte("[servers.alpha]\nurl = \"http://workshop:11434\"\n\n[servers.beta]\nurl = \"http://workshop:11434\"\n\n[control]\nserver = \"beta\"\nmodel = \"qwen\"\n"), 0o600)
+	cfg, err := config.Load(o.Paths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Config = cfg
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	var settings settingsResult
+	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434", "model": "llama"}), &settings)
+	if settings.Control.Server != "beta" || len(settings.Servers) != 2 {
+		t.Fatalf("control: %+v, servers %+v", settings.Control, settings.Servers)
+	}
+}
+
 // Saving the same model again keeps what was tuned by hand in config.toml;
 // choosing another model starts from its defaults.
 func TestSettingsWriteKeepsTuningOfTheSameModel(t *testing.T) {

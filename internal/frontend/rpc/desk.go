@@ -171,9 +171,11 @@ func forgetProbes() {
 }
 
 // probeKey names the server a model is on: the same address is asked once,
-// whatever names its models.
+// whatever names its models. Servers are keyed by name, so two at one address
+// (an API key and a ChatGPT plan) are asked separately, each with its own
+// credential.
 func probeKey(m config.Model) string {
-	return providerName(m.Provider) + "\x00" + strings.TrimRight(m.URL, "/")
+	return m.Server + "\x00" + providerName(m.Provider) + "\x00" + strings.TrimRight(m.URL, "/")
 }
 
 // registryEntry is a model config.toml names: [control] as "control", and

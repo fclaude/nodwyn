@@ -368,21 +368,32 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 	host := parsed.Hostname()
 	rerr := s.rewriteConfig(func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError) {
 		name := p.Name
-		old, exists := current.Servers[name]
-		switch {
-		case name != "" && !exists:
-			return nil, config.Config{}, failure(-32602, fmt.Sprintf("No provider named %q is configured", name))
-		case name == "":
+		if name == "" {
+			// Without a name the address says which server is meant, when
+			// only one is at it.
+			var at []string
 			for n, sv := range current.Servers {
 				if providerName(sv.Provider) == p.Provider && strings.TrimRight(sv.URL, "/") == p.URL {
-					return nil, config.Config{}, failure(-32602, fmt.Sprintf("%s is already configured, as %q: change that one", p.URL, n))
+					at = append(at, n)
 				}
 			}
-			name = serverName(host)
-			for n := 2; current.Servers[name] != (config.Server{}); n++ {
-				name = fmt.Sprintf("%s-%d", serverName(host), n)
+			slices.Sort(at)
+			switch len(at) {
+			case 0:
+				name = serverName(host)
+				for n := 2; current.Servers[name] != (config.Server{}); n++ {
+					name = fmt.Sprintf("%s-%d", serverName(host), n)
+				}
+			case 1:
+				name = at[0]
+			default:
+				return nil, config.Config{}, failure(-32602, fmt.Sprintf("%s has several servers (%s): give the name of the one to change, or a new name", p.URL, strings.Join(at, ", ")))
 			}
 		}
+		// A name that is not a server yet makes a new one: servers are keyed
+		// by name, so a second can share an address (an API key and a ChatGPT
+		// plan at api.openai.com).
+		old, exists := current.Servers[name]
 		srv := config.Server{Provider: p.Provider, URL: p.URL, Dialect: llm.ChatDialect(p.Dialect)}
 		// A key is the address's: it follows a change of path or port, and
 		// stays out of reach of a new host until one is given for it.

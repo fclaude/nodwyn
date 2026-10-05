@@ -207,26 +207,27 @@ func TestProviderWriteRefusals(t *testing.T) {
 	c, srv, o, _ := withChat(t)
 	configFile := o.Paths.ConfigFile
 	c.ok("settings.provider.write", map[string]any{"provider": "openai", "url": srv.V1(), "api_key": "sk-good-key-123456"})
+	// A second name at the same address is a second server, not a refusal.
+	c.ok("settings.provider.write", map[string]any{"name": "second", "provider": "openai", "url": srv.V1()})
 	for name, tc := range map[string]struct {
 		method string
 		params map[string]any
 		want   string
 	}{
-		"the same address twice":  {"settings.provider.write", map[string]any{"provider": "openai", "url": srv.V1()}, `already configured, as "127-0-0-1"`},
-		"a provider kind":         {"settings.provider.write", map[string]any{"provider": "gemini", "url": "http://h"}, "provider must be"},
-		"not an address":          {"settings.provider.write", map[string]any{"provider": "openai", "url": "ftp://h"}, "http or https"},
-		"a key for Ollama":        {"settings.provider.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434", "api_key": "sk-x"}, "takes no dialect and no key"},
-		"a key over plain http":   {"settings.provider.write", map[string]any{"provider": "openai", "url": "http://api.example.test/v1", "api_key": "sk-x"}, "over https"},
-		"a dialect nobody knows":  {"settings.provider.write", map[string]any{"provider": "openai", "url": "https://other.example/v1", "dialect": "bing"}, "dialect"},
-		"a provider not there":    {"settings.provider.write", map[string]any{"name": "nowhere", "provider": "openai", "url": "https://x.example/v1"}, `No provider named "nowhere"`},
-		"removing one not there":  {"settings.provider.remove", map[string]any{"name": "nowhere"}, `No provider named "nowhere"`},
-		"a model on no provider":  {"settings.model.write", map[string]any{"server": "nowhere", "model": "m"}, `No provider named "nowhere"`},
-		"a model with no id":      {"settings.model.write", map[string]any{"server": "127-0-0-1", "model": " "}, "model is required"},
-		"a default not in effort": {"settings.model.write", map[string]any{"server": "127-0-0-1", "model": "m", "efforts": levels, "effort": "max"}, "not one the model takes (low, medium, high)"},
-		"an effort with no list":  {"settings.model.write", map[string]any{"server": "127-0-0-1", "model": "m", "effort": "low"}, "declares no efforts"},
-		"a badly spelled effort":  {"settings.model.write", map[string]any{"server": "127-0-0-1", "model": "m", "efforts": []string{"Very High"}}, "lower-case word"},
-		"removing the default":    {"settings.model.remove", map[string]any{"name": "control"}, "default model"},
-		"removing a model absent": {"settings.model.remove", map[string]any{"name": "absent"}, `No model named "absent"`},
+		"an address with two servers": {"settings.provider.write", map[string]any{"provider": "openai", "url": srv.V1()}, `has several servers (127-0-0-1, second)`},
+		"a provider kind":             {"settings.provider.write", map[string]any{"provider": "gemini", "url": "http://h"}, "provider must be"},
+		"not an address":              {"settings.provider.write", map[string]any{"provider": "openai", "url": "ftp://h"}, "http or https"},
+		"a key for Ollama":            {"settings.provider.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434", "api_key": "sk-x"}, "takes no dialect and no key"},
+		"a key over plain http":       {"settings.provider.write", map[string]any{"provider": "openai", "url": "http://api.example.test/v1", "api_key": "sk-x"}, "over https"},
+		"a dialect nobody knows":      {"settings.provider.write", map[string]any{"provider": "openai", "url": "https://other.example/v1", "dialect": "bing"}, "dialect"},
+		"removing one not there":      {"settings.provider.remove", map[string]any{"name": "nowhere"}, `No provider named "nowhere"`},
+		"a model on no provider":      {"settings.model.write", map[string]any{"server": "nowhere", "model": "m"}, `No provider named "nowhere"`},
+		"a model with no id":          {"settings.model.write", map[string]any{"server": "127-0-0-1", "model": " "}, "model is required"},
+		"a default not in effort":     {"settings.model.write", map[string]any{"server": "127-0-0-1", "model": "m", "efforts": levels, "effort": "max"}, "not one the model takes (low, medium, high)"},
+		"an effort with no list":      {"settings.model.write", map[string]any{"server": "127-0-0-1", "model": "m", "effort": "low"}, "declares no efforts"},
+		"a badly spelled effort":      {"settings.model.write", map[string]any{"server": "127-0-0-1", "model": "m", "efforts": []string{"Very High"}}, "lower-case word"},
+		"removing the default":        {"settings.model.remove", map[string]any{"name": "control"}, "default model"},
+		"removing a model absent":     {"settings.model.remove", map[string]any{"name": "absent"}, `No model named "absent"`},
 	} {
 		before := read(t, configFile)
 		r := c.call(tc.method, tc.params)
@@ -254,6 +255,24 @@ func TestProviderWriteRefusals(t *testing.T) {
 	into(t, c.ok("settings.provider.write", map[string]any{"name": "127-0-0-1", "provider": "openai", "url": "http://localhost:" + strings.Split(srv.URL, ":")[2] + "/v1"}), &settings)
 	if p := settings.Servers[0]; p.Credential != "" || p.Key != "" || settings.Keychain.Credentials != 1 {
 		t.Fatalf("a new host kept the old host's key: %+v", p)
+	}
+}
+
+// Servers are keyed by name: two at one address each keep their own key.
+func TestProviderWriteSameAddressTwoNames(t *testing.T) {
+	c, srv, o, _ := withChat(t)
+	var settings settingsResult
+	into(t, c.ok("settings.provider.write", map[string]any{"name": "openai", "provider": "openai", "url": srv.V1(), "api_key": "sk-good-key-123456"}), &settings)
+	into(t, c.ok("settings.provider.write", map[string]any{"name": "other", "provider": "openai", "url": srv.V1(), "api_key": "sk-good-key-123456"}), &settings)
+	if len(settings.Servers) != 2 {
+		t.Fatalf("servers: %+v", settings.Servers)
+	}
+	a, b := settings.Servers[0], settings.Servers[1]
+	if a.Name != "openai" || b.Name != "other" || a.URL != b.URL || a.Credential == "" || b.Credential == "" || a.Credential == b.Credential {
+		t.Fatalf("servers: %+v %+v", a, b)
+	}
+	if cfg := read(t, o.Paths.ConfigFile); !strings.Contains(cfg, "[servers.openai]") || !strings.Contains(cfg, "[servers.other]") {
+		t.Fatalf("config.toml:\n%s", cfg)
 	}
 }
 

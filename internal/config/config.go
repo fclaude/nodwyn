@@ -864,8 +864,8 @@ func (c Config) Resolve(m Model) Model {
 }
 
 // SameModel says whether a and b are one model at one address: the same
-// provider, the same URL (a trailing slash does not matter) and the same
-// model id. Two entries in config.toml may describe one, such as [control]
+// server when both name one, else the same provider and URL (a trailing slash
+// does not matter), and the same model id. Two entries in config.toml may describe one, such as [control]
 // and the [models.NAME] it was chosen from; each is resolved first.
 func (c Config) SameModel(a, b Model) bool {
 	a, b = c.Resolve(a), c.Resolve(b)
@@ -875,7 +875,15 @@ func (c Config) SameModel(a, b Model) bool {
 		}
 		return m.Provider
 	}
-	return a.Model != "" && a.Model == b.Model && provider(a) == provider(b) && strings.TrimRight(a.URL, "/") == strings.TrimRight(b.URL, "/")
+	if a.Model == "" || a.Model != b.Model {
+		return false
+	}
+	// Servers are keyed by name, so two at one address (an API key and a
+	// ChatGPT plan) are different models even when the address is the same.
+	if a.Server != "" && b.Server != "" {
+		return a.Server == b.Server
+	}
+	return provider(a) == provider(b) && strings.TrimRight(a.URL, "/") == strings.TrimRight(b.URL, "/")
 }
 
 // Tuned is m, a model that is not itself a [models.NAME] entry ([control], or

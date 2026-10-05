@@ -108,9 +108,12 @@ type Loop struct {
 
 // Endpoint is one model a strategy can ask by name.
 type Endpoint struct {
-	Provider  llm.Provider
-	Model     string // model id as the provider names it
-	Host      string // host:port of its URL: where a request to it goes
+	Provider llm.Provider
+	Model    string // model id as the provider names it
+	Host     string // host:port of its URL: where a request to it goes
+	// Server names the [servers] entry it is reached through ("" for an
+	// inline model), which tells two servers at one address apart.
+	Server    string
 	NumCtx    int
 	KeepAlive string
 	MaxOutput int // this model's reply cap; 0 uses Config.MaxOutput

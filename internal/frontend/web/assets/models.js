@@ -272,6 +272,15 @@ async function connectChatGPT(ctx, f, redraw, id = "") {
   }
 }
 
+// suggestName is the name a new provider gets when none is typed: its kind
+// (chatgpt for a plan), made unique among taken.
+function suggestName(f, taken) {
+  const base = f.kind === "openai" && f.authentication === "chatgpt" ? "chatgpt" : f.kind;
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+  return name;
+}
+
 function providerForm(ctx, redraw) {
   const { conn, desk } = ctx;
   const f = ui.provider;
@@ -313,12 +322,23 @@ function providerForm(ctx, redraw) {
         redraw();
         try {
           const params = { provider: f.kind, url: f.url.trim() };
-          if (!adding) params.name = f.name;
+          // Servers are keyed by name, so a second may share an address (an
+          // API key and a ChatGPT plan at api.openai.com); a new one never
+          // takes the name of one that is there, which would change it.
+          const taken = new Set((desk.settings.servers || []).map((s) => s.name));
+          const sameAddress = (desk.settings.servers || []).some((s) => s.url.replace(/\/+$/, "") === params.url.replace(/\/+$/, "") && s.provider === params.provider);
+          if (adding) {
+            // Left empty, the daemon names a provider after its host; at an
+            // address that is taken it would change that provider instead, so
+            // a name is sent.
+            if (f.name.trim() || sameAddress) params.name = f.name.trim() || suggestName(f, taken);
+            if (taken.has(params.name)) throw new Error(`A provider named ${params.name} exists: choose another name, or change that one.`);
+          } else params.name = f.name;
           if (f.kind === "openai" && f.dialect) params.dialect = f.dialect;
           if (hasKey(f.kind) && apiKey) params.api_key = apiKey;
           if (plan) params.credential = f.credential;
           desk.settings = await conn.call("settings.provider.write", params);
-          const saved = (desk.settings.servers || []).find((s) => (adding ? s.url.replace(/\/+$/, "") === params.url.replace(/\/+$/, "") : s.name === f.name));
+          const saved = (desk.settings.servers || []).find((s) => (params.name ? s.name === params.name : s.url.replace(/\/+$/, "") === params.url.replace(/\/+$/, "")));
           // Its list is asked with its key, so a new key or address asks again.
           if (saved) ui.offered.delete(saved.name);
           ui.provider = null;
@@ -336,6 +356,7 @@ function providerForm(ctx, redraw) {
     adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), (f.authentication = "api_key"), redraw()) }, p.label))) : null,
     h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai"), kind("anthropic")),
     h("p", { class: "hint" }, kinds[f.kind].needs),
+    field("provider-name", "Name", h("input", { class: "input", id: "provider-name", spellcheck: false, autocomplete: "off", disabled: !adding, value: f.name, placeholder: adding ? "named after its address" : "", oninput: (event) => (f.name = event.target.value) }), adding ? "What models name it. Two providers can share an address, such as an API key and a ChatGPT plan at OpenAI." : ""),
     f.kind === "openai" ? h("div", { class: "row-actions", role: "group", "aria-label": "Authentication" },
       ["api_key", "chatgpt"].map((auth) => h("button", { type: "button", class: "chip", id: `provider-auth-${auth}`, disabled: f.saving || f.connecting, "aria-pressed": String(f.authentication === auth), onclick: () => {
         f.authentication = auth;
