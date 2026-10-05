@@ -586,7 +586,7 @@ call starts the count again, and so does the reminder; 0 turns it off.
 | `(unattended?)` | true when nobody approves this session's calls: it answers ordinary confirms itself (`--yolo`, a run's `auto_approve`), the judge answers them (`--judge`), or nobody is there at all (`nodwyn run --unattended`). `[approval]` (ADR 35) does not make it true: a chat whose commands the judge answers still has a person to ask |
 
 A reply's `done` is `"length"` when the model reached the output cap (the
-model's reply cap: its `max_output`, else `window.output_reserve`, at most a quarter of a context too small for the window and that reply); the core notes it in the log. What to do is the
+model's reply cap: its `max_output`, else the longest reply its provider publishes (at most a quarter of its context), else `window.output_reserve`, at most a quarter of a context too small for the window and that reply); the core notes it in the log. What to do is the
 strategy's: `(ask-model …)` is `model-turn`, asked again with
 `output-cut-message` when the reply was cut with no tool call to answer, at
 most `output-cut-retries` (2) times. The default loop, the planner and

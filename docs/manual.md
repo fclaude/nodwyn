@@ -1549,7 +1549,7 @@ and its reply always fit the context. The cap is the model's `max_output`
 (*Reply cap* in Settings › Models), which must be below its `num_ctx`; unset,
 it is the longest reply its provider publishes, at most a quarter of its
 context (gpt-6.1-sol's 128,000), and for a model nothing is published of,
-`window.output_reserve` (16384 by default, *Default reply cap* in
+`window.output_reserve` (16384 by default, *Fallback reply cap* in
 Settings › Context window), but a context too small for the window and that
 reply gives it no more than a quarter, so a small model keeps most of its
 context for the conversation. A remote

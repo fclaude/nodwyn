@@ -108,8 +108,8 @@ you wrote it. Its sections:
 - **Context window** — the water marks between which a task's context is
   summarized or trimmed (unset, they follow each model's context less its
   reply cap; set, they shrink only for a model that cannot hold them), the
-  largest tool result shown whole, and the default reply cap of a model that
-  sets none.
+  largest tool result shown whole, and the fallback reply cap of a model
+  that has none of its own and none its provider publishes.
 - The keychain, paired devices, this browser's appearance, whether it
   shows the model's thinking, and its notifications, and this connection.
 

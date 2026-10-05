@@ -331,3 +331,11 @@ else the published one (`Config.Rates`, `Config.JevPrices`), and the row
 shows the pair that applies. The published cache-write price and long-prompt
 tiers still apply only while the entry types no price, since a price typed
 is the one meant whatever the prompt's length; Settings' hint says so.
+
+## Amendment 2026-10-05: the fallback reply cap
+
+Settings › Context window called `output_reserve` the *Default reply cap*,
+"for a model whose own reply cap is empty", though a model with an empty
+cap first has the one its provider publishes (above). It is now the
+*Fallback reply cap*, for a model with none of its own and none published,
+and the model form's hint names it.

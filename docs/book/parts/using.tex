@@ -55,7 +55,7 @@ model  = "gpt-5.1-codex"
 high_water        = 61440   # trim above this (estimated tokens); follows the
 low_water         = 30720   #   model's context less its reply cap unless set
 max_result_tokens = 3072    # larger tool results are shown head and tail
-output_reserve    = 16384   # the reply cap of a model that sets no max_output
+output_reserve    = 16384   # the reply cap of a model with none set or published
 
 [policy]
 unbound        = "deny"     # or "confirm" for keyed egress no binding covers

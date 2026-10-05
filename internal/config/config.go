@@ -380,7 +380,7 @@ type Window struct {
 	HighWater       int `toml:"high_water"`        // trim when the estimate exceeds this
 	LowWater        int `toml:"low_water"`         // trim down to this
 	MaxResultTokens int `toml:"max_result_tokens"` // a tool result larger than this is shown head+tail
-	OutputReserve   int `toml:"output_reserve"`    // the reply cap of a model that sets no max_output (ReplyCap)
+	OutputReserve   int `toml:"output_reserve"`    // the reply cap of a model that sets no max_output and has none published (ReplyCap)
 	// Fixed is set when config.toml sets high_water or low_water: the water
 	// marks then stay as set, instead of growing with the model's context
 	// (Sized).
@@ -417,7 +417,8 @@ func (w Window) Sized(context, reserve int) (Window, int) {
 
 // ReplyCap is the most one reply of a model may take, thinking included,
 // and the room the window keeps for it: the model's max_output when its
-// entry sets one, else output_reserve. A context known to hold context
+// entry sets one or its provider publishes one (WithPublished fills it in),
+// else output_reserve, the fallback. A context known to hold context
 // tokens (0 when unknown) that is too small for the window and that reply
 // gives it no more than a quarter, so a small model keeps most of its
 // context for the conversation. A context that holds both keeps

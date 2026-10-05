@@ -96,7 +96,7 @@ const specs = {
   "window.high_water": { kind: "count", label: "High water" },
   "window.low_water": { kind: "count", label: "Low water" },
   "window.max_result_tokens": { kind: "count", label: "Largest tool result" },
-  "window.output_reserve": { kind: "count", label: "Default reply cap" },
+  "window.output_reserve": { kind: "count", label: "Fallback reply cap" },
 };
 
 // Unsaved edits by setting: the text typed into a field, or the value a
@@ -536,7 +536,7 @@ function windowSection(ctx) {
       h("p", { class: "hint" }, fixed ? "Set, they stay as set unless a model's context cannot hold them; then they shrink to fit it. Clear both to have them follow each model's context again." : "Unset, they follow the model's context less its reply cap: the high water at three quarters of what is left."),
     ),
     ...row("Largest tool result", input(ctx, "window.max_result_tokens", { width: "narrow" }), h("p", { class: "hint" }, "Tokens. A larger result is shown by its beginning and end.")),
-    ...row("Default reply cap", input(ctx, "window.output_reserve", { width: "narrow" }), h("p", { class: "hint" }, "Tokens. The most one reply may take, thinking included, for a model whose own reply cap is empty (Settings › Models); a small model's is at most a quarter of its context. The reply comes out of the model's context, and the window has the rest.")),
+    ...row("Fallback reply cap", input(ctx, "window.output_reserve", { width: "narrow" }), h("p", { class: "hint" }, "Tokens. The most one reply may take, thinking included, for a model with no reply cap of its own (Settings › Models) and none its provider publishes; a small model's is at most a quarter of its context. The reply comes out of the model's context, and the window has the rest.")),
   );
 }
 

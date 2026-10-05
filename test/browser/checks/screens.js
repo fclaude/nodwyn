@@ -124,6 +124,8 @@ check(async () => {
     await go(page, "#/settings");
     await shows(page, "#view", "Settings", "Approvals", "Writing files", "Running commands");
     await until("settings loaded", () => page.evaluate(() => !document.querySelector("#view").innerText.includes("Loading…")));
+    // The token budget and the reply cap are named for what they are.
+    await shows(page, "#view", "Tokens used", "a prompt token the provider read from its cache counted as a tenth", "Fallback reply cap", "and none its provider publishes");
   });
   await shoot("connections", { width: 1280, height: 800 }, "light", async (page) => {
     await go(page, "#/connections");

@@ -507,7 +507,7 @@ function settingsFields(f, kind, redraw, desk) {
       box("max_output", "Reply cap", { placeholder: count(published.max_output) || count(reserve), suffix: "tokens", width: "", sizes: true }),
       published.max_output
         ? `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${count(published.max_output)}: the longest reply its provider publishes, at most a quarter of the context.`
-        : `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${count(reserve)} (Settings › Context window), or a quarter of a small context. A reasoning model at a high effort may need more.`,
+        : `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${count(reserve)}, the fallback reply cap (Settings › Context window), or a quarter of a small context. A reasoning model at a high effort may need more.`,
     ),
     summary,
     h(
