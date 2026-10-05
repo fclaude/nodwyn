@@ -1226,7 +1226,7 @@ a catalogue of what providers publish, as [models.dev](https://models.dev)
 collects it: a snapshot built into nodwyn, regenerated with
 `go generate ./internal/catalogue`. A model on a provider it describes
 (OpenAI, Anthropic, OpenRouter, Cerebras, Groq, DeepSeek, Mistral, xAI,
-Together, Fireworks, DeepInfra, Moonshot, Z.ai, Ollama Cloud), found by the host of its
+Together, Fireworks, DeepInfra, Moonshot, Z.ai, Baseten, Ollama Cloud), found by the host of its
 server's address and its exact id, takes from it each of these its entry
 leaves unset: its context length, its reply cap (the published longest reply,
 at most a quarter of the context), its efforts, whether it reads images and
@@ -1284,7 +1284,7 @@ this computer only:
   since that is what to fix; **Check again** asks every server now. **Add a
   provider** takes a kind (Ollama, OpenAI-compatible, or Anthropic), an
   address, for an OpenAI-compatible one a dialect, and an API key for either
-  of those, and has presets (OpenAI, Anthropic, OpenRouter, Cerebras,
+  of those, and has presets (OpenAI, Anthropic, Baseten, OpenRouter, Cerebras,
   Ollama, and Other) that only fill the form in. The key goes to the
   keychain with two binding rows for the address's host, `POST` for the model
   and `GET` for its model list, as a bearer header (Anthropic's: the `x-api-key`
@@ -1471,9 +1471,10 @@ fiftieth), but only a request that reaches the replica holding the cache
 gets them. Each request to a chat-completions server therefore names its
 session: a key derived from the session id, the same for every request of
 the session and resumed ones, saying nothing else about it. It goes as
-OpenRouter's `X-Session-Id` header and as `prompt_cache_key`, the field
-OpenAI routes by. A server that refuses fields it does not know takes the
-header alone, and `off` sends neither:
+OpenRouter's `X-Session-Id` header (Baseten's `X-Session-Affinity` carries the
+same key) and as `prompt_cache_key`, the field OpenAI routes by. A server that
+refuses fields it does not know takes the headers alone, and `off` sends
+none:
 
 ```toml
 [control]

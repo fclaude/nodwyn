@@ -27,6 +27,7 @@ const presets = [
   { id: "ollama", label: "Ollama", kind: "ollama", url: "http://localhost:11434", dialect: "" },
   { id: "openai", label: "OpenAI", kind: "openai", url: "https://api.openai.com/v1", dialect: "responses" },
   { id: "anthropic", label: "Anthropic", kind: "anthropic", url: "https://api.anthropic.com/v1", dialect: "" },
+  { id: "baseten", label: "Baseten", kind: "openai", url: "https://inference.baseten.co/v1", dialect: "" },
   { id: "openrouter", label: "OpenRouter", kind: "openai", url: "https://openrouter.ai/api/v1", dialect: "" },
   { id: "cerebras", label: "Cerebras", kind: "openai", url: "https://api.cerebras.ai/v1", dialect: "cerebras" },
   { id: "other", label: "Other server", kind: "openai", url: "", dialect: "" },

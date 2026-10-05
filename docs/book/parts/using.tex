@@ -126,7 +126,7 @@ which Claude 4.6 and later take, and caches its prompt only when
 \code{cache\_control} says so. Its models take no \code{seed},
 \code{output\_field} or \code{cache\_key}, and a temperature of at most 1; its
 model list gives each model's context window (\adr{8}, amended 2026-10-05).
-Settings has presets for Anthropic, OpenAI, OpenRouter and Cerebras,
+Settings has presets for Anthropic, Baseten, OpenAI, OpenRouter and Cerebras,
 and for Ollama and any other server.
 
 A reasoning model takes an effort, how hard it is asked to think. A provider
@@ -155,7 +155,7 @@ A task whose model has gone from the list asks nothing until you
 choose one for it.
 
 OpenAI's and Cerebras' APIs say nothing of a model's context, its longest
-reply, its efforts or its price, and Anthropic's says little, so
+reply, its efforts or its price, and Anthropic's and Baseten's say little, so
 nodwyn carries a catalogue of what providers publish, a snapshot of models.dev built into it
 (\code{go generate ./internal/catalogue} renews it). A model on a provider it
 describes, found by its server's host and its exact id, takes from it what its

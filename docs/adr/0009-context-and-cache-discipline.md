@@ -319,7 +319,7 @@ breakpoint of its own on the system prompt, which would survive a hygiene fold
 that rewrites an earlier message; the docs do not say whether it combines with
 the top-level ask.
 
-## Amendment 2026-10-05: Anthropic's own cache
+## Amendment 2026-10-05: Anthropic's own cache, and Baseten's session header
 
 Anthropic's own API (ADR 8, amended 2026-10-05) reads the same top-level
 `cache_control` and caches nothing without it, so `cache_control` is a setting
@@ -330,3 +330,8 @@ that plus what was read from the cache and written to it, which keeps
 added in Settings on an Anthropic provider starts with the five minute ask
 chosen, written to its entry like any setting: without it every request is
 billed in full, and nothing infers it from the model's name or later.
+
+Baseten routes requests by its own header, `X-Session-Affinity`, as OpenRouter
+does by `X-Session-Id`. The session key goes as both headers whenever it is
+sent (`cache_key` `session` or `header`), the model list asked without it. A
+server that knows neither ignores them; the key says nothing about the session.

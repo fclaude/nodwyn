@@ -34,9 +34,10 @@ type OpenAI struct {
 	Images bool
 	// CacheKey names the session a request belongs to, so a server that
 	// routes by it can send the session's requests to the replica holding
-	// their prompt cache: OpenRouter's X-Session-Id header, and, unless
+	// their prompt cache: OpenRouter's X-Session-Id header and Baseten's
+	// X-Session-Affinity, which carry the same key, and, unless
 	// CacheKeyHeaderOnly, the body's prompt_cache_key (OpenAI's name, which
-	// OpenRouter also reads). "" sends neither.
+	// OpenRouter also reads). "" sends none.
 	CacheKey           string
 	CacheKeyHeaderOnly bool
 	// CacheControl asks the provider to cache the prompt, as the request's
@@ -443,6 +444,9 @@ func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*h
 		hreq.Header.Set("Content-Type", "application/json")
 		if o.CacheKey != "" {
 			hreq.Header.Set("X-Session-Id", o.CacheKey)
+			// Baseten routes by the same key under its own name; a server
+			// that knows neither header ignores them.
+			hreq.Header.Set("X-Session-Affinity", o.CacheKey)
 		}
 	}
 	if o.Authorize != nil {

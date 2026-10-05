@@ -340,10 +340,10 @@ cap first has the one its provider publishes (above). It is now the
 *Fallback reply cap*, for a model with none of its own and none published,
 and the model form's hint names it.
 
-## Amendment 2026-10-05: Anthropic is a provider to choose
+## Amendment 2026-10-05: Anthropic and Baseten are providers to choose
 
 Settings offered presets for Ollama, OpenAI, OpenRouter and Cerebras, and
-no way to use Claude on Anthropic's own API.
+no way to use Claude on Anthropic's own API or a model on Baseten.
 
 - **Anthropic is a kind** beside Ollama and OpenAI-compatible (ADR 8, amended
   2026-10-05): its preset fills in `https://api.anthropic.com/v1`, the form
@@ -358,8 +358,14 @@ no way to use Claude on Anthropic's own API.
   chosen. The catalogue describes Anthropic's models at `api.anthropic.com`:
   context, reply cap, efforts, whether it reads images, and the prices, cache
   reads and writes included.
+- **Baseten is a preset** of the OpenAI-compatible kind at
+  `https://inference.baseten.co/v1` on chat completions with a bearer key, which
+  is how its Model APIs are documented, and the catalogue describes its models
+  at `inference.baseten.co`. Nothing else about it is special: its efforts are
+  whatever models.dev publishes, and its models list (`GET /models`) is asked
+  with the key like any other.
 - The snapshot was regenerated (`go generate ./internal/catalogue`): it adds
-  Anthropic, and refreshes the others' entries to models.dev as of today
+  both providers, and refreshes the others' entries to models.dev as of today
   (a handful of OpenRouter prices moved).
 - Not built: reading a model's efforts or image support from Anthropic's model
   list (`capabilities`), which it reports and the catalogue also publishes;

@@ -133,14 +133,15 @@ func TestOpenAISampling(t *testing.T) {
 	}
 }
 
-// A cache key goes with every chat request as X-Session-Id and, unless the
-// server is to get it only as a header, as prompt_cache_key; without one,
-// neither is sent. The model list is asked without it.
+// A cache key goes with every chat request as X-Session-Id (OpenRouter's) and
+// X-Session-Affinity (Baseten's) and, unless the server is to get it only as a
+// header, as prompt_cache_key; without one, none is sent. The model list is
+// asked without it.
 func TestOpenAICacheKey(t *testing.T) {
 	var got map[string]any
-	var header string
+	var header, affinity string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		header = r.Header.Get("X-Session-Id")
+		header, affinity = r.Header.Get("X-Session-Id"), r.Header.Get("X-Session-Affinity")
 		if r.Method == http.MethodGet {
 			w.Write([]byte(`{"data":[]}`))
 			return
@@ -166,14 +167,14 @@ func TestOpenAICacheKey(t *testing.T) {
 		if _, err := o.Chat(context.Background(), Request{Model: "m", Messages: msgs}, nil); err != nil {
 			t.Fatal(err)
 		}
-		if header != tc.key || got["prompt_cache_key"] != tc.wantBody {
-			t.Errorf("key %q, header only %v: sent header %q, body %v", tc.key, tc.headerOnly, header, got)
+		if header != tc.key || affinity != tc.key || got["prompt_cache_key"] != tc.wantBody {
+			t.Errorf("key %q, header only %v: sent headers %q and %q, body %v", tc.key, tc.headerOnly, header, affinity, got)
 		}
 		if _, err := o.Ping(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		if header != "" {
-			t.Errorf("the model list was asked with X-Session-Id %q", header)
+		if header != "" || affinity != "" {
+			t.Errorf("the model list was asked with X-Session-Id %q and X-Session-Affinity %q", header, affinity)
 		}
 	}
 }

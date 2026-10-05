@@ -81,6 +81,7 @@ var Providers = []Provider{
 	{"deepinfra", "https://api.deepinfra.com/v1/openai"},
 	{"moonshotai", "https://api.moonshot.ai/v1"},
 	{"zai", "https://api.z.ai/api/paas/v4"},
+	{"baseten", "https://inference.baseten.co/v1"},
 	{"ollama-cloud", "https://ollama.com/v1"},
 }
 
