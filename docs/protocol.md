@@ -311,7 +311,9 @@ A `prompt.closed` follows it, as it follows every prompt.
 Standing approvals require `session.approval.create`, tied to a currently
 pending ordinary confirmation. `scope: "session"` derives the command prefix
 or write directory from that call; a file at the repository root grants only
-that file. `scope: "turn"` applies to ordinary writes until the turn ends.
+that file. A shell's `-c` line derives the prefix of the one command it runs;
+a line of several commands, or an interpreter, has none, and its prompt's
+`options.session` is false (ADR 17, amended 2026-10-05). `scope: "turn"` applies to ordinary writes until the turn ends.
 Clients cannot submit arbitrary prefixes. Security confirmations, protected
 paths and budget checkpoints cannot create standing approvals. Turn-wide and
 session approvals never waive security confirmations or denials.

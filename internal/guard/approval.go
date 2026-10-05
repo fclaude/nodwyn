@@ -46,12 +46,22 @@ func (p Prompt) ApprovalOptions() ApprovalOptions {
 	if p.Security || IsProtected(p.Path) {
 		return options
 	}
-	options.Session = p.Path != "" || len(p.Argv) > 0
 	options.Turn = p.Path != ""
 	if len(p.Argv) > 0 {
 		options.Kind, options.Target = "command", Prefix(p.Argv)
+		// A line of several commands, or an interpreter, has no prefix to
+		// approve standing (Prefix): it is answered once at a time.
+		options.Session = options.Target != ""
 	} else if p.Path != "" {
+		options.Session = true
 		options.Kind, options.Target = "write", DirPrefix(p.Path)
 	}
 	return options
+}
+
+// Ordinary reports whether p is an ordinary write or command: not a
+// security confirm and not a protected path. These are what "don't ask"
+// answers (ADR 17), whether or not a standing approval could cover them.
+func (p Prompt) Ordinary() bool {
+	return !p.Security && !IsProtected(p.Path) && (p.Path != "" || len(p.Argv) > 0)
 }

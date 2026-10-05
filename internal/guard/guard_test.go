@@ -182,7 +182,7 @@ func TestStandingApprovalOutranksConfirmNotDeny(t *testing.T) {
 	if got := strings.Join(allow.List(), ","); got != "git status,go build,go test,http" {
 		t.Fatalf("list: %s", got)
 	}
-	for argvLine, want := range map[string]string{"go test ./x": "go test", "rg -n foo": "rg", "git status": "git status", "./bin/nodwyn version": "nodwyn version", "sh -c ls": "sh"} {
+	for argvLine, want := range map[string]string{"go test ./x": "go test", "rg -n foo": "rg", "git status": "git status", "./bin/nodwyn version": "nodwyn version", "sh -c ls": "ls"} {
 		if got := Prefix(strings.Fields(argvLine)); got != want {
 			t.Errorf("Prefix(%q) = %q, want %q", argvLine, got, want)
 		}

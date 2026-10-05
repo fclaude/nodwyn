@@ -192,7 +192,9 @@ allow? [y/N/a=always under plants.txt/t=all writes this turn]
 gives a \textbf{standing approval} for the rest of the session: for a write,
 the file's directory (a file at the top of the folder is approved on its
 own); for a command, its prefix (\code{go test}, \code{rg}\ldots), which
-the judge is then not asked about again. \code{t} approves every further
+the judge is then not asked about again. A \code{bash -c} line is offered as
+the one command it runs; a line of several commands, or an interpreter
+(a shell, \code{python}, \code{env}, \code{ssh}\ldots), offers no \code{a}. \code{t} approves every further
 write until the turn ends; each auto-approved diff is still logged and
 shown, dimmed.
 In the console, \textbf{Don't ask: approve writes and commands} under the

@@ -78,6 +78,11 @@ func TestApproveAllAnswersOrdinaryWritesAndCommands(t *testing.T) {
 	if _, err := r.s.Eval(ctx, `(shell-exec "true" '())`); err != nil {
 		t.Fatal(err)
 	}
+	// A line of several commands has no standing prefix (guard.Prefix), and
+	// is still an ordinary command "don't ask" answers.
+	if _, err := r.s.Eval(ctx, `(shell-exec "bash" '("-c" "true && true"))`); err != nil {
+		t.Fatal(err)
+	}
 	if got := a.list(); len(got) != 0 {
 		t.Fatalf("asked about %v", got)
 	}
@@ -97,8 +102,8 @@ func TestApproveAllAnswersOrdinaryWritesAndCommands(t *testing.T) {
 			answered++
 		}
 	}
-	if answered != 2 {
-		t.Fatalf("%d decisions answered by don't ask, want 2", answered)
+	if answered != 3 {
+		t.Fatalf("%d decisions answered by don't ask, want 3", answered)
 	}
 	// A protected path is a security confirm: still asked, here declined.
 	if _, err := r.s.Eval(ctx, `(fs-write ".nodwyn/init.scm" "(define x 1)")`); err == nil {

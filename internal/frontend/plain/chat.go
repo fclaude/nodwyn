@@ -395,8 +395,8 @@ func (c *Chat) confirm(p event.Confirm) {
 	switch {
 	case p.Prompt.Security:
 		// Security confirmations always apply to this call only.
-	case len(p.Prompt.Argv) > 0:
-		prompt = "allow? [y/N/a=always this session] "
+	case len(p.Prompt.Argv) > 0 && p.Prompt.ApprovalOptions().Session:
+		prompt = fmt.Sprintf("allow? [y/N/a=always %s this session] ", p.Prompt.ApprovalOptions().Target)
 	case p.Prompt.Path != "" && !guard.IsProtected(p.Prompt.Path):
 		prompt = fmt.Sprintf("allow? [y/N/a=always under %s/t=all writes this turn] ", guard.DirPrefix(p.Prompt.Path))
 	}

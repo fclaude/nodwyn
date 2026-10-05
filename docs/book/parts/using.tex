@@ -393,7 +393,10 @@ shows the call in Scheme's positional form, the list after an empty
 \item[\code{a}] yes, and a \emph{standing approval for this session}: the
   command prefix (\code{go test}, \code{rg}) or the write's directory
   (\code{internal/scheme/}). Not persisted. A command made standing this
-  way is not put to the judge again.
+  way is not put to the judge again. A \code{bash -c} line is offered as
+  the one command it runs; a line of several commands, or an interpreter
+  (a shell, \code{python}, \code{env}, \code{ssh}\ldots), offers no
+  \code{a}, since approving it would approve everything.
 \item[\code{t}] writes only: yes, and every further write \emph{until this
   turn ends}. For a task you intend to review with \code{git diff}
   afterwards. Each auto-approved write's diff is logged and shown dimmed.

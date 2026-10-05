@@ -142,3 +142,33 @@ So the switch is offered only when the person asks for it in Settings:
 
 The switch itself is unchanged: what it answers, what it never answers,
 who may reach it and that a resumed task starts with it off.
+
+## Amendment 2026-10-05: a standing approval names the program, not the shell
+
+The system prompt sends every pipe, redirect and chain through
+`bash -c "<line>"` (prompts.scm), and `Prefix` offered "Always under bash"
+for every such call, since `-c` looks like a flag. One "a" on any of them
+approved every command the session would ever run, which is "don't ask" by
+another door: three of the local sessions of 2026-10-02 to 10-04 granted
+`bash` within their first two commands (20261002T192800Z-920da7d8 at seq
+1503, then `git stash && go test; git stash pop` and a python rewrite of a
+file the guard had refused ran unasked).
+
+- `Prefix` never suggests an interpreter: a shell, python, node, perl,
+  ruby, env, xargs, sudo, ssh and the like run whatever their arguments
+  say. A shell's `-c` line is suggested by the command it runs, when it
+  runs one, piped into filters or not (`go test ./... 2>&1 | tail -n 40`
+  is "go test"); a line of several commands is suggested nothing, and its
+  prompt offers no standing answer.
+- A standing approval covers a `-c` line only when every command in it is
+  approved, joined by `&&`, `||` or `;`, and every command a pipe feeds is
+  one of head, tail, wc, sort, uniq or grep with flags that name no file
+  (`internal/guard/shellline.go`). A substitution, a variable, a subshell
+  or group, a background job, an assignment, positional parameters or a
+  redirection to anything but `/dev/null` (or `2>&1`) leaves the line to
+  ask. So `.nodwyn/allow.toml`'s "go test" now also covers
+  `bash -c "go vet ./... && go test ./x 2>&1 | tail -20"`, which asked
+  before, and a shell's name in `allow_commands` covers no `-c` line.
+- "Don't ask" answers what is ordinary (`Prompt.Ordinary`: not a security
+  confirm, not a protected path), not what a prefix could cover, so it
+  still answers a line of several commands while it is on.

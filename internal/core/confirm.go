@@ -147,7 +147,7 @@ func (s *Session) SetApproveAll(on bool, actor string) error {
 	// waiting for a person, never a checkpoint, a choice or a spent
 	// context.
 	answers := func(p pendingConfirmation) bool {
-		return p.checkpoint == nil && p.choice == nil && p.reply != nil && p.prompt.ApprovalOptions().Session &&
+		return p.checkpoint == nil && p.choice == nil && p.reply != nil && p.prompt.Ordinary() &&
 			(p.ctx == nil || p.ctx.Err() == nil)
 	}
 	// The record names the question whose wait the switch ends, as every
@@ -228,9 +228,9 @@ func (s *Session) confirmPrompt(ctx context.Context, p guard.Prompt) (guard.Appr
 			return guard.Approval{Allowed: true, Actor: actor, Scope: "turn"}, nil
 		}
 	}
-	// "Don't ask" answers what a standing approval could: an ordinary write
-	// or command, never a security confirm or a protected path.
-	if on, actor := s.ApproveAll(); on && p.ApprovalOptions().Session {
+	// "Don't ask" answers an ordinary write or command, never a security
+	// confirm or a protected path.
+	if on, actor := s.ApproveAll(); on && p.Ordinary() {
 		return guard.Approval{Allowed: true, Actor: actor, Scope: "all"}, nil
 	}
 	s.promptMu.Lock()

@@ -556,6 +556,16 @@ file the guard had refused and rebased the person's checkout, none of it
 asked; switch it on only in a task you are watching. Choosing **Not
 offered** again turns the switch off in every open task.
 
+An "a" (**Always under …**) on a command approves its program and
+subcommand for the rest of the task: `go test`, `git diff`. A command the
+model runs through `bash -c` is offered as the command inside it when there
+is one, piped into head, tail, wc, sort, uniq or grep or not; a line of
+several commands, or a program that runs whatever it is given (a shell,
+python, node, env, xargs, sudo, ssh), offers no "a" and asks each time. An
+approved prefix covers a `bash -c` line only when every command in it is
+approved and nothing in it redirects to a file, substitutes, expands a
+variable or starts a subshell.
+
 Commands you never want to be asked about go in one of two files:
 
 ```toml

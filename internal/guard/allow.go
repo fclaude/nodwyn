@@ -3,6 +3,7 @@ package guard
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -58,8 +59,34 @@ func (c *CommandAllow) List() []string {
 	return out
 }
 
-// Match returns the matching prefix for argv, or "".
+// Match returns the matching prefix for argv, or "". A shell's -c line
+// matches only when each command in it matches a prefix of its own (or is
+// a filter a pipe feeds), never by the shell's name (shellCommands): their
+// prefixes are returned joined by ", ".
 func (c *CommandAllow) Match(argv []string) string {
+	if cmds, wrapped := shellCommands(argv); wrapped {
+		if cmds == nil {
+			return ""
+		}
+		var matched []string
+		for _, cmd := range cmds {
+			if filter(cmd) {
+				continue
+			}
+			m := c.match(cmd.words)
+			if m == "" {
+				return ""
+			}
+			if !slices.Contains(matched, m) {
+				matched = append(matched, m)
+			}
+		}
+		return strings.Join(matched, ", ")
+	}
+	return c.match(argv)
+}
+
+func (c *CommandAllow) match(argv []string) string {
 	if len(argv) == 0 {
 		return ""
 	}
@@ -94,12 +121,33 @@ func (c *CommandAllow) Check(_ context.Context, p *scheme.Prim, args []scheme.Va
 
 // Prefix suggests the standing-approval entry for a command line: the
 // program and its first argument when that argument looks like a
-// subcommand (go test, git diff), else the program alone.
+// subcommand (go test, git diff), else the program alone. A shell's -c
+// line is suggested by the command it runs, when it runs one (piped into
+// filters or not); a line of several commands, or anything an interpreter
+// runs, has none: "" offers no standing approval (shellline.go).
 func Prefix(argv []string) string {
 	if len(argv) == 0 {
 		return ""
 	}
+	if cmds, wrapped := shellCommands(argv); wrapped {
+		var run []string
+		for _, cmd := range cmds {
+			if !filter(cmd) {
+				if run != nil {
+					return ""
+				}
+				run = cmd.words
+			}
+		}
+		if run == nil {
+			return ""
+		}
+		return Prefix(run)
+	}
 	prog := filepath.Base(argv[0])
+	if interpreters[prog] {
+		return ""
+	}
 	if len(argv) > 1 && !strings.HasPrefix(argv[1], "-") && !strings.Contains(argv[1], "/") && !strings.Contains(argv[1], ".") {
 		return prog + " " + argv[1]
 	}
