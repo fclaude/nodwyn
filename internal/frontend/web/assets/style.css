@@ -779,6 +779,18 @@ comment control shows when the line is hovered or focused. */
   font-size: 13.5px; color: var(--ink-2); display: flex; gap: 12px; align-items: flex-start;
 }
 .callout.plain { background: var(--surface); border-color: var(--line); }
+/* What a person reads while Settings offers "Don't ask": red, with its
+   icon, so it cannot pass for one more hint. */
+.danger-callout {
+  display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px;
+  border: 1px solid var(--bad); border-left-width: 5px; border-radius: var(--radius);
+  background: var(--del-bg); color: var(--ink-2); font-size: 13.5px; line-height: 1.5;
+}
+.danger-callout .danger-icon { color: var(--bad); flex-shrink: 0; padding-top: 1px; }
+.danger-callout .danger-body { display: flex; flex-direction: column; gap: 6px; }
+.danger-callout strong { color: var(--bad); font-size: 15px; }
+.danger-callout p, .danger-callout ul { margin: 0; }
+.danger-callout ul { padding-left: 18px; }
 .settings-grid { display: grid; grid-template-columns: 220px 1fr; gap: 16px 24px; align-items: start; }
 .settings-grid > .label { font-size: 14px; font-weight: 500; padding-top: 6px; }
 .settings-grid > .value { display: flex; flex-direction: column; gap: 8px; }

@@ -1,5 +1,6 @@
 // The seeded task's approvals: the edit went ahead, the first command's
-// inline approval is answered by the "Don't ask" switch while it waits
+// inline approval is answered by the "Don't ask" switch while it waits,
+// once Settings offers the switch behind its warning,
 // and the second then runs without a card; the runs say when one waits
 // and what ran for how long; the plan
 // panel counts the steps marked; the Totals panel holds its running time
@@ -126,6 +127,32 @@ check(async () => {
   // folded into the work would make the two match, as the report's
   // session showed. What the switch answered, nothing asks again: the
   // second command runs without a card.
+  //
+  // The switch is there only once Settings offers it (approval.dont_ask,
+  // off by default; ADR 17, amended 2026-10-05): until then the task has
+  // none. Offering it shows the warning before anything is saved; Save
+  // sends the setting; back on the task the switch is offered, off, and
+  // the ask still waits for it.
+  assert.ok(await page.$eval(".dont-ask", (el) => el.hidden), "the switch showed while Settings did not offer it");
+  const taskHash = await page.evaluate(() => location.hash);
+  await page.evaluate(() => (location.hash = "#/settings"));
+  await page.waitForSelector("#section-approval");
+  assert.strictEqual(await page.$("#dont-ask-warning"), null, "the warning showed while Don't ask was not offered");
+  await page.click("[id='set-approval.dont_ask-true']");
+  await page.waitForSelector("#dont-ask-warning");
+  await shows(page, "#dont-ask-warning", "Don't ask hands a task the keys to your account.", "SSH private key");
+  await page.locator("#dont-ask-warning").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${out}/dont-ask-warning.png` });
+  await page.click(".save-bar button:has-text('Save')");
+  await until("the setting saved", async () => sent.of("settings.write").length === 1);
+  assert.deepStrictEqual(sent.of("settings.write")[0], { set: { "approval.dont_ask": true } }, "what Save sent");
+  await until("the saved toast", async () => (await page.textContent(".toast"))?.includes("Every task now offers Don't ask"));
+  assert.ok(await page.$("#dont-ask-warning"), "the warning went once Don't ask was saved as offered");
+  await page.evaluate((hash) => (location.hash = hash), taskHash);
+  await until("the switch offered", async () => (await page.$(".dont-ask")) && !(await page.$eval(".dont-ask", (el) => el.hidden)));
+  assert.strictEqual(await page.$eval(".dont-ask input", (el) => el.checked), false, "the offered switch starts off");
+  await shows(page, ".ask-card", "Run ls -la");
+  step("Don't ask offered in Settings, behind its warning");
   await page.$eval(".dont-ask input", (el) => el.click());
   await until("the ask cleared by the switch", async () => !(await page.$(".ask-card")));
   await page.screenshot({ path: `${out}/switched.png` });

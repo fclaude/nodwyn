@@ -84,7 +84,9 @@ func (s *server) answer(req request, client *peer) (any, *rpcError) {
 // writes and commands are approved without a prompt. Turning it on widens
 // what the session does unasked, so like a run that answers itself it is
 // for the computer nodwyn runs on (ADR 30): a paired device's relayed actor
-// may only turn it off.
+// may only turn it off. It is turned on only while Settings offers it
+// (approval.dont_ask, off by default; ADR 17, amended 2026-10-05); turning
+// it off is always allowed.
 func (s *server) approveAll(req request, client *peer) (any, *rpcError) {
 	if client.actor == "" {
 		return nil, failure(-32003, "Peer identity is unavailable")
@@ -99,6 +101,9 @@ func (s *server) approveAll(req request, client *peer) (any, *rpcError) {
 	}
 	if p.On && strings.Contains(client.actor, " via ") {
 		return nil, failure(-32602, "Approving without asking is turned on only on the computer nodwyn runs on, not from a paired device")
+	}
+	if p.On && !s.options.Config.Approval.DontAsk {
+		return nil, failure(-32602, "Don't ask is not offered: turn it on in Settings › Approvals first")
 	}
 	if err := open.session.SetApproveAll(p.On, client.actor); err != nil {
 		return nil, failure(-32000, err.Error())

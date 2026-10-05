@@ -416,6 +416,7 @@ changes (ADR 35):
 [approval]
 writes = "allow"    # the default: writes in the folder go ahead; or "ask"
 commands = "judge"  # the default: the judge, then you; "ask": you; "allow": nobody asks
+dont_ask = false    # the default: no task offers "Don't ask" ("Standing approvals" below)
 ```
 
 - **Writes** the repository pin lets through go ahead without asking. Each
@@ -546,6 +547,14 @@ refuses is allowed. No Scheme can turn it on, a repository's `init.scm`
 included, and it is never saved: a resumed task asks again. Since writes in
 the folder already go ahead by default (`[approval]`, "Confirms" above), it
 matters most for commands: while it is on, the judge is not asked.
+
+The switch is not there until you offer it: Settings › Approvals › **Don't
+ask in tasks** (`[approval] dont_ask = true`), off by default, with a red
+warning while it is on. Under the switch, models in this project's own
+sessions loaded the person's SSH key into an agent, read through the shell a
+file the guard had refused and rebased the person's checkout, none of it
+asked; switch it on only in a task you are watching. Choosing **Not
+offered** again turns the switch off in every open task.
 
 Commands you never want to be asked about go in one of two files:
 

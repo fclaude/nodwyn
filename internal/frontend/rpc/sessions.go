@@ -90,6 +90,10 @@ type sessionDetails struct {
 	// without a prompt (session.approve_all), turned on by ApproveActor.
 	ApproveAll   bool   `json:"approve_all"`
 	ApproveActor string `json:"approve_actor,omitempty"`
+	// ApproveAllOffered: Settings offers the switch (approval.dont_ask),
+	// so session.approve_all may turn it on; the console shows it only
+	// then, or while it is on.
+	ApproveAllOffered bool `json:"approve_all_offered"`
 	// Workspace is the folders outside the root the session may use, as the
 	// workspace list named them when it opened (ADR 22).
 	Workspace config.Workspace `json:"workspace"`
@@ -108,7 +112,7 @@ func (s *server) details(session *core.Session) sessionDetails {
 	limits := session.Limits()
 	trust, actor := session.TurnApproval()
 	all, allActor := session.ApproveAll()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree()}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree()}
 }
 
 func orEmpty[T any](list []T) []T {

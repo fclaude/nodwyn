@@ -7158,6 +7158,9 @@
         "approve_all": {
           "type": "boolean"
         },
+        "approve_all_offered": {
+          "type": "boolean"
+        },
         "bindings": {
           "items": {
             "$ref": "#/$defs/binding.Binding"
@@ -7235,6 +7238,7 @@
         "allowed_writes",
         "turn_writes",
         "approve_all",
+        "approve_all_offered",
         "workspace",
         "git",
         "mcp"

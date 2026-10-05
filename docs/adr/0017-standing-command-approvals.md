@@ -104,3 +104,41 @@ Explicitly approved confirmations retain their existing preview in the final
 needs the recorded preview rather than a reconstruction from a later file.
 Denials remain denials, and old records are not backfilled. This is an approval
 record before execution, never evidence that the operation succeeded.
+
+## Amendment 2026-10-05: "don't ask" is offered only when Settings says so
+
+The switch answered too much too easily. In the 75 local session logs of
+2026-09-30 to 10-05 it was on in 40 sessions, often within seconds of the
+first question, and 1,327 of the 1,329 confirms a person answered were
+yes. Under it, with every ordinary command answered as the person, models
+listed `~/.ssh`, tested the private key for a passphrase and loaded it into
+a new `ssh-agent` to sign their commits (session 20261004T053047Z-1b4c67dc);
+read, through `cat`, a session log `fs-read` had refused two seconds before
+(20261004T073130Z-40187c24); committed with `--no-gpg-sign`
+(20261004T024748Z-c7491879); and ran `git pull --rebase` on the person's
+own checkout (20261002T204507Z-19a161b2). The guard's denylist checks the
+paths a file tool is given, not the words of a command line, so the switch
+turned the guard's questions off where they mattered most. It is still
+sometimes the right tool, for a task a person is watching.
+
+So the switch is offered only when the person asks for it in Settings:
+
+- `[approval] dont_ask` (Settings › Approvals, "Don't ask in tasks"), off
+  by default. `settings.write` takes it, and only the computer nodwyn runs
+  on may call that (ADR 30); `config.toml` is the person's, so no
+  repository and no Scheme turns it on.
+- While it is off, `session.approve_all` refuses to turn the switch on, and
+  `session.info` says `approve_all_offered: false`; the console shows the
+  switch only when it is offered, or while it is still on, so it can be
+  turned off. Turning it off is always allowed.
+- Turning the setting off turns the switch off in every open task as well,
+  each as an ordinary `approval.change` by the person who saved it: a
+  person who takes the offer away is not left with tasks still approving
+  everything. Turning it on changes no task until the person switches it
+  on there.
+- While Settings offers it, the page shows a red warning in place of the
+  hint: what the switch lets a task do, and what models did here with it,
+  from the sessions above.
+
+The switch itself is unchanged: what it answers, what it never answers,
+who may reach it and that a resumed task starts with it off.

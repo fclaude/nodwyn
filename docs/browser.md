@@ -454,7 +454,11 @@ protected-path questions still ask, the conversation says when it was switched
 and each call it approved says so. It is the daemon's, not Scheme's
 (`session.approve_all`, [protocol](protocol.md)), it is never saved, so a
 resumed task starts asking again, and only this computer turns it on: a
-paired device does not see it. The daemon sends
+paired device does not see it. The switch is shown only while Settings ›
+Approvals offers it (**Don't ask in tasks**, `approval.dont_ask`, off by
+default), or while it is still on; offering it shows a red warning in place
+of the hint, and taking the offer away turns the switch off in every open
+task (ADR 17, amended 2026-10-05). The daemon sends
 derived scope labels in optional prompt metadata and validates the actual pending
 prompt again when an answer arrives. An older daemon without this metadata gets
 only one-time browser buttons.

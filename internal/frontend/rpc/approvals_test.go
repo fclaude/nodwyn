@@ -387,6 +387,7 @@ func TestPeerIdentityFromDifferentProcess(t *testing.T) {
 // device may turn it off, never on.
 func TestApproveAllOverTheProtocol(t *testing.T) {
 	o := options(t)
+	o.Config.Approval.DontAsk = true
 	path, _ := start(t, o)
 	c := connect(t, path)
 	me := identity(t, c)
@@ -418,5 +419,59 @@ func TestApproveAllOverTheProtocol(t *testing.T) {
 	}
 	if r := c.call("session.approve_all", map[string]any{"id": id}); r.Error == nil {
 		t.Fatal("accepted without on")
+	}
+}
+
+// "Don't ask" is offered only once Settings offers it (approval.dont_ask,
+// off by default): until then session.approve_all refuses to turn it on and
+// session.info says it is not offered. Settings turning the offer on lets a
+// task switch it on; turning it off again switches it off in the open task
+// as well, and a write there asks once more.
+func TestApproveAllNeedsTheSettingAndLosesItWithIt(t *testing.T) {
+	o := options(t)
+	if o.Config.Approval.DontAsk {
+		t.Fatal("approval.dont_ask is on by default")
+	}
+	path, _ := start(t, o)
+	c := connect(t, path)
+	me := identity(t, c)
+	id := opened(t, c, t.TempDir())
+	subscribed(t, c, id, 0, 100)
+	var info sessionDetails
+	json.Unmarshal(c.ok("session.info", map[string]any{"id": id}), &info)
+	if info.ApproveAllOffered {
+		t.Fatal("offered with the setting off")
+	}
+	if r := c.call("session.approve_all", map[string]any{"id": id, "on": true}); r.Error == nil || !strings.Contains(r.Error.Message, "Settings") {
+		t.Fatalf("turned on with the setting off: %+v", r.Error)
+	}
+	json.Unmarshal(c.ok("session.info", map[string]any{"id": id}), &info)
+	if info.ApproveAll {
+		t.Fatal("on after the refusal")
+	}
+	c.ok("settings.write", map[string]any{"set": map[string]any{"approval.dont_ask": true}})
+	json.Unmarshal(c.ok("session.info", map[string]any{"id": id}), &info)
+	if !info.ApproveAllOffered {
+		t.Fatal("not offered once Settings offers it")
+	}
+	c.ok("session.approve_all", map[string]any{"id": id, "on": true})
+	json.Unmarshal(c.ok("session.info", map[string]any{"id": id}), &info)
+	if !info.ApproveAll || info.ApproveActor != me {
+		t.Fatalf("info: %v %q", info.ApproveAll, info.ApproveActor)
+	}
+	c.ok("settings.write", map[string]any{"set": map[string]any{"approval.dont_ask": false}})
+	json.Unmarshal(c.ok("session.info", map[string]any{"id": id}), &info)
+	if info.ApproveAll || info.ApproveAllOffered {
+		t.Fatalf("still on (%v) or offered (%v) after Settings took it away", info.ApproveAll, info.ApproveAllOffered)
+	}
+	raw, err := os.ReadFile(o.Paths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "dont_ask = false") {
+		t.Fatalf("config.toml:\n%s", raw)
+	}
+	if r := c.call("settings.write", map[string]any{"set": map[string]any{"approval.dont_ask": "yes"}}); r.Error == nil {
+		t.Fatal("approval.dont_ask took a string")
 	}
 }

@@ -54,6 +54,7 @@ export function applyThinking(shown) {
 
 // What a task does without asking: [approval] in config.toml (ADR 35).
 const writeChoices = [["allow", "Without asking"], ["ask", "Ask me"]];
+const dontAskChoices = [[false, "Not offered"], [true, "Offered in each task"]];
 const commandChoices = [["judge", "The judge, then me"], ["ask", "Ask me"], ["allow", "Without asking"]];
 
 function writesHint(writes) {
@@ -74,6 +75,7 @@ function commandsHint(commands, judge) {
 const specs = {
   "approval.writes": { kind: "choice", label: "Writing files" },
   "approval.commands": { kind: "choice", label: "Running commands" },
+  "approval.dont_ask": { kind: "choice", label: "Don't ask in tasks" },
   "budget.tool_calls_soft": { kind: "count", label: "Tool calls, ask at", follows: true },
   "budget.tool_calls_hard": { kind: "count", label: "Tool calls, stop at" },
   "budget.tokens_soft": { kind: "count", label: "Tokens used, ask at", follows: true },
@@ -311,7 +313,8 @@ function drawBar(bar, ctx, redraw) {
   const count = Object.keys(set).length;
   bar.hidden = !editable(conn) || (count === 0 && errors.length === 0 && !saveError);
   if (bar.hidden) return;
-  const message = saveError || errors[0] || `${count} unsaved change${count === 1 ? "" : "s"}. Tasks you start afterwards use them; open tasks keep theirs.`;
+  const now = "approval.dont_ask" in set ? ", but follow Don't ask at once" : "";
+  const message = saveError || errors[0] || `${count} unsaved change${count === 1 ? "" : "s"}. Tasks you start afterwards use them; open tasks keep theirs${now}.`;
   bar.replaceChildren(
     h("p", { class: saveError || errors.length ? "error" : "", role: saveError || errors.length ? "alert" : "status" }, message),
     h(
@@ -331,7 +334,9 @@ function drawBar(bar, ctx, redraw) {
             try {
               desk.settings = await conn.call("settings.write", { set });
               edits.clear();
-              toast("Saved. Tasks you start from now on use these settings.");
+              // "Don't ask" is the one setting open tasks follow at once.
+              if ("approval.dont_ask" in set) toast(set["approval.dont_ask"] ? "Saved. Every task now offers Don't ask, off until you switch it on there." : "Saved. Don't ask is no longer offered, and is off in every open task.");
+              else toast("Saved. Tasks you start from now on use these settings.");
             } catch (error) {
               // The daemon names the setting; the method's name is noise here.
               saveError = error.message.replace(/^settings\.write: /, "");
@@ -355,6 +360,40 @@ function approvalSection(ctx, redraw) {
     "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/), content that looks like a credential, and a command built from what a tool returned always ask, and nothing outside the task's folder is written.",
     ...row("Writing files", choice(ctx, "approval.writes", writeChoices, redraw), h("p", { class: "hint" }, writesHint(picked(desk, "approval.writes")))),
     ...row("Running commands", choice(ctx, "approval.commands", commandChoices, redraw), h("p", { class: "hint" }, commandsHint(picked(desk, "approval.commands"), !!desk.settings?.judge))),
+    ...row(
+      "Don't ask in tasks",
+      choice(ctx, "approval.dont_ask", dontAskChoices, redraw),
+      String(picked(desk, "approval.dont_ask")) === "true"
+        ? dontAskWarning()
+        : h("p", { class: "hint" }, "A task has no switch that stops the questions. Commands go to whoever “Running commands” names, one at a time."),
+    ),
+  );
+}
+
+// dontAskWarning is what a person reads while "Don't ask" is offered: what
+// it lets a task do, from what models did with it here (ADR 17, amended
+// 2026-10-05).
+function dontAskWarning() {
+  return h(
+    "div",
+    { class: "danger-callout", id: "dont-ask-warning", role: "note", "aria-label": "Warning about Don't ask" },
+    h("span", { class: "danger-icon" }, icon("warn", 22, 2)),
+    h(
+      "div",
+      { class: "danger-body" },
+      h("strong", {}, "Don't ask hands a task the keys to your account."),
+      h("p", {}, "Each task gets a Don't ask switch. Once it is on, every write and command the model asks for runs as you — no judge, no question, nobody looking — until you switch it off or the task closes. Only protected files, content that looks like a key and commands built from tool output still ask."),
+      h("p", {}, "What models did here while it was on, none of it asked:"),
+      h(
+        "ul",
+        {},
+        h("li", {}, "loaded your SSH private key into an agent to sign their commits;"),
+        h("li", {}, "read, through the shell, a file the guard had just refused them;"),
+        h("li", {}, "turned commit signing off to get a commit through;"),
+        h("li", {}, "rebased your own checkout of the repository."),
+      ),
+      h("p", {}, "Switch it on only in a task you are watching, and off when it is done. Choosing Not offered switches it off in every open task."),
+    ),
   );
 }
 

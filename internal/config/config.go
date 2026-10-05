@@ -127,6 +127,15 @@ type Approval struct {
 	// refuses or there is none), "ask" (the person) or "allow" (yes, as
 	// --yolo answers).
 	Commands string `toml:"commands"`
+	// DontAsk offers each task the "Don't ask" switch, which answers every
+	// ordinary write and command yes until it is turned off. Off by
+	// default, and nothing but a person in Settings turns it on: in the
+	// session logs of 2026-09-30 to 10-05 the switch was on in 40 of 75
+	// sessions, often seconds after the first question, and under it the
+	// model loaded the person's SSH key into an agent, read a file the
+	// guard had refused through the shell and rebased the person's own
+	// checkout, none of it asked (ADR 17, amended 2026-10-05).
+	DontAsk bool `toml:"dont_ask"`
 }
 
 // The approval.writes and approval.commands settings.

@@ -87,7 +87,9 @@ task rather than a turn; a `hard` of 0 is none. These are the
 configured limits, including the legacy tool-call override; this
 protocol does not expose live turn counters. Details also include
 `allowed_commands`, `allowed_writes`, `turn_writes`, optional `turn_actor`,
-`approve_all` ("don't ask" is on) and optional `approve_actor` (who turned it
+`approve_all` ("don't ask" is on), optional `approve_actor` (who turned it
+on) and `approve_all_offered` (Settings offers the switch,
+`approval.dont_ask`; until it does, `session.approve_all` will not turn it
 on). Details also include `model`: the model this conversation talks to now,
 as `name` (a `[models.NAME]` entry, or `control` for config.toml's
 `[control]` model), `server` (the `[servers.NAME]` it is on, when it is on
@@ -324,7 +326,8 @@ It lives in the daemon's memory for that session only: no Scheme primitive
 reads or changes it, whatever the code's origin (a repository's
 `.nodwyn/init.scm` runs as user-origin Scheme), a resumed session starts
 with it off, and it is never written to configuration. Turning it on is
-refused to an actor relayed `via` a paired device, which may only turn it
+refused while Settings does not offer it (`approval.dont_ask`, off by
+default), to an actor relayed `via` a paired device, which may only turn it
 off, and to a session whose confirmations are not asked of a person
 (`--yolo`, a judge, `--no-confirm`, an unattended run). Each switch is an
 `approval.change` with `kind: "all"`, `scope: "session"`, `prefix: "*"` and,
@@ -562,7 +565,8 @@ requests when `[jev]` sets no prices; absent when the catalogue does not
 describe it (ADR 41, amended 2026-10-05). `settings.write` takes `set`, from those names to new
 values; `null` removes a key so its default applies. It accepts only
 `approval.writes` and `approval.commands` (what a task does without asking,
-ADR 35), the `budget.*` limits, `loop.request_timeout`
+ADR 35), `approval.dont_ask` (`true` or `false`: whether tasks offer "don't
+ask"; saving `false` also turns it off in every open session, ADR 17), the `budget.*` limits, `loop.request_timeout`
 and `loop.shell_timeout`, the `window.*` marks, `jev.content`,
 `jev.approve_threshold`, `jev.timeout`, `jev.model` and `mcp.runtime`;
 never an address, a credential, the egress proxy or `[policy]`. The

@@ -21,6 +21,7 @@ const (
 	text settingKind = iota
 	whole
 	number
+	boolean
 )
 
 // settable is what Settings may change in config.toml (settings.write), by
@@ -34,7 +35,7 @@ const (
 // prices, whether it takes images) are not here either: each model has its
 // own, set with settings.model.write (ADR 41, amended 2026-10-05).
 var settable = map[string]settingKind{
-	"approval.writes": text, "approval.commands": text,
+	"approval.writes": text, "approval.commands": text, "approval.dont_ask": boolean,
 
 	"budget.tool_calls_soft": whole, "budget.tool_calls_hard": whole,
 	"budget.tokens_soft": whole, "budget.tokens_hard": whole,
@@ -53,7 +54,7 @@ var settable = map[string]settingKind{
 }
 
 // decode reads a setting's new value: nil (null) to remove it, else a
-// string, int64 or float64, as config.Change takes them.
+// string, int64, float64 or bool, as config.Change takes them.
 func (k settingKind) decode(raw json.RawMessage) (any, error) {
 	if string(raw) == "null" {
 		return nil, nil
@@ -71,6 +72,12 @@ func (k settingKind) decode(raw json.RawMessage) (any, error) {
 			return nil, fmt.Errorf("takes a number")
 		}
 		return f, nil
+	case boolean:
+		var b bool
+		if json.Unmarshal(raw, &b) != nil {
+			return nil, fmt.Errorf("takes true or false")
+		}
+		return b, nil
 	}
 	var s string
 	if json.Unmarshal(raw, &s) != nil {
@@ -123,8 +130,10 @@ func splitSetting(name string) (table, key string) {
 // settingsWrite answers settings.write: it changes the named settings in
 // config.toml together, keeping its other lines, under the lock sessions
 // take to save a setting, and applies them to tasks opened afterwards.
-// Tasks already open keep what they started with.
-func (s *server) settingsWrite(req request, _ *peer) (any, *rpcError) {
+// Tasks already open keep what they started with, except "Don't ask": a
+// person who takes the switch away takes it from every open task too, so
+// none goes on approving everything after Settings says nothing may.
+func (s *server) settingsWrite(req request, client *peer) (any, *rpcError) {
 	var p settingsWriteParams
 	if err := params(req.Params, &p, "set"); err != nil {
 		return nil, err
@@ -167,6 +176,15 @@ func (s *server) settingsWrite(req request, _ *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	s.options.Config = next
+	if !next.Approval.DontAsk {
+		for _, open := range s.sessions {
+			if on, _ := open.session.ApproveAll(); on {
+				if err := open.session.SetApproveAll(false, client.actor); err != nil {
+					return nil, failure(-32000, err.Error())
+				}
+			}
+		}
+	}
 	return s.settings(), nil
 }
 
