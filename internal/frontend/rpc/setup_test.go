@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -33,6 +34,40 @@ func TestSettingsJevHost(t *testing.T) {
 	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
 	if !settings.JevStored {
 		t.Fatalf("jev after storing: %+v", settings)
+	}
+}
+
+// The judge is ready only when its key can be sent: stored, unlocked and
+// allowed for the judge's host, as a provider's key is checked. Settings
+// said Ready for a jev-key stored for another host, which the guard refuses
+// on the judge's first request. The settings are read as JSON, as the
+// console reads them.
+func TestTheJudgeIsReadyOnlyWithAKeyAllowedForItsHost(t *testing.T) {
+	o := options(t)
+	o.Config.Jev.URL = "https://judge.example:8443"
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("keychain.create", map[string]any{"no_passphrase": true})
+	read := func() map[string]any {
+		var settings map[string]any
+		if err := json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings); err != nil {
+			t.Fatal(err)
+		}
+		return settings
+	}
+	if s := read(); s["judge"] != false || s["jev_key"] != "needs_key" {
+		t.Fatalf("no key: judge %v, jev_key %v", s["judge"], s["jev_key"])
+	}
+	var stored credentialsResult
+	into(t, c.ok("credentials.add", map[string]any{"class": "jev-key", "value": "sk-judge-canary-0002",
+		"dest": "elsewhere.example", "methods": []string{"POST"}, "position": "header:Authorization:Bearer"}), &stored)
+	if s := read(); s["judge"] != false || s["jev_key"] != "unbound" || !strings.Contains(fmt.Sprint(s["jev_key_detail"]), "judge.example") {
+		t.Fatalf("a key for another host: judge %v, jev_key %v (%v)", s["judge"], s["jev_key"], s["jev_key_detail"])
+	}
+	c.ok("credentials.bind", map[string]any{"id": stored.Credentials[0].ID, "dest": "judge.example", "methods": []string{"POST"}, "position": "header:Authorization:Bearer"})
+	if s := read(); s["judge"] != true || s["jev_key"] != "ready" {
+		t.Fatalf("a key for the judge's host: judge %v, jev_key %v (%v)", s["judge"], s["jev_key"], s["jev_key_detail"])
 	}
 }
 

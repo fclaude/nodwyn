@@ -7256,6 +7256,12 @@
         "jev_host": {
           "type": "string"
         },
+        "jev_key": {
+          "type": "string"
+        },
+        "jev_key_detail": {
+          "type": "string"
+        },
         "jev_published": {
           "anyOf": [
             {
@@ -7313,6 +7319,7 @@
         "docs",
         "values",
         "judge",
+        "jev_key",
         "jev_host",
         "jev_stored"
       ],

@@ -98,8 +98,10 @@ you wrote it. Its sections:
   visit, so the readiness checks that arrive while one is being typed into
   redraw the page without losing what was typed, and leaving Settings drops
   it, a key included.
-- **Judge** — whether a judge is available, what it may be shown and the
-  probability at which it lets a command run. Its model, its prices (with
+- **Judge** — whether a judge is available (its key stored, unlocked and
+  allowed for the judge's host, as a provider's key is checked; the judge's
+  service is not asked, so *Key ready* is not yet its answer), what it may
+  be shown and the probability at which it lets a command run. Its model, its prices (with
   what typesafe.ai publishes as their placeholders) and how long it may take
   are under **Models**, after the models' own.
 - **Documents** — how uploads to Google Docs are handled (the manual,

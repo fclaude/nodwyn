@@ -93,7 +93,18 @@ check(async () => {
   await go("#/settings");
   await page.waitForSelector("text=Stored in the keychain.", { timeout: 10000 });
   if (await page.isVisible("a:has-text('Judge key')")) throw new Error("Settings still offers to add a stored judge key");
+  await page.waitForSelector("#section-judge >> text=Key ready: a jev-key is stored, unlocked and allowed for api.typesafe.ai.", { timeout: 10000 });
   step("settings reports the stored judge key");
+  // A key stored but not allowed for the judge's host is not ready: the
+  // guard would refuse the judge's first request. Settings are read once
+  // per connection, so the page is reloaded to see the file's change.
+  const bindingsFile = `${root}/config/nodwyn/bindings.toml`;
+  const allBindings = fs.readFileSync(bindingsFile, "utf8");
+  fs.writeFileSync(bindingsFile, allBindings.split("[[bind]]").filter((b) => !b.includes('class = "jev-key"')).join("[[bind]]"));
+  await page.reload();
+  await page.waitForSelector("#section-judge >> text=Not available: The key is stored but not allowed for api.typesafe.ai", { timeout: 10000 });
+  fs.writeFileSync(bindingsFile, allBindings);
+  step("settings says a judge key not allowed for the judge's host is not available");
 
   // Back to Credentials for the OAuth2 account: the check left the page on
   // Settings, where there is no Connect button.

@@ -222,8 +222,15 @@ type settingsResult struct {
 	// Values are the settings settings.write may change, by dotted name.
 	Values map[string]settingValue `json:"values"`
 	// Judge says a judge can answer a run's confirms now: jev.content is
-	// not "none" and a jev-key is stored in the unlocked keychain.
+	// not "none" and JevKey is ready.
 	Judge bool `json:"judge"`
+	// JevKey is what the keychain and the binding table say of the judge's
+	// key, as a provider's Key says of its own: ready, or needs_key, locked
+	// or unbound, with JevKeyDetail saying what to do. Nothing is asked of
+	// the judge's service, so ready says the key can be sent, not that the
+	// service accepts it.
+	JevKey       string `json:"jev_key"`
+	JevKeyDetail string `json:"jev_key_detail,omitempty"`
 	// JevHost is the host of jev.url: where a jev-key goes. Empty when the
 	// judge has no address. Settings shows its judge-key row only when it
 	// is known, so the row never points at a panel with no field.
@@ -332,11 +339,15 @@ func (s *server) settings() settingsResult {
 	if cfg, err := config.Load(s.options.Paths.ConfigFile); err == nil {
 		docs = cfg.Docs
 	}
-	judge := s.options.Config.Jev.Enabled() && s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
+	// A key stored but not allowed for the judge's host is refused by the
+	// guard on the judge's first request, so it is not ready.
+	jevHost := prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL})
+	jevKey, jevKeyDetail := s.keyCheck(prim.JevClass, jevHost)
+	judge := s.options.Config.Jev.Enabled() && jevKey == stateReady
 	stored := s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
 	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: s.providers(), Choices: s.choices(), Keychain: s.keychainStatus(),
 		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge,
-		JevHost: prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL}), JevStored: stored, JevPublished: judgePublished(s.options.Config)}
+		JevHost: jevHost, JevStored: stored, JevKey: jevKey, JevKeyDetail: jevKeyDetail, JevPublished: judgePublished(s.options.Config)}
 }
 
 // docsSettingsMethod answers settings.docs.write: it saves how an upload to

@@ -514,8 +514,11 @@ lock sessions take when they save the same answer, and writes it 0600.
 dotted name, to `{value, default, set}`: the value tasks opened now get
 (`null` for an optional one left unset, such as `jev.price_input`), its
 default, and whether `config.toml` sets it. `judge` says whether a judge can
-answer confirms now: `jev.content` is not `none` and a `jev-key` is in the
-unlocked keychain. `jev_published` is what the judge's provider publishes
+answer confirms now: `jev.content` is not `none` and `jev_key` is `ready`.
+`jev_key` is what the keychain and the binding table say of the judge's
+key, as a provider's `key` says of its own: `ready` (stored, unlocked and
+allowed for the judge's host), or `needs_key`, `locked` or `unbound`, with
+`jev_key_detail` saying what to do. Nothing is asked of the judge's service. `jev_published` is what the judge's provider publishes
 about `jev.model` at `jev.url`, `{price_input, price_output}`, which prices its
 requests when `[jev]` sets no prices; absent when the catalogue does not
 describe it (ADR 41, amended 2026-10-05). `settings.write` takes `set`, from those names to new

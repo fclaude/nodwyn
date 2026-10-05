@@ -469,12 +469,20 @@ function judgeModelRows(ctx) {
 function judgeSection(ctx, redraw) {
   const { desk } = ctx;
   const content = picked(desk, "jev.content");
+  // What the keychain and the binding table say of the judge's key, as a
+  // provider's is said: nothing is asked of the judge's service here, so
+  // "Key ready" is all that can be known before its first answer.
+  const key = desk.settings?.jev_key;
   const status =
     content === "none"
       ? "Off: nothing goes to the judge, and plans are drafted without its score."
-      : desk.settings?.judge
-        ? "Ready: a jev-key is stored and the keychain is unlocked."
-        : "Not available: no jev-key is stored, or the keychain is locked.";
+      : key === "ready"
+        ? `Key ready: a jev-key is stored, unlocked and allowed for ${desk.settings.jev_host}. Whether the judge accepts it shows on its first answer.`
+        : key === "locked"
+          ? "Not available: the keychain is locked."
+          : key === "unbound"
+            ? `Not available: ${desk.settings.jev_key_detail}.`
+            : "Not available: no jev-key is stored.";
   // The row shows only when the Judge panel has a field for it: the
   // judge's host is known and no key is stored. With a stored key the row
   // stays out whatever the judge's content level, so it never offers to
