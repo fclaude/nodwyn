@@ -148,6 +148,55 @@ check(async () => {
   await page.click("button:has-text('Set the passphrase')");
   await page.waitForSelector("text=protected by a passphrase", { timeout: 10000 });
   step("passphrase set");
+
+  // Hold the last startup reply so typing straddles the final Home redraw.
+  // A person may have already selected the password before startup settles.
+  await stopApp(app);
+  ({ app, url } = await startApp());
+  let releaseStartup;
+  const heldStartup = new Promise((resolve) => {
+    releaseStartup = resolve;
+  });
+  await page.routeWebSocket("**/socket", (socket) => {
+    const server = socket.connectToServer();
+    let watchID;
+    socket.onMessage((message) => {
+      const frame = JSON.parse(message);
+      if (frame.method === "session.watch") watchID = frame.id;
+      server.send(message);
+    });
+    server.onMessage(async (message) => {
+      if (JSON.parse(message).id === watchID && watchID !== undefined) await heldStartup;
+      socket.send(message);
+    });
+  });
+  await page.goto(url);
+  await page.waitForSelector("#task");
+  const initiallyFocused = await page.evaluate(() => document.activeElement?.id === "keychain-pass");
+  if (!(await page.isVisible("#keychain-pass"))) await page.click("details:has(#keychain-pass) > summary");
+  await page.focus("#keychain-pass");
+  await page.keyboard.type("family ");
+  releaseStartup();
+  await page.waitForSelector("html[data-ready]");
+  assert.strictEqual(await page.evaluate(() => document.activeElement?.id), "keychain-pass", "startup moved password focus to chat");
+  await page.keyboard.type("passphrase");
+  assert.strictEqual(await page.inputValue("#keychain-pass"), "family passphrase", "startup dropped part of the password");
+  assert.strictEqual(await page.inputValue("#task"), "", "password text reached chat");
+  assert.ok(initiallyFocused, "startup did not focus the password field");
+  await page.keyboard.press("Control+n");
+  await page.waitForFunction(() => document.activeElement?.id === "keychain-pass");
+  await page.fill("#keychain-pass", "wrong passphrase");
+  await page.click("button:text-is('Unlock')");
+  await page.waitForFunction(() => document.querySelector(".setup-form .error")?.textContent);
+  await page.keyboard.type("family passphrase");
+  assert.strictEqual(await page.inputValue("#keychain-pass"), "family passphrase", "retry typing left the password field");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("#keychain-pass", { state: "detached" });
+  assert.deepStrictEqual(sent.of("keychain.unlock"), [{ passphrase: "wrong passphrase" }, { passphrase: "family passphrase" }]);
+  assert.strictEqual(await page.inputValue("#task"), "");
+  step("startup and retry keep password typing out of chat");
+  await go("#/settings");
+  await page.waitForSelector("summary:has-text('Change or remove the passphrase')");
   await page.click("summary:has-text('Change or remove the passphrase')");
   await page.click("button:has-text('Remove the passphrase')");
   await page.waitForSelector("text=Enter the current passphrase");

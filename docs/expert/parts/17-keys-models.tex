@@ -15,6 +15,11 @@ nodwyn keychain init          # or: the app's Settings page
 nodwyn keychain passphrase    # change it later; --remove leaves none
 \end{sh}
 
+When the app starts with a locked keychain, Home opens the unlock form and
+focuses its masked password field. Startup refreshes preserve that field and
+what is being typed, rather than moving typing into chat. A failed unlock
+returns focus to the password for another attempt.
+
 \code{nodwyn keychain init -{}-no-passphrase} (or ``Don't protect it with a
 passphrase'' in Settings) makes a keychain that opens by itself, even in an
 unattended run with no terminal. It is still encrypted, but under a key

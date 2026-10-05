@@ -364,6 +364,10 @@ The console stores keys without a terminal: Settings the model providers',
 Connections an MCP server's, each with its one binding row, and Connections
 \textrightarrow{} Credentials any key, with the host it may go to, and
 OAuth2 accounts. A key can also be registered as above.
+When the app starts with a locked keychain, Home opens the unlock form and
+focuses its masked password field. Startup refreshes keep the field and the
+passphrase being typed there, rather than moving typing into chat; a failed
+unlock returns focus to the password for another attempt.
 \code{nodwyn keychain init -{}-no-passphrase} makes a keychain that opens
 without asking, which is as safe as its file permissions and no safer. A key is
 stored under a class you name, and it goes nowhere until a row in

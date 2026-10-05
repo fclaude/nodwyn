@@ -180,7 +180,11 @@ export function renderHome(root, ctx) {
   // while the old top stays would steal both out of the live form, leaving
   // an attachment on the page that cannot be seen or removed.
   const main = root.querySelector(":scope > main.home");
-  const keepTop = main && ctx.keepTop && main.firstChild?.contains(document.activeElement);
+  const locked = desk.keychain?.exists && !desk.keychain.unlocked && conn.has("keychain.unlock");
+  // Startup finishes with a full redraw, but a passphrase already being
+  // typed must stay in its masked field rather than move into the chat.
+  const unlocking = locked && main?.querySelector("#keychain-pass")?.closest("form")?.contains(document.activeElement);
+  const keepTop = main && (ctx.keepTop || unlocking) && main.firstChild?.contains(document.activeElement);
   if (keepTop) {
     main.classList.toggle("urgent", waiting.length > 0);
     main.replaceChild(grid, main.lastChild);
@@ -377,7 +381,6 @@ export function renderHome(root, ctx) {
   );
 
   const settingUp = !desk.configured && conn.has("settings.control.write");
-  const locked = desk.keychain?.exists && !desk.keychain.unlocked && conn.has("keychain.unlock");
   const top = settingUp
     ? h(
         "div",
@@ -390,7 +393,7 @@ export function renderHome(root, ctx) {
         "div",
         { class: "home-col" },
         h("h1", {}, "What should we get done?"),
-        locked ? h("details", { class: "callout", open: desk.keysLocked }, h("summary", {}, desk.keysLocked ? "Unlock your keys to start a task: the model needs one." : "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(ctx, { onDone: () => renderHome(root, { ...ctx, keepTop: false }) })) : null,
+        locked ? h("details", { class: "callout", open: true }, h("summary", {}, desk.keysLocked ? "Unlock your keys to start a task: the model needs one." : "Your saved keys are locked. Unlock them to use them in new tasks."), keychainForm(ctx, { onDone: () => renderHome(root, { ...ctx, keepTop: false }) })) : null,
         canStart ? form : h("div", { class: "callout plain" }, "This view can't start tasks. Use an interactive view or the terminal."),
         canStart ? chips : null,
         canStart ? adding : null,
@@ -399,10 +402,11 @@ export function renderHome(root, ctx) {
   // The composer on the page is this one now.
   files.onChange = () => (submit.disabled = !ready());
   root.replaceChildren(h("main", { class: waiting.length ? "home urgent" : "home" }, top, grid));
-  if (!draft && canStart && document.activeElement === document.body) task.focus();
+  const focus = () => (root.querySelector("#keychain-pass") || task).focus();
+  if (!draft && canStart && document.activeElement === document.body) focus();
   if (canChoose) drawPicker();
   current = {
-    focus: () => task.focus(),
+    focus,
     // Redrawn when the desk changes under a page being typed into.
     refresh: () => {
       if (canChoose) drawPicker();

@@ -752,7 +752,11 @@ nodwyn keychain passphrase --remove     # leave it without one (not recommended)
 ```
 
 A passphrase is asked for when a session, the TUI or a daemon starts, at the
-terminal; the app's console asks for it instead. A keychain **without a
+terminal; the app's console asks for it instead. On Home, a locked keychain
+opens its unlock form and focuses the masked password field. Startup refreshes
+keep that field and anything already typed in it, rather than moving typing
+into chat; a failed unlock returns focus there for another attempt.
+A keychain **without a
 passphrase** opens by itself everywhere, including where nobody can type one
 (an unattended run, a daemon a service manager starts). That is all it buys:
 the file is still encrypted, but under a key anyone can derive, so it is as

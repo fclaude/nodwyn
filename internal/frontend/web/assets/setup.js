@@ -218,6 +218,7 @@ export function keychainForm(ctx, { onDone } = {}) {
           onDone?.();
         } catch (e) {
           error.textContent = e.message;
+          pass.focus();
         } finally {
           button.disabled = false;
         }
