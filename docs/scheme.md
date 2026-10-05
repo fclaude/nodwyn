@@ -571,7 +571,7 @@ Both loops, the chat's and `evidence-loop`, count the rounds in a row whose
 calls only look at the repository: every call names one of `look-tools`
 (`fs-read`, `fs-list`, `fs-find`, `index-grep`, `read-definition`,
 `git-status`, `git-diff`; a project adds the tools of its own that only
-look). After `reading-reminder-after` (12) such rounds the model gets
+look). After `reading-reminder-after` (12; a table, §9.7) such rounds the model gets
 `(reading-reminder-message n)`, or `(reading-reminder-reviewed-message n)`
 when `(reviewed?)`: its thinking may not come back to it, so write down what it found
 now, as a plan with `plan-write`, or, when a person reads the answer and the
@@ -897,7 +897,7 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
 | `plan-max-revisions` | revisions after the first draft (3) |
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
-| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
+| `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12, and 16 for the muse-spark, glm, qwen, deepseek and gpt-6-luna families, whose rounds hold fewer calls: a table, §9.7); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
 | `plan-earlier-requests` | in a chat's later turn, how many of the person's messages before it the gate's judge, explorer and planner read first, so a reply to the model's question or a correction is not read alone (2); 0 reads the request alone. Each is cut at `plan-earlier-cap` characters (2000). A run's turns each repeat the run's task, and read it alone |
 | `(record-compaction facts)` | record a compaction as `context.compact`, from an alist: `trigger` (`auto`, `command` or `requested`), `compacted`, `before` (the size `(context-tokens)` gave before it), `threshold` and `focus`. The size after and the note's reply are read when it is called, so call it once the handover is in place, as `compact-context` does |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded`, `required`, `carried` or `model`), `plan`, `score`, `revisions`, `reason`, and `marks`, the steps of the plan already marked, each an alist of `step`, `state` and `note` as `run-plan` and `unfinished-plan` give them; the turn's `record-step` and the window start from them. An error for a step the plan does not have, another state, a step marked twice, or marks without a plan |
@@ -986,6 +986,34 @@ loaded after the files above in this order. Each wraps `run-calls` (and
   listing what may have been read differently. A history search (`git log`,
   `git blame`) before any code edit gets a hint to use it,
   `second-look-hints` times a session.
+
+### 9.7 Per-model tuning
+
+A round is one reply's calls, and models batch calls into rounds very
+differently (in the local session logs, `gpt-6.1-sol` made 2.75 calls a round
+and `glm-5.3-flash` 1.22), so a limit counted in rounds is a different amount
+of work for each. A knob that depends on the model is a number, which holds
+for every model, or a table: rows of `(family . value)` and a
+`(default . value)` row.
+
+```scheme
+(define plan-explore-rounds
+  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 16) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
+(define reading-reminder-after '((default . 12)))
+```
+
+| | |
+|---|---|
+| `(tuned knob)` | the knob's value for the control model as it is now: a number as it is; from a table, the first row whose family is the front of the model's id, else the default row (`#f` when there is none). Switching the control model in a chat changes the value from the next use |
+| `(model-family-id)` | the control model's id as its provider spells it, without any `vendor/` (`z-ai/glm-5.3-flash` is `glm-5.3-flash`), which is what a family is the front of: `"qwen"` fits `qwen3.8-27b` and `qwen/qwen3.8-27b` alike. The model is asked about only when a family row could use it |
+
+A narrower family goes before a broader one, since the first row that fits
+wins. The knobs that are tables are `plan-explore-rounds` (§9.5) and
+`reading-reminder-after` (§9.6); a project that redefines either as a number
+keeps that number for every model, and `0` still turns it off. The rows
+shipped come from the logs and say so in their comments (ADR 32, amended
+2026-10-05): `gpt-6.1-sol` and `claude-sonnet` have none and take the
+default, and the reminder's table has only a default row.
 
 ## 10. Not in nodwyn Scheme
 

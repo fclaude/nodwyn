@@ -23,7 +23,8 @@ like this:
     the score read the same text. Below \code{plan-needed-threshold}
     (0.5), the turn just proceeds.
   \item A read-only sub-agent labelled \code{explorer} looks at the folder
-    for up to \code{plan-explore-rounds} (12) rounds (\code{fs-read},
+    for up to \code{plan-explore-rounds} (12; 16 for the families that ask
+    for few calls in a round, a table by model family) rounds (\code{fs-read},
     \code{fs-list}, \code{index-grep}, \code{fs-find}), so the plan is not
     written blind.
   \item The control model drafts a plan in a narrowed context, offered no
@@ -44,7 +45,7 @@ denial.
 
 \begin{txt}
 you> :eval (list plan-needed-threshold plan-accept-score plan-max-revisions
-                 plan-explore-rounds)
+                 (tuned plan-explore-rounds))
 (0.5 0.7 3 12)
 \end{txt}
 
@@ -240,7 +241,8 @@ confirming the same conclusion each time. Both loops, the plain one and
 the evidence loop, count the rounds in a row whose calls all name one of
 \code{look-tools} (\code{fs-read}, \code{fs-list}, \code{fs-find},
 \code{index-grep}, \code{read-definition}, \code{git-status},
-\code{git-diff}). After \code{reading-reminder-after} (12) of them the model
+\code{git-diff}). After \code{reading-reminder-after} (12, a table by model
+family that has only its default row) of them the model
 gets \code{(reading-reminder-message n)}: write down the plan with
 \code{plan-write} and start. When a person reads the answer
 (\code{(reviewed?)}) it gets \code{(reading-reminder-reviewed-message n)}

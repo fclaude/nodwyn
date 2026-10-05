@@ -630,14 +630,18 @@ correction, carries its plan with the steps marked so far, and the model
 goes on from the next unmarked step; the plan panel says "carried over from
 an earlier turn". After a turn that finished, the next message is a new
 request. A model that only reads and
-searches for twelve rounds in a row is told to write down what it found:
+searches for twelve rounds in a row (the count is per model family, set in
+a table in `.nodwyn/init.scm`; docs/scheme.md §9.7) is told to write down what it found:
 its plan, or, in a chat whose request asks a question or needs your
 decision, its answer. One that already has a plan is told to make the
 change for its next unmarked step. In a chat a question gets an answer, and a request
 for something the model finds was never built gets told so, with what it
 would build, before it builds anything. A plan made with the judge or
 without one hands the explorer's findings to the model too, so it does not
-read the same files again.
+read the same files again. The explorer has twelve tool rounds, sixteen for
+the muse-spark, glm, qwen, deepseek and gpt-6-luna families, which ask for
+fewer calls in a round; the same table is where a project gives a model
+another count.
 Every Jev call is a guarded egress: bound credential, L1 redaction of
 what leaves, a `jev.req` log line with origin, size, hash and the answer.
 Set `jev.content = "none"` in `config.toml` to turn it off. Without a

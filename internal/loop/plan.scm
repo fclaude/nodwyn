@@ -30,7 +30,18 @@
 (define plan-accept-score 0.7)     ; the normalised score at which a plan is accepted
 (define plan-max-revisions 3)      ; revisions after the first draft (SPEC: at most 3)
 (define plan-empty-retries 2)      ; more times the planner is asked when it gives no plan
-(define plan-explore-rounds 12)    ; the explorer's tool rounds before a plan is drafted; 0 skips it
+;; The explorer's tool rounds before a plan is drafted; 0 skips it. A table,
+;; by family (tuned, strategy.scm): a round is one reply's calls, and models
+;; batch them very differently. In the local session logs (16 explorer runs,
+;; 2026-10-05) gpt-6.1-sol made 5 to 6.6 calls a round and finished in 7 to
+;; 10, claude-sonnet-5-5 made 2.5 to 3.3 and finished in 4 and 10, but
+;; gpt-6-luna (2 of 2) and muse-spark (5 of 7), at 3.4 to 5, were stopped at
+;; the twelfth with calls still asked for and wrote their report from what
+;; they had. glm, qwen and deepseek have no explorer run there; they batch as
+;; muse-spark does in the main loop (1.2 to 1.4 calls a round), so they share
+;; its row. 16 is a first step, to be read against the next logs.
+(define plan-explore-rounds
+  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 16) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
 (define plan-earlier-requests 2)   ; a chat's earlier messages the gate reads with its latest
 (define plan-earlier-cap 2000)     ; the characters of each it reads
 
@@ -63,10 +74,10 @@
 ;; blind; "" when exploring is off or finds nothing. Its reads happen before
 ;; any plan is recorded, which the core allows: none is irreversible.
 (define (plan-explore request)
-  (if (<= plan-explore-rounds 0)
+  (if (<= (tuned plan-explore-rounds) 0)
       ""
       (let ((rounds sub-agent-max-rounds))
-        (set! sub-agent-max-rounds plan-explore-rounds)
+        (set! sub-agent-max-rounds (tuned plan-explore-rounds))
         (let ((found (guard (e (else (set! sub-agent-max-rounds rounds) ""))
                        (sub-agent plan-explore-system (plan-explore-task request)
                                   '("fs-read" "fs-list" "index-grep" "fs-find") "explorer"))))

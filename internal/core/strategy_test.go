@@ -22,6 +22,13 @@ import (
 // replaces the agent loop.
 func strategyRig(t *testing.T, init string, maxToolCalls int, turns ...fake.Turn) *rig {
 	t.Helper()
+	return strategyRigAs(t, "", init, maxToolCalls, turns...)
+}
+
+// strategyRigAs is strategyRig with the control model's id set, for what
+// depends on the model's family (strategy.scm, tuned).
+func strategyRigAs(t *testing.T, model, init string, maxToolCalls int, turns ...fake.Turn) *rig {
+	t.Helper()
 	repo := t.TempDir()
 	os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644)
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
@@ -30,6 +37,7 @@ func strategyRig(t *testing.T, init string, maxToolCalls int, turns ...fake.Turn
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
 	cfg.Loop.MaxToolCalls = maxToolCalls
+	cfg.Control.Model = model
 	logb := &bytes.Buffer{}
 	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb})
 	if err != nil {

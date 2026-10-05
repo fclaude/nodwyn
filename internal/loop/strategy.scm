@@ -27,6 +27,30 @@
                (again (apply model-turn args) (- left 1)))
         reply)))
 
+;; A knob that depends on the model is a number, which holds for every
+;; model, or a table: rows of (family . value) and a (default . value) row,
+;;   '(("glm" . 20) (default . 12))
+;; A family is the front of the model's id as its provider spells it, without
+;; any "vendor/" ("qwen" fits qwen3.8-27b and qwen/qwen3.8-27b alike), and the
+;; first row that fits wins, so a narrower family goes before a broader one. A
+;; model no row fits gets the default row. The model is the control model as
+;; it is now, so switching it in a chat changes the value from the next use.
+;; The tables are plan-explore-rounds (plan.scm) and reading-reminder-after.
+(define (model-family-id)
+  (let ((parts (string-split (guard (e (else "")) (format "~a" (assoc-ref (model-info) 'model ""))) "/")))
+    (if (null? parts) "" (car (reverse parts)))))
+
+(define (tuned knob)
+  (if (not (list? knob))
+      knob
+      ;; The model is asked about only when a family row could use it.
+      (let ((id (and (pair? (filter (lambda (row) (string? (car row))) knob)) (model-family-id))))
+        (let find ((rows knob) (fallback #f))
+          (cond ((null? rows) fallback)
+                ((equal? (car (car rows)) 'default) (find (cdr rows) (cdr (car rows))))
+                ((string-prefix? (car (car rows)) id) (cdr (car rows)))
+                (else (find (cdr rows) fallback)))))))
+
 ;; The default agent loop: first the plan gate (plan.scm), then ask the
 ;; model; while it asks for tools, run them (agent tools through their
 ;; sub-agents, agents.scm) and ask again; a reply without tool calls ends the
@@ -67,18 +91,27 @@
 ;; and read on for 34 more, saying nothing: its thinking was not sent back
 ;; then, and is a summary when it is, so every request began again from
 ;; the tool results and read more to confirm the same conclusion. 0 turns the reminder off.
-(define reading-reminder-after 12)
+;;
+;; A table (tuned): no family has a row. In the local session logs (73
+;; sessions, 2026-10-05) the reminder at 12 ended the reading in the next
+;; round for 8 of 11 muse-spark turns; glm, qwen and deepseek often read on
+;; after it (16 of 27, 5 of 13 and 0 of 2 stopped at once), which another
+;; count would not change; and gpt-6.1-sol and gpt-6-luna never read 12
+;; rounds in a row (2 to 3 calls a round; longest runs 7 and 5), claude-sonnet
+;; once. Add a row when a family's logs show 12 is wrong for it.
+(define reading-reminder-after '((default . 12)))
 
 ;; The rounds in a row that only looked, counting this round's calls: when
 ;; they reach reading-reminder-after the reminder is added, after the
 ;; calls are answered, and the count starts again.
 (define (reading-rounds calls reading)
-  (cond ((or (<= reading-reminder-after 0) (pair? (filter (lambda (c) (not (look-call? c))) calls))) 0)
-        ((< (+ reading 1) reading-reminder-after) (+ reading 1))
-        (else (add-message (if (reviewed?)
-                               (reading-reminder-reviewed-message reading-reminder-after)
-                               (reading-reminder-message reading-reminder-after)))
-              0)))
+  (let ((after (tuned reading-reminder-after)))
+    (cond ((or (<= after 0) (pair? (filter (lambda (c) (not (look-call? c))) calls))) 0)
+          ((< (+ reading 1) after) (+ reading 1))
+          (else (add-message (if (reviewed?)
+                                 (reading-reminder-reviewed-message after)
+                                 (reading-reminder-message after)))
+                0))))
 
 ;; When nobody reviews the work as it happens (unattended, or a supervised
 ;; run), a turn ends on evidence, not on the model's word: something changed,

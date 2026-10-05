@@ -552,3 +552,40 @@ read a chat's request after the person's two messages before it
 what the judge of a command is told. No working rule changed. The
 benchmark's runs plan on every turn without asking the judge whether to,
 and read their own task alone, so the 121-task cohort sees none of this.
+
+## Amendment 2026-10-05: the explorer's rounds and the reminder's count are tables by model family
+
+Twelve rounds was one number for models that batch their calls very
+differently. In the 73 session logs on this machine (2026-09-30 to
+2026-10-05), calls to a round in the main loop were 2.75 for gpt-6.1-sol,
+1.85 for gpt-6-luna, about 1.9 for claude-sonnet, 1.37 for muse-spark, 1.22
+for glm-5.3-flash, 1.36 for qwen3.8-27b and 1.29 for deepseek-v4.1-flash. Of
+the 16 explorer runs, gpt-6.1-sol (5) finished in 7 to 10 rounds at 5 to 6.6
+calls a round and claude-sonnet-5-5 (2) in 4 and 10, but 5 of 7 muse-spark
+runs (3.4 calls a round) and both gpt-6-luna runs (4 to 5) were stopped at
+the twelfth with calls still asked for, and wrote their report from what
+they had (session `20261005T153019Z-08490dd4` is one). The console showed
+those skipped calls as failures (ADR 21, amended 2026-10-05).
+
+`plan-explore-rounds` is now a table (`(tuned knob)`, `model-family-id`;
+docs/scheme.md §9.7): 16 for the muse-spark, glm, qwen, deepseek and
+gpt-6-luna families and the default, 12, for the rest, gpt-6.1-sol and
+claude-sonnet among them. The uncapped muse-spark runs ended at 10 and 11
+rounds, the capped ones needed more than 12, and 16 is a first step, to be
+read against the next logs; glm, qwen and deepseek have no explorer run
+there and share muse-spark's row because they batch as it does (1.2 to 1.4
+calls a round). A number still works for any model and 0 still turns the
+explorer off.
+
+`reading-reminder-after` is a table too, with no family row. The reminder
+at 12 ended the reading in the next round for 8 of 11 muse-spark turns and
+for 16 of 27 glm, 5 of 13 qwen and 0 of 2 deepseek turns, which another
+count would not change, and gpt-6.1-sol and gpt-6-luna never read 12 rounds
+in a row (their longest runs were 7 and 5), claude-sonnet once. Scaling it
+by calls to a round would raise it for the families it works for. A row is
+one line when a family's logs show 12 is wrong for it.
+
+The local logs hold 16 explorer runs, six of them from one session, and
+show nothing about whether a stopped explorer's report is worse: the main
+loop reads 3 to 64 files after the explorer whether it was stopped or not.
+No benchmark ran with this.
