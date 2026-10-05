@@ -214,8 +214,9 @@ input is a script; a keychain without one opens without asking),
 `--budget-tokens N`, `--budget-actions N` and `--budget-cost USD` (a spend
 limit for the session). The `[budget]` settings and
 checkpoint behavior are described in the README. Defaults stop a turn at 500
-calls, 4h wall time, 10M reported model tokens or 200 irreversible host
-attempts, and set no spend limit. The soft limits are the hard ones unless
+calls, 4h wall time, 10M model tokens (each request's prompt and reply, a
+prompt token read from the provider's cache counted as a tenth) or 200
+irreversible host attempts, and set no spend limit. The soft limits are the hard ones unless
 you set them lower, so by default no checkpoint asks (ADR 35); a soft limit
 left unset follows its hard one. Legacy `loop.max_tool_calls` remains an explicit override.
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
@@ -1365,7 +1366,8 @@ makes providers and models comparable. Over a
 turn of several requests, the console adds them up, and since each request
 sends the whole prompt again it also gives the largest single prompt, which
 is how big the context got (`405,467 → 4,936 tokens over 12 requests ·
-largest prompt 58,412`). The token budget adds them up the same way.
+largest prompt 58,412`). The token budget adds up prompts and replies too,
+a prompt token read from the cache counted as a tenth (below).
 OpenRouter reports cache use and cost in every
 response, cost in USD included; nothing has to be asked for. A server that
 reports no cost (OpenAI, Cerebras, any other but OpenRouter) is priced at what

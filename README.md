@@ -174,6 +174,10 @@ actions_hard = 200
 # hard limit, so no checkpoint asks (ADR 35). Set one lower to be asked there.
 ```
 
+The token limit counts each model request's prompt and reply, a prompt token
+the provider read from its cache as a tenth of one; the console calls it
+*Tokens used*.
+
 At a checkpoint, `y` doubles the soft limit up to its hard ceiling, `n` stops,
 and an absolute number (or a duration such as `40m` for wall time) chooses a
 larger soft limit. A completed answer does not ask for more soft allowance. This never approves a tool or raises a hard ceiling.

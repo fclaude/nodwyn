@@ -247,8 +247,10 @@ the timings only when the server reports them, as Ollama does. The
 request's wall time, as this machine measured it, gives a speed whenever
 there are tokens to divide by — \code{22.0~tok/s} — the one speed every
 provider gets, prompt processing included. A
-checkpoint also says what the turn has cost so far. Cached tokens count in
-full against the token budget, which measures context, not money.
+checkpoint also says what the turn has cost so far. The token budget adds
+up each request's prompt and reply, a prompt token read from the
+provider's cache counted as a tenth of one: about what it costs, and what
+it asks of the server.
 
 Money has its own limit, if you want one: \code{cost\_soft} and
 \code{cost\_hard} in \code{[budget]}, in dollars, or

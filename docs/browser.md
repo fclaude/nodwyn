@@ -23,14 +23,14 @@ start of a task: while the explorer, the planner or a sub-agent asks in a
 context of its own, the meter follows it and names it (*Context ·
 explorer*), and shows the conversation's again once it folds; what the
 provider counted and how often it was compacted are in its tooltip, so the
-panel does not shift on every reply. "Tokens sent", shown from the turn's
+panel does not shift on every reply. "Tokens used", shown from the turn's
 start, is the token budget's
-count, every request's prompt, a token read from the provider's cache
-counted as a tenth. Beside them the turn's clock is split: "Model wait",
+count: each request's prompt and reply, a prompt token the provider read
+from its cache counted as a tenth. Beside them the turn's clock is split: "Model wait",
 each request to a model from its sending to its reply, and "Tool time",
 each tool call from its start to its result, the wait for your approval
 left out. Only a figure with a limit behind it is a bar (Time, Tool calls,
-Tokens sent and Context, and the total spend when a spend limit is set);
+Tokens used and Context, and the total spend when a spend limit is set);
 the bars come first and the rest are plain rows under them. A compaction is
 a note behind **Activity**: what set it off, and the context's size before
 and after. Routine activity (judge requests, focused contexts, instructions
@@ -62,7 +62,7 @@ you wrote it. Its sections:
   write to a protected file, content that looks like a credential and a
   command built from what a tool returned always ask. The transcript says
   which calls went ahead, which the judge allowed, and why it refused one.
-- **Limits** — each turn's tool calls, tokens sent, actions and time: where
+- **Limits** — each turn's tool calls, tokens used, actions and time: where
   it stops, and, if you set it lower, where it asks first whether to go
   on (by default it doesn't); the spend limit on a whole
   task, in dollars, off until you set where it stops; and how long a model

@@ -395,8 +395,8 @@ Where you see it:
     \code{cost} (Chapter~\ref{ch:turn}).
 \end{itemize}
 
-Unknown is never shown as free. Nothing is enforced with these numbers: a
-cost never stops a turn, and cached tokens count in full against the token
+Unknown is never shown as free. A cost stops a task only at a spend limit
+you set, and a cached prompt token counts a tenth of one against the token
 budget. A low cached share on a long task is worth a look: it means the
 start of the prompt keeps changing (trims, folds, compaction; see the tip
 in Chapter~\ref{ch:contexts}).

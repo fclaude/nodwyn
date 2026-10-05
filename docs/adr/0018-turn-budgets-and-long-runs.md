@@ -342,3 +342,13 @@ and the console neither starts nor resumes runs. `nodwyn run` stays as a
 batch tool for scripts and benchmarks, with its flags as above; its
 unattended runs' writes in the folder are a standing approval by default
 (`[approval] writes`), which §5 already allowed.
+
+## Tokens used — 2026-10-05
+
+The console called the token budget's count "Tokens sent", and Settings
+explained it as "every request's prompt in full". Neither was true once
+cached tokens counted a tenth (above), and the reply's tokens, which come
+back rather than go out, were always in it. It is now "Tokens used" in
+Settings and the task's side panel, explained the same way everywhere:
+each request's prompt and reply, a prompt token the provider read from its
+cache counted as a tenth. What is counted is unchanged.

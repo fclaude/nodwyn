@@ -602,8 +602,9 @@ that host is refused before anything is sent, and each upload is logged as
 
 \chapter{Budgets and runs}
 
-A turn has hard limits on tool calls, reported model tokens, irreversible
-actions and wall time (\code{[budget]}): by default 500 tool calls, ten
+A turn has hard limits on tool calls, model tokens (each request's prompt
+and reply, a prompt token read from the provider's cache counted as a
+tenth), irreversible actions and wall time (\code{[budget]}): by default 500 tool calls, ten
 million tokens, 200 actions and four hours. At a hard limit the turn stops.
 Each also has a soft limit, Settings' ``ask at'', which by default is the
 hard one, so no checkpoint interrupts a turn (\adr{35}). A soft limit the

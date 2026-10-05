@@ -1068,10 +1068,12 @@ export class TaskView {
       split.tools ? statRow("Tool time", minutes(split.tools)) : null,
       limited("Tool calls", calls, budgets?.tool_calls.soft || 0),
       // The budget counts every request's whole prompt, cached tokens at a
-      // tenth, so this adds the context up once per request; Context below
-      // is how big it is. Shown from the turn's start, as Time is: it waited
-      // for the first reply, which the explorer's long first requests delay.
-      limited("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()),
+      // tenth, and its reply, so this adds the context up once per request;
+      // Context below is how big it is. It is "used", not "sent": replies
+      // come back, and a cached token is not counted whole. Shown from the
+      // turn's start, as Time is: it waited for the first reply, which the
+      // explorer's long first requests delay.
+      limited("Tokens used", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()),
       this.contextMeter(),
       this.judgeLine(),
     ].filter(Boolean);

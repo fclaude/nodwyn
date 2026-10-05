@@ -623,7 +623,7 @@ check(async () => {
         ...log.slice(0, 4),
         { seq: 5, kind: "context.narrow", payload: { agent: "planner" }, ts: "2026-01-01T00:00:07Z" },
         { seq: 6, kind: "llm.req", payload: { model: "m", est_tokens: 40 }, ts: "2026-01-01T00:00:07Z" },
-        { seq: 7, kind: "llm.resp", payload: { content: "1. a plan", usage: { prompt_tokens: 30, output_tokens: 10 } }, ts: "2026-01-01T00:00:08Z" },
+        { seq: 7, kind: "llm.resp", payload: { content: "1. a plan", usage: { prompt_tokens: 30, cached_tokens: 20, output_tokens: 10 } }, ts: "2026-01-01T00:00:08Z" },
         { seq: 8, kind: "context.fold", payload: {}, ts: "2026-01-01T00:00:08Z" },
       ];
       const logs = { speed: log, old: log.filter((e) => e.kind !== "session.start"), fresh, planning, folded };
@@ -683,7 +683,7 @@ check(async () => {
       out.noHighWater = { class: unlimited?.className, text: unlimited?.textContent };
       older.dispose();
       // The window is known from the start: the bar is there, empty, before
-      // any request, and Tokens sent with it; while the planner asks in a
+      // any request, and Tokens used with it; while the planner asks in a
       // context of its own, the bar follows it, named; once it folds, the
       // bar is the conversation's again.
       const bars = async (id) => {
@@ -693,7 +693,7 @@ check(async () => {
         const found = {};
         for (const m of view.el.side.querySelectorAll("[data-meters] .meter")) {
           const label = m.querySelector(".meter-head span").textContent;
-          if (label.startsWith("Context") || label === "Tokens sent") found[label.startsWith("Context") ? "context" : "tokens"] = { text: m.textContent, width: m.querySelector(".meter-fill")?.style.width };
+          if (label.startsWith("Context") || label === "Tokens used") found[label.startsWith("Context") ? "context" : "tokens"] = { text: m.textContent, width: m.querySelector(".meter-fill")?.style.width };
         }
         view.dispose();
         return found;
@@ -757,15 +757,18 @@ check(async () => {
   want(s.reloaded && s.disposed, `queued streams outlived reload or disposal: ${JSON.stringify(s)}`);
   want(s.closed && s.closedOnce, "session closure lost or duplicated its queued text, or left the reply enabled");
   want(results.totals.speed === "Model speed | 320.0 tok/s · 2 requests | row" && results.totals.wait?.endsWith("| row") && results.totals.tools?.endsWith("| row"), `totals speed: ${JSON.stringify(results.totals)}`);
-  want(results.meters.order.join() === "meter:Time,meter:Tool calls,meter:Tokens sent,meter:Context,kv:Model wait,kv:Tool time", `this turn: bars first, then rows: ${JSON.stringify(results.meters.order)}`);
+  want(results.meters.order.join() === "meter:Time,meter:Tool calls,meter:Tokens used,meter:Context,kv:Model wait,kv:Tool time", `this turn: bars first, then rows: ${JSON.stringify(results.meters.order)}`);
   want(results.meters.context === "Context~100 / ~774,143", `the context against the high water: ${results.meters.context}`);
   want(results.context.hint === null && /the provider counted 100 tokens/.test(results.context.title || ""), `context hint: ${JSON.stringify(results.context)}`);
   want(results.noHighWater.class === "kv" && results.noHighWater.text === "Context~100", `context without a high water: ${JSON.stringify(results.noHighWater)}`);
   const early = results.early;
   want(early.fresh.context?.text === "Context— / ~774,143" && early.fresh.context?.width === "0%", `context before any request: ${JSON.stringify(early.fresh)}`);
-  want(early.fresh.tokens?.text === "Tokens sent0 / 2,000,000", `tokens sent before any reply: ${JSON.stringify(early.fresh)}`);
+  want(early.fresh.tokens?.text === "Tokens used0 / 2,000,000", `tokens used before any reply: ${JSON.stringify(early.fresh)}`);
   want(early.planning.context?.text === "Context · planner~40 / ~774,143", `context while the planner asks: ${JSON.stringify(early.planning)}`);
   want(early.folded.context?.text === "Context~100 / ~774,143", `context once the planner folded: ${JSON.stringify(early.folded)}`);
+  // Tokens used is every request's prompt and reply, a cached prompt token
+  // a tenth: 100 + 800, then 30 - 20 + 20 / 10 + 10.
+  want(early.folded.tokens?.text === "Tokens used922 / 2,000,000", `tokens used counts prompts, replies and cached tokens at a tenth: ${JSON.stringify(early.folded)}`);
   const tb = results.tabs;
   want(tb.names.join() === "Live,Changes,Workspace,Notes" && tb.first === "Live", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
   want(tb.live.join() === "This turn,Plan,Totals", `Live tab panels: ${JSON.stringify(tb.live)}`);
