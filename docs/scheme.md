@@ -960,7 +960,11 @@ loaded after the files above in this order. Each wraps `run-calls` (and
   as a run, so the evidence loop's way out is offered only for commands that
   never got that far.
 - `hygiene.scm`: in the main context (not in sub-agents), a test command
-  that never ran a test is folded to one line once a later one does; a read
+  that never ran a test is folded to one line once a later one does (a
+  command ran tests when it exited 0 or its output says so in a runner's
+  words, `hygiene-ran-words`: pytest's, Go's `ok`, `--- PASS`/`--- FAIL`
+  and `=== RUN`, mocha's, jest's, node's, cargo's; a Go package that did
+  not build ran none); a read
   of a file edited since is folded to its outline after `hygiene-stale-age`
   rounds; a read `hygiene-age` rounds old is folded to its outline. Reads
   fold in batches of at least `hygiene-min-bytes`, and only when the fold

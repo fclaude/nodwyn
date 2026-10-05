@@ -589,3 +589,31 @@ The local logs hold 16 explorer runs, six of them from one session, and
 show nothing about whether a stopped explorer's report is worse: the main
 loop reads 3 to 64 files after the explorer whether it was stopped or not.
 No benchmark ran with this.
+
+## Amendment 2026-10-05: a go test that ran is not folded as one that ran nothing
+
+Hygiene's first rule folds a test command that never got to run a test
+once a later one does, and it knew a run by pytest's and unittest's words
+only ("passed", "failed", "ran "). go test says "ok  <tab>pkg", "--- FAIL"
+and "=== RUN", so every go test run was taken for one that ran nothing:
+138 of the 151 results folded as "this test command did not run any test
+()" in the 75 local session logs of 2026-09-30 to 10-05 were go test runs
+that ran (20261002T192800Z-920da7d8 from seq 8654 on, for one), the
+failing-before evidence of a fix among them, and each such fold rewrote
+the prompt behind the cache (20261005T151325Z-d9519026 seq 4350 and 4642
+came back with nothing cached).
+
+- A test command ran tests when it exited 0, since only a command that
+  failed may have failed before running one, or when its output says so in
+  a runner's words (`hygiene-ran-words`, now with Go's, mocha's, jest's,
+  node's and cargo's).
+- go test's "[build failed]" and "[setup failed]" say a package ran no
+  test, so their "failed" does not count (`hygiene-unran-words`).
+- The fold's reason is the end of stderr, or of the output when stderr is
+  empty, as go test reports a package that does not build: the folds above
+  all said "()".
+
+TestGoTestRunsAreNotFoldedAsRunningNothing runs a passing and a failing go
+test, a package that does not build and a pytest run: only the build is
+folded, and its fold names "[build failed]". On the unchanged code the two
+go test runs are folded instead.

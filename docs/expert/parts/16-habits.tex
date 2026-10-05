@@ -64,7 +64,10 @@ rules, main context only:
 
 \begin{enumerate}
   \item a test command that never ran a test is folded to one line once a
-    later one does;
+    later one does. A command ran tests when it exited 0 or its output
+    says so in a runner's words (\code{hygiene-ran-words}: pytest's, Go's
+    \code{ok} and \code{-{}-{}- FAIL}, mocha's, jest's, cargo's); a Go
+    package that did not build ran none;
   \item a read of a file edited since is \emph{stale}: after
     \code{hygiene-stale-age} (2) rounds it folds to its outline, noting the
     file changed;

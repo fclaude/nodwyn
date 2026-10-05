@@ -34,8 +34,16 @@
     "struct " "enum " "interface " "type " "impl " "module " "public " "private " "protected "
     "export " "@"))
 
-;; Words in a test command's output that mean tests ran, pass or fail.
-(define hygiene-ran-words '("passed" "failed" "ran " "tests in" "no tests ran"))
+;; Words in a test command's output that mean tests ran, pass or fail,
+;; lower-cased: pytest's and unittest's, then Go's ("ok  <tab>pkg", "--- PASS",
+;; "--- FAIL", "=== RUN"), then mocha's, jest's, node's and cargo's. Go's were
+;; missing until 2026-10-05: 138 of the 151 results folded as "did not run
+;; any test" in the local session logs were go test runs that ran,
+;; failing-before evidence among them.
+(define hygiene-ran-words
+  '("passed" "failed" "ran " "tests in" "no tests ran"
+    "ok  \t" "--- pass" "--- fail" "--- skip" "=== run"
+    "passing" "failing" "tests:" "# pass" "# fail" "test result:"))
 
 (define hygiene-depth 0)   ; sub-agents running; the rules watch the main context only
 (define hygiene-round 0)   ; rounds of calls in the main context
@@ -105,16 +113,29 @@
 
 (define (hygiene-fold-read r stale) (fold-result (list-ref r 0) (hygiene-fold-text r stale)))
 
-;; A test command's output shows tests ran.
-(define (hygiene-ran? result)
-  (let ((out (string-downcase (format "~a" (assoc-ref result 'value "")))))
-    (let any ((ws hygiene-ran-words))
-      (and (pair? ws) (or (string-contains? out (car ws)) (any (cdr ws)))))))
+;; What go test says of a package that ran no test: it did not build, or
+;; its test binary did not start. Its "failed" is not pytest's.
+(define hygiene-unran-words '("[build failed]" "[setup failed]"))
 
-;; Why a test command did not run: the end of its stderr, or its error.
+;; A test command ran tests: it exited 0, since only a command that failed
+;; may have failed before running one, or its output says tests ran.
+(define (hygiene-ran? result)
+  (or (ran-ok? result)
+      (let ((out (fold (lambda (s w) (string-replace s w ""))
+                       (string-downcase (format "~a" (assoc-ref result 'value "")))
+                       hygiene-unran-words)))
+        (let any ((ws hygiene-ran-words))
+          (and (pair? ws) (or (string-contains? out (car ws)) (any (cdr ws))))))))
+
+;; Why a test command did not run: the end of its stderr, else of its
+;; output (go test reports a package that does not build there), or its
+;; error.
 (define (hygiene-why result)
   (let* ((v (guard (e (else #f)) (json-parse (format "~a" (assoc-ref result 'value "")))))
-         (err (if (pair? v) (format "~a" (assoc-ref v "stderr" "")) (format "~a" (assoc-ref result 'error "")))))
+         (err (if (pair? v)
+                  (let ((e (string-trim (format "~a" (assoc-ref v "stderr" "")))))
+                    (if (string-empty? e) (format "~a" (assoc-ref v "stdout" "")) e))
+                  (format "~a" (assoc-ref result 'error "")))))
     (let ((t (string-trim err)))
       (hygiene-cut (if (> (string-length t) 200) (substring t (- (string-length t) 200) (string-length t)) t) 200))))
 

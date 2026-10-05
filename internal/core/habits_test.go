@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/log"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -270,5 +272,54 @@ func TestUnreviewedReadingRoundsAreToldToPlan(t *testing.T) {
 	want := "You have only read and searched for the last 12 rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you act on it, and your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change, since that starts its marks over."
 	if got := lastMessage(r, 14); got != want {
 		t.Fatalf("after 12 rounds: %q", got)
+	}
+}
+
+// A test command that ran tests stays; one that never got to run a test is
+// folded once a later one runs (hygiene.scm, rule 1). go test says it ran
+// with "ok  <tab>pkg" and "--- FAIL", which hygiene did not read: in the
+// local session logs of 2026-09-30 to 10-05, 138 of the 151 results folded
+// as "did not run any test" were go test runs that ran, the failing-before
+// evidence of a fix among them. A package that does not build ran no test,
+// and its fold says why, from the output go test writes it to.
+func TestGoTestRunsAreNotFoldedAsRunningNothing(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		shell("pass", `printf 'ok  \tgithub.com/x/y\t0.012s\n'; true # go test ./y`),
+		shell("fail", `printf -- '--- FAIL: TestZ (0.00s)\nFAIL\tgithub.com/x/z\t0.010s\n'; exit 1 # go test ./z`),
+		shell("build", `printf 'FAIL\tgithub.com/x/w [build failed]\n'; exit 1 # go test ./w`),
+		shell("py", `echo '3 passed in 0.10s'; exit 1 # pytest`),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("run the tests"); e != "" {
+		t.Fatal(e)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[uint64]string{}
+	folded := map[string]string{}
+	for _, ev := range evs {
+		switch ev.Kind {
+		case log.KindToolResult:
+			var res log.ToolResult
+			if ev.Decode(&res) == nil {
+				ids[ev.Seq] = res.ID
+			}
+		case log.KindResultFold:
+			var f struct {
+				Seq  uint64 `json:"seq"`
+				Text string `json:"text"`
+			}
+			if ev.Decode(&f) == nil && strings.Contains(f.Text, "did not run any test") {
+				folded[ids[f.Seq]] = f.Text
+			}
+		}
+	}
+	if len(folded) != 1 || !strings.Contains(folded["build"], "[build failed]") {
+		t.Fatalf("folded as running no test: %v", folded)
 	}
 }
