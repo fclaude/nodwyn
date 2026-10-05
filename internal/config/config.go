@@ -215,8 +215,9 @@ type Model struct {
 	CacheControl string `toml:"cache_control"`
 	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
 	// per million tokens, in USD, for estimating what a request cost when
-	// the provider does not report it (OpenRouter does). Unset is unknown;
-	// cached input unset is priced as input. Nothing is enforced with them.
+	// the provider does not report it (OpenRouter does). Unset is what the
+	// provider publishes (Rates), else unknown; cached input unset is then
+	// priced as input. Nothing is enforced with them.
 	PriceInput       *float64 `toml:"price_input"`
 	PriceCachedInput *float64 `toml:"price_cached_input"`
 	PriceOutput      *float64 `toml:"price_output"`
@@ -959,18 +960,55 @@ func (c Config) catalogue() *catalogue.Catalogue {
 	return catalogue.Default()
 }
 
-// JevPrices are the judge's prices, USD per million tokens: [jev]'s own when
-// it sets both, else what its provider publishes for jev.model at jev.url
-// (internal/catalogue); nil when neither says, and the judge's requests are
-// counted, not priced.
+// JevPrices are the judge's prices, USD per million tokens: each [jev]'s own
+// when it sets it, else what its provider publishes for jev.model at jev.url
+// (internal/catalogue); nil when either is known to neither, and the judge's
+// requests are counted, not priced. A price set alone is not dropped for
+// the published pair, which Settings' empty fields promise.
 func (c Config) JevPrices() (input, output *float64) {
-	if c.Jev.PriceInput != nil && c.Jev.PriceOutput != nil {
-		return c.Jev.PriceInput, c.Jev.PriceOutput
-	}
+	input, output = c.Jev.PriceInput, c.Jev.PriceOutput
 	if m, ok := c.catalogue().Lookup(c.Jev.URL, c.Jev.Model); ok && m.Price != nil {
-		return &m.Price.Input, &m.Price.Output
+		if input == nil {
+			input = &m.Price.Input
+		}
+		if output == nil {
+			output = &m.Price.Output
+		}
 	}
-	return nil, nil
+	if input == nil || output == nil {
+		return nil, nil
+	}
+	return input, output
+}
+
+// Rates are the prices m's requests are estimated at (ADR 41, amended
+// 2026-10-05): each of its entry's price_* when set, else what its provider
+// publishes, so a price typed alone is kept and the others are still known.
+// The published cache writes and a long prompt's tiers apply only while the
+// entry sets no price: a price typed is the one meant, whatever the prompt's
+// length, and those are then priced as input.
+func (c Config) Rates(m Model) llm.Rates {
+	var r llm.Rates
+	if p, ok := c.Published(m); ok && p.Price != nil {
+		r = llm.Rates{Input: &p.Price.Input, Output: &p.Price.Output, CachedInput: p.Price.CacheRead, CacheWrite: p.Price.CacheWrite}
+		for _, t := range p.Price.Tiers {
+			r.Tiers = append(r.Tiers, llm.RateTier{Above: t.Above, Input: &t.Input, Output: &t.Output, CachedInput: t.CacheRead, CacheWrite: t.CacheWrite})
+		}
+	}
+	if m.PriceInput == nil && m.PriceCachedInput == nil && m.PriceOutput == nil {
+		return r
+	}
+	own := llm.Rates{Input: r.Input, CachedInput: r.CachedInput, Output: r.Output}
+	if m.PriceInput != nil {
+		own.Input = m.PriceInput
+	}
+	if m.PriceCachedInput != nil {
+		own.CachedInput = m.PriceCachedInput
+	}
+	if m.PriceOutput != nil {
+		own.Output = m.PriceOutput
+	}
+	return own
 }
 
 // WithPublished is m with what its entry leaves unset and its provider

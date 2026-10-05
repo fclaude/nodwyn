@@ -318,3 +318,16 @@ Settings. The choice now shows what applies (the entry's answer, else what
 the provider publishes, else Yes) and saves an answer only when one is
 chosen, Yes included (`vision = true`), so an entry still follows the
 catalogue until a person answers.
+
+## Amendment 2026-10-05: a price set alone is kept
+
+A model's rates were its entry's when it set both input and output, else
+the published ones whole, and the judge's the same (`Config.JevPrices`). A
+price typed alone in Settings, whose empty fields say they are the published
+price, was dropped: an output price typed alone left requests priced at the
+published output price, and on a model nothing is published of, priced
+nothing. Each price is now the entry's when set,
+else the published one (`Config.Rates`, `Config.JevPrices`), and the row
+shows the pair that applies. The published cache-write price and long-prompt
+tiers still apply only while the entry types no price, since a price typed
+is the one meant whatever the prompt's length; Settings' hint says so.

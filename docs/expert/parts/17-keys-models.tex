@@ -351,7 +351,7 @@ prices, in dollars per million tokens, in its Settings form or its entry, and
 server = "openai"               # a [servers.openai] with the url and key
 model = "gpt-5.1-codex"
 price_input = 1.25              # example prices: copy your provider's
-price_cached_input = 0.125      # unset: cached tokens cost price_input
+price_cached_input = 0.125      # unset: as published, else price_input
 price_output = 10
 \end{toml}
 
@@ -366,7 +366,8 @@ entry says so, \code{cache\_control = "ephemeral"} (five minutes) or
 changes the wire and not the request's hash; and Settings'
 \textbf{Test} sends it, so a route that refuses the field is found there.
 
-An estimate needs both \code{price\_input} and \code{price\_output}; it
+An estimate needs an input and an output price, each the entry's or, left
+unset, what the provider publishes, so a price typed alone is kept; it
 prices cached prompt tokens at \code{price\_cached\_input} and reasoning as
 output, and cannot know a provider's surcharge for writing its cache, so a
 reported cost always wins. The same keys work in \code{[control]}.
@@ -451,8 +452,8 @@ text.
 
 The judge reports what each request used, in tokens, and never what it
 cost. \nodwyn{} records the counts and the model that answered with each
-call, and prices them with \code{price\_input} and \code{price\_output}
-when you set them. Each call is a line in the conversation
+call, and prices them with \code{price\_input} and \code{price\_output},
+each one you leave unset the published one. Each call is a line in the conversation
 (\code{[judge jev-choice: 318$\to$34 tok · $\approx$\$0.0002]}), and the running total
 is in the console's side panel, at checkpoints and in \code{:budget}. Its
 tokens are not model tokens and stay out of the token budget; its cost

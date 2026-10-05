@@ -162,7 +162,8 @@ or \code{"1h"}: a Claude model caches its prompt only when the request asks, and
 nothing is inferred from its name; \adr{9}), and \code{price\_input},
 \code{price\_cached\_input} and \code{price\_output}: its prices in USD per
 million tokens, from which a request's cost is estimated when the provider
-does not report it (cached input unset is priced as input). Each request
+does not report it (each one unset is what the provider publishes, and
+cached input unset and unpublished is priced as input). Each request
 records the settings it was sent with, so \code{nodwyn replay --window} can
 rebuild it. These settings are the model's own: \code{[control]} names the
 default model, and each one it leaves unset comes from the model's

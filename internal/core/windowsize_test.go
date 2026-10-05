@@ -250,3 +250,61 @@ cache_control = "ephemeral"
 		t.Fatalf("%d replies priced", priced)
 	}
 }
+
+// A price an entry sets alone is kept, and the ones it leaves unset are what
+// the provider publishes. A model given only its output price was priced
+// entirely at the published prices, so the price typed in Settings did
+// nothing; with no catalogue it would have priced nothing.
+func TestAPriceSetAloneIsKeptBesideThePublishedOnes(t *testing.T) {
+	t.Parallel()
+	srv := chat.New("", chat.Model{ID: "sol"})
+	t.Cleanup(srv.Close)
+	cfg, err := config.Parse([]byte(`
+[servers.openai]
+provider = "openai"
+url = "` + srv.V1() + `"
+
+[control]
+server = "openai"
+model = "sol"
+price_output = 20.0
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"127.0.0.1": {"sol": {
+		Context: 1050000, Output: 128000, Price: &catalogue.Price{Input: 2, Output: 10},
+	}}})
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Config: cfg, Repo: t.TempDir(), NoConfirm: true, LogWriter: logb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	r := &rig{t: t, s: s, logb: logb}
+	if e := r.turn("hello"); e != "" {
+		t.Fatal(e)
+	}
+	var priced int
+	for _, ev := range s.EventsSoFar() {
+		if ev.Kind != log.KindLLMResp {
+			continue
+		}
+		var resp log.LLMResp
+		if err := ev.Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		u := resp.Usage
+		if u.PromptTokens == 0 || u.OutputTokens == 0 {
+			t.Fatalf("the fake reported no tokens to price: %+v", u)
+		}
+		want := (float64(u.PromptTokens)*2 + float64(u.OutputTokens)*20) / 1e6
+		if u.Cost == nil || !u.CostEstimated || math.Abs(*u.Cost-want) > 1e-12 {
+			t.Fatalf("a reply's cost: %v (estimated %v), want %v: input as published, output as set", u.Cost, u.CostEstimated, want)
+		}
+		priced++
+	}
+	if priced != 1 {
+		t.Fatalf("%d replies priced", priced)
+	}
+}

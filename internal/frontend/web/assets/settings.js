@@ -458,7 +458,7 @@ function judgeModelRows(ctx) {
         "p",
         { class: "hint" },
         published.price_input !== undefined
-          ? "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: empty is what its provider publishes. Tasks show the judge's spend, and a spend limit counts it."
+          ? "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: each one empty is what its provider publishes. Tasks show the judge's spend, and a spend limit counts it."
           : "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: tasks show the judge's spend, and a spend limit counts it.",
       ),
     ),

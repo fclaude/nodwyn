@@ -670,6 +670,15 @@ check(async () => {
   assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-text", server: "openai", model: textOnly, efforts: [], settings: { vision: true } });
   assert.ok((config().split("[models.openai-text]")[1] || "").split("\n[")[0].includes("vision = true\n"), "Yes was not saved:\n" + config());
   await page.waitForFunction(() => !document.querySelector("[data-model='openai-text']")?.innerText.includes("takes no images"), null, { timeout: 10000 });
+  // A price typed alone is kept, and the other is still the published one.
+  await page.click("[data-model='openai-a'] button:text-is('Edit')");
+  await page.waitForSelector("#model-form");
+  await page.fill("#model-price_output", "99");
+  await page.click("#model-save");
+  await page.waitForSelector("#model-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-a", server: "openai", model: first, efforts: [], settings: { price_output: 99 } });
+  assert.ok((config().split("[models.openai-a]")[1] || "").split("\n[")[0].includes("price_output = 99"), "the output price was not saved:\n" + config());
+  await shows("[data-model='openai-a']", `$${a.m.price.input} in, $99 out per million tokens`);
   // A model added on the provider takes its published efforts once its id is
   // given, and saves none of its own: the provider's apply.
   const b = expect(second);

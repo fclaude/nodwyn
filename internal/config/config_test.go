@@ -425,9 +425,11 @@ model = "sol"
 	}
 }
 
-// The judge's prices are [jev]'s when it sets both, else what its provider
-// publishes for jev.model at jev.url, else none: its requests are then
-// counted, not priced.
+// Each of the judge's prices is [jev]'s when it sets it, else what its
+// provider publishes for jev.model at jev.url; with either known to neither,
+// none: its requests are then counted, not priced. A price set alone was
+// dropped for the published pair, though Settings says an empty field is
+// the published price.
 func TestJevPrices(t *testing.T) {
 	c := Default()
 	c.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"api.typesafe.ai": {"jev-latest": {Price: &catalogue.Price{Input: 0.042}}}})
@@ -439,9 +441,41 @@ func TestJevPrices(t *testing.T) {
 	if in, out := c.JevPrices(); in != &five || out != &six {
 		t.Fatalf("[jev]'s own: %v %v", in, out)
 	}
+	c.Jev.PriceOutput = nil
+	if in, out := c.JevPrices(); in != &five || out == nil || *out != 0 {
+		t.Fatalf("[jev]'s input alone: %v %v", in, out)
+	}
 	c.Jev.PriceInput, c.Jev.PriceOutput = nil, nil
 	c.Jev.Model = "jev-9"
 	if in, out := c.JevPrices(); in != nil || out != nil {
 		t.Fatalf("a model nothing is published of: %v %v", in, out)
+	}
+	c.Jev.PriceOutput = &six
+	if in, out := c.JevPrices(); in != nil || out != nil {
+		t.Fatalf("an output price alone, nothing published: %v %v", in, out)
+	}
+}
+
+// A model's rates are each of its entry's prices when set, else the
+// published one; the published cache writes and long-prompt tiers apply only
+// while the entry sets no price.
+func TestModelRates(t *testing.T) {
+	c := Default()
+	read, write := 0.25, 3.0
+	c.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"api.openai.com": {"sol": {
+		Price: &catalogue.Price{Input: 2, Output: 10, CacheRead: &read, CacheWrite: &write, Tiers: []catalogue.Tier{{Above: 272000, Input: 4, Output: 15}}},
+	}}})
+	m := Model{Provider: "openai", URL: "https://api.openai.com/v1", Model: "sol"}
+	if r := c.Rates(m); *r.Input != 2 || *r.Output != 10 || *r.CachedInput != 0.25 || *r.CacheWrite != 3 || len(r.Tiers) != 1 {
+		t.Fatalf("as published: %+v", r)
+	}
+	in := 1.5
+	m.PriceInput = &in
+	if r := c.Rates(m); *r.Input != 1.5 || *r.Output != 10 || *r.CachedInput != 0.25 || r.CacheWrite != nil || r.Tiers != nil {
+		t.Fatalf("an input price set alone: %+v", r)
+	}
+	m.URL = "https://example.com/v1"
+	if r := c.Rates(m); r.Known() {
+		t.Fatalf("an input price alone, nothing published: %+v", r)
 	}
 }

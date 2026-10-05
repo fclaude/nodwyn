@@ -631,7 +631,7 @@ cost, and nodwyn records them in `jev.req` with the model that answered
 typesafe.ai publishes, $0.042 per million input tokens and nothing for
 output (an entry nodwyn keeps itself, since models.dev does not list the
 judge); give it other prices, in US dollars per million tokens, to estimate
-the cost instead:
+the cost instead (one left unset stays the published one):
 
 ```toml
 [jev]
@@ -1378,15 +1378,17 @@ model's Prices, or in its entry, per million tokens, which win:
 ```toml
 [models.coder]
 price_input = 3.0          # USD per million prompt tokens
-price_cached_input = 0.3   # prompt tokens read from the cache; unset: price_input
+price_cached_input = 0.3   # prompt tokens read from the cache; unset: as published, else price_input
 price_output = 15.0        # output tokens, reasoning included
 ```
 
-A cost from prices is an estimate, shown with ≈. Published prices also price
-prompt tokens written to the cache (OpenAI charges a quarter more for them) and
-a prompt past a provider's tier (OpenAI's past 272,000 tokens) at their own
-rates; prices typed in an entry price both as input. A reported cost always
-wins. Ollama reports neither, and its line reads as before; so does an older
+A cost from prices is an estimate, shown with ≈. Each price an entry leaves
+unset is the published one, so a price typed alone is kept beside them.
+Published prices also price prompt tokens written to the cache (OpenAI charges
+a quarter more for them) and a prompt past a provider's tier (OpenAI's past
+272,000 tokens) at their own rates while the entry types no price; once it
+types one, a cache write costs the input price and a long prompt no more
+than a short one. A reported cost always wins. Ollama reports neither, and its line reads as before; so does an older
 log. The TUI's `:budget` adds the turn's spend over every model request (the
 planner's, sub-agents' and compaction's included) and the judge's requests
 apart (priced by `[jev] price_*`, "Plan gate" above), and a budget

@@ -354,10 +354,14 @@ function settingsLine(s = {}, kind, published = null) {
   fromCatalogue ||= (!s.num_ctx && !!p.num_ctx) || (!s.max_output && !!p.max_output);
   parts.push(num_ctx ? `context ${n(num_ctx)} tokens` : kind === "ollama" ? "context the window's size" : "context as the provider says");
   if (max_output) parts.push(`replies up to ${n(max_output)} tokens`);
-  if (s.price_input !== undefined && s.price_output !== undefined) parts.push(`$${s.price_input} in, $${s.price_output} out per million tokens`);
-  else if (p.price_input !== undefined && p.price_output !== undefined) {
-    parts.push(`$${p.price_input} in, $${p.price_output} out per million tokens${p.tier_above ? ` (more past ${n(p.tier_above)})` : ""}`);
-    fromCatalogue = true;
+  // Each price is the entry's, else the published one (config.Rates); the
+  // published tier applies only while the entry sets no price.
+  const own = s.price_input !== undefined || s.price_cached_input !== undefined || s.price_output !== undefined;
+  const price_input = s.price_input ?? p.price_input;
+  const price_output = s.price_output ?? p.price_output;
+  if (price_input !== undefined && price_output !== undefined) {
+    parts.push(`$${price_input} in, $${price_output} out per million tokens${!own && p.tier_above ? ` (more past ${n(p.tier_above)})` : ""}`);
+    fromCatalogue ||= s.price_input === undefined || s.price_output === undefined;
   } else parts.push("no prices");
   if (s.vision === false || (s.vision === undefined && published && !p.images)) parts.push("takes no images");
   if (fromCatalogue) parts.push("as published");
@@ -524,7 +528,7 @@ function settingsFields(f, kind, redraw, desk) {
         "p",
         { class: "hint" },
         published.price_input !== undefined
-          ? `US dollars per million tokens, to estimate what a request cost when the provider doesn't report it. Empty is what it publishes${published.price_cache_write !== undefined ? `, writing to its cache at $${published.price_cache_write}` : ""}${published.tier_above ? `, and more for a prompt past ${count(published.tier_above)} tokens` : ""}. They feed the spend limit; nothing else is enforced with them.`
+          ? `US dollars per million tokens, to estimate what a request cost when the provider doesn't report it. Each one empty is what it publishes.${published.price_cache_write !== undefined || published.tier_above ? ` While all are, ${[published.price_cache_write !== undefined ? `writing to its cache costs $${published.price_cache_write}` : "", published.tier_above ? `a prompt past ${count(published.tier_above)} tokens costs more` : ""].filter(Boolean).join(" and ")}, as published; once you type one, only the prices here apply.` : ""} They feed the spend limit; nothing else is enforced with them.`
           : "US dollars per million tokens, to estimate what a request cost when the provider doesn't report it: OpenRouter reports it, OpenAI and Cerebras don't. They feed the spend limit; nothing else is enforced with them.",
       ),
     ),
