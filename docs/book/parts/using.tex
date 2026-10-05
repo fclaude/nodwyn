@@ -17,8 +17,10 @@ Portable builds omit the native webview, so \code{nodwyn app} opens a
 browser. Main-branch acceptance checks precede publication; both PDFs are
 rebuilt from that same commit. A release remains a draft until its downloads
 verify, and a published release is never overwritten by a rerun. See
-\file{docs/releases.md}. This distribution is separate from local promotion
-and does not remove any PDF from Git history.
+\file{docs/releases.md}. This distribution is separate from local promotion.
+Git keeps the books' sources and catalogue; generated PDFs are ignored and
+distributed as release attachments. The authorised history cleanup removes
+the historic PDFs too (the amendment to \adr{42}).
 
 The native window uses Wails v3, pinned to a beta release
 (\adr{43}). The \code{webview} tag and existing console protocol stay the

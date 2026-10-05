@@ -1918,6 +1918,11 @@ open the browser for `nodwyn app`; macOS builds are unsigned and not notarised.
 Only Linux amd64 is executed in CI. See [the release guide](releases.md) for
 downloads, verification and publication. Local `make promote` remains separate.
 
+Git tracks the books' LaTeX sources and generated
+source catalogue; the PDFs are release attachments. `make book` and
+`make expert` produce ignored local copies. After the PDF history cleanup,
+use a fresh clone for new work; old clones retain the old objects and commit
+identities. See the release guide for the migration details.
 
 ## The Wails desktop window
 

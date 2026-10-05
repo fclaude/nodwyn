@@ -67,6 +67,11 @@ are faster.
   Never loosen a check to make a test pass.
 - **The book and the expert guide:** `make book`, `make expert` (texlive). If
   they cannot build here, say so.
+  After changing tracked Go or Scheme files, regenerate their inventory with
+  `python3 docs/book/source/generate.py` and check it with `--check`; its counts
+  include test files even though the listings omit Go tests. Commit the sources
+  and catalogue. Generated PDFs are ignored and published as Gitea release
+  attachments (ADR 42); do not add them to Git.
 
 A plan's `Docs:` steps name every file this list asks for the change.
 

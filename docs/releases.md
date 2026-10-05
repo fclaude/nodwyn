@@ -45,8 +45,8 @@ publisher step. Pull requests and other branches do not publish.
 `scripts/release.py build DIRECTORY` refuses tracked changes and an occupied
 output directory. It archives the source commit to scratch, builds binaries
 with that commit as their version, runs the Linux amd64 selfcheck, and builds
-both books from their LaTeX sources there. It does not package the checked-in
-PDFs without rebuilding them, and does not dirty the original checkout.
+both books from their LaTeX sources there. Generated PDFs are not tracked;
+the builder does not reuse local copies or dirty the original checkout.
 Archive ownership and timestamps are normalised; `SOURCE_DATE_EPOCH` comes
 from the commit. This is not a promise of identical output across Go or TeX
 versions, which can differ between runners.
@@ -75,7 +75,33 @@ installs these on its Alpine runner. The publisher's inputs are `GITEA_URL`,
 `GITEA_REPOSITORY`, `GITEA_TOKEN` and `RELEASE_COMMIT`; CI supplies them. Do not
 put a token in a command line or commit it to the repository.
 
-This implements release distribution only. PDFs remain tracked for now;
-removing historic PDFs and rewriting Git history is a separate operation.
+## Books and the history cleanup
+
+Git stores the LaTeX sources and `docs/book/source/catalogue.tex`, not generated
+PDFs. Download `nodwyn.pdf` and `expert.pdf` from a release, or run `make book`
+and `make expert` to build ignored copies in `docs/book/` and `docs/expert/`.
+After changing tracked Go or Scheme files, run
+`python3 docs/book/source/generate.py` and commit the updated catalogue; the
+release builder's `--check` refuses a stale file inventory or line count.
+
+The authorised cleanup removes `docs/book/nibb.pdf`, `docs/book/nodwyn.pdf`
+and `docs/expert/expert.pdf` throughout Gitea's branches and tags. It retains
+every other file, commit metadata and parent relationship, including commits
+that become empty. A full Git bundle and old-to-new commit map are retained
+outside the repository before updating the remote with exact ref leases.
+Release attachments are not deleted or replaced.
+
+Rewritten commits have new IDs, and signatures on rewritten commits and tags
+cannot authenticate those new IDs. Existing release names, binary versions
+and `SOURCE.json` still record the original build commit; use the saved commit
+map or backup bundle to trace that provenance. Their tag names now identify
+the corresponding source without PDFs. New releases use the rewritten IDs.
+
+Use a fresh Gitea clone for new work after the rewrite. Keep an old clone until
+any unpushed work has been recovered, then transplant those changes onto the
+new history; do not merge or push its old history back. Other local worktrees
+and GitHub are not rewritten by the Gitea cleanup. Server disk reclamation
+depends on Gitea's garbage collection, while fresh clones receive only the
+reachable, cleaned history.
 
 The permission model follows [Gitea's job-token documentation](https://docs.gitea.com/usage/actions/token-permissions/).

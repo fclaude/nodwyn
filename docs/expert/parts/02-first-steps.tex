@@ -16,7 +16,9 @@ Linux amd64 is executed by CI; the other builds are cross-compiled.
 \code{nodwyn-egress} is a Linux executable even in the macOS archive,
 because it runs inside the MCP container. The release guide at
 \file{docs/releases.md} explains downloads and retries. Books are rebuilt
-from the same source as the binaries before publication (\adr{42}).
+from the same source as the binaries before publication (\adr{42}). Git keeps
+the LaTeX sources and catalogue; generated PDFs live in release attachments.
+\code{make book} and \code{make expert} also build ignored local copies.
 
 \nodwyn{} is one Go program. From a checkout of the repository:
 

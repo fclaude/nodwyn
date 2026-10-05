@@ -4,6 +4,11 @@
 *.test
 coverage.out
 
+# The books are built from source and distributed as Gitea release assets.
+/docs/book/nibb.pdf
+/docs/book/nodwyn.pdf
+/docs/expert/expert.pdf
+
 # session tooling (not part of the project)
 /.remember/
 /.claude/settings.local.json

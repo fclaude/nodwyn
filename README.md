@@ -7,7 +7,7 @@ a binding table as the sole authority over where a secret may go.
 - [SPEC.md](SPEC.md) — the architecture and its invariants
 - [plan.md](plan.md) — what is built next, in order, and why
 - [docs/manual.md](docs/manual.md) — how to read the code and how to use nodwyn
-- [docs/expert/expert.pdf](docs/expert/expert.pdf) — *Becoming a nodwyn Expert*, a field guide from first session to your own strategies in Scheme (`make expert` rebuilds it)
+- [Books on Gitea Releases](http://git.example.com/fc/nodwyn/releases) — the design book (`nodwyn.pdf`) and *Becoming a nodwyn Expert* (`expert.pdf`), with the complete Scheme sources and a Go source companion (`make book` and `make expert` rebuild them locally)
 - [docs/adr/](docs/adr/) — decision records
 - [docs/scheme.md](docs/scheme.md) — the language reference
 - [docs/friction.md](docs/friction.md) — where nodwyn got in the way of building nodwyn
