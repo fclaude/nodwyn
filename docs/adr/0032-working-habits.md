@@ -528,3 +528,27 @@ benchmark sees `plan-write`'s description grow by about 75 characters in
 every request's tool list, and its `plan` parameter by about 55; the
 planner's draft prompt grows by about 135.
 
+
+## Amendment 2026-10-05: a question gets no plan, and a reply is read with what it answers
+
+The plan gate turned a question into a change. Asked "review all setting
+options against the documentation, what makes and what doesn't make sense
+anymore?" (sessions `20261005T054223Z-36b27caa` and
+`20261005T060116Z-ef99f036`), the judge said it needed a plan, and a plan
+in the shape this ADR asks for (amended 2026-10-03) is a plan of changes:
+the model, told to follow it, wrote a review document into the repository,
+tests and a dozen documents' edits, where the working rule says a question
+is answered (amended 2026-10-02). In a chat's later turn the gate read the
+person's message alone, so "folding, to reduce visual polution for the
+user", a reply to the model's question, was judged and would have been
+planned without what it answered (session `20261005T060224Z-2f9eb922`).
+
+`plan-needed-question` now asks whether the request means changing the
+repository and says a question, a review, a comparison, an explanation or
+a proposal needs no plan; and the gate's judge, explorer, planner and score
+read a chat's request after the person's two messages before it
+(`plan-earlier-requests`, `plan-earlier-cap`, `plan-chat-request`,
+`plan-request-with-earlier`). ADR 19 (amended 2026-10-05) has the cases and
+what the judge of a command is told. No working rule changed. The
+benchmark's runs plan on every turn without asking the judge whether to,
+and read their own task alone, so the 121-task cohort sees none of this.

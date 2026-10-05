@@ -289,8 +289,12 @@ commands = "judge"   # the default: the judge, then you; "ask": you; "allow": no
   \item[commands] Who answers the other ordinary confirms: a command,
     input to a running program, an MCP tool that acts. At \code{"judge"},
     the judge is asked first, as a run started with \code{-{}-judge} asks
-    it (Chapter~\ref{ch:plans}), but told that a person is at hand. It is
-    shown the task, the turn's plan with its marks and next step, the call,
+    it (Chapter~\ref{ch:plans}), but told that a person is at hand, and
+    that a command that only looks (a listing, a version, the date,
+    \code{git status}, \code{diff} or \code{log}) is ordinary work, as are
+    writes to the session's scratch directory the task calls for. It is
+    shown the task after the person's two messages before it, the turn's
+    plan with its marks and next step, the call,
     what was answered about the same call earlier in the turn, and that a
     script the call runs from the session's scratch directory is the
     session's own (its text only at \code{full}); the decision is made in Go

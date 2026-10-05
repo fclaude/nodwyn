@@ -59,13 +59,20 @@ func (j judgeConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) (gu
 // them. The second used to be the first, which told the judge nobody was
 // watching when someone was: in session 20261005T054223Z-36b27caa it sent
 // four runs of the project's own tests, the steps its plan named, to the
-// person, at probabilities of 0.44 to 0.63 against 0.8.
+// person, at probabilities of 0.44 to 0.63 against 0.8. The second also
+// says that a command that only looks is ordinary work, and so is a write
+// to the session's scratch directory: in sessions
+// 20261005T060116Z-ef99f036 and 20261005T060224Z-2f9eb922 the person was
+// asked about `date -I` (0.68), `git diff --check; git diff --numstat;
+// pdfinfo …` (0.72), `command -v go node npm npx python3; …` (0.41) and a
+// script rewriting $TMPDIR/check.sh (0.65); three times the person answered
+// such an ask by allowing every call for the rest of the session.
 const (
 	approveQuestion = "An autonomous coding agent is working on the task below without a person watching, and asks to make the call described. Should the call be allowed? Allow it only if the task and the plan call for it, its effects stay within what they need, and it does nothing a person would want to decide: deleting or overwriting unrelated work, publishing or pushing, spending money, contacting others, or weakening security."
 	approveAllow    = "the task and the plan call for this call, and it is safe to make without a person"
 	approveDeny     = "the call is not clearly called for, or could do harm a person should approve"
 
-	approveQuestionWatched = "A coding agent is working on the task below for a person who is at hand: a call you do not allow is put to them instead. The agent asks to make the call described. Should it go ahead without asking them? Allow it if the task and the plan call for it and its effects stay within what they need: running the project's own builds and tests, or a script the agent wrote for that, is ordinary work. Do not allow anything a person would want to decide: deleting or overwriting unrelated work, publishing or pushing, spending money, contacting others, or weakening security."
+	approveQuestionWatched = "A coding agent is working on the task below for a person who is at hand: a call you do not allow is put to them instead. The agent asks to make the call described. Should it go ahead without asking them? Allow a command that only looks or reports, whether or not the plan names it: listing, finding or reading files, printing versions or the date, git status, diff or log. Allow a call the task and the plan call for whose effects stay within what they need: running the project's own builds and tests, a script the agent wrote for that, and writing in the session's own scratch directory ($TMPDIR) are ordinary work. Do not allow anything a person would want to decide: deleting or overwriting unrelated work, publishing or pushing, spending money, contacting others, or weakening security."
 	approveAllowWatched    = "the task and the plan call for this call, and it is safe to make without asking the person"
 	approveDenyWatched     = "the call is not clearly called for, or could do harm the person should decide on"
 )
@@ -116,7 +123,8 @@ func (s *Session) judgeCall(ctx context.Context, p guard.Prompt, watched bool) (
 }
 
 // approveState is what the judge is shown about p (ADR 19, amended
-// 2026-10-05): the task, the turn's plan with the steps marked so far and
+// 2026-10-05): the task, in a chat after the person's messages before it,
+// the turn's plan with the steps marked so far and
 // the next one, the call's shape — the tool, why the guard asks when it says
 // more than that the tool is irreversible, which every command is, and its
 // target, the path a write names or the command line a program runs — what
@@ -125,7 +133,7 @@ func (s *Session) judgeCall(ctx context.Context, p guard.Prompt, watched bool) (
 // at jev.content = "full" its text. At "full" it also gets what the call
 // would write or send.
 func (s *Session) approveState(p guard.Prompt) string {
-	task, plan, marks, earlier := s.turnState(p)
+	task, before, plan, marks, earlier := s.turnState(p)
 	plan = planWithMarks(plan, marks)
 	if strings.TrimSpace(plan) == "" {
 		plan = "(none recorded)"
@@ -139,6 +147,9 @@ func (s *Session) approveState(p guard.Prompt) string {
 	}
 	full := jevOptions(s.opts.Config).Content == config.JevContentFull
 	var b strings.Builder
+	for _, r := range before {
+		fmt.Fprintf(&b, "Earlier in this conversation the person wrote:\n%s\n\n", r)
+	}
 	fmt.Fprintf(&b, "Task:\n%s\n\nPlan:\n%s\n\nCall: %s%s\n", task, plan, p.Prim, target)
 	var reasons []string
 	for _, r := range p.Reasons {
@@ -230,10 +241,32 @@ func alistGet(v scheme.Value, key string) (scheme.Value, bool) {
 	return scheme.Value{}, false
 }
 
-func (s *Session) setTurnTask(task string) {
+func (s *Session) setTurnTask(task string, earlier []string) {
 	s.turnMu.Lock()
-	s.turnTask, s.turnPlan, s.turnMarks, s.turnAnswers = task, "", nil, nil
+	s.turnTask, s.turnEarlier, s.turnPlan, s.turnMarks, s.turnAnswers = task, earlier, "", nil, nil
 	s.turnMu.Unlock()
+}
+
+// How many of the person's messages before a chat's latest the judge reads
+// with it, and the bytes it reads of each: the plan gate's two and 2000
+// (plan.scm, plan-earlier-requests and plan-earlier-cap, which counts
+// characters).
+const (
+	judgeEarlierRequests = 2
+	judgeEarlierCap      = 2000
+)
+
+// earlierRequests is the person's last judgeEarlierRequests messages in
+// events, oldest first, each cut at judgeEarlierCap bytes.
+func earlierRequests(events []log.Event) []string {
+	var asked []string
+	for _, ev := range events {
+		var m log.UserMsg
+		if ev.Kind == log.KindUserMsg && ev.Decode(&m) == nil {
+			asked = append(asked, shorten(m.Text, judgeEarlierCap))
+		}
+	}
+	return asked[max(0, len(asked)-judgeEarlierRequests):]
 }
 
 // setTurnPlan keeps the plan recorded for the turn, with the marks an
@@ -282,16 +315,17 @@ func (s *Session) turnTaskAndPlan() (string, string) {
 	return s.turnTask, s.turnPlan
 }
 
-// turnState is what the judge is shown of the turn about p: its task, its
-// plan, the marks on the plan, and what was answered about p before.
-func (s *Session) turnState(p guard.Prompt) (string, string, map[int]log.PlanStep, []string) {
+// turnState is what the judge is shown of the turn about p: its task, the
+// person's messages before it, its plan, the marks on the plan, and what
+// was answered about p before.
+func (s *Session) turnState(p guard.Prompt) (string, []string, string, map[int]log.PlanStep, []string) {
 	s.turnMu.Lock()
 	defer s.turnMu.Unlock()
 	marks := make(map[int]log.PlanStep, len(s.turnMarks))
 	for k, v := range s.turnMarks {
 		marks[k] = v
 	}
-	return s.turnTask, s.turnPlan, marks, slices.Clone(s.turnAnswers[callKey(p)])
+	return s.turnTask, slices.Clone(s.turnEarlier), s.turnPlan, marks, slices.Clone(s.turnAnswers[callKey(p)])
 }
 
 // planWithMarks is plan with each step's mark before it, done or skipped

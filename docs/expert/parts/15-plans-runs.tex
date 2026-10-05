@@ -15,8 +15,13 @@ like this:
 
 \begin{enumerate}
   \item The judge is asked \code{plan-needed-question}: does this request
-    need a plan? Below \code{plan-needed-threshold} (0.5), the turn just
-    proceeds.
+    need a plan? A plan is a plan of changes, so a question, a review, an
+    explanation or a proposal needs none, however much reading it takes.
+    A later message in a chat is read after the person's
+    \code{plan-earlier-requests} (2) messages before it, so a reply to the
+    model's question is not judged alone; the explorer, the planner and
+    the score read the same text. Below \code{plan-needed-threshold}
+    (0.5), the turn just proceeds.
   \item A read-only sub-agent labelled \code{explorer} looks at the folder
     for up to \code{plan-explore-rounds} (12) rounds (\code{fs-read},
     \code{fs-list}, \code{index-grep}, \code{fs-find}), so the plan is not
@@ -46,7 +51,8 @@ you> :eval (list plan-needed-threshold plan-accept-score plan-max-revisions
 All of these are plain definitions you can change in \code{init.scm}, as
 are the prompts: \code{plan-system-prompt}, \code{plan-draft-prompt},
 \code{plan-revise-prompt}, \code{plan-shape}, \code{plan-explore-system},
-\code{plan-score-rubric} and \code{plan-score-levels}.
+\code{plan-request-with-earlier}, \code{plan-score-rubric} and
+\code{plan-score-levels}.
 
 \subsection{The shape of a plan}
 

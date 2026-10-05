@@ -560,9 +560,13 @@ methods = ["POST"]
 
 Before each user message the default strategy's plan gate
 (`internal/loop/plan.scm`, [docs/scheme.md](scheme.md) §9.5) asks Jev
-whether the message needs a plan; if so the model drafts one, Jev scores it
-against the ask (up to three revisions), and the plan goes into the task
-block the model sees. Its thresholds and prompts are Scheme definitions a
+whether the message needs a plan: a change in several steps or files does;
+a question, a review, an explanation or a proposal is answered, not
+planned, however much reading it takes. A later message in a chat is read
+after your two before it, so a reply to the model's question or a
+correction is not judged alone. If it needs a plan, the model drafts one,
+Jev scores it against the ask (up to three revisions), and the plan goes
+into the task block the model sees. Its thresholds and prompts are Scheme definitions a
 project may redefine. As the model works it marks the plan's steps done or
 skipped with the `plan-step` tool, and the console's plan panel (`:plan` in
 the TUI) shows its progress; a mark is the model's word, and the transcript
@@ -605,8 +609,12 @@ Set `jev.content = "none"` in `config.toml` to turn it off. Without a
 With `[approval] commands = "judge"`, the default, the judge also answers a
 command before you are asked ("Confirms" above). It is told that you are at
 hand and asked when it does not allow a call (a run's judge is told nobody
-is), and shown the task, the turn's plan with the steps marked so far and
-the next one, the command line, what it and you answered about the same
+is), that a command that only looks (listing, reading, versions, the date,
+`git status`, `diff` or `log`) is ordinary work, and so, when the task calls
+for them, are the project's builds and tests, a script the model wrote for
+them and writes to the session's scratch directory. It is shown the task
+after your two messages before it, the turn's plan with the steps marked so
+far and the next one, the command line, what it and you answered about the same
 command earlier in the turn, and, for a script the command runs from the
 session's scratch directory, that the script is the session's own (at
 `jev.content = "full"` also the script's text and what the call would send).

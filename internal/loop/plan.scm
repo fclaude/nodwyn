@@ -31,6 +31,32 @@
 (define plan-max-revisions 3)      ; revisions after the first draft (SPEC: at most 3)
 (define plan-empty-retries 2)      ; more times the planner is asked when it gives no plan
 (define plan-explore-rounds 12)    ; the explorer's tool rounds before a plan is drafted; 0 skips it
+(define plan-earlier-requests 2)   ; a chat's earlier messages the gate reads with its latest
+(define plan-earlier-cap 2000)     ; the characters of each it reads
+
+;; A chat's latest request as the gate reads it: after the person's last
+;; plan-earlier-requests messages before it, each cut at plan-earlier-cap
+;; characters; alone in a chat's first turn. A reply to the model's
+;; question means little alone: in session 20261005T060224Z-2f9eb922,
+;; "folding, to reduce visual polution for the user" said which of two
+;; things "that is still verbose, compacting should be possible there" had
+;; meant, and the judge, shown only the reply, put the need for a plan at
+;; 0.4 for a change to the transcript's rendering, its styles, its browser
+;; checks and four documents. The explorer and the planner read the same
+;; text, since a plan for the reply alone would be written blind.
+(define (plan-chat-request request)
+  (let* ((asked (session-requests))
+         (earlier (if (pair? asked) (reverse (cdr (reverse asked))) '()))
+         (recent (list-tail earlier (max 0 (- (length earlier) plan-earlier-requests)))))
+    (if (null? recent)
+        request
+        (plan-request-with-earlier
+         (map (lambda (r)
+                (if (> (string-length r) plan-earlier-cap)
+                    (string-append (substring r 0 plan-earlier-cap) "…")
+                    r))
+              recent)
+         request))))
 
 ;; What a read-only look at the repository finds for request, from a
 ;; sub-agent labelled "explorer" (agents.scm), so the plan is not written
@@ -143,14 +169,15 @@
           ((plan-left) => plan-carry)
           ((not judge) #f)
           (else
-           (let ((p (guard (e (else e)) (jev-noul judge request plan-needed-question))))
+           (let* ((asked (plan-chat-request request))
+                  (p (guard (e (else e)) (jev-noul judge asked plan-needed-question))))
              (cond ((not (number? p)) ; the judge failed: plan anyway, unscored
                     (record-plan (list (cons 'decision "degraded")
-                                       (cons 'plan (plan-ask (plan-draft-prompt request)))
+                                       (cons 'plan (plan-ask (plan-draft-prompt asked)))
                                        (cons 'reason (string-append "jev-noul failed: " (assoc-ref p 'message ""))))))
                    ((< p plan-needed-threshold)
                     (record-plan (list (cons 'decision "proceed") (cons 'score p))))
-                   (else (plan-best judge request "plan"))))))))
+                   (else (plan-best judge asked "plan"))))))))
 
 ;; Plan step progress. The model marks a step of the turn's plan done, or
 ;; skipped, as it goes (plan-step); the strategy records the mark

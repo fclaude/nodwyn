@@ -118,3 +118,47 @@ func TestTheJudgeIsToldOfAScratchScript(t *testing.T) {
 		})
 	}
 }
+
+// A chat's later message is read after the person's messages before it:
+// by the plan gate's judge, its planner and its scoring, and by the judge
+// of a command. In session 20261005T060224Z-2f9eb922 the reply below,
+// shown alone, was put at 0.4 for a plan, and a look at the tools it would
+// need at 0.41 for a command.
+func TestTheJudgeReadsAChatsEarlierMessages(t *testing.T) {
+	t.Parallel()
+	const first, reply = "that is still verbose, compacting should be possible there", "folding, to reduce visual polution for the user"
+	judge := newFakeJudge(t, noul(0.2), noul(0.9), score(3.6), choice(0.9))
+	r := judgedRigWith(t, judge, config.JevContentPlan, quiet, func(o *Options) { o.NoConfirm = false },
+		fake.Turn{Content: "Do you mean folding the activity rows, or compacting the context?"},
+		fake.Turn{Content: "1. Change: transcript.js — fold the activity rows."},
+		commandTurn("1", "date", "-I"),
+		fake.Turn{Content: "done"})
+	if asked := r.asked(first, "y"); len(asked) != 0 {
+		t.Fatalf("the person was asked: %+v", asked)
+	}
+	if asked := r.asked(reply, "y"); len(asked) != 0 {
+		t.Fatalf("the person was asked: %+v", asked)
+	}
+	if got := strings.Join(judge.asked(), " "); got != "noul noul score choice" {
+		t.Fatalf("judge asked %s", got)
+	}
+	if judge.states[0] != first {
+		t.Fatalf("the first message was not read alone:\n%s", judge.states[0])
+	}
+	read := "Earlier in this conversation the person wrote:\n" + first + "\n\n"
+	for i, want := range []string{
+		read + "Their latest message, the request to carry out now:\n" + reply,
+		read + "Their latest message, the request to carry out now:\n" + reply,
+		read + "Task:\n" + reply + "\n",
+	} {
+		if !strings.Contains(judge.states[i+1], want) {
+			t.Fatalf("the judge's %s was not told %q:\n%s", judge.questions[i+1], want, judge.states[i+1])
+		}
+	}
+	if planner := string(r.srv.Requests[1].Raw); !strings.Contains(planner, "You are nodwyn's planner") || !strings.Contains(planner, `the person wrote:\n`+first) {
+		t.Fatalf("the planner did not read the earlier message:\n%s", planner)
+	}
+	if !strings.Contains(judge.bodies[1], "asks for an answer rather than a change") || !strings.Contains(judge.bodies[3], "a command that only looks or reports") {
+		t.Fatalf("the judge was asked:\n%s\n%s", judge.bodies[1], judge.bodies[3])
+	}
+}

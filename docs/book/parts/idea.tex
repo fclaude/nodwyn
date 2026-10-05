@@ -588,7 +588,8 @@ the context to a task and a plan, and hand it to another model the user
 configured (\adr{27}).
 
 The default procedure runs a plan gate first. With a judge configured, the
-judge says whether the request needs a plan; if it does, a read-only
+judge says whether the request needs a plan (a question, a review or a
+proposal is answered, not planned); if it does, a read-only
 sub-agent looks around, the model drafts a plan, the judge scores it against
 the ask, and the model revises it at most three times. A plan's steps each
 start with their kind: the change, each test with why it fails on today's

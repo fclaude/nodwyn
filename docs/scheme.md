@@ -645,7 +645,8 @@ strings (§1.1):
 | `(plan-shape)` | the shape every plan is asked for, built from `plan-kinds` (§9.5): each step starts with its kind and a short name for what it does, then — and the detail the console folds away; a step that says all it should in its name needs no dash; the last is the `Check:`; a plan with no test or no doc to change says so, and why, in a step (`Test: none — only docs change`) |
 | `(plan-draft-prompt request)` | the planner's request for a plan, in the shape `(plan-shape)` gives |
 | `(plan-revise-prompt request plan score)` | the request for a better plan after the judge scored it `score` (0..1), with the shape again: the planner revises in a context of its own |
-| `plan-needed-question` | the judge's yes/no question: does this request need a plan? |
+| `plan-needed-question` | the judge's yes/no question: does this request need a plan? A plan is a plan of changes: a question, a review, a comparison, an explanation or a proposal asks for an answer and needs none, however much reading the answer takes; a reply to the model's question or a correction carries on the request before it |
+| `(plan-request-with-earlier earlier request)` | a chat's latest request after the person's messages before it, `earlier`, as the gate's judge, explorer and planner read it (`plan-chat-request`) |
 | `compact-summary-prompt`, `(compact-handover-prompt request note)` | compaction's request for a handover note and the start of the compacted context (§9.2) |
 | `(optimizer-system-prompt)`, `(optimizer-task history focus)` | the optimizer's system prompt and task (§9.4) |
 | `plan-score-rubric` | the judge's instruction for scoring a plan: it fulfils the request, and its steps have the shape the planner is asked for |
@@ -848,7 +849,8 @@ a plan, so a strategy may call it as well; a strategy that redefines
 `agent-turn` still plans in a run. A project that plans its own way
 redefines `nodwyn-turn` (a name specific to nodwyn, so a project's own `turn`, a counter say, cannot shadow it). With a judge
 (Jev, §5: its primitives registered and a `jev-key` stored), it asks
-`plan-needed-question`; a request that needs a plan gets one drafted by
+`plan-needed-question` about the request, in a chat's later turn after the
+person's messages before it (`plan-chat-request`); a request that needs a plan gets one drafted by
 the control model in a narrowed context of its own (§9), offered no
 tools and folded away afterwards, then scored against the request and revised until it scores
 `plan-accept-score` or `plan-max-revisions` run out. The outcome is
@@ -895,6 +897,7 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `plan-max-revisions` | revisions after the first draft (3) |
 | `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
 | `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
+| `plan-earlier-requests` | in a chat's later turn, how many of the person's messages before it the gate's judge, explorer and planner read first, so a reply to the model's question or a correction is not read alone (2); 0 reads the request alone. Each is cut at `plan-earlier-cap` characters (2000). A run's turns each repeat the run's task, and read it alone |
 | `(record-compaction facts)` | record a compaction as `context.compact`, from an alist: `trigger` (`auto`, `command` or `requested`), `compacted`, `before` (the size `(context-tokens)` gave before it), `threshold` and `focus`. The size after and the note's reply are read when it is called, so call it once the handover is in place, as `compact-context` does |
 | `(record-plan outcome)` | record the gate's outcome as `gate.plan`, from an alist: `decision` (`plan`, `proceed`, `degraded`, `required`, `carried` or `model`), `plan`, `score`, `revisions`, `reason`, and `marks`, the steps of the plan already marked, each an alist of `step`, `state` and `note` as `run-plan` and `unfinished-plan` give them; the turn's `record-step` and the window start from them. An error for a step the plan does not have, another state, a step marked twice, or marks without a plan |
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |

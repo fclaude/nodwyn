@@ -107,3 +107,60 @@ the person, had answered the same command earlier in the turn.
   Its text is a file's contents, so it is shown only at `full` (point 3),
   cut at 4 KB; at `plan` the judge learns whose it is, not what it says.
   Everything still goes through L1 redaction and `jev.req`.
+
+## Amendment 2026-10-05: what needs a plan, a chat's earlier messages, and looking
+
+Three chats on 2026-10-05, on the build before the amendment above, show
+the judge was asked the wrong questions and shown too little.
+
+Sessions `20261005T054223Z-36b27caa` and `20261005T060116Z-ef99f036` asked
+"review all setting options against the documentation, what makes and
+what doesn't make sense anymore?". Both times the judge put the need for a
+plan at 0.82: its question asked whether the work took several steps or
+touched more than one file, which reading every setting does. Every plan
+has the shape of a change (ADR 32, amended 2026-10-03), so the plans added
+`docs/settings-review.md`, tests that passed on the unchanged code and
+edits to a dozen documents, and scored 0.71 and 0.75 against 0.7. The
+person closed the first session after 17 minutes and asked again; the
+second built the same change in 15. They had asked for an answer.
+
+Session `20261005T060224Z-2f9eb922`'s second message, "folding, to reduce
+visual polution for the user", answered the model's question about its
+first ("that is still verbose, compacting should be possible there").
+Shown alone, the judge put the need for a plan at 0.4 for a change to the
+transcript's rendering, its styles, its browser checks and four documents,
+and the command that looked for the tools it needed,
+`command -v go node npm npx python3; …`, at 0.41.
+
+Of the 19 commands the judge was asked about across the three, 15 went to
+the person, who allowed every one they answered: among them `date -I`
+(0.68), `git diff --check; git diff --numstat; pdfinfo …` (0.72) and a
+script rewriting `$TMPDIR/check.sh` (0.65). Three times the person answered
+by allowing every call for the rest of the session.
+
+- **A plan is a plan of changes.** `plan-needed-question` asks whether
+  carrying out the latest request means changing the repository in
+  several steps, in more than one file, or irreversibly, and says that a
+  question, a review, a comparison, an explanation or a proposal asks for
+  an answer and needs no plan, however much reading it takes.
+- **A chat's later message is read after the ones before it.** The plan
+  gate's judge, its explorer, its planner and its score read the request
+  after the person's last two messages before it (`plan-earlier-requests`,
+  each cut at `plan-earlier-cap`, 2000 characters), and the question says a
+  reply to the agent's question or a correction carries on the request
+  before it. The judge of a command is shown the same two messages before
+  the task. A run's turns each repeat the run's task and are read alone.
+  The earlier messages are the person's asks, which `plan` already lets
+  leave (point 3); the model's replies are not sent.
+- **Looking is ordinary work.** The question a session a person answers
+  puts to the judge allows a command that only looks or reports (listing,
+  finding or reading files, versions, the date, git status, diff or log)
+  whether or not the plan names it, and counts writing in the session's
+  scratch directory with the builds, tests and scripts it already counted
+  as ordinary work. A run's judge (`--judge`) is asked as before.
+
+Not changed: the score's rubric. A low score for a plan made for a question
+would only bring revisions, and the gate records the best plan whatever
+its score; whether a request needs a plan is the noul's to say. None of it
+was measured against the judge itself, which no test calls: the fake judge
+shows what is sent, and the sessions above are the cases to replay.

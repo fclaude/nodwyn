@@ -82,11 +82,13 @@ type Session struct {
 	// reviewed: a person reads this turn's answer before anything else
 	// happens (plan.go, (reviewed?)).
 	reviewed atomic.Bool
-	// The turn's task, its recorded plan with the steps marked so far, and
-	// what was answered about each call this turn, for the judge when it
-	// answers a confirm (judge.go).
+	// The turn's task, in a chat with the person's messages before it, its
+	// recorded plan with the steps marked so far, and what was answered
+	// about each call this turn, for the judge when it answers a confirm
+	// (judge.go).
 	turnMu      sync.Mutex
 	turnTask    string
+	turnEarlier []string
 	turnPlan    string
 	turnMarks   map[int]log.PlanStep
 	turnAnswers map[string][]string
@@ -231,6 +233,12 @@ func (s *Session) turn(ctx context.Context, text string, required, reviewed bool
 		s.planned.Store(false)
 		s.reviewed.Store(false)
 	}()
+	// A chat's message may answer the model or correct it, so the judge
+	// reads it after the ones before it; a run's turns each repeat its task.
+	var earlier []string
+	if !required {
+		earlier = earlierRequests(s.EventsSoFar())
+	}
 	safe, err := s.Record(log.KindUserMsg, log.UserMsg{Text: text})
 	if err != nil {
 		return err
@@ -239,7 +247,7 @@ func (s *Session) turn(ctx context.Context, text string, required, reviewed bool
 	if err := safe.Decode(&msg); err != nil {
 		return err
 	}
-	s.setTurnTask(msg.Text)
+	s.setTurnTask(msg.Text, earlier)
 	touchScratch(s.scratch)
 	if err := s.loop.Turn(ctx, msg.Text); err != nil {
 		return err

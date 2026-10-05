@@ -336,9 +336,28 @@
    "\n\nRequest:\n"
    request "\n\nPrevious plan:\n" plan))
 
-;; The judge's yes/no question: does this request need a plan?
+;; The judge's yes/no question: does this request need a plan? A plan is a
+;; plan of changes, in the shape plan-kinds asks for, so a request that
+;; wants an answer needs none, however much reading the answer takes. The
+;; question used to ask whether the work took several steps or touched
+;; more than one file: asked "review all setting options against the
+;; documentation, what makes and what doesn't make sense anymore?"
+;; (sessions 20261005T054223Z-36b27caa and 20261005T060116Z-ef99f036), the
+;; judge put the need for a plan at 0.82 twice, and the plan that followed
+;; added a review document to the repository, tests that passed on the
+;; unchanged code and edits to a dozen documents, where the person had
+;; asked for an answer. The last sentence is for a chat's later message,
+;; which the gate reads with the ones before it (plan-chat-request).
 (define plan-needed-question
-  "Does carrying out this request take several distinct steps, touch more than one file or system, or have consequences that are hard to undo? Answer yes if a short plan would make the work safer or better; no if it is a single, obvious action or a question.")
+  "Does carrying out the latest request mean changing the repository (code, tests, documents or configuration) in several distinct steps, in more than one file, or with consequences that are hard to undo? Answer yes if a short plan of those changes would make the work safer or better. Answer no if the request asks for an answer rather than a change: a question, a review, a comparison, an explanation or a proposal, however many files answering it means reading; and no for a single, obvious change. Earlier messages, when shown, give the latest its meaning: a reply to the agent's question, or a correction, carries on the request before it.")
+
+;; A chat's latest request with the person's messages before it, as the
+;; gate's judge, explorer and planner read it (plan.scm, plan-chat-request).
+(define (plan-request-with-earlier earlier request)
+  (string-append
+   (apply string-append
+          (map (lambda (r) (string-append "Earlier in this conversation the person wrote:\n" r "\n\n")) earlier))
+   "Their latest message, the request to carry out now:\n" request))
 
 ;; The judge's rubric instruction for scoring a plan, and its levels,
 ;; worst first. They ask for the shape plan-write checks (plan.scm): a plan
