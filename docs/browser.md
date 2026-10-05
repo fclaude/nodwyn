@@ -18,7 +18,9 @@ and when the provider reports them or the model has prices, how much of the
 prompt came from the cache and what it cost (the manual, "Choosing models");
 over several requests, the largest single prompt too, since each request
 sends the whole prompt again. The side panel's Context meter shows how full
-the conversation's context is against the window's high water; what the
+the conversation's context is against the window's high water, from the
+start of a task (empty while only the planner, in a context of its own, has
+asked); what the
 provider counted and how often it was compacted are in its tooltip, so the
 panel does not shift on every reply. "Tokens sent" is the token budget's
 count, every request's prompt, a token read from the provider's cache
@@ -84,8 +86,10 @@ you wrote it. Its sections:
   visit, so the readiness checks that arrive while one is being typed into
   redraw the page without losing what was typed, and leaving Settings drops
   it, a key included.
-- **Judge** — whether a judge is available, what it may be shown, the
-  probability at which it lets a command run, and how long it may take.
+- **Judge** — whether a judge is available, what it may be shown and the
+  probability at which it lets a command run. Its model, its prices (with
+  what typesafe.ai publishes as their placeholders) and how long it may take
+  are under **Models**, after the models' own.
 - **Documents** — how uploads to Google Docs are handled (the manual,
   "Documents out").
 - **Containers** — podman, docker, or whichever is installed, for contained

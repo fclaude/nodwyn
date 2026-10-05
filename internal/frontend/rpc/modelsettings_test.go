@@ -308,4 +308,23 @@ num_ctx = 32768
 	if r := c.call("models.published", map[string]any{"server": "nowhere", "model": "sol"}); r.Error == nil {
 		t.Fatal("an unconfigured server was answered")
 	}
+	// The judge has no catalogue entry in this test's catalogue: nothing is
+	// published of it.
+	if settings.JevPublished != nil {
+		t.Fatalf("the judge: %+v", settings.JevPublished)
+	}
+}
+
+// settings.read says what the judge's provider publishes, its prices, which
+// Settings shows as the placeholders of the judge's own.
+func TestTheJudgesPublishedPrices(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	var settings settingsResult
+	into(t, c.ok("settings.read", map[string]any{}), &settings)
+	if p := settings.JevPublished; p == nil || p.PriceInput == nil || *p.PriceInput != 0.042 || p.PriceOutput == nil || *p.PriceOutput != 0 {
+		t.Fatalf("the judge's published prices: %+v", p)
+	}
 }

@@ -116,7 +116,7 @@ func (s *Session) approveState(p guard.Prompt) string {
 	if len(p.Reasons) > 0 {
 		fmt.Fprintf(&b, "Why it needs approval: %s\n", strings.Join(p.Reasons, "; "))
 	}
-	if jevOptions(s.opts.Config.Jev).Content == config.JevContentFull {
+	if jevOptions(s.opts.Config).Content == config.JevContentFull {
 		what := p.Detail
 		if what == "" {
 			what = p.Args

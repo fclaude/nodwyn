@@ -164,8 +164,11 @@ func fileExists(p string) bool {
 	return err == nil && !st.IsDir()
 }
 
-// jevOptions resolves the existing per-session defaults before registration.
-func jevOptions(j config.Jev) prim.JevOptions {
+// jevOptions resolves the existing per-session defaults before registration;
+// the judge's prices are [jev]'s, else what its provider publishes
+// (config.JevPrices).
+func jevOptions(c config.Config) prim.JevOptions {
+	j := c.Jev
 	timeout, err := time.ParseDuration(j.Timeout)
 	if err != nil {
 		timeout = 10 * time.Second
@@ -174,7 +177,8 @@ func jevOptions(j config.Jev) prim.JevOptions {
 	if content == "" {
 		content = config.JevContentPlan
 	}
-	return prim.JevOptions{URL: j.URL, Model: j.Model, Content: content, Timeout: timeout, PriceInput: j.PriceInput, PriceOutput: j.PriceOutput}
+	in, out := c.JevPrices()
+	return prim.JevOptions{URL: j.URL, Model: j.Model, Content: content, Timeout: timeout, PriceInput: in, PriceOutput: out}
 }
 
 func resolveOptions(o Options) (Options, error) {
@@ -245,7 +249,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	// since the model chooses what it sends.
 	if o.Config.Jev.Enabled() && s.keychain != nil {
 		po.Jev = s
-		po.JevConfig = jevOptions(o.Config.Jev)
+		po.JevConfig = jevOptions(o.Config)
 		po.JevConfig.Tools = po.JevConfig.Content == config.JevContentFull && s.HandleForClass(prim.JevClass) != nil
 	}
 	// W5 documents: google-doc-upload is offered only when a credential of

@@ -602,8 +602,11 @@ can only refuse more. When it refuses, you are asked, and told its answer.
 
 **What the judge used.** The judge reports each request's tokens, never its
 cost, and nodwyn records them in `jev.req` with the model that answered
-(`jev-1.13.0` for `jev-latest`). Give it prices, in US dollars per million
-tokens, to estimate the cost:
+(`jev-1.13.0` for `jev-latest`). nodwyn prices `jev-latest` at what
+typesafe.ai publishes, $0.042 per million input tokens and nothing for
+output (an entry nodwyn keeps itself, since models.dev does not list the
+judge); give it other prices, in US dollars per million tokens, to estimate
+the cost instead:
 
 ```toml
 [jev]
@@ -615,7 +618,9 @@ Every client shows each judge request as one line
 (`[judge jev-choice: 318→34 tok · ≈$0.0002]`). They also show the judge's
 running total when it has been asked: in the console's side panel ("Judge,
 this task"), at a budget checkpoint, and in the TUI's `:budget` (this turn
-and this session). Settings sets the prices. Judge tokens are not model
+and this session). Settings › Models sets the judge's model, prices and wait,
+beside the models' own settings; what it sees and when it allows a command
+are under Settings › Judge. Judge tokens are not model
 tokens, so the token budget leaves them out, but a spend limit counts their
 cost; a judge request with no prices is not counted, and the first turn
 with one says so.

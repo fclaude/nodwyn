@@ -483,7 +483,15 @@ check(async () => {
         { seq: 7, kind: "tool.call", payload: { id: "t1", name: "fs-read", args: {} }, ts: "2026-01-01T00:00:09Z" },
         { seq: 8, kind: "tool.result", payload: { id: "t1", name: "fs-read", ok: true, value: "x", ms: 500 }, ts: "2026-01-01T00:00:10Z" },
       ];
-      const logs = { speed: log, old: log.filter((e) => e.kind !== "session.start") };
+      // A task whose planner is asking, in a context of its own, before the
+      // conversation has made a request.
+      const planning = [
+        log[0],
+        log[1],
+        { seq: 3, kind: "context.narrow", payload: {}, ts: "2026-01-01T00:00:01Z" },
+        { seq: 4, kind: "llm.req", payload: { model: "m", est_tokens: 40 }, ts: "2026-01-01T00:00:01Z" },
+      ];
+      const logs = { speed: log, old: log.filter((e) => e.kind !== "session.start"), planning };
       const conn = {
         live: true,
         methods: new Set(["session.send", "session.abort", "session.answer"]),
@@ -492,7 +500,7 @@ check(async () => {
         onResult() { return () => {}; },
         async call(method, params) {
           if (method === "session.subscribe") return {
-            page: { events: logs[params.id], through: 8, more: false },
+            page: { events: logs[params.id], through: logs[params.id].at(-1).seq, more: false },
             busy: false,
           };
           if (method === "session.info") return { budgets: { wall_ns: { soft: 4 * 3600e9, hard: 8 * 3600e9 }, tool_calls: { soft: 5000, hard: 5000 }, tokens: { soft: 2000000, hard: 2000000 } } };
@@ -503,6 +511,7 @@ check(async () => {
       const desk = new Desk(conn);
       desk.sessions.set("speed", { id: "speed", repo: "/tmp/speed", open: true, busy: false });
       desk.sessions.set("old", { id: "old", repo: "/tmp/old", open: true, busy: false });
+      desk.sessions.set("planning", { id: "planning", repo: "/tmp/planning", open: true, busy: false });
       const task = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(task.root);
       await task.open("speed");
@@ -538,6 +547,14 @@ check(async () => {
       const unlimited = [...older.el.side.querySelectorAll("[data-meters] > *")].find((n) => n.textContent.startsWith("Context"));
       out.noHighWater = { class: unlimited?.className, text: unlimited?.textContent };
       older.dispose();
+      // The window is known from the start: the bar is there, empty, while
+      // only the planner has asked.
+      const early = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(early.root);
+      await early.open("planning");
+      const before = [...early.el.side.querySelectorAll("[data-meters] .meter")].find((n) => n.textContent.startsWith("Context"));
+      out.beforeFirst = { text: before?.textContent, width: before?.querySelector(".meter-fill")?.style.width };
+      early.dispose();
     }
     return out;
   });
@@ -586,6 +603,7 @@ check(async () => {
   want(results.meters.context === "Context~100 / ~774,143", `the context against the high water: ${results.meters.context}`);
   want(results.context.hint === null && /the provider counted 100 tokens/.test(results.context.title || ""), `context hint: ${JSON.stringify(results.context)}`);
   want(results.noHighWater.class === "kv" && results.noHighWater.text === "Context~100", `context without a high water: ${JSON.stringify(results.noHighWater)}`);
+  want(results.beforeFirst.text === "Context— / ~774,143" && results.beforeFirst.width === "0%", `context before the conversation's first request: ${JSON.stringify(results.beforeFirst)}`);
   const tb = results.tabs;
   want(tb.names.join() === "Live,Changes,Workspace,Notes" && tb.first === "Live", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
   want(tb.live.join() === "This turn,Plan,Totals", `Live tab panels: ${JSON.stringify(tb.live)}`);

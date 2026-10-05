@@ -371,7 +371,7 @@ A `jev.req` event records one judge request: the tool, its origin, the
 content level, the redacted payload's size and hash, the redactions, the
 answer, and, when an answer came back, the `model` that answered and its
 `usage` (`input_tokens`, `output_tokens`, and `cost`, an estimate from
-`[jev]` prices; the API reports none). A budget checkpoint's state counts
+`[jev]` prices, else those its provider publishes; the API reports none). A budget checkpoint's state counts
 the turn's judge requests apart: `judge_calls`, `judge_tokens`,
 `judge_cost`, `judge_unpriced`.
 
@@ -515,7 +515,10 @@ dotted name, to `{value, default, set}`: the value tasks opened now get
 (`null` for an optional one left unset, such as `jev.price_input`), its
 default, and whether `config.toml` sets it. `judge` says whether a judge can
 answer confirms now: `jev.content` is not `none` and a `jev-key` is in the
-unlocked keychain. `settings.write` takes `set`, from those names to new
+unlocked keychain. `jev_published` is what the judge's provider publishes
+about `jev.model` at `jev.url`, `{price_input, price_output}`, which prices its
+requests when `[jev]` sets no prices; absent when the catalogue does not
+describe it (ADR 41, amended 2026-10-05). `settings.write` takes `set`, from those names to new
 values; `null` removes a key so its default applies. It accepts only
 `approval.writes` and `approval.commands` (what a task does without asking,
 ADR 35), the `budget.*` limits, `loop.request_timeout`

@@ -418,7 +418,8 @@ url = "https://api.typesafe.ai"   # the default
 content = "plan"                  # none, plan (the default), plan+summaries or full
 approve_threshold = 0.8           # a call it judges runs at this probability of allow or above
 price_input = 0.5                 # US dollars per million tokens, to price
-price_output = 2.0                #   what the judge reports it used
+price_output = 2.0                #   what the judge reports it used; unset,
+                                  #   jev-latest is priced as published
 \end{toml}
 
 \begin{txt}

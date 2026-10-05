@@ -424,3 +424,24 @@ model = "sol"
 		t.Error("another host was described")
 	}
 }
+
+// The judge's prices are [jev]'s when it sets both, else what its provider
+// publishes for jev.model at jev.url, else none: its requests are then
+// counted, not priced.
+func TestJevPrices(t *testing.T) {
+	c := Default()
+	c.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"api.typesafe.ai": {"jev-latest": {Price: &catalogue.Price{Input: 0.042}}}})
+	if in, out := c.JevPrices(); in == nil || *in != 0.042 || out == nil || *out != 0 {
+		t.Fatalf("published: %v %v", in, out)
+	}
+	five, six := 5.0, 6.0
+	c.Jev.PriceInput, c.Jev.PriceOutput = &five, &six
+	if in, out := c.JevPrices(); in != &five || out != &six {
+		t.Fatalf("[jev]'s own: %v %v", in, out)
+	}
+	c.Jev.PriceInput, c.Jev.PriceOutput = nil, nil
+	c.Jev.Model = "jev-9"
+	if in, out := c.JevPrices(); in != nil || out != nil {
+		t.Fatalf("a model nothing is published of: %v %v", in, out)
+	}
+}

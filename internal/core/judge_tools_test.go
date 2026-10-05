@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"github.com/fclaude/nodwyn/internal/catalogue"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -59,44 +60,58 @@ func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 	}
 }
 
-// What the judge used is recorded with each answer, priced when [jev] has
-// prices, and counted in the task's spend; its tokens stay out of the
-// token budget, which counts model tokens.
+// What the judge used is recorded with each answer, priced at [jev]'s prices
+// or, when it sets none, at what its provider publishes (the judge reports
+// what it used, never what it cost), and counted in the task's spend; its
+// tokens stay out of the token budget, which counts model tokens.
 func TestJudgeUsageIsRecordedAndPriced(t *testing.T) {
 	t.Parallel()
-	judge := newFakeJudge(t, noul(0.2), noul(0.75))
-	r := judgedRigWith(t, judge, config.JevContentFull, "", func(o *Options) {
-		in, out := 1000.0, 2000.0
-		o.Config.Jev.PriceInput, o.Config.Jev.PriceOutput = &in, &out
-	},
-		fake.Turn{ToolCalls: []fake.ToolCall{{Name: "judge-noul", Args: map[string]any{"state": "the diff", "instructions": "is it complete?"}}}},
-		fake.Turn{Content: "done"})
-	if e := r.turn("check it"); e != "" {
-		t.Fatal(e)
-	}
-	var total float64
-	n := 0
-	for _, ev := range r.logged() {
-		if ev.Kind != log.KindJevReq {
-			continue
-		}
-		var jr log.JevReq
-		ev.Decode(&jr)
-		n++
-		u := jr.Usage
-		if jr.Model != "jev-1.13.0" || u == nil || u.InputTokens <= 0 || u.OutputTokens != 20 || u.Cost == nil {
-			t.Fatalf("jev.req %+v usage %+v", jr, u)
-		}
-		if want := (float64(u.InputTokens)*1000 + 20*2000) / 1e6; *u.Cost != want {
-			t.Fatalf("cost %v, want %v", *u.Cost, want)
-		}
-		total += *u.Cost
-	}
-	if n != 2 {
-		t.Fatalf("%d judge requests", n)
-	}
-	if got := r.s.knownSpend(); got != total {
-		t.Fatalf("the task's spend is %v, the judge's %v (the model has no prices)", got, total)
+	for _, tc := range []struct {
+		name  string
+		setup func(o *Options)
+	}{
+		{"at [jev]'s prices", func(o *Options) {
+			in, out := 1000.0, 2000.0
+			o.Config.Jev.PriceInput, o.Config.Jev.PriceOutput = &in, &out
+		}},
+		{"at its provider's", func(o *Options) {
+			o.Config.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"127.0.0.1": {o.Config.Jev.Model: {Price: &catalogue.Price{Input: 1000, Output: 2000}}}})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			judge := newFakeJudge(t, noul(0.2), noul(0.75))
+			r := judgedRigWith(t, judge, config.JevContentFull, "", tc.setup,
+				fake.Turn{ToolCalls: []fake.ToolCall{{Name: "judge-noul", Args: map[string]any{"state": "the diff", "instructions": "is it complete?"}}}},
+				fake.Turn{Content: "done"})
+			if e := r.turn("check it"); e != "" {
+				t.Fatal(e)
+			}
+			var total float64
+			n := 0
+			for _, ev := range r.logged() {
+				if ev.Kind != log.KindJevReq {
+					continue
+				}
+				var jr log.JevReq
+				ev.Decode(&jr)
+				n++
+				u := jr.Usage
+				if jr.Model != "jev-1.13.0" || u == nil || u.InputTokens <= 0 || u.OutputTokens != 20 || u.Cost == nil {
+					t.Fatalf("jev.req %+v usage %+v", jr, u)
+				}
+				if want := (float64(u.InputTokens)*1000 + 20*2000) / 1e6; *u.Cost != want {
+					t.Fatalf("cost %v, want %v", *u.Cost, want)
+				}
+				total += *u.Cost
+			}
+			if n != 2 {
+				t.Fatalf("%d judge requests", n)
+			}
+			if got := r.s.knownSpend(); got != total {
+				t.Fatalf("the task's spend is %v, the judge's %v (the model has no prices)", got, total)
+			}
+		})
 	}
 }
 

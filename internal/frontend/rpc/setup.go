@@ -232,6 +232,10 @@ type settingsResult struct {
 	// is enabled: Settings needs it to tell "no key stored" from "the judge
 	// is off with a key stored". The key's value is never included.
 	JevStored bool `json:"jev_stored"`
+	// JevPublished is what the judge's provider publishes about jev.model at
+	// jev.url, its prices, which price its requests when [jev] sets none;
+	// absent when the catalogue does not describe it.
+	JevPublished *publishedModel `json:"jev_published,omitempty"`
 }
 
 // docsSettings is how documents leave this computer: whether a Google
@@ -332,7 +336,7 @@ func (s *server) settings() settingsResult {
 	stored := s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
 	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: s.providers(), Choices: s.choices(), Keychain: s.keychainStatus(),
 		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge,
-		JevHost: prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL}), JevStored: stored}
+		JevHost: prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL}), JevStored: stored, JevPublished: judgePublished(s.options.Config)}
 }
 
 // docsSettingsMethod answers settings.docs.write: it saves how an upload to

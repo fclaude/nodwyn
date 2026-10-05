@@ -1111,9 +1111,13 @@ export class TaskView {
   // The provider's own count stays a tooltip: it differs from the estimate
   // and its line reflowed the panel on every reply. A log that does not say
   // the high water has no limit to count against, so the figure is a row.
+  // The window is known from the start, while the first requests are the
+  // planner's in a context of its own: the bar shows from the start, empty
+  // until the conversation's first request.
   contextMeter() {
     const g = contextGauge(this.events());
-    if (!g.est) return null;
+    if (!g.est && !g.high) return null;
+    if (!g.est) return meterBar("Context", `— / ~${g.high.toLocaleString()}`, 0, g.high, "No request in the conversation yet; older context is trimmed past the window's high water, and compaction comes just before it");
     const node = limited("Context", g.est, g.high, (n) => `~${n.toLocaleString()}`);
     const said = [g.reported ? `the provider counted ${g.reported.toLocaleString()} tokens` : "", g.compactions ? `compacted ${g.compactions === 1 ? "once" : `${g.compactions} times`}` : ""].filter(Boolean);
     node.title = ["nodwyn's estimate of the latest request in the conversation; older context is trimmed past the window's high water, and compaction comes just before it", ...said].join("; ");

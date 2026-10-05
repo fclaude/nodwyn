@@ -236,6 +236,18 @@ func published(cfg config.Config, m config.Model) *publishedModel {
 	return out
 }
 
+// judgePublished is what the judge's provider publishes about it: its
+// prices, when the catalogue describes jev.model at jev.url. cfg is a copy,
+// so leaving out [jev]'s own prices leaves the daemon's alone.
+func judgePublished(cfg config.Config) *publishedModel {
+	cfg.Jev.PriceInput, cfg.Jev.PriceOutput = nil, nil
+	in, out := cfg.JevPrices()
+	if in == nil || out == nil {
+		return nil
+	}
+	return &publishedModel{PriceInput: in, PriceOutput: out}
+}
+
 type publishedParams struct {
 	Server string `json:"server"` // a [servers.NAME] in config.toml
 	Model  string `json:"model"`  // the model's id on it

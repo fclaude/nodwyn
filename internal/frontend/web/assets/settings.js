@@ -429,9 +429,41 @@ function modelsSection(ctx, root) {
   return section(
     "models",
     "Models",
-    "The providers nodwyn talks to, the models you choose between with each one's own settings, and what new tasks start on. Saved in config.toml with its other lines kept; a key goes to the keychain. Tasks already open keep the model and effort they have, and change them under their own message box.",
+    "The providers nodwyn talks to, the models you choose between with each one's own settings, what new tasks start on, and the judge's model. Saved in config.toml with its other lines kept; a key goes to the keychain. Tasks already open keep the model and effort they have, and change them under their own message box.",
     ...modelsRows(ctx, () => renderSettings(root, ctx)),
+    ...(values(ctx.desk)["jev.model"] ? judgeModelRows(ctx) : []),
   );
+}
+
+// judgeModelRows are the judge's model settings, beside the other models'
+// (ADR 41, amended 2026-10-05): which model it is, its prices, with what its
+// provider publishes as their placeholders, and how long it may take. What it
+// sees and when it allows a command are under Judge.
+function judgeModelRows(ctx) {
+  const published = ctx.desk.settings?.jev_published || {};
+  const price = (x) => (x === undefined || x === null ? "unknown" : String(x));
+  return [
+    ...row("Judge model", input(ctx, "jev.model"), h("p", { class: "hint" }, `The model at ${ctx.desk.settings?.jev_host || "the judge's address"} that scores plans and answers commands (Judge, below).`)),
+    ...row(
+      "Judge prices",
+      h(
+        "div",
+        { class: "row-actions" },
+        input(ctx, "jev.price_input", { width: "narrow", prefix: "$", placeholder: price(published.price_input) }),
+        h("span", { class: "muted" }, "input,"),
+        input(ctx, "jev.price_output", { width: "narrow", prefix: "$", placeholder: price(published.price_output) }),
+        h("span", { class: "muted" }, "output"),
+      ),
+      h(
+        "p",
+        { class: "hint" },
+        published.price_input !== undefined
+          ? "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: empty is what its provider publishes. Tasks show the judge's spend, and a spend limit counts it."
+          : "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: tasks show the judge's spend, and a spend limit counts it.",
+      ),
+    ),
+    ...row("Judge waits", input(ctx, "jev.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
+  ];
 }
 
 function judgeSection(ctx, redraw) {
@@ -469,20 +501,7 @@ function judgeSection(ctx, redraw) {
     ...row("Key", keyAction || h("p", { class: "hint" }, desk.settings?.jev_stored ? "Stored in the keychain." : "Set the judge's address (jev.url) first.")),
     ...row("What it sees", choice(ctx, "jev.content", levels, redraw), h("p", { class: "hint" }, contentHint[content] || "")),
     ...row("Allows a command at", input(ctx, "jev.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a command go ahead. Below that, or with no answer, you're asked.")),
-    ...row("Waits", input(ctx, "jev.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
-    ...row("Model", input(ctx, "jev.model")),
-    ...row(
-      "Prices",
-      h(
-        "div",
-        { class: "row-actions" },
-        input(ctx, "jev.price_input", { width: "narrow", prefix: "$", placeholder: "unknown" }),
-        h("span", { class: "muted" }, "input,"),
-        input(ctx, "jev.price_output", { width: "narrow", prefix: "$", placeholder: "unknown" }),
-        h("span", { class: "muted" }, "output"),
-      ),
-      h("p", { class: "hint" }, "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: tasks show the judge's spend, and a spend limit counts it."),
-    ),
+    ...row("Model and prices", h("p", { class: "hint" }, h("a", { href: "#section-models" }, "Under Models"), ", with the other models' settings.")),
   );
 }
 

@@ -286,3 +286,24 @@ Not built: refreshing the catalogue while nodwyn runs (a daily ETag'd fetch of
 models.dev into the data directory, taking only numbers and models for the
 providers above), and listing the catalogue's providers in Settings before
 any key is added for them.
+
+## Amendment 2026-10-05: the judge's model settings sit with the models'
+
+A task on gpt-6.1-sol showed "Judge … 4 calls · 3,267 tokens · not priced":
+`[jev]` had no prices, though typesafe.ai publishes jev's ("$42 per billion
+input tokens"), and the judge's model, prices and wait sat apart from every
+other model's settings, under Judge.
+
+- **The judge is priced as published** when `[jev]` sets no prices
+  (`Config.JevPrices`): `internal/catalogue` keeps a small entry of its own
+  for models models.dev does not list, by host, each citing its provider's
+  page; `api.typesafe.ai`'s `jev-latest` is $0.042 per million input tokens
+  and nothing for output. `settings.read` carries it as `jev_published`.
+- **Settings › Models holds the judge's model settings**, after the models':
+  its model, its prices with the published ones as placeholders, and its
+  wait. Settings › Judge keeps whether it is available, what it sees and the
+  probability at which it allows a command, and points to Models for the
+  rest.
+- The side panel's Context meter shows from the start of a task, empty
+  until the conversation's first request: the window is known when the task
+  opens, while the first requests are the planner's in a context of its own.

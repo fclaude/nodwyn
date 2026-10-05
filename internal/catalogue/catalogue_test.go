@@ -93,3 +93,12 @@ func TestTheBuiltInSnapshot(t *testing.T) {
 		break
 	}
 }
+
+// The judge, which models.dev does not list, is described by nodwyn itself
+// at typesafe.ai's address: its published input price, and output free.
+func TestTheJudgeIsDescribed(t *testing.T) {
+	m, ok := Default().Lookup("https://api.typesafe.ai", "jev-latest")
+	if !ok || m.Price == nil || m.Price.Input != 0.042 || m.Price.Output != 0 {
+		t.Fatalf("jev-latest: %+v, %v", m, ok)
+	}
+}

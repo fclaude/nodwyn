@@ -944,11 +944,30 @@ func (c Config) Published(m Model) (catalogue.Model, bool) {
 	if m.Provider != "openai" {
 		return catalogue.Model{}, false
 	}
-	cat := c.Catalogue
-	if cat == nil {
-		cat = catalogue.Default()
+	return c.catalogue().Lookup(m.URL, m.Model)
+}
+
+// catalogue is the catalogue models are described by: Catalogue, else the
+// snapshot nodwyn was built with.
+func (c Config) catalogue() *catalogue.Catalogue {
+	if c.Catalogue != nil {
+		return c.Catalogue
 	}
-	return cat.Lookup(m.URL, m.Model)
+	return catalogue.Default()
+}
+
+// JevPrices are the judge's prices, USD per million tokens: [jev]'s own when
+// it sets both, else what its provider publishes for jev.model at jev.url
+// (internal/catalogue); nil when neither says, and the judge's requests are
+// counted, not priced.
+func (c Config) JevPrices() (input, output *float64) {
+	if c.Jev.PriceInput != nil && c.Jev.PriceOutput != nil {
+		return c.Jev.PriceInput, c.Jev.PriceOutput
+	}
+	if m, ok := c.catalogue().Lookup(c.Jev.URL, c.Jev.Model); ok && m.Price != nil {
+		return &m.Price.Input, &m.Price.Output
+	}
+	return nil, nil
 }
 
 // WithPublished is m with what its entry leaves unset and its provider

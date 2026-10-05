@@ -82,6 +82,15 @@ var Providers = []Provider{
 	{"ollama-cloud", "https://ollama.com/v1"},
 }
 
+// maintained are models nodwyn describes itself, by host, because
+// models.dev does not list them: the judge, whose price typesafe.ai publishes
+// on its home page as "$42 per billion input tokens"; it charges nothing for
+// output, which is a typed decision of a few dozen tokens. Whoever changes
+// one cites its provider's page here.
+var maintained = map[string]map[string]Model{
+	"api.typesafe.ai": {"jev-latest": {Price: &Price{Input: 0.042, Output: 0}}},
+}
+
 // Data is the snapshot as models.json holds it: where it came from, when,
 // and each provider's models by id.
 type Data struct {
@@ -110,6 +119,9 @@ var builtIn = sync.OnceValue(func() *Catalogue {
 		if models, ok := d.Providers[p.ID]; ok {
 			byHost[host(p.URL)] = models
 		}
+	}
+	for h, models := range maintained {
+		byHost[h] = models
 	}
 	return New(byHost)
 })

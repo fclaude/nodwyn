@@ -676,6 +676,24 @@ check(async () => {
   );
   step("a model OpenAI publishes has its context, reply cap, efforts and prices without any being typed, and nothing was sent to OpenAI");
 
+  // ---------- the judge's model settings, with the models' ----------
+  // The judge's model, prices and wait are under Models, its prices'
+  // placeholders what typesafe.ai publishes; what it sees stays under Judge,
+  // which points there. A price typed is saved to [jev].
+  await go("#/settings");
+  await page.waitForSelector("#section-models [id='set-jev.model']", { timeout: 10000 });
+  assert.strictEqual(await page.getAttribute("#section-models [id='set-jev.price_input']", "placeholder"), "0.042", "the judge's published input price");
+  assert.strictEqual(await page.getAttribute("#section-models [id='set-jev.price_output']", "placeholder"), "0");
+  assert.strictEqual(await page.locator("#section-judge [id='set-jev.price_input']").count(), 0, "the judge's prices are also under Judge");
+  await shows("#section-judge", "Model and prices", "Under Models");
+  await page.fill("#section-models [id='set-jev.price_input']", "0.05");
+  await page.click(".save-bar button:text-is('Save')");
+  await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "jev.price_input": 0.05 } });
+  assert.ok(/\[jev\][^[]*price_input = 0\.05/.test(config()), "the judge's price is not in [jev]:\n" + config());
+  await page.locator("#section-models").screenshot({ path: `${out}/models-judge.png` });
+  step("the judge's model, prices and wait sit with the models, its prices as published until set");
+
   // ---------- the phone: nothing sideways ----------
   await page.setViewportSize({ width: 390, height: 844 });
   for (const hash of ["#/", "#/settings", `#/task/${fastId}`]) {

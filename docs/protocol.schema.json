@@ -7256,6 +7256,16 @@
         "jev_host": {
           "type": "string"
         },
+        "jev_published": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/rpc.publishedModel"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "jev_stored": {
           "type": "boolean"
         },
