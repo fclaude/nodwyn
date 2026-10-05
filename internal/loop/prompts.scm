@@ -194,7 +194,15 @@
    ;; below then ran around tests that had passed, stashing the work for
    ;; nothing.
    "\n- Run the whole test module (or package) of each file you changed, not a selection of its tests; when you change how something is rendered or printed, include the tests that compare output. A build or a syntax check shows that code is well formed, not that it works, and the server's tests do not run code a browser runs (pages, their scripts and styles): for that, run the project's browser or end-to-end checks, extended to the states your change adds (a setting off, after a save, the new action, the pages that link to it); if it has none, say the page is unchecked."
-   "\n- Only when tests fail after your change, run the same command on the unchanged code and compare, in one command so your change comes back (for example: git stash; <command>; git stash pop): a test that passes before and fails after is yours to fix; one that fails both times is not."
+   ;; It said "git stash; <command>; git stash pop", which a worktree
+   ;; session was then told never to do (every worktree shares one stash),
+   ;; and a stash that is not popped, or popped onto other changes, loses
+   ;; work anywhere: in the local session logs of 2026-10-02 and 03 models
+   ;; stashed around tests that had passed, and once to rebase, in the
+   ;; person's own checkout (20261003T002506Z-f564a28c seq 3111, 4515,
+   ;; 5803). A copy of the last commit compares the same, and touches
+   ;; nothing (ADR 32, amended 2026-10-05).
+   "\n- Only when tests fail after your change, run the same command on the unchanged code and compare, on a copy of the last commit so your change is never touched: mkdir -p \"$TMPDIR/base\" && git archive HEAD | tar -x -C \"$TMPDIR/base\", then the same command in $TMPDIR/base. A test that passes before and fails after is yours to fix; one that fails both times is not. Never use git stash for this."
    "\n- When your changes break tests and the cause is not clear, find regressions by applying changes one file at a time."))
 
 ;; The explorer's system prompt and task: before a plan is drafted, a

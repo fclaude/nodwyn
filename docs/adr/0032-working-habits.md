@@ -695,3 +695,17 @@ requests, muse-spark in 261 with a narrower result, and qwen3.8-max had 9 of
 One now does: the reads and searches the model already knows it needs go in
 the same reply, as does a read beside the test it waits for, since they run
 in order and come back together. Not measured on the benchmark yet.
+
+## Amendment 2026-10-05: the unchanged code is a copy of the last commit, never a stash
+
+The working rule for comparing a failure with the unchanged code gave
+`git stash; <command>; git stash pop` as its example, and a worktree session
+was then told, in its own section, never to use git stash (ADR 34). Outside
+a worktree a stash is no safer: a stash not popped, or popped onto other
+changes, loses work, and this repository's own instructions forbid it. In
+the local session logs of 2026-10-02 and 03 models stashed around tests that
+had passed and once to rebase, in the person's own checkout
+(20261003T002506Z-f564a28c seq 3111, 4515, 5803). The rule now compares on a
+copy of the last commit (`git archive HEAD` into `$TMPDIR/base`) in every
+session, and says never to use git stash for it. ADR 34's "outside a
+worktree the habit is unchanged" no longer holds.

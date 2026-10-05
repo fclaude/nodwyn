@@ -336,3 +336,19 @@ func TestThePromptsAskForIndependentCallsTogether(t *testing.T) {
 		}
 	}
 }
+
+// Both prompts compare a failure with the unchanged code on a copy of the
+// last commit, never with git stash: every worktree shares one stash, and a
+// stash not popped, or popped onto other changes, loses work anywhere
+// (ADR 32, amended 2026-10-05).
+func TestThePromptsCompareWithACopyNotAStash(t *testing.T) {
+	t.Parallel()
+	for name, sys := range map[string]string{
+		"unattended":  unattendedRig(t).s.loop.WindowContext().System,
+		"interactive": newRig(t, true).s.loop.WindowContext().System,
+	} {
+		if strings.Contains(sys, "git stash;") || !strings.Contains(sys, "git archive HEAD | tar -x -C") || !strings.Contains(sys, "Never use git stash for this") {
+			t.Errorf("the %s prompt's comparison with the unchanged code:\n%s", name, sys)
+		}
+	}
+}

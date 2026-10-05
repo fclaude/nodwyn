@@ -23,15 +23,15 @@ unchanged after every change; follow the conclusion of a request that
 weighs options; widen a fix in the general form, not just for the example;
 run whole test modules, and check code a browser runs with the project's
 browser checks, since a build or a syntax check only shows it is well
-formed; compare failures against the unchanged code with \code{git stash},
-only when tests fail; bisect regressions file by file. In a git work tree,
+formed; compare failures against the unchanged code on a copy of the last
+commit (\code{git archive HEAD} into \code{\$TMPDIR/base}), never with
+\code{git stash}, and only when tests fail; bisect regressions file by file. In a git work tree,
 \code{(git-rule)} adds one more: look at the change with \code{git-status}
 and \code{git-diff} before finishing, and leave nothing in it that nothing
 uses. In a task started in a git worktree of its own,
 \code{(worktree-section)} names its branch, says other tasks may work in
-other worktrees meanwhile, and replaces the \code{git stash} comparison,
-since every worktree shares one stash, with one on a copy of the last
-commit (\adr{34}).
+other worktrees meanwhile, and says again that \code{git stash} is not
+used there, since every worktree shares one stash (\adr{34}).
 
 If your project has its own rules, add them after these rather than
 replacing them (Chapter~\ref{ch:checks}).
