@@ -554,10 +554,15 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	}
 	// A device may start a task in a worktree, as it may start one (ADR 34);
 	// a console that cannot reach worktree.open shows no way to ask for one.
-	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "run.start", "run.resume", "credentials.list", "session.rename", "session.archive", "session.open", "worktree.open"} {
+	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "run.start", "run.resume", "credentials.list", "session.rename", "session.archive", "session.open", "worktree.open", "worktree.diff", "worktree.review"} {
 		if !s.b.allowed(method, true) {
 			t.Fatalf("remote device may not call %s", method)
 		}
+	}
+	// Reading a review's diff changes nothing, so it stays open to a
+	// read-only console; sending the review is a message and does not.
+	if !readOnly("worktree.diff") || readOnly("worktree.review") {
+		t.Fatal("worktree.diff must be read-only and worktree.review must not be")
 	}
 	// A non-loopback console without device pairing refuses to start.
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")

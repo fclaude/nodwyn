@@ -243,6 +243,13 @@ many there were. \code{(worktree)} tells a strategy where the task works,
 and the system prompt tells the model, with a warning against
 \code{git stash}, which every worktree shares.
 
+The console's \textbf{Review} tab shows what the task changed since its
+base commit (\code{worktree.diff}, read without the daemon's lock, capped in
+size and time) and sends the comments written on it as one message
+(\code{worktree.review}), ordered by file and line and carrying no file
+content; only comments are built, and a change of direction is a message of
+its own.
+
 The work stays on the branch until you merge it. Closing the task removes
 the worktree and its branch only when nothing would be lost: no change, no
 untracked or ignored file, no commit its base lacks. Resuming a task whose

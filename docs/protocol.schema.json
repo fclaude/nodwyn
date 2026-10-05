@@ -2605,6 +2605,25 @@
     "payload.worktree.restore": {
       "$ref": "#/$defs/log.WorktreeChange"
     },
+    "prim.Change": {
+      "properties": {
+        "diff": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "status",
+        "diff"
+      ],
+      "type": "object"
+    },
     "prim.Version": {
       "properties": {
         "bytes": {
@@ -2858,7 +2877,13 @@
           "$ref": "#/$defs/request.workspace.save"
         },
         {
+          "$ref": "#/$defs/request.worktree.diff"
+        },
+        {
           "$ref": "#/$defs/request.worktree.open"
+        },
+        {
+          "$ref": "#/$defs/request.worktree.review"
         }
       ]
     },
@@ -5011,6 +5036,37 @@
       ],
       "type": "object"
     },
+    "request.worktree.diff": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "worktree.diff"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.worktreeDiffParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.worktree.open": {
       "properties": {
         "id": {
@@ -5030,6 +5086,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.openParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.worktree.review": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "worktree.review"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.worktreeReviewParams"
             }
           ],
           "unevaluatedProperties": false
@@ -5381,8 +5468,16 @@
     "result.workspace.save": {
       "$ref": "#/$defs/rpc.workspaceInfo"
     },
+    "result.worktree.diff": {
+      "$ref": "#/$defs/rpc.worktreeDiffResult"
+    },
     "result.worktree.open": {
       "$ref": "#/$defs/rpc.sessionDetails"
+    },
+    "result.worktree.review": {
+      "properties": {},
+      "required": [],
+      "type": "object"
     },
     "rpc.answerParams": {
       "properties": {
@@ -6918,6 +7013,24 @@
       ],
       "type": "object"
     },
+    "rpc.reviewComment": {
+      "properties": {
+        "line": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "text"
+      ],
+      "type": "object"
+    },
     "rpc.rpcError": {
       "properties": {
         "code": {
@@ -7611,6 +7724,66 @@
         "path",
         "name",
         "mounts"
+      ],
+      "type": "object"
+    },
+    "rpc.worktreeDiffParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "rpc.worktreeDiffResult": {
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/prim.Change"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "omitted": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "base",
+        "changes",
+        "omitted"
+      ],
+      "type": "object"
+    },
+    "rpc.worktreeReviewParams": {
+      "properties": {
+        "comments": {
+          "items": {
+            "$ref": "#/$defs/rpc.reviewComment"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "comments"
       ],
       "type": "object"
     },

@@ -186,6 +186,8 @@ var methodTable = map[string]handler{
 	"mcp.pull":                 (*server).mcpMethod,
 	"session.open":             (*server).open,
 	"worktree.open":            (*server).open,
+	"worktree.diff":            (*server).worktreeDiff,
+	"worktree.review":          (*server).worktreeReview,
 	"session.resume":           (*server).resume,
 	"session.model.set":        (*server).model,
 	"session.info":             (*server).info,

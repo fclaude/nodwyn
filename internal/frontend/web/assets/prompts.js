@@ -41,11 +41,15 @@ function dimension(name) {
 export function parseDiff(detail) {
   const rows = [];
   let oldLine = 0,
-    newLine = 0;
+    newLine = 0,
+    inHunk = false;
   for (const line of String(detail).split("\n")) {
-    if (line.startsWith("---") || line.startsWith("+++")) continue;
+    // The two file headers come before the first hunk. After it, a line that
+    // starts with +++ or --- is an added or removed line ("++i;", "-- note").
+    if (!inHunk && (line.startsWith("---") || line.startsWith("+++"))) continue;
     const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(line);
     if (hunk) {
+      inHunk = true;
       oldLine = Number(hunk[1]);
       newLine = Number(hunk[2]);
       rows.push({ kind: "hunk", n: "", sign: "", text: hunk[3].trim() || "⋯" });

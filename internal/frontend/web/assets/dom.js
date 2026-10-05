@@ -139,10 +139,13 @@ export function basename(path) {
 // diffStats counts a unified diff's added and removed lines.
 export function diffStats(detail) {
   let plus = 0,
-    minus = 0;
+    minus = 0,
+    inHunk = false;
   for (const line of String(detail || "").split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++")) plus++;
-    else if (line.startsWith("-") && !line.startsWith("---")) minus++;
+    // As in parseDiff, only the headers before the first hunk are skipped.
+    if (line.startsWith("@@")) inHunk = true;
+    if (line.startsWith("+") && (inHunk || !line.startsWith("+++"))) plus++;
+    else if (line.startsWith("-") && (inHunk || !line.startsWith("---"))) minus++;
   }
   return { plus, minus };
 }

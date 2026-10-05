@@ -1,14 +1,21 @@
 package rpc
 
 import (
+	"cmp"
+	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
-
-	"github.com/fclaude/nodwyn/internal/guard"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/prim"
 )
 
@@ -52,6 +59,15 @@ type versionDiffResult struct {
 }
 
 const maxVersionDiffBytes = 128 << 10
+
+// A review's changes together are kept to half the 1 MiB frame as JSON, which
+// leaves room for the rest of the reply; the files after that are counted,
+// not listed. The read as a whole is bounded in time too, as it runs git for
+// each file.
+const (
+	maxReviewDiffBytes = 512 << 10
+	reviewDiffTimeout  = 30 * time.Second
+)
 
 type restoreParams struct {
 	ID   string `json:"id"`
@@ -295,6 +311,131 @@ func (s *server) versionDiff(req request) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	return versionDiffResult{Label: label, Diff: prim.Unified(rel, string(before), string(after), 3)}, nil
+}
+
+type worktreeDiffParams struct {
+	ID string `json:"id"`
+}
+type worktreeDiffResult struct {
+	Base    string        `json:"base"`
+	Changes []prim.Change `json:"changes"`
+	// Omitted counts the changed files after the ones listed, which the reply
+	// had no room for.
+	Omitted int `json:"omitted"`
+}
+
+// reviewComment is one remark on a line of a changed file. Line is the line
+// in the file as it is now, 0 for a remark on the whole file. The line's own
+// text is not sent: it is file content, which would reach the model in a
+// message that carries the user's authority, and the model can read the line.
+type reviewComment struct {
+	Path string `json:"path"`
+	Line int    `json:"line,omitempty"`
+	Text string `json:"text"`
+}
+type worktreeReviewParams struct {
+	ID       string          `json:"id"`
+	Comments []reviewComment `json:"comments"`
+	Note     string          `json:"note,omitempty"`
+}
+
+// worktreeOf is the worktree of an open session, or the failure to report:
+// review is for sessions in a worktree of their own (ADR 34), where the base
+// commit says what the session changed.
+func (s *server) worktreeOf(id string) (*log.Worktree, ownedSession, *rpcError) {
+	o, ok := s.sessions[id]
+	if !ok {
+		return nil, ownedSession{}, failure(-32002, "Session is not open in this daemon")
+	}
+	w := o.session.Worktree()
+	if w == nil {
+		return nil, ownedSession{}, failure(-32000, "Review is for sessions in a worktree")
+	}
+	return w, o, nil
+}
+
+// worktreeDiff reads what a session changed in its worktree since its base
+// commit. It only reads, with the daemon's authority, and leaves out what the
+// denylist keeps from the model. Git runs without the lifecycle lock, as it
+// does when a worktree is made, so a large branch does not hold every other
+// method.
+func (s *server) worktreeDiff(req request, _ *peer) (any, *rpcError) {
+	var p worktreeDiffParams
+	if err := params(req.Params, &p, "id"); err != nil {
+		return nil, err
+	}
+	w, _, failed := s.worktreeOf(p.ID)
+	if failed != nil {
+		return nil, failed
+	}
+	o := prim.DefaultOptions(w.Path)
+	o.Private = []string{s.options.Paths.ConfigDir, s.options.Paths.DataDir}
+	ctx, cancel := context.WithTimeout(context.Background(), reviewDiffTimeout)
+	defer cancel()
+	s.mu.Unlock()
+	changes, omitted, err := prim.ChangedSince(ctx, o, w.BaseCommit, maxVersionDiffBytes, maxReviewDiffBytes)
+	s.mu.Lock()
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil, failure(-32000, "Reading the changes took too long")
+	}
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	if changes == nil {
+		changes = []prim.Change{}
+	}
+	return worktreeDiffResult{Base: w.BaseCommit, Changes: changes, Omitted: omitted}, nil
+}
+
+// worktreeReview sends a review to the session as one message, so the agent
+// answers all of it in one turn. A change of direction is not a comment: the
+// user sends that as a message. The comments are numbered in the order of the
+// file and line they are on, grouped under their file, whatever order they
+// were written in.
+func (s *server) worktreeReview(req request, _ *peer) (any, *rpcError) {
+	var p worktreeReviewParams
+	if err := params(req.Params, &p, "id", "comments", "note"); err != nil {
+		return nil, err
+	}
+	if len(p.Comments) == 0 {
+		return nil, failure(-32602, "comments must hold at least one comment")
+	}
+	_, owned, failed := s.worktreeOf(p.ID)
+	if failed != nil {
+		return nil, failed
+	}
+	for _, c := range p.Comments {
+		if c.Path == "" || strings.TrimSpace(c.Text) == "" {
+			return nil, failure(-32602, "each comment needs a path and text")
+		}
+	}
+	slices.SortStableFunc(p.Comments, func(a, b reviewComment) int {
+		return cmp.Or(strings.Compare(a.Path, b.Path), cmp.Compare(a.Line, b.Line))
+	})
+	var text strings.Builder
+	text.WriteString("Code review of your changes in this worktree. Address each comment, then say what you changed.\n")
+	if note := strings.TrimSpace(p.Note); note != "" {
+		text.WriteString("\n" + note + "\n")
+	}
+	last := ""
+	for i, c := range p.Comments {
+		if c.Path != last {
+			text.WriteString("\n" + c.Path + "\n")
+			last = c.Path
+		}
+		where := "file"
+		if c.Line > 0 {
+			where = "line " + strconv.Itoa(c.Line)
+		}
+		fmt.Fprintf(&text, "%d. (%s) %s\n", i+1, where, strings.TrimSpace(c.Text))
+	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before sending a review")
+	}
+	if err := owned.session.Send(text.String()); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return struct{}{}, nil
 }
 
 type attachParams struct {

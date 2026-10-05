@@ -308,6 +308,25 @@ previous versions nodwyn keeps of the task's files are kept with the
 repository's, in its `.nodwyn/versions/`, so they never keep a worktree and
 outlast it.
 Committing from a task is `git commit` through `shell-exec`, which asks.
+
+**Reviewing a task's changes.** A task in a worktree has a **Review** tab in
+its side panel: every file it changed since it branched (committed or not,
+untracked files too), as a diff, with what happened to each (added, modified,
+deleted) and the commit it is compared with. A link, a binary file, a file too
+large to show or an empty one says so instead of showing nothing; if a branch
+has more changes than a reply holds, the rest are counted. The tab reads the
+worktree while the task is open, and says to resume a closed one; it is read
+again when a turn ends, and **Refresh** reads it now.
+Hover a line and press **+** to comment on it, or use **Comment on file**; add
+an overall note if you like. **Send review** sends all the comments to the
+task together, as one message ordered by file and line, and clears them; the
+task answers them in one turn. Only your comment and the line's number go to
+the task, not the text of the line. A comment on a line the diff no longer
+shows is listed under its own heading so it can be read or removed, and one
+whose line now says something else is marked. Send waits while the task is
+working, and a refused review keeps its comments. Comments are kept in the
+page until sent, so reloading loses them. A change of direction is not a
+comment: write it to the task as a message.
 Not built yet: `--worktree` for the plain CLI, `nodwyn run` and the TUI;
 `nodwyn worktree list` and `remove`; and the git tools that would let a
 task commit, rebase and land its branch itself (ADR 34, amended

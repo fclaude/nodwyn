@@ -635,6 +635,22 @@ of sight cannot be reviewed, and nothing says it can be scrolled. */
 .change-inspector .diff-line .n { width: 28px; }
 .change-inspector .diff-line .t { min-width: 0; flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
 .change-toggle { min-width: 0; text-align: left; overflow-wrap: anywhere; }
+/* Review (ADR 34): the diff wraps like the change inspector's, and a line's
+comment control shows when the line is hovered or focused. */
+.review-file { min-width: 0; margin: 8px 0 12px; }
+.review-file .diff-head { flex-wrap: wrap; }
+.review-file .diff-body { max-height: 420px; }
+.review-file .diff-line { min-width: 0; gap: 8px; padding: 0 10px; align-items: flex-start; }
+.review-file .diff-line .n { width: 28px; }
+.review-file .diff-line .t { min-width: 0; flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.add-comment { flex-shrink: 0; width: 18px; border: 0; border-radius: 4px; background: var(--accent); color: #fff; cursor: pointer; opacity: 0; line-height: 16px; }
+.diff-line:hover .add-comment, .add-comment:focus-visible { opacity: 1; }
+.review-comment { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin: 4px 10px; padding: 6px 8px; border-left: 3px solid var(--accent); background: var(--code-line); white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-comment .hint { margin: 0 0 2px; }
+.review-orphans { margin: 12px 0; }
+.review-orphans h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+.review-form { margin: 4px 10px 8px; }
+.review-form .input { width: 100%; box-sizing: border-box; margin-bottom: 6px; }
 .version-entry { min-width: 0; }
 .version-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .change-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

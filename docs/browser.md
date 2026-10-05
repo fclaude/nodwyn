@@ -3,11 +3,12 @@
 The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
-beside it four tabs: **Live** holds this turn's budget, the plan and the
+beside it four tabs (five for a task in a worktree, which adds **Review**): **Live** holds this turn's budget, the plan and the
 task's totals, everything that moves while the task works; **Changes**
 holds recorded write approvals, each file's kept versions and the attachments;
 **Workspace** holds where it works, the tools it was offered and the
-Details inspectors; **Notes** holds the project notes. The plan shows the
+Details inspectors; **Notes** holds the project notes; **Review** (a worktree
+task's) holds what it changed since it branched, to comment on. The plan shows the
 model's progress through
 it: the steps it marked done (with what it says shows it), the ones it
 skipped, and the next. A step folds to its title, the clause up to its
@@ -186,7 +187,19 @@ when the task starts. Uncommitted changes in the folder are not in the
 worktree, and the conversation says how many. The task is listed under
 its repository; its heading shows the branch, and its Workspace panel the
 branch and where it started. Its changes stay on that branch until it is
-merged. Closing the task removes the worktree and its branch only when
+merged. Its **Review** tab lists what it changed since it branched, one diff
+per file with its status, drawn as literal text like every diff here and
+numbered as the file is (a line that starts with `++` or `--` is a line, not a
+header). A closed task's tab says to resume it. **+** on a line (or **Comment
+on file**) writes a comment, which **Remove** takes back; **Send review** sends
+all of them to the task as one message ordered by file and line, with only the
+line's number and the comment, and clears them. Send waits while the task
+works, since the daemon refuses a review then, and a refusal keeps the
+comments. The diff is read again when a turn ends. A comment whose file or line
+the diff no longer shows is listed under its own heading, still counted, and
+one whose line now says something else is marked. Comments live in the page
+until sent.
+Closing the task removes the worktree and its branch only when
 nothing in them would be lost: no change, no untracked or ignored file (an
 attachment is one), no commit its base lacks. Otherwise both stay, and
 resuming the task works in them again; a worktree that was removed is made

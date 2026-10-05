@@ -95,6 +95,12 @@ grouping, with the browser check `worktrees`. What is left of each phase:
   - In the console: commits ahead and the last push in the task header and
     Workspace panel, with Remove, each extending the browser check
     `worktrees`.
+  - Built on 2026-10-05 (ADR 34, amended): reviewing a worktree task's
+    changes. `worktree.diff` reads what it changed since its base commit and
+    `worktree.review` sends line and file comments as one message; the
+    console's Review tab draws and sends them, extending the browser check
+    `worktrees`. Comments only: approving or rejecting a branch is not
+    built, and a change of direction is a message to the task.
 - **WT5 — proof (small).**
   - Exfil scenarios: a worktree session cannot read the repository's `.env`
     through `../`, cannot write the common directory's hooks, and `git-diff`

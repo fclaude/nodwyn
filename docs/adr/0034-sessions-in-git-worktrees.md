@@ -394,3 +394,55 @@ Tests: `TestWorktreeGoesOnCloseWithItsVersionsKept`,
 `TestWorktreeCheckoutDoesNotHoldOtherMethods` (rpc), each failing on the
 code before this amendment. The last holds a `post-checkout` hook until
 `session.list` from another client has been answered.
+
+## Amendment 2026-10-05: reviewing a worktree task's changes
+
+A task in a worktree can be reviewed from the console. Decisions:
+
+- **Worktree tasks only.** The base commit in `worktree.create` is what makes
+  "the changes so far" well defined. `worktree.diff` and `worktree.review`
+  refuse any other session.
+- **`worktree.diff` reads, with the daemon's authority,** the working tree
+  against the base commit (committed, staged, unstaged and untracked), through
+  fixed git arguments with no external diff or filter program, leaving out
+  the files the denylist keeps from the model, and capping each file at the
+  size of `versions.diff`. It is read-only, so devices may call it. It runs
+  without the lifecycle lock, as a checkout does, and stops after 30 s, so a
+  large branch does not hold every other method. The changes it lists take at
+  most half a frame as JSON (JSON can make code several times larger than its
+  text), and the rest are counted in `omitted`. A file with no lines to show,
+  or that git cannot read, is a note in place of its diff and does not fail
+  the others.
+- **Comments, batched.** `worktree.review` sends the comments of one review as
+  a single message (numbered in the order of file and line, grouped by file),
+  so one turn answers them all rather than one turn per comment. The message
+  is an ordinary user message: the guard and approvals apply to what the agent
+  does about it. It carries the comment and the line's number, not the line's
+  text: that is file content, and the message has the user's authority. The
+  model can read the line. Comments live in the console until sent; the log
+  holds the message, not a separate record. A review is refused while the task
+  is answering, and a closed task has no worktree to read, so the console
+  waits for the first and says so for the second.
+- **Comments only in the first version.** Approving or rejecting a branch is
+  not built. A change of direction is not a comment: it is a message the
+  user writes to the task.
+
+Tests: `TestChangedFilesSinceBase`, `...StopsAtTheTotalLimit`,
+`...NotesAFileItCannotRead`, `...SaysWhatHasNoLines` and `...StopsWhenCancelled`
+(prim); `TestWorktreeDiffReturnsChangesSinceBase`,
+`...DoesNotHoldOtherMethods` (a held git filter), `...AnswersWithinAFrameForALargeBranch`,
+`TestWorktreeReviewSendsOneBatchedMessage`, `...GroupsCommentsByFileAndLine`,
+`...DoesNotSendFileContent`, `...RefusesACommentWithoutPathOrText` and
+`...WaitsForARunToEnd` (rpc); `TestRemoteDevicesPairByNameAndCannotWidenPolicy`
+(web, the allow list); and the browser check `worktrees`, which writes and
+removes comments, holds a task on a question to see Send wait and the diff read
+again, lists an orphaned comment, marks a changed line, checks the one request
+and a closed task's tab. Of the tests added with this round, `...StopsAtTheTotalLimit`,
+`...NotesAFileItCannotRead` and `...SaysWhatHasNoLines` (prim), and
+`...GroupsCommentsByFileAndLine`, `...DoesNotSendFileContent`,
+`...DoesNotHoldOtherMethods` and `...AnswersWithinAFrameForALargeBranch` (rpc)
+fail on the code before it; `...StopsWhenCancelled`,
+`...RefusesACommentWithoutPathOrText` and `...WaitsForARunToEnd` guard what
+was already right. `parseDiff` and `diffStats` skip `+++` and `---` only
+before the first hunk, so an added line that starts with `++` keeps its number
+and its place in the counts; `worktrees.js` checks the numbers.

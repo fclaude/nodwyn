@@ -3,11 +3,13 @@ package prim
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -108,6 +110,144 @@ func deniedChanges(ctx context.Context, o Options, diffArgs []string) ([]string,
 		}
 	}
 	return out, nil
+}
+
+// Change is one file a session's worktree differs in from its base commit:
+// Status is "A" (added or untracked), "M" or "D", and Diff is the unified
+// diff of the file, or a note in parentheses when there is nothing to show
+// as lines (a binary file, a link, a file too large to show).
+type Change struct {
+	Path   string `json:"path"`
+	Status string `json:"status"`
+	Diff   string `json:"diff"`
+}
+
+// The notes a Change's Diff holds in place of a diff.
+const (
+	noteTooLarge   = "(diff too large to show)"
+	noteBinary     = "(binary file)"
+	noteNotRegular = "(not a regular file: a link, folder or submodule)"
+	noteUnreadable = "(could not read this file)"
+	noteNoLines    = "(no lines changed)"
+)
+
+// ChangedSince lists what the working tree at o.Root changed from the base
+// commit: committed, staged, unstaged and untracked files alike, as a
+// reviewer sees a branch. Like git-diff it runs git with fixed arguments and
+// no external programs, and it leaves out the files the session's denylist
+// refuses to read. A file whose content is larger than perFile bytes is not
+// read. The changes listed take at most total bytes as JSON, paths included,
+// which is what a reply carries (JSON escapes a < or an & to six bytes, so
+// the size of the text is no measure): the files after that are counted in
+// omitted, and no git is run for them, so a branch of thousands of files
+// neither takes long nor outgrows a reply. A file git cannot read gets a note
+// of its own; only a failed listing or a cancelled ctx fails the whole call.
+func ChangedSince(ctx context.Context, o Options, base string, perFile, total int) (changes []Change, omitted int, err error) {
+	if base == "" || strings.HasPrefix(base, "-") {
+		return nil, 0, errors.New("a base commit is required")
+	}
+	// Names only, so a long list is not cut where the output limit would
+	// leave half a path.
+	listing := o
+	listing.MaxOutput = 16 << 20
+	tracked, err := runGit(ctx, listing, "diff", "--name-status", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", base, "--")
+	if err != nil {
+		return nil, 0, err
+	}
+	untracked, err := runGit(ctx, listing, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, 0, err
+	}
+	var named []Change
+	fields := strings.Split(tracked, "\x00")
+	for i := 0; i+1 < len(fields); i += 2 {
+		named = append(named, Change{Path: fields[i+1], Status: fields[i][:1]})
+	}
+	for _, name := range strings.Split(untracked, "\x00") {
+		if name != "" {
+			named = append(named, Change{Path: name, Status: "A"})
+		}
+	}
+	pin, err := os.OpenRoot(o.Root)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer pin.Close()
+	deny := denylist(o)
+	used, full := 0, false
+	for _, c := range named {
+		if deny.Denies(c.Path) != "" {
+			continue
+		}
+		if full {
+			omitted++
+			continue
+		}
+		c.Diff = changeDiff(ctx, o, pin, base, c, perFile)
+		if err := ctx.Err(); err != nil {
+			return nil, 0, err
+		}
+		// A Change always marshals; the comma is the one between entries.
+		encoded, _ := json.Marshal(c)
+		if used+len(encoded)+1 > total {
+			full = true
+			omitted++
+			continue
+		}
+		used += len(encoded) + 1
+		changes = append(changes, c)
+	}
+	return changes, omitted, nil
+}
+
+// changeDiff renders one change as a unified diff, or as a note when there
+// are no lines to show. What is not a regular file now (a link, say) is not
+// read, so the diff never follows it out of the root.
+func changeDiff(ctx context.Context, o Options, pin *os.Root, base string, c Change, limit int) string {
+	var before, after []byte
+	if c.Status != "D" {
+		info, err := pin.Lstat(c.Path)
+		switch {
+		case err == nil && !info.Mode().IsRegular():
+			return noteNotRegular
+		case err != nil && !errors.Is(err, os.ErrNotExist):
+			return noteUnreadable
+		case err == nil:
+			if info.Size() > int64(limit) {
+				return noteTooLarge
+			}
+			if after, err = pin.ReadFile(c.Path); err != nil {
+				return noteUnreadable
+			}
+		}
+	}
+	if c.Status != "A" {
+		// A submodule the base had has no object to read here.
+		size, err := runGit(ctx, o, "cat-file", "-s", base+":"+c.Path)
+		if err != nil {
+			return noteUnreadable
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(size)); err != nil || n > limit {
+			return noteTooLarge
+		}
+		out, err := runGit(ctx, o, "show", base+":"+c.Path)
+		if err != nil {
+			return noteUnreadable
+		}
+		before = []byte(out)
+	}
+	if bytes.IndexByte(before, 0) >= 0 || bytes.IndexByte(after, 0) >= 0 {
+		return noteBinary
+	}
+	diff := Unified(c.Path, string(before), string(after), 3)
+	// A change of mode alone, or an empty file, has headers and no lines.
+	if !strings.Contains(diff, "\n@@ ") {
+		if strings.Contains(diff, noteTooLarge) {
+			return noteTooLarge
+		}
+		return noteNoLines
+	}
+	return diff
 }
 
 // runGit runs one fixed git command in the root and returns its output, or

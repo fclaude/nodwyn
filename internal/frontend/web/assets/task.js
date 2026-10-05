@@ -44,6 +44,10 @@ export class TaskView {
     // event redraws the side panel, so the field is drawn from here and
     // what was typed outlives the redraw.
     this.notesDraft = null;
+    // The Review tab's state for a task in a worktree: the diff worktree.diff
+    // answered, the comments written so far, and the one being written. Every
+    // event redraws the side panel, so all of it is drawn from here.
+    this.review = null;
     // The Changes panel's open History lists, by path: what versions.list
     // answered, or an empty record while it has not. Every event redraws the
     // panel, so each list is drawn from here and outlives the redraw.
@@ -106,6 +110,7 @@ export class TaskView {
     this.info = null;
     this.notes = null;
     this.notesDraft = null;
+    this.review = null;
     this.histories.clear();
     this.changeOpen.clear();
     this.comparisons.clear();
@@ -354,6 +359,9 @@ export class TaskView {
           // A choice made while the response ran has applied, or said why it
           // could not: the state has it now.
           if (!this.loading && this.item?.open) this.loadInfo();
+          // What the turn changed is in the Review tab once it has been
+          // opened, without asking for a refresh.
+          if (this.review?.files && !this.loading && this.item?.open) this.loadReview();
         } else this.busy = true;
         this.statusDetail = p.Detail ?? p.detail ?? "";
         break;
@@ -874,10 +882,11 @@ export class TaskView {
   aside() {
     if (!this.el || !this.item) return;
     const side = this.el.side;
-    // A redraw replaces the notes field being typed in: the new one takes
-    // the focus and the caret, so typing carries on where it was.
-    const typing = side.querySelector("textarea[data-notes]");
-    const caret = typing && document.activeElement === typing ? [typing.selectionStart, typing.selectionEnd, typing.scrollTop] : null;
+    // A redraw replaces the text field being typed in (the project notes, a
+    // review comment or its note, each named by data-notes): the new one
+    // takes the focus and the caret, so typing carries on where it was.
+    const typing = [...side.querySelectorAll("textarea[data-notes]")].find((field) => field === document.activeElement);
+    const caret = typing ? [typing.selectionStart, typing.selectionEnd, typing.scrollTop] : null;
     // A tab button the reader is on keeps the focus across the redraw, as
     // the notes field keeps its caret.
     const focusing = side.querySelector("[role=tab]:focus");
@@ -919,7 +928,7 @@ export class TaskView {
     );
     side.replaceChildren(bar, body);
     if (focusing) side.querySelector(`#${focusing.id}`)?.focus();
-    const area = caret && side.querySelector("textarea[data-notes]");
+    const area = caret && side.querySelector(`textarea[data-notes="${typing.dataset.notes}"]`);
     if (area) {
       area.focus({ preventScroll: true });
       area.setSelectionRange(caret[0], caret[1]);
@@ -927,19 +936,24 @@ export class TaskView {
     }
   }
 
-  // asideTabs names the side's four tabs and the panels each holds. The
+  // asideTabs names the side's four tabs, and a fifth, Review, for a task in
+  // a worktree, and the panels each holds. The
   // grouping is by what a reader comes for: Live holds everything that
   // ticks while the task works, Changes what it has written and brought
   // in, Workspace where it works and what it may reach, and Notes what
   // nodwyn knows here. A tab whose panels all come out empty says so
   // instead of showing nothing at all.
   asideTabs() {
-    return [
+    const tabs = [
       { id: "live", label: "Live", draw: () => [this.turnPanel(), this.planPanel(), this.totalsPanel()], empty: "Nothing has run yet." },
       { id: "changes", label: "Changes", draw: () => [this.changesPanel(), this.attachmentsPanel()], empty: "No approved changes yet." },
       { id: "workspace", label: "Workspace", draw: () => [this.workspacePanel(), this.toolsPanel(), this.detailsPanel()], empty: "Nothing to show." },
       { id: "notes", label: "Notes", draw: () => [this.notesPanel()], empty: "Reading the notes…" },
     ];
+    // Review is for a task in a worktree, where the base commit says what the
+    // task changed (ADR 34).
+    if (this.item?.worktree && this.conn.has("worktree.diff")) tabs.splice(2, 0, { id: "review", label: this.reviewLabel(), draw: () => [this.reviewPanel()], empty: "Nothing to review." });
+    return tabs;
   }
 
   // The tabs follow the arrow keys, the tab that takes focus being the one
@@ -1369,6 +1383,146 @@ export class TaskView {
     const worktree = w ? `This task works in a git worktree of its own, so other tasks and you can work in ${this.desk.folderName(w.repository)} meanwhile. Its changes stay on ${w.branch} until it is merged${w.base ? ` into ${w.base}` : ""}; closing the task removes the worktree only when nothing in it would be lost.` : "";
     const undo = this.info ? (this.info.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the previous version of anything else before it writes. Restore it from Changes." : "Not a git repository, so nodwyn keeps the previous version of a file before it writes. Restore it from Changes.") : "";
     return h("section", { class: "panel" }, h("h2", {}, "Workspace"), rows, worktree ? h("p", { class: "hint" }, worktree) : null, undo ? h("p", { class: "hint" }, undo) : null);
+  }
+  reviewLabel() {
+    const n = this.review?.comments.length;
+    return n ? `Review (${n})` : "Review";
+  }
+  // loadReview reads what the task changed since its base commit. A reply
+  // belongs only to the task that asked, and only the latest read counts: a
+  // turn that ends while one is under way asks again, and the older answer
+  // must not replace the newer. A failed read keeps the diff already shown
+  // rather than saying nothing changed.
+  async loadReview() {
+    const version = this.version;
+    const state = this.review;
+    const asked = (state.asked = (state.asked || 0) + 1);
+    state.loading = true;
+    this.aside();
+    let answer;
+    try {
+      answer = await this.conn.call("worktree.diff", { id: this.item.id });
+    } catch (error) {
+      answer = { error: error.message };
+    }
+    if (version !== this.version || this.review !== state || state.asked !== asked) return;
+    state.loading = false;
+    state.error = answer.error || null;
+    if (!answer.error) {
+      state.files = answer.changes;
+      state.base = answer.base;
+      state.omitted = answer.omitted;
+    }
+    this.aside();
+  }
+  addComment(path, line, quote) {
+    const state = this.review;
+    const text = state.draft.trim();
+    if (!text) return;
+    // The line's text stays here, to notice when the line has changed by the
+    // time the review is sent: only the number and the comment go to the task.
+    state.comments.push({ path, line, quote, text });
+    state.composing = null;
+    state.draft = "";
+    this.aside();
+  }
+  // working is whether the task is answering something: a review is refused
+  // meanwhile, so Send waits instead of failing after the click.
+  working() {
+    return this.busy || this.item?.run?.status === "running";
+  }
+  // sendReview sends every comment as one message to the task and clears them
+  // once it is accepted; a refusal keeps them.
+  async sendReview() {
+    const state = this.review;
+    if (!state?.comments.length || state.sending) return;
+    state.sending = true;
+    state.error = null;
+    this.aside();
+    try {
+      await this.conn.call("worktree.review", { id: this.item.id, note: state.note.trim() || undefined, comments: state.comments.map(({ path, line, text }) => ({ path, line, text })) });
+      state.comments = [];
+      state.note = "";
+      toast("Review sent.");
+    } catch (error) {
+      state.error = error.message;
+    }
+    state.sending = false;
+    this.aside();
+  }
+  reviewPanel() {
+    const item = this.item;
+    const panel = h("section", { class: "panel review" }, h("h2", {}, "Review changes"));
+    // The changes are read from the worktree of an open task.
+    if (!item.open) {
+      panel.append(h("p", { class: "hint" }, "Resume this task to review its changes: they are read from its worktree while it is open."));
+      return panel;
+    }
+    // The first draw starts the read, after it, so aside() does not draw
+    // itself.
+    if (!this.review) {
+      this.review = { comments: [], composing: null, draft: "", note: "", loading: false };
+      queueMicrotask(() => this.loadReview());
+    }
+    const state = this.review;
+    panel.querySelector("h2").append(h("button", { type: "button", class: "btn small ghost", disabled: state.loading, onclick: () => this.loadReview() }, "Refresh"));
+    if (state.error) panel.append(h("p", { class: "error", role: "status" }, state.error));
+    if (!state.files) {
+      if (!state.error) panel.append(h("p", { class: "hint", role: "status" }, "Reading the changes…"));
+      return panel;
+    }
+    const w = item.worktree;
+    const total = state.files.length + state.omitted;
+    panel.append(h("p", { class: "hint" }, `${total} file${total === 1 ? "" : "s"} changed since ${w.base ? `${w.base} at ` : ""}${state.base.slice(0, 7)}.`, state.omitted ? ` ${state.omitted} not shown: there are more than a review can list.` : ""));
+    const statuses = { A: ["added", "ok"], M: ["modified", "plain"], D: ["deleted", "bad"] };
+    // Diff content is session content: h() makes it text, never markup.
+    const drawn = new Set();
+    for (const file of state.files) {
+      const body = h("div", { class: "diff-body" });
+      for (const row of parseDiff(file.diff)) {
+        const line = h("div", { class: `diff-line ${row.kind}` }, h("span", { class: "n" }, String(row.n)), h("span", { class: "s" }, row.sign), h("span", { class: "t" }, row.text));
+        body.append(line);
+        // Only a line the file has now can be commented: its number is the
+        // number in the file the task edits.
+        if ((row.kind !== "add" && row.kind !== "ctx") || !row.n) continue;
+        const key = `${file.path}:${row.n}`;
+        line.append(h("button", { type: "button", class: "add-comment", title: "Add a comment", "aria-label": `Comment on ${file.path} line ${row.n}`, onclick: () => { state.composing = key; state.draft = ""; this.aside(); } }, "+"));
+        for (const c of state.comments.filter((c) => c.path === file.path && c.line === row.n)) {
+          drawn.add(c);
+          body.append(this.commentCard(c, c.quote === row.text ? "" : "This line has changed since you commented on it."));
+        }
+        if (state.composing === key) body.append(this.commentForm("comment", () => this.addComment(file.path, row.n, row.text)));
+      }
+      const whole = state.comments.filter((c) => c.path === file.path && !c.line);
+      for (const c of whole) drawn.add(c);
+      const [word, tone] = statuses[file.status] || [file.status, "plain"];
+      panel.append(h("div", { class: "diff review-file" }, h("div", { class: "diff-head" }, h("span", { class: "mono" }, file.path, " ", h("span", { class: `badge ${tone}` }, word)), h("button", { type: "button", class: "btn small ghost", onclick: () => { state.composing = file.path; state.draft = ""; this.aside(); } }, "Comment on file")), body, whole.map((c) => this.commentCard(c, "")), state.composing === file.path ? this.commentForm("comment", () => this.addComment(file.path, 0, "")) : null));
+    }
+    if (!state.files.length) panel.append(h("p", { class: "hint" }, "This task has not changed anything since it branched."));
+    // A comment whose file or line the diff no longer shows is still sent, so
+    // it is listed where it can be read and removed.
+    const orphans = state.comments.filter((c) => !drawn.has(c));
+    if (orphans.length) panel.append(h("div", { class: "review-orphans" }, h("h3", {}, "Comments on lines the diff no longer shows"), orphans.map((c) => this.commentCard(c, `${c.path}${c.line ? `, line ${c.line}` : ""}`))));
+    if (state.comments.length) {
+      const note = h("textarea", { class: "input", rows: 2, "aria-label": "Overall note", placeholder: "Overall note (optional)", dataset: { notes: "note" }, oninput: (event) => (state.note = event.target.value) });
+      note.value = state.note;
+      panel.append(note, h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small dark", disabled: state.sending || this.working(), onclick: () => this.sendReview() }, `Send review (${state.comments.length})`), this.working() ? h("span", { class: "hint" }, "The task is working: send when it is idle.") : null));
+    }
+    panel.append(h("p", { class: "hint" }, "Comments go to the task together, as one message. To change direction, write to the task instead."));
+    return panel;
+  }
+  // commentCard draws a comment, with a line of what is wrong with where it
+  // points when something is.
+  commentCard(c, remark) {
+    return h("div", { class: "review-comment" }, h("div", {}, remark ? h("div", { class: "hint" }, remark) : null, h("span", {}, c.text)), h("button", { type: "button", class: "btn small ghost", "aria-label": "Remove comment", onclick: () => { this.review.comments.splice(this.review.comments.indexOf(c), 1); this.aside(); } }, "Remove"));
+  }
+  // commentForm is the field a comment is written in. kind names it for
+  // aside(), which keeps the caret in the field being typed in.
+  commentForm(kind, save) {
+    const state = this.review;
+    const area = h("textarea", { class: "input", rows: 2, spellcheck: true, "aria-label": "Comment", dataset: { notes: kind }, oninput: (event) => (state.draft = event.target.value) });
+    area.value = state.draft;
+    return h("div", { class: "review-form" }, area, h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small dark", onclick: save }, "Add comment"), h("button", { type: "button", class: "btn small ghost", onclick: () => { state.composing = null; this.aside(); } }, "Cancel")));
   }
   async history(path) {
     if (this.histories.has(path)) {

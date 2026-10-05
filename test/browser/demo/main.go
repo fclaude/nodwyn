@@ -545,6 +545,19 @@ func respond(req fake.Request) fake.Turn {
 		}
 		return fake.Turn{Content: "Quieted: make no longer echoes either command, and the tests print only failures.", Chunk: 16}
 	}
+	if strings.HasPrefix(last, "Hold") {
+		// A task in a worktree writes a file whose lines start with ++ and --
+		// (a review numbers them as the file does), then runs a command, which
+		// asks: the turn waits for the answer, so a review sent meanwhile
+		// waits for it too (ADR 34).
+		switch rounds {
+		case 0:
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "h1", Name: "fs-write", Args: map[string]any{"path": "notes/held.md", "content": last + "\n++count;\n-- note\ntail\n"}}}}
+		case 1:
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "h2", Name: "shell-exec", Args: map[string]any{"cmd": "ls", "args": []any{"notes"}}}}}
+		}
+		return fake.Turn{Content: "Held, then released.", Chunk: 12}
+	}
 	if strings.HasPrefix(last, "Write") {
 		// A task in a worktree writes a file there, never in the
 		// repository's own checkout (ADR 34).

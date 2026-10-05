@@ -351,7 +351,7 @@ func readOnly(method string) bool {
 	switch method {
 	case "hello", "session.list", "session.watch", "session.info", "session.subscribe", "session.unsubscribe", "log.read",
 		"attention.list", "notes.read", "models.status", "models.offered", "models.published", "run.info", "keychain.status", "settings.read",
-		"workspace.list", "versions.list", "versions.diff", "mcp.list", "mcp.runtime", "credentials.list":
+		"workspace.list", "versions.list", "versions.diff", "worktree.diff", "mcp.list", "mcp.runtime", "credentials.list":
 		return true
 	}
 	return false
@@ -521,7 +521,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		return false
 	}
 	switch method {
-	case "session.open", "worktree.open", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
+	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
 		"session.notes.write", "run.start", "run.stop", "run.resume", "session.restore", "session.rename", "session.archive":
 		return true
 	// Choosing a conversation's model decides where its content goes next,

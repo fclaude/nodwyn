@@ -32,6 +32,8 @@ func contracts() map[string]methodContract {
 		"session.list":             {struct{}{}, []sessionInfo{}},
 		"session.open":             {openParams{}, sessionDetails{}},
 		"worktree.open":            {openParams{}, sessionDetails{}},
+		"worktree.diff":            {worktreeDiffParams{}, worktreeDiffResult{}},
+		"worktree.review":          {worktreeReviewParams{}, struct{}{}},
 		"session.resume":           {idParams{}, sessionDetails{}},
 		"session.model.set":        {modelSetParams{}, core.ModelState{}},
 		"session.info":             {idParams{}, sessionDetails{}},

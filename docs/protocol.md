@@ -62,6 +62,8 @@ IDs are transport data and are echoed unchanged.
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
 | `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"` | Open-session details |
 | `worktree.open` | as `session.open` | Open-session details of a session in a new git worktree of `repo` |
+| `worktree.diff` | `{"id"}` | `{base,changes:[{path,status,diff}],omitted}`: what the open session changed in its worktree since its base commit |
+| `worktree.review` | `{"id","comments":[{"path","line"?,"text"}],"note"?}` | `{}`: sends the comments to the session as one message |
 | `session.resume` | `{"id":"SESSION_ID"}` | Open-session details |
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
 | `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"`, and `"effort"` | The model and effort the conversation talks to now, and the choice queued behind a running turn |
@@ -171,6 +173,28 @@ commit its base lacks) and keeps it otherwise; `session.resume` makes a
 missing one again, on its branch if that still exists. A client offers the
 choice only when `hello` lists the method; a paired device may call it,
 as it may call `session.open`.
+
+`worktree.diff` and `worktree.review` are for an open session in a worktree
+(ADR 34); any other session, or a closed one, is refused (`-32000`).
+`worktree.diff` returns the base commit and, per file, `status` (`A`, `M` or
+`D`; committed, staged, unstaged and untracked changes alike) and a unified
+`diff`, with the files the model may not read left out. A file whose diff has
+no lines to show says why in a note in parentheses instead: `(diff too large
+to show)` above 128 KiB, `(binary file)`, `(not a regular file: a link, folder
+or submodule)`, `(no lines changed)` for an empty file or a change of mode
+alone, `(could not read this file)` when git cannot, which does not fail the
+rest. The changes listed take at most half a frame (512 KiB as JSON); the
+files after that are counted in `omitted` and not listed. The read does not
+hold the daemon's other methods, and stops after 30 s (`-32000`). It is
+read-only, so a paired device and a read-only console may call it.
+`worktree.review` formats its comments as one message, numbered in the order
+of their file and line and grouped under the file, and sends it as
+`session.send` would: an empty `comments`, a run still going (`-32000`: wait
+for it to end) and a comment without `path` or `text` (`-32602`) are refused,
+and nothing is sent. `line` counts the file as it is now, absent for a
+comment on the whole file. The text of the line is not part of a comment: it
+is file content, which would reach the model in a message with the user's
+authority, and a client that sends one as `quote` has it ignored.
 
 `session.resume` returns the already-open session if this daemon owns it.
 Otherwise it uses `core.Resume`, including its exclusive writer lock, recovery

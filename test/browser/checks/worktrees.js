@@ -42,7 +42,9 @@ check(async () => {
 
   // Two tasks, each in a worktree of its own: the console asks for one with
   // worktree.open, never session.open.
-  const startTask = async (text) => {
+  // settle waits for the task's turn to end; a task held by a question has
+  // none to wait for.
+  const startTask = async (text, settle = true) => {
     await page.evaluate(() => (location.hash = "#/"));
     await page.waitForSelector(".worktree-toggle input");
     assert.ok(await page.isChecked(".worktree-toggle input"), "the folder's choice of a worktree was not kept");
@@ -50,7 +52,7 @@ check(async () => {
     await page.press("#task", "Control+Enter");
     await page.waitForFunction(() => location.hash.startsWith("#/task/"));
     await loaded();
-    await idle();
+    if (settle) await idle();
     return decodeURIComponent(await page.evaluate(() => location.hash.split("/")[2]));
   };
   const first = await startTask("Write first");
@@ -79,6 +81,72 @@ check(async () => {
   await page.click(".task-aside [role=tab]:has-text('Workspace')");
   await shows(page, ".task-aside", "Branch", branches[second], `Its changes stay on ${branches[second]} until it is merged into main`);
   await page.screenshot({ path: `${out}/worktree-task.png` });
+  // Review: the task's diff since its base commit, comments written on it,
+  // and one request that sends them all and clears them.
+  await page.click(".task-aside [role=tab]:has-text('Review')");
+  await page.waitForFunction(() => document.querySelector(".task-aside .review")?.innerText.includes("notes/second.md"), null, { timeout: 15000 });
+  await shows(page, ".task-aside .review", "Write second", "1 file changed since main at");
+  // The file's status is on show with its diff.
+  assert.strictEqual(await page.locator(".review-file .badge").first().textContent(), "added");
+  // A redraw (an event does one) that leaves the focus where it was: a tab
+  // pressed by script does not take it.
+  const redraw = () => page.evaluate(() => document.querySelector(".task-aside [role=tab][aria-selected=true]").click());
+  const reviewed = page.locator(".review-file .diff-line", { hasText: "Write second" }).first();
+  await reviewed.hover();
+  await reviewed.locator(".add-comment").click();
+  await page.fill(".review-form textarea", "Say mor");
+  await page.locator(".review-form textarea").focus();
+  await page.evaluate(() => document.querySelector(".review-form textarea").setSelectionRange(3, 3));
+  await redraw();
+  const typing = await page.evaluate(() => {
+    const field = document.querySelector(".review-form textarea");
+    return { focused: document.activeElement === field, at: field.selectionStart, value: field.value };
+  });
+  assert.deepStrictEqual(typing, { focused: true, at: 3, value: "Say mor" }, "a redraw took the focus or the caret from a comment being written");
+  await page.click(".review-form button:text-is('Cancel')");
+  assert.strictEqual(await page.locator(".review-form").count(), 0, "Cancel left the form open");
+  assert.strictEqual(await page.locator(".review-comment").count(), 0, "Cancel kept a comment");
+  await reviewed.hover();
+  await reviewed.locator(".add-comment").click();
+  await page.fill(".review-form textarea", "Say more here");
+  await page.click(".review-form button:text-is('Add comment')");
+  await page.click(".review-file .diff-head button:text-is('Comment on file')");
+  await page.fill(".review-form textarea", "Name the file better");
+  await page.click(".review-form button:text-is('Add comment')");
+  await shows(page, ".task-aside [role=tab][aria-selected=true]", "Review (2)");
+  assert.strictEqual(sent.of("worktree.review").length, 0, "comments were sent before Send review");
+  // A comment is taken back with Remove, and written again.
+  await page.locator(".review-comment", { hasText: "Name the file better" }).locator("button:text-is('Remove')").click();
+  await shows(page, ".task-aside [role=tab][aria-selected=true]", "Review (1)");
+  await page.click(".review-file .diff-head button:text-is('Comment on file')");
+  await page.fill(".review-form textarea", "Name the file better");
+  await page.click(".review-form button:text-is('Add comment')");
+  await shows(page, ".task-aside [role=tab][aria-selected=true]", "Review (2)");
+  // The overall note keeps the focus and the caret across a redraw too.
+  await page.fill("textarea[aria-label='Overall note']", "Mostly fine");
+  await page.locator("textarea[aria-label='Overall note']").focus();
+  await page.evaluate(() => document.querySelector("textarea[aria-label='Overall note']").setSelectionRange(4, 4));
+  await redraw();
+  const note = await page.evaluate(() => {
+    const field = document.querySelector("textarea[aria-label='Overall note']");
+    return { focused: document.activeElement === field, at: field.selectionStart, value: field.value };
+  });
+  assert.deepStrictEqual(note, { focused: true, at: 4, value: "Mostly fine" }, "a redraw took the focus or the caret from the overall note");
+  await page.screenshot({ path: `${out}/worktree-review.png` });
+  await page.click("button:text-is('Send review (2)')");
+  await until("one review request", async () => sent.of("worktree.review").length === 1);
+  const review = sent.of("worktree.review")[0];
+  assert.strictEqual(review.id, second);
+  // Only the number and the comment go to the task, never the line's text.
+  assert.deepStrictEqual(review.comments, [
+    { path: "notes/second.md", line: 1, text: "Say more here" },
+    { path: "notes/second.md", line: 0, text: "Name the file better" },
+  ]);
+  assert.strictEqual(review.note, "Mostly fine");
+  // They clear when the daemon has accepted the review, not when it is sent.
+  await until("the comments cleared once the review was accepted", async () => (await page.locator(".review-comment").count()) === 0);
+  assert.ok(sent.of("worktree.diff").length >= 1, "the diff was not asked for");
+  await idle();
   // Both are listed under the repository, which Home offers once.
   const listed = await until("both tasks under project", async () => {
     const f = await folders();
@@ -144,4 +212,67 @@ check(async () => {
   assert.ok(reads() > closedReads, "a closed task's conversation was not read from its log");
   assert.ok(fs.existsSync(path.join(repo, ".nodwyn", "worktrees", branches[first].slice("nodwyn/".length), "notes", "first.md")), "closing removed a worktree with work in it");
   await page.screenshot({ path: `${out}/worktree-closed.png` });
+  // A task the daemon will not take a review for, because it is answering
+  // something: it writes a file whose lines start with ++ and --, then asks to
+  // run a command, which holds the turn.
+  const held = await startTask("Hold the line", false);
+  await page.waitForSelector(".ask-card", { timeout: 15000 });
+  await page.click(".task-aside [role=tab]:has-text('Review')");
+  await page.waitForFunction(() => (document.querySelector(".task-aside .review")?.innerText || "").includes("++count;"), null, { timeout: 15000 });
+  // The diff numbers the lines as the file does: a line that starts with ++
+  // or -- is a line of the file, not a header.
+  const lines = await page.$$eval(".review-file .diff-line", (rows) => rows.map((r) => [r.querySelector(".n").textContent, r.querySelector(".t").textContent]));
+  assert.deepStrictEqual(lines, [["", "⋯"], ["1", "Hold the line"], ["2", "++count;"], ["3", "-- note"], ["4", "tail"]].slice(0, lines.length), "lines that start with ++ or -- were taken for headers, and the numbers after them shifted");
+  assert.strictEqual(lines.length, 5, `the diff's lines: ${JSON.stringify(lines)}`);
+  const tail = page.locator(".review-file .diff-line", { hasText: "tail" }).first();
+  await tail.hover();
+  await tail.locator(".add-comment").click();
+  await page.fill(".review-form textarea", "Drop this tail");
+  await page.click(".review-form button:text-is('Add comment')");
+  // Send waits for the task: the button is disabled and says why, and no
+  // request is made that the daemon would refuse.
+  assert.ok(await page.locator("button:text-is('Send review (1)')").isDisabled(), "Send review was offered while the task was working");
+  await shows(page, ".task-aside .review", "The task is working: send when it is idle.");
+  assert.strictEqual(sent.of("worktree.review").length, 1, "a review was sent to a working task");
+  // The turn ends: the diff is read again without a Refresh, and Send is back.
+  const diffs = sent.of("worktree.diff").length;
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.keyboard.press("y");
+  await idle();
+  await until("the diff read again after the turn", async () => sent.of("worktree.diff").length > diffs);
+  await until("Send review offered again", async () => page.locator("button:text-is('Send review (1)')").isEnabled());
+
+  // A comment whose line the file no longer has is not hidden: it is listed
+  // under its own heading, still counted, and can be removed.
+  const heldFile = path.join(repo, ".nodwyn", "worktrees", held.slice(held.lastIndexOf("-") + 1), "notes", "held.md");
+  fs.writeFileSync(heldFile, "Hold the line\n");
+  await page.click(".task-aside .review button:text-is('Refresh')");
+  await page.waitForFunction(() => document.querySelector(".review-orphans")?.innerText.includes("notes/held.md, line 4"), null, { timeout: 15000 });
+  await shows(page, ".task-aside [role=tab][aria-selected=true]", "Review (1)");
+  await shows(page, ".review-orphans", "Drop this tail");
+  await page.locator(".review-orphans button:text-is('Remove')").click();
+  assert.strictEqual(await page.locator(".review-orphans").count(), 0, "Remove left the comment in the list");
+  // A line that is still there but says something else is marked.
+  const title = page.locator(".review-file .diff-line", { hasText: "Hold the line" }).first();
+  await title.hover();
+  await title.locator(".add-comment").click();
+  await page.fill(".review-form textarea", "Reword the title");
+  await page.click(".review-form button:text-is('Add comment')");
+  fs.writeFileSync(heldFile, "Hold another line\n");
+  await page.click(".task-aside .review button:text-is('Refresh')");
+  await page.waitForFunction(() => document.querySelector(".review-comment")?.innerText.includes("This line has changed since you commented on it."), null, { timeout: 15000 });
+  await page.click("button:text-is('Send review (1)')");
+  await until("the second review", async () => sent.of("worktree.review").length === 2);
+  assert.deepStrictEqual(sent.of("worktree.review")[1].comments, [{ path: "notes/held.md", line: 1, text: "Reword the title" }]);
+  await idle();
+
+  // A closed task is not read: its worktree is read while it is open, so the
+  // tab says to resume it, asks nothing and shows no refusal.
+  await page.click('.task-actions button:text-is("Close")');
+  await page.waitForSelector('.task-actions button:text-is("Resume")');
+  const asked = sent.of("worktree.diff").length;
+  await shows(page, ".task-aside .review", "Resume this task to review its changes");
+  assert.strictEqual(sent.of("worktree.diff").length, asked, "a closed task's diff was asked for");
+  assert.ok(!(await page.innerText(".task-aside .review")).includes("not open in this daemon"), "the closed task shows the daemon's refusal");
+  await page.screenshot({ path: `${out}/worktree-review-closed.png` });
 });
