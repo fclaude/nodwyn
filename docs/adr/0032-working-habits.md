@@ -730,3 +730,21 @@ file's name. An image itself still reaches no narrowed context (ADR 22):
 the planner reads its name only. TestThePlannerReadsTheLastAnswerAndTheAttachments,
 TestTheJudgeReadsAChatsEarlierMessages and
 TestImagesStayOutOfNarrowedContextsAndTheJudge hold this.
+
+## Amendment 2026-10-05: a plan written again keeps its marks
+
+`plan-write` revised a plan and started its marks over. In
+20261003T143916Z-48f31857 a rewrite that changed only step 6 (seq 5508)
+dropped the marks of steps 1 to 5, done over the hour before, and a later
+one word for word (seq 6528) was followed by six marks in 30 seconds. Each
+mark is a reply that sends the whole conversation, and a lost mark shows
+done work as undone, to the model and in the console's plan panel. A plan
+recorded without marks in a turn that has marked steps now keeps the mark
+and note of every step it keeps word for word, at its new number; a new or
+reworded step starts unmarked (`carriedMarks` in internal/loop/prims.go). An explicit `marks`
+(a carried run plan) is taken as given. The window shows kept marks under
+the plan as "Marked before the plan was written again:", and a carried
+plan's as before; only a carried plan had marks until now, so older logs
+build the same windows. The reading reminder no longer says that writing
+the plan again starts its marks over. TestAPlanWrittenAgainKeepsItsMarks
+covers the marks and what the model reads.

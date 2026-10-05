@@ -259,15 +259,17 @@
 ;;
 ;; A turn that has a plan ((plan-recorded?)) is told to go on with it
 ;; instead. Asked for the plan it had, a chat's model wrote it again, which
-;; starts its marks over, and the second time wrote "[done]" into the
+;; started its marks over, and the second time wrote "[done]" into the
 ;; steps' text, so the console showed none of them marked (ADR 32, amended
-;; 2026-10-03).
+;; 2026-10-03). A plan written again now keeps the marks of the steps it
+;; keeps word for word (amended 2026-10-05), so only a reworded step starts
+;; unmarked.
 (define (reading-reminder-lost rounds)
   (string-append
    "You have only read and searched for the last " (number->string rounds)
    " rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you "))
 (define reading-reminder-plan
-  "your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change, since that starts its marks over.")
+  "your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change: a step you reword starts unmarked.")
 (define (reading-reminder-message rounds)
   (string-append
    (reading-reminder-lost rounds)

@@ -150,7 +150,9 @@ under \code{plan-header}, once the call is answered, like any other plan. It mat
 looks: a model's thinking comes back to it only as the server reported it,
 often a summary or nothing, and a reply that only calls tools says nothing,
 so a design worked out in thinking is worked out again at every request
-until it is written down. Writing the plan again revises it.
+until it is written down. Writing the plan again revises it: a step it
+keeps word for word keeps its mark and note, at its new number, and a new
+or reworded step starts unmarked.
 
 \code{plan-write} reads the steps as \code{(plan-steps plan)} does and
 checks them with \code{(plan-problems steps)}. A step of no known kind, no
@@ -253,7 +255,8 @@ gets \code{(reading-reminder-message n)}: write down the plan with
 instead, which also says to answer now when the request asks a question or
 needs the person's decision. A turn that has a plan is told instead to make
 the change for its next unmarked step: asked for the plan it had, a model
-wrote it again, which starts its marks over. Any other call starts the count again;
+wrote it again, which then started its marks over; now only a reworded
+step starts unmarked. Any other call starts the count again;
 \code{(define reading-reminder-after 0)} turns the reminder off.
 
 \begin{tip}

@@ -218,7 +218,7 @@ func TestReadingRoundsWithAPlanGoOnWithIt(t *testing.T) {
 	}
 	got := lastMessage(r, 3)
 	if !strings.HasPrefix(got, "You have only read and searched for the last 2 rounds.") ||
-		!strings.HasSuffix(got, "Otherwise your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change, since that starts its marks over.") ||
+		!strings.HasSuffix(got, "Otherwise your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change: a step you reword starts unmarked.") ||
 		strings.Contains(got, "write your plan with plan-write now") {
 		t.Fatalf("after 2 rounds with a plan: %q", got)
 	}
@@ -269,7 +269,7 @@ func TestUnreviewedReadingRoundsAreToldToPlan(t *testing.T) {
 	if got := lastMessage(r, 13); strings.Contains(got, "You have only read") {
 		t.Fatalf("reminded after 11 rounds: %q", got)
 	}
-	want := "You have only read and searched for the last 12 rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you act on it, and your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change, since that starts its marks over."
+	want := "You have only read and searched for the last 12 rounds. Your thinking comes back to you only as the server reported it, often as a summary or not at all, so what you found is lost unless you act on it, and your plan is in front of you: make the change for its next unmarked step now, and read more only for that step. Write the plan again only if it must change: a step you reword starts unmarked."
 	if got := lastMessage(r, 14); got != want {
 		t.Fatalf("after 12 rounds: %q", got)
 	}

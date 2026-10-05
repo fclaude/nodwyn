@@ -648,7 +648,8 @@ into the task block the model sees. Its thresholds and prompts are Scheme defini
 project may redefine. As the model works it marks the plan's steps done or
 skipped with the `plan-step` tool, and the console's plan panel (`:plan` in
 the TUI) shows its progress; a mark is the model's word, and the transcript
-is the evidence. Without a plan from the gate, the model writes its own with
+is the evidence. A plan the model writes again keeps the marks of the steps
+it keeps word for word. Without a plan from the gate, the model writes its own with
 `plan-write`, which pins it the same way: its thinking comes back to it
 only as the server reported it, often a summary or nothing, and a written
 plan stays. Every plan has one shape: numbered steps that each start with

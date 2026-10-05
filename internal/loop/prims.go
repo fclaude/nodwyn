@@ -508,21 +508,46 @@ func (l *Loop) recordPlan(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Void, errors.New("marks need the plan they mark")
 		}
 		gp.Marks = marks
+	} else if t := l.turn; t != nil && len(t.marks) > 0 {
+		// A plan written again keeps the marks of the steps it keeps word
+		// for word, wherever they now are. In 20261003T143916Z-48f31857 a
+		// rewrite that changed one step (seq 5508) dropped the marks of the
+		// five done before it, and one word for word (seq 6528) was followed
+		// by six marks in 30 seconds (ADR 32, amended 2026-10-05).
+		gp.Marks = carriedMarks(t, gp.Steps())
 	}
 	if err := l.record(log.KindGatePlan, gp); err != nil {
 		return scheme.Void, err
 	}
 	if strings.TrimSpace(gp.Plan) != "" {
 		t := l.turn
-		t.steps, t.marks = gp.Steps(), map[int]string{}
+		t.steps, t.marks, t.notes = gp.Steps(), map[int]string{}, map[int]string{}
 		for _, m := range gp.Marks {
-			t.marks[m.Step] = m.State
+			t.marks[m.Step], t.notes[m.Step] = m.State, m.Note
 		}
 	}
 	if strings.TrimSpace(gp.Plan) != "" {
 		l.host.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "plan", Detail: fmt.Sprintf("plan score %.2f (%d revises)", gp.Score, gp.Revisions)}})
 	}
 	return scheme.Void, nil
+}
+
+// carriedMarks are the marks of t's plan that a new plan's steps keep: a
+// step of the new plan with the very text of a marked step takes its mark
+// and note, at its new number.
+func carriedMarks(t *turnState, steps []string) []log.PlanStep {
+	var out []log.PlanStep
+	used := map[int]bool{}
+	for i, step := range steps {
+		for j, old := range t.steps {
+			if old == step && t.marks[j+1] != "" && !used[j+1] {
+				used[j+1] = true
+				out = append(out, log.PlanStep{Step: i + 1, Of: len(steps), State: t.marks[j+1], Note: t.notes[j+1]})
+				break
+			}
+		}
+	}
+	return out
 }
 
 // recordCompaction is (record-compaction facts): one compaction, for the
@@ -624,6 +649,10 @@ func (l *Loop) recordStep(c *scheme.Call) (scheme.Value, error) {
 		return scheme.Void, err
 	}
 	t.marks[int(n)] = state
+	if t.notes == nil {
+		t.notes = map[int]string{}
+	}
+	t.notes[int(n)] = note
 	next := scheme.False
 	for i := 1; i <= len(t.steps); i++ {
 		if t.marks[i] == "" {

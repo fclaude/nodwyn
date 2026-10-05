@@ -252,3 +252,47 @@ func TestThePlannerReadsTheLastAnswerAndTheAttachments(t *testing.T) {
 		t.Errorf("what the judge reads:\n%s", judged)
 	}
 }
+
+// A plan written again keeps the marks of the steps it keeps word for word,
+// at their new numbers, and the model reads them under it; a new step
+// starts unmarked. Written again word for word, a plan started its marks
+// over and the model marked six steps again in 30 seconds
+// (20261003T143916Z-48f31857 seq 6528).
+func TestAPlanWrittenAgainKeepsItsMarks(t *testing.T) {
+	t.Parallel()
+	plan := "1. Change: a.go Run — do it.\n2. Test: a_test.go TestRun — runs; fails today: no Run.\n3. Docs: none — nothing a person reads changes.\n4. Check: go test ./..."
+	again := "1. Change: a.go Run — do it.\n2. Change: b.go Helper — share it.\n3. Test: a_test.go TestRun — runs; fails today: no Run.\n4. Docs: none — nothing a person reads changes.\n5. Check: go test ./..."
+	r := strategyRig(t, "", 20,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "p1", Name: "plan-write", Args: map[string]any{"plan": plan}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s1", Name: "plan-step", Args: map[string]any{"step": 1, "state": "done", "note": "a.go has Run"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s2", Name: "plan-step", Args: map[string]any{"step": 2, "state": "done", "note": "TestRun failed, then passed"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "p2", Name: "plan-write", Args: map[string]any{"plan": again}}}},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("add Run"); e != "" {
+		t.Fatal(e)
+	}
+	var last log.GatePlan
+	for _, ev := range r.logged() {
+		if ev.Kind == log.KindGatePlan {
+			if err := ev.Decode(&last); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(last.Marks) != 2 || last.Marks[0].Step != 1 || last.Marks[0].Note != "a.go has Run" || last.Marks[1].Step != 3 || last.Marks[1].State != "done" {
+		t.Fatalf("marks carried: %+v", last.Marks)
+	}
+	if got := r.results()["p2"]; got != "" {
+		t.Fatalf("the second plan-write failed: %s", got)
+	}
+	// The model reads the kept marks under the plan, as made in this turn.
+	final := r.srv.Requests[len(r.srv.Requests)-1]
+	found := false
+	for _, m := range requestMessages(t, final) {
+		found = found || strings.HasSuffix(m.Content, again+"\n\nMarked before the plan was written again:\nStep 1 done: a.go has Run\nStep 3 done: TestRun failed, then passed")
+	}
+	if !found {
+		t.Fatalf("the window does not show the kept marks: %s", final.Raw)
+	}
+}

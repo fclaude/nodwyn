@@ -25,6 +25,7 @@ type turnState struct {
 	// states as the model marked them (record-step), by step number.
 	steps []string
 	marks map[int]string
+	notes map[int]string // what each mark said, kept for a plan written again
 }
 
 // parked reports whether an open context holds calls still waiting for an

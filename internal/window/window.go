@@ -98,12 +98,21 @@ const (
 // the plan is carried, so the plan reads the same for the rest of the
 // turn; marks made during it are in the conversation.
 // Recipe v13; an older log carries no marks.
-func carriedMarks(marks []log.PlanStep) string {
+//
+// A plan written again in its turn keeps the marks of the steps it kept
+// word for word (ADR 32, amended 2026-10-05), so marks under a plan the
+// gate did not carry were made in this turn. Until then only a carried
+// plan had marks, so an older log reads the same.
+func carriedMarks(decision string, marks []log.PlanStep) string {
 	if len(marks) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("\n\nMarked in earlier turns of this task:")
+	if decision == "carried" {
+		b.WriteString("\n\nMarked in earlier turns of this task:")
+	} else {
+		b.WriteString("\n\nMarked before the plan was written again:")
+	}
 	for _, m := range marks {
 		fmt.Fprintf(&b, "\nStep %d %s", m.Step, m.State)
 		if m.Note != "" {
@@ -196,6 +205,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 	sticky := map[uint64]bool{}
 	task, plan := "", ""
 	var marks []log.PlanStep // the steps a carried plan's earlier turns marked
+	var markedBy string      // the decision that recorded the plan, which says when they were marked
 	// Narrowed contexts, innermost last: each starts at an entry index with
 	// its own system prompt. A fold drops the innermost and its entries.
 	type frame struct {
@@ -279,7 +289,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 					content = taskHeader + "\n" + p.Text
 				}
 				entries = append(entries, entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: content}})
-				task, plan, marks = p.Text, "", nil
+				task, plan, marks, markedBy = p.Text, "", nil, ""
 			}
 		case log.KindContextNarrow:
 			var p log.ContextNarrow
@@ -319,12 +329,12 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		case log.KindGatePlan:
 			var p log.GatePlan
 			if ev.Decode(&p) == nil && p.Plan != "" {
-				plan, marks = p.Plan, p.Marks // the gate's plan for the current task (P5)
+				plan, marks, markedBy = p.Plan, p.Marks, p.Noul // the gate's plan for the current task (P5)
 				if pol.InConversation {
 					// A user message, like the harness's, so it is never
 					// trimmed. A plan written again in the same batch of
 					// calls replaces it before any window shows it.
-					held = &entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: planHeader + "\n" + p.Plan + carriedMarks(p.Marks)}}
+					held = &entry{seq: ev.Seq, kind: "user", msg: llm.Message{Role: llm.RoleUser, Content: planHeader + "\n" + p.Plan + carriedMarks(p.Noul, p.Marks)}}
 					heldDepth = len(frames)
 				}
 			}
@@ -380,7 +390,7 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 		sys = system + "\n\n" + taskHeader + "\n" + task
 	}
 	if !pol.InConversation && plan != "" {
-		sys += "\n\n" + planHeader + "\n" + plan + carriedMarks(marks)
+		sys += "\n\n" + planHeader + "\n" + plan + carriedMarks(markedBy, marks)
 	}
 	if n := len(frames); n > 0 {
 		// The strategy's system prompt replaces the session's, and before
