@@ -19,7 +19,8 @@ import (
 func TestModelWallTimeReachesTheLog(t *testing.T) {
 	t.Parallel()
 	// A slow fake: the wall time must survive its truncation to whole
-	// milliseconds, and stay the request's own, not the log's doing.
+	// milliseconds, and stay the request's own, not the 1500 ms the fake
+	// reports for itself.
 	srv := fake.NewFunc(func(fake.Request) fake.Turn {
 		time.Sleep(30 * time.Millisecond)
 		return fake.Turn{Content: "done"}
@@ -33,9 +34,11 @@ func TestModelWallTimeReachesTheLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &rig{t: t, s: s, logb: logb}
+	begun := time.Now()
 	if e := r.turn("hello"); e != "" {
 		t.Fatal(e)
 	}
+	turn := time.Since(begun).Milliseconds()
 	s.Close()
 	replies := 0
 	for _, ev := range r.logged() {
@@ -55,8 +58,12 @@ func TestModelWallTimeReachesTheLog(t *testing.T) {
 		if p.Usage.OutputTokens != 44 {
 			t.Fatalf("output tokens %d, want the fake's 44", p.Usage.OutputTokens)
 		}
-		if p.Usage.WallMS < 30 || p.Usage.WallMS > 100 {
-			t.Fatalf("wall_ms %d, want the request's own 30 ms and no retry's", p.Usage.WallMS)
+		// The request is inside the turn, so no load makes it longer than
+		// the turn; a fixed ceiling would be a guess about the machine.
+		// A retry's earlier attempts staying out of it is
+		// llm.TestChatRetryingTimesTheSuccessfulAttempt's.
+		if p.Usage.WallMS < 30 || p.Usage.WallMS > turn {
+			t.Fatalf("wall_ms %d, want the request's own: at least the fake's 30 ms and at most the turn's %d ms", p.Usage.WallMS, turn)
 		}
 	}
 	if replies == 0 {
