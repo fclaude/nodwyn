@@ -241,6 +241,9 @@ $("menu").append(icon("menu", 20));
 $("menu").addEventListener("click", openMenu);
 $("reconnect").addEventListener("click", () => conn.connect());
 
+// Wails can install the native bridge after the first console render.
+window.addEventListener("nodwyn-desktop-ready", () => render(true));
+
 // A launch ticket (from nodwyn app or nodwyn ui) pairs this browser without a
 // typed code. It is used once, and removed from the address bar first.
 (async () => {

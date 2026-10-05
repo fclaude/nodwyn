@@ -1917,3 +1917,16 @@ each includes the Linux egress proxy used by MCP containers. Portable builds
 open the browser for `nodwyn app`; macOS builds are unsigned and not notarised.
 Only Linux amd64 is executed in CI. See [the release guide](releases.md) for
 downloads, verification and publication. Local `make promote` remains separate.
+
+
+## The Wails desktop window
+
+`make build-webview` builds the Wails native window on Linux or macOS;
+`make app` builds the universal macOS bundle and `bin/Nodwyn-macos-universal.zip`.
+The `webview` build tag remains the switch for `nodwyn app` to use a window.
+The console, model setup, keychain and tasks behave as in the browser; folder
+selection uses Wails' native dialog. Closing the window stops tasks only when
+this app owns their daemon. Wails v3 is pinned to a beta release; see
+[the desktop build guide](app.md) for dependencies and its native test.
+Portable Gitea archives continue to open a browser. A Windows host port and
+native desktop release runners are still needed before publishing those apps.

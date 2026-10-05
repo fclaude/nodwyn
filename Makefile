@@ -9,7 +9,7 @@ build: egress
 
 ## build-webview: bin/nodwyn whose `nodwyn app` opens its own window (cgo; WebKitGTK on Linux, docs/app.md)
 build-webview: egress
-	CGO_ENABLED=1 scripts/webview-env.sh run go build -trimpath -tags webview -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
+	CGO_ENABLED=1 scripts/webview-env.sh run go build -trimpath -tags "$$(scripts/webview-env.sh tags)" -ldflags '$(LDFLAGS)' -o bin/nodwyn ./cmd/nodwyn
 
 ## egress: bin/nodwyn-egress, the proxy a contained MCP server reaches the network through
 ## (ADR 23 W3b); static and for Linux, since it runs inside the server's image

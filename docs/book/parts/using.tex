@@ -20,6 +20,15 @@ verify, and a published release is never overwritten by a rerun. See
 \file{docs/releases.md}. This distribution is separate from local promotion
 and does not remove any PDF from Git history.
 
+The native window uses Wails v3, pinned to a beta release
+(\adr{43}). The \code{webview} tag and existing console protocol stay the
+same. \file{cmd/nodwyn/app\_webview.go} owns the window;
+\file{cmd/nodwyn/app\_bridge.go} restricts its three native conveniences
+by origin and a per-window capability. Task methods still go through the
+ordinary RPC bridge. \code{make app} also creates
+\file{bin/Nodwyn-macos-universal.zip}. Native Windows host support and
+desktop release builds are not supplied by this shell migration.
+
 \section{Build locally}
 
 \begin{sh}

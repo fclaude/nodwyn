@@ -104,8 +104,18 @@ check(async () => {
   // no kind to choose (ADR 22).
   await page.evaluate(() => (location.hash = "#/"));
   await page.waitForSelector("#task");
+  // Wails installs its bridge after the console has loaded. A late native
+  // chooser must become usable and its selected path must reach the form.
+  await page.evaluate((folder) => {
+    window.nodwynPickFolder = async () => { window.nativePicks = (window.nativePicks || 0) + 1; return folder; };
+    window.dispatchEvent(new Event("nodwyn-desktop-ready"));
+  }, `${root}/work`);
   await page.click("text=Add a folder");
-  await page.fill("#add-path", `${root}/work`);
+  if (!(await page.inputValue("#add-path"))) await page.getByRole("button", { name: "Choose…", exact: true }).click();
+  assert.strictEqual(await page.inputValue("#add-path"), `${root}/work`, "native selection did not fill the folder");
+  assert.strictEqual(await page.evaluate(() => window.nativePicks), 1, "native chooser did not run once");
+  // The remaining checks exercise the ordinary typed-path browser flow.
+  await page.evaluate(() => { delete window.nodwynPickFolder; });
   await page.fill("#add-name", "Family papers");
   assert.strictEqual(await page.locator("text=What's in it").count(), 0, "the add form still asks what a folder holds");
   await page.click("button:has-text('Add this folder')");

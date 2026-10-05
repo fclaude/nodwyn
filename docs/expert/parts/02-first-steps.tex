@@ -34,6 +34,15 @@ Any Ollama server works, on your machine or another one on your network, and
 so does any server that speaks the OpenAI chat-completions protocol, and
 Anthropic's own API for Claude.
 
+The native window uses Wails v3, pinned to a beta release
+(\adr{43}). The \code{webview} tag and existing console protocol stay the
+same. \file{cmd/nodwyn/app\_webview.go} owns the window;
+\file{cmd/nodwyn/app\_bridge.go} restricts its three native conveniences
+by origin and a per-window capability. Task methods still go through the
+ordinary RPC bridge. \code{make app} also creates
+\file{bin/Nodwyn-macos-universal.zip}. Native Windows host support and
+desktop release builds are not supplied by this shell migration.
+
 \section{The quickest start: the app}
 
 Open \file{Nodwyn.app} (or run \code{nodwyn app}). The first time, Home asks

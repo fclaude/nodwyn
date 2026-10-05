@@ -12,8 +12,14 @@ import (
 )
 
 // The test binary is also the fake container runtime.
+var desktopTestMain func()
+
 func TestMain(m *testing.M) {
 	fakecontainer.Main()
+	if desktopTestMain != nil && os.Getenv("NODWYN_TEST_DESKTOP_HELPER") == "1" {
+		desktopTestMain()
+		return
+	}
 	os.Exit(m.Run())
 }
 

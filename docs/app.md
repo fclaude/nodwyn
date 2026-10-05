@@ -69,7 +69,7 @@ make app          # bin/Nodwyn.app — universal (Apple silicon and Intel), ad-h
 ```
 
 It needs Xcode's command line tools (for cgo and WebKit). The bundle is the
-same `nodwyn` binary built with the `webview` tag; started from Finder or the
+same `nodwyn` binary built with the `webview` tag and Wails v3; started from Finder or the
 Dock it runs `nodwyn app`, takes the login shell's `PATH` (so tools installed
 with Homebrew are found), and writes its diagnostics to
 `~/.local/share/nodwyn/app.log`. Everything else — configuration, keychain,
@@ -95,7 +95,10 @@ make build-webview   # bin/nodwyn with the webview tag
 ```
 
 On Linux it needs cgo and WebKitGTK (`libwebkit2gtk-4.1-dev` on Debian and
-Ubuntu, `webkit2gtk4.1-devel` on Fedora); on Windows the tag needs WebView2.
+Ubuntu, `webkit2gtk4.1-devel` on Fedora), or GTK4 with WebKitGTK 6.0.
+Wails supports WebView2 on Windows, but Nodwyn's host still requires a Windows
+port of its Unix process, locking and local IPC code; no Windows package is
+published yet.
 Without the tag, `nodwyn app` opens the default browser instead and works the
 same; started from a desktop launcher, with no terminal for its messages, it
 has no window of its own and is easy to take for an app that did not start.
@@ -105,17 +108,20 @@ refuses to install one whose `go version -m` does not show `-tags=webview`.
 On a Linux system without WebKitGTK it builds without the tag and says so,
 before the acceptance run and again at the end.
 
-The webview package asks pkg-config for `webkit2gtk-4.0`, which current
-distributions no longer ship; `webkit2gtk-4.1` has the same API, built on
-libsoup 3. `scripts/webview-env.sh run` bridges the name for the length of
-one build: when only 4.1 is installed, it writes a `webkit2gtk-4.0.pc` that
-requires 4.1 into a temporary directory at the front of `PKG_CONFIG_PATH`. A
-system that has 4.0 builds against 4.0. This keeps the module as published:
-patching its cgo line would mean vendoring it, or keeping a fork, and
-carrying the change through every update. To build by hand:
+`scripts/webview-env.sh tags` selects `webview` for GTK4 or macOS, and
+`webview,gtk3` for GTK3. `make build-webview` uses that selection. Wails
+uses the real WebKitGTK package; no pkg-config alias is needed.
+
+The desktop dependency is pinned to Wails `v3.0.0-beta.28`. Version 3 is
+still beta; its direct window URL API lets the app keep the existing
+loopback console, pairing tickets, cookies, CSP and WebSocket origin checks.
+We do not serve the console through Wails' asset server or expose task
+methods as Wails services. ADR 43 records the choice.
+
+To run the native window check in a desktop session:
 
 ```sh
-CGO_ENABLED=1 scripts/webview-env.sh run go build -tags webview ./cmd/nodwyn
+NODWYN_TEST_DESKTOP=1 go test -tags "$(scripts/webview-env.sh tags)" ./cmd/nodwyn -run '^TestWailsWindowRoundTrip$' -count=1
 ```
 
 ## What the window adds
@@ -125,3 +131,11 @@ folder chooser (for adding a folder on Home or Workspaces), system
 notifications (the same generic "nodwyn needs your answer", opt-in in
 Settings), and opening a link in the default browser. None of them reads or
 writes a file the page names.
+
+The native bridge accepts only the loopback window's origin and a random
+per-window capability injected into its top frame. GTK reports a top-level
+URI without a frame identity; the capability covers that missing metadata.
+Other platforms' frame metadata is checked when present. Replies also check
+the current origin so navigating elsewhere cannot receive a selected path.
+Notifications carry only the fixed attention notice, and external links must
+be HTTP(S). The browser version receives no desktop capability.

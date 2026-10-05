@@ -4,21 +4,31 @@ package main
 
 import (
 	"context"
-	"errors"
+	"crypto/rand"
+	_ "embed"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 
-	webview "github.com/webview/webview_go"
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-// openWindow shows the console in a native window (WebKit on macOS) and
-// returns when the window closes. The page gets three host functions: a
-// folder chooser, a notification, and opening a link in the default
-// browser. None of them reads or writes anything the page names.
+//go:embed desktop.js
+var desktopJS string
+
+func desktopScript(origin, token string) string {
+	quoted, _ := json.Marshal(origin)
+	capability, _ := json.Marshal(token)
+	return strings.NewReplacer("NODWYN_ORIGIN", string(quoted), "NODWYN_TOKEN", string(capability)).Replace(desktopJS)
+}
+
+// openWindow keeps the console on its authenticated loopback origin. Only the
+// three desktop conveniences use Wails; tasks still use the existing RPC bridge.
 func openWindow(ctx context.Context, address string, forceBrowser bool) error {
 	if forceBrowser {
 		if err := openBrowser(ctx, address); err != nil {
@@ -27,61 +37,56 @@ func openWindow(ctx context.Context, address string, forceBrowser bool) error {
 		<-ctx.Done()
 		return nil
 	}
-	w := webview.New(false)
-	if w == nil {
-		return errors.New("app: no window available; try nodwyn app --browser")
+	origin, err := desktopOrigin(address)
+	if err != nil {
+		return err
 	}
-	defer w.Destroy()
-	w.SetTitle("nodwyn")
-	w.SetSize(1280, 860, webview.HintNone)
-	w.SetSize(760, 560, webview.HintMin)
-	_ = w.Bind("nodwynPickFolder", pickFolder)
-	_ = w.Bind("nodwynNotify", notify)
-	_ = w.Bind("nodwynOpenExternal", openExternal)
+	var app *application.App
+	var capability [32]byte
+	if _, err := rand.Read(capability[:]); err != nil {
+		return err
+	}
+	bridge := desktopBridge{origin: origin, token: hex.EncodeToString(capability[:])}
+	app = application.New(application.Options{
+		Name: "nodwyn",
+		Mac:  application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		RawMessageHandler: func(window application.Window, message string, source *application.OriginInfo) {
+			if source == nil {
+				return
+			}
+			bridge.handle(source.Origin, source.TopOrigin, source.IsMainFrame, message, window.ExecJS)
+		},
+	})
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name: "nodwyn", Title: "nodwyn", Width: 1280, Height: 860, MinWidth: 760, MinHeight: 560,
+		URL: address, JS: desktopScript(origin, bridge.token),
+	})
+	bridge.pickFolder = func() (string, error) {
+		return app.Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).
+			SetTitle("Choose a folder for nodwyn to work in").AttachToWindow(window).PromptForSingleSelection()
+	}
+	bridge.openExternal = app.Browser.OpenURL
+	bridge.notify = notify
+	window.OnWindowEvent(events.Common.WindowClosing, func(_ *application.WindowEvent) { app.Quit() })
 	closed := make(chan struct{})
 	defer close(closed)
-	go func() {
-		select {
-		case <-ctx.Done():
-			w.Dispatch(w.Terminate)
-		case <-closed:
-		}
-	}()
-	w.Navigate(address)
-	w.Run()
-	return nil
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
+		go func() {
+			select {
+			case <-ctx.Done():
+				app.Quit()
+			case <-closed:
+			}
+		}()
+	})
+	return app.Run()
 }
 
-// pickFolder asks the operating system for a folder; "" when the person
-// cancels.
-func pickFolder() (string, error) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("osascript", "-e", `POSIX path of (choose folder with prompt "Choose a folder for nodwyn to work in")`)
-	case "linux":
-		cmd = exec.Command("zenity", "--file-selection", "--directory", "--title=Choose a folder for nodwyn to work in")
-	default:
-		return "", errors.New("no folder chooser on this system; type the path instead")
-	}
-	out, err := cmd.Output()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		return "", nil // canceled
-	}
-	if err != nil {
-		return "", err
-	}
-	path := strings.TrimRight(strings.TrimSpace(string(out)), "/")
-	if path == "" {
-		path = "/"
-	}
-	return path, nil
-}
-
-// notify shows a system notification. Its text is the page's generic
-// notice, passed as arguments, never spliced into a script.
-func notify(title, body string) error {
+// notify sends only the fixed attention notice; session text never reaches an
+// operating-system notification or a script interpreter.
+func notify() error {
+	const title = "nodwyn needs your answer"
+	const body = "Open nodwyn to review what it asks."
 	switch runtime.GOOS {
 	case "darwin":
 		return exec.Command("osascript", "-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body).Run()
@@ -89,13 +94,4 @@ func notify(title, body string) error {
 		return exec.Command("notify-send", title, body).Run()
 	}
 	return nil
-}
-
-// openExternal opens an http(s) link in the default browser.
-func openExternal(link string) error {
-	u, err := url.Parse(link)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return errors.New("only web links open outside nodwyn")
-	}
-	return openBrowser(context.Background(), u.String())
 }

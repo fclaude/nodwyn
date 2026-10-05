@@ -8,8 +8,8 @@ version=${1:-$(git describe --always --dirty --abbrev=12 --exclude='*' 2>/dev/nu
 app=bin/Nodwyn.app
 rm -rf "$app" bin/.app-build
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" bin/.app-build
-# webview.h trips a clang deprecation warning that is not ours to fix.
-export CGO_ENABLED=1 CGO_CXXFLAGS="-Wno-deprecated-literal-operator" MACOSX_DEPLOYMENT_TARGET=13.0
+# Wails uses Cocoa and WebKit from the macOS SDK.
+export CGO_ENABLED=1 MACOSX_DEPLOYMENT_TARGET=13.0
 ldflags="-s -w -X main.version=$version"
 for arch in arm64 amd64; do
 	clang_arch=$arch
@@ -28,4 +28,6 @@ rm -rf bin/.app-build
 sed "s/@VERSION@/${version#v}/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
 cp packaging/macos/Nodwyn.icns "$app/Contents/Resources/Nodwyn.icns"
 codesign --force --deep --sign - "$app"
-echo "built $app ($version)"
+codesign --verify --deep --strict "$app"
+ditto -c -k --sequesterRsrc --keepParent "$app" bin/Nodwyn-macos-universal.zip
+echo "built $app and bin/Nodwyn-macos-universal.zip ($version)"
