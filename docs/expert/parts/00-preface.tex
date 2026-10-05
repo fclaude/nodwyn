@@ -32,6 +32,13 @@ repository this morning.'' It is organised as a walk:
     that ship by default.
   \item[Part V, Operating Like an Expert] keys and models, workspaces and
     undo, reading the log, and using \nodwyn{} from anywhere.
+  \item[The implementation map, Part~\ref{part:source-map}] guided routes
+    through the Go host and every Scheme layer, followed by a worked
+    explanation of this repository's own init file and development tools.
+  \item[The source catalogue, Part~\ref{part:source-catalogue}] complete,
+    numbered listings of every non-test Go file and every tracked Scheme
+    file. File bookmarks and linked paths let you move from the explanation
+    to the implementation without searching through a shortened example.
 \end{description}
 
 \section*{How to read it}
@@ -71,4 +78,8 @@ language contract), \file{docs/manual.md}, the ADRs in \file{docs/adr/}, the
 Scheme files in \file{internal/loop/}, and the source. When the book and the
 repository disagree, the repository is right and the book has a bug. The
 book-sized companion \file{docs/book/nodwyn.pdf} tells the story of how
-\nodwyn{} was designed and built; this one is about using it well.
+\nodwyn{} was designed and built; this one starts with using it well.
+Both now include the same source companion so that either route can lead
+to navigating and changing the codebase. Go test cases and the browser's
+JavaScript and CSS remain in the checkout; the map points to the checks
+that establish the behaviour described.

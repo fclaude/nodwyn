@@ -51,6 +51,7 @@
 \lstnewenvironment{scm}{\lstset{language=Scheme}}{}
 \lstnewenvironment{sh}{\lstset{language=bash,keywordstyle=\ttfamily}}{}
 \lstnewenvironment{txt}{\lstset{language={}}}{}
+\input{source/style}
 
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcommand{\nodwyn}{\textsf{nodwyn}}
@@ -74,7 +75,7 @@
 
 \title{\Huge\textbf{\nodwyn}\\[0.6em]\Large a minimal, self-extending coding-agent harness\\[0.4em]\large the idea, the history, the code, and the language}
 \author{the \nodwyn{} project}
-\date{2 October 2026}
+\date{5 October 2026}
 
 \begin{document}
 \frontmatter
@@ -104,15 +105,23 @@ written. \textbf{Part VI} is the operator's manual. For a slower
 introduction aimed at users, see \emph{Becoming a \nodwyn{} Expert}
 (\file{docs/expert/}).
 
+The new source companion in Part~\ref{part:source-map} supplies reading
+routes through the host and the Scheme layers, including this repository's
+own customisation. Part~\ref{part:source-catalogue} prints every non-test Go
+file and every tracked Scheme file in full, with source line numbers and
+file bookmarks. Use it beside the explanatory chapters rather than reading
+the listings straight through.
+
 Everything in this book is derived from the repository: \file{SPEC.md},
 \file{plan.md}, \file{docs/}, \file{docs/adr/}, and the source. Where the
 book and the repository disagree, the repository is right and the book has
 a bug.
 
-\paragraph{Status.} The code described is the main branch as of
-2026-10-02: the last promotion tag, \code{v0.42-console}, and what has been
-merged since. Promotions no longer create tags; a stable binary's version is
-the commit it was built from.
+\paragraph{Status.} The source companion was added on 2026-10-05 and reads
+the checkout used to build this PDF. The historical narrative describes
+the last promotion tag, \code{v0.42-console}, and subsequent development.
+Promotions no longer create tags; a stable binary's version is the commit
+it was built from.
 
 \tableofcontents
 
@@ -123,6 +132,8 @@ the commit it was built from.
 \input{parts/code}
 \input{parts/scheme}
 \input{parts/using}
+\input{source/reading}
+\input{source/catalogue}
 \appendix
 \input{parts/appendix}
 \end{document}

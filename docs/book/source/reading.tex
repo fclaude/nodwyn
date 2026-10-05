@@ -1,0 +1,435 @@
+\part{A reader's map of the implementation}
+\label{part:source-map}
+
+\chapter{From a working session to the file that owns it}
+
+Read this part with the source catalogue open. Each linked path leads to a
+complete listing later in this book; the numbers in its left margin are
+source lines, starting again at one for each file. Wrapped lines have no
+new number. The catalogue is a reference, not a demand to read every file
+in alphabetical order. First follow a request through the host; then follow
+one Scheme wrapper back through the same boundary.
+
+The two books share this map and the same source catalogue. The earlier
+chapters of the design book explain the decisions; those of the expert
+guide teach the language and operating habits. This part connects both to
+the implementation. The catalogue prints every tracked, non-test Go file
+and every tracked \file{.scm} file, including the project init file and the
+exfiltration scenarios. Go test files, including their embedded Scheme
+examples, remain in the checkout; the reading routes below name the tests
+to study. JavaScript, CSS, shell scripts and third-party dependencies are
+not reproduced. The console's Go bridge is included, but understanding its
+rendering also requires \file{internal/frontend/web/assets/}.
+
+\section{The ownership map}
+
+\begin{longtable}{@{}p{3.8cm}p{10.3cm}@{}}
+\toprule
+Owner & Question it answers \\
+\midrule\endhead
+\file{cmd/} & Which mode starts, which configuration is used, and which frontend owns interaction? \\
+\file{internal/core/} & How is one session assembled, serialised, resumed and closed? \\
+\file{internal/loop/} & Which Scheme strategy runs, and which host invariants constrain model requests and tool replies? \\
+\file{internal/scheme/} & What does evaluation mean, and how does every primitive reach the guard? \\
+\file{internal/prim/} & What does an allowed filesystem, process, git or integration operation actually do? \\
+\file{internal/guard/} & May this declared operation run with these arguments and this origin? \\
+\file{internal/window/} & Which logged events become the next provider-neutral request? \\
+\file{internal/llm/} & How does that request become one provider's wire format? \\
+\file{internal/log/} & What persists, and what can replay reconstruct? \\
+\file{internal/frontend/} & How do people submit work, observe events and answer prompts? \\
+\bottomrule
+\end{longtable}
+
+Do not start by reading all of \file{core/}. It connects almost everything.
+Start with the types in \src{internal/core/session.go}, the construction
+sequence in \src{internal/core/construct.go}, and one public operation.
+When a method delegates to another package, read that package's contract
+before its implementation. Returning to the caller then reveals which
+state belongs to the session and which state belongs to the subsystem.
+
+\section{Route one: starting a conversation}
+
+Begin at \src{cmd/nodwyn/main.go} and \src{cmd/nodwyn/cli.go}. Follow the
+chosen mode into \src{cmd/nodwyn/chat.go}, \src{cmd/nodwyn/tui.go} or
+\src{cmd/nodwyn/daemon.go}; they are alternative ways to reach the host,
+not separate implementations of the agent's policy.
+
+In \src{internal/core/construct.go}, read \code{Options}, \code{New},
+\code{initialize}, \code{newGuard} and \code{loadInit}. Follow their actual
+calls rather than assuming the order of functions in the file is execution
+order. A requested worktree is created before runtime initialisation,
+because it changes the root from which project policy is read. Failure
+paths matter: an unstarted session must not leave a misleading empty log
+or an abandoned newly created worktree.
+
+The interpreter loads its prelude; the host registers its primitives; the
+loop installs its default Scheme; the project's init file runs; then the
+session fixes its prompts and tool catalogue. In
+\src{internal/loop/loop.go}, compare \code{New} with \code{Freeze}. A
+function that can be looked up again on the next turn is different from a
+tool schema already advertised to a model. This distinction explains most
+questions about why a reload did or did not change a running session.
+
+For configuration follow \src{internal/config/config.go}.
+Model choice during a session belongs to
+\src{internal/core/model.go}, and context sizing to
+\src{internal/core/windowsize.go}. Use the adjacent configuration tests
+and \file{internal/core/model\_switch\_test.go} to distinguish startup
+defaults from a conversation's later model choice.
+
+\section{Route two: one request and one filesystem read}
+
+\begin{enumerate}
+\item In \src{internal/core/session.go}, trace \code{Send} through the
+  turn machinery. Find where the user message is recorded, where a busy
+  session refuses overlapping work, and where cancellation is installed.
+\item In \src{internal/loop/loop.go}, find the lookup of
+  \code{nodwyn-turn}. Follow that into
+  \src{internal/loop/strategy.scm}. The strategy chooses when to ask again;
+  \src{internal/loop/model.go} owns making a model request.
+\item In \src{internal/window/window.go}, follow \code{Build}. The next
+  context is derived from events; it is not a mutable transcript owned by
+  the provider. \src{internal/llm/llm.go} defines the shared request and
+  reply types. Choose one adapter, such as \src{internal/llm/ollama.go},
+  before comparing it with \src{internal/llm/responses.go}.
+\item Return to the reply's tool calls. Scheme's \code{run-calls} can
+  wrap dispatch; the host implementation in \src{internal/loop/tools.go}
+  records the call, converts named JSON arguments and applies the primitive.
+  \src{internal/loop/turn.go} tracks the calls that still need replies.
+\item Find \code{applyPrim} in \src{internal/scheme/prim.go}. Read the
+  guard call before reading any filesystem implementation. Follow it to
+  \src{internal/guard/guard.go} and the path checkers in
+  \src{internal/guard/checkers.go}. Only then read the \code{fs-read}
+  registration and handler in \src{internal/prim/fs.go}.
+\item Follow the returned value back: provenance is attached, the result
+  is rendered and recorded, and the next \code{Build} sees it. Compare
+  \src{internal/core/events.go}, \src{internal/core/history.go} and
+  \src{internal/log/log.go}: frontend notification, in-memory history and
+  durable append are related, but are not interchangeable sinks.
+\end{enumerate}
+
+To check your understanding, explain why a Scheme tool that calls
+\code{fs-read} cannot bypass a denied path. The answer must mention the
+inner primitive's metadata and \code{applyPrim}, not the wrapper's friendly
+name. Read \file{internal/core/strategy\_test.go}, especially the tests
+for fabricated calls, rewritten arguments and unanswered calls. The loop
+must keep a valid transcript even when a strategy goes wrong.
+
+\section{Route three: a credential-bearing request}
+
+Read \src{internal/binding/binding.go} for the facts that authorise a
+credential's use, then \src{internal/keychain/store.go} for storage and
+\src{internal/keychain/acquire.go} for acquisition. A handle in Scheme is
+not the key's text. The composition happens in
+\src{internal/core/credentials.go} and \src{internal/prim/egress.go}.
+
+Read \src{internal/guard/egress_facts.go}: destination, method and credential
+position are facts the policy checks. \src{internal/guard/taint.go} reads
+provenance; \src{internal/guard/textsecret.go} uses the shape detector in
+\src{internal/detect/l1/l1.go}. These mechanisms answer different questions.
+A value without a recognised key shape can still carry external provenance.
+An approved destination does not make an unrelated credential appropriate.
+
+For an MCP call continue through \src{internal/core/mcp.go},
+\src{internal/mcp/client.go}, and either the HTTP or stdio transport.
+Contained servers also involve \src{internal/core/contained.go},
+\src{internal/container/server.go} and \src{internal/egress/proxy.go}.
+Trace both the tool call and the server's onward network request; approving
+one is not a general approval of the other. Study \file{test/exfil/}
+alongside these files. Its Scheme scenarios at the end of the catalogue
+are adversarial inputs, not setup commands to run in your working session.
+
+\section{Route four: the same session through the console}
+
+Start with the method and event shapes in
+\src{internal/frontend/rpc/types.go} and
+\src{internal/frontend/rpc/protocol.go}. Follow connection handling in
+\src{internal/frontend/rpc/server.go} to dispatch in
+\src{internal/frontend/rpc/sessions.go}, then the feature-specific handler:
+sessions, workspaces, credentials, settings or runs. The daemon owns the
+session; the browser owns a view of it.
+
+Now read \src{internal/frontend/web/server.go}. Its \code{allowed} method
+is a second boundary: a daemon method is not automatically available to a
+browser, and a setup operation may be local-only. In the assets directory,
+find the connection capability check, then the page action and its render.
+If a new action appears but does nothing, inspect the request and the
+advertised capabilities before changing the renderer. Go tests cannot
+execute these modules: \file{test/browser/checks/} and
+\file{test/browser/run.sh} exercise the actual browser.
+
+\section{Route five: resuming without rerunning effects}
+
+Pair \src{internal/core/resume.go} with \src{internal/log/payloads.go}.
+Resuming assembles a runtime from today's configuration and init file;
+it does not re-evaluate every old Scheme definition or rerun unfinished
+tool calls. Compare this with \src{internal/window/replay.go}: replaying
+a request reconstructs its recorded recipe and checks its hash without
+asking a model or executing tools. Read
+\file{internal/core/resume\_test.go} and
+\file{internal/window/replay\_test.go} before altering either path.
+
+\chapter{The repository customises its own agent}
+\label{chap:repo-customisation}
+
+This is a worked example from this checkout, not a hypothetical plugin.
+Keep \src{.nodwyn/init.scm}, \src{dev/go.scm}, \src{dev/git.scm} and
+\src{dev/repo.scm} open together. They contain the whole customisation;
+the catalogue reproduces them without shortening the functions.
+
+\section{Who writes the policy, and what loading means}
+
+Anyone who can commit to a repository can write its init file, its helper
+files and its \file{.nodwyn/allow.toml}, including the author of a clone
+you have never inspected. They are project-supplied policy, not evidence
+that a remote author deserves authority. ADRs 14 and 17 describe the
+project-init and standing-approval decisions. Read those decisions with
+\src{internal/core/construct.go} and \src{internal/guard/allow.go}.
+
+Initialisation evaluates the init file with user origin, but through the
+guard. While it loads, confirmations are declined because no frontend is
+listening yet. User origin does not remove deny rules. Standing approvals
+can waive a confirmation; they cannot turn a denial into an allow.
+Protected policy paths cannot be included in ordinary write approvals.
+Review a clone's policy before treating it as your working environment.
+
+The first three forms load \file{dev/go.scm}, \file{dev/git.scm} and
+\file{dev/repo.scm}, in that order. This matters: the latter files call
+\code{run}, defined in the first. Loading registers functions and tools;
+their bodies do not execute just because they were defined. The init file
+then extends \code{look-tools} so its read-only navigation tools count
+towards the default loop's reading reminder.
+
+\section{Small tools over the existing boundary}
+
+Read \code{run} in \src{dev/go.scm}. It calls \code{shell-exec}, then
+formats status, stdout and stderr for the model. Its string is a report,
+not an exception on every nonzero exit. \code{go-test} adds \code{-race};
+\code{go-build}, \code{go-vet}, \code{go-fmt-check} and \code{run-make}
+are named argument-list wrappers. The model sees descriptions and schemas
+from \code{register-tool}; the guard still judges the inner shell call.
+
+In \src{dev/git.scm}, \code{git-log} adds a read-only history tool.
+There is no commit or push wrapper. In \src{dev/repo.scm}, compare
+\code{grep-repo} and \code{find-files}, which use git, with
+\code{read-adr}, which composes \code{fs-list} and \code{fs-read}.
+The latter finds a zero-padded ADR prefix using \code{pad4}; an absent ADR
+raises an ordinary Scheme error. These are two ways to reuse host
+capabilities without adding a Go primitive.
+
+The standing approvals printed after the init listing explain why these
+commands can usually proceed without repeated questions. The write list
+covers implementation, documentation, tests and \file{dev/}; it excludes
+\file{.nodwyn/}, \file{scripts/} and the Makefile. This is why the validation
+wrapper is defined in the protected init file, not in a freely writable
+helper beside the other development tools.
+
+\section{A validation wrapper, line by line in execution order}
+
+\begin{enumerate}
+\item \code{validation-state} combines git status with the tracked diff.
+  Status alone would miss a second edit to an already changed tracked file.
+  The source explicitly notes a limitation: editing an already untracked
+  file again can leave both observations unchanged.
+\item \code{validated-state} keeps its old binding if present. The
+  \code{guard} expression supplies a default only when the variable is not
+  defined yet. This makes reloading preserve the last observed state.
+\item The \code{validate} tool starts \code{make validate} with
+  \code{shell-start}. \code{validate-read} repeatedly uses
+  \code{shell-read}, keeping output until the process has exited and no
+  more buffered bytes remain. This avoids the synchronous shell timeout.
+\item After collecting the report it stores the current repository state.
+  Notice the exact promise: this records that validation \emph{ran}, not
+  that it passed. It does not parse the final PASS/FAIL line. The agent must
+  read failures and warnings, fix what belongs to the change, rerun, and
+  report the result. A reminder is not a proof of correctness.
+\item \code{validate-base-agent-turn} and
+  \code{validate-base-test-call?} capture the original procedures once.
+  Without the existing-binding check, reload would wrap the wrapper again.
+  The new \code{test-call?} recognises \code{validate} as well as the
+  ordinary test commands recognised by the base loop.
+\item The replacement \code{default-agent-turn} snapshots the repository,
+  runs the captured strategy, and compares the final state with both the
+  starting and last-validated states. If work changed and is not validated,
+  it adds a reminder and continues the conversation, at most twice.
+  \code{validate-continue} runs calls, compacts and counts reading rounds
+  in the same pattern as the normal chat loop.
+\end{enumerate}
+
+The companion implementation is \src{scripts/validate/main.go} and its
+neighbouring files. Read \src{scripts/validate/changes.go} to understand the
+comparison base, \src{scripts/validate/checks.go} for check selection,
+\src{scripts/validate/base.go} for regression checks on unchanged code,
+and \src{scripts/validate/runner.go} for process results. The Scheme
+wrapper arranges when to ask for evidence; this Go program gathers it.
+
+\section{Reload is a lifecycle boundary}
+
+Read \src{internal/core/reload.go} before experimenting. Reload can
+replace a strategy or the body of an existing tool for subsequent use.
+Tool schemas, guard checks and fixed prompts need a new session or resume;
+reload returns notes about changes that cannot take effect in place.
+The model cannot call this primitive as a normal model-origin evaluation.
+
+The repository example is not wholly idempotent: extending
+\code{look-tools} with \code{append} again can add duplicate names, although
+membership checks still work. The captured base procedures, by contrast,
+must be preserved to avoid recursive wrapping. Ask which kind of state
+each new definition represents before using this pattern elsewhere.
+
+\chapter{Reading the Scheme layers in dependency order}
+
+\section{The language below the strategy}
+
+Start with \src{internal/scheme/value.go}, \src{internal/scheme/reader.go}
+and \src{internal/scheme/env.go}: values, syntax and lexical bindings.
+Then read \src{internal/scheme/interp.go}, moving to the
+\file{forms\_*.go} files only when the evaluator dispatches to them.
+\src{internal/scheme/prelude/base.scm} builds convenience procedures over
+the Go builtins. Compare one definition, such as a list operation, with
+the builtin it calls instead of trying to memorise the whole prelude.
+
+\src{internal/scheme/prim.go} is the extension contract. Parameter types
+make schemas; roles tell the guard what arguments mean. Follow a value's
+taint through \src{internal/scheme/taint.go} and the taint builtins.
+Ordinary errors, denials and halts have different meanings; read
+\src{internal/scheme/errors.go} and \src{internal/scheme/halt.go} before
+assuming that Scheme's \code{guard} can catch every failure.
+
+\section{Default loop and its wrappers}
+
+The following order follows \code{loop.New}. Later files may refer to
+earlier definitions or capture them before redefining their public names.
+Inspect the captured \code{*-base-*} bindings whenever a wrapper's behaviour
+is surprising. Definition order and call order are different: defining a
+procedure can refer to a global that will exist by the time it is called.
+
+\begin{description}
+\item[\src{internal/loop/strategy.scm}] Find \code{nodwyn-turn},
+  \code{agent-turn}, \code{default-agent-turn} and \code{ask-model} first.
+  Then read output-cut retries, reading reminders and \code{evidence-loop}.
+  Separate the strategy's reminders from the host's enforceable stops.
+\item[\src{internal/loop/prompts.scm}] Read the system prompt and the
+  smaller prompt-producing procedures with their callers. These strings
+  instruct a model; they do not replace host checks. Comments connect
+  measured working rules to ADR 32.
+\item[\src{internal/loop/compact.scm}] Follow threshold detection, the
+  handover request and the context operation that uses the result. Pair it
+  with \file{internal/core/compact\_test.go}; compaction changes a view of
+  history, not the historical log.
+\item[\src{internal/loop/agents.scm}] Follow the sub-agent's context and
+  tool subset, then its result returning to the caller. Read the dispatch
+  wrapper as well as \code{sub-agent}: agent tools participate in ordinary
+  tool accounting. Pair it with \file{internal/core/agents\_test.go}.
+\item[\src{internal/loop/optimize.scm}] Trace the specialised sub-agent
+  which proposes improvements to project customisation. Read its limits
+  and the protected write path before assuming it can silently change
+  policy. Compare \file{internal/core/optimize\_test.go}.
+\item[\src{internal/loop/plan.scm}] Follow \code{plan-gate} from strategy
+  into the host's plan primitives in \src{internal/core/plan.go}. Scheme
+  arranges planning; the host retains the irreversible-action gate.
+\item[\src{internal/loop/shell.scm}] Read the innermost dispatch wrapper:
+  how a shell-style command is recognised and redirected, and how results
+  are folded. Compare \file{internal/core/habits\_test.go}.
+\item[\src{internal/loop/hygiene.scm}] Track reads, edits and test outputs,
+  then the conditions that make folding worthwhile. Its model-turn
+  wrapper observes provider cache usage; its sub-agent wrapper distinguishes
+  the main context from nested work.
+\item[\src{internal/loop/readdef.scm}] Follow definition search into
+  bounded file reads, and how those reads feed hygiene's bookkeeping.
+  The model's navigation tool is Scheme composition over host primitives.
+\item[\src{internal/loop/envhint.scm}] Follow the dispatch wrapper's
+  detection of missing-module errors and the hint it appends to the folded
+  result. Its per-session counter limits reminders to use the project's
+  own environment. This is advice, not permission to execute a command.
+\item[\src{internal/loop/checkloop.scm}] Read the outer turn wrapper and
+  the independent-reading tools. A saved check must represent the user's
+  actual example and survive compaction; the introductory comments explain
+  the failures this rule addresses.
+\end{description}
+
+Finally read the project init and development helpers, followed by the
+seventeen exfiltration scenarios. For each scenario identify the primitive,
+the relevant argument role, the checker expected to act and the test fixture
+which supplies its files or credentials. The scenario's filename is a hint;
+\file{test/exfil/exfil\_test.go} supplies the assertions and setup.
+
+\chapter{Finding the next change and proving it}
+
+\section{Choose the owner before changing code}
+
+A new composed workflow usually begins in Scheme. A new operation on the
+host begins with a primitive and its metadata. A new provider dialect
+belongs in \file{llm/}; provider-neutral context selection belongs in
+\file{window/}. A new frontend action follows the RPC type, handler,
+bridge capability and UI action together. A new persistent fact needs a
+log payload and a replay/resume decision, not just an in-memory field.
+
+Use the catalogue as a searchable symbol reference. Every file has its
+own PDF bookmark and complete numbered listing. In a checkout, these
+commands locate definitions and their consumers without a model call:
+\begin{sh}
+rg -n 'func .*Send|func .*startTurn' internal/core
+rg -n 'applyPrim|Before\(' internal/scheme internal/guard
+rg -n 'define .*run-calls|base-run-calls' internal/loop
+rg -n 'KindToolResult|ToolResult' internal/log internal/loop internal/window
+rg -n '^func Test' internal/core/strategy_test.go
+\end{sh}
+
+Read the surrounding test before modifying a contract. The fake provider
+in \src{test/fakes/ollama/ollama.go} is scripted: \code{NewT} fails a test
+if the loop asks after its script ends. The fake home helper in
+\src{test/fakes/home/home.go} isolates tests which construct a guard or
+commit. The catalogue includes the other fake services so readers can
+follow integration tests without a paid model, real key or passphrase.
+
+\section{Three study exercises with a way to check your answer}
+
+\paragraph{Explain a refused write.} Pick one write scenario from the
+catalogue. Draw the call from model arguments through metadata and the
+guard to the uncalled handler. Verify the expected refusal in its Go test.
+Your explanation is incomplete if it cannot name the argument carrying
+the path and the argument carrying the payload.
+
+\paragraph{Explain a context fold.} Follow one hygiene-fold operation
+into the host and then into \code{window.Build}. Find where the old event
+remains available and where its replacement appears in a later request.
+Use \file{internal/core/habits\_test.go} and
+\file{internal/core/strategy\_test.go} to check the distinction.
+
+\paragraph{Explain the custom finish check.} On paper, simulate three
+turns: no edit; an edit followed by validation; and an edit after validation.
+Compare \code{before}, \code{now} and \code{validated-state} at each exit.
+Then repeat with a failed validation and an already-untracked file. The
+correct answer includes the two limitations described in the customisation
+chapter rather than promising that the wrapper proves every change sound.
+
+\section{Keeping the printed source honest}
+
+\file{docs/book/source/generate.py} generates only the catalogue and its
+coverage totals. Listings use \code{lstinputlisting} to read the actual
+repository files at PDF build time; there is no second copy of the code
+to edit. Both books include the same generated file. After adding, removing
+or renaming source files, regenerate the catalogue and review its diff:
+\begin{sh}
+python3 docs/book/source/generate.py
+python3 docs/book/source/generate.py --check
+make book
+make expert
+make validate
+\end{sh}
+
+The generator enumerates git-tracked files. Add a new source file to git's
+index before regenerating, or it will not yet be in the inventory. Its
+check mode fails when the inventory or measured line counts are stale.
+Source text edits are picked up by LaTeX directly; regenerate too if line
+counts change. PDFs are a snapshot of the checkout used for that build,
+not a claim that a particular release contains every listed function.
+
+The repository's validation command selects checks by changed paths.
+Changes confined to the shared source directory are under \file{docs/book/};
+run \code{make expert} explicitly as well, because the validator's path
+selection does not infer that shared dependency. When changing Go, follow
+the package and whole-repository checks in \file{AGENTS.md}. When changing
+the console, run its browser checks. A successful typeset is evidence for
+the book build, not evidence that changed application code works.

@@ -1,0 +1,34 @@
+% Both books use the same source typography so line numbers mean the same thing.
+\usepackage{amssymb}
+\usepackage{upquote}
+\usepackage{xurl}
+% Full listings need room for four-digit page numbers in the contents.
+\makeatletter
+\renewcommand{\@pnumwidth}{3em}
+\renewcommand{\@tocrmarg}{4em}
+\renewcommand*{\l@section}{\@dottedtocline{1}{1.5em}{3.5em}}
+\makeatother
+\lstdefinestyle{repository}{
+  basicstyle=\ttfamily\footnotesize,
+  numbers=left,numberstyle=\tiny\color{gray},numbersep=8pt,
+  stepnumber=1,firstnumber=1,numberblanklines=true,
+  xleftmargin=2.5em,breaklines=true,breakatwhitespace=false,
+  columns=fullflexible,keepspaces=true,tabsize=4,upquote=true,
+  literate={é}{{\'e}}1 {ç}{{\c{c}}}1
+    {§}{{\S}}1 {·}{{$\cdot$}}1 {×}{{$\times$}}1
+    {ω}{{$\omega$}}1 {₀}{{\textsubscript{0}}}1
+    {–}{{--}}1 {—}{{---}}1 {’}{{'}}1 {•}{{$\bullet$}}1
+    {…}{{\ldots}}1 {›}{{$>$}}1 {↑}{{$\uparrow$}}1
+    {→}{{$\to$}}1 {↓}{{$\downarrow$}}1 {⇒}{{$\Rightarrow$}}1
+    {≈}{{$\approx$}}1 {⎿}{{$\llcorner$}}1 {─}{{-}}1
+    {▸}{{$\blacktriangleright$}}1 {◂}{{$\blacktriangleleft$}}1
+    {⚑}{{\textbf{!}}}1 {✓}{{$\checkmark$}}1 {✕}{{$\times$}}1
+    {�}{{\fbox{?}}}1
+}
+\newcommand{\src}[1]{\hyperref[src:#1]{\nolinkurl{#1}}}
+\newcommand{\sourcefile}[2]{%
+  \clearpage
+  \section{\texorpdfstring{\protect\nolinkurl{#1}}{\detokenize{#1}}}%
+  \label{src:#1}%
+  \lstinputlisting[style=repository,language=#2]{../../#1}%
+}
