@@ -377,6 +377,7 @@ check(async () => {
   await page.waitForFunction(() => document.querySelector(".transcript").innerText.includes("Answered by reasoner with low effort."));
   assert.strictEqual(await page.inputValue("#task-model-model"), "control");
   assert.strictEqual(await page.inputValue("#task-model-effort"), "low");
+  await openActivity("Model: reasoner · low effort");
   await shows(".transcript", "Model: reasoner · low effort");
   step("a task started with an effort asks the provider for it");
   // The provider says neither the context nor the cost; the model's own
@@ -440,6 +441,7 @@ check(async () => {
     ["medium", "low", "high", "high", "medium"],
     "the provider saw the wrong efforts (its first is the Test above)",
   );
+  await openActivity("Next message: reasoner · medium effort");
   await shows(".transcript", "Next message: reasoner · medium effort");
   // This conversation is on the default model, which asks its provider to
   // cache the prompt: every request carried the ask, the provider read what a
@@ -450,6 +452,7 @@ check(async () => {
   assert.ok(asked.length >= 4 && asked.every((r) => r.model === "reasoner" && r.cache_control === '{"type":"ephemeral"}' && r.answered === 200), "requests that asked to cache: " + JSON.stringify(asked));
   assert.ok(asked.at(-1).cached_tokens > asked.at(-1).prompt_tokens / 2, "the last request read little of its prompt from the cache: " + JSON.stringify(asked.at(-1)));
   assert.ok(seen.filter((r) => r.model === "fast").every((r) => !r.cache_control), "a model that did not ask was sent the ask");
+  await openActivity(/\d+% cached/);
   assert.match(await page.innerText(".transcript"), /\d+% cached/, "the transcript does not say the prompt was read from the cache");
   step("a model told to cache its prompt asks for it on every request, and is read back from the cache");
   step("a choice made while a response ran waited for it: the provider saw the old effort, then the new");
@@ -708,6 +711,13 @@ check(async () => {
   assert.deepStrictEqual(fs.existsSync(`${root}/work/.nodwyn`), false, "choosing a model wrote into the folder");
   app.kill("SIGTERM");
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
+
+  // Status notes and usage remain readable after opening their Activity
+  // row, rather than needing to be permanently visible in the conversation.
+  async function openActivity(text) {
+    const fold = page.locator(".activity-fold").filter({ hasText: text }).last();
+    if (await fold.getAttribute("open") === null) await fold.locator(":scope > summary").click();
+  }
 
   async function shows(selector, ...texts) {
     const text = await page.innerText(selector);

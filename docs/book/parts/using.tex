@@ -198,7 +198,15 @@ and the turn says so (\adr{22}, amended). Ollama reports it itself.
   Streamed text and thinking are joined for the next display frame, keeping
   the heading and detail panels in place. A task kept off screen catches
   up when shown; replies and questions flush preceding fragments at once.
-  Reading earlier text keeps your scroll position.
+  Reading earlier text keeps your scroll position. Routine activity (judge
+  requests, focused contexts, instructions to the model, groups of calls
+  and the token line) shares one closed \textbf{Activity} row per stretch
+  between replies; click it to see it all. Its summary follows the work
+  without opening, and counts a failed call in red, whose run or group is
+  open inside. Replies, warnings, errors, a turn that stopped short and a
+  worktree that left uncommitted files out stay in view, and a question is
+  asked in its card at the end of the conversation. This folds the display
+  only: \code{/compact [focus]} changes the model's context.
 \item[\code{nodwyn app}] The daemon, the console and a window in one
   program. It attaches to a daemon if one is running, and otherwise serves
   one itself until you close it.

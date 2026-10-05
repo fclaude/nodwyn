@@ -101,6 +101,9 @@ check(async () => {
   const activity = async (page) => {
     await showThinking(page);
     await task(page);
+    const fold = page.locator(".activity-fold").filter({ has: page.locator(".activity:not(.commands):not(.writes)") });
+    assert.strictEqual(await fold.getAttribute("open"), null, "routine activity starts folded");
+    await fold.locator(":scope > summary").click();
     await page.click(`${reads} > summary`);
     await page.waitForSelector(`${reads}[open]`);
     await page.locator(reads).scrollIntoViewIfNeeded();

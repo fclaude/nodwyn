@@ -32,8 +32,16 @@ each tool call from its start to its result, the wait for your approval
 left out. Only a figure with a limit behind it is a bar (Time, Tool calls,
 Tokens sent and Context, and the total spend when a spend limit is set);
 the bars come first and the rest are plain rows under them. A compaction is
-one line in the conversation: what set it off, and the context's size
-before and after.
+a note behind **Activity**: what set it off, and the context's size before
+and after. Routine activity (judge requests, focused contexts, instructions
+to the model, groups of calls and the token line) shares one closed
+**Activity** row per stretch between replies; click it to see it all. Its
+summary follows the work without opening, and counts a failed call in red
+("1 failed"), whose run or group is open inside. Replies, warnings, errors,
+a turn that stopped short and a worktree that left uncommitted files out
+stay in view; a question is asked in its card at the end of the
+conversation. This folds the display only: `/compact [focus]` changes the
+model's context.
 **Connections** (tools, credentials, workspaces, models),
 **Workspaces** and **Settings** hold the rest; Settings also creates,
 unlocks and sets the passphrase of the keychain. The
@@ -377,6 +385,7 @@ those that failed; a failed or refused command opens its row and the run. A
 read, a command, a mark or a reply of more than a line ends the other groups,
 so the transcript keeps its order. The model's marks on its plan join one
 line in a row ("Steps 1, 2 of 5 marked done"), their notes behind its fold.
+All of these sit inside their stretch's **Activity** row.
 The model's thinking is hidden, as in the TUI without `:thinking`, unless
 Settings › This browser › The model's thinking is **Shown** (kept in this
 browser); shown, a reply that only thinks and calls tools puts its thinking

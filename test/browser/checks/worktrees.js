@@ -66,7 +66,11 @@ check(async () => {
     assert.ok(!fs.existsSync(path.join(repo, "notes", `${name}.md`)), `${name}.md reached the repository's own checkout`);
   }
   await shows(page, ".task-head .task-meta", "project", branches[second]);
-  await shows(page, ".transcript", `Working in a git worktree of its own, on ${branches[second]}, from main`);
+  const worktreeNote = `Working in a git worktree of its own, on ${branches[second]}, from main`;
+  const activity = page.locator(".activity-fold").filter({ hasText: worktreeNote });
+  assert.strictEqual(await activity.getAttribute("open"), null, "the worktree note starts folded");
+  await activity.locator(":scope > summary").click();
+  await shows(page, ".transcript", worktreeNote);
   // Adding the folder wrote nothing into it (ADR 22): the repository has
   // nothing untracked, so nothing is said to be left behind.
   assert.ok(!fs.existsSync(path.join(repo, ".nodwyn", "workspace.toml")), "naming the folder wrote a workspace file into it");

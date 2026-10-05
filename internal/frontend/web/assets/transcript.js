@@ -2,7 +2,8 @@
 // opens one, and everything the harness does in reply belongs to it. Calls
 // that only look (reads, searches, listings) fold into one line, as do
 // writes in a row and commands in a row; the model's marks on its plan join
-// one line.
+// one line. Routine activity shares a further fold, so the conversation
+// foregrounds what the user and the model say to each other.
 import { h, icon, oneLine, sizeOf, toolLabel, isMCP } from "./dom.js";
 import { markdown } from "./markdown.js";
 import { attachmentChip } from "./attach.js";
@@ -161,6 +162,7 @@ export class Transcript {
   reset() {
     this.el.replaceChildren();
     this.turn = null;
+    this.fold = null;
     this.group = null;
     this.writeGroup = null;
     this.marks = null;
@@ -176,6 +178,7 @@ export class Transcript {
   }
   end() {
     this.turn = null;
+    this.fold = null;
     this.group = null;
     this.writeGroup = null;
     this.marks = null;
@@ -193,6 +196,45 @@ export class Transcript {
     }
     return this.turn;
   }
+  // Routine activity stays available without adding a visible row for
+  // every judge request, context change, instruction or group of calls.
+  activity(...nodes) {
+    if (!this.fold) {
+      const failed = h("span", { class: "activity-fold-failed" });
+      const what = h("span", { class: "activity-fold-what" });
+      const body = h("div", { class: "activity-fold-body" });
+      const el = h("details", { class: "activity-fold" }, h("summary", {}, h("span", { class: "chev" }, icon("right", 14)), h("span", {}, "Activity"), failed, what), body);
+      this.agent().append(el);
+      this.fold = { el, body, what, failed };
+    }
+    this.fold.body.append(...nodes);
+    this.paintActivity();
+    return this.fold.body;
+  }
+  // paintActivity writes what a fold holds on its row. A failure is counted
+  // on the row rather than opening it: a command that exits 1 is routine
+  // (a grep that finds nothing, a test run before the fix), and opening the
+  // row for it showed everything else in the stretch too. Its run or group
+  // inside still opens, so it is in view once the row is.
+  paintActivity(f = this.fold) {
+    if (!f) return;
+    const parts = [];
+    let notes = 0, calls = 0;
+    for (const node of f.body.children) {
+      if (node.classList.contains("activity")) {
+        const label = node.querySelector(".label").textContent;
+        // The groups' own failure counts are summed on the row.
+        const what = node.querySelector(".what").textContent.split(" · ").filter((s) => !/^\d+ failed$/.test(s)).join(" · ");
+        parts.push([label, what].filter(Boolean).join(": "));
+      } else if (node.classList.contains("audit")) notes++;
+      else if (node.classList.contains("step")) calls++;
+    }
+    if (notes) parts.unshift(`${notes} ${notes === 1 ? "note" : "notes"}`);
+    if (calls) parts.push(`${calls} ${calls === 1 ? "call" : "calls"}`);
+    f.what.textContent = parts.join(" · ") || "Tokens and timing";
+    const failed = f.body.querySelectorAll(".stat.failed, .result.failed").length;
+    f.failed.textContent = failed ? `${failed} failed` : "";
+  }
   // absorb takes the narration written between two writes into the Edited
   // group they share: what came after the group's last row is only prose,
   // thinking and the token line (anything else ends the group), and the
@@ -200,7 +242,8 @@ export class Transcript {
   // as it goes on; the group keeps it in order behind its fold.
   absorb() {
     const g = this.writeGroup;
-    for (let n = g.el.nextSibling, next; n; n = next) {
+    this.fold = g.fold;
+    for (let n = g.fold.el.nextSibling, next; n; n = next) {
       next = n.nextSibling;
       if (n !== this.usage) g.body.append(n);
     }
@@ -223,6 +266,7 @@ export class Transcript {
     const [label, what] = commandHeader(g, Date.now());
     g.label.textContent = label;
     g.what.textContent = what;
+    this.paintActivity(g.fold);
   }
   // tickClock repaints the open run once a second while a command in it
   // runs or waits (the header says which). A transcript no longer on the
@@ -241,10 +285,15 @@ export class Transcript {
     if (this.clock) return;
     this.clock = setInterval(() => this.tickClock(), 1000);
   }
-  audit(label, payload, cls = "") {
+  // audit draws a note: behind Activity when it is routine, in view when it
+  // is a warning, an error or (outside) news of another kind.
+  audit(label, payload, cls = "", outside = cls === "bad" || cls === "warn") {
     const node = h("details", { class: `audit ${cls}` }, h("summary", {}, label));
     if (payload !== undefined) node.append(h("pre", {}, typeof payload === "string" ? payload : JSON.stringify(payload, null, 2)));
-    this.agent().append(node);
+    if (outside) {
+      this.fold = null;
+      this.agent().append(node);
+    } else this.activity(node);
     this.group = null;
     this.writeGroup = null;
     this.marks = null;
@@ -278,11 +327,11 @@ export class Transcript {
         break;
       }
       case "harness.msg":
-        this.end();
-        this.el.append(h("details", { class: "harness-note" }, h("summary", {}, "nodwyn told the model"), h("pre", {}, p.text ?? p.Text)));
+        this.audit("nodwyn told the model", p.text ?? p.Text, "harness-note");
         break;
       case "stream.text": {
         if (!this.streamText) {
+          this.fold = null;
           this.streamText = h("div", { class: "prose streaming" });
           this.agent().append(this.streamText);
           this.group = null;
@@ -308,19 +357,26 @@ export class Transcript {
         this.streamText = null;
         this.streamThinking = null;
         const turn = this.agent();
+        const previousFold = this.fold;
+        if (p.content) this.fold = null;
         this.thought = null;
         if (p.thinking) {
           const node = thinking(p.thinking);
           // A reply that only thinks and calls tools goes with its calls: into
           // the group of reads it continues, or the one its reads will start.
           // In rows of their own, forty such replies stacked forty "Thinking"
-          // lines under one group. Commands fold the same way.
+          // lines under one group. Commands fold the same way, and so do
+          // writes: the Edited group first takes in the narration before it,
+          // so the thought follows it. Left beside the group inside Activity,
+          // the thought fell behind the group's later writes.
           const first = (p.tool_calls || [])[0];
-          const open = category(first?.name) === "command" ? this.commandGroup : this.group;
+          const writing = category(first?.name) === "write" && this.writeGroup && !p.content;
+          if (writing) this.absorb();
+          const open = category(first?.name) === "command" ? this.commandGroup : writing ? this.writeGroup : this.group;
           if (p.content) turn.append(node);
           else if (open) open.body.append(node);
           else {
-            turn.append(node);
+            this.activity(node);
             this.thought = node;
           }
         }
@@ -362,8 +418,11 @@ export class Transcript {
           } else this.tokens.unpriced++;
           if (!this.usage) {
             this.usage = h("div", { class: "usage" });
-            turn.append(this.usage);
-          } else turn.append(this.usage);
+          }
+          // Usage belongs behind the activity fold too, not as another
+          // verbose line beside the answer. It remains last in its fold.
+          const usageBody = this.fold?.body || this.usage.parentElement || previousFold?.body || this.activity();
+          usageBody.append(this.usage);
           // Only Ollama reports a duration; a chat-completions server (OpenRouter
           // among them) reports none, so no time rather than "0.0 s".
           const time = this.tokens.ms > 0 ? ` · ${(this.tokens.ms / 1000).toFixed(1)} s with the model` : "";
@@ -420,7 +479,7 @@ export class Transcript {
         // call, the model's text) starts a new line.
         if (!this.marks) {
           const el = h("details", { class: "audit" }, h("summary", {}));
-          this.agent().append(el);
+          this.activity(el);
           this.group = null;
           this.writeGroup = null;
           this.closeCommands();
@@ -456,7 +515,9 @@ export class Transcript {
       case "turn.end":
         if (p.outcome && p.outcome !== "completed") {
           const words = { stopped: "Stopped", hard_budget: "Stopped at a hard budget limit", spend_limit: "Stopped at the spend limit", canceled: "Stopped: canceled", error: "Stopped by an error" };
-          this.audit(words[p.outcome] || `Turn ended: ${p.outcome}`, p.error || undefined, p.outcome === "error" ? "bad" : "");
+          // Where a turn stopped short is said where it ends, not behind
+          // Activity: a limit's stop is shown nowhere else.
+          this.audit(words[p.outcome] || `Turn ended: ${p.outcome}`, p.error || undefined, p.outcome === "error" ? "bad" : "", true);
         }
         this.end();
         break;
@@ -536,7 +597,9 @@ export class Transcript {
         // Where the task works, when it has a git worktree of its own (ADR 34).
         const from = p.base ? `${p.base} at ${String(p.base_commit || "").slice(0, 7)}` : `commit ${String(p.base_commit || "").slice(0, 7)}`;
         const left = p.uncommitted ? ` ${p.uncommitted} uncommitted file${p.uncommitted === 1 ? " is" : "s are"} in the repository but not here.` : "";
-        if (event.kind === "worktree.create") this.audit(`Working in a git worktree of its own, on ${p.branch}, from ${from}.${left}`, p.path);
+        // Files left out of the worktree are news (ADR 34): the conversation
+        // is where they are counted.
+        if (event.kind === "worktree.create") this.audit(`Working in a git worktree of its own, on ${p.branch}, from ${from}.${left}`, p.path, "", !!p.uncommitted);
         else if (event.kind === "worktree.restore") this.audit(`Made its worktree again, on ${p.branch}`, p.path);
         else this.audit(`Removed its worktree and ${p.branch}: nothing in them was unlanded`, p.path);
         break;
@@ -549,6 +612,7 @@ export class Transcript {
       default:
         if (auditLabels[event.kind]) this.audit(auditLabels[event.kind], p);
     }
+    this.paintActivity();
   }
   toolCall(p) {
     const kind = category(p.name);
@@ -568,10 +632,10 @@ export class Transcript {
         const what = h("span", { class: "what" });
         const body = h("div", { class: "activity-body" });
         const el = h("details", { class: "activity writes" }, h("summary", {}, h("span", { class: "chev" }, icon("right", 14)), label, what), body);
-        this.agent().append(el);
+        this.activity(el);
         if (this.thought) body.append(this.thought);
         this.thought = null;
-        this.writeGroup = { el, body, what, files: new Set(), failed: 0 };
+        this.writeGroup = { el, body, what, fold: this.fold, files: new Set(), failed: 0 };
       }
       const g = this.writeGroup;
       const a = argsObject(p.args);
@@ -584,7 +648,7 @@ export class Transcript {
       const step = h("div", { class: "step" }, icon("file", 15), h("span", {}, verb), h("span", { class: "mono" }, file), result, note);
       const detail = h("details", { class: "step-detail" }, h("summary", {}, "Details"), h("pre", {}, typeof p.args === "string" ? p.args : JSON.stringify(p.args, null, 2)));
       g.body.append(step, detail);
-      this.call = { id: p.id, name: p.name, kind, step, result, note, detail, writeGroup: g };
+      this.call = { id: p.id, name: p.name, kind, step, result, note, detail, writeGroup: g, fold: this.fold };
       return;
     }
     if (kind === "read") {
@@ -597,7 +661,7 @@ export class Transcript {
         const names = h("span", { class: "names" });
         const body = h("div", { class: "activity-body" });
         const el = h("details", { class: "activity" }, h("summary", {}, h("span", { class: "chev" }, icon("right", 14)), label, what, names), body);
-        this.agent().append(el);
+        this.activity(el);
         if (this.thought) body.append(this.thought);
         this.thought = null;
         this.group = { el, body, what, names, label, counts: {}, tools: new Set(), servers: new Set() };
@@ -613,7 +677,7 @@ export class Transcript {
       g.names.textContent = [...g.tools].slice(0, 3).join(" · ");
       const row = h("details", { class: "call" }, h("summary", {}, h("span", { class: "name" }, toolLabel(p.name)), h("span", { class: "args" }, summaryText), h("span", { class: "stat" }, "…")), h("div", { class: "call-body" }, detailsBlock("Arguments", p.args)));
       g.body.append(row);
-      this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), group: g };
+      this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), group: g, fold: this.fold };
       return;
     }
     if (kind === "command") {
@@ -631,10 +695,10 @@ export class Transcript {
         const what = h("span", { class: "what" });
         const body = h("div", { class: "activity-body" });
         const el = h("details", { class: "activity commands" }, h("summary", {}, h("span", { class: "chev" }, icon("right", 14)), label, what), body);
-        this.agent().append(el);
+        this.activity(el);
         if (this.thought) body.append(this.thought);
         this.thought = null;
-        this.commandGroup = { el, body, what, label, done: 0, failed: 0, ms: 0, startedAt: 0, waiting: false };
+        this.commandGroup = { el, body, what, label, fold: this.fold, done: 0, failed: 0, ms: 0, startedAt: 0, waiting: false };
       }
       const g = this.commandGroup;
       const row = h("details", { class: "call" }, h("summary", {}, h("span", { class: "name" }, commandLine(p.args) || summaryText), h("span", { class: "stat" }, "running…")), h("div", { class: "call-body" }, detailsBlock("Arguments", p.args)));
@@ -643,7 +707,7 @@ export class Transcript {
       g.waiting = false;
       this.paintCommands(g);
       this.startClock();
-      this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), commandGroup: g };
+      this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), commandGroup: g, fold: this.fold };
       return;
     }
     this.group = null;
@@ -658,8 +722,8 @@ export class Transcript {
     const note = h("span", { class: "aside-note" });
     const step = h("div", { class: "step" }, line, result, note);
     const detail = h("details", { class: "step-detail" }, h("summary", {}, "Details"), h("pre", {}, typeof p.args === "string" ? p.args : JSON.stringify(p.args, null, 2)));
-    this.agent().append(step, detail);
-    this.call = { id: p.id, name: p.name, kind, step, result, note, detail };
+    this.activity(step, detail);
+    this.call = { id: p.id, name: p.name, kind, step, result, note, detail, fold: this.fold };
   }
   // waiting marks the call in progress as stopped at a question, or not. It
   // is called each time the page places its prompts, so only a change of
@@ -765,6 +829,9 @@ export class Transcript {
         }
       }
     }
+    // A bad note between the call and its result starts a new fold: the
+    // count belongs on the call's.
+    this.paintActivity(c.fold);
     this.call = null;
   }
 }

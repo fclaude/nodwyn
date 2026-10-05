@@ -507,3 +507,31 @@ views: commit hashes under finished tasks. Per-step plan progress is there
 since 2026-09-30: the model marks steps with `plan-step`, the log records
 each mark (`plan.step`), and the plan panel shows which steps are done,
 skipped and next, as the model's word.
+
+## Amendment 2026-10-05: Routine activity folds into one row
+
+The transcript still stacked a row for each judge request, focused context,
+instruction to the model, group of calls and token line, and an
+instruction to the model started a second "nodwyn" heading before any
+reply. Routine activity now shares one closed `details` row, **Activity**,
+per stretch between replies. The rows and groups it holds are unchanged
+inside it, and its summary follows what they say without opening or
+closing it. An instruction to the model belongs to the turn it is part of.
+
+Replies and streamed text stay outside. A short line of narration between
+writes still joins its Edited group, and so does the thinking before each
+write. A warning, an error, a turn that stopped before it was done (at a
+limit, or stopped) and a worktree that left the repository's uncommitted
+files out stay in view: the transcript is the only place that says them.
+A failed call is counted on the row in red ("1 failed") and opens its run
+or group inside, but not the row: a command that exits 1 is routine (a
+grep that finds nothing, a test run before its fix), and opening the row
+for it showed the whole stretch. A question leaves the row closed, since
+its card at the end of the conversation asks it.
+
+Only the display changes: no log record, model window, RPC method or
+`/compact`. The transcript browser check builds the stack from the
+screenshot that asked for this and checks the fold, what it keeps, live
+updates, failures, questions, stops, thinking between writes and turn
+boundaries; the screens, models and worktrees checks open the row before
+looking inside it.

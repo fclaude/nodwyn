@@ -43,6 +43,107 @@ check(async () => {
     const header = (root) => { const g = [...root.querySelectorAll(".activity.commands")].pop(); return g ? `${g.querySelector(".label").textContent} | ${g.querySelector(".what").textContent}` : null; };
     const out = {};
 
+    // The screenshot's routine judge, context, harness and tool activity is
+    // one closed row, not a stack of separate disclosures and token lines.
+    async function activityCollapsePreservesContent() {
+      const { root, t } = fresh();
+      root.className = "transcript";
+      t.render({ kind: "user.msg", payload: { text: "review all setting options against the documentation, what makes and what doesn't make sense anymore?" } });
+      t.render({ kind: "jev.req", payload: { tool: "jev-noul", ok: true, model: "fake", answer: "proceed", usage: { input_tokens: 338, output_tokens: 20 } } });
+      t.render({ kind: "context.narrow", payload: { system: "Focus on settings." } });
+      t.render({ kind: "harness.msg", payload: { text: "Review the settings and their documentation." } });
+      for (let i = 0; i < 14; i++) read(t, `docs/settings-${i}.md`);
+      for (let i = 0; i < 13; i++) done(t, call(t, "fs-find", { path: "docs", glob: "*.md" }), "fs-find", "found settings", 2);
+      for (let i = 0; i < 9; i++) done(t, call(t, "fs-list", { path: "docs" }), "fs-list", "settings.md", 2);
+      for (let i = 0; i < 7; i++) t.render({ kind: "llm.resp", payload: { usage: { prompt_tokens: i === 6 ? 13086 : 13000, output_tokens: i === 6 ? 170 : 150, reasoning_tokens: i === 0 ? 32 : 0 } } });
+      const fold = root.querySelector(".activity-fold");
+      const body = fold?.querySelector(".activity-fold-body");
+      const initial = {
+        folds: root.querySelectorAll(".activity-fold").length,
+        agents: root.querySelectorAll(".turn.agent").length,
+        closed: fold ? !fold.open : false,
+        hidden: body ? !body.checkVisibility() : false,
+        rows: [...root.querySelectorAll(".turn.agent > :not(.who)")].map((n) => n.className),
+        kept: ["Asked the judge (jev-noul)", "Started a focused context", "nodwyn told the model", "read 14 files", "searched 13 times", "listed 9 folders", "91,086 → 1,070 tokens"].every((text) => body?.textContent.includes(text)),
+      };
+      fold?.querySelector("summary").click();
+      const expanded = !!fold?.open && !!body?.checkVisibility();
+      const nested = body?.querySelector(".harness-note");
+      nested?.querySelector("summary").click();
+      const harnessVisible = !!nested?.open && nested.querySelector("pre").checkVisibility();
+      read(t, "live-setting.md");
+      const live = fold === root.querySelector(".activity-fold") && !!fold?.open && body?.textContent.includes("live-setting.md") && fold.querySelector("summary").textContent.includes("read 15 files");
+      fold?.querySelector("summary").click();
+      read(t, "another-setting.md");
+      const collapsedLive = !!fold && !fold.open && !body.checkVisibility() && body.textContent.includes("another-setting.md");
+      t.render({ kind: "stream.text", payload: { Text: "The answer stays visible." } });
+      const stream = root.querySelector(".streaming");
+      const streamingVisible = stream?.checkVisibility() && !stream.closest(".activity-fold");
+      t.render({ kind: "llm.resp", payload: { content: "The complete answer stays visible.", usage: { prompt_tokens: 20, output_tokens: 5 } } });
+      const reply = root.querySelector(".prose");
+      const replyVisible = reply?.textContent.trim() === "The complete answer stays visible." && reply.checkVisibility() && !reply.closest(".activity-fold") && !fold?.open;
+      read(t, "after-reply.md");
+      const separated = root.querySelectorAll(".activity-fold").length === 2 && root.querySelectorAll(".activity-fold")[1].previousElementSibling === reply;
+      t.render({ kind: "turn.end", payload: { outcome: "completed" } });
+      t.render({ kind: "user.msg", payload: { text: "Next turn" } });
+      read(t, "next-turn.md");
+      const boundary = root.querySelectorAll(".turn.agent").length === 2 && root.querySelectorAll(".activity-fold").length === 3;
+      t.reset();
+      read(t, "after-reset.md");
+      const reset = root.querySelectorAll(".activity-fold").length === 1 && !root.textContent.includes("next-turn.md");
+      t.end();
+      return { initial, expanded, harnessVisible, live, collapsedLive, streamingVisible, replyVisible, separated, boundary, reset };
+    }
+    out.activityCollapsePreservesContent = await activityCollapsePreservesContent();
+    // A failure is counted on the closed Activity row, where it is seen, and
+    // its run or group inside opens; opening the row for it showed the whole
+    // stretch whenever a grep found nothing. A question leaves the row
+    // closed, before and after the answer: its card at the end of the
+    // conversation asks it. A turn that stopped short, a worktree that left
+    // files out and an error stay outside the row.
+    {
+      const row = (root) => {
+        const fold = root.querySelector(".activity-fold");
+        const failed = fold?.querySelector(".activity-fold-failed");
+        return { open: fold?.open ?? null, failed: failed?.checkVisibility() ? failed.textContent : "", what: fold?.querySelector(".activity-fold-what").textContent };
+      };
+      const visible = (root, text) => [...root.querySelectorAll("summary")].some((s) => s.textContent.includes(text) && s.checkVisibility());
+      const a = fresh();
+      for (let i = 0; i < 3; i++) read(a.t, `a${i}.go`);
+      run(a.t, "grep", 1, 20);
+      const command = { ...row(a.root), run: a.root.querySelector(".activity.commands").open, call: a.root.querySelector(".activity.commands .call").open };
+      const b = fresh();
+      done(b.t, call(b.t, "fs-read", { path: "missing.md" }), "fs-read", "not found", 2, false);
+      const readFailure = row(b.root);
+      const c = fresh();
+      done(c.t, call(c.t, "fs-edit", { path: "missing.md" }), "fs-edit", "old text not found", 2, false);
+      const write = { ...row(c.root), group: c.root.querySelector(".activity.writes").open };
+      const d = fresh();
+      const asked = call(d.t, "shell-exec", { cmd: "rm", args: ["x"] });
+      d.t.waiting(true);
+      const asking = row(d.root);
+      d.t.waiting(false);
+      done(d.t, asked, "shell-exec", JSON.stringify({ status: 0, stdout: "", stderr: "" }), 30);
+      const answered = row(d.root);
+      const e = fresh();
+      read(e.t, "ok.md");
+      e.t.render({ kind: "error", payload: { Err: "provider unavailable" } });
+      const audit = visible(e.root, "Stopped: provider unavailable");
+      const f = fresh();
+      done(f.t, call(f.t, "shell-start", { cmd: "false", args: [] }), "shell-start", "refused", 2, false);
+      const other = row(f.root);
+      const g = fresh();
+      read(g.t, "a.go");
+      g.t.render({ kind: "turn.end", payload: { outcome: "spend_limit" } });
+      const stopped = visible(g.root, "Stopped at the spend limit");
+      const w = fresh();
+      w.t.render({ kind: "worktree.create", payload: { branch: "nodwyn/a", base: "main", base_commit: "abcdef0", uncommitted: 3 } });
+      w.t.render({ kind: "worktree.create", payload: { branch: "nodwyn/b", base: "main", base_commit: "abcdef0" } });
+      const worktree = { leftOut: visible(w.root, "3 uncommitted files are in the repository but not here"), clean: visible(w.root, "on nodwyn/b") };
+      for (const { t } of [a, b, c, d, e, f, g, w]) t.end();
+      out.foldExceptions = { command, readFailure, write, asking, answered, audit, other, stopped, worktree };
+    }
+
     // Reads and commands that alternate keep their order: each read ends a
     // run of commands and each command a group of reads.
     {
@@ -51,7 +152,7 @@ check(async () => {
       run(t, "go", 0, 100);
       read(t, "b.go");
       run(t, "go", 0, 100);
-      out.order = [...root.querySelectorAll(".turn.agent > .activity")].map((g) => (g.classList.contains("commands") ? "commands" : "reads"));
+      out.order = [...root.querySelectorAll(".turn.agent .activity")].map((g) => (g.classList.contains("commands") ? "commands" : "reads"));
     }
     // Commands in a row are one run, with a row each, and a finished run
     // says how many ran and for how long together.
@@ -125,8 +226,11 @@ check(async () => {
     }
     // What a turn's blocks are, in order: a reply's text, a group of reads,
     // writes ("Edited"), commands, the token line and the model's marks.
+    // Flatten only the new display fold; the existing groups keep their
+    // original bodies and order behind it.
+    const blocks = (nodes) => [...nodes].flatMap((n) => n.classList.contains("activity-fold") ? blocks(n.querySelector(".activity-fold-body").children) : [n]);
     const shape = (root) =>
-      [...root.querySelectorAll(".turn.agent > *")].slice(1).map((n) => {
+      blocks(root.querySelector(".turn.agent").children).filter((n) => !n.classList.contains("who")).map((n) => {
         if (n.classList.contains("activity")) return n.classList.contains("writes") ? "writes" : n.classList.contains("commands") ? "commands" : "reads";
         if (n.classList.contains("prose")) return `prose:${n.textContent.trim().slice(0, 12).trim()}`;
         return n.classList.contains("usage") ? "usage" : n.classList.contains("audit") ? "marks" : n.className;
@@ -151,6 +255,28 @@ check(async () => {
         header: g?.querySelector(".what")?.textContent,
         body: [...(g?.querySelector(".activity-body").children || [])].map((n) => (n.classList.contains("prose") ? `prose:${n.textContent.trim()}` : n.classList.contains("step") ? "step" : "detail")),
         closed: g ? !g.open : null,
+      };
+    }
+    // A reasoning model thinks before each write: its thoughts join the
+    // Edited group in order, after a line of narration before them, and no
+    // second Activity row opens inside the group.
+    {
+      const think = (t, text) => t.render({ kind: "llm.resp", payload: { thinking: text, tool_calls: [{ name: "fs-edit" }], usage: { prompt_tokens: 10, output_tokens: 1 } } });
+      const { root, t } = fresh();
+      think(t, "T1");
+      edit(t, "a.go");
+      think(t, "T2");
+      edit(t, "b.go");
+      say(t, "Now the CSS.");
+      think(t, "T3");
+      edit(t, "c.css");
+      const g = root.querySelector(".activity.writes");
+      out.thoughts = {
+        shape: shape(root),
+        body: [...g.querySelector(".activity-body").children]
+          .filter((n) => !n.classList.contains("step-detail"))
+          .map((n) => (n.classList.contains("thinking") ? `thinking:${n.querySelector("pre").textContent}` : n.classList.contains("prose") ? `prose:${n.textContent.trim()}` : n.classList.contains("step") ? `step:${n.querySelector(".mono").textContent}` : n.className)),
+        folds: root.querySelectorAll(".activity-fold").length,
       };
     }
     // What is not a line of narration, or is not between writes, stays where
@@ -579,10 +705,24 @@ check(async () => {
   console.log(JSON.stringify(results, null, 1));
   const fail = [];
   const want = (ok, what) => ok || fail.push(what);
+  const ac = results.activityCollapsePreservesContent;
+  want(ac.initial.folds === 1 && ac.initial.agents === 1 && ac.initial.closed && ac.initial.hidden && ac.initial.rows.join() === "activity-fold" && ac.initial.kept, `activityCollapsePreservesContent: screenshot activity folds into one closed row: ${JSON.stringify(ac.initial)}`);
+  want(ac.expanded && ac.harnessVisible && ac.live && ac.collapsedLive, `activityCollapsePreservesContent: expansion and live updates retain content and choice: ${JSON.stringify(ac)}`);
+  want(ac.streamingVisible && ac.replyVisible && ac.separated && ac.boundary && ac.reset, `activityCollapsePreservesContent: replies, boundaries and reset: ${JSON.stringify(ac)}`);
+  const fx = results.foldExceptions;
+  want(fx.command.open === false && fx.command.failed === "1 failed" && !fx.command.what.includes("failed") && fx.command.run && fx.command.call, `a failed command is counted on the closed row, its run open inside: ${JSON.stringify(fx.command)}`);
+  want(fx.readFailure.open === false && fx.readFailure.failed === "1 failed", `a failed read is counted on the closed row: ${JSON.stringify(fx.readFailure)}`);
+  want(fx.write.open === false && fx.write.failed === "1 failed" && fx.write.group, `a failed write is counted on the closed row, its group open inside: ${JSON.stringify(fx.write)}`);
+  want(fx.other.open === false && fx.other.failed === "1 failed", `a failed call is counted on the closed row: ${JSON.stringify(fx.other)}`);
+  want(fx.asking.open === false && fx.asking.what.includes("Waiting for your answer") && fx.answered.open === false && fx.answered.failed === "", `a question leaves the row closed, before and after the answer: ${JSON.stringify({ asking: fx.asking, answered: fx.answered })}`);
+  want(fx.audit && fx.stopped, `an error and a stop at a limit stay outside the row: ${JSON.stringify(fx)}`);
+  want(fx.worktree.leftOut && !fx.worktree.clean, `files left out of a worktree are said outside the row, a clean worktree inside it: ${JSON.stringify(fx.worktree)}`);
   want(results.order.join() === "reads,commands,reads,commands", `order: ${results.order}`);
   const cb = results.clubbed;
   want(cb.shape.join() === "prose:Making the c,writes,usage" && cb.header === "2 files" && cb.closed === true, `writes and their narration fold: ${JSON.stringify(cb)}`);
   want(cb.body.join() === "step,detail,prose:Now the CSS:,step,detail,prose:And the comment:,step,detail", `narration in order inside the group: ${JSON.stringify(cb.body)}`);
+  const th = results.thoughts;
+  want(th.body.join() === "thinking:T1,step:a.go,thinking:T2,step:b.go,prose:Now the CSS.,thinking:T3,step:c.css" && th.shape.join() === "writes,usage" && th.folds === 1, `thoughts between writes stay in order inside the group: ${JSON.stringify(th)}`);
   const k = results.kept;
   want(k.paragraph.join() === "prose:First.,writes,prose:A paragraph,writes", `a paragraph ends the group: ${JSON.stringify(k.paragraph)}`);
   want(k.thenCommand.join() === "writes,prose:Now the test,commands", `the words before a command stay before it: ${JSON.stringify(k.thenCommand)}`);

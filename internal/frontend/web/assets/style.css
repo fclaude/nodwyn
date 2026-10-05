@@ -486,6 +486,18 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
   line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .turn.user { gap: 6px; }
+.activity-fold { min-width: 0; }
+.activity-fold > summary {
+  display: flex; align-items: center; gap: 8px; min-width: 0; list-style: none;
+  cursor: pointer; font-size: 12.5px; color: var(--muted);
+}
+.activity-fold > summary::-webkit-details-marker { display: none; }
+.activity-fold > summary .chev { flex-shrink: 0; transition: transform 0.15s; }
+.activity-fold[open] > summary .chev { transform: rotate(90deg); }
+.activity-fold-what { color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-fold-failed { color: var(--bad); flex-shrink: 0; white-space: nowrap; }
+.activity-fold-failed:empty { display: none; }
+.activity-fold-body { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; min-width: 0; }
 .harness-note { font-size: 12.5px; color: var(--faint); }
 .harness-note summary { cursor: pointer; }
 .prose { font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
