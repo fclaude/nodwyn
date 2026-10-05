@@ -306,15 +306,28 @@ is in a worktree, that others may be working beside it, and to compare with
 the unchanged code on a copy of the last commit rather than with `git
 stash`, which every worktree shares.
 
-The work stays on the branch until it is merged, for example with `git
-merge nodwyn/<id>` in the repository. Closing the task removes the worktree
+The work stays on the branch until it lands. Ask the task to land it
+("commit and push to main") and it calls **git-land** once validate has
+passed: one step that commits what changed with the message the model
+writes (files the guard keeps from `fs-read` are left out), rebases the
+task's own commits onto the newest base (fetching its upstream first),
+refuses a change that holds credential-shaped text, pushes to the base's
+upstream by fast-forward only, and fast-forwards your checkout of the base
+branch when it is clean (a checkout with changes of its own is left alone,
+and the answer says so). It asks you first, as any call that cannot be
+undone does. Commits are signed as your git configuration says, with your
+own agent; if signing fails it stops and says so rather than commit
+unsigned, and a prompt nobody can answer (a passphrase) fails at once
+instead of hanging. A rebase conflict stops it with the files named; the
+task resolves them and calls it again. You can still merge a branch by
+hand, for example with `git merge nodwyn/<id>` in the repository. Closing the task removes the worktree
 and its branch when nothing would be lost (no change, no untracked or
 ignored file, no commit its base lacks); otherwise both stay and resuming
 works in them again, and a removed worktree is made again on resume. The
 previous versions nodwyn keeps of the task's files are kept with the
 repository's, in its `.nodwyn/versions/`, so they never keep a worktree and
 outlast it.
-Committing from a task is `git commit` through `shell-exec`, which asks.
+Committing through `shell-exec` (`git commit`) still asks, as everywhere.
 
 **Reviewing a task's changes.** A task in a worktree has a **Review** tab in
 its side panel: every file it changed since it branched (committed or not,
@@ -335,9 +348,9 @@ working, and a refused review keeps its comments. Comments are kept in the
 page until sent, so reloading loses them. A change of direction is not a
 comment: write it to the task as a message.
 Not built yet: `--worktree` for the plain CLI, `nodwyn run` and the TUI;
-`nodwyn worktree list` and `remove`; and the git tools that would let a
-task commit, rebase and land its branch itself (ADR 34, amended
-2026-10-03).
+`nodwyn worktree list` and `remove`; and a list of push destinations in
+`.nodwyn/allow.toml` that would let git-land push without asking (ADR 34,
+amended 2026-10-05).
 
 ### Naming, archiving and deleting tasks
 

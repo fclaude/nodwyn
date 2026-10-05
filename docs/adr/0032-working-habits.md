@@ -656,3 +656,14 @@ turn; the finish checks (strategy.scm's evidence loop and this repository's
 validate reminder) ask nothing more of it. A write between the two
 compactions is progress, and the turn compacts again as before.
 TestCompactionGoingRoundInCirclesStopsTheTurn covers both.
+
+## Amendment 2026-10-05: a worktree session lands its work with git-land
+
+The worktree section said the changes reach the repository only through the
+branch, and to say they are on it. Asked to "commit and push to main", 34
+times in the local sessions, models did it through the shell: quoting broke,
+signing failed and was turned off, a rebase hung, a branch was pushed where
+main was meant (ADR 34, amended the same day). The section now tells the
+model to run validate and then call git-land when the request asks for the
+work to land, never to commit, rebase or push through the shell, and never
+to turn commit signing off.

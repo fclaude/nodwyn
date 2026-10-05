@@ -446,3 +446,50 @@ fail on the code before it; `...StopsWhenCancelled`,
 was already right. `parseDiff` and `diffStats` skip `+++` and `---` only
 before the first hunk, so an added line that starts with `++` keeps its number
 and its place in the counts; `worktrees.js` checks the numbers.
+
+## Amendment 2026-10-05: git-land, §4 as one step
+
+"Commit and push to main" was 34 of the 145 messages in the 75 local session
+logs of 2026-09-30 to 10-05, and each session did it through the shell its
+own way: commit messages broke on shell quoting 22 times; signing failed on
+the first commit of every glm session, since the shell's environment carries
+no agent socket; a rebase hung ten minutes on a passphrase prompt
+(20261004T063427Z-97214b45) and another ended in commit-tree and update-ref
+by hand (20261004T063641Z-464f8142); models turned signing off
+(20261004T024748Z-c7491879) or loaded the person's SSH key into an agent of
+their own (20261004T053047Z-1b4c67dc); and a branch was pushed where main
+was meant (20261004T035536Z-cd08f00d). §4 is built as one primitive,
+`(git-land message)`, offered only in a worktree session, and the worktree
+section tells the model to call it, after validate, when the request asks
+for the work to land, never to commit, rebase or push through the shell, and
+never to turn signing off. Clause by clause:
+
+- `git-commit`: built inside git-land. It commits every change with the
+  model's message, the files `fs-read` refuses left out and named. It runs
+  git with the session's environment plus the person's agents
+  (`SSH_AUTH_SOCK`, `GNUPGHOME`, `GPG_AGENT_INFO`) and every prompt off, so
+  a signed commit is signed as the person's terminal would sign it, and a
+  passphrase prompt fails at once. A signing failure stops it with that
+  said; it never commits unsigned.
+- `git-rebase`: built inside git-land. The session's own commits (those
+  after the worktree's base commit, or after where the branch last met the
+  base once the base has it) go onto the newest base: its upstream, fetched
+  first, when it has one, so commits other sessions left on the local main
+  are not published. A conflict stops it with the files named, the rebase
+  left in progress; the model resolves them with fs-edit and calls git-land
+  again, which refuses while conflict markers remain. There is no "abort":
+  the person aborts from a terminal.
+- `git-push`: built for the `"main"` target only, by fast-forward, never
+  forced; pushing the branch itself is not built. The outgoing diff is
+  scanned with L1 first, and a credential shape refuses the push (rather
+  than asking: nothing in the step can say which text belongs).
+- The local main moves only safely: built as decided (its ref by compare and
+  swap when no checkout has it, `merge --ff-only` in a clean checkout,
+  nothing in one with changes, each said).
+- Hooks: a `core.hooksPath` inside the worktree refuses the landing rather
+  than asking per call.
+- "It needs no approval" is not built: git-land is irreversible and asks,
+  as any such call does (the judge first, by default). The `push = [URL, …]`
+  list in `.nodwyn/allow.toml` that would let it push unasked is not built,
+  nor the `git.push` log record; the guard's own `guard.decision` and the
+  tool result say what was pushed where.

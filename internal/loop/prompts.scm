@@ -42,7 +42,14 @@
 
 ;; What a session in a git worktree of its own adds to the system prompt
 ;; (ADR 34), or "" outside one, so every other prompt is unchanged: where
-;; the work goes, and that others work beside it. The stash is shared by
+;; the work goes, that others work beside it, and that git-land lands it.
+;; "Commit and push to main" was 34 of the 145 messages in the local
+;; session logs of 2026-09-30 to 10-05, and each was done through the
+;; shell its own way: a branch pushed where main was meant
+;; (20261004T035536Z-cd08f00d), commit signing turned off or the person's
+;; SSH key loaded to get past it (20261004T024748Z-c7491879,
+;; 20261004T053047Z-1b4c67dc), a rebase hung on a passphrase prompt
+;; (20261004T063427Z-97214b45) (ADR 34, amended 2026-10-05). The stash is shared by
 ;; every worktree of a repository, so working-rules' comparison through
 ;; git stash could bring another session's work into this one, or hand
 ;; this one's to it; here the unchanged code is a copy of the last commit
@@ -56,7 +63,8 @@
            "\n\nThis folder is a git worktree made for this session, on its own branch " (assoc-ref w "branch" "")
            ", started from " (if (string-empty? base) "the commit" base) " of the repository at " (assoc-ref w "repository" "") "."
            " Other sessions may be working at the same time in other worktrees of that repository: work only in this folder, and leave branches you did not make alone."
-           " Your changes reach the repository only through this branch, so when you finish, say that they are on it."
+           " Your changes reach the repository through this branch: when you finish, say that they are on it."
+           " When the request asks for the work to land (to commit and push it, or to push it to " (if (string-empty? (assoc-ref w "base" "")) "the base branch" (assoc-ref w "base" "")) "), run validate first, then call git-land with the commit message: it commits, rebases your commits onto the newest base, pushes them to it and moves the local branch when that is safe. Do not commit, rebase or push through the shell, and never turn commit signing off: if git-land says signing failed, say so and stop."
            "\n- Never use git stash here: every worktree of the repository shares one stash, so it can take another session's work or give yours away. To compare with the unchanged code, run the command on a copy of the last commit instead: mkdir -p \"$TMPDIR/base\" && git archive HEAD | tar -x -C \"$TMPDIR/base\", then the same command in $TMPDIR/base.")))))
 
 ;; What the workspace adds to the system prompt (ADR 22): the folders

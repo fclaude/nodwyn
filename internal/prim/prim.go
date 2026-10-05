@@ -99,6 +99,9 @@ func Register(in *scheme.Interp, o Options) error {
 	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o), docExport(o, pin)}
 	if isGitWorkTree(o.Root) {
 		prims = append(prims, gitPrims(o, pin)...)
+		if o.Worktree != nil {
+			prims = append(prims, gitLand(o))
+		}
 	}
 	if o.Procs != nil {
 		prims = append(prims, procPrims(o, o.Procs)...)

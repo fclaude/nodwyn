@@ -115,8 +115,17 @@ func TestWorktreeSessionWritesInItsOwnCheckout(t *testing.T) {
 		t.Fatalf("the repository's status is not clean:\n%s", st)
 	}
 	section := evalText(t, &rig{t: t, s: s}, "(worktree-section)")
-	if !strings.Contains(section, w.Branch) || !strings.Contains(section, "from main") || !strings.Contains(section, "Never use git stash here") || !strings.Contains(section, "git archive HEAD") {
+	if !strings.Contains(section, w.Branch) || !strings.Contains(section, "from main") || !strings.Contains(section, "Never use git stash here") || !strings.Contains(section, "git archive HEAD") ||
+		!strings.Contains(section, "to push it to main), run validate first, then call git-land") {
 		t.Fatalf("worktree section:\n%s", section)
+	}
+	// A worktree session is offered git-land, to land its work in one step.
+	offered := false
+	for _, tool := range s.Tools() {
+		offered = offered || tool.Name == "git-land"
+	}
+	if !offered {
+		t.Fatal("git-land is not offered in a worktree session")
 	}
 	s.Close()
 	// What was written is not lost: the worktree stays, and its branch.
