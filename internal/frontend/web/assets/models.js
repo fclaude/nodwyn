@@ -236,6 +236,8 @@ function providerForm(ctx, redraw) {
           if (f.kind === "openai" && apiKey) params.api_key = apiKey;
           desk.settings = await conn.call("settings.provider.write", params);
           const saved = (desk.settings.servers || []).find((s) => (adding ? s.url.replace(/\/+$/, "") === params.url.replace(/\/+$/, "") : s.name === f.name));
+          // Its list is asked with its key, so a new key or address asks again.
+          if (saved) ui.offered.delete(saved.name);
           ui.provider = null;
           await desk.refreshModels();
           const key = saved ? worst(desk, saved) : null;
@@ -339,6 +341,7 @@ function modelRows(ctx, redraw) {
 function settingsLine(s = {}, kind) {
   const parts = [];
   parts.push(s.num_ctx ? `context ${s.num_ctx.toLocaleString("en-US")} tokens` : kind === "ollama" ? "context the window's size" : "context as the provider says");
+  if (s.max_output) parts.push(`replies up to ${s.max_output.toLocaleString("en-US")} tokens`);
   parts.push(s.price_input !== undefined && s.price_output !== undefined ? `$${s.price_input} in, $${s.price_output} out per million tokens` : "no prices");
   if (s.vision === false) parts.push("takes no images");
   return parts.join(" · ");
@@ -383,6 +386,7 @@ function settingsOf(f, kind) {
   };
   number("num_ctx", "Context length", { whole: true });
   number("max_output", "Reply cap", { whole: true });
+  if (out.num_ctx && out.max_output >= out.num_ctx) throw new Error(`The reply cap (${s.max_output}) must be below the context length (${s.num_ctx}): the reply comes out of it.`);
   number("temperature", "Temperature");
   number("seed", "Seed", { whole: true, signed: true });
   number("price_input", "The price of input");
@@ -398,14 +402,49 @@ function settingsOf(f, kind) {
   return out;
 }
 
-// settingsFields are the model form's fields for its own settings: the three
-// a person most often needs first (its context, its prices, images), the rest
-// folded under More settings.
-function settingsFields(f, kind, redraw) {
+// tokens reads a count as the form holds it, "1,050,000" included; 0 when it
+// is empty or does not read.
+const tokens = (raw) => Number(String(raw).replace(/[,_\s]/g, "")) || 0;
+
+// windowLine says what a conversation on the model gets from the form's
+// context length and reply cap, sized as the daemon sizes it
+// (config.Window.ReplyCap, Sized): the reply cap comes out of the context,
+// and the window has three quarters of the rest, or the water marks
+// Settings › Context window sets when the context holds them.
+function windowLine(f, kind, desk) {
+  const v = desk.settings?.values || {};
+  const reserve = Number(v["window.output_reserve"]?.value) || 16384;
+  const high = Number(v["window.high_water"]?.value) || 61440;
+  const fixed = !!(v["window.high_water"]?.set || v["window.low_water"]?.set);
+  const own = tokens(f.settings.max_output);
+  let context = tokens(f.settings.num_ctx);
+  // A context too small for the window and the default reply gives the
+  // reply a quarter of it at most.
+  const cap = own || (context && context < high + reserve ? Math.min(reserve, Math.floor(context / 4)) : reserve);
+  const n = (x) => x.toLocaleString("en-US");
+  // An Ollama model whose context is unset is asked for exactly the window
+  // and its reply (WindowNumCtx).
+  if (!context && kind === "ollama") context = high + cap;
+  if (!context) return `Each reply may take up to ${n(cap)} tokens. With the context length empty, the window is sized from the provider's list when it says, else kept at its default (summarized past ${n(high)} tokens).`;
+  const room = context - cap;
+  if (room <= 0) return `A reply cap of ${n(cap)} leaves nothing of a ${n(context)}-token context: lower it.`;
+  let water = high;
+  if ((!fixed && Math.floor((room * 3) / 4) > high) || high > room) water = Math.floor((room * 3) / 4);
+  return `Of ${n(context)} tokens, each reply may take ${n(cap)}; the conversation is summarized or trimmed past ${n(water)}${room > water ? `, with room up to ${n(room)} to do it` : ""}.`;
+}
+
+// settingsFields are the model form's fields for its own settings: the ones
+// a person most often needs first (its context and the reply cap that comes
+// out of it, its prices, images), the rest folded under More settings.
+function settingsFields(f, kind, redraw, desk) {
   const s = f.settings;
   const field = (forId, label, control, hint) => h("div", { class: "field" }, h("label", { for: forId }, label), control, hint ? h("p", { class: "hint" }, hint) : null);
-  const box = (name, label, { placeholder = "", prefix = "", suffix = "", numeric = true, width = "narrow" } = {}) => {
-    const node = h("input", { class: `input setting ${width}`, id: `model-${name}`, "aria-label": label, inputmode: numeric ? "decimal" : null, autocomplete: "off", spellcheck: false, placeholder, oninput: () => (s[name] = node.value) });
+  // The window line follows the context and the reply cap as they are typed,
+  // without a redraw of the form under it.
+  const summary = h("p", { class: "hint", id: "model-window" }, windowLine(f, kind, desk));
+  const resize = () => (summary.textContent = windowLine(f, kind, desk));
+  const box = (name, label, { placeholder = "", prefix = "", suffix = "", numeric = true, width = "narrow", sizes = false } = {}) => {
+    const node = h("input", { class: `input setting ${width}`, id: `model-${name}`, "aria-label": label, inputmode: numeric ? "decimal" : null, autocomplete: "off", spellcheck: false, placeholder, oninput: () => ((s[name] = node.value), sizes && resize()) });
     node.value = s[name];
     if (!prefix && !suffix) return node;
     return h("span", { class: "affix" }, prefix ? h("span", { class: "unit" }, prefix) : null, node, suffix ? h("span", { class: "unit" }, suffix) : null);
@@ -417,15 +456,23 @@ function settingsFields(f, kind, redraw) {
       options.map(([value, text]) => h("button", { type: "button", class: "chip", id: `model-${name}-${value === "" ? "default" : String(value)}`, "aria-pressed": String(s[name] === value), onclick: () => ((s[name] = value), redraw()) }, text)),
     );
   const openai = kind !== "ollama";
+  const reserve = Number(desk.settings?.values?.["window.output_reserve"]?.value) || 16384;
   return [
     field(
       "model-num_ctx",
       "Context length",
-      box("num_ctx", "Context length", { placeholder: openai ? "the provider's" : "the window's", suffix: "tokens", width: "" }),
+      box("num_ctx", "Context length", { placeholder: openai ? "the provider's" : "the window's", suffix: "tokens", width: "", sizes: true }),
       openai
-        ? "How many tokens the model holds at once; the conversation window is sized for it. Empty asks the provider's model list: OpenRouter's says, OpenAI's and Cerebras' don't, so give it here for them."
-        : "How many tokens the model holds at once; the conversation window is sized for it. Empty asks Ollama for the window's size.",
+        ? "How many tokens the model holds at once, its replies included. Empty asks the provider's model list: OpenRouter's says, OpenAI's and Cerebras' don't, so give it here for them."
+        : "How many tokens the model holds at once, its replies included. Empty asks Ollama for the window and a reply.",
     ),
+    field(
+      "model-max_output",
+      "Reply cap",
+      box("max_output", "Reply cap", { placeholder: reserve.toLocaleString("en-US"), suffix: "tokens", width: "", sizes: true }),
+      `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${reserve.toLocaleString("en-US")} (Settings › Context window), or a quarter of a small context. A reasoning model at a high effort may need more.`,
+    ),
+    summary,
     h(
       "div",
       { class: "field" },
@@ -447,7 +494,6 @@ function settingsFields(f, kind, redraw) {
       "details",
       { class: "more-settings", open: f.more, ontoggle: (event) => (f.more = event.target.open) },
       h("summary", {}, "More settings"),
-      field("model-max_output", "Reply cap", box("max_output", "Reply cap", { placeholder: "the window's reserve", suffix: "tokens", width: "" }), "The most a reply may take, thinking included. A remote reasoning model may need more."),
       h(
         "div",
         { class: "field" },
@@ -566,7 +612,7 @@ function modelForm(ctx, redraw) {
     ),
     efforts.length && !f.isDefault ? field("model-effort", "Starts at", effort, "The effort a task asks of this model unless one is chosen.") : null,
     efforts.length && f.isDefault ? h("p", { class: "hint" }, "The effort a new task starts at is the default's, above.") : null,
-    settingsFields(f, providerOf(desk, f.server)?.provider, redraw),
+    settingsFields(f, providerOf(desk, f.server)?.provider, redraw, desk),
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
     resultLine(testing),
     h("div", { class: "row-actions" }, save, testButton, h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.model = null), redraw()) }, "Cancel")),
@@ -575,7 +621,9 @@ function modelForm(ctx, redraw) {
   return form;
 }
 
-// askOffered asks a provider for the models it lists, once, without a key.
+// askOffered asks a provider for the models it lists, once until the provider
+// is saved again: the daemon asks with the provider's key, as OpenAI and
+// Cerebras list their models only to one.
 async function askOffered(ctx, name, redraw) {
   const { conn } = ctx;
   if (!name || ui.offered.has(name) || !conn.has("models.offered")) return;

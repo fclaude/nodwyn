@@ -84,11 +84,13 @@ func main() {
 		// Two models: one takes an effort and caches when asked, as a Claude
 		// route does, and one does neither; the provider refuses what it
 		// should (a wrong key, a model it lacks, an effort or a cache_control
-		// a model does not take). /_fake/requests shows what it was sent.
+		// a model does not take), and lists its models only to its key, as
+		// OpenAI does. /_fake/requests shows what it was sent.
 		provider := fakechat.New(chatKey,
 			fakechat.Model{ID: "reasoner", Context: 200000, Efforts: []string{"low", "medium", "high"}, Caches: true},
 			fakechat.Model{ID: "fast", Context: 200000},
 		)
+		provider.ListNeedsKey = true
 		fmt.Printf("CHAT %s KEY %s\n", provider.V1(), chatKey)
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		<-ctx.Done()

@@ -63,16 +63,18 @@ you wrote it. Its sections:
   keychain locked, key not allowed, not answering); **Test** sends it one short
   request and shows the reply or the provider's refusal; **Check again** asks
   every server now; **Add a provider** and **Edit** take a kind, an address, a
-  dialect and an API key (kept in the keychain with one binding row, never in
-  the page again), with presets that only fill the form. *Models you can
+  dialect and an API key (kept in the keychain, bound for the provider's
+  requests and its model list, never in the page again), with presets that only fill the form. *Models you can
   choose* is the list the pickers offer, each with the efforts it takes and
   a line saying its context length and prices; **Add a model** and **Edit**
   take a provider, a model id (suggested from what the provider lists, asked
-  without a key), its efforts and its own settings (ADR 41, amended
+  with its key), its efforts and its own settings (ADR 41, amended
   2026-10-05): its context length, which OpenAI and Cerebras do not say, its
-  prices, which price a request when the provider reports no cost, and
-  whether it takes images (yes unless you say no); under *More settings* its
-  reply cap, temperature and seed, and for a chat-completions model which
+  reply cap, which comes out of it, with a line under both saying what the
+  conversation is left with as they are typed, its prices, which price a
+  request when the provider reports no cost, and whether it takes images (yes
+  unless you say no); under *More settings* its temperature and seed, and for
+  a chat-completions model which
   field caps its reply, how its requests name their session and whether they
   ask the provider to cache the prompt, which a Claude model needs (the
   manual, "Keeping the cache warm"), or for Ollama how long it stays loaded.
@@ -88,8 +90,10 @@ you wrote it. Its sections:
 - **Containers** — podman, docker, or whichever is installed, for contained
   MCP servers.
 - **Context window** — the water marks between which a task's context is
-  summarized or trimmed, the largest tool result shown whole, and the room
-  kept for each reply.
+  summarized or trimmed (unset, they follow each model's context less its
+  reply cap; set, they shrink only for a model that cannot hold them), the
+  largest tool result shown whole, and the default reply cap of a model that
+  sets none.
 - The keychain, paired devices, this browser's appearance, whether it
   shows the model's thinking, and its notifications, and this connection.
 

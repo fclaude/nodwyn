@@ -178,14 +178,19 @@ func TestOpenAICacheKey(t *testing.T) {
 	}
 }
 
+// The model list is asked with the key, as OpenAI and Cerebras list their
+// models only to one: sessions 20261005T042752Z-871dfe24 and
+// 20261004T182412Z-747045aa were answered 401 and 403 when it was not.
 func TestOpenAIContextLength(t *testing.T) {
-	var auth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
 			http.NotFound(w, r)
 			return
 		}
-		auth = r.Header.Get("Authorization")
+		if r.Header.Get("Authorization") != "Bearer k" {
+			http.Error(w, `{"error":{"message":"Missing bearer authentication in header"}}`, http.StatusUnauthorized)
+			return
+		}
 		w.Write([]byte(`{"data":[
 			{"id":"routed","context_length":1048576,"top_provider":{"context_length":262144}},
 			{"id":"listed","context_length":1048576},
@@ -204,7 +209,9 @@ func TestOpenAIContextLength(t *testing.T) {
 			t.Errorf("%s: %d, %v; want an error", model, n, err)
 		}
 	}
-	if auth != "" {
-		t.Fatalf("the model list was asked with a key: %q", auth)
+	// A key its binding refuses is not sent, and the list is not asked.
+	refused := NewOpenAI(srv.URL+"/v1", func(*http.Request) error { return errors.New("method GET is not bound") })
+	if _, err := refused.ContextLength(context.Background(), "listed"); err == nil || !strings.Contains(err.Error(), "not bound") {
+		t.Fatalf("a refused key: %v", err)
 	}
 }

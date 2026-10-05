@@ -19,6 +19,11 @@ func Serve(ctx context.Context, listener *net.UnixListener, options core.Options
 		return err
 	}
 	s := &server{options: options, sessions: make(map[string]ownedSession)}
+	// Model keys saved before they were bound for their model lists get that
+	// binding now. One that cannot be written leaves the table as it was: the
+	// list is then refused with the binding's reason, which the window's note
+	// gives, and the model's requests go on as before.
+	_ = s.bindModelLists()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var mu sync.Mutex

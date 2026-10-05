@@ -291,10 +291,10 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 	default: // "ollama", which validation guarantees for any other value
 		p = llm.NewOllama(m.URL)
 		if m.NumCtx == 0 {
-			m.NumCtx = s.opts.Config.WindowNumCtx()
+			m.NumCtx = s.opts.Config.WindowNumCtx(m.MaxOutput)
 		}
 	}
-	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput, Temperature: m.Temperature, Seed: m.Seed,
+	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: s.replyCap(m.NumCtx, m.MaxOutput), Temperature: m.Temperature, Seed: m.Seed,
 		Rates: llm.Rates{Input: m.PriceInput, CachedInput: m.PriceCachedInput, Output: m.PriceOutput}, Effort: effort}
 }
 

@@ -451,9 +451,15 @@ task; its `detail` is the provider's own message, redacted, and never the key.
 The effort it asks must be one the model takes, refused before anything is sent
 when it is not. It carries what the model's entry asks of its provider as a
 task's request would, `cache_control` included (ADR 9, 2026-10-05), so a
-provider that refuses it answers `refused` with what to turn off. `models.offered` asks the same list of one configured server, also
-without a credential, so a server that lists its models only to a key
-answers with an error saying so. `servers` in the settings are the model providers: the
+provider that refuses it answers `refused` with what to turn off. `models.offered` asks one configured server for its list. Unlike
+`models.status`, a chat-completions server is asked with its key, after the
+same binding check a model's requests have, since OpenAI and Cerebras list
+their models only to one: a model key is bound for GET (the list) as well as
+POST, and the daemon adds the GET row at start to a key that config.toml
+names and that only POST was bound for, at the same host. Its errors say
+what to do: a server that wants a key and has none, a key it did not
+accept, or a key that was not sent (the keychain is locked, the binding
+refused it). `servers` in the settings are the model providers: the
 `[servers.NAME]` tables of `config.toml`, and the address a model gives inline,
 `{name, provider, dialect?, url, credential?, host, inline?, key?, key_detail?,
 uses}`, `credential` being the key's keychain class (never the key), `key` what

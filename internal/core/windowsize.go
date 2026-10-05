@@ -12,12 +12,14 @@ import (
 	"github.com/fclaude/nodwyn/internal/loop"
 )
 
-// sizeWindow sizes the window for the control model's context
-// (config.Window.Sized): its num_ctx, or, when that is unset, what an
-// OpenAI-compatible server's model list says, which then fills num_ctx so
-// the session's recipe and (model-info) report it. It returns the control
-// model so filled, the window, its ceiling, and a note saying how the window
-// was sized ("" when the defaults stand for a reason nothing needs saying).
+// sizeWindow sizes the window for the control model's context less its
+// reply cap (config.Window.Sized, ReplyCap): its num_ctx, or, when that is
+// unset, what an OpenAI-compatible server's model list says, which then
+// fills num_ctx so the session's recipe and (model-info) report it. It
+// returns the control model so filled, its reply cap set when it is not the
+// window's default, the window, its ceiling, and a note saying how the
+// window was sized ("" when the defaults stand for a reason nothing needs
+// saying).
 // Opening a conversation and moving it to another model size it the same way
 // (ADR 40).
 func (s *Session) sizeWindow(control loop.Endpoint) (loop.Endpoint, config.Window, int, string) {
@@ -29,16 +31,30 @@ func (s *Session) sizeWindow(control loop.Endpoint) (loop.Endpoint, config.Windo
 		}
 		control.NumCtx = n
 	}
-	reserve := w.OutputReserve
-	if control.MaxOutput > 0 {
-		reserve = control.MaxOutput
+	control.MaxOutput = s.replyCap(control.NumCtx, control.MaxOutput)
+	reserve := w.ReplyCap(control.NumCtx, control.MaxOutput)
+	if control.NumCtx > 0 && reserve >= control.NumCtx {
+		return control, w, w.HighWater, fmt.Sprintf("the window keeps its default size, since %s's reply cap of %d tokens leaves nothing of its context of %d; lower the reply cap in Settings › Models, or max_output in its entry in config.toml", control.Model, reserve, control.NumCtx)
 	}
 	sized, ceiling := w.Sized(control.NumCtx, reserve)
 	if sized.HighWater != w.HighWater || ceiling > sized.HighWater {
-		return control, sized, ceiling, fmt.Sprintf("the window is sized for %s's context of %d tokens: trimmed past %d down to %d, compacted with room up to %d",
-			control.Model, control.NumCtx, sized.HighWater, sized.LowWater, ceiling)
+		return control, sized, ceiling, fmt.Sprintf("the window is sized for %s's context of %d tokens less its reply cap of %d: trimmed past %d down to %d, compacted with room up to %d",
+			control.Model, control.NumCtx, reserve, sized.HighWater, sized.LowWater, ceiling)
 	}
 	return control, sized, ceiling, ""
+}
+
+// replyCap is the cap a model's requests carry when it is not the window's
+// default (config.Window.ReplyCap): its own max_output, or a quarter of a
+// small context. 0 leaves its requests at window.output_reserve, as a model
+// that sets none always was, so such a session's log and replay are as
+// before.
+func (s *Session) replyCap(numCtx, maxOutput int) int {
+	w := s.opts.Config.Window
+	if c := w.ReplyCap(numCtx, maxOutput); c != w.OutputReserve {
+		return c
+	}
+	return maxOutput
 }
 
 // note records a note in the session log; a note that cannot be written

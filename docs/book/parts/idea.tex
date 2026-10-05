@@ -102,9 +102,10 @@ MCP server's transport checks it again on every HTTP request, and a keyed
 model's transport checks it there, on every request, just before the key
 is injected. The outbound exchanges that are not primitive applications
 send no conversation content: the MCP handshake and tool list when a
-session starts, which check the binding the same way before a key goes
-out; a chat-completions server's model list (\code{GET /models}), asked
-without a key for the model's context length; Ollama's
+session starts, and a chat-completions server's model list
+(\code{GET /models}, for the model's context length and the console's
+suggestions), which check the binding the same way before a key goes out,
+a model key being bound for \code{GET} as well as \code{POST}; Ollama's
 \code{/api/version}, which line mode asks to see the server is up, and
 \code{/api/show}, which says whether a model takes images; and the
 console's check that each configured model answers. An OAuth2 refresh

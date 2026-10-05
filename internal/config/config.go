@@ -167,9 +167,10 @@ type Model struct {
 	NumCtx     int             `toml:"num_ctx"`                   // context length; sent to ollama; for [control] it also sizes the window (Window.Sized)
 	KeepAlive  string          `toml:"keep_alive"`                // ollama only
 	Credential string          `toml:"credential"`                // keychain class of the API key; empty for none
-	// MaxOutput caps this model's replies, thinking included, instead of
-	// window.output_reserve: a remote reasoning model may need more. 0 uses
-	// the window's.
+	// MaxOutput caps this model's replies, thinking included, and is the
+	// room the window keeps for one: a remote reasoning model may need more
+	// than the default. It must be below NumCtx. 0 is Window.ReplyCap's
+	// default.
 	MaxOutput int `toml:"max_output"`
 	// OutputField is the request field a chat-completions server reads the
 	// cap from: "max_completion_tokens" (the default; reasoning models
@@ -370,7 +371,7 @@ type Window struct {
 	HighWater       int `toml:"high_water"`        // trim when the estimate exceeds this
 	LowWater        int `toml:"low_water"`         // trim down to this
 	MaxResultTokens int `toml:"max_result_tokens"` // a tool result larger than this is shown head+tail
-	OutputReserve   int `toml:"output_reserve"`    // tokens reserved for generation, and the cap on each reply's (thinking included)
+	OutputReserve   int `toml:"output_reserve"`    // the reply cap of a model that sets no max_output (ReplyCap)
 	// Fixed is set when config.toml sets high_water or low_water: the water
 	// marks then stay as set, instead of growing with the model's context
 	// (Sized).
@@ -378,23 +379,49 @@ type Window struct {
 }
 
 // Sized is the window for a control model whose context holds context
-// tokens (0 when unknown), reserve of them kept for its reply, and the
-// ceiling: the most a request may carry, context less reserve. The
+// tokens (0 when unknown), reserve of them kept for its reply (ReplyCap),
+// and the ceiling: the most a request may carry, context less reserve. The
 // defaults are for a small local context; a larger one raises the high
 // water to three quarters of the ceiling and the low water to half of
-// that, unless config.toml sets them (Fixed). The quarter left above the
-// high water is room for the request that compacts the context, so a long
-// task is summarized before anything is trimmed (compact.scm). With the
-// context unknown, or no bigger than the window, the ceiling is the high
-// water. The window's estimate counts bytes/3, usually more than a
-// server's tokenizer, so the ceiling rarely overfills the context.
+// that, unless config.toml sets them (Fixed). A context too small for the
+// water marks, set or not, lowers them the same way: a window the model
+// cannot hold would have every request past the high water refused. The
+// quarter left above the high water is room for the request that compacts
+// the context, so a long task is summarized before anything is trimmed
+// (compact.scm). With the context unknown, or leaving no room beside the
+// reply, the window stays and the ceiling is the high water. The window's
+// estimate counts bytes/3, usually more than a server's tokenizer, so the
+// ceiling rarely overfills the context.
 func (w Window) Sized(context, reserve int) (Window, int) {
 	room := context - reserve
-	if !w.Fixed && room*3/4 > w.HighWater {
+	switch {
+	case room <= 0:
+	case !w.Fixed && room*3/4 > w.HighWater:
 		w.HighWater = room * 3 / 4
 		w.LowWater = max(w.LowWater, w.HighWater/2)
+	case w.HighWater > room:
+		w.HighWater = room * 3 / 4
+		w.LowWater = min(w.LowWater, w.HighWater/2)
 	}
 	return w, max(room, w.HighWater)
+}
+
+// ReplyCap is the most one reply of a model may take, thinking included,
+// and the room the window keeps for it: the model's max_output when its
+// entry sets one, else output_reserve. A context known to hold context
+// tokens (0 when unknown) that is too small for the window and that reply
+// gives it no more than a quarter, so a small model keeps most of its
+// context for the conversation. A context that holds both keeps
+// output_reserve, which an Ollama model asked for exactly that much
+// (WindowNumCtx) depends on.
+func (w Window) ReplyCap(context, maxOutput int) int {
+	if maxOutput > 0 {
+		return maxOutput
+	}
+	if context > 0 && context < w.HighWater+w.OutputReserve {
+		return min(w.OutputReserve, context/4)
+	}
+	return w.OutputReserve
 }
 
 // Policy holds the guard's user-settable defaults (ADR 6).
@@ -553,7 +580,6 @@ func (c *Config) resolveServers() error {
 // Validate rejects configurations the harness must not run with.
 func (c Config) Validate() error {
 	if !c.Control.isZero() {
-		need := c.Window.HighWater + c.Window.OutputReserve
 		var missing []string
 		if c.Control.URL == "" {
 			missing = append(missing, "url")
@@ -574,11 +600,6 @@ func (c Config) Validate() error {
 		}
 		if err := c.checkEffort(c.Control); err != nil {
 			return fmt.Errorf("control: %w", err)
-		}
-		// Unset, an ollama model is asked for the window's size (WindowNumCtx)
-		// and another server decides its own; set, the window must fit in it.
-		if n := c.Control.NumCtx; n > 0 && need > n {
-			return fmt.Errorf("window.high_water + window.output_reserve (%d) exceeds control.num_ctx (%d)", need, n)
 		}
 	}
 	if _, ok := c.Models[ControlModel]; ok {
@@ -707,6 +728,9 @@ func (m Model) validate() error {
 	}
 	if m.MaxOutput < 0 {
 		return errors.New("max_output must not be negative")
+	}
+	if m.NumCtx > 0 && m.MaxOutput >= m.NumCtx {
+		return fmt.Errorf("max_output (%d) must be below num_ctx (%d): the reply comes out of the context", m.MaxOutput, m.NumCtx)
 	}
 	switch m.OutputField {
 	case "", "max_completion_tokens", "max_tokens":
@@ -904,11 +928,13 @@ func (c Config) Efforts(m Model) []string {
 	return nil
 }
 
-// WindowNumCtx is the context length an ollama model is asked for when its
-// num_ctx is unset: the window's high water plus the output reserve. Left to
-// itself Ollama would use its own default, usually far smaller, and cut the
-// prompt silently.
-func (c Config) WindowNumCtx() int { return c.Window.HighWater + c.Window.OutputReserve }
+// WindowNumCtx is the context length an ollama model whose entry says
+// maxOutput (0 unset) is asked for when its num_ctx is unset: the window's
+// high water plus the model's reply cap. Left to itself Ollama would use its
+// own default, usually far smaller, and cut the prompt silently.
+func (c Config) WindowNumCtx(maxOutput int) int {
+	return c.Window.HighWater + c.Window.ReplyCap(0, maxOutput)
+}
 
 // MissingControl is the error for a session that needs a model when
 // config.toml has no [control]: it says what to add, and where.

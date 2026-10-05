@@ -59,7 +59,7 @@ func read(t *testing.T, path string) string {
 
 // A provider is added with its key, found wrong by a test request that says
 // what the server answered, replaced in place, and found right: the key goes
-// to the keychain and one binding row, never into config.toml, and never
+// to the keychain and its binding rows, never into config.toml, and never
 // back out in an answer.
 func TestProviderSavedWithItsKeyThenTested(t *testing.T) {
 	c, srv, o, _ := withChat(t)
@@ -87,8 +87,10 @@ func TestProviderSavedWithItsKeyThenTested(t *testing.T) {
 	if settings.Keychain.Credentials != 1 || settings.Servers[0].Credential != "model-127-0-0-1" {
 		t.Fatalf("after replacing the key: %+v", settings)
 	}
+	// Its rows allow it to POST to the model and GET the model list, there
+	// and nowhere else.
 	bindings := read(t, o.Paths.Bindings)
-	if strings.Count(bindings, "[[bind]]") != 1 || strings.Contains(bindings, "sk-") || !strings.Contains(bindings, `dest = "127.0.0.1"`) {
+	if strings.Count(bindings, "[[bind]]") != 2 || strings.Count(bindings, `dest = "127.0.0.1"`) != 2 || strings.Contains(bindings, "sk-") || !strings.Contains(bindings, `methods = ["POST"]`) || !strings.Contains(bindings, `methods = ["GET"]`) {
 		t.Fatalf("bindings:\n%s", bindings)
 	}
 	into(t, c.ok("models.test", map[string]any{"server": "127-0-0-1", "model": "thinker"}), &result)

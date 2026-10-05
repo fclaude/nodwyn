@@ -99,9 +99,12 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 	if err != nil {
 		return nil, err
 	}
+	// A model's own cap is its max_output, or a quarter of a small context
+	// (config.Window.ReplyCap): either is the reply cap Settings › Models
+	// shows for it.
 	maxOutput, capFrom := l.cfg.MaxOutput, "window.output_reserve"
 	if ep.MaxOutput > 0 {
-		maxOutput, capFrom = ep.MaxOutput, "max_output of model "+name
+		maxOutput, capFrom = ep.MaxOutput, "the reply cap of model "+name
 	}
 	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: maxOutput,
 		Temperature: ep.Temperature, Seed: ep.Seed, Effort: ep.Effort}

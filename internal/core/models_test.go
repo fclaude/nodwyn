@@ -332,7 +332,7 @@ func TestOllamaIsAskedForTheWindowsContext(t *testing.T) {
 	if r.turn("hello") != "" {
 		t.Fatal("turn failed")
 	}
-	want := `"num_ctx":` + strconv.Itoa(config.Default().WindowNumCtx())
+	want := `"num_ctx":` + strconv.Itoa(config.Default().WindowNumCtx(0))
 	if !strings.Contains(string(r.srv.Requests[0].Raw), want) {
 		t.Fatalf("request does not ask for %s:\n%s", want, r.srv.Requests[0].Raw)
 	}

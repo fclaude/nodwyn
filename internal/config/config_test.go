@@ -73,7 +73,7 @@ func TestLoadRejectsBadValues(t *testing.T) {
 	cases := map[string]string{
 		"bad policy":        "[policy]\nunbound = \"allow\"\n",
 		"unknown key":       "[control]\napikey = \"x\"\n",
-		"budget > ctx":      "[control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\nnum_ctx = 32768\n[window]\nhigh_water = 200000\n",
+		"reply cap >= ctx":  "[control]\nprovider = \"ollama\"\nurl = \"http://localhost:11434\"\nmodel = \"m\"\nnum_ctx = 32768\nmax_output = 32768\n",
 		"low >= high":       "[window]\nlow_water = 70000\n",
 		"unknown provider":  "[control]\nprovider = \"anthropic\"\nurl = \"https://a.test\"\nmodel = \"m\"\nnum_ctx = 8192\n",
 		"partial control":   "[control]\nmodel = \"m\"\n",
@@ -254,7 +254,8 @@ credential = "example-key"
 }
 
 // The window grows with a large context, unless config.toml sets its water
-// marks, and the room above the high water is the ceiling.
+// marks, shrinks to fit a small one whether they are set or not, and the
+// room above the high water is the ceiling.
 func TestWindowSizedForTheContext(t *testing.T) {
 	parse := func(src string) Window {
 		t.Helper()
@@ -279,11 +280,56 @@ func TestWindowSizedForTheContext(t *testing.T) {
 		{"1M, high water set", parse("[window]\nhigh_water = 100000\n"), 1048576, 16384, 100000, 30720, 1032192},
 		{"1M, low water set", parse("[window]\nlow_water = 20000\n"), 1048576, 16384, 61440, 20000, 1032192},
 		{"1M, other window keys", parse("[window]\nmax_result_tokens = 4096\n"), 1048576, 16384, 774144, 387072, 1032192},
+		{"32K", def, 32768, 8192, 18432, 9216, 24576},
+		{"32K, water marks set", parse("[window]\nhigh_water = 50000\nlow_water = 20000\n"), 32768, 8192, 18432, 9216, 24576},
+		{"no room beside the reply", def, 16384, 16384, 61440, 30720, 61440},
 	} {
 		w, ceiling := tc.w.Sized(tc.context, tc.reserve)
 		if w.HighWater != tc.high || w.LowWater != tc.low || ceiling != tc.ceiling {
 			t.Errorf("%s: high %d, low %d, ceiling %d; want %d, %d, %d", tc.name, w.HighWater, w.LowWater, ceiling, tc.high, tc.low, tc.ceiling)
 		}
+	}
+}
+
+// A model's reply cap is its own max_output, else the window's
+// output_reserve, but no more than a quarter of a context too small for the
+// window and that reply; one that leaves nothing of the context is refused.
+func TestReplyCap(t *testing.T) {
+	w := Default().Window
+	small := w
+	small.HighWater, small.LowWater = 9000, 4500
+	for _, tc := range []struct {
+		w                        Window
+		context, maxOutput, want int
+	}{
+		{w, 0, 0, 16384},
+		{w, 1050000, 0, 16384},
+		{w, 32768, 0, 8192},
+		{w, 50000, 0, 12500},
+		{w, 1050000, 128000, 128000},
+		{w, 32768, 20000, 20000},
+		// An Ollama model asked for the window and a reply keeps the reply
+		// it was asked for, however small the window was set.
+		{small, small.HighWater + small.OutputReserve, 0, 16384},
+	} {
+		if got := tc.w.ReplyCap(tc.context, tc.maxOutput); got != tc.want {
+			t.Errorf("context %d, max_output %d: cap %d, want %d", tc.context, tc.maxOutput, got, tc.want)
+		}
+	}
+	if got := Default().WindowNumCtx(128000); got != 61440+128000 {
+		t.Errorf("an unsized ollama model with a 128000-token cap is asked for %d tokens", got)
+	}
+	c := Default()
+	c.Models = map[string]Model{"small": {URL: "http://localhost:11434", Model: "m", NumCtx: 32768, MaxOutput: 32768}}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "max_output (32768) must be below num_ctx (32768)") {
+		t.Fatalf("a cap that leaves nothing: %v", err)
+	}
+	// A context smaller than the window is no longer refused: the window
+	// shrinks to fit it (Sized).
+	c.Models = nil
+	c.Control = Model{URL: "http://localhost:11434", Model: "m", NumCtx: 32768}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("a 32K control model: %v", err)
 	}
 }
 

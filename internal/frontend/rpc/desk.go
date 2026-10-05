@@ -3,9 +3,11 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -19,6 +21,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/llm"
 )
 
 // The methods in this file serve the task desk (ADR 30): what a home page
@@ -386,9 +389,10 @@ type offeredParams struct {
 var listClient = &http.Client{Timeout: 10 * time.Second, Transport: probeClient.Transport}
 
 // modelsOffered answers models.offered: the models a configured server
-// lists, for choosing one there. Like models.status it sends no credential:
-// a server that lists its models only to a key says so, and the model's
-// name is typed instead.
+// lists, for choosing one there. A chat-completions server is asked with its
+// key, after the binding check a model's requests have (authorizer), since
+// OpenAI and Cerebras list their models only to one; a server that wants a
+// key and has none says so, and the model's name is typed instead.
 func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 	var p offeredParams
 	if err := params(req.Params, &p, "server"); err != nil {
@@ -398,9 +402,13 @@ func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 	if !ok {
 		return nil, failure(-32602, "No server "+strconv.Quote(p.Server)+" is configured")
 	}
+	var authorize func(*http.Request) error
+	if srv.Credential != "" {
+		authorize = authorizer(s.options.Keychain, s.bindingTable(), srv.Credential)
+	}
 	// As the probes do, the request runs without the lifecycle lock.
 	s.mu.Unlock()
-	names, err := offered(srv)
+	names, err := offered(srv, authorize)
 	s.mu.Lock()
 	if err != nil {
 		return nil, failure(-32000, err.Error())
@@ -408,34 +416,27 @@ func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 	return names, nil
 }
 
-func offered(srv config.Server) ([]string, error) {
+func offered(srv config.Server, authorize func(*http.Request) error) ([]string, error) {
 	base := strings.TrimRight(srv.URL, "/")
 	host := base
 	if u, err := url.Parse(base); err == nil {
 		host = u.Host
 	}
-	endpoint := base + "/models"
-	if providerName(srv.Provider) == "ollama" {
-		endpoint = base + "/api/tags"
+	if providerName(srv.Provider) != "ollama" {
+		return listed(srv, host, authorize)
 	}
-	response, err := listClient.Get(endpoint)
+	response, err := listClient.Get(base + "/api/tags")
 	if err != nil {
 		return nil, fmt.Errorf("%s does not answer", host)
 	}
 	defer response.Body.Close()
-	switch {
-	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
-		return nil, fmt.Errorf("%s lists its models only to a key, and nodwyn asks without one", host)
-	case response.StatusCode != http.StatusOK:
+	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s did not list its models: %s", host, response.Status)
 	}
 	var list struct {
 		Models []struct {
 			Name string `json:"name"`
-		} `json:"models"` // ollama's /api/tags
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"` // a chat-completions server's /models
+		} `json:"models"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 16<<20)).Decode(&list); err != nil {
 		return nil, fmt.Errorf("%s's model list does not read: %v", host, err)
@@ -444,7 +445,42 @@ func offered(srv config.Server) ([]string, error) {
 	for _, m := range list.Models {
 		names = append(names, m.Name)
 	}
-	for _, m := range list.Data {
+	slices.Sort(names)
+	return slices.Compact(names), nil
+}
+
+// listed is what a chat-completions server lists, asked as a model's
+// requests are (llm.OpenAI.Models), with what to do when it refuses.
+func listed(srv config.Server, host string, authorize func(*http.Request) error) ([]string, error) {
+	// A key that is not sent (the keychain is locked, the binding refuses it)
+	// is said as such, not as a server that does not answer.
+	var unsent error
+	wrapped := authorize
+	if authorize != nil {
+		wrapped = func(r *http.Request) error { unsent = authorize(r); return unsent }
+	}
+	oai := llm.NewOpenAI(srv.URL, wrapped)
+	ctx, cancel := context.WithTimeout(context.Background(), listClient.Timeout)
+	defer cancel()
+	models, err := oai.Models(ctx)
+	var se *llm.StatusError
+	var netErr net.Error
+	switch {
+	case unsent != nil:
+		return nil, fmt.Errorf("%s is not asked for its models: the key is not sent (%v)", host, unsent)
+	case errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden) && srv.Credential == "":
+		return nil, fmt.Errorf("%s lists its models only to a key: add the provider's key", host)
+	case errors.As(err, &se) && (se.Status == http.StatusUnauthorized || se.Status == http.StatusForbidden):
+		return nil, fmt.Errorf("%s did not accept the key (%d): replace it", host, se.Status)
+	case errors.As(err, &se):
+		return nil, fmt.Errorf("%s did not list its models: %s", host, se.Text)
+	case errors.As(err, &netErr) || ctx.Err() != nil:
+		return nil, fmt.Errorf("%s does not answer", host)
+	case err != nil:
+		return nil, fmt.Errorf("%s's model list does not read: %v", host, err)
+	}
+	names := []string{}
+	for _, m := range models {
 		names = append(names, m.ID)
 	}
 	slices.Sort(names)

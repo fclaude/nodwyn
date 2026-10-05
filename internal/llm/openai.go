@@ -77,24 +77,25 @@ func (o *OpenAI) Ping(ctx context.Context) (string, error) {
 	return "openai-compatible", nil
 }
 
-// ContextLength asks the server's model list how many tokens model's
-// context holds: OpenRouter's context_length (that of the provider it
-// routes to first, when it says), or vLLM's max_model_len. The list is
-// public on the servers that report it, so the request carries no key.
-// 0 and an error when the server does not say.
-func (o *OpenAI) ContextLength(ctx context.Context, model string) (int, error) {
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, o.URL+"/models", nil)
+// ListedModel is one model of a server's list: its id, and how many tokens
+// its context holds when the server says (0 when it does not).
+type ListedModel struct {
+	ID            string
+	ContextLength int
+}
+
+// Models asks the server for the models it lists. The request carries the
+// key as a chat request does (Authorize, after the same binding check):
+// OpenAI and Cerebras list their models only to a key. A server's context
+// length is OpenRouter's context_length (that of the provider it routes to
+// first, when it says) or vLLM's max_model_len; OpenAI's and Cerebras'
+// model objects carry none.
+func (o *OpenAI) Models(ctx context.Context) ([]ListedModel, error) {
+	resp, err := o.send(ctx, http.MethodGet, "/models", nil)
 	if err != nil {
-		return 0, err
-	}
-	resp, err := o.Client.Do(hreq)
-	if err != nil {
-		return 0, fmt.Errorf("openai: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("openai: model list: %s", resp.Status)
-	}
 	var list struct {
 		Data []struct {
 			ID            string `json:"id"`
@@ -106,16 +107,35 @@ func (o *OpenAI) ContextLength(ctx context.Context, model string) (int, error) {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&list); err != nil {
-		return 0, fmt.Errorf("openai: model list: %w", err)
+		return nil, fmt.Errorf("openai: model list: %w", err)
 	}
+	models := make([]ListedModel, 0, len(list.Data))
 	for _, m := range list.Data {
+		listed := ListedModel{ID: m.ID}
+		for _, n := range []int{m.TopProvider.ContextLength, m.ContextLength, m.MaxModelLen} {
+			if n > 0 {
+				listed.ContextLength = n
+				break
+			}
+		}
+		models = append(models, listed)
+	}
+	return models, nil
+}
+
+// ContextLength asks the server's model list (Models) how many tokens
+// model's context holds: 0 and an error when the server does not say.
+func (o *OpenAI) ContextLength(ctx context.Context, model string) (int, error) {
+	models, err := o.Models(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, m := range models {
 		if m.ID != model {
 			continue
 		}
-		for _, n := range []int{m.TopProvider.ContextLength, m.ContextLength, m.MaxModelLen} {
-			if n > 0 {
-				return n, nil
-			}
+		if m.ContextLength > 0 {
+			return m.ContextLength, nil
 		}
 		return 0, fmt.Errorf("openai: the model list does not give %s's context length", model)
 	}

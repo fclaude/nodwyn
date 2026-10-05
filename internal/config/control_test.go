@@ -44,7 +44,7 @@ func TestControlNeedsItsFields(t *testing.T) {
 			t.Fatalf("a control model without num_ctx: %v", err)
 		}
 	}
-	if got := Default().WindowNumCtx(); got != 61440+16384 {
+	if got := Default().WindowNumCtx(0); got != 61440+16384 {
 		t.Fatalf("WindowNumCtx %d", got)
 	}
 }

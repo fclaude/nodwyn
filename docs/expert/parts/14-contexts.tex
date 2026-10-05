@@ -12,9 +12,10 @@ By default the window holds the system prompt, then the conversation:
 each of your requests under the task header, and its plan, if it has one,
 as a message of its own, neither of which is ever trimmed away. When it grows past the \emph{high water} mark, the oldest
 tool results are elided in place, down to the \emph{low water} mark. A tool
-result longer than a cap is shortened. The sizes are in the config, grow
-with a model whose context is larger than the defaults assume, and are
-readable from Scheme:
+result longer than a cap is shortened. The sizes are in the config, follow
+the model's context less its reply cap (growing for a larger one than the
+defaults assume, shrinking to fit a smaller one), and are readable from
+Scheme:
 
 \begin{txt}
 you> :eval (window-limits)
@@ -25,7 +26,10 @@ The \code{ceiling} is the most a request may carry; above the high water it
 is room kept for compaction's note. \code{(context-tokens)} is the size of
 the next request, counted as the window counts.
 
-\code{output-reserve} is also the cap on each reply. Trimming never touches
+\code{output-reserve} is the reply cap of a model that sets no
+\code{max\_output}, at most a quarter of a context too small for the window
+and that reply; a reply's cap comes
+out of the model's context, and the window has the rest. Trimming never touches
 the log; it only changes what the next request contains. From recipe v16,
 removing an assistant's tool calls also omits their matching results;
 a result among the four recent entries protects its whole calling batch.

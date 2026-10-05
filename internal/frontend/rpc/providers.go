@@ -324,25 +324,65 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 	return s.settings(), nil
 }
 
-// bindKey allows class for host: one row, POST, as a bearer header, unless
-// the table has it.
+// modelKeyMethods are what a model key is bound for: POST for the model's
+// requests, and GET for its server's model list, which OpenAI and Cerebras
+// give only to a key.
+var modelKeyMethods = []string{http.MethodPost, http.MethodGet}
+
+// bindKey allows class for host as a model key: a row for each of
+// modelKeyMethods, as a bearer header, that the table does not have.
 func (s *server) bindKey(class, host string) error {
-	if bound, _ := s.bindingTable().Lookup(class, host, http.MethodPost, keyPosition); bound {
-		return nil
+	var rows []binding.Binding
+	for _, method := range modelKeyMethods {
+		if bound, _ := s.bindingTable().Lookup(class, host, method, keyPosition); bound {
+			continue
+		}
+		row, err := binding.Exact(class, host, method, keyPosition)
+		if err != nil {
+			return err
+		}
+		rows = append(rows, row)
 	}
-	row, err := binding.Exact(class, host, http.MethodPost, keyPosition)
-	if err != nil {
-		return err
+	return s.appendRows(rows)
+}
+
+// bindModelLists gives each model key that config.toml names, on a server
+// or a model of its own, and that the binding table already allows to POST to
+// that address's host, the GET row its model list needs. Keys saved before
+// modelKeyMethods had GET were bound for POST alone, so their servers' lists
+// were refused (401, 403); this adds no host, position or credential the
+// table did not already allow.
+func (s *server) bindModelLists() error {
+	keyed := []config.Server{}
+	for _, srv := range s.options.Config.Servers {
+		keyed = append(keyed, srv)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := binding.AppendExact(ctx, s.options.Paths.Bindings, row); err != nil {
-		return err
+	for _, e := range s.registry() {
+		keyed = append(keyed, config.Server{Provider: e.model.Provider, URL: e.model.URL, Credential: e.model.Credential})
 	}
-	if table, err := binding.Load(s.options.Paths.Bindings); err == nil {
-		s.options.Bindings = table
+	table := s.bindingTable()
+	var rows []binding.Binding
+	for _, srv := range keyed {
+		u, err := url.Parse(srv.URL)
+		if providerName(srv.Provider) != "openai" || srv.Credential == "" || err != nil {
+			continue
+		}
+		host := strings.ToLower(u.Hostname())
+		if bound, _ := table.Lookup(srv.Credential, host, http.MethodPost, keyPosition); !bound {
+			continue
+		}
+		if bound, _ := table.Lookup(srv.Credential, host, http.MethodGet, keyPosition); bound {
+			continue
+		}
+		row, err := binding.Exact(srv.Credential, host, http.MethodGet, keyPosition)
+		if err != nil {
+			return err
+		}
+		if !slices.ContainsFunc(rows, func(r binding.Binding) bool { return r.Class == row.Class && r.Dest == row.Dest }) {
+			rows = append(rows, row)
+		}
 	}
-	return nil
+	return s.appendRows(rows)
 }
 
 // providerRemove answers settings.provider.remove. A provider models are

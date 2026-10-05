@@ -1183,16 +1183,19 @@ this computer only:
   (Connections › Credentials removes it).
 - *Models you can choose* is the list the pickers offer: `[control]` and each
   `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
-  own list, asked without a key, fills in suggestions) and the efforts it
+  own list, asked with its key, fills in suggestions) and the efforts it
   takes, with shortcuts (low · medium · high, minimal added, off · on) and any
   other words, and the effort it starts at. Each model has its own settings in
-  its form: its **context length** (which sizes the conversation window; OpenAI
-  and Cerebras do not say it, OpenRouter does), its **prices** per million
-  tokens (which price a request when the provider reports no cost, as only
-  OpenRouter does), whether it **takes images** (yes unless you say no), and,
-  under *More settings*, the reply cap, sampling, the reply cap field, the
+  its form: its **context length** (OpenAI and Cerebras do not say it,
+  OpenRouter does), its **reply cap**, which comes out of the context (empty
+  is the default reply cap, or a quarter of a small context), with a line
+  saying what the conversation is left with as they are typed, its **prices**
+  per million tokens (which price a request when the provider reports no
+  cost, as only OpenRouter does), whether it **takes images** (yes unless you
+  say no), and, under *More settings*, sampling, the reply cap field, the
   session key and the prompt cache for a chat-completions model, or how long
-  Ollama keeps it loaded. The row says the context and prices it has. Editing
+  Ollama keeps it loaded. The row says the context, reply cap and prices it
+  has. Editing
   the default model saves them in its entry, not in `[control]`, so they stay
   with the model when another becomes the default. **Test it** tries a model
   before it is saved.
@@ -1428,32 +1431,36 @@ asks, and a keyed chat-completions server works there too.
 provider = "ollama"               # the default; or "openai"
 url = "http://localhost:11434"
 model = "qwen3:8b"
-num_ctx = 81920                   # at least window.high_water + window.output_reserve
+num_ctx = 81920                   # its context length, replies included
 ```
 
 `model` is required, with a `server` or a `url`; nodwyn has no built-in
 control model. Unset, `num_ctx` asks an ollama model for exactly the
-window's size
-(`window.high_water + window.output_reserve`, 77824 by default) rather than
+window's size and a reply
+(`window.high_water` plus the model's reply cap, 77824 by default) rather than
 leaving Ollama at its own, usually smaller, default, which would cut the
-prompt silently; a chat-completions server decides its own. Set, the window
-must fit in it.
+prompt silently; a chat-completions server decides its own.
 
-The window is sized for the control model's context. Its defaults
-(`window.high_water` 61440 and `low_water` 30720, in the window's estimate of
-bytes/3) suit a small local context. When the context is larger, as
-`num_ctx` says or, for a chat-completions server that leaves it unset, as the
-server's model list says (OpenRouter's `context_length`, vLLM's
-`max_model_len`; asked once per process, without a key), the high water grows
-to three quarters of the context less the reply cap, and the low water to
-half of that: a 1M-token model trims past 774144 and compacts just under it.
-The last quarter is room for compaction's handover note (docs/scheme.md §9.2),
-so a long task is summarized before anything is trimmed. The session log
-notes the size it chose, or that the server did not say (OpenAI's and
-Cerebras' never do); set the model's context length in Settings › Models then,
-or `num_ctx` in its entry.
+A model's reply cap comes out of its context, and the conversation gets the
+rest. The window is sized for the control model's context less that cap. Its
+defaults (`window.high_water` 61440 and `low_water` 30720, in the window's
+estimate of bytes/3) suit a small local context. When the context is larger,
+as `num_ctx` says or, for a chat-completions server that leaves it unset, as
+the server's model list says (OpenRouter's `context_length`, vLLM's
+`max_model_len`; asked once per process, with the model's key, as OpenAI and
+Cerebras list their models only to one), the high water grows to three
+quarters of the context less the reply cap, and the low water to half of
+that: a 1M-token model trims past 774144 and compacts just under it. When
+the context is too small for the window, it shrinks the same way: a
+32768-token model's reply cap is 8192 (below) and its window trims past
+18432. The last quarter is room for compaction's handover note
+(docs/scheme.md §9.2), so a long task is summarized before anything is
+trimmed. The session log notes the size it chose, or that the server did not
+say (OpenAI's and Cerebras' lists carry no context length); set the model's
+context length in Settings › Models then, or `num_ctx` in its entry.
 Setting `high_water` or `low_water` in `[window]` keeps the window at your
-size. A larger window sends more with every request: on a paid model, a
+size, unless a model's context cannot hold it: then it shrinks to fit that
+model. A larger window sends more with every request: on a paid model, a
 request near the high water costs that many prompt tokens, less what the
 provider caches.
 
@@ -1467,12 +1474,16 @@ server that reports only a summary of the thinking, or none, gives back
 only that; encrypted reasoning (OpenRouter's `reasoning_details`) is not
 kept.
 
-`window.output_reserve` (16384 by default) is also the cap on each reply,
-thinking included: ollama gets it as `num_predict`, a chat-completions server
-as `max_completion_tokens`, so a prompt at the window's high water and its
-reply always fit the context. A model may set its own cap with `max_output`,
-for a remote reasoning model whose thinking needs more room (keep an ollama
-model's at most `output_reserve`, or raise its `num_ctx` to match); a
+Each reply is capped, thinking included: ollama gets the cap as
+`num_predict`, a chat-completions server as `max_completion_tokens` (the
+Responses API as `max_output_tokens`), so a prompt at the window's high water
+and its reply always fit the context. The cap is the model's `max_output`
+(*Reply cap* in Settings › Models), which must be below its `num_ctx`; unset,
+it is `window.output_reserve` (16384 by default, *Default reply cap* in
+Settings › Context window), but a context too small for the window and that
+reply gives it no more than a quarter, so a small model keeps most of its
+context for the conversation. A remote
+reasoning model whose thinking needs more room sets its own; a
 chat-completions server that only knows the older field takes
 `output_field = "max_tokens"`:
 

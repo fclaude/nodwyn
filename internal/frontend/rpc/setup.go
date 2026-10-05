@@ -462,23 +462,13 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		return nil, failure(-32602, err.Error())
 	}
 	if len(key) > 0 {
-		// The key and its one binding row come first: a config naming a
+		// The key and its binding rows come first: a config naming a
 		// credential that was never stored would fail every request.
 		if _, err := s.options.Keychain.Add(class, key); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
-		row, err := binding.Exact(class, host, "POST", "header:Authorization:Bearer")
-		if err != nil {
+		if err := s.bindKey(class, host); err != nil {
 			return nil, failure(-32000, err.Error())
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		err = binding.AppendExact(ctx, s.options.Paths.Bindings, row)
-		cancel()
-		if err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-		if table, err := binding.Load(s.options.Paths.Bindings); err == nil {
-			s.options.Bindings = table
 		}
 	}
 	if err := config.WriteFile(s.options.Paths.ConfigFile, text); err != nil {

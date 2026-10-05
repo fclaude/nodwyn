@@ -179,3 +179,60 @@ anything. That hypothetical notice was noise. Timing notices now describe
 actual model or effort choices: a queued choice names both the running and
 chosen selections, and a choice between messages says when it applies. An
 unchanged running response shows no change notice; warnings and errors remain.
+
+## Amendment 2026-10-05: a model's list is asked with its key, and its reply cap comes out of its context
+
+Session `20261005T042752Z-871dfe24`, gpt-6.1-sol at `api.openai.com` after
+the amendment that made a model's settings its own, still noted "openai: model list: 401 Unauthorized": the
+request for a server's model list carried no key, on the reasoning that the
+lists that report a context length are public. OpenAI and Cerebras list their
+models only to a key, so the list was refused there, and the console's model
+picker offered nothing for them either. The key is the host's to send: it is
+injected by Go after the same binding check every request with it has, and a
+model's list goes to the host its requests already go to. The reason it was
+not sent was the binding: model keys were bound for `POST` alone, so a `GET`
+with the key would have been refused.
+
+The same session's settings made the reply cap a puzzle. A model's context
+length was up front in its form, its reply cap folded under More settings
+with "the window's reserve" for a default, and Settings › Context window had
+a "Kept for each reply" of its own; the window grew with a large context but
+never shrank, so a 32768-token model kept the 61440-token high water and was
+sent requests it could not hold, unless `[window]` was changed for every
+model at once, which config validation demanded of `[control]` alone.
+
+- **A model key is bound for its list.** Saving a provider's key binds it for
+  `POST` and `GET` at the provider's host, as a bearer header. At start the
+  daemon gives each key that config.toml names for a chat-completions server,
+  and that the binding table already allows to `POST` to that server's host,
+  the `GET` row it lacks; it adds no host, position or credential the table
+  did not allow. `llm.OpenAI.Models` asks `/models` through the authorized
+  path chat requests take, so the window's context length and
+  `models.offered` are asked with the key, and the egress check is recorded
+  as any other. A key whose binding refuses `GET` is not sent, and the
+  window's note says why. `models.status` still probes without a key: it
+  reads nothing from the list and only asks whether the server answers.
+- **The reply cap is the model's, and comes out of its context.** A model's
+  cap is its `max_output`, else `window.output_reserve`, but no more than a
+  quarter of a context too small for the window and that reply
+  (`Window.ReplyCap`; a context that holds both, such as the one an Ollama
+  model without `num_ctx` is asked for, keeps the whole reserve);
+  `max_output` must be below `num_ctx`. The window is sized for the context less that cap
+  (`Window.Sized`): it grows as before, and it now shrinks, set water marks
+  included, when the context cannot hold it. The validation that
+  `window.high_water + window.output_reserve` fit `[control]`'s `num_ctx` is
+  gone with the reason for it. An Ollama model without `num_ctx` is asked for
+  the high water plus its own cap. A cap that differs from the window's
+  default goes with each request (`llm.req` `max_output`), so it replays.
+- **Settings say it that way.** The model form has the reply cap beside the
+  context length, its default spelled as a number, and a line saying what a
+  conversation on the model gets as both are typed; Settings › Context window
+  calls `output_reserve` the *Default reply cap*. The note a cut reply leaves
+  names "the reply cap of model NAME".
+
+Not built, and not decided: a bundled catalogue of providers, models, context
+lengths and prices (models.dev, LiteLLM's map), which would size and price
+OpenAI's and Cerebras' models without the person saying it. OpenAI's model
+object, asked with the key, is still `id`, `object`, `created`, `owned_by`
+and `shutdown_date`, so their models are sized and priced only from their
+entries until then.

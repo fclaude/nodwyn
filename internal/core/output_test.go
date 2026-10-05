@@ -87,7 +87,7 @@ func TestAModelMayCapItsOwnReplies(t *testing.T) {
 	if !strings.Contains(string(srv.Requests[0].Raw), `"num_predict":2048`) {
 		t.Fatalf("request does not cap its output at the model's max_output:\n%s", srv.Requests[0].Raw)
 	}
-	if !strings.Contains(logb.String(), "the reply stopped at the output limit (2048 tokens, max_output of model control)") {
+	if !strings.Contains(logb.String(), "the reply stopped at the output limit (2048 tokens, the reply cap of model control)") {
 		t.Fatal("the cut's note does not name the model's cap")
 	}
 	evs, err := log.Read(bytes.NewReader(logb.Bytes()))

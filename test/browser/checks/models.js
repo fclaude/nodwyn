@@ -6,16 +6,20 @@
 //
 // - Settings › Models adds the second provider with a wrong key; a test
 //   request says the server did not accept it, the key is replaced, and the
-//   test passes. The key is in the keychain and bindings.toml's row, never in
-//   config.toml or the page. The OpenAI preset chooses its Responses API, and
-//   the provider moved to it is asked there, with the model's effort.
+//   test passes. The key is in the keychain and bindings.toml's rows, never in
+//   config.toml or the page. The provider lists its models only to its key,
+//   as OpenAI does: with the wrong key the form says so, with the right one it
+//   offers them. The OpenAI preset chooses its Responses API, and the
+//   provider moved to it is asked there, with the model's effort.
 // - Two models are added, one with its efforts; the default is changed to it,
 //   with an effort, and the model it replaces stays in the list.
 // - Each model has its own settings: the default is given a context length,
-//   prices and the ask to cache its prompt, which its entry holds and not
-//   [control]; the other model is said to take no images, and nothing of
-//   either reaches the other. A task on the default is sized for that context
-//   and priced at those prices, though the provider reports neither.
+//   a reply cap (the form says what the conversation is left with, and
+//   refuses a cap that leaves nothing), prices and the ask to cache its
+//   prompt, which its entry holds and not [control]; the other model is said
+//   to take no images, and nothing of either reaches the other. A task on the
+//   default is sized for that context less that reply cap and priced at those
+//   prices, though the provider reports neither.
 // - The New task window offers the models, shows each one's efforts (none for
 //   the model that takes none), starts a task on the choice, and the provider
 //   sees that model with that effort. A choice left unsent survives going to
@@ -126,15 +130,19 @@ check(async () => {
   assert.ok(cfg1.includes(`[servers.127-0-0-1]\nprovider = "openai"\nurl = "${chatURL}"\ncredential = "model-127-0-0-1"\n`), "server not written:\n" + cfg1);
   const bindings = fs.readFileSync(`${root}/config/nodwyn/bindings.toml`, "utf8");
   assert.ok(!cfg1.includes(wrongKey) && !bindings.includes(wrongKey) && !(await page.content()).includes(wrongKey), "the key is in a file or in the page");
-  assert.ok(bindings.includes('dest = "127.0.0.1"') && bindings.includes("header:Authorization:Bearer"), "binding row:\n" + bindings);
+  // Two rows: POST for the model's requests, GET for its server's model list.
+  assert.ok(bindings.split('dest = "127.0.0.1"').length - 1 === 2 && bindings.includes('methods = ["POST"]') && bindings.includes('methods = ["GET"]') && bindings.includes("header:Authorization:Bearer"), "binding rows:\n" + bindings);
   assert.strictEqual(await page.isDisabled("#provider-127-0-0-1 button:text-is('Test')"), true, "a provider with no model cannot be tested");
-  step("provider saved: key in the keychain and one binding, none in config.toml or the page");
+  step("provider saved: key in the keychain and bound for its requests and its list, none in config.toml or the page");
 
   // ---------- a model, tested against the wrong key, then saved ----------
+  // The provider lists its models only to its key, as OpenAI does: asked
+  // with the wrong one, the form says so and the name is typed.
   await page.click("#add-model");
   await page.selectOption("#model-provider", "127-0-0-1");
   await page.focus("#model-id");
-  await page.waitForFunction(() => [...document.querySelectorAll("#model-id-options option")].map((o) => o.value).join() === "fast,reasoner", null, { timeout: 10000 });
+  await shows("#model-form", "did not accept the key (401): replace it. Type the model's name.");
+  assert.strictEqual(await page.locator("#model-id-options option").count(), 0, "a provider that refused the key offered models");
   await page.fill("#model-id", "reasoner");
   await page.click("#efforts-lmh");
   await page.selectOption("#model-effort", "medium");
@@ -171,8 +179,18 @@ check(async () => {
   await shows("[data-model='127-0-0-1-reasoner'] .test-result", "reasoner answered", "with Medium effort");
   assert.deepStrictEqual((await provider()).filter((r) => r[2]), [["fast", "-", true, 200], ["reasoner", "medium", true, 200]], "only requests with the right key were accepted, each with the effort it was meant for");
   const bindings2 = fs.readFileSync(`${root}/config/nodwyn/bindings.toml`, "utf8");
-  assert.strictEqual(bindings2.split("[[bind]]").length - 1, 1, "replacing the key added a binding row:\n" + bindings2);
+  assert.strictEqual(bindings2.split("[[bind]]").length - 1, 2, "replacing the key added a binding row:\n" + bindings2);
   step("the key replaced in place; the provider answers with the model's effort");
+  // Its list is asked again, with the new key, and offers its models.
+  const listed = sent.of("models.offered").length;
+  await page.click("#add-model");
+  await page.selectOption("#model-provider", "127-0-0-1");
+  await page.focus("#model-id");
+  await page.waitForFunction(() => [...document.querySelectorAll("#model-id-options option")].map((o) => o.value).join() === "fast,reasoner", null, { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("models.offered").slice(listed), [{ server: "127-0-0-1" }], "the list was not asked again after the key changed");
+  await shows("#model-form", "127-0-0-1 offers 2 models");
+  await page.click("#model-form >> text=Cancel");
+  step("with the right key the provider's list offers its models");
   await page.screenshot({ path: `${out}/models-settings-after.png`, fullPage: true });
 
   // ---------- the provider moved to OpenAI's Responses API, and back ----------
@@ -227,6 +245,15 @@ check(async () => {
   await page.waitForSelector("#model-form");
   assert.strictEqual(await page.getAttribute("#model-vision-true", "aria-pressed"), "true", "a model is not taken to read images until it is said not to");
   await page.fill("#model-num_ctx", "1,050,000");
+  // The reply cap comes out of the context, and the form says what the
+  // conversation is left with as it is typed (config.Window.Sized).
+  await shows("#model-window", "Of 1,050,000 tokens, each reply may take 16,384; the conversation is summarized or trimmed past 775,212");
+  await page.fill("#model-max_output", "1,050,000");
+  await shows("#model-window", "leaves nothing of a 1,050,000-token context");
+  await page.click("#model-save");
+  await shows("#model-form .error", "The reply cap (1,050,000) must be below the context length");
+  await page.fill("#model-max_output", "128,000");
+  await shows("#model-window", "Of 1,050,000 tokens, each reply may take 128,000; the conversation is summarized or trimmed past 691,500, with room up to 922,000");
   await page.fill("#model-price_input", "5");
   await page.fill("#model-price_cached_input", "0.5");
   await page.fill("#model-price_output", "lots");
@@ -242,18 +269,20 @@ check(async () => {
     server: "127-0-0-1",
     model: "reasoner",
     efforts: ["low", "medium", "high"],
-    settings: { num_ctx: 1050000, price_input: 5, price_cached_input: 0.5, price_output: 40, cache_control: "ephemeral" },
+    settings: { num_ctx: 1050000, max_output: 128000, price_input: 5, price_cached_input: 0.5, price_output: 40, cache_control: "ephemeral" },
   });
   const reasonerBlock = block("models.127-0-0-1-reasoner");
-  for (const line of ["num_ctx = 1050000", 'cache_control = "ephemeral"', "price_input = 5", "price_cached_input = 0.5", "price_output = 40"]) {
+  for (const line of ["num_ctx = 1050000", "max_output = 128000", 'cache_control = "ephemeral"', "price_input = 5", "price_cached_input = 0.5", "price_output = 40"]) {
     assert.ok(reasonerBlock.includes(line + "\n"), `the model's entry lacks ${line}:\n` + config());
   }
-  assert.ok(!/num_ctx|price_|cache_control|vision/.test(block("control")), "[control] holds a copy of the model's settings:\n" + config());
-  await shows("[data-model='control']", "context 1,050,000 tokens · $5 in, $40 out per million tokens");
+  assert.ok(!/num_ctx|max_output|price_|cache_control|vision/.test(block("control")), "[control] holds a copy of the model's settings:\n" + config());
+  await shows("[data-model='control']", "context 1,050,000 tokens · replies up to 128,000 tokens · $5 in, $40 out per million tokens");
   await shows("[data-model='127-0-0-1-fast']", "context as the provider says · no prices");
   // The form shows what was saved.
   await page.click("[data-model='control'] button:text-is('Edit')");
   assert.strictEqual(await page.inputValue("#model-num_ctx"), "1,050,000");
+  assert.strictEqual(await page.inputValue("#model-max_output"), "128,000");
+  await shows("#model-window", "past 691,500");
   assert.strictEqual(await page.inputValue("#model-price_output"), "40");
   await page.click("#model-form .more-settings > summary");
   assert.strictEqual(await page.getAttribute("#model-cache_control-ephemeral", "aria-pressed"), "true");
@@ -268,7 +297,7 @@ check(async () => {
   await shows("[data-model='127-0-0-1-fast']", "takes no images");
   assert.ok(!(await page.innerText("[data-model='control']")).includes("takes no images"), "the default took the other model's word on images");
   await page.locator("#section-models").screenshot({ path: `${out}/models-settings-per-model.png` });
-  step("each model has its own context, prices, images and ask to cache; [control] holds none of them");
+  step("each model has its own context, reply cap, prices, images and ask to cache; [control] holds none of them");
 
   // ---------- the New task window ----------
   await go("#/");
@@ -347,9 +376,10 @@ check(async () => {
   await shows(".transcript", "Model: reasoner · low effort");
   step("a task started with an effort asks the provider for it");
   // The provider says neither the context nor the cost; the model's own
-  // settings do: the window is sized for 1,050,000 tokens less the reply
-  // reserve, and the reply is priced (an estimate, ≈).
-  await page.waitForFunction(() => document.body.textContent.includes("775,212"), null, { timeout: 10000 });
+  // settings do: the window is sized for 1,050,000 tokens less its
+  // 128,000-token reply cap, as the form said, and the reply is priced (an
+  // estimate, ≈).
+  await page.waitForFunction(() => document.body.textContent.includes("691,500"), null, { timeout: 10000 });
   await page.waitForFunction(() => /≈\$\d/.test(document.querySelector(".transcript").textContent), null, { timeout: 10000 });
   step("the task on the default model is sized for its context and priced at its prices");
   assert.strictEqual(await page.isVisible("#task-model-model"), false, "chat choices start collapsed");

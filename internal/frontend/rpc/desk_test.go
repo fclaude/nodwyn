@@ -11,9 +11,12 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
+	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/log"
+	"github.com/fclaude/nodwyn/test/fakes/chat"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -122,47 +125,81 @@ func TestModelsStatusProbesWithoutCredentials(t *testing.T) {
 	}
 }
 
-// models.offered lists what a configured server offers, asking without a
-// key as models.status does; a server that lists only to a key says so.
+// models.offered lists what a configured server offers. A chat-completions
+// server is asked with its key, after the binding check a model's requests
+// have, as OpenAI and Cerebras list their models only to one; one that wants
+// a key and has none says so, and a key the binding refuses is not sent. A
+// key saved before model keys were bound for their lists, bound for POST
+// alone, gets its GET row when the daemon starts, and no other row changes.
 func TestModelsOfferedByAServer(t *testing.T) {
-	var sawAuth atomic.Bool
-	openai := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "" {
-			sawAuth.Store(true)
-		}
-		if r.URL.Path == "/v1/models" {
-			w.Write([]byte(`{"data":[{"id":"z-model"},{"id":"a-model"}]}`))
-			return
-		}
-		http.Error(w, "no", http.StatusUnauthorized)
-	}))
-	defer openai.Close()
+	const key = "sk-list-key-0123456789"
+	listing := chat.New(key, chat.Model{ID: "z-model"}, chat.Model{ID: "a-model"})
+	listing.ListNeedsKey = true
+	defer listing.Close()
 	ollama := fake.New()
 	defer ollama.Close()
 	o := options(t)
+	if err := os.MkdirAll(filepath.Dir(o.Paths.Bindings), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := keychain.Create(o.Paths.Keychain, keychain.FastKDF, []byte("p"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, class := range []string{"model-127-0-0-1", "loose-key"} {
+		if _, err := store.Add(class, []byte(key)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	o.Keychain = store
+	before := "[[bind]]\n  class = \"model-127-0-0-1\"\n  dest = \"127.0.0.1\"\n  positions = [\"header:Authorization:Bearer\"]\n  methods = [\"POST\"]\n\n" +
+		"[[bind]]\n  class = \"inline-key\"\n  dest = \"127.0.0.1\"\n  positions = [\"header:Authorization:Bearer\"]\n  methods = [\"POST\"]\n\n" +
+		"[[bind]]\n  class = \"github-token\"\n  dest = \"api.github.com\"\n  positions = [\"header:Authorization:Bearer\"]\n  methods = [\"GET\"]\n"
+	if err := os.WriteFile(o.Paths.Bindings, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if o.Bindings, err = binding.Load(o.Paths.Bindings); err != nil {
+		t.Fatal(err)
+	}
 	o.Config.Servers = map[string]config.Server{
-		"router": {Provider: "openai", URL: openai.URL + "/v1/", Credential: "router-key"},
-		"locked": {Provider: "openai", URL: openai.URL + "/v2"},
+		"openai": {Provider: "openai", URL: listing.V1() + "/", Credential: "model-127-0-0-1"},
+		"bare":   {Provider: "openai", URL: listing.V1()},
+		"loose":  {Provider: "openai", URL: listing.V1(), Credential: "loose-key"},
 		"local":  {URL: ollama.URL},
 	}
+	// A model that names its address and key itself, as configs did before
+	// servers.
+	o.Config.Models = map[string]config.Model{"inline": {Provider: "openai", URL: listing.V1(), Model: "a-model", Credential: "inline-key"}}
 	path, _ := start(t, o)
 	c := connect(t, path)
 	c.hello()
-	for server, want := range map[string][]string{"router": {"a-model", "z-model"}, "local": {"demo", "fake"}} {
+	table, err := binding.Load(o.Paths.Bindings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, class := range []string{"model-127-0-0-1", "inline-key"} {
+		if bound, why := table.Lookup(class, "127.0.0.1", http.MethodGet, keyPosition); !bound {
+			t.Fatalf("%s was not bound for its list at start: %s", class, why)
+		}
+	}
+	if after := read(t, o.Paths.Bindings); !strings.HasPrefix(after, before) || strings.Count(after, "[[bind]]") != 5 || strings.Contains(after, "loose-key") {
+		t.Fatalf("bindings after start:\n%s", after)
+	}
+	for server, want := range map[string][]string{"openai": {"a-model", "z-model"}, "local": {"demo", "fake"}} {
 		var names []string
 		json.Unmarshal(c.ok("models.offered", map[string]any{"server": server}), &names)
 		if !slices.Equal(names, want) {
 			t.Errorf("%s offers %v", server, names)
 		}
 	}
-	if r := c.call("models.offered", map[string]any{"server": "locked"}); r.Error == nil || !strings.Contains(r.Error.Message, "lists its models only to a key") {
-		t.Fatalf("locked: %+v", r.Error)
-	}
-	if r := c.call("models.offered", map[string]any{"server": "nowhere"}); r.Error == nil {
-		t.Fatal("listed an unconfigured server")
-	}
-	if sawAuth.Load() {
-		t.Fatal("a key was sent")
+	for server, want := range map[string]string{
+		"bare":    "lists its models only to a key: add the provider's key",
+		"loose":   "the key is not sent (class \"loose-key\" has no binding)",
+		"nowhere": "No server",
+	} {
+		if r := c.call("models.offered", map[string]any{"server": server}); r.Error == nil || !strings.Contains(r.Error.Message, want) {
+			t.Errorf("%s: %+v, want %q", server, r.Error, want)
+		}
 	}
 }
 

@@ -427,10 +427,7 @@ func (s *Session) fitsModel(m config.Model, ep loop.Endpoint, marks window.Polic
 	if ep.NumCtx <= 0 {
 		return nil
 	}
-	reserve := s.opts.Config.Window.OutputReserve
-	if ep.MaxOutput > 0 {
-		reserve = ep.MaxOutput
-	}
+	reserve := s.opts.Config.Window.ReplyCap(ep.NumCtx, ep.MaxOutput)
 	room := ep.NumCtx - reserve
 	if held := s.loop.WindowTokens(marks); held > room {
 		return fmt.Errorf("the conversation holds about %d tokens and %s reads %d (num_ctx) less its %d-token reply reserve: compact it first, or choose a model with more context", held, m.Model, ep.NumCtx, reserve)

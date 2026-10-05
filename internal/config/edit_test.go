@@ -76,8 +76,8 @@ func TestSetControlAppendsAndValidates(t *testing.T) {
 	if err != nil || !strings.HasPrefix(string(out), "[control]\n") {
 		t.Fatalf("%q %v", out, err)
 	}
-	if _, _, err := SetControl([]byte("[window]\nhigh_water = 1000\nlow_water = 500\n"), Model{URL: "http://x", Model: "m", NumCtx: 100}); err == nil {
-		t.Fatal("accepted a window larger than num_ctx")
+	if _, _, err := SetControl(nil, Model{URL: "http://x", Model: "m", NumCtx: 100, MaxOutput: 100}); err == nil {
+		t.Fatal("accepted a reply cap that leaves nothing of num_ctx")
 	}
 	if _, _, err := SetControl(nil, Model{URL: "ftp://x", Model: "m"}); err == nil {
 		t.Fatal("accepted a non-http URL")

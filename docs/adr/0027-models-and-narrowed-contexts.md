@@ -166,6 +166,7 @@ again and its id from memory.
   `models.offered` lists the models a configured server offers, asked
   without a key as `models.status` asks, so the console suggests the
   model's id; a server that lists its models only to a key says so, and the
-  id is typed.
+  id is typed. (Since ADR 41, amendment 2026-10-05, it is asked with the
+  server's key, which is bound for `GET` as well as `POST`.)
 - Not built: adding and removing `[models.NAME]` tables and servers from the
   app. They are written in `config.toml` by hand.

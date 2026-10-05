@@ -96,7 +96,7 @@ const specs = {
   "window.high_water": { kind: "count", label: "High water" },
   "window.low_water": { kind: "count", label: "Low water" },
   "window.max_result_tokens": { kind: "count", label: "Largest tool result" },
-  "window.output_reserve": { kind: "count", label: "Kept for each reply" },
+  "window.output_reserve": { kind: "count", label: "Default reply cap" },
 };
 
 // Unsaved edits by setting: the text typed into a field, or the value a
@@ -514,10 +514,10 @@ function windowSection(ctx) {
     ...row(
       "Water marks",
       h("div", { class: "row-actions" }, h("span", { class: "muted" }, "High"), input(ctx, "window.high_water", { width: "narrow", placeholder: "grows with the model" }), h("span", { class: "muted" }, "low"), input(ctx, "window.low_water", { width: "narrow", placeholder: "grows with the model" })),
-      h("p", { class: "hint" }, fixed ? "Set, they stay as set. Clear both to have them grow with the main model's context again." : "Unset, they grow with the main model's context: the high water at three quarters of it."),
+      h("p", { class: "hint" }, fixed ? "Set, they stay as set unless a model's context cannot hold them; then they shrink to fit it. Clear both to have them follow each model's context again." : "Unset, they follow the model's context less its reply cap: the high water at three quarters of what is left."),
     ),
     ...row("Largest tool result", input(ctx, "window.max_result_tokens", { width: "narrow" }), h("p", { class: "hint" }, "Tokens. A larger result is shown by its beginning and end.")),
-    ...row("Kept for each reply", input(ctx, "window.output_reserve", { width: "narrow" }), h("p", { class: "hint" }, "Tokens left free for the model's reply, and the cap on it unless the model has its own.")),
+    ...row("Default reply cap", input(ctx, "window.output_reserve", { width: "narrow" }), h("p", { class: "hint" }, "Tokens. The most one reply may take, thinking included, for a model whose own reply cap is empty (Settings › Models); a small model's is at most a quarter of its context. The reply comes out of the model's context, and the window has the rest.")),
   );
 }
 
