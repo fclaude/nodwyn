@@ -190,10 +190,12 @@ type Model struct {
 	Seed        *int64   `toml:"seed"`
 	// Vision says whether the model takes images, so an attached image may
 	// be sent to it (ADR 22 §3). openai only: a chat-completions server does
-	// not say, while ollama reports it (/api/show). Unset, the model is taken
-	// to (TakesImages): a provider that refuses an image fails that request,
-	// which costs less than refusing an image a person has prepared a message
-	// around (ADR 22, amended 2026-10-05). false says it does not.
+	// not say, while ollama reports it (/api/show). Unset, it is what the
+	// model's provider publishes (WithPublished), and for a model nothing is
+	// published of, the model is taken to (TakesImages): a provider that
+	// refuses an image fails that request, which costs less than refusing an
+	// image a person has prepared a message around (ADR 22, amended
+	// 2026-10-05). true and false say so whatever is published.
 	Vision *bool `toml:"vision"`
 	// CacheKey is how requests name their session to a chat-completions
 	// server, so one that routes by it keeps a session on the replica that
@@ -234,7 +236,8 @@ type Model struct {
 }
 
 // TakesImages says whether an image may be sent to m, a chat-completions
-// model: unless its entry says it does not (Vision).
+// model: unless its entry, or what its provider publishes once
+// WithPublished has filled it in, says it does not (Vision).
 func (m Model) TakesImages() bool { return m.Vision == nil || *m.Vision }
 
 // isZero says whether m is the empty model, as an unset [control] is. Model

@@ -325,7 +325,8 @@ on it would size it (from \code{num\_ctx}, or the context the server's model
 list gives), and a switch is refused when the conversation would not fit it.
 Whether a model takes images is asked of each model the task is moved to: Ollama
 says, and a chat-completions model is taken to unless its entry says
-\code{vision = false}, since a refused request costs less than an image
+\code{vision = false} or, its entry saying nothing, its provider publishes
+that it reads none, since a refused request costs less than an image
 refused after a message was written around it (\adr{22}, amended).
 
 An attached image is egress of a kind no binding governs: its pixels cannot

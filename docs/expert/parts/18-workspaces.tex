@@ -138,8 +138,9 @@ decides after reading it still has to pass through the door.
 A PNG, JPEG, GIF or WebP (decided by what the file contains, not its name;
 at most 10\,MB and 8000 pixels a side) is sent to the model as an image, so
 it can only be attached when the conversation's model takes images: Ollama
-says so itself, and a chat-completions model is taken to unless its table says
-\code{vision = false} (Settings $\to$ Models, Takes images); a model that
+says so itself, and a chat-completions model does if its table says
+\code{vision = true}, or nothing and its provider publishes that it does or
+publishes nothing of it (Settings $\to$ Models, Takes images); a model that
 cannot read one refuses that request, and the turn says so.
 Nothing redacts pixels, so the task asks first, every time:
 

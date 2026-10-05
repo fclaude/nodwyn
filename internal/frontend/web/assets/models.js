@@ -375,7 +375,9 @@ function settingsForm(s = {}) {
     temperature: text(s.temperature),
     seed: text(s.seed),
     keep_alive: s.keep_alive || "",
-    vision: s.vision !== false,
+    // The entry's own answer, undefined when it gives none: the form then
+    // shows what applies, and saves only an answer chosen.
+    vision: s.vision,
     output_field: s.output_field || "",
     cache_key: s.cache_key || "",
     cache_control: s.cache_control || "",
@@ -413,8 +415,10 @@ function settingsOf(f, kind) {
     if (s.keep_alive.trim()) out.keep_alive = s.keep_alive.trim();
     return out;
   }
-  // Yes is the default, so only No is written (vision = false).
-  if (!s.vision) out.vision = false;
+  // Only a choice is written: unset, the model follows what its provider
+  // publishes, so Yes can say a model reads images its catalogue entry says
+  // it does not.
+  if (s.vision !== undefined) out.vision = s.vision;
   for (const name of ["output_field", "cache_key", "cache_control"]) if (s[name]) out[name] = s[name];
   return out;
 }
@@ -471,11 +475,11 @@ function settingsFields(f, kind, redraw, desk) {
     if (!prefix && !suffix) return node;
     return h("span", { class: "affix" }, prefix ? h("span", { class: "unit" }, prefix) : null, node, suffix ? h("span", { class: "unit" }, suffix) : null);
   };
-  const chips = (name, label, options) =>
+  const chips = (name, label, options, current = s[name]) =>
     h(
       "div",
       { class: "row-actions", role: "group", "aria-label": label },
-      options.map(([value, text]) => h("button", { type: "button", class: "chip", id: `model-${name}-${value === "" ? "default" : String(value)}`, "aria-pressed": String(s[name] === value), onclick: () => ((s[name] = value), redraw()) }, text)),
+      options.map(([value, text]) => h("button", { type: "button", class: "chip", id: `model-${name}-${value === "" ? "default" : String(value)}`, "aria-pressed": String(current === value), onclick: () => ((s[name] = value), redraw()) }, text)),
     );
   const openai = kind !== "ollama";
   const reserve = Number(desk.settings?.values?.["window.output_reserve"]?.value) || 16384;
@@ -524,7 +528,16 @@ function settingsFields(f, kind, redraw, desk) {
           : "US dollars per million tokens, to estimate what a request cost when the provider doesn't report it: OpenRouter reports it, OpenAI and Cerebras don't. They feed the spend limit; nothing else is enforced with them.",
       ),
     ),
-    openai ? field("model-vision-true", "Takes images", chips("vision", "Takes images", [[true, "Yes"], [false, "No"]]), "Whether an attached image may be sent to this model. A chat-completions server doesn't say, so a model is taken to read images unless you say No: one that can't fails that request, and what you wrote is kept.") : null,
+    openai
+      ? field(
+          "model-vision-true",
+          "Takes images",
+          chips("vision", "Takes images", [[true, "Yes"], [false, "No"]], s.vision ?? (f.published ? published.images : true)),
+          f.published
+            ? `Whether an attached image may be sent to this model. Unless you choose, it is what its provider publishes: ${published.images ? "it reads them" : "it reads none"}.`
+            : "Whether an attached image may be sent to this model. A chat-completions server doesn't say, so unless you choose No a model is taken to read images: one that can't fails that request, and what you wrote is kept.",
+        )
+      : null,
     h(
       "details",
       { class: "more-settings", open: f.more, ontoggle: (event) => (f.more = event.target.open) },

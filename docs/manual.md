@@ -1250,7 +1250,8 @@ this computer only:
   reply cap, or a quarter of a small context), with a line saying what the
   conversation is left with as they are typed, its **prices** per million
   tokens (which price a request when the provider reports no cost, as only
-  OpenRouter does), whether it **takes images** (yes unless you say no), and,
+  OpenRouter does), whether it **takes images** (what its provider publishes,
+  else yes, until you choose), and,
   under *More settings*, sampling, the reply cap field, the session key and
   the prompt cache for a chat-completions model, or how long Ollama keeps it
   loaded. The row says the context, reply cap and prices it has, and *as
@@ -1590,9 +1591,10 @@ seed = 42
 ([the browser view](browser.md), "Attaching"). An image can be attached
 when the conversation's model takes images. Ollama says whether a model does
 (`ollama show MODEL` lists `vision` among its capabilities), and nodwyn asks it
-once per session. A chat-completions server does not say, so a model on one is
-taken to read images unless its entry says it does not (Settings › Models ›
-Takes images: No):
+once per session. A chat-completions server does not say, so for a model on
+one, its entry's answer wins (Settings › Models › Takes images); unset, it is
+what its provider publishes ("Choosing models" above), and a model nothing is
+published of is taken to read images:
 
 ```toml
 [models.text-only]
@@ -1600,6 +1602,9 @@ server = "openrouter"
 model = "some-text-model"
 vision = false                    # it reads no images; openai only
 ```
+
+`vision = true` says a model reads images that its provider's published
+description says it does not.
 
 A model that cannot read one refuses that request, and the turn ends saying
 the model may not take images and what to do: choose another model for the

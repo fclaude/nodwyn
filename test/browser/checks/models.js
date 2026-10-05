@@ -613,6 +613,10 @@ check(async () => {
   const [first, second, third] = Object.keys(published)
     .filter((id) => published[id].context && published[id].output && published[id].price && published[id].efforts?.length > 1)
     .sort();
+  // A model its provider publishes as reading no images.
+  const textOnly = Object.keys(published)
+    .filter((id) => published[id].context && !published[id].images)
+    .sort()[0];
   const n = (x) => x.toLocaleString("en-US");
   const label = (e) => (e === "xhigh" ? "Extra high" : e[0].toUpperCase() + e.slice(1));
   const expect = (id) => {
@@ -623,7 +627,7 @@ check(async () => {
   };
   app.kill("SIGTERM");
   assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
-  fs.writeFileSync(configFile, `${config()}\n[servers.openai]\nprovider = "openai"\ndialect = "responses"\nurl = "https://api.openai.com/v1"\n\n[models.openai-a]\nserver = "openai"\nmodel = "${first}"\n\n[models.openai-c]\nserver = "openai"\nmodel = "${third}"\nefforts = ["low", "high"]\n`);
+  fs.writeFileSync(configFile, `${config()}\n[servers.openai]\nprovider = "openai"\ndialect = "responses"\nurl = "https://api.openai.com/v1"\n\n[models.openai-a]\nserver = "openai"\nmodel = "${first}"\n\n[models.openai-c]\nserver = "openai"\nmodel = "${third}"\nefforts = ["low", "high"]\n\n[models.openai-text]\nserver = "openai"\nmodel = "${textOnly}"\n`);
   ({ app, url } = await startApp());
   await page.goto(url);
   await go("#/settings");
@@ -652,6 +656,20 @@ check(async () => {
   await page.waitForSelector("#model-form", { state: "detached" });
   assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-c", server: "openai", model: third, efforts: [], settings: {} });
   assert.ok(!(config().split("[models.openai-c]")[1] || "").split("\n[")[0].includes("efforts"), "the typed efforts stayed:\n" + config());
+  // A model its provider publishes as reading no images shows No until its
+  // entry says otherwise, and Yes is saved, so the entry overrides the
+  // catalogue.
+  await shows("[data-model='openai-text']", "takes no images");
+  await page.click("[data-model='openai-text'] button:text-is('Edit')");
+  await page.waitForSelector("#model-form");
+  assert.strictEqual(await page.getAttribute("#model-vision-false", "aria-pressed"), "true", "a model published as reading no images shows Yes");
+  await shows("#model-form", "Unless you choose, it is what its provider publishes: it reads none.");
+  await page.click("#model-vision-true");
+  await page.click("#model-save");
+  await page.waitForSelector("#model-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-text", server: "openai", model: textOnly, efforts: [], settings: { vision: true } });
+  assert.ok((config().split("[models.openai-text]")[1] || "").split("\n[")[0].includes("vision = true\n"), "Yes was not saved:\n" + config());
+  await page.waitForFunction(() => !document.querySelector("[data-model='openai-text']")?.innerText.includes("takes no images"), null, { timeout: 10000 });
   // A model added on the provider takes its published efforts once its id is
   // given, and saves none of its own: the provider's apply.
   const b = expect(second);

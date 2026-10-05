@@ -86,7 +86,8 @@ you wrote it. Its sections:
   placeholder: its context length, its reply cap, which comes out of it, with
   a line under both saying what the conversation is left with as they are
   typed, its prices, which price a request when the provider reports no cost,
-  and whether it takes images (yes unless you say no); under *More settings*
+  and whether it takes images (what its provider publishes, else yes, until
+  you choose); under *More settings*
   its temperature and seed, and for a chat-completions model which
   field caps its reply, how its requests name their session and whether they
   ask the provider to cache the prompt, which a Claude model needs (the

@@ -307,3 +307,14 @@ other model's settings, under Judge.
 - The side panel's Context meter shows from the start of a task, empty
   until the conversation's first request: the window is known when the task
   opens, while the first requests are the planner's in a context of its own.
+
+## Amendment 2026-10-05: the images choice shows what applies
+
+Settings' *Takes images* showed Yes for a model whose entry said nothing,
+and saved only No, while the catalogue said some of those models read no
+images: the form said Yes, the row said *takes no images*, and choosing Yes
+saved nothing, so the catalogue's word could not be overridden from
+Settings. The choice now shows what applies (the entry's answer, else what
+the provider publishes, else Yes) and saves an answer only when one is
+chosen, Yes included (`vision = true`), so an entry still follows the
+catalogue until a person answers.

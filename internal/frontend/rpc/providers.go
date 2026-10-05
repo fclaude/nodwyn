@@ -88,9 +88,10 @@ type modelSettings struct {
 	KeepAlive   string   `json:"keep_alive,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
 	Seed        *int64   `json:"seed,omitempty"`
-	// Vision false says the model takes no images; unset, a chat-completions
-	// model is sent them (config.Model.TakesImages), since its server does
-	// not say. CacheKey and CacheControl are config.Model's. OpenAI-compatible
+	// Vision says whether the model takes images; unset, it is what its
+	// provider publishes, else a chat-completions model is sent them
+	// (config.Model.TakesImages), since its server does not say. CacheKey and
+	// CacheControl are config.Model's. OpenAI-compatible
 	// servers only.
 	Vision       *bool  `json:"vision,omitempty"`
 	CacheKey     string `json:"cache_key,omitempty"`

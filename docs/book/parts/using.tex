@@ -168,9 +168,10 @@ rebuild it. These settings are the model's own: \code{[control]} names the
 default model, and each one it leaves unset comes from the model's
 \code{[models.NAME]} entry, as its efforts do, so the model has the same
 settings whether it is the default or chosen in a picker (\adr{41}, amended).
-A chat-completions model is taken to read images unless its entry says
-\code{vision = false}: a provider that cannot read one refuses that request,
-and the turn says so (\adr{22}, amended). Ollama reports it itself.
+Whether a chat-completions model reads images is its entry's
+\code{vision} when set, else what its provider publishes, else yes: a
+provider that cannot read one refuses that request, and the turn says so
+(\adr{22}, amended). Ollama reports it itself.
 
 \chapter{Ways in}
 
