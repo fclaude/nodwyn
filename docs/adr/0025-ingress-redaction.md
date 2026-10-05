@@ -42,3 +42,40 @@ failed thirty times to change one. ADR 43 has `fs-edit` match in the text the
 model reads and keep the credential a placeholder stands for. Redaction itself
 is unchanged: ingress still redacts everything, with the default scanner, and
 the log still holds no credential-shaped text.
+
+## Amendment 2026-10-05: a credential inside a token run
+
+L1 took each run of token characters (letters, digits and the separators
+`- _ . / +`) as one candidate and matched each known shape against the whole
+run. A full stop ending a sentence, a path's slash or a `+` joined a key to
+its neighbours, the run matched no shape, and the key was neither redacted
+nor checked: a probe found `The bucket key is AKIAABCDEFGHIJKLMNOP.` and
+`The token is ghp_….` unchanged, and the same text in an `fs-write` asked
+nothing. Every place L1 runs was affected, since all of them use this
+scanner: the log, what is sent to models and the judge, and the guard's
+checks of payloads, command lines and writes.
+
+L1 now looks for a known shape inside a run. A credential of a class begins
+at the run's start or after a separator its shape cannot hold, takes the
+longest text the shape allows, and may leave only separators (a full stop, a
+closing dash) before the next such separator or the run's end. A separator
+the shape can hold is no boundary for it: the `/` of a path ends an OpenAI
+key, but the `-` of a base64url blob does not make `-sk-…` inside it one,
+and the `.` of a dotted name is no JWT boundary. A run that matches a shape
+whole is the same finding as before; a run with no known shape in it is
+judged whole for the entropy residual, as before; an allowlisted value is
+compared with the credential, not the run. No shape, class, threshold or
+allowlist rule changed, and ingress still uses the default scanner.
+
+What it costs: a shape that already matched loose text whole now matches it
+as a path component too, so `docs/sk-` followed by twenty letters, digits,
+dashes or underscores is an OpenAI key there as it was standing alone. Paths,
+version strings, base64 and base64url blobs, Go symbols and dotted test names
+are no new findings (`TestSeparatorsMakeNoKeys`, `TestDottedNamesAreNotSecrets`).
+The Phase 4 benchmark is unchanged (about 0.09 ms for 64 KB); 64 KB of paths
+or base64 scans as fast as before, and a 64 KB run with a separator every
+other byte takes 1.2 ms instead of 0.9 ms. Each rule names the separators its
+shape holds, and `TestJoinsAreWhatTheShapesHold` checks them against the
+regex. Still missed: a key joined to a letter or digit (`AKIA…x`), or after
+a separator its own shape holds (`my_ghp_…`). An Anthropic key's shape holds
+`.`, so a full stop after one goes into its placeholder.

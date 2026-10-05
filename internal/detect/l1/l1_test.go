@@ -1,6 +1,8 @@
 package l1
 
 import (
+	"regexp/syntax"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -34,6 +36,9 @@ func TestKnownClasses(t *testing.T) {
 		if fs[0].Class != c.want {
 			t.Errorf("%s: got class %q for %q", c.want, fs[0].Class, c.secret)
 		}
+		if fs[0].Start != 0 || fs[0].End != len(c.secret) {
+			t.Errorf("%s: %+v does not cover all of %q", c.want, fs[0], c.secret)
+		}
 	}
 }
 
@@ -59,6 +64,100 @@ func TestEmbeddedInContext(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%q: did not find class %s in %q", c.want, c.want, c.text)
+		}
+	}
+}
+
+// TestKeyEndingASentenceIsRedacted: the texts a probe on 2026-10-05 found
+// unredacted. The full stop joined the key into one token run, the run as a
+// whole matched no rule, and so the key was neither redacted nor checked.
+func TestKeyEndingASentenceIsRedacted(t *testing.T) {
+	s := New()
+	for in, want := range map[string]string{
+		"The token is ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4.": "The token is [REDACTED github-token].",
+		"ghp_A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4A1b2C3d4.":              "[REDACTED github-token].",
+		"The bucket key is AKIAABCDEFGHIJKLMNOP.":                    "The bucket key is [REDACTED aws-access-key].",
+	} {
+		if got, _ := s.Redact(in); got != want {
+			t.Errorf("%q: got %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestKeyJoinedToItsNeighbours: every class is found where a separator joins
+// it to the text around it, at the end of a sentence, in a path, between "+"
+// signs or in a URL, and the finding covers the key.
+func TestKeyJoinedToItsNeighbours(t *testing.T) {
+	s := New()
+	for _, c := range sampleSecrets {
+		for _, form := range []string{"The token is %s.", "(%s).", "%s...", "keys/%s", "%s/backup", "a+%s+b", "https://%s@github.com/o/r", "%s-"} {
+			text := strings.Replace(form, "%s", c.secret, 1)
+			at := strings.Index(text, c.secret)
+			fs := s.Scan(text)
+			if len(fs) != 1 || fs[0].Class != c.want || fs[0].Start != at || fs[0].End < at+len(c.secret) {
+				t.Errorf("%q: %+v, want one %s covering [%d,%d)", text, fs, c.want, at, at+len(c.secret))
+			}
+		}
+	}
+}
+
+// TestSeparatorsMakeNoKeys: looking for a key inside a token run must not
+// find one in text that only has separators in it. A separator a class can
+// hold is no boundary for it, so a base64url blob holding "-sk-" is not an
+// OpenAI key.
+func TestSeparatorsMakeNoKeys(t *testing.T) {
+	s := New()
+	for _, text := range []string{
+		"/usr/lib/python3.12/site-packages/sklearn/utils/_testing.py",
+		"src/AKIAstuff/sk-learn-wrapper/ghp_notes.md",
+		"https://example.com/AKIA/sk-/ghp_/eyJ.ey.x",
+		"github.com/fclaude/nodwyn/internal/detect/l1.(*Scanner).Scan",
+		"v1.2.3-rc.1+build.20241005.e3b0c44298fc1c14",
+		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+		"h1:Q8mtSL7SzHKkLBq0tzjr2DGJmnZh1x2cn14Ow=",
+		"Zm9vYmFy-sk-0123456789abcdefghij_Zm9vYmFy",
+	} {
+		for _, f := range s.Scan(text) {
+			if f.Class != ClassUnknownEntropy {
+				t.Errorf("%q: %+v", text, f)
+			}
+		}
+	}
+}
+
+// TestJoinsAreWhatTheShapesHold: a rule's joins must be the separators its
+// shape can match. One it can match that joins leaves out would split its
+// credentials apart; one joins names that it cannot match would hide a
+// boundary.
+func TestJoinsAreWhatTheShapesHold(t *testing.T) {
+	var holds func(re *syntax.Regexp, c rune) bool
+	holds = func(re *syntax.Regexp, c rune) bool {
+		switch re.Op {
+		case syntax.OpLiteral:
+			return slices.Contains(re.Rune, c)
+		case syntax.OpCharClass:
+			for i := 0; i < len(re.Rune); i += 2 {
+				if re.Rune[i] <= c && c <= re.Rune[i+1] {
+					return true
+				}
+			}
+			return false
+		}
+		return slices.ContainsFunc(re.Sub, func(sub *syntax.Regexp) bool { return holds(sub, c) })
+	}
+	for _, r := range rules {
+		re, err := syntax.Parse(r.re.String(), syntax.Perl)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held := ""
+		for _, c := range separators {
+			if holds(re, c) {
+				held += string(c)
+			}
+		}
+		if held != r.joins {
+			t.Errorf("%s %s: joins %q, the shape holds %q", r.class, r.re, r.joins, held)
 		}
 	}
 }
@@ -155,8 +254,10 @@ func TestDottedNamesAreNotSecrets(t *testing.T) {
 func TestAllowlist(t *testing.T) {
 	s := New()
 	s.AllowValue("AKIAIOSFODNN7EXAMPLE")
-	if fs := s.Scan("AKIAIOSFODNN7EXAMPLE"); len(fs) != 0 {
-		t.Errorf("AllowValue did not suppress: %+v", fs)
+	for _, text := range []string{"AKIAIOSFODNN7EXAMPLE", "The key is AKIAIOSFODNN7EXAMPLE."} {
+		if fs := s.Scan(text); len(fs) != 0 {
+			t.Errorf("AllowValue did not suppress %q: %+v", text, fs)
+		}
 	}
 
 	s2 := New()

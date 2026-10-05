@@ -110,33 +110,59 @@ func (s *Scanner) ensureAllow() {
 	}
 }
 
-// rule is one known-shape detector.
+// rule is one known-shape detector. joins is the separators (see
+// isSeparator) a credential of the class can hold; any other separator in a
+// token run is where one of the class begins or ends. prefix is the text
+// every credential of the class begins with, so most points in a run are
+// passed over without running the regex.
 type rule struct {
-	class string
-	re    *regexp.Regexp
+	class  string
+	joins  string
+	prefix string
+	re     *regexp.Regexp
 }
 
 // rules are the known-shape catalog (SPEC Phase 4: "prefix/shape regexes for
-// Anthropic, OpenAI, GitHub, AWS, Slack, PEM, JWT"). The regexes are
-// matched against a single whitespace-free token (see isTokenChar), so they
-// need no word-boundary anchors. Order matters only where prefixes overlap
+// Anthropic, OpenAI, GitHub, AWS, Slack, PEM, JWT"). Each is matched at a
+// point in a whitespace-free token run (see isTokenChar and match), so it
+// needs no word-boundary anchors. Order matters only where prefixes overlap
 // (Anthropic "sk-ant-" is checked before OpenAI "sk-").
 var rules = []rule{
-	{ClassAnthropic, regexp.MustCompile(`^sk-ant-[\w.-]{8,}$`)},
+	known(ClassAnthropic, "-_.", `sk-ant-[\w.-]{8,}`),
 	// OpenAI: legacy sk-XXXX and current sk-proj-... / sk-svcacct-... shapes.
-	{ClassOpenAI, regexp.MustCompile(`^sk-[A-Za-z0-9_-]{20,}$`)},
-	{ClassGitHub, regexp.MustCompile(`^(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}$`)},
-	{ClassGitHub, regexp.MustCompile(`^github_pat_[A-Za-z0-9_]{16,}$`)},
-	{ClassAWS, regexp.MustCompile(`^AKIA[0-9A-Z]{12,}$`)},
-	{ClassSlack, regexp.MustCompile(`^xox[baprs]-[A-Za-z0-9-]{8,}$`)},
+	known(ClassOpenAI, "-_", `sk-[A-Za-z0-9_-]{20,}`),
+	known(ClassGitHub, "_", `(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}`),
+	known(ClassGitHub, "_", `github_pat_[A-Za-z0-9_]{16,}`),
+	known(ClassAWS, "", `AKIA[0-9A-Z]{12,}`),
+	known(ClassSlack, "-", `xox[baprs]-[A-Za-z0-9-]{8,}`),
 	// JWT: three dot-separated base64url parts whose header and payload are
 	// encoded JSON objects, so they begin "eyJ" ({") and "ey" ({). Without
 	// that anchor, dotted names such as the Django test label
 	// "model_fields.test_jsonfield.TestQuerying" were taken for tokens and
 	// the commands and judge requests carrying them were denied. The
 	// signature may be empty (an unsigned "alg":"none" token).
-	{ClassJWT, regexp.MustCompile(`^eyJ[A-Za-z0-9_-]{5,}\.ey[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]*$`)},
+	known(ClassJWT, "-_.", `eyJ[A-Za-z0-9_-]{5,}\.ey[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]*`),
 }
+
+// known makes the rule for a class's shape, which begins with literal text
+// (its prefix, which starts reads). Its regex is anchored where it is tried
+// and takes the longest text it can, since match decides where the
+// credential ends.
+func known(class, joins, shape string) rule {
+	prefix, _ := regexp.MustCompile(shape).LiteralPrefix()
+	re := regexp.MustCompile(`^(?:` + shape + `)`)
+	re.Longest()
+	return rule{class: class, joins: joins, prefix: prefix, re: re}
+}
+
+// starts marks the bytes a rule's prefix begins with: a point in a run that
+// begins with any other byte begins no credential.
+var starts = func() (t [256]bool) {
+	for _, r := range rules {
+		t[r.prefix[0]] = true
+	}
+	return t
+}()
 
 // pemRe matches a PEM block anywhere in the text (it spans newlines, so it
 // is scanned over the whole string, not per token).
@@ -172,17 +198,69 @@ func (s *Scanner) Scan(text string) []Finding {
 		for i < n && isTokenChar(text[i]) {
 			i++
 		}
-		tok := text[lo:i]
-		class := s.classify(tok)
+		out = s.scanRun(out, text, lo, i)
+	}
+	return out
+}
+
+// scanRun appends the findings in the token run text[lo:hi]: the known
+// credentials in it, or, when it holds none, the run itself if it is the
+// unknown-entropy residual. A run is not one credential: a sentence's full
+// stop, a path's slashes or a "+" join a key to its neighbours, and a rule
+// matched against the whole run missed, so neither redacted nor checked,
+// every key that ended a sentence ("The bucket key is AKIA....").
+func (s *Scanner) scanRun(out []Finding, text string, lo, hi int) []Finding {
+	if hi-lo < minTokenLen {
+		return out
+	}
+	found := false
+	for p := lo; p < hi; p++ {
+		if !starts[text[p]] || p > lo && !isSeparator(text[p-1]) {
+			continue
+		}
+		class, end := match(text, lo, p, hi)
 		if class == "" {
 			continue
 		}
-		if s.suppressed("@"+class) || s.suppressed(tok) {
-			continue
+		found = true
+		if !s.suppressed("@"+class) && !s.suppressed(text[p:end]) {
+			out = append(out, Finding{Class: class, Start: p, End: end})
 		}
-		out = append(out, Finding{Class: class, Start: lo, End: i})
+		p = end - 1
+	}
+	if found {
+		return out
+	}
+	tok := text[lo:hi]
+	if s.isUnknownEntropy(tok) && !s.suppressed("@"+ClassUnknownEntropy) && !s.suppressed(tok) {
+		out = append(out, Finding{Class: ClassUnknownEntropy, Start: lo, End: hi})
 	}
 	return out
+}
+
+// match returns the class of the known credential that begins at p in the
+// token run text[lo:hi], and where it ends, or "" when none does. A
+// credential begins at the run's start or after a separator its class does
+// not hold, and runs to the next such separator or the run's end, leaving
+// before it at most separators (a full stop, a closing dash). A separator
+// the class does hold is no boundary, so a path's "/" splits a key from it
+// while a base64url blob's "-" does not make "-sk-..." inside it a key.
+func match(text string, lo, p, hi int) (string, int) {
+	for _, r := range rules {
+		if !strings.HasPrefix(text[p:hi], r.prefix) || p > lo && strings.IndexByte(r.joins, text[p-1]) >= 0 {
+			continue
+		}
+		end := p
+		for end < hi && (!isSeparator(text[end]) || strings.IndexByte(r.joins, text[end]) >= 0) {
+			end++
+		}
+		m := r.re.FindStringIndex(text[p:end])
+		if m == nil || strings.TrimLeft(text[p+m[1]:end], separators) != "" {
+			continue
+		}
+		return r.class, p + m[1]
+	}
+	return "", 0
 }
 
 // isTokenChar reports whether b is a character that appears in secret
@@ -191,7 +269,15 @@ func isTokenChar(b byte) bool {
 	return (b >= 'a' && b <= 'z') ||
 		(b >= 'A' && b <= 'Z') ||
 		(b >= '0' && b <= '9') ||
-		b == '-' || b == '_' || b == '.' || b == '/' || b == '+'
+		isSeparator(b)
+}
+
+// separators are the token characters that are not letters or digits.
+const separators = "-_./+"
+
+// isSeparator reports whether b is one of separators.
+func isSeparator(b byte) bool {
+	return b == '-' || b == '_' || b == '.' || b == '/' || b == '+'
 }
 
 // suppressed reports whether class ("@"-prefixed) or an exact value is
@@ -203,21 +289,6 @@ func (s *Scanner) suppressed(key string) bool {
 // minTokenLen is the shortest token that can match any rule (Slack "xoxb-"
 // + 8 = 13). Tokens shorter than this are skipped without running any rule.
 const minTokenLen = 13
-
-func (s *Scanner) classify(t string) string {
-	if len(t) < minTokenLen {
-		return ""
-	}
-	for _, r := range rules {
-		if r.re.MatchString(t) {
-			return r.class
-		}
-	}
-	if s.isUnknownEntropy(t) {
-		return ClassUnknownEntropy
-	}
-	return ""
-}
 
 // isUnknownEntropy is the L3 residual hook: a long, high-entropy run with
 // a word-joiner (dash or underscore) and a digit. The joiner keeps ordinary

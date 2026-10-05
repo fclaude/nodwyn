@@ -1911,6 +1911,10 @@ P7 uses the shared `internal/redact` controller for user text, tool results,
 planner requests, log payloads, and frontend events. Recognized credentials
 become `[REDACTED <class>]`; `redact.event` records the source event sequence,
 class, and offsets within the decoded string, never the removed value.
+A credential is recognised where punctuation joins it to the text around it,
+too: at the end of a sentence (`The key is [REDACTED aws-access-key].`), in a
+path or a URL, or between `+` signs, and the guard checks it there as it
+would one standing alone (ADR 25).
 JSON strings and nested tool arguments are decoded before scanning. The
 mandatory log pass runs after custom filters. Egress L1 allowlists do not
 turn off ingress redaction.
