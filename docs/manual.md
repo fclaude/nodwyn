@@ -593,12 +593,18 @@ Set `jev.content = "none"` in `config.toml` to turn it off. Without a
 `jev-key` credential nothing is sent and the loop runs without a gate.
 
 With `[approval] commands = "judge"`, the default, the judge also answers a
-command before you are asked ("Confirms" above). It is shown the task, the
-turn's plan and the command line (at `jev.content = "full"` also what the
-call would send), and the command runs if its probability of allow is at
-least `jev.approve_threshold` (0.8). The decision is Go's: no Scheme can
-approve what the judge refused, and a project's `(approve-refuse? call)`
-can only refuse more. When it refuses, you are asked, and told its answer.
+command before you are asked ("Confirms" above). It is told that you are at
+hand and asked when it does not allow a call (a run's judge is told nobody
+is), and shown the task, the turn's plan with the steps marked so far and
+the next one, the command line, what it and you answered about the same
+command earlier in the turn, and, for a script the command runs from the
+session's scratch directory, that the script is the session's own (at
+`jev.content = "full"` also the script's text and what the call would send).
+It is not told that a command is irreversible, which every command is. The
+command runs if its probability of allow is at least
+`jev.approve_threshold` (0.8). The decision is Go's: no Scheme can approve
+what the judge refused, and a project's `(approve-refuse? call)` can only
+refuse more. When it refuses, you are asked, and told its answer.
 
 **What the judge used.** The judge reports each request's tokens, never its
 cost, and nodwyn records them in `jev.req` with the model that answered
@@ -724,7 +730,10 @@ client, with what set it off and the context's size before and after
 note 812 tokens`), and one that gave up is a warning. How full the context
 is shows as you go: the TUI's title (`context ~45k of ~61k`), its `:budget`
 (the estimate beside what the provider counted, and the compactions so far)
-and the console's Context meter. Those sizes are nodwyn's estimates, the
+and the console's Context meter. While the explorer, the planner or a
+sub-agent asks in a context of its own, they follow that context and name
+it (`context ~52k of ~691k (explorer)`, *Context · explorer*), and show the
+conversation's again once it folds. Those sizes are nodwyn's estimates, the
 unit the window and compaction use; a provider usually counts a fifth or so
 fewer.
 

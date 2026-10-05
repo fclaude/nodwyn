@@ -1069,8 +1069,9 @@ export class TaskView {
       limited("Tool calls", calls, budgets?.tool_calls.soft || 0),
       // The budget counts every request's whole prompt, cached tokens at a
       // tenth, so this adds the context up once per request; Context below
-      // is how big it is.
-      tokens ? limited("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()) : null,
+      // is how big it is. Shown from the turn's start, as Time is: it waited
+      // for the first reply, which the explorer's long first requests delay.
+      limited("Tokens sent", tokens, budgets?.tokens.soft || 0, (n) => n.toLocaleString()),
       this.contextMeter(),
       this.judgeLine(),
     ].filter(Boolean);
@@ -1111,16 +1112,18 @@ export class TaskView {
   // The provider's own count stays a tooltip: it differs from the estimate
   // and its line reflowed the panel on every reply. A log that does not say
   // the high water has no limit to count against, so the figure is a row.
-  // The window is known from the start, while the first requests are the
-  // planner's in a context of its own: the bar shows from the start, empty
-  // until the conversation's first request.
+  // The window is known from the start: the bar shows from then, empty until
+  // the first request. While the explorer, the planner or a sub-agent asks
+  // in a context of its own, the bar follows that context, named in its
+  // label, and returns to the conversation's when it folds.
   contextMeter() {
     const g = contextGauge(this.events());
     if (!g.est && !g.high) return null;
-    if (!g.est) return meterBar("Context", `— / ~${g.high.toLocaleString()}`, 0, g.high, "No request in the conversation yet; older context is trimmed past the window's high water, and compaction comes just before it");
-    const node = limited("Context", g.est, g.high, (n) => `~${n.toLocaleString()}`);
+    if (!g.est) return meterBar("Context", `— / ~${g.high.toLocaleString()}`, 0, g.high, "No model request yet; older context is trimmed past the window's high water, and compaction comes just before it");
+    const node = limited(g.agent ? `Context · ${g.agent}` : "Context", g.est, g.high, (n) => `~${n.toLocaleString()}`);
     const said = [g.reported ? `the provider counted ${g.reported.toLocaleString()} tokens` : "", g.compactions ? `compacted ${g.compactions === 1 ? "once" : `${g.compactions} times`}` : ""].filter(Boolean);
-    node.title = ["nodwyn's estimate of the latest request in the conversation; older context is trimmed past the window's high water, and compaction comes just before it", ...said].join("; ");
+    const whose = g.agent ? `the ${g.agent}'s latest request, in a context of its own that folds back into the conversation` : "the latest request in the conversation";
+    node.title = [`nodwyn's estimate of ${whose}; older context is trimmed past the window's high water, and compaction comes just before it`, ...said].join("; ");
     return node;
   }
   // totalsPanel is the task's whole-life figures, first in the aside: what

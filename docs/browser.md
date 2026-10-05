@@ -18,11 +18,13 @@ and when the provider reports them or the model has prices, how much of the
 prompt came from the cache and what it cost (the manual, "Choosing models");
 over several requests, the largest single prompt too, since each request
 sends the whole prompt again. The side panel's Context meter shows how full
-the conversation's context is against the window's high water, from the
-start of a task (empty while only the planner, in a context of its own, has
-asked); what the
+the context the model holds is against the window's high water, from the
+start of a task: while the explorer, the planner or a sub-agent asks in a
+context of its own, the meter follows it and names it (*Context ·
+explorer*), and shows the conversation's again once it folds; what the
 provider counted and how often it was compacted are in its tooltip, so the
-panel does not shift on every reply. "Tokens sent" is the token budget's
+panel does not shift on every reply. "Tokens sent", shown from the turn's
+start, is the token budget's
 count, every request's prompt, a token read from the provider's cache
 counted as a tenth. Beside them the turn's clock is split: "Model wait",
 each request to a model from its sending to its reply, and "Tool time",

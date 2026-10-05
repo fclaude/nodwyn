@@ -69,14 +69,19 @@ func (s *Session) registerPlanRequired() error {
 	return nil
 }
 
-// notePlan marks the turn planned when a non-empty plan is recorded.
+// notePlan marks the turn planned when a non-empty plan is recorded, and
+// keeps the plan and the marks made on it for the judge.
 func (s *Session) notePlan(kind log.Kind, payload any) {
-	if kind != log.KindGatePlan {
-		return
-	}
-	if gp, ok := payload.(log.GatePlan); ok && strings.TrimSpace(gp.Plan) != "" {
-		s.planned.Store(true)
-		s.setTurnPlan(gp.Plan)
+	switch p := payload.(type) {
+	case log.GatePlan:
+		if kind == log.KindGatePlan && strings.TrimSpace(p.Plan) != "" {
+			s.planned.Store(true)
+			s.setTurnPlan(p.Plan, p.Marks)
+		}
+	case log.PlanStep:
+		if kind == log.KindPlanStep {
+			s.markTurnPlan(p)
+		}
 	}
 }
 

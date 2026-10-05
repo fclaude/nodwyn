@@ -776,16 +776,22 @@ export function usd(c, estimated) {
   return estimated ? `≈${s}` : s;
 }
 
-// contextGauge is how big the conversation's context is, from the log: the
-// window's estimate of the latest control-model request made in the
-// conversation itself (not in a planner's or sub-agent's narrowed context),
-// what the provider counted for that request's prompt, the window's high
-// water (the session's, or the model's it was moved to), and the
-// compactions so far.
+// contextGauge is how big the context the model holds is, from the log: the
+// window's estimate of the latest control-model request and what the
+// provider counted for its prompt, the window's high water (the session's,
+// or the model's it was moved to), and the compactions so far. While a
+// narrowed context is open (the explorer's, the planner's, a sub-agent's)
+// and has asked, its latest request is the one followed, and agent names
+// it: a task's first requests are the explorer's and the planner's, and the
+// gauge stood empty through them (session 20261005T060224Z-2f9eb922's ran
+// 830 records before the conversation's first request). Once it folds the
+// conversation's own figure is shown again, so a later turn's planner does
+// not drop a large conversation's bar to a few thousand tokens.
 export function contextGauge(events) {
-  const g = { est: 0, reported: 0, high: 0, compactions: 0 };
-  let depth = 0;
-  let await_ = false;
+  const g = { est: 0, reported: 0, high: 0, compactions: 0, agent: "" };
+  const conversation = { est: 0, reported: 0 };
+  let frames = []; // the narrowed contexts open, innermost last
+  let followed = null; // the frame the next llm.resp answers
   for (const e of events) {
     const p = e.payload || {};
     switch (e.kind) {
@@ -796,28 +802,30 @@ export function contextGauge(events) {
         break;
       case "user.msg":
       case "context.widen":
-        depth = 0; // a narrowed context ends with the turn
+        frames = []; // a narrowed context ends with the turn
         break;
       case "context.narrow":
-        if (!p.lasting) depth++;
+        if (!p.lasting) frames.push({ agent: p.agent || "narrowed", est: 0, reported: 0 });
         break;
       case "context.fold":
-        depth = Math.max(0, depth - 1);
+        frames.pop();
         break;
       case "llm.req":
-        await_ = depth === 0 && !p.endpoint;
-        if (await_) [g.est, g.reported] = [p.est_tokens || 0, 0];
+        followed = p.endpoint ? null : frames.at(-1) || conversation;
+        if (followed) [followed.est, followed.reported] = [p.est_tokens || 0, 0];
         break;
       case "llm.resp":
-        if (await_) g.reported = p.usage?.prompt_tokens || 0;
-        await_ = false;
+        if (followed) followed.reported = p.usage?.prompt_tokens || 0;
+        followed = null;
         break;
       case "context.compact":
         g.compactions++;
-        if (p.compacted) [g.est, g.reported] = [p.after_tokens || 0, 0];
+        if (p.compacted) [conversation.est, conversation.reported] = [p.after_tokens || 0, 0];
         break;
     }
   }
+  const shown = frames.at(-1)?.est ? frames.at(-1) : conversation;
+  [g.est, g.reported, g.agent] = [shown.est, shown.reported, shown === conversation ? "" : shown.agent];
   return g;
 }
 

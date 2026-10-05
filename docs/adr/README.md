@@ -20,7 +20,7 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0016](./0016-fallback-is-allowed.md) — Fallback is allowed and honest
 - [0017](./0017-standing-command-approvals.md) — Standing command approvals
 - [0018](./0018-turn-budgets-and-long-runs.md) — Turn budgets and long-running turns (implemented, unattended runs and judged approval included; amended by 0035)
-- [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC)
+- [0019](./0019-jev-sees-content-never-secrets.md) — Jev sees content, never secrets (amends SPEC; amended: what the judge is told about a call)
 - [0020](./0020-jev-egress-primitives-register-check.md) — Jev as egress primitives; register-check (amends plan P5; implemented, amended for the judge tools and judged approval)
 - [0021](./0021-ui-after-v0.md) — A real UI after v0: daemon, protocol, clients (implemented)
 - [0022](./0022-cowork-workspaces-attachments-mcp.md) — Cowork: workspaces, attachments, MCP servers (implemented; amended: a chat-completions model takes images unless it says not)

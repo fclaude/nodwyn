@@ -381,9 +381,13 @@ With \code{-{}-judge} instead of \code{-{}-yolo} (the two exclude each
 other), the judge answers the run's ordinary confirms, in an unattended run
 or a supervised one. It needs a judge: a \code{jev-key} stored and
 \code{jev.content} other than \code{none} (Chapter~\ref{ch:keys}); without
-one the run does not start. The judge is shown the task, the plan and the
-call (the tool, why it needs approval, the path it writes or the command
-line it runs; at \code{jev.content = "full"} also what it would write or
+one the run does not start. The judge is told nobody is watching and shown
+the task, the plan with the steps marked so far and the next one, and the
+call (the tool, why it needs approval when that is more than that the tool
+is irreversible, the path it writes or the command line it runs, what it
+answered about the same call earlier in the turn, and that a script the
+command runs from the session's scratch directory is the session's own; at
+\code{jev.content = "full"} also the script's text and what it would write or
 send) and asked whether to allow it; the call runs only if the probability
 of allow is at least \code{jev.approve\_threshold} (0.8) in your config.
 The answer is for that call only, never a standing one, and the log notes

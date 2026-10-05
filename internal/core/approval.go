@@ -72,7 +72,7 @@ func (a approvalConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) 
 	if on, _ := a.s.ApproveAll(); on || !a.s.judgeAvailable() {
 		return a.s.ConfirmApproval(ctx, p)
 	}
-	allowed, why := a.s.judgeCall(ctx, p)
+	allowed, why := a.s.judgeCall(ctx, p, true)
 	verdict := "declined, so you are asked"
 	if allowed {
 		verdict = "allowed"
@@ -86,8 +86,13 @@ func (a approvalConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) 
 	if err := ctx.Err(); err != nil {
 		return guard.Approval{}, err
 	}
-	p.Reasons = append(slices.Clone(p.Reasons), "the judge did not allow it: "+why)
-	return a.s.ConfirmApproval(ctx, p)
+	asked := p
+	asked.Reasons = append(slices.Clone(p.Reasons), "the judge did not allow it: "+why)
+	approval, err := a.s.ConfirmApproval(ctx, asked)
+	if err == nil {
+		a.s.noteAnswer(p, map[bool]string{true: "allowed by the person", false: "refused by the person"}[approval.Allowed])
+	}
+	return approval, err
 }
 
 // judgeAvailable reports whether the judge can be asked: its primitives

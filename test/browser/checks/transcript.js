@@ -483,15 +483,24 @@ check(async () => {
         { seq: 7, kind: "tool.call", payload: { id: "t1", name: "fs-read", args: {} }, ts: "2026-01-01T00:00:09Z" },
         { seq: 8, kind: "tool.result", payload: { id: "t1", name: "fs-read", ok: true, value: "x", ms: 500 }, ts: "2026-01-01T00:00:10Z" },
       ];
-      // A task whose planner is asking, in a context of its own, before the
-      // conversation has made a request.
+      // A task that has asked nothing yet; one whose planner is asking, in a
+      // context of its own, before the conversation has; and one whose
+      // planner asked and folded after the conversation had.
+      const fresh = [log[0], log[1]];
       const planning = [
         log[0],
         log[1],
-        { seq: 3, kind: "context.narrow", payload: {}, ts: "2026-01-01T00:00:01Z" },
+        { seq: 3, kind: "context.narrow", payload: { agent: "planner" }, ts: "2026-01-01T00:00:01Z" },
         { seq: 4, kind: "llm.req", payload: { model: "m", est_tokens: 40 }, ts: "2026-01-01T00:00:01Z" },
       ];
-      const logs = { speed: log, old: log.filter((e) => e.kind !== "session.start"), planning };
+      const folded = [
+        ...log.slice(0, 4),
+        { seq: 5, kind: "context.narrow", payload: { agent: "planner" }, ts: "2026-01-01T00:00:07Z" },
+        { seq: 6, kind: "llm.req", payload: { model: "m", est_tokens: 40 }, ts: "2026-01-01T00:00:07Z" },
+        { seq: 7, kind: "llm.resp", payload: { content: "1. a plan", usage: { prompt_tokens: 30, output_tokens: 10 } }, ts: "2026-01-01T00:00:08Z" },
+        { seq: 8, kind: "context.fold", payload: {}, ts: "2026-01-01T00:00:08Z" },
+      ];
+      const logs = { speed: log, old: log.filter((e) => e.kind !== "session.start"), fresh, planning, folded };
       const conn = {
         live: true,
         methods: new Set(["session.send", "session.abort", "session.answer"]),
@@ -511,7 +520,7 @@ check(async () => {
       const desk = new Desk(conn);
       desk.sessions.set("speed", { id: "speed", repo: "/tmp/speed", open: true, busy: false });
       desk.sessions.set("old", { id: "old", repo: "/tmp/old", open: true, busy: false });
-      desk.sessions.set("planning", { id: "planning", repo: "/tmp/planning", open: true, busy: false });
+      for (const id of ["fresh", "planning", "folded"]) desk.sessions.set(id, { id, repo: `/tmp/${id}`, open: true, busy: false });
       const task = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(task.root);
       await task.open("speed");
@@ -547,14 +556,23 @@ check(async () => {
       const unlimited = [...older.el.side.querySelectorAll("[data-meters] > *")].find((n) => n.textContent.startsWith("Context"));
       out.noHighWater = { class: unlimited?.className, text: unlimited?.textContent };
       older.dispose();
-      // The window is known from the start: the bar is there, empty, while
-      // only the planner has asked.
-      const early = new TaskView(conn, desk, () => {});
-      document.body.replaceChildren(early.root);
-      await early.open("planning");
-      const before = [...early.el.side.querySelectorAll("[data-meters] .meter")].find((n) => n.textContent.startsWith("Context"));
-      out.beforeFirst = { text: before?.textContent, width: before?.querySelector(".meter-fill")?.style.width };
-      early.dispose();
+      // The window is known from the start: the bar is there, empty, before
+      // any request, and Tokens sent with it; while the planner asks in a
+      // context of its own, the bar follows it, named; once it folds, the
+      // bar is the conversation's again.
+      const bars = async (id) => {
+        const view = new TaskView(conn, desk, () => {});
+        document.body.replaceChildren(view.root);
+        await view.open(id);
+        const found = {};
+        for (const m of view.el.side.querySelectorAll("[data-meters] .meter")) {
+          const label = m.querySelector(".meter-head span").textContent;
+          if (label.startsWith("Context") || label === "Tokens sent") found[label.startsWith("Context") ? "context" : "tokens"] = { text: m.textContent, width: m.querySelector(".meter-fill")?.style.width };
+        }
+        view.dispose();
+        return found;
+      };
+      out.early = { fresh: await bars("fresh"), planning: await bars("planning"), folded: await bars("folded") };
     }
     return out;
   });
@@ -603,7 +621,11 @@ check(async () => {
   want(results.meters.context === "Context~100 / ~774,143", `the context against the high water: ${results.meters.context}`);
   want(results.context.hint === null && /the provider counted 100 tokens/.test(results.context.title || ""), `context hint: ${JSON.stringify(results.context)}`);
   want(results.noHighWater.class === "kv" && results.noHighWater.text === "Context~100", `context without a high water: ${JSON.stringify(results.noHighWater)}`);
-  want(results.beforeFirst.text === "Context— / ~774,143" && results.beforeFirst.width === "0%", `context before the conversation's first request: ${JSON.stringify(results.beforeFirst)}`);
+  const early = results.early;
+  want(early.fresh.context?.text === "Context— / ~774,143" && early.fresh.context?.width === "0%", `context before any request: ${JSON.stringify(early.fresh)}`);
+  want(early.fresh.tokens?.text === "Tokens sent0 / 2,000,000", `tokens sent before any reply: ${JSON.stringify(early.fresh)}`);
+  want(early.planning.context?.text === "Context · planner~40 / ~774,143", `context while the planner asks: ${JSON.stringify(early.planning)}`);
+  want(early.folded.context?.text === "Context~100 / ~774,143", `context once the planner folded: ${JSON.stringify(early.folded)}`);
   const tb = results.tabs;
   want(tb.names.join() === "Live,Changes,Workspace,Notes" && tb.first === "Live", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
   want(tb.live.join() === "This turn,Plan,Totals", `Live tab panels: ${JSON.stringify(tb.live)}`);

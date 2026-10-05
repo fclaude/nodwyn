@@ -289,8 +289,11 @@ Approvals, decides which of them go ahead without you (\adr{35}):
   with its diff.
 \item[\code{commands = "judge"}] the default. A command no standing
   approval covers, input to a running program, or an MCP tool that acts is
-  put to the judge first, which is shown the task, the turn's plan and the
-  call. If the judge allows it, it runs, recorded with the judge as the one
+  put to the judge first, which is told you are at hand and shown the task,
+  the turn's plan with its marks, the call, what was answered about the same
+  call earlier in the turn, and that a script the call runs from the
+  session's scratch directory is the session's own. If the judge allows it,
+  it runs, recorded with the judge as the one
   who answered. If the judge refuses or fails, you are asked, and the
   prompt says what it answered. Without a judge (no \code{jev-key} stored,
   \code{jev.content = "none"}, or a locked keychain) you are asked.

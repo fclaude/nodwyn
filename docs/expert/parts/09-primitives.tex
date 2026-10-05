@@ -289,8 +289,12 @@ commands = "judge"   # the default: the judge, then you; "ask": you; "allow": no
   \item[commands] Who answers the other ordinary confirms: a command,
     input to a running program, an MCP tool that acts. At \code{"judge"},
     the judge is asked first, as a run started with \code{-{}-judge} asks
-    it (Chapter~\ref{ch:plans}). It is shown the task, the turn's plan and
-    the call; the decision is made in Go against
+    it (Chapter~\ref{ch:plans}), but told that a person is at hand. It is
+    shown the task, the turn's plan with its marks and next step, the call,
+    what was answered about the same call earlier in the turn, and that a
+    script the call runs from the session's scratch directory is the
+    session's own (its text only at \code{full}); the decision is made in Go
+    against
     \code{jev.approve\_threshold}, and a project's
     \code{(approve-refuse? call)} may refuse more. A call it allows runs,
     recorded with actor \code{judge}. When it refuses or fails, you are

@@ -82,11 +82,14 @@ type Session struct {
 	// reviewed: a person reads this turn's answer before anything else
 	// happens (plan.go, (reviewed?)).
 	reviewed atomic.Bool
-	// The turn's task and recorded plan, for the judge when it answers a
-	// confirm (judge.go).
-	turnMu   sync.Mutex
-	turnTask string
-	turnPlan string
+	// The turn's task, its recorded plan with the steps marked so far, and
+	// what was answered about each call this turn, for the judge when it
+	// answers a confirm (judge.go).
+	turnMu      sync.Mutex
+	turnTask    string
+	turnPlan    string
+	turnMarks   map[int]log.PlanStep
+	turnAnswers map[string][]string
 	// The upload setting this session chose (uploads.go), when it has no
 	// config file to keep it in.
 	uploadMu      sync.Mutex

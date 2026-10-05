@@ -69,3 +69,41 @@ target, the path a write names or the command line a program runs. At
 `full`: also what the call would do (the write's preview or content, the
 call's arguments). Everything is redacted (L1) before it leaves, and
 logged as `jev.req` with the harness's origin.
+
+## Amendment 2026-10-05: what the judge is told about a call
+
+Session `20261005T054223Z-36b27caa`, a chat with `commands = "judge"`, sent
+four runs of the project's own tests, the steps its plan named, to the
+person, at probabilities of allow of 0.44 to 0.63 against 0.8; the person
+allowed each. The judge was told an agent worked "without a person watching"
+when one was at hand and a refusal only asked them; every command came with
+"shell-exec is irreversible", which every command is; it saw the plan as
+first recorded, never which steps were done, so two identical asks minutes
+apart sent byte-identical state; it saw `bash "$TMPDIR/check.sh" tests`,
+not that the script was the session's own; and it never heard that it, or
+the person, had answered the same command earlier in the turn.
+
+- **The question says who is there.** A session a person can answer asks
+  whether the call may go ahead without asking them, says a call the judge
+  does not allow is put to them, and counts the project's own builds and
+  tests, or a script the agent wrote for that, as ordinary work. A run's
+  judge (`--judge`) is asked as before: nobody is watching, and a refusal
+  is a no. Both keep the list of what a person would want to decide.
+- **The default reason is left out.** "TOOL is irreversible", the guard's
+  reason for every irreversible tool, is not sent; a more specific reason
+  (a declared one, or another checker's) still is.
+- **The plan comes with its marks.** Each step is shown done or skipped,
+  with the model's note, the first unmarked one as next, the rest to do; a
+  carried plan brings the marks its earlier turns made.
+- **The same call's earlier answers this turn are shown**: the judge's,
+  with its probability, and the person's, keyed by the tool and exactly
+  what it acts on (the command line, a write's path). They are not a
+  standing approval: the judge still decides, and the next turn starts
+  with none.
+- **A scratch script is named as the session's.** A command line that
+  names a regular file in the session's scratch directory (ADR 28), as
+  `$TMPDIR/…` or by its path, tells the judge that the file is there, its
+  line count, and that only this session's tools and commands write there.
+  Its text is a file's contents, so it is shown only at `full` (point 3),
+  cut at 4 KB; at `plan` the judge learns whose it is, not what it says.
+  Everything still goes through L1 redaction and `jev.req`.
