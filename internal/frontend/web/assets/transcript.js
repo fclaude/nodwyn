@@ -300,6 +300,20 @@ export class Transcript {
     this.closeCommands();
     return node;
   }
+  // skip draws a call that was skipped without running, with the reason in
+  // its line so it is read without opening the note. Calls skipped in a row
+  // for the same reason (an explorer out of rounds skips all of its last
+  // ones) are one note, the tools listed behind it.
+  skip(name, reason) {
+    const last = this.fold?.body.lastElementChild;
+    const note = last?.classList.contains("skipped") && last.dataset.reason === reason ? last : this.audit("", undefined, "skipped");
+    note.dataset.reason = reason;
+    note.tools = [...(note.tools || []), toolLabel(name)];
+    note.querySelector("summary").textContent = note.tools.length === 1 ? `${note.tools[0]} skipped: ${reason}` : `${note.tools.length} calls skipped: ${reason}`;
+    let pre = note.querySelector("pre");
+    if (!pre) note.append((pre = h("pre")));
+    pre.textContent = note.tools.join("\n");
+  }
   // render draws one event; it returns nothing and decides nothing.
   render(event) {
     const p = event.payload || {};
@@ -772,7 +786,12 @@ export class Transcript {
       if (p.name === "plan-step" && p.ok && /^Step \d+ is /.test(p.value || "")) return;
       if (p.name === "plan-write" && p.ok && /^Plan recorded: /.test(p.value || "")) return;
       // A result without its call in view (a skipped or resumed call) stands alone.
-      this.audit(`${toolLabel(p.name)} ${p.ok ? "returned" : "failed"}`, p.ok ? p.value : p.error, p.ok ? "" : "bad");
+      // A call the strategy skipped (skip-tools answers it "Not executed:
+      // reason", for the model to read) never ran and failed at nothing: an
+      // explorer out of rounds skips its last calls. It is a routine note
+      // behind Activity, not a failure drawn in red outside it.
+      if (!p.ok && /^Not executed: /.test(p.error || "")) this.skip(p.name, p.error.replace(/^Not executed: /, ""));
+      else this.audit(`${toolLabel(p.name)} ${p.ok ? "returned" : "failed"}`, p.ok ? p.value : p.error, p.ok ? "" : "bad");
       return;
     }
     const body = p.ok ? p.value : p.error;

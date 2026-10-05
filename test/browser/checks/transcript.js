@@ -140,8 +140,27 @@ check(async () => {
       w.t.render({ kind: "worktree.create", payload: { branch: "nodwyn/a", base: "main", base_commit: "abcdef0", uncommitted: 3 } });
       w.t.render({ kind: "worktree.create", payload: { branch: "nodwyn/b", base: "main", base_commit: "abcdef0" } });
       const worktree = { leftOut: visible(w.root, "3 uncommitted files are in the repository but not here"), clean: visible(w.root, "on nodwyn/b") };
-      for (const { t } of [a, b, c, d, e, f, g, w]) t.end();
-      out.foldExceptions = { command, readFailure, write, asking, answered, audit, other, stopped, worktree };
+      // A call skipped without running (an explorer out of rounds answers its
+      // last calls so) is a note behind the row that says why, not a failure
+      // counted or drawn outside it; a result that has no call and did fail
+      // still is.
+      const sk = fresh();
+      read(sk.t, "ok.md");
+      const skip = (id, name, why) => sk.t.render({ kind: "tool.result", payload: { id, name, ok: false, error: `Not executed: ${why}`, ms: 0 } });
+      skip("s1", "fs-read", "this agent is out of rounds");
+      skip("s2", "fs-find", "this agent is out of rounds");
+      skip("s3", "fs-edit", "an earlier call in this batch failed");
+      const skipped = {
+        ...row(sk.root),
+        outside: sk.root.querySelectorAll(".turn.agent > .audit").length,
+        bad: sk.root.querySelectorAll(".audit.bad").length,
+        notes: [...sk.root.querySelectorAll(".activity-fold-body > .audit")].map((n) => `${n.querySelector("summary").textContent} | ${n.querySelector("pre").textContent}`),
+      };
+      const lost = fresh();
+      lost.t.render({ kind: "tool.result", payload: { id: "x", name: "fs-read", ok: false, error: "disk full", ms: 0 } });
+      const stray = { outside: lost.root.querySelectorAll(".turn.agent > .audit.bad").length, summary: lost.root.querySelector(".audit.bad summary")?.textContent };
+      for (const { t } of [a, b, c, d, e, f, g, w, sk, lost]) t.end();
+      out.foldExceptions = { command, readFailure, write, asking, answered, audit, other, stopped, worktree, skipped, stray };
     }
 
     // Reads and commands that alternate keep their order: each read ends a
@@ -747,6 +766,8 @@ check(async () => {
   want(fx.other.open === false && fx.other.failed === "1 failed", `a failed call is counted on the closed row: ${JSON.stringify(fx.other)}`);
   want(fx.asking.open === false && fx.asking.what.includes("Waiting for your answer") && fx.answered.open === false && fx.answered.failed === "", `a question leaves the row closed, before and after the answer: ${JSON.stringify({ asking: fx.asking, answered: fx.answered })}`);
   want(fx.audit && fx.stopped, `an error and a stop at a limit stay outside the row: ${JSON.stringify(fx)}`);
+  want(fx.skipped.failed === "" && fx.skipped.outside === 0 && fx.skipped.bad === 0 && fx.skipped.notes.join("; ") === "2 calls skipped: this agent is out of rounds | fs-read\nfs-find; fs-edit skipped: an earlier call in this batch failed | fs-edit", `skipped calls are notes behind the row, said with their reason and not a failure, those in a row for one reason as one note: ${JSON.stringify(fx.skipped)}`);
+  want(fx.stray.outside === 1 && fx.stray.summary === "fs-read failed", `a result without its call that failed is still said outside the row: ${JSON.stringify(fx.stray)}`);
   want(fx.worktree.leftOut && !fx.worktree.clean, `files left out of a worktree are said outside the row, a clean worktree inside it: ${JSON.stringify(fx.worktree)}`);
   want(results.order.join() === "reads,commands,reads,commands", `order: ${results.order}`);
   const cb = results.clubbed;

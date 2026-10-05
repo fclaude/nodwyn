@@ -535,3 +535,22 @@ screenshot that asked for this and checks the fold, what it keeps, live
 updates, failures, questions, stops, thinking between writes and turn
 boundaries; the screens, models and worktrees checks open the row before
 looking inside it.
+
+## Amendment 2026-10-05: A skipped call is a note that says why
+
+The explorer that prepares a plan has twelve tool rounds. A model that asks
+for more calls in its last round has them answered "Not executed: this
+agent is out of rounds" (`skip-tools`), so that every call has a result and
+the agent can still write its report. The console drew each of those
+results, which have no call in view, as a failure: a red "fs-read failed"
+outside the Activity row, once per call, on a task that was going well.
+
+A result whose error starts "Not executed: " is now a skipped call, not a
+failure. It is a note behind the Activity row, its line saying which tools
+were skipped and why ("6 calls skipped: this agent is out of rounds"), the
+tools listed behind it; calls skipped in a row for one reason are one note.
+It is not counted as "failed" on the row. A result without its call that did
+fail is still drawn in red outside the row. The prefix is the one
+`skip-tools` writes for the model to read (`docs/scheme.md`), so no log
+record, RPC method or field changes. The transcript browser check skips
+calls for two reasons and fails a stray result.

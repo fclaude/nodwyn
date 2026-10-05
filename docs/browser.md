@@ -38,7 +38,10 @@ and after. Routine activity (judge requests, focused contexts, instructions
 to the model, groups of calls and the token line) shares one closed
 **Activity** row per stretch between replies; click it to see it all. Its
 summary follows the work without opening, and counts a failed call in red
-("1 failed"), whose run or group is open inside. Replies, warnings, errors,
+("1 failed"), whose run or group is open inside. A call that was skipped
+without running (an explorer out of rounds, the rest of a batch after a
+failure) did not fail: it is a note in the row that says why, one note for
+the calls skipped in a row for the same reason. Replies, warnings, errors,
 a turn that stopped short and a worktree that left uncommitted files out
 stay in view; a question is asked in its card at the end of the
 conversation. This folds the display only: `/compact [focus]` changes the
