@@ -76,7 +76,7 @@ jobs:
           mkdir -p "$GOTMPDIR" "$TMPDIR" "$RUNNER_TEMP"
           sed 's|http://|https://|g' /etc/apk/repositories > "$RUNNER_TEMP/apk-repositories"
           apk --repositories-file "$RUNNER_TEMP/apk-repositories" add --no-cache \
-            python3 bash make latexmk texlive texmf-dist-latexextra \
+            python3 bash make texlive texmf-dist-latexextra \
             texmf-dist-fontsrecommended texmf-dist-fontsextra
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
