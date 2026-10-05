@@ -748,3 +748,23 @@ plan's as before; only a carried plan had marks until now, so older logs
 build the same windows. The reading reminder no longer says that writing
 the plan again starts its marks over. TestAPlanWrittenAgainKeepsItsMarks
 covers the marks and what the model reads.
+
+## Amendment 2026-10-05: the model keeps the project notes
+
+The system prompt shows a repository's notes as the agent's own, but only a
+person could write them, from the console, and none did: the 75 local
+session logs of 2026-09-30 to 10-05 hold no save, and no repository had
+notes (asked about it in 20261005T170658Z-fe9ea317, the person had never
+seen a model use them). `project-notes-save` is now a tool the
+model is offered, and a working rule asks it to keep there what a later
+session would need and could not quickly find, with the notes it was shown
+that are still true. Who writes the notes and why that is safe: they live
+in nodwyn's data directory, never in the repository, so a clone cannot
+write them; the model can, and a model misled by what it read could leave a
+misleading note, which the next session in the same repository, reading the
+same files, would meet anyway. The prompt calls the notes leads to check,
+not instructions; a save is redacted, capped at 8 KiB and audited, content
+that looks like a credential needs a person's approval, and the console
+shows the notes and lets a person edit them. TestTheModelKeepsProjectNotes
+covers the tool, the rule, a save carrying a token left to a person, and
+the next session reading the notes.

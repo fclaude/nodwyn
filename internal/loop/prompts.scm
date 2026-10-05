@@ -168,6 +168,10 @@
    "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; ls /opt/*/envs .venv venv 2>/dev/null; conda env list)."
    "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
    "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
+   ;; project-notes-save was the person's alone, so no model ever kept a
+   ;; note, and each session found out again how the tests run (ADR 32,
+   ;; amended 2026-10-05).
+   "\n- When you learn something about this repository that a later session would need and could not quickly find (how its tests run, a setup step, a trap you fell into), keep it with project-notes-save before you finish: the notes you were shown, kept where still true, plus a line or two. Not what the code or its documentation already says."
    ;; Most models asked for one call a reply: 1.2 to 1.4 a reply for
    ;; muse-spark, glm, qwen and deepseek in the local session logs of
    ;; 2026-09-30 to 10-05, against 2.9 for gpt-6.1-sol, and every reply

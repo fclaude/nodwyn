@@ -312,3 +312,50 @@ func TestProjectNotesCarryAcrossSessions(t *testing.T) {
 		t.Fatal("another repository sees these notes")
 	}
 }
+
+// The model keeps what it learned about a repository with
+// project-notes-save, a tool it is offered and told when to use: until
+// 2026-10-05 only a person could write the notes the prompt calls the
+// agent's own, and no model ever did (ADR 32, amended 2026-10-05). The next
+// session is shown them, and a save carrying a credential needs a person.
+func TestTheModelKeepsProjectNotes(t *testing.T) {
+	t.Parallel()
+	token := "ghp_" + strings.Repeat("A1b2C3d4", 5)
+	srv := fake.NewT(t,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "n", Name: "project-notes-save", Args: map[string]any{"text": "Tests: go test ./... from the root."}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "k", Name: "project-notes-save", Args: map[string]any{"text": "Tests: go test ./... from the root. The token is " + token + ", from the keychain."}}}},
+		fake.Turn{Content: "done"},
+	)
+	defer srv.Close()
+	o := diskOptions(t)
+	o.Provider = llm.NewOllama(srv.URL)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offered := false
+	for _, tool := range s.Tools() {
+		offered = offered || tool.Name == "project-notes-save"
+	}
+	if !offered {
+		t.Fatal("project-notes-save is not offered to the model")
+	}
+	if !strings.Contains(s.loop.WindowContext().System, "keep it with project-notes-save") {
+		t.Fatal("the prompt does not say when to keep notes")
+	}
+	r := &rig{t: t, s: s, srv: srv}
+	if e := r.turn("run the tests"); e != "" {
+		t.Fatal(e)
+	}
+	s.Close()
+	next, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close()
+	// A save that carries a credential is the guard's to ask a person
+	// about, and nobody here says yes, so the second save leaves the first.
+	if sys := next.loop.WindowContext().System; !strings.Contains(sys, "Tests: go test ./... from the root.") || strings.Contains(sys, "keychain") || strings.Contains(sys, token) {
+		t.Fatalf("the next session is not shown the notes, or is shown the key:\n%s", sys)
+	}
+}

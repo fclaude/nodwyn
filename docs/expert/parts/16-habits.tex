@@ -25,7 +25,9 @@ run whole test modules, and check code a browser runs with the project's
 browser checks, since a build or a syntax check only shows it is well
 formed; compare failures against the unchanged code on a copy of the last
 commit (\code{git archive HEAD} into \code{\$TMPDIR/base}), never with
-\code{git stash}, and only when tests fail; bisect regressions file by file. In a git work tree,
+\code{git stash}, and only when tests fail; bisect regressions file by file;
+and keep what a later session would need and could not quickly find in the
+project notes, with \code{project-notes-save}. In a git work tree,
 \code{(git-rule)} adds one more: look at the change with \code{git-status}
 and \code{git-diff} before finishing, and leave nothing in it that nothing
 uses. In a task started in a git worktree of its own,

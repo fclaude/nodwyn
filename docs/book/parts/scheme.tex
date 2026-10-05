@@ -597,7 +597,7 @@ Primitive & What it does \\
 \code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc, which reads the source sandboxed; a write of \code{target}, with a preview \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a new Google Doc; only with a stored \code{google} credential, and asks or not as \code{docs.google\_upload} says (unset: the first call asks which) \\
 \code{(scratch-dir)}, \code{(repository)}, \code{(workspace)} & the session's scratch directory; the repository's root; its mounted folders \\
-\code{(project-notes)}, \code{(project-notes-save text)} & this repository's notes kept across sessions \\
+\code{(project-notes)}, \code{(project-notes-save text)} & this repository's notes kept across sessions; the second is also the model's tool \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, its instructions for coding agents, which the system prompt carries \\
 \code{(worktree)} & \code{\#f}, or the git worktree made for this session: its repository, branch, base branch and base commit (\adr{34}) \\
 \code{(git-land message)} & in a worktree session only: commit, rebase onto the newest base, push by fast-forward and move the local base branch, in one irreversible step \\

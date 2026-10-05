@@ -404,8 +404,11 @@ does not escape it (ADR 28).
 ### Notes kept across sessions
 
 A repository can keep notes from one session to the next: how its tests run,
-where things are, runbooks. A strategy saves them with `project-notes-save`
-(docs/scheme.md); they live in nodwyn's data directory, keyed by the
+where things are, runbooks. The model keeps them with its
+`project-notes-save` tool: before it finishes, it is asked to add what a
+later session would need and could not quickly find (how the tests run, a
+setup step, a trap it fell into), and to keep what is still true of the
+notes it was shown. A strategy can save them too (docs/scheme.md). They live in nodwyn's data directory, keyed by the
 repository's path (a task in a worktree has its repository's), and never in
 the repository or its diff. The next session
 in the same repository shows them in its system prompt, under a heading that

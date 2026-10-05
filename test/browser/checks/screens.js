@@ -153,6 +153,6 @@ check(async () => {
   await shoot("connections", { width: 1280, height: 800 }, "light", async (page) => {
     await go(page, "#/connections");
     await page.waitForSelector("text=No MCP servers yet");
-    await shows(page, "#view", "Connections", "BUILT IN", "16 tools", "Add a server");
+    await shows(page, "#view", "Connections", "BUILT IN", "17 tools", "Add a server");
   });
 });

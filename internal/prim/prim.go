@@ -348,13 +348,18 @@ func projectInstructions(o Options) *scheme.Prim {
 // projectNotesSave builds (project-notes-save text): replace this
 // repository's notes. Secrets are redacted before they are written, and the
 // notes are capped, since later sessions read them as part of their prompt.
+// It is a tool the model calls: the system prompt calls the notes the
+// agent's own, and until 2026-10-05 only a person could write them from the
+// console, so no model ever did (the local session logs of 2026-09-30 to
+// 10-05 hold no call, and no repository had notes; session
+// 20261005T170658Z-fe9ea317) (ADR 32, amended 2026-10-05).
 func projectNotesSave(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "project-notes-save",
 		Meta: scheme.Meta{
-			Doc:     "Replace this repository's notes kept across sessions (at most 8 KiB; secrets are redacted).",
-			Params:  []scheme.Param{{Name: "text", Type: "string", Doc: "the notes", Role: "payload"}},
-			Hidden:  true,
+			Doc:     "Replace this repository's notes, which every later session here is shown with its instructions: how its tests run, setup steps, traps you fell into, where things are that are hard to find. Write the notes you were shown, kept where still true, plus a line or two of what you learned; not what the code or its documentation already says, and never a secret: a save that looks like one needs the person's approval. At most 8 KiB. They live beside nodwyn's data, never in the repository.",
+			Params:  []scheme.Param{{Name: "text", Type: "string", Doc: "the whole notes, as later sessions should read them", Role: "payload"}},
+			Host:    true,
 			Audited: true,
 		},
 		Handler: func(c *scheme.Call) (scheme.Value, error) {

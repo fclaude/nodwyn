@@ -71,7 +71,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a Google Doc (only with a stored \code{google} credential; asks, or not, as you chose at the first upload) \\
 \code{(judge-noul state question)}, \code{judge-score}, \code{judge-choice} & ask the judge (only at \code{jev.content = "full"} with a \code{jev-key} stored; Chapter~\ref{ch:keys}) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
-\code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions \\
+\code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions; the second is also the model's tool \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, as the system prompt carries it \\
 \code{(request-context)} & what the latest request answers: the agent's last answer before it, and the names of the files attached to it (the loop's; Chapter~\ref{ch:turn}) \\
 \code{(workspace)} & the folder's mounted folders \\
