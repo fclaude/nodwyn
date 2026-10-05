@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"io"
 	"os"
 
 	"github.com/fclaude/nodwyn/internal/guard"
@@ -40,6 +41,18 @@ type versionsParams struct {
 	Repo string `json:"repo"`
 	Path string `json:"path"`
 }
+type versionDiffParams struct {
+	Repo string `json:"repo"`
+	Path string `json:"path"`
+	Hash string `json:"hash"`
+}
+type versionDiffResult struct {
+	Label string `json:"label"`
+	Diff  string `json:"diff"`
+}
+
+const maxVersionDiffBytes = 128 << 10
+
 type restoreParams struct {
 	ID   string `json:"id"`
 	Path string `json:"path"`
@@ -136,6 +149,9 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 }
 
 func (s *server) versions(req request, client *peer) (any, *rpcError) {
+	if req.Method == "versions.diff" {
+		return s.versionDiff(req)
+	}
 	if req.Method == "versions.list" {
 		var p versionsParams
 		if err := params(req.Params, &p, "repo", "path"); err != nil {
@@ -174,6 +190,111 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	return inspectionStarted{operation}, nil
+}
+
+func (s *server) versionDiff(req request) (any, *rpcError) {
+	var p versionDiffParams
+	if err := params(req.Params, &p, "repo", "path", "hash"); err != nil {
+		return nil, err
+	}
+	root := filepath.Clean(p.Repo)
+	store, known := s.versionStore(root)
+	if !filepath.IsAbs(root) || !known {
+		return nil, failure(-32602, "repo must be a folder nodwyn works in")
+	}
+	if reason := s.rootRefusal(root); reason != "" {
+		return nil, failure(-32602, reason)
+	}
+	abs := p.Path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(root, abs)
+	}
+	abs = filepath.Clean(abs)
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil, failure(-32602, "path must be inside repo")
+	}
+	realRel, err := filepath.Rel(evalOr(root), evalOr(abs))
+	if err != nil || realRel == ".." || strings.HasPrefix(realRel, ".."+string(filepath.Separator)) {
+		return nil, failure(-32602, "path escapes repo")
+	}
+	deny := guard.DefaultDenylist()
+	deny.Root = root
+	deny.Dirs = append(deny.Dirs, s.options.Paths.ConfigDir, s.options.Paths.DataDir)
+	if reason := deny.Denies(abs); reason != "" {
+		return nil, failure(-32602, reason)
+	}
+	list, err := prim.ListVersions(store, abs)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	var kept *prim.Version
+	for i := range list {
+		if list[i].Hash == p.Hash {
+			kept = &list[i]
+			break
+		}
+	}
+	if kept == nil {
+		return nil, failure(-32602, "hash must identify a kept version of this file")
+	}
+	// The index is repository-written data, not authority to read arbitrary objects.
+	if len(p.Hash) != 64 || strings.Trim(p.Hash, "0123456789abcdef") != "" {
+		return nil, failure(-32602, "invalid version hash")
+	}
+	label := "Kept version → current file (read-only comparison)"
+	large := versionDiffResult{Label: label, Diff: "(diff too large to show)"}
+	object, err := os.Lstat(filepath.Join(store, "objects", p.Hash))
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	if !object.Mode().IsRegular() {
+		return nil, failure(-32602, "version object must be a regular file")
+	}
+	if kept.Bytes > maxVersionDiffBytes || object.Size() > maxVersionDiffBytes {
+		return large, nil
+	}
+	before, err := prim.ReadVersion(store, p.Hash)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	if len(before) > maxVersionDiffBytes {
+		return large, nil
+	}
+	pin, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	defer pin.Close()
+	var after []byte
+	current, statErr := pin.Stat(rel)
+	if statErr == nil && !current.Mode().IsRegular() {
+		return nil, failure(-32602, "current path must be a regular file")
+	}
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return nil, failure(-32000, statErr.Error())
+	}
+	file, err := pin.Open(rel)
+	if err == nil {
+		defer file.Close()
+		info, statErr := file.Stat()
+		if statErr != nil {
+			return nil, failure(-32000, statErr.Error())
+		}
+		if !info.Mode().IsRegular() {
+			return nil, failure(-32602, "current path must be a regular file")
+		}
+		after, err = io.ReadAll(io.LimitReader(file, maxVersionDiffBytes+1))
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		if len(after) > maxVersionDiffBytes {
+			return large, nil
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, failure(-32000, err.Error())
+	}
+	return versionDiffResult{Label: label, Diff: prim.Unified(rel, string(before), string(after), 3)}, nil
 }
 
 type attachParams struct {

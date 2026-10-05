@@ -189,7 +189,19 @@ check(async () => {
   }));
   assert.strictEqual(after.card, false, "an approval is left");
   assert.match(after.edit, /^Editapp\.jswritten.*went ahead: a write in the folder$/);
-  assert.deepStrictEqual(after.changes, ["app.jsHistory"]);
+  assert.deepStrictEqual(after.changes, ["app.jsapprovedHistory"]);
+  async function changesPreviewInspector() {
+    await page.focus(".change-toggle");
+    await page.keyboard.press("Enter");
+    await shows(page, ".change-inspector", "Approved preview—not proof of a successful write");
+    assert.ok(await page.locator(".change-inspector .diff-line.add").count(), "recorded additions missing");
+    assert.ok(await page.locator(".change-inspector .diff-line.del").count(), "recorded deletions missing");
+    await page.click(".task-aside [role=tab]:has-text('Live')");
+    await page.click(".task-aside [role=tab]:has-text('Changes')");
+    assert.strictEqual(await page.getAttribute(".change-toggle", "aria-expanded"), "true", "preview folded during redraw");
+    await page.screenshot({ path: `${out}/changes-preview.png` });
+  }
+  await changesPreviewInspector();
   assert.strictEqual(after.code, 'const meta = [session.repo, when, state].join(" · ");');
   await page.click(".task-aside [role=tab]:has-text('Live')");
   const marked = await planPanel();

@@ -59,6 +59,31 @@ func TestStandingWriteOutranksConfirmAndLogsDetail(t *testing.T) {
 	}
 }
 
+func TestConfirmedWriteLogsDetail(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		lg := &decisionLog{}
+		g := New(ConfirmFunc(func(context.Context, Prompt) (bool, error) { return allowed, nil }), lg,
+			fixed{"preview", Decision{Verdict: Confirm, Detail: "--- a.txt\n+++ a.txt\n@@ -1 +1 @@\n-before\n+after\n"}})
+		err := g.Before(context.Background(), writePrim, writeArgs("a.txt"))
+		if allowed && err != nil {
+			t.Fatal(err)
+		}
+		if !allowed && err == nil {
+			t.Fatal("denied request was allowed")
+		}
+		if len(lg.decisions) != 1 {
+			t.Fatalf("decisions: %+v", lg.decisions)
+		}
+		rec := lg.decisions[0]
+		if allowed && (rec.Answer != "yes" || !strings.Contains(rec.Detail, "+after")) {
+			t.Fatalf("approved preview lost: %+v", rec)
+		}
+		if !allowed && rec.Answer != "no" {
+			t.Fatalf("denial lost: %+v", rec)
+		}
+	}
+}
+
 // A write to a protected path is a security confirm however the path is
 // spelled: relative, absolute, through "..", in another case (macOS file
 // systems ignore it), or through a symbolic link.

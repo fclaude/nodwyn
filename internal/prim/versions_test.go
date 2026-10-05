@@ -1,10 +1,32 @@
 package prim
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestReadVersionRejectsLinkedObject(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("kept content")
+	sum := sha256.Sum256(content)
+	hash := hex.EncodeToString(sum[:])
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "objects"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "objects", hash)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadVersion(dir, hash); err == nil {
+		t.Fatal("read a linked version object outside the store")
+	}
+}
 
 func TestVersionsKeepListReadAndPrune(t *testing.T) {
 	root := t.TempDir()

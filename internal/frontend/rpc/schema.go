@@ -83,6 +83,7 @@ func contracts() map[string]methodContract {
 		"workspace.save":           {workspaceSaveParams{}, workspaceInfo{}},
 		"workspace.remove":         {workspacePathParams{}, struct{}{}},
 		"versions.list":            {versionsParams{}, []prim.Version{}},
+		"versions.diff":            {versionDiffParams{}, versionDiffResult{}},
 		"session.restore":          {restoreParams{}, inspectionStarted{}},
 		"session.attach":           {attachParams{}, log.Attach{}},
 		"mcp.list":                 {struct{}{}, []config.MCPServer{}},

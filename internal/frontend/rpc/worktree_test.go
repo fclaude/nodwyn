@@ -106,6 +106,44 @@ func TestVersionsListReadsAWorktreesVersionsFromItsRepository(t *testing.T) {
 	}
 }
 
+func TestVersionsDiffUsesParentRepositoryStore(t *testing.T) {
+	o := options(t)
+	socket, _ := start(t, o)
+	c := connect(t, socket)
+	c.hello()
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"commit", "-q", "--allow-empty", "-m", "first"}} {
+		cmd := exec.Command("git", append([]string{"-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Dir = repo
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	var task sessionDetails
+	if err := json.Unmarshal(c.ok("worktree.open", map[string]any{"repo": repo}), &task); err != nil {
+		t.Fatal(err)
+	}
+	abs := filepath.Join(task.Repo, "a.txt")
+	if err := os.WriteFile(abs, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v := &prim.Versions{Dir: prim.VersionsDir(repo)}
+	if err := v.Keep(abs); err != nil {
+		t.Fatal(err)
+	}
+	list, err := prim.ListVersions(v.Dir, abs)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("versions: %+v %v", list, err)
+	}
+	if err := os.WriteFile(abs, []byte("after\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := c.ok("versions.diff", map[string]any{"repo": task.Repo, "path": "a.txt", "hash": list[0].Hash})
+	if !strings.Contains(string(result), "+after") || !strings.Contains(string(result), "-before") {
+		t.Fatalf("comparison: %s", result)
+	}
+}
+
 // Checking out a task's worktree runs the repository's hooks and filters,
 // which can take a while: the daemon goes on answering other methods
 // meanwhile, rather than holding every client until git is done.

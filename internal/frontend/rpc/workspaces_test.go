@@ -117,6 +117,117 @@ func TestRestoreAKeptVersionAsksFirst(t *testing.T) {
 // keep: the window's console is on a new loopback port every launch (ADR
 // 30), so the browser's own memory cannot carry a pick across a restart,
 // and the next daemon reads it back from the config directory.
+func TestVersionsDiff(t *testing.T) {
+	o := options(t)
+	socket, _ := start(t, o)
+	c := connect(t, socket)
+	c.hello()
+	repo := t.TempDir()
+	opened(t, c, repo)
+	abs := filepath.Join(repo, "a.txt")
+	before := "before\n"
+	if err := os.WriteFile(abs, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v := &prim.Versions{Dir: prim.VersionsDir(repo)}
+	if err := v.Keep(abs); err != nil {
+		t.Fatal(err)
+	}
+	list, err := prim.ListVersions(v.Dir, abs)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("versions: %+v %v", list, err)
+	}
+	for _, tc := range []struct {
+		name, current, want string
+		missing             bool
+	}{
+		{"replacement", "after\n", "+after", false},
+		{"addition", "before\nadded\n", "+added", false},
+		{"identical", before, "", false},
+		{"deletion", "", "-before", true},
+		{"large bytes", strings.Repeat("x", 128<<10+1), "diff too large", false},
+		{"large lines", strings.Repeat("x\n", 6001), "diff too large", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.missing {
+				if err := os.Remove(abs); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(abs, []byte(tc.current), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var result struct {
+				Label string `json:"label"`
+				Diff  string `json:"diff"`
+			}
+			if err := json.Unmarshal(c.ok("versions.diff", map[string]any{"repo": repo, "path": "a.txt", "hash": list[0].Hash}), &result); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(result.Label, "Kept version → current file") || !strings.Contains(result.Diff, tc.want) {
+				t.Fatalf("comparison: %+v", result)
+			}
+			if tc.name == "identical" && strings.Contains(result.Diff, "@@") {
+				t.Fatalf("identical diff: %s", result.Diff)
+			}
+		})
+	}
+	if err := os.WriteFile(abs, []byte(strings.Repeat("x", 128<<10+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Keep(abs); err != nil {
+		t.Fatal(err)
+	}
+	list, err = prim.ListVersions(v.Dir, abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(c.ok("versions.diff", map[string]any{"repo": repo, "path": "a.txt", "hash": list[0].Hash})), "diff too large") {
+		t.Fatal("oversized kept version was rendered")
+	}
+}
+
+func TestVersionsDiffRejectsUnsafeInputs(t *testing.T) {
+	o := options(t)
+	socket, _ := start(t, o)
+	c := connect(t, socket)
+	var hello struct {
+		Methods []string `json:"methods"`
+	}
+	if err := json.Unmarshal(c.ok("hello", map[string]any{"protocol": 1}), &hello); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(hello.Methods, ","), "versions.diff") {
+		t.Fatal("versions.diff is not available")
+	}
+	repo := t.TempDir()
+	opened(t, c, repo)
+	abs := filepath.Join(repo, "a.txt")
+	if err := os.WriteFile(abs, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v := &prim.Versions{Dir: prim.VersionsDir(repo)}
+	if err := v.Keep(abs); err != nil {
+		t.Fatal(err)
+	}
+	list, err := prim.ListVersions(v.Dir, abs)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("versions: %+v %v", list, err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(repo, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ repo, path, hash string }{
+		{repo, "../outside", list[0].Hash}, {repo, "/etc/passwd", list[0].Hash},
+		{repo, "escape/a.txt", list[0].Hash}, {repo, ".env", list[0].Hash},
+		{repo, "a.txt", "../index.jsonl"}, {repo, "a.txt", strings.Repeat("0", 64)},
+		{repo, "other.txt", list[0].Hash}, {t.TempDir(), "a.txt", list[0].Hash},
+	} {
+		if r := c.call("versions.diff", map[string]any{"repo": tc.repo, "path": tc.path, "hash": tc.hash}); r.Error == nil {
+			t.Errorf("accepted unsafe input: %+v", tc)
+		}
+	}
+}
+
 func TestWorkspaceActiveSurvivesRestart(t *testing.T) {
 	o := options(t)
 	path, stop := start(t, o)

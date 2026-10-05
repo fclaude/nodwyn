@@ -527,6 +527,37 @@ check(async () => {
       tabs.left = press("ArrowLeft");
       tabs.leftTwice = press("ArrowLeft");
       tabs.home = press("Home");
+      pick("Changes");
+      emit("guard.decision", { prim: "fs-write", path: "old.txt", decision: "confirm", answer: "yes" }, 3);
+      const toggle = task.el.side.querySelector(".change-toggle");
+      toggle.focus();
+      toggle.click();
+      tabs.inspector = {
+        button: toggle.tagName === "BUTTON",
+        missing: task.el.side.textContent.includes("Preview unavailable"),
+        expanded: task.el.side.querySelector(".change-toggle").getAttribute("aria-expanded") === "true",
+        empty: task.changeDiff("--- x\n+++ x\n", "Comparison").textContent.includes("No content differences"),
+        large: task.changeDiff("(diff too large to show)", "Comparison").textContent.includes("Diff too large"),
+        // The sentinel is a whole line of its own: a file whose text says it
+        // is a diff, as task.js does, is still shown as one.
+        literal: !!task.changeDiff("--- x\n+++ x\n@@ -1 +1 @@\n-old\n+// diff too large to show\n", "Comparison").querySelector(".diff-line.add"),
+      };
+      const pending = [];
+      const originalCall = conn.call;
+      conn.call = (method, args) => method === "versions.diff" ? new Promise((resolve) => pending.push(resolve)) : originalCall(method, args);
+      task.histories.set("old.txt", { versions: [] });
+      const first = task.compareVersion("old.txt", "hash");
+      const second = task.compareVersion("old.txt", "hash");
+      pending[1]({ label: "Newest comparison", diff: "--- x\n+++ x\n@@ -1 +1 @@\n-old\n+new\n" });
+      await second;
+      pending[0]({ label: "Stale comparison", diff: "+stale" });
+      await first;
+      tabs.inspector.newest = task.comparisons.get(JSON.stringify(["old.txt", "hash"])).label === "Newest comparison";
+      const navigated = task.compareVersion("old.txt", "hash");
+      task.version++;
+      pending[2]({ label: "Wrong task", diff: "+wrong" });
+      await navigated;
+      tabs.inspector.navigation = !task.comparisons.get(JSON.stringify(["old.txt", "hash"])).label;
       task.dispose();
       out.tabs = tabs;
     }
@@ -772,11 +803,12 @@ check(async () => {
   const tb = results.tabs;
   want(tb.names.join() === "Live,Changes,Workspace,Notes" && tb.first === "Live", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
   want(tb.live.join() === "This turn,Plan,Totals", `Live tab panels: ${JSON.stringify(tb.live)}`);
-  want(tb.changes.chosen === "Changes" && tb.changes.shown === "Nothing written yet.", `Changes tab: ${JSON.stringify(tb.changes)}`);
-  want(tb.afterEvent.chosen === "Changes" && tb.afterEvent.shown === "Nothing written yet.", `the tab kept through an event's redraw: ${JSON.stringify(tb.afterEvent)}`);
+  want(tb.changes.chosen === "Changes" && tb.changes.shown === "No approved changes yet.", `Changes tab: ${JSON.stringify(tb.changes)}`);
+  want(tb.afterEvent.chosen === "Changes" && tb.afterEvent.shown === "No approved changes yet.", `the tab kept through an event's redraw: ${JSON.stringify(tb.afterEvent)}`);
   want(tb.workspace.chosen === "Workspace" && tb.workspace.shown.join() === "Workspace,Details", `Workspace tab: ${JSON.stringify(tb.workspace)}`);
   want(tb.notes.chosen === "Notes" && tb.notes.shown === "Reading the notes…", `Notes tab: ${JSON.stringify(tb.notes)}`);
   want(tb.left.chosen === "Workspace" && tb.left.focused === "Workspace" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Live" && tb.home.focused === "Live", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
+  want(Object.values(tb.inspector).every(Boolean), `change inspector states and stale replies: ${JSON.stringify(tb.inspector)}`);
   const c = results.clocks;
   want(c.model === "5.0 s" && c.tools === "0.0 s", `the clocks count only answered pairs: ${JSON.stringify(c)}`);
   want(c.running === "12 s" && c.working === "12 s", `running and working stay at the turns' own spans: ${JSON.stringify(c)}`);

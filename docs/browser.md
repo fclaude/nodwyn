@@ -5,7 +5,7 @@ a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
 beside it four tabs: **Live** holds this turn's budget, the plan and the
 task's totals, everything that moves while the task works; **Changes**
-holds what it has written, each file's kept versions and the attachments;
+holds recorded write approvals, each file's kept versions and the attachments;
 **Workspace** holds where it works, the tools it was offered and the
 Details inspectors; **Notes** holds the project notes. The plan shows the
 model's progress through
@@ -247,8 +247,22 @@ to the host you allowed, never to the judge.
 
 **Undo.** Unless git already has a file committed and unchanged, nodwyn keeps
 its previous content before changing it, so a write that went ahead without
-asking can be taken back. A task's **Changes** list offers **History** per
-file; **Restore** writes a kept version back as a write like any other (it
+asking can be taken back. A task's **Changes** list shows the latest recorded
+approval per file, newest first (up to twelve). Click the filename, or focus
+it and press Enter or Space, to expand its recorded preview with line numbers
+and addition/deletion counts; long lines wrap, since the side pane is too
+narrow to scroll them. **Approved preview—not proof of a successful
+write** means the guard approved before execution: check the tool result for
+success. Older records without a preview say it is unavailable; no diff is
+invented from today's file. Empty and oversized diffs say so explicitly.
+
+**History** lists kept versions. **Compare with current file** reads the chosen
+kept version and today's file on demand: deletions are lines from the kept
+version, additions are lines in the current file. A missing current file is
+shown as a deletion. This read-only comparison does not restore anything or
+refresh automatically. Open previews and comparisons survive redraws; replies
+for closed History lists, old requests or another task are discarded.
+**Restore** writes a kept version back as a write like any other (it
 asks only when Settings › Approvals has writes ask), and keeps the current
 content too. From a terminal: `nodwyn versions FILE` and `nodwyn undo FILE`.
 

@@ -266,6 +266,20 @@ Kept versions are the undo for what git cannot give back: before a write,
 nodwyn keeps a file's content unless git has it committed and unchanged
 (`nodwyn versions`, `nodwyn undo`).
 
+In the console's **Changes** tab, click a filename to expand the latest recorded
+approval preview, with line numbers and addition/deletion counts; long lines
+wrap rather than scroll. Enter or Space works on the focused filename too. Its label, **Approved preview—not proof of a
+successful write**, matters: approval precedes execution; the tool result says
+whether it succeeded. Older records may have no preview. The inspector reports
+unavailable, empty or oversized diffs instead of guessing.
+
+Open **History** and choose **Compare with current file** to see a read-only
+comparison from that kept version to today's file (removed lines are from the
+version; added lines are current). A missing current file shows deletions.
+Compare again to refresh; **Restore** is the separate action that writes.
+Open inspectors survive redraws. No prior version exists for a new file, and
+committed unchanged Git files rely on Git rather than this store.
+
 ### Several tasks on one repository: worktrees
 
 Tasks in one folder share its files, its git index and its stash: one

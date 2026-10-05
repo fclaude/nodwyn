@@ -334,6 +334,7 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		return &scheme.Denied{Prim: p.Name, Reason: "confirmation failed: " + err.Error()}
 	}
 	if approval.Allowed {
+		rec.Detail = detail
 		rec.Answer = "yes"
 		if recordErr := g.record(rec); recordErr != nil {
 			return recordErr

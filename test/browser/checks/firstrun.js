@@ -35,7 +35,7 @@ check(async () => {
     socket = ws;
     ws.onMessage((m) => {
       const frame = JSON.parse(m);
-      if (holding && frame.method === "versions.list") asked.add(frame.id);
+      if (holding && ["versions.list", "versions.diff"].includes(frame.method)) asked.add(frame.id);
       server.send(m);
     });
     server.onMessage((m) => {
@@ -201,6 +201,32 @@ check(async () => {
   assert.deepStrictEqual(sent.of("session.send").map((s) => s.text), ["The session list shows each session's first message. Make them easy to tell apart.", "Thanks", "Thanks again"]);
   step("a History reply after a redraw filled the list");
   await page.screenshot({ path: `${out}/firstrun-history.png` });
+
+  async function historyVersionComparison() {
+    const compare = ".versions button:has-text('Compare with current file')";
+    const changed = fs.readFileSync(`${root}/work/app.js`, "utf8");
+    await page.click(compare);
+    await shows(page, ".versions .change-inspector", "Kept version → current file (read-only comparison)");
+    assert.ok(await page.locator(".versions .diff-line.add").count(), "comparison additions missing");
+    assert.ok(await page.locator(".versions .diff-line.del").count(), "comparison deletions missing");
+    assert.strictEqual(fs.readFileSync(`${root}/work/app.js`, "utf8"), changed, "comparison wrote the file");
+    assert.strictEqual(sent.of("versions.diff")[0].path, "app.js");
+    holding = true;
+    await page.click(compare);
+    await until("held comparison reply", () => held.length);
+    await page.click(".file-row button:has-text('History')");
+    await page.click(".file-row button:has-text('History')");
+    await until("held reopened History reply", () => held.length === 2);
+    holding = false;
+    asked.clear();
+    for (const m of held.splice(0)) socket.send(m);
+    await page.waitForSelector(compare);
+    assert.strictEqual(await page.locator(".versions .diff").count(), 0, "closed History accepted a stale comparison");
+    await page.click(compare);
+    await shows(page, ".versions .change-inspector", "Kept version → current file");
+    await page.screenshot({ path: `${out}/history-comparison.png` });
+  }
+  await historyVersionComparison();
 
   // A write in the folder goes ahead without asking (ADR 35), a restore too.
   await page.click(".versions button:has-text('Restore')");

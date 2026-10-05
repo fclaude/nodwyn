@@ -38,7 +38,12 @@ turn goes on until the model answers or a hard limit stops it. A
 \textbf{task} shows its conversation, each write with its diff and, when
 something asks, the approval inline (the reasons and the buttons from
 Chapter~\ref{ch:first}), and beside it the plan, this turn's budget, the
-changes it made, the project notes and the workspace.
+the recorded write approvals, the project notes and the workspace.
+In Changes, click a filename or press Enter or Space to expand its latest
+approved preview, with line numbers and addition/deletion counts. History's
+Compare with current file is a separate read-only comparison from a kept
+version to today's file. Open inspectors survive redraws; comparisons refresh
+only when requested. Missing previews and empty or oversized diffs say so.
 Streamed text and thinking are joined for the next display frame, without
 redrawing the heading and detail panels per fragment. A task kept off screen
 catches up when shown; replies and questions flush preceding fragments at
@@ -60,7 +65,9 @@ they started with.
 
 \begin{tip}
 The console never invents state. Budgets are counted from the log, the plan
-is the recorded plan, ``changes'' are recorded writes. If a panel has no
+is the recorded plan, and Changes shows recorded approvals, not proof that
+writes succeeded: approval precedes execution, and the tool result records
+success or failure. Older records without previews are not reconstructed. If a panel has no
 source for something, it says so instead of guessing.
 \end{tip}
 

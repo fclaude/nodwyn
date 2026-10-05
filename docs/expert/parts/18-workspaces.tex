@@ -88,7 +88,12 @@ Restored /home/you/garden/plants.txt to its version of 2026-09-30 13:19 (55d684f
 \end{sh}
 
 In the console, a task's \textbf{Changes} list has \textbf{History} per
-file; \textbf{Restore} writes a kept version back as a write like any
+file. \textbf{Compare with current file} reads a kept version and today's
+file without writing: removed lines belong to the kept version, added lines
+to the current file. A missing current file appears as deletions. Empty and
+oversized comparisons say so; compare again to refresh. This is not the
+recorded approval preview, which may be unavailable on older records and
+never proves execution succeeded. \textbf{Restore} writes a kept version back as a write like any
 other, so it goes ahead without asking, its diff logged (it asks when
 \code{[approval] writes = "ask"}), and keeps the current content as a
 version too, so a restore can itself be undone. The store is capped per

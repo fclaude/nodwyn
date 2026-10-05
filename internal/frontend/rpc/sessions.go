@@ -174,6 +174,7 @@ var methodTable = map[string]handler{
 	"workspace.save":           (*server).workspaces,
 	"workspace.remove":         (*server).workspaces,
 	"versions.list":            (*server).versions,
+	"versions.diff":            (*server).versions,
 	"session.restore":          (*server).versions,
 	"session.attach":           (*server).attach,
 	"mcp.list":                 (*server).mcpMethod,

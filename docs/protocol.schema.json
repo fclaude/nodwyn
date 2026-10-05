@@ -2840,6 +2840,9 @@
           "$ref": "#/$defs/request.settings.write"
         },
         {
+          "$ref": "#/$defs/request.versions.diff"
+        },
+        {
           "$ref": "#/$defs/request.versions.list"
         },
         {
@@ -4821,6 +4824,37 @@
       ],
       "type": "object"
     },
+    "request.versions.diff": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "versions.diff"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.versionDiffParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.versions.list": {
       "properties": {
         "id": {
@@ -5314,6 +5348,9 @@
     },
     "result.settings.write": {
       "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.versions.diff": {
+      "$ref": "#/$defs/rpc.versionDiffResult"
     },
     "result.versions.list": {
       "items": {
@@ -7434,6 +7471,40 @@
         "detail",
         "model",
         "ms"
+      ],
+      "type": "object"
+    },
+    "rpc.versionDiffParams": {
+      "properties": {
+        "hash": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "path",
+        "hash"
+      ],
+      "type": "object"
+    },
+    "rpc.versionDiffResult": {
+      "properties": {
+        "diff": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "diff"
       ],
       "type": "object"
     },

@@ -583,6 +583,7 @@ name.
 | `workspace.save` | `{"path","name","mounts"}` (all required; `mounts` may be `[]`) | The saved workspace. The name and the mounts go to `workspaces.toml` in the config directory; nothing is written into the folder |
 | `workspace.remove` | `{"path"}` | `{}`; forgets the name and its mounts, never the folder |
 | `versions.list` | `{"repo","path"}` | A file's kept previous versions (outside git); `repo` must be a named workspace or a folder a task has used |
+| `versions.diff` | `{"repo","path","hash"}` | `{label,diff}`: read-only unified comparison from a kept version to the current file, not a recorded write preview. Requires a recognised workspace/task root, a path inside it and a kept hash belonging to that file. Rejects path/link escapes and denylisted paths. A missing current file is a deletion; identical content has headers only. Inputs above 128 KiB each or the unified-diff line limit return a labelled `(diff too large to show)` summary. May be read by paired devices; does not restore or require an idle task. Worktree versions use the parent repository's store. |
 | `session.restore` | `{"id","path","hash"}` | `{operation_id}`; writes a kept version back through the ordinary approval, keeping the current content as a version too |
 | `session.attach` | `{"id","path","name"?}` | The attachment's receipt; `path` is absolute (the web console stages uploads itself). An image returns once its security confirm is answered (see below) |
 | `mcp.list` | `{}` | The configured MCP servers and their state |

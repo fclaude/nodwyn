@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -198,9 +199,31 @@ func ReadVersion(dir, hash string) ([]byte, error) {
 	if !hashName.MatchString(hash) {
 		return nil, fmt.Errorf("versions: %q is not a version", hash)
 	}
-	content, err := os.ReadFile(filepath.Join(dir, "objects", hash))
+	// A repository writer controls the store; an object is content, not a link's authority.
+	pin, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, err
+	}
+	defer pin.Close()
+	name := filepath.Join("objects", hash)
+	info, err := pin.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("versions: object must be a regular file")
+	}
+	file, err := pin.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxVersionFile+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxVersionFile {
+		return nil, fmt.Errorf("versions: object is too large")
 	}
 	sum := sha256.Sum256(content)
 	if hex.EncodeToString(sum[:]) != hash {

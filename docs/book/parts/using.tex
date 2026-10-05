@@ -543,6 +543,15 @@ console's Restore puts back any of them. A Restore is a write like any
 other: it goes ahead without asking unless \code{approval.writes} is
 \code{"ask"}, and what it replaces can be put back the same way.
 
+In the console's Changes tab, click a filename (or use Enter or Space) to
+expand the latest approved preview with line numbers and addition/deletion
+counts. An approval is recorded before execution, not proof that the write
+succeeded. Older records may have no preview. History offers Compare with
+current file: a read-only comparison from the kept version to today's file,
+with removed lines from the version and added lines from the current file.
+A missing current file shows deletions; no differences and oversized diffs
+are reported explicitly. Compare again to refresh; Restore alone writes.
+
 \chapter{Documents out}
 
 The model's \code{doc-export} turns a Markdown or LaTeX file into Word

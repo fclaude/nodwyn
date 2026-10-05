@@ -177,3 +177,32 @@ console's composer says, keeps the plan for the correction that follows.
 The model revises the plan with `plan-write` if the correction changes it.
 The window's rule and its recipe are unchanged. The front-ends no longer
 say "the run's plan" for a carried one.
+
+## Amendment 2026-10-05: inspect recorded previews and kept versions
+
+The Changes tab previously listed files without letting a person inspect their
+changes. Each row now expands the latest recorded approval preview per file,
+newest first, with line numbers and addition/deletion counts. It is labelled
+"Approved preview—not proof of a successful write": guard decisions precede
+execution. Older records without Detail explicitly say preview unavailable;
+no current-file diff is invented to stand in for the recorded data.
+
+The pane is about 320 px wide, so the inspector wraps long lines: the first
+build scrolled them sideways, which hid up to 241 px of a line at desktop width
+with no sign that it could be scrolled (found by looking at the screenshots,
+which the browser check now asserts). An oversized diff is recognised by the
+host's note being a line of its own, not by its text appearing anywhere, since
+a file may mention it.
+
+History offers a separate read-only `versions.diff` comparison from a selected
+kept version to the current file. Removed lines are from the version, additions
+from the current file; missing current files are deletions. Empty and oversized
+comparisons are explicit. Restore remains separate. Open state survives redraws;
+request identity, History identity and task generation reject stale replies.
+
+The repository writer controls the kept index and objects; they supply content,
+not authority. The daemon requires a recognised workspace/task root, restricts
+paths and links to that root, applies its denylist, checks file/hash membership
+and object integrity, and bounds comparison inputs. Worktree versions are read
+from their parent repository's store. Comparison is available to paired readers
+and does not change policy, files or session state.

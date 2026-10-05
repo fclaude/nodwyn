@@ -96,3 +96,11 @@ the switch then gave — was added to the working time, which made the
 working time match the running time at the answer and lost the split the
 panel keeps (reported on a session that answered a command's confirm with
 the switch).
+
+## Amendment 2026-10-05: confirmed approvals retain previews
+
+Explicitly approved confirmations retain their existing preview in the final
+`guard.decision.detail`, as standing approvals already do. The Changes inspector
+needs the recorded preview rather than a reconstruction from a later file.
+Denials remain denials, and old records are not backfilled. This is an approval
+record before execution, never evidence that the operation succeeded.

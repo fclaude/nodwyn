@@ -4,7 +4,7 @@
 // session.info; a panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
 import { Transcript, planSteps, stepTitle, usd, contextGauge, judgeTally, spanWords } from "./transcript.js";
-import { askCard, shortcut, summary } from "./prompts.js";
+import { askCard, shortcut, summary, parseDiff, diffView } from "./prompts.js";
 import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
@@ -48,6 +48,8 @@ export class TaskView {
     // answered, or an empty record while it has not. Every event redraws the
     // panel, so each list is drawn from here and outlives the redraw.
     this.histories = new Map();
+    this.changeOpen = new Set();
+    this.comparisons = new Map();
     this.inspecting = null;
     this.operations = new Map(); // guarded operation id -> handler
     this.early = new Map(); // results that arrived before their id
@@ -105,6 +107,8 @@ export class TaskView {
     this.notes = null;
     this.notesDraft = null;
     this.histories.clear();
+    this.changeOpen.clear();
+    this.comparisons.clear();
     this.inspecting = null;
     this.renaming = false;
     this.deleting = false;
@@ -932,7 +936,7 @@ export class TaskView {
   asideTabs() {
     return [
       { id: "live", label: "Live", draw: () => [this.turnPanel(), this.planPanel(), this.totalsPanel()], empty: "Nothing has run yet." },
-      { id: "changes", label: "Changes", draw: () => [this.changesPanel(), this.attachmentsPanel()], empty: "Nothing written yet." },
+      { id: "changes", label: "Changes", draw: () => [this.changesPanel(), this.attachmentsPanel()], empty: "No approved changes yet." },
       { id: "workspace", label: "Workspace", draw: () => [this.workspacePanel(), this.toolsPanel(), this.detailsPanel()], empty: "Nothing to show." },
       { id: "notes", label: "Notes", draw: () => [this.notesPanel()], empty: "Reading the notes…" },
     ];
@@ -1213,37 +1217,74 @@ export class TaskView {
     if (tooled) tooled.textContent = spanWords(t.tools);
   }
   changesPanel() {
-    const written = [];
+    const approvals = new Map();
     const seen = new Set();
     for (const e of this.events()) {
       if (e.kind !== "guard.decision") continue;
       const p = e.payload;
       const allowed = p.decision === "allow" || (p.decision === "confirm" && (p.answer === "yes" || p.answer === "turn"));
-      if (p.path && allowed && !seen.has(p.path)) {
+      if (p.path && allowed) {
         seen.add(p.path);
-        written.push(p.path);
+        approvals.delete(p.path);
+        approvals.set(p.path, p);
       }
     }
+    const written = [...approvals.keys()];
     const pending = [...this.prompts.values()].map((e) => e.payload?.Prompt?.Path).filter((path) => path && !seen.has(path));
     if (!written.length && !pending.length) return null;
     const rows = [
       ...pending.map((path) => h("div", { class: "file-row" }, icon("file", 15), h("span", { class: "mono", title: path }, path), h("span", { class: "badge" }, "proposed"))),
-      ...written.slice(-12).flatMap((path) => {
+      ...written.slice(-12).reverse().flatMap((path) => {
         const row = h(
           "div",
           { class: "file-row" },
           icon("file", 15),
-          h("span", { class: "mono", title: path }, path),
+          h("button", { type: "button", class: "btn small ghost change-toggle mono", title: path, "aria-expanded": String(this.changeOpen.has(path)), onclick: () => { this.changeOpen.has(path) ? this.changeOpen.delete(path) : this.changeOpen.add(path); this.aside(); } }, path),
+          h("span", { class: "badge plain" }, "approved"),
           // In git too: a file git cannot give back keeps a version (ADR 35).
           this.info && this.conn.has("versions.list")
             ? h("button", { type: "button", class: "btn small ghost", style: "margin-left:auto", onclick: () => this.history(path) }, "History")
-            : h("span", { class: "badge plain" }, "written"),
+            : null,
         );
-        return [row, h("div", { class: "versions" }, this.historyList(path))];
+        return [row, this.changeOpen.has(path) ? this.changeDiff(approvals.get(path).detail, "Approved preview—not proof of a successful write") : null, h("div", { class: "versions" }, this.historyList(path))];
       }),
     ];
     const note = written.length > 12 ? `${written.length} files · latest shown` : this.info?.git ? "git and kept versions are the undo" : this.info ? "previous versions kept" : "writes nodwyn was allowed";
     return h("section", { class: "panel" }, h("h2", {}, "Changes", h("span", { class: "note" }, note)), rows);
+  }
+  changeDiff(detail, label) {
+    if (!detail) return h("p", { class: "hint change-inspector" }, "Preview unavailable: this approval did not record a diff.");
+    // The host's "too large" note is a line of its own, while every line of a
+    // diff's content starts with a space, + or -: matching the text anywhere
+    // would hide the diff of a file that mentions it.
+    if (detail.split("\n").includes("(diff too large to show)") || detail.length > 262144) return h("p", { class: "hint change-inspector" }, label, " · Diff too large to show.");
+    if (!parseDiff(detail).some((row) => row.kind === "add" || row.kind === "del")) return h("p", { class: "hint change-inspector" }, label, " · No content differences.");
+    return h("div", { class: "change-inspector" }, diffView(detail, label));
+  }
+  async compareVersion(path, hash) {
+    const key = JSON.stringify([path, hash]);
+    const asked = {};
+    const version = this.version;
+    const history = this.histories.get(path);
+    this.comparisons.set(key, asked);
+    this.aside();
+    let answer;
+    try {
+      answer = await this.conn.call("versions.diff", { repo: this.item.repo, path, hash });
+    } catch (error) {
+      answer = { error: error.message };
+    }
+    // A reply belongs only to the task, open History and request that asked.
+    if (version !== this.version || this.histories.get(path) !== history || this.comparisons.get(key) !== asked) return;
+    this.comparisons.set(key, answer);
+    this.aside();
+  }
+  comparison(path, hash) {
+    const answer = this.comparisons.get(JSON.stringify([path, hash]));
+    if (!answer) return null;
+    if (answer.error) return h("p", { class: "error", role: "status" }, answer.error);
+    if (!answer.label) return h("p", { class: "hint", role: "status" }, "Comparing with current file…");
+    return this.changeDiff(answer.diff, answer.label);
   }
   // toolsPanel lists where this task's tools come from, when some come from
   // MCP servers.
@@ -1332,6 +1373,7 @@ export class TaskView {
   async history(path) {
     if (this.histories.has(path)) {
       this.histories.delete(path);
+      for (const key of this.comparisons.keys()) if (JSON.parse(key)[0] === path) this.comparisons.delete(key);
       this.aside();
       return;
     }
@@ -1362,12 +1404,13 @@ export class TaskView {
     const canRestore = this.item.open && this.conn.has("session.restore");
     return [
       ...answer.versions.slice(0, 8).map((v) =>
-        h(
+        h("div", { class: "version-entry" }, h(
           "div",
-          { class: "kv" },
+          { class: "kv version-row" },
           h("span", {}, `${clock(v.time)} · ${ago(v.time)} · ${v.bytes.toLocaleString()} bytes`),
+          this.conn.has("versions.diff") ? h("button", { type: "button", class: "btn small ghost", onclick: () => this.compareVersion(path, v.hash) }, "Compare with current file") : null,
           canRestore ? h("button", { type: "button", class: "btn small", disabled: this.busy, onclick: () => this.restore(path, v.hash) }, "Restore") : h("span", { class: "mono" }, v.hash.slice(0, 12)),
-        ),
+        ), this.comparison(path, v.hash)),
       ),
       canRestore ? h("p", { class: "hint" }, "Restoring is a write like any other: it shows the change, and asks first only if writes ask (Settings › Approvals). The current content is kept too.") : h("p", { class: "hint" }, "Resume the task to restore a version."),
     ];

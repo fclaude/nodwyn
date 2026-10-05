@@ -120,6 +120,29 @@ check(async () => {
   await shoot("home-phone", { width: 390, height: 844 }, "light", home);
   await shoot("home-phone-dark", { width: 390, height: 844 }, "dark", home);
   await shoot("phone", { width: 390, height: 844 }, "light", task);
+  const inspector = async (page) => {
+    await task(page);
+    await page.click(".task-aside [role=tab]:has-text('Changes')");
+    await page.focus(".change-toggle");
+    await page.keyboard.press("Enter");
+    await shows(page, ".change-inspector", "Approved preview—not proof of a successful write");
+    assert.ok(await page.locator(".change-inspector .diff-line.add").count(), "preview additions missing");
+    await until("inspector bounded inside its task", () => page.evaluate(() => {
+      const body = document.querySelector(".change-inspector .diff-body");
+      const task = body?.closest(".task");
+      return !!task && body.clientWidth <= task.clientWidth;
+    }));
+    // The side pane is narrow: a line that scrolls out of sight cannot be
+    // reviewed, so the lines wrap and the body never scrolls sideways.
+    const sideways = await page.$eval(".change-inspector .diff-body", (body) => body.scrollWidth - body.clientWidth);
+    assert.ok(sideways <= 0, `a diff line runs ${sideways} px past its pane`);
+    // The shot shows the diff itself, not the top of the page above it.
+    await page.evaluate(() => document.querySelector(".change-inspector").scrollIntoView({ block: "center" }));
+  };
+  for (const theme of ["light", "dark"]) {
+    await shoot(`changes-${theme}`, { width: 1440, height: 1080 }, theme, inspector);
+    await shoot(`changes-phone-${theme}`, { width: 390, height: 844 }, theme, inspector);
+  }
   await shoot("settings", { width: 1280, height: 800 }, "light", async (page) => {
     await go(page, "#/settings");
     await shows(page, "#view", "Settings", "Approvals", "Writing files", "Running commands");
