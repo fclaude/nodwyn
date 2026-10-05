@@ -1129,11 +1129,31 @@ for that reason ends the turn saying so. It is never inferred from the address. 
 provider, or an inline control model as a server at the same endpoint, keeps
 it.
 
+**What providers publish.** OpenAI's and Cerebras' APIs say nothing of a
+model's context, its longest reply, its efforts or its price, so nodwyn carries
+a catalogue of what providers publish, as [models.dev](https://models.dev)
+collects it: a snapshot built into nodwyn, regenerated with
+`go generate ./internal/catalogue`. A model on a provider it describes
+(OpenAI, OpenRouter, Cerebras, Groq, DeepSeek, Mistral, xAI, Together,
+Fireworks, DeepInfra, Moonshot, Z.ai, Ollama Cloud), found by the host of its
+server's address and its exact id, takes from it each of these its entry
+leaves unset: its context length, its reply cap (the published longest reply,
+at most a quarter of the context), its efforts, whether it reads images and
+its prices, a cache write and a long prompt's higher tier included.
+gpt-6.1-sol at `api.openai.com` is sized for 1,050,000 tokens, replies up to
+128,000, offers low to max and is priced, with nothing typed. Your entry
+always wins; Settings › Models shows the published values as each field's
+placeholder and the model's row says *as published*. The catalogue only
+describes models: which provider a server is comes from its address in
+config.toml, matched against hosts nodwyn's source names, never from
+models.dev.
+
 **Efforts.** A reasoning model takes an effort: how hard it is asked to think
 before it answers. Which words a provider accepts is the provider's to say, and
 a provider that does not know a field may refuse the whole request, so
-nodwyn never guesses: a model takes an effort setting only if its entry says
-which, and a model that says none is offered none and is sent none.
+nodwyn never guesses from a model's name: a model takes the efforts its entry
+lists, else those its provider publishes, and a model with neither is offered
+none and is sent none.
 
 ```toml
 [models.deep]
@@ -1155,7 +1175,8 @@ needs no `efforts` of its own when a `[models.NAME]` is the same model at the
 same address: it takes them from that entry, so they are listed once; its
 `effort` is the default effort of the default model, which a new task starts
 with. A default that is not one of the model's efforts, or an `effort` on a
-model that declares none, is refused when the file loads. Every request
+model that takes none (neither listed nor published), is refused when the
+file loads. Every request
 records the effort it asked for (`llm.req`), and replays to its hash.
 
 **Settings › Models.** The console sets all of this up without the file, on
@@ -1184,18 +1205,22 @@ this computer only:
 - *Models you can choose* is the list the pickers offer: `[control]` and each
   `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
   own list, asked with its key, fills in suggestions) and the efforts it
-  takes, with shortcuts (low · medium · high, minimal added, off · on) and any
-  other words, and the effort it starts at. Each model has its own settings in
-  its form: its **context length** (OpenAI and Cerebras do not say it,
-  OpenRouter does), its **reply cap**, which comes out of the context (empty
-  is the default reply cap, or a quarter of a small context), with a line
-  saying what the conversation is left with as they are typed, its **prices**
-  per million tokens (which price a request when the provider reports no
-  cost, as only OpenRouter does), whether it **takes images** (yes unless you
-  say no), and, under *More settings*, sampling, the reply cap field, the
-  session key and the prompt cache for a chat-completions model, or how long
-  Ollama keeps it loaded. The row says the context, reply cap and prices it
-  has. Editing
+  takes: *As published* (offered once the id is given, for a model its
+  provider publishes; the entry then lists none, so the provider's apply, and
+  a model whose typed efforts differ from them is told so), shortcuts
+  (low · medium · high, minimal added, off · on) or any other words, and the
+  effort it starts at. Each model has its own settings in its form, each
+  showing what its provider publishes as its placeholder: its **context
+  length**, its **reply cap**, which comes out of the context (empty is the
+  published longest reply at most a quarter of the context, else the default
+  reply cap, or a quarter of a small context), with a line saying what the
+  conversation is left with as they are typed, its **prices** per million
+  tokens (which price a request when the provider reports no cost, as only
+  OpenRouter does), whether it **takes images** (yes unless you say no), and,
+  under *More settings*, sampling, the reply cap field, the session key and
+  the prompt cache for a chat-completions model, or how long Ollama keeps it
+  loaded. The row says the context, reply cap and prices it has, and *as
+  published* when they are its provider's. Editing
   the default model saves them in its entry, not in `[control]`, so they stay
   with the model when another becomes the default. **Test it** tries a model
   before it is saved.
@@ -1310,8 +1335,9 @@ is how big the context got (`405,467 → 4,936 tokens over 12 requests ·
 largest prompt 58,412`). The token budget adds them up the same way.
 OpenRouter reports cache use and cost in every
 response, cost in USD included; nothing has to be asked for. A server that
-reports no cost (OpenAI, Cerebras, any other but OpenRouter) can be priced in
-Settings › Models, in the model's Prices, or in its entry, per million tokens:
+reports no cost (OpenAI, Cerebras, any other but OpenRouter) is priced at what
+its provider publishes (above), or at the prices in Settings › Models, in the
+model's Prices, or in its entry, per million tokens, which win:
 
 ```toml
 [models.coder]
@@ -1320,8 +1346,10 @@ price_cached_input = 0.3   # prompt tokens read from the cache; unset: price_inp
 price_output = 15.0        # output tokens, reasoning included
 ```
 
-A cost from prices is an estimate, shown with ≈: it does not know a
-provider's surcharge for writing to its cache, so a reported cost always
+A cost from prices is an estimate, shown with ≈. Published prices also price
+prompt tokens written to the cache (OpenAI charges a quarter more for them) and
+a prompt past a provider's tier (OpenAI's past 272,000 tokens) at their own
+rates; prices typed in an entry price both as input. A reported cost always
 wins. Ollama reports neither, and its line reads as before; so does an older
 log. The TUI's `:budget` adds the turn's spend over every model request (the
 planner's, sub-agents' and compaction's included) and the judge's requests
@@ -1445,19 +1473,21 @@ A model's reply cap comes out of its context, and the conversation gets the
 rest. The window is sized for the control model's context less that cap. Its
 defaults (`window.high_water` 61440 and `low_water` 30720, in the window's
 estimate of bytes/3) suit a small local context. When the context is larger,
-as `num_ctx` says or, for a chat-completions server that leaves it unset, as
-the server's model list says (OpenRouter's `context_length`, vLLM's
-`max_model_len`; asked once per process, with the model's key, as OpenAI and
-Cerebras list their models only to one), the high water grows to three
+as `num_ctx` says, or what its provider publishes (above), or, for a
+chat-completions server neither says, as the server's model list says
+(OpenRouter's `context_length`, vLLM's `max_model_len`; asked once per
+process, with the model's key, as OpenAI and Cerebras list their models only
+to one), the high water grows to three
 quarters of the context less the reply cap, and the low water to half of
 that: a 1M-token model trims past 774144 and compacts just under it. When
 the context is too small for the window, it shrinks the same way: a
 32768-token model's reply cap is 8192 (below) and its window trims past
 18432. The last quarter is room for compaction's handover note
 (docs/scheme.md §9.2), so a long task is summarized before anything is
-trimmed. The session log notes the size it chose, or that the server did not
-say (OpenAI's and Cerebras' lists carry no context length); set the model's
-context length in Settings › Models then, or `num_ctx` in its entry.
+trimmed. The session log notes the size it chose, or that nothing said the
+context (a model the catalogue does not describe, on a server whose list
+carries no context length); set the model's context length in Settings ›
+Models then, or `num_ctx` in its entry.
 Setting `high_water` or `low_water` in `[window]` keeps the window at your
 size, unless a model's context cannot hold it: then it shrinks to fit that
 model. A larger window sends more with every request: on a paid model, a
@@ -1479,7 +1509,9 @@ Each reply is capped, thinking included: ollama gets the cap as
 Responses API as `max_output_tokens`), so a prompt at the window's high water
 and its reply always fit the context. The cap is the model's `max_output`
 (*Reply cap* in Settings › Models), which must be below its `num_ctx`; unset,
-it is `window.output_reserve` (16384 by default, *Default reply cap* in
+it is the longest reply its provider publishes, at most a quarter of its
+context (gpt-6.1-sol's 128,000), and for a model nothing is published of,
+`window.output_reserve` (16384 by default, *Default reply cap* in
 Settings › Context window), but a context too small for the window and that
 reply gives it no more than a quarter, so a small model keeps most of its
 context for the conversation. A remote

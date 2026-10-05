@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -192,9 +193,67 @@ func (s *server) choices() []modelChoice {
 			host = u.Host
 		}
 		out = append(out, modelChoice{Name: e.name, Server: e.model.Server, Provider: providerName(e.model.Provider), Model: e.model.Model, Host: host,
-			Efforts: cfg.Efforts(e.model), Effort: e.model.Effort, Default: e.name == config.ControlModel, Settings: settingsOf(e.model)})
+			Efforts: cfg.Efforts(e.model), Effort: e.model.Effort, Default: e.name == config.ControlModel, Settings: settingsOf(e.model), Published: published(cfg, e.model)})
 	}
 	return out
+}
+
+// publishedModel is what a model's provider publishes about it, as the
+// catalogue has it (ADR 41, amended 2026-10-05): what a session uses for each
+// of the model's own settings left unset.
+type publishedModel struct {
+	NumCtx int `json:"num_ctx,omitempty"`
+	// MaxOutput is the reply cap it gives: the published limit on a reply, at
+	// most a quarter of the context (the entry's when it sets one).
+	MaxOutput int      `json:"max_output,omitempty"`
+	Efforts   []string `json:"efforts,omitempty"`
+	Images    bool     `json:"images"`
+	// The prices, USD per million tokens. A provider that charges more for a
+	// long prompt does so past TierAbove tokens.
+	PriceInput       *float64 `json:"price_input,omitempty"`
+	PriceCachedInput *float64 `json:"price_cached_input,omitempty"`
+	PriceCacheWrite  *float64 `json:"price_cache_write,omitempty"`
+	PriceOutput      *float64 `json:"price_output,omitempty"`
+	TierAbove        int      `json:"tier_above,omitempty"`
+}
+
+// published is what m's provider publishes about it; nil when the catalogue
+// does not describe it.
+func published(cfg config.Config, m config.Model) *publishedModel {
+	p, ok := cfg.Published(m)
+	if !ok {
+		return nil
+	}
+	bare := m
+	bare.MaxOutput, bare.Vision = 0, nil
+	out := &publishedModel{NumCtx: p.Context, MaxOutput: cfg.WithPublished(bare).MaxOutput, Efforts: p.Efforts, Images: p.Images}
+	if price := p.Price; price != nil {
+		out.PriceInput, out.PriceCachedInput, out.PriceCacheWrite, out.PriceOutput = &price.Input, price.CacheRead, price.CacheWrite, &price.Output
+		if len(price.Tiers) > 0 {
+			out.TierAbove = price.Tiers[0].Above
+		}
+	}
+	return out
+}
+
+type publishedParams struct {
+	Server string `json:"server"` // a [servers.NAME] in config.toml
+	Model  string `json:"model"`  // the model's id on it
+}
+
+// modelsPublished answers models.published: what a model on a configured
+// server would have from its provider, for a form adding it; null when the
+// catalogue does not describe it.
+func (s *server) modelsPublished(req request, _ *peer) (any, *rpcError) {
+	var p publishedParams
+	if err := params(req.Params, &p, "server", "model"); err != nil {
+		return nil, err
+	}
+	cfg := s.options.Config
+	if _, ok := cfg.Servers[p.Server]; !ok {
+		return nil, failure(-32602, "No server "+strconv.Quote(p.Server)+" is configured")
+	}
+	return published(cfg, config.Model{Server: p.Server, Model: p.Model}), nil
 }
 
 // errStop ends a policyfile.Update callback whose refusal is already in the

@@ -311,6 +311,10 @@ type modelChoice struct {
 	// Settings are the model's: its entry's own, and for the default those
 	// of the entry it names (config.Tuned).
 	Settings modelSettings `json:"settings"`
+	// Published is what its provider publishes about it, which a session
+	// uses for each of its settings left unset; none when the catalogue does
+	// not describe it.
+	Published *publishedModel `json:"published,omitempty"`
 }
 
 func (s *server) settings() settingsResult {
@@ -474,6 +478,8 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 	if err := config.WriteFile(s.options.Paths.ConfigFile, text); err != nil {
 		return nil, failure(-32000, err.Error())
 	}
+	// The catalogue is not in config.toml, so the file read back has none.
+	cfg.Catalogue = s.options.Config.Catalogue
 	s.options.Config = cfg
 	forgetProbes()
 	return s.settings(), nil

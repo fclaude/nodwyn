@@ -4,11 +4,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/budget"
+
+	"github.com/fclaude/nodwyn/internal/catalogue"
 )
 
 func TestDefaultIsValid(t *testing.T) {
@@ -345,5 +348,79 @@ func TestModelPrices(t *testing.T) {
 	raw, parsed, err := SetControl(nil, m)
 	if err != nil || parsed.Control.PriceInput == nil || *parsed.Control.PriceInput != 3 || parsed.Control.PriceCachedInput != nil {
 		t.Fatalf("%s %+v %v", raw, parsed.Control, err)
+	}
+}
+
+// What a model's entry leaves unset is what its provider publishes: its
+// context, its reply cap (the published limit, at most a quarter of the
+// context), whether it reads images, and its efforts. What the entry sets
+// stands, and a model at an address the catalogue does not describe, or on
+// Ollama, borrows nothing.
+func TestAModelHasWhatItsProviderPublishes(t *testing.T) {
+	c, err := Parse([]byte(`
+[servers.openai]
+provider = "openai"
+url = "https://api.openai.com/v1"
+
+[servers.local]
+url = "http://localhost:11434"
+
+[models.sol]
+server = "openai"
+model = "sol"
+
+[models.small-sol]
+server = "openai"
+model = "sol"
+num_ctx = 32768
+
+[models.blind]
+server = "openai"
+model = "blind"
+
+[models.local]
+server = "local"
+model = "sol"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"api.openai.com": {
+		"sol":   {Context: 1050000, Output: 128000, Efforts: []string{"low", "medium", "high", "xhigh", "max"}, Images: true},
+		"blind": {Context: 131072, Output: 131072, Efforts: []string{"low", "high"}},
+	}})
+	sol := c.WithPublished(c.Models["sol"])
+	if sol.NumCtx != 1050000 || sol.MaxOutput != 128000 || !sol.TakesImages() || !slices.Equal(c.Efforts(c.Models["sol"]), []string{"low", "medium", "high", "xhigh", "max"}) {
+		t.Errorf("sol: %+v, efforts %v", sol, c.Efforts(c.Models["sol"]))
+	}
+	small := c.WithPublished(c.Models["small-sol"])
+	if small.NumCtx != 32768 || small.MaxOutput != 8192 {
+		t.Errorf("an entry's own context: %+v", small)
+	}
+	if got := c.Efforts(Model{Server: "openai", Model: "sol", Efforts: []string{"high"}}); !slices.Equal(got, []string{"high"}) {
+		t.Errorf("a model's own efforts: %v", got)
+	}
+	blind := c.WithPublished(c.Models["blind"])
+	if blind.MaxOutput != 131072/4 || blind.TakesImages() {
+		t.Errorf("a model whose reply limit is its whole context, and that reads no images: %+v", blind)
+	}
+	// An effort is checked against the published efforts.
+	blindEntry := c.Models["blind"]
+	blindEntry.Effort = "low"
+	c.Models["blind"] = blindEntry
+	if err := c.Validate(); err != nil {
+		t.Fatalf("an effort the provider publishes: %v", err)
+	}
+	blindEntry.Effort = "xhigh"
+	c.Models["blind"] = blindEntry
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "not one the model takes (low, high)") {
+		t.Fatalf("an effort the provider does not publish: %v", err)
+	}
+	delete(c.Models, "blind")
+	if local := c.WithPublished(c.Models["local"]); local.NumCtx != 0 || c.Efforts(c.Models["local"]) != nil {
+		t.Errorf("an Ollama model borrowed from the catalogue: %+v", local)
+	}
+	if _, ok := c.Published(Model{Provider: "openai", URL: "https://openai.example.com/v1", Model: "sol"}); ok {
+		t.Error("another host was described")
 	}
 }

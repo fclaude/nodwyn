@@ -52,7 +52,11 @@ check(async () => {
   fs.mkdirSync(`${root}/config/nodwyn`, { mode: 0o700 });
   const configFile = `${root}/config/nodwyn/config.toml`;
   fs.writeFileSync(configFile, `[control]\nprovider = "ollama"\nurl = "${ollamaURL}"\nmodel = "demo"\n`);
-  const xdg = { ...process.env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: runtimeDir() };
+  // The app reaches nothing beyond this computer: a request to any other host
+  // goes to a proxy that is not there (Go never proxies the loopback the fakes
+  // listen on), so the OpenAI provider added at the end is never asked.
+  const nowhere = "http://127.0.0.1:9";
+  const xdg = { ...process.env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: runtimeDir(), HTTPS_PROXY: nowhere, HTTP_PROXY: nowhere, https_proxy: nowhere, http_proxy: nowhere };
   const startApp = async () => {
     const app = start(process.env.NODWYN, ["app", "--no-open"], { env: xdg });
     const [url] = await line(app, /app: open (\S+)/, "stderr");
@@ -595,6 +599,82 @@ check(async () => {
   assert.deepStrictEqual(sent.of("settings.control.write").at(-1), { name: "demo", effort: "" });
   assert.ok(config().includes('[control]\nprovider = "ollama"'), "no default written:\n" + config());
   step("models listed with no default: none is shown as chosen, and choosing one saves it");
+
+  // ---------- what a provider publishes ----------
+  // A model on OpenAI's address whose entry says nothing of it has what
+  // OpenAI publishes, as nodwyn's snapshot of models.dev has it (ADR 41,
+  // amended 2026-10-05): its context, its reply cap, its efforts, its prices.
+  // The expectations are read from that snapshot, so regenerating it does not
+  // change what this checks.
+  const published = JSON.parse(fs.readFileSync(`${__dirname}/../../../internal/catalogue/models.json`, "utf8")).providers.openai;
+  const [first, second, third] = Object.keys(published)
+    .filter((id) => published[id].context && published[id].output && published[id].price && published[id].efforts?.length > 1)
+    .sort();
+  const n = (x) => x.toLocaleString("en-US");
+  const label = (e) => (e === "xhigh" ? "Extra high" : e[0].toUpperCase() + e.slice(1));
+  const expect = (id) => {
+    const m = published[id];
+    const cap = Math.min(m.output, Math.floor(m.context / 4));
+    const tier = m.price.tiers?.length ? ` (more past ${n(m.price.tiers[0].above)})` : "";
+    return { m, cap, line: `context ${n(m.context)} tokens · replies up to ${n(cap)} tokens · $${m.price.input} in, $${m.price.output} out per million tokens${tier}${m.images ? "" : " · takes no images"} · as published` };
+  };
+  app.kill("SIGTERM");
+  assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
+  fs.writeFileSync(configFile, `${config()}\n[servers.openai]\nprovider = "openai"\ndialect = "responses"\nurl = "https://api.openai.com/v1"\n\n[models.openai-a]\nserver = "openai"\nmodel = "${first}"\n\n[models.openai-c]\nserver = "openai"\nmodel = "${third}"\nefforts = ["low", "high"]\n`);
+  ({ app, url } = await startApp());
+  await page.goto(url);
+  await go("#/settings");
+  await page.waitForSelector("[data-model='openai-a']", { timeout: 15000 });
+  const a = expect(first);
+  await shows("[data-model='openai-a']", a.line);
+  await page.click("[data-model='openai-a'] button:text-is('Edit')");
+  await page.waitForSelector("#model-form");
+  assert.strictEqual(await page.getAttribute("#efforts-published", "aria-pressed"), "true", "the published efforts are not the model's");
+  await shows("#model-form", `Offered as ${a.m.efforts.map(label).join(", ")}, as its provider publishes them`);
+  assert.strictEqual(await page.getAttribute("#model-num_ctx", "placeholder"), n(a.m.context));
+  assert.strictEqual(await page.getAttribute("#model-max_output", "placeholder"), n(a.cap));
+  assert.strictEqual(await page.getAttribute("#model-price_input", "placeholder"), String(a.m.price.input));
+  await shows("#model-window", `Of ${n(a.m.context)} tokens, each reply may take ${n(a.cap)}; the conversation is summarized or trimmed past ${n(Math.floor(((a.m.context - a.cap) * 3) / 4))}`);
+  await page.locator("#model-form").screenshot({ path: `${out}/models-published-form.png` });
+  await page.click("#model-form >> text=Cancel");
+  // Efforts typed by hand before nodwyn knew the provider's are kept, and the
+  // form says what the provider publishes; As published follows it, and the
+  // entry no longer lists its own.
+  await page.click("[data-model='openai-c'] button:text-is('Edit')");
+  await page.waitForSelector("#model-form");
+  assert.strictEqual(await page.getAttribute("#efforts-published", "aria-pressed"), "false");
+  await shows("#efforts-published-differ", `Its provider publishes ${published[third].efforts.map(label).join(", ")}`);
+  await page.click("#efforts-published");
+  await page.click("#model-save");
+  await page.waitForSelector("#model-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-c", server: "openai", model: third, efforts: [], settings: {} });
+  assert.ok(!(config().split("[models.openai-c]")[1] || "").split("\n[")[0].includes("efforts"), "the typed efforts stayed:\n" + config());
+  // A model added on the provider takes its published efforts once its id is
+  // given, and saves none of its own: the provider's apply.
+  const b = expect(second);
+  await page.click("#add-model");
+  await page.selectOption("#model-provider", "openai");
+  await page.fill("#model-id", second);
+  await page.press("#model-id", "Tab");
+  await page.waitForSelector("#efforts-published[aria-pressed=true]", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("models.published").at(-1), { server: "openai", model: second });
+  await shows("#model-form", `Offered as ${b.m.efforts.map(label).join(", ")}, as its provider publishes them`);
+  await page.click("#model-save");
+  await page.waitForSelector(`[data-model='openai-${second.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}']`, { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { server: "openai", model: second, efforts: [] });
+  const added = (config().split(`model = "${second}"`)[1] || "").split("\n[")[0];
+  assert.ok(!/efforts|num_ctx|max_output|price_/.test(added), "the published settings were written to the entry:\n" + config());
+  await shows(`[data-model='openai-${second.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}']`, b.line);
+  // The New task window offers its published efforts.
+  await go("#/");
+  await page.waitForSelector("#new-task-model-model");
+  await page.selectOption("#new-task-model-model", `openai-${second.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`);
+  assert.deepStrictEqual(
+    (await page.$$eval("#new-task-model-effort option", (o) => o.map((x) => x.value))).filter(Boolean),
+    b.m.efforts,
+    "the New task window does not offer the published efforts",
+  );
+  step("a model OpenAI publishes has its context, reply cap, efforts and prices without any being typed, and nothing was sent to OpenAI");
 
   // ---------- the phone: nothing sideways ----------
   await page.setViewportSize({ width: 390, height: 844 });

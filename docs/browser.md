@@ -68,13 +68,14 @@ you wrote it. Its sections:
   choose* is the list the pickers offer, each with the efforts it takes and
   a line saying its context length and prices; **Add a model** and **Edit**
   take a provider, a model id (suggested from what the provider lists, asked
-  with its key), its efforts and its own settings (ADR 41, amended
-  2026-10-05): its context length, which OpenAI and Cerebras do not say, its
-  reply cap, which comes out of it, with a line under both saying what the
-  conversation is left with as they are typed, its prices, which price a
-  request when the provider reports no cost, and whether it takes images (yes
-  unless you say no); under *More settings* its temperature and seed, and for
-  a chat-completions model which
+  with its key), its efforts (*As published*, the provider's, once the id is
+  given and `models.published` describes it) and its own settings (ADR 41,
+  amended 2026-10-05), each with what the provider publishes as its
+  placeholder: its context length, its reply cap, which comes out of it, with
+  a line under both saying what the conversation is left with as they are
+  typed, its prices, which price a request when the provider reports no cost,
+  and whether it takes images (yes unless you say no); under *More settings*
+  its temperature and seed, and for a chat-completions model which
   field caps its reply, how its requests name their session and whether they
   ask the provider to cache the prompt, which a Claude model needs (the
   manual, "Keeping the cache warm"), or for Ollama how long it stays loaded.

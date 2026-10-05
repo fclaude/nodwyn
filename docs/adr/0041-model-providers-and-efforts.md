@@ -236,3 +236,53 @@ OpenAI's and Cerebras' models without the person saying it. OpenAI's model
 object, asked with the key, is still `id`, `object`, `created`, `owned_by`
 and `shutdown_date`, so their models are sized and priced only from their
 entries until then.
+
+## Amendment 2026-10-05: what providers publish fills what an entry leaves unset
+
+Even with the key sent, OpenAI's model object is `id`, `object`, `created`,
+`owned_by` and `shutdown_date`, so gpt-6.1-sol at `api.openai.com` still kept
+a window of no particular size unless someone typed 1,050,000, still capped
+replies at 16384 for a model that writes 128,000 (OpenAI recommends room for
+at least 25,000 when reasoning), offered efforts only if someone typed them
+(and the ones typed for gpt-6-luna lacked OpenAI's `none`), and priced
+nothing. Every agent that works with these providers has the same gap; they
+fill it the same way: a community catalogue shipped with the program, its own
+settings winning (LiteLLM's `model_prices_and_context_window.json`, which
+Aider uses; models.dev, which opencode uses).
+
+- **The catalogue is models.dev's**, read into `internal/catalogue` as a
+  snapshot built into nodwyn: per provider, per model id, the context, the
+  longest reply, the `effort` reasoning options (a toggle or a token budget is
+  not a word a request names), whether it reads images, and the prices per
+  million tokens, with cache reads, cache writes and a context tier.
+  `go generate ./internal/catalogue` regenerates it (`gen`, which also reads
+  a saved copy); nothing in the build or the tests asks models.dev, and a
+  regeneration's diff shows each provider's changes, one model to a line.
+- **A model is found by its server's host and its exact id.** The hosts are
+  a table in nodwyn's source (`catalogue.Providers`: OpenAI, OpenRouter,
+  Cerebras, Groq, DeepSeek, Mistral, xAI, Together, Fireworks, DeepInfra,
+  Moonshot, Z.ai, Ollama Cloud); models.dev never supplies an address, so the
+  catalogue describes models and decides nothing about where a request goes.
+  Nothing is inferred from a model's name: an id the provider does not list
+  is not described.
+- **An entry's settings win; the catalogue fills what it leaves unset**
+  (`Config.WithPublished`, `Config.Efforts`): the context length (asked of
+  the catalogue before a server's model list), the reply cap (the published
+  longest reply, at most a quarter of the context, so a model whose limit is
+  its whole context still leaves the conversation most of it), the efforts,
+  that a model reading no images takes none, and the prices, cache writes and
+  a prompt past a tier priced at their own rates (`llm.Rates.CacheWrite`,
+  `Tiers`). Prices typed in an entry still price both as input. An effort is
+  checked against the published efforts when the entry lists none.
+- **Settings say where a number comes from.** Each choice in `settings.read`
+  carries `published`; `models.published` answers for a model not yet in the
+  list. The model form shows published values as placeholders, offers *As
+  published* for its efforts (the entry then lists none, so the provider's
+  apply as the catalogue changes), says when typed efforts differ from the
+  published ones, and the row says *as published*. The effort labels read
+  `xhigh` as *Extra high*.
+
+Not built: refreshing the catalogue while nodwyn runs (a daily ETag'd fetch of
+models.dev into the data directory, taking only numbers and models for the
+providers above), and listing the catalogue's providers in Settings before
+any key is added for them.

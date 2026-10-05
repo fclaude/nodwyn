@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/fclaude/nodwyn/internal/catalogue"
 
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/llm"
@@ -93,6 +94,10 @@ type Config struct {
 	// address and a key each: [servers.NAME], so the models one provider
 	// offers share its address and its key.
 	Servers map[string]Server `toml:"servers"`
+	// Catalogue is what providers publish about their models, read for what
+	// a model's entry leaves unset (Published); nil is the snapshot nodwyn
+	// was built with. It is never read from or written to config.toml.
+	Catalogue *catalogue.Catalogue `toml:"-"`
 }
 
 // MCP is how nodwyn runs contained MCP servers (ADR 23 W3b). The servers
@@ -925,7 +930,53 @@ func (c Config) Efforts(m Model) []string {
 			return other.Efforts
 		}
 	}
+	if p, ok := c.Published(m); ok {
+		return p.Efforts
+	}
 	return nil
+}
+
+// Published is what m's provider publishes about it (internal/catalogue),
+// found by the host of its address and its id; false for a model the
+// catalogue does not describe, an Ollama one included.
+func (c Config) Published(m Model) (catalogue.Model, bool) {
+	m = c.Resolve(m)
+	if m.Provider != "openai" {
+		return catalogue.Model{}, false
+	}
+	cat := c.Catalogue
+	if cat == nil {
+		cat = catalogue.Default()
+	}
+	return cat.Lookup(m.URL, m.Model)
+}
+
+// WithPublished is m with what its entry leaves unset and its provider
+// publishes filled in (ADR 41, amended 2026-10-05): its context length, its
+// reply cap, which is the published limit on a reply but no more than a
+// quarter of the context, so the conversation keeps most of it, and that it
+// takes no images when it reads none. What the entry sets stands. Its
+// efforts and prices are read where they are used (Efforts, and the rates a
+// session prices its requests at).
+func (c Config) WithPublished(m Model) Model {
+	p, ok := c.Published(m)
+	if !ok {
+		return m
+	}
+	if m.NumCtx == 0 {
+		m.NumCtx = p.Context
+	}
+	if m.MaxOutput == 0 && p.Output > 0 {
+		m.MaxOutput = p.Output
+		if m.NumCtx > 0 {
+			m.MaxOutput = min(p.Output, m.NumCtx/4)
+		}
+	}
+	if m.Vision == nil && !p.Images {
+		no := false
+		m.Vision = &no
+	}
+	return m
 }
 
 // WindowNumCtx is the context length an ollama model whose entry says

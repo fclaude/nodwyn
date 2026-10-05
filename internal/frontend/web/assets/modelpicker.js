@@ -16,7 +16,9 @@ export const choicesOf = (desk) => desk.settings?.choices || [];
 export const choiceNamed = (desk, name) => choicesOf(desk).find((c) => c.name === name) || null;
 export const statusOf = (desk, name) => desk.models?.find((m) => m.name === name) || null;
 
-export const effortLabel = (effort) => (effort ? effort[0].toUpperCase() + effort.slice(1) : "Provider default");
+// effortLabel is how an effort word reads: OpenAI's xhigh as "Extra high",
+// any other word capitalized.
+export const effortLabel = (effort) => (effort === "xhigh" ? "Extra high" : effort ? effort[0].toUpperCase() + effort.slice(1) : "Provider default");
 
 // defaultSelection is the model and effort a new task starts on: the default
 // model of Settings, with its default effort.

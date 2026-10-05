@@ -13,8 +13,9 @@ import (
 )
 
 // sizeWindow sizes the window for the control model's context less its
-// reply cap (config.Window.Sized, ReplyCap): its num_ctx, or, when that is
-// unset, what an OpenAI-compatible server's model list says, which then
+// reply cap (config.Window.Sized, ReplyCap): its num_ctx or what its
+// provider publishes (endpoint fills both in), or, when neither says, what
+// an OpenAI-compatible server's model list says, which then
 // fills num_ctx so the session's recipe and (model-info) report it. It
 // returns the control model so filled, its reply cap set when it is not the
 // window's default, the window, its ceiling, and a note saying how the

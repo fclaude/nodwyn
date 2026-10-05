@@ -149,6 +149,7 @@ var methodTable = map[string]handler{
 	"session.notes.write":      (*server).notesWrite,
 	"models.status":            (*server).modelsStatus,
 	"models.offered":           (*server).modelsOffered,
+	"models.published":         (*server).modelsPublished,
 	"keychain.status":          (*server).keychain,
 	"keychain.create":          (*server).keychain,
 	"keychain.unlock":          (*server).keychain,

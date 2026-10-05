@@ -119,9 +119,10 @@ nor what the conversation log records.
 
 A reasoning model takes an effort, how hard it is asked to think. A provider
 decides which words it accepts, and may refuse a request that carries one it
-does not know, so a model takes an effort only if its entry says which:
-\code{efforts = ["low", "medium", "high"]}, and \code{effort = "medium"} for
-the one a conversation starts with. Nothing is inferred from a model's name.
+does not know, so a model takes the efforts its entry lists,
+\code{efforts = ["low", "medium", "high"]}, with \code{effort = "medium"} for
+the one a conversation starts with, else those its provider publishes (below).
+Nothing is inferred from a model's name.
 The word goes out as \code{reasoning\_effort} to a chat-completions server and
 as \code{think} to Ollama (\code{["off", "on"]} for a model that thinks or does
 not), and the log records it on each request (\adr{41}).
@@ -141,9 +142,19 @@ page says so; an unchanged running response shows no change notice.
 A task whose model has gone from the list asks nothing until you
 choose one for it.
 
+OpenAI's and Cerebras' APIs say nothing of a model's context, its longest
+reply, its efforts or its price, so nodwyn carries a catalogue of what
+providers publish, a snapshot of models.dev built into it
+(\code{go generate ./internal/catalogue} renews it). A model on a provider it
+describes, found by its server's host and its exact id, takes from it what its
+entry leaves unset: gpt-6.1-sol at \code{api.openai.com} holds 1,050,000
+tokens, replies in up to 128,000, takes low to max and is priced, with nothing
+typed. The entry always wins, and Settings shows the published values as its
+placeholders (\adr{41}, amended 2026-10-05).
+
 A model may also set \code{num\_ctx} (sent to Ollama; for the model a
-conversation is on it also sizes the window, and OpenAI's and Cerebras' model
-lists do not say it, where OpenRouter's does) and \code{keep\_alive} (Ollama),
+conversation is on it also sizes the window, less the reply cap) and
+\code{keep\_alive} (Ollama),
 \code{max\_output} and \code{output\_field} (servers that need them),
 \code{temperature} and \code{seed}, \code{cache\_control} (\code{"ephemeral"}
 or \code{"1h"}: a Claude model caches its prompt only when the request asks, and

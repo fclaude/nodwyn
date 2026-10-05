@@ -2714,6 +2714,9 @@
           "$ref": "#/$defs/request.models.offered"
         },
         {
+          "$ref": "#/$defs/request.models.published"
+        },
+        {
           "$ref": "#/$defs/request.models.status"
         },
         {
@@ -3500,6 +3503,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.offeredParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.models.published": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "models.published"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.publishedParams"
             }
           ],
           "unevaluatedProperties": false
@@ -5102,6 +5136,16 @@
         "null"
       ]
     },
+    "result.models.published": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/rpc.publishedModel"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "result.models.status": {
       "items": {
         "$ref": "#/$defs/rpc.modelStatus"
@@ -6231,6 +6275,16 @@
         "provider": {
           "type": "string"
         },
+        "published": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/rpc.publishedModel"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "server": {
           "type": "string"
         },
@@ -6658,6 +6712,90 @@
       "required": [
         "provider",
         "url"
+      ],
+      "type": "object"
+    },
+    "rpc.publishedModel": {
+      "properties": {
+        "efforts": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "images": {
+          "type": "boolean"
+        },
+        "max_output": {
+          "type": "integer"
+        },
+        "num_ctx": {
+          "type": "integer"
+        },
+        "price_cache_write": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "price_cached_input": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "price_input": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "price_output": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tier_above": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "images"
+      ],
+      "type": "object"
+    },
+    "rpc.publishedParams": {
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "model"
       ],
       "type": "object"
     },

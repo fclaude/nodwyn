@@ -31,7 +31,11 @@ const dialects = [["", "Standard (reasoning_content)"], ["cerebras", "Cerebras (
 
 // The words of effort a model may take. A provider decides which it accepts,
 // so the sets here are only shortcuts; anything else is typed.
+// effortSets are the choices of a model's efforts. "As published" is offered
+// when the catalogue describes the model: its efforts are then the
+// provider's, kept current with nodwyn, and none are written to its entry.
 const effortSets = [
+  { id: "published", label: "As published", efforts: null },
   { id: "none", label: "Not configurable", efforts: [] },
   { id: "lmh", label: "Low · Medium · High", efforts: ["low", "medium", "high"] },
   { id: "mlmh", label: "Minimal · Low · Medium · High", efforts: ["minimal", "low", "medium", "high"] },
@@ -311,7 +315,7 @@ function modelRows(ctx, redraw) {
           { class: "main" },
           h("strong", {}, c.model, c.default ? h("span", { class: "badge plain default-badge" }, "default") : null),
           h("span", {}, `${c.server || c.host} · ${c.efforts?.length ? `effort: ${c.efforts.map(effortLabel).join(" · ")}${c.effort ? `, starts at ${effortLabel(c.effort)}` : ""}` : "no effort setting"}`),
-          h("span", { class: "model-settings" }, settingsLine(c.settings, c.provider)),
+          h("span", { class: "model-settings" }, settingsLine(c.settings, c.provider, c.published)),
           status && status.state !== "ready" ? h("span", { class: "warn-text" }, status.detail || state.words[status.state]) : null,
         ),
         h("div", { class: "end" }, status ? h("span", { class: "state-word" }, state.words[status.state] || status.state) : h("span", { class: "state-word" }, "checking")),
@@ -332,18 +336,31 @@ function modelRows(ctx, redraw) {
     choices.length ? h("div", { class: "models" }, list) : h("p", { class: "hint" }, "No model yet."),
     ui.model ? modelForm(ctx, redraw) : null,
     editable && !ui.model ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "add-model", disabled: !(desk.settings?.servers || []).some((p) => !p.inline), title: (desk.settings?.servers || []).some((p) => !p.inline) ? "" : "Add a provider first", onclick: () => openModel(null, redraw) }, icon("plus", 14), "Add a model")) : null,
-    h("p", { class: "hint" }, "These are the models the New task window and a conversation offer. Each has its own settings: its efforts, its context length, its prices and whether it takes images. A model takes an effort setting only if you say which: nodwyn never guesses it from the model's name or the provider, and sends none to a model that declares none."),
+    h("p", { class: "hint" }, "These are the models the New task window and a conversation offer. Each has its own settings: its efforts, its context length, its reply cap, its prices and whether it takes images. What a model's own settings leave empty is what its provider publishes, as models.dev collects it, for the providers nodwyn knows (OpenAI, OpenRouter, Cerebras and others); nothing is guessed from a model's name, and a model nothing is known of takes no effort setting unless you say which."),
   );
 }
 
-// settingsLine says briefly what a model's own settings are: how large its
-// context is, what it costs and whether it takes images, as far as said.
-function settingsLine(s = {}, kind) {
+// settingsLine says briefly what a model's settings are: how large its
+// context is, how long a reply may be, what it costs and whether it takes
+// images, its own where it has them, else what its provider publishes
+// (published), as far as either says.
+function settingsLine(s = {}, kind, published = null) {
+  const p = published || {};
+  const n = (x) => x.toLocaleString("en-US");
   const parts = [];
-  parts.push(s.num_ctx ? `context ${s.num_ctx.toLocaleString("en-US")} tokens` : kind === "ollama" ? "context the window's size" : "context as the provider says");
-  if (s.max_output) parts.push(`replies up to ${s.max_output.toLocaleString("en-US")} tokens`);
-  parts.push(s.price_input !== undefined && s.price_output !== undefined ? `$${s.price_input} in, $${s.price_output} out per million tokens` : "no prices");
-  if (s.vision === false) parts.push("takes no images");
+  let fromCatalogue = false;
+  const num_ctx = s.num_ctx || p.num_ctx;
+  const max_output = s.max_output || p.max_output;
+  fromCatalogue ||= (!s.num_ctx && !!p.num_ctx) || (!s.max_output && !!p.max_output);
+  parts.push(num_ctx ? `context ${n(num_ctx)} tokens` : kind === "ollama" ? "context the window's size" : "context as the provider says");
+  if (max_output) parts.push(`replies up to ${n(max_output)} tokens`);
+  if (s.price_input !== undefined && s.price_output !== undefined) parts.push(`$${s.price_input} in, $${s.price_output} out per million tokens`);
+  else if (p.price_input !== undefined && p.price_output !== undefined) {
+    parts.push(`$${p.price_input} in, $${p.price_output} out per million tokens${p.tier_above ? ` (more past ${n(p.tier_above)})` : ""}`);
+    fromCatalogue = true;
+  } else parts.push("no prices");
+  if (s.vision === false || (s.vision === undefined && published && !p.images)) parts.push("takes no images");
+  if (fromCatalogue) parts.push("as published");
   return parts.join(" · ");
 }
 
@@ -416,8 +433,13 @@ function windowLine(f, kind, desk) {
   const reserve = Number(v["window.output_reserve"]?.value) || 16384;
   const high = Number(v["window.high_water"]?.value) || 61440;
   const fixed = !!(v["window.high_water"]?.set || v["window.low_water"]?.set);
-  const own = tokens(f.settings.max_output);
-  let context = tokens(f.settings.num_ctx);
+  // What the form leaves empty is what the provider publishes, as a session
+  // takes it (config.WithPublished): its context, and its reply limit at
+  // most a quarter of the context.
+  const published = f.published || {};
+  let context = tokens(f.settings.num_ctx) || published.num_ctx || 0;
+  let own = tokens(f.settings.max_output);
+  if (!own && published.max_output) own = published.num_ctx && context !== published.num_ctx ? Math.min(published.max_output, Math.floor(context / 4)) : published.max_output;
   // A context too small for the window and the default reply gives the
   // reply a quarter of it at most.
   const cap = own || (context && context < high + reserve ? Math.min(reserve, Math.floor(context / 4)) : reserve);
@@ -457,20 +479,27 @@ function settingsFields(f, kind, redraw, desk) {
     );
   const openai = kind !== "ollama";
   const reserve = Number(desk.settings?.values?.["window.output_reserve"]?.value) || 16384;
+  const published = f.published || {};
+  const count = (x) => (x ? x.toLocaleString("en-US") : "");
+  const price = (x) => (x === undefined || x === null ? "" : String(x));
   return [
     field(
       "model-num_ctx",
       "Context length",
-      box("num_ctx", "Context length", { placeholder: openai ? "the provider's" : "the window's", suffix: "tokens", width: "", sizes: true }),
-      openai
-        ? "How many tokens the model holds at once, its replies included. Empty asks the provider's model list: OpenRouter's says, OpenAI's and Cerebras' don't, so give it here for them."
-        : "How many tokens the model holds at once, its replies included. Empty asks Ollama for the window and a reply.",
+      box("num_ctx", "Context length", { placeholder: count(published.num_ctx) || (openai ? "the provider's" : "the window's"), suffix: "tokens", width: "", sizes: true }),
+      published.num_ctx
+        ? `How many tokens the model holds at once, its replies included. Empty is the ${count(published.num_ctx)} its provider publishes.`
+        : openai
+          ? "How many tokens the model holds at once, its replies included. Empty asks the provider's model list, which OpenRouter's answers and OpenAI's and Cerebras' don't."
+          : "How many tokens the model holds at once, its replies included. Empty asks Ollama for the window and a reply.",
     ),
     field(
       "model-max_output",
       "Reply cap",
-      box("max_output", "Reply cap", { placeholder: reserve.toLocaleString("en-US"), suffix: "tokens", width: "", sizes: true }),
-      `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${reserve.toLocaleString("en-US")} (Settings › Context window), or a quarter of a small context. A reasoning model at a high effort may need more.`,
+      box("max_output", "Reply cap", { placeholder: count(published.max_output) || count(reserve), suffix: "tokens", width: "", sizes: true }),
+      published.max_output
+        ? `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${count(published.max_output)}: the longest reply its provider publishes, at most a quarter of the context.`
+        : `The most one reply may take, thinking included. It comes out of the context length, and the conversation gets the rest. Empty is ${count(reserve)} (Settings › Context window), or a quarter of a small context. A reasoning model at a high effort may need more.`,
     ),
     summary,
     h(
@@ -480,14 +509,20 @@ function settingsFields(f, kind, redraw, desk) {
       h(
         "div",
         { class: "row-actions" },
-        box("price_input", "Price of input", { prefix: "$", placeholder: "unknown" }),
+        box("price_input", "Price of input", { prefix: "$", placeholder: price(published.price_input) || "unknown" }),
         h("span", { class: "muted" }, "input,"),
-        box("price_cached_input", "Price of cached input", { prefix: "$", placeholder: "as input" }),
+        box("price_cached_input", "Price of cached input", { prefix: "$", placeholder: price(published.price_cached_input) || "as input" }),
         h("span", { class: "muted" }, "cached input,"),
-        box("price_output", "Price of output", { prefix: "$", placeholder: "unknown" }),
+        box("price_output", "Price of output", { prefix: "$", placeholder: price(published.price_output) || "unknown" }),
         h("span", { class: "muted" }, "output"),
       ),
-      h("p", { class: "hint" }, "US dollars per million tokens, to estimate what a request cost when the provider doesn't report it: OpenRouter reports it, OpenAI and Cerebras don't. They feed the spend limit; nothing else is enforced with them."),
+      h(
+        "p",
+        { class: "hint" },
+        published.price_input !== undefined
+          ? `US dollars per million tokens, to estimate what a request cost when the provider doesn't report it. Empty is what it publishes${published.price_cache_write !== undefined ? `, writing to its cache at $${published.price_cache_write}` : ""}${published.tier_above ? `, and more for a prompt past ${count(published.tier_above)} tokens` : ""}. They feed the spend limit; nothing else is enforced with them.`
+          : "US dollars per million tokens, to estimate what a request cost when the provider doesn't report it: OpenRouter reports it, OpenAI and Cerebras don't. They feed the spend limit; nothing else is enforced with them.",
+      ),
     ),
     openai ? field("model-vision-true", "Takes images", chips("vision", "Takes images", [[true, "Yes"], [false, "No"]]), "Whether an attached image may be sent to this model. A chat-completions server doesn't say, so a model is taken to read images unless you say No: one that can't fails that request, and what you wrote is kept.") : null,
     h(
@@ -523,20 +558,46 @@ function setOf(efforts) {
 }
 
 function openModel(c, redraw) {
+  // A model whose efforts are those its provider publishes is shown as such,
+  // whether its entry repeats them or says none.
+  const same = (a = [], b = []) => a.length === b.length && a.every((e, i) => e === b[i]);
+  const published = c?.published || null;
   ui.model = c
-    ? { mode: "edit", name: c.name, server: c.server, model: c.model, set: setOf(c.efforts || []), custom: (c.efforts || []).join(", "), effort: c.effort || "", isDefault: !!c.default, settings: settingsForm(c.settings), more: false, error: "" }
-    : { mode: "add", name: "", server: "", model: "", set: "none", custom: "", effort: "", isDefault: false, settings: settingsForm(), more: false, error: "" };
+    ? { mode: "edit", name: c.name, server: c.server, model: c.model, set: published?.efforts?.length && same(c.efforts, published.efforts) ? "published" : setOf(c.efforts || []), custom: (c.efforts || []).join(", "), effort: c.effort || "", isDefault: !!c.default, settings: settingsForm(c.settings), published, more: false, error: "" }
+    : { mode: "add", name: "", server: "", model: "", set: "none", custom: "", effort: "", isDefault: false, settings: settingsForm(), published: null, more: false, error: "" };
   redraw();
 }
 
-// effortsOf is the efforts a model form declares.
+// effortsOf is the efforts a model form offers: as published, the provider's.
 function effortsOf(f) {
+  if (f.set === "published") return f.published?.efforts || [];
   const set = effortSets.find((s) => s.id === f.set);
   if (set?.efforts) return set.efforts;
   return f.custom
     .split(/[\s,]+/)
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+}
+
+// askPublished asks what the provider publishes about the model the form
+// names, for its placeholders and its efforts; a form adding a model whose
+// efforts nobody chose yet takes the published ones.
+async function askPublished(ctx, f, redraw) {
+  const { conn } = ctx;
+  const model = f.model.trim();
+  const key = `${f.server}\u0000${model}`;
+  if (!f.server || !model || f.publishedFor === key || !conn.has("models.published")) return;
+  f.publishedFor = key;
+  let found = null;
+  try {
+    found = await conn.call("models.published", { server: f.server, model });
+  } catch {
+    found = null;
+  }
+  if (ui.model !== f || f.publishedFor !== key) return;
+  f.published = found;
+  if (!f.setChosen) f.set = found?.efforts?.length ? "published" : f.set === "published" ? "none" : f.set;
+  redraw();
 }
 
 function modelForm(ctx, redraw) {
@@ -546,7 +607,7 @@ function modelForm(ctx, redraw) {
   const providers = (desk.settings?.servers || []).filter((p) => !p.inline);
   if (!f.server) f.server = providers[0]?.name || "";
   const efforts = effortsOf(f);
-  const server = h("select", { class: "input", id: "model-provider", disabled: !adding, onchange: () => ((f.server = server.value), askOffered(ctx, f.server, redraw), redraw()) }, providers.map((p) => h("option", { value: p.name }, `${p.name} · ${p.host}`)));
+  const server = h("select", { class: "input", id: "model-provider", disabled: !adding, onchange: () => ((f.server = server.value), askOffered(ctx, f.server, redraw), askPublished(ctx, f, redraw), redraw()) }, providers.map((p) => h("option", { value: p.name }, `${p.name} · ${p.host}`)));
   server.value = f.server;
   const offered = ui.offered.get(f.server);
   // The buttons follow what is typed without a redraw of the form under it.
@@ -556,7 +617,7 @@ function modelForm(ctx, redraw) {
     save.disabled = f.saving || !f.model.trim() || !f.server;
     testButton.disabled = !f.model.trim() || !f.server || !!ui.results.get("form")?.pending || !conn.has("models.test");
   };
-  const id = h("input", { class: "input", id: "model-id", list: "model-id-options", spellcheck: false, autocomplete: "off", required: true, disabled: !adding, oninput: () => ((f.model = id.value), sync()), onfocus: () => askOffered(ctx, f.server, redraw) });
+  const id = h("input", { class: "input", id: "model-id", list: "model-id-options", spellcheck: false, autocomplete: "off", required: true, disabled: !adding, oninput: () => ((f.model = id.value), sync()), onchange: () => askPublished(ctx, f, redraw), onfocus: () => askOffered(ctx, f.server, redraw) });
   id.value = f.model;
   const options = h("datalist", { id: "model-id-options" }, Array.isArray(offered) ? offered.map((n) => h("option", { value: n })) : null);
   const custom = h("input", { class: "input", id: "model-efforts", spellcheck: false, autocomplete: "off", placeholder: "for example low, medium, high", oninput: () => (f.custom = custom.value) });
@@ -577,7 +638,8 @@ function modelForm(ctx, redraw) {
         f.saving = true;
         redraw();
         try {
-          const params = { server: f.server, model: f.model.trim(), efforts };
+          // As published, the entry declares none, so the provider's apply.
+          const params = { server: f.server, model: f.model.trim(), efforts: f.set === "published" ? [] : efforts };
           // The form holds all of a model's settings, so a change sends them
           // all; a model added with none typed sends none, which keeps those of
           // a model the list has already.
@@ -606,9 +668,15 @@ function modelForm(ctx, redraw) {
       "div",
       { class: "field" },
       h("label", {}, "Efforts it takes"),
-      h("div", { class: "row-actions", role: "group", "aria-label": "Efforts it takes" }, effortSets.map((s) => h("button", { type: "button", class: "chip", id: `efforts-${s.id}`, "aria-pressed": String(f.set === s.id), onclick: () => ((f.set = s.id), redraw()) }, s.label))),
+      h(
+        "div",
+        { class: "row-actions", role: "group", "aria-label": "Efforts it takes" },
+        effortSets.filter((s) => s.id !== "published" || f.published?.efforts?.length).map((s) => h("button", { type: "button", class: "chip", id: `efforts-${s.id}`, "aria-pressed": String(f.set === s.id), onclick: () => ((f.set = s.id), (f.setChosen = true), redraw()) }, s.label)),
+      ),
       f.set === "custom" ? custom : null,
-      h("p", { class: "hint" }, efforts.length ? `Offered as ${efforts.map(effortLabel).join(", ")}. Sent as the provider's own words: reasoning_effort to a chat-completions server, think to Ollama.` : "No effort setting is sent to this model, and none is offered."),
+      h("p", { class: "hint" }, efforts.length ? `Offered as ${efforts.map(effortLabel).join(", ")}${f.set === "published" ? ", as its provider publishes them" : ""}. Sent as the provider's own words: reasoning_effort to a chat-completions server, think to Ollama.` : "No effort setting is sent to this model, and none is offered."),
+      // Efforts typed before nodwyn knew the provider's may have gone stale.
+      f.set !== "published" && f.published?.efforts?.length ? h("p", { class: "hint", id: "efforts-published-differ" }, `Its provider publishes ${f.published.efforts.map(effortLabel).join(", ")}: As published follows them.`) : null,
     ),
     efforts.length && !f.isDefault ? field("model-effort", "Starts at", effort, "The effort a task asks of this model unless one is chosen.") : null,
     efforts.length && f.isDefault ? h("p", { class: "hint" }, "The effort a new task starts at is the default's, above.") : null,

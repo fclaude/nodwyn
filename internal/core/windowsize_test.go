@@ -2,11 +2,14 @@ package core
 
 import (
 	"bytes"
+	"math"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/catalogue"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -151,5 +154,99 @@ model = "small"
 	}
 	if n := replayAll(t, logb); n != 1 {
 		t.Fatalf("replayed %d requests", n)
+	}
+}
+
+// A model whose entry says nothing of it has what its provider publishes
+// (ADR 41, amended 2026-10-05): the conversation is sized for the published
+// context less the published reply limit, its requests carry that limit, it
+// offers the published efforts, and its replies are priced at the published
+// prices, a cache write and a long prompt's tier included. Session
+// 20261005T042752Z-871dfe24, gpt-6.1-sol at api.openai.com, kept the default
+// window, capped replies at 16384 and priced nothing.
+func TestAModelHasWhatItsProviderPublishes(t *testing.T) {
+	t.Parallel()
+	srv := chat.New("", chat.Model{ID: "sol", Efforts: []string{"low", "medium", "high", "xhigh", "max"}, Caches: true})
+	t.Cleanup(srv.Close)
+	cfg, err := config.Parse([]byte(`
+[servers.openai]
+provider = "openai"
+url = "` + srv.V1() + `"
+
+[control]
+server = "openai"
+model = "sol"
+cache_control = "ephemeral"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, write, tierRead, tierWrite := 0.1, 2.5, 0.2, 5.0
+	cfg.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"127.0.0.1": {"sol": {
+		Context: 1050000, Output: 128000, Efforts: []string{"low", "medium", "high", "xhigh", "max"}, Images: true,
+		Price: &catalogue.Price{Input: 2, Output: 10, CacheRead: &read, CacheWrite: &write,
+			Tiers: []catalogue.Tier{{Above: 272000, Input: 4, Output: 15, CacheRead: &tierRead, CacheWrite: &tierWrite}}},
+	}}})
+	logb := &bytes.Buffer{}
+	s, err := New(Options{Config: cfg, Repo: t.TempDir(), NoConfirm: true, LogWriter: logb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	r := &rig{t: t, s: s, logb: logb}
+	for src, want := range map[string]int{
+		"(assoc-ref (model-info) 'num-ctx)":       1050000,
+		"(assoc-ref (model-info) 'max-output)":    128000,
+		"(assoc-ref (window-limits) 'high-water)": (1050000 - 128000) * 3 / 4,
+	} {
+		if got := r.evalInt(src); got != want {
+			t.Errorf("%s = %d, want %d", src, got, want)
+		}
+	}
+	if !strings.Contains(logb.String(), "sized for sol's context of 1050000 tokens less its reply cap of 128000") {
+		t.Errorf("the log does not say how the window was sized:\n%.2000s", logb.String())
+	}
+	if got := s.Model().Efforts; !slices.Equal(got, []string{"low", "medium", "high", "xhigh", "max"}) {
+		t.Errorf("efforts offered: %v", got)
+	}
+	if _, err := s.SetModel(ModelChoice{Name: "control", Effort: "xhigh"}); err != nil {
+		t.Fatalf("a published effort: %v", err)
+	}
+	if e := r.turn(strings.Repeat("a long enough prompt to be cached ", 200)); e != "" {
+		t.Fatal(e)
+	}
+	if got := srv.Requests(); len(got) != 1 || got[0].Effort != "xhigh" {
+		t.Fatalf("the provider saw %+v", got)
+	}
+	var priced int
+	for _, ev := range s.EventsSoFar() {
+		switch ev.Kind {
+		case log.KindLLMReq:
+			var req log.LLMReq
+			if ev.Decode(&req) == nil && req.MaxOutput != 128000 {
+				t.Errorf("a request capped at %d, want the published 128000", req.MaxOutput)
+			}
+		case log.KindLLMResp:
+			var resp log.LLMResp
+			if err := ev.Decode(&resp); err != nil {
+				t.Fatal(err)
+			}
+			u := resp.Usage
+			cached := 0
+			if u.CachedTokens != nil {
+				cached = *u.CachedTokens
+			}
+			if u.CacheWriteTokens == 0 {
+				t.Fatalf("the fake wrote nothing to its cache: %+v", u)
+			}
+			want := (float64(u.PromptTokens-cached-u.CacheWriteTokens)*2 + float64(cached)*0.1 + float64(u.CacheWriteTokens)*2.5 + float64(u.OutputTokens)*10) / 1e6
+			if u.Cost == nil || !u.CostEstimated || math.Abs(*u.Cost-want) > 1e-12 {
+				t.Fatalf("a reply's cost: %v (estimated %v), want %v at the published prices", u.Cost, u.CostEstimated, want)
+			}
+			priced++
+		}
+	}
+	if priced != 1 {
+		t.Fatalf("%d replies priced", priced)
 	}
 }

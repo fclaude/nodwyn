@@ -424,6 +424,7 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `models.status` | `{}` or `{"fresh":true}` | Each configured model: `name`, `server?`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`, `needs_key`, `locked`, `unbound`), `detail` (what to do about a state that is not `ready`); `fresh` asks every server now instead of taking what a check in the last 15 seconds found |
 | `models.test` | `{"name"}`, or `{"server","model"}`, and `{"effort"}` | `{ok, state, detail, model, effort?, cache_control?, status?, ms}` for one short request to the model, with that effort, through the same binding check a task's request passes: `ok`, `rejected`, `no_model`, `refused`, `limited`, `unreachable`, `error`, or the key states above before anything is sent |
 | `models.offered` | `{"server"}` | The model ids a configured server (`[servers.NAME]`) lists, sorted; an error saying why when it lists none |
+| `models.published` | `{"server", "model"}` | What the model's provider publishes about it (`published`, below), for a form adding it; `null` when the catalogue does not describe it |
 | `keychain.status` | `{}` | `{exists, unlocked, credentials, no_passphrase?}`; `no_passphrase` is set when the open keychain has none |
 | `keychain.create` | `{"passphrase":"…"}` or `{"no_passphrase":true}` | Keychain status; tasks opened afterwards receive the keychain. A passphrase has at least 8 characters |
 | `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain. `""` opens a keychain without a passphrase |
@@ -468,8 +469,14 @@ the keychain says of it without asking the server (`ready`, `needs_key`,
 the models on it. `choices` are the models a task can be started on or moved to,
 `[control]` first as `control` with `default: true`, then each `[models.NAME]`
 that is not the default model again: `{name, server?, provider, model, host,
-efforts?, effort?, default?, settings}`, where `efforts` are the efforts the
-model takes, `effort` the one it starts with (ADR 41), and `settings` the
+efforts?, effort?, default?, settings, published?}`, where `efforts` are the
+efforts the model takes (its entry's, else those its provider publishes),
+`effort` the one it starts with (ADR 41), `published` what its provider
+publishes about it as nodwyn's catalogue has it (ADR 41, amended 2026-10-05),
+`{num_ctx?, max_output?, efforts?, images, price_input?, price_cached_input?,
+price_cache_write?, price_output?, tier_above?}`, which a session uses for each
+of its settings left unset (`max_output` is the reply cap that gives: the
+published limit, at most a quarter of the context), and `settings` the
 model's own settings, `{num_ctx?, max_output?, output_field?, keep_alive?,
 temperature?, seed?, vision?, cache_key?, cache_control?, price_input?,
 price_cached_input?, price_output?}`: its entry's, and for `control` those of

@@ -280,8 +280,14 @@ first entry for the same model at the same address (\code{Config.Tuned}), as
 it takes its efforts; saving the default moves what \code{[control]} held to
 the entry, so no copy goes stale beside it (\adr{41}, amended 2026-10-05).
 OpenAI's and Cerebras' model lists say no context length and their replies no
-cost, so a model there is sized and priced once its entry says so;
-OpenRouter's say both. A list is asked with the provider's key, through the
+cost, so what their entries leave unset comes from \code{internal/catalogue}:
+a snapshot of models.dev built into nodwyn, matched by the host of the server's
+address (from a table in nodwyn's source, never from models.dev) and the
+model's exact id, which gives the context, the longest reply (the reply cap,
+at most a quarter of the context), the efforts, whether it reads images and
+the prices, cache writes and a long prompt's tier included
+(\code{Config.WithPublished}, \code{Config.Efforts}, \code{models.published});
+OpenRouter's list and replies say both. A list is asked with the provider's key, through the
 same binding check, since OpenAI and Cerebras list their models only to one;
 a model key is bound for \code{GET} as well as \code{POST}.
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/catalogue"
 	"github.com/fclaude/nodwyn/internal/config"
 )
 
@@ -243,5 +244,68 @@ num_ctx = 100000
 	}
 	if cfg.Control.PriceOutput == nil || *cfg.Control.PriceOutput != 40 {
 		t.Fatalf("[control] lost what it held to an entry it does not read:\n%s", read(t, o.Paths.ConfigFile))
+	}
+}
+
+// Each model in settings.read carries what its provider publishes, and its
+// efforts are the published ones when its entry declares none;
+// models.published says the same of a model not yet in the list, for the
+// form adding it, and null of one the catalogue does not describe.
+func TestModelsCarryWhatTheirProviderPublishes(t *testing.T) {
+	o := options(t)
+	cfg, err := config.Parse([]byte(`[servers.chat]
+provider = "openai"
+url = "http://127.0.0.1:1/v1"
+
+[models.chat-sol]
+server = "chat"
+model = "sol"
+
+[models.chat-small]
+server = "chat"
+model = "sol"
+num_ctx = 32768
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, write := 0.1, 2.5
+	cfg.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"127.0.0.1": {"sol": {
+		Context: 1050000, Output: 128000, Efforts: []string{"low", "medium", "high", "xhigh", "max"}, Images: true,
+		Price: &catalogue.Price{Input: 2, Output: 10, CacheRead: &read, CacheWrite: &write, Tiers: []catalogue.Tier{{Above: 272000, Input: 4, Output: 15}}},
+	}}})
+	cfg.Approval = o.Config.Approval
+	o.Config = cfg
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	var settings settingsResult
+	into(t, c.ok("settings.read", map[string]any{}), &settings)
+	byName := map[string]modelChoice{}
+	for _, choice := range settings.Choices {
+		byName[choice.Name] = choice
+	}
+	efforts := []string{"low", "medium", "high", "xhigh", "max"}
+	in, out := 2.0, 10.0
+	want := publishedModel{NumCtx: 1050000, MaxOutput: 128000, Efforts: efforts, Images: true, PriceInput: &in, PriceCachedInput: &read, PriceCacheWrite: &write, PriceOutput: &out, TierAbove: 272000}
+	sol := byName["chat-sol"]
+	if sol.Published == nil || !reflect.DeepEqual(*sol.Published, want) || !reflect.DeepEqual(sol.Efforts, efforts) || sol.Settings.NumCtx != 0 {
+		t.Fatalf("chat-sol: %+v published %+v", sol, sol.Published)
+	}
+	// An entry with a context of its own is given a quarter of it to reply.
+	if small := byName["chat-small"]; small.Published == nil || small.Published.MaxOutput != 8192 || small.Settings.NumCtx != 32768 {
+		t.Fatalf("chat-small: %+v published %+v", small, small.Published)
+	}
+	var found *publishedModel
+	into(t, c.ok("models.published", map[string]any{"server": "chat", "model": "sol"}), &found)
+	if found == nil || !reflect.DeepEqual(*found, want) {
+		t.Fatalf("models.published: %+v", found)
+	}
+	into(t, c.ok("models.published", map[string]any{"server": "chat", "model": "unknown"}), &found)
+	if found != nil {
+		t.Fatalf("a model nothing is published of: %+v", found)
+	}
+	if r := c.call("models.published", map[string]any{"server": "nowhere", "model": "sol"}); r.Error == nil {
+		t.Fatal("an unconfigured server was answered")
 	}
 }

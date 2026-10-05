@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/fclaude/nodwyn/internal/catalogue"
 )
 
 const effortConfig = `
@@ -33,12 +35,15 @@ model = "qwen3:8b"
 
 // Efforts are a fact about a model at an address, listed once: [control]
 // takes them from the entry for the same model, and a model nobody declared
-// them for takes none.
+// them for takes none, where its provider publishes none either (here, a
+// catalogue that describes nothing; TestAModelHasWhatItsProviderPublishes
+// has the published ones).
 func TestEffortsComeFromTheEntryForTheSameModel(t *testing.T) {
 	c, err := Parse([]byte(effortConfig))
 	if err != nil {
 		t.Fatal(err)
 	}
+	c.Catalogue = catalogue.New(nil)
 	want := []string{"low", "medium", "high"}
 	if got := c.Efforts(c.Control); !reflect.DeepEqual(got, want) {
 		t.Errorf("control's efforts: %v, want those of its entry %v", got, want)

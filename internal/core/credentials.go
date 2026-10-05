@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/catalogue"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/event"
@@ -271,6 +272,13 @@ func (s *Session) models() map[string]loop.Endpoint {
 // asks none). A keyed one gets its key per request, after its binding is
 // checked (authorize).
 func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
+	// What the entry leaves unset is what the provider publishes, when the
+	// catalogue describes the model (ADR 41, amended 2026-10-05).
+	rates := llm.Rates{Input: m.PriceInput, CachedInput: m.PriceCachedInput, Output: m.PriceOutput}
+	if published, ok := s.opts.Config.Published(m); ok && !rates.Known() {
+		rates = publishedRates(published.Price)
+	}
+	m = s.opts.Config.WithPublished(m)
 	var p llm.Provider
 	switch m.Provider {
 	case "openai":
@@ -295,7 +303,21 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 		}
 	}
 	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: s.replyCap(m.NumCtx, m.MaxOutput), Temperature: m.Temperature, Seed: m.Seed,
-		Rates: llm.Rates{Input: m.PriceInput, CachedInput: m.PriceCachedInput, Output: m.PriceOutput}, Effort: effort}
+		Rates: rates, Effort: effort}
+}
+
+// publishedRates are the rates a published price gives: input, output,
+// reading from and writing to the cache, and a long prompt's tier. nil
+// prices nothing.
+func publishedRates(p *catalogue.Price) llm.Rates {
+	if p == nil {
+		return llm.Rates{}
+	}
+	r := llm.Rates{Input: &p.Input, Output: &p.Output, CachedInput: p.CacheRead, CacheWrite: p.CacheWrite}
+	for _, t := range p.Tiers {
+		r.Tiers = append(r.Tiers, llm.RateTier{Above: t.Above, Input: &t.Input, Output: &t.Output, CachedInput: t.CacheRead, CacheWrite: t.CacheWrite})
+	}
+	return r
 }
 
 // cacheKey is what a session's requests to a chat-completions server name

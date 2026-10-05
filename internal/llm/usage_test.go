@@ -91,3 +91,29 @@ func TestCost(t *testing.T) {
 		t.Fatalf("unknown came back as %v", *c)
 	}
 }
+
+// Prompt tokens written to the cache are priced at their own rate, as OpenAI
+// and Anthropic charge more for them, and a prompt past a tier is priced at
+// the tier's rates, as OpenAI charges more past 272,000 tokens; unstated,
+// a write is priced as input.
+func TestCostOfCacheWritesAndLongPrompts(t *testing.T) {
+	near := func(got *float64, want float64) bool {
+		return got != nil && *got-want < 1e-12 && want-*got < 1e-12
+	}
+	rates := Rates{Input: price(2), CachedInput: price(0.1), CacheWrite: price(2.5), Output: price(10),
+		Tiers: []RateTier{{Above: 272000, Input: price(4), CachedInput: price(0.2), CacheWrite: price(5), Output: price(15)}}}
+	cached := 1000
+	short := Usage{PromptTokens: 10000, CachedTokens: &cached, CacheWriteTokens: 6000, OutputTokens: 500}
+	// 3000 × $2 + 1000 × $0.10 + 6000 × $2.50 + 500 × $10, per million.
+	if c, _ := Cost(short, rates); !near(c, 0.0261) {
+		t.Fatalf("a short prompt: %v", *c)
+	}
+	long := Usage{PromptTokens: 300000, CachedTokens: &cached, CacheWriteTokens: 6000, OutputTokens: 500}
+	// 293000 × $4 + 1000 × $0.20 + 6000 × $5 + 500 × $15, per million.
+	if c, _ := Cost(long, rates); !near(c, 1.2097) {
+		t.Fatalf("a prompt past the tier: %v", *c)
+	}
+	if c, _ := Cost(short, Rates{Input: price(2), CachedInput: price(0.1), Output: price(10)}); !near(c, 0.0231) {
+		t.Fatalf("a write without its own rate: %v", *c)
+	}
+}
