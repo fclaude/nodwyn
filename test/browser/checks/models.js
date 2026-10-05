@@ -290,6 +290,7 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#model-price_output"), "40");
   await page.click("#model-form .more-settings > summary");
   assert.strictEqual(await page.getAttribute("#model-cache_control-ephemeral", "aria-pressed"), "true");
+  assert.strictEqual(await page.locator("#model-output_field-default").count(), 1, "a chat-completions model has no reply cap field");
   await page.click("#model-form >> text=Cancel");
   // The other model takes no images: said for it alone.
   await page.click("[data-model='127-0-0-1-fast'] button:text-is('Edit')");
@@ -671,8 +672,13 @@ check(async () => {
   assert.ok((config().split("[models.openai-text]")[1] || "").split("\n[")[0].includes("vision = true\n"), "Yes was not saved:\n" + config());
   await page.waitForFunction(() => !document.querySelector("[data-model='openai-text']")?.innerText.includes("takes no images"), null, { timeout: 10000 });
   // A price typed alone is kept, and the other is still the published one.
+  // On the Responses API, which reads no reply cap field and has no seed,
+  // the form offers no field and says so of the seed.
   await page.click("[data-model='openai-a'] button:text-is('Edit')");
   await page.waitForSelector("#model-form");
+  await page.click("#model-form .more-settings > summary");
+  assert.strictEqual(await page.locator("#model-output_field-default").count(), 0, "a Responses model is offered a reply cap field it does not read");
+  await shows("#model-form", "The Responses API has no seed");
   await page.fill("#model-price_output", "99");
   await page.click("#model-save");
   await page.waitForSelector("#model-form", { state: "detached" });

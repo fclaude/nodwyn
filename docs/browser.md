@@ -89,7 +89,8 @@ you wrote it. Its sections:
   and whether it takes images (what its provider publishes, else yes, until
   you choose); under *More settings*
   its temperature and seed, and for a chat-completions model which
-  field caps its reply, how its requests name their session and whether they
+  field caps its reply (not on the Responses API, which reads none and has
+  no seed, as its hint says), how its requests name their session and whether they
   ask the provider to cache the prompt, which a Claude model needs (the
   manual, "Keeping the cache warm"), or for Ollama how long it stays loaded.
   The default model's settings are its entry's, so editing it changes the

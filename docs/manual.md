@@ -1253,8 +1253,9 @@ this computer only:
   OpenRouter does), whether it **takes images** (what its provider publishes,
   else yes, until you choose), and,
   under *More settings*, sampling, the reply cap field, the session key and
-  the prompt cache for a chat-completions model, or how long Ollama keeps it
-  loaded. The row says the context, reply cap and prices it has, and *as
+  the prompt cache for a chat-completions model (no reply cap field on the
+  Responses API, which reads none, and a word that it has no seed), or how
+  long Ollama keeps it loaded. The row says the context, reply cap and prices it has, and *as
   published* when they are its provider's. Editing
   the default model saves them in its entry, not in `[control]`, so they stay
   with the model when another becomes the default. **Test it** tries a model

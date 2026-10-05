@@ -18,7 +18,7 @@ import { ModelPicker, choicesOf, effortLabel, statusOf, defaultSelection } from 
 // says, and nothing is inferred from an address later (ADR 8, ADR 41).
 const kinds = {
   ollama: { label: "Ollama", needs: "Ollama on this computer or your network. It needs an address, and no key." },
-  openai: { label: "OpenAI-compatible", needs: "Any server that speaks the OpenAI chat-completions API. It needs an address and, for a hosted one, an API key, which is kept in the keychain." },
+  openai: { label: "OpenAI-compatible", needs: "Any server that speaks OpenAI's API, chat completions or Responses. It needs an address and, for a hosted one, an API key, which is kept in the keychain." },
 };
 const presets = [
   { id: "ollama", label: "Ollama", kind: "ollama", url: "http://localhost:11434", dialect: "" },
@@ -486,6 +486,9 @@ function settingsFields(f, kind, redraw, desk) {
       options.map(([value, text]) => h("button", { type: "button", class: "chip", id: `model-${name}-${value === "" ? "default" : String(value)}`, "aria-pressed": String(current === value), onclick: () => ((s[name] = value), redraw()) }, text)),
     );
   const openai = kind !== "ollama";
+  // The Responses API caps a reply with max_output_tokens whatever the reply
+  // cap field says, and has no seed (internal/llm/responses.go).
+  const responses = openai && providerOf(desk, f.server)?.dialect === "responses";
   const reserve = Number(desk.settings?.values?.["window.output_reserve"]?.value) || 16384;
   const published = f.published || {};
   const count = (x) => (x ? x.toLocaleString("en-US") : "");
@@ -551,11 +554,17 @@ function settingsFields(f, kind, redraw, desk) {
         { class: "field" },
         h("label", { for: "model-temperature" }, "Sampling"),
         h("div", { class: "row-actions" }, h("span", { class: "muted" }, "Temperature"), box("temperature", "Temperature", { placeholder: "server's" }), h("span", { class: "muted" }, "seed"), box("seed", "Seed", { placeholder: "none" })),
-        h("p", { class: "hint" }, "Temperature is 0 to 2; empty leaves both to the server. 0 with a seed makes replies as repeatable as the server allows."),
+        h(
+          "p",
+          { class: "hint" },
+          responses
+            ? "Temperature is 0 to 2; empty leaves it to the server. The Responses API has no seed: one set here is still sent, and a server that refuses it fails every request."
+            : "Temperature is 0 to 2; empty leaves both to the server. 0 with a seed makes replies as repeatable as the server allows.",
+        ),
       ),
       openai
         ? [
-            field("model-output_field-default", "Reply cap field", chips("output_field", "Reply cap field", [["", "max_completion_tokens"], ["max_tokens", "max_tokens"]]), "Reasoning models refuse the older max_tokens; some servers know only that one."),
+            responses ? null : field("model-output_field-default", "Reply cap field", chips("output_field", "Reply cap field", [["", "max_completion_tokens"], ["max_tokens", "max_tokens"]]), "Reasoning models refuse the older max_tokens; some servers know only that one."),
             field("model-cache_key-default", "Session key", chips("cache_key", "Session key", [["", "Header and field"], ["header", "Header only"], ["off", "Not sent"]]), "Names the session to the server, so it can keep the requests on the replica that holds their prompt cache. Header only for a server that refuses fields it doesn't know."),
             field(
               "model-cache_control-default",
