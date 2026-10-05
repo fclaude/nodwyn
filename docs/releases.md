@@ -1,9 +1,9 @@
 # Downloadable releases
 
 [Gitea releases](http://git.example.com/fc/nodwyn/releases)
-contain one `build-<12-character commit>` release for each successfully checked
-push to `main`. The release names its full source commit. The repository is
-private, so sign in to download. GitHub CI is manual-only; nothing publishes
+contain manually requested versioned releases, beginning with `v0.1.0`.
+Pushes run checks but never publish. Each release names its full source commit. The repository is
+private, so sign in to download. GitHub Actions are disabled on the mirror for now; nothing publishes
 releases to GitHub.
 
 Each release has eight attachments:
@@ -37,12 +37,14 @@ with the same architecture as the archive.
 ## How publication works
 
 The read-only `check` job in `.gitea/workflows/ci.yml` runs acceptance tests,
-publisher tests and all four portable builds. Only a successful push or manual
-workflow run on `main` can start the `release` job. That job has the Gitea
+publisher tests and all four portable builds. Only a successful manual
+workflow run on `main`, with an explicit `version` such as `v0.1.0`, can start
+the `release` job. Use Gitea Actions, select this workflow and `main`, enter
+the version, then choose Run workflow. That job has the Gitea
 job token's `contents: write` permission; the token is passed only to the
 publisher step. Pull requests and other branches do not publish.
 
-`scripts/release.py build DIRECTORY` refuses tracked changes and an occupied
+`scripts/release.py build DIRECTORY --version v0.1.0` refuses tracked changes and an occupied
 output directory. It archives the source commit to scratch, builds binaries
 with that commit as their version, runs the Linux amd64 selfcheck, and builds
 both books from their LaTeX sources there. Generated PDFs are not tracked;
@@ -56,7 +58,9 @@ them again, checks their inventory, checksums and source commit, and only then
 publishes. Failed uploads leave a draft, not an apparently complete release.
 Requests do not follow redirects or send the token to another origin.
 
-To retry a failed release, rerun the Gitea workflow for that commit. Matching
+To retry a failed release, rerun the Gitea workflow for the same commit and
+version. Each version is bound to one source commit; another commit cannot
+replace it. Matching
 draft attachments are reused; differing attachments in that same unpublished
 draft are replaced. A published release is never overwritten: a rerun verifies
 its existing downloads. An unrelated release or unexpected attachment causes
@@ -66,7 +70,7 @@ For a local build on Linux amd64, use an empty output directory:
 
 ```sh
 python3 -B -m unittest discover -s test/release -v
-python3 scripts/release.py build /tmp/nodwyn-release-assets
+python3 scripts/release.py build /tmp/nodwyn-release-assets --version v0.1.0
 ```
 
 The builder needs Go 1.26, Python 3.12 or newer, bash, make, latexmk and the TeX
@@ -84,24 +88,29 @@ After changing tracked Go or Scheme files, run
 `python3 docs/book/source/generate.py` and commit the updated catalogue; the
 release builder's `--check` refuses a stale file inventory or line count.
 
-The authorised cleanup removes `docs/book/nibb.pdf`, `docs/book/nodwyn.pdf`
-and `docs/expert/expert.pdf` throughout Gitea's branches and tags. It retains
-every other file, commit metadata and parent relationship, including commits
-that become empty. A full Git bundle and old-to-new commit map are retained
-outside the repository before updating the remote with exact ref leases.
-Release attachments are not deleted or replaced.
+The PDF cleanup removed `docs/book/nibb.pdf`, `docs/book/nodwyn.pdf`
+and `docs/expert/expert.pdf` throughout the published history. The subsequent
+signing repair preserves every tree, author, committer, timestamp, message
+and parent relationship, including empty commits, while signing each rewritten
+commit with the maintainer's SSH signing key. These are new signatures over
+the cleaned history, not recovered signatures over the original objects.
 
-Rewritten commits have new IDs, and signatures on rewritten commits and tags
-cannot authenticate those new IDs. Existing release names, binary versions
-and `SOURCE.json` still record the original build commit; use the saved commit
-map or backup bundle to trace that provenance. Their tag names now identify
-the corresponding source without PDFs. New releases use the rewritten IDs.
+Before updating either remote, retain complete Git bundles, observed refs and
+an old-to-new commit map outside the repository. Verify every rewritten tree,
+metadata record, parent mapping and signature. Update Gitea and GitHub with
+exact old-object leases so concurrent work is not overwritten. Remove the
+historical milestone, benchmark and automatic build tags from both services.
+Gitea requires a tag for a release, so retain only the requested version tags,
+starting with `v0.1.0`.
 
-Use a fresh Gitea clone for new work after the rewrite. Keep an old clone until
-any unpushed work has been recovered, then transplant those changes onto the
-new history; do not merge or push its old history back. Other local worktrees
-and GitHub are not rewritten by the Gitea cleanup. Server disk reclamation
-depends on Gitea's garbage collection, while fresh clones receive only the
-reachable, cleaned history.
+Existing release attachments retain their recorded source IDs; use the saved
+commit maps and bundles to trace their provenance. New release assets record
+the signed source commit and requested version in `SOURCE.json`.
+
+Use a fresh clone for new work after the rewrite. Keep an old clone until any
+unpushed work has been recovered, then transplant those changes onto the new
+history; do not merge or push its old history back. Other local worktrees may
+still contain the old commits. Server disk reclamation depends on garbage
+collection, while fresh clones receive the reachable, cleaned history.
 
 The permission model follows [Gitea's job-token documentation](https://docs.gitea.com/usage/actions/token-permissions/).

@@ -69,3 +69,31 @@ changes object IDs and invalidates the old signatures, which remain available
 only in the backup. Fresh clones receive the cleaned history; Gitea garbage
 collection reclaims unreachable server objects separately. Other local
 worktrees and GitHub are outside this cleanup. Release retention stays deferred.
+
+## Amendment 2026-10-05: Signed history and manual versioned releases
+
+The user requested signatures on every published commit after the PDF cleanup,
+a matching GitHub mirror, removal of historical tags, and a first explicit
+release named `v0.1.0`. Re-sign the cleaned history with the maintainer's SSH
+key. Preserve trees, authors, committers, dates, messages, empty commits and
+parent topology. These signatures attest to the rewritten objects; they do
+not recreate the signatures lost in the earlier rewrite. Back up both remote
+histories and record the commit map before updating refs under exact leases.
+Verify all resulting signatures and tree/metadata/parent equivalence.
+
+Replace Decision 1's push publication with manual dispatch only on `main`,
+after the read-only acceptance, publisher and portable-build checks pass.
+Decision 2's GitHub workflow remains manual in source, and GitHub Actions are
+disabled at the repository level for now. Replace Decision 5's automatic build
+names with an explicitly supplied `vMAJOR.MINOR.PATCH` version, starting at
+`v0.1.0`; shell steps receive it through an environment variable. Asset metadata
+and the publisher bind that version to the full signed source commit. Keep
+the draft, download-verification and immutable-published-release rules.
+
+Remove all old milestone, benchmark and build tags on Gitea and GitHub. A Gitea
+release requires a tag, so retain the new version tag as the necessary release
+anchor. Existing release attachments keep their original provenance; the
+backups and maps explain the old source IDs. Decisions 3 and 4 remain unchanged,
+as does local promotion in Decision 6. Repository committers still control
+the workflow, but only a trusted main-branch manual run receives publication
+authority. This amendment does not give pull requests a release token.

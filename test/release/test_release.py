@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
@@ -23,12 +24,15 @@ COMMIT = "a" * 40
 
 class PublisherTest(unittest.TestCase):
     def setUp(self):
+        environment = patch.dict(os.environ, RELEASE_VERSION="v0.1.0")
+        environment.start()
+        self.addCleanup(environment.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
         for name in release.PAYLOADS:
             (self.directory / name).write_bytes((name + " example").encode())
-        (self.directory / "SOURCE.json").write_text(json.dumps({"commit": COMMIT}))
+        (self.directory / "SOURCE.json").write_text(json.dumps({"commit": COMMIT, "tag": "v0.1.0"}))
         (self.directory / "SHA256SUMS").write_text("".join(
             f"{release.digest((self.directory / name).read_bytes())}  {name}\n"
             for name in sorted(release.PAYLOADS)))
@@ -135,6 +139,24 @@ class PublisherTest(unittest.TestCase):
         (self.directory / "expert.pdf").write_bytes(b"a later rebuild must not replace a release")
         self.publish()
         self.assertEqual(self.state["writes"], before)
+
+    def test_explicit_version_names_the_release_and_tag(self):
+        self.publish()
+        self.assertEqual(self.state["release"]["tag_name"], "v0.1.0")
+        self.assertEqual(self.state["release"]["name"], "nodwyn v0.1.0")
+
+    def test_missing_or_invalid_version_creates_no_release(self):
+        for version in ("", "build-aaaaaaaaaaaa", "v01.2.3", "v0.1.0/other", "$(false)"):
+            with self.subTest(version=version), patch.dict(os.environ, RELEASE_VERSION=version):
+                with self.assertRaisesRegex(RuntimeError, "explicit release version"):
+                    self.publish()
+                self.assertEqual(self.state["writes"], [])
+
+    def test_assets_for_another_version_are_refused(self):
+        with patch.dict(os.environ, RELEASE_VERSION="v0.2.0"):
+            with self.assertRaisesRegex(RuntimeError, "local assets belong to another commit or version"):
+                self.publish()
+        self.assertEqual(self.state["writes"], [])
 
     def test_failed_upload_leaves_draft_and_retry_repairs_only_draft(self):
         self.state["fail_upload"] = "expert.pdf"

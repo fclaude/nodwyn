@@ -46,7 +46,14 @@ def pack(path, files, epoch):
                 archive.addfile(info, io.BytesIO(data))
 
 
-def build(output):
+def release_version(value):
+    if not re.fullmatch(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", value):
+        raise RuntimeError("an explicit release version such as v0.1.0 is required")
+    return value
+
+
+def build(output, version=None):
+    version = release_version(version or os.environ.get("RELEASE_VERSION", ""))
     if run("git", "status", "--porcelain", "--untracked-files=no"):
         raise RuntimeError("commit tracked changes before building a release")
     commit = run("git", "rev-parse", "HEAD")
@@ -90,7 +97,7 @@ def build(output):
             if not source.read_bytes().startswith(b"%PDF-"):
                 raise RuntimeError(f"{name} is not a PDF")
             shutil.copyfile(source, output / name)
-    metadata = {"commit": commit, "tag": f"build-{commit[:12]}", "source_date_epoch": epoch,
+    metadata = {"commit": commit, "tag": version, "source_date_epoch": epoch,
                 "go": run("go", "version"), "targets": list(TARGETS),
                 "executed_target": "linux-amd64", "webview": False,
                 "proxy": "Linux, matching the archive architecture; runs inside the MCP container"}
@@ -177,14 +184,16 @@ class Gitea:
             data = self.download(assets[name])
             if digest(data) != expected:
                 raise RuntimeError(f"downloaded checksum mismatch: {name}")
-            if name == "SOURCE.json" and json.loads(data)["commit"] != commit:
-                raise RuntimeError("release assets belong to another commit")
+            if name == "SOURCE.json":
+                metadata = json.loads(data)
+                if metadata["commit"] != commit or metadata.get("tag") != release["tag_name"]:
+                    raise RuntimeError("release assets belong to another commit or version")
 
 
-def publish(output, client, commit):
+def publish(output, client, commit, version=None):
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise RuntimeError("a full source commit is required")
-    tag = "build-" + commit[:12]
+    tag = release_version(version or os.environ.get("RELEASE_VERSION", ""))
     marker = f"Source commit: `{commit}`"
     release = client.api("GET", "/releases/tags/" + tag, missing=True)
     if release:
@@ -196,13 +205,14 @@ def publish(output, client, commit):
             return
     local = {name: (output / name).read_bytes() for name in ASSETS}
     sums = checksums(local["SHA256SUMS"])
-    if json.loads(local["SOURCE.json"])["commit"] != commit:
-        raise RuntimeError("local assets belong to another commit")
+    metadata = json.loads(local["SOURCE.json"])
+    if metadata["commit"] != commit or metadata.get("tag") != tag:
+        raise RuntimeError("local assets belong to another commit or version")
     if any(digest(local[name]) != sha for name, sha in sums.items()):
         raise RuntimeError("local release checksum mismatch")
     if not release:
         release = client.api("POST", "/releases", {
-            "tag_name": tag, "target_commitish": commit, "name": "nodwyn " + commit[:12],
+            "tag_name": tag, "target_commitish": commit, "name": "nodwyn " + tag,
             "draft": True, "prerelease": False,
             "body": marker + "\n\nPortable Linux and macOS binaries for amd64 and arm64, "
                     "both books rebuilt from this source, and SHA-256 checksums.\n\n"
@@ -230,13 +240,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("build", "publish"))
     parser.add_argument("directory", type=Path)
+    parser.add_argument("--version", required=True, help="release version, for example v0.1.0")
     args = parser.parse_args()
     if args.action == "build":
-        build(args.directory.resolve())
+        build(args.directory.resolve(), args.version)
     else:
         client = Gitea(os.environ.get("GITEA_URL", ""), os.environ.get("GITEA_REPOSITORY", ""),
                        os.environ.get("GITEA_TOKEN", ""))
-        publish(args.directory, client, os.environ.get("RELEASE_COMMIT", ""))
+        publish(args.directory, client, os.environ.get("RELEASE_COMMIT", ""), args.version)
 
 
 if __name__ == "__main__":

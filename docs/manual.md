@@ -2000,8 +2000,9 @@ is running ([the app](app.md)).
 ## Downloadable builds and books
 
 Download portable binaries and both books from the repository's Gitea
-Releases page. Each `build-<commit>` release identifies its exact source and
-includes SHA-256 checksums. Linux and macOS archives cover amd64 and arm64;
+Releases page. Releases begin at `v0.1.0`, identify their exact source and
+include SHA-256 checksums. Publication requires a manual Gitea workflow run
+on `main` with the version supplied; pushes only run checks. Linux and macOS archives cover amd64 and arm64;
 each includes the Linux egress proxy used by MCP containers. Portable builds
 open the browser for `nodwyn app`; macOS builds are unsigned and not notarised.
 Only Linux amd64 is executed in CI. See [the release guide](releases.md) for

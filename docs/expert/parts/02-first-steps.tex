@@ -8,7 +8,10 @@ Gitea Releases page (sign in for this private repository). Choose Linux or
 macOS and your computer's architecture, amd64 or arm64. Check the archive's
 SHA-256 digest against \file{SHA256SUMS}, extract it, and keep its two
 executables beside one another on your \code{PATH}. \code{nodwyn version}
-prints the source commit, also recorded in \file{SOURCE.json}.
+prints the source commit, also recorded in \file{SOURCE.json}. Releases begin
+at \code{v0.1.0}; a manual Gitea workflow run on \code{main} supplies the
+version and publishes only after checks pass. Pushes run checks without
+publishing.
 
 These builds open the browser for \code{nodwyn app}; they do not contain a
 native webview window. macOS builds are unsigned and not notarised. Only
