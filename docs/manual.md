@@ -1199,8 +1199,12 @@ not answer is a warning, since it may be back).
   window's console is on a new address and remembers nothing, so it starts on
   the default. A model removed from the list since is said to be gone, and
   another is not picked for you.
-- *In a conversation.* The selects show the model and effort the next message
-  is answered with. Changing either takes effect from the next message,
+- *In a conversation.* A compact model-and-effort summary sits below the
+  message box; click it (or focus it and press Enter) to reveal the selects.
+  They show the model and effort the next message is answered with. Warnings
+  and change notices remain visible when the selects are collapsed; if a
+  model must be chosen before continuing, the selects open automatically.
+  Changing either takes effect from the next message,
   and a line says so. While a response is running it keeps the model and effort
   it started with, and what you choose waits for it to end (the line says so,
   naming both); if it cannot be applied then, because the conversation has

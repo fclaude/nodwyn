@@ -61,6 +61,17 @@ check(async () => {
   const selected = (selector) => page.$eval(selector, (s) => s.selectedOptions[0]?.textContent);
   const idle = () => page.waitForFunction(() => document.querySelector(".task-head .pill")?.textContent === "Idle", null, { timeout: 20000 });
   const noteText = () => page.$eval(".reply-opts .mp-notes", (n) => n.textContent).catch(() => "");
+  const openPicker = async () => {
+    await page.waitForSelector("#task-model summary");
+    if (!(await page.$eval("#task-model details", (d) => d.open))) await page.click("#task-model summary");
+    await page.waitForSelector("#task-model-model");
+  };
+  const fits = async (selector) => {
+    assert.ok(await page.$eval(selector, (el) => {
+      const r = el.getBoundingClientRect();
+      return r.left >= 0 && r.right <= innerWidth && el.scrollWidth <= el.clientWidth;
+    }), `${selector} overflows the viewport`);
+  };
 
   await page.goto(url);
   await page.waitForSelector("#task", { timeout: 10000 });
@@ -227,6 +238,11 @@ check(async () => {
   await page.selectOption("#new-task-model-model", "127-0-0-1-fast");
   assert.strictEqual(await page.isDisabled("#new-task-model-effort"), true, "a model that takes none offers none");
   assert.strictEqual(await selected("#new-task-model-effort"), "Not configurable");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fits("#new-task-model");
+  assert.ok(await page.isVisible("#new-task-model-model"), "new-task choices remain visible");
+  await page.screenshot({ path: `${out}/models-home-mobile.png` });
+  await page.setViewportSize({ width: 1280, height: 1000 });
   // An unsent choice survives leaving the page and a reload, and is not the default.
   await go("#/settings");
   await page.waitForSelector("#default-model");
@@ -280,11 +296,24 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#task-model-effort"), "low");
   await shows(".transcript", "Model: reasoner · low effort");
   step("a task started with an effort asks the provider for it");
+  assert.strictEqual(await page.isVisible("#task-model-model"), false, "chat choices start collapsed");
+  await shows("#task-model summary", "reasoner");
+  await shows("#task-model summary", "Low");
+  await page.focus("#task-model summary");
+  await page.press("#task-model summary", "Enter");
+  assert.ok(await page.isVisible("#task-model-model"), "keyboard opens chat choices");
+  await page.press("#task-model summary", "Enter");
+  assert.strictEqual(await page.isVisible("#task-model-model"), false, "keyboard closes chat choices");
+  await page.screenshot({ path: `${out}/models-conversation-compact.png` });
+  await openPicker();
 
   // ---------- the effort is changed between messages ----------
   await page.selectOption("#task-model-effort", "high");
   await page.waitForFunction(() => document.querySelector(".reply-opts .mp-notes")?.textContent.includes("Takes effect from your next message"));
   assert.deepStrictEqual(sent.of("session.model.set").at(-1), { id, name: "control", effort: "high" });
+  await shows("#task-model summary", "High");
+  await page.click("#task-model summary");
+  assert.ok(await page.isVisible("#task-model .mp-notes"), "change notes stay visible when collapsed");
   await page.fill("#reply", "Again");
   await page.press("#reply", "Enter");
   await page.waitForFunction(() => document.querySelector(".transcript").innerText.includes("Answered by reasoner with high effort."));
@@ -298,6 +327,7 @@ check(async () => {
   await page.press("#reply", "Enter");
   await until("the request to be held", async () => (await (await fetch(`${chatBase}/_fake/waiting`)).json()) === 1);
   await page.waitForFunction(() => document.querySelector(".reply-opts .mp-notes")?.textContent.includes("The response now running keeps"));
+  await openPicker();
   await page.selectOption("#task-model-effort", "medium");
   await page.waitForFunction(() => document.querySelector(".reply-opts .mp-notes")?.textContent.includes("Chosen while a response is running"));
   assert.deepStrictEqual(sent.of("session.model.set").at(-1), { id, name: "control", effort: "medium" });
@@ -337,6 +367,14 @@ check(async () => {
   await page.waitForSelector(".task[data-loaded]", { timeout: 20000 });
   assert.strictEqual(await page.inputValue("#task-model-effort"), "medium");
   assert.strictEqual(await page.inputValue("#task-model-model"), "control");
+  assert.strictEqual(await page.isVisible("#task-model-model"), false, "reload restores a compact chat picker");
+  await shows("#task-model summary", "Medium");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await fits("#task-model");
+  await openPicker();
+  await fits("#task-model .mp-controls");
+  await page.screenshot({ path: `${out}/models-conversation-mobile.png` });
+  await page.setViewportSize({ width: 1280, height: 1000 });
   step("the selection survives a reload");
 
   // ---------- an effort the model does not take is refused, not dropped ----------
@@ -419,7 +457,7 @@ check(async () => {
   await page.click(".task-head button:text-is('Unlock')");
   await page.waitForSelector(".task-actions button:text-is('Resume'):not([disabled])", { timeout: 20000 });
   await page.click(".task-actions button:text-is('Resume')");
-  await page.waitForSelector("#task-model-model", { state: "visible", timeout: 20000 });
+  await openPicker();
   assert.strictEqual(await page.inputValue("#task-model-model"), "control");
   assert.strictEqual(await page.inputValue("#task-model-effort"), "medium", "a resumed conversation lost its effort");
   await page.waitForFunction(() => ![...document.querySelectorAll("#task-model-model option")].some((o) => o.textContent.includes("keychain locked")));

@@ -62,14 +62,21 @@ export const blocked = (desk, selection) => problem(desk, selection)?.kind === "
 const label = (text, control) => h("label", { class: "mp-field" }, h("span", {}, text), control);
 
 export class ModelPicker {
-  constructor(id) {
+  constructor(id, compact = false) {
     this.id = id;
     this.sig = "";
     this.props = null;
     this.model = h("select", { class: "mp-select", id: `${id}-model`, "aria-label": "Model", onchange: () => this.pickModel() });
     this.effort = h("select", { class: "mp-select", id: `${id}-effort`, "aria-label": "Effort", onchange: () => this.pickEffort() });
     this.note = h("div", { class: "mp-notes" });
-    this.el = h("div", { class: "model-picker", id, role: "group", "aria-label": "Model and effort" }, label("Model", this.model), label("Effort", this.effort), this.note);
+    const controls = h("div", { class: "mp-controls" }, label("Model", this.model), label("Effort", this.effort));
+    if (compact) {
+      this.summaryModel = h("span", { class: "mp-summary-model" });
+      this.summaryEffort = h("span", { class: "mp-summary-effort" });
+      this.summary = h("summary", { class: "mp-summary" }, this.summaryModel, this.summaryEffort);
+      this.details = h("details", { class: "mp-details" }, this.summary, controls);
+    }
+    this.el = h("div", { class: "model-picker", id, role: "group", "aria-label": "Model and effort" }, this.details || controls, this.note);
   }
 
   // update draws the picker from props: desk; selection ({name, server?, model?,
@@ -90,6 +97,17 @@ export class ModelPicker {
     if (sig === this.sig) return;
     this.sig = sig;
     const { listed, choice } = choiceOf(desk, selection, extra);
+    if (this.details) {
+      const model = unavailable ? "Choose a model…" : choice?.model || selection?.model || selection?.name || "No model";
+      const effort = selection && choice?.efforts?.length ? effortLabel(selection.effort) : "";
+      this.summaryModel.textContent = model;
+      this.summaryEffort.textContent = effort;
+      this.summaryEffort.hidden = !effort;
+      this.summary.title = "Change model and effort";
+      this.summary.setAttribute("aria-label", `Model: ${model}${effort ? `, effort: ${effort}` : ""}. Change model and effort`);
+      // A task that cannot run should offer the choice, rather than hide its remedy.
+      if (unavailable) this.details.open = true;
+    }
 
     const groups = new Map();
     choices.forEach((c, i) => {

@@ -268,7 +268,11 @@ tables, with their efforts; the default is one of them, and choosing another
 keeps the old default in the list.
 
 The New task window and a conversation share one picker, a Model select
-grouped by provider and an Effort select of what that model takes. In a
+grouped by provider and an Effort select of what that model takes. New task
+shows both fields; a conversation tucks them behind a compact model-and-effort
+summary, opened by a click or by focusing it and pressing Enter. Warnings and
+change notices remain visible when collapsed, and an unavailable conversation
+opens the selects automatically so a model can be chosen. In a
 conversation a change is a \code{session.model.set}; naming the model it is on
 changes the effort alone, and nothing is sized again. While a response runs the
 change is \emph{queued}: recorded at once without a window recipe, reported in

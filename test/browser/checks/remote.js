@@ -65,6 +65,10 @@ check(async () => {
   await shows(page, ".ask-card .fine", "as phone");
   step("approval shown on the phone, naming it");
   // In the conversation the phone sees the model, and may not change it.
+  await page.waitForSelector("#task-model summary");
+  assert.strictEqual(await page.isVisible("#task-model-model"), false, "the phone's model fields start collapsed");
+  await shows(page, ".reply-opts .mp-notes", "chosen on the computer nodwyn runs on");
+  await page.click("#task-model summary");
   await page.waitForSelector("#task-model-model");
   assert.strictEqual(await page.isDisabled("#task-model-model"), true, "the phone can change a task's model");
   assert.strictEqual(await page.isDisabled("#task-model-effort"), true, "the phone can change a task's effort");

@@ -904,15 +904,28 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .cred-detail .table td { overflow-wrap: anywhere; }
 
 /* the model picker (modelpicker.js): the New task window's and a conversation's */
-.model-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; min-width: 0; }
+.model-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; max-width: 100%; }
 .model-picker[hidden] { display: none; }
-.mp-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--faint); min-width: 0; }
+.mp-controls { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; max-width: 100%; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.mp-field { display: flex; flex: 1 1 auto; flex-direction: column; gap: 2px; padding: 3px 8px; font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--faint); min-width: 0; }
 .mp-select {
-  height: 30px; max-width: 240px; min-width: 0; padding: 0 8px; border-radius: 8px;
-  border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-size: 13px;
+  width: 100%; height: 27px; max-width: 240px; min-width: 0; padding: 0 4px; border-radius: 6px;
+  border: 1px solid transparent; background: transparent; color: var(--ink); font-size: 13px; font-weight: 500; letter-spacing: normal;
 }
+.mp-select:hover:not(:disabled) { background: var(--bg); }
 .mp-select:disabled { color: var(--faint); }
-.mp-select:focus-visible { border-color: var(--accent); outline: none; }
+.mp-select:focus-visible { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+.mp-details { min-width: 0; max-width: 100%; }
+.mp-summary { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; width: fit-content; padding: 5px 9px; border: 1px solid transparent; border-radius: 8px; color: var(--faint); font-size: 12px; cursor: pointer; list-style: none; }
+.mp-summary::-webkit-details-marker { display: none; }
+.mp-summary::after { content: ""; flex: 0 0 5px; width: 5px; height: 5px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.mp-summary:hover, .mp-details[open] > .mp-summary { color: var(--ink); background: var(--surface); border-color: var(--line); }
+.mp-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mp-details[open] > .mp-summary::after { transform: translateY(1px) rotate(225deg); }
+.mp-summary-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-summary-effort { flex-shrink: 0; padding-left: 8px; border-left: 1px solid var(--line); }
+.mp-summary-effort[hidden] { display: none; }
+.mp-details[open] .mp-controls { margin-top: 6px; }
 .mp-notes { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; }
 .mp-notes[hidden] { display: none; }
 .mp-note { margin: 0; font-size: 12.5px; color: var(--faint); }
@@ -923,7 +936,11 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .reply-opts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; }
 @media (max-width: 760px) {
   .ask-bar .model-picker { margin-left: 0; flex-basis: 100%; }
-  .mp-select { max-width: 150px; }
+  .mp-select { max-width: 100%; }
+  .mp-controls { width: 100%; }
+  .mp-field { flex: 1 1 120px; }
+  .reply-opts .model-picker { width: 100%; }
+  .mp-details { width: 100%; }
 }
 
 /* Settings › Models (models.js) */

@@ -472,7 +472,7 @@ export class TaskView {
     );
     // The model and effort the next message is answered with, changeable
     // here at any time: while a response runs the change waits for its end.
-    const picker = new ModelPicker("task-model");
+    const picker = new ModelPicker("task-model", true);
     const opts = h("div", { class: "reply-opts" }, picker.el, dontAsk);
     picker.el.hidden = true;
     const form = h(
