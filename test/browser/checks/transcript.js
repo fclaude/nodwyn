@@ -166,6 +166,7 @@ check(async () => {
         methods: new Set(["session.send", "session.abort", "session.answer"]),
         has(method) { return this.methods.has(method); },
         onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        onResult() { return () => {}; },
         async call(method) {
           if (method === "session.subscribe") return { page: { events: [{ seq: 1, kind: "user.msg", payload: { text: "Begin" } }], through: 1, more: false }, busy: true };
           if (method === "session.info") return {};
@@ -282,6 +283,7 @@ check(async () => {
         methods: new Set(["session.send", "session.abort", "session.answer"]),
         has(method) { return this.methods.has(method); },
         onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        onResult() { return () => {}; },
         async call(method) {
           if (method === "session.subscribe") return { page: { events: [{ seq: 1, kind: "user.msg", payload: { text: "Begin" } }], through: 1, more: false }, busy: false };
           if (method === "session.info") return {};
@@ -368,6 +370,7 @@ check(async () => {
         methods: new Set(["session.send", "session.abort", "session.answer"]),
         has(method) { return this.methods.has(method); },
         onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        onResult() { return () => {}; },
         async call(method) {
           if (method === "session.subscribe") return { page: { events, through: events.length, more: false }, busy: false };
           if (method === "session.info") return {};
@@ -402,6 +405,7 @@ check(async () => {
         methods: new Set(["session.send", "session.abort", "session.answer"]),
         has(method) { return this.methods.has(method); },
         onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        onResult() { return () => {}; },
         async call(method) {
           if (method === "session.subscribe") return {
             page: {

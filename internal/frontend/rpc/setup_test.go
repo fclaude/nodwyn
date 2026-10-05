@@ -227,7 +227,9 @@ func TestSettingsControlOnAServer(t *testing.T) {
 	c.ok("keychain.create", map[string]any{"passphrase": "correct horse"})
 	var settings settingsResult
 	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "openai", "url": "https://openrouter.ai/api/v1/", "model": "a", "api_key": "sk-test-canary-0123456789"}), &settings)
-	want := []modelServer{{Name: "openrouter", Provider: "openai", URL: "https://openrouter.ai/api/v1", Credential: "model-openrouter-ai"}}
+	// [models.coder] gives this address itself, so it is on the provider
+	// too, though it is not sent the key.
+	want := []modelServer{{Name: "openrouter", Provider: "openai", URL: "https://openrouter.ai/api/v1", Credential: "model-openrouter-ai", Host: "openrouter.ai", Key: "ready", Uses: []string{"control", "coder"}}}
 	if !reflect.DeepEqual(settings.Servers, want) || settings.Control.Server != "openrouter" || settings.Control.Credential != "model-openrouter-ai" {
 		t.Fatalf("settings: %+v %+v", settings.Servers, settings.Control)
 	}
@@ -257,11 +259,12 @@ func TestSettingsControlOnAServer(t *testing.T) {
 	if settings.Control.Server != "workshop" || len(settings.Servers) != 3 {
 		t.Fatalf("hand-written server: %+v %+v", settings.Control, settings.Servers)
 	}
-	// The key stays a model key while its server is configured, though no
-	// model names the server now.
+	// The key stays a model key, used by the server and by the models that
+	// were the default and are listed still (a person who chooses another
+	// default does not lose the first).
 	var creds credentialsResult
 	json.Unmarshal(c.ok("credentials.list", map[string]any{}), &creds)
-	if len(creds.Credentials) != 1 || !creds.Credentials[0].Model || !slices.Equal(creds.Credentials[0].UsedBy, []string{"server openrouter"}) {
+	if len(creds.Credentials) != 1 || !creds.Credentials[0].Model || !slices.Contains(creds.Credentials[0].UsedBy, "server openrouter") || !slices.Contains(creds.Credentials[0].UsedBy, "model openrouter-a") {
 		t.Fatalf("the server's key: %+v", creds.Credentials)
 	}
 	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://localhost:11434", "model": "qwen"}), &settings)
@@ -294,8 +297,14 @@ func TestSettingsWriteKeepsTuningOfTheSameModel(t *testing.T) {
 	}
 	c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434/", "model": "llama"})
 	raw, _ = os.ReadFile(o.Paths.ConfigFile)
-	if strings.Contains(string(raw), "temperature") || strings.Contains(string(raw), "num_ctx") {
+	control, models, _ := strings.Cut(string(raw), "[models.")
+	control, _, _ = strings.Cut(control, "[servers.")
+	if strings.Contains(control, "temperature") || strings.Contains(control, "num_ctx") {
 		t.Fatalf("another model kept the old one's tuning:\n%s", raw)
+	}
+	// The model that was the default is listed as it was, tuning and all.
+	if !strings.Contains(models, "workshop-qwen]") || !strings.Contains(models, "num_ctx = 90000") {
+		t.Fatalf("the previous default was not kept as it was:\n%s", raw)
 	}
 }
 

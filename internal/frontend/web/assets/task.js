@@ -9,6 +9,7 @@ import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
 import { keychainForm } from "./setup.js";
+import { ModelPicker, choiceNamed, effortLabel } from "./modelpicker.js";
 
 const drafts = new Map(); // per task, this tab only
 const openSteps = new Map(); // per task, the plan steps the reader unfolded, this tab only
@@ -56,6 +57,9 @@ export class TaskView {
     this.deleting = false; // the heading asks whether to delete the task
     this.renameBox = null;
     this.uploading = false; // attachments on their way, an image perhaps waiting for its confirm
+    this.changing = false; // a model or effort is being changed (session.model.set)
+    this.modelChanged = false; // a choice made between turns, which the next message is the first to use
+    this.logModel = null; // the model and effort the log last names, for a task that is not open
     this.timer = 0;
     this.streams = [];
     this.streamFrame = 0;
@@ -104,6 +108,9 @@ export class TaskView {
     this.inspecting = null;
     this.renaming = false;
     this.deleting = false;
+    this.changing = false;
+    this.modelChanged = false;
+    this.logModel = null;
     this.operations.clear();
     this.early.clear();
     this.busy = !!item.busy;
@@ -315,6 +322,11 @@ export class TaskView {
     if (event.kind === "approval.change" && p.kind === "all" && !this.loading && this.item?.open) this.loadInfo();
     // A name given here or on another screen: the list and the heading follow.
     if (event.kind === "session.title" && !this.loading) this.desk.refresh().catch(() => {});
+    // A model or effort chosen here or on another screen, or applied as a
+    // response ended: the picker shows what the conversation has now.
+    if (event.kind === "session.model" && !this.loading && this.item?.open) this.loadInfo();
+    if (event.kind === "session.start" || event.kind === "session.resume" || event.kind === "session.model") this.noteModel(event.kind, p);
+    if (event.kind === "user.msg") this.modelChanged = false;
     switch (event.kind) {
       case "prompt.confirm":
       case "prompt.secret":
@@ -335,6 +347,9 @@ export class TaskView {
           this.transcript.end();
           for (const id of this.prompts.keys()) this.resolved.add(id);
           this.prompts.clear();
+          // A choice made while the response ran has applied, or said why it
+          // could not: the state has it now.
+          if (!this.loading && this.item?.open) this.loadInfo();
         } else this.busy = true;
         this.statusDetail = p.Detail ?? p.detail ?? "";
         break;
@@ -455,11 +470,16 @@ export class TaskView {
       h("input", { type: "checkbox", onchange: (event) => this.setApproveAll(event.target.checked) }),
       h("span", {}, "Don't ask: approve writes and commands"),
     );
+    // The model and effort the next message is answered with, changeable
+    // here at any time: while a response runs the change waits for its end.
+    const picker = new ModelPicker("task-model");
+    const opts = h("div", { class: "reply-opts" }, picker.el, dontAsk);
+    picker.el.hidden = true;
     const form = h(
       "form",
       { class: "reply", onsubmit: (event) => { event.preventDefault(); this.send(); } },
       h("label", { class: "sr-only", for: "reply" }, "Reply to nodwyn"),
-      h("div", { class: "reply-body" }, this.files.list, reply, dontAsk),
+      h("div", { class: "reply-body" }, this.files.list, reply, opts),
       this.files.button(),
       send,
     );
@@ -469,6 +489,7 @@ export class TaskView {
     const side = h("aside", { class: "task-aside", "aria-label": "Task details" });
     const head = h("header", { class: "task-head" });
     this.root.replaceChildren(head, h("div", { class: "task-body" }, main, side));
+    this.picker = picker;
     this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk };
     this.transcript = new Transcript(transcript);
   }
@@ -476,11 +497,14 @@ export class TaskView {
     if (!this.el) return;
     const open = !!this.item?.open;
     const prompt = !!this.activePrompt();
-    const canSend = this.conn.has("session.send") && open && !this.loading && !this.acting && !this.uploading;
+    const lost = open && this.info?.model?.unavailable;
+    const canSend = this.conn.has("session.send") && open && !this.loading && !this.acting && !this.uploading && !lost;
     this.el.form.hidden = !this.conn.has("session.send") || !!this.inspecting;
     this.el.reply.disabled = !canSend;
     this.el.reply.placeholder = !open
       ? "This task is saved. Resume it to continue."
+      : lost
+        ? "Choose a model below to continue."
       : prompt
         ? "Answer the request above first."
         : this.busy
@@ -497,6 +521,81 @@ export class TaskView {
     check.checked = !!this.info?.approve_all;
     check.disabled = !this.info || this.switching || !this.conn.live;
     box.classList.toggle("on", check.checked);
+    this.drawModel();
+  }
+  // noteModel keeps what the log says the conversation talks to, which is all
+  // a task that is not open has to show.
+  noteModel(kind, p) {
+    if (kind === "session.model") this.logModel = { model: p.model, effort: p.effort || "", queued: !!p.queued };
+    else if (!this.logModel || (kind === "session.resume" && this.logModel.model !== p.model)) this.logModel = { model: p.model, effort: "" };
+  }
+  // drawModel shows the conversation's model and effort, and what a change
+  // will do: it takes effect from the next message, and one chosen while a
+  // response runs waits for the response to end, which the lines under the
+  // picker say.
+  drawModel() {
+    const picker = this.picker;
+    if (!picker || !this.item) return;
+    const m = this.info?.model;
+    const shown = !!this.item.open && !!m && !!this.desk.settings?.choices && !this.failed;
+    picker.el.hidden = !shown;
+    if (!shown) return;
+    const words = (s) => `${s.model}${s.effort ? ` · ${effortLabel(s.effort)} effort` : ""}`;
+    // A choice that is queued is the one the person made last, so it is the one shown.
+    const chosen = m.queued || m;
+    const selection = m.unavailable ? null : { name: chosen.name || "", server: chosen.server || "", model: chosen.model, effort: chosen.effort || "" };
+    const listed = choiceNamed(this.desk, chosen.name);
+    const extra = listed ? null : { model: chosen.model, efforts: m.efforts || [], effort: "" };
+    const running = this.item.run?.status === "running";
+    const canChoose = this.conn.has("session.model.set");
+    const notes = [];
+    if (m.queued) notes.push({ text: `Chosen while a response is running: ${words(m.queued)} takes effect from your next message. The response now running keeps ${words(m)}.` });
+    else if (this.busy) notes.push({ text: `The response now running keeps ${words(m)}. A change takes effect from your next message.` });
+    else if (this.modelChanged) notes.push({ text: `Takes effect from your next message: ${words(m)}.` });
+    if (m.notice) notes.push({ kind: "error", text: `The model chosen while the response ran could not be applied: ${m.notice}. The conversation keeps ${words(m)}.` });
+    if (m.unavailable) notes.push({ kind: "error", text: `This conversation's model is not available (${m.unavailable}). Nothing is sent until you choose one.` });
+    if (!canChoose) notes.push({ text: "The model is chosen on the computer nodwyn runs on." });
+    else if (running) notes.push({ text: "Stop the run to change the model." });
+    picker.update({
+      desk: this.desk,
+      selection,
+      extra,
+      unavailable: !!m.unavailable,
+      disabled: !canChoose || this.changing || this.uploading || running,
+      notes,
+      onPick: (sel, reset) => this.chooseModel(sel, reset),
+    });
+  }
+  // chooseModel moves the conversation to a model and effort for its next
+  // message. The daemon refuses what the model does not take, and queues the
+  // choice when a response is running; nothing is retried, and the picker is
+  // drawn again from what the daemon says.
+  async chooseModel(sel, reset) {
+    const item = this.item,
+      version = this.version;
+    if (!item || this.changing) return;
+    this.changing = true;
+    this.controls();
+    try {
+      const params = { id: item.id };
+      if (sel.name) params.name = sel.name;
+      else Object.assign(params, { server: sel.server, model: sel.model });
+      if (sel.effort) params.effort = sel.effort;
+      const state = await this.conn.call("session.model.set", params);
+      if (version === this.version && this.info) {
+        this.info.model = state;
+        this.modelChanged = !state.queued;
+      }
+      if (reset) toast("That model takes other efforts: its own default is chosen.");
+    } catch (error) {
+      toast(`${error.message} Nothing was retried; the conversation keeps the model it had.`);
+    } finally {
+      this.changing = false;
+      if (version === this.version) {
+        await this.loadInfo();
+        this.controls();
+      }
+    }
   }
   async setApproveAll(on) {
     const id = this.item?.id;
@@ -611,6 +710,7 @@ export class TaskView {
       h("span", { class: "mono" }, shortPath(this.desk.project(item), home)),
       item.worktree ? h("span", { class: "badge plain mono", title: `In its own git worktree at ${item.worktree.path}` }, icon("commit", 13), item.worktree.branch) : null,
       item.started ? h("span", { class: "started" }, `· started ${sameDay(item.started) ? clock(item.started) : ago(item.started)}`) : null,
+      !item.open && this.logModel ? h("span", { class: "started", id: "saved-model" }, `· ${this.logModel.model}${this.logModel.effort ? ` · ${effortLabel(this.logModel.effort)} effort` : ""}, as it was left`) : null,
       item.archived ? h("span", { class: "badge plain" }, "archived") : null,
     );
     const canRename = this.conn.has("session.rename");

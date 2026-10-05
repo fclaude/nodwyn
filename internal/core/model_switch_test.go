@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -110,7 +111,7 @@ func TestSwitchMovesTheNextTurnAndStillReplays(t *testing.T) {
 	if state.Name != "coder" || state.Server != "away" || state.Model != "coder-model" {
 		t.Fatalf("switch: %+v", state)
 	}
-	if got := s.Model(); got != state {
+	if got := s.Model(); !reflect.DeepEqual(got, state) {
 		t.Fatalf("Model() says %+v, the switch said %+v", got, state)
 	}
 	if err := s.Send("second"); err != nil {
@@ -200,11 +201,12 @@ func TestSwitchRefusedWhenTheConversationDoesNotFit(t *testing.T) {
 	}
 }
 
-// A switch is refused while a turn runs: the turn under way has already asked
-// its model.
-func TestSwitchRefusedWhileATurnRuns(t *testing.T) {
+// A switch made while a turn runs waits for the turn's end (ADR 40, amended by
+// ADR 41): the turn under way has already asked its model, so the choice is
+// queued, said so in the state and the log, and applied before the next turn.
+func TestSwitchDuringATurnWaitsForItsEnd(t *testing.T) {
 	t.Parallel()
-	away := fake.NewT(t, fake.Turn{Content: "unused"})
+	away := fake.NewT(t, fake.Turn{Content: "away answer"})
 	defer away.Close()
 	home := fake.NewT(t) // never asked: the turn's provider waits
 	defer home.Close()
@@ -225,14 +227,38 @@ func TestSwitchRefusedWhileATurnRuns(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	_, err = s.SetModel(ModelChoice{Server: "away", Model: "away-model"})
-	if err == nil || !strings.Contains(err.Error(), "a turn is running") {
+	state, err := s.SetModel(ModelChoice{Server: "away", Model: "away-model"})
+	if err != nil {
 		t.Fatalf("switch during a turn: %v", err)
+	}
+	if state.Model != "control-model" || state.Queued == nil || state.Queued.Model != "away-model" || state.Queued.Server != "away" {
+		t.Fatalf("the turn under way keeps its model, and the choice is queued: %+v", state)
 	}
 	s.Abort()
 	(&rig{t: t, s: s}).drain("n")
-	if _, err := s.SetModel(ModelChoice{Server: "away", Model: "away-model"}); err != nil {
-		t.Fatalf("switch after the turn: %v", err)
+	if got := s.Model(); got.Model != "away-model" || got.Queued != nil {
+		t.Fatalf("after the turn: %+v", got)
+	}
+	var records []log.SessionModel
+	for _, ev := range s.EventsSoFar() {
+		if ev.Kind != log.KindSessionModel {
+			continue
+		}
+		var rec log.SessionModel
+		if err := ev.Decode(&rec); err != nil {
+			t.Fatal(err)
+		}
+		records = append(records, rec)
+	}
+	if len(records) != 2 || !records[0].Queued || records[0].Context != nil || records[1].Queued || records[1].Context == nil || records[1].Model != "away-model" {
+		t.Fatalf("the log should say it was queued, then applied: %+v", records)
+	}
+	if err := s.Send("again"); err != nil {
+		t.Fatal(err)
+	}
+	(&rig{t: t, s: s}).drain("n")
+	if len(away.Requests) != 1 {
+		t.Fatalf("the next turn asked the away model %d times", len(away.Requests))
 	}
 }
 
@@ -311,9 +337,10 @@ func TestResumeKeepsTheModelItWasSwitchedTo(t *testing.T) {
 	}
 }
 
-// A model config.toml no longer offers does not make the task unopenable: it
-// talks to the [control] model again, and the log says what it lost.
-func TestResumeFallsBackWhenTheChosenModelIsGone(t *testing.T) {
+// A model config.toml no longer offers does not make the task unopenable, and
+// does not hand it to another model unasked either: it opens, says what it was
+// left on, asks no turn until a model is chosen for it, and then goes on.
+func TestResumeDoesNotHandTheTaskToAnotherModelWhenTheChosenOneIsGone(t *testing.T) {
 	t.Parallel()
 	home := fake.NewT(t, fake.Turn{Content: "home answer"}, fake.Turn{Content: "home again"})
 	defer home.Close()
@@ -343,15 +370,16 @@ func TestResumeFallsBackWhenTheChosenModelIsGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resumed.Close()
-	if got := resumed.Model(); got.Model != "control-model" {
-		t.Fatalf("resumed model: %+v", got)
+	state := resumed.Model()
+	if !strings.Contains(state.Unavailable, "away-model on away") || !strings.Contains(state.Unavailable, `no server named "away"`) {
+		t.Fatalf("the state does not say what was lost: %+v", state)
 	}
-	if err := resumed.Send("second"); err != nil {
-		t.Fatal(err)
+	err = resumed.Send("second")
+	if err == nil || !strings.Contains(err.Error(), "choose a model for it") {
+		t.Fatalf("a turn was asked of a conversation with no model: %v", err)
 	}
-	(&rig{t: t, s: resumed}).drain("n")
-	if len(home.Requests) != 2 {
-		t.Fatalf("the control model answered %d turns", len(home.Requests))
+	if len(home.Requests) != 1 {
+		t.Fatalf("the control model answered %d turns: the conversation was handed to it", len(home.Requests))
 	}
 	note := ""
 	for _, ev := range resumed.EventsSoFar() {
@@ -362,12 +390,24 @@ func TestResumeFallsBackWhenTheChosenModelIsGone(t *testing.T) {
 		if err := ev.Decode(&n); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(n.Text, "no longer configured") {
+		if strings.Contains(n.Text, "is not available") {
 			note = n.Text
 		}
 	}
-	if !strings.Contains(note, "away") {
+	if !strings.Contains(note, "away") || !strings.Contains(note, "no turn will be asked") {
 		t.Fatalf("the log does not say what was lost: %q", note)
+	}
+	// Choosing a model is what lets it go on.
+	chosen, err := resumed.SetModel(ModelChoice{Name: "control"})
+	if err != nil || chosen.Unavailable != "" {
+		t.Fatalf("choose: %+v, %v", chosen, err)
+	}
+	if err := resumed.Send("second"); err != nil {
+		t.Fatal(err)
+	}
+	(&rig{t: t, s: resumed}).drain("n")
+	if len(home.Requests) != 2 {
+		t.Fatalf("the control model answered %d turns after it was chosen", len(home.Requests))
 	}
 }
 

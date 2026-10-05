@@ -108,9 +108,29 @@ set \code{dialect = "cerebras"} beside \code{provider = "openai"} in its
 server table, or on a model that names no server, before starting \nodwyn{}.
 It sends prior assistant thinking as \code{reasoning}; the default,
 \code{"compatible"}, keeps \code{reasoning\_content}. Unknown dialects
-and dialects on Ollama are refused. Settings preserves the choice when
-saving that server's model, but has no dialect selector. The choice changes
-neither the key's binding nor what the conversation log records.
+and dialects on Ollama are refused. Settings sets it with the rest of a
+provider, where you can see it before saving, and keeps it when it saves
+another model on that server. The choice changes neither the key's binding
+nor what the conversation log records.
+
+A reasoning model takes an effort, how hard it is asked to think. A provider
+decides which words it accepts, and may refuse a request that carries one it
+does not know, so a model takes an effort only if its entry says which:
+\code{efforts = ["low", "medium", "high"]}, and \code{effort = "medium"} for
+the one a conversation starts with. Nothing is inferred from a model's name.
+The word goes out as \code{reasoning\_effort} to a chat-completions server and
+as \code{think} to Ollama (\code{["off", "on"]} for a model that thinks or does
+not), and the log records it on each request (\adr{41}).
+
+In the console, Settings $\to$ Models does all of this without the file:
+providers with their address, dialect and key, and whether each can be used and
+why not; a test request that says whether the key was accepted; the models to
+choose between, with their efforts; and the default model and effort new tasks
+start on. Under the message box of the New task window, and of every
+conversation, a Model and an Effort select change what the next message is
+answered with; a change made while a response is running waits for it, and the
+page says so. A task whose model has gone from the list asks nothing until you
+choose one for it.
 
 A model may also set \code{num\_ctx} (sent to Ollama; for \code{[control]}
 it also sizes the window) and \code{keep\_alive} (Ollama),
@@ -331,7 +351,7 @@ nodwyn-stable                              # then, at the prompt:
 :eval (credential-register "openai-key")   # masked input
 \end{sh}
 
-The console stores keys without a terminal: Settings the main model's,
+The console stores keys without a terminal: Settings the model providers',
 Connections an MCP server's, each with its one binding row, and Connections
 \textrightarrow{} Credentials any key, with the host it may go to, and
 OAuth2 accounts. A key can also be registered as above.

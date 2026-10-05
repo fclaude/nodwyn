@@ -16,6 +16,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/policyfile"
 	"github.com/fclaude/nodwyn/internal/prim"
@@ -187,8 +188,14 @@ func (s *server) keychainPassphrase(req request) (any, *rpcError) {
 // gets the keychain only when it is built (its tools and egress checks
 // depend on it), so a task opened now would stay keyless even after an
 // unlock, and fail every model request until it was reopened.
-func (s *server) lockedKeyRefusal() string {
-	if s.options.Keychain != nil || s.options.Config.Control.Credential == "" {
+func (s *server) lockedKeyRefusal(choice core.ModelChoice) string {
+	if s.options.Keychain != nil {
+		return ""
+	}
+	// The model the task is to talk to: the one chosen for it, else the
+	// default. A choice that cannot be had is refused by the session.
+	m, _, err := core.Choose(s.options.Config, choice)
+	if err != nil || m.Credential == "" {
 		return ""
 	}
 	if _, err := os.Stat(s.options.Paths.Keychain); err != nil {
@@ -201,10 +208,14 @@ type settingsResult struct {
 	ConfigFile string       `json:"config_file"`
 	Control    config.Model `json:"control"`
 	Models     []string     `json:"models"`
-	// Servers are the model servers config.toml names, by name: the main
-	// model may be any model one of them offers (settings.control.write
-	// with server, models.offered).
-	Servers  []modelServer  `json:"servers"`
+	// Servers are the model providers config.toml names, by name, and the
+	// addresses models name inline: the main model may be any model one of
+	// them offers (settings.control.write with server, models.offered).
+	Servers []modelServer `json:"servers"`
+	// Choices are the models a task can be started on or moved to (ADR 41):
+	// [control], the default, then each [models.NAME], with the efforts each
+	// takes. An entry that is the default model again is not listed twice.
+	Choices  []modelChoice  `json:"choices"`
 	Keychain keychainStatus `json:"keychain"`
 	Docs     docsSettings   `json:"docs"`
 	// Values are the settings settings.write may change, by dotted name.
@@ -233,28 +244,68 @@ type docsParams struct {
 	GoogleUpload string `json:"google_upload"`
 }
 type controlParams struct {
-	// Server names a configured server ([servers.NAME]) the model is on.
-	// Without it, Provider and URL say where the model is, and the server
-	// they make is saved under a name of its own, or found among those
-	// configured.
+	// Name chooses a [models.NAME] entry as the default model, with the
+	// settings it carries. Without it, Server names a configured server
+	// ([servers.NAME]) the model is on, or Provider and URL say where it is,
+	// and the server they make is saved under a name of its own, or found
+	// among those configured.
+	Name     string `json:"name,omitempty"`
 	Server   string `json:"server,omitempty"`
 	Provider string `json:"provider,omitempty"`
 	URL      string `json:"url,omitempty"`
-	Model    string `json:"model"`
+	// Model is the model id as the provider names it; with Name it is left
+	// out.
+	Model string `json:"model,omitempty"`
+	// Effort is the default effort of the model, one it takes, and "" for none:
+	// a new task asks it unless another is chosen. Left out, it is the model's
+	// own default effort, or the one it already has when only the model's
+	// server is saved again.
+	Effort *string `json:"effort,omitempty"`
 	// APIKey, when set with Provider and URL, is stored in the keychain
 	// and bound to exactly the server's host, POST, as a bearer
 	// Authorization header. Every model on the server is sent it.
 	APIKey string `json:"api_key,omitempty"`
 }
 
-// modelServer is a [servers.NAME] table as Settings shows it: its key's
-// keychain class, never the key.
+// modelServer is a model provider as Settings shows it: a [servers.NAME]
+// table, or an address a model names inline, with its key's keychain class,
+// never the key.
 type modelServer struct {
 	Dialect    string `json:"dialect,omitempty"`
 	Name       string `json:"name"`
 	Provider   string `json:"provider"`
 	URL        string `json:"url"`
 	Credential string `json:"credential,omitempty"`
+	Host       string `json:"host"`
+	// Inline marks an address a model gives itself, without a server of its
+	// own: Name is then its host, and it is changed in config.toml, or by
+	// saving a default model on a provider.
+	Inline bool `json:"inline,omitempty"`
+	// Key is what the keychain says of its key without asking the server:
+	// empty when it has none, ready, or needs_key, locked or unbound
+	// (modelStatus.State), with KeyDetail saying what to do.
+	Key       string `json:"key,omitempty"`
+	KeyDetail string `json:"key_detail,omitempty"`
+	// Uses names the models that are on it: "control", and [models.NAME].
+	Uses []string `json:"uses"`
+}
+
+// modelChoice is a model a person can choose, as the pickers show it.
+type modelChoice struct {
+	// Name is "control", or a [models.NAME]: what session.open and
+	// session.model.set take.
+	Name     string `json:"name"`
+	Server   string `json:"server,omitempty"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+	Host     string `json:"host"`
+	// Efforts are the efforts the model takes; none when it takes no effort
+	// setting. Effort is the one it starts with when none is chosen: empty
+	// asks none, which leaves the model to its provider.
+	Efforts []string `json:"efforts,omitempty"`
+	Effort  string   `json:"effort,omitempty"`
+	// Default marks the model new tasks start on.
+	Default bool `json:"default,omitempty"`
 }
 
 func (s *server) settings() settingsResult {
@@ -270,12 +321,7 @@ func (s *server) settings() settingsResult {
 	}
 	judge := s.options.Config.Jev.Enabled() && s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
 	stored := s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
-	servers := make([]modelServer, 0, len(s.options.Config.Servers))
-	for _, name := range slices.Sorted(maps.Keys(s.options.Config.Servers)) {
-		sv := s.options.Config.Servers[name]
-		servers = append(servers, modelServer{Name: name, Provider: providerName(sv.Provider), Dialect: string(sv.Dialect), URL: sv.URL, Credential: sv.Credential})
-	}
-	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: servers, Keychain: s.keychainStatus(),
+	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: s.providers(), Choices: s.choices(), Keychain: s.keychainStatus(),
 		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge,
 		JevHost: prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL}), JevStored: stored}
 }
@@ -319,13 +365,13 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		return s.settings(), nil
 	}
 	var p controlParams
-	if err := params(req.Params, &p, "server", "provider", "url", "model", "api_key"); err != nil {
+	if err := params(req.Params, &p, "name", "server", "provider", "url", "model", "effort", "api_key"); err != nil {
 		return nil, err
 	}
 	key := []byte(p.APIKey)
 	defer clear(key)
 	model := strings.TrimSpace(p.Model)
-	if model == "" {
+	if p.Name == "" && model == "" {
 		return nil, failure(-32602, "model is required")
 	}
 	raw, err := os.ReadFile(s.options.Paths.ConfigFile)
@@ -339,17 +385,52 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	old := s.options.Config.Control
-	name, srv, host, write, rerr := controlServer(p, current.Servers, old, len(key) > 0)
-	if rerr != nil {
-		return nil, rerr
+	var (
+		name, host string
+		srv        config.Server
+		write      bool
+		m          config.Model
+	)
+	if p.Name != "" {
+		// A model already in the list is the default as it is there, tuning
+		// and efforts included.
+		if p.Server != "" || p.Provider != "" || p.URL != "" || model != "" || len(key) > 0 {
+			return nil, failure(-32602, "Give a model from the list by name, or a server and a model, not both")
+		}
+		entry, ok := current.Models[p.Name]
+		if p.Name == config.ControlModel {
+			entry, ok = current.Control, current.Control.Model != ""
+		}
+		if !ok {
+			return nil, failure(-32602, fmt.Sprintf("No model named %q is configured", p.Name))
+		}
+		m = entry
+		// Its efforts are the entry's to list: a copy here would go stale when
+		// the entry changes, and win over it (Config.Efforts). [control] keeps
+		// only what it declared itself.
+		if p.Name != config.ControlModel {
+			m.Efforts = nil
+		}
+	} else {
+		var rerr *rpcError
+		name, srv, host, write, rerr = controlServer(p, current.Servers, old, len(key) > 0)
+		if rerr != nil {
+			return nil, rerr
+		}
+		m = config.Model{Server: name, Model: model}
+		// Saving the same model on the same server keeps what was tuned by hand
+		// in config.toml; choosing another model starts from its defaults.
+		if providerName(old.Provider) == providerName(srv.Provider) && strings.TrimRight(old.URL, "/") == strings.TrimRight(srv.URL, "/") && old.Model == m.Model {
+			m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
+			m.Temperature, m.Seed, m.Vision, m.CacheKey = old.Temperature, old.Seed, old.Vision, old.CacheKey
+			m.PriceInput, m.PriceCachedInput, m.PriceOutput = old.PriceInput, old.PriceCachedInput, old.PriceOutput
+			m.Efforts, m.Effort = old.Efforts, old.Effort
+		}
 	}
-	m := config.Model{Server: name, Model: model}
-	// Saving the same model on the same server keeps what was tuned by hand
-	// in config.toml; choosing another model starts from its defaults.
-	if providerName(old.Provider) == providerName(srv.Provider) && strings.TrimRight(old.URL, "/") == strings.TrimRight(srv.URL, "/") && old.Model == m.Model {
-		m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
-		m.Temperature, m.Seed, m.Vision, m.CacheKey = old.Temperature, old.Seed, old.Vision, old.CacheKey
-		m.PriceInput, m.PriceCachedInput, m.PriceOutput = old.PriceInput, old.PriceCachedInput, old.PriceOutput
+	// The effort asked for is the default's own; left out, it is what the
+	// model already has.
+	if p.Effort != nil {
+		m.Effort = *p.Effort
 	}
 	var class string
 	if len(key) > 0 {
@@ -368,6 +449,11 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 	}
 	text, cfg, err := config.SetControl(text, m)
 	if err != nil {
+		return nil, failure(-32602, err.Error())
+	}
+	// Choosing another default does not take the one it replaces out of the
+	// models a person can choose: it stays in the list, as it was.
+	if text, cfg, err = keepPreviousDefault(text, cfg, current.Control); err != nil {
 		return nil, failure(-32602, err.Error())
 	}
 	if len(key) > 0 {
@@ -394,10 +480,47 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	s.options.Config = cfg
-	probeCache.mu.Lock()
-	probeCache.key = ""
-	probeCache.mu.Unlock()
+	forgetProbes()
 	return s.settings(), nil
+}
+
+// keepPreviousDefault adds the model that was the default to the models of
+// config.toml, as it was, unless it is still the default or is listed already:
+// a person who chooses another default has not asked to lose the first.
+func keepPreviousDefault(text []byte, cfg config.Config, previous config.Model) ([]byte, config.Config, error) {
+	if previous.URL == "" && previous.Server == "" || previous.Model == "" || cfg.SameModel(previous, cfg.Control) {
+		return text, cfg, nil
+	}
+	for _, listed := range cfg.Models {
+		if cfg.SameModel(previous, listed) {
+			return text, cfg, nil
+		}
+	}
+	where := previous.Server
+	if where == "" {
+		// A default that gave its own address, and was moved to a server at
+		// that address, is listed on the server, not as a second copy of it.
+		for _, n := range slices.Sorted(maps.Keys(cfg.Servers)) {
+			if sv := cfg.Servers[n]; providerName(sv.Provider) == providerName(previous.Provider) && strings.TrimRight(sv.URL, "/") == strings.TrimRight(previous.URL, "/") {
+				where = n
+				previous.Server, previous.Provider, previous.URL, previous.Dialect, previous.Credential = n, "", "", "", ""
+				break
+			}
+		}
+	}
+	if where == "" {
+		if u, err := url.Parse(previous.URL); err == nil {
+			where = serverName(u.Hostname())
+		}
+	}
+	name := modelName(where, previous.Model)
+	for n := 2; ; n++ {
+		if _, taken := cfg.Models[name]; !taken && name != config.ControlModel {
+			break
+		}
+		name = fmt.Sprintf("%s-%d", modelName(where, previous.Model), n)
+	}
+	return config.SetModel(text, name, previous)
 }
 
 // controlServer is the server settings.control.write puts the main model

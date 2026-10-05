@@ -11,6 +11,7 @@ export class Connection {
     this.hello = null;
     this.listeners = new Set();
     this.stateListeners = new Set();
+    this.resultListeners = new Set();
     this.state = "idle"; // idle | connecting | live | down | unpaired
   }
   get live() {
@@ -22,6 +23,13 @@ export class Connection {
   onEvent(fn) {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+  // onResult is told the method of every request that was answered, so a page
+  // that depends on what a request changed (the keychain, a key) can read it
+  // again without every caller of that request knowing.
+  onResult(fn) {
+    this.resultListeners.add(fn);
+    return () => this.resultListeners.delete(fn);
   }
   onState(fn) {
     this.stateListeners.add(fn);
@@ -49,7 +57,7 @@ export class Connection {
         this.waiting.delete(id);
         reject(new Error("Request timed out. Nothing was retried."));
       }, timeout);
-      this.waiting.set(id, { resolve, reject, timer });
+      this.waiting.set(id, { resolve, reject, timer, method });
       this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
   }
@@ -92,7 +100,10 @@ export class Connection {
         clearTimeout(wait.timer);
         this.waiting.delete(frame.id);
         if (frame.error) wait.reject(new Error(frame.error.message));
-        else wait.resolve(frame.result);
+        else {
+          wait.resolve(frame.result);
+          for (const fn of this.resultListeners) fn(wait.method);
+        }
         return;
       }
       for (const fn of this.listeners) fn(frame);

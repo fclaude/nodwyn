@@ -208,9 +208,72 @@ Omitting the dialect or using \code{"compatible"} preserves the existing
 encoding. A model with no server may set its own dialect; a model naming a
 server inherits it. Unknown dialects and dialects on Ollama are refused.
 Settings saves and model choices retain the dialect, including moving an
-inline control into a server at the same endpoint. No URL inference or
-console selector is involved. The log, window and credential binding keep
-their existing rules (\adr{8}, \adr{9}).
+inline control into a server at the same endpoint, and Settings
+$\to$ Models sets it with the rest of a provider; no URL inference is
+involved. The log, window and credential binding keep their existing rules
+(\adr{8}, \adr{9}).
+
+\section{Efforts}
+
+A reasoning model takes an \emph{effort}, how hard it is asked to think
+before it answers, and a provider that does not know the field may refuse the
+request. So \nodwyn{} never guesses which model takes one: a model's entry
+declares the words its provider accepts, and a model that declares none is
+offered none and sent none.
+
+\begin{toml}
+[models.deep]
+server  = "openai"
+model   = "gpt-5.1"
+efforts = ["low", "medium", "high"]   # as the server spells them
+effort  = "medium"                    # the start; unset leaves it to the provider
+
+[models.local-thinker]
+server  = "local"
+model   = "qwen3:8b"
+efforts = ["off", "on"]               # Ollama: think false / true
+\end{toml}
+
+The word reaches a chat-completions server as \code{reasoning\_effort} and
+Ollama as \code{think} (\code{off} and \code{on} are its booleans; any other
+word is a level, as gpt-oss takes). Words are short and lower-case.
+\code{[control]} lists no \code{efforts} when an entry is the same model at
+the same address: it takes them from that entry, so they are written once and
+cannot go stale; its own \code{effort} is the default model's. A default that
+is not among the efforts, or an effort on a model that declares none, is
+refused when the file loads. Each \code{llm.req} records the effort it asked
+for, so the request still replays to its hash (\adr{41}).
+
+\section{Providers, models and the pickers}
+
+Settings $\to$ Models is the file's \code{[servers]}, \code{[models]} and
+\code{[control]} without the file. A \emph{provider} is a server: its kind, its
+address, its dialect and its key. A key goes to the keychain with one binding
+row (the host, \code{POST}, a bearer header), is replaced in place, goes only
+over https or to this computer, and follows a change of path but never of host.
+Each provider says whether it can be used and what to fix: the key's state is
+read from the keychain and the binding table before the server is asked
+(\code{needs\_key}, \code{locked}, \code{unbound}), then the server
+(\code{unreachable}, \code{missing}). \textbf{Test} sends one short request
+through the same binding check a task's request passes, and reports a key the
+server did not accept, a model it does not have, or an effort it refuses.
+\emph{Models you can choose} is \code{[control]} and the \code{[models.NAME]}
+tables, with their efforts; the default is one of them, and choosing another
+keeps the old default in the list.
+
+The New task window and a conversation share one picker, a Model select
+grouped by provider and an Effort select of what that model takes. In a
+conversation a change is a \code{session.model.set}; naming the model it is on
+changes the effort alone, and nothing is sized again. While a response runs the
+change is \emph{queued}: recorded at once without a window recipe, reported in
+\code{session.info}, and applied as the turn ends, before it is idle. If it
+cannot apply (the conversation outgrew the target's context, the model left the
+list) the conversation keeps what it had, and the state and the log say why.
+A conversation whose recorded model, or effort, \code{config.toml} no longer
+offers opens as \code{unavailable} and asks no turn until a model is chosen: it
+is never handed to another model, which would send its content to a provider
+nobody chose for it. All of it is this computer's act, not a paired
+device's.
 
 A conversation may be moved to another model between turns
 (\adr{40}). The choice names a \code{[models.NAME]} entry, config.toml's
@@ -218,13 +281,13 @@ A conversation may be moved to another model between turns
 never changes: another model on the same server is the same address and the
 same key, and a switched model on another server brings that server's key
 and its own binding, checked on the request as every other request is. The
-choice is a record in the session's log (\code{session.model}) and is
-restored when the session is resumed; it is this computer's act, not a
-paired device's, whether the task is being opened or moved. The window is
-sized for the model that will answer, as opening the task on it would size
-it (from \code{num\_ctx}, or the context the server's model list gives),
-and a switch is refused when the conversation would not fit it. Whether a
-model takes images is asked of each model the task is moved to.
+choice, and the effort chosen with it, is a record in the session's log
+(\code{session.model}) and is restored when the session is resumed; it is this
+computer's act, not a paired device's, whether the task is being opened or
+moved. The window is sized for the model that will answer, as opening the task
+on it would size it (from \code{num\_ctx}, or the context the server's model
+list gives), and a switch is refused when the conversation would not fit it.
+Whether a model takes images is asked of each model the task is moved to.
 
 An attached image is egress of a kind no binding governs: its pixels cannot
 be redacted. It goes to the control model's host only, and only after a

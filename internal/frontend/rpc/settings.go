@@ -177,9 +177,7 @@ func (s *server) settingsWrite(req request, _ *peer) (any, *rpcError) {
 	}
 	s.options.Config = next
 	if tables["control"] {
-		probeCache.mu.Lock()
-		probeCache.key = ""
-		probeCache.mu.Unlock()
+		forgetProbes()
 	}
 	return s.settings(), nil
 }

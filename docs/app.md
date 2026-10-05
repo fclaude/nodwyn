@@ -30,7 +30,9 @@ pair with the code the app prints to its log.
 ## First run
 
 With no model configured (no `[control]` in `config.toml`), Home asks which model to use: an Ollama server (on this
-computer or another one on the network) or any OpenAI-compatible server. The
+computer or another one on the network) or any OpenAI-compatible server. Once
+one is set up, Settings › Models adds more providers and models, and chooses
+the default model and its effort (the manual, "Choosing models"). The
 choice is written to the `[control]` table of `config.toml`; every other line
 of an existing file is kept, and saving the same model on the same server
 again keeps its hand-tuned settings (`num_ctx`, `temperature`, `seed`, prices, …). An API key is never written there: it goes into

@@ -23,6 +23,9 @@ type openParams struct {
 	Name   string `json:"name,omitempty"`
 	Server string `json:"server,omitempty"`
 	Model  string `json:"model,omitempty"`
+	// Effort is the reasoning effort the conversation starts with: one the
+	// model takes (ADR 41). Left out, it is the model's own default.
+	Effort string `json:"effort,omitempty"`
 }
 
 // modelSetParams choose a conversation's model: a [models.NAME] entry by
@@ -33,6 +36,10 @@ type modelSetParams struct {
 	Name   string `json:"name,omitempty"`
 	Server string `json:"server,omitempty"`
 	Model  string `json:"model,omitempty"`
+	// Effort is the reasoning effort its requests ask for, one the model
+	// takes; left out, the model's own default (ADR 41). The effort alone is
+	// changed by naming the model the conversation is on again.
+	Effort string `json:"effort,omitempty"`
 }
 type idParams struct {
 	ID string `json:"id"`

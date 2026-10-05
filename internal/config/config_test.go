@@ -231,7 +231,7 @@ num_ctx = 32768
 // There is no built-in control model: nodwyn names the model it talks to only
 // once the user has, and a keyed provider may be the control model.
 func TestControlIsConfiguredNotBuiltIn(t *testing.T) {
-	if Default().Control != (Model{}) {
+	if !Default().Control.isZero() {
 		t.Fatalf("a built-in control model: %+v", Default().Control)
 	}
 	err := MissingControl("/home/u/.config/nodwyn/config.toml")

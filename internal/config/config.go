@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -199,7 +200,24 @@ type Model struct {
 	PriceInput       *float64 `toml:"price_input"`
 	PriceCachedInput *float64 `toml:"price_cached_input"`
 	PriceOutput      *float64 `toml:"price_output"`
+	// Efforts are the reasoning efforts the model takes, in the words its
+	// server accepts: ["low", "medium", "high"], ["minimal", "low", "medium",
+	// "high"], or ["off", "on"] for an Ollama model that thinks or does not
+	// (ADR 41). Nothing is inferred from the model's name or the server's
+	// address, so a model that declares none takes no effort setting and is
+	// sent none. Efforts may be left off a model that another entry in
+	// config.toml declares them for (Config.Efforts).
+	Efforts []string `toml:"efforts"`
+	// Effort is the effort a conversation on this model starts with when
+	// nobody chose one: one of Efforts. Unset sends none, which leaves the
+	// model to its provider's default. For [control] it is the effort of the
+	// default model, which a new task starts with.
+	Effort string `toml:"effort"`
 }
+
+// isZero says whether m is the empty model, as an unset [control] is. Model
+// holds a slice, so it is not comparable with ==.
+func (m Model) isZero() bool { return reflect.DeepEqual(m, Model{}) }
 
 // Server is a model server: where its models are reached and the key they
 // are reached with. A provider offers many models at one address under one
@@ -512,7 +530,7 @@ func (c *Config) resolveServers() error {
 
 // Validate rejects configurations the harness must not run with.
 func (c Config) Validate() error {
-	if c.Control != (Model{}) {
+	if !c.Control.isZero() {
 		need := c.Window.HighWater + c.Window.OutputReserve
 		var missing []string
 		if c.Control.URL == "" {
@@ -532,6 +550,9 @@ func (c Config) Validate() error {
 		if err := c.Control.validate(); err != nil {
 			return fmt.Errorf("control: %w", err)
 		}
+		if err := c.checkEffort(c.Control); err != nil {
+			return fmt.Errorf("control: %w", err)
+		}
 		// Unset, an ollama model is asked for the window's size (WindowNumCtx)
 		// and another server decides its own; set, the window must fit in it.
 		if n := c.Control.NumCtx; n > 0 && need > n {
@@ -543,6 +564,9 @@ func (c Config) Validate() error {
 	}
 	for name, m := range c.Models {
 		if err := m.validate(); err != nil {
+			return fmt.Errorf("models.%s: %w", name, err)
+		}
+		if err := c.checkEffort(m); err != nil {
 			return fmt.Errorf("models.%s: %w", name, err)
 		}
 	}
@@ -687,6 +711,97 @@ func (m Model) validate() error {
 	for name, p := range map[string]*float64{"price_input": m.PriceInput, "price_cached_input": m.PriceCachedInput, "price_output": m.PriceOutput} {
 		if p != nil && (*p < 0 || math.IsNaN(*p) || math.IsInf(*p, 0)) {
 			return fmt.Errorf("%s %v must be a price of 0 or more (USD per million tokens)", name, *p)
+		}
+	}
+	seen := map[string]bool{}
+	for _, e := range m.Efforts {
+		if err := llm.ValidEffort(e); err != nil {
+			return fmt.Errorf("efforts: %w", err)
+		}
+		if seen[e] {
+			return fmt.Errorf("efforts: %q is listed twice", e)
+		}
+		seen[e] = true
+	}
+	if m.Effort != "" {
+		if err := llm.ValidEffort(m.Effort); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkEffort says whether m's default effort is one the model takes. A
+// model that declares no efforts, here or on another entry for the same
+// model, cannot have a default: sending an effort to a model that does not
+// take one is how a request is refused.
+func (c Config) checkEffort(m Model) error {
+	if m.Effort == "" {
+		return nil
+	}
+	efforts := c.Efforts(m)
+	switch {
+	case len(efforts) == 0:
+		return fmt.Errorf("effort %q is set, but the model declares no efforts: add efforts = [...] to it, naming the words its server accepts", m.Effort)
+	case !slices.Contains(efforts, m.Effort):
+		return fmt.Errorf("effort %q is not one the model takes (%s)", m.Effort, strings.Join(efforts, ", "))
+	}
+	return nil
+}
+
+// Resolve completes a model that names a server with the server's provider,
+// dialect, URL and credential, which Parse copies into every model naming one:
+// a model built in memory resolves the same way as one read from config.toml.
+func (c Config) Resolve(m Model) Model {
+	srv, ok := c.Servers[m.Server]
+	if m.Server == "" || !ok {
+		return m
+	}
+	if m.URL == "" {
+		m.URL = srv.URL
+	}
+	if m.Provider == "" {
+		m.Provider = srv.Provider
+	}
+	if m.Dialect == "" {
+		m.Dialect = srv.Dialect
+	}
+	if m.Credential == "" {
+		m.Credential = srv.Credential
+	}
+	return m
+}
+
+// SameModel says whether a and b are one model at one address: the same
+// provider, the same URL (a trailing slash does not matter) and the same
+// model id. Two entries in config.toml may describe one, such as [control]
+// and the [models.NAME] it was chosen from; each is resolved first.
+func (c Config) SameModel(a, b Model) bool {
+	a, b = c.Resolve(a), c.Resolve(b)
+	provider := func(m Model) string {
+		if m.Provider == "" {
+			return "ollama"
+		}
+		return m.Provider
+	}
+	return a.Model != "" && a.Model == b.Model && provider(a) == provider(b) && strings.TrimRight(a.URL, "/") == strings.TrimRight(b.URL, "/")
+}
+
+// Efforts are the efforts m takes: its own, else those declared by another
+// entry in config.toml for the same model at the same address ([control] first,
+// then the [models.NAME] in name order). A person who lists a model's efforts
+// once is not asked to say them again where it is the default. Nil is a model
+// that takes no effort setting.
+func (c Config) Efforts(m Model) []string {
+	if len(m.Efforts) > 0 {
+		return m.Efforts
+	}
+	if len(c.Control.Efforts) > 0 && c.SameModel(m, c.Control) {
+		return c.Control.Efforts
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.Models)) {
+		if other := c.Models[name]; len(other.Efforts) > 0 && c.SameModel(m, other) {
+			return other.Efforts
 		}
 	}
 	return nil

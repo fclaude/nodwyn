@@ -4,6 +4,7 @@ import { summary } from "./prompts.js";
 import { modelForm, keychainForm } from "./setup.js";
 import { Attachments, isImage } from "./attach.js";
 import { keepDraft } from "./task.js";
+import { ModelPicker, defaultSelection, choicesOf, blocked } from "./modelpicker.js";
 
 // The folder the next task starts in, for this tab. A tab that has not
 // picked yet starts in the folder picked last: this browser's, else the
@@ -18,6 +19,36 @@ let starting = false; // a start is in flight: one task per ask
 // The folders whose next task starts in a git worktree of its own (ADR 34),
 // this tab only: a choice made once for a folder holds for its next tasks.
 const inWorktree = new Set();
+
+// The model and effort chosen for the next task, if they are not the default
+// (ADR 41): kept while the window is left and come back to, and in this
+// browser across a reload, since it is an unsent choice like the message. It
+// is dropped when the task starts, and when the default is picked again, so a
+// new task always begins on the default of Settings unless it is changed
+// there and then. It never changes the default.
+const NEW_KEY = "nodwyn-new-task-model";
+let picked = null; // {name, effort}, or null for the default
+let pickedLoaded = false;
+function loadPicked() {
+  if (pickedLoaded) return;
+  pickedLoaded = true;
+  try {
+    const v = JSON.parse(localStorage.getItem(NEW_KEY) || "null");
+    if (v && typeof v.name === "string" && typeof v.effort === "string") picked = { name: v.name, effort: v.effort };
+  } catch {
+    /* a browser that refuses storage starts on the default */
+  }
+}
+function pick(selection, desk) {
+  const dflt = defaultSelection(desk);
+  picked = selection && !(dflt && selection.name === dflt.name && selection.effort === dflt.effort) ? selection : null;
+  try {
+    if (picked) localStorage.setItem(NEW_KEY, JSON.stringify(picked));
+    else localStorage.removeItem(NEW_KEY);
+  } catch {
+    /* kept for this tab only */
+  }
+}
 
 // setFolder picks the folder the next task starts in, in this tab, and
 // remembers it — in this browser for a fresh tab, and with the daemon
@@ -53,6 +84,11 @@ export function renderHome(root, ctx) {
   // other, and goes on until it is done.
   const canStart = conn.has("session.open") && conn.has("session.send");
   const where = control?.model ? `${control.model}${control.host ? ` · ${control.host}` : ""}` : "no model configured";
+  // This computer chooses where a task's content goes (ADR 30, ADR 40): a
+  // paired device starts tasks on the default model and says which it is.
+  loadPicked();
+  const canChoose = conn.has("session.model.set") && choicesOf(desk).length > 0;
+  const selection = () => picked || defaultSelection(desk);
 
   // Needs you: each waiting task says what it asks.
   const needs = h("section", { class: "home-section", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
@@ -150,6 +186,9 @@ export function renderHome(root, ctx) {
     main.replaceChild(grid, main.lastChild);
     const label = main.querySelector(".ask-bar .where");
     if (label) label.textContent = where;
+    // The models' readiness arrives after the page is drawn, and changes
+    // while it is open: the picker says so without a redraw of the composer.
+    current?.refresh?.(desk);
     return current;
   }
 
@@ -169,7 +208,7 @@ export function renderHome(root, ctx) {
     },
   });
   task.value = draft;
-  const ready = () => !starting && canStart && conn.live && !desk.keysLocked && !!chosen && !!task.value.trim();
+  const ready = () => !starting && canStart && conn.live && !desk.keysLocked && !!chosen && !!task.value.trim() && !(canChoose && blocked(desk, selection()));
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: true }, icon("up", 18, 2));
   files ||= new Attachments();
   const attach = files.button("Attach");
@@ -187,6 +226,21 @@ export function renderHome(root, ctx) {
         h("span", {}, "In a worktree"),
       )
     : null;
+  // The model and effort the task starts on. What is shown is what is sent.
+  const picker = new ModelPicker("new-task-model");
+  const drawPicker = () => {
+    const sel = selection();
+    picker.update({
+      desk,
+      selection: sel,
+      onPick: (next, reset) => {
+        pick(next, desk);
+        drawPicker();
+        submit.disabled = !ready();
+        if (reset) toast("That model takes other efforts: its own default is chosen.");
+      },
+    });
+  };
   const form = h(
     "form",
     {
@@ -199,7 +253,16 @@ export function renderHome(root, ctx) {
         let opened = "",
           sending = false;
         try {
-          const info = await conn.call(worktree() ? "worktree.open" : "session.open", { repo: chosen });
+          // A model or effort chosen on this page is sent as it is. Left
+          // alone, the picker shows the default and the task starts on it, as
+          // a task always did: the daemon pins its effort in the log.
+          const params = { repo: chosen };
+          const sel = canChoose ? picked : null;
+          if (sel) {
+            params.name = sel.name;
+            if (sel.effort) params.effort = sel.effort;
+          }
+          const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
           opened = info.id;
           // An image waits for its own confirm, which the task's page shows.
           if (files.files.some(isImage)) navigate(`#/task/${info.id}`);
@@ -207,6 +270,7 @@ export function renderHome(root, ctx) {
           sending = true;
           await conn.call("session.send", { id: info.id, text: task.value });
           draft = "";
+          pick(null, desk);
           await desk.refresh();
           navigate(`#/task/${info.id}`);
         } catch (error) {
@@ -237,7 +301,7 @@ export function renderHome(root, ctx) {
       h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder")),
       attach,
       worktreeBox,
-      h("span", { class: "where" }, where),
+      canChoose ? picker.el : h("span", { class: "where" }, where),
       submit,
     ),
   );
@@ -336,7 +400,15 @@ export function renderHome(root, ctx) {
   files.onChange = () => (submit.disabled = !ready());
   root.replaceChildren(h("main", { class: waiting.length ? "home urgent" : "home" }, top, grid));
   if (!draft && canStart && document.activeElement === document.body) task.focus();
-  current = { focus: () => task.focus() };
+  if (canChoose) drawPicker();
+  current = {
+    focus: () => task.focus(),
+    // Redrawn when the desk changes under a page being typed into.
+    refresh: () => {
+      if (canChoose) drawPicker();
+      submit.disabled = !ready();
+    },
+  };
   return current;
 
   function runningCard(item) {

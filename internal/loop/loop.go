@@ -119,6 +119,9 @@ type Endpoint struct {
 	Seed        *int64
 	// Rates price a request the provider does not report the cost of.
 	Rates llm.Rates
+	// Effort is the reasoning effort its requests ask for; empty leaves it to
+	// the provider (ADR 41).
+	Effort string
 }
 
 //go:embed strategy.scm
@@ -439,6 +442,23 @@ func (l *Loop) SetControl(ep Endpoint, marks window.Policy, ceiling int, record 
 	l.visionMu.Lock()
 	delete(l.vision, ControlModel)
 	l.visionMu.Unlock()
+	return nil
+}
+
+// SetEffort changes the reasoning effort the control model's requests ask
+// for, from the next request on, and nothing else (ADR 41): a person chose
+// another effort of the model the conversation already talks to. record is
+// given the recipe first, as SetControl's is, and nothing changes if it fails.
+// As for SetControl, no turn may be running.
+func (l *Loop) SetEffort(effort string, record func(*log.WindowContext) error) error {
+	l.controlMu.Lock()
+	defer l.controlMu.Unlock()
+	ep := l.cfg.Models[ControlModel]
+	if err := record(l.recipe(ep, l.cfg.Window)); err != nil {
+		return err
+	}
+	ep.Effort = effort
+	l.cfg.Models[ControlModel] = ep
 	return nil
 }
 

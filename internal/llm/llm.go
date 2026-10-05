@@ -70,6 +70,10 @@ type Request struct {
 	// server, and is omitted so requests without them hash as before.
 	Temperature *float64 `json:",omitempty"`
 	Seed        *int64   `json:",omitempty"`
+	// Effort is how hard the model is asked to think (effort.go); empty
+	// leaves it to the provider, and is omitted so requests without one hash
+	// as before.
+	Effort string `json:",omitempty"`
 }
 
 // Delta is a streamed fragment.

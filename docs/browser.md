@@ -51,12 +51,23 @@ you wrote it. Its sections:
   on (by default it doesn't); the spend limit on a whole
   task, in dollars, off until you set where it stops; and how long a model
   reply and a command may take.
-- **Models** — whether each configured model answers, the main model, and
-  its tuning. The main model is chosen on a server saved before, by its
-  name, from the models that server lists (when it lists them without a
-  key; otherwise its name is typed), or on another server, whose address
-  and key are then saved for every model on it. The tuning is: context
-  length, reply cap, temperature and seed, how long Ollama keeps it
+- **Models** (ADR 41) — three things, then the default model's tuning.
+  *Default for new tasks* is a model from the list and its default effort,
+  saved on its own button, since it is a write to `config.toml` that the bar
+  below does not carry. *Providers* lists each model server with whether it can
+  be used and, when not, the sentence that says what to fix (needs its key,
+  keychain locked, key not allowed, not answering); **Test** sends it one short
+  request and shows the reply or the provider's refusal; **Check again** asks
+  every server now; **Add a provider** and **Edit** take a kind, an address, a
+  dialect and an API key (kept in the keychain with one binding row, never in
+  the page again), with presets that only fill the form. *Models you can
+  choose* is the list the pickers offer, each with the efforts it takes;
+  **Add a model** takes a provider, a model id (suggested from what the
+  provider lists, asked without a key) and its efforts. These forms are drawn
+  from state kept for the visit, so the readiness checks that arrive while
+  one is being typed into redraw the page without losing what was typed, and
+  leaving Settings drops it, a key included. The default model's tuning is:
+  context length, reply cap, temperature and seed, how long Ollama keeps it
   loaded, whether a chat-completions model takes images, which field caps
   its reply and how its requests name their session (the manual, "Keeping
   the cache warm"), and its prices.
@@ -77,9 +88,38 @@ default back. Changes wait in a bar at the bottom of the page and are saved
 together, and the daemon checks them together as it would on loading the
 file, so a soft limit can be raised past the old hard one along with it.
 They apply to tasks started afterwards; an open task keeps the limits and
-model it started with, and its Budget details say which. The model's and
-the judge's addresses, credentials and the `[policy]` table are not here:
-they are set where they are reviewed, or in `config.toml`.
+model it started with, and its Budget details say which. A task's model and
+effort are changed under its own message box (below). The judge's address,
+its credentials, the keys of the providers (beyond saving one with its
+provider) and the `[policy]` table are set where they are reviewed, or in
+`config.toml`.
+
+**The model picker.** Under the message box of the New task window, and under
+a conversation's, a **Model** and an **Effort** select. Both list the models
+of Settings grouped by provider, each labelled with what is wrong when it
+cannot be used, and the efforts that model takes (*Not configurable* when it
+takes none). Choosing another model keeps the effort when the new model takes
+it, else takes that model's own default, and says so.
+
+- *New task.* It starts on the default of Settings. A choice is kept while
+  another page is shown and in this browser across a reload (an unsent choice,
+  like the message), dropped when the task starts or the default is picked
+  again, and never changes the default. A choice left alone is not sent. A
+  model that cannot be used is said so and a task is not started on it; one
+  removed from the list is said to be gone, and the page does not pick another.
+- *A conversation.* The selects show what the next message is answered with
+  and change it (`session.model.set`). The lines under them say that a change
+  takes effect from the next message; while a response runs, that it keeps the
+  model and effort it started with and the choice waits for it, naming both,
+  and, if the choice could not be applied when it ended, why. A conversation
+  whose model is no longer offered shows *Choose a model…* and its reply box
+  stays shut until one is chosen. A closed task shows the model and effort it
+  was left on in its heading. The selection is the daemon's and the log's, so
+  it is the same after a reload, a reconnection or reopening the task, from
+  any window.
+- A paired device sees the selects, disabled, and a line saying the model is
+  chosen on the computer nodwyn runs on; Home shows only the default model's
+  name.
 
 ## Tasks, folders and files
 
@@ -415,7 +455,7 @@ client for session data. There is no JavaScript build system, second history sto
 connection to the bridge; `desk.js` holds what every page reads (tasks, what
 needs you); `sidebar.js`, `home.js`, `task.js`, `transcript.js` and `pages.js`
 draw the views; `prompts.js` renders review choices; `setup.js` the first-run
-model and keychain setup; `credentials.js` Connections › Credentials; `attach.js` attachments; `markdown.js` model replies;
+model and keychain setup; `modelpicker.js` the model and effort picker of the New task window, a conversation and Settings; `models.js` Settings › Models; `credentials.js` Connections › Credentials; `attach.js` attachments; `markdown.js` model replies;
 `inspectors.js` fixed snapshots from the same redacted records; `policy.js`
 policy drafts and review controls; `dom.js` the helpers that keep every string
 text. A pinned WebSocket library avoids a

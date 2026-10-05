@@ -26,7 +26,36 @@ var tableHeader = regexp.MustCompile(`^\s*\[\[?\s*([A-Za-z0-9_."-]+)\s*\]\]?\s*(
 // would refuse to load. A model that names a server is written with the
 // server's name, not the provider, dialect, URL and credential Parse copied from it.
 func SetControl(raw []byte, m Model) ([]byte, Config, error) {
-	return setTable(raw, "control", controlBlock(m))
+	return setTable(raw, "control", modelBlock("control", m))
+}
+
+// SetModel returns raw with its [models.NAME] table replaced by m, as
+// SetControl does for [control]: the models a person can choose between are
+// these tables (ADR 41). The name is what (model-turn "NAME") asks.
+func SetModel(raw []byte, name string, m Model) ([]byte, Config, error) {
+	if !keyName.MatchString(name) {
+		return nil, Config{}, fmt.Errorf("config: %q is not a model name: use letters, digits, - and _", name)
+	}
+	return setTable(raw, "models."+name, modelBlock("models."+name, m))
+}
+
+// RemoveModel returns raw without its [models.NAME] table, and every other
+// line as it was. A name config.toml does not have changes nothing.
+func RemoveModel(raw []byte, name string) ([]byte, Config, error) {
+	if !keyName.MatchString(name) {
+		return nil, Config{}, fmt.Errorf("config: %q is not a model name", name)
+	}
+	return setTable(raw, "models."+name, "")
+}
+
+// RemoveServer returns raw without its [servers.NAME] table. The result is
+// parsed as every edit's is, so a server a model still names is refused by
+// the loader's own words.
+func RemoveServer(raw []byte, name string) ([]byte, Config, error) {
+	if !keyName.MatchString(name) {
+		return nil, Config{}, fmt.Errorf("config: %q is not a server name", name)
+	}
+	return setTable(raw, "servers."+name, "")
 }
 
 // SetServer returns raw with its [servers.NAME] table replaced by s, as
@@ -47,7 +76,8 @@ func SetServer(raw []byte, name string, s Server) ([]byte, Config, error) {
 	return setTable(raw, "servers."+name, b.String())
 }
 
-// setTable replaces table, and any table under it, with block.
+// setTable replaces table, and any table under it, with block; an empty
+// block removes it.
 func setTable(raw []byte, table, block string) ([]byte, Config, error) {
 	lines := strings.SplitAfter(string(raw), "\n")
 	var out strings.Builder
@@ -72,7 +102,7 @@ func setTable(raw []byte, table, block string) ([]byte, Config, error) {
 		}
 	}
 	text := out.String()
-	if !replaced {
+	if !replaced && block != "" {
 		if text != "" && !strings.HasSuffix(text, "\n") {
 			text += "\n"
 		}
@@ -266,9 +296,10 @@ func tomlField(v reflect.Value, name string) (reflect.Value, bool) {
 	return reflect.Value{}, false
 }
 
-func controlBlock(m Model) string {
+// modelBlock is the table named table (control, or models.NAME) holding m.
+func modelBlock(table string, m Model) string {
 	var b strings.Builder
-	b.WriteString("[control]\n")
+	b.WriteString("[" + table + "]\n")
 	field := func(name, value string) {
 		if value != "" {
 			fmt.Fprintf(&b, "%s = %s\n", name, quote(value))
@@ -311,6 +342,14 @@ func controlBlock(m Model) string {
 	price("price_input", m.PriceInput)
 	price("price_cached_input", m.PriceCachedInput)
 	price("price_output", m.PriceOutput)
+	if len(m.Efforts) > 0 {
+		quoted := make([]string, len(m.Efforts))
+		for i, e := range m.Efforts {
+			quoted[i] = quote(e)
+		}
+		fmt.Fprintf(&b, "efforts = [%s]\n", strings.Join(quoted, ", "))
+	}
+	field("effort", m.Effort)
 	b.WriteString("\n")
 	return b.String()
 }

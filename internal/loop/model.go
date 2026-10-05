@@ -104,7 +104,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		maxOutput, capFrom = ep.MaxOutput, "max_output of model "+name
 	}
 	request := llm.Request{Model: ep.Model, Messages: w.Messages, NumCtx: ep.NumCtx, KeepAlive: ep.KeepAlive, MaxTokens: maxOutput,
-		Temperature: ep.Temperature, Seed: ep.Seed}
+		Temperature: ep.Temperature, Seed: ep.Seed, Effort: ep.Effort}
 	request.Tools = offered(l.tools, offer)
 	digest, err := window.RequestHash(request)
 	if err != nil {
@@ -114,7 +114,7 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		RequestHash: digest,
 		Model:       ep.Model, Messages: len(w.Messages), Tools: len(request.Tools), EstTokens: w.EstTokens, Elided: w.Elided,
 		NoTools: offer.none, OfferedTools: offer.only, MaxOutput: ep.MaxOutput,
-		Temperature: ep.Temperature, Seed: ep.Seed, Withheld: withheld,
+		Temperature: ep.Temperature, Seed: ep.Seed, Effort: ep.Effort, Withheld: withheld,
 	}
 	if pol.HighWater != highWater {
 		rec.HighWater = pol.HighWater
@@ -136,6 +136,11 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		_ = l.record(log.KindNote, log.Note{Text: fmt.Sprintf("model request failed, retrying (%d/%d): %s", n, llm.Retries, err)})
 	})
 	if err != nil {
+		// A refusal that shows a configuration problem says what to do
+		// about it, in the log and in the error the turn ends with.
+		if hint := llm.Hint(err); hint != "" {
+			err = fmt.Errorf("%w. %s", err, hint)
+		}
 		_ = l.record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
 		return nil, err
 	}

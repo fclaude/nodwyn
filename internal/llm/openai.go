@@ -216,6 +216,10 @@ type oaiRequest struct {
 	Temperature         *float64 `json:"temperature,omitempty"`
 	Seed                *int64   `json:"seed,omitempty"`
 	PromptCacheKey      string   `json:"prompt_cache_key,omitempty"`
+	// ReasoningEffort is the request's effort (effort.go), sent only when one
+	// was chosen: a server that does not know the field may refuse it, so
+	// nothing is sent for a model nobody declared efforts for.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 type oaiResponse struct {
@@ -272,7 +276,7 @@ func usage(raw json.RawMessage) Usage {
 }
 
 func toOpenAI(req Request, dialect ChatDialect) oaiRequest {
-	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed}
+	w := oaiRequest{Model: req.Model, MaxCompletionTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed, ReasoningEffort: req.Effort}
 	for _, m := range req.Messages {
 		om := oaiMessage{Role: m.Role, Content: openAIContent(m), ToolCallID: m.ToolCallID}
 		dialect.setThinking(&om, m.Thinking)
@@ -386,7 +390,7 @@ func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*h
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
-		return nil, fmt.Errorf("openai: %s: %s", resp.Status, strings.TrimSpace(string(b)))
+		return nil, refused("openai", resp, strings.TrimSpace(string(b)))
 	}
 	return resp, nil
 }

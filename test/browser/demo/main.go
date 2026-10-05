@@ -11,6 +11,7 @@
 //	go run ./test/browser/demo -seed      # also starts tasks so every view has content
 //	go run ./test/browser/demo -docs      # a Google credential, and a fake Drive to upload to
 //	go run ./test/browser/demo -oauth-only  # only a fake OAuth2 provider, for Connections › Credentials
+//	go run ./test/browser/demo -chat-only   # only a fake chat-completions provider, for Settings › Models
 //
 // The scripted model waits 400 ms before each reply, so a person watching
 // sees the work go step by step; the browser checks pass -pace=0, since none
@@ -40,6 +41,7 @@ import (
 	webui "github.com/fclaude/nodwyn/internal/frontend/web"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/llm"
+	fakechat "github.com/fclaude/nodwyn/test/fakes/chat"
 	fakecontainer "github.com/fclaude/nodwyn/test/fakes/container"
 	fakedrive "github.com/fclaude/nodwyn/test/fakes/drive"
 	fakemcp "github.com/fclaude/nodwyn/test/fakes/mcp"
@@ -49,6 +51,10 @@ import (
 
 // pace is how long the scripted model waits before each reply.
 var pace time.Duration
+
+// chatKey is the key the demo's chat-completions provider wants: made up, and
+// worth nothing anywhere else.
+const chatKey = "sk-demo-key-0123456789"
 
 // notesImage is the image of the demo's contained server.
 const notesImage = "ghcr.io/example/mcp-notes@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -62,11 +68,27 @@ func main() {
 	modelOnly := flag.Bool("model-only", false, "run only the scripted model server and print its URL")
 	docs := flag.Bool("docs", false, "keep a Google credential in a throwaway keychain, bound to a fake Drive that takes uploads")
 	oauthOnly := flag.Bool("oauth-only", false, "run only a fake OAuth2 provider (client id demo-client) and print its endpoints")
+	chatOnly := flag.Bool("chat-only", false, "run only a fake chat-completions provider and print its address and key")
 	flag.DurationVar(&pace, "pace", 400*time.Millisecond, "how long the scripted model waits before each reply")
 	flag.Parse()
 	if *oauthOnly {
 		provider := fakeoauth.New("demo-client")
 		fmt.Printf("OAUTH %s %s %s\n", provider.AuthURL(), provider.TokenURL(), provider.RevokeURL())
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		<-ctx.Done()
+		stop()
+		provider.Close()
+		return
+	}
+	if *chatOnly {
+		// Two models: one takes an effort and one does not, and the provider
+		// refuses what it should (a wrong key, a model it lacks, an effort a
+		// model does not take). /_fake/requests shows what it was sent.
+		provider := fakechat.New(chatKey,
+			fakechat.Model{ID: "reasoner", Context: 200000, Efforts: []string{"low", "medium", "high"}},
+			fakechat.Model{ID: "fast", Context: 200000},
+		)
+		fmt.Printf("CHAT %s KEY %s\n", provider.V1(), chatKey)
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		<-ctx.Done()
 		stop()

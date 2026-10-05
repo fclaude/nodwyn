@@ -64,7 +64,7 @@ func (s *server) run(req request, client *peer) (any, *rpcError) {
 		if why := s.rootRefusal(p.Repo); why != "" {
 			return nil, failure(-32602, why)
 		}
-		if why := s.lockedKeyRefusal(); why != "" {
+		if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
 			return nil, failure(-32000, why)
 		}
 		wall, err := time.ParseDuration(p.Wall)

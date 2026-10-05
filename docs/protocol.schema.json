@@ -275,6 +275,18 @@
         "Dialect": {
           "type": "string"
         },
+        "Effort": {
+          "type": "string"
+        },
+        "Efforts": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "KeepAlive": {
           "type": "string"
         },
@@ -369,7 +381,9 @@
         "CacheKey",
         "PriceInput",
         "PriceCachedInput",
-        "PriceOutput"
+        "PriceOutput",
+        "Efforts",
+        "Effort"
       ],
       "type": "object"
     },
@@ -490,13 +504,41 @@
     },
     "core.ModelState": {
       "properties": {
+        "effort": {
+          "type": "string"
+        },
+        "efforts": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "model": {
           "type": "string"
         },
         "name": {
           "type": "string"
         },
+        "notice": {
+          "type": "string"
+        },
+        "queued": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/core.ModelState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "server": {
+          "type": "string"
+        },
+        "unavailable": {
           "type": "string"
         }
       },
@@ -1479,6 +1521,9 @@
     },
     "log.LLMReq": {
       "properties": {
+        "effort": {
+          "type": "string"
+        },
         "elided": {
           "items": {
             "minimum": 0,
@@ -1785,6 +1830,9 @@
             }
           ]
         },
+        "effort": {
+          "type": "string"
+        },
         "from": {
           "type": "string"
         },
@@ -1793,6 +1841,9 @@
         },
         "name": {
           "type": "string"
+        },
+        "queued": {
+          "type": "boolean"
         },
         "server": {
           "type": "string"
@@ -2655,6 +2706,9 @@
           "$ref": "#/$defs/request.models.status"
         },
         {
+          "$ref": "#/$defs/request.models.test"
+        },
+        {
           "$ref": "#/$defs/request.notes.read"
         },
         {
@@ -2752,6 +2806,18 @@
         },
         {
           "$ref": "#/$defs/request.settings.docs.write"
+        },
+        {
+          "$ref": "#/$defs/request.settings.model.remove"
+        },
+        {
+          "$ref": "#/$defs/request.settings.model.write"
+        },
+        {
+          "$ref": "#/$defs/request.settings.provider.remove"
+        },
+        {
+          "$ref": "#/$defs/request.settings.provider.write"
         },
         {
           "$ref": "#/$defs/request.settings.read"
@@ -3464,6 +3530,37 @@
       "required": [
         "jsonrpc",
         "method"
+      ],
+      "type": "object"
+    },
+    "request.models.test": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "models.test"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.testParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
       ],
       "type": "object"
     },
@@ -4492,6 +4589,130 @@
       ],
       "type": "object"
     },
+    "request.settings.model.remove": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "settings.model.remove"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.nameParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.settings.model.write": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "settings.model.write"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.modelWriteParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.settings.provider.remove": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "settings.provider.remove"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.nameParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.settings.provider.write": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "settings.provider.write"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.providerParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.settings.read": {
       "properties": {
         "id": {
@@ -4879,6 +5100,9 @@
         "null"
       ]
     },
+    "result.models.test": {
+      "$ref": "#/$defs/rpc.testResult"
+    },
     "result.notes.read": {
       "$ref": "#/$defs/rpc.notesResult"
     },
@@ -5016,6 +5240,18 @@
       "$ref": "#/$defs/rpc.settingsResult"
     },
     "result.settings.docs.write": {
+      "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.settings.model.remove": {
+      "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.settings.model.write": {
+      "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.settings.provider.remove": {
+      "$ref": "#/$defs/rpc.settingsResult"
+    },
+    "result.settings.provider.write": {
       "$ref": "#/$defs/rpc.settingsResult"
     },
     "result.settings.read": {
@@ -5287,7 +5523,20 @@
           "type": "string",
           "writeOnly": true
         },
+        "effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "model": {
+          "type": "string"
+        },
+        "name": {
           "type": "string"
         },
         "provider": {
@@ -5300,9 +5549,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "model"
-      ],
+      "required": [],
       "type": "object"
     },
     "rpc.credentialAddParams": {
@@ -5944,12 +6191,65 @@
       ],
       "type": "object"
     },
+    "rpc.modelChoice": {
+      "properties": {
+        "default": {
+          "type": "boolean"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "efforts": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "host": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "provider",
+        "model",
+        "host"
+      ],
+      "type": "object"
+    },
     "rpc.modelServer": {
       "properties": {
         "credential": {
           "type": "string"
         },
         "dialect": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "inline": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "key_detail": {
           "type": "string"
         },
         "name": {
@@ -5960,17 +6260,31 @@
         },
         "url": {
           "type": "string"
+        },
+        "uses": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [
         "name",
         "provider",
-        "url"
+        "url",
+        "host",
+        "uses"
       ],
       "type": "object"
     },
     "rpc.modelSetParams": {
       "properties": {
+        "effort": {
+          "type": "string"
+        },
         "id": {
           "type": "string"
         },
@@ -6006,6 +6320,9 @@
         "provider": {
           "type": "string"
         },
+        "server": {
+          "type": "string"
+        },
         "state": {
           "type": "string"
         }
@@ -6016,6 +6333,47 @@
         "model",
         "host",
         "state"
+      ],
+      "type": "object"
+    },
+    "rpc.modelWriteParams": {
+      "properties": {
+        "effort": {
+          "type": "string"
+        },
+        "efforts": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "model"
+      ],
+      "type": "object"
+    },
+    "rpc.nameParams": {
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
       ],
       "type": "object"
     },
@@ -6069,6 +6427,9 @@
     },
     "rpc.openParams": {
       "properties": {
+        "effort": {
+          "type": "string"
+        },
         "model": {
           "type": "string"
         },
@@ -6163,6 +6524,31 @@
         "scopes",
         "needs_secret",
         "api_host"
+      ],
+      "type": "object"
+    },
+    "rpc.providerParams": {
+      "properties": {
+        "api_key": {
+          "type": "string",
+          "writeOnly": true
+        },
+        "dialect": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "url"
       ],
       "type": "object"
     },
@@ -6602,6 +6988,15 @@
     },
     "rpc.settingsResult": {
       "properties": {
+        "choices": {
+          "items": {
+            "$ref": "#/$defs/rpc.modelChoice"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "config_file": {
           "type": "string"
         },
@@ -6656,6 +7051,7 @@
         "control",
         "models",
         "servers",
+        "choices",
         "keychain",
         "docs",
         "values",
@@ -6720,6 +7116,57 @@
         "page",
         "busy",
         "pending"
+      ],
+      "type": "object"
+    },
+    "rpc.testParams": {
+      "properties": {
+        "effort": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "rpc.testResult": {
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "ms": {
+          "type": "integer"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok",
+        "state",
+        "detail",
+        "model",
+        "ms"
       ],
       "type": "object"
     },

@@ -101,3 +101,23 @@ model per key" was true of the app, not of the storage.
 - Two models on one server are two choices over one key, so choosing
   between them changes nothing about consent, bindings or the keychain:
   what changed is which one answers.
+
+## Amendment 2026-10-04: the picker, a queued choice, no fallback (ADR 41)
+
+Slice 2 builds what slice 1 left: the console's picker and the Settings editor
+for `[models.NAME]`; the TUI's command is still not built. Two clauses of the
+Decision change:
+
+- "Between turns, never mid-request" no longer refuses a choice made while a
+  turn runs. It is queued, said so in the state and the log, and applied when
+  the turn ends, before the next can start; one that cannot apply says why and
+  leaves the conversation on the model it had. An attachment in progress and
+  an active run still refuse.
+- A recorded choice config.toml no longer offers no longer "falls back to
+  `[control]`". The conversation opens, says what it was left on, and asks no
+  turn until a model is chosen for it, so it is never answered by a model, or
+  sent to a provider, nobody chose for it.
+
+A choice also carries the effort its requests ask for (`session.model`
+`effort`), and `session.model.set` with the model the conversation is on
+changes the effort alone, without sizing or fitting anything again.

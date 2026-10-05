@@ -51,13 +51,15 @@ func Resume(o Options, id string) (_ *Session, err error) {
 		}
 	}
 	o.Repo = info.Repo
-	// A conversation keeps the model it was switched to (ADR 40): the log
-	// says which, and a choice config.toml no longer offers falls back to
-	// the [control] model rather than making the task unopenable.
+	// A conversation keeps the model it was switched to, and the effort it
+	// asked for (ADR 40, ADR 41): the log says which. A choice config.toml no
+	// longer offers does not make the task unopenable, and does not hand it to
+	// another model either: the session is built on [control] only to be read
+	// and to be chosen for, and asks no turn until a model is chosen (gone).
 	gone := ""
-	if c := lastModelChoice(history); c != (ModelChoice{}) {
-		if _, err := resolveModel(o.Config, c); err != nil {
-			gone = err.Error()
+	if c, label := lastModelChoice(history); c != (ModelChoice{}) {
+		if _, _, err := resolveChoice(o.Config, c); err != nil {
+			gone = fmt.Sprintf("%s: %s", label, err)
 		} else {
 			o.Model = c
 		}
@@ -85,7 +87,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if err != nil {
 		return nil, err
 	}
-	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree}
+	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree, modelLost: gone}
 	if err = s.restoreHistory(history); err != nil {
 		return nil, err
 	}
@@ -120,7 +122,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if gone != "" {
 		// The conversation says what it lost, rather than silently talking
 		// to another model than the one it was left on.
-		if _, err = s.Record(log.KindNote, log.Note{Text: "The model this conversation was switched to is no longer configured, so it talks to the [control] model again: " + gone}); err != nil {
+		if _, err = s.Record(log.KindNote, log.Note{Text: "The model this conversation was left on is not available (" + gone + "), so no turn will be asked until a model is chosen for it."}); err != nil {
 			return nil, err
 		}
 	}
@@ -137,24 +139,33 @@ func Resume(o Options, id string) (_ *Session, err error) {
 
 // lastModelChoice is the model the log last switched this conversation to
 // (ADR 40), if it switched one: the person's choice outlives the process, as
-// the conversation does. The zero choice means no switch is recorded.
-func lastModelChoice(events []log.Event) ModelChoice {
+// the conversation does. The zero choice means no switch is recorded. label
+// names it as the person knows it, by its model id and where it was, which is
+// all the log keeps of a model config.toml no longer offers.
+func lastModelChoice(events []log.Event) (c ModelChoice, label string) {
 	for i := len(events) - 1; i >= 0; i-- {
 		if events[i].Kind != log.KindSessionModel {
 			continue
 		}
 		var rec log.SessionModel
 		if err := events[i].Decode(&rec); err != nil {
-			return ModelChoice{}
+			return ModelChoice{}, ""
+		}
+		label = rec.Model
+		if rec.Server != "" {
+			label += " on " + rec.Server
+		}
+		if rec.Effort != "" {
+			label += ", effort " + rec.Effort
 		}
 		// A named choice is restored by its name, and a model chosen on a
 		// server by that pair: a choice is one or the other.
 		if rec.Name != "" {
-			return ModelChoice{Name: rec.Name}
+			return ModelChoice{Name: rec.Name, Effort: rec.Effort}, label
 		}
-		return ModelChoice{Server: rec.Server, Model: rec.Model}
+		return ModelChoice{Server: rec.Server, Model: rec.Model, Effort: rec.Effort}, label
 	}
-	return ModelChoice{}
+	return ModelChoice{}, ""
 }
 
 func unfinishedTools(events []log.Event) ([]log.ToolCall, error) {

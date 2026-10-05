@@ -4,7 +4,8 @@
 // started afterwards get the result, and open ones keep what they started
 // with. Appearance and notifications belong to this browser.
 import { h, icon, toast, ago } from "./dom.js";
-import { modelForm, keychainForm, passphraseForm, noPassphraseWarning } from "./setup.js";
+import { keychainForm, passphraseForm, noPassphraseWarning } from "./setup.js";
+import { modelsRows, resetModelsUi } from "./models.js";
 import { uploadLabels } from "./transcript.js";
 
 // ---------- theme (a per-browser convenience; dark unless chosen) ----------
@@ -115,7 +116,6 @@ const specs = {
 const edits = new Map();
 let saveError = "";
 let saving = false;
-let modelOpen = false;
 let refreshBar = () => {};
 
 const values = (desk) => desk.settings?.values || {};
@@ -257,6 +257,9 @@ export function renderSettings(root, ctx) {
   // Redrawn in place (a choice, a save, the models' status): keep the
   // scroll position and the field that has focus.
   const before = root.querySelector(":scope > main.settings-page");
+  // Coming to Settings from another page, nothing is half-typed (a key in
+  // particular is not kept across a visit).
+  if (!before) resetModelsUi();
   const scrolled = before ? before.scrollTop : 0;
   const active = root.contains(document.activeElement) ? document.activeElement : null;
   const focus = active?.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
@@ -414,7 +417,7 @@ function limitsSection(ctx) {
 
 export function modelRows(desk) {
   if (!desk.models) return [h("p", { class: "hint" }, "Checking the configured models…")];
-  const words = { ready: "answers", missing: "server answers; model not installed", unreachable: "does not answer", unconfigured: "not set up" };
+  const words = { ready: "answers", missing: "server answers; model not installed", unreachable: "does not answer", unconfigured: "not set up", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed" };
   return [
     h(
       "div",
@@ -424,7 +427,7 @@ export function modelRows(desk) {
           "div",
           { class: "list-row" },
           h("span", { class: `dot ${m.state === "ready" ? "ok" : m.state === "unreachable" ? "bad" : "warn"}` }),
-          h("div", { class: "main" }, h("strong", {}, m.name === "control" ? "Main model" : m.name), h("span", {}, m.model ? `${m.model} · ${m.provider}${m.host ? ` at ${m.host}` : ""}` : "No model configured")),
+          h("div", { class: "main" }, h("strong", {}, m.name === "control" ? "Default model" : m.name), h("span", {}, m.model ? `${m.model} · ${m.provider}${m.host ? ` at ${m.host}` : ""}` : "No model configured")),
           h("div", { class: "end" }, m.detail || words[m.state] || m.state),
         ),
       ),
@@ -434,7 +437,7 @@ export function modelRows(desk) {
 }
 
 function modelsSection(ctx, root) {
-  const { conn, desk } = ctx;
+  const { desk } = ctx;
   const control = desk.settings?.control || {};
   const provider = control.Provider || control.provider || "ollama";
   const configured = !!(control.Model || control.model);
@@ -474,22 +477,9 @@ function modelsSection(ctx, root) {
   return section(
     "models",
     "Models",
-    "",
-    ...row(
-      "Configured",
-      modelRows(desk),
-      h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => desk.refreshModels() }, "Check again")),
-      conn.has("settings.control.write")
-        ? h(
-            "details",
-            { class: "box", open: modelOpen, ontoggle: (event) => (modelOpen = event.target.open) },
-            h("summary", {}, "Change the main model"),
-            modelForm(ctx, { onSaved: () => renderSettings(root, ctx) }),
-            h("p", { class: "hint" }, `Saved in ${desk.settings?.config_file || "config.toml"}; other settings there are kept. A server's address and key are saved once, under its name: choose it again for another of its models. Saving the same model keeps its tuning below; another model starts from its defaults. Tasks already open keep the model they started with.`),
-          )
-        : null,
-    ),
-    tuning ? row("Main model tuning", tuning) : [],
+    "The providers nodwyn talks to, the models you choose between, and what new tasks start on. Saved in config.toml with its other lines kept; a key goes to the keychain. Tasks already open keep the model and effort they have, and change them under their own message box.",
+    ...modelsRows(ctx, () => renderSettings(root, ctx)),
+    tuning ? row("Default model tuning", tuning) : [],
   );
 }
 

@@ -401,6 +401,13 @@ export class Transcript {
         this.end();
         this.el.append(h("div", { class: "audit" }, "Resumed"));
         break;
+      case "session.model": {
+        // The model and effort the next turns ask (ADR 41); one chosen while a
+        // response ran is queued first, then applied when it ends.
+        const what = `${p.model}${p.effort ? ` · ${p.effort} effort` : ""}`;
+        this.audit(p.queued ? `Next message: ${what}` : `Model: ${what}`);
+        break;
+      }
       case "context.narrow":
         // A lasting narrowing, such as a compaction's, is where later turns
         // start; any other ends with its turn.

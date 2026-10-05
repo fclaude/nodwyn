@@ -54,12 +54,22 @@ check(async () => {
   await page.fill("#add-path", `${root}/work`);
   await page.click("button:has-text('Use this folder')");
   await page.waitForSelector(`#work-in button[aria-pressed=true]:has-text('work')`);
+  // Where a task's content goes is chosen on the computer nodwyn runs on (ADR
+  // 30, ADR 40): the phone is told the default model, and has no picker.
+  assert.strictEqual(await page.$("#new-task-model-model"), null, "the phone is offered a model picker");
+  await shows(page, ".ask-bar .where", "demo");
   await page.fill("#task", "The session list shows each session's first message. Make them easy to tell apart.");
   await page.click("button[aria-label='Start the task']");
   await page.waitForSelector(".ask-card .btn.accent", { timeout: 20000 });
   assert.deepStrictEqual(sent.of("session.open"), [{ repo: `${root}/work` }], "the task opened in the folder added");
   await shows(page, ".ask-card .fine", "as phone");
   step("approval shown on the phone, naming it");
+  // In the conversation the phone sees the model, and may not change it.
+  await page.waitForSelector("#task-model-model");
+  assert.strictEqual(await page.isDisabled("#task-model-model"), true, "the phone can change a task's model");
+  assert.strictEqual(await page.isDisabled("#task-model-effort"), true, "the phone can change a task's effort");
+  await shows(page, ".reply-opts .mp-notes", "chosen on the computer nodwyn runs on");
+  assert.strictEqual(sent.of("session.model.set").length, 0, "the phone asked to change a model");
   await page.screenshot({ path: `${out}/phone-approve.png` });
   await page.click(".ask-card .btn.accent");
   await page.waitForSelector(".step .result.ok", { timeout: 20000 });

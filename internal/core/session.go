@@ -59,6 +59,21 @@ type Session struct {
 	// between turns, under mu, and opts.Config.Control always keeps the
 	// configured [control] model, so a conversation can be moved back to it.
 	model config.Model
+	// effort is the reasoning effort its requests ask for (ADR 41), one the
+	// model takes; empty asks none.
+	effort string
+	// queued is the choice a person made while a turn ran, applied when the
+	// turn ends (SetModel); modelNotice is why the last one was not, and
+	// modelLost says the model the conversation was left on can no longer be
+	// reached as chosen, so no turn is asked until one is (ModelState).
+	queued      *ModelChoice
+	modelNotice string
+	modelLost   string
+	// modelMu serializes choosing a model with the end of the turn that
+	// applies a queued choice. It is held while a switch sizes the window,
+	// which may ask the server's model list, so nothing that a turn needs
+	// takes it.
+	modelMu sync.Mutex
 
 	// The plan a turn must record before it may do anything irreversible
 	// (SendPlanned; plan.go).
@@ -172,6 +187,9 @@ func (s *Session) SendPlanned(text string) error { return s.send(text, true) }
 // (run-turn-prompt task complete-line turn max-turns), which is Scheme like
 // every other prompt; the turn must plan, as with SendPlanned.
 func (s *Session) SendRunTurn(task, completeLine string, turn, maxTurns int) error {
+	if err := s.modelAvailable(); err != nil {
+		return err
+	}
 	return s.startTurn(func(ctx context.Context) error {
 		// Evaluated here, inside the turn, where the interpreter is the
 		// turn's alone.
@@ -188,6 +206,9 @@ func (s *Session) SendRunTurn(task, completeLine string, turn, maxTurns int) err
 // send starts a turn on text. A chat's reply goes to the person who sent
 // it; a planned turn outside a run (SendPlanned) is taken as unreviewed.
 func (s *Session) send(text string, required bool) error {
+	if err := s.modelAvailable(); err != nil {
+		return err
+	}
 	return s.startTurn(func(ctx context.Context) error { return s.turn(ctx, text, required, !required) })
 }
 
@@ -271,12 +292,7 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 			_, _ = s.Record(log.KindTurnEnd, turnOutcome(ctx, turnErr))
 			s.flushOutput()
 			cancel()
-			s.mu.Lock()
-			s.busy = false
-			s.turnCancel = nil
-			s.turnTrust = false
-			s.turnActor = ""
-			s.mu.Unlock()
+			s.endTurn()
 			s.Emit(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
 		}()
 		if err := work(ctx); err != nil {
@@ -290,6 +306,31 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 		}
 	}()
 	return nil
+}
+
+// endTurn ends the turn: a model chosen while it ran is applied first, while
+// the session is still busy, so no turn can start on the model it replaces,
+// and busy ends under the same lock that saw nothing queued (SetModel queues
+// only while busy, and holds modelMu). The choice stays queued, as the state
+// reports it, until it has been applied or has failed to be: applyQueued
+// clears it together with the change it makes.
+func (s *Session) endTurn() {
+	s.modelMu.Lock()
+	defer s.modelMu.Unlock()
+	for {
+		s.mu.Lock()
+		queued := s.queued
+		if queued == nil {
+			s.busy = false
+			s.turnCancel = nil
+			s.turnTrust = false
+			s.turnActor = ""
+			s.mu.Unlock()
+			return
+		}
+		s.mu.Unlock()
+		s.applyQueued(*queued)
+	}
 }
 
 // Busy reports whether a turn is running.

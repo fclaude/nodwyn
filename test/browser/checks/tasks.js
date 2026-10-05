@@ -69,7 +69,7 @@ check(async () => {
   const overtaken = await page.evaluate(async () => {
     const { Desk } = await import("/desk.js");
     const lists = [];
-    const conn = { has: () => false, onEvent: () => {}, call: (method) => (method === "session.list" ? new Promise((resolve) => lists.push(resolve)) : Promise.resolve([])) };
+    const conn = { has: () => false, onEvent: () => {}, onResult: () => {}, call: (method) => (method === "session.list" ? new Promise((resolve) => lists.push(resolve)) : Promise.resolve([])) };
     const desk = new Desk(conn);
     const older = desk.refresh();
     desk.refresh();

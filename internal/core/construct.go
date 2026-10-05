@@ -138,10 +138,12 @@ func New(o Options) (*Session, error) {
 		Model: s.model.Model, URL: s.model.URL, Tools: len(s.loop.Tools()),
 		Worktree: s.worktree,
 	})
-	if c := s.opts.Model; err == nil && c.Name != loop.ControlModel {
-		// A conversation opened on a chosen model records the choice as a
-		// switch does, so resuming it talks to that model again (ADR 40).
-		_, err = s.Record(log.KindSessionModel, modelRecord("", c, s.model, recipe))
+	if c := s.opts.Model; err == nil && (c.Name != loop.ControlModel || s.effort != "") {
+		// A conversation opened on a chosen model, or asking for an effort,
+		// records the choice as a switch does, so resuming it talks to that
+		// model again, asking that effort (ADR 40, ADR 41): what it was
+		// opened on is not what config.toml's defaults say later.
+		_, err = s.Record(log.KindSessionModel, modelRecord("", c, s.model, s.effort, recipe))
 	}
 	if err != nil {
 		s.closeMCP()
@@ -183,7 +185,7 @@ func resolveOptions(o Options) (Options, error) {
 	// before a session exists; initialize resolves it into the model the
 	// conversation talks to. config.toml's [control] model stays where it
 	// is, so a conversation can be moved back to it (ADR 40).
-	if _, err := resolveModel(o.Config, o.Model); err != nil {
+	if _, _, err := resolveChoice(o.Config, o.Model); err != nil {
 		return Options{}, err
 	}
 	if o.Model.Name == "" && o.Model.Server == "" && o.Model.Model == "" {
@@ -353,7 +355,7 @@ func (s *Session) initialize() (err error) {
 	// or the one chosen for it (ADR 40). Every part of the session that
 	// asks it (the loop, the window, the planner, the image checks) reads
 	// this one, so a switch is the only place it changes.
-	if s.model, err = resolveModel(o.Config, o.Model); err != nil {
+	if s.model, s.effort, err = resolveChoice(o.Config, o.Model); err != nil {
 		return err
 	}
 	// Interpreter: output becomes an event, never stdout.

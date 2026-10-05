@@ -146,6 +146,10 @@ type LLMReq struct {
 	// model sets them.
 	Temperature *float64 `json:"temperature,omitempty"`
 	Seed        *int64   `json:"seed,omitempty"`
+	// Effort is the reasoning effort the request asked for, when it asked for
+	// one (ADR 41); empty left the model to its provider's default. It is in
+	// the request's hash, so replay needs it.
+	Effort string `json:"effort,omitempty"`
 	// HighWater is the size past which this request's window was trimmed,
 	// when it was not the recipe's: a request that may use the room above
 	// the high water ((model-turn name '((headroom . #t))), as the handover
@@ -404,6 +408,14 @@ type SessionArchive struct {
 // for config.toml's) and URL where it is reached. Context is the window's
 // recipe from here on, sized for this model, as session.resume's is. No key
 // and no credential class is here: a switch changes nothing about either.
+//
+// Effort is the reasoning effort the requests after it ask for (ADR 41); empty
+// leaves the model to its provider's default. A person may change the effort
+// alone, so a record may name the model the conversation already talks to.
+// Queued says the choice was made while a turn was running: it applies when
+// that turn ends, and a record without Context is what says so. The record
+// that applies it follows, so the last record always says what the next turn
+// asks, and a conversation resumed before it was applied still has the choice.
 type SessionModel struct {
 	Actor   string         `json:"actor,omitempty"`
 	From    string         `json:"from,omitempty"`
@@ -411,6 +423,8 @@ type SessionModel struct {
 	Server  string         `json:"server,omitempty"`
 	Name    string         `json:"name,omitempty"`
 	URL     string         `json:"url,omitempty"`
+	Effort  string         `json:"effort,omitempty"`
+	Queued  bool           `json:"queued,omitempty"`
 	Context *WindowContext `json:"context,omitempty"`
 }
 

@@ -23,6 +23,12 @@ export class Desk {
     conn.onEvent((frame) => {
       if (frame.method === "session.event" && frame.params?.kind === "session.state") this.watch(frame.params.payload);
     });
+    // Whether a model can be used depends on its key: the keychain unlocked,
+    // a key stored, replaced or allowed, or removed. The pickers and Settings
+    // say so as soon as it changes, not at the next check.
+    conn.onResult((method) => {
+      if (/^(keychain\.(create|unlock|passphrase)|credentials\.(add|replace|remove|bind))$/.test(method)) this.keysChanged();
+    });
   }
   onChange(fn) {
     this.listeners.add(fn);
@@ -130,10 +136,20 @@ export class Desk {
     const c = this.settings?.control;
     return !!(c && (c.Credential || c.credential) && this.keychain?.exists && !this.keychain.unlocked && this.conn.has("keychain.unlock"));
   }
-  async refreshModels() {
+  async keysChanged() {
+    try {
+      await this.refreshSetup();
+    } catch {
+      /* the next refresh says it */
+    }
+    await this.refreshModels();
+  }
+  // refreshModels reads whether the models can be used; fresh asks every
+  // server again instead of taking what a check a few seconds ago found.
+  async refreshModels(fresh = false) {
     if (!this.conn.has("models.status")) return;
     try {
-      this.models = await this.conn.call("models.status");
+      this.models = await this.conn.call("models.status", fresh ? { fresh: true } : {});
     } catch {
       this.models = null;
     }

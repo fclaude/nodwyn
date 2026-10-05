@@ -222,10 +222,11 @@ At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
 The console's Settings page changes these limits, the timeouts
-(`loop.request_timeout`, `loop.shell_timeout`), the window, the main
-model's tuning, the judge's settings and what a task does without asking
-(`[approval]`, "Confirms" below), keeping every other line of `config.toml`
-as written. Tasks
+(`loop.request_timeout`, `loop.shell_timeout`), the window, the model
+providers and the models and efforts to choose between ("Choosing models"
+below), the default model's tuning, the judge's settings and what a task does
+without asking (`[approval]`, "Confirms" below), keeping every other line of
+`config.toml` as written. Tasks
 started afterwards get the new values; open ones keep theirs ([the browser
 view](browser.md), "Settings").
 
@@ -1093,10 +1094,106 @@ This setting changes the wire encoding only: thinking stays in the log and
 window, and the address, key binding, output cap and cache settings keep
 their existing rules. Ollama continues to use its native protocol.
 
-Set the dialect in the file before starting nodwyn. Settings can select
-that server and save another model on it without losing the dialect; it
-also preserves an inline control model's dialect when saving it as a server
-at the same endpoint. There is no dialect selector in the console yet.
+Settings › Models › Providers sets the dialect with the rest of a provider
+(the Cerebras preset fills it in; you can see it, and change it, before
+saving). It is never inferred from the address. Saving another model on that
+provider, or an inline control model as a server at the same endpoint, keeps
+it.
+
+**Efforts.** A reasoning model takes an effort: how hard it is asked to think
+before it answers. Which words a provider accepts is the provider's to say, and
+a provider that does not know a field may refuse the whole request, so
+nodwyn never guesses: a model takes an effort setting only if its entry says
+which, and a model that says none is offered none and is sent none.
+
+```toml
+[models.deep]
+server = "openai"
+model = "gpt-5.1"
+efforts = ["low", "medium", "high"]   # the words the server accepts
+effort = "medium"                     # what a task starts with; leave out for the provider's default
+
+[models.local-thinker]
+server = "local"
+model = "qwen3:8b"
+efforts = ["off", "on"]               # Ollama's think: on, off, or a level such as "high" for gpt-oss
+```
+
+The word is sent as `reasoning_effort` to a chat-completions server and as
+`think` to Ollama (`off` and `on` are its booleans, any other word the level
+a model such as gpt-oss takes). Words are short and lower-case. `[control]`
+needs no `efforts` of its own when a `[models.NAME]` is the same model at the
+same address: it takes them from that entry, so they are listed once; its
+`effort` is the default effort of the default model, which a new task starts
+with. A default that is not one of the model's efforts, or an `effort` on a
+model that declares none, is refused when the file loads. Every request
+records the effort it asked for (`llm.req`), and replays to its hash.
+
+**Settings › Models.** The console sets all of this up without the file, on
+this computer only:
+
+- *Providers* lists each `[servers.NAME]` (and the address a model gives
+  inline, read-only), says whether it can be used, and why not: *needs its
+  key* (none stored, or the server answers 401 and none is configured),
+  *keychain locked*, *key not allowed* (stored, but no binding row lets it go
+  to that host), *not answering*, or *model not installed*. The key's state is
+  read from the keychain and the binding table before the server is asked,
+  since that is what to fix; **Check again** asks every server now. **Add a
+  provider** takes a kind (Ollama, or OpenAI-compatible), an address, for an
+  OpenAI-compatible one a dialect and an API key, and has presets (OpenAI,
+  OpenRouter, Cerebras) that only fill the form in. The key goes to the
+  keychain with one binding row for the address's host, `POST`, as a bearer
+  header, never into `config.toml`, never into the page; replacing it replaces
+  it in place. A key goes only over https, or to this computer. It follows a
+  change of path or port, and never a change of host: a provider moved to
+  another host has no key until you type one. **Test** sends one short request,
+  as a task would, through the same binding check, and says what came back:
+  the reply, *the server did not accept the key (401)*, *no model*, *it refused
+  the request* (an effort the model does not take, for one), or *no quota*. A
+  provider that models are on is not removed; its key stays in the keychain
+  (Connections › Credentials removes it).
+- *Models you can choose* is the list the pickers offer: `[control]` and each
+  `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
+  own list, asked without a key, fills in suggestions) and the efforts it
+  takes, with shortcuts (low · medium · high, minimal added, off · on) and any
+  other words, and the effort it starts at. Tuning the file knows (context
+  length, prices) stays while the entry is the same model. **Test it** tries a
+  model before it is saved.
+- *Default for new tasks* is a model from that list and its default effort.
+  Choosing another default keeps the one it replaces in the list.
+
+**The pickers.** The New task window and a conversation both show a Model and
+an Effort select under the message. The model select groups the list by
+provider and says in each label what is wrong with one that cannot be used; the
+effort select offers the efforts that model takes, and says *Not configurable*
+for one that takes none. A model that is not ready is shown as it is: the
+New task window says why and does not start a task on it (a provider that does
+not answer is a warning, since it may be back).
+
+- *New task.* It starts on the default model and effort of Settings. A choice
+  made there is kept while you go to another page and back, and in this
+  browser across a reload, until the task starts or you pick the default
+  again; it never changes the default. A choice left alone is not sent: the
+  task starts on the default, as it always did. After an app restart the
+  window's console is on a new address and remembers nothing, so it starts on
+  the default. A model removed from the list since is said to be gone, and
+  another is not picked for you.
+- *In a conversation.* The selects show the model and effort the next message
+  is answered with. Changing either takes effect from the next message,
+  and a line says so. While a response is running it keeps the model and effort
+  it started with, and what you choose waits for it to end (the line says so,
+  naming both); if it cannot be applied then, because the conversation has
+  outgrown that model's context, say, the conversation keeps what it had and
+  says why. A change of effort alone applies without sizing the window again.
+  A closed task shows the model and effort it was left on, and resuming it
+  restores them.
+- *A model that is gone.* If a model, or the effort a conversation was left on,
+  is no longer offered by `config.toml`, resuming the task opens it, says what
+  it was left on, and sends nothing until you choose a model for it: it is not
+  moved to another model, which would send its content to a provider you did
+  not choose for it.
+- A paired phone sees the model a task has and the default new tasks start
+  on, and cannot change either, or set up a provider.
 
 A keyed server needs its key stored (`(credential-register "openai-key")`)
 and bound to the server's host, like any credential:
@@ -1130,23 +1227,26 @@ next turn — `(model-turn)` asks the new model, while `(model-turn "NAME")`
 still asks a named one for a turn (ADR 27). The window is then sized for the
 new model, as it would be had the task been opened on it: from its
 `num_ctx`, or from the context the server's model list gives (OpenRouter's
-does), and a note in the transcript says how. A switch is refused while a
-turn runs, while an attachment is being added, and when the conversation
-would not fit the new model's context less its reply reserve: compact it
-first, or choose a model with more context (nothing is judged for a model
-whose context neither config.toml nor its server says). Whether an attached
-image may go is asked of the new model, so a text-only model on the same
-server gets a line saying the image was withheld, not the image. The change
-is in the log as `session.model`, and every request still replays to its
-recorded hash. Choosing the model is this computer's act: a paired phone
-opens tasks on the `[control]` model and may steer them, but not decide
-where their content goes.
+does), and a note in the transcript says how. A choice made while a turn runs
+waits for it (above): it is queued, and applied as the turn ends. It is
+refused while an attachment is being added or a run is active, and, once it
+applies, when the conversation would not fit the new model's context less its
+reply reserve: compact it first, or choose a model with more context (nothing
+is judged for a model whose context neither config.toml nor its server says).
+Whether an attached image may go is asked of the new model, so a text-only
+model on the same server gets a line saying the image was withheld, not the
+image. The choice, with its effort, is in the log as `session.model`, and
+every request still replays to its recorded hash. Choosing the model is this
+computer's act: a paired phone opens tasks on the `[control]` model and may
+steer them, but not decide where their content goes.
 
-On the wire this is `session.open` with `name`, or `server` and `model`,
-and `session.model.set` for a session already open; `session.info` reports
-the model the conversation talks to now. The console's picker and the TUI's
-command are not built yet: today a person chooses the model through a
-client that speaks the protocol, on this computer.
+On the wire this is `session.open` with `name`, or `server` and `model`, and
+`effort`; and `session.model.set` for a session already open, which with the
+model the conversation is on changes the effort alone. `session.info` reports
+the model the conversation talks to now, the efforts it takes, a choice that
+is queued and why one could not be applied. The console's picker is above; the
+TUI's command is not built, so there a person chooses through a client that
+speaks the protocol, on this computer.
 
 **What a request cost.** After each reply the TUI, line mode and the
 console show its tokens, and when the provider says so, how much of the
@@ -1367,7 +1467,7 @@ is deleted, later requests say so instead of sending it, which is also how
 to take an image out of a conversation.
 
 The console's Settings page writes `[control]` for you, and tunes it under
-Models › Main model tuning. Saving the same model
+Models › Default model tuning. Saving the same model
 on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
 `max_output`, `output_field`, `temperature`, `seed`, `vision`, `cache_key`
 and the `price_*` entries); choosing another model starts from its defaults.

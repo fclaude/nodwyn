@@ -19,6 +19,7 @@ long it took.
 | `tasks` | Tasks sit under their folders, the latest active first, and a message moves its folder up; a folder shows five and Show more, folds and stays folded across a reload; a task renamed from its heading (Escape keeps the name), archived, brought back and deleted after a confirm, each still so after a reload; search reaches every folder; the list at phone width; a refresh of the list that a newer one overtakes waits for it, so a task just started is never "No such task" |
 | `worktrees` | Two tasks started from the ask bar with **In a worktree** go through `worktree.open`, each writes in a git worktree of its own and not in the repository, both are listed under the repository, which Home offers once, and the heading, conversation and Workspace panel name the branch; switching between open tasks sends no `session.subscribe` or `log.read`, keeps the conversation as drawn, shows a turn another window started while the task was off screen, and clears a key being typed; a closed task is read from its log again, and its worktree, with work in it, stays |
 | `attach` | An image attached in the New task window shows as a chip at once and stays drawn, with the attach input working, through a redraw of Home that keeps the composer and through a full redraw; a second file's chip can be removed before the task starts, and starting then carries the kept image to its confirm on the task's page, which the model counts once allowed, while the removed file stays home |
+| `models` | Settings › Models from a config that names one inline Ollama model: a provider added with a wrong key, a test request that says the server did not accept it, the key replaced in place and the test passing, with the key in the keychain and one binding row and never in `config.toml` or the page; two models added, one with efforts, and the default chosen with an effort while the previous default stays in the list; the New task window offering each model's own efforts (none for a model that takes none), a choice kept across Settings and a reload, starting a task on it with the provider seeing that model and effort; a conversation's effort changed between messages, and one chosen while a response is held waiting for it, the page saying so and the provider seeing the old effort, then the new; the selection after a reload; a model removed from the list said to be gone, and a closed task whose model was removed asking nothing until one is chosen; after an app restart the locked keychain said, and the effort restored with the resumed task; a provider that stops answering said so, its task failing there and nothing asked of the other model; nothing sideways at phone width. `remote` adds that a paired phone is offered no picker and cannot change a task's model |
 
 What a check asserts is what each action did: the JSON-RPC requests the page
 sent over its socket (`requests` in `lib.js`), the files the daemon wrote, and
@@ -48,7 +49,12 @@ this folder, after `run.sh` has built the two programs.
 `go run ./test/browser/demo -seed` starts the same world by hand and prints a
 launch URL; its model waits 400 ms before each reply, so the work shows step
 by step (`-pace` changes that). `-oauth-only` runs just a fake OAuth2 provider (client id
-`demo-client`) and prints its endpoints, for Connect an account › custom. A contained MCP server added in Connections (the `IMAGE` it
+`demo-client`) and prints its endpoints, for Connect an account › custom.
+`-chat-only` runs just a fake chat-completions provider (`test/fakes/chat`)
+and prints its address and key: it lists a model that takes an effort and one
+that does not, refuses a wrong key, a model it lacks and an effort a model
+does not take, and shows what it was sent at `/_fake/requests`, for Settings ›
+Models and the model picker. A contained MCP server added in Connections (the `IMAGE` it
 prints, a network list, a folder such as `notes`) runs in a fake container
 runtime, the demo run again: Pull, review and approve it, then ask a task in
 `console` to "Note the weekly status" to see its confirm.

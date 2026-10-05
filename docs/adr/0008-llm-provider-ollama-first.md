@@ -61,3 +61,12 @@ Strict fake servers exercise a tool call, its result and a later user turn,
 rejecting `reasoning_content` in Cerebras history. They also check default
 compatible encoding, configuration saves and model selection. Replay still
 rebuilds the canonical requests; the dialect transforms only the wire.
+
+## Amendment 2026-10-04: effort controls (ADR 41)
+
+The deferral above ended: a model declares the efforts it takes
+(`efforts = [...]`, `effort = "..."`), and a conversation chooses one. They are
+sent as `reasoning_effort` to a chat-completions server and as `think` to
+Ollama; nothing is inferred from a URL or a model name, as for dialects, and a
+model that declares none is sent none. The model capability registry, more
+provider presets and arbitrary provider options stay deferred.

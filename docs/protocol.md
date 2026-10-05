@@ -60,11 +60,11 @@ IDs are transport data and are echoed unchanged.
 | Method | Named parameters | Result |
 |---|---|---|
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
-| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"` | Open-session details |
+| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"` | Open-session details |
 | `worktree.open` | as `session.open` | Open-session details of a session in a new git worktree of `repo` |
 | `session.resume` | `{"id":"SESSION_ID"}` | Open-session details |
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
-| `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"` | The model the conversation talks to now |
+| `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"`, and `"effort"` | The model and effort the conversation talks to now, and the choice queued behind a running turn |
 | `session.close` | `{"id":"SESSION_ID"}` | `{}` after releasing the session writer |
 | `session.rename` | `{"id":"SESSION_ID","title":"…"}` | `{}` after recording the name; `""` takes it back |
 | `session.archive` | `{"id":"SESSION_ID","archived":true}` | `{}` after archiving a closed session, or bringing it back |
@@ -89,24 +89,40 @@ protocol does not expose live turn counters. Details also include
 on). Details also include `model`: the model this conversation talks to now,
 as `name` (a `[models.NAME]` entry, or `control` for config.toml's
 `[control]` model), `server` (the `[servers.NAME]` it is on, when it is on
-one) and `model` (the id as the provider names it). No key and no
-credential class is in it.
+one) and `model` (the id as the provider names it); the `effort` its requests
+ask for (empty asks none) and the `efforts` the model takes, which is none for
+a model that takes no effort setting (ADR 41). `queued`, when a choice was made
+while a turn runs, is the model and effort that will apply when it ends,
+in the same fields; `notice` says why the last such choice could not be
+applied; `unavailable` says the model the conversation was left on can no
+longer be reached as it was chosen, with what it was, and no turn is asked
+until one is chosen. No key and no credential class is in any of it.
 
-A conversation's model may be chosen as it opens and moved between turns
-(ADR 40). `session.open` takes a model the same way `session.model.set`
-moves an open session: `name` is a `[models.NAME]` entry or `control`, or
-`server` and `model` name a model on a configured `[servers.NAME]` (which
-needs no config.toml entry of its own). A switch applies from the next turn
-on, with the window sized for the new model as opening on it would size it;
-it is refused while a turn runs and when the conversation would not fit
-the target's context (its `num_ctx`, or what its server's model list says)
-less its reply reserve. Either is recorded as a `session.model` event (which
-the session's subscribers receive), carrying the window's recipe from then
-on. Both are refused to a paired device, whose `session.open` without a
-model opens on `[control]`: where a conversation's content goes stays with
-this computer (ADR 30). Resuming a session restores the model its log last
-named, falling back to `[control]` with a `note` when config.toml no longer
-offers it.
+A conversation's model and effort may be chosen as it opens and moved between
+turns (ADR 40, ADR 41). `session.open` takes them the same way
+`session.model.set` moves an open session: `name` is a `[models.NAME]` entry
+or `control`, or `server` and `model` name a model on a configured
+`[servers.NAME]` (which needs no config.toml entry of its own); `effort` is one
+of the efforts the model takes, refused with the words it takes when it is not,
+and empty is the model's own default effort. A switch applies from the next
+turn on, with the window sized for the new model as opening on it would size
+it; naming the model the conversation is on changes the effort alone, which
+sizes and checks nothing again. While a turn runs the choice is queued, not
+refused: it is recorded as a `session.model` event with `queued` and no
+`context`, and a later one replaces it; when the turn ends and before it is
+idle, the choice is applied, recorded as a `session.model` event carrying the
+window's recipe from then on, or, if it cannot be (the conversation would not
+fit the target's context, its `num_ctx` or what its server's model list says,
+less its reply reserve; config.toml no longer offers it), a note says why,
+`notice` carries it, and a `session.model` event says again what the next turn
+asks. It is refused while an attachment is added and during a run. A
+conversation closed with a choice queued has it, and resuming applies it. All
+of it is refused to a paired device, whose `session.open` without a model
+opens on `[control]`: where a conversation's content goes stays with this
+computer (ADR 30). Resuming a session restores the model and effort its log
+last named; when config.toml no longer offers the model, or the effort, the
+session opens with `unavailable` and `session.send` is refused until a model
+is chosen with `session.model.set`.
 Session details also contain `bindings`, a copied array of loaded metadata rows
 with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
 `Scopes` (OAuth2 scopes the row allows, ADR 24) fields. No credential values are
@@ -405,14 +421,19 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `attention.list` | `{}` | Open sessions with pending prompts: `[{id, pending}]`, the same redacted descriptors `session.subscribe` returns |
 | `notes.read` | `{"repo":"/absolute/repository"}` | `{text}`: that repository's project notes; needs no session |
 | `session.notes.write` | `{"id":"SESSION_ID","text":"…"}` | `{operation_id}`; a `policy.result` event named `notes` reports the guarded save |
-| `models.status` | `{}` | Each configured model: `name`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`), `detail` |
+| `models.status` | `{}` or `{"fresh":true}` | Each configured model: `name`, `server?`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`, `needs_key`, `locked`, `unbound`), `detail` (what to do about a state that is not `ready`); `fresh` asks every server now instead of taking what a check in the last 15 seconds found |
+| `models.test` | `{"name"}`, or `{"server","model"}`, and `{"effort"}` | `{ok, state, detail, model, effort?, status?, ms}` for one short request to the model, with that effort, through the same binding check a task's request passes: `ok`, `rejected`, `no_model`, `refused`, `limited`, `unreachable`, `error`, or the key states above before anything is sent |
 | `models.offered` | `{"server"}` | The model ids a configured server (`[servers.NAME]`) lists, sorted; an error saying why when it lists none |
 | `keychain.status` | `{}` | `{exists, unlocked, credentials, no_passphrase?}`; `no_passphrase` is set when the open keychain has none |
 | `keychain.create` | `{"passphrase":"…"}` or `{"no_passphrase":true}` | Keychain status; tasks opened afterwards receive the keychain. A passphrase has at least 8 characters |
 | `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain. `""` opens a keychain without a passphrase |
 | `keychain.passphrase` | `{"current"?, "passphrase"?, "no_passphrase"?}` | Keychain status after setting, changing or (`no_passphrase`) removing the open keychain's passphrase; `current` is required when it has one, and a wrong one waits a second as `keychain.unlock` does |
-| `settings.read` | `{}` | `{config_file, control, models, servers, keychain, docs, values, judge}` |
-| `settings.control.write` | `{"server","model"}` or `{"provider","url","model","api_key"?}` | Settings after replacing `[control]` in `config.toml`, and saving the server it names |
+| `settings.read` | `{}` | `{config_file, control, models, servers, choices, keychain, docs, values, judge}` |
+| `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}`, or `{"provider","url","model","api_key"?,"effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on), and saving the server it names; the model it replaces stays in the list |
+| `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?}` | Settings after adding a provider (`[servers.NAME]`, named after its host) or changing the one `name` names; the key goes to the keychain |
+| `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model is on |
+| `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts and starting effort |
+| `settings.model.remove` | `{"name"}` | Settings after removing a model from the list; the default model is not removed |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
 | `settings.write` | `{"set": {"budget.tokens_hard": 20000000, "budget.cost_hard": null, …}}` | Settings after changing those settings in `config.toml` together |
 
@@ -422,11 +443,25 @@ session, else the first sentence of the first message, shortened),
 to write, first 50, from `guard.decision` records, which now carry `path`) and
 `run` (the live run, or the last recorded `run.state`). `models.status` sends
 no credential: it asks each server for its model list and reports whether it
-answered. `models.offered` asks the same list of one configured server, also
+answered, after saying what the keychain and the binding table know of its key
+(`needs_key`, `locked`, `unbound`), which is checked first since it is what to
+fix. `models.test` is the one request that sends a key: after the same binding
+check, one short message ("Reply with the single word ok.") and nothing of any
+task; its `detail` is the provider's own message, redacted, and never the key.
+The effort it asks must be one the model takes, refused before anything is sent
+when it is not. `models.offered` asks the same list of one configured server, also
 without a credential, so a server that lists its models only to a key
-answers with an error saying so. `servers` in the settings are the
-`[servers.NAME]` tables of `config.toml`: `{name, provider, dialect?, url,
-credential?}`, `credential` being the key's keychain class. `dialect`, when
+answers with an error saying so. `servers` in the settings are the model providers: the
+`[servers.NAME]` tables of `config.toml`, and the address a model gives inline,
+`{name, provider, dialect?, url, credential?, host, inline?, key?, key_detail?,
+uses}`, `credential` being the key's keychain class (never the key), `key` what
+the keychain says of it without asking the server (`ready`, `needs_key`,
+`locked`, `unbound`; absent for a provider with none), and `uses` the names of
+the models on it. `choices` are the models a task can be started on or moved to,
+`[control]` first as `control` with `default: true`, then each `[models.NAME]`
+that is not the default model again: `{name, server?, provider, model, host,
+efforts?, effort?, default?}`, where `efforts` are the efforts the model takes
+and `effort` the one it starts with (ADR 41). `dialect`, when
 configured, is `compatible` or `cerebras`; it selects Chat Completions
 history encoding independently of the protocol. `control` is the main
 model with its server's `Provider`, optional `Dialect`, `URL` and
@@ -533,7 +568,9 @@ A server in `mcp.save` is remote (`url`) or contained (`transport:
 same image, entrypoint and arguments (the same `url` for a remote one) keeps
 its approved manifest; any other change needs approval again.
 
-`settings.control.write`, `settings.docs.write`, `settings.write`, `keychain.create`,
+`settings.control.write`, `settings.provider.write`, `settings.provider.remove`,
+`settings.model.write`, `settings.model.remove`, `models.test`,
+`settings.docs.write`, `settings.write`, `keychain.create`,
 `keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `workspace.save`,
 `workspace.active`, `workspace.remove`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
 `mcp.remove` and `mcp.pull` methods, and every `credentials.*` method but

@@ -1,0 +1,158 @@
+// The model picker (ADR 41): which model a task talks to and how hard it
+// thinks, as two selects. The New task window and a conversation share it, so
+// both offer the same models, the same efforts for each, and say the same
+// things about a model that cannot be used. What it offers comes from the
+// daemon (settings.read's choices, models.status's readiness): it is never an
+// authority, and it never picks a model for a person. A selection that can no
+// longer be had is shown as it is, with why, not replaced by another.
+import { h } from "./dom.js";
+
+// Models in these states cannot be asked at all, whatever the provider does;
+// "unreachable" may pass, so it only warns.
+const blocking = new Set(["needs_key", "locked", "unbound", "unconfigured", "missing"]);
+const suffix = { needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed", unreachable: "not answering", missing: "not installed", unconfigured: "not set up" };
+
+export const choicesOf = (desk) => desk.settings?.choices || [];
+export const choiceNamed = (desk, name) => choicesOf(desk).find((c) => c.name === name) || null;
+export const statusOf = (desk, name) => desk.models?.find((m) => m.name === name) || null;
+
+export const effortLabel = (effort) => (effort ? effort[0].toUpperCase() + effort.slice(1) : "Provider default");
+
+// defaultSelection is the model and effort a new task starts on: the default
+// model of Settings, with its default effort.
+export function defaultSelection(desk) {
+  const c = choicesOf(desk).find((c) => c.default);
+  return c ? { name: c.name, effort: c.effort || "" } : null;
+}
+
+// carryEffort is the effort a model is moved to: the one it had if the new
+// model takes it too, else the new model's own default.
+export function carryEffort(choice, effort) {
+  return effort && (choice.efforts || []).includes(effort) ? effort : choice.effort || "";
+}
+
+// choiceOf is what a selection names: a listed model, or, for a conversation
+// on a model that is not in the list, what the daemon says of it.
+function choiceOf(desk, selection, extra) {
+  if (!selection) return { listed: null, choice: null };
+  const listed = selection.name ? choiceNamed(desk, selection.name) : null;
+  return { listed, choice: listed || extra || null };
+}
+
+// problem says why a selection cannot be used, or may not work, in the words
+// a person needs: what is wrong and where it is put right. It is null for one
+// that can be used, and while the daemon has not yet said (the readiness
+// check is slow when a server does not answer).
+export function problem(desk, selection, extra) {
+  if (!selection) return { kind: "error", text: "No model is set up yet.", fix: "Set one up" };
+  const { listed, choice } = choiceOf(desk, selection, extra);
+  if (selection.name && !listed) return { kind: "error", text: `${selection.name} is no longer in your list of models.`, fix: "Settings › Models" };
+  if (choice && selection.effort && !(choice.efforts || []).includes(selection.effort)) return { kind: "error", text: `${choice.model} does not take the effort “${selection.effort}”.` };
+  const status = listed ? statusOf(desk, listed.name) : null;
+  if (status && status.state !== "ready") {
+    const kind = blocking.has(status.state) ? "error" : "warn";
+    return { kind, text: status.detail || `${status.model} is ${suffix[status.state] || status.state}.`, fix: kind === "error" ? "Settings › Models" : "" };
+  }
+  return null;
+}
+
+// blocked says a new task cannot start on the selection.
+export const blocked = (desk, selection) => problem(desk, selection)?.kind === "error";
+
+const label = (text, control) => h("label", { class: "mp-field" }, h("span", {}, text), control);
+
+export class ModelPicker {
+  constructor(id) {
+    this.id = id;
+    this.sig = "";
+    this.props = null;
+    this.model = h("select", { class: "mp-select", id: `${id}-model`, "aria-label": "Model", onchange: () => this.pickModel() });
+    this.effort = h("select", { class: "mp-select", id: `${id}-effort`, "aria-label": "Effort", onchange: () => this.pickEffort() });
+    this.note = h("div", { class: "mp-notes" });
+    this.el = h("div", { class: "model-picker", id, role: "group", "aria-label": "Model and effort" }, label("Model", this.model), label("Effort", this.effort), this.note);
+  }
+
+  // update draws the picker from props: desk; selection ({name, server?, model?,
+  // effort}); extra (what the daemon says of a model that is not in the list:
+  // {model, efforts, effort}); unavailable (the conversation has no model it
+  // can use: none is shown as chosen, and one is asked for); disabled; notes
+  // (more lines to say, {kind, text}); onPick(selection, reset), called when a
+  // person picks, with reset saying the effort was changed because the new
+  // model does not take it. It redraws only what changed, so a list being open
+  // is not closed by the desk refreshing under it.
+  update(props) {
+    this.props = props;
+    const { desk, selection, extra, disabled = false, notes = [], unavailable = false } = props;
+    const choices = choicesOf(desk);
+    const states = choices.map((c) => statusOf(desk, c.name)?.state || "");
+    const found = unavailable ? null : problem(desk, selection, extra);
+    const sig = JSON.stringify([choices, states, selection, extra, disabled, notes, found, unavailable]);
+    if (sig === this.sig) return;
+    this.sig = sig;
+    const { listed, choice } = choiceOf(desk, selection, extra);
+
+    const groups = new Map();
+    choices.forEach((c, i) => {
+      const where = c.server ? `${c.server} · ${c.host}` : c.host;
+      if (!groups.has(where)) groups.set(where, []);
+      const note = suffix[states[i]] ? ` — ${suffix[states[i]]}` : "";
+      groups.get(where).push(h("option", { value: c.name }, `${c.model}${c.default ? " (default)" : ""}${note}`));
+    });
+    const options = [...groups].map(([where, list]) => h("optgroup", { label: where }, list));
+    if (selection && !listed) options.push(h("option", { value: "~" }, `${selection.model || selection.name}${selection.name ? " (no longer in your list)" : " (not in your list)"}`));
+    if (!selection) options.unshift(h("option", { value: "" }, unavailable ? "Choose a model…" : "No model"));
+    this.model.replaceChildren(...options);
+    this.model.value = listed ? listed.name : selection ? "~" : "";
+    this.model.disabled = disabled || !choices.length;
+
+    const efforts = choice?.efforts || [];
+    const own = choice?.effort ?? "";
+    const levels = efforts.map((e) => h("option", { value: e }, effortLabel(e)));
+    if (!selection) {
+      this.effort.replaceChildren(h("option", { value: "" }, "—"));
+      this.effort.disabled = true;
+      this.effort.title = "";
+    } else if (!efforts.length) {
+      this.effort.replaceChildren(h("option", { value: "" }, "Not configurable"));
+      this.effort.value = "";
+      this.effort.disabled = true;
+      this.effort.title = "This model takes no effort setting, so its provider's default applies. Declare the efforts it takes in Settings › Models.";
+    } else {
+      // A model whose own default is an effort always asks one; one with no
+      // default can also be left to its provider.
+      const opts = [...(own === "" ? [h("option", { value: "" }, effortLabel(""))] : []), ...levels];
+      if (selection?.effort && !efforts.includes(selection.effort)) opts.push(h("option", { value: selection.effort }, `${effortLabel(selection.effort)} (not offered)`));
+      this.effort.replaceChildren(...opts);
+      this.effort.value = selection?.effort ?? "";
+      this.effort.disabled = disabled;
+      this.effort.title = "";
+    }
+
+    const lines = [...(found ? [{ kind: found.kind, text: found.text, fix: found.fix }] : []), ...notes];
+    this.note.replaceChildren(
+      ...lines.map((line) =>
+        h(
+          "p",
+          { class: `mp-note ${line.kind || ""}`, role: line.kind === "error" ? "alert" : null },
+          line.text,
+          line.fix ? [" ", h("a", { href: line.fix.startsWith("Set") ? "#/" : "#/settings" }, line.fix)] : null,
+        ),
+      ),
+    );
+    this.note.hidden = !lines.length;
+  }
+
+  pickModel() {
+    const { desk, selection, onPick } = this.props;
+    const choice = choiceNamed(desk, this.model.value);
+    if (!choice || !onPick) return;
+    const effort = carryEffort(choice, selection?.effort);
+    onPick({ name: choice.name, effort }, !!selection?.effort && effort !== selection.effort);
+  }
+
+  pickEffort() {
+    const { selection, onPick } = this.props;
+    if (!selection || !onPick) return;
+    onPick({ ...selection, effort: this.effort.value }, false);
+  }
+}

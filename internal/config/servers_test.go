@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -34,7 +35,7 @@ model = "qwen3:8b"
 		t.Fatal(err)
 	}
 	want := Model{Server: "openrouter", Provider: "openai", URL: "https://openrouter.ai/api/v1", Credential: "openrouter-key", Model: "meta/muse-spark-1.3"}
-	if c.Control != want {
+	if !reflect.DeepEqual(c.Control, want) {
 		t.Fatalf("control: %+v", c.Control)
 	}
 	if m := c.Models["coder"]; m.URL != want.URL || m.Credential != "openrouter-key" || m.Provider != "openai" || m.Model != "qwen/qwen3-coder" || m.PriceInput == nil {

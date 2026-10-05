@@ -131,68 +131,73 @@ type handler func(*server, request, *peer) (any, *rpcError)
 // into behaviour; protocol.methods advertises the same set, and a test
 // holds the two together.
 var methodTable = map[string]handler{
-	"run.start":               (*server).run,
-	"run.info":                (*server).run,
-	"run.stop":                (*server).run,
-	"run.resume":              (*server).run,
-	"session.policy.read":     (*server).policy,
-	"session.policy.write":    (*server).policy,
-	"session.answer":          (*server).answer,
-	"session.secret":          (*server).answer,
-	"session.approval.create": (*server).answer,
-	"session.binding.create":  (*server).answer,
-	"session.approve_all":     (*server).approveAll,
-	"session.watch":           (*server).subscribeState,
-	"session.list":            (*server).list,
-	"attention.list":          (*server).attentionList,
-	"notes.read":              (*server).notesRead,
-	"session.notes.write":     (*server).notesWrite,
-	"models.status":           (*server).modelsStatus,
-	"models.offered":          (*server).modelsOffered,
-	"keychain.status":         (*server).keychain,
-	"keychain.create":         (*server).keychain,
-	"keychain.unlock":         (*server).keychain,
-	"keychain.passphrase":     (*server).keychain,
-	"credentials.list":        (*server).credentialsMethod,
-	"credentials.add":         (*server).credentialsMethod,
-	"credentials.replace":     (*server).credentialsMethod,
-	"credentials.remove":      (*server).credentialsMethod,
-	"credentials.bind":        (*server).credentialsMethod,
-	"credentials.authorize":   (*server).credentialsMethod,
-	"settings.read":           (*server).settingsMethod,
-	"settings.control.write":  (*server).settingsMethod,
-	"settings.docs.write":     (*server).docsSettingsMethod,
-	"settings.write":          (*server).settingsWrite,
-	"workspace.list":          (*server).workspaces,
-	"workspace.active":        (*server).workspaces,
-	"workspace.save":          (*server).workspaces,
-	"workspace.remove":        (*server).workspaces,
-	"versions.list":           (*server).versions,
-	"session.restore":         (*server).versions,
-	"session.attach":          (*server).attach,
-	"mcp.list":                (*server).mcpMethod,
-	"mcp.inspect":             (*server).mcpMethod,
-	"mcp.save":                (*server).mcpMethod,
-	"mcp.approve":             (*server).mcpMethod,
-	"mcp.remove":              (*server).mcpMethod,
-	"mcp.runtime":             (*server).mcpMethod,
-	"mcp.pull":                (*server).mcpMethod,
-	"session.open":            (*server).open,
-	"worktree.open":           (*server).open,
-	"session.resume":          (*server).resume,
-	"session.model.set":       (*server).model,
-	"session.info":            (*server).info,
-	"session.close":           (*server).closeSession,
-	"session.rename":          (*server).rename,
-	"session.archive":         (*server).archive,
-	"session.delete":          (*server).deleteSession,
-	"session.abort":           (*server).abort,
-	"session.unsubscribe":     (*server).unsubscribeSession,
-	"session.friction":        (*server).friction,
-	"session.eval":            (*server).eval,
-	"session.send":            (*server).send,
-	"session.subscribe":       (*server).subscribe,
-	"log.read":                (*server).readLog,
+	"run.start":                (*server).run,
+	"run.info":                 (*server).run,
+	"run.stop":                 (*server).run,
+	"run.resume":               (*server).run,
+	"session.policy.read":      (*server).policy,
+	"session.policy.write":     (*server).policy,
+	"session.answer":           (*server).answer,
+	"session.secret":           (*server).answer,
+	"session.approval.create":  (*server).answer,
+	"session.binding.create":   (*server).answer,
+	"session.approve_all":      (*server).approveAll,
+	"session.watch":            (*server).subscribeState,
+	"session.list":             (*server).list,
+	"attention.list":           (*server).attentionList,
+	"notes.read":               (*server).notesRead,
+	"session.notes.write":      (*server).notesWrite,
+	"models.status":            (*server).modelsStatus,
+	"models.offered":           (*server).modelsOffered,
+	"keychain.status":          (*server).keychain,
+	"keychain.create":          (*server).keychain,
+	"keychain.unlock":          (*server).keychain,
+	"keychain.passphrase":      (*server).keychain,
+	"credentials.list":         (*server).credentialsMethod,
+	"credentials.add":          (*server).credentialsMethod,
+	"credentials.replace":      (*server).credentialsMethod,
+	"credentials.remove":       (*server).credentialsMethod,
+	"credentials.bind":         (*server).credentialsMethod,
+	"credentials.authorize":    (*server).credentialsMethod,
+	"settings.read":            (*server).settingsMethod,
+	"settings.control.write":   (*server).settingsMethod,
+	"settings.provider.write":  (*server).providerWrite,
+	"settings.provider.remove": (*server).providerRemove,
+	"settings.model.write":     (*server).modelWrite,
+	"settings.model.remove":    (*server).modelRemove,
+	"models.test":              (*server).modelTest,
+	"settings.docs.write":      (*server).docsSettingsMethod,
+	"settings.write":           (*server).settingsWrite,
+	"workspace.list":           (*server).workspaces,
+	"workspace.active":         (*server).workspaces,
+	"workspace.save":           (*server).workspaces,
+	"workspace.remove":         (*server).workspaces,
+	"versions.list":            (*server).versions,
+	"session.restore":          (*server).versions,
+	"session.attach":           (*server).attach,
+	"mcp.list":                 (*server).mcpMethod,
+	"mcp.inspect":              (*server).mcpMethod,
+	"mcp.save":                 (*server).mcpMethod,
+	"mcp.approve":              (*server).mcpMethod,
+	"mcp.remove":               (*server).mcpMethod,
+	"mcp.runtime":              (*server).mcpMethod,
+	"mcp.pull":                 (*server).mcpMethod,
+	"session.open":             (*server).open,
+	"worktree.open":            (*server).open,
+	"session.resume":           (*server).resume,
+	"session.model.set":        (*server).model,
+	"session.info":             (*server).info,
+	"session.close":            (*server).closeSession,
+	"session.rename":           (*server).rename,
+	"session.archive":          (*server).archive,
+	"session.delete":           (*server).deleteSession,
+	"session.abort":            (*server).abort,
+	"session.unsubscribe":      (*server).unsubscribeSession,
+	"session.friction":         (*server).friction,
+	"session.eval":             (*server).eval,
+	"session.send":             (*server).send,
+	"session.subscribe":        (*server).subscribe,
+	"log.read":                 (*server).readLog,
 }
 
 func (s *server) dispatch(req request, client *peer) (any, *rpcError) {
@@ -289,10 +294,10 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 // repository with a commit. Both take the same model choice (ADR 40).
 func (s *server) open(req request, client *peer) (any, *rpcError) {
 	var p openParams
-	if err := params(req.Params, &p, "repo", "name", "server", "model"); err != nil {
+	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort"); err != nil {
 		return nil, err
 	}
-	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Actor: client.actor}
+	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort, Actor: client.actor}
 	if why := deviceModelRefusal(client.actor, choice); why != nil {
 		return nil, why
 	}
@@ -305,7 +310,7 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	if why := s.rootRefusal(p.Repo); why != "" {
 		return nil, failure(-32602, why)
 	}
-	if why := s.lockedKeyRefusal(); why != "" {
+	if why := s.lockedKeyRefusal(choice); why != "" {
 		return nil, failure(-32000, why)
 	}
 	options := s.options
@@ -346,7 +351,7 @@ func (s *server) resume(req request, _ *peer) (any, *rpcError) {
 	if id == "" {
 		return nil, err
 	}
-	if why := s.lockedKeyRefusal(); why != "" {
+	if why := s.lockedKeyRefusal(core.ModelChoice{}); why != "" {
 		return nil, failure(-32000, why)
 	}
 	options := s.options
@@ -378,7 +383,7 @@ func (s *server) resume(req request, _ *peer) (any, *rpcError) {
 // content goes next (ADR 30).
 func (s *server) model(req request, client *peer) (any, *rpcError) {
 	var p modelSetParams
-	if err := params(req.Params, &p, "id", "name", "server", "model"); err != nil {
+	if err := params(req.Params, &p, "id", "name", "server", "model", "effort"); err != nil {
 		return nil, err
 	}
 	if p.ID == "" {
@@ -387,7 +392,7 @@ func (s *server) model(req request, client *peer) (any, *rpcError) {
 	if p.Name == "" && p.Server == "" && p.Model == "" {
 		return nil, failure(-32602, "give the name of a configured model, or a server and the model on it")
 	}
-	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Actor: client.actor}
+	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort, Actor: client.actor}
 	if why := deviceModelRefusal(client.actor, choice); why != nil {
 		return nil, why
 	}
@@ -411,7 +416,7 @@ func (s *server) model(req request, client *peer) (any, *rpcError) {
 // task on config.toml's [control] model. The bridge relays a paired device's
 // name as via, so its actor carries " via ", as unwatchedRefusal reads it.
 func deviceModelRefusal(actor string, c core.ModelChoice) *rpcError {
-	if (c.Name != "" || c.Server != "" || c.Model != "") && strings.Contains(actor, " via ") {
+	if (c.Name != "" || c.Server != "" || c.Model != "" || c.Effort != "") && strings.Contains(actor, " via ") {
 		return failure(-32602, "The model a task talks to is chosen on the computer nodwyn runs on, not from a paired device")
 	}
 	return nil

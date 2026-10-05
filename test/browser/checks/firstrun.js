@@ -70,21 +70,26 @@ check(async () => {
   step("keychain created");
   await page.screenshot({ path: `${out}/firstrun-settings.png`, fullPage: true });
 
-  // Settings › Models: the server saved above is chosen by its name, its
-  // models are what it lists, and another of them is saved by the name.
-  await page.click("summary:has-text('Change the main model')");
-  await page.waitForSelector("button.chip[aria-pressed=true]:has-text('127-0-0-1')");
-  assert.ok(!(await page.isVisible("#model-url")), "a saved server asks for its address again");
-  await page.focus("#model-name");
-  await page.waitForFunction(() => [...document.querySelectorAll("#model-options option")].map((o) => o.value).join() === "demo,fake", null, { timeout: 10000 });
-  await page.fill("#model-name", "fake");
+  // Settings › Models: the server saved above is listed as a provider, a
+  // model it offers is added from the list it gives, and chosen as the
+  // default; the model that was the default stays in the list (ADR 41).
+  await page.waitForSelector("#provider-127-0-0-1");
+  await page.click("#add-model");
+  assert.strictEqual(await page.inputValue("#model-provider"), "127-0-0-1", "the saved server is the provider offered");
+  await page.focus("#model-id");
+  await page.waitForFunction(() => [...document.querySelectorAll("#model-id-options option")].map((o) => o.value).join() === "demo,fake", null, { timeout: 10000 });
+  await page.fill("#model-id", "fake");
   await page.screenshot({ path: `${out}/firstrun-model.png` });
-  await page.click("text=Save and check");
-  await page.waitForSelector("text=Saved. The model answers.", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("settings.control.write")[1], { server: "127-0-0-1", model: "fake" });
+  await page.click("#model-save");
+  await page.waitForSelector("[data-model='127-0-0-1-fake']");
+  assert.deepStrictEqual(sent.of("settings.model.write"), [{ server: "127-0-0-1", model: "fake", efforts: [] }]);
+  await page.selectOption("#default-model-model", "127-0-0-1-fake");
+  await page.click("#default-save");
+  await page.waitForSelector("text=Saved. New tasks start on this model", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.control.write")[1], { name: "127-0-0-1-fake", effort: "" });
   const switched = fs.readFileSync(`${root}/config/nodwyn/config.toml`, "utf8");
-  assert.ok(switched.includes('[control]\nserver = "127-0-0-1"\nmodel = "fake"\n') && switched.split(modelURL).length === 2, "another model on the server: " + switched);
-  step("another model on the saved server chosen by name");
+  assert.ok(switched.includes('[control]\nserver = "127-0-0-1"\nmodel = "fake"\n') && switched.includes('[models.127-0-0-1-demo]\nserver = "127-0-0-1"\nmodel = "demo"\n') && switched.split(modelURL).length === 2, "another model on the saved server: " + switched);
+  step("another model on the saved server chosen as the default; the first stays listed");
 
   // A workspace, added from Home with a folder typed by hand: a name, and
   // no kind to choose (ADR 22).

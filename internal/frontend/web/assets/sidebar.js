@@ -124,7 +124,8 @@ export function renderSidebar(nav, { desk, route, conn, rerender }) {
     },
   });
   const control = desk.control();
-  const modelState = !conn.live ? ["bad", "offline"] : !control ? ["", "checking"] : control.state === "ready" ? ["ok", desk.running().length ? "working" : "ready"] : control.state === "missing" ? ["warn", "model missing"] : control.state === "unconfigured" ? ["warn", "not set up"] : ["bad", "unreachable"];
+  const attention = { missing: "model missing", unconfigured: "not set up", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed" };
+  const modelState = !conn.live ? ["bad", "offline"] : !control ? ["", "checking"] : control.state === "ready" ? ["ok", desk.running().length ? "working" : "ready"] : attention[control.state] ? ["warn", attention[control.state]] : ["bad", "unreachable"];
   const link = (href, name, label) => h("a", { class: "nav-link", href, "aria-current": route.name === href.slice(2) ? "page" : null }, icon(name), h("span", {}, label));
 
   nav.replaceChildren(

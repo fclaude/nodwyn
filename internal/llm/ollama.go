@@ -145,6 +145,9 @@ type wireRequest struct {
 	Stream    bool           `json:"stream"`
 	KeepAlive string         `json:"keep_alive,omitempty"`
 	Options   map[string]any `json:"options,omitempty"`
+	// Think is the request's effort (thinkSetting): a model that cannot think
+	// refuses the field, so it is sent only when one was chosen.
+	Think any `json:"think,omitempty"`
 }
 
 type wireChunk struct {
@@ -161,7 +164,7 @@ type wireChunk struct {
 }
 
 func toWire(req Request) wireRequest {
-	w := wireRequest{Model: req.Model, Stream: true, KeepAlive: req.KeepAlive}
+	w := wireRequest{Model: req.Model, Stream: true, KeepAlive: req.KeepAlive, Think: thinkSetting(req.Effort)}
 	if req.NumCtx > 0 || req.MaxTokens > 0 || req.Temperature != nil || req.Seed != nil {
 		w.Options = map[string]any{}
 		if req.NumCtx > 0 {
@@ -228,7 +231,7 @@ func (o *Ollama) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 	}
 	if resp.StatusCode != 200 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("ollama: %s: %s", resp.Status, strings.TrimSpace(string(b)))
+		return nil, refused("ollama", resp, strings.TrimSpace(string(b)))
 	}
 
 	out := &Response{Message: Message{Role: RoleAssistant}}

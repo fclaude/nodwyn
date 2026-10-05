@@ -893,3 +893,40 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .cred-detail .row-actions select.input { flex: 0 1 auto; }
 .table-wrap { overflow-x: auto; }
 .cred-detail .table td { overflow-wrap: anywhere; }
+
+/* the model picker (modelpicker.js): the New task window's and a conversation's */
+.model-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; min-width: 0; }
+.model-picker[hidden] { display: none; }
+.mp-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--faint); min-width: 0; }
+.mp-select {
+  height: 30px; max-width: 240px; min-width: 0; padding: 0 8px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-size: 13px;
+}
+.mp-select:disabled { color: var(--faint); }
+.mp-select:focus-visible { border-color: var(--accent); outline: none; }
+.mp-notes { flex-basis: 100%; display: flex; flex-direction: column; gap: 2px; }
+.mp-notes[hidden] { display: none; }
+.mp-note { margin: 0; font-size: 12.5px; color: var(--faint); }
+.mp-note.warn { color: var(--warn-ink-2); }
+.mp-note.error { color: var(--bad); }
+.mp-note a { color: inherit; text-decoration: underline; }
+.ask-bar .model-picker { margin-left: auto; }
+.reply-opts { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; }
+@media (max-width: 760px) {
+  .ask-bar .model-picker { margin-left: 0; flex-basis: 100%; }
+  .mp-select { max-width: 150px; }
+}
+
+/* Settings › Models (models.js) */
+.providers, .models { display: flex; flex-direction: column; gap: 10px; }
+.provider-row, .model-row { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding-bottom: 12px; }
+.provider-row > .row-actions, .model-row > .row-actions { padding: 0 16px; }
+.provider-row > .hint, .model-row > .hint, .provider-row > .test-result, .model-row > .test-result { margin: 8px 16px 0; }
+.state-word { white-space: nowrap; }
+.default-badge { margin-left: 8px; vertical-align: 1px; }
+.form-title { margin: 0; font-size: 15px; font-weight: 600; }
+.provider-form, .model-form { padding: 16px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
+.test-result { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 13px; color: var(--ink-2); }
+.test-result .dot { margin-top: 5px; }
+.test-result.bad { color: var(--bad); }
+.test-result.ok { color: var(--ok); }

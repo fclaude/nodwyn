@@ -1,0 +1,589 @@
+package rpc
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"regexp"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/policyfile"
+)
+
+// The methods in this file let a person set up the model providers nodwyn
+// talks to, and the models and efforts they can choose between, from the
+// console (ADR 41). They act on config.toml as settings.control.write does:
+// every other line is kept, the result is validated as the loader would,
+// and what a task is opened on afterwards is what was saved. A key goes to
+// the keychain with one binding row, never into config.toml, and never back
+// out.
+
+type providerParams struct {
+	// Name is the [servers.NAME] to change. Left out, a provider is added,
+	// named after its host.
+	Name     string `json:"name,omitempty"`
+	Provider string `json:"provider"`
+	URL      string `json:"url"`
+	// Dialect is how a chat-completions server reads the protocol
+	// ("compatible", or "cerebras"); never inferred from the address.
+	Dialect string `json:"dialect,omitempty"`
+	// APIKey is stored in the unlocked keychain and bound to exactly the
+	// provider's host, POST, as a bearer Authorization header. A provider that
+	// has a key already has it replaced in place.
+	APIKey string `json:"api_key,omitempty"`
+}
+
+type nameParams struct {
+	Name string `json:"name"`
+}
+
+type modelWriteParams struct {
+	// Name is the [models.NAME] to change. Left out, a model is added, named
+	// after its provider and its id.
+	Name   string `json:"name,omitempty"`
+	Server string `json:"server"`
+	Model  string `json:"model"`
+	// Efforts are the efforts the model takes, in the words its provider
+	// accepts; none when it takes no effort setting. Effort is the one it
+	// starts with: one of Efforts, or none.
+	Efforts []string `json:"efforts,omitempty"`
+	Effort  string   `json:"effort,omitempty"`
+}
+
+// providers lists the model providers as Settings shows them: each
+// [servers.NAME], then the addresses models give inline, with what the
+// keychain says of each one's key and which models are on it.
+func (s *server) providers() []modelServer {
+	cfg := s.options.Config
+	entries := s.registry()
+	out := []modelServer{}
+	describe := func(m modelServer) modelServer {
+		host := m.URL
+		if u, err := url.Parse(m.URL); err == nil {
+			host = u.Host
+			if state, detail := s.keyCheck(m.Credential, u.Hostname()); state != "" {
+				m.Key, m.KeyDetail = state, detail
+			}
+		}
+		m.Host = host
+		if m.Uses == nil {
+			m.Uses = []string{}
+		}
+		return m
+	}
+	// A model that gives the address of a server config.toml also has as a
+	// [servers.NAME] is on that provider, though it is not sent its key.
+	at := func(sv config.Server, m config.Model) bool {
+		return providerName(sv.Provider) == providerName(m.Provider) && strings.TrimRight(sv.URL, "/") == strings.TrimRight(m.URL, "/")
+	}
+	for _, name := range slices.Sorted(maps.Keys(cfg.Servers)) {
+		sv := cfg.Servers[name]
+		m := modelServer{Name: name, Provider: providerName(sv.Provider), Dialect: string(sv.Dialect), URL: sv.URL, Credential: sv.Credential}
+		for _, e := range entries {
+			if e.model.Server == name || (e.model.Server == "" && at(sv, e.model)) {
+				m.Uses = append(m.Uses, e.name)
+			}
+		}
+		out = append(out, describe(m))
+	}
+	inline := map[string]*modelServer{}
+	var order []string
+	for _, e := range entries {
+		if e.model.Server != "" || slices.ContainsFunc(slices.Collect(maps.Values(cfg.Servers)), func(sv config.Server) bool { return at(sv, e.model) }) {
+			continue
+		}
+		key := probeKey(e.model) + "\x00" + e.model.Credential + "\x00" + string(e.model.Dialect)
+		if inline[key] == nil {
+			u, _ := url.Parse(e.model.URL)
+			host := e.model.URL
+			if u != nil {
+				host = u.Host
+			}
+			inline[key] = &modelServer{Name: host, Provider: providerName(e.model.Provider), Dialect: string(e.model.Dialect), URL: e.model.URL, Credential: e.model.Credential, Inline: true}
+			order = append(order, key)
+		}
+		inline[key].Uses = append(inline[key].Uses, e.name)
+	}
+	for _, key := range order {
+		out = append(out, describe(*inline[key]))
+	}
+	return out
+}
+
+// choices lists the models a task can be started on or moved to: [control],
+// the default, and each [models.NAME] that is not the default again.
+func (s *server) choices() []modelChoice {
+	cfg := s.options.Config
+	out := []modelChoice{}
+	var control *config.Model
+	for _, e := range s.registry() {
+		if e.name == config.ControlModel {
+			control = &e.model
+		} else if control != nil && cfg.SameModel(e.model, *control) {
+			continue
+		}
+		host := e.model.URL
+		if u, err := url.Parse(e.model.URL); err == nil {
+			host = u.Host
+		}
+		out = append(out, modelChoice{Name: e.name, Server: e.model.Server, Provider: providerName(e.model.Provider), Model: e.model.Model, Host: host,
+			Efforts: cfg.Efforts(e.model), Effort: e.model.Effort, Default: e.name == config.ControlModel})
+	}
+	return out
+}
+
+// errStop ends a policyfile.Update callback whose refusal is already in the
+// failure it will answer with.
+var errStop = errors.New("rpc: refused")
+
+// rewriteConfig reads config.toml as it is now, under the lock sessions use
+// when they save a setting, lets change turn it into the text to write, and
+// writes it. change refuses with a failure of its own, or returns an error
+// for -32602, the validation the loader would have made. The daemon then
+// takes the providers, models and default from the file; what it holds
+// besides is not config.toml's to say.
+func (s *server) rewriteConfig(change func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError)) *rpcError {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var next config.Config
+	var refusal *rpcError
+	err := policyfile.Update(ctx, s.options.Paths.ConfigFile, func(raw []byte) ([]byte, error) {
+		current, err := config.Parse(raw)
+		if err != nil {
+			refusal = failure(-32000, err.Error())
+			return nil, errStop
+		}
+		text, parsed, rerr := change(raw, current)
+		if rerr != nil {
+			refusal = rerr
+			return nil, errStop
+		}
+		next = parsed
+		return text, nil
+	})
+	if refusal != nil {
+		return refusal
+	}
+	if err != nil {
+		return failure(-32000, err.Error())
+	}
+	if err := os.Chmod(s.options.Paths.ConfigFile, 0o600); err != nil {
+		return failure(-32000, err.Error())
+	}
+	s.options.Config.Servers, s.options.Config.Models, s.options.Config.Control = next.Servers, next.Models, next.Control
+	forgetProbes()
+	return nil
+}
+
+// providerWrite answers settings.provider.write: it adds a provider, or
+// changes one's address, dialect or key.
+func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
+	var p providerParams
+	if err := params(req.Params, &p, "name", "provider", "url", "dialect", "api_key"); err != nil {
+		return nil, err
+	}
+	key := []byte(p.APIKey)
+	defer clear(key)
+	p.URL = strings.TrimRight(strings.TrimSpace(p.URL), "/")
+	if p.Provider != "ollama" && p.Provider != "openai" {
+		return nil, failure(-32602, `provider must be "ollama" or "openai"`)
+	}
+	parsed, err := url.Parse(p.URL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return nil, failure(-32602, "url must be an http or https address, such as http://localhost:11434")
+	}
+	if p.Provider == "ollama" && (p.Dialect != "" || len(key) > 0) {
+		return nil, failure(-32602, "An Ollama server takes no dialect and no key")
+	}
+	host := parsed.Hostname()
+	rerr := s.rewriteConfig(func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError) {
+		name := p.Name
+		old, exists := current.Servers[name]
+		switch {
+		case name != "" && !exists:
+			return nil, config.Config{}, failure(-32602, fmt.Sprintf("No provider named %q is configured", name))
+		case name == "":
+			for n, sv := range current.Servers {
+				if providerName(sv.Provider) == p.Provider && strings.TrimRight(sv.URL, "/") == p.URL {
+					return nil, config.Config{}, failure(-32602, fmt.Sprintf("%s is already configured, as %q: change that one", p.URL, n))
+				}
+			}
+			name = serverName(host)
+			for n := 2; current.Servers[name] != (config.Server{}); n++ {
+				name = fmt.Sprintf("%s-%d", serverName(host), n)
+			}
+		}
+		srv := config.Server{Provider: p.Provider, URL: p.URL, Dialect: llm.ChatDialect(p.Dialect)}
+		// A key is the address's: it follows a change of path or port, and
+		// stays out of reach of a new host until one is given for it.
+		if exists && p.Provider == "openai" && sameHost(old.URL, p.URL) {
+			srv.Credential = old.Credential
+		}
+		if (len(key) > 0 || srv.Credential != "") && parsed.Scheme != "https" && !loopback(host) {
+			return nil, config.Config{}, failure(-32602, "a model with a key must be reached over https")
+		}
+		var store *keychain.Store
+		if len(key) > 0 {
+			if store = s.options.Keychain; store == nil {
+				return nil, config.Config{}, failure(-32000, "Unlock or create the keychain first: the key is kept there, never in config.toml")
+			}
+			if h := store.HandleForClass(srv.Credential); srv.Credential == "" || h == nil {
+				srv.Credential = s.freeClass("model-" + hostClass(host))
+			}
+		}
+		text, cfg, err := config.SetServer(raw, name, srv)
+		if err != nil {
+			return nil, config.Config{}, failure(-32602, err.Error())
+		}
+		if len(key) > 0 {
+			// The key and its binding row come before the file that names
+			// them: a config naming a credential that was never stored would
+			// fail every request.
+			if h := store.HandleForClass(srv.Credential); h != nil {
+				err = store.Replace(h.ID, key)
+			} else {
+				_, err = store.Add(srv.Credential, key)
+			}
+			if err != nil {
+				return nil, config.Config{}, failure(-32000, err.Error())
+			}
+			if err := s.bindKey(srv.Credential, host); err != nil {
+				return nil, config.Config{}, failure(-32000, err.Error())
+			}
+		}
+		return text, cfg, nil
+	})
+	if rerr != nil {
+		return nil, rerr
+	}
+	return s.settings(), nil
+}
+
+// bindKey allows class for host: one row, POST, as a bearer header, unless
+// the table has it.
+func (s *server) bindKey(class, host string) error {
+	if bound, _ := s.bindingTable().Lookup(class, host, http.MethodPost, keyPosition); bound {
+		return nil
+	}
+	row, err := binding.Exact(class, host, http.MethodPost, keyPosition)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := binding.AppendExact(ctx, s.options.Paths.Bindings, row); err != nil {
+		return err
+	}
+	if table, err := binding.Load(s.options.Paths.Bindings); err == nil {
+		s.options.Bindings = table
+	}
+	return nil
+}
+
+// providerRemove answers settings.provider.remove. A provider models are
+// still on is refused, with the names of the models: they would be left with
+// nowhere to go. Its key stays in the keychain, where Connections removes it.
+func (s *server) providerRemove(req request, _ *peer) (any, *rpcError) {
+	var p nameParams
+	if err := params(req.Params, &p, "name"); err != nil {
+		return nil, err
+	}
+	rerr := s.rewriteConfig(func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError) {
+		if _, ok := current.Servers[p.Name]; !ok {
+			return nil, config.Config{}, failure(-32602, fmt.Sprintf("No provider named %q is configured", p.Name))
+		}
+		var uses []string
+		if current.Control.Server == p.Name {
+			uses = append(uses, "the default model")
+		}
+		for _, name := range slices.Sorted(maps.Keys(current.Models)) {
+			if current.Models[name].Server == p.Name {
+				uses = append(uses, name)
+			}
+		}
+		if len(uses) > 0 {
+			return nil, config.Config{}, failure(-32000, fmt.Sprintf("%s is still used by %s: remove those models, or move them to another provider, first", p.Name, strings.Join(uses, ", ")))
+		}
+		text, cfg, err := config.RemoveServer(raw, p.Name)
+		if err != nil {
+			return nil, config.Config{}, failure(-32602, err.Error())
+		}
+		return text, cfg, nil
+	})
+	if rerr != nil {
+		return nil, rerr
+	}
+	return s.settings(), nil
+}
+
+var notName = regexp.MustCompile(`[^a-z0-9]+`)
+
+// modelName names a model entry after its provider and its id: openai-gpt-5.
+func modelName(server, model string) string {
+	return strings.Trim(notName.ReplaceAllString(strings.ToLower(server+"-"+model), "-"), "-")
+}
+
+// modelWrite answers settings.model.write: it adds a model to the list a
+// person chooses from, or changes the provider, id, efforts or default effort
+// of one that is there. Whatever else the entry sets (context length, prices)
+// stays, unless it is another model now.
+func (s *server) modelWrite(req request, _ *peer) (any, *rpcError) {
+	var p modelWriteParams
+	if err := params(req.Params, &p, "name", "server", "model", "efforts", "effort"); err != nil {
+		return nil, err
+	}
+	p.Model = strings.TrimSpace(p.Model)
+	if p.Model == "" {
+		return nil, failure(-32602, "model is required")
+	}
+	rerr := s.rewriteConfig(func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError) {
+		if _, ok := current.Servers[p.Server]; !ok {
+			return nil, config.Config{}, failure(-32602, fmt.Sprintf("No provider named %q is configured", p.Server))
+		}
+		name := p.Name
+		if name == "" {
+			// A model that is in the list already is changed, not listed twice.
+			for _, other := range slices.Sorted(maps.Keys(current.Models)) {
+				if m := current.Models[other]; m.Server == p.Server && m.Model == p.Model {
+					name = other
+					break
+				}
+			}
+		}
+		if name == "" {
+			name = modelName(p.Server, p.Model)
+			for n := 2; ; n++ {
+				if _, taken := current.Models[name]; !taken && name != config.ControlModel {
+					break
+				}
+				name = fmt.Sprintf("%s-%d", modelName(p.Server, p.Model), n)
+			}
+		}
+		entry := current.Models[name]
+		// The entry's settings belong to the model they were made for.
+		if entry.Server != p.Server || entry.Model != p.Model {
+			entry = config.Model{}
+		}
+		entry.Server, entry.Model, entry.Efforts, entry.Effort = p.Server, p.Model, p.Efforts, p.Effort
+		text, cfg, err := config.SetModel(raw, name, entry)
+		if err != nil {
+			return nil, config.Config{}, failure(-32602, err.Error())
+		}
+		return text, cfg, nil
+	})
+	if rerr != nil {
+		return nil, rerr
+	}
+	return s.settings(), nil
+}
+
+// modelRemove answers settings.model.remove. The default model is not removed
+// from here: another is chosen first.
+func (s *server) modelRemove(req request, _ *peer) (any, *rpcError) {
+	var p nameParams
+	if err := params(req.Params, &p, "name"); err != nil {
+		return nil, err
+	}
+	if p.Name == config.ControlModel {
+		return nil, failure(-32602, "The default model is changed, not removed: choose another default first")
+	}
+	rerr := s.rewriteConfig(func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError) {
+		entry, ok := current.Models[p.Name]
+		if !ok {
+			return nil, config.Config{}, failure(-32602, fmt.Sprintf("No model named %q is configured", p.Name))
+		}
+		// The default model's efforts are its entry's: removing the entry
+		// would leave the default naming efforts nobody lists.
+		if current.SameModel(entry, current.Control) {
+			return nil, config.Config{}, failure(-32000, fmt.Sprintf("%s is the default model: choose another default first, then remove it", p.Name))
+		}
+		text, cfg, err := config.RemoveModel(raw, p.Name)
+		if err != nil {
+			return nil, config.Config{}, failure(-32602, err.Error())
+		}
+		return text, cfg, nil
+	})
+	if rerr != nil {
+		return nil, rerr
+	}
+	return s.settings(), nil
+}
+
+type testParams struct {
+	// Name is "control" or a [models.NAME]; or Server and Model name a model
+	// on a configured provider, as session.model.set does.
+	Name   string `json:"name,omitempty"`
+	Server string `json:"server,omitempty"`
+	Model  string `json:"model,omitempty"`
+	// Effort is the effort to try with it, one the model takes.
+	Effort string `json:"effort,omitempty"`
+}
+
+// testResult is what a one-line request to a model found.
+type testResult struct {
+	OK bool `json:"ok"`
+	// State is ok; or why not: needs_key, locked or unbound before anything
+	// was sent; rejected (the server did not accept the key), no_model (it has
+	// no such model), refused (it refused the request, as it does an effort
+	// the model does not take), limited (a rate limit or no quota),
+	// unreachable, or error.
+	State  string `json:"state"`
+	Detail string `json:"detail"`
+	Model  string `json:"model"`
+	Effort string `json:"effort,omitempty"`
+	Status int    `json:"status,omitempty"`
+	// Ms is how long the answer took.
+	Ms int64 `json:"ms"`
+}
+
+// modelTest answers models.test: it sends one short request to the model, as
+// a task would, with its key checked against its binding, and says what came
+// back. It is how a wrong key, a model the provider does not have and an
+// effort it refuses are found before a task meets them. It sends the words
+// "Reply with the single word ok." and nothing of any task.
+func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
+	var p testParams
+	if err := params(req.Params, &p, "name", "server", "model", "effort"); err != nil {
+		return nil, err
+	}
+	if strings.Contains(client.actor, " via ") {
+		return nil, failure(-32602, "A model is tried from the computer nodwyn runs on, not from a paired device")
+	}
+	m, effort, err := core.Choose(s.options.Config, core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort})
+	if err != nil {
+		return nil, failure(-32602, err.Error())
+	}
+	result := testResult{Model: m.Model, Effort: effort}
+	if m.URL == "" || m.Model == "" {
+		result.State, result.Detail = stateUnconfigured, "No model is configured"
+		return result, nil
+	}
+	u, err := url.Parse(m.URL)
+	if err != nil {
+		return nil, failure(-32602, "the model's address is not a URL")
+	}
+	if state, detail := s.keyCheck(m.Credential, u.Hostname()); state != "" && state != stateReady {
+		result.State, result.Detail = state, detail
+		return result, nil
+	}
+	var provider llm.Provider
+	switch m.Provider {
+	case "openai":
+		var authorize func(*http.Request) error
+		if m.Credential != "" {
+			authorize = authorizer(s.options.Keychain, s.bindingTable(), m.Credential)
+		}
+		oai := llm.NewOpenAI(m.URL, authorize)
+		oai.Dialect, oai.MaxTokensField = m.Dialect, m.OutputField
+		provider = oai
+	default:
+		provider = llm.NewOllama(m.URL)
+	}
+	// The request runs without the lifecycle lock, as the probes do.
+	s.mu.Unlock()
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	_, err = provider.Chat(ctx, llm.Request{Model: m.Model, Messages: []llm.Message{{Role: llm.RoleUser, Content: "Reply with the single word ok."}}, MaxTokens: 256, Effort: effort}, nil)
+	cancel()
+	s.mu.Lock()
+	result.Ms = time.Since(started).Milliseconds()
+	classify(&result, err, u.Host)
+	return result, nil
+}
+
+// authorizer is how a request to a keyed model gets its key: the key goes in
+// only if class is bound to the request's host for its method, checked on
+// every request, as a task's is. The daemon holds neither key nor binding
+// table beyond the call.
+func authorizer(store *keychain.Store, table binding.Table, class string) func(*http.Request) error {
+	return func(req *http.Request) error {
+		if store == nil {
+			return llm.Permanent(errors.New("the keychain is locked"))
+		}
+		h := store.HandleForClass(class)
+		if h == nil {
+			return llm.Permanent(errors.New("no key in the keychain"))
+		}
+		if bound, reason := table.Lookup(class, strings.ToLower(req.URL.Hostname()), req.Method, keyPosition); !bound {
+			return llm.Permanent(errors.New(reason))
+		}
+		_, name, prefix := binding.Position(keyPosition)
+		return store.InjectHeader(h.ID, name, prefix, req)
+	}
+}
+
+// classify turns what a model test returned into the words Settings shows.
+func classify(r *testResult, err error, host string) {
+	if err == nil {
+		r.OK, r.State, r.Detail = true, "ok", fmt.Sprintf("%s answered in %.1f s", r.Model, float64(r.Ms)/1000)
+		return
+	}
+	var se *llm.StatusError
+	var netErr net.Error
+	switch {
+	case errors.As(err, &se):
+	case errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded):
+		r.State, r.Detail = stateUnreachable, "No answer from "+host
+		return
+	default:
+		r.State, r.Detail = "error", err.Error()
+		return
+	}
+	r.Status = se.Status
+	said := providerSaid(se.Body)
+	switch se.Status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		r.State, r.Detail = "rejected", fmt.Sprintf("%s did not accept the key (%d). Replace it with one from the provider. It said: %s", host, se.Status, said)
+	case http.StatusNotFound:
+		r.State, r.Detail = "no_model", fmt.Sprintf("%s has no model %q (%d). It said: %s", host, r.Model, se.Status, said)
+	case http.StatusTooManyRequests:
+		r.State, r.Detail = "limited", fmt.Sprintf("%s is limiting requests, or the account has no quota left (429). It said: %s", host, said)
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		hint := ""
+		if r.Effort != "" {
+			hint = fmt.Sprintf(" If the effort %q is the cause, declare the efforts this model takes, or choose its default.", r.Effort)
+		}
+		r.State, r.Detail = "refused", fmt.Sprintf("%s refused the request (%d).%s It said: %s", host, se.Status, hint, said)
+	default:
+		r.State, r.Detail = "error", se.Error()
+	}
+}
+
+// providerSaid is what a provider's refusal says: the message of the error
+// object chat-completions servers send ({"error": {"message": …}}, or
+// {"error": "…"}), else the body as it came, kept short.
+func providerSaid(body string) string {
+	var parsed struct {
+		Error json.RawMessage `json:"error"`
+	}
+	if json.Unmarshal([]byte(body), &parsed) == nil && len(parsed.Error) > 0 {
+		var object struct {
+			Message string `json:"message"`
+		}
+		var text string
+		switch {
+		case json.Unmarshal(parsed.Error, &object) == nil && object.Message != "":
+			return object.Message
+		case json.Unmarshal(parsed.Error, &text) == nil && text != "":
+			return text
+		}
+	}
+	body = strings.TrimSpace(body)
+	if len(body) > 300 {
+		body = body[:300] + "…"
+	}
+	return body
+}

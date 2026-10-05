@@ -251,9 +251,9 @@ func (s *Session) authorize(class string) func(*http.Request) error {
 func (s *Session) models() map[string]loop.Endpoint {
 	out := make(map[string]loop.Endpoint, len(s.opts.Config.Models)+1)
 	for name, m := range s.opts.Config.Models {
-		out[name] = s.endpoint(m)
+		out[name] = s.endpoint(s.opts.Config.Resolve(m), m.Effort)
 	}
-	control := s.endpoint(s.model)
+	control := s.endpoint(s.model, s.effort)
 	switch {
 	case s.opts.Provider != nil:
 		control.Provider = s.opts.Provider
@@ -267,9 +267,10 @@ func (s *Session) models() map[string]loop.Endpoint {
 	return out
 }
 
-// endpoint builds one configured model. A keyed one gets its key per
-// request, after its binding is checked (authorize).
-func (s *Session) endpoint(m config.Model) loop.Endpoint {
+// endpoint builds one configured model, its requests asking for effort (empty
+// asks none). A keyed one gets its key per request, after its binding is
+// checked (authorize).
+func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 	var p llm.Provider
 	switch m.Provider {
 	case "openai":
@@ -293,7 +294,7 @@ func (s *Session) endpoint(m config.Model) loop.Endpoint {
 		}
 	}
 	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: m.MaxOutput, Temperature: m.Temperature, Seed: m.Seed,
-		Rates: llm.Rates{Input: m.PriceInput, CachedInput: m.PriceCachedInput, Output: m.PriceOutput}}
+		Rates: llm.Rates{Input: m.PriceInput, CachedInput: m.PriceCachedInput, Output: m.PriceOutput}, Effort: effort}
 }
 
 // cacheKey is what a session's requests to a chat-completions server name
