@@ -3,6 +3,21 @@
 
 \section{Getting nodwyn}
 
+You can download a portable build and both books from the repository's
+Gitea Releases page (sign in for this private repository). Choose Linux or
+macOS and your computer's architecture, amd64 or arm64. Check the archive's
+SHA-256 digest against \file{SHA256SUMS}, extract it, and keep its two
+executables beside one another on your \code{PATH}. \code{nodwyn version}
+prints the source commit, also recorded in \file{SOURCE.json}.
+
+These builds open the browser for \code{nodwyn app}; they do not contain a
+native webview window. macOS builds are unsigned and not notarised. Only
+Linux amd64 is executed by CI; the other builds are cross-compiled.
+\code{nodwyn-egress} is a Linux executable even in the macOS archive,
+because it runs inside the MCP container. The release guide at
+\file{docs/releases.md} explains downloads and retries. Books are rebuilt
+from the same source as the binaries before publication (\adr{42}).
+
 \nodwyn{} is one Go program. From a checkout of the repository:
 
 \begin{sh}

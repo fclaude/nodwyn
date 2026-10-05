@@ -149,13 +149,17 @@ not guaranteed to be detected; L3 remains P8.
 Gitea runs `.gitea/workflows/ci.yml` on every push and pull request using the
 isolated `self-hosted` runner. It executes `make accept` with fresh race tests,
 then cross-compiles Linux and macOS binaries for amd64 and arm64 with cgo
-disabled. Only the Linux amd64 binary is executed on that runner. The selfcheck is a
-local promotion gate; its model turn goes to a fake model, so neither it nor CI
-needs a model or credentials.
+disabled. Only the Linux amd64 binary is executed on that runner. After a
+successful main-branch check, a separate job builds and publishes the binaries
+and both books as a [Gitea release](http://git.example.com/fc/nodwyn/releases).
+Its selfcheck uses a fake model, so no paid model or real model credentials are needed.
 
 Cross-compilation does not test macOS behavior or provide Developer ID signing
-and notarization. Publishing downloadable releases is separate from the local
-`nodwyn-stable` promotion; this workflow validates builds without publishing them.
+and notarisation. Portable releases open the browser instead of a native webview.
+Each archive includes `nodwyn` and the Linux `nodwyn-egress` used inside MCP
+containers. See [releases](docs/releases.md) for downloads, checksums and reruns.
+Publishing is separate from local `nodwyn-stable` promotion. GitHub CI is
+manual-only while Gitea is the primary build and release service.
 
 Turns also stop when the model repeats an identical tool call four times in a
 row, retries a denied call three times, or gets ten consecutive tool errors

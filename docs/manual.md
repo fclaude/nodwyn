@@ -1871,3 +1871,12 @@ console needs besides: model and keychain setup, credentials, workspaces,
 attachments, file versions and MCP servers. See [the protocol guide](protocol.md) for the handshake, methods,
 permissions and reconnect semantics. `nodwyn app` starts one itself when none
 is running ([the app](app.md)).
+## Downloadable builds and books
+
+Download portable binaries and both books from the repository's Gitea
+Releases page. Each `build-<commit>` release identifies its exact source and
+includes SHA-256 checksums. Linux and macOS archives cover amd64 and arm64;
+each includes the Linux egress proxy used by MCP containers. Portable builds
+open the browser for `nodwyn app`; macOS builds are unsigned and not notarised.
+Only Linux amd64 is executed in CI. See [the release guide](releases.md) for
+downloads, verification and publication. Local `make promote` remains separate.

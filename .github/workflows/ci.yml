@@ -1,13 +1,9 @@
 # Optional GitHub mirror. The primary Gitea workflow is .gitea/workflows/ci.yml.
-# For now this runs on the build host's repository-scoped self-hosted runner
-# (nodwyn-runner) because GitHub-hosted jobs are blocked by account billing;
-# return to ubuntu-latest once they run again.
+# GitHub is manual-only while builds and releases run on Gitea (ADR 42).
 name: ci
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   check:

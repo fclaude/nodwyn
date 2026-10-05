@@ -2,6 +2,26 @@
 
 \chapter{Install and configure}
 
+\section{Download a checked build}
+
+The repository's Gitea Releases page distributes Linux and macOS portable
+builds for amd64 and arm64, and both books (\adr{42}). Each
+\code{build-<commit>} release names its full source commit and includes
+\file{SHA256SUMS} and \file{SOURCE.json}. Compare your archive's SHA-256
+digest with its checksum entry, extract it, and keep \code{nodwyn} beside
+\code{nodwyn-egress}. The latter is always Linux code for the MCP container,
+with the archive's architecture. Only Linux amd64 is executed in CI; the
+other targets are cross-compiled. macOS builds are unsigned and not notarised.
+
+Portable builds omit the native webview, so \code{nodwyn app} opens a
+browser. Main-branch acceptance checks precede publication; both PDFs are
+rebuilt from that same commit. A release remains a draft until its downloads
+verify, and a published release is never overwritten by a rerun. See
+\file{docs/releases.md}. This distribution is separate from local promotion
+and does not remove any PDF from Git history.
+
+\section{Build locally}
+
 \begin{sh}
 make build                       # bin/nodwyn and bin/nodwyn-egress
 make build-webview               # the same, with a native window for nodwyn app

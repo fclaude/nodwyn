@@ -1,4 +1,4 @@
-name: Tests and portable builds
+name: Tests, portable builds and releases
 
 on:
   push:
@@ -39,6 +39,8 @@ jobs:
         run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
       - name: Acceptance checks
         run: make accept GO_TEST_FLAGS=-count=1
+      - name: Release publisher checks
+        run: python3 -B -m unittest discover -s test/release -v
       - name: Cross-compile release targets
         run: |
           mkdir -p "$RUNNER_TEMP/nodwyn-builds"
@@ -53,3 +55,42 @@ jobs:
           test "$("$RUNNER_TEMP/nodwyn-builds/nodwyn-linux-amd64" eval -e '(+ 1 2)')" = 3
       - name: Check source stayed clean
         run: git diff --exit-code
+
+  release:
+    needs: check
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: self-hosted
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      GOMAXPROCS: "2"
+      GOMEMLIMIT: 1GiB
+      TAR_OPTIONS: --no-same-owner
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare release tools
+        run: |
+          mkdir -p "$GOTMPDIR" "$TMPDIR" "$RUNNER_TEMP"
+          sed 's|http://|https://|g' /etc/apk/repositories > "$RUNNER_TEMP/apk-repositories"
+          apk --repositories-file "$RUNNER_TEMP/apk-repositories" add --no-cache \
+            python3 bash make latexmk texlive texmf-dist-latexextra \
+            texmf-dist-fontsrecommended texmf-dist-fontsextra
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Build binaries and books from the source commit
+        run: |
+          release_dir=$(mktemp -d "$RUNNER_TEMP/nodwyn-release.XXXXXX")
+          python3 scripts/release.py build "$release_dir"
+          printf 'RELEASE_DIRECTORY=%s\n' "$release_dir" >> "$GITHUB_ENV"
+      - name: Publish verified release
+        env:
+          GITEA_URL: ${{ gitea.server_url }}
+          GITEA_REPOSITORY: ${{ gitea.repository }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          RELEASE_COMMIT: ${{ gitea.sha }}
+        run: python3 scripts/release.py publish "$RELEASE_DIRECTORY"
