@@ -319,3 +319,20 @@ func TestPlannerExploresFirst(t *testing.T) {
 		t.Fatalf("the worker was not told what exploring found:\n%s", worker)
 	}
 }
+
+// Both system prompts ask for the calls that do not depend on each other in
+// one reply: most models made one call a reply in the local sessions (1.2 to
+// 1.4 for muse-spark, glm, qwen and deepseek), each reply sending the whole
+// conversation again (ADR 32, amended 2026-10-05).
+func TestThePromptsAskForIndependentCallsTogether(t *testing.T) {
+	t.Parallel()
+	const rule = "Calls that do not depend on each other go in the same reply"
+	for name, sys := range map[string]string{
+		"unattended":  unattendedRig(t).s.loop.WindowContext().System,
+		"interactive": newRig(t, true).s.loop.WindowContext().System,
+	} {
+		if !strings.Contains(sys, rule) {
+			t.Errorf("the %s prompt does not ask for independent calls together", name)
+		}
+	}
+}

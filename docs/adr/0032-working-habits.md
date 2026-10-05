@@ -681,3 +681,17 @@ step's note or a plan, then make the edit (`stall-check` in strategy.scm,
 `stall-rounds`, `stall-reasoning-tokens`); `model-turn`'s reply carries
 `reasoning-tokens` for it. TestLongThinkingWithoutAnEditIsToldToWriteItDown
 covers the count.
+
+## Amendment 2026-10-05: calls that do not depend on each other go in one reply
+
+Most models asked for one call a reply, and every reply sends the whole
+conversation again: in the 75 local session logs of 2026-09-30 to 10-05,
+muse-spark made 1.41 calls a reply, glm 1.18, qwen 1.37, deepseek 1.27,
+claude-sonnet 1.64, gpt-6-luna 1.99 and gpt-6.1-sol 2.88. On the same task
+(model providers and efforts in the console), gpt-6.1-sol finished in 97
+requests, muse-spark in 261 with a narrower result, and qwen3.8-max had 9 of
+15 steps after 164 (20261005T022031Z-06eaad19, 20261005T003810Z-cebad9c2,
+20261004T185312Z-c3eeb9d4). No working rule said calls could go together.
+One now does: the reads and searches the model already knows it needs go in
+the same reply, as does a read beside the test it waits for, since they run
+in order and come back together. Not measured on the benchmark yet.

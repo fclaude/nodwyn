@@ -168,6 +168,14 @@
    "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; ls /opt/*/envs .venv venv 2>/dev/null; conda env list)."
    "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
    "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
+   ;; Most models asked for one call a reply: 1.2 to 1.4 a reply for
+   ;; muse-spark, glm, qwen and deepseek in the local session logs of
+   ;; 2026-09-30 to 10-05, against 2.9 for gpt-6.1-sol, and every reply
+   ;; sends the whole conversation again. On the same task (model
+   ;; providers and efforts), gpt-6.1-sol finished in 97 requests,
+   ;; muse-spark in 261 and qwen3.8-max had 9 of 15 steps after 164 (ADR
+   ;; 32, amended 2026-10-05).
+   "\n- Calls that do not depend on each other go in the same reply: the reads and searches you already know you need, several at once, or a read beside the test it waits for. They run in the order you give them and their results come back together, and every reply sends the whole conversation again, so one call a reply is the slow way to look around."
    ;; plan.scm writes its plan without running anything; on one task the
    ;; model reverted a right edit to follow it.
    "\n- A plan may be given before you start. It was written by someone who read the code but could not run it: treat it as a first guess, and when your own checks contradict it, follow the evidence and say so."

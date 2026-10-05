@@ -14,7 +14,9 @@ prompts. It is the text form of the habits: run command lines through
 \code{bash -c}; start a program that keeps running or may hang with
 \code{shell-start} instead of waiting on \code{shell-exec}; find the project's own interpreter and environment before
 running its code, and never patch the standard library to make tests run;
-read with the file tools, not with scripts; treat a plan written before
+read with the file tools, not with scripts; ask for the calls that do not
+depend on each other in one reply, since every reply sends the whole
+conversation again; treat a plan written before
 anything ran as a first guess; keep \textbf{one check script} in
 \code{\$TMPDIR} that shows the problem before the fix and is rerun
 unchanged after every change; follow the conclusion of a request that
