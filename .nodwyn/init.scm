@@ -89,7 +89,7 @@
     (validate-base-agent-turn request)
     (let remind ((left validate-reminders))
       (let ((now (validation-state)))
-        (when (and (> left 0) (not (equal? now before)) (not (equal? now validated-state)))
+        (when (and (> left 0) (not turn-stopping) (not (equal? now before)) (not (equal? now validated-state)))
           (add-message validate-reminder)
           (validate-continue request)
           (remind (- left 1)))))))

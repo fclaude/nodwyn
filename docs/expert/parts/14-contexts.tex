@@ -203,7 +203,13 @@ threshold; your provider usually counts a fifth or so fewer):
 \end{txt}
 
 One that gave up, because no note came back, is a warning, and the turn
-goes on in the full context. How full the context is shows as you work:
+goes on in the full context. A turn whose context fills a second time with
+no file written since its last compaction stops instead: compacting again
+would only send the model back over what it read (five compactions and no
+edit in seven minutes, in one session on a 61,440-token window). The model
+is asked, without tools, what it found, what is done, what is left and what
+is in the way, and that answer ends the turn (\code{compact-stop-unchanged},
+\code{turn-stopping}). How full the context is shows as you work:
 in the terminal client's title (\code{context \textasciitilde 45k of
 \textasciitilde 61k}) and \code{:budget}, and in the console's Context
 meter.

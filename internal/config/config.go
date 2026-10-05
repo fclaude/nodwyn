@@ -1016,6 +1016,14 @@ func (c Config) Published(m Model) (catalogue.Model, bool) {
 	return c.catalogue().Lookup(m.URL, m.Model)
 }
 
+// Like is what the catalogue's providers publish about a model whose id is
+// spelled like model, at any of them, and the host whose context that is
+// (catalogue.Like): for a server whose own list does not say. It holds the
+// context and the reply cap only; prices and efforts are each provider's.
+func (c Config) Like(model string) (catalogue.Model, string, bool) {
+	return c.catalogue().Like(model)
+}
+
 // catalogue is the catalogue models are described by: Catalogue, else the
 // snapshot nodwyn was built with.
 func (c Config) catalogue() *catalogue.Catalogue {

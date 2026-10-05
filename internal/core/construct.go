@@ -399,8 +399,9 @@ func (s *Session) initialize() (err error) {
 	// redefine it; the tool list is frozen once init.scm has run.
 	requestTimeout, _ := o.Config.Loop.Durations()
 	models := s.models()
-	control, win, ceiling, sizing := s.sizeWindow(models[loop.ControlModel])
+	control, win, ceiling, sizing, unknown := s.sizeWindow(models[loop.ControlModel])
 	models[loop.ControlModel] = control
+	s.contextUnknown = unknown
 	if sizing != "" {
 		s.note(sizing)
 	}

@@ -596,3 +596,69 @@ func TestNarrowContextOptions(t *testing.T) {
 		t.Fatal("a refused narrowing was recorded")
 	}
 }
+
+// A turn whose context fills a second time with nothing written since the
+// first compaction stops with a report instead of compacting again: in
+// session 20261004T182412Z-747045aa five compactions in seven minutes made
+// 103 reads, 88 of files read before, and no edit (compact.scm,
+// compact-stop-unchanged). The report is asked without tools, so it is the
+// turn's answer.
+func TestCompactionGoingRoundInCirclesStopsTheTurn(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, "", 20,
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "a.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "b.txt")}},
+		fake.Turn{Content: "NOTE: still looking for where the bug is."},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("c", "c.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("d", "d.txt")}},
+		fake.Turn{Content: "REPORT: read four files; the bug is in none of them."},
+	)
+	for _, name := range []string{"a.txt", "b.txt", "c.txt", "d.txt"} {
+		writeTokens(t, r.repo, name, 1000)
+	}
+	r.compactAfter(1500)
+	if err := r.turn("find the bug"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6", len(r.srv.Requests))
+	}
+	if c := r.compactions(); len(c) != 1 {
+		t.Fatalf("%d compactions, want 1: %+v", len(c), c)
+	}
+	last := r.srv.Requests[5]
+	if strings.Contains(string(last.Raw), `"tools":[`) {
+		t.Fatal("the report was asked with tools")
+	}
+	if ask := requestMessages(t, last); !strings.Contains(ask[len(ask)-1].Content, "Stop here") {
+		t.Fatalf("the last request did not ask for the report: %+v", ask[len(ask)-1])
+	}
+	stopped := false
+	for _, n := range r.notes() {
+		stopped = stopped || strings.Contains(n, "no file written since it was last compacted")
+	}
+	if !stopped {
+		t.Fatalf("no note says why the turn stopped: %q", r.notes())
+	}
+	// A write between the two is progress: the turn compacts again.
+	w := strategyRig(t, "", 20,
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "a.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "b.txt")}},
+		fake.Turn{Content: "NOTE: the fix goes in fix.txt."},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": "fix.txt", "content": "fixed\n"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("c", "c.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("d", "d.txt")}},
+		fake.Turn{Content: "NOTE: fix.txt written; checking the rest."},
+		fake.Turn{Content: "done"},
+	)
+	for _, name := range []string{"a.txt", "b.txt", "c.txt", "d.txt"} {
+		writeTokens(t, w.repo, name, 1000)
+	}
+	w.compactAfter(1500)
+	if err := w.turn("fix the bug"); err != "" {
+		t.Fatal(err)
+	}
+	if c := w.compactions(); len(c) != 2 {
+		t.Fatalf("%d compactions after a write, want 2", len(c))
+	}
+}

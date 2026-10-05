@@ -736,6 +736,8 @@ calls it, in this turn or the next, and the request is used once.
 |---|---|
 | `compact-threshold` | context tokens, as `(context-tokens)` counts them, past which the context is compacted; `#f` never compacts on its own (`/compact` and `compact-next-round` still do). The default is just under the window's high water, a twenty-fifth below it (`(window-limits)`: 58983 at the default 61440), so only work that really runs long compacts (ADR 32) |
 | `compact-attempts` | replies to the note request that may be tool calls (they are skipped) before compaction gives up; after giving up it waits for the context to grow another quarter of the threshold |
+| `compact-stop-unchanged` | `#t` (the default): the second automatic compaction of a turn with no `fs-write` or `fs-edit` asked for since the first stops the turn instead, with `compact-stop-message` and `turn-stopping` set, so the model's next reply is asked without tools and ends the turn; `#f` compacts as often as the context fills |
+| `turn-stopping` | (strategy.scm) `#f`, or the message that stopped the turn: while it is set `ask-model` offers no tools and the finish checks ask nothing more; each turn starts with it `#f` |
 | `compact-summary-prompt` | the request for the note (a prompt, §9.1) |
 | `(compact-focus-prompt focus)` | what the note must keep, as the user put it after `/compact` or a strategy gave `compact-next-round`, added after `compact-summary-prompt` |
 | `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to re-run its reproduction and re-check its findings before building on them |

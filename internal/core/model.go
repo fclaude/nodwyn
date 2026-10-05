@@ -61,6 +61,11 @@ type ModelState struct {
 	// Queued is the choice made while a turn was running, which applies when
 	// that turn ends; the turn under way keeps the model and effort above.
 	Queued *ModelState `json:"queued,omitempty"`
+	// ContextUnknown says why the window keeps its default size: neither the
+	// model's entry, its provider's published catalogue, its server's model
+	// list nor any provider publishing a model of that name says how much
+	// context it holds. Empty when the window is sized for the model.
+	ContextUnknown string `json:"context_unknown,omitempty"`
 	// Unavailable says the model this conversation was left on can no longer
 	// be reached as it was chosen: config.toml no longer offers it, or no
 	// longer offers its effort. The conversation opens, but no turn is asked
@@ -89,7 +94,7 @@ func (s *Session) currentModel() config.Model {
 
 func (s *Session) modelState() ModelState {
 	c := s.opts.Model
-	state := ModelState{Name: c.Name, Server: s.model.Server, Model: s.model.Model, Effort: s.effort, Efforts: s.opts.Config.Efforts(s.model), Unavailable: s.modelLost, Notice: s.modelNotice}
+	state := ModelState{Name: c.Name, Server: s.model.Server, Model: s.model.Model, Effort: s.effort, Efforts: s.opts.Config.Efforts(s.model), Unavailable: s.modelLost, Notice: s.modelNotice, ContextUnknown: s.contextUnknown}
 	if s.queued != nil {
 		// Validated when it was made; a config that has changed since only
 		// leaves the name, and applying it says why it cannot be.
@@ -387,7 +392,7 @@ func (s *Session) switchModel(c ModelChoice, m config.Model, effort string) (Mod
 	// The window is what opening the conversation on this model would give
 	// it: sized for its context, asked of the server's model list when
 	// config.toml does not say it.
-	ep, win, ceiling, sizing := s.sizeWindow(s.endpoint(m, effort))
+	ep, win, ceiling, sizing, unknown := s.sizeWindow(s.endpoint(m, effort))
 	marks := window.Policy{HighWater: win.HighWater, LowWater: win.LowWater, MaxResultTokens: win.MaxResultTokens}
 	if err := s.fitsModel(m, ep, marks); err != nil {
 		return ModelState{}, err
@@ -404,6 +409,7 @@ func (s *Session) switchModel(c ModelChoice, m config.Model, effort string) (Mod
 	}
 	s.mu.Lock()
 	s.model, s.opts.Model, s.effort, s.modelLost, s.modelNotice, s.queued = m, c, effort, "", "", nil
+	s.contextUnknown = unknown
 	s.mu.Unlock()
 	if sizing != "" {
 		s.note(sizing)

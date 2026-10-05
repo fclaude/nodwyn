@@ -154,7 +154,10 @@ it, else takes that model's own default, and says so.
   stays shut until one is chosen. A closed task shows the model and effort it
   was left on in its heading. The selection is the daemon's and the log's, so
   it is the same after a reload, a reconnection or reopening the task, from
-  any window.
+  any window. An open task whose model's context nobody knows (its model
+  state's `context_unknown`) says under its heading that it works in the
+  default window, which compacts early, with an **Open Settings** button
+  (ADR 41, amended 2026-10-05).
 - A paired device sees the selects, disabled, and a line saying the model is
   chosen on the computer nodwyn runs on; Home shows only the default model's
   name.

@@ -69,6 +69,9 @@ type Session struct {
 	queued      *ModelChoice
 	modelNotice string
 	modelLost   string
+	// contextUnknown is why the window keeps its default size, when nothing
+	// says how much context the model holds (sizeWindow, ModelState).
+	contextUnknown string
 	// modelMu serializes choosing a model with the end of the turn that
 	// applies a queued choice. It is held while a switch sizes the window,
 	// which may ask the server's model list, so nothing that a turn needs

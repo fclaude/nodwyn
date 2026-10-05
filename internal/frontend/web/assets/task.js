@@ -755,6 +755,17 @@ export class TaskView {
           )
         : "",
       keysLocked ? h("details", { class: "callout", open: true }, h("summary", {}, "Unlock your keys to resume: this task's model needs one."), keychainForm({ conn: this.conn, desk: this.desk }, { onDone: () => this.header() })) : "",
+      // Nothing says how much this model holds, so the window keeps its
+      // small default and compacts early (ADR 41, amended 2026-10-05): said
+      // where it is seen, not only in the log.
+      item.open && this.info?.model?.context_unknown
+        ? h(
+            "div",
+            { class: "callout context-unknown", role: "note" },
+            h("span", {}, `This task works in a ${(this.desk.settings?.values?.["window.high_water"]?.value || 61440).toLocaleString("en-US")}-token window: nodwyn doesn't know how much context ${this.info.model.model} holds, so it compacts early and forgets more. Set its context length in Settings › Models.`),
+            h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => this.navigate("#/settings") }, "Open Settings")),
+          )
+        : "",
     ];
     // While a name is typed, the heading around it is redrawn but the field
     // stays, with its text and its focus.

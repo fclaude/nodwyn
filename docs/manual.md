@@ -808,7 +808,11 @@ progress stop ([docs/scheme.md](scheme.md) §9). Every prompt is Scheme
 
 Long work is compacted on its own just under the window's high water: the
 model writes a handover note and goes on from it, in that turn and the next
-ones. Set `(define compact-threshold 40000)` to compact earlier, `#f` to
+ones. A turn whose context fills a second time with no file written since
+the last compaction stops instead: the model is asked, without tools, what it
+found, what is done, what is left and what is in the way, and that is the
+turn's answer (`compact-stop-unchanged`, `#f` turns it off). Set
+`(define compact-threshold 40000)` to compact earlier, `#f` to
 only trim, and send `/compact` to compact whenever you like
 ([docs/scheme.md](scheme.md) §9.2). Each compaction is one line in every
 client, with what set it off and the context's size before and after
@@ -1377,6 +1381,16 @@ placeholder and the model's row says *as published*. The catalogue only
 describes models: which provider a server is comes from its address in
 config.toml, matched against hosts nodwyn's source names, never from
 models.dev.
+
+A model at a server the catalogue does not describe (your own vLLM or LM
+Studio, a ChatGPT plan, a host it does not list), whose server's model list
+does not say its context either, is sized by what the catalogue's providers
+publish for a model of that name, its id spelled as any of them spells it
+(`qwen-3.8-27b` is `qwen/qwen3.8-27b`): their smallest context and reply cap,
+and a note in the transcript says whose. Prices and efforts are not taken
+that way: they are each provider's own. A model nobody publishes keeps the
+default 61,440-token window, and the task says so above its conversation,
+with a button to Settings to set its context length.
 
 **Efforts.** A reasoning model takes an effort: how hard it is asked to think
 before it answers. Which words a provider accepts is the provider's to say, and

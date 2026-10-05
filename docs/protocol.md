@@ -100,7 +100,11 @@ while a turn runs, is the model and effort that will apply when it ends,
 in the same fields; `notice` says why the last such choice could not be
 applied; `unavailable` says the model the conversation was left on can no
 longer be reached as it was chosen, with what it was, and no turn is asked
-until one is chosen. No key and no credential class is in any of it.
+until one is chosen; `context_unknown` says why the window keeps its default
+size, when neither the model's entry, its provider's catalogue, its server's
+model list nor any provider publishing a model of that name says how much
+context it holds (empty when the window is sized for the model). No key and
+no credential class is in any of it.
 
 A conversation's model and effort may be chosen as it opens and moved between
 turns (ADR 40, ADR 41). `session.open` takes them the same way

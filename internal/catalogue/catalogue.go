@@ -16,6 +16,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -141,6 +142,68 @@ func (c *Catalogue) Lookup(baseURL, model string) (Model, bool) {
 	}
 	m, ok := c.byHost[host(baseURL)][model]
 	return m, ok
+}
+
+// Like is what the catalogue's providers publish about a model whose id is
+// spelled like model, whatever its host: the same id once case, a
+// "vendor/" prefix and every character but letters and digits are set
+// aside, so qwen-3.8-27b on Cerebras is qwen3.8-27b elsewhere and
+// anthropic/claude-sonnet-5.5 is claude-sonnet-5-5. Several providers may
+// publish it: their smallest context and reply cap are what it holds on any
+// of them. The provider whose context that is names where it came from.
+// It is for a server the catalogue does not describe, or that does not list
+// the model, and says nothing about prices or efforts, which are each
+// provider's own.
+func (c *Catalogue) Like(model string) (m Model, provider string, ok bool) {
+	if c == nil {
+		return Model{}, "", false
+	}
+	want := spelling(model)
+	if want == "" {
+		return Model{}, "", false
+	}
+	for _, h := range c.hosts() {
+		for id, found := range c.byHost[h] {
+			if spelling(id) != want || found.Context == 0 {
+				continue
+			}
+			if !ok || found.Context < m.Context {
+				m.Context, provider = found.Context, h
+			}
+			if found.Output > 0 && (m.Output == 0 || found.Output < m.Output) {
+				m.Output = found.Output
+			}
+			ok = true
+		}
+	}
+	return Model{Context: m.Context, Output: m.Output}, provider, ok
+}
+
+// hosts are the catalogue's hosts in order, so Like answers the same way
+// every time.
+func (c *Catalogue) hosts() []string {
+	hs := make([]string, 0, len(c.byHost))
+	for h := range c.byHost {
+		hs = append(hs, h)
+	}
+	sort.Strings(hs)
+	return hs
+}
+
+// spelling is model's id with a "vendor/" prefix set aside, lower-cased,
+// letters and digits only.
+func spelling(model string) string {
+	id := strings.ToLower(strings.TrimSpace(model))
+	if i := strings.LastIndexByte(id, '/'); i >= 0 {
+		id = id[i+1:]
+	}
+	var b strings.Builder
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // host is the lower-cased host of a base URL, "" when it does not parse.

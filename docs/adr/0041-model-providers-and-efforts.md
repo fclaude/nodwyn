@@ -393,3 +393,27 @@ several are.
 - Not changed: the catalogue still describes a model by its address's host,
   so both servers at OpenAI publish the same prices and efforts. The log's
   `server` name (ADR 2) was already the name, and still is.
+
+## Amendment 2026-10-05: a model nobody's server describes is sized by its name
+
+The catalogue (amended above) sizes a model found at its server's host by its
+exact id. A server it does not describe, whose own model list does not say
+either, still left the window at its default 61,440 tokens: gpt-6.1-sol and
+gpt-6-luna, 1M-token models, ran in it on a ChatGPT plan whose list answered
+401 (sessions 20261005T035352Z-5a76f6e4, 20261005T044539Z-3e943263, two
+compactions in 48 seconds), and qwen-3.8-27b on Cerebras compacted 15 times
+before the catalogue existed (20261004T182412Z-747045aa).
+
+- When the entry, the catalogue at the server's host and the server's model
+  list all leave the context unknown, the window is sized by what the
+  catalogue's providers publish for a model of that name
+  (`catalogue.Like`): its id with a `vendor/` prefix set aside, lower-cased,
+  letters and digits only, so `qwen-3.8-27b`, `qwen/qwen3.8-27b` and
+  `Qwen/Qwen3.8-27B` are one model. Several providers may publish it; their
+  smallest context and reply cap are taken, since the model holds that much
+  on any of them. The note says whose. Prices and efforts are never taken
+  this way: they are each provider's.
+- A model nobody publishes keeps the default window, and the session's model
+  state says why (`context_unknown` in `session.info`); the console says so
+  above the task's conversation, with a button to Settings, rather than only
+  in a log note nobody reads.

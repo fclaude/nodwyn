@@ -4,8 +4,15 @@
 ;; a plan, so a strategy may also call it itself. A project that plans its
 ;; own way redefines nodwyn-turn.
 (define (nodwyn-turn request)
+  (set! turn-stopping #f)
   (when (plan-required?) (plan-gate request))
   (agent-turn request))
+
+;; Set when the turn must end with a report, not more work (compact.scm:
+;; the context filled twice with nothing written between): from then on the
+;; model is asked without tools, so its next reply is its answer and the
+;; turn ends there, and the finish checks ask nothing more of it.
+(define turn-stopping #f)
 
 ;; Replies cut at the output limit (window.output_reserve), usually by long
 ;; thinking, that ask-model asks again for, each time with a note to be
@@ -19,6 +26,10 @@
 ;; tool call to answer, up to output-cut-retries times: a cut-off reply would
 ;; otherwise end the turn, or leave the planner with a partial plan.
 (define (ask-model . args)
+  (let* ((args (if turn-stopping '("control" ((tools . #f))) args)))
+    (ask-model-with args)))
+
+(define (ask-model-with args)
   (let again ((reply (apply model-turn args)) (left output-cut-retries))
     (if (and (equal? (assoc-ref reply 'done "") "length")
              (null? (assoc-ref reply 'tool-calls '()))
@@ -290,7 +301,8 @@
                                     (git-shows? written before))
                                 edited))
                    (reviewed (reviewed?))
-                   (gap (cond ((and (not changed) (not excused))
+                   (gap (cond (turn-stopping #f)
+                              ((and (not changed) (not excused))
                                (if reviewed finish-no-change-reviewed-message finish-no-change-message))
                               ((and changed (not tested) (not offered)) finish-untested-message)
                               (else #f)))
@@ -299,6 +311,6 @@
                      (add-message gap)
                      (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted
                            (or excused (and (not changed) reviewed)) 0))
-                    ((pair? new)
+                    ((and (pair? new) (not turn-stopping))
                      (add-message (finish-new-files-message new))
                      (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0)))))))))

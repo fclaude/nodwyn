@@ -28,7 +28,8 @@
 // - In the conversation the effort is changed between messages; one chosen
 //   while a response is held waits for it, says so, and the provider sees the
 //   old effort on the response under way and the new one on the next. The
-//   choice survives a reload.
+//   choice survives a reload. A task on the model whose context nobody
+//   publishes says it works in the default window, and leads to Settings.
 // - A closed task whose model was removed opens without a model: nothing is
 //   sent until one is chosen.
 // - Anthropic's own API is a provider kind of its own: its preset offers no
@@ -389,6 +390,18 @@ check(async () => {
   assert.strictEqual(await page.isDisabled("#task-model-effort"), true);
   const fastId = sent.of("session.send").at(-1).id;
   step("a task on a model with no efforts sends none");
+  // Neither the model's entry, its server's list nor any provider says how
+  // much "fast" holds: the task keeps the default window and says so where
+  // it is seen, with the way to Settings (ADR 41, amended 2026-10-05).
+  await page.waitForSelector(".task-head .context-unknown");
+  await shows(".task-head .context-unknown", "61,440-token window", "doesn't know how much context fast holds");
+  await page.screenshot({ path: `${out}/models-context-unknown.png` });
+  await page.click(".task-head .context-unknown button:text-is('Open Settings')");
+  await page.waitForSelector("#default-model");
+  assert.match(await page.evaluate(() => location.hash), /^#\/settings/);
+  await go(`#/task/${fastId}`);
+  await page.waitForSelector(".task[data-loaded]");
+  step("a task whose model's context nobody knows says it works in the default window");
 
   // The default is back for the next task: a choice is consumed by the task it was for.
   await go("#/");
@@ -424,6 +437,7 @@ check(async () => {
   // 128,000-token reply cap, as the form said, and the reply is priced (an
   // estimate, ≈).
   await page.waitForFunction(() => document.body.textContent.includes("691,500"), null, { timeout: 10000 });
+  assert.strictEqual(await page.$(".task-head .context-unknown"), null, "a task sized for its model's context says the context is not known");
   await page.waitForFunction(() => /≈\$\d/.test(document.querySelector(".transcript").textContent), null, { timeout: 10000 });
   step("the task on the default model is sized for its context and priced at its prices");
   assert.strictEqual(await page.isVisible("#task-model-model"), false, "chat choices start collapsed");

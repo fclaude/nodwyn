@@ -99,11 +99,41 @@
                (record #f)
                #f))))
 
+;; A turn that fills its context twice with nothing changed in between is
+;; going round in circles: each handover note sends the model back to read
+;; what it read before. In session 20261004T182412Z-747045aa, on a window
+;; left at its default 61,440 tokens, five compactions in seven minutes made
+;; 125 requests and 103 reads, 88 of files read before, and no edit; 42% of
+;; the session's output went into handover notes. So the second automatic
+;; compaction with no file written since the first stops the turn instead:
+;; the model is asked, without tools, for what it found, what is done, what
+;; is left and what is in the way, and that answer ends the turn
+;; (turn-stopping, strategy.scm). A person can then raise the context, or
+;; send the work on. #f turns the stop off.
+(define compact-stop-unchanged #t)
+
+;; Writes the model asked for in this turn (fs-write and fs-edit calls, as
+;; maybe-compact sees each reply), and how many it had asked for when the
+;; turn last compacted by itself (#f: it has not).
+(define compact-writes 0)
+(define compact-writes-at #f)
+
+(define compact-base-nodwyn-turn nodwyn-turn)
+(define (nodwyn-turn request)
+  (set! compact-writes-at #f)
+  (compact-base-nodwyn-turn request))
+
+(define compact-stop-message
+  "The context has filled twice in this turn with no file written between the two times: compacting again would send you back over what you have read. Stop here. In a few lines say what you found, what is done, what is left and what stands in the way; tools are off for this answer, and the turn ends with it.")
+
 ;; Compact if a strategy asked for it (compact-next-round), or if the context
 ;; the next model-turn would send passed the threshold. Call it once the
 ;; latest reply's tool calls are answered; the reply itself is not read,
-;; since the context is measured as it stands.
+;; since the context is measured as it stands. The second automatic
+;; compaction of a turn with no file written since the first stops the turn
+;; instead (compact-stop-unchanged).
 (define (maybe-compact request reply)
+  (set! compact-writes (+ compact-writes (length (filter edit-call? (assoc-ref reply 'tool-calls '())))))
   (let ((focus compact-requested))
     (if focus
         (begin (set! compact-requested #f)
@@ -112,8 +142,15 @@
           (and compact-threshold
                (> size compact-threshold)
                (> size (+ compact-gave-up-at (quotient compact-threshold 4)))
-               (or (compact-context request "" "auto")
-                   (begin (set! compact-gave-up-at size) #f)))))))
+               (cond ((and compact-stop-unchanged compact-writes-at (= compact-writes compact-writes-at))
+                      (log-note "the context filled again with no file written since it was last compacted: the turn stops with a report instead of compacting again")
+                      (add-message compact-stop-message)
+                      (set! turn-stopping compact-stop-message)
+                      #f)
+                     ((compact-context request "" "auto")
+                      (set! compact-writes-at compact-writes)
+                      #t)
+                     (else (set! compact-gave-up-at size) #f)))))))
 
 (define (compact-request? request)
   (let ((r (string-trim request)))

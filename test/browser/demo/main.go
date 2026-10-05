@@ -82,13 +82,15 @@ func main() {
 	}
 	if *chatOnly {
 		// Two models: one takes an effort and caches when asked, as a Claude
-		// route does, and one does neither; the provider refuses what it
+		// route does, and one does neither and lists no context length, as a
+		// server that does not say, and which no provider publishes, so a
+		// task on it keeps the default window and says so; the provider refuses what it
 		// should (a wrong key, a model it lacks, an effort or a cache_control
 		// a model does not take), and lists its models only to its key, as
 		// OpenAI does. /_fake/requests shows what it was sent.
 		provider := fakechat.New(chatKey,
 			fakechat.Model{ID: "reasoner", Context: 200000, Efforts: []string{"low", "medium", "high"}, Caches: true},
-			fakechat.Model{ID: "fast", Context: 200000},
+			fakechat.Model{ID: "fast"},
 		)
 		provider.ListNeedsKey = true
 		fmt.Printf("CHAT %s KEY %s\n", provider.V1(), chatKey)

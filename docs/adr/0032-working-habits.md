@@ -636,3 +636,23 @@ shows the edit's answer does.
 TestHygieneKeepsTheReadsOfAFileBeingEdited reads big.py and bigger.py,
 edits big.py twice: big.py's read stays, bigger.py's folds. On the unchanged
 code big.py's read folds two rounds after the first edit.
+
+## Amendment 2026-10-05: compaction that goes round in circles stops the turn
+
+Session 20261004T182412Z-747045aa ran qwen-3.8-27b on Cerebras in a window
+left at its default 61,440 tokens and compacted 15 times in 24 minutes.
+Five compactions in seven minutes (18:38:51 to 18:45:21) made 125 requests
+and 103 reads, 88 of them of files read before, and no edit: each handover
+note asked the model to re-check its findings, which in 40K of room meant
+reading the same files again. 42% of the session's output went into notes,
+and it ended on a raw 402 with no report.
+
+The second automatic compaction of a turn with no fs-write or fs-edit asked
+for since the first now stops the turn instead (`compact-stop-unchanged`,
+compact.scm): a note says why, the model is told to stop and say what it
+found, what is done, what is left and what is in the way, and `turn-stopping`
+(strategy.scm) makes `ask-model` offer no tools, so that answer ends the
+turn; the finish checks (strategy.scm's evidence loop and this repository's
+validate reminder) ask nothing more of it. A write between the two
+compactions is progress, and the turn compacts again as before.
+TestCompactionGoingRoundInCirclesStopsTheTurn covers both.

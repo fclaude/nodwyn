@@ -102,3 +102,39 @@ func TestTheJudgeIsDescribed(t *testing.T) {
 		t.Fatalf("jev-latest: %+v, %v", m, ok)
 	}
 }
+
+// A model the catalogue does not list at its server's host is known by its
+// id elsewhere, spelled however its server spells it: the smallest context
+// and reply cap any provider publishes for it, and nothing for a model no
+// provider lists.
+func TestLikeFindsAModelAtAnyProvider(t *testing.T) {
+	c := New(map[string]map[string]Model{
+		"api.cerebras.ai":   {"qwen-3.8-27b": {Context: 131072, Output: 40960}},
+		"openrouter.ai":     {"qwen/qwen3.8-27b": {Context: 1000000, Output: 65536}, "anthropic/claude-sonnet-5.5": {Context: 1000000, Output: 128000}},
+		"api.deepinfra.com": {"Qwen/Qwen3.8-27B": {Context: 262144}},
+	})
+	for _, tc := range []struct {
+		model           string
+		context, output int
+		from            string
+	}{
+		{"qwen3.8-27b", 131072, 40960, "api.cerebras.ai"},
+		{"Qwen-3.8-27B", 131072, 40960, "api.cerebras.ai"},
+		{"claude-sonnet-5-5", 1000000, 128000, "openrouter.ai"},
+	} {
+		m, from, ok := c.Like(tc.model)
+		if !ok || m.Context != tc.context || m.Output != tc.output || from != tc.from {
+			t.Errorf("%s: %+v from %q, %v", tc.model, m, from, ok)
+		}
+	}
+	if _, _, ok := c.Like("no-such-model"); ok {
+		t.Error("a model nobody lists was found")
+	}
+	if _, _, ok := c.Like(""); ok {
+		t.Error("an empty id was found")
+	}
+	// The snapshot nodwyn ships knows the models the local sessions used.
+	if m, _, ok := Default().Like("gpt-6.1-sol"); !ok || m.Context < 1000000 {
+		t.Errorf("gpt-6.1-sol in the snapshot: %+v %v", m, ok)
+	}
+}

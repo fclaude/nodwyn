@@ -515,6 +515,9 @@
     },
     "core.ModelState": {
       "properties": {
+        "context_unknown": {
+          "type": "string"
+        },
         "effort": {
           "type": "string"
         },
