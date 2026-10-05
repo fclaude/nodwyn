@@ -444,7 +444,10 @@ type testResult struct {
 	Detail string `json:"detail"`
 	Model  string `json:"model"`
 	Effort string `json:"effort,omitempty"`
-	Status int    `json:"status,omitempty"`
+	// CacheControl is the ask to cache the prompt the request carried, when
+	// the model's entry sets one.
+	CacheControl string `json:"cache_control,omitempty"`
+	Status       int    `json:"status,omitempty"`
 	// Ms is how long the answer took.
 	Ms int64 `json:"ms"`
 }
@@ -488,6 +491,10 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 		}
 		oai := llm.NewOpenAI(m.URL, authorize)
 		oai.Dialect, oai.MaxTokensField = m.Dialect, m.OutputField
+		// As a task's request is: a provider that refuses the ask to cache is
+		// found here, not by the first task.
+		oai.CacheControl = m.CacheControl
+		result.CacheControl = m.CacheControl
 		provider = oai
 	default:
 		provider = llm.NewOllama(m.URL)
@@ -555,6 +562,9 @@ func classify(r *testResult, err error, host string) {
 		hint := ""
 		if r.Effort != "" {
 			hint = fmt.Sprintf(" If the effort %q is the cause, declare the efforts this model takes, or choose its default.", r.Effort)
+		}
+		if r.CacheControl != "" {
+			hint += fmt.Sprintf(" If asking it to cache the prompt (cache_control %q) is the cause, turn Prompt cache off for this model: only a Claude route takes it.", r.CacheControl)
 		}
 		r.State, r.Detail = "refused", fmt.Sprintf("%s refused the request (%d).%s It said: %s", host, se.Status, hint, said)
 	default:

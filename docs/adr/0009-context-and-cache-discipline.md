@@ -277,3 +277,44 @@ builds and a strict fake Cerebras server's compaction request. They cover
 multi-call batches, result order, repeated IDs across batches, failed
 results, recent-result protection, sticky estimates and a v15-to-v16
 resume whose old and new requests both replay to their recorded hashes.
+
+## Amendment 2026-10-05: a Claude model caches only when asked
+
+A session on anthropic/claude-sonnet-5.5 through OpenRouter
+(20261005T003253Z-6c6e3544, recipe window-v16) read 0 of 807,710 prompt
+tokens from the cache over 18 requests, and its replies reported no cache
+write either. Every request was billed at the same $2.00 per million input
+tokens: fitting cost to tokens leaves no residual. Rebuilt with `nodwyn replay
+--window`, each request was its predecessor with messages appended, but for one
+hygiene fold, so the prefix was stable. The glm-5.3-flash and qwen sessions
+of the same days, on the same route, read 83 to 99% of their prompts from the
+cache. What those models share is a server that caches the start of a prompt by
+itself; the session key above routes to such a cache and does nothing for one
+that is not there. Anthropic's caching is opt-in: a prompt is cached only if
+the request carries a `cache_control` marker.
+
+OpenRouter reads it as a top-level `cache_control` on the request, which it
+documents as applying the breakpoint to the last cacheable block and moving it
+on as the conversation grows, for Anthropic and the providers it routes Claude
+to (Bedrock, Vertex, Azure). `"ttl": "1h"` asks for a one-hour lifetime
+instead of five minutes. A model's entry now says whether to ask:
+`cache_control = "ephemeral"` or `"1h"` (openai only), sent as that field.
+Like a dialect it is the person's to set, never inferred from the model's name
+or the server's address, and for the same reason: the docs do not say what a
+route that does not know the field does with it, and a model that caches by
+itself needs nothing. It goes only on the wire, so the provider-neutral
+request, its hash and replay are unchanged, and the cached tokens a provider
+reports are read as before (`llm.resp` `cached_tokens`). `models.test` sends
+the ask as a task would, so a provider that refuses it is found there, with
+what to turn off. Settings has it with the model's other tuning.
+
+Estimated, not measured: at Anthropic's usual prices (a read at a tenth of the
+input price, a write at 1.25 times) that session would have cost about $0.44
+instead of $1.73. Whether the marker reaches a given route as documented is
+verified by one request against it: the first reply should report
+`cache_write_tokens` and the second `cached_tokens`. The fake provider
+(`test/fakes/chat`) caches as such a route does, only when asked, which tests
+what a request asks for and not what a provider does with it. Not built: a
+breakpoint of its own on the system prompt, which would survive a hygiene fold
+that rewrites an earlier message; the docs do not say whether it combines with
+the top-level ask.

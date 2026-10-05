@@ -166,6 +166,15 @@ check(async () => {
   assert.ok((await selected("#default-model-model")).startsWith("reasoner (default)"), "the default is shown");
   step("default chosen with its effort; the previous default is still listed");
 
+  // The default is a Claude route, which caches a prompt only when asked
+  // (ADR 9, 2026-10-05): Settings has the ask, and saves it with the tuning.
+  await page.click('[id="set-control.cache_control-ephemeral"]');
+  await page.click(".save-bar button:text-is('Save')");
+  await page.waitForSelector("text=Saved. Tasks you start from now on use these settings.", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "control.cache_control": "ephemeral" } });
+  assert.ok(config().includes('cache_control = "ephemeral"'), "the ask to cache is not in config.toml:\n" + config());
+  step("the ask to cache the prompt is saved with the default model's tuning");
+
   // ---------- the New task window ----------
   await go("#/");
   await page.waitForSelector("#new-task-model-model");
@@ -276,6 +285,17 @@ check(async () => {
     "the provider saw the wrong efforts (its first is the Test above)",
   );
   await shows(".transcript", "Next message: reasoner · medium effort");
+  // This conversation is on the default model, which asks its provider to
+  // cache the prompt: every request carried the ask, the provider read what a
+  // request wrote from the next one, the console says so, and the model that
+  // did not ask was never sent it.
+  const seen = await (await fetch(`${chatBase}/_fake/requests`)).json();
+  const asked = seen.filter((r) => r.cache_control);
+  assert.ok(asked.length >= 4 && asked.every((r) => r.model === "reasoner" && r.cache_control === '{"type":"ephemeral"}' && r.answered === 200), "requests that asked to cache: " + JSON.stringify(asked));
+  assert.ok(asked.at(-1).cached_tokens > asked.at(-1).prompt_tokens / 2, "the last request read little of its prompt from the cache: " + JSON.stringify(asked.at(-1)));
+  assert.ok(seen.filter((r) => r.model === "fast").every((r) => !r.cache_control), "a model that did not ask was sent the ask");
+  assert.match(await page.innerText(".transcript"), /\d+% cached/, "the transcript does not say the prompt was read from the cache");
+  step("a model told to cache its prompt asks for it on every request, and is read back from the cache");
   step("a choice made while a response ran waited for it: the provider saw the old effort, then the new");
 
   // Reloaded, the conversation shows what it has, from the daemon and its log.

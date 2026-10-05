@@ -46,7 +46,7 @@ var settable = map[string]settingKind{
 	"window.max_result_tokens": whole, "window.output_reserve": whole,
 
 	"control.num_ctx": whole, "control.max_output": whole, "control.output_field": text, "control.vision": flag,
-	"control.keep_alive": text, "control.temperature": number, "control.seed": whole, "control.cache_key": text,
+	"control.keep_alive": text, "control.temperature": number, "control.seed": whole, "control.cache_key": text, "control.cache_control": text,
 	"control.price_input": number, "control.price_cached_input": number, "control.price_output": number,
 
 	"jev.content": text, "jev.approve_threshold": number, "jev.timeout": text, "jev.model": text,

@@ -266,6 +266,9 @@
     },
     "config.Model": {
       "properties": {
+        "CacheControl": {
+          "type": "string"
+        },
         "CacheKey": {
           "type": "string"
         },
@@ -379,6 +382,7 @@
         "Seed",
         "Vision",
         "CacheKey",
+        "CacheControl",
         "PriceInput",
         "PriceCachedInput",
         "PriceOutput",
@@ -7139,6 +7143,9 @@
     },
     "rpc.testResult": {
       "properties": {
+        "cache_control": {
+          "type": "string"
+        },
         "detail": {
           "type": "string"
         },

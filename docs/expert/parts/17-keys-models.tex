@@ -314,6 +314,17 @@ price_cached_input = 0.125      # unset: cached tokens cost price_input
 price_output = 10
 \end{toml}
 
+A cache discount needs the provider to cache at all. Most hosted models cache
+the start of a prompt by themselves, and the session key only routes a request
+to the replica holding it; a Claude model through OpenRouter, Bedrock or
+Vertex caches nothing until the request asks, and is billed for its whole prompt
+on every request, reading \code{cached\_tokens: 0} with no cache write. Its
+entry says so, \code{cache\_control = "ephemeral"} (five minutes) or
+\code{"1h"}, and \nodwyn{} sends it as the request's top-level
+\code{cache\_control} (\adr{9}). It is never inferred from a model's name; it
+changes the wire and not the request's hash; and Settings'
+\textbf{Test} sends it, so a route that refuses the field is found there.
+
 An estimate needs both \code{price\_input} and \code{price\_output}; it
 prices cached prompt tokens at \code{price\_cached\_input} and reasoning as
 output, and cannot know a provider's surcharge for writing its cache, so a

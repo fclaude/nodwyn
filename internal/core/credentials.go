@@ -282,6 +282,7 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 		oai.Dialect = m.Dialect
 		oai.MaxTokensField = m.OutputField
 		oai.Images = m.Vision
+		oai.CacheControl = m.CacheControl
 		if m.CacheKey != config.CacheKeyOff {
 			oai.CacheKey = cacheKey(s.id)
 			oai.CacheKeyHeaderOnly = m.CacheKey == config.CacheKeyHeader

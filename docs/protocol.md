@@ -422,7 +422,7 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `notes.read` | `{"repo":"/absolute/repository"}` | `{text}`: that repository's project notes; needs no session |
 | `session.notes.write` | `{"id":"SESSION_ID","text":"…"}` | `{operation_id}`; a `policy.result` event named `notes` reports the guarded save |
 | `models.status` | `{}` or `{"fresh":true}` | Each configured model: `name`, `server?`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`, `needs_key`, `locked`, `unbound`), `detail` (what to do about a state that is not `ready`); `fresh` asks every server now instead of taking what a check in the last 15 seconds found |
-| `models.test` | `{"name"}`, or `{"server","model"}`, and `{"effort"}` | `{ok, state, detail, model, effort?, status?, ms}` for one short request to the model, with that effort, through the same binding check a task's request passes: `ok`, `rejected`, `no_model`, `refused`, `limited`, `unreachable`, `error`, or the key states above before anything is sent |
+| `models.test` | `{"name"}`, or `{"server","model"}`, and `{"effort"}` | `{ok, state, detail, model, effort?, cache_control?, status?, ms}` for one short request to the model, with that effort, through the same binding check a task's request passes: `ok`, `rejected`, `no_model`, `refused`, `limited`, `unreachable`, `error`, or the key states above before anything is sent |
 | `models.offered` | `{"server"}` | The model ids a configured server (`[servers.NAME]`) lists, sorted; an error saying why when it lists none |
 | `keychain.status` | `{}` | `{exists, unlocked, credentials, no_passphrase?}`; `no_passphrase` is set when the open keychain has none |
 | `keychain.create` | `{"passphrase":"…"}` or `{"no_passphrase":true}` | Keychain status; tasks opened afterwards receive the keychain. A passphrase has at least 8 characters |
@@ -449,7 +449,9 @@ fix. `models.test` is the one request that sends a key: after the same binding
 check, one short message ("Reply with the single word ok.") and nothing of any
 task; its `detail` is the provider's own message, redacted, and never the key.
 The effort it asks must be one the model takes, refused before anything is sent
-when it is not. `models.offered` asks the same list of one configured server, also
+when it is not. It carries what the model's entry asks of its provider as a
+task's request would, `cache_control` included (ADR 9, 2026-10-05), so a
+provider that refuses it answers `refused` with what to turn off. `models.offered` asks the same list of one configured server, also
 without a credential, so a server that lists its models only to a key
 answers with an error saying so. `servers` in the settings are the model providers: the
 `[servers.NAME]` tables of `config.toml`, and the address a model gives inline,
@@ -494,7 +496,7 @@ values; `null` removes a key so its default applies. It accepts only
 ADR 35), the `budget.*` limits, `loop.request_timeout`
 and `loop.shell_timeout`, the `window.*` marks, the `[control]` model's
 tuning (`num_ctx`, `max_output`, `output_field`, `keep_alive`,
-`temperature`, `seed`, `vision`, `cache_key` and the `price_*` entries), `jev.content`,
+`temperature`, `seed`, `vision`, `cache_key`, `cache_control` and the `price_*` entries), `jev.content`,
 `jev.approve_threshold`, `jev.timeout`, `jev.model` and `mcp.runtime`;
 never an address, a credential, the egress proxy or `[policy]`. The
 changes are made together and only their result is validated, as the

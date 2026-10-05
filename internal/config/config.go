@@ -193,6 +193,15 @@ type Model struct {
 	// prompt_cache_key, "header" only as the header, for a server that
 	// refuses fields it does not know, and "off" sends neither. openai only.
 	CacheKey string `toml:"cache_key"`
+	// CacheControl asks a chat-completions provider to cache the prompt:
+	// "ephemeral" for the provider's own lifetime (five minutes) or "1h". A
+	// Claude model caches a prompt only when it is asked to, unlike the models
+	// that cache the start of one by themselves (ADR 9), so a model that
+	// needs it says so here; nothing is inferred from its name. Sent as the
+	// request's top-level cache_control, which OpenRouter and the providers it
+	// routes Claude to read, and which a provider that does not know it may
+	// refuse. openai only.
+	CacheControl string `toml:"cache_control"`
 	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
 	// per million tokens, in USD, for estimating what a request cost when
 	// the provider does not report it (OpenRouter does). Unset is unknown;
@@ -228,6 +237,12 @@ type Server struct {
 	URL        string          `toml:"url"`        // as Model.URL
 	Credential string          `toml:"credential"` // as Model.Credential
 }
+
+// The cache_control settings.
+const (
+	CacheControlEphemeral = "ephemeral"
+	CacheControlHour      = "1h"
+)
 
 // The cache_key settings.
 const (
@@ -707,6 +722,14 @@ func (m Model) validate() error {
 	}
 	if m.Provider != "openai" && m.CacheKey != "" {
 		return errors.New("cache_key is for openai servers")
+	}
+	switch m.CacheControl {
+	case "", CacheControlEphemeral, CacheControlHour:
+	default:
+		return fmt.Errorf("cache_control %q is not supported (%s, %s)", m.CacheControl, CacheControlEphemeral, CacheControlHour)
+	}
+	if m.Provider != "openai" && m.CacheControl != "" {
+		return errors.New("cache_control is for openai servers; ollama keeps its own prompt cache")
 	}
 	for name, p := range map[string]*float64{"price_input": m.PriceInput, "price_cached_input": m.PriceCachedInput, "price_output": m.PriceOutput} {
 		if p != nil && (*p < 0 || math.IsNaN(*p) || math.IsInf(*p, 0)) {

@@ -1306,6 +1306,31 @@ or the log's `llm.resp` events, with the setting on and off. The default
 loop also folds old reads only when that does not cost more of the cache
 than it saves (`hygiene.scm`, docs/scheme.md §9.6).
 
+**Claude models cache when asked.** The key only routes to a cache that
+exists, and Anthropic's models have none until a request asks for one: a
+Claude model through OpenRouter, Bedrock or Vertex is billed for its whole
+prompt on every request, however little changed, and the log reads
+`cached_tokens: 0` with no cache write. Say so in the model's entry, and
+nodwyn sends the ask as a top-level `cache_control`, which the provider applies
+to the last block of the conversation and moves on as it grows:
+
+```toml
+[models.claude]
+server = "openrouter"
+model = "anthropic/claude-sonnet-5.5"
+cache_control = "ephemeral"   # five minutes; "1h" for an hour; openai only
+```
+
+It is never inferred from the model's name. Leave it out for a model that
+caches by itself (most others), and for a server that refuses fields it does
+not know: a route that does not take it may refuse the request, and
+Settings › Models › Test says so, with what to turn off, before a task does.
+A request that reuses what the last one wrote reports `cached_tokens`, read at
+a tenth of the input price on Anthropic's usual terms; the write costs a
+quarter more, and a cache lasts the time chosen, so a pause longer than that
+pays for a write again. Settings has it as Prompt cache, with the default
+model's tuning.
+
 A spend limit, `cost_soft` and `cost_hard` in `[budget]` (US dollars), is
 off unless you set it. It counts the known cost of the whole task, every
 turn and a resumed session's history included: a checkpoint asks past
@@ -1469,7 +1494,7 @@ to take an image out of a conversation.
 The console's Settings page writes `[control]` for you, and tunes it under
 Models › Default model tuning. Saving the same model
 on the same server keeps what you tuned in the file (`num_ctx`, `keep_alive`,
-`max_output`, `output_field`, `temperature`, `seed`, `vision`, `cache_key`
+`max_output`, `output_field`, `temperature`, `seed`, `vision`, `cache_key`, `cache_control`
 and the `price_*` entries); choosing another model starts from its defaults.
 
 The line-mode `nodwyn` refuses to start without it, printing the table to

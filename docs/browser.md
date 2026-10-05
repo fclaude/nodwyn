@@ -69,8 +69,9 @@ you wrote it. Its sections:
   leaving Settings drops it, a key included. The default model's tuning is:
   context length, reply cap, temperature and seed, how long Ollama keeps it
   loaded, whether a chat-completions model takes images, which field caps
-  its reply and how its requests name their session (the manual, "Keeping
-  the cache warm"), and its prices.
+  its reply, how its requests name their session and whether they ask the
+  provider to cache the prompt, which a Claude model needs (the manual,
+  "Keeping the cache warm"), and its prices.
 - **Judge** — whether a judge is available, what it may be shown, the
   probability at which it lets a command run, and how long it may take.
 - **Documents** — how uploads to Google Docs are handled (the manual,

@@ -61,7 +61,7 @@ num_ctx = 1000
 func newChat() *chat.Server {
 	return chat.New("",
 		chat.Model{ID: "thinker", Efforts: thinkingEfforts},
-		chat.Model{ID: "plain"},
+		chat.Model{ID: "plain", Caches: true},
 	)
 }
 
@@ -516,4 +516,83 @@ func waitFor(t *testing.T, what string, ready func() bool) {
 			t.Fatalf("timed out waiting for %s", what)
 		}
 	}
+}
+
+// A Claude model is billed for its whole prompt on every request unless the
+// request asks the provider to cache it (ADR 9, 2026-10-05): with
+// cache_control set, the second request of a conversation reads what the first
+// wrote and the log says so; without it the same conversation is never read
+// from the cache, however stable its prefix is. The fake caches as a Claude
+// route does, only when asked.
+func TestPromptCachingNeedsTheModelToAskForIt(t *testing.T) {
+	t.Parallel()
+	srv := newChat()
+	defer srv.Close()
+	cfg, err := config.Parse([]byte(`
+[servers.chat]
+provider = "openai"
+url = "` + srv.V1() + `"
+
+[control]
+server = "chat"
+model = "plain"
+cache_control = "ephemeral"
+
+[models.bare]
+server = "chat"
+model = "thinker"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(Options{Config: cfg, Repo: t.TempDir(), Version: "test", NoConfirm: true, LogWriter: &bytes.Buffer{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	say(t, s, "one")
+	say(t, s, "two")
+	if _, err := s.SetModel(ModelChoice{Name: "bare"}); err != nil {
+		t.Fatal(err)
+	}
+	say(t, s, "three")
+	say(t, s, "four")
+	got := srv.Requests()
+	if len(got) != 4 {
+		t.Fatalf("the provider saw %d requests", len(got))
+	}
+	for i, want := range []string{`{"type":"ephemeral"}`, `{"type":"ephemeral"}`, "", ""} {
+		if got[i].CacheControl != want {
+			t.Errorf("request %d sent cache_control %q, want %q", i, got[i].CacheControl, want)
+		}
+	}
+	if got[0].CachedTokens != 0 || got[0].CacheWriteTokens != got[0].PromptTokens {
+		t.Errorf("the first request writes its prompt: %+v", got[0])
+	}
+	if got[1].CachedTokens < got[1].PromptTokens*8/10 {
+		t.Errorf("the second read %d of %d prompt tokens from the cache", got[1].CachedTokens, got[1].PromptTokens)
+	}
+	if got[2].CachedTokens != 0 || got[3].CachedTokens != 0 {
+		t.Errorf("a model that did not ask was read from the cache: %+v %+v", got[2], got[3])
+	}
+	// The log says what the provider reported, so the console's cached share
+	// and the budget count it.
+	var cached []int
+	for _, ev := range s.EventsSoFar() {
+		if ev.Kind != log.KindLLMResp {
+			continue
+		}
+		var rec log.LLMResp
+		if err := ev.Decode(&rec); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Usage.CachedTokens == nil {
+			t.Fatalf("a reply the provider reported the cache for says nothing of it: %+v", rec.Usage)
+		}
+		cached = append(cached, *rec.Usage.CachedTokens)
+	}
+	if len(cached) != 4 || cached[1] != got[1].CachedTokens || cached[1] == 0 || cached[3] != 0 {
+		t.Errorf("the log reads %v from the cache, the provider reported %d then %d", cached, got[1].CachedTokens, got[3].CachedTokens)
+	}
+	replays(t, s)
 }

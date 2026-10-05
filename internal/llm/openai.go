@@ -39,6 +39,13 @@ type OpenAI struct {
 	// OpenRouter also reads). "" sends neither.
 	CacheKey           string
 	CacheKeyHeaderOnly bool
+	// CacheControl asks the provider to cache the prompt, as the request's
+	// top-level cache_control: "ephemeral" or "1h". A Claude model reached
+	// through OpenRouter, Bedrock or Vertex reads and writes its cache only
+	// when asked (a request without it is billed in full whatever the key
+	// above says); "" sends nothing, which is right for a model that caches
+	// by itself and for a server that refuses fields it does not know.
+	CacheControl string
 }
 
 // NewOpenAI returns a client for base. Like NewOllama, requests are bounded
@@ -220,6 +227,15 @@ type oaiRequest struct {
 	// was chosen: a server that does not know the field may refuse it, so
 	// nothing is sent for a model nobody declared efforts for.
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	// CacheControl is the request's ask to cache the prompt: the provider
+	// puts the breakpoint on the last block, and moves it on as the
+	// conversation grows.
+	CacheControl *oaiCacheControl `json:"cache_control,omitempty"`
+}
+
+type oaiCacheControl struct {
+	Type string `json:"type"`
+	TTL  string `json:"ttl,omitempty"`
 }
 
 type oaiResponse struct {
@@ -315,6 +331,13 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 	}
 	if !o.CacheKeyHeaderOnly {
 		wire.PromptCacheKey = o.CacheKey
+	}
+	switch o.CacheControl {
+	case "":
+	case "1h":
+		wire.CacheControl = &oaiCacheControl{Type: "ephemeral", TTL: "1h"}
+	default:
+		wire.CacheControl = &oaiCacheControl{Type: o.CacheControl}
 	}
 	body, err := json.Marshal(wire)
 	if err != nil {

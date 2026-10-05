@@ -81,11 +81,12 @@ func main() {
 		return
 	}
 	if *chatOnly {
-		// Two models: one takes an effort and one does not, and the provider
-		// refuses what it should (a wrong key, a model it lacks, an effort a
-		// model does not take). /_fake/requests shows what it was sent.
+		// Two models: one takes an effort and caches when asked, as a Claude
+		// route does, and one does neither; the provider refuses what it
+		// should (a wrong key, a model it lacks, an effort or a cache_control
+		// a model does not take). /_fake/requests shows what it was sent.
 		provider := fakechat.New(chatKey,
-			fakechat.Model{ID: "reasoner", Context: 200000, Efforts: []string{"low", "medium", "high"}},
+			fakechat.Model{ID: "reasoner", Context: 200000, Efforts: []string{"low", "medium", "high"}, Caches: true},
 			fakechat.Model{ID: "fast", Context: 200000},
 		)
 		fmt.Printf("CHAT %s KEY %s\n", provider.V1(), chatKey)

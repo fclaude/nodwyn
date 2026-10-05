@@ -334,6 +334,7 @@ func modelBlock(table string, m Model) string {
 		b.WriteString("vision = true\n")
 	}
 	field("cache_key", m.CacheKey)
+	field("cache_control", m.CacheControl)
 	price := func(name string, p *float64) {
 		if p != nil {
 			fmt.Fprintf(&b, "%s = %s\n", name, strconv.FormatFloat(*p, 'f', -1, 64))

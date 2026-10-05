@@ -135,7 +135,9 @@ choose one for it.
 A model may also set \code{num\_ctx} (sent to Ollama; for \code{[control]}
 it also sizes the window) and \code{keep\_alive} (Ollama),
 \code{max\_output} and \code{output\_field} (servers that need them),
-\code{temperature} and \code{seed}, and \code{price\_input},
+\code{temperature} and \code{seed}, \code{cache\_control} (\code{"ephemeral"}
+or \code{"1h"}: a Claude model caches its prompt only when the request asks, and
+nothing is inferred from its name; \adr{9}), and \code{price\_input},
 \code{price\_cached\_input} and \code{price\_output}: its prices in USD per
 million tokens, from which a request's cost is estimated when the provider
 does not report it (cached input unset is priced as input). Each request
