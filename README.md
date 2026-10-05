@@ -162,7 +162,8 @@ Publishing is separate from local `nodwyn-stable` promotion. GitHub CI is
 manual-only while Gitea is the primary build and release service.
 
 Turns also stop when the model repeats an identical tool call four times in a
-row, retries a denied call three times, or gets ten consecutive tool errors
+row, retries a denied call three times, gets ten consecutive tool errors, or
+fails with one tool on one file in six of its last sixteen responses
 (ADR 18). The reason is shown and logged. Any remaining calls in that response
 are marked not executed; a new user message starts a fresh turn. Budgets and checkpoint prompts are implemented, and so is the bounded run driver (`nodwyn run`, below).
 

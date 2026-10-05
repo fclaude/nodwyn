@@ -584,7 +584,7 @@ Primitive & What it does \\
 \midrule
 \code{(fs-read path [start [count]])} & a whole file (at most 1\,MiB), or \code{count} lines (default 200) from line \code{start} under a \code{[lines A-B of N]} header \\
 \code{(fs-write path content)} & create or replace a file; irreversible, its diff logged and shown at any confirm \\
-\code{(fs-edit path old new [replace\_all])} & replace exactly one occurrence of \code{old}, or with \code{\#t} every one; irreversible \\
+\code{(fs-edit path old new [replace\_all])} & replace exactly one occurrence of \code{old}, or with \code{\#t} every one; irreversible; a credential in the file is matched as the \code{[REDACTED \textit{class}]} placeholder the model reads, and the placeholder in \code{new} keeps it (\adr{43}) \\
 \code{(fs-edit path "" "" \#f edits)} & several such changes to one file, in order, from a list of objects with \code{old}, \code{new} and \code{replace\_all}; nothing is written unless all apply (\adr{38}) \\
 \code{(fs-list path)} & a directory's names, sorted; directories end in \code{/} \\
 \code{(fs-find path glob)} & file names under a directory matching a glob, at most 500 \\

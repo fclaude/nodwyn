@@ -352,3 +352,35 @@ back rather than go out, were always in it. It is now "Tokens used" in
 Settings and the task's side panel, explained the same way everywhere:
 each request's prompt and reply, a prompt token the provider read from its
 cache counted as a tenth. What is counted is unchanged.
+
+## Amendment 2026-10-05: a stall is one tool failing on one file
+
+A chat on a coding task spent five minutes and about thirty calls failing
+to edit one line of one test file, answering "old text not found" each time,
+and ended only when the person declined the approval it kept raising. None
+of the guard's three rules saw it: the calls were not identical, a read or an
+edit that did work came between the failures, and so no ten failures in a
+row. The model could not see why. Ingress redaction (ADR 25) shows it a
+credential-shaped text as `[REDACTED <class>]` wherever it reads one, so
+`old`, copied from what it read, held a placeholder the file did not.
+
+The guard has a fourth rule: the same tool failing on the same target in six
+of the last sixteen model responses, whatever else came between them. The
+target is the call's `path` argument, or the call itself for a tool that has
+none. A response counts once however many of its calls failed, since a batch
+repeats one mistake in parallel. Nothing resets it, neither a success nor a
+different edit; the failures leave it as the responses pass. Like the others
+it ends the turn with a note and an error naming the tool and the file, and
+the next message starts a fresh turn.
+
+The numbers were chosen by replaying the 73 session logs on one machine
+through candidate rules. Keyed on the error text instead of the file, a rule
+also fired on a long docs edit that went on to succeed, and on five parallel
+calls making one mistake. Keyed on the file and counted by response, six of
+sixteen fires once, on the stall above, at its sixth failure; five fires
+earlier, on a turn that recovered.
+
+Its cause was `fs-edit`, which could not match text a model reads as a
+placeholder; ADR 43 has it match in the text the model reads, so a line with a
+credential on it can be edited, and an `old` that guesses a credential says to
+write the placeholder instead.

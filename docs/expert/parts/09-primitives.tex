@@ -57,7 +57,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \toprule
 \code{(fs-read path [start [count]])} & a file, or a range of lines with a \code{[lines A-B of N]} header \\
 \code{(fs-write path content)} & create or replace a file (irreversible, shows a diff) \\
-\code{(fs-edit path old new [all])} & replace exactly one occurrence, or all (irreversible, shows a diff) \\
+\code{(fs-edit path old new [all])} & replace exactly one occurrence, or all (irreversible, shows a diff); a credential in the file is matched as the \code{[REDACTED \textit{class}]} placeholder the model reads, and the placeholder in \code{new} keeps it (\adr{43}) \\
 \code{(fs-edit path "" "" \#f edits)} & several replacements in one file, in order, all or none; \code{edits} is a list of alists with \code{"old"}, \code{"new"} and \code{"replace\_all"} (one diff) \\
 \code{(fs-list path)} & a directory's names; directories end with \code{/} \\
 \code{(fs-find path glob)} & file names matching a glob, at most 500 \\

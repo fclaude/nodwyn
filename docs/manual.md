@@ -1829,6 +1829,17 @@ remain allowlisted; shell commands still require approval. Recognized secret
 shapes are covered, not arbitrary passwords, encodings, or confidential prose.
 Unknown entropy remains a residual for P8's optional L3 classifier.
 
+What the model reads is redacted, so it cannot see or copy a credential-shaped
+text, a fake one in a test fixture included: where a file holds one it reads
+`[REDACTED anthropic-key]`. It can still edit the line: `fs-edit` matches in
+the text the model reads, so the placeholder in `old` matches whatever the file
+holds, and in `new` it keeps it, in the same order, or leaves it out to drop it
+(ADR 43). The credential stays in the file, never reaches the model or the log,
+and keeping it asks nothing, since the edit writes nothing credential-shaped
+that was not there. A credential the model writes still asks you, as a security
+confirm that no standing approval waives. It cannot copy or move a credential,
+or write the text `[REDACTED anthropic-key]` over one.
+
 ### Building nodwyn with nodwyn
 
 1. `nodwyn-stable` in this repository; `:tools` should list `go-test`,
@@ -1852,7 +1863,7 @@ Unknown entropy remains a residual for P8's optional L3 classifier.
 | `control model … unreachable` | is the `[control]` URL right and the server up? For Ollama, `curl <url>/api/version` |
 | first turn takes 10–60 s | another client holds the model server's slot, or the prefix is cold; later turns are sub-second |
 | every request takes 30–50 s | the prefix cache is missing: check `:log` for `llm.req` — a trim (elided count jumped) or a new user turn re-prefills once; if it is every request, another client is evicting the server's slot between your requests (a single-slot Ollama, for example) |
-| the model loops on a denied call | the progress guard stops repeated denials; inspect the log before continuing. Budgets also bound each turn, and `--max-tool-calls N` sets a hard call ceiling |
+| the model loops on a denied call, or keeps failing to edit one file | the progress guard stops repeated denials, and one tool failing on one file in six of the last sixteen responses; inspect the log before continuing. Budgets also bound each turn, and `--max-tool-calls N` sets a hard call ceiling |
 | `hard stop: tool_calls budget reached` | the turn ended; the log has everything; rephrase smaller, or raise `--max-tool-calls` |
 | a tool call errored | `:log 20` — the `tool.result` line has the exact error the model saw |
 | a confirm never appeared but a file changed | `:allow` — a standing approval covered it; the `guard.decision` line names which |

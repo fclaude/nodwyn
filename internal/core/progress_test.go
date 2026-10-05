@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -112,5 +114,56 @@ func TestProgressStopCompletesBatchWithoutExecutingRemainder(t *testing.T) {
 	r.drain("n")
 	if !strings.Contains(string(srv.Requests[1].Raw), "Not executed") {
 		t.Fatal("skipped result missing from next context")
+	}
+}
+
+// A model that alternates a failing edit of one file with a read and an edit
+// of other text is in none of the older streaks; the stop names the file.
+func TestProgressStopsRepeatedFailuresOnOneFile(t *testing.T) {
+	t.Parallel()
+	var turns []fake.Turn
+	for i := 0; i < 6; i++ {
+		turns = append(turns, fake.Turn{ToolCalls: []fake.ToolCall{{ID: fmt.Sprintf("e%d", i), Name: "fs-edit",
+			Args: map[string]any{"path": "a.txt", "old": fmt.Sprintf("missing %d", i), "new": "x"}}}})
+		if i < 5 {
+			turns = append(turns, fake.Turn{ToolCalls: []fake.ToolCall{{ID: fmt.Sprintf("l%d", i), Name: "fs-read", Args: map[string]any{"path": "a.txt"}}}})
+		}
+	}
+	turns = append(turns, fake.Turn{Content: "fresh turn"})
+	srv := fake.NewT(t, turns...)
+	defer srv.Close()
+	o := diskOptions(t)
+	o.Provider = llm.NewOllama(srv.URL)
+	if err := os.WriteFile(filepath.Join(o.Repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.Send("edit a.txt"); err != nil {
+		t.Fatal(err)
+	}
+	r := &rig{t: t, s: s}
+	events := r.drain("n")
+	stopped := false
+	for _, ev := range events {
+		if ev.Kind == event.Error && strings.Contains(ev.Payload.(event.ErrorInfo).Err, "fs-edit on a.txt failed in 6 of the last 16 model responses") {
+			stopped = true
+		}
+	}
+	if !stopped {
+		t.Fatalf("no progress stop: %s", kinds(events))
+	}
+	if len(srv.Requests) != 11 {
+		t.Fatalf("%d model requests, want 11: it asked again after the stop", len(srv.Requests))
+	}
+	if err := s.Send("try another way"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if len(srv.Requests) != 12 {
+		t.Fatal("the next message did not start a fresh turn")
 	}
 }

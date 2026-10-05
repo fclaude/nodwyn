@@ -33,3 +33,12 @@ Limits: this detects known credential shapes, not every secret or encoding.
 Standalone Scheme eval/repl are operator tools, outside the conversational
 boundary. Existing historical logs are not rewritten. The stable binary and
 bootstrap operator-rule retirement require a separate successful promotion.
+
+## Amendment 2026-10-05: editing what the model cannot read
+
+The model cannot read a credential-shaped text, a fake one in a test fixture
+included, and so could not match a line holding one with `fs-edit`: a chat
+failed thirty times to change one. ADR 43 has `fs-edit` match in the text the
+model reads and keep the credential a placeholder stands for. Redaction itself
+is unchanged: ingress still redacts everything, with the default scanner, and
+the log still holds no credential-shaped text.

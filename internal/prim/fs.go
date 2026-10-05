@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/fclaude/nodwyn/internal/guard"
+	"github.com/fclaude/nodwyn/internal/redact"
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
@@ -273,14 +274,22 @@ func previewWrite(pin guard.RepoPin, args []scheme.Value) string {
 
 // applyEdit computes the result of an fs-edit without writing it: exactly
 // one occurrence of old must exist, or with all at least one, and every
-// occurrence is replaced.
+// occurrence is replaced. A file that holds credentials is matched as the
+// model reads it, with each credential a placeholder (ADR 43); old that is
+// not there is looked for in the file's own text, as before.
 func applyEdit(content, old, replacement string, all bool) (string, error) {
 	if old == "" {
 		return "", errors.New("old text must not be empty")
 	}
+	v := newView(content)
+	if len(v.subs) > 0 {
+		if next, found, err := v.apply(old, replacement, all); found {
+			return next, err
+		}
+	}
 	switch n := strings.Count(content, old); {
 	case n == 0:
-		return "", notFound(content, old)
+		return "", notFound(v.text, old)
 	case all:
 		return strings.ReplaceAll(content, old, replacement), nil
 	case n == 1:
@@ -293,12 +302,17 @@ func applyEdit(content, old, replacement string, all bool) (string, error) {
 // editHintBytes bounds the file text a not-found error quotes.
 const editHintBytes = 2000
 
-// notFound explains a failed match. When old matches exactly one place
+// notFound explains a failed match in content, the text the model reads
+// (the file with its credentials redacted), so what it quotes is safe to
+// show. When old matches exactly one place
 // once whitespace is ignored (trailing spaces, tabs against spaces,
 // indentation, CRLF), the error names those lines and quotes them exactly,
 // so the next try copies the file's own text instead of guessing again.
 func notFound(content, old string) error {
 	const base = "old text not found; it must match exactly, including whitespace"
+	if hint := credentialHint(old); hint != "" {
+		return errors.New(base + ". " + hint)
+	}
 	lines := strings.SplitAfter(content, "\n")
 	want := normalizedLines(old)
 	if len(want) == 0 {
@@ -329,6 +343,18 @@ func notFound(content, old string) error {
 	default:
 		return fmt.Errorf("%s; ignoring whitespace it matches %d places (first at line %d): copy the exact text of the one you mean, with more context", base, len(at), at[0]+1)
 	}
+}
+
+// credentialHint explains an old that holds credential-shaped text: the
+// model is never shown the file's own, so what it typed there is a guess, and
+// the placeholder it reads in its place is what matches (ADR 43).
+func credentialHint(old string) string {
+	if len(redact.Redact(old, nil).Events) == 0 {
+		return ""
+	}
+	return "old contains credential-shaped text. nodwyn never shows you the file's own: it reads as a [REDACTED <class>] placeholder, " +
+		"so what old holds there can only be a guess. Write the placeholder where the credential stands to match whatever the file holds there, " +
+		"and in new to keep it"
 }
 
 // normalizedLines is old's lines with whitespace normalized, leading and
@@ -491,7 +517,7 @@ func fsEdit(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-edit",
 		Meta: scheme.Meta{
-			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate. Several changes to one file: one call with edits, a list of {old, new, replace_all} given instead of old and new; they apply in order, each to the text the one before left, and nothing is written unless every one applies. If old is not found but matches when whitespace is ignored, the error quotes the file's exact text. Prefer this over fs-write for changes to existing files.",
+			Doc: "Edit a text file inside the repository by replacing exactly one occurrence of old with new, or every occurrence with replace_all. old must match the file exactly (including whitespace) and, without replace_all, be unique; include surrounding lines to disambiguate. Several changes to one file: one call with edits, a list of {old, new, replace_all} given instead of old and new; they apply in order, each to the text the one before left, and nothing is written unless every one applies. If old is not found but matches when whitespace is ignored, the error quotes the file's exact text. A credential-shaped text in a file reads to you as [REDACTED <class>]: write that placeholder in old to match whatever the file holds there, and in new, in the same order, to keep it (leave it out of new to drop it). Prefer this over fs-write for changes to existing files.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
 				{Name: "old", Type: "string", Doc: "the exact text to replace (must occur exactly once, unless replace_all); not with edits", Optional: true},

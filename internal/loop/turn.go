@@ -48,6 +48,7 @@ type pendingCall struct {
 
 // expect makes calls, from a new model response, the pending ones.
 func (t *turnState) expect(calls []llm.ToolCall) {
+	t.progress.response()
 	t.pending = t.pending[:0]
 	for _, tc := range calls {
 		t.pending = append(t.pending, pendingCall{call: tc})

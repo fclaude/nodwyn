@@ -468,7 +468,8 @@ if args, ok := lookup(item, "args"); ok && (args.Kind != scheme.KString || args.
 Back in \file{prims.go}, \code{runTools} charges each call to the budget
 before running it, and stops the turn when the progress guard
 (\file{progress.go}) sees it going in circles: the same call four times in a
-row, a denied call retried three times, or ten failures in a row. The calls
+row, a denied call retried three times, ten failures in a row, or one tool
+failing on one file in six of the last sixteen responses. The calls
 after a stop are answered as not executed.
 
 \begin{go}
@@ -745,7 +746,10 @@ func (r RepoPin) Resolve(raw string) string {
 \file{internal/prim/fs.go}. \code{fs-edit} replaces exactly one occurrence,
 or every one with \code{replace\_all}; given a list of \code{edits}, it makes
 each in order on the text the one before left, and writes nothing unless
-all apply (\adr{38}). Its \code{Preview} renders the diff the confirm
+all apply (\adr{38}). A file that holds a credential is matched as the model
+reads it, with each credential a \code{[REDACTED \textit{class}]} placeholder
+(\file{editview.go}, \adr{43}): the placeholder in \code{old} matches whatever
+the file holds there, and in \code{new} keeps it. Its \code{Preview} renders the diff the confirm
 shows, using the same \code{applyEdit} the handler uses, once per edit. The
 handler resolves the path again (the guard already denied an escape; this
 is defence in depth), keeps the previous version unless git has the file
@@ -757,9 +761,15 @@ func applyEdit(content, old, replacement string, all bool) (string, error) {
     if old == "" {
         return "", errors.New("old text must not be empty")
     }
+    v := newView(content) // the file as the model reads it (ADR 43)
+    if len(v.subs) > 0 {
+        if next, found, err := v.apply(old, replacement, all); found {
+            return next, err
+        }
+    }
     switch n := strings.Count(content, old); {
     case n == 0:
-        return "", notFound(content, old)
+        return "", notFound(v.text, old)
     case all:
         return strings.ReplaceAll(content, old, replacement), nil
     case n == 1:
@@ -772,7 +782,8 @@ func applyEdit(content, old, replacement string, all bool) (string, error) {
 
 \code{notFound} goes further than ``not found'': when the old text matches
 exactly one place once whitespace is ignored, the error quotes that place's
-exact text, so the next attempt copies it instead of guessing again.
+exact text, so the next attempt copies it instead of guessing again; the text
+it quotes is the view's, so it carries placeholders and never a credential.
 
 \section{The result is recorded, and shown}
 

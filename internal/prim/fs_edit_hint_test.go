@@ -41,3 +41,40 @@ func TestFsEditReplaceAllAndWhitespaceHints(t *testing.T) {
 		t.Fatalf("a failed edit changed the file: %q", b)
 	}
 }
+
+// An old that holds credential-shaped text of its own is a guess at what the
+// file holds, since the model reads that as a placeholder (ADR 25): the error
+// says to write the placeholder, and never carries the file's own text. An old
+// that fails for another reason, or a placeholder made up for a file with no
+// credential in it, gets no such hint.
+func TestFsEditCredentialHints(t *testing.T) {
+	h := newHarness(t)
+	h.answer = true
+	file := filepath.Join(h.root, "fixture.go")
+	const key = "sk-ant-abcdefgh1234"
+	os.WriteFile(file, []byte("name := \"credential\"\nbody := \""+key+"\"\n"), 0o644)
+
+	_, err := h.eval(t, `(fs-edit "fixture.go" "body := \"sk-ant-zzzzzzzz9999\"" "body := \"x\"")`)
+	if err == nil || !strings.Contains(err.Error(), "old contains credential-shaped text") || !strings.Contains(err.Error(), "Write the placeholder") {
+		t.Fatalf("guessed credential in old: %v", err)
+	}
+	if strings.Contains(err.Error(), key) {
+		t.Fatalf("the error quotes the credential: %v", err)
+	}
+	// An edit in a list says which one failed and still gives the hint.
+	_, err = h.eval(t, `(fs-edit "fixture.go" "" "" #f (list (list (cons "old" "body := \"sk-ant-zzzzzzzz9999\"") (cons "new" "x"))))`)
+	if err == nil || !strings.Contains(err.Error(), "edit 1 of 1 failed") || !strings.Contains(err.Error(), "old contains credential-shaped text") {
+		t.Fatalf("guessed credential in a listed edit: %v", err)
+	}
+	if _, err := h.eval(t, `(fs-edit "fixture.go" "nothing like it" "x")`); err == nil || strings.Contains(err.Error(), "credential-shaped") {
+		t.Fatalf("a plain miss was blamed on a credential: %v", err)
+	}
+	// A placeholder the model made up, in a file with no credential: a miss like any other.
+	os.WriteFile(file, []byte("name := \"credential\"\n"), 0o644)
+	if _, err := h.eval(t, `(fs-edit "fixture.go" "body := \"[REDACTED anthropic-key]\"" "x")`); err == nil || strings.Contains(err.Error(), "credential-shaped") || !strings.Contains(err.Error(), "read the region again") {
+		t.Fatalf("a placeholder with no credential behind it: %v", err)
+	}
+	if b, _ := os.ReadFile(file); string(b) != "name := \"credential\"\n" {
+		t.Fatalf("a failed edit changed the file: %q", b)
+	}
+}

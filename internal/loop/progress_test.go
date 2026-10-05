@@ -2,6 +2,7 @@ package loop
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -78,5 +79,98 @@ func TestCallIdentity(t *testing.T) {
 	}
 	if keyOf(call("read", `{"a":`)).args != `{"a":` {
 		t.Fatal("malformed arguments changed")
+	}
+}
+
+// observeRound is a model response whose calls are observed in order.
+func observeRound(p *turnProgress, calls ...func() (llm.ToolCall, toolOutcome)) string {
+	p.response()
+	for _, c := range calls {
+		if reason := p.observe(c()); reason != "" {
+			return reason
+		}
+	}
+	return ""
+}
+
+func failing(name, args string) func() (llm.ToolCall, toolOutcome) {
+	return func() (llm.ToolCall, toolOutcome) { return call(name, args), toolOutcome{failed: true} }
+}
+
+func succeeding(name, args string) func() (llm.ToolCall, toolOutcome) {
+	return func() (llm.ToolCall, toolOutcome) { return call(name, args), toolOutcome{} }
+}
+
+// A turn that keeps failing on one file stops, however much it reads and
+// whatever the edits' text: none of that is a streak of identical or
+// consecutive calls.
+func TestProgressStallOnOneFile(t *testing.T) {
+	var p turnProgress
+	for i := 0; i < stallFailures; i++ {
+		edit := failing("fs-edit", fmt.Sprintf(`{"path":"a.go","old":"v%d","new":"w"}`, i))
+		reason := observeRound(&p, edit)
+		if (reason != "") != (i == stallFailures-1) {
+			t.Fatalf("failure %d: %q", i, reason)
+		}
+		if i == stallFailures-1 && !strings.Contains(reason, "fs-edit on a.go failed in 6 of the last 16 model responses") {
+			t.Fatal(reason)
+		}
+		if reason == "" {
+			if r := observeRound(&p, succeeding("fs-read", fmt.Sprintf(`{"path":"a.go","start":%d}`, i))); r != "" {
+				t.Fatalf("a read stopped the turn: %q", r)
+			}
+		}
+	}
+}
+
+// Failures that are not the same tool on the same file, are spread out, or
+// come from one response are not a stall.
+func TestProgressStallNeedsOneTargetInOneWindow(t *testing.T) {
+	var p turnProgress
+	for i := 0; i < 3*stallWindow; i++ {
+		path := fmt.Sprintf(`{"path":"f%d.go"}`, i)
+		if r := observeRound(&p, failing("fs-edit", path), succeeding("fs-list", `{"path":"."}`)); r != "" {
+			t.Fatalf("failures on different files: %q", r)
+		}
+	}
+	p = turnProgress{}
+	for i := 0; i < stallFailures-1; i++ {
+		observeRound(&p, failing("fs-edit", fmt.Sprintf(`{"path":"a.go","old":"%d"}`, i)))
+	}
+	// Another tool's failure on the same file, and a successful edit of it, add nothing.
+	observeRound(&p, failing("fs-write", `{"path":"a.go"}`), succeeding("fs-edit", `{"path":"a.go"}`))
+	// The failures fall out of the window before the sixth.
+	for i := 0; i < stallWindow; i++ {
+		if r := observeRound(&p, succeeding("fs-list", fmt.Sprintf(`{"path":"d%d"}`, i))); r != "" {
+			t.Fatal(r)
+		}
+	}
+	if r := observeRound(&p, failing("fs-edit", `{"path":"a.go","old":"late"}`)); r != "" {
+		t.Fatalf("old failures were counted: %q", r)
+	}
+	// One response failing six times counts once: a batch repeats one mistake.
+	p = turnProgress{}
+	var batch []func() (llm.ToolCall, toolOutcome)
+	for i := 0; i < stallFailures; i++ {
+		batch = append(batch, failing("fs-edit", fmt.Sprintf(`{"path":"a.go","old":"%d"}`, i)))
+	}
+	if r := observeRound(&p, batch...); r != "" {
+		t.Fatalf("a batch of failures in one response: %q", r)
+	}
+}
+
+// A tool without a path is judged by the call itself.
+func TestProgressStallWithoutPath(t *testing.T) {
+	var p turnProgress
+	for i := 0; i < stallFailures; i++ {
+		reason := observeRound(&p, failing("mcp-call", `{"tool":"x"}`))
+		if i < stallFailures-1 {
+			if reason != "" {
+				t.Fatalf("failure %d: %q", i, reason)
+			}
+			observeRound(&p, succeeding("fs-list", fmt.Sprintf(`{"path":"d%d"}`, i)))
+		} else if !strings.Contains(reason, `the call mcp-call {"tool":"x"} failed in 6 of the last 16`) {
+			t.Fatalf("failure %d: %q", i, reason)
+		}
 	}
 }
