@@ -1,7 +1,8 @@
 // A transcript is a sequence of turns, not of events: the user's message
 // opens one, and everything the harness does in reply belongs to it. Calls
-// that only look (reads, searches, listings) fold into one line; calls that
-// change or run something stand on their own line with their outcome.
+// that only look (reads, searches, listings) fold into one line, as do
+// writes in a row and commands in a row; the model's marks on its plan join
+// one line.
 import { h, icon, oneLine, sizeOf, toolLabel, isMCP } from "./dom.js";
 import { markdown } from "./markdown.js";
 import { attachmentChip } from "./attach.js";
@@ -133,6 +134,25 @@ function thinking(text) {
   return h("details", { class: "thinking" }, h("summary", {}, h("span", { class: "label" }, "Thinking"), gist ? h("span", { class: "gist" }, gist) : null), h("pre", {}, text));
 }
 
+// brief is a reply's line of narration between two calls, as against
+// something the model tells you: a single short paragraph.
+function brief(text) {
+  const t = String(text).trim();
+  return t.length <= 240 && !t.includes("\n\n") && !t.includes("```");
+}
+
+// marksLabel is what a run of the model's marks on its plan says, by state:
+// "Steps 1, 2 of 5 marked done".
+function marksLabel(marks) {
+  const said = [];
+  for (const m of marks) {
+    const like = said.find((s) => s.of === m.of && s.state === m.state);
+    if (like) like.steps.push(m.step);
+    else said.push({ of: m.of, state: m.state, steps: [m.step] });
+  }
+  return said.map((s) => `Step${s.steps.length === 1 ? "" : "s"} ${s.steps.join(", ")} of ${s.of} marked ${s.state}`).join(" · ");
+}
+
 export class Transcript {
   constructor(container) {
     this.el = container;
@@ -142,6 +162,8 @@ export class Transcript {
     this.el.replaceChildren();
     this.turn = null;
     this.group = null;
+    this.writeGroup = null;
+    this.marks = null;
     this.call = null;
     this.streamText = null;
     this.streamThinking = null;
@@ -155,6 +177,8 @@ export class Transcript {
   end() {
     this.turn = null;
     this.group = null;
+    this.writeGroup = null;
+    this.marks = null;
     this.call = null;
     this.streamText = null;
     this.streamThinking = null;
@@ -168,6 +192,19 @@ export class Transcript {
       this.el.append(this.turn);
     }
     return this.turn;
+  }
+  // absorb takes the narration written between two writes into the Edited
+  // group they share: what came after the group's last row is only prose,
+  // thinking and the token line (anything else ends the group), and the
+  // token line stays last in the turn. A brief line is what the model says
+  // as it goes on; the group keeps it in order behind its fold.
+  absorb() {
+    const g = this.writeGroup;
+    for (let n = g.el.nextSibling, next; n; n = next) {
+      next = n.nextSibling;
+      if (n !== this.usage) g.body.append(n);
+    }
+    this.thought = null;
   }
   // closeCommands ends the run of commands in view: the next command starts
   // a run of its own, and the clock stops.
@@ -209,6 +246,8 @@ export class Transcript {
     if (payload !== undefined) node.append(h("pre", {}, typeof payload === "string" ? payload : JSON.stringify(payload, null, 2)));
     this.agent().append(node);
     this.group = null;
+    this.writeGroup = null;
+    this.marks = null;
     this.closeCommands();
     return node;
   }
@@ -288,7 +327,12 @@ export class Transcript {
         if (p.content) {
           turn.append(markdown(p.content));
           this.group = null;
+          this.marks = null;
           this.closeCommands();
+          // A line of narration does not end a group of writes: the next write
+          // takes it in. A paragraph is the model telling you something, and
+          // stays where it is, after the group.
+          if (!brief(p.content)) this.writeGroup = null;
         }
         if (p.usage) {
           const u = p.usage;
@@ -370,10 +414,29 @@ export class Transcript {
         if (p.actor === "unattended") this.audit(`${p.allowed ? "Went on" : "Stopped"} by itself: ${p.reason}`, p, p.allowed ? "" : "bad");
         else this.audit(auditLabels[event.kind], p);
         break;
-      case "plan.step":
-        // The model's own mark: what it says, with what it says shows it.
-        this.audit(`Step ${p.step} of ${p.of} marked ${p.state}`, p.note || undefined);
+      case "plan.step": {
+        // The model's own marks: marks in a row are one line, its notes behind
+        // the fold, instead of a line each. Anything between two marks (a
+        // call, the model's text) starts a new line.
+        if (!this.marks) {
+          const el = h("details", { class: "audit" }, h("summary", {}));
+          this.agent().append(el);
+          this.group = null;
+          this.writeGroup = null;
+          this.closeCommands();
+          this.marks = { el, list: [] };
+        }
+        const m = this.marks;
+        m.list.push(p);
+        m.el.querySelector("summary").textContent = marksLabel(m.list);
+        const notes = m.list.filter((x) => x.note).map((x) => `${x.step}. ${x.note}`).join("\n");
+        if (notes) {
+          let pre = m.el.querySelector("pre");
+          if (!pre) m.el.append((pre = h("pre")));
+          pre.textContent = notes;
+        }
         break;
+      }
       case "run.turn":
         this.end();
         this.el.append(h("div", { class: "audit" }, `Run · turn ${p.number}`));
@@ -490,8 +553,44 @@ export class Transcript {
   toolCall(p) {
     const kind = category(p.name);
     const summaryText = argSummary(p.args);
+    if (kind === "write") {
+      // Writes in a row fold into "Edited", as reads fold into "Looked
+      // around": the header counts distinct files, each write keeps its row
+      // inside with its outcome. A line of narration between two writes goes
+      // into the group, in order; a read, a command, a mark or a longer reply
+      // ends the group, so the transcript keeps its order.
+      this.group = null;
+      this.marks = null;
+      this.closeCommands();
+      if (this.writeGroup) this.absorb();
+      else {
+        const label = h("span", { class: "label" }, "Edited");
+        const what = h("span", { class: "what" });
+        const body = h("div", { class: "activity-body" });
+        const el = h("details", { class: "activity writes" }, h("summary", {}, h("span", { class: "chev" }, icon("right", 14)), label, what), body);
+        this.agent().append(el);
+        if (this.thought) body.append(this.thought);
+        this.thought = null;
+        this.writeGroup = { el, body, what, files: new Set(), failed: 0 };
+      }
+      const g = this.writeGroup;
+      const a = argsObject(p.args);
+      const file = a.path || a.target || summaryText;
+      if (file) g.files.add(file);
+      g.what.textContent = [g.files.size === 1 ? "1 file" : `${g.files.size} files`, g.failed ? `${g.failed} failed` : ""].filter(Boolean).join(" · ");
+      const verb = { "fs-edit": "Edit", "doc-export": "Export" }[p.name] || "Write";
+      const result = h("span", { class: "result" }, "running…");
+      const note = h("span", { class: "aside-note" });
+      const step = h("div", { class: "step" }, icon("file", 15), h("span", {}, verb), h("span", { class: "mono" }, file), result, note);
+      const detail = h("details", { class: "step-detail" }, h("summary", {}, "Details"), h("pre", {}, typeof p.args === "string" ? p.args : JSON.stringify(p.args, null, 2)));
+      g.body.append(step, detail);
+      this.call = { id: p.id, name: p.name, kind, step, result, note, detail, writeGroup: g };
+      return;
+    }
     if (kind === "read") {
       this.closeCommands();
+      this.writeGroup = null;
+      this.marks = null;
       if (!this.group) {
         const label = h("span", { class: "label" }, isMCP(p.name) ? "Gathered" : "Looked around");
         const what = h("span", { class: "what" });
@@ -519,11 +618,14 @@ export class Transcript {
     }
     if (kind === "command") {
       // Commands in a row fold into one run, as reads fold into "Looked
-      // around": the header says how many ran and for how long, whether one
-      // is running now or waiting for an answer, and how many failed; each
-      // command keeps its row inside. A read, a write or a reply's text ends
-      // the run, so the transcript keeps its order.
+      // around" and writes into "Edited": the header says how many ran
+      // and for how long, whether one is running now or waiting for an
+      // answer, and how many failed; each command keeps its row inside. A
+      // read, a write or a reply's text ends the run, so the transcript
+      // keeps its order.
       this.group = null;
+      this.writeGroup = null;
+      this.marks = null;
       if (!this.commandGroup) {
         const label = h("span", { class: "label" });
         const what = h("span", { class: "what" });
@@ -545,14 +647,12 @@ export class Transcript {
       return;
     }
     this.group = null;
+    this.writeGroup = null;
+    this.marks = null;
     this.closeCommands();
     this.thought = null;
     let line;
-    if (kind === "write") {
-      const a = argsObject(p.args);
-      const verb = { "fs-edit": "Edit", "doc-export": "Export" }[p.name] || "Write";
-      line = [icon("file", 15), h("span", {}, verb), h("span", { class: "mono" }, a.path || a.target || summaryText)];
-    } else if (isMCP(p.name)) line = [icon("plug", 15), h("span", { class: "mono" }, `${toolLabel(p.name)} ${summaryText}`.trim())];
+    if (isMCP(p.name)) line = [icon("plug", 15), h("span", { class: "mono" }, `${toolLabel(p.name)} ${summaryText}`.trim())];
     else line = [icon("terminal", 15), h("span", { class: "mono" }, `${p.name} ${summaryText}`.trim())];
     const result = h("span", { class: "result" }, "running…");
     const note = h("span", { class: "aside-note" });
@@ -654,7 +754,16 @@ export class Transcript {
       }
       c.note.textContent = [ms, c.note.textContent].filter(Boolean).join(" · ");
       c.detail.append(h("pre", {}, body || ""));
-      if (!p.ok) c.detail.open = true;
+      if (!p.ok) {
+        c.detail.open = true;
+        // A failed write opens the group around it, so it is seen without
+        // looking for it.
+        if (c.writeGroup) {
+          c.writeGroup.failed++;
+          c.writeGroup.what.textContent = [c.writeGroup.files.size === 1 ? "1 file" : `${c.writeGroup.files.size} files`, `${c.writeGroup.failed} failed`].join(" · ");
+          c.writeGroup.el.open = true;
+        }
+      }
     }
     this.call = null;
   }

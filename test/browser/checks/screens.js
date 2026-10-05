@@ -74,14 +74,17 @@ check(async () => {
     await page.locator('button.chip:has-text("Shown")').scrollIntoViewIfNeeded();
   });
   // A reply that only thinks and reads goes with its reads: its thinking is
-  // a row in their group, never a line of its own under it.
+  // a row in their group, never a line of its own under it. The turn also
+  // holds an Edited group of its own; the reads group is the one named
+  // Looked around.
+  const reads = ".turn.agent .activity:not(.commands):not(.writes)";
   const activity = async (page) => {
     await showThinking(page);
     await task(page);
-    await page.click(".turn.agent .activity:not(.commands) > summary");
-    await page.waitForSelector(".turn.agent .activity:not(.commands)[open]");
-    await page.locator(".turn.agent .activity:not(.commands)").scrollIntoViewIfNeeded();
-    const inGroup = await page.$$eval(".turn.agent .activity:not(.commands) .activity-body > .thinking", (ns) => ns.map((n) => n.querySelector("summary").textContent));
+    await page.click(`${reads} > summary`);
+    await page.waitForSelector(`${reads}[open]`);
+    await page.locator(reads).scrollIntoViewIfNeeded();
+    const inGroup = await page.$$eval(`${reads} .activity-body > .thinking`, (ns) => ns.map((n) => n.querySelector("summary").textContent));
     const alone = await page.$$eval(".turn.agent > .thinking", (ns) => ns.length);
     assert.ok(inGroup.length === 2 && alone === 0, `thinking in the group: ${JSON.stringify(inGroup)}; on its own: ${alone}`);
     assert.strictEqual(await visibleThinking(page), 2, "thinking rows shown");

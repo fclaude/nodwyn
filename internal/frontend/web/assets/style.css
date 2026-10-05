@@ -532,6 +532,14 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .activity > summary .what { color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activity > summary .names { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 .activity-body { border-top: 1px solid var(--line); padding: 4px 0; }
+/* A write's rows read like its transcript rows did, indented into the
+Edited group they folded into. */
+.activity.writes .step { padding: 6px 12px 6px 26px; }
+.activity.writes .step-detail { margin-top: 0; }
+.activity.writes .step-detail summary { padding-left: 40px; }
+.activity.writes .step-detail pre { margin: 6px 12px 6px 26px; }
+/* The narration the group took in, between its writes. */
+.activity.writes .activity-body > .prose { padding: 6px 12px 6px 26px; font-size: 13.5px; color: var(--muted); }
 .call { font-size: 13px; }
 .call > summary {
   display: flex; align-items: center; gap: 10px; padding: 6px 12px; list-style: none; cursor: pointer; min-width: 0;

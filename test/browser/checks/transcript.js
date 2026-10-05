@@ -123,6 +123,76 @@ check(async () => {
         scroll: root.scrollWidth <= root.clientWidth + 1,
       };
     }
+    // What a turn's blocks are, in order: a reply's text, a group of reads,
+    // writes ("Edited"), commands, the token line and the model's marks.
+    const shape = (root) =>
+      [...root.querySelectorAll(".turn.agent > *")].slice(1).map((n) => {
+        if (n.classList.contains("activity")) return n.classList.contains("writes") ? "writes" : n.classList.contains("commands") ? "commands" : "reads";
+        if (n.classList.contains("prose")) return `prose:${n.textContent.trim().slice(0, 12).trim()}`;
+        return n.classList.contains("usage") ? "usage" : n.classList.contains("audit") ? "marks" : n.className;
+      });
+    const edit = (t, path, ok = true) => done(t, call(t, "fs-edit", { path, edits: [{}] }), "fs-edit", ok ? "ok" : "old text not found", 14, ok);
+    const say = (t, content, usage) => t.render({ kind: "llm.resp", payload: { content, usage } });
+    // Writes in a row fold into one Edited group, with a row each, and the
+    // header counts distinct files. The model's line of narration between two
+    // writes goes into the group, in order; the usage line stays last.
+    {
+      const { root, t } = fresh();
+      say(t, "Making the change.");
+      edit(t, "task.js");
+      say(t, "Now the CSS:");
+      edit(t, "style.css");
+      say(t, "And the comment:");
+      edit(t, "task.js");
+      say(t, "", { prompt_tokens: 100, output_tokens: 10 });
+      const g = root.querySelector(".activity.writes");
+      out.clubbed = {
+        shape: shape(root),
+        header: g?.querySelector(".what")?.textContent,
+        body: [...(g?.querySelector(".activity-body").children || [])].map((n) => (n.classList.contains("prose") ? `prose:${n.textContent.trim()}` : n.classList.contains("step") ? "step" : "detail")),
+        closed: g ? !g.open : null,
+      };
+    }
+    // What is not a line of narration, or is not between writes, stays where
+    // the model put it: a paragraph, the words before a command, and the
+    // words after the last write.
+    {
+      const long = "A paragraph that tells you something.\n\nAnd another one, which is why it is not narration.";
+      const a = fresh();
+      say(a.t, "First.");
+      edit(a.t, "a");
+      say(a.t, long);
+      edit(a.t, "b");
+      const b = fresh();
+      edit(b.t, "a");
+      say(b.t, "Now the tests:");
+      done(b.t, call(b.t, "shell-exec", { cmd: "go", args: ["test"] }), "shell-exec", JSON.stringify({ status: 0, stdout: "", stderr: "" }), 100);
+      const c = fresh();
+      say(c.t, "Run one.");
+      run(c.t, "go", 0, 10);
+      say(c.t, "Run two.");
+      run(c.t, "go", 0, 10);
+      const d = fresh();
+      say(d.t, "Look at a.");
+      read(d.t, "a");
+      say(d.t, "Look at b.");
+      read(d.t, "b");
+      out.kept = { paragraph: shape(a.root), thenCommand: shape(b.root), commands: shape(c.root), reads: shape(d.root) };
+    }
+    // Marks in a row are one line, its notes behind the fold; a failed write
+    // opens its group and the header says so.
+    {
+      const { root, t } = fresh();
+      t.render({ kind: "plan.step", payload: { step: 1, of: 5, state: "done", note: "wrote files" } });
+      t.render({ kind: "plan.step", payload: { step: 2, of: 5, state: "done" } });
+      t.render({ kind: "plan.step", payload: { step: 3, of: 5, state: "skipped", note: "not needed" } });
+      const m = root.querySelector(".audit");
+      const f = fresh();
+      edit(f.t, "a");
+      edit(f.t, "b", false);
+      const w = f.root.querySelector(".activity.writes");
+      out.marks = { count: root.querySelectorAll(".audit").length, summary: m.querySelector("summary").textContent, notes: m.querySelector("pre")?.textContent, failed: { open: w.open, header: w.querySelector(".what").textContent } };
+    }
     // A transcript taken off the page while a command runs (the person left
     // the task) stops its clock at the next tick.
     {
@@ -475,6 +545,17 @@ check(async () => {
   const fail = [];
   const want = (ok, what) => ok || fail.push(what);
   want(results.order.join() === "reads,commands,reads,commands", `order: ${results.order}`);
+  const cb = results.clubbed;
+  want(cb.shape.join() === "prose:Making the c,writes,usage" && cb.header === "2 files" && cb.closed === true, `writes and their narration fold: ${JSON.stringify(cb)}`);
+  want(cb.body.join() === "step,detail,prose:Now the CSS:,step,detail,prose:And the comment:,step,detail", `narration in order inside the group: ${JSON.stringify(cb.body)}`);
+  const k = results.kept;
+  want(k.paragraph.join() === "prose:First.,writes,prose:A paragraph,writes", `a paragraph ends the group: ${JSON.stringify(k.paragraph)}`);
+  want(k.thenCommand.join() === "writes,prose:Now the test,commands", `the words before a command stay before it: ${JSON.stringify(k.thenCommand)}`);
+  want(k.commands.join() === "prose:Run one.,commands,prose:Run two.,commands", `replies and commands keep their order: ${JSON.stringify(k.commands)}`);
+  want(k.reads.join() === "prose:Look at a.,reads,prose:Look at b.,reads", `replies and reads keep their order: ${JSON.stringify(k.reads)}`);
+  const mk = results.marks;
+  want(mk.count === 1 && mk.summary === "Steps 1, 2 of 5 marked done · Step 3 of 5 marked skipped" && mk.notes === "1. wrote files\n3. not needed", `marks join: ${JSON.stringify(mk)}`);
+  want(mk.failed.open === true && mk.failed.header === "2 files · 1 failed", `a failed write opens its group: ${JSON.stringify(mk.failed)}`);
   want(results.consecutive.runs === 1 && results.consecutive.rows === 2 && results.consecutive.header === "Ran 2 commands | in 1.6 s", `consecutive: ${JSON.stringify(results.consecutive)}`);
   const r = results.running;
   want(/^Running a command \| 0\.\d s$/.test(r.first) && /^Running a command \| 1\.\d s$/.test(r.later), `running counts up: ${r.first} then ${r.later}`);

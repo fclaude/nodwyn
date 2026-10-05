@@ -72,7 +72,10 @@ check(async () => {
   assert.strictEqual(sent.of("session.model.set").length, 0, "the phone asked to change a model");
   await page.screenshot({ path: `${out}/phone-approve.png` });
   await page.click(".ask-card .btn.accent");
-  await page.waitForSelector(".step .result.ok", { timeout: 20000 });
+  // The answered write folds into its Edited group, so the verdict sits
+  // inside the group's closed body: wait for the row's outcome in the
+  // document, not on screen.
+  await page.waitForFunction(() => [...document.querySelectorAll(".activity.writes .step .result")].some((r) => /^(written|failed)/.test(r.textContent.trim())), null, { timeout: 20000 });
   assert.strictEqual(sent.of("session.answer").length, 1, "one answer sent");
   step("answered from the phone");
 

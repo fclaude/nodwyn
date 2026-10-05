@@ -348,11 +348,18 @@ restarts.
 The desk shows saved and open sessions, their repository and last activity,
 recorded conversations, streamed text, tool arguments and results, guard
 decisions, and model usage. Reads and searches in a row fold into one group.
-Commands in a row fold the same way, into one run whose header says how many
-ran and for how long together, counts up each second while one runs, says
-when one waits for your answer, and counts those that failed; a failed or
-refused command opens its row and the run. A read, a write or the model's
-text ends a run, so the transcript keeps its order.
+Writes in a row fold the same way, into one Edited group whose header counts
+distinct files, each write keeping its row with its outcome; a failed write
+opens its row and the group. A line of narration the model writes between two
+writes goes into the group, in order, behind its fold, since the group says
+what the line was about; a longer reply, or the words before a command, stay
+where they are and end the group. Commands in a row fold the same way, into
+one run whose header says how many ran and for how long together, counts up
+each second while one runs, says when one waits for your answer, and counts
+those that failed; a failed or refused command opens its row and the run. A
+read, a command, a mark or a reply of more than a line ends the other groups,
+so the transcript keeps its order. The model's marks on its plan join one
+line in a row ("Steps 1, 2 of 5 marked done"), their notes behind its fold.
 The model's thinking is hidden, as in the TUI without `:thinking`, unless
 Settings › This browser › The model's thinking is **Shown** (kept in this
 browser); shown, a reply that only thinks and calls tools puts its thinking
