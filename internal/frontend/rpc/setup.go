@@ -284,12 +284,14 @@ type controlParams struct {
 // table, or an address a model names inline, with its key's keychain class,
 // never the key.
 type modelServer struct {
-	Dialect    string `json:"dialect,omitempty"`
-	Name       string `json:"name"`
-	Provider   string `json:"provider"`
-	URL        string `json:"url"`
-	Credential string `json:"credential,omitempty"`
-	Host       string `json:"host"`
+	// Authentication identifies a ChatGPT plan credential when the keychain is unlocked.
+	Authentication string `json:"authentication,omitempty"`
+	Dialect        string `json:"dialect,omitempty"`
+	Name           string `json:"name"`
+	Provider       string `json:"provider"`
+	URL            string `json:"url"`
+	Credential     string `json:"credential,omitempty"`
+	Host           string `json:"host"`
 	// Inline marks an address a model gives itself, without a server of its
 	// own: Name is then its host, and it is changed in config.toml, or by
 	// saving a default model on a provider.

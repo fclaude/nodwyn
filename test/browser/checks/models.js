@@ -812,6 +812,106 @@ check(async () => {
   await page.locator("#section-models").screenshot({ path: `${out}/models-judge.png` });
   step("the judge's model, prices and wait sit with the models, its prices as published until set");
 
+  // The ChatGPT setup UI uses synthetic RPC consent and account replies;
+  // provider persistence and binding are checked by the RPC integration test.
+  // Intercept before reloading so no sign-in can reach a real account.
+  const planCalls = [];
+  let planSettings, planSaved = false, planConsent = 0, planPolls = 0, planAuthCredential = "fake-plan-one", planUnlocked = false;
+  const planAccounts = [{ id: "fake-plan-one", class: "chatgpt", kind: "oauth2", provider: "openai", refreshable: true }, { id: "fake-plan-two", class: "work-chatgpt", kind: "oauth2", provider: "openai", refreshable: true }];
+  await page.routeWebSocket("**/socket", (socket) => {
+    const server = socket.connectToServer();
+    const methods = new Map();
+    const reply = (frame, result, error) => socket.send(JSON.stringify({ jsonrpc: "2.0", id: frame.id, ...(error ? { error: { code: -32000, message: error } } : { result }) }));
+    socket.onMessage((message) => {
+      const frame = JSON.parse(message);
+      if (frame.method === "keychain.unlock") {
+        planUnlocked = true;
+        return reply(frame, { exists: true, unlocked: true, credentials: 2 });
+      }
+      if (frame.method === "keychain.status") return reply(frame, { exists: true, unlocked: planUnlocked, credentials: 2 });
+      if (frame.method === "credentials.list") {
+        planPolls++;
+        return reply(frame, { keychain: { exists: true, unlocked: planUnlocked }, credentials: !planUnlocked ? [] : planConsent > 1 ? planAccounts : [planAccounts[1]], authorizations: planConsent > 1 ? [{ id: "fake-plan-auth", state: planPolls > 2 ? "done" : "waiting", credential: planAuthCredential }] : [] });
+      }
+      if (frame.method === "credentials.authorize") {
+        planCalls.push(frame);
+        planConsent++;
+        planAuthCredential = frame.params.id || "fake-plan-one";
+        if (planConsent === 1) return reply(frame, null, "Fake OpenAI consent refused");
+        return reply(frame, { id: "fake-plan-auth", url: "about:blank#fake-consent" });
+      }
+      if (frame.method === "settings.provider.write") {
+        planCalls.push(frame);
+        const p = planSettings.servers.find((p) => p.name === frame.params.name);
+        if (frame.params.credential) {
+          p.authentication = "chatgpt";
+          p.credential = planAccounts.find((c) => c.id === frame.params.credential).class;
+        } else {
+          delete p.authentication;
+          p.credential = "fake-static-class";
+        }
+        p.key = "ready";
+        planSaved = true;
+        return reply(frame, planSettings);
+      }
+      if (frame.method === "settings.read" && planSaved) return reply(frame, planSettings);
+      methods.set(frame.id, frame.method);
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      const frame = JSON.parse(message);
+      if (methods.get(frame.id) === "settings.read" && frame.result) {
+        if (planSaved) return reply(frame, planSettings);
+        planSettings = structuredClone(frame.result);
+      }
+      socket.send(message);
+    });
+  });
+  await page.reload();
+  await page.waitForSelector("#provider-openai");
+  await page.click("#provider-openai button:text-is('Edit')");
+  await page.click("#provider-auth-chatgpt");
+  await page.waitForSelector("#provider-account");
+  assert.ok(await page.isDisabled("#provider-connect-chatgpt"), "sign-in allowed with a locked keychain");
+  assert.ok(await page.isDisabled("#provider-save"));
+  await page.fill("#keychain-pass", "fake-ui-passphrase");
+  await page.click("button:text-is('Unlock')");
+  await page.waitForSelector("#provider-account option[value='fake-plan-two']", { state: "attached" });
+  assert.ok(await page.isDisabled("#provider-url"));
+  assert.ok(await page.isDisabled("#provider-dialect"));
+  assert.strictEqual(await page.locator("#provider-key").count(), 0, "plan setup asks for an API key");
+  assert.ok(await page.isDisabled("#provider-save"), "plan provider saves before an account is selected");
+  await page.click("#provider-connect-chatgpt");
+  await page.waitForSelector("#provider-form .error");
+  assert.ok((await page.innerText("#provider-form .error")).includes("Fake OpenAI consent refused"));
+  assert.deepStrictEqual(planCalls[0].params, { provider: "openai", class: "chatgpt" });
+  await page.click("#provider-connect-chatgpt");
+  await page.waitForFunction(() => document.querySelector("#provider-account")?.value === "fake-plan-one");
+  assert.ok(await page.isEnabled("#provider-save"));
+  await page.locator("#provider-form").screenshot({ path: `${out}/models-chatgpt-connected.png` });
+  await page.selectOption("#provider-account", "fake-plan-two");
+  await page.click("#provider-save");
+  await page.waitForSelector("#provider-form", { state: "hidden" });
+  assert.deepStrictEqual(planCalls.filter((f) => f.method === "settings.provider.write").at(-1).params, { provider: "openai", url: "https://api.openai.com/v1", name: "openai", dialect: "responses", credential: "fake-plan-two" });
+  await shows("#provider-openai", "ChatGPT plan");
+  await page.click("#provider-openai button:text-is('Edit')");
+  await page.waitForFunction(() => document.querySelector("#provider-account")?.value === "fake-plan-two");
+  await page.click("#provider-reauthorize");
+  await page.waitForFunction(() => !document.querySelector("#provider-connect-chatgpt")?.disabled);
+  assert.strictEqual(await page.inputValue("#provider-account"), "fake-plan-two");
+  assert.deepStrictEqual(planCalls.filter((f) => f.method === "credentials.authorize").at(-1).params, { id: "fake-plan-two" });
+  await page.click("#provider-auth-api_key");
+  await page.waitForSelector("#provider-key");
+  assert.ok(await page.isDisabled("#provider-save"), "switching to API billing silently retained the plan");
+  await page.fill("#provider-key", "fake-switch-api-key");
+  await page.click("#provider-save");
+  await page.waitForSelector("#provider-form", { state: "hidden" });
+  const switched = planCalls.filter((f) => f.method === "settings.provider.write").at(-1).params;
+  assert.strictEqual(switched.api_key, "fake-switch-api-key");
+  assert.ok(!("credential" in switched));
+  assert.ok(!(await page.innerText("#provider-openai")).includes("ChatGPT plan"));
+  step("ChatGPT provider UI handles refused consent, sign-in completion, account selection, reauthorization, save and switching to API key billing with fake RPC replies");
+
   // ---------- the phone: nothing sideways ----------
   await page.setViewportSize({ width: 390, height: 844 });
   for (const hash of ["#/", "#/settings", `#/task/${fastId}`]) {

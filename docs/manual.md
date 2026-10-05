@@ -886,6 +886,91 @@ credentials: a static key is registered in a session, with
 `credential-register`, or added in the console. The daemon sees these
 changes without a restart.
 
+### OpenAI models with ChatGPT plan quota
+
+Use the OpenAI OAuth2 profile to authorize eligible model requests against
+an account's ChatGPT plan quota, without an API key:
+
+```bash
+nodwyn credential add --oauth2 openai
+```
+
+For console setup, go to **Settings › Models › Add a provider**, choose
+**OpenAI**, then **ChatGPT plan**. Unlock the keychain, select **Continue
+with ChatGPT**, and finish consent in the browser. The form selects the
+connected account; you can instead choose an existing account, or **Sign in
+again** when it needs reauthorization. **Save the provider** writes its
+credential class to config.toml and allows GET and POST bearer model requests
+to api.openai.com. The address and Responses dialect are fixed for this mode.
+Then add a model from the provider's list, Test it, and choose it as the default
+for new tasks. No file editing is needed. Switching back to **API key** requires
+a new key and keeps the connected account in the keychain.
+
+You can also use **Connections › Credentials › Connect an account**, choose
+**openai**, leave Client id empty, and select **Continue with ChatGPT**.
+OpenAI registers nodwyn during consent; no client secret or pre-registered
+client is required. The keychain saves a stable host identifier before
+sign-in, then verifies the returned ID token's signature, issuer, issued
+client id, expiry and nonce, and requires the granted plan-use scopes.
+Tokens stay in the encrypted keychain. OpenAI controls eligibility, the
+models available to the account, quota and any workspace restrictions; a
+successful sign-in does not guarantee every model is available. See
+[OpenAI's sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+and [models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference).
+
+For terminal setup, the command prints a binding row and a provider block. Add the row to
+`bindings.toml` (or allow the credential for `api.openai.com` in Connections),
+and configure the provider and a model available to this account:
+
+```toml
+# config.toml
+[servers.chatgpt]
+provider = "openai"
+url = "https://api.openai.com/v1"
+dialect = "responses"
+credential = "openai"
+
+[control]
+server = "chatgpt"
+model = "MODEL_ID"
+```
+
+```toml
+# bindings.toml
+[[bind]]
+class = "openai"
+dest = "api.openai.com"
+positions = ["header:Authorization:Bearer"]
+methods = ["GET", "POST"]
+```
+
+`dialect = "responses"` is required: plan credentials are sent only as
+bearer headers to the public `GET /v1/models` and `POST /v1/responses`
+endpoints, even if their binding is broader. Each Responses request asks
+for `store = false` and `stream = true`; nodwyn buffers the reply until its
+terminal event before showing it, so redaction covers credentials split
+across deltas. The model list uses the account's visible model slugs.
+Restart the daemon after editing its model configuration, then choose the
+model or use **Try** in Models to check access. There is no automatic
+fallback to API-key billing when sign-in or quota is refused.
+
+`nodwyn credential login openai` reuses the saved client and host, and
+checks that the verified account identity matches before replacing its
+tokens. Returning sign-in shows OpenAI's account selector; nodwyn sends no
+ID-token hint in the authorization URL. A refresh is serialized and rotates
+access and refresh tokens together. A permanent refusal requires another
+login. Use `--class chatgpt-work` when adding another account and select
+that class in its provider block; give each account a different class.
+`nodwyn credential revoke openai` revokes the renewable session at the
+endpoint OpenAI publishes in its discovery document before deleting it
+here; `--local` only deletes it here. Manage app access and usage in
+ChatGPT Settings.
+
+Keychains that have started OpenAI sign-in use format version 3, including
+a cancelled first attempt, so older nodwyn binaries refuse them rather
+than silently discarding the stable host identity. Back up the keychain
+before trying an older binary.
+
 ### Documents out
 
 nodwyn writes documents three ways: Word, OpenDocument and HTML through
@@ -1284,7 +1369,8 @@ this computer only:
   since that is what to fix; **Check again** asks every server now. **Add a
   provider** takes a kind (Ollama, OpenAI-compatible, or Anthropic), an
   address, for an OpenAI-compatible one a dialect, and an API key for either
-  of those, and has presets (OpenAI, Anthropic, Baseten, OpenRouter, Cerebras,
+  of those (an OpenAI-compatible one can use a ChatGPT plan credential instead),
+  and has presets (OpenAI, Anthropic, Baseten, OpenRouter, Cerebras,
   Ollama, and Other) that only fill the form in. The key goes to the
   keychain with two binding rows for the address's host, `POST` for the model
   and `GET` for its model list, as a bearer header (Anthropic's: the `x-api-key`

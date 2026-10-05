@@ -431,12 +431,22 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `keychain.passphrase` | `{"current"?, "passphrase"?, "no_passphrase"?}` | Keychain status after setting, changing or (`no_passphrase`) removing the open keychain's passphrase; `current` is required when it has one, and a wrong one waits a second as `keychain.unlock` does |
 | `settings.read` | `{}` | `{config_file, control, models, servers, choices, keychain, docs, values, judge}` |
 | `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}`, or `{"provider","url","model","api_key"?,"effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on), and saving the server it names; the model it replaces stays in the list |
-| `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?}` | Settings after adding a provider (`[servers.NAME]`, named after its host) or changing the one `name` names; `provider` is `ollama`, `openai` or `anthropic` (a dialect is for `openai` alone); the key goes to the keychain, bound for `POST` and `GET` at the host where the provider reads it (a bearer header; Anthropic's `x-api-key`) |
+| `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?,"credential"?}` | Settings after adding a provider (`[servers.NAME]`, named after its host) or changing the one `name` names; `provider` is `ollama`, `openai` or `anthropic` (a dialect is for `openai` alone); `credential` is a ChatGPT plan credential in place of a key (below); the key goes to the keychain, bound for `POST` and `GET` at the host where the provider reads it (a bearer header; Anthropic's `x-api-key`) |
 | `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model is on |
 | `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?,"settings"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts, starting effort and settings |
 | `settings.model.remove` | `{"name"}` | Settings after removing a model from the list; the default model is not removed |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
 | `settings.write` | `{"set": {"budget.tokens_hard": 20000000, "budget.cost_hard": null, …}}` | Settings after changing those settings in `config.toml` together |
+
+`settings.provider.write.credential` is a stored OpenAI OAuth2 credential id,
+mutually exclusive with `api_key`. It selects the credential's unshadowed
+class and binds it for GET and POST bearer headers at api.openai.com. It
+requires an unlocked keychain, a renewable credential that needs no
+reauthorization, `provider = "openai"`, `url = "https://api.openai.com/v1"`
+and `dialect = "responses"`. An API key replacing OAuth gets its own class;
+the OAuth account remains stored. `settings.read.servers[].authentication`
+is `"chatgpt"` for OpenAI OAuth credentials when the keychain is unlocked;
+omitted otherwise. No token is returned.
 
 `session.list` entries also carry `title` (the name a person gave the
 session, else the first sentence of the first message, shortened),
@@ -813,3 +823,17 @@ records `unattended`, `auto_approve`, `judge` and a run's own `cost`.
 budget checkpoint on spend has dimension `cost`, its amounts in millionths
 of a dollar; a reply's absolute soft limit is in dollars (`2.50`). See [runs](runs.md) for limits,
 completion-marker semantics and recovery constraints.
+
+### OpenAI plan OAuth2 profile
+
+`credentials.list` includes `openai` in its provider profiles. A local
+`credentials.authorize` request with `provider: "openai"` may omit
+`client_id`: the browser consent registers nodwyn dynamically. It takes no
+client secret. The returned authorization URL contains state, nonce, PKCE,
+a stable host identifier and the requested ChatGPT plan-use scopes.
+`id` reauthorizes a saved registration without changing its client or account
+identity; failed validation preserves the stored credential. No token or
+verified subject is included in RPC results. The existing binding and model
+configuration flows select its class; use the public OpenAI URL and the
+`responses` dialect. Model probes refresh OAuth2 credentials after checking
+their binding and granted scopes, just as task requests do.

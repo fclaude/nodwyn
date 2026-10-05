@@ -18,7 +18,7 @@ import { ModelPicker, choicesOf, effortLabel, statusOf, defaultSelection } from 
 // says, and nothing is inferred from an address later (ADR 8, ADR 41).
 const kinds = {
   ollama: { label: "Ollama", needs: "Ollama on this computer or your network. It needs an address, and no key." },
-  openai: { label: "OpenAI-compatible", needs: "Any server that speaks OpenAI's API, chat completions or Responses. It needs an address and, for a hosted one, an API key, which is kept in the keychain." },
+  openai: { label: "OpenAI-compatible", needs: "Any server that speaks OpenAI's API, chat completions or Responses. It needs an address and, for a hosted one, an API key or an eligible ChatGPT account, kept in the keychain." },
   anthropic: { label: "Anthropic", needs: "Claude on Anthropic's own API, the Messages API. It needs its address and an API key, which is kept in the keychain and sent in the x-api-key header." },
 };
 // hasKey says whether a kind of server takes a key.
@@ -166,7 +166,7 @@ function providerRows(ctx, redraw) {
           "div",
           { class: "main" },
           h("strong", {}, p.inline ? p.host : p.name),
-          h("span", {}, `${kinds[p.provider]?.label || p.provider}${p.dialect ? ` (${p.dialect})` : ""} · ${p.host}${p.credential ? (p.key === "ready" ? " · key stored" : "") : hasKey(p.provider) ? " · no key" : ""}`),
+          h("span", {}, `${kinds[p.provider]?.label || p.provider}${p.dialect ? ` (${p.dialect})` : ""} · ${p.host}${p.credential ? (p.authentication === "chatgpt" ? " · ChatGPT plan" : p.key === "ready" ? " · key stored" : "") : hasKey(p.provider) ? " · no key" : ""}`),
           detail ? h("span", { class: status.state && status.state !== "ready" ? "warn-text" : "" }, detail) : null,
         ),
         h("div", { class: "end" }, status.state ? h("span", { class: "state-word" }, state.words[status.state] || status.state) : null),
@@ -175,7 +175,7 @@ function providerRows(ctx, redraw) {
         "div",
         { class: "row-actions provider-actions" },
         h("button", { type: "button", class: "btn small", disabled: !first || !conn.has("models.test") || result?.pending, title: first ? "Sends one short request to a model on this provider, as a task would" : "Add a model on this provider to test it", onclick: () => test(ctx, key, first ? { name: first } : null, redraw) }, "Test"),
-        editable && !p.inline ? h("button", { type: "button", class: "btn small", onclick: () => openProvider(p, redraw) }, "Edit") : null,
+        editable && !p.inline ? h("button", { type: "button", class: "btn small", onclick: () => openProvider(ctx, p, redraw) }, "Edit") : null,
         editable && !p.inline ? (confirming ? [h("span", { class: "muted" }, "Remove it? Its key stays in the keychain."), h("button", { type: "button", class: "btn small danger", onclick: () => removeProvider(ctx, p.name, redraw) }, "Remove"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((ui.removing = ""), redraw()) }, "Cancel")] : h("button", { type: "button", class: "btn small danger", disabled: (p.uses || []).length > 0, title: (p.uses || []).length ? `Still used by ${p.uses.join(", ")}` : "", onclick: () => ((ui.removing = key), redraw()) }, "Remove")) : null,
       ),
       p.inline ? h("p", { class: "hint" }, "Given by a model's own table in config.toml. Choosing a default model on a provider below moves it to one.") : null,
@@ -190,7 +190,7 @@ function providerRows(ctx, redraw) {
     h(
       "div",
       { class: "row-actions" },
-      editable && !ui.provider ? h("button", { type: "button", class: "btn", id: "add-provider", onclick: () => openProvider(null, redraw) }, icon("plus", 14), "Add a provider") : null,
+      editable && !ui.provider ? h("button", { type: "button", class: "btn", id: "add-provider", onclick: () => openProvider(ctx, null, redraw) }, icon("plus", 14), "Add a provider") : null,
       h("button", { type: "button", class: "btn", id: "check-again", title: "Asks each provider for its models again, without a key", onclick: () => desk.refreshModels(true) }, "Check again"),
     ),
     !editable ? h("p", { class: "hint" }, "Only the computer nodwyn runs on can change providers.") : null,
@@ -198,27 +198,99 @@ function providerRows(ctx, redraw) {
   );
 }
 
-function openProvider(p, redraw) {
+function openProvider(ctx, p, redraw) {
   const preset = p ? "" : "openai";
   const dflt = presets.find((x) => x.id === preset);
   ui.provider = p
     ? { mode: "edit", name: p.name, preset: "", kind: p.provider, url: p.url, dialect: p.dialect || "", key: "", hasKey: !!p.credential, host: p.host, error: "" }
     : { mode: "add", name: "", preset, kind: dflt.kind, url: dflt.url, dialect: dflt.dialect, key: "", hasKey: false, host: "", error: "" };
+  Object.assign(ui.provider, { authentication: p?.authentication || "api_key", credential: "", credentialClass: p?.authentication === "chatgpt" ? p.credential : "", accounts: null, authorization: null, connecting: false });
+  if (ui.provider.authentication === "chatgpt") loadAccounts(ctx, ui.provider, redraw);
   redraw();
+}
+
+async function loadAccounts(ctx, f, redraw) {
+  f.accountsLoading = true;
+  f.accountsUnlocked = !!ctx.desk.keychain?.unlocked;
+  try {
+    const list = await ctx.conn.call("credentials.list", {});
+    if (ui.provider !== f) return;
+    f.accountsLoading = false;
+    f.accountsUnlocked = !!list.keychain?.unlocked;
+    f.accounts = list.credentials;
+    ctx.desk.keychain = list.keychain;
+    if (!f.credential && f.credentialClass) f.credential = f.accounts.find((c) => c.class === f.credentialClass && !c.shadowed)?.id || "";
+    if (f.authorization) {
+      const a = list.authorizations.find((a) => a.id === f.authorization.id);
+      if (a?.state === "done") {
+        f.credential = a.credential;
+        f.authorization = null;
+        f.connecting = false;
+      } else if (a?.state === "failed") {
+        f.error = a.error;
+        f.authorization = null;
+        f.connecting = false;
+      }
+    }
+    redraw();
+    if (f.authorization) setTimeout(() => {
+      if (ui.provider === f && document.getElementById("provider-form")) loadAccounts(ctx, f, redraw);
+    }, 1000);
+  } catch (error) {
+    if (ui.provider !== f) return;
+    f.error = error.message;
+    f.accountsLoading = false;
+    f.connecting = false;
+    f.authorization = null;
+    redraw();
+  }
+}
+
+async function connectChatGPT(ctx, f, redraw, id = "") {
+  f.connecting = true;
+  f.error = "";
+  redraw();
+  try {
+    let params = { id };
+    if (!id) {
+      const classes = new Set((f.accounts || []).map((c) => c.class));
+      let name = "chatgpt";
+      for (let n = 2; classes.has(name); n++) name = `chatgpt-${n}`;
+      params = { provider: "openai", class: name };
+    }
+    const started = await ctx.conn.call("credentials.authorize", params);
+    if (ui.provider !== f) return;
+    f.authorization = started;
+    if (typeof window.nodwynOpenExternal === "function") window.nodwynOpenExternal(started.url).catch(() => {});
+    else window.open(started.url, "_blank", "noopener");
+    await loadAccounts(ctx, f, redraw);
+  } catch (error) {
+    if (ui.provider !== f) return;
+    f.error = error.message;
+    f.connecting = false;
+    redraw();
+  }
 }
 
 function providerForm(ctx, redraw) {
   const { conn, desk } = ctx;
   const f = ui.provider;
   const adding = f.mode === "add";
+  const plan = f.kind === "openai" && f.authentication === "chatgpt";
+  const account = (f.accounts || []).find((c) => c.id === f.credential);
   const field = (id, label, control, hint) => h("div", { class: "field" }, h("label", { for: id }, label), control, hint ? h("p", { class: "hint" }, hint) : null);
-  const url = h("input", { class: "input", id: "provider-url", spellcheck: false, autocomplete: "off", required: true, value: f.url, placeholder: "https://…", oninput: () => (f.url = url.value) });
+  const url = h("input", { class: "input", id: "provider-url", spellcheck: false, autocomplete: "off", required: true, disabled: plan, value: f.url, placeholder: "https://…", oninput: () => (f.url = url.value) });
   url.value = f.url;
-  const key = h("input", { class: "input", id: "provider-key", type: "password", autocomplete: "off", spellcheck: false, placeholder: f.hasKey ? "leave empty to keep the saved key" : "", oninput: () => (f.key = key.value) });
+  const key = h("input", { class: "input", id: "provider-key", type: "password", autocomplete: "off", spellcheck: false, placeholder: f.hasKey ? "leave empty to keep the saved key" : "", oninput: () => {
+    f.key = key.value;
+    const save = document.getElementById("provider-save");
+    if (save) save.disabled = f.saving || f.connecting || (!!f.credentialClass && !f.key) || ((!!f.key || !!f.credentialClass) && !desk.keychain?.unlocked);
+  } });
   key.value = f.key;
-  const dialect = h("select", { class: "input", id: "provider-dialect", onchange: () => (f.dialect = dialect.value) }, dialects.map(([v, label]) => h("option", { value: v }, label)));
+  const dialect = h("select", { class: "input", id: "provider-dialect", disabled: plan, onchange: () => (f.dialect = dialect.value) }, dialects.map(([v, label]) => h("option", { value: v }, label)));
   dialect.value = f.dialect;
   const keychainReady = !!desk.keychain?.unlocked;
+  if (plan && keychainReady && f.accounts !== null && !f.accountsUnlocked && !f.accountsLoading) loadAccounts(ctx, f, redraw);
   const sameHostNow = (() => {
     try {
       return f.mode === "add" || new URL(f.url).host === f.host;
@@ -226,7 +298,7 @@ function providerForm(ctx, redraw) {
       return true;
     }
   })();
-  const kind = (id) => h("button", { type: "button", class: "chip", "aria-pressed": String(f.kind === id), disabled: !adding, onclick: () => ((f.kind = id), (f.preset = ""), redraw()) }, kinds[id].label);
+  const kind = (id) => h("button", { type: "button", class: "chip", "aria-pressed": String(f.kind === id), disabled: !adding, onclick: () => ((f.kind = id), (f.preset = ""), (f.authentication = "api_key"), redraw()) }, kinds[id].label);
   const form = h(
     "form",
     {
@@ -244,6 +316,7 @@ function providerForm(ctx, redraw) {
           if (!adding) params.name = f.name;
           if (f.kind === "openai" && f.dialect) params.dialect = f.dialect;
           if (hasKey(f.kind) && apiKey) params.api_key = apiKey;
+          if (plan) params.credential = f.credential;
           desk.settings = await conn.call("settings.provider.write", params);
           const saved = (desk.settings.servers || []).find((s) => (adding ? s.url.replace(/\/+$/, "") === params.url.replace(/\/+$/, "") : s.name === f.name));
           // Its list is asked with its key, so a new key or address asks again.
@@ -260,12 +333,24 @@ function providerForm(ctx, redraw) {
       },
     },
     h("h3", { class: "form-title" }, adding ? "Add a provider" : `Change ${f.name}`),
-    adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), redraw()) }, p.label))) : null,
+    adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), (f.authentication = "api_key"), redraw()) }, p.label))) : null,
     h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai"), kind("anthropic")),
     h("p", { class: "hint" }, kinds[f.kind].needs),
+    f.kind === "openai" ? h("div", { class: "row-actions", role: "group", "aria-label": "Authentication" },
+      ["api_key", "chatgpt"].map((auth) => h("button", { type: "button", class: "chip", id: `provider-auth-${auth}`, disabled: f.saving || f.connecting, "aria-pressed": String(f.authentication === auth), onclick: () => {
+        f.authentication = auth;
+        f.error = "";
+        f.key = "";
+        if (auth === "chatgpt") {
+          f.url = "https://api.openai.com/v1";
+          f.dialect = "responses";
+          loadAccounts(ctx, f, redraw);
+        }
+        redraw();
+      } }, auth === "chatgpt" ? "ChatGPT plan" : "API key"))) : null,
     field("provider-url", "Address", url, f.kind === "ollama" ? "Such as http://localhost:11434, or http://workshop:11434 on your network." : `Including the version, such as ${f.kind === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"}.`),
     f.kind === "openai" ? field("provider-dialect", "How it reads the protocol", dialect, "Chosen by you, never guessed from the address. Cerebras needs its own for reasoning to survive tool calls; OpenAI needs Responses for a reasoning model to take an effort and tools together.") : null,
-    hasKey(f.kind)
+    hasKey(f.kind) && !plan
       ? field(
           "provider-key",
           "API key",
@@ -277,10 +362,25 @@ function providerForm(ctx, redraw) {
               : "Stored encrypted and sent only to this address. Every model on this provider uses it.",
         )
       : null,
+    plan ? h("div", { class: "chatgpt-setup" },
+      h("p", { class: "hint" }, "Use your eligible ChatGPT plan quota. Sign in with OpenAI in your browser; no API key or client id is needed. Save the provider to allow model requests and model discovery. OpenAI decides model access and remaining quota."),
+      f.accounts === null ? h("p", { class: "hint" }, "Loading accounts…") : field("provider-account", "Connected account", (() => {
+        const select = h("select", { class: "input", id: "provider-account", disabled: f.connecting || !keychainReady, onchange: () => { f.credential = select.value; redraw(); } },
+          h("option", { value: "" }, "Choose an account or connect below"),
+          f.accounts.filter((c) => c.kind === "oauth2" && c.provider === "openai" && !c.shadowed).map((c) => h("option", { value: c.id }, `${c.class}${c.needs_reauth ? " · sign in again" : ""}`)));
+        select.value = f.credential;
+        return select;
+      })()),
+      h("div", { class: "row-actions" },
+        h("button", { type: "button", class: "btn", id: "provider-connect-chatgpt", disabled: !keychainReady || !conn.has("credentials.authorize") || f.accounts === null || f.connecting || f.saving, onclick: () => connectChatGPT(ctx, f, redraw) }, f.connecting ? "Waiting for sign-in…" : "Continue with ChatGPT"),
+        account ? h("button", { type: "button", class: "btn small", id: "provider-reauthorize", disabled: !keychainReady || f.connecting || f.saving, onclick: () => connectChatGPT(ctx, f, redraw, account.id) }, "Sign in again") : null),
+      f.authorization ? h("p", { class: "hint" }, "Finish sign-in in your browser. ", h("a", { href: f.authorization.url, target: "_blank", rel: "noopener" }, "Open the sign-in page")) : null,
+      account?.needs_reauth ? h("p", { class: "warn-text" }, "This account needs you to sign in again before saving.") : null) : null,
     hasKey(f.kind) && !keychainReady ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings", onclick: () => setTimeout(() => document.getElementById("section-keys")?.scrollIntoView({ block: "start" }), 0) }, "Open the keychain settings")) : null,
-    !sameHostNow && f.hasKey ? h("p", { class: "warn-text" }, "This is another host. The saved key is not sent there: type its key, or the provider is left without one.") : null,
+    !plan && !sameHostNow && f.hasKey ? h("p", { class: "warn-text" }, "This is another host. The saved key is not sent there: type its key, or the provider is left without one.") : null,
+    !plan && f.credentialClass && !f.key ? h("p", { class: "hint" }, "Type an API key to switch this provider from its ChatGPT plan. The connected account stays in the keychain.") : null,
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
-    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn accent", id: "provider-save", disabled: f.saving || (hasKey(f.kind) && !!f.key && !keychainReady) }, f.saving ? "Saving…" : "Save the provider"), h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.provider = null), redraw()) }, "Cancel")),
+    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn accent", id: "provider-save", disabled: f.saving || f.connecting || (plan && (!keychainReady || !account || account.needs_reauth)) || (!plan && !!f.credentialClass && !f.key) || (hasKey(f.kind) && !!f.key && !keychainReady) }, f.saving ? "Saving…" : "Save the provider"), h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.provider = null), redraw()) }, "Cancel")),
   );
   return form;
 }

@@ -178,3 +178,13 @@ no cache control.
   `/v1/messages`) that refuses a bearer key, a missing version or `max_tokens`,
   an unknown field and an effort without adaptive thinking. One request against
   the real API, with Settings › Models › Test, is the check that remains.
+
+## Amendment 2026-10-05: Responses streams for plan-authenticated inference
+
+ADR 24's OpenAI plan credential uses the public Responses API with
+`stream = true` and `store = false`. The Responses dialect now requests a
+stream for all credentials. It buffers through `response.completed`,
+`response.incomplete` or `response.failed`, emitting whole output only after
+success, so ADR 25's redaction boundary is unchanged. A stream that ends
+without a terminal response is an error. Compatible servers answering JSON
+remain supported. Chat completions still request non-streamed replies.

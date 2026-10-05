@@ -13,9 +13,9 @@ import (
 )
 
 // OpenAI speaks the chat-completions protocol that OpenAI defined and many
-// servers copy (OpenRouter, vLLM, LM Studio, llama.cpp). Requests are not
-// streamed: output is only shown once whole anyway, because a credential
-// can be split across tokens (ADR 25).
+// servers copy (OpenRouter, vLLM, LM Studio, llama.cpp). Responses requests
+// are streamed on the wire, but output is only shown once whole, because a
+// credential can be split across tokens (ADR 25).
 type OpenAI struct {
 	Dialect ChatDialect
 	URL     string // base including the version, e.g. https://api.openai.com/v1
@@ -109,6 +109,10 @@ func (o *OpenAI) Models(ctx context.Context) ([]ListedModel, error) {
 				ContextLength int `json:"context_length"`
 			} `json:"top_provider"`
 		} `json:"data"`
+		Models []struct {
+			Slug       string `json:"slug"`
+			Visibility string `json:"visibility"`
+		} `json:"models"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&list); err != nil {
 		return nil, fmt.Errorf("openai: model list: %w", err)
@@ -123,6 +127,11 @@ func (o *OpenAI) Models(ctx context.Context) ([]ListedModel, error) {
 			}
 		}
 		models = append(models, listed)
+	}
+	for _, m := range list.Models {
+		if m.Visibility == "list" && m.Slug != "" {
+			models = append(models, ListedModel{ID: m.Slug})
+		}
 	}
 	return models, nil
 }

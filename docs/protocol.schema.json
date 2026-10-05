@@ -6340,6 +6340,9 @@
     },
     "rpc.modelServer": {
       "properties": {
+        "authentication": {
+          "type": "string"
+        },
         "credential": {
           "type": "string"
         },
@@ -6732,6 +6735,9 @@
         "api_key": {
           "type": "string",
           "writeOnly": true
+        },
+        "credential": {
+          "type": "string"
         },
         "dialect": {
           "type": "string"

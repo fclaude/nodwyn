@@ -88,7 +88,7 @@ nodwyn credential add --oauth2 custom --client-id ID \
 nodwyn credential list        # every credential, never a secret
 \end{sh}
 
-\code{google}, \code{microsoft}, \code{github} and \code{notion} have
+\code{google}, \code{microsoft}, \code{github}, \code{notion} and \code{openai} have
 profiles; any other provider is \code{custom}. \code{-{}-client-secret}
 asks for the client's secret when the provider needs one, and
 \code{-{}-class} names the class (by default, the provider's name).
@@ -538,3 +538,59 @@ capability, a read-only root, none of your environment, and the container
 is removed when the task ends. A confirm names ``the contained server NAME
 (network: \ldots)''. An HTTP client in the server that ignores
 \code{HTTPS\_PROXY} reaches nothing.
+
+
+\section{ChatGPT plan credentials for OpenAI models}
+
+In Settings, Models, add an OpenAI provider and choose ChatGPT plan.
+Unlock the keychain and Continue with ChatGPT; finish consent in the browser.
+Choose the connected account and Save the provider: its credential class,
+fixed public API address, Responses dialect and model bindings are saved
+without editing files. Add a model from its list, Test it, and choose it as
+the default. Existing accounts can be selected, and Sign in again renews
+consent. Switching to API key requires a new key and preserves the account.
+The terminal route below prints the configuration to install by hand.
+
+
+\begin{sh}
+nodwyn credential add --oauth2 openai
+nodwyn credential login openai
+nodwyn credential revoke openai
+\end{sh}
+
+OpenAI dynamically registers a public client during the first consent;
+no client id or secret is needed. Connections offers the same profile and
+Continue with ChatGPT action. Give each account a distinct \code{-{}-class}
+when adding it. Add the printed bearer binding for \code{api.openai.com}
+and configure its model provider:
+
+\begin{toml}
+[servers.chatgpt]
+provider = "openai"
+url = "https://api.openai.com/v1"
+dialect = "responses"
+credential = "openai"
+\end{toml}
+
+Select an account-visible model on that server in \code{[control]} or
+\code{[models.NAME]}. Restart the daemon after editing its configuration.
+OpenAI controls model access, plan eligibility and quota; Try in Models
+checks the selected model. No refusal falls back to API-key billing.
+
+The flow pins the OpenAI issuer, validates an asymmetric JWKS signature,
+issued-client audience, expiry and fresh nonce, and requires plan-use
+scopes. Reauthorization reuses the saved client and stable host, validates
+the same account subject, and retains the old credential on failure. It
+omits optional ID-token hints from authorization URLs. Tokens stay in the
+keychain; a serialized refresh rotates both tokens together, and revocation
+uses the same issuer's discovery endpoint. The stable host is persisted
+before consent, even when cancelled, in keychain version~3, so older
+binaries refuse to rewrite it.
+
+A plan credential may be injected only as a bearer header into public
+\code{GET /v1/models} or \code{POST /v1/responses}, even with a broader
+binding. The account model list keeps visible slugs. Responses requests
+set \code{store = false} and \code{stream = true}; output is buffered through
+a terminal response before redaction, preserving ADR~25 for secrets split
+across deltas. A disconnected stream without a terminal event is an error.
+Manage app permissions and quota in ChatGPT Settings.

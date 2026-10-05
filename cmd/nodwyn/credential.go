@@ -170,6 +170,11 @@ func (c *cli) credentialAdd(ctx context.Context, args []string) error {
 		fmt.Printf("scopes = [%s]\n", quoted(info.Scopes))
 	}
 	fmt.Println()
+	if profile.Name == "openai" {
+		fmt.Println("Use this credential with the Responses API. In " + c.paths.ConfigFile + ":")
+		fmt.Printf("\n[servers.chatgpt]\nprovider = \"openai\"\nurl = \"https://api.openai.com/v1\"\ndialect = \"responses\"\ncredential = %q\n", info.Class)
+		fmt.Println("\nChoose a model available to this ChatGPT account; quota and plan eligibility are enforced by OpenAI.")
+	}
 	return nil
 }
 

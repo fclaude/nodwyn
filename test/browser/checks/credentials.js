@@ -35,6 +35,30 @@ check(async () => {
   const step = (m) => console.log("step:", m);
   const go = (hash) => page.evaluate((h) => (location.hash = h), hash);
 
+  // The OpenAI action is refused by a synthetic RPC reply, before it can
+  // contact OpenAI; the generic success flow below uses the local OAuth fake.
+  const planRequests = [];
+  let holdList = false;
+  await page.routeWebSocket("**/socket", (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      const frame = JSON.parse(message);
+      if (frame.method === "credentials.authorize" && frame.params.provider === "openai") {
+        planRequests.push(frame.params);
+        socket.send(JSON.stringify({ jsonrpc: "2.0", id: frame.id, error: { code: -32000, message: "Fake OpenAI consent unavailable" } }));
+      } else if (frame.method === "credentials.authorize" && frame.params.provider === "custom") {
+        holdList = true;
+        server.send(message);
+      } else if (frame.method === "credentials.list" && holdList) {
+        // The page's first look at the new authorization waits until consent
+        // was given, so it finds the authorization already done: the new
+        // credential must open all the same, not only when the page saw it wait.
+        holdList = false;
+        setTimeout(() => server.send(message), 2000);
+      } else server.send(message);
+    });
+    server.onMessage((message) => socket.send(message));
+  });
   let { app, url } = await startApp();
   await page.goto(url);
   await page.waitForSelector("#task", { timeout: 10000 });
@@ -115,7 +139,17 @@ check(async () => {
   // consent page, the provider sends the browser back to nodwyn, and the
   // page shows the new credential.
   await page.click("button:has-text('Connect an account')");
+  await page.click(".card button.chip:text-is('openai')");
+  assert.strictEqual(await page.getAttribute("#oauth-client", "required"), null);
+  assert.ok(await page.isDisabled("#oauth-secret"));
+  await page.click("button:text-is('Continue with ChatGPT')");
+  await page.waitForSelector(".setup-form .error:has-text('Fake OpenAI consent unavailable')");
+  assert.deepStrictEqual(planRequests, [{ provider: "openai", client_id: "" }]);
+  step("ChatGPT sign-in sends a request without a client id and shows a refusal");
+  await page.screenshot({ path: `${out}/credentials-chatgpt.png`, fullPage: true });
   await page.click(".card button.chip:has-text('custom')");
+  assert.strictEqual(await page.getAttribute("#oauth-client", "required"), "");
+  assert.ok(await page.isEnabled("#oauth-secret"));
   await page.fill("#oauth-auth", authURL);
   await page.fill("#oauth-token", tokenURL);
   await page.fill("#oauth-revoke", revokeURL);

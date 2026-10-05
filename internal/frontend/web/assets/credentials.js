@@ -12,6 +12,7 @@ let addingPanel = ""; // the subpanel whose add form is open: "" is the generic 
 let draft = {}; // what the add-a-key form was given before a redraw
 let poll = 0;
 const dismissed = new Set(); // failed authorizations the person has read
+const begun = new Set(); // authorizations this page started and has not yet said how they ended
 
 const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const positions = [
@@ -55,6 +56,15 @@ export async function renderCredentials(body, ctx, redraw) {
       ),
     );
     return;
+  }
+  // A provider may send the person back before this page first looks, so an
+  // authorization it began can already be over: say how it ended, as the poll
+  // below does for one it saw waiting.
+  for (const id of begun) {
+    const a = list.authorizations.find((b) => b.id === id);
+    if (a?.state === "waiting") continue;
+    begun.delete(id);
+    if (a) concluded(a, list);
   }
   const waiting = list.authorizations.filter((a) => a.state === "waiting");
   // The judge and the model keys have their own subpanels, so the generic
@@ -131,18 +141,26 @@ export async function renderCredentials(body, ctx, redraw) {
       }
       for (const a of waiting) {
         const now = next.authorizations.find((b) => b.id === a.id);
-        if (now?.state === "done") {
-          toast(`${now.class} is authorized.`);
-          selected = now.credential;
-          const done = next.credentials.find((c) => c.id === selected);
-          selectedPanel = done && done.class === next.jev?.class ? "judge" : done?.model ? "models" : "";
-          adding = "";
-          addingPanel = "";
-        } else if (now?.state === "failed") toast(`${now.class}: ${now.error}`);
+        if (!now || now.state === "waiting") continue;
+        begun.delete(a.id);
+        concluded(now, next);
       }
       if (body.isConnected) redraw();
     }, 1500);
   }
+}
+
+// concluded says how an authorization ended, in list: a new credential is
+// opened where it is shown, a refusal is told.
+function concluded(a, list) {
+  if (a.state === "done") {
+    toast(`${a.class} is authorized.`);
+    selected = a.credential;
+    const done = list.credentials.find((c) => c.id === selected);
+    selectedPanel = done && done.class === list.jev?.class ? "judge" : done?.model ? "models" : "";
+    adding = "";
+    addingPanel = "";
+  } else if (a.state === "failed") toast(`${a.class}: ${a.error}`);
 }
 
 // sentence joins names as a person would: "a, b and c".
@@ -566,12 +584,24 @@ function addAccount(ctx, list, redraw) {
     h("div", { class: "field" }, h("label", { for: "oauth-revoke" }, "Revocation endpoint"), revokeURL),
   );
   const error = h("p", { class: "error", role: "alert" });
+  const accountHint = h("p", { class: "hint" });
+  const continueButton = h("button", { type: "submit", class: "btn dark" }, "Continue to the provider");
   const describe = () => {
     const p = list.providers.find((x) => x.name === provider);
     cls.placeholder = provider;
     scopes.placeholder = p?.scopes?.length ? `${p.scopes.join(", ")} (the narrowest useful set)` : "as the provider names them, comma-separated";
     secretHint.textContent = p?.needs_secret ? `${provider} issues no token without the client's secret.` : "Only if the provider insists on one: PKCE protects the exchange without it.";
     secret.required = !!p?.needs_secret;
+    const plan = provider === "openai";
+    client.required = !plan;
+    client.placeholder = plan ? "Leave empty to register nodwyn during sign-in" : "";
+    secret.disabled = plan;
+    if (plan) secret.value = "";
+    accountHint.textContent = plan
+      ? 'Continue with ChatGPT to authorize eligible model requests against your ChatGPT plan quota. No client id or secret is needed. After connecting, choose this account under Settings › Models › ChatGPT plan and save the provider to configure its address and model bindings.'
+      : "nodwyn opens the provider's consent page in your browser; when you agree, the provider sends you back to nodwyn on this computer, and the tokens go into the keychain. Register nodwyn as an OAuth client with the provider first, with a loopback redirect (http://127.0.0.1).";
+    continueButton.textContent = plan ? "Continue with ChatGPT" : "Continue to the provider";
+    secretHint.textContent = plan ? "ChatGPT plan sign-in takes no client secret." : secretHint.textContent;
     custom.hidden = provider !== "custom";
     authURL.required = tokenURL.required = provider === "custom";
   };
@@ -593,7 +623,7 @@ function addAccount(ctx, list, redraw) {
         if (failed) error.textContent = failed;
       },
     },
-    h("p", { class: "hint" }, "nodwyn opens the provider's consent page in your browser; when you agree, the provider sends you back to nodwyn on this computer, and the tokens go into the keychain. Register nodwyn as an OAuth client with the provider first, with a loopback redirect (http://127.0.0.1)."),
+    accountHint,
     h(
       "div",
       { class: "row-actions", role: "group", "aria-label": "Provider" },
@@ -605,7 +635,7 @@ function addAccount(ctx, list, redraw) {
     h("div", { class: "field" }, h("label", { for: "oauth-scopes" }, "Scopes"), scopes),
     h("div", { class: "field" }, h("label", { for: "oauth-class" }, "Class"), cls, h("p", { class: "hint" }, "Default: the provider's name. Google Docs uploads look for google.")),
     error,
-    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, "Continue to the provider"), h("button", { type: "button", class: "btn ghost", onclick: () => { adding = ""; addingPanel = ""; redraw(); } }, "Cancel")),
+    h("div", { class: "row-actions" }, continueButton, h("button", { type: "button", class: "btn ghost", onclick: () => { adding = ""; addingPanel = ""; redraw(); } }, "Cancel")),
   );
 }
 
@@ -614,6 +644,7 @@ function addAccount(ctx, list, redraw) {
 async function authorize(ctx, params, redraw) {
   try {
     const started = await ctx.conn.call("credentials.authorize", params);
+    begun.add(started.id);
     // A page opened from a click handler is not a pop-up; one opened after
     // the round trip may be blocked, so the card keeps the link too.
     if (typeof window.nodwynOpenExternal === "function") window.nodwynOpenExternal(started.url).catch(() => {});

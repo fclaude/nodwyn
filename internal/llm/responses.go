@@ -1,9 +1,11 @@
 package llm
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -166,6 +168,7 @@ func responsesContent(m Message) any {
 // calls tools, else "stop".
 func (o *OpenAI) respond(ctx context.Context, req Request, onDelta func(Delta)) (*Response, error) {
 	wire := toResponses(req)
+	wire.Stream = true
 	wire.CacheControl = o.cacheControl()
 	if !o.CacheKeyHeaderOnly {
 		wire.PromptCacheKey = o.CacheKey
@@ -179,9 +182,9 @@ func (o *OpenAI) respond(ctx context.Context, req Request, onDelta func(Delta)) 
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var wr respResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&wr); err != nil {
-		return nil, fmt.Errorf("openai: bad response: %w", err)
+	wr, err := readResponses(resp)
+	if err != nil {
+		return nil, err
 	}
 	if wr.Status == "failed" {
 		reason := "no reason given"
@@ -231,4 +234,66 @@ func (o *OpenAI) respond(ctx context.Context, req Request, onDelta func(Delta)) 
 		onDelta(Delta{Text: out.Message.Content, Thinking: out.Message.Thinking})
 	}
 	return out, nil
+}
+
+// readResponses buffers a Responses event stream through its terminal event,
+// so a credential split across deltas cannot escape redaction (ADR 25).
+// Compatible servers that answer JSON are still accepted.
+func readResponses(resp *http.Response) (respResponse, error) {
+	var out respResponse
+	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&out); err != nil {
+			return out, fmt.Errorf("openai: bad response: %w", err)
+		}
+		return out, nil
+	}
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 32<<20))
+	scanner.Buffer(make([]byte, 4096), 32<<20)
+	var data []string
+	consume := func() (bool, error) {
+		if len(data) == 0 {
+			return false, nil
+		}
+		raw := strings.Join(data, "\n")
+		data = nil
+		if raw == "[DONE]" {
+			return false, nil
+		}
+		var event struct {
+			Type     string       `json:"type"`
+			Response respResponse `json:"response"`
+		}
+		if err := json.Unmarshal([]byte(raw), &event); err != nil {
+			return false, errors.New("openai: malformed Responses stream event")
+		}
+		switch event.Type {
+		case "response.completed", "response.incomplete", "response.failed":
+			out = event.Response
+			if out.Status != strings.TrimPrefix(event.Type, "response.") {
+				return false, errors.New("openai: Responses terminal event has the wrong status")
+			}
+			return true, nil
+		case "error":
+			return false, errors.New("openai: the Responses stream reported an error")
+		}
+		return false, nil
+	}
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if line == "" {
+			done, err := consume()
+			if err != nil || done {
+				return out, err
+			}
+		} else if strings.HasPrefix(line, "data:") {
+			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return out, fmt.Errorf("openai: read Responses stream: %w", err)
+	}
+	if done, err := consume(); done || err != nil {
+		return out, err
+	}
+	return out, errors.New("openai: Responses stream ended without a terminal response")
 }

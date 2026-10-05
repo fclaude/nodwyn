@@ -48,6 +48,9 @@ type providerParams struct {
 	// Authorization header; Anthropic's x-api-key header). A provider that has
 	// a key already has it replaced in place.
 	APIKey string `json:"api_key,omitempty"`
+	// Credential selects a stored OpenAI plan credential by id. Its class,
+	// never its tokens, is saved on the provider.
+	Credential string `json:"credential,omitempty"`
 }
 
 type nameParams struct {
@@ -131,6 +134,13 @@ func (s *server) providers() []modelServer {
 			host = u.Host
 			if state, detail := s.keyCheck(m.Credential, u.Hostname(), config.KeyPosition(m.Provider)); state != "" {
 				m.Key, m.KeyDetail = state, detail
+			}
+		}
+		if st := s.options.Keychain; st != nil {
+			if h := st.HandleForClass(m.Credential); h != nil {
+				if info, err := st.Info(h.ID); err == nil && info.Provider == "openai" && info.Kind == keychain.KindOAuth2 {
+					m.Authentication = "chatgpt"
+				}
 			}
 		}
 		m.Host = host
@@ -317,7 +327,7 @@ func (s *server) rewriteConfig(change func(raw []byte, current config.Config) ([
 // changes one's address, dialect or key.
 func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 	var p providerParams
-	if err := params(req.Params, &p, "name", "provider", "url", "dialect", "api_key"); err != nil {
+	if err := params(req.Params, &p, "name", "provider", "url", "dialect", "api_key", "credential"); err != nil {
 		return nil, err
 	}
 	key := []byte(p.APIKey)
@@ -330,11 +340,30 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return nil, failure(-32602, "url must be an http or https address, such as http://localhost:11434")
 	}
-	if p.Provider == "ollama" && (p.Dialect != "" || len(key) > 0) {
+	if p.Provider == "ollama" && (p.Dialect != "" || len(key) > 0 || p.Credential != "") {
 		return nil, failure(-32602, "An Ollama server takes no dialect and no key")
 	}
 	if p.Provider == "anthropic" && p.Dialect != "" {
 		return nil, failure(-32602, "An Anthropic server takes no dialect: it speaks the Messages API")
+	}
+	var selected keychain.Info
+	if p.Credential != "" {
+		if len(key) > 0 {
+			return nil, failure(-32602, "Choose a ChatGPT credential or an API key, not both")
+		}
+		if s.options.Keychain == nil {
+			return nil, failure(-32000, "Unlock the keychain before choosing a ChatGPT account")
+		}
+		selected, err = s.options.Keychain.Info(p.Credential)
+		if err != nil || selected.Kind != keychain.KindOAuth2 || selected.Provider != "openai" {
+			return nil, failure(-32602, "Choose an OpenAI OAuth2 credential for ChatGPT plan authentication")
+		}
+		if h := s.options.Keychain.HandleForClass(selected.Class); h == nil || h.ID != selected.ID {
+			return nil, failure(-32602, "This credential is shadowed by another with the same class")
+		}
+		if selected.NeedsReauth || !selected.Refreshable {
+			return nil, failure(-32602, "Authorize this ChatGPT account again before saving the provider")
+		}
 	}
 	host := parsed.Hostname()
 	rerr := s.rewriteConfig(func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError) {
@@ -360,6 +389,20 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 		if exists && p.Provider != "ollama" && sameHost(old.URL, p.URL) {
 			srv.Credential = old.Credential
 		}
+		if selected.ID != "" {
+			srv.Credential = selected.Class
+		}
+		if len(key) == 0 && srv.Credential != "" && s.options.Keychain != nil {
+			if h := s.options.Keychain.HandleForClass(srv.Credential); h != nil {
+				info, err := s.options.Keychain.Info(h.ID)
+				if err != nil {
+					return nil, config.Config{}, failure(-32000, err.Error())
+				}
+				if info.Provider == "openai" && (p.Provider != "openai" || p.URL != "https://api.openai.com/v1" || p.Dialect != "responses") {
+					return nil, config.Config{}, failure(-32602, "ChatGPT plan authentication requires https://api.openai.com/v1 and the Responses dialect")
+				}
+			}
+		}
 		if (len(key) > 0 || srv.Credential != "") && parsed.Scheme != "https" && !loopback(host) {
 			return nil, config.Config{}, failure(-32602, "a model with a key must be reached over https")
 		}
@@ -368,7 +411,16 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 			if store = s.options.Keychain; store == nil {
 				return nil, config.Config{}, failure(-32000, "Unlock or create the keychain first: the key is kept there, never in config.toml")
 			}
-			if h := store.HandleForClass(srv.Credential); srv.Credential == "" || h == nil {
+			h := store.HandleForClass(srv.Credential)
+			var oauth bool
+			if h != nil {
+				info, err := store.Info(h.ID)
+				if err != nil {
+					return nil, config.Config{}, failure(-32000, err.Error())
+				}
+				oauth = info.Kind == keychain.KindOAuth2
+			}
+			if srv.Credential == "" || h == nil || oauth {
 				srv.Credential = s.freeClass("model-" + hostClass(host))
 			}
 		}
@@ -389,6 +441,11 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 				return nil, config.Config{}, failure(-32000, err.Error())
 			}
 			if err := s.bindKey(srv.Credential, host, config.KeyPosition(srv.Provider)); err != nil {
+				return nil, config.Config{}, failure(-32000, err.Error())
+			}
+		}
+		if selected.ID != "" {
+			if err := s.bindKey(selected.Class, host, config.KeyPosition(srv.Provider)); err != nil {
 				return nil, config.Config{}, failure(-32000, err.Error())
 			}
 		}
@@ -745,8 +802,15 @@ func authorizer(store *keychain.Store, table binding.Table, class, position stri
 		if h == nil {
 			return llm.Permanent(errors.New("no key in the keychain"))
 		}
-		if bound, reason := table.Lookup(class, strings.ToLower(req.URL.Hostname()), req.Method, position); !bound {
+		info, err := store.Info(h.ID)
+		if err != nil {
+			return llm.Permanent(err)
+		}
+		if bound, reason := table.Lookup(class, strings.ToLower(req.URL.Hostname()), req.Method, position, info.Scopes...); !bound {
 			return llm.Permanent(errors.New(reason))
+		}
+		if err := store.Refresh(req.Context(), h.ID, nil); err != nil {
+			return llm.Permanent(err)
 		}
 		_, name, prefix := binding.Position(position)
 		return store.InjectHeader(h.ID, name, prefix, req)

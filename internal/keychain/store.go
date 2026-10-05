@@ -100,10 +100,12 @@ func (e entry) kind() string {
 // values. It is never written to disk in this form. Version 1 holds only
 // static keys; a keychain with an oauth2 entry is written as version 2, so
 // a binary that predates them refuses it instead of rewriting it without
-// its token sets.
+// its token sets. Version 3 additionally preserves the OpenAI host identity
+// even when its first sign-in was cancelled.
 type wireDoc struct {
-	Version int     `json:"version"`
-	Entries []wireE `json:"entries"`
+	Version    int     `json:"version"`
+	OpenAIHost string  `json:"openai_host,omitempty"`
+	Entries    []wireE `json:"entries"`
 }
 
 type wireE struct {
@@ -119,15 +121,16 @@ type wireE struct {
 // entries can be re-sealed when one is added; the passphrase itself is not
 // retained.
 type Store struct {
-	path    string
-	aead    cipher.AEAD
-	kdf     KDFParams
-	salt    []byte
-	open    bool // sealed under the empty passphrase: it has none
-	entries map[string]entry
-	order   []string // insertion order, for deterministic sealing
-	stamp   stamp    // the file as this process last read or wrote it
-	mu      sync.Mutex
+	path         string
+	openAIHostID string
+	aead         cipher.AEAD
+	kdf          KDFParams
+	salt         []byte
+	open         bool // sealed under the empty passphrase: it has none
+	entries      map[string]entry
+	order        []string // insertion order, for deterministic sealing
+	stamp        stamp    // the file as this process last read or wrote it
+	mu           sync.Mutex
 
 	// client and now are the HTTP client and clock of OAuth2 refresh,
 	// revocation and acquisition (ADR 24); tests replace them.
@@ -321,10 +324,10 @@ func (st *Store) reloadLocked() error {
 	if err != nil {
 		return errors.New("keychain: the file no longer opens with this passphrase; unlock it again")
 	}
-	entries, order := st.entries, st.order
+	entries, order, host := st.entries, st.order, st.openAIHostID
 	st.entries, st.order = map[string]entry{}, nil
 	if err := st.decode(pt); err != nil {
-		st.entries, st.order = entries, order
+		st.entries, st.order, st.openAIHostID = entries, order, host
 		return err
 	}
 	st.stamp = stamp
@@ -539,6 +542,9 @@ func (st *Store) Lookup(id string) (class string, created time.Time, err error) 
 // the auth scheme with its trailing space ("Bearer "), or "" for a bare
 // header such as x-api-key.
 func (st *Store) InjectHeader(id, name, prefix string, req *http.Request) error {
+	if err := st.checkOpenAISink(id, name, prefix, req); err != nil {
+		return err
+	}
 	v, err := st.secret(id)
 	if err != nil {
 		return err
@@ -549,6 +555,9 @@ func (st *Store) InjectHeader(id, name, prefix string, req *http.Request) error 
 
 // InjectQuery sets the value as a URL query parameter key.
 func (st *Store) InjectQuery(id, key string, req *http.Request) error {
+	if err := st.checkOpenAISink(id, "", "", req); err != nil {
+		return err
+	}
 	v, err := st.secret(id)
 	if err != nil {
 		return err
@@ -561,6 +570,9 @@ func (st *Store) InjectQuery(id, key string, req *http.Request) error {
 
 // InjectBody makes the value the request body.
 func (st *Store) InjectBody(id string, req *http.Request) error {
+	if err := st.checkOpenAISink(id, "", "", req); err != nil {
+		return err
+	}
 	v, err := st.secret(id)
 	if err != nil {
 		return err
@@ -575,6 +587,9 @@ func (st *Store) InjectBody(id string, req *http.Request) error {
 // which passes it on by name only (ADR 23 W3b). It never appears in the
 // command's arguments.
 func (st *Store) InjectEnv(id, name string, cmd *exec.Cmd) error {
+	if err := st.checkOpenAISink(id, "", "", nil); err != nil {
+		return err
+	}
 	v, err := st.secret(id)
 	if err != nil {
 		return err
@@ -609,7 +624,7 @@ func (st *Store) secret(id string) (value, error) {
 
 // save re-seals all entries and writes the file. The caller holds st.mu.
 func (st *Store) save() error {
-	doc := wireDoc{Version: 1}
+	doc := wireDoc{Version: 1, OpenAIHost: st.openAIHostID}
 	for _, id := range st.order {
 		e := st.entries[id]
 		we := wireE{ID: id, Class: e.class, Created: e.created}
@@ -621,6 +636,9 @@ func (st *Store) save() error {
 			we.Value = base64.StdEncoding.EncodeToString(e.value)
 		}
 		doc.Entries = append(doc.Entries, we)
+	}
+	if st.openAIHostID != "" {
+		doc.Version = 3
 	}
 	pt, err := json.Marshal(doc)
 	if err != nil {
@@ -658,9 +676,10 @@ func (st *Store) decode(pt []byte) error {
 	if err := json.Unmarshal(pt, &doc); err != nil {
 		return fmt.Errorf("keychain: decode: %w", err)
 	}
-	if doc.Version != 1 && doc.Version != 2 {
+	if doc.Version != 1 && doc.Version != 2 && doc.Version != 3 {
 		return fmt.Errorf("keychain: unsupported version %d", doc.Version)
 	}
+	st.openAIHostID = doc.OpenAIHost
 	for _, we := range doc.Entries {
 		e := entry{class: we.Class, created: we.Created}
 		switch we.Kind {

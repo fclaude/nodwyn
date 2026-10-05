@@ -209,3 +209,88 @@ only from a browser on that computer. A credential authorized this way is
 bound from the same page; its rows carry the scopes it was granted. Revoking
 from the console asks the provider first, as `credential revoke` does, and
 "Remove here only" is its `--local`.
+
+
+## Amendment 2026-10-05: OpenAI models can use ChatGPT plan quota
+
+An API key uses API billing; people want nodwyn to use their eligible
+ChatGPT plan allowance. OpenAI now documents public-client dynamic
+registration and plan-authorized Responses requests:
+[registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in),
+[accounts and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions),
+[models and inference](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference).
+
+The shipped `openai` OAuth2 profile, available from the CLI and existing
+local-console authorization method, defaults to `dynamic_agent_client`
+when no client id is supplied. Authorization uses the fixed OpenAI issuer,
+`/auth/callback` on 127.0.0.1, fresh state, OIDC nonce and PKCE, a persistent
+host UUID, `agent_name_hint=nodwyn`, and the documented resource and scopes.
+The callback must return an issued client id for registration; later login
+retains that id and refuses a different one. The token exchange uses the
+same resource, verifier and exact redirect URI and takes no client secret.
+
+The keychain verifies the ID token using RS256 or ES256 and the issuer's
+JWKS, checks issuer, audience, expiry, nonce and subject, and requires
+`resource.invoke` and `chatgpt.tokens.use.direct` in the returned scopes.
+Returning login must verify the same subject before replacing credentials.
+JWKS are fetched on each sign-in, so no stale cached key prevents rotation.
+Discovery and JWKS use bounded, non-redirecting requests to the fixed
+issuer; its published revocation endpoint must belong to that issuer too.
+No project file selects an authentication endpoint. The person authorizes
+in the browser and writes their user configuration and binding rows; neither
+a repository nor a model can initiate this flow or select another token host.
+
+The stable host UUID is written inside the keychain before the first
+attempt and persists even when consent fails. The person who owns that
+keychain can replace it, as they can replace their credentials; it is an
+opaque identifier, not authority. This uses format version 3, so older
+binaries refuse the file rather than discard the host while rewriting it.
+Credentials retain their issued client and verified subject in the encrypted
+token set. Optional retained ID-token/login hints and an account picker are
+not built: returning login uses OpenAI's account selector, and distinct
+credential classes select separate accounts. Raw ID tokens are verified
+and discarded, keeping them out of URLs exposed by the CLI and RPC.
+
+Bindings still authorize every use. A plan credential's injection is also
+restricted to bearer headers at public `GET https://api.openai.com/v1/models`
+and `POST https://api.openai.com/v1/responses`. It cannot be injected into a
+query, body, environment, another host or ChatGPT backend endpoint. Users
+explicitly choose ChatGPT plan authentication in Settings › Models, connect
+an account or select a stored one, then save the provider. The local-only
+provider-write RPC accepts an unshadowed OpenAI credential id instead of an
+API key, validates the fixed public address and Responses dialect, and saves
+its class with exact-host model bindings. Switching to API key authentication
+stores a separate key and preserves the OAuth account. Terminal setup still
+uses the printed config and bindings blocks.
+Model lists recognise visible plan model slugs. Requests ask for streaming
+and no server-side storage. The Responses client buffers through the terminal
+event before emitting output, preserving whole-output redaction (ADR 25);
+missing or failed terminal events fail the request. Compatible servers that
+answer JSON are still accepted. Incomplete terminal events retain the
+existing length/stop-reason semantics.
+
+Refresh remains serialized and rotates tokens atomically, using the saved
+issued client id and resource. A sign-in must return a refresh token and both
+plan scopes, but a refresh may omit either, as RFC 6749 section 6 allows, and
+OpenAI's documentation does not promise them: the stored refresh token and the
+scopes the sign-in verified then stay. A refresh that names scopes without
+both plan scopes still sends the credential back to sign-in. Refusing an
+omission would mark a working credential for a new sign-in over a field the
+provider need not send. The loopback callback keeps what it compares with from
+before the listener starts, so a repeated request to it, a reloaded tab, never
+reads the client id the first one's exchange has since replaced. Model probes
+now check granted scopes and refresh before injection, like session requests.
+OpenAI decides eligibility, model entitlements and quota; there is no fallback
+to an API key. Existing credential revoke uses the discovered endpoint; local
+removal makes no promise of remote revocation. Multiple classes, not an
+implicit account switch, are the way to keep several plan accounts configured.
+
+Tests use a synthetic issuer with signed ID tokens and a transport that
+refuses all unexpected addresses, and the existing OAuth fake for model
+probes. They exercise registration, restart, reauthorization, failed identity
+and permission checks, rotation, refresh responses that omit or narrow what
+they name, a repeated callback (under the race detector), model listing,
+inference, restricted sinks and revocation. Browser checks exercise a
+client-id-free OpenAI authorization request with a synthetic refusal and the
+existing local-provider success flow. Live account eligibility and quota are
+not tested.

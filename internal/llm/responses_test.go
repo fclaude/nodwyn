@@ -100,7 +100,7 @@ func TestResponsesRoundTrip(t *testing.T) {
 		"reasoning":         `{"effort":"high"}`,
 		"max_output_tokens": `16384`,
 		"store":             `false`,
-		"stream":            `false`,
+		"stream":            `true`,
 		"prompt_cache_key":  `"s1"`,
 	}
 	for k, v := range want {
@@ -185,5 +185,74 @@ func TestARefusalNamingTheResponsesAPISaysToChooseIt(t *testing.T) {
 	}
 	if hint := Hint(err); !strings.Contains(hint, "OpenAI Responses") || strings.Contains(hint, "effort") {
 		t.Fatalf("hint %q", hint)
+	}
+}
+
+// A split credential stays buffered until the terminal response. Function
+// calls and usage come from that completed response, rather than deltas.
+func TestResponsesEventStreamBuffersUntilCompleted(t *testing.T) {
+	terminal := `{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"text":"canary-secret"}]},{"type":"function_call","call_id":"c1","name":"read","arguments":"{}"}],"usage":{"input_tokens":4,"output_tokens":2}}}`
+	var deltas []Delta
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		if body["stream"] != true || body["store"] != false {
+			t.Error("Responses did not request a non-stored stream")
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"canary-\"}\r\n\r\n")
+		w.(http.Flusher).Flush()
+		fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"secret\"}\n\n")
+		fmt.Fprintf(w, "event: response.completed\ndata: %s\n\n", terminal)
+	}))
+	defer srv.Close()
+	o := NewOpenAI(srv.URL, nil)
+	o.Dialect = ChatResponses
+	out, err := o.Chat(context.Background(), Request{Model: "test"}, func(d Delta) { deltas = append(deltas, d) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deltas) != 1 || deltas[0].Text != "canary-secret" || out.DoneReason != "tool_calls" || len(out.Message.ToolCalls) != 1 || out.Message.ToolCalls[0].ID != "c1" || out.Usage.OutputTokens != 2 {
+		t.Fatalf("output: %+v deltas: %+v", out, deltas)
+	}
+}
+
+func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
+	for _, body := range []string{
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n",
+		"data: [DONE]\n\n",
+		"data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"message\":\"quota refused\"}}}\n\n",
+		"data: {\"type\":\"error\"}\n\n",
+		"data: invalid\n\n",
+		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"in_progress\"}}\n\n",
+	} {
+		t.Run(body, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprint(w, body)
+			}))
+			defer srv.Close()
+			o := NewOpenAI(srv.URL, nil)
+			o.Dialect = ChatResponses
+			want := "Responses stream ended without a terminal response"
+			switch {
+			case strings.Contains(body, "response.failed"):
+				want = "the response failed: quota refused"
+			case strings.Contains(body, `"type":"error"`):
+				want = "Responses stream reported an error"
+			case strings.Contains(body, "invalid"):
+				want = "malformed Responses stream event"
+			case strings.Contains(body, "in_progress"):
+				want = "Responses terminal event has the wrong status"
+			}
+			_, err := o.Chat(context.Background(), Request{Model: "test"}, func(Delta) { t.Error("partial output emitted") })
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("want %q, got %v", want, err)
+			}
+		})
 	}
 }

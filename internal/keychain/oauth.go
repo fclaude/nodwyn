@@ -35,6 +35,8 @@ type tokenSet struct {
 	AccessToken    string    `json:"access_token"`
 	RefreshToken   string    `json:"refresh_token,omitempty"`
 	ExpiresAt      time.Time `json:"expires_at,omitempty"`
+	Subject        string    `json:"subject,omitempty"`
+	HostID         string    `json:"ext_agent_host_id,omitempty"`
 	NeedsReauth    bool      `json:"needs_reauth,omitempty"`
 }
 
@@ -150,6 +152,14 @@ func (st *Store) Refresh(ctx context.Context, id string, observe func(Refreshed)
 		report()
 		return fmt.Errorf("keychain: refresh %s: %w", e.class, err)
 	}
+	if t.Provider == "openai" {
+		if err := checkOpenAIGrant(tok, true); err != nil {
+			st.markReauth(id)
+			r.Err = err
+			report()
+			return reauthError(id, e.class)
+		}
+	}
 	t.AccessToken = tok.AccessToken
 	t.ExpiresAt = tok.expiry(st.now())
 	if tok.RefreshToken != "" && tok.RefreshToken != t.RefreshToken {
@@ -231,6 +241,7 @@ type token struct {
 	ExpiresIn    int64  `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
 	Scope        string `json:"scope"`
+	IDToken      string `json:"id_token"`
 }
 
 func (t token) expiry(now time.Time) time.Time {
@@ -319,6 +330,9 @@ func (st *Store) revokeRequest(ctx context.Context, t tokenSet, tok, hint string
 // clientRequest is a form POST to endpoint authenticated as t's client: in
 // the form, or with HTTP Basic for a provider that requires it.
 func (st *Store) clientRequest(ctx context.Context, t tokenSet, endpoint string, form url.Values) (*http.Request, error) {
+	if t.Provider == "openai" && endpoint == t.TokenEndpoint {
+		form.Set("resource", openAIResource)
+	}
 	if t.TokenAuth != "basic" {
 		form.Set("client_id", t.ClientID)
 		if t.ClientSecret != "" {

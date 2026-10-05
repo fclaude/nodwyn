@@ -458,6 +458,57 @@ refreshes the token just before a use the binding allowed, the session logs
 destination. \code{--oauth2 custom} with \code{--auth-url} and
 \code{--token-url} covers a provider \nodwyn{} has no profile for.
 
+\section{OpenAI with ChatGPT plan quota}
+
+In Settings, Models, add an OpenAI provider and choose ChatGPT plan.
+Unlock the keychain and Continue with ChatGPT; finish consent in the browser.
+Choose the connected account and Save the provider: its credential class,
+fixed public API address, Responses dialect and model bindings are saved
+without editing files. Add a model from its list, Test it, and choose it as
+the default. Existing accounts can be selected, and Sign in again renews
+consent. Switching to API key requires a new key and preserves the account.
+The terminal route below prints the configuration to install by hand.
+
+
+An eligible ChatGPT account can authorize model requests without an API key:
+
+\begin{sh}
+nodwyn credential add --oauth2 openai
+\end{sh}
+
+In Connections, choose \code{openai} under Connect an account, leave Client
+id empty, and Continue with ChatGPT. OpenAI registers \nodwyn{} during
+consent, without a client secret. The keychain verifies the ID token and
+plan-use permission before storing tokens. Add the printed binding row for
+\code{api.openai.com}, then configure the provider and an account-visible model:
+
+\begin{txt}
+[servers.chatgpt]
+provider = "openai"
+url = "https://api.openai.com/v1"
+dialect = "responses"
+credential = "openai"
+
+[control]
+server = "chatgpt"
+model = "MODEL_ID"
+\end{txt}
+
+Restart the daemon after changing its configuration. The Responses dialect
+is required: the credential may reach only the public model-list and
+Responses endpoints. Requests ask for a stream and no server-side storage;
+\nodwyn{} buffers output through the terminal event before redaction and
+display. OpenAI decides eligibility, model access and remaining quota; use
+Try in Models to check the chosen model. A refusal never falls back to
+API-key billing.
+
+\code{nodwyn credential login openai} reuses the issued client and host,
+checks the account identity, and preserves the old tokens if sign-in fails.
+Refreshes rotate tokens in the encrypted keychain; \code{credential revoke
+openai} ends the renewable session and deletes it. Another account needs a
+separate \code{-{}-class} and a provider naming it. Starting OpenAI sign-in
+upgrades the keychain to version~3, which older binaries refuse.
+
 \chapter{Connecting an MCP server}
 
 Connections, in the console, adds a server. A remote one needs its address

@@ -53,6 +53,13 @@ type Profile struct {
 // The provider profiles that ship (ADR 24 §1). A custom provider names its
 // endpoints instead (Custom).
 var profiles = map[string]Profile{
+	"openai": {
+		Name:          "openai",
+		AuthEndpoint:  "https://auth.openai.com/api/accounts/authorize",
+		TokenEndpoint: "https://auth.openai.com/api/accounts/oauth/token",
+		Scopes:        []string{"openid", "profile", "email", "offline_access", "resource.invoke", "chatgpt.tokens.use.direct"},
+		APIHost:       "api.openai.com",
+	},
 	"google": {
 		Name:           "google",
 		AuthEndpoint:   "https://accounts.google.com/o/oauth2/v2/auth",
@@ -134,6 +141,14 @@ type Grant struct {
 
 func (g Grant) tokenSet() (tokenSet, error) {
 	p := g.Profile
+	if p.Name == "openai" {
+		if g.ClientSecret != "" {
+			return tokenSet{}, errors.New("keychain: OpenAI plan sign-in is a public client and takes no client secret")
+		}
+		if g.ClientID == "" {
+			g.ClientID = "dynamic_agent_client"
+		}
+	}
 	if g.ClientID == "" {
 		return tokenSet{}, errors.New("keychain: a client id is required (register nodwyn as an OAuth client with the provider)")
 	}
@@ -197,6 +212,11 @@ func (st *Store) AddOAuth2(ctx context.Context, class string, g Grant, open func
 	if err != nil {
 		return nil, err
 	}
+	if t.Provider == "openai" {
+		if t.HostID, err = st.openAIHost(); err != nil {
+			return nil, err
+		}
+	}
 	if t, err = st.authorize(ctx, t, open); err != nil {
 		return nil, err
 	}
@@ -244,20 +264,38 @@ func (st *Store) authorize(ctx context.Context, t tokenSet, open func(string) er
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 	state := base64.RawURLEncoding.EncodeToString(random(16))
+	nonce := base64.RawURLEncoding.EncodeToString(random(32))
+	callback := "/callback"
+	var discovery openAIDiscovery
+	if t.Provider == "openai" {
+		callback = "/auth/callback"
+		var err error
+		discovery, err = st.openAIDiscover(ctx)
+		if err != nil {
+			return t, err
+		}
+		t.RevokeEndpoint = discovery.RevocationEndpoint
+	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return t, fmt.Errorf("keychain: loopback listener: %w", err)
 	}
-	redirect := fmt.Sprintf("http://%s/callback", ln.Addr())
+	redirect := fmt.Sprintf("http://%s%s", ln.Addr(), callback)
 
 	type result struct {
-		code string
-		err  error
+		code     string
+		clientID string
+		err      error
 	}
+	// The handler can run again after authorize has replaced t.ClientID with
+	// the id OpenAI issued, so it compares with what the request was made
+	// with, not with t.
+	plan, sentID := t.Provider == "openai", t.ClientID
+	registering := plan && sentID == "dynamic_agent_client"
 	done := make(chan result, 1)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(callback, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		var res result
 		switch {
@@ -272,6 +310,15 @@ func (st *Store) authorize(ctx context.Context, t tokenSet, open func(string) er
 			res.err = errors.New("the redirect carried no code")
 		default:
 			res.code = q.Get("code")
+			if plan {
+				res.clientID = q.Get("client_id")
+				switch {
+				case registering && (res.clientID == "" || res.clientID == "dynamic_agent_client"):
+					res.err = errors.New("OpenAI registration returned no issued client id")
+				case !registering && res.clientID != "" && res.clientID != sentID:
+					res.err = errors.New("OpenAI returned a different client id")
+				}
+			}
 		}
 		select {
 		case done <- res:
@@ -307,6 +354,14 @@ func (st *Store) authorize(ctx context.Context, t tokenSet, open func(string) er
 			q.Set(k, v)
 		}
 	}
+	if t.Provider == "openai" {
+		q.Set("nonce", nonce)
+		q.Set("resource", openAIResource)
+		q.Set("ext_agent_host_id", t.HostID)
+		if t.ClientID == "dynamic_agent_client" {
+			q.Set("agent_name_hint", "nodwyn")
+		}
+	}
 	authURL := t.AuthEndpoint
 	if strings.Contains(authURL, "?") {
 		authURL += "&" + q.Encode()
@@ -328,6 +383,9 @@ func (st *Store) authorize(ctx context.Context, t tokenSet, open func(string) er
 	if res.err != nil {
 		return t, fmt.Errorf("keychain: %w", res.err)
 	}
+	if registering {
+		t.ClientID = res.clientID
+	}
 	tok, err := st.tokenRequest(ctx, t, url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {res.code},
@@ -336,6 +394,19 @@ func (st *Store) authorize(ctx context.Context, t tokenSet, open func(string) er
 	})
 	if err != nil {
 		return t, fmt.Errorf("keychain: exchange the code at %s: %w", hostOf(t.TokenEndpoint), err)
+	}
+	if t.Provider == "openai" {
+		subject, err := st.openAIIdentity(ctx, discovery.JWKSURI, tok.IDToken, t.ClientID, nonce)
+		if err != nil {
+			return t, err
+		}
+		if t.Subject != "" && t.Subject != subject {
+			return t, errors.New("keychain: OpenAI signed in a different account; the existing credential was kept")
+		}
+		if err := checkOpenAIGrant(tok, false); err != nil {
+			return t, err
+		}
+		t.Subject = subject
 	}
 	t.AccessToken, t.RefreshToken = tok.AccessToken, tok.RefreshToken
 	t.ExpiresAt = tok.expiry(st.now())
