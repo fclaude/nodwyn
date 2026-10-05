@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // StatusError is a provider's refusal of a request: the status it answered
@@ -50,6 +51,12 @@ func Hint(err error) string {
 	case http.StatusNotFound:
 		return "The server has no such model: check its id in Settings › Models, or choose another model"
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		// OpenAI refuses an effort beside tools on /chat/completions for some
+		// models and names the API that takes them (session
+		// 20261005T033050Z-a7ed2b66): another effort would only hide that.
+		if strings.Contains(se.Body, "/v1/responses") {
+			return "The server takes this request only on its Responses API: set the provider's protocol to OpenAI Responses in Settings › Models"
+		}
 		return "The server refused the request. If the effort is the cause, choose another effort, or the model's default, from the picker under the message box"
 	case http.StatusTooManyRequests:
 		return "The provider is limiting requests or the account is out of quota: wait, or choose another model"

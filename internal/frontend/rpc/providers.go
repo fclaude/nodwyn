@@ -37,8 +37,9 @@ type providerParams struct {
 	Name     string `json:"name,omitempty"`
 	Provider string `json:"provider"`
 	URL      string `json:"url"`
-	// Dialect is how a chat-completions server reads the protocol
-	// ("compatible", or "cerebras"); never inferred from the address.
+	// Dialect is how an OpenAI-compatible server reads the protocol
+	// ("compatible", "cerebras", or "responses" for OpenAI's Responses API);
+	// never inferred from the address.
 	Dialect string `json:"dialect,omitempty"`
 	// APIKey is stored in the unlocked keychain and bound to exactly the
 	// provider's host, POST, as a bearer Authorization header. A provider that

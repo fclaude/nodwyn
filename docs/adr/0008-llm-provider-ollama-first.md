@@ -70,3 +70,43 @@ sent as `reasoning_effort` to a chat-completions server and as `think` to
 Ollama; nothing is inferred from a URL or a model name, as for dialects, and a
 model that declares none is sent none. The model capability registry, more
 provider presets and arbitrary provider options stay deferred.
+
+## Amendment 2026-10-05: OpenAI's Responses API is a dialect
+
+In session `20261005T033050Z-a7ed2b66` a conversation on gpt-6.1-sol,
+reached at `api.openai.com` with effort `high`, failed its first request:
+OpenAI refused `reasoning_effort` beside function tools on
+`/v1/chat/completions` ("To use function tools, use /v1/responses or set
+reasoning_effort to 'none'"). Every turn offers tools, so on chat completions
+that model takes no effort at all. The same model through OpenRouter had
+worked in session `20261005T022031Z-06eaad19`, which asked no effort.
+
+`dialect = "responses"` on an `openai` server sends each request to
+`POST /responses` instead, in that API's shape: the conversation as input
+items (messages, a reply's `function_call`s after its text, each result as
+the `function_call_output` of its call), the tools flat and not strict (strict
+wants every parameter required; ADR 29's are not), the effort as
+`reasoning.effort`, the cap as `max_output_tokens`, the cache key and the ask
+to cache as they are on chat completions. `store` is false: each request
+carries the whole conversation, as before, and the server keeps nothing to be
+continued from. A reply's reasoning summary, when the server gives one, is
+read as its thinking, and its usage names (`input_tokens`, `output_tokens`)
+as the chat-completions ones; a reply cut short by the cap ends as `length`.
+
+What is not sent: the thinking a reply came with. The API takes reasoning back
+only as the encrypted item it came as, which nodwyn does not keep (ADR 9,
+amended 2026-10-02), so each request reasons afresh from the conversation. No
+reasoning summary is asked for: OpenAI may refuse one to an organisation it
+has not verified, and a request that asks for nothing cannot be refused for
+it. A configured `seed` is sent as it is, and the server, which has
+no such field, refuses it: nothing a person set is dropped.
+
+Nothing infers the dialect, as before: the person chooses it, in
+`config.toml` or in Settings, where the OpenAI preset fills it in and it can
+be changed before saving. A server already configured for OpenAI keeps chat
+completions until it is changed. The refusal above now ends a turn with advice
+naming the Responses API instead of another effort. The canonical request,
+its hash and replay are unchanged; the dialect transforms only the wire. A
+strict fake Responses server checks the wire, and the chat fake refuses an
+effort beside tools on chat completions as OpenAI does, so a conversation
+shows the failure on one dialect and the answer on the other.

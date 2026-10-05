@@ -1088,15 +1088,36 @@ model = "YOUR_MODEL_ID"              # a model enabled on your account
 Cerebras receives prior assistant thinking as `reasoning`; without this
 setting it rejects `reasoning_content` after the first reasoning reply.
 Omitting `dialect`, or setting it to `"compatible"`, keeps the existing
-`reasoning_content` encoding. Unknown dialects and a dialect on an Ollama
+`reasoning_content` encoding.
+
+For OpenAI itself, `dialect = "responses"` speaks its Responses API
+(`POST /responses`) instead of chat completions. Some of OpenAI's reasoning
+models take an effort beside tools only there: on chat completions
+gpt-6.1-sol refuses `reasoning_effort` with tools ("use /v1/responses"), and
+a task always offers tools. The effort goes as `reasoning.effort`, nothing is
+stored on OpenAI's side (`store` is false, and each request carries the
+conversation, as before), and a reply's thinking is not sent back, since the
+API takes it back only encrypted; a `seed` is sent as it is, and refused.
+
+```toml
+[servers.openai]
+provider = "openai"
+dialect = "responses"
+url = "https://api.openai.com/v1"
+credential = "model-api-openai-com"
+```
+
+Unknown dialects and a dialect on an Ollama
 server are refused. No dialect is inferred from the URL or the model name.
 This setting changes the wire encoding only: thinking stays in the log and
 window, and the address, key binding, output cap and cache settings keep
 their existing rules. Ollama continues to use its native protocol.
 
 Settings › Models › Providers sets the dialect with the rest of a provider
-(the Cerebras preset fills it in; you can see it, and change it, before
-saving). It is never inferred from the address. Saving another model on that
+(the Cerebras and OpenAI presets fill it in; you can see it, and change it,
+before saving). An OpenAI provider saved before the OpenAI preset chose
+Responses keeps chat completions until you change it; a request it refuses
+for that reason ends the turn saying so. It is never inferred from the address. Saving another model on that
 provider, or an inline control model as a server at the same endpoint, keeps
 it.
 
@@ -1414,7 +1435,9 @@ provider caches.
 The model's thinking goes back to it on the reply it came with, as the
 server reported it and redacted: ollama gets it as `thinking`, a
 chat-completions server as `reasoning_content` (OpenRouter reads it as
-`reasoning`), or as `reasoning` with `dialect = "cerebras"`. It counts toward the window and is trimmed with its reply. A
+`reasoning`), or as `reasoning` with `dialect = "cerebras"`; with
+`dialect = "responses"` it is not sent back (OpenAI takes back only its
+encrypted reasoning). It counts toward the window and is trimmed with its reply. A
 server that reports only a summary of the thinking, or none, gives back
 only that; encrypted reasoning (OpenRouter's `reasoning_details`) is not
 kept.

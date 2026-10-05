@@ -205,7 +205,13 @@ The server may also set \code{dialect = "cerebras"} alongside
 before starting \nodwyn{}: Cerebras reads assistant thinking in history as
 \code{reasoning} and rejects the default \code{reasoning\_content}.
 Omitting the dialect or using \code{"compatible"} preserves the existing
-encoding. A model with no server may set its own dialect; a model naming a
+encoding. \code{dialect = "responses"} sends each request to OpenAI's
+Responses API (\code{POST /responses}) instead: some of its reasoning models,
+gpt-6.1-sol among them, take an effort beside tools only there. The effort goes
+as \code{reasoning.effort}, \code{store} is false, and a reply's thinking is
+not sent back, since that API takes reasoning back only encrypted; the
+binding is the same host, \code{POST} and bearer header. The OpenAI preset in
+Settings fills it in. A model with no server may set its own dialect; a model naming a
 server inherits it. Unknown dialects and dialects on Ollama are refused.
 Settings saves and model choices retain the dialect, including moving an
 inline control into a server at the same endpoint, and Settings

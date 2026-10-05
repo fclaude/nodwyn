@@ -596,3 +596,63 @@ model = "thinker"
 	}
 	replays(t, s)
 }
+
+// A model that takes an effort beside tools only on OpenAI's Responses API
+// (gpt-6.1-sol in session 20261005T033050Z-a7ed2b66) ends the turn on chat
+// completions with advice naming that API, not another effort, and answers,
+// with the effort chosen, from a server whose dialect is "responses".
+func TestAnEffortBesideToolsIsAskedOnTheResponsesAPI(t *testing.T) {
+	t.Parallel()
+	srv := chat.New("", chat.Model{ID: "sol", Efforts: thinkingEfforts, ToolsNeedResponses: true})
+	defer srv.Close()
+	for _, dialect := range []string{"", "responses"} {
+		cfg, err := config.Parse([]byte(`
+[servers.openai]
+provider = "openai"
+url = "` + srv.V1() + `"
+dialect = "` + dialect + `"
+
+[control]
+server = "openai"
+model = "sol"
+effort = "high"
+
+[models.sol]
+server = "openai"
+model = "sol"
+efforts = ["low", "medium", "high"]
+`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := New(Options{Config: cfg, Repo: t.TempDir(), Version: "test", NoConfirm: true, LogWriter: &bytes.Buffer{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		say(t, s, "hello")
+		var end log.TurnEnd
+		for _, ev := range s.EventsSoFar() {
+			if ev.Kind == log.KindTurnEnd {
+				if err := ev.Decode(&end); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		replays(t, s)
+		s.Close()
+		last := srv.Requests()[len(srv.Requests())-1]
+		switch dialect {
+		case "":
+			if last.Path != "/v1/chat/completions" || last.Answered != 400 || end.Outcome != "error" || !strings.Contains(end.Error, "OpenAI Responses") {
+				t.Fatalf("chat completions: request %+v, turn end %+v", last, end)
+			}
+		default:
+			if last.Path != "/v1/responses" || last.Answered != 200 || last.Effort != "high" || end.Outcome == "error" {
+				t.Fatalf("responses: request %+v, turn end %+v", last, end)
+			}
+		}
+	}
+	if n := len(srv.Requests()); n != 2 {
+		t.Fatalf("the provider saw %d requests, want one in each protocol", n)
+	}
+}

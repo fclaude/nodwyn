@@ -7,7 +7,8 @@
 // - Settings › Models adds the second provider with a wrong key; a test
 //   request says the server did not accept it, the key is replaced, and the
 //   test passes. The key is in the keychain and bindings.toml's row, never in
-//   config.toml or the page.
+//   config.toml or the page. The OpenAI preset chooses its Responses API, and
+//   the provider moved to it is asked there, with the model's effort.
 // - Two models are added, one with its efforts; the default is changed to it,
 //   with an effort, and the model it replaces stays in the list.
 // - The New task window offers the models, shows each one's efforts (none for
@@ -81,7 +82,12 @@ check(async () => {
 
   // The keychain: a key needs one, and the form says so until it is there.
   await page.click("#add-provider");
+  // The form starts on the OpenAI preset, which asks for OpenAI's Responses
+  // API; another server keeps the standard dialect.
+  assert.strictEqual(await page.inputValue("#provider-url"), "https://api.openai.com/v1");
+  assert.strictEqual(await page.inputValue("#provider-dialect"), "responses", "the OpenAI preset does not choose its Responses API");
   await page.click("#preset-other");
+  assert.strictEqual(await page.inputValue("#provider-dialect"), "", "another server does not keep the standard dialect");
   await page.fill("#provider-url", chatURL);
   await shows("#provider-form", "Create or unlock the keychain first");
   await page.click("#provider-form >> text=Cancel");
@@ -152,6 +158,34 @@ check(async () => {
   assert.strictEqual(bindings2.split("[[bind]]").length - 1, 1, "replacing the key added a binding row:\n" + bindings2);
   step("the key replaced in place; the provider answers with the model's effort");
   await page.screenshot({ path: `${out}/models-settings-after.png`, fullPage: true });
+
+  // ---------- the provider moved to OpenAI's Responses API, and back ----------
+  // OpenAI takes an effort beside tools only there for some reasoning models
+  // (ADR 8, amended 2026-10-05): a test of the model is then sent there, with
+  // its effort, and nothing else about the provider changes.
+  const lastRequest = async () => (await (await fetch(`${chatBase}/_fake/requests`)).json()).at(-1);
+  await page.click("#provider-127-0-0-1 button:text-is('Edit')");
+  await page.selectOption("#provider-dialect", "responses");
+  await page.click("#provider-save");
+  await page.waitForSelector("#provider-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { name: "127-0-0-1", provider: "openai", url: chatURL, dialect: "responses" });
+  assert.ok(config().includes(`[servers.127-0-0-1]\nprovider = "openai"\ndialect = "responses"\nurl = "${chatURL}"\ncredential = "model-127-0-0-1"\n`), "dialect not written, or the key's credential lost:\n" + config());
+  await shows("#provider-127-0-0-1", "OpenAI-compatible (responses)");
+  await page.click("[data-model='127-0-0-1-reasoner'] button:text-is('Test')");
+  await until("the test to reach /v1/responses", async () => (await lastRequest()).path === "/v1/responses");
+  const viaResponses = await lastRequest();
+  assert.deepStrictEqual([viaResponses.model, viaResponses.effort, viaResponses.authenticated, viaResponses.answered], ["reasoner", "medium", true, 200], "the Responses request: " + JSON.stringify(viaResponses));
+  await page.waitForSelector("[data-model='127-0-0-1-reasoner'] .test-result.ok", { timeout: 20000 });
+  await shows("[data-model='127-0-0-1-reasoner'] .test-result", "reasoner answered", "with Medium effort");
+  await page.screenshot({ path: `${out}/models-settings-responses.png`, fullPage: true });
+  await page.click("#provider-127-0-0-1 button:text-is('Edit')");
+  assert.strictEqual(await page.inputValue("#provider-dialect"), "responses", "the form does not show the saved dialect");
+  await page.selectOption("#provider-dialect", "");
+  await page.click("#provider-save");
+  await page.waitForSelector("#provider-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { name: "127-0-0-1", provider: "openai", url: chatURL });
+  assert.ok(!config().includes("dialect"), "the standard dialect left one in config.toml:\n" + config());
+  step("a provider on OpenAI's Responses API is asked there, with the model's effort, and moved back");
 
   // ---------- the default model and its effort ----------
   await page.selectOption("#default-model-model", "127-0-0-1-reasoner");

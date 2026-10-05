@@ -1,13 +1,16 @@
 // Package chat is a fake chat-completions provider for tests and the browser
-// demo (ADR 41): the shape OpenAI, OpenRouter, Cerebras and vLLM share. It
-// lists its models, checks the bearer key, and refuses what a real provider
-// refuses: a wrong key (401), a model it does not have (404), and a
-// reasoning_effort for a model that does not take one, or a word it does not
+// demo (ADR 41): the shape OpenAI, OpenRouter, Cerebras and vLLM share, and
+// OpenAI's Responses API beside it. It lists its models, checks the bearer
+// key, and refuses what a real provider refuses: a wrong key (401), a model it
+// does not have (404), a reasoning_effort for a model that does not take one,
+// or a word it does not know (400), an effort beside tools on
+// /chat/completions for a model that takes them together only on /responses
+// (400, as OpenAI refuses gpt-6.1-sol), and a parameter /responses does not
 // know (400), so a test shows that a request carried exactly the effort
-// chosen, and none where none was meant. Every request is recorded; replies
-// echo the model and effort that asked, so a conversation shows which one
-// answered. Hold keeps replies waiting until Release, to look at a response
-// that is still running.
+// chosen, and none where none was meant, in the protocol it was meant for.
+// Every request is recorded; replies echo the model and effort that asked, so
+// a conversation shows which one answered. Hold keeps replies waiting until
+// Release, to look at a response that is still running.
 //
 // It caches the way a Claude route does (ADR 9, amended 2026-10-05): a prompt
 // is read from the cache only if the request asks for it with a top-level
@@ -41,10 +44,15 @@ type Model struct {
 	// cache_control for any other model is refused, as a provider refuses a
 	// field it does not know.
 	Caches bool
+	// ToolsNeedResponses refuses an effort beside tools on
+	// /chat/completions, with OpenAI's words, and takes them on /responses.
+	ToolsNeedResponses bool
 }
 
 // Request is one chat completion the fake saw.
 type Request struct {
+	// Path is where it was sent: /v1/chat/completions or /v1/responses.
+	Path  string `json:"path"`
 	Model string `json:"model"`
 	// Effort is the reasoning_effort sent; HasEffort tells "none" from "".
 	Effort    string `json:"effort"`
@@ -92,6 +100,7 @@ func New(key string, models ...Model) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/models", s.list)
 	mux.HandleFunc("/v1/chat/completions", s.complete)
+	mux.HandleFunc("/v1/responses", s.respond)
 	mux.HandleFunc("/_fake/requests", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(s.Requests())
 	})
@@ -168,28 +177,79 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
 }
 
+// asked is what a request asked, in either protocol.
+type asked struct {
+	model        string
+	messages     []json.RawMessage // chat messages, or Responses input items
+	effort       *string
+	tools        int
+	cacheControl json.RawMessage
+}
+
 func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Model        string            `json:"model"`
 		Messages     []json.RawMessage `json:"messages"`
 		Effort       *string           `json:"reasoning_effort"`
+		Tools        []json.RawMessage `json:"tools"`
 		CacheControl json.RawMessage   `json:"cache_control"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		refuse(w, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
-	req := Request{Model: body.Model, Authenticated: s.authenticated(r), Messages: len(body.Messages)}
-	if body.Effort != nil {
-		req.Effort, req.HasEffort = *body.Effort, true
+	s.answer(w, r, asked{body.Model, body.Messages, body.Effort, len(body.Tools), body.CacheControl})
+}
+
+// responsesParams are the parameters of a Responses request the fake knows:
+// those nodwyn may send, and cache_control for a route that caches (Caches).
+var responsesParams = []string{"model", "input", "tools", "stream", "store", "max_output_tokens", "temperature", "prompt_cache_key", "reasoning", "cache_control"}
+
+func (s *Server) respond(w http.ResponseWriter, r *http.Request) {
+	var params map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+		refuse(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
 	}
-	if len(body.CacheControl) > 0 && string(body.CacheControl) != "null" {
-		req.CacheControl = string(body.CacheControl)
+	for k := range params {
+		if !slices.Contains(responsesParams, k) {
+			refuse(w, http.StatusBadRequest, "unknown_parameter", fmt.Sprintf("Unknown parameter: '%s'.", k))
+			return
+		}
+	}
+	var body struct {
+		Model     string            `json:"model"`
+		Input     []json.RawMessage `json:"input"`
+		Reasoning *struct {
+			Effort *string `json:"effort"`
+		} `json:"reasoning"`
+		Tools        []json.RawMessage `json:"tools"`
+		CacheControl json.RawMessage   `json:"cache_control"`
+	}
+	raw, _ := json.Marshal(params)
+	if err := json.Unmarshal(raw, &body); err != nil {
+		refuse(w, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	a := asked{model: body.Model, messages: body.Input, tools: len(body.Tools), cacheControl: body.CacheControl}
+	if body.Reasoning != nil {
+		a.effort = body.Reasoning.Effort
+	}
+	s.answer(w, r, a)
+}
+
+func (s *Server) answer(w http.ResponseWriter, r *http.Request, a asked) {
+	req := Request{Path: r.URL.Path, Model: a.model, Authenticated: s.authenticated(r), Messages: len(a.messages)}
+	if a.effort != nil {
+		req.Effort, req.HasEffort = *a.effort, true
+	}
+	if len(a.cacheControl) > 0 && string(a.cacheControl) != "null" {
+		req.CacheControl = string(a.cacheControl)
 	}
 	var model *Model
 	s.mu.Lock()
 	for i := range s.models {
-		if s.models[i].ID == body.Model {
+		if s.models[i].ID == a.model {
 			model = &s.models[i]
 		}
 	}
@@ -200,13 +260,15 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 	case !req.Authenticated:
 		status, code, message = http.StatusUnauthorized, "invalid_api_key", "Incorrect API key provided."
 	case model == nil:
-		status, code, message = http.StatusNotFound, "model_not_found", fmt.Sprintf("The model `%s` does not exist or you do not have access to it.", body.Model)
+		status, code, message = http.StatusNotFound, "model_not_found", fmt.Sprintf("The model `%s` does not exist or you do not have access to it.", a.model)
 	case req.CacheControl != "" && !model.Caches:
-		status, code, message = http.StatusBadRequest, "unsupported_parameter", fmt.Sprintf("Unrecognized request argument supplied: cache_control (%s does not support it)", body.Model)
+		status, code, message = http.StatusBadRequest, "unsupported_parameter", fmt.Sprintf("Unrecognized request argument supplied: cache_control (%s does not support it)", a.model)
 	case req.HasEffort && len(model.Efforts) == 0:
-		status, code, message = http.StatusBadRequest, "unsupported_parameter", fmt.Sprintf("Unrecognized request argument supplied: reasoning_effort (%s does not support it)", body.Model)
+		status, code, message = http.StatusBadRequest, "unsupported_parameter", fmt.Sprintf("Unrecognized request argument supplied: reasoning_effort (%s does not support it)", a.model)
 	case req.HasEffort && !slices.Contains(model.Efforts, req.Effort):
 		status, code, message = http.StatusBadRequest, "invalid_value", fmt.Sprintf("Invalid value: '%s'. Supported values are: %s.", req.Effort, strings.Join(model.Efforts, ", "))
+	case req.Path == "/v1/chat/completions" && model.ToolsNeedResponses && req.HasEffort && a.tools > 0:
+		status, code, message = http.StatusBadRequest, "", fmt.Sprintf("Function tools with reasoning_effort are not supported for %s in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.", a.model)
 	}
 	if status == http.StatusOK && hold != nil {
 		s.mu.Lock()
@@ -223,7 +285,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 	req.Answered = status
 	s.mu.Lock()
 	if status == http.StatusOK {
-		s.account(&req, body.Messages)
+		s.account(&req, a.messages)
 	}
 	s.requests = append(s.requests, req)
 	s.mu.Unlock()
@@ -235,8 +297,20 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 	if !req.HasEffort {
 		effort = "default"
 	}
+	text := fmt.Sprintf("Answered by %s with %s effort.", a.model, effort)
+	if req.Path == "/v1/responses" {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "completed",
+			"output": []any{map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": text}}}},
+			"usage": map[string]any{
+				"input_tokens": req.PromptTokens, "output_tokens": 8,
+				"input_tokens_details": map[string]any{"cached_tokens": req.CachedTokens},
+			},
+		})
+		return
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": fmt.Sprintf("Answered by %s with %s effort.", body.Model, effort)}}},
+		"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": text}}},
 		"usage": map[string]any{
 			"prompt_tokens": req.PromptTokens, "completion_tokens": 8,
 			"prompt_tokens_details": map[string]any{"cached_tokens": req.CachedTokens, "cache_write_tokens": req.CacheWriteTokens},

@@ -250,23 +250,34 @@ type oaiResponse struct {
 // of an unexpected shape costs only that field, never the response: the
 // token counts, and when the server reports them, the prompt tokens read
 // from and written to its cache, the reasoning tokens, and OpenRouter's
-// cost in USD.
+// cost in USD. A Responses usage object names the same counts input and
+// output, and is read the same way.
 func usage(raw json.RawMessage) Usage {
+	type promptDetails struct {
+		CachedTokens     json.RawMessage `json:"cached_tokens"`
+		CacheWriteTokens json.RawMessage `json:"cache_write_tokens"`
+	}
+	type outputDetails struct {
+		ReasoningTokens json.RawMessage `json:"reasoning_tokens"`
+	}
 	var fields struct {
-		PromptTokens        json.RawMessage `json:"prompt_tokens"`
-		CompletionTokens    json.RawMessage `json:"completion_tokens"`
-		Cost                json.RawMessage `json:"cost"`
-		PromptTokensDetails struct {
-			CachedTokens     json.RawMessage `json:"cached_tokens"`
-			CacheWriteTokens json.RawMessage `json:"cache_write_tokens"`
-		} `json:"prompt_tokens_details"`
-		CompletionTokensDetails struct {
-			ReasoningTokens json.RawMessage `json:"reasoning_tokens"`
-		} `json:"completion_tokens_details"`
+		PromptTokens            json.RawMessage `json:"prompt_tokens"`
+		CompletionTokens        json.RawMessage `json:"completion_tokens"`
+		Cost                    json.RawMessage `json:"cost"`
+		PromptTokensDetails     promptDetails   `json:"prompt_tokens_details"`
+		CompletionTokensDetails outputDetails   `json:"completion_tokens_details"`
+		InputTokens             json.RawMessage `json:"input_tokens"`
+		OutputTokens            json.RawMessage `json:"output_tokens"`
+		InputTokensDetails      promptDetails   `json:"input_tokens_details"`
+		OutputTokensDetails     outputDetails   `json:"output_tokens_details"`
 	}
 	u := Usage{Unreported: true}
 	if json.Unmarshal(raw, &fields) != nil {
 		return u
+	}
+	if fields.PromptTokens == nil && fields.CompletionTokens == nil {
+		fields.PromptTokens, fields.CompletionTokens = fields.InputTokens, fields.OutputTokens
+		fields.PromptTokensDetails, fields.CompletionTokensDetails = fields.InputTokensDetails, fields.OutputTokensDetails
 	}
 	count := func(raw json.RawMessage) (int, bool) {
 		var n int
@@ -325,6 +336,9 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 	if err := o.Dialect.Validate(); err != nil {
 		return nil, Permanent(err)
 	}
+	if o.Dialect == ChatResponses {
+		return o.respond(ctx, req, onDelta)
+	}
 	wire := toOpenAI(req, o.Dialect)
 	if o.MaxTokensField == "max_tokens" {
 		wire.MaxTokens, wire.MaxCompletionTokens = wire.MaxCompletionTokens, 0
@@ -332,13 +346,7 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 	if !o.CacheKeyHeaderOnly {
 		wire.PromptCacheKey = o.CacheKey
 	}
-	switch o.CacheControl {
-	case "":
-	case "1h":
-		wire.CacheControl = &oaiCacheControl{Type: "ephemeral", TTL: "1h"}
-	default:
-		wire.CacheControl = &oaiCacheControl{Type: o.CacheControl}
-	}
+	wire.CacheControl = o.cacheControl()
 	body, err := json.Marshal(wire)
 	if err != nil {
 		return nil, err
@@ -381,6 +389,18 @@ func (o *OpenAI) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 		onDelta(Delta{Text: out.Message.Content, Thinking: out.Message.Thinking})
 	}
 	return out, nil
+}
+
+// cacheControl is the request's ask to cache the prompt (CacheControl), or
+// nil to ask nothing.
+func (o *OpenAI) cacheControl() *oaiCacheControl {
+	switch o.CacheControl {
+	case "":
+		return nil
+	case "1h":
+		return &oaiCacheControl{Type: "ephemeral", TTL: "1h"}
+	}
+	return &oaiCacheControl{Type: o.CacheControl}
 }
 
 // send makes one authorized request and returns a 200 response. A redirect

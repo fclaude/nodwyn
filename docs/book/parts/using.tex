@@ -107,7 +107,11 @@ Chat Completions servers may interpret extensions differently. For Cerebras,
 set \code{dialect = "cerebras"} beside \code{provider = "openai"} in its
 server table, or on a model that names no server, before starting \nodwyn{}.
 It sends prior assistant thinking as \code{reasoning}; the default,
-\code{"compatible"}, keeps \code{reasoning\_content}. Unknown dialects
+\code{"compatible"}, keeps \code{reasoning\_content}. For OpenAI itself,
+\code{dialect = "responses"} sends each request to its Responses API
+instead, where a reasoning model such as gpt-6.1-sol takes an effort beside
+tools, which it refuses on chat completions; there a reply's thinking is not
+sent back, and nothing is stored on OpenAI's side. Unknown dialects
 and dialects on Ollama are refused. Settings sets it with the rest of a
 provider, where you can see it before saving, and keeps it when it saves
 another model on that server. The choice changes neither the key's binding

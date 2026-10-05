@@ -464,8 +464,9 @@ the models on it. `choices` are the models a task can be started on or moved to,
 that is not the default model again: `{name, server?, provider, model, host,
 efforts?, effort?, default?}`, where `efforts` are the efforts the model takes
 and `effort` the one it starts with (ADR 41). `dialect`, when
-configured, is `compatible` or `cerebras`; it selects Chat Completions
-history encoding independently of the protocol. `control` is the main
+configured, is `compatible`, `cerebras` or `responses`; the first two select
+Chat Completions history encoding, and `responses` sends requests to OpenAI's
+Responses API instead (ADR 8, amended 2026-10-05). `control` is the main
 model with its server's `Provider`, optional `Dialect`, `URL` and
 `Credential` filled in, and `Server` naming that server. Set a dialect in
 config.toml; `settings.control.write` preserves it when selecting a saved

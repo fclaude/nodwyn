@@ -22,12 +22,12 @@ const kinds = {
 };
 const presets = [
   { id: "ollama", label: "Ollama", kind: "ollama", url: "http://localhost:11434", dialect: "" },
-  { id: "openai", label: "OpenAI", kind: "openai", url: "https://api.openai.com/v1", dialect: "" },
+  { id: "openai", label: "OpenAI", kind: "openai", url: "https://api.openai.com/v1", dialect: "responses" },
   { id: "openrouter", label: "OpenRouter", kind: "openai", url: "https://openrouter.ai/api/v1", dialect: "" },
   { id: "cerebras", label: "Cerebras", kind: "openai", url: "https://api.cerebras.ai/v1", dialect: "cerebras" },
   { id: "other", label: "Other server", kind: "openai", url: "", dialect: "" },
 ];
-const dialects = [["", "Standard (reasoning_content)"], ["cerebras", "Cerebras (reasoning)"]];
+const dialects = [["", "Standard (reasoning_content)"], ["cerebras", "Cerebras (reasoning)"], ["responses", "OpenAI Responses (/responses)"]];
 
 // The words of effort a model may take. A provider decides which it accepts,
 // so the sets here are only shortcuts; anything else is typed.
@@ -252,7 +252,7 @@ function providerForm(ctx, redraw) {
     h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai")),
     h("p", { class: "hint" }, kinds[f.kind].needs),
     field("provider-url", "Address", url, f.kind === "openai" ? "Including the version, such as https://api.openai.com/v1." : "Such as http://localhost:11434, or http://workshop:11434 on your network."),
-    f.kind === "openai" ? field("provider-dialect", "How it reads the protocol", dialect, "Chosen by you, never guessed from the address. Cerebras needs its own for reasoning to survive tool calls.") : null,
+    f.kind === "openai" ? field("provider-dialect", "How it reads the protocol", dialect, "Chosen by you, never guessed from the address. Cerebras needs its own for reasoning to survive tool calls; OpenAI needs Responses for a reasoning model to take an effort and tools together.") : null,
     f.kind === "openai"
       ? field(
           "provider-key",
