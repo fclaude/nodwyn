@@ -377,6 +377,17 @@
 
 ;; A chat's latest request with the person's messages before it, as the
 ;; gate's judge, explorer and planner read it (plan.scm, plan-chat-request).
+;; The agent's last answer, ahead of what the person wrote since, and the
+;; files the person attached to their latest message, which a context of
+;; its own does not see: what the gate's explorer and planner read, never
+;; its judge (plan.scm, plan-model-request).
+(define (plan-request-after-reply reply)
+  (string-append "The agent last answered:\n" reply "\n\n"))
+
+(define (plan-request-attachments files)
+  (string-append "\n\nThe person attached to this message: " (string-join files ", ")
+                 ". The agent doing the work sees them; you do not, so where the request points at them (\"this\", \"there\", what a screenshot shows), say what you cannot tell rather than guess."))
+
 (define (plan-request-with-earlier earlier request)
   (string-append
    (apply string-append

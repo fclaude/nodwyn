@@ -179,6 +179,15 @@ func (l *Loop) install() error {
 			Handler: l.sessionRequests,
 		},
 		{
+			Name: "request-context",
+			Meta: scheme.Meta{
+				Doc:    "What the latest request answers and carries, beside its words: an alist of reply, the agent's last answer before it (\"\" when there is none), and attachments, the names of the files the person attached to it, as recorded (redacted). What a strategy hands a context of its own, such as the plan gate's explorer and planner, which see neither the conversation nor the files.",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.requestContext,
+		},
+		{
 			Name: "session-system-prompt",
 			Meta: scheme.Meta{
 				Doc:    "The session's system prompt, fixed when it started: what a narrowed context passes to narrow-context to keep the model's standing instructions.",
@@ -945,6 +954,52 @@ func (l *Loop) sessionRequests(c *scheme.Call) (scheme.Value, error) {
 		out = append(out, scheme.Str(p.Text))
 	}
 	return scheme.List(out...), nil
+}
+
+// requestContext is (request-context): the agent's last answer before the
+// latest request (the last reply that called no tool and said something)
+// and the files attached to the latest request (those attached since the
+// request before it).
+func (l *Loop) requestContext(c *scheme.Call) (scheme.Value, error) {
+	if c.Origin == scheme.OriginModel {
+		return scheme.Void, errors.New("not callable from a model-originated evaluation")
+	}
+	events := l.host.EventsSoFar()
+	last := -1
+	for i, ev := range events {
+		if ev.Kind == log.KindUserMsg {
+			last = i
+		}
+	}
+	reply := ""
+	var attached []scheme.Value
+	if last >= 0 {
+		for i := last - 1; i >= 0; i-- {
+			ev := events[i]
+			if ev.Kind == log.KindUserMsg {
+				break
+			}
+			if ev.Kind == log.KindAttach {
+				var p log.Attach
+				if ev.Decode(&p) == nil && p.Name != "" {
+					attached = append([]scheme.Value{scheme.Str(p.Name)}, attached...)
+				}
+			}
+		}
+		for i := last - 1; i >= 0 && reply == ""; i-- {
+			if events[i].Kind != log.KindLLMResp {
+				continue
+			}
+			var p log.LLMResp
+			if events[i].Decode(&p) == nil && len(p.ToolCalls) == 0 && strings.TrimSpace(p.Content) != "" {
+				reply = p.Content
+			}
+		}
+	}
+	return scheme.List(
+		scheme.Cons(scheme.Sym("reply"), scheme.Str(reply)),
+		scheme.Cons(scheme.Sym("attachments"), scheme.List(attached...)),
+	), nil
 }
 
 // sessionSystemPrompt is (session-system-prompt). It needs no turn: the

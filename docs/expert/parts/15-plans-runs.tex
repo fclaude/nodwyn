@@ -19,8 +19,12 @@ like this:
     explanation or a proposal needs none, however much reading it takes.
     A later message in a chat is read after the person's
     \code{plan-earlier-requests} (2) messages before it, so a reply to the
-    model's question is not judged alone; the explorer, the planner and
-    the score read the same text. Below \code{plan-needed-threshold}
+    model's question is not judged alone, and the score reads the same
+    text. The explorer and the planner read it after the agent's last
+    answer and with the names of the files attached
+    (\code{plan-model-request}, from \code{(request-context)}); the judge
+    is not sent them, since at \code{jev.content = "plan"} it reads the
+    person's asks and the plan (\adr{19}). Below \code{plan-needed-threshold}
     (0.5), the turn just proceeds.
   \item A read-only sub-agent labelled \code{explorer} looks at the folder
     for up to \code{plan-explore-rounds} (12; 16 for the families that ask

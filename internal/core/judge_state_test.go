@@ -121,7 +121,7 @@ func TestTheJudgeIsToldOfAScratchScript(t *testing.T) {
 
 // A chat's later message is read after the person's messages before it:
 // by the plan gate's judge, its planner and its scoring, and by the judge
-// of a command. In session 20261005T060224Z-2f9eb922 the reply below,
+// of a command; the planner also reads the agent's last answer. In session 20261005T060224Z-2f9eb922 the reply below,
 // shown alone, was put at 0.4 for a plan, and a look at the tools it would
 // need at 0.41 for a command.
 func TestTheJudgeReadsAChatsEarlierMessages(t *testing.T) {
@@ -157,6 +157,16 @@ func TestTheJudgeReadsAChatsEarlierMessages(t *testing.T) {
 	}
 	if planner := string(r.srv.Requests[1].Raw); !strings.Contains(planner, "You are nodwyn's planner") || !strings.Contains(planner, `the person wrote:\n`+first) {
 		t.Fatalf("the planner did not read the earlier message:\n%s", planner)
+	}
+	// The planner also reads the agent's last answer, which the reply
+	// answers; the judge is never sent it (ADR 19).
+	if planner := string(r.srv.Requests[1].Raw); !strings.Contains(planner, `The agent last answered:\nDo you mean folding the activity rows`) {
+		t.Fatalf("the planner did not read the agent's last answer:\n%s", planner)
+	}
+	for i, state := range judge.states {
+		if strings.Contains(state, "Do you mean folding") {
+			t.Fatalf("the judge's %s was sent the agent's answer:\n%s", judge.questions[i], state)
+		}
 	}
 	if !strings.Contains(judge.bodies[1], "asks for an answer rather than a change") || !strings.Contains(judge.bodies[3], "a command that only looks or reports") {
 		t.Fatalf("the judge was asked:\n%s\n%s", judge.bodies[1], judge.bodies[3])

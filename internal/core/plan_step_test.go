@@ -2,6 +2,8 @@ package core
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -205,5 +207,48 @@ func TestAnUnfinishedTurnLeavesItsPlan(t *testing.T) {
 	}
 	if answers["b"] != "Step 2 is done. Next unmarked: 3. Docs: none — no doc describes main.go." {
 		t.Fatalf("answers %q", answers)
+	}
+}
+
+// The plan gate's explorer and planner read the agent's last answer and the
+// names of the files attached to the request, which a context of their own
+// does not show: in session 20261005T060224Z-2f9eb922 the explorer said the
+// request "does not identify what 'there' refers to", when a screenshot and
+// the agent's own question did (ADR 32, amended 2026-10-05). Its judge
+// still reads only the person's messages (ADR 19).
+func TestThePlannerReadsTheLastAnswerAndTheAttachments(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, `
+(define gate-saw #f)
+(define base-agent-turn agent-turn)
+(define (agent-turn request)
+  (if (equal? request "the second")
+      (set! gate-saw (list (plan-chat-request request) (plan-model-request (plan-chat-request request))))
+      (base-agent-turn request)))`, 10,
+		fake.Turn{Content: "Which one: the first or the second?"},
+	)
+	if e := r.turn("make it less verbose"); e != "" {
+		t.Fatal(e)
+	}
+	notes := filepath.Join(t.TempDir(), "what-i-see.txt")
+	if err := os.WriteFile(notes, []byte("the run rows repeat\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.s.Attach(notes, "what-i-see.txt", "unix:uid=1"); err != nil {
+		t.Fatal(err)
+	}
+	if e := r.turn("the second"); e != "" {
+		t.Fatal(e)
+	}
+	judged, seen := r.eval("(car gate-saw)"), r.eval("(cadr gate-saw)")
+	for _, want := range []string{"The agent last answered:\\nWhich one: the first or the second?", "make it less verbose", "the second", "The person attached to this message: what-i-see.txt"} {
+		if !strings.Contains(seen, want) {
+			t.Errorf("what the explorer and the planner read lacks %q:\n%s", want, seen)
+		}
+	}
+	// The judge reads the person's messages, never the agent's replies
+	// (ADR 19).
+	if strings.Contains(judged, "Which one") || strings.Contains(judged, "what-i-see.txt") || !strings.Contains(judged, "make it less verbose") {
+		t.Errorf("what the judge reads:\n%s", judged)
 	}
 }

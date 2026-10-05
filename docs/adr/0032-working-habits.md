@@ -709,3 +709,24 @@ had passed and once to rebase, in the person's own checkout
 copy of the last commit (`git archive HEAD` into `$TMPDIR/base`) in every
 session, and says never to use git stash for it. ADR 34's "outside a
 worktree the habit is unchanged" no longer holds.
+
+## Amendment 2026-10-05: the explorer and the planner read the agent's last answer
+
+The plan gate's explorer and planner, each in a context of its own, read a
+chat's request after the person's two messages before it (amended above),
+but not what the agent had last said, which a reply answers, nor the files
+attached. In session 20261005T060224Z-2f9eb922 the explorer, shown neither,
+said the request "does not identify what 'there' refers to", when a
+screenshot and the agent's own question did; in 20261005T151325Z-d9519026
+the explorer and planner of "fix all of them" could not see the findings
+the agent's last answer listed. They now read the request after the
+agent's last answer (cut at `plan-earlier-cap`) and with the names of the
+files attached, and are told to say what they cannot tell from a file they
+cannot see rather than guess (`plan-model-request`, `(request-context)`,
+`plan-request-after-reply`, `plan-request-attachments`). The judge reads
+what it read: at `jev.content = "plan"` it is sent the person's asks and the
+plan, and the agent's replies are not sent (ADR 19); nor is an attached
+file's name. An image itself still reaches no narrowed context (ADR 22):
+the planner reads its name only. TestThePlannerReadsTheLastAnswerAndTheAttachments,
+TestTheJudgeReadsAChatsEarlierMessages and
+TestImagesStayOutOfNarrowedContextsAndTheJudge hold this.

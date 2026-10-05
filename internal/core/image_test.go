@@ -358,8 +358,8 @@ func TestChangedOrMissingImageIsSaidSo(t *testing.T) {
 	}
 }
 
-// The planner, a sub-agent and the judge never get an image; another host
-// gets a line saying the image is not for it.
+// The planner, a sub-agent and the judge never get an image, and the judge
+// not its name; another host gets a line saying the image is not for it.
 func TestImagesStayOutOfNarrowedContextsAndTheJudge(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(3.6))
@@ -402,7 +402,11 @@ func TestImagesStayOutOfNarrowedContextsAndTheJudge(t *testing.T) {
 		t.Fatalf("requests %d, plans %+v", len(r.srv.Requests), r.gatePlans())
 	}
 	planner, reviewer, control := r.srv.Requests[0], r.srv.Requests[1], r.srv.Requests[2]
-	if !strings.Contains(string(planner.Raw), "planner") || countImages(t, planner) != 0 || strings.Contains(string(planner.Raw), "screen.png") {
+	// The planner is told the image's name, so that it says what it cannot
+	// tell rather than guess (ADR 32, amended 2026-10-05), and nothing else
+	// of it.
+	named := "The person attached to this message: screen.png."
+	if !strings.Contains(string(planner.Raw), "planner") || countImages(t, planner) != 0 || !strings.Contains(string(planner.Raw), named) || strings.Contains(strings.Replace(string(planner.Raw), named, "", 1), "screen.png") {
 		t.Fatalf("the planner's request:\n%.600s", planner.Raw)
 	}
 	if countImages(t, reviewer) != 0 || strings.Contains(string(reviewer.Raw), "screen.png") {

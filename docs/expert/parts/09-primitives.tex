@@ -73,6 +73,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, as the system prompt carries it \\
+\code{(request-context)} & what the latest request answers: the agent's last answer before it, and the names of the files attached to it (the loop's; Chapter~\ref{ch:turn}) \\
 \code{(workspace)} & the folder's mounted folders \\
 \code{(worktree)} & \code{\#f}, or the task's own git worktree: repository, branch, base \\
 \code{(git-land message)} & in a worktree task only: commit, rebase, push to the base by fast-forward, move the local base; asks first \\
