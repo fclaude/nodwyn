@@ -265,6 +265,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 			}
 		}
 	case string(log.KindTurnEnd), string(log.KindSessionEnd):
+		if e.Kind == string(log.KindTurnEnd) {
+			var p log.TurnEnd
+			if p, err = decode[log.TurnEnd](e.Payload); err == nil && p.Where != "" {
+				m.append("where it stopped: " + p.Where)
+			}
+		}
 		m.endToolInterval()
 		m.busy = false
 		if m.prompt != nil {

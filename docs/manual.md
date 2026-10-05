@@ -673,8 +673,17 @@ turn does not finish (a model error such as a provider's
 rate limit, a limit, or your Stop), your next message, "continue" or a
 correction, carries its plan with the steps marked so far, and the model
 goes on from the next unmarked step; the plan panel says "carried over from
-an earlier turn". After a turn that finished, the next message is a new
-request. A model that only reads and
+an earlier turn". A turn that stops short, at a limit, on an error or at a
+progress stop, says beside the stop where it had got to: how many of the
+plan's steps are marked and the next one, the files the file tools wrote in
+that turn, and the last command it ran with how it ended (the transcript has
+the rest; files changed through the shell are not listed). A provider that
+limits requests and says how long to wait (up to a minute) is waited for
+before the request is sent again, and one that says the account is out of
+credit is reported at once, since asking again cannot help. A model that
+waits for a command that is still running is not stopped for reading it again
+and again, until thirty reads in a row. After a turn that finished, the next
+message is a new request. A model that only reads and
 searches for twelve rounds in a row (the count is per model family, set in
 a table in `.nodwyn/init.scm`; docs/scheme.md §9.7) is told to write down what it found:
 its plan, or, in a chat whose request asks a question or needs your

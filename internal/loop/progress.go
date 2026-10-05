@@ -11,8 +11,9 @@ import (
 // turnProgress notices a turn going in circles (ADR 18): the same call four
 // times in a row, a denied call retried three times, ten failures in a row,
 // the same tool failing on the same file in six of the last sixteen model
-// responses. It belongs to one turn, observes completed calls and never
-// grants authority; the user's next message starts a fresh one.
+// responses, a command that is still running polled thirty times in a row.
+// It belongs to one turn, observes completed calls and never grants
+// authority; the user's next message starts a fresh one.
 type turnProgress struct {
 	last     callKey         // the previous call
 	repeated int             // how many times in a row last has run
@@ -20,7 +21,18 @@ type turnProgress struct {
 	denials  map[callKey]int // denials per call, until it succeeds
 	round    int             // model responses so far this turn
 	failures []failure       // failed calls within the last stallWindow responses
+	polls    int             // consecutive reads of a command that was still running
 }
+
+// pollLimit is how many reads of a command that is still running, with
+// nothing else between them, end the turn. Waiting for one is not going in
+// circles: a poll that waits up to a minute is the model letting the
+// command work, and the same poll four times in a row ended two turns
+// that had done nothing wrong (20261003T002506Z-f564a28c seq 5889 to
+// 5907, a promote that had succeeded; 20261003T143916Z-48f31857 seq 7323
+// to 7341, a browser check that was still running). Thirty polls of up to
+// a minute is half an hour: a command that hangs still ends the turn.
+const pollLimit = 30
 
 // A stall is the same tool failing on the same target in stallFailures of the
 // last stallWindow model responses. Reads, successful calls and edits that
@@ -47,8 +59,9 @@ type failure struct {
 type callKey struct{ name, args string }
 
 // toolOutcome classifies a result: failed covers any error, denied only a
-// guard refusal.
-type toolOutcome struct{ failed, denied bool }
+// guard refusal, waiting a read of a background command that is still
+// running.
+type toolOutcome struct{ failed, denied, waiting bool }
 
 // response notes that the model has answered again, which is the unit a
 // stall is counted in.
@@ -57,6 +70,17 @@ func (p *turnProgress) response() { p.round++ }
 // observe records one completed call and returns why the turn should stop,
 // or "" to go on.
 func (p *turnProgress) observe(call llm.ToolCall, outcome toolOutcome) string {
+	if outcome.waiting && !outcome.failed {
+		// Waiting for a command is not repeating a call: the polls are
+		// counted on their own, and the repeat count is left as it was.
+		p.polls++
+		if p.polls >= pollLimit {
+			return fmt.Sprintf("a command that is still running was read %d times in a row", p.polls)
+		}
+		p.errors = 0
+		return ""
+	}
+	p.polls = 0
 	key := keyOf(call)
 	if key == p.last {
 		p.repeated++

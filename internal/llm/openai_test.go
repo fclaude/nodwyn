@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOpenAIRoundTrip(t *testing.T) {
@@ -214,5 +215,32 @@ func TestOpenAIContextLength(t *testing.T) {
 	refused := NewOpenAI(srv.URL+"/v1", func(*http.Request) error { return errors.New("method GET is not bound") })
 	if _, err := refused.ContextLength(context.Background(), "listed"); err == nil || !strings.Contains(err.Error(), "not bound") {
 		t.Fatalf("a refused key: %v", err)
+	}
+}
+
+// A provider that rate-limits with Retry-After is waited for, over HTTP and
+// through ChatRetrying: the second request comes after the pause it named,
+// not the two seconds the retry would have chosen (here one millisecond).
+func TestOpenAIRateLimitWithRetryAfterIsWaitedFor(t *testing.T) {
+	defer func(d time.Duration) { RetryDelay = d }(RetryDelay)
+	RetryDelay = time.Millisecond
+	var first, second time.Time
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if first.IsZero() {
+			first = time.Now()
+			w.Header().Set("Retry-After", "0.08")
+			http.Error(w, `{"message":"Tokens per minute limit exceeded"}`, http.StatusTooManyRequests)
+			return
+		}
+		second = time.Now()
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+	resp, err := ChatRetrying(context.Background(), NewOpenAI(srv.URL, nil), Request{Model: "m"}, withTimeout, nil)
+	if err != nil || resp.Message.Content != "ok" {
+		t.Fatalf("resp %v, err %v", resp, err)
+	}
+	if gap := second.Sub(first); gap < 80*time.Millisecond {
+		t.Fatalf("asked again after %v, before the 80 ms the server asked for", gap)
 	}
 }

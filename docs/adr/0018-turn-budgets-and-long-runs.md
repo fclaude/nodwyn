@@ -384,3 +384,51 @@ Its cause was `fs-edit`, which could not match text a model reads as a
 placeholder; ADR 43 has it match in the text the model reads, so a line with a
 credential on it can be edited, and an `old` that guesses a credential says to
 write the placeholder instead.
+
+## Amendment 2026-10-05: polling is not a loop, a stop says where the work was, and a provider's pause is waited for
+
+Three ways a turn ended that said nothing about the work, in the 75 local
+session logs of 2026-09-30 to 10-05.
+
+- **Polling a running command.** The same `shell-read` four times in a row
+  ended two turns that had done nothing wrong: a promote that had succeeded
+  (20261003T002506Z-f564a28c, seq 5889 to 5907) and a browser check that
+  was still running (20261003T143916Z-48f31857, seq 7323 to 7341). A read
+  of a background command whose answer says it is still running
+  (`: running (`) no longer counts as a repeated call; such reads have a
+  count of their own, and thirty in a row, with no other call between,
+  end the turn. A wait is up to a minute, so thirty is half an hour: a
+  command that hangs still ends it. Any other call starts the count again.
+  A read of a command that has exited is an ordinary call. This is the
+  rule's weakest edge: a model alternating a poll with another call is not
+  caught by either count, as before.
+- **A stop says where the work was.** A turn that ended in an error, a
+  budget or a progress stop recorded the reason and nothing else, so a
+  person read the transcript to learn whether it was safe to go on. Its
+  `turn.end` now carries `where`, one line: how many of the plan's steps are
+  marked and the next one, the files the file tools wrote in the turn, and
+  the last `shell-exec` with how it ended. The console shows it beside the
+  stop, the plain chat and the TUI print it. It is read from the log, and
+  runs nothing: `git diff --stat` was not used, since which program a
+  repository's git configuration would run is not the host's to leave to a
+  stranger's clone. A turn that completed, or that the person cancelled,
+  carries none. Not built: the last check by name (a test run) apart from
+  the last command, and files changed through the shell.
+- **A provider's pause and an account out of credit.** A model request is
+  sent again twice, two and four seconds after it failed. Of the 44 retried
+  429s in the logs, 39 were "tokens per minute" in one session
+  (20261004T182412Z-747045aa), where both retries land in the minute that
+  was full. A server's `Retry-After` (seconds or a date) or
+  `Retry-After-Ms` is now waited for, at most a minute (`llm.MaxRetryAfter`);
+  a longer one ends the request at once with the server's words. The logs
+  keep no response headers, so whether the provider of that session sends
+  one is not known: a provider that does not gets the old delays. A 402,
+  an account out of credit, is not retried: it is out of credit a few
+  seconds later too (seq 6842 to 6847 of the same session), and says so with
+  a hint to add credit or choose another model.
+
+TestPollingARunningCommandIsNotAProgressStop,
+TestProgressPollsOfARunningCommandHaveTheirOwnCeiling,
+TestAStoppedTurnSaysWhereItStopped, TestOpenAIRateLimitWithRetryAfterIsWaitedFor,
+TestChatRetryingWaitsForRetryAfterAndStopsAtPaymentRequired and the
+transcript browser check cover them.

@@ -100,3 +100,17 @@ func TestReplayShowsRefusedEgress(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// A turn that stopped short says where it had got to, after the error; one
+// that completed says nothing more.
+func TestStoppedTurnPrintsWhereItStopped(t *testing.T) {
+	var out bytes.Buffer
+	c := &Chat{Out: &out}
+	c.show(event.Event{Kind: event.Error, Payload: event.ErrorInfo{Err: "hard stop: tool_calls budget reached"}})
+	c.show(event.Event{Kind: string(log.KindTurnEnd), Payload: log.TurnEnd{Text: "turn ended", Outcome: "hard_budget", Where: "plan: 1 of 4 steps marked; last command: go test ./... (exited 1)"}})
+	c.show(event.Event{Kind: string(log.KindTurnEnd), Payload: log.TurnEnd{Text: "turn ended", Outcome: "completed"}})
+	want := "error: hard stop: tool_calls budget reached\nwhere it stopped: plan: 1 of 4 steps marked; last command: go test ./... (exited 1)\n"
+	if out.String() != want {
+		t.Fatalf("got %q\nwant %q", out.String(), want)
+	}
+}

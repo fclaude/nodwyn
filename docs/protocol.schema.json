@@ -2134,6 +2134,9 @@
         },
         "text": {
           "type": "string"
+        },
+        "where": {
+          "type": "string"
         }
       },
       "required": [

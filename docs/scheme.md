@@ -631,7 +631,8 @@ had called them directly. Whatever the strategy does:
   the strategy asks the model again or when the turn ends;
 - budgets, the tool-call limit and the progress guard (the same call four
   times in a row, a denied call retried three times, ten failures in a row,
-  one tool failing on one file in six of the last sixteen responses)
+  one tool failing on one file in six of the last sixteen responses, a
+  background command still running read thirty times in a row)
   end the turn with an error no `guard` clause can catch (§4), and so does a
   failure to write the log, which is the source of truth.
 

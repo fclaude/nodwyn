@@ -72,6 +72,19 @@ func TestDurableResponseReplacesStreamAndDeduplicatesHistory(t *testing.T) {
 		t.Fatal("stream or duplicate history repeated response")
 	}
 }
+
+// A turn that stopped short says where it had got to, below the error.
+func TestStoppedTurnShowsWhereItStopped(t *testing.T) {
+	m := testModel()
+	m.consume(wire(event.Error, event.ErrorInfo{Err: "hard stop: tool_calls budget reached"}, 0))
+	m.consume(wire(string(log.KindTurnEnd), log.TurnEnd{Text: "turn ended", Outcome: "hard_budget", Where: "plan: 1 of 4 steps marked"}, 1))
+	m.refresh(false)
+	view := m.View().Content
+	if !strings.Contains(view, "error: hard stop: tool_calls budget reached") || !strings.Contains(view, "where it stopped: plan: 1 of 4 steps marked") {
+		t.Fatalf("the stop is not described:\n%s", view)
+	}
+}
+
 func TestContentCannotControlTerminalAndDiffScrolls(t *testing.T) {
 	m := testModel()
 	m.Update(tea.WindowSizeMsg{Width: 40, Height: 16})

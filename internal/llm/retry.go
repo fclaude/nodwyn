@@ -16,6 +16,11 @@ const Retries = 2
 // RetryDelay is the pause before the first retry; it doubles after that.
 var RetryDelay = 2 * time.Second
 
+// MaxRetryAfter is the longest wait a server's Retry-After is honoured for.
+// A rate limit that asks for longer is reported at once instead, since a
+// turn that sits silent for minutes looks hung; its failure says to wait.
+var MaxRetryAfter = time.Minute
+
 // Permanent marks an error that sending the request again cannot fix, such
 // as a model nobody configured or a key that is not bound: ChatRetrying
 // returns it at once.
@@ -48,13 +53,28 @@ func ChatRetrying(ctx context.Context, p Provider, req Request,
 		if err == nil || attempt == Retries || ctx.Err() != nil || errors.As(err, &permanent) {
 			return resp, err
 		}
+		// A server that says how long to wait is waited for: a rate limit
+		// counts tokens over a minute, and two retries two and four seconds
+		// apart land inside the same minute (39 of the 44 retried 429s in the
+		// local sessions of 2026-09-30 to 10-05 were "tokens per minute", in
+		// 20261004T182412Z-747045aa). The logs keep no response headers, so
+		// whether that provider sends Retry-After is not known; one that does
+		// is believed.
+		wait := delay
+		var se *StatusError
+		if errors.As(err, &se) && se.RetryAfter > 0 {
+			if se.RetryAfter > MaxRetryAfter {
+				return resp, err
+			}
+			wait = max(se.RetryAfter, delay)
+		}
 		if onRetry != nil {
 			onRetry(attempt+1, err)
 		}
 		select {
 		case <-ctx.Done():
 			return nil, err
-		case <-time.After(delay):
+		case <-time.After(wait):
 		}
 		delay *= 2
 	}

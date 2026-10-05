@@ -269,6 +269,11 @@ func (c *Chat) show(ev event.Event) {
 	case event.Error:
 		endStream()
 		fmt.Fprintf(c.Out, "error: %s\n", ev.Payload.(event.ErrorInfo).Err)
+	case string(log.KindTurnEnd):
+		if where := ev.Payload.(log.TurnEnd).Where; where != "" {
+			endStream()
+			fmt.Fprintf(c.Out, "where it stopped: %s\n", where)
+		}
 	case event.Status:
 		if ev.Payload.(event.StatusInfo).State == "idle" {
 			endStream()

@@ -532,6 +532,9 @@ export class Transcript {
           // Where a turn stopped short is said where it ends, not behind
           // Activity: a limit's stop is shown nowhere else.
           this.audit(words[p.outcome] || `Turn ended: ${p.outcome}`, p.error || undefined, p.outcome === "error" ? "bad" : "", true);
+          // Where the work had got to, in view beside the stop, so whether it
+          // is safe to go on is not found by reading the transcript.
+          if (p.where) this.audit(`Where it stopped: ${p.where}`, undefined, "", true);
         }
         this.end();
         break;

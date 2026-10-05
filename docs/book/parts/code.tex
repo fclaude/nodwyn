@@ -471,7 +471,8 @@ Back in \file{prims.go}, \code{runTools} charges each call to the budget
 before running it, and stops the turn when the progress guard
 (\file{progress.go}) sees it going in circles: the same call four times in a
 row, a denied call retried three times, ten failures in a row, or one tool
-failing on one file in six of the last sixteen responses. The calls
+failing on one file in six of the last sixteen responses, or a background
+command that is still running read thirty times in a row. The calls
 after a stop are answered as not executed.
 
 \begin{go}

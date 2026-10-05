@@ -174,3 +174,57 @@ func TestProgressStallWithoutPath(t *testing.T) {
 		}
 	}
 }
+
+// Waiting for a command that is still running is not repeating a call: the
+// same poll four times ended two turns that had done nothing wrong
+// (20261003T002506Z-f564a28c, 20261003T143916Z-48f31857). It has its own
+// ceiling, so a command that hangs still ends the turn, and any other call
+// between the polls starts the count again.
+func TestProgressPollsOfARunningCommandHaveTheirOwnCeiling(t *testing.T) {
+	var p turnProgress
+	poll := call("shell-read", `{"id":"p1","wait":60}`)
+	for i := 1; i < pollLimit; i++ {
+		if reason := p.observe(poll, toolOutcome{waiting: true}); reason != "" {
+			t.Fatalf("poll %d: %q", i, reason)
+		}
+	}
+	if reason := p.observe(poll, toolOutcome{waiting: true}); !strings.Contains(reason, "still running") {
+		t.Fatalf("poll %d: %q", pollLimit, reason)
+	}
+
+	// A read of the same process after it exited is an ordinary call: four
+	// in a row are still a loop.
+	p = turnProgress{}
+	for i := 0; i < 4; i++ {
+		reason := p.observe(poll, toolOutcome{})
+		if (reason != "") != (i == 3) {
+			t.Fatalf("read %d of an exited process: %q", i, reason)
+		}
+	}
+
+	// Another call between the polls starts the count again.
+	p = turnProgress{}
+	for i := 0; i < 3*pollLimit; i++ {
+		if i%(pollLimit-1) == pollLimit-2 {
+			p.observe(call("fs-read", fmt.Sprintf(`{"path":"a%d"}`, i)), toolOutcome{})
+			continue
+		}
+		if reason := p.observe(poll, toolOutcome{waiting: true}); reason != "" {
+			t.Fatalf("poll at %d: %q", i, reason)
+		}
+	}
+}
+
+func TestStillRunningReadsShellReadsFirstLine(t *testing.T) {
+	for answer, want := range map[string]bool{
+		"p1: running (bash -c go test ./...)\nok  \tpkg\n": true,
+		"p1: running (scripts/promote.sh)\n":               true,
+		"p1: exited 0 (scripts/promote.sh)\nselfcheck: ok": false,
+		"p1: exited 1\nrunning (not the state)":            false,
+		"":                                                 false,
+	} {
+		if got := stillRunning(answer); got != want {
+			t.Errorf("%q: %v, want %v", answer, got, want)
+		}
+	}
+}

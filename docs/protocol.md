@@ -859,7 +859,10 @@ run is active, session `busy` includes the between-turn wait. `session.send`,
 `session.notes.write`, `session.restore` and `session.attach` are rejected
 until it stops. New `run.state`,
 `run.turn` and `run.checkpoint` records and optional `turn.end.outcome/error`
-fields are described by the generated schema. An unattended run's
+fields are described by the generated schema. A `turn.end` that is not
+`completed` or `canceled` also carries `where`, a line saying where the turn
+had got to: the plan's marks and next step, the files the file tools wrote,
+the last `shell-exec` and how it ended (read from the log; nothing is run). An unattended run's
 `run.checkpoint` has actor `unattended` and a `reason`, and `run.state`
 records `unattended`, `auto_approve`, `judge` and a run's own `cost`.
 `turn.end.outcome` is `completed`, `stopped`, `hard_budget`, `spend_limit`

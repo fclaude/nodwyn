@@ -51,6 +51,7 @@ func (l *Loop) runTool(ctx context.Context, tc llm.ToolCall) (log.ToolResult, sc
 	} else {
 		res.OK = true
 		res.Value = render(produced)
+		outcome.waiting = tc.Name == "shell-read" && stillRunning(res.Value)
 	}
 	err = l.record(log.KindToolResult, res)
 	return res, scheme.Tainted(scheme.Str(res.Value), produced.Taint), outcome, err
@@ -129,4 +130,11 @@ func (l *Loop) skipTools(calls []llm.ToolCall, reason string) error {
 		}
 	}
 	return nil
+}
+
+// stillRunning reports whether a shell-read answer says its process has not
+// exited: the first line is "p1: running (command)", or "p1: exited 0 (...)".
+func stillRunning(answer string) bool {
+	first, _, _ := strings.Cut(answer, "\n")
+	return strings.Contains(first, ": running (")
 }

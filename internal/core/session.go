@@ -303,7 +303,11 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 			if limits.Cost.Hard > 0 {
 				s.endSpend(turn)
 			}
-			_, _ = s.Record(log.KindTurnEnd, turnOutcome(ctx, turnErr))
+			end := turnOutcome(ctx, turnErr)
+			if end.Outcome != "completed" && end.Outcome != "canceled" {
+				end.Where = s.whereStopped()
+			}
+			_, _ = s.Record(log.KindTurnEnd, end)
 			s.flushOutput()
 			cancel()
 			s.endTurn()

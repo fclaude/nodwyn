@@ -136,6 +136,17 @@ check(async () => {
       read(g.t, "a.go");
       g.t.render({ kind: "turn.end", payload: { outcome: "spend_limit" } });
       const stopped = visible(g.root, "Stopped at the spend limit");
+      // Where the work had got to is said beside the stop, in view; a stop
+      // that carries none (an older log) draws none. Each is read before the
+      // next fresh(), which replaces the page's transcript.
+      const where = fresh();
+      read(where.t, "a.go");
+      where.t.render({ kind: "turn.end", payload: { outcome: "hard_budget", error: "tool_calls budget reached", where: "plan: 1 of 4 steps marked, next is step 2 (Test: x); files written this turn: a.go; last command: go test ./... (exited 1)" } });
+      const whereShown = visible(where.root, "Where it stopped: plan: 1 of 4 steps marked, next is step 2 (Test: x); files written this turn: a.go; last command: go test ./... (exited 1)");
+      const wherePlain = fresh();
+      read(wherePlain.t, "a.go");
+      wherePlain.t.render({ kind: "turn.end", payload: { outcome: "hard_budget", error: "tool_calls budget reached" } });
+      const whereSaid = { shown: whereShown, absent: !wherePlain.root.textContent.includes("Where it stopped") };
       const w = fresh();
       w.t.render({ kind: "worktree.create", payload: { branch: "nodwyn/a", base: "main", base_commit: "abcdef0", uncommitted: 3 } });
       w.t.render({ kind: "worktree.create", payload: { branch: "nodwyn/b", base: "main", base_commit: "abcdef0" } });
@@ -160,7 +171,7 @@ check(async () => {
       lost.t.render({ kind: "tool.result", payload: { id: "x", name: "fs-read", ok: false, error: "disk full", ms: 0 } });
       const stray = { outside: lost.root.querySelectorAll(".turn.agent > .audit.bad").length, summary: lost.root.querySelector(".audit.bad summary")?.textContent };
       for (const { t } of [a, b, c, d, e, f, g, w, sk, lost]) t.end();
-      out.foldExceptions = { command, readFailure, write, asking, answered, audit, other, stopped, worktree, skipped, stray };
+      out.foldExceptions = { command, readFailure, write, asking, answered, audit, other, stopped, whereSaid, worktree, skipped, stray };
     }
 
     // Reads and commands that alternate keep their order: each read ends a
@@ -766,6 +777,7 @@ check(async () => {
   want(fx.other.open === false && fx.other.failed === "1 failed", `a failed call is counted on the closed row: ${JSON.stringify(fx.other)}`);
   want(fx.asking.open === false && fx.asking.what.includes("Waiting for your answer") && fx.answered.open === false && fx.answered.failed === "", `a question leaves the row closed, before and after the answer: ${JSON.stringify({ asking: fx.asking, answered: fx.answered })}`);
   want(fx.audit && fx.stopped, `an error and a stop at a limit stay outside the row: ${JSON.stringify(fx)}`);
+  want(fx.whereSaid.shown && fx.whereSaid.absent, `a stopped turn says where it stopped, in view, and one with no where says nothing: ${JSON.stringify(fx.whereSaid)}`);
   want(fx.skipped.failed === "" && fx.skipped.outside === 0 && fx.skipped.bad === 0 && fx.skipped.notes.join("; ") === "2 calls skipped: this agent is out of rounds | fs-read\nfs-find; fs-edit skipped: an earlier call in this batch failed | fs-edit", `skipped calls are notes behind the row, said with their reason and not a failure, those in a row for one reason as one note: ${JSON.stringify(fx.skipped)}`);
   want(fx.stray.outside === 1 && fx.stray.summary === "fs-read failed", `a result without its call that failed is still said outside the row: ${JSON.stringify(fx.stray)}`);
   want(fx.worktree.leftOut && !fx.worktree.clean, `files left out of a worktree are said outside the row, a clean worktree inside it: ${JSON.stringify(fx.worktree)}`);

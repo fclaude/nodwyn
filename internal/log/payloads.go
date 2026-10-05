@@ -527,6 +527,10 @@ type TurnEnd struct {
 	Text    string `json:"text"`
 	Outcome string `json:"outcome,omitempty"`
 	Error   string `json:"error,omitempty"`
+	// Where says where a turn that stopped short had got to, in a line: the
+	// plan's marks, the files the file tools wrote, the last command and how
+	// it ended. Empty for a turn that completed or was cancelled.
+	Where string `json:"where,omitempty"`
 }
 
 // RunState is a durable snapshot of driver limits and disposition. The original

@@ -740,7 +740,10 @@ only costs it knows, reported by the provider or priced from the model's
 A turn also stops if the model
 repeats an identical call four times in a row, retries a denied call three
 times, gets ten tool errors in a row, or fails with one tool on one file in
-six of its last sixteen responses.
+six of its last sixteen responses. Reading a command that is still running
+thirty times in a row stops it too, but waiting for one a few times does not.
+A turn that stops short says where it had got to: the plan's marks, the files
+it wrote and the last command it ran, beside the stop.
 
 A long request is a message like any other: the turn goes on until the
 model answers, a command needs you (there is no judge, or it refused), a
