@@ -44,13 +44,36 @@ already-running process or make arbitrary approved shell commands safe.
 ## Executable approvals
 
 `git status` approves the resolved executable selected for `git` and that argv
-prefix. `tools/git status` or a different absolute executable is a separate
-command even when its basename is `git`. Explicit paths can be approved on their
-own. Resolved identities are captured when approvals are installed, so retargeting
-a symlink does not transfer an existing approval. Shell wrappers and pipeline
-filters must also resolve to host tools. A bare PATH name inside the repository
-cannot inherit a system-tool approval. This checks paths, not binary signatures;
-an approved build or test can still run the project's own code.
+prefix, subject to argument checks. `tools/git status` is a separate command
+even when its basename is `git`; an explicit repository-relative executable can
+be approved separately. Resolved identities are captured when approvals are
+installed, so retargeting a symlink does not transfer an existing approval.
+Shell wrappers and pipeline filters must also resolve to host tools. A bare PATH
+name inside the repository cannot inherit a system-tool approval.
+
+A standing approval covers only flags in the tool's allowlist in
+`internal/guard/command_arguments.go`. Unknown flags need review. Flags that
+select another program, an output file, a makefile or a working directory are
+excluded, as are git's `--no-index`, `--ext-diff` and `--textconv`, make variable
+assignments and additional make targets. Every argument is checked for absolute
+and repository-escaping paths, including values inside `--flag=VALUE`, nested
+flag values and symlinks. Parent-directory components (`..`) conservatively need
+review because resolving a symlink before `..` can escape a cleaned path.
+This also excludes an absolute path to the approved
+executable: use its approved name or a repository-relative path.
+
+When a prefix would otherwise cover unsafe arguments, the command needs a
+**security confirm from a person**. Neither a standing approval, the judge nor
+an unattended approval setting answers it. A statically parsed shell command
+gets the same checks. Shell scripts with variables or substitutions cannot
+inherit standing approval and retain their ordinary confirmation and hard
+triggers. `ArgvTrigger` independently asks a person about explicit outside paths,
+including flag values; the session's scratch directory retains its exception.
+
+These checks inspect argv and executable paths, not binary signatures or the
+behaviour of an approved process. Builds and tests execute project code with the
+user's operating-system privileges, can write files and can use the network.
+The file-tool denylist does not mediate those processes' file access.
 
 ## Credentials and HTTP
 

@@ -202,12 +202,14 @@ your checks & anything you registered with \code{register-check} \\
 Two rules shape how they combine:
 
 \begin{itemize}
-  \item \textbf{A standing approval outranks a confirm, never a deny.}
-    Approving \code{go test} stops the question; it does not let
-    \code{go test} read \file{\textasciitilde/.ssh}.
+  \item \textbf{A standing approval outranks an ordinary confirm, never a
+    security confirm or a deny.} Approving \code{go test} stops the ordinary
+    question when its arguments pass the flag and path checks. It does not
+    sandbox the test process or its access to files.
   \item \textbf{Some confirms are security confirms}, and no approval waives
     them: a write to a protected path, content that looks like a key, a
-    command line built out of tool output. They need a person, every time:
+    command line built out of tool output, or unsafe arguments that would
+    otherwise inherit a standing prefix. They need a person, every time:
     neither the judge nor a setting answers them, and \code{-{}-yolo}
     refuses them.
 \end{itemize}
@@ -235,8 +237,8 @@ confirms were refused, with a reason that says exactly why.
 
 \section{Standing approvals in files}
 
-Commands and writes you never want to be asked about can live in two
-files. Your own, for every folder:
+Standing command and write approvals can live in two files. Your own,
+for every folder:
 
 \begin{toml}
 # ~/.config/nodwyn/config.toml
@@ -253,16 +255,30 @@ writes   = ["internal/", "docs/"]      # write prefixes that never prompt, with 
 \end{toml}
 
 Command prefixes match whole words of the argument list: \code{"go test"}
-matches \code{go test ./...} and an absolute path to that same resolved
-executable, but not a different basename impersonator or
-\code{go build}. Every use is still logged, as \emph{allow} with the reason
+matches \code{go test ./...}, subject to the resolved executable identity and
+argument checks, but not a different basename impersonator or \code{go build}.
+Every use is still logged, as \emph{allow} with the reason
 \code{standing approval: go test}. A standing command approval runs
 without the judge being asked.
 
+Flags must be in the tool's allowlist in
+\file{internal/guard/command\_arguments.go}. Flags selecting a program, output
+file, working directory or makefile, unknown flags, make variable assignments
+and additional make targets cannot inherit standing approval. Neither can any
+absolute or repository-escaping path, including inside a flag value or through
+a symlink. Parent-directory components (\code{..}) also ask because resolving a
+preceding symlink can escape a cleaned path. An absolute executable path also
+asks: use the approved name or
+an explicitly approved repository-relative executable. When the prefix would
+otherwise match, these arguments require a security confirm from a person.
+Static shell commands get the same checks; dynamic scripts cannot inherit a
+standing prefix. \code{argv-trigger} independently checks explicit outside paths,
+including flag values, with the session scratch exception (\adr{17}).
+
 \begin{tip}
-Keep standing approvals read-only in spirit: tests, builds, status and
-diff. Nothing that commits, pushes, deletes or reaches the network. The
-point of a confirm is the one time it catches something you did not expect.
+Approve only code you trust. Builds and tests run project code with your
+operating-system privileges, write files and may use the network. The guard's
+file-tool denylist does not mediate a child process's file access.
 \end{tip}
 
 \section{What asks, and who answers: \texttt{[approval]}}

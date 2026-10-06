@@ -589,7 +589,7 @@ approved prefix covers a `bash -c` line only when every command in it is
 approved and nothing in it redirects to a file, substitutes, expands a
 variable or starts a subshell.
 
-Commands you never want to be asked about go in one of two files:
+Command prefixes you want to approve ahead of time go in one of two files:
 
 ```toml
 # ~/.config/nodwyn/config.toml
@@ -615,11 +615,26 @@ unattended run refuses it. So does a write whose content looks like a
 credential (L1): that confirm names the class.
 
 Prefixes match argv tokens and resolved executable identity: `"go test"` matches
-`go test ./...` and an absolute path to that same Go executable, not `go build`
-or a different program named `go`. Denies still apply (the repo
-pin, the credential denylist); only the confirm is waived, and every use is
-logged as `allow` with reason `standing approval: go test`. Keep them
-read-only: nothing that commits, pushes, deletes or reaches the network.
+`go test ./...`, not `go build` or a different program named `go`. Its arguments
+must also pass the tool's flag allowlist. For example, `go test -race ./...` can
+inherit that approval; `go test -exec=program ./...`, `git diff --output=x`,
+`git diff --no-index …`, `make test SHELL=program` and unknown flags ask you with
+a security confirm when their prefix is approved. Flags choosing another
+directory or makefile and additional make targets also ask.
+
+No standing approval covers an absolute or repository-escaping path, even inside
+`--flag=VALUE` or through a symlink. Parent-directory components (`..`) also ask,
+since a preceding symlink can make them escape a seemingly local path.
+An absolute path to the approved executable
+also asks; use its approved name or an explicitly approved repository-relative
+path. The same rules apply inside a statically parsed `bash -c` line. The judge
+and unattended approval settings cannot answer these security confirms.
+
+Denies and security confirms still apply; only an ordinary confirm is waived.
+Every use is logged as `allow` with reason `standing approval: go test`.
+Approve only commands whose code you trust: builds and tests run project code
+with your operating-system privileges, can write files and can use the network.
+The guard's file-tool checks do not sandbox an approved process.
 
 ### The judge (Jev)
 

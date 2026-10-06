@@ -2,7 +2,6 @@ package guard
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -20,25 +19,24 @@ func TestStandingApprovalChecksExecutableIdentity(t *testing.T) {
 			t.Errorf("%q inherited %q", argv, match)
 		}
 	}
-	git, err := exec.LookPath("git")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if match := allow.Match([]string{git, "status"}); match != "git status" {
+	if match := allow.Match([]string{"git", "status"}); match != "git status" {
 		t.Fatalf("the actual approved executable did not match: %q", match)
 	}
 	link := filepath.Join(repo, "approved")
-	if err := os.Symlink(git, link); err != nil {
-		t.Fatal(err)
-	}
-	allow.Add(link + " status")
-	if err := os.Remove(link); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.Symlink(filepath.Join(repo, "git"), link); err != nil {
 		t.Fatal(err)
 	}
-	if got := allow.Match([]string{link, "status"}); got != "" {
+	allow = NewCommandAllowIn(repo, "./approved status")
+	if got := allow.Match([]string{"./approved", "status"}); got != "./approved status" {
+		t.Fatalf("explicit repository executable did not match: %s", got)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(repo, "bash"), link); err != nil {
+		t.Fatal(err)
+	}
+	if got := allow.Match([]string{"./approved", "status"}); got != "" {
 		t.Fatalf("changed symlink retained approval: %s", got)
 	}
 }

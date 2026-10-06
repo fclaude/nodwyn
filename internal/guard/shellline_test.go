@@ -17,7 +17,7 @@ func TestPrefixIsTheCommandAShellRuns(t *testing.T) {
 	}{
 		{[]string{"bash", "-c", "go test ./x"}, "go test"},
 		{[]string{"bash", "-c", "go test ./... 2>&1 | tail -n 40"}, "go test"},
-		{[]string{"/bin/sh", "-c", "ls"}, "ls"},
+		{[]string{"/bin/sh", "-c", "ls"}, ""},
 		{[]string{"bash", "-c", "go vet ./... && go test ./..."}, ""},
 		{[]string{"bash", "-c", "go test; rm -rf x"}, ""},
 		{[]string{"bash", "-c", "cd internal && go test"}, ""},

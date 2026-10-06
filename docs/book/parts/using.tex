@@ -459,9 +459,19 @@ chosen file directly (\adr{45}).
 
 A standing command approval includes the resolved executable identity. A
 repository's \code{tools/git} cannot inherit \code{git status}; an explicit
-repository executable can be approved separately. Shell wrappers and implicit
-pipeline filters must resolve to host tools. This is no sandbox for approved
-code, which runs with the user's operating-system privileges.
+repository-relative executable can be approved separately. Shell wrappers and
+implicit pipeline filters must resolve to host tools. Arguments must also pass
+the tool's flag allowlist: flags choosing programs, output files, directories or
+makefiles, unknown flags, make assignments and additional make targets cannot
+inherit standing approval. Neither can absolute or repository-escaping paths,
+including flag values and symlinks, or an absolute path to the executable.
+Parent-directory components (\code{..}) also ask because a preceding symlink
+can make them escape a seemingly local path.
+When a prefix would otherwise match, those arguments need a security confirm
+from the person; the judge cannot answer it. Static shell commands get the same
+checks (\adr{17}). This is no sandbox for approved code, which runs with the
+user's operating-system privileges: builds and tests can write files and use
+the network.
 
 \chapter{Keys, models and the judge}
 

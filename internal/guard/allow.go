@@ -15,7 +15,7 @@ import (
 // CommandAllow holds the user's standing approvals for command lines: a
 // list of argv prefixes ("go test", "git status", "rg") that may run without
 // a confirm. It is the command-line analogue of the binding table — the
-// user authorizes ahead of time, the guard applies it silently and logs it.
+// user authorises ahead of time, the guard checks the arguments and logs it.
 // Entries come from config, from the repository's .nodwyn/allow.toml, and from
 // "a" answers during a session (not persisted).
 type CommandAllow struct {
@@ -33,7 +33,7 @@ func NewCommandAllow(entries ...string) *CommandAllow {
 
 // NewCommandAllowIn resolves executable identities when approval is installed.
 // A bare name found inside the repository cannot inherit an approval for a
-// system tool; an explicit path may be approved as a separate command.
+// system tool; an explicit repository-relative path may be approved separately.
 func NewCommandAllowIn(root string, entries ...string) *CommandAllow {
 	c := &CommandAllow{root: root, system: map[string]string{}}
 	for name := range shells {
@@ -86,8 +86,16 @@ func (c *CommandAllow) Match(argv []string) string {
 		if cmds == nil || !c.systemCommand(argv[0]) {
 			return ""
 		}
+		if argumentPath(argv[0], c.root, true) != "" {
+			return ""
+		}
 		var matched []string
 		for _, cmd := range cmds {
+			for _, arg := range cmd.words {
+				if argumentPath(arg, c.root, true) != "" {
+					return ""
+				}
+			}
 			if filter(cmd) && c.systemCommand(cmd.words[0]) {
 				continue
 			}
@@ -105,6 +113,13 @@ func (c *CommandAllow) Match(argv []string) string {
 }
 
 func (c *CommandAllow) match(argv []string) string {
+	if commandArgumentRisk(argv, c.root) != "" {
+		return ""
+	}
+	return c.rawMatch(argv)
+}
+
+func (c *CommandAllow) rawMatch(argv []string) string {
 	if len(argv) == 0 {
 		return ""
 	}
@@ -129,9 +144,12 @@ func (c *CommandAllow) match(argv []string) string {
 func (*CommandAllow) Name() string { return "command-allow" }
 
 // Check returns a standing Allow for a matching command line. A standing
-// allow outranks a Confirm from any other checker, never a Deny.
+// allow outranks an ordinary Confirm, never a security Confirm or Deny.
 func (c *CommandAllow) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) Decision {
 	argv := CommandArgs(p, args)
+	if reason := c.argumentRisk(argv); reason != "" {
+		return Decision{Verdict: Confirm, Security: true, Reason: reason, Detail: strings.Join(argv, " ")}
+	}
 	if m := c.Match(argv); m != "" {
 		return Decision{Verdict: Allow, Standing: true, Reason: "standing approval: " + m}
 	}
@@ -146,6 +164,9 @@ func (c *CommandAllow) Check(_ context.Context, p *scheme.Prim, args []scheme.Va
 // runs, has none: "" offers no standing approval (shellline.go).
 func Prefix(argv []string) string {
 	if len(argv) == 0 {
+		return ""
+	}
+	if argumentPath(argv[0], "", true) != "" {
 		return ""
 	}
 	if cmds, wrapped := shellCommands(argv); wrapped {

@@ -163,10 +163,10 @@ func TestStandingApprovalOutranksConfirmNotDeny(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Before(context.Background(), shell, argv(approvedGo, "test")); err != nil {
-		t.Fatalf("resolved executable match: %v", err)
+	if err := g.Before(context.Background(), shell, argv(approvedGo, "test")); err == nil || asked != 1 {
+		t.Fatalf("an absolute executable path needs a person: %v asked=%d", err, asked)
 	}
-	if err := g.Before(context.Background(), shell, argv("go", "build")); err == nil || asked != 1 {
+	if err := g.Before(context.Background(), shell, argv("go", "build")); err == nil || asked != 2 {
 		t.Fatalf("go build is not approved: %v asked=%d", err, asked)
 	}
 	allow.Add("go build")

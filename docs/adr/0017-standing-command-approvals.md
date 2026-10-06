@@ -181,3 +181,57 @@ user trust record; executable identity is resolved, credential transport is a us
 setting with secure defaults, keychain decoding and persistence are bounded, and
 project paths resolve symlinks consistently. Its compatibility rules apply to
 existing sessions, workspaces, notes and worktrees.
+
+## Amendment 2026-10-06: standing approvals review command arguments
+
+At `fcc5c42`, an approved prefix covered flags that gave the command new
+authority. A guarded `git diff --output=...` wrote outside the repository with
+no prompt, and `git diff --no-index ... /dev/null` returned an outside file's
+contents. The reproduced guard cases also covered git's pager, external diff
+and text conversion, Go's execution and output flags, and make overrides.
+
+We choose **security confirmation by a person**, rather than the ordinary
+judge-then-person path, when arguments would extend a standing prefix's
+authority. Selecting executable code or crossing a filesystem boundary should
+not depend on a model's judgement. The command is still available after the
+person approves that call; neither a standing approval nor an unattended
+approval setting supplies that answer.
+
+- Prefix and resolved executable identity remain necessary. A per-tool flag
+  allowlist in `internal/guard/command_arguments.go` is also required. Flags
+  selecting programs, output files, makefiles or working directories are absent;
+  unknown flags ask. Go arguments forwarded to test binaries and git's
+  `--no-index`, `--ext-diff` and `--textconv` cannot inherit approval.
+- A make variable assignment or an additional make target cannot inherit a
+  prefix. Approving `make test` does not approve `make test deploy`.
+- Every argv word is checked for absolute and repository-escaping paths,
+  including `--flag=VALUE`, nested values, paths with spaces and symlinks.
+  Parent-directory components (`..`) always ask: cleaning them before resolving
+  a preceding symlink could otherwise conceal an escape.
+  Absolute executable paths also cannot inherit approval. Use the approved
+  program name or an explicitly approved repository-relative executable.
+- Static shell wrappers and pipeline filters get the same path checks. Dynamic
+  scripts, substitutions and variables retain the earlier ordinary confirmation
+  and hard triggers; they never inherit a standing prefix. `ArgvTrigger`
+  independently makes explicit outside paths, including flag values, a security
+  confirm. Its exception for the session's scratch directory remains; scratch
+  paths still cannot inherit a standing command approval.
+- A standing approval outranks only an ordinary confirm. Denies and security
+  confirms continue to win. These rules apply equally to user configuration,
+  trusted repository approvals and session-only prefixes.
+
+The allowlist is deliberately conservative: a harmless but unrecognised flag
+asks until reviewed. It checks the command line, not everything the process
+will do. Builds and tests execute project code, write outputs and caches, and
+may use the network with the user's operating-system privileges. The original
+description of the defaults as read-only was incorrect. The file-tool denylist
+does not sandbox a child process.
+
+Evidence: `TestStandingApprovalsRespectArgumentBoundaries` uses model origin,
+`prim.Checkers` and `NewCommandAllowIn` for direct and shell-wrapped commands.
+`TestArgvTriggerSeesPathsInsideFlagValues` exercises the independent checker.
+`TestStandingGitCannotReadOrWriteOutsideTheRepository` runs real git behind the
+guard with a non-credential-shaped canary, checking the outside output file and
+the Scheme result, output and log. All three tests compile against `fcc5c42`
+and fail there. Existing scratch and judge tests preserve their confirmation
+behaviour; executable identity tests still cover a retargeted relative symlink.

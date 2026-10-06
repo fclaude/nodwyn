@@ -128,6 +128,12 @@ an allowlist proxy can still reach the model. What asks you is
 its diff logged and its previous content kept for undo, and a command no
 standing approval covers (command prefixes in trusted `.nodwyn/allow.toml`, ADR 17)
 goes to the judge first, then to you when it refuses or there is no judge.
+Standing approvals also check arguments: flags that select programs, output
+files or another working directory, make variable assignments, unknown flags,
+and absolute or repository-escaping paths cannot inherit one. When a prefix
+would otherwise cover such a command, a security confirm asks you. Approved
+builds and tests still execute project code, write files and may use the network;
+these checks do not sandbox the process. See [executable approvals](docs/security.md#executable-approvals).
 A protected path, content that looks like a credential and a command built
 from tool output always ask. Writes to the session's scratch directory,
 outside the repository, ask only when they need a security confirm (ADR 28).

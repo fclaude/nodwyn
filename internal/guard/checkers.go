@@ -280,9 +280,10 @@ func (d PathDenylist) Denies(raw string) string {
 }
 
 // ArgvTrigger asks for confirmation when a command line names a network
-// tool, a destructive git/rm invocation, or an absolute path outside the
-// repository. It is the bootstrap stand-in for L1-on-argv and the P5 hard
-// trigger list (plan §3.3).
+// tool, a destructive git/rm invocation, or a path outside the repository,
+// including a flag's value. Outside paths need a person: a standing approval
+// or the judge cannot grant that filesystem authority. Dynamic shell scripts
+// that cannot be parsed retain ordinary confirmation, never standing approval.
 type ArgvTrigger struct {
 	Root     string
 	Scratch  string   // the session's scratch directory, which is not "outside"
@@ -307,23 +308,41 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 		return Decision{Verdict: Allow}
 	}
 	line := strings.Join(argv, " ")
+	var reasons []string
+	security := false
 	for _, tok := range argv {
 		base := filepath.Base(tok)
 		for _, n := range a.Network {
 			if base == n {
-				return Decision{Verdict: Confirm, Reason: "command line uses the network tool " + n, Detail: line}
-			}
-		}
-		if filepath.IsAbs(tok) {
-			if pin := (RepoPin{Root: a.Root, Scratch: a.Scratch}); !pin.inside(tok) && !isSystemBinary(tok) {
-				return Decision{Verdict: Confirm, Reason: "command line names a path outside the repository: " + tok, Detail: line}
+				reasons = append(reasons, "command line uses the network tool "+n)
 			}
 		}
 	}
 	for _, pat := range a.Patterns {
 		if strings.Contains(line, pat) {
-			return Decision{Verdict: Confirm, Reason: "command line matches the hard-trigger pattern " + strings.TrimSpace(pat), Detail: line}
+			reasons = append(reasons, "command line matches the hard-trigger pattern "+strings.TrimSpace(pat))
 		}
+	}
+	commands := []shellCommand{{words: argv}}
+	if parsed, wrapped := shellCommands(argv); wrapped && parsed != nil {
+		commands = parsed
+	}
+	for _, command := range commands {
+		for i, tok := range command.words {
+			if i == 0 && isSystemBinary(tok) {
+				continue
+			}
+			if path := argumentPath(tok, a.Root, false); path != "" {
+				if a.Scratch != "" && filepath.IsAbs(path) && filepath.Clean(path) == path && within(resolveExisting(path), resolveExisting(a.Scratch)) {
+					continue
+				}
+				reasons = append(reasons, "command line names a path outside the repository: "+path)
+				security = true
+			}
+		}
+	}
+	if len(reasons) > 0 {
+		return Decision{Verdict: Confirm, Security: security, Reason: strings.Join(reasons, "; "), Detail: line}
 	}
 	return Decision{Verdict: Allow}
 }
