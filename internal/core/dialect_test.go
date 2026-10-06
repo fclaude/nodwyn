@@ -124,7 +124,7 @@ num_ctx = 131072
 				t.Fatal(err)
 			}
 			logb := &bytes.Buffer{}
-			s, err := New(Options{Config: cfg, Repo: repo, Model: tc.choice, LogWriter: logb, NoConfirm: true})
+			s, err := newInitSession(Options{Config: cfg, Repo: repo, Model: tc.choice, LogWriter: logb, NoConfirm: true})
 			if err != nil {
 				t.Fatal(err)
 			}

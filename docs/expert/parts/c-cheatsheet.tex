@@ -81,12 +81,17 @@ anything else & \key{N} & no \\
 \file{\textasciitilde/.config/nodwyn/mcp.toml} & MCP servers, pinned manifests, declared effects; a contained server's image, network and mounts \\
 \file{\textasciitilde/.config/nodwyn/keychain} & the encrypted keys \\
 \file{\textasciitilde/.local/share/nodwyn/sessions/} & the logs \\
-\file{<folder>/.nodwyn/init.scm} & your tools, checks, strategy, prompts \\
-\file{<folder>/.nodwyn/allow.toml} & standing approvals for the folder \\
+\file{<folder>/.nodwyn/init.scm} & your trusted tools, checks, strategy, prompts \\
+\file{<folder>/.nodwyn/allow.toml} & reviewed standing approvals for the folder \\
 \file{workspaces.toml} (config directory) & named workspaces and their mounts \\
 \bottomrule
 \end{tabularx}
 \end{center}
+
+\file{trusted-projects.json} in the config directory records trust. Review with
+\code{nodwyn trust -{}-repo PATH}; accept the displayed revision before loading
+new or changed init/allow files. \code{-{}-revoke} withdraws future loading;
+restart existing tasks to discard their loaded grants.
 
 \section*{The init.scm skeleton}
 

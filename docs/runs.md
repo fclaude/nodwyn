@@ -143,7 +143,7 @@ An unattended run is one nobody answers (ADR 18 §5). It gets more guards, not
 fewer, and nothing in it ever waits for a person:
 
 - **Tool confirms are declined** without asking: a command runs only if a
-  standing approval covers it (`.nodwyn/allow.toml`, config), and a write
+  standing approval covers it (a trusted `.nodwyn/allow.toml`, or user config), and a write
   only if one does; writes in the folder are one by default
   (`[approval] writes`, ADR 35). Any other is refused, logged, and the model
   is told. With `--yolo` too, ordinary
@@ -190,3 +190,7 @@ wanted) must be said again, as the person resuming decides how it goes on. The c
 an unattended or judged run as such ("Unattended run", "judged"), and its
 **Stop** ends it. The console does not start or resume runs: `nodwyn run`
 (or `run.start` and `run.resume` over the [protocol](protocol.md)) does.
+
+Repository startup code and approval files require the external trust review in
+[ADR 45](adr/0045-project-trust-and-security-boundaries.md), including for unattended
+runs. Neither `--yolo` nor `--no-confirm` grants project trust.

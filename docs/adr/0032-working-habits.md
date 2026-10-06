@@ -768,3 +768,12 @@ that looks like a credential needs a person's approval, and the console
 shows the notes and lets a person edit them. TestTheModelKeepsProjectNotes
 covers the tool, the rule, a save carrying a token left to a person, and
 the next session reading the notes.
+
+## Amendment 2026-10-06: optimiser edits wait for project trust
+
+The optimiser previously treated every reload refusal as a failed edit and
+restored the old file. With ADR 45, that would discard an approved proposal
+because its new revision has not yet been trusted. It now keeps that edit and
+reports that it has not run, while ordinary reload failures still roll back.
+This is a host-authority correction, not a new model working rule; the regression
+is `TestOptimizeKeepsAnEditPendingTrustReview`, using a scripted model.

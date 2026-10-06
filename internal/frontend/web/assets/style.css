@@ -209,6 +209,7 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
   font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--faint);
 }
+.hint .mono { overflow-wrap: anywhere; }
 .hint { font-size: 12.5px; color: var(--faint); margin: 0; }
 .muted { color: var(--muted); }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; background: var(--ghost); }

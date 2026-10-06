@@ -155,6 +155,7 @@ check(async () => {
   await page.click("#add-model");
   await page.selectOption("#model-provider", "127-0-0-1");
   await page.focus("#model-id");
+  await until("the provider refusing the key", async () => (await page.textContent("#model-form")).includes("did not accept the key (401)"));
   await shows("#model-form", "did not accept the key (401): replace it. Type the model's name.");
   assert.strictEqual(await page.locator("#model-id-options option").count(), 0, "a provider that refused the key offered models");
   await page.fill("#model-id", "reasoner");

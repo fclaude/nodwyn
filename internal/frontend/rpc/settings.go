@@ -30,12 +30,14 @@ const (
 // what a task asks a person about, [approval] (ADR 35), is here. What
 // decides where content goes is not: the model's address and key
 // (settings.control.write), the judge's address, credentials and bindings,
-// the egress proxy and the [policy] table are set where they are reviewed,
+// the egress proxy and the rest of [policy] are set where they are reviewed,
 // or in config.toml by hand. A model's own settings (its context length,
 // prices, whether it takes images) are not here either: each model has its
 // own, set with settings.model.write (ADR 41, amended 2026-10-05).
+// The one transport exception here is an explicit local user choice (ADR 45).
 var settable = map[string]settingKind{
-	"approval.writes": text, "approval.commands": text, "approval.dont_ask": boolean,
+	"policy.allow_insecure_http": boolean,
+	"approval.writes":            text, "approval.commands": text, "approval.dont_ask": boolean,
 
 	"budget.tool_calls_soft": whole, "budget.tool_calls_hard": whole,
 	"budget.tokens_soft": whole, "budget.tokens_hard": whole,
@@ -192,6 +194,8 @@ func (s *server) settingsWrite(req request, client *peer) (any, *rpcError) {
 func withTables(held, parsed config.Config, tables map[string]bool) config.Config {
 	for table := range tables {
 		switch table {
+		case "policy":
+			held.Policy = parsed.Policy
 		case "approval":
 			held.Approval = parsed.Approval
 		case "budget":

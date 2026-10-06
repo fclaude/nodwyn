@@ -73,6 +73,7 @@ function commandsHint(commands, judge) {
 // number of 0 or more; duration: Go's, such as 90s, 20m or 2h; text: as typed;
 // choice: one of the chips. The daemon judges every value again.
 const specs = {
+  "policy.allow_insecure_http": { kind: "choice", label: "Credentials over remote HTTP" },
   "approval.writes": { kind: "choice", label: "Writing files" },
   "approval.commands": { kind: "choice", label: "Running commands" },
   "approval.dont_ask": { kind: "choice", label: "Don't ask in tasks" },
@@ -358,6 +359,7 @@ function approvalSection(ctx, redraw) {
     "approval",
     "Approvals",
     "What a task does without asking you. Whatever these say, a write to a protected file (git hooks, CI, the Makefile, scripts, .nodwyn/), content that looks like a credential, and a command built from what a tool returned always ask, and nothing outside the task's folder is written.",
+    ...row("Credentials over remote HTTP", choice(ctx, "policy.allow_insecure_http", [[false, "Require HTTPS"], [true, "Allow HTTP"]], redraw), h("p", { class: "hint" }, "Off by default. Allow HTTP only for servers you choose to trust on an unencrypted connection: anyone on the route can read or change credentials and content. Localhost remains available. Saved settings apply to new or resumed tasks; certificate checks, bindings and redirect refusals still apply.")),
     ...row("Writing files", choice(ctx, "approval.writes", writeChoices, redraw), h("p", { class: "hint" }, writesHint(picked(desk, "approval.writes")))),
     ...row("Running commands", choice(ctx, "approval.commands", commandChoices, redraw), h("p", { class: "hint" }, commandsHint(picked(desk, "approval.commands"), !!desk.settings?.judge))),
     ...row(

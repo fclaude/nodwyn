@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/log"
 )
@@ -46,9 +47,12 @@ func Resume(o Options, id string) (_ *Session, err error) {
 		if e != nil {
 			return nil, e
 		}
-		if filepath.Clean(requested) != filepath.Clean(info.Repo) {
+		if config.CanonicalPath(requested) != config.CanonicalPath(info.Repo) {
 			return nil, fmt.Errorf("core: session belongs to %s, not %s", info.Repo, requested)
 		}
+	}
+	if err := migrateNotes(o.Paths, info.Project()); err != nil {
+		return nil, err
 	}
 	o.Repo = info.Repo
 	// A conversation keeps the model it was switched to, and the effort it

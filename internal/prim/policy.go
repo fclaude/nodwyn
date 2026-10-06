@@ -18,7 +18,7 @@ import (
 const MaxPolicyBytes = 64 << 10
 
 // PolicyDocument is configuration text, not a restored grant. Binding changes
-// apply at the next egress check; approval files are loaded by new sessions.
+// apply at the next egress check; approval files need fresh project trust before new sessions load them.
 type PolicyDocument struct {
 	Content  string `json:"content"`
 	Revision string `json:"revision"`
@@ -119,7 +119,7 @@ func policyWrite(o Options) *scheme.Prim {
 				}
 				scope := "Shared credential bindings; applies before the next egress operation."
 				if args[0].S == "approvals" {
-					scope = "Repository standing approvals; applies to newly opened or resumed sessions. Existing sessions retain their current approvals."
+					scope = "Repository standing approvals; review the saved revision with nodwyn trust before newly opened or resumed sessions load it. Existing sessions retain their current approvals."
 				}
 				return scope + "\n" + Unified(args[0].S, doc.Content, args[2].S, 3)
 			},

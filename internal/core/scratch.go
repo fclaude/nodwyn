@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/fclaude/nodwyn/internal/config"
 )
 
 // The scratch directory is where a session's throwaway files go: scripts
@@ -30,9 +32,9 @@ const scratchMaxAge = 7 * 24 * time.Hour
 // the system temporary directory when there is no data directory.
 func scratchRoot(dataDir string) string {
 	if dataDir == "" {
-		return os.TempDir()
+		return config.CanonicalPath(os.TempDir())
 	}
-	return filepath.Join(dataDir, "scratch")
+	return config.CanonicalPath(filepath.Join(dataDir, "scratch"))
 }
 
 // makeScratch creates a scratch directory for the session and returns its
@@ -129,6 +131,6 @@ func notesFile(dataDir, repo string) string {
 	if err != nil {
 		abs = repo
 	}
-	sum := sha256.Sum256([]byte(filepath.Clean(abs)))
+	sum := sha256.Sum256([]byte(config.CanonicalPath(abs)))
 	return filepath.Join(dataDir, "projects", hex.EncodeToString(sum[:8]), "notes.md")
 }

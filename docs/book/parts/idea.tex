@@ -29,7 +29,9 @@ a learned layer is planned), but it is the residual, not the authority.
 \paragraph{What is the source of truth?} An append-only log. One JSON line
 per event, fsynced. The model's context window, the transcript you see, the
 summaries you add\,---\,all are derived from the log and can be recomputed
-from it. A crash loses nothing; a session resumes from its log, and a
+from it. A session resumes from complete durable records; a crash may interrupt
+the last write or leave a tool's outcome unknown, so interrupted calls are not
+automatically repeated. A
 request sent to the model can be rebuilt exactly from the log and checked
 against the digest recorded with it.
 
@@ -695,3 +697,13 @@ What \nodwyn{} does not protect against, or does not yet:
   not what its answers authorise. Pair only devices you would hand a
   terminal.
 \end{enumerate}
+
+\section{Authority is separate from project content}
+
+A repository supplies behaviour but cannot approve its own execution. The person
+reviews the init and approvals revision; the host stores trust outside the clone.
+The guard still applies after trust, and approved commands retain the user's OS
+privileges. Credential bindings answer where and how a key may be used; HTTPS is
+a separate default, with an explicit user exception for remote HTTP. These are
+implemented boundaries, not promises that all project code or network content is
+safe (\adr{45}, \file{docs/security.md}).

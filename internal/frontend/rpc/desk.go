@@ -10,13 +10,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"os"
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
@@ -408,7 +407,7 @@ func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 	}
 	var authorize func(*http.Request) error
 	if srv.Credential != "" {
-		authorize = authorizer(s.options.Keychain, s.bindingTable(), srv.Credential, config.KeyPosition(srv.Provider))
+		authorize = authorizer(s.options.Keychain, s.bindingTable(), srv.Credential, config.KeyPosition(srv.Provider), s.options.Config.Policy.AllowInsecureHTTP)
 	}
 	// As the probes do, the request runs without the lifecycle lock.
 	s.mu.Unlock()

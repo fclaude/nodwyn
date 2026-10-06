@@ -17,7 +17,7 @@ daemon owns the endpoint before removing a stale socket and restarting;
 `nodwyn app` does this itself, removing a socket nothing answers on.
 
 A connection has the authority of the local user. Opening or resuming a
-repository loads its current `.nodwyn/init.scm` and policy, just as the plain
+repository loads its currently trusted `.nodwyn/init.scm` and repository policy, just as the plain
 frontend does; initialization confirmations remain denied. Turns and explicit
 user Scheme evaluations use the same guard and budget path as chat. Connecting
 or subscribing never approves a pending operation. The transport is local-only;
@@ -574,8 +574,12 @@ values; `null` removes a key so its default applies. It accepts only
 ADR 35), `approval.dont_ask` (`true` or `false`: whether tasks offer "don't
 ask"; saving `false` also turns it off in every open session, ADR 17), the `budget.*` limits, `loop.request_timeout`
 and `loop.shell_timeout`, the `window.*` marks, `jev.content`,
-`jev.approve_threshold`, `jev.timeout`, `jev.model` and `mcp.runtime`;
-never an address, a credential, the egress proxy or `[policy]`. The
+`jev.approve_threshold`, `jev.timeout`, `jev.model`, the judge prices and `mcp.runtime`,
+and `policy.allow_insecure_http` (boolean, default false). The latter permits
+credential injection on remote HTTP, taking effect in new/resumed tasks and in
+current provider setup, tests and model lists. It does not relax bindings, redirect
+refusals, certificate checks or separate endpoint validators. No other `[policy]`
+entry, address, credential or egress proxy is accepted by `settings.write`. The
 changes are made together and only their result is validated, as the
 loader would (so a soft limit can be raised past the old hard one with
 it); every other line of the file is kept, the lock sessions take is held,
@@ -884,3 +888,18 @@ verified subject is included in RPC results. The existing binding and model
 configuration flows select its class; use the public OpenAI URL and the
 `responses` dialect. Model probes refresh OAuth2 credentials after checking
 their binding and granted scopes, just as task requests do.
+
+### Project identity and startup trust (ADR 45)
+
+Returned project paths use canonical absolute identities: existing symlinks are
+resolved and absent suffixes use their resolved ancestor. Existing session logs
+and kept-version indexes remain readable through former aliases. A workspace with
+two registered aliases is refused for reconciliation, not merged with broader
+mount authority.
+
+Repository init and approvals load only when `trusted-projects.json` in the user
+configuration directory grants their current combined revision. Otherwise ordinary
+startup skips both and emits a note; reload refuses. The CLI `nodwyn trust` owns
+the explicit review/accept/revoke flow; no RPC method grants this trust. Policy
+editor saves do not grant it implicitly. A running session keeps its already loaded
+code and grants until restarted. The optimiser keeps a changed init pending review.

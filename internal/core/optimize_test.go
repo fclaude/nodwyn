@@ -25,7 +25,7 @@ func diskSession(t *testing.T, o Options, init string, turns ...fake.Turn) *rig 
 	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	o.Provider = llm.NewOllama(srv.URL)
-	s, err := New(o)
+	s, err := newInitSession(o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,5 +156,31 @@ func TestOptimizeImprovesInitFromHistory(t *testing.T) {
 	}
 	if strings.Contains(string(r.srv.Requests[3].Raw), "USER: run the tests") {
 		t.Fatal("the optimizer's history leaked into the conversation")
+	}
+}
+
+func TestOptimizeKeepsAnEditPendingTrustReview(t *testing.T) {
+	o := diskOptions(t)
+	o.NoConfirm = false
+	past(t, o, "test the project", "The tests need the project environment.")
+	r := diskSession(t, o, `(define marker "old")`,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "fs-write", Args: map[string]any{"path": ".nodwyn/init.scm", "content": `(define marker "review me")`}}}},
+		fake.Turn{Content: "Edited the strategy."}, fake.Turn{Content: "Review the proposed change."})
+	// This time the edit belongs to a repository, not an init file explicitly
+	// authorised by the Go host. Reload must retain the edit without running it.
+	r.s.opts.InitFile = ""
+	if err := r.s.Send("/optimize"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("y")
+	if got := r.eval("marker"); got != `"old"` {
+		t.Fatalf("unreviewed code ran: %s", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"))
+	if err != nil || string(raw) != `(define marker "review me")` {
+		t.Fatalf("proposal was lost: %q, %v", raw, err)
+	}
+	if len(r.srv.Requests) != 3 || !strings.Contains(string(r.srv.Requests[2].Raw), "kept for review") {
+		t.Fatal("the report did not explain pending trust")
 	}
 }

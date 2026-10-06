@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 222 of 431 tracked Go files: every non-test Go file, 49,567 of 90,448 Go source lines (54.8\% by lines). It also includes all 35 tracked Scheme files (2,889 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 227 of 447 tracked Go files: every non-test Go file, 50,129 of 91,789 Go source lines (54.6\% by lines). It also includes all 35 tracked Scheme files (2,893 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -128,6 +128,8 @@ Begin with \src{cmd/nodwyn/main.go} and its command dispatch. The mode files ass
 
 \sourcefile{cmd/nodwyn/summary.go}{Go}
 
+\sourcefile{cmd/nodwyn/trust.go}{Go}
+
 \sourcefile{cmd/nodwyn/tui.go}{Go}
 
 \sourcefile{cmd/nodwyn/ui.go}{Go}
@@ -219,6 +221,8 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 \sourcefile{internal/core/model.go}{Go}
 
 \sourcefile{internal/core/notes.go}{Go}
+
+\sourcefile{internal/core/notes_migration.go}{Go}
 
 \sourcefile{internal/core/pending.go}{Go}
 
@@ -350,6 +354,8 @@ Read store for the persisted representation and access API, acquire for obtainin
 
 \sourcefile{internal/keychain/store.go}{Go}
 
+\sourcefile{internal/keychain/transport.go}{Go}
+
 \chapter{Recognising secret shapes}
 
 This detector identifies recognised credential formats in text. Read its result types before the individual patterns, then see how \src{internal/guard/textsecret.go} and redaction consume them. Detection is not a claim to recognise arbitrary passwords, and it is separate from provenance tracking.
@@ -425,6 +431,10 @@ Read config and its model types, then budget, MCP and workspace configuration. E
 \sourcefile{internal/config/legacy.go}{Go}
 
 \sourcefile{internal/config/mcp.go}{Go}
+
+\sourcefile{internal/config/path.go}{Go}
+
+\sourcefile{internal/config/trust.go}{Go}
 
 \sourcefile{internal/config/workspace.go}{Go}
 

@@ -138,7 +138,7 @@ func TestLifecycleAcrossConnectionsAndRestart(t *testing.T) {
 	if err := json.Unmarshal(c.ok("session.open", map[string]any{"repo": repo}), &opened); err != nil {
 		t.Fatal(err)
 	}
-	if opened.ID == "" || opened.Repo != repo || len(opened.Tools) == 0 || opened.Budgets.ToolCalls.Hard != 500 {
+	if opened.ID == "" || opened.Repo != config.CanonicalPath(repo) || len(opened.Tools) == 0 || opened.Budgets.ToolCalls.Hard != 500 {
 		t.Fatalf("details: %+v", opened)
 	}
 	c.conn.Close()

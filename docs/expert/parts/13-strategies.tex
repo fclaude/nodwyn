@@ -20,7 +20,7 @@ The session loads, in this order:
   \item the working habits, each wrapping what came before:
     \file{shell.scm}, \file{hygiene.scm}, \file{readdef.scm},
     \file{envhint.scm}, \file{checkloop.scm};
-  \item your \file{.nodwyn/init.scm}.
+  \item your trusted \file{.nodwyn/init.scm}; untrusted or changed revisions are skipped.
 \end{enumerate}
 
 Because Scheme looks up a global name when it is \emph{called}, not when

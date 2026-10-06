@@ -38,17 +38,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/scheme"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/crypto/chacha20poly1305"
-
-	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 var (
@@ -168,6 +169,38 @@ var DefaultKDF = KDFParams{Time: 2, Memory: 19 * 1024, Threads: 1}
 // It is NOT for production.
 var FastKDF = KDFParams{Time: 1, Memory: 8 * 1024, Threads: 1}
 
+// The header is unauthenticated until after derivation, so it must not be
+// allowed to request unbounded work. These limits include both supported sets.
+const maxFileSize = 16 << 20
+
+func (p KDFParams) validate() error {
+	if p.Time < 1 || p.Time > 10 || p.Threads < 1 || p.Threads > 16 || p.Memory < 8*uint32(p.Threads) || p.Memory > 256*1024 || uint64(p.Time)*uint64(p.Memory) > 512*1024 {
+		return errors.New("keychain: KDF parameters exceed supported bounds")
+	}
+	return nil
+}
+
+func readSealed(path string) ([]byte, error) {
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	f := os.NewFile(uintptr(fd), path)
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxFileSize {
+		return nil, errors.New("keychain: expected a regular file of at most 16 MiB")
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, maxFileSize+1))
+	if len(raw) > maxFileSize {
+		return nil, errors.New("keychain: file exceeds 16 MiB")
+	}
+	return raw, err
+}
+
 func derive(p KDFParams, passphrase, salt []byte) []byte {
 	return argon2.IDKey(passphrase, salt, p.Time, p.Memory, p.Threads, keyLen)
 }
@@ -184,6 +217,9 @@ func random(n int) []byte {
 // (pass DefaultKDF for production, FastKDF in tests). An empty passphrase
 // makes a keychain without one.
 func Create(path string, kdf KDFParams, passphrase []byte) (*Store, error) {
+	if err := kdf.validate(); err != nil {
+		return nil, err
+	}
 	salt := random(saltLen)
 	st := openedStore(path, kdf, salt)
 	aead, err := chacha20poly1305.NewX(derive(kdf, passphrase, salt))
@@ -210,7 +246,10 @@ type sealed struct {
 }
 
 func split(raw []byte) (sealed, error) {
-	if len(raw) < headerLen+chacha20poly1305.NonceSizeX {
+	if len(raw) > maxFileSize {
+		return sealed{}, errors.New("keychain: file exceeds 16 MiB")
+	}
+	if len(raw) < headerLen+chacha20poly1305.NonceSizeX+chacha20poly1305.Overhead {
 		return sealed{}, errors.New("keychain: file too short")
 	}
 	if !bytes.Equal(raw[:len(magic)], magic) {
@@ -221,6 +260,9 @@ func split(raw []byte) (sealed, error) {
 		Time:    binary.LittleEndian.Uint32(raw[off : off+4]),
 		Memory:  binary.LittleEndian.Uint32(raw[off+4 : off+8]),
 		Threads: raw[off+8],
+	}
+	if err := kdf.validate(); err != nil {
+		return sealed{}, err
 	}
 	off += 9
 	salt := raw[off : off+saltLen]
@@ -234,7 +276,7 @@ func split(raw []byte) (sealed, error) {
 // AEAD authentication failure, reported as a distinct error.
 func Open(path string, passphrase []byte) (*Store, error) {
 	stamp := stampOf(path)
-	raw, err := os.ReadFile(path)
+	raw, err := readSealed(path)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +341,10 @@ func (st *Store) SetPassphrase(passphrase []byte) error {
 	oldAEAD, oldSalt, oldOpen := st.aead, st.salt, st.open
 	st.aead, st.salt, st.open = aead, salt, len(passphrase) == 0
 	if err := st.save(); err != nil {
-		st.aead, st.salt, st.open = oldAEAD, oldSalt, oldOpen
+		var published *publishedError
+		if !errors.As(err, &published) {
+			st.aead, st.salt, st.open = oldAEAD, oldSalt, oldOpen
+		}
 		return err
 	}
 	return nil
@@ -309,7 +354,7 @@ func (st *Store) SetPassphrase(passphrase []byte) error {
 // caller holds st.mu.
 func (st *Store) reloadLocked() error {
 	stamp := stampOf(st.path)
-	raw, err := os.ReadFile(st.path)
+	raw, err := readSealed(st.path)
 	if err != nil {
 		return fmt.Errorf("keychain: reread: %w", err)
 	}
@@ -357,10 +402,16 @@ func (st *Store) change(apply func() error) error {
 	if err := st.reloadLocked(); err != nil {
 		return err
 	}
-	if err := apply(); err != nil {
-		return err
+	entries, order, host := maps.Clone(st.entries), append([]string(nil), st.order...), st.openAIHostID
+	err = apply()
+	if err == nil {
+		err = st.save()
 	}
-	return st.save()
+	var published *publishedError
+	if err != nil && !errors.As(err, &published) {
+		st.entries, st.order, st.openAIHostID = entries, order, host
+	}
+	return err
 }
 
 // lock takes the exclusive advisory lock on the keychain's sibling lock
@@ -542,6 +593,9 @@ func (st *Store) Lookup(id string) (class string, created time.Time, err error) 
 // the auth scheme with its trailing space ("Bearer "), or "" for a bare
 // header such as x-api-key.
 func (st *Store) InjectHeader(id, name, prefix string, req *http.Request) error {
+	if err := CheckTransport(req); err != nil {
+		return err
+	}
 	if err := st.checkOpenAISink(id, name, prefix, req); err != nil {
 		return err
 	}
@@ -555,6 +609,9 @@ func (st *Store) InjectHeader(id, name, prefix string, req *http.Request) error 
 
 // InjectQuery sets the value as a URL query parameter key.
 func (st *Store) InjectQuery(id, key string, req *http.Request) error {
+	if err := CheckTransport(req); err != nil {
+		return err
+	}
 	if err := st.checkOpenAISink(id, "", "", req); err != nil {
 		return err
 	}
@@ -570,6 +627,9 @@ func (st *Store) InjectQuery(id, key string, req *http.Request) error {
 
 // InjectBody makes the value the request body.
 func (st *Store) InjectBody(id string, req *http.Request) error {
+	if err := CheckTransport(req); err != nil {
+		return err
+	}
 	if err := st.checkOpenAISink(id, "", "", req); err != nil {
 		return err
 	}
@@ -622,6 +682,16 @@ func (st *Store) secret(id string) (value, error) {
 	return e.value, nil
 }
 
+// publishedError means the new file is visible but its directory could not
+// be synced. Callers must report uncertain durability without undoing memory
+// to a key that no longer opens the file.
+type publishedError struct{ err error }
+
+func (e *publishedError) Error() string {
+	return "keychain: saved, but directory sync failed: " + e.err.Error()
+}
+func (e *publishedError) Unwrap() error { return e.err }
+
 // save re-seals all entries and writes the file. The caller holds st.mu.
 func (st *Store) save() error {
 	doc := wireDoc{Version: 1, OpenAIHost: st.openAIHostID}
@@ -658,16 +728,38 @@ func (st *Store) save() error {
 	buf = append(buf, st.salt...)
 	buf = append(buf, nonce...)
 	buf = append(buf, ct...)
-	// Write-then-rename so a crash never leaves a half-written keychain.
-	tmp := st.path + ".tmp"
-	if err := os.WriteFile(tmp, buf, 0o600); err != nil {
+	if len(buf) > maxFileSize {
+		return errors.New("keychain: file exceeds 16 MiB")
+	}
+	// An exclusive sibling cannot follow a planted .tmp symlink or retain
+	// its permissions. Sync both the contents and the published directory entry.
+	tmp, err := os.CreateTemp(filepath.Dir(st.path), ".keychain-*")
+	if err != nil {
 		return fmt.Errorf("keychain: write: %w", err)
 	}
-	if err := os.Rename(tmp, st.path); err != nil {
-		os.Remove(tmp)
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	if _, err := tmp.Write(buf); err != nil {
+		return fmt.Errorf("keychain: write: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("keychain: sync: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp.Name(), st.path); err != nil {
 		return fmt.Errorf("keychain: write: %w", err)
 	}
 	st.stamp = stampOf(st.path)
+	dir, err := os.Open(filepath.Dir(st.path))
+	if err != nil {
+		return &publishedError{err}
+	}
+	defer dir.Close()
+	if err := dir.Sync(); err != nil {
+		return &publishedError{err}
+	}
 	return nil
 }
 

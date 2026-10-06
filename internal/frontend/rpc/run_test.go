@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,13 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/frontend/run"
 	"github.com/fclaude/nodwyn/internal/llm"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
-func beginRun(t *testing.T, c *client) runResult {
+func beginRun(t *testing.T, c *client, paths config.Paths) runResult {
 	t.Helper()
 	var result runResult
 	// These tests pin the run's conversation turn by turn; the default loop's
@@ -23,6 +25,7 @@ func beginRun(t *testing.T, c *client) runResult {
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
+	trustRunFixture(t, paths, repo)
 	if err := json.Unmarshal(c.ok("run.start", runParams{Repo: repo, Task: "test task", Wall: "1m", MaxTurns: 3}), &result); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +61,7 @@ func TestRunDetachCheckpointAndResume(t *testing.T) {
 	path, stop := start(t, o)
 	c := connect(t, path)
 	c.hello()
-	started := beginRun(t, c)
+	started := beginRun(t, c, o.Paths)
 	c.conn.Close()
 	c = connect(t, path)
 	c.hello()
@@ -124,7 +127,7 @@ func TestRunDaemonShutdownAtCheckpoint(t *testing.T) {
 	path, stop := start(t, o)
 	c := connect(t, path)
 	c.hello()
-	started := beginRun(t, c)
+	started := beginRun(t, c, o.Paths)
 	sub := subscribed(t, c, started.ID, 0, 100)
 	if len(sub.Pending) == 0 {
 		_ = prompt[event.Confirm](t, c, event.PromptConfirm)
@@ -156,6 +159,7 @@ func TestUnattendedRunOverRPC(t *testing.T) {
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
+	trustRunFixture(t, o.Paths, repo)
 	var started runResult
 	if err := json.Unmarshal(c.ok("run.start", runParams{Repo: repo, Task: "test task", Wall: "1m", MaxTurns: 10, Unattended: true}), &started); err != nil {
 		t.Fatal(err)
@@ -204,5 +208,16 @@ func TestJudgedRunRefusals(t *testing.T) {
 	r = c.call("run.start", runParams{Repo: repo, Task: "t", Wall: "1m", MaxTurns: 2, Judge: true})
 	if r.Error == nil || !strings.Contains(r.Error.Message, "needs a judge") {
 		t.Fatalf("judge without one: %+v", r)
+	}
+}
+
+func trustRunFixture(t *testing.T, paths config.Paths, repo string) {
+	t.Helper()
+	files, err := config.ReadProjectFiles(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.TrustProject(context.Background(), paths, repo, files.Revision()); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -49,14 +49,21 @@ func driveIn(t *testing.T, repo string, cfg config.Config, wall time.Duration, m
 	// explorer and evidence reminders (docs/scheme.md §9) are off here, ahead
 	// of any init.scm the test brings, and tested in internal/core.
 	init := filepath.Join(repo, ".nodwyn", "init.scm")
-	own, _ := os.ReadFile(init)
-	os.MkdirAll(filepath.Dir(init), 0o755)
-	os.WriteFile(init, append([]byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), own...), 0o644)
+	own, err := os.ReadFile(init)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(init), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(init, append([]byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), own...), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	srv := fake.New(turns...)
 	defer srv.Close()
 	cfg.Budget.TokensSoft = 100000
 	cfg.Budget.TokensHard = 100000
-	s, err := core.New(core.Options{Repo: repo, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL)})
+	s, err := core.New(core.Options{Repo: repo, InitFile: init, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,13 +356,17 @@ func driveUnattended(t *testing.T, cfg config.Config, max int, yolo bool, turns 
 	t.Helper()
 	repo := t.TempDir()
 	init := filepath.Join(repo, ".nodwyn", "init.scm")
-	os.MkdirAll(filepath.Dir(init), 0o755)
-	os.WriteFile(init, []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644)
+	if err := os.MkdirAll(filepath.Dir(init), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(init, []byte("(define plan-explore-rounds 0)\n(define finish-reminders 0)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	srv := fake.New(turns...)
 	defer srv.Close()
 	cfg.Budget.TokensSoft = 100000
 	cfg.Budget.TokensHard = 100000
-	s, err := core.New(core.Options{Repo: repo, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL), Unattended: true, AutoApprove: yolo})
+	s, err := core.New(core.Options{Repo: repo, InitFile: init, Paths: config.PathsUnder(t.TempDir(), t.TempDir()), Config: cfg, Provider: llm.NewOllama(srv.URL), Unattended: true, AutoApprove: yolo})
 	if err != nil {
 		t.Fatal(err)
 	}

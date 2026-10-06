@@ -79,12 +79,12 @@ func modelRig(t *testing.T, init string, models map[string]config.Model, o Optio
 	cfg.Models = models
 	logb := &bytes.Buffer{}
 	o.Config, o.Repo, o.Provider, o.LogWriter, o.AutoApprove = cfg, repo, llm.NewOllama(srv.URL), logb, true
-	s, err := New(o)
+	s, err := newInitSession(o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return &rig{t: t, s: s, srv: srv, repo: repo, logb: logb}
+	return &rig{t: t, s: s, srv: srv, repo: config.CanonicalPath(repo), logb: logb}
 }
 
 // replayAll proves every recorded model request can be rebuilt from the log,

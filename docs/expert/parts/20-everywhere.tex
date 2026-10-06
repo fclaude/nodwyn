@@ -19,8 +19,9 @@ people who use it every day set it up, work with it, and keep it honest.
     \code{system-prompt}: what not to touch, how things are done here.
   \item \textbf{Deny checks for the hard rules}: generated folders, package
     installs, whatever must never happen here.
-  \item \textbf{Commit it}, so everyone who works in the repository gets the
-    same \nodwyn.
+  \item \textbf{Commit it}, so everyone can review the same setup. Each person
+    grants trust separately with \code{nodwyn trust --repo PATH}, then
+    \code{--accept REVISION}; changes to either authority file need another review.
 \end{enumerate}
 
 \section{Work in small, reviewable turns}

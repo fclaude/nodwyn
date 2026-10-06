@@ -26,6 +26,7 @@ func TestToolInspectionThroughBothBackends(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(init), 0600); err != nil {
 				t.Fatal(err)
 			}
+			o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
 			var b backend
 			if mode == "local" {
 				b = newLocal(o)

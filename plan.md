@@ -185,3 +185,11 @@ and a 1.27 feature is worth having (ADR 33).
 | A secret leaks by an unexpected path (an error, a panic, a debug print) | Canary post-conditions in every exfil scenario; handles print opaque; the keychain's value type has no `String()` |
 | Interpreter scope creep | The kernel is frozen (ADR 7); capabilities enter only as primitives through the guard |
 | One developer | The order above; anything not on it waits for friction.md to ask for it |
+
+Security review follow-through (2026-10-06): [ADR 45](docs/adr/0045-project-trust-and-security-boundaries.md)
+implements external project trust, executable-identity approvals, the explicit
+remote-HTTP credential setting, bounded keychain reads and durable publication,
+and canonical project identity with existing-data handling. The behavioural
+contract is [docs/security.md](docs/security.md). The proposed readability and
+size programme is [docs/maintenance-review.md](docs/maintenance-review.md); it is
+not an implemented redesign.

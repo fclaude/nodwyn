@@ -308,9 +308,9 @@ into Scheme values (ADR 3).
 | `(git-land message)` | offered only in a session given a git worktree of its own (ADR 34, amended 2026-10-05): lands the session's work on its base branch in one step. It commits every change with `message` (needed when there is one; the files `fs-read` refuses are left out and named), signed as the repository's git configuration says with the person's agent (`SSH_AUTH_SOCK`, `GNUPGHOME` and the like pass to git, every prompt is off, so a passphrase prompt fails at once); rebases the session's own commits, those after the worktree's base commit or after where the branch last met the base, onto the newest base (its upstream, fetched first, when it has one); refuses a change whose outgoing diff holds credential-shaped text; pushes to the base's upstream by fast-forward only; and moves the local base branch: its ref when no checkout has it, a fast-forward merge in a clean checkout that has it, nothing (said) in one with changes. A conflict stops the rebase, naming the files; a call after the model resolved them goes on. A `core.hooksPath` inside the worktree is refused, since the model could have written those hooks. Irreversible: it asks, as any such call does. Returns what it did, a line each |
 | `(worktree)` | `#f`, or the git worktree made for this session when the person started it in one (ADR 34), as `(("repository" . P) ("branch" . "nodwyn/1968c13a") ("base" . "main") ("base-commit" . C))`: the session's root is then that worktree, at `P/.nodwyn/worktrees/1968c13a`, and `base` is `""` when the repository's `HEAD` was detached. No primitive makes or moves a worktree: the host makes it before the session loads, when a client asks with `worktree.open` |
 | `(project-instructions)` | the repository's `AGENTS.md` (or `agents.md`), its maintainers' instructions for coding agents, `""` when it has none. Read as a regular file inside the root after links are followed and past the credential denylist under both names (a link to a key elsewhere reads as no file), capped at 32 KiB with a line that says the file goes on, and redacted, since it rides in every request (ADR 36) |
-| `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `header:NAME:SCHEME` such as `header:Authorization:Bearer`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))`, the body read up to 1 MiB |
+| `(http-request cred url method position headers body)` | **P3.** Send a request with the credential handle injected at `position` (`header:NAME`, `header:NAME:SCHEME` such as `header:Authorization:Bearer`, `query:NAME`, `body`). Egress: the guard checks the binding table for (class, host, method, position) first. Credential injection requires HTTPS except on loopback unless the user enabled `policy.allow_insecure_http`; the model cannot enable it. Not offered to the model (a handle cannot come from JSON); reach it through a user-registered tool. Returns `(("status" . n) ("body" . s))`, the body read up to 1 MiB |
 | `(policy-read name)` | User-only, hidden from the model catalog. Read configured `bindings` or repository `approvals`, returning content, revision and existence; bounded to 64 KiB and rejects recognized secrets. No arbitrary path. |
-| `(policy-write name revision content)` | User-only, hidden from the model catalog. Validate TOML and atomically replace that fixed policy after a one-time diff confirmation and revision check. Binding changes reload before egress; approval-file changes affect new/resumed sessions. |
+| `(policy-write name revision content)` | User-only, hidden from the model catalog. Validate TOML and atomically replace that fixed policy after a one-time diff confirmation and revision check. Binding changes reload before egress; approval-file changes need a fresh `nodwyn trust` review before new/resumed sessions load them. |
 | `(credential-register class)` | **P3.** Masked input through the front-end, stored in the keychain, returns `#<cred:class:id>`. User origin only: refused to the model and to the loop's strategy; never a model tool |
 | `(credential class)` | The handle of a key already in the keychain, or `#f` if there is none (or no keychain is open). An OAuth2 credential (ADR 24; added with `nodwyn credential add --oauth2`) is a handle like any other: its access token is refreshed, when due, just before it is injected. This is how Scheme reaches a keyed service — `(jev-noul (credential "jev-key") …)`, or `http-request` to a judge or a model API — without asking for the key again. Looking a handle up grants nothing: every use is checked against the binding table. Refused to model-originated code |
 | `(jev-noul cred state instructions)` | **P5.** Ask the judge a yes/no question about a text; returns the probability of yes (0..1). Egress to the configured Jev host; everything sent (state, instructions, levels, options) is redacted (L1) before it leaves; logged as `jev.req` with the call's origin. Not offered to the model (a handle cannot come from JSON): the model has `judge-noul` |
@@ -394,7 +394,9 @@ environment before anything else. It defines, in Scheme:
 | `(compose f g)` | `(lambda args (f (apply g args)))` |
 | `(string-empty? s)` | |
 
-After the prelude, nodwyn loads `./.nodwyn/init.scm` if present (ADR 14).
+After the prelude, nodwyn loads the current `./.nodwyn/init.scm` only after
+external user trust (ADR 14, amended by ADR 45). `nodwyn trust` reviews and
+accepts the init/allow revision; a clone cannot grant its own startup authority.
 
 ## 7. Primitives and the guard
 
@@ -820,7 +822,7 @@ works here, while the session runs:
 |---|---|
 | `(session-list [n])` | this repository's sessions, newest first (all, or the latest `n`); each an alist with `id`, `first-message`, `last-event`, `current`, `in-flight` and `truncated`. Other repositories' sessions are not listed |
 | `(session-events id [kinds])` | one of those sessions as its log events, optionally only the kinds listed (`'("user.msg" "tool.result")`); each an alist with `seq`, `ts`, `kind` and `payload`, the event's JSON redacted and parsed as `json-parse` does. The values carry the `external:log` taint, like a tool's output |
-| `(reload)` | run `.nodwyn/init.scm` again, with the caller's origin. The strategy, compaction settings, agent-tool handlers and anything else read when used apply from the next turn; a tool keeps its schema and takes a changed body. What a session is fixed with (ADR 9) does not change: new or changed tools, guard checks (`register-check`) and prompts are returned as notes and apply from the next session or a resume |
+| `(reload)` | run the currently trusted revision of `.nodwyn/init.scm` again, with the caller's origin; changed or revoked project trust refuses before evaluating any code. An explicit Go-host `Options.InitFile` remains host-authorised. The strategy, compaction settings, agent-tool handlers and anything else read when used apply from the next turn; a tool keeps its schema and takes a changed body. What a session is fixed with (ADR 9) does not change: new or changed tools, guard checks (`register-check`) and prompts are returned as notes and apply from the next session or a resume |
 
 The optimizer (`internal/loop/optimize.scm`) is user code over these. The
 user starts it with a message; the default `agent-turn` runs it instead of
@@ -840,8 +842,10 @@ hands them to a sub-agent labelled `optimizer`. That agent may read the
 repository and write only under `.nodwyn/`, a protected path, so every write
 asks the user and shows the diff; a session nobody approves (`--yolo`,
 `--judge`, an unattended run) refuses those writes, so `/optimize` needs a
-person at the prompt. When it is done `init.scm` is reloaded (and
-restored if the reload fails), and the model tells the user what changed.
+person at the prompt. A changed project init is kept pending review with
+`nodwyn trust`; the new code has not run. Once trusted, reload or resume to use it.
+For an explicitly authorised init, reload still applies immediately; an ordinary
+reload failure restores the old file. The model is told which outcome occurred.
 Its prompts are `(optimizer-system-prompt)` and `(optimizer-task history
 focus)`, in `prompts.scm` with the others. A strategy that redefines `agent-turn` keeps `/optimize` by
 calling `(optimize-turn request)` when `(optimize-request? request)`.
@@ -1047,3 +1051,14 @@ Deliberately absent from v0.
 - `call/cc`, `dynamic-wind`
 - an `eval` primitive — the kernel surface is not exposed to programs
 - exact rationals and bignums
+
+### Project authority (ADR 45)
+
+The repository supplies init.scm and allow.toml; their presence is not a grant.
+Use `nodwyn trust --repo PATH` and accept its displayed revision before ordinary
+sessions load them. The user-owned registry is outside the project. The exact
+checked init bytes run with user origin and the guard still applies; standing
+approvals can permit actions during startup. Review transitive Scheme and scripts
+too, since their contents are not part of the two-file revision. A change to either
+authority file, including creating or removing it, needs review again. See
+[Security boundaries](security.md) for revocation, worktrees and HTTP choices.

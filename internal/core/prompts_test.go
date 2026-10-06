@@ -213,7 +213,7 @@ func TestMalformedPromptFailsTheSession(t *testing.T) {
 		os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755)
 		os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644)
 		srv := fake.NewT(t)
-		s, err := New(Options{Config: config.Default(), Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+		s, err := newInitSession(Options{Config: config.Default(), Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
 		if s != nil {
 			s.Close()
 		}

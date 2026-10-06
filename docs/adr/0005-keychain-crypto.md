@@ -73,3 +73,12 @@ with exact binding rows for one host, allowing a stored credential for a
 host, replacing, removing and revoking. No method returns a value or a
 token (protocol.md, "Credentials"), and only a console on this computer may
 change anything.
+
+## Amendment 2026-10-06: security review and project identity
+
+[ADR 45](0045-project-trust-and-security-boundaries.md) supersedes the earlier
+behaviour where it differs: repository startup and approval files need an external
+user trust record; executable identity is resolved, credential transport is a user
+setting with secure defaults, keychain decoding and persistence are bounded, and
+project paths resolve symlinks consistently. Its compatibility rules apply to
+existing sessions, workspaces, notes and worktrees.

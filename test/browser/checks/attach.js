@@ -75,7 +75,7 @@ check(async () => {
   // Allowed, the image reaches the model, which counts what it was sent;
   // the message that carried it is on the transcript, the removed file is
   // not.
-  await page.keyboard.press("y");
+  await page.click(".ask-card button[data-key='Y']");
   await until("the model counting the image", async () => (await page.innerText(".transcript")).includes("This request carries 1 image(s)."));
   const transcript = await page.innerText(".transcript");
   assert.ok(transcript.includes("Describe this screenshot"), "the typed message did not go with the task");

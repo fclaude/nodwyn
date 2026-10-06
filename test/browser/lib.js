@@ -88,7 +88,7 @@ function tempDir(prefix) {
     const dir = path.join(home, sub);
     if (base === dir || base.startsWith(dir + path.sep)) base = "/tmp";
   }
-  const dir = fs.mkdtempSync(path.join(base, prefix));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(base, prefix)));
   dirs.push(dir);
   return dir;
 }

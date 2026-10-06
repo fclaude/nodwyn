@@ -182,11 +182,16 @@ the catalogue reproduces them without shortening the functions.
 Anyone who can commit to a repository can write its init file, its helper
 files and its \file{.nodwyn/allow.toml}, including the author of a clone
 you have never inspected. They are project-supplied policy, not evidence
-that a remote author deserves authority. ADRs 14 and 17 describe the
+that a remote author deserves authority. ADR 45 requires an external user trust
+record before either init or approvals load: review with \code{nodwyn trust},
+then accept the exact displayed revision. A change to either file requires
+review again; the checked bytes are the loaded bytes. The registry lives in
+the user configuration directory, and other project dependencies are not hashed.
+ADRs 14 and 17 describe the
 project-init and standing-approval decisions. Read those decisions with
 \src{internal/core/construct.go} and \src{internal/guard/allow.go}.
 
-Initialisation evaluates the init file with user origin, but through the
+After trust, initialisation evaluates the init file with user origin, but through the
 guard. While it loads, confirmations are declined because no frontend is
 listening yet. User origin does not remove deny rules. Standing approvals
 can waive a confirmation; they cannot turn a denial into an allow.

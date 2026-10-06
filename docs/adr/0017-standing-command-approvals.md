@@ -172,3 +172,12 @@ file the guard had refused ran unasked).
 - "Don't ask" answers what is ordinary (`Prompt.Ordinary`: not a security
   confirm, not a protected path), not what a prefix could cover, so it
   still answers a line of several commands while it is on.
+
+## Amendment 2026-10-06: security review and project identity
+
+[ADR 45](0045-project-trust-and-security-boundaries.md) supersedes the earlier
+behaviour where it differs: repository startup and approval files need an external
+user trust record; executable identity is resolved, credential transport is a user
+setting with secure defaults, keychain decoding and persistence are bounded, and
+project paths resolve symlinks consistently. Its compatibility rules apply to
+existing sessions, workspaces, notes and worktrees.

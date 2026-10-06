@@ -133,7 +133,7 @@ func TestUserlandPlanCycle(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	logb := &bytes.Buffer{}
-	s, err := New(Options{
+	s, err := newInitSession(Options{
 		Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: logb,
 		Keychain: kc,
 		Bindings: binding.Table{Bind: []binding.Binding{{Class: "judge-key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}},

@@ -106,7 +106,7 @@ output_reserve = 4096
 		t.Fatal(err)
 	}
 	logb := &bytes.Buffer{}
-	s, err := New(Options{Config: cfg, Repo: repo, LogWriter: logb, NoConfirm: true})
+	s, err := newInitSession(Options{Config: cfg, Repo: repo, LogWriter: logb, NoConfirm: true})
 	if err != nil {
 		t.Fatal(err)
 	}

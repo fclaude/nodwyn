@@ -439,7 +439,7 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		}
 	} else {
 		var rerr *rpcError
-		name, srv, host, write, rerr = controlServer(p, current.Servers, old, len(key) > 0)
+		name, srv, host, write, rerr = controlServer(p, current.Servers, old, len(key) > 0, current.Policy.AllowInsecureHTTP)
 		if rerr != nil {
 			return nil, rerr
 		}
@@ -551,7 +551,7 @@ func keepPreviousDefault(text []byte, cfg config.Config, previous config.Model) 
 // (none for a server named). write says the server's table must be
 // written: it is new, or (keyed) gets a key. old is the main model until
 // now.
-func controlServer(p controlParams, servers map[string]config.Server, old config.Model, keyed bool) (name string, srv config.Server, host string, write bool, _ *rpcError) {
+func controlServer(p controlParams, servers map[string]config.Server, old config.Model, keyed, insecure bool) (name string, srv config.Server, host string, write bool, _ *rpcError) {
 	if p.Server != "" {
 		if p.Provider != "" || p.URL != "" || keyed {
 			return "", srv, "", false, failure(-32602, "Give a configured server, or a provider and url, not both")
@@ -606,9 +606,9 @@ func controlServer(p controlParams, servers map[string]config.Server, old config
 		}
 		write = true
 	}
-	// A key goes only over https, except to this computer.
-	if (keyed || (write && srv.Credential != "")) && parsed.Scheme != "https" && !loopback(host) {
-		return "", srv, "", false, failure(-32602, "a model with a key must be reached over https")
+	// The user's transport setting applies to first setup as well as later edits.
+	if (keyed || (write && srv.Credential != "")) && parsed.Scheme != "https" && !loopback(host) && !insecure {
+		return "", srv, "", false, failure(-32602, "a model with a key must be reached over https; to use remote HTTP, enable Credentials over remote HTTP in Approvals")
 	}
 	return name, srv, host, write, nil
 }

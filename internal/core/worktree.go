@@ -315,7 +315,7 @@ func (s *Session) Worktree() *log.Worktree {
 // the session's worktree belongs to, else its root (ADR 34).
 func (s *Session) project() string {
 	if s.worktree != nil {
-		return s.worktree.Repository
+		return config.CanonicalPath(s.worktree.Repository)
 	}
 	return s.opts.Repo
 }
@@ -333,9 +333,9 @@ func (s *Session) versionsDir() string {
 // worktree belongs to, else its root (ADR 34).
 func (i SessionInfo) Project() string {
 	if i.Worktree != nil {
-		return i.Worktree.Repository
+		return config.CanonicalPath(i.Worktree.Repository)
 	}
-	return i.Repo
+	return config.CanonicalPath(i.Repo)
 }
 
 // closeWorktree removes the worktree on close when nothing would be lost,

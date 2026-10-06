@@ -107,11 +107,11 @@ func TestRegistryKeysOnTheCleanPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Path != root {
+	if saved.Path != CanonicalPath(root) {
 		t.Fatalf("saved as %s, not %s", saved.Path, root)
 	}
 	list, err := LoadRegistry(registry)
-	if err != nil || len(list) != 1 || list[0].Path != root {
+	if err != nil || len(list) != 1 || list[0].Path != CanonicalPath(root) {
 		t.Fatalf("registry: %+v %v", list, err)
 	}
 	ws, err := LoadWorkspace(registry, root)

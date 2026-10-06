@@ -490,3 +490,12 @@ unset, true or false; unset reads as true for a chat-completions model
 attachment when it says the model takes none. Nothing else changes: every
 image still asks its security confirm, names the host it goes to, and goes
 only there.
+
+## Amendment 2026-10-06: security review and project identity
+
+[ADR 45](0045-project-trust-and-security-boundaries.md) supersedes the earlier
+behaviour where it differs: repository startup and approval files need an external
+user trust record; executable identity is resolved, credential transport is a user
+setting with secure defaults, keychain decoding and persistence are bounded, and
+project paths resolve symlinks consistently. Its compatibility rules apply to
+existing sessions, workspaces, notes and worktrees.

@@ -39,12 +39,12 @@ func strategyRigAs(t *testing.T, model, init string, maxToolCalls int, turns ...
 	cfg.Loop.MaxToolCalls = maxToolCalls
 	cfg.Control.Model = model
 	logb := &bytes.Buffer{}
-	s, err := New(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb})
+	s, err := newInitSession(Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: logb})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return &rig{t: t, s: s, srv: srv, repo: repo, logb: logb}
+	return &rig{t: t, s: s, srv: srv, repo: config.CanonicalPath(repo), logb: logb}
 }
 
 // turn sends text and returns the turn's error, "" if it ended cleanly.
@@ -345,7 +345,7 @@ func TestStrategyCannotCatchLogFailure(t *testing.T) {
       (model-turn))))`), 0o644)
 	srv := fake.NewT(t, fake.Turn{Content: "never asked"})
 	t.Cleanup(srv.Close)
-	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &failAfterUserMsg{}})
+	s, err := newInitSession(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &failAfterUserMsg{}})
 	if err != nil {
 		t.Fatal(err)
 	}

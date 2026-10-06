@@ -199,7 +199,10 @@ in Chapter~\ref{ch:playground}, and hands the digest to a sub-agent
 labelled \code{optimizer}, which may read the folder and write only under
 \file{.nodwyn/}. Every write asks you, with the diff (a protected path),
 so \code{/optimize} needs a person at the prompt. When it finishes,
-\code{init.scm} is reloaded; if the reload fails, the file is restored.
+\code{init.scm} is kept as a proposal until you review its new revision with
+\code{nodwyn trust}, then reload or resume. The new code has not run. For
+an explicit Go-host init, reload still applies immediately; other reload failures
+restore the old file.
 
 \begin{tip}
 Run \code{/optimize} after a week of real work in a repository, with a

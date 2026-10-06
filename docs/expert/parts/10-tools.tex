@@ -10,7 +10,13 @@ Scheme procedure with a description, registered from your folder's
 \section{\texttt{init.scm}}
 
 When a session starts in a folder, \nodwyn{} loads its prelude, then the
-default loop, then \file{<folder>/.nodwyn/init.scm} if it exists.
+default loop, then \file{<folder>/.nodwyn/init.scm} only when its current
+revision is trusted. Review it with \code{nodwyn trust -{}-repo PATH}, then
+accept the displayed revision with \code{-{}-accept REVISION}. Review code it
+loads or invokes too: the revision covers init and allow files, not their
+dependencies. Changing either authority file requires review again. The trust
+record lives outside the repository. Revocation needs existing tasks to be
+restarted to discard their loaded code and grants (ADR 45).
 Everything that file defines lives in the session's global environment, and
 every tool it registers is offered to the model.
 

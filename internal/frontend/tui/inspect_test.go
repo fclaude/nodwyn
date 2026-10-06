@@ -179,16 +179,29 @@ func TestFrictionInspectorHonorsGuardAndRepositoryBoundary(t *testing.T) {
 		for _, denial := range []string{"checker", "symlink"} {
 			t.Run(mode+"/"+denial, func(t *testing.T) {
 				o := testOptions(t)
-				os.MkdirAll(filepath.Join(o.Repo, "docs"), 0700)
+				if err := os.MkdirAll(filepath.Join(o.Repo, "docs"), 0700); err != nil {
+					t.Fatal(err)
+				}
 				target := filepath.Join(o.Repo, "docs", "friction.md")
 				if denial == "checker" {
-					os.WriteFile(target, []byte("must-not-read"), 0600)
-					os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
-					os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0600)
+					if err := os.WriteFile(target, []byte("must-not-read"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
+					if err := os.MkdirAll(filepath.Dir(o.InitFile), 0700); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(o.InitFile, []byte(`(register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0600); err != nil {
+						t.Fatal(err)
+					}
 				} else {
 					outside := filepath.Join(t.TempDir(), "outside.md")
-					os.WriteFile(outside, []byte("must-not-read"), 0600)
-					os.Symlink(outside, target)
+					if err := os.WriteFile(outside, []byte("must-not-read"), 0600); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(outside, target); err != nil {
+						t.Fatal(err)
+					}
 				}
 				var b backend
 				if mode == "local" {

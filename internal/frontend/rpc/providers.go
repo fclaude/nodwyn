@@ -414,8 +414,8 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 				}
 			}
 		}
-		if (len(key) > 0 || srv.Credential != "") && parsed.Scheme != "https" && !loopback(host) {
-			return nil, config.Config{}, failure(-32602, "a model with a key must be reached over https")
+		if (len(key) > 0 || srv.Credential != "") && parsed.Scheme != "https" && !loopback(host) && !current.Policy.AllowInsecureHTTP {
+			return nil, config.Config{}, failure(-32602, "a model with a key must be reached over https; to use remote HTTP, enable Credentials over remote HTTP in Approvals")
 		}
 		var store *keychain.Store
 		if len(key) > 0 {
@@ -766,7 +766,7 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 	}
 	var authorize func(*http.Request) error
 	if m.Credential != "" {
-		authorize = authorizer(s.options.Keychain, s.bindingTable(), m.Credential, position)
+		authorize = authorizer(s.options.Keychain, s.bindingTable(), m.Credential, position, s.options.Config.Policy.AllowInsecureHTTP)
 	}
 	var provider llm.Provider
 	switch m.Provider {
@@ -804,8 +804,12 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 // only if class is bound to the request's host for its method at position,
 // checked on every request, as a task's is. The daemon holds neither key nor
 // binding table beyond the call.
-func authorizer(store *keychain.Store, table binding.Table, class, position string) func(*http.Request) error {
+func authorizer(store *keychain.Store, table binding.Table, class, position string, insecure bool) func(*http.Request) error {
 	return func(req *http.Request) error {
+		*req = *req.WithContext(keychain.WithInsecureHTTP(req.Context(), insecure))
+		if err := keychain.CheckTransport(req); err != nil {
+			return llm.Permanent(err)
+		}
 		if store == nil {
 			return llm.Permanent(errors.New("the keychain is locked"))
 		}

@@ -12,6 +12,10 @@ a binding table as the sole authority over where a secret may go.
 - [docs/scheme.md](docs/scheme.md) — the language reference
 - [docs/friction.md](docs/friction.md) — where nodwyn got in the way of building nodwyn
 
+See [Security boundaries and user choices](docs/security.md) for project trust,
+credential transport and migration, and [the maintenance review](docs/maintenance-review.md)
+for a behaviour-preserving simplification plan.
+
 ## Maintainer map
 
 The packages follow responsibilities that remain useful as nodwyn gains more
@@ -107,6 +111,8 @@ bin/nodwyn sessions             # id, last activity, state, repo, first ask
 bin/nodwyn summary SESSION      # inspect user-authored, revocable summaries
 bin/nodwyn sessions --ids       # IDs only (scripts)
 bin/nodwyn --resume <session-id> # continue in the recorded repository
+bin/nodwyn trust --repo ~/src/x  # review project startup code and approvals
+# Then: nodwyn trust --repo ~/src/x --accept REVISION_FROM_THE_REVIEW
 bin/nodwyn repl                 # Scheme REPL
 bin/nodwyn credential add --oauth2 google --client-id ID  # an OAuth2 credential, authorized in the browser (ADR 24)
 bin/nodwyn credential           # list credentials, never a secret
@@ -120,14 +126,14 @@ what to add. Model requests honor
 an allowlist proxy can still reach the model. What asks you is
 `[approval]` (ADR 35). By default a write inside the repository goes ahead,
 its diff logged and its previous content kept for undo, and a command no
-standing approval covers (command prefixes in `.nodwyn/allow.toml`, ADR 17)
+standing approval covers (command prefixes in trusted `.nodwyn/allow.toml`, ADR 17)
 goes to the judge first, then to you when it refuses or there is no judge.
 A protected path, content that looks like a credential and a command built
 from tool output always ask. Writes to the session's scratch directory,
 outside the repository, ask only when they need a security confirm (ADR 28).
 Session logs live in `~/.local/share/nodwyn/sessions/`.
 Resume restores the conversation and appends to that same log. It reloads current
-configuration, bindings, standing approvals from files, and repository `init.scm`,
+configuration, bindings, and trusted repository approvals and `init.scm`,
 so its prompts and tools as they are now apply, which `(reload)` leaves fixed
 until then; requests made before still replay under the recipe they used.
 Session-only approvals and interactive Scheme definitions are reset. An explicit
@@ -138,13 +144,25 @@ current state before retrying. `sessions` reports an unfinished turn as
 `interrupted`, not as proof that another process is running. Missing final log
 lines are repaired on resume; corrupt complete lines are rejected.
 
-Bootstrap-era safety envelope (plan §3.3): paths are pinned to the
-repository, credential-shaped files are unreadable, network tools on a
+Repository startup code and approvals are skipped until you review and accept
+their revision with `nodwyn trust`. Trust is stored outside the repository; changing
+either file requires review again. Review any code the init loads too. Revocation
+requires restarting existing tasks to discard their loaded code and grants.
+
+Credentials require HTTPS except on loopback by default. For a remote HTTP service
+you deliberately accept, set `[policy] allow_insecure_http = true` in the user's
+config.toml, or **Settings > Approvals > Credentials over remote HTTP**. The switch
+is off by default and applies to new/resumed tasks; it preserves binding checks,
+redirect refusals and certificate verification. See [the security reference](docs/security.md).
+
+The guarded file tools pin paths to the
+repository; credential-shaped files are unreadable, network tools on a
 command line need confirmation, and child processes get a scrubbed
 environment. P7 redacts recognized credential shapes from user messages,
 tool results, logs, and frontend events. Responses are buffered until complete
 so split stream chunks cannot expose a key. Unknown or encoded secrets are
-not guaranteed to be detected; L3 remains P8.
+not guaranteed to be detected; L3 remains P8. Approved commands run with the
+user account's privileges; these checks do not sandbox an approved executable.
 
 Gitea runs `.gitea/workflows/ci.yml` on every push and pull request using the
 isolated `self-hosted` runner. It executes `make accept` with fresh race tests,

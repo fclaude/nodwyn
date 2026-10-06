@@ -37,3 +37,12 @@ would search files the denylist keeps from `fs-read`, a `.env` not yet
 ignored say, which `index-grep` skips; the no-match line names
 `index-grep` for files not yet added. TestGrepRepoReadsAlternationsAndSaysWhenNothingMatched
 (scripts/validate) runs it on a fixture with this repository's `dev/`.
+
+## Amendment 2026-10-06: security review and project identity
+
+[ADR 45](0045-project-trust-and-security-boundaries.md) supersedes the earlier
+behaviour where it differs: repository startup and approval files need an external
+user trust record; executable identity is resolved, credential transport is a user
+setting with secure defaults, keychain decoding and persistence are bounded, and
+project paths resolve symlinks consistently. Its compatibility rules apply to
+existing sessions, workspaces, notes and worktrees.

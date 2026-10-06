@@ -458,4 +458,22 @@ check(async () => {
   assert.deepStrictEqual(sent.of("session.abort").at(-1), { id: stopped });
   assert.ok(!sent.of("session.send").some((s) => s.id === stopped), "the message went without its image");
   step("image stopped");
+
+  // The transport exception is off, saved explicitly, and retained after a
+  // reload; turning it off again sends and persists false, not an empty string.
+  await page.evaluate(() => (location.hash = "#/settings"));
+  await page.waitForSelector("[id='set-policy.allow_insecure_http-default']");
+  assert.strictEqual(await page.getAttribute("[id='set-policy.allow_insecure_http-default']", "aria-pressed"), "true");
+  for (const allow of [true, false]) {
+    await page.click(`[id='set-policy.allow_insecure_http-${allow || "default"}']`);
+    const beforeSave = sent.of("settings.write").length;
+    await page.click(".save-bar button:has-text('Save')");
+    await until("the transport setting saved", async () => sent.of("settings.write").length === beforeSave + 1 && await page.$eval(".save-bar", (el) => el.hidden));
+    assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "policy.allow_insecure_http": allow } });
+    await page.reload();
+    await page.waitForSelector("html[data-ready]");
+    await page.waitForSelector(`[id='set-policy.allow_insecure_http-${allow || "default"}'][aria-pressed=true]`);
+  }
+  step("credential transport setting defaults off, saves on and off, and survives reload");
+
 });

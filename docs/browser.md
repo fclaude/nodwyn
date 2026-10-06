@@ -128,8 +128,24 @@ They apply to tasks started afterwards; an open task keeps the limits and
 model it started with, and its Budget details say which. A task's model and
 effort are changed under its own message box (below). The judge's address,
 its credentials, the keys of the providers (beyond saving one with its
-provider) and the `[policy]` table are set where they are reviewed, or in
+provider) and the other `[policy]` entries are set where they are reviewed, or in
 `config.toml`.
+
+**Credential transport.** Approvals also offers **Credentials over remote HTTP**,
+set to **Require HTTPS** by default. **Allow HTTP** saves
+`policy.allow_insecure_http = true` in user configuration. New/resumed tasks take
+that choice; provider tests and model lists use the daemon's current choice.
+Loopback HTTP remains available with the switch off. Credentials on remote HTTP
+can be read or changed along the route. Bindings, redirect refusal and TLS
+certificate checks still apply; the separate MCP, OAuth endpoint and Google
+upload URL rules are unchanged.
+
+**Project startup.** The console opens an untrusted project's tasks with the default
+loop, skipping its init and approval files and showing a note. Review and accept
+them using `nodwyn trust --repo PATH` from this computer's terminal. A changed
+revision needs review again before reload/resume. There is no console grant-trust
+button or remote grant-trust API. Existing tasks must be restarted after revocation
+to discard their loaded code and grants.
 
 **The model picker.** Under the message box of the New task window, and under
 a conversation's, a **Model** and an **Effort** select. Both list the models
@@ -581,7 +597,8 @@ through parent symlinks. Recognized secrets are refused instead of round-trippin
 redacted text as editable policy.
 
 Bindings apply before the next egress operation. Repository approval-file changes
-apply to new or resumed sessions; existing sessions retain their current grants.
+need a fresh `nodwyn trust` review before new or resumed sessions load them;
+existing sessions retain their current grants.
 Global `config.toml` settings and transient grants are not edited by this view.
 Drafts stay only in the selected tab/session and clear on switching, refresh or
 disconnect. After answering a prompt, reopen Policy to see the result. Successful
@@ -639,3 +656,8 @@ run's checkpoint arrives as an ordinary prompt. **Stop** aborts the session
 and with it the run; a message afterwards goes on with the task as a chat.
 The transcript says when an unattended run went on or stopped by itself,
 and which confirms the judge allowed or refused.
+
+Workspace paths and task roots resolve symlinks for identity, including macOS's
+`/tmp` and `/var` aliases. An existing alias does not become a second project;
+mounts and MCP workspace choices follow the same identity. See
+[the security reference](security.md) for notes and conflicting legacy entries.

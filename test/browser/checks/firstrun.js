@@ -167,7 +167,7 @@ check(async () => {
   // The edit goes ahead in the folder (ADR 35): the two commands ask.
   for (const command of ["Run ls -la", "Run wc -l app.js"]) {
     await page.waitForSelector(`.ask-card h2:has-text('${command}')`, { timeout: 20000 });
-    await page.keyboard.press("y");
+    await page.click(".ask-card button[data-key='Y']");
   }
   await page.waitForSelector(".prose strong", { timeout: 20000 });
   const [{ id }] = sent.of("session.send");

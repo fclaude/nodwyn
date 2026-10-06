@@ -17,7 +17,7 @@ func (s *Session) registerReload() error {
 	return s.interp.Register(&scheme.Prim{
 		Name: "reload",
 		Meta: scheme.Meta{
-			Doc:    "Run .nodwyn/init.scm again in this session, with the caller's origin. The strategy, compaction settings and agent-tool handlers apply from the next turn; a tool keeps its schema and takes a changed body. Returns a list of notes on what is fixed for the session and applies from the next one: new or changed tools, guard checks, prompts.",
+			Doc:    "Run the currently trusted .nodwyn/init.scm in this session, with the caller's origin. Changed project files require review with nodwyn trust first. The strategy, compaction settings and agent-tool handlers apply from the next turn; a tool keeps its schema and takes a changed body. Returns a list of notes on what is fixed for the session and applies from the next one: new or changed tools, guard checks, prompts.",
 			Hidden: true,
 			Origin: "builtin",
 		},
@@ -32,8 +32,24 @@ func (s *Session) registerReload() error {
 			if !fileExists(init) {
 				return scheme.Void, fmt.Errorf("no init file at %s", init)
 			}
+			var source []byte
+			if s.opts.InitFile == "" {
+				files, err := s.trustedProject()
+				if err != nil {
+					return scheme.Void, err
+				}
+				if files.Init == nil {
+					return scheme.Void, &scheme.Error{Message: "reload: review changed project files with nodwyn trust first", Irritants: []scheme.Value{scheme.Sym("project-trust-required")}}
+				}
+				source = files.Init
+			}
 			s.interp.BeginReload()
-			err := s.interp.LoadFile(scheme.WithOrigin(c.Ctx, c.Origin), init)
+			var err error
+			if s.opts.InitFile != "" {
+				err = s.interp.LoadFile(scheme.WithOrigin(c.Ctx, c.Origin), init)
+			} else {
+				_, err = s.interp.EvalString(scheme.WithOrigin(c.Ctx, c.Origin), string(source))
+			}
 			notes := s.interp.EndReload()
 			if err != nil {
 				return scheme.Void, fmt.Errorf("reload: %w", err)

@@ -279,7 +279,9 @@ Settings $\to$ Models is the file's \code{[servers]}, \code{[models]} and
 address, its dialect and its key. A key goes to the keychain with two binding
 rows (the host, \code{POST} and \code{GET}, a bearer header; Anthropic's
 \code{x-api-key}), is replaced in place, goes only
-over https or to this computer, and follows a change of path but never of host.
+over HTTPS or to this computer by default; the user's
+\code{policy.allow\_insecure\_http} setting also permits a remote HTTP provider.
+It follows a change of path but never of host.
 Each provider says whether it can be used and what to fix: the key's state is
 read from the keychain and the binding table before the server is asked
 (\code{needs\_key}, \code{locked}, \code{unbound}), then the server
@@ -596,3 +598,21 @@ set \code{store = false} and \code{stream = true}; output is buffered through
 a terminal response before redaction, preserving ADR~25 for secrets split
 across deltas. A disconnected stream without a terminal event is an error.
 Manage app permissions and quota in ChatGPT Settings.
+
+\section{Transport and storage choices}
+
+Keyed requests require HTTPS except on localhost and literal loopback addresses.
+A user may explicitly allow remote HTTP through Settings > Approvals > Credentials
+over remote HTTP, or \code{[policy] allow\_insecure\_http = true} in config.toml.
+It defaults to false. New/resumed tasks use the saved value; provider setup, tests
+and model lists use the current user setting. HTTP exposes the key and payload to
+anyone on the route. Binding checks, redirect refusals, certificate verification
+and the special ChatGPT credential sinks still apply. Separate MCP, OAuth endpoint
+and Google upload URL validation is unchanged.
+
+The keychain format and default KDF are unchanged. Readers bound file size to
+16 MiB and validate Argon2 parameters before key derivation. Writers use random
+exclusive 0600 sibling files, sync, rename and sync the directory. A directory-sync
+failure after rename is reported with uncertain durability; the published key
+remains in memory. \file{docs/security.md} gives the exact parameter bounds and
+migration limits (ADR 45).

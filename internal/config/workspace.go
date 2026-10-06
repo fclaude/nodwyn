@@ -41,9 +41,9 @@ func LoadWorkspace(registry, root string) (Workspace, error) {
 	if err != nil {
 		return Workspace{}, err
 	}
-	root = filepath.Clean(root)
+	root = CanonicalPath(root)
 	for _, r := range list {
-		if filepath.Clean(r.Path) == root {
+		if CanonicalPath(r.Path) == root {
 			return Workspace{Mounts: r.Mounts}.normalize(root)
 		}
 	}
@@ -69,21 +69,22 @@ func (ws Workspace) normalize(root string) (Workspace, error) {
 			return Workspace{}, fmt.Errorf("workspace: mount %s must be absolute or start with ~/", m.Path)
 		}
 		path = filepath.Clean(path)
-		if path == "/" || (home != "" && path == filepath.Clean(home)) {
+		real := CanonicalPath(path)
+		if real == "/" || (home != "" && real == CanonicalPath(home)) {
 			return Workspace{}, fmt.Errorf("workspace: mount %s is too broad: name a folder inside it", m.Path)
 		}
-		if root != "" && (path == root || strings.HasPrefix(path, root+string(filepath.Separator)) || strings.HasPrefix(root, path+string(filepath.Separator))) {
+		if root != "" && (real == root || strings.HasPrefix(real, root+string(filepath.Separator)) || strings.HasPrefix(root, real+string(filepath.Separator))) {
 			return Workspace{}, fmt.Errorf("workspace: mount %s overlaps the workspace itself", m.Path)
 		}
-		if seen[path] {
+		if seen[real] {
 			continue
 		}
 		for _, o := range out {
-			if strings.HasPrefix(path, o.Path+string(filepath.Separator)) || strings.HasPrefix(o.Path, path+string(filepath.Separator)) {
+			if strings.HasPrefix(real, CanonicalPath(o.Path)+string(filepath.Separator)) || strings.HasPrefix(CanonicalPath(o.Path), real+string(filepath.Separator)) {
 				return Workspace{}, fmt.Errorf("workspace: mounts %s and %s overlap: mount one of them", o.Path, path)
 			}
 		}
-		seen[path] = true
+		seen[real] = true
 		out = append(out, Mount{Path: path, Access: m.Access})
 	}
 	ws.Mounts = out
@@ -130,7 +131,7 @@ func LoadLastWorkspace(path string) (string, error) {
 	if last.Folder == "" {
 		return "", nil
 	}
-	return filepath.Clean(last.Folder), nil
+	return CanonicalPath(last.Folder), nil
 }
 
 // SaveLastWorkspace records the folder the console last picked for a new
@@ -142,7 +143,7 @@ func SaveLastWorkspace(path, folder string) error {
 	var b strings.Builder
 	b.WriteString("# The folder the console last picked for a new task, which a fresh\n")
 	b.WriteString("# window or tab starts in. The daemon writes it; editing it by hand is fine.\n")
-	fmt.Fprintf(&b, "folder = %s\n", quote(folder))
+	fmt.Fprintf(&b, "folder = %s\n", quote(CanonicalPath(folder)))
 	return WriteFile(path, []byte(b.String()))
 }
 
@@ -156,7 +157,17 @@ func LoadRegistry(path string) ([]Registered, error) {
 	if err != nil {
 		return nil, fmt.Errorf("workspaces: %w", err)
 	}
-	return r.Workspace, nil
+	out := make([]Registered, 0, len(r.Workspace))
+	for _, entry := range r.Workspace {
+		entry.Path = CanonicalPath(entry.Path)
+		for _, previous := range out {
+			if previous.Path == entry.Path {
+				return nil, fmt.Errorf("workspaces: duplicate aliases for %s; keep one entry with the intended mounts", entry.Path)
+			}
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }
 
 // SaveRegistered adds the workspace at entry.Path, or renames it and sets
@@ -172,7 +183,7 @@ func SaveRegistered(path string, entry Registered) (Registered, error) {
 	// A folder is one entry however its path is spelled, as LoadWorkspace
 	// finds it: another spelling replaces it rather than adding one that
 	// no session reads.
-	entry.Path = filepath.Clean(entry.Path)
+	entry.Path = CanonicalPath(entry.Path)
 	ws, err := Workspace{Mounts: entry.Mounts}.normalize(entry.Path)
 	if err != nil {
 		return Registered{}, err
@@ -182,7 +193,7 @@ func SaveRegistered(path string, entry Registered) (Registered, error) {
 	if err != nil {
 		return Registered{}, err
 	}
-	list = slices.DeleteFunc(list, func(r Registered) bool { return filepath.Clean(r.Path) == entry.Path })
+	list = slices.DeleteFunc(list, func(r Registered) bool { return CanonicalPath(r.Path) == entry.Path })
 	list = append(list, entry)
 	return entry, writeRegistry(path, list)
 }
@@ -193,8 +204,8 @@ func RemoveRegistered(path, root string) error {
 	if err != nil {
 		return err
 	}
-	root = filepath.Clean(root)
-	kept := slices.DeleteFunc(slices.Clone(list), func(r Registered) bool { return filepath.Clean(r.Path) == root })
+	root = CanonicalPath(root)
+	kept := slices.DeleteFunc(slices.Clone(list), func(r Registered) bool { return CanonicalPath(r.Path) == root })
 	if len(kept) == len(list) {
 		return fmt.Errorf("workspaces: %s is not registered", root)
 	}

@@ -107,6 +107,7 @@ func TestToolCardsFromLocalAndRPCEvents(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-tool "read-note" (lambda () (fs-read "note")) '((doc . "Read note") (params . ())))`), 0600); err != nil {
 				t.Fatal(err)
 			}
+			o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
 			if err := os.WriteFile(filepath.Join(o.Repo, "note"), []byte("visible result\nsk-ant-abcdefgh1234"), 0600); err != nil {
 				t.Fatal(err)
 			}

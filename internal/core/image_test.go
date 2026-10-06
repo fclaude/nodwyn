@@ -367,20 +367,29 @@ func TestImagesStayOutOfNarrowedContextsAndTheJudge(t *testing.T) {
 	t.Cleanup(other.Close)
 	other.SetCapabilities("completion", "vision")
 	r := imageRig(t, true, func(o *Options) {
-		os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0o755)
-		os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`
+		if err := os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// The Go test explicitly authorises the strategy whose image isolation
+		// it measures; a repository's ordinary startup does not get this grant.
+		o.InitFile = filepath.Join(o.Repo, ".nodwyn", "init.scm")
+		if err := os.WriteFile(o.InitFile, []byte(`
 (define plan-explore-rounds 0)
 (define (agent-turn request)
   (plan-gate request)
   (let ((verdict (sub-agent "You review." "Review the request." '() "reviewer")))
     (add-message verdict)
     (model-turn)
-    (model-turn "other")))`), 0o644)
+    (model-turn "other")))`), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		kc, err := keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		kc.Add("jev-key", []byte("sk-judge-canary-0001"))
+		if _, err := kc.Add("jev-key", []byte("sk-judge-canary-0001")); err != nil {
+			t.Fatal(err)
+		}
 		o.Keychain = kc
 		o.Bindings = binding.Table{Bind: []binding.Binding{{Class: "jev-key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}}
 		o.Config.Jev.URL, o.Config.Jev.Content = judge.URL, config.JevContentPlan

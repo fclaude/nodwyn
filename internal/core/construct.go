@@ -48,8 +48,8 @@ type Options struct {
 	// a soft budget checkpoint continues up to the hard limit, and both are
 	// recorded as answered by "unattended".
 	Unattended bool
-	// InitFile is loaded after the prelude with user origin; "" disables.
-	// Default: <Repo>/.nodwyn/init.scm if it exists.
+	// InitFile explicitly authorises an init file on behalf of a Go embedder.
+	// Empty loads <Repo>/.nodwyn/init.scm only after user-owned project trust.
 	InitFile string
 	// Model is the model this conversation talks to (ADR 40). The zero
 	// choice is config.toml's [control] model. A session resumed from a log
@@ -202,7 +202,10 @@ func resolveOptions(o Options) (Options, error) {
 	if err != nil {
 		return Options{}, err
 	}
-	o.Repo = filepath.Clean(repo)
+	if err := migrateNotes(o.Paths, repo); err != nil {
+		return Options{}, err
+	}
+	o.Repo = config.CanonicalPath(repo)
 	if _, err := config.MigrateFolder(o.Repo); err != nil {
 		return Options{}, fmt.Errorf("core: moving .%s to %s: %w", config.LegacyName, config.FolderDir, err)
 	}
@@ -281,8 +284,13 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 		return nil, err
 	}
 	// Standing approvals: config, then the repository's .nodwyn/allow.toml.
-	s.allow = guard.NewCommandAllow(o.Config.Policy.AllowCommands...)
-	repoAllow, err := config.LoadRepoAllow(filepath.Join(o.Repo, ".nodwyn", "allow.toml"))
+	s.allow = guard.NewCommandAllowIn(o.Repo, o.Config.Policy.AllowCommands...)
+	files, err := s.trustedProject()
+	if err != nil {
+		return nil, err
+	}
+	s.initSource = files.Init
+	repoAllow, err := config.ParseRepoAllow(files.Allow)
 	if err != nil {
 		return nil, err
 	}
@@ -323,18 +331,33 @@ func (s *Session) newGuard(po prim.Options) (*guard.Guard, error) {
 	return g, nil
 }
 
-func (s *Session) loadInit() error {
-	o := s.opts
-	init := o.InitFile
-	if init == "" {
-		if p := filepath.Join(o.Repo, ".nodwyn", "init.scm"); fileExists(p) {
-			init = p
-		}
+// trustedProject takes one snapshot, so a file changed after its trust check
+// is never the code or policy loaded by this session.
+func (s *Session) trustedProject() (config.ProjectFiles, error) {
+	files, err := config.ReadProjectFiles(s.opts.Repo)
+	if err != nil {
+		return config.ProjectFiles{}, err
 	}
-	if init != "" {
-		if err := s.interp.LoadFile(scheme.WithOrigin(context.Background(), scheme.OriginUser), init); err != nil {
-			return fmt.Errorf("core: init: %w", err)
+	trusted, err := config.ProjectTrusted(s.opts.Paths, s.project(), files)
+	if err != nil {
+		return config.ProjectFiles{}, err
+	}
+	if !trusted {
+		if files.Present() && s.opts.InitFile == "" {
+			s.note("Repository init.scm and allow.toml were skipped: review them with nodwyn trust --repo " + s.project())
 		}
+		return config.ProjectFiles{}, nil
+	}
+	return files, nil
+}
+
+func (s *Session) loadInit() error {
+	ctx := scheme.WithOrigin(context.Background(), scheme.OriginUser)
+	if s.opts.InitFile != "" {
+		return s.interp.LoadFile(ctx, s.opts.InitFile)
+	}
+	if _, err := s.interp.EvalString(ctx, string(s.initSource)); err != nil {
+		return fmt.Errorf("core: init: %w", err)
 	}
 	return nil
 }

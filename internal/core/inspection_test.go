@@ -28,7 +28,7 @@ func TestFrictionReadUsesGuardAndRedactedEvents(t *testing.T) {
 				os.MkdirAll(filepath.Join(o.Repo, ".nodwyn"), 0700)
 				os.WriteFile(filepath.Join(o.Repo, ".nodwyn", "init.scm"), []byte(`(register-check "read-test" "`+verdict+`" (lambda (name args) (equal? name "fs-read")))`), 0600)
 			}
-			s, err := New(o)
+			s, err := newInitSession(o)
 			if err != nil {
 				t.Fatal(err)
 			}

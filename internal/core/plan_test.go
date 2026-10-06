@@ -115,12 +115,12 @@ func judgedRigWith(t *testing.T, judge *fakeJudge, content, init string, adjust 
 	if adjust != nil {
 		adjust(&o)
 	}
-	s, err := New(o)
+	s, err := newInitSession(o)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return &rig{t: t, s: s, srv: srv, repo: repo, logb: logb}
+	return &rig{t: t, s: s, srv: srv, repo: config.CanonicalPath(repo), logb: logb}
 }
 
 // gatePlans returns the gate.plan records in the log.

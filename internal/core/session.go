@@ -7,13 +7,13 @@ package core
 import (
 	"context"
 	"errors"
-	"github.com/fclaude/nodwyn/internal/config"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/budget"
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/keychain"
@@ -26,16 +26,17 @@ import (
 
 // Session is one conversation with one log.
 type Session struct {
-	opts     Options
-	id       string
-	logw     *log.Writer
-	events   []log.Event
-	evmu     sync.Mutex
-	outputMu sync.Mutex
-	output   strings.Builder
-	out      chan event.Event
-	interp   *scheme.Interp
-	loop     *loop.Loop
+	initSource []byte // The exact project startup snapshot whose trust was checked.
+	opts       Options
+	id         string
+	logw       *log.Writer
+	events     []log.Event
+	evmu       sync.Mutex
+	outputMu   sync.Mutex
+	output     strings.Builder
+	out        chan event.Event
+	interp     *scheme.Interp
+	loop       *loop.Loop
 
 	mu         sync.Mutex
 	busy       bool

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/prim"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
@@ -56,7 +57,7 @@ func TestWorktreeOpenStartsATaskInAWorktreeOfItsOwn(t *testing.T) {
 	// A plain session.open still works in the folder itself.
 	var plain sessionDetails
 	json.Unmarshal(c.ok("session.open", map[string]any{"repo": repo}), &plain)
-	if plain.Repo != repo || plain.Worktree != nil {
+	if plain.Repo != config.CanonicalPath(repo) || plain.Worktree != nil {
 		t.Fatalf("session.open: repo %s, worktree %+v", plain.Repo, plain.Worktree)
 	}
 	if r := c.call("worktree.open", map[string]any{"repo": t.TempDir()}); r.Error == nil || !strings.Contains(r.Error.Message, "is not a git repository") {

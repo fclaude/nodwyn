@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -57,14 +58,14 @@ func TestCLIResume(t *testing.T) {
 		t.Fatalf("ids: %q", ids)
 	}
 	out := run("second ask\n:q\n", append(flags, "--resume", ids[0])...)
-	if !strings.Contains(out, "repo  "+repo) || strings.Count(out, "original answer") != 1 || strings.Count(out, "Session resumed;") != 1 {
+	if !strings.Contains(out, "repo  "+config.CanonicalPath(repo)) || strings.Count(out, "original answer") != 1 || strings.Count(out, "Session resumed;") != 1 {
 		t.Fatalf("bad resume transcript:\n%s", out)
 	}
 	if !strings.Contains(string(srv.Requests[1].Raw), "original answer") {
 		t.Fatal("resumed model lost context")
 	}
 	listing := run("", "sessions")
-	if !strings.Contains(listing, "first ask") || !strings.Contains(listing, "idle") || !strings.Contains(listing, repo) {
+	if !strings.Contains(listing, "first ask") || !strings.Contains(listing, "idle") || !strings.Contains(listing, config.CanonicalPath(repo)) {
 		t.Fatalf("list: %s", listing)
 	}
 }

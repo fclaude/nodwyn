@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -158,8 +159,12 @@ func TestStandingApprovalOutranksConfirmNotDeny(t *testing.T) {
 	if err := g.Before(context.Background(), shell, argv("go", "test", "./...")); err != nil || asked != 0 {
 		t.Fatalf("go test should pass on standing approval: %v asked=%d", err, asked)
 	}
-	if err := g.Before(context.Background(), shell, argv("/usr/local/go/bin/go", "test")); err != nil {
-		t.Fatalf("basename match: %v", err)
+	approvedGo, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Before(context.Background(), shell, argv(approvedGo, "test")); err != nil {
+		t.Fatalf("resolved executable match: %v", err)
 	}
 	if err := g.Before(context.Background(), shell, argv("go", "build")); err == nil || asked != 1 {
 		t.Fatalf("go build is not approved: %v asked=%d", err, asked)
@@ -182,7 +187,7 @@ func TestStandingApprovalOutranksConfirmNotDeny(t *testing.T) {
 	if got := strings.Join(allow.List(), ","); got != "git status,go build,go test,http" {
 		t.Fatalf("list: %s", got)
 	}
-	for argvLine, want := range map[string]string{"go test ./x": "go test", "rg -n foo": "rg", "git status": "git status", "./bin/nodwyn version": "nodwyn version", "sh -c ls": "ls"} {
+	for argvLine, want := range map[string]string{"go test ./x": "go test", "rg -n foo": "rg", "git status": "git status", "./bin/nodwyn version": "./bin/nodwyn version", "sh -c ls": "ls"} {
 		if got := Prefix(strings.Fields(argvLine)); got != want {
 			t.Errorf("Prefix(%q) = %q, want %q", argvLine, got, want)
 		}

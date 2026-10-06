@@ -116,6 +116,10 @@ func (s *Session) InjectBody(id string, req *http.Request) error {
 // already checked against the binding table, which is what authorizes the
 // refresh.
 func (s *Session) fresh(id string, req *http.Request) error {
+	*req = *req.WithContext(keychain.WithInsecureHTTP(req.Context(), s.opts.Config.Policy.AllowInsecureHTTP))
+	if err := keychain.CheckTransport(req); err != nil {
+		return err
+	}
 	return s.freshCtx(req.Context(), id)
 }
 

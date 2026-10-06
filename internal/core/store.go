@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
 )
@@ -122,8 +123,12 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 	if !filepath.IsAbs(start.Repo) {
 		return info, nil, fmt.Errorf("core: session %s has no absolute repository path", id)
 	}
-	info.Repo = start.Repo
+	info.Repo = config.CanonicalPath(start.Repo)
 	info.Worktree = start.Worktree
+	if info.Worktree != nil {
+		info.Worktree.Repository = config.CanonicalPath(info.Worktree.Repository)
+		info.Worktree.Path = config.CanonicalPath(info.Worktree.Path)
+	}
 	first := false
 	written := map[string]bool{}
 	for i, ev := range events {

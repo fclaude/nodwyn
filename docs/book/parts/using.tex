@@ -324,7 +324,7 @@ checkpoints; \code{:replay}, \code{:bindings} and \code{:friction} show
 the transcript, the binding table and \file{docs/friction.md}.
 
 \code{nodwyn --resume ID} continues a session in the same log, with the
-configuration, bindings, approvals files and \file{init.scm} as they are
+configuration, bindings, trusted approvals files and \file{init.scm} as they are
 now. Session-only approvals are not restored, and a tool call that was
 running when the process died is never rerun: it is marked ``outcome
 unknown'' so the next turn can look before it retries.
@@ -428,14 +428,64 @@ writes   = ["internal/", "docs/"]
 \end{txt}
 
 Prefixes match argv tokens: \code{"go test"} matches \code{go test ./...}
-and \code{/usr/local/go/bin/go test}, not \code{go build}. Denies still
+and an absolute path to that same resolved Go executable, not \code{go build}
+or a different program with the same basename. Denies still
 apply\,---\,only the confirm is waived\,---\,and every use is logged with the
 prefix as reason. Keep command approvals to commands that only read or
 test: nothing that commits, pushes, deletes or reaches the network. Write
 approvals matter while \code{approval.writes} is \code{"ask"}; by default
 every write in the folder already goes ahead.
 
+\section{Reviewing project authority}
+
+The repository's author supplies \file{.nodwyn/init.scm} and
+\file{.nodwyn/allow.toml}; their presence grants nothing. Until reviewed,
+a session skips both. Review them, and the Scheme and scripts they load:
+
+\begin{sh}
+nodwyn trust --repo /path/to/project
+nodwyn trust --repo /path/to/project --accept REVISION_FROM_REVIEW
+nodwyn trust --repo /path/to/project --revoke
+\end{sh}
+
+Trust is stored beside \file{config.toml}, in \file{trusted-projects.json},
+by canonical project path and the revision of both authority files. Changing
+one requires another review before startup, resume or reload. The checked bytes
+are the loaded bytes. Other project files are not hashed. A managed worktree
+inherits trust only when both files match its main project's trusted revision.
+Revocation affects future loading; restart running tasks to discard their loaded
+code and approvals. An explicit Go-host \code{Options.InitFile} authorises its
+chosen file directly (\adr{45}).
+
+A standing command approval includes the resolved executable identity. A
+repository's \code{tools/git} cannot inherit \code{git status}; an explicit
+repository executable can be approved separately. Shell wrappers and implicit
+pipeline filters must resolve to host tools. This is no sandbox for approved
+code, which runs with the user's operating-system privileges.
+
 \chapter{Keys, models and the judge}
+
+Credential injection requires HTTPS except for localhost and literal loopback
+addresses. For a remote HTTP service you deliberately accept, choose
+\emph{Settings > Approvals > Credentials over remote HTTP > Allow HTTP}, or set:
+
+\begin{txt}
+[policy]
+allow_insecure_http = true
+\end{txt}
+
+False is the default. New and resumed tasks take the setting; provider setup,
+tests and model lists use the current user setting. HTTP exposes credentials and content
+to anyone on the route. Bindings, redirect refusal, certificate verification and
+fixed ChatGPT credential sinks still apply. Separate MCP, OAuth endpoint and
+Google upload URL validators are unchanged.
+
+Keychain input is bounded to 16 MiB and its Argon2id parameters are checked before
+key derivation. The format and default KDF remain unchanged. Saves use exclusive
+random 0600 siblings, sync the file, rename, then sync the parent directory. A
+post-rename sync error reports uncertain durability and retains the published key
+in memory. See \file{docs/security.md} and \adr{45} for exact bounds.
+
 
 \begin{sh}
 nodwyn keychain init                       # once; asks for a passphrase
@@ -832,3 +882,13 @@ a command ran without a prompt & the judge allowed it (\code{approval.commands =
 a session died & \code{nodwyn --resume <id>}; everything up to the last fsync is in the log \\
 \bottomrule
 \end{longtable}}
+
+\section{One project through path aliases}
+
+Project identity resolves existing symbolic links, so macOS's \file{/tmp/x} and
+\file{/private/tmp/x} share workspace mounts, MCP choices, notes and listings.
+Old session logs and version indexes remain readable without rewriting history.
+Old notes found through the requested path or earlier session records migrate to
+the canonical path hash, leaving \file{notes.md.before-path-migration} backups.
+Different note contents and duplicate workspace aliases require manual
+reconciliation; permissions are never silently merged (\adr{45}).

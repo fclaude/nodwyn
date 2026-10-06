@@ -139,3 +139,14 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 
 **Every Jev number above is a live read, not a memorized score.**
 **The load-bearing line is not "L2 prevents exfil" — it is "binding authorizes, fail-closed denies, redaction keeps context clean, and the user is the authority."**
+
+## Implemented security boundary amendment (2026-10-06)
+
+[ADR 45](docs/adr/0045-project-trust-and-security-boundaries.md) is authoritative for
+repository trust, executable identity, credential transport choices, bounded
+keychain decoding/persistence, and canonical project identities. Repository-owned
+init and approvals load only after external user review. A credential binding does
+not itself permit remote HTTP: `policy.allow_insecure_http` is a separate user
+choice, false by default. Approved shell commands retain the user's OS privileges;
+these checks are not an operating-system sandbox. See [the security reference](docs/security.md)
+for the implemented limits and existing-data behaviour.

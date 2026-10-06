@@ -77,7 +77,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(workspace)} & the folder's mounted folders \\
 \code{(worktree)} & \code{\#f}, or the task's own git worktree: repository, branch, base \\
 \code{(git-land message)} & in a worktree task only: commit, rebase, push to the base by fast-forward, move the local base; asks first \\
-\code{(http-request cred url method position headers body)} & a keyed request, checked against the bindings \\
+\code{(http-request cred url method position headers body)} & a keyed request, checked against bindings and the user's transport policy \\
 \code{(credential class)} & the handle of a stored key, or \code{\#f} \\
 \bottomrule
 \end{tabularx}
@@ -253,7 +253,8 @@ writes   = ["internal/", "docs/"]      # write prefixes that never prompt, with 
 \end{toml}
 
 Command prefixes match whole words of the argument list: \code{"go test"}
-matches \code{go test ./...} and \code{/usr/local/go/bin/go test}, but not
+matches \code{go test ./...} and an absolute path to that same resolved
+executable, but not a different basename impersonator or
 \code{go build}. Every use is still logged, as \emph{allow} with the reason
 \code{standing approval: go test}. A standing command approval runs
 without the judge being asked.
@@ -314,7 +315,7 @@ commands = "judge"   # the default: the judge, then you; "ask": you; "allow": no
 An answer from the judge or the setting is for that call only. Your own
 \key{A} still makes a command prefix standing for the session, so the
 judge is not asked about it again, and the standing approvals in
-\file{allow.toml} and \code{policy.allow\_commands} come first, as before.
+trusted \file{allow.toml} and \code{policy.allow\_commands} come first.
 Some confirms \code{[approval]} never answers. They go to you, every time,
 and are asked rather than declined:
 

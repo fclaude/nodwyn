@@ -603,7 +603,9 @@ commands = ["make lint", "make test"]
 writes   = ["internal/", "docs/"]     # write prefixes that never prompt, with writes = "ask"
 ```
 
-A standing command approval runs without the judge being asked.
+A standing command approval runs without the judge being asked. A repository
+allow file takes effect only after its current revision is trusted (see
+“Reviewing project startup” below).
 
 `.nodwyn/`, `.git/`, `.github/`, `.gitea/`, `scripts/` and `Makefile` always
 prompt, whatever the list says: they hold code that later runs with your
@@ -612,8 +614,9 @@ security confirm, so no standing or turn approval waives it and an
 unattended run refuses it. So does a write whose content looks like a
 credential (L1): that confirm names the class.
 
-Prefixes match argv tokens: `"go test"` matches `go test ./...` and
-`/usr/local/go/bin/go test`, not `go build`. Denies still apply (the repo
+Prefixes match argv tokens and resolved executable identity: `"go test"` matches
+`go test ./...` and an absolute path to that same Go executable, not `go build`
+or a different program named `go`. Denies still apply (the repo
 pin, the credential denylist); only the confirm is waived, and every use is
 logged as `allow` with reason `standing approval: go test`. Keep them
 read-only: nothing that commits, pushes, deletes or reaches the network.
@@ -765,7 +768,8 @@ checkers (deny or confirm, never allow); see `docs/scheme.md` §7.
 
 ### Giving the model tools of its own
 
-`<repo>/.nodwyn/init.scm` is loaded at start (after the prelude). Anything it
+After you trust its revision, `<repo>/.nodwyn/init.scm` is loaded at start
+(after the prelude). Anything it
 registers becomes a tool the model can call; nothing it does can bypass the
 guard. This repository's [dev/go.scm](../dev/go.scm) is the pattern:
 
@@ -802,6 +806,25 @@ asks, and an undeclared one asks every call with no standing answer.
 
 A server on this computer runs only in a container nodwyn controls (W3b,
 ADR 23); "MCP servers" below says how.
+
+### Reviewing project startup
+
+A cloned `.nodwyn/allow.toml` cannot grant its own approvals. Until reviewed, it
+and `.nodwyn/init.scm` are skipped. Run `nodwyn trust --repo PATH` to inspect the
+files and their revision, then `nodwyn trust --repo PATH --accept REVISION` to
+accept exactly that revision. The record lives in user-owned
+`trusted-projects.json` beside config.toml. No Scheme primitive grants it.
+Changing either file requires another review before start, resume or reload.
+Review loaded Scheme and invoked scripts too: those dependencies are not hashed.
+`nodwyn trust --repo PATH --revoke` withdraws future loading; restart existing
+tasks to discard their already loaded code and approvals. A managed worktree may
+use its main project's trust only when both files match. A Go embedder explicitly
+setting `Options.InitFile` supplies host authority for that chosen file.
+
+Standing command prefixes match the executable's resolved identity as well as its
+arguments. A repository's `tools/git` does not inherit `git status`; an explicit
+repository path can be approved separately. Shell wrappers and implicit pipeline
+filters must resolve to the host tools. Approval does not sandbox what they run.
 
 ### Changing the loop
 
@@ -859,7 +882,7 @@ nodwyn can learn how to work in a repository from its own history: send
 `/optimize` (or `/optimize 5`, or `/optimize` with session ids, optionally
 followed by what to focus on) and a sub-agent reads this repository's past
 sessions and edits `.nodwyn/init.scm`, asking before every write; the result
-is reloaded for the next turn ([docs/scheme.md](scheme.md) §9.4).
+is kept for you to review with `nodwyn trust`, then reload or resume ([docs/scheme.md](scheme.md) §9.4).
 
 [internal/core/userland_test.go](../internal/core/userland_test.go) holds
 larger examples, each a behaviour written as a user would write it:
@@ -869,6 +892,19 @@ larger examples, each a behaviour written as a user would write it:
 - routing: the control model plans, a rule picks the model that implements,
   which gets only the task and the plan (`narrow-context`); if the result
   diverges, a stronger model gets one retry, and the control model reports.
+
+### Credential transport
+
+Credentials in headers, queries and bodies require HTTPS, with HTTP allowed on
+localhost and literal loopback addresses. For remote HTTP you deliberately accept,
+set `[policy] allow_insecure_http = true` in the user's config.toml, or choose
+**Settings > Approvals > Credentials over remote HTTP > Allow HTTP**. Off is the
+default. New/resumed tasks take the setting; provider tests and model lists use the
+daemon's current value; provider setup also honours the saved choice. On HTTP,
+an observer on the route can read or change the credential and payload. Binding
+checks, redirect refusal, certificate verification
+and the fixed ChatGPT credential sinks still apply. The setting does not override
+separate MCP, OAuth endpoint or Google upload URL validation.
 
 ### The keychain
 
@@ -898,6 +934,16 @@ when it opens one ("no passphrase"). The console's Settings does the same as
 these commands, and asks for the current passphrase before changing or
 removing one: being at the console lets a person use the keys, never read
 them out of the file.
+
+Keychain readers reject non-regular files, symlinks, files larger than 16 MiB,
+and unsupported KDF headers before deriving a key. The default Argon2id settings
+are unchanged; supported bounds and recovery limitations are in
+[Security boundaries](security.md). Saves use exclusive random 0600 sibling files,
+sync the file, rename it, and sync its directory. Local entry and passphrase
+changes roll back in memory if publication fails; a post-rename sync error reports
+uncertain durability while retaining the published key. OAuth refresh retains a
+received token in memory when saving fails, since the provider may already have
+rotated it; the error is still reported.
 
 A daemon that has the keychain open keeps using it after the passphrase
 changes elsewhere, and asks for the new one when it next starts.
@@ -1482,7 +1528,8 @@ this computer only:
   keychain with two binding rows for the address's host, `POST` for the model
   and `GET` for its model list, as a bearer header (Anthropic's: the `x-api-key`
   header), never into `config.toml`, never into the page; replacing it replaces
-  it in place. A key goes only over https, or to this computer. It follows a
+  it in place. A key requires HTTPS or loopback by default; the user's
+  **Credentials over remote HTTP** setting also permits an HTTP provider. It follows a
   change of path or port, and never a change of host: a provider moved to
   another host has no key until you type one. **Test** sends one short request,
   as a task would, through the same binding check, and says what came back:
@@ -2025,3 +2072,14 @@ this app owns their daemon. Wails v3 is pinned to a beta release; see
 [the desktop build guide](app.md) for dependencies and its native test.
 Portable Gitea archives continue to open a browser. A Windows host port and
 native desktop release runners are still needed before publishing those apps.
+
+### Project paths and existing data
+
+Projects have one identity through symlinks: `/tmp/x` and `/private/tmp/x` on macOS
+share workspace mounts, MCP selection, notes and session listings. A linked git
+worktree remains a distinct checkout of its recorded main project. Old session
+logs and kept-version indexes are read without rewriting them. Notes under an old
+path hash are migrated from the requested spelling or earlier session records,
+leaving a `notes.md.before-path-migration` backup. Conflicting note contents or
+duplicate registered aliases require manual reconciliation; nodwyn does not merge
+permissions or discard one copy. See [ADR 45](adr/0045-project-trust-and-security-boundaries.md).

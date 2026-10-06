@@ -9,8 +9,9 @@
 ;; and any other words after it are a focus ("/optimize 5 test runs"). Its
 ;; writes are limited to .nodwyn/, and every one prompts (a protected path), so
 ;; it needs a person: an unattended run (--yolo) refuses those writes.
-;; Once it is done the init file is reloaded; if the reload fails, the file is
-;; restored. The model then tells the user what changed.
+;; A changed project init needs the user to review trust again. Keep that edit
+;; pending instead of undoing it as a failed reload (ADR 45). Other reload
+;; failures restore the old file. The model then tells the user what changed.
 
 ;; Characters of history the optimizer reads per session, and in all.
 (define optimize-session-chars 6000)
@@ -110,9 +111,12 @@
            (cond ((equal? before after) "It did not change .nodwyn/init.scm.")
                  (else
                   (guard (e (else
-                             (if before (fs-write ".nodwyn/init.scm" before) (fs-write ".nodwyn/init.scm" ""))
-                             (string-append "Reloading .nodwyn/init.scm failed, so it was restored: "
-                                            (format "~a" (assoc-ref e 'message "")))))
+                             (if (member 'project-trust-required (assoc-ref e 'irritants '()))
+                                 ".nodwyn/init.scm was changed and kept for review. Run nodwyn trust, accept the reviewed revision, then reload or resume. The new code has not run."
+                                 (begin
+                                   (if before (fs-write ".nodwyn/init.scm" before) (fs-write ".nodwyn/init.scm" ""))
+                                   (string-append "Reloading .nodwyn/init.scm failed, so it was restored: "
+                                                  (format "~a" (assoc-ref e 'message "")))))))
                     (let ((notes (reload)))
                       (string-append ".nodwyn/init.scm was changed and reloaded; the new strategy applies from the next turn."
                                      (if (null? notes) "" (string-append "\nFixed for this session, applying from the next one:\n- "

@@ -149,7 +149,7 @@ you> :eval (reload)
 ("register-check: the guard's checks are fixed for this session; changes apply from the next one")
 \end{txt}
 
-\code{reload} runs \code{init.scm} again and returns notes about anything
+\code{reload} requires the current project revision to be trusted, then runs \code{init.scm} again and returns notes about anything
 that could not change mid-session: new tools, new checks, the system
 prompt. Everything else (strategies, thresholds, the other prompts, tool
 bodies) applies from the next turn.

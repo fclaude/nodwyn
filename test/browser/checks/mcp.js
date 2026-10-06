@@ -58,7 +58,7 @@ check(async () => {
   assert.deepStrictEqual(buttons, ["Allow onceY", "DenyN"], "only once or no");
   await page.screenshot({ path: `${out}/mcp-task.png` });
 
-  await page.keyboard.press("y");
+  await page.click(".ask-card button[data-key='Y']");
   await page.waitForSelector(".prose h2", { timeout: 20000 });
   assert.deepStrictEqual(sent.of("session.answer").map((a) => [a.id, a.reply]), [[id, "y"]]);
   await shows(page, ".transcript", "Posted to #eng-status.");

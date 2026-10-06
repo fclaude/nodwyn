@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/fclaude/nodwyn/internal/config"
 )
 
 // Versions keeps a file's previous content before nodwyn replaces it, where
@@ -173,6 +175,7 @@ func readIndex(dir string) ([]Version, error) {
 	for scanner.Scan() {
 		var x Version
 		if json.Unmarshal(scanner.Bytes(), &x) == nil && hashName.MatchString(x.Hash) {
+			x.Path = config.CanonicalPath(x.Path)
 			out = append(out, x)
 		}
 	}
@@ -187,7 +190,7 @@ func ListVersions(dir, abs string) ([]Version, error) {
 	}
 	var out []Version
 	for i := len(all) - 1; i >= 0; i-- {
-		if all[i].Path == abs {
+		if all[i].Path == config.CanonicalPath(abs) {
 			out = append(out, all[i])
 		}
 	}

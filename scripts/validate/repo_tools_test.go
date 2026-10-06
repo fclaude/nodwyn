@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,7 +30,7 @@ func TestGrepRepoReadsAlternationsAndSaysWhenNothingMatched(t *testing.T) {
 	cfg := config.Default()
 	cfg.Control.URL = srv.URL
 	cfg.Control.Model = "test-model"
-	s, err := core.New(core.Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: &bytes.Buffer{}})
+	s, err := core.New(core.Options{Config: cfg, Repo: repo, InitFile: filepath.Join(repo, ".nodwyn", "init.scm"), Version: "test", Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: &bytes.Buffer{}})
 	if err != nil {
 		t.Fatal(err)
 	}

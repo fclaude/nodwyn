@@ -176,7 +176,7 @@ func TestApproveAllIsNotScheme(t *testing.T) {
 	os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte("(define approve-all #t)\n(define dont-ask #t)\n"), 0o644)
 	cfg := diskOptions(t).Config
 	cfg.Approval.Writes = config.ApproveAsk // a write is the confirm asked
-	s, err := New(Options{Repo: repo, Paths: diskOptions(t).Paths, Config: cfg})
+	s, err := newInitSession(Options{Repo: repo, Paths: diskOptions(t).Paths, Config: cfg})
 	if err != nil {
 		t.Fatal(err)
 	}

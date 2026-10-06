@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-
 	"github.com/fclaude/nodwyn/internal/egress"
 )
 
@@ -158,7 +157,9 @@ var reservedEnv = []string{"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
 var imageRef = regexp.MustCompile(`^(?:[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?/)?[a-z0-9]+(?:[._-]+[a-z0-9]+)*(?:/[a-z0-9]+(?:[._-]+[a-z0-9]+)*)*@sha256:[0-9a-f]{64}$`)
 
 // In reports whether the server is offered in the workspace at root.
-func (s MCPServer) In(root string) bool { return slices.Contains(s.Workspaces, root) }
+func (s MCPServer) In(root string) bool {
+	return slices.ContainsFunc(s.Workspaces, func(path string) bool { return CanonicalPath(path) == CanonicalPath(root) })
+}
 
 type mcpFile struct {
 	Server []MCPServer `toml:"server"`

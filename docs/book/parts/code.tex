@@ -1803,3 +1803,30 @@ one that appends to the history the model's context is built from
 that calls a primitive's handler (\code{applyPrim}, held by
 \code{TestGateIsTheSingleExit}). When a phase needs a second one, the
 answer is an ADR, not a shortcut.
+
+\section{The October security boundaries}
+
+The host now reads the repository's two authority files into one snapshot in
+\code{config.ReadProjectFiles}. \code{ProjectTrusted} checks that snapshot's
+revision against the user-owned registry before \code{newGuard} reads its
+approvals or \code{loadInit} evaluates its Scheme. \code{reload} checks again.
+\code{Options.InitFile} is an explicit Go caller's grant. This supplements the
+initialisation walkthrough above; repository authors cannot grant their own
+startup authority. The CLI owns review, exact-revision acceptance and revocation.
+
+\file{internal/guard/allow.go} resolves the approved executable as well as its
+argv prefix, including shell wrappers and implicit filters.
+\file{internal/keychain/transport.go} is the final credential-injection transport
+check. Core and RPC pass only the user's \code{policy.allow\_insecure\_http}
+setting through the Go request context; no Scheme value sets it.
+\file{internal/keychain/store.go} validates untrusted size and KDF headers before
+Argon2 work and publishes via an exclusive temporary file, content sync, rename
+and directory sync. Post-publication errors are distinguished from rollback-safe
+failures.
+
+\code{config.CanonicalPath} gives project identities their physical paths,
+including absent suffixes. Workspace and MCP selections, session metadata and
+kept versions compare those identities. \file{internal/core/notes\_migration.go}
+uses requested spellings and old session records to preserve notes, retaining
+backups and refusing conflicting contents. Neither the log nor keychain wire
+format changed. \adr{45} specifies the bounds and compatibility rules.

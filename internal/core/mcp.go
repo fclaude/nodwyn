@@ -12,6 +12,7 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/mcp"
 	"github.com/fclaude/nodwyn/internal/scheme"
@@ -397,6 +398,10 @@ func InspectMCP(o Options, server config.MCPServer) ([]mcp.Tool, string, error) 
 			return nil, "", err
 		}
 		authorize = func(req *http.Request) error {
+			*req = *req.WithContext(keychain.WithInsecureHTTP(req.Context(), o.Config.Policy.AllowInsecureHTTP))
+			if err := keychain.CheckTransport(req); err != nil {
+				return err
+			}
 			h := o.Keychain.HandleForClass(server.Credential)
 			if h == nil {
 				return fmt.Errorf("no %s credential in the keychain", server.Credential)

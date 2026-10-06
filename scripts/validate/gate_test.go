@@ -41,7 +41,7 @@ func TestFinishCheckAsksForValidate(t *testing.T) {
 	cfg.Control.URL = srv.URL
 	cfg.Control.Model = "test-model"
 	// A chat: a person answers the confirms, which turn does.
-	s, err := core.New(core.Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: &bytes.Buffer{}})
+	s, err := core.New(core.Options{Config: cfg, Repo: repo, InitFile: filepath.Join(repo, ".nodwyn", "init.scm"), Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: &bytes.Buffer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestValidateCountsAsARunsTestRun(t *testing.T) {
 	cfg := config.Default()
 	cfg.Control.URL = srv.URL
 	cfg.Control.Model = "test-model"
-	s, err := core.New(core.Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL),
+	s, err := core.New(core.Options{Config: cfg, Repo: repo, InitFile: filepath.Join(repo, ".nodwyn", "init.scm"), Version: "test", Provider: llm.NewOllama(srv.URL),
 		AutoApprove: true, LogWriter: &bytes.Buffer{}})
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestACommitAloneIsNoChangeToValidate(t *testing.T) {
 	cfg.Control.URL = srv.URL
 	cfg.Control.Model = "test-model"
 	logb := &bytes.Buffer{}
-	s, err := core.New(core.Options{Config: cfg, Repo: repo, Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: logb})
+	s, err := core.New(core.Options{Config: cfg, Repo: repo, InitFile: filepath.Join(repo, ".nodwyn", "init.scm"), Version: "test", Provider: llm.NewOllama(srv.URL), LogWriter: logb})
 	if err != nil {
 		t.Fatal(err)
 	}

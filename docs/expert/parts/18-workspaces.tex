@@ -277,3 +277,14 @@ keys & the keychain, in the config directory \\
 \bottomrule
 \end{tabularx}
 \end{center}
+
+\section{Path aliases and older notes}
+
+A project has one canonical path with existing symlinks resolved. The same folder
+through macOS's \file{/tmp} and \file{/private/tmp} shares mounts, MCP selection,
+notes and task grouping. Existing session logs and kept-version indexes remain
+readable. Notes found through the requested spelling or old session records migrate
+to the canonical key with \file{notes.md.before-path-migration} backups. Conflicting
+notes or duplicate registered aliases require reconciliation rather than combining
+permissions or discarding data. A managed worktree keeps its own checkout identity
+and the main project's identity for shared resources (ADR 45).

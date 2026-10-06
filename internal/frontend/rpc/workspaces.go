@@ -121,7 +121,7 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 		if !filepath.IsAbs(p.Path) {
 			return nil, failure(-32602, "path must be absolute")
 		}
-		p.Path = filepath.Clean(p.Path)
+		p.Path = config.CanonicalPath(p.Path)
 		if info, err := os.Stat(p.Path); err != nil || !info.IsDir() {
 			return nil, failure(-32602, "path must be an existing folder")
 		}
@@ -146,7 +146,7 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 	if !filepath.IsAbs(p.Path) {
 		return nil, failure(-32602, "path must be absolute")
 	}
-	p.Path = filepath.Clean(p.Path)
+	p.Path = config.CanonicalPath(p.Path)
 	if info, err := os.Stat(p.Path); err != nil || !info.IsDir() {
 		return nil, failure(-32602, "path must be an existing folder")
 	}
@@ -173,7 +173,7 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 		if err := params(req.Params, &p, "repo", "path"); err != nil {
 			return nil, err
 		}
-		store, known := s.versionStore(filepath.Clean(p.Repo))
+		store, known := s.versionStore(config.CanonicalPath(p.Repo))
 		if !filepath.IsAbs(p.Repo) || !known {
 			return nil, failure(-32602, "repo must be a folder nodwyn works in")
 		}
@@ -181,7 +181,7 @@ func (s *server) versions(req request, client *peer) (any, *rpcError) {
 		if !filepath.IsAbs(abs) {
 			abs = filepath.Join(p.Repo, abs)
 		}
-		list, err := prim.ListVersions(store, filepath.Clean(abs))
+		list, err := prim.ListVersions(store, config.CanonicalPath(abs))
 		if err != nil {
 			return nil, failure(-32000, err.Error())
 		}
@@ -213,9 +213,9 @@ func (s *server) versionDiff(req request) (any, *rpcError) {
 	if err := params(req.Params, &p, "repo", "path", "hash"); err != nil {
 		return nil, err
 	}
-	root := filepath.Clean(p.Repo)
+	root := config.CanonicalPath(p.Repo)
 	store, known := s.versionStore(root)
-	if !filepath.IsAbs(root) || !known {
+	if !filepath.IsAbs(p.Repo) || !known {
 		return nil, failure(-32602, "repo must be a folder nodwyn works in")
 	}
 	if reason := s.rootRefusal(root); reason != "" {
@@ -225,7 +225,7 @@ func (s *server) versionDiff(req request) (any, *rpcError) {
 	if !filepath.IsAbs(abs) {
 		abs = filepath.Join(root, abs)
 	}
-	abs = filepath.Clean(abs)
+	abs = config.CanonicalPath(abs)
 	rel, err := filepath.Rel(root, abs)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return nil, failure(-32602, "path must be inside repo")
@@ -508,23 +508,7 @@ func (s *server) rootRefusal(root string) string {
 // parent, resolved, joined with the rest. Comparing it with a resolved root
 // must not depend on whether the directory was created (on macOS /var and
 // /tmp are links into /private).
-func evalOr(p string) string {
-	if p == "" {
-		return ""
-	}
-	p = filepath.Clean(p)
-	rest := ""
-	for dir := p; ; dir = filepath.Dir(dir) {
-		if real, err := filepath.EvalSymlinks(dir); err == nil {
-			return filepath.Join(real, rest)
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return p
-		}
-		rest = filepath.Join(filepath.Base(dir), rest)
-	}
-}
+func evalOr(p string) string { return config.CanonicalPath(p) }
 
 // versionStore is where the versions of files under root are kept, and
 // whether root is a named workspace or a folder a task used: what
@@ -533,7 +517,7 @@ func evalOr(p string) string {
 func (s *server) versionStore(root string) (string, bool) {
 	infos, _ := s.store().List()
 	for _, i := range infos {
-		if i.Repo == root {
+		if config.CanonicalPath(i.Repo) == config.CanonicalPath(root) {
 			return prim.VersionsDir(i.Project()), true
 		}
 	}

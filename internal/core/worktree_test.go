@@ -89,7 +89,7 @@ func TestWorktreeSessionWritesInItsOwnCheckout(t *testing.T) {
 		t.Fatal("no worktree")
 	}
 	suffix := s.ID()[strings.LastIndexByte(s.ID(), '-')+1:]
-	if want := filepath.Join(repo, ".nodwyn", "worktrees", suffix); s.Repo() != want || w.Path != want {
+	if want := filepath.Join(config.CanonicalPath(repo), ".nodwyn", "worktrees", suffix); s.Repo() != want || w.Path != want {
 		t.Fatalf("root %s, worktree %s; want %s", s.Repo(), w.Path, want)
 	}
 	if w.Branch != "nodwyn/"+suffix || w.Base != "main" || w.BaseCommit != git(repo, "rev-parse", "HEAD") || !samePath(w.Repository, repo) {
@@ -300,7 +300,7 @@ func TestWorktreeRestoreLeavesOtherWorktreesRegistered(t *testing.T) {
 	if got := git(w.Path, "rev-parse", "--abbrev-ref", "HEAD"); got != w.Branch {
 		t.Fatalf("the restored worktree is on %s", got)
 	}
-	if list := git(repo, "worktree", "list", "--porcelain"); !strings.Contains(list, "worktree "+mine+"\n") {
+	if list := git(repo, "worktree", "list", "--porcelain"); !strings.Contains(list, "worktree "+config.CanonicalPath(mine)+"\n") {
 		t.Fatalf("the person's worktree is no longer registered:\n%s", list)
 	}
 }

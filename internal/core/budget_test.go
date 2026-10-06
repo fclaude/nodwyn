@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/fclaude/nodwyn/internal/budget"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -120,7 +120,7 @@ func TestBudgetNestedActionsCannotBeCaughtOrHidden(t *testing.T) {
 	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "wrapped", Name: "write-many", Args: map[string]any{}}}})
 	defer srv.Close()
 	o.Provider = llm.NewOllama(srv.URL)
-	s, err := New(o)
+	s, err := newInitSession(o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +280,7 @@ func TestDeniedCallsDoNotConsumeActionBudget(t *testing.T) {
 	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "a", Name: "fs-write", Args: map[string]any{"path": "a", "content": "denied"}}, {ID: "b", Name: "fs-write", Args: map[string]any{"path": "b", "content": "allowed"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()
 	o.Provider = llm.NewOllama(srv.URL)
-	s, err := New(o)
+	s, err := newInitSession(o)
 	if err != nil {
 		t.Fatal(err)
 	}

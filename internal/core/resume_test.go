@@ -357,7 +357,7 @@ func TestResumeRereadsInit(t *testing.T) {
 (register-tool "tool-`+version+`" (lambda () "ok") '((doc . "a tool") (params . ())))`), 0o644)
 	}
 	writeInit("one")
-	s, err := New(o)
+	s, err := newInitSession(o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestResumeRereadsInit(t *testing.T) {
 
 	writeInit("two")
 	o.Repo = ""
-	resumed, err := Resume(o, id)
+	resumed, err := resumeInitSession(o, id)
 	if err != nil {
 		t.Fatal(err)
 	}

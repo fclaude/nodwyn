@@ -2,6 +2,7 @@ package guard
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -18,13 +19,29 @@ import (
 // Entries come from config, from the repository's .nodwyn/allow.toml, and from
 // "a" answers during a session (not persisted).
 type CommandAllow struct {
-	mu       sync.RWMutex
-	prefixes [][]string
+	mu         sync.RWMutex
+	prefixes   [][]string
+	identities []string
+	root       string
+	system     map[string]string
 }
 
 // NewCommandAllow builds the checker from "prog sub ..." strings.
 func NewCommandAllow(entries ...string) *CommandAllow {
-	c := &CommandAllow{}
+	return NewCommandAllowIn("", entries...)
+}
+
+// NewCommandAllowIn resolves executable identities when approval is installed.
+// A bare name found inside the repository cannot inherit an approval for a
+// system tool; an explicit path may be approved as a separate command.
+func NewCommandAllowIn(root string, entries ...string) *CommandAllow {
+	c := &CommandAllow{root: root, system: map[string]string{}}
+	for name := range shells {
+		c.system[name] = c.resolve(name)
+	}
+	for name := range filterFlags {
+		c.system[name] = c.resolve(name)
+	}
 	for _, e := range entries {
 		c.Add(e)
 	}
@@ -45,6 +62,7 @@ func (c *CommandAllow) Add(entry string) {
 		}
 	}
 	c.prefixes = append(c.prefixes, f)
+	c.identities = append(c.identities, c.resolve(f[0]))
 }
 
 // List returns the entries, sorted.
@@ -65,12 +83,12 @@ func (c *CommandAllow) List() []string {
 // prefixes are returned joined by ", ".
 func (c *CommandAllow) Match(argv []string) string {
 	if cmds, wrapped := shellCommands(argv); wrapped {
-		if cmds == nil {
+		if cmds == nil || !c.systemCommand(argv[0]) {
 			return ""
 		}
 		var matched []string
 		for _, cmd := range cmds {
-			if filter(cmd) {
+			if filter(cmd) && c.systemCommand(cmd.words[0]) {
 				continue
 			}
 			m := c.match(cmd.words)
@@ -92,11 +110,12 @@ func (c *CommandAllow) match(argv []string) string {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	for _, p := range c.prefixes {
+	for j, p := range c.prefixes {
 		if len(p) > len(argv) {
 			continue
 		}
-		ok := filepath.Base(argv[0]) == p[0]
+		identity := c.resolve(argv[0])
+		ok := identity != "" && identity == c.identities[j]
 		for i := 1; ok && i < len(p); i++ {
 			ok = argv[i] == p[i]
 		}
@@ -130,6 +149,10 @@ func Prefix(argv []string) string {
 		return ""
 	}
 	if cmds, wrapped := shellCommands(argv); wrapped {
+		c := NewCommandAllow()
+		if !c.systemCommand(argv[0]) {
+			return ""
+		}
 		var run []string
 		for _, cmd := range cmds {
 			if !filter(cmd) {
@@ -144,8 +167,8 @@ func Prefix(argv []string) string {
 		}
 		return Prefix(run)
 	}
-	prog := filepath.Base(argv[0])
-	if interpreters[prog] {
+	prog := argv[0]
+	if interpreters[filepath.Base(prog)] {
 		return ""
 	}
 	if len(argv) > 1 && !strings.HasPrefix(argv[1], "-") && !strings.Contains(argv[1], "/") && !strings.Contains(argv[1], ".") {
@@ -168,4 +191,39 @@ func equal(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// resolve rejects relative PATH entries (exec.ErrDot) and keeps a symlink's
+// target as identity, so changing the link after approval does not transfer it.
+func (c *CommandAllow) resolve(program string) string {
+	explicit := strings.ContainsRune(program, filepath.Separator)
+	path := program
+	if !explicit {
+		var err error
+		path, err = exec.LookPath(program)
+		if err != nil {
+			return ""
+		}
+	} else if !filepath.IsAbs(path) {
+		if c.root == "" {
+			return ""
+		}
+		path = filepath.Join(c.root, path)
+	}
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil || !filepath.IsAbs(real) {
+		return ""
+	}
+	if !explicit && c.root != "" {
+		root, err := filepath.EvalSymlinks(c.root)
+		if err != nil || real == root || strings.HasPrefix(real, root+string(filepath.Separator)) {
+			return ""
+		}
+	}
+	return real
+}
+
+func (c *CommandAllow) systemCommand(program string) bool {
+	expected := c.system[filepath.Base(program)]
+	return expected != "" && c.resolve(program) == expected
 }

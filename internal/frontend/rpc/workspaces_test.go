@@ -240,10 +240,10 @@ func TestWorkspaceActiveSurvivesRestart(t *testing.T) {
 	}
 	folder := t.TempDir()
 	json.Unmarshal(c.ok("workspace.active", map[string]any{"path": folder}), &got)
-	if got.Path != folder {
+	if got.Path != config.CanonicalPath(folder) {
 		t.Fatalf("a pick was reported as %q, not %q", got.Path, folder)
 	}
-	if stored, err := config.LoadLastWorkspace(config.LastWorkspaceFile(o.Paths)); err != nil || stored != folder {
+	if stored, err := config.LoadLastWorkspace(config.LastWorkspaceFile(o.Paths)); err != nil || stored != config.CanonicalPath(folder) {
 		t.Fatalf("on disk: %q %v", stored, err)
 	}
 	if r := c.call("workspace.active", map[string]any{"path": "notes"}); r.Error == nil {
@@ -259,7 +259,7 @@ func TestWorkspaceActiveSurvivesRestart(t *testing.T) {
 	c = connect(t, path)
 	c.hello()
 	json.Unmarshal(c.ok("workspace.active", map[string]any{}), &got)
-	if got.Path != folder {
+	if got.Path != config.CanonicalPath(folder) {
 		t.Fatalf("after a restart: %q, not %q", got.Path, folder)
 	}
 }

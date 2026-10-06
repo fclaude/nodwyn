@@ -45,7 +45,7 @@ func TestRequestReplayMatchesActualProviderAcrossResume(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(o.Repo, "note"), []byte(strings.Repeat("ordinary file text ", 200)+canary), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(o)
+	s, err := newInitSession(o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestRequestReplayMatchesActualProviderAcrossResume(t *testing.T) {
 	o.Config.Control.Model = "changed-model"
 	o.Config.Control.KeepAlive = "5m"
 	o.Config.Window.MaxResultTokens = 32
-	resumed, err := Resume(o, id)
+	resumed, err := resumeInitSession(o, id)
 	if err != nil {
 		t.Fatal(err)
 	}

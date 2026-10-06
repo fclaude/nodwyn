@@ -132,6 +132,7 @@ func run(seed bool, port int, docs bool, given string) error {
 			os.RemoveAll(root)
 		}
 	}()
+	root = config.CanonicalPath(root)
 	model := fake.NewFunc(respond)
 	defer model.Close()
 	// "Tidy" ends on a provider's rate limit: retry it quickly, so the
@@ -233,6 +234,14 @@ func run(seed bool, port int, docs bool, given string) error {
 		if err := writeGitRepo(project); err != nil {
 			return err
 		}
+	}
+	// The demo owns this fixture code and explicitly trusts it like a user.
+	files, err := config.ReadProjectFiles(repos["console"])
+	if err != nil {
+		return err
+	}
+	if err := config.TrustProject(ctx, paths, repos["console"], files.Revision()); err != nil {
+		return err
 	}
 	if seed {
 		if err := seedTasks(ctx, socket, repos); err != nil {

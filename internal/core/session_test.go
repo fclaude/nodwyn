@@ -55,7 +55,7 @@ func newRigWith(t *testing.T, noConfirm bool, adjust func(*config.Config), turns
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	return &rig{t: t, s: s, srv: srv, repo: repo, logb: logb}
+	return &rig{t: t, s: s, srv: srv, repo: config.CanonicalPath(repo), logb: logb}
 }
 
 // drain collects events until the session goes idle, answering prompts
@@ -319,7 +319,7 @@ func TestInitFileRegistersTools(t *testing.T) {
 	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "g", Name: "greet", Args: map[string]any{"name": "fc"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()
 	cfg := config.Default()
-	s, err := New(Options{Config: cfg, Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+	s, err := newInitSession(Options{Config: cfg, Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +411,7 @@ func TestRegisterCheckTruthyPredicateMatches(t *testing.T) {
 (register-check "no-reads" "deny" (lambda (name args) (member name '("fs-read"))))`), 0o644)
 	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": "x.txt"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()
-	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+	s, err := newInitSession(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +433,7 @@ func TestInitRegisterCheckSurvivesGuardSetup(t *testing.T) {
 (register-check "no-reads" "deny" (lambda (name args) (equal? name "fs-read")))`), 0o644)
 	srv := fake.NewT(t, fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "fs-read", Args: map[string]any{"path": "x.txt"}}}}, fake.Turn{Content: "done"})
 	defer srv.Close()
-	s, err := New(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+	s, err := newInitSession(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -444,4 +444,28 @@ func TestInitRegisterCheckSurvivesGuardSetup(t *testing.T) {
 	if !strings.Contains(string(srv.Requests[1].Raw), "user checker no-reads") {
 		t.Fatalf("checker registered in init.scm was lost:\n%s", srv.Requests[1].Raw)
 	}
+}
+
+// newInitSession explicitly loads fixture code supplied by the Go test. Tests
+// of repository trust call New directly and have no such host authorisation.
+func newInitSession(o Options) (*Session, error) {
+	if path := filepath.Join(o.Repo, ".nodwyn", "init.scm"); fileExists(path) {
+		o.InitFile = path
+	}
+	return New(o)
+}
+
+func resumeInitSession(o Options, id string) (*Session, error) {
+	repo := o.Repo
+	if repo == "" {
+		info, err := (Store{Dir: o.Paths.SessionsDir}).Info(id)
+		if err != nil {
+			return nil, err
+		}
+		repo = info.Repo
+	}
+	if path := filepath.Join(repo, ".nodwyn", "init.scm"); fileExists(path) {
+		o.InitFile = path
+	}
+	return Resume(o, id)
 }

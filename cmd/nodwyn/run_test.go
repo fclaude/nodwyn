@@ -38,10 +38,18 @@ func TestCLIBoundedRun(t *testing.T) {
 	}
 	srv := fake.New(fake.Turn{Content: "1. Return the requested answer."}, fake.Turn{Content: "done\n" + run.CompleteLine})
 	defer srv.Close()
+	paths := config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data"))
+	files, err := config.ReadProjectFiles(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.TrustProject(context.Background(), paths, repo, files.Revision()); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: config.PathsUnder(filepath.Join(dir, "config"), filepath.Join(dir, "data")), Provider: llm.NewOllama(srv.URL)})
+		done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: paths, Provider: llm.NewOllama(srv.URL)})
 	}()
 	defer func() {
 		cancel()

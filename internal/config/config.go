@@ -27,7 +27,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/fclaude/nodwyn/internal/catalogue"
-
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/llm"
 )
@@ -465,9 +464,10 @@ func (w Window) ReplyCap(context, maxOutput int) int {
 
 // Policy holds the guard's user-settable defaults (ADR 6).
 type Policy struct {
-	Unbound       string   `toml:"unbound"`        // "deny" (default) or "confirm" for unbound secret-bearing egress
-	AllowCommands []string `toml:"allow_commands"` // standing approvals: argv prefixes that run without a confirm
-	AllowWrites   []string `toml:"allow_writes"`   // standing approvals: repository-relative path prefixes writable without a confirm
+	AllowInsecureHTTP bool     `toml:"allow_insecure_http"` // permit credentials over remote cleartext HTTP; default false
+	Unbound           string   `toml:"unbound"`             // "deny" (default) or "confirm" for unbound secret-bearing egress
+	AllowCommands     []string `toml:"allow_commands"`      // standing approvals: argv prefixes that run without a confirm
+	AllowWrites       []string `toml:"allow_writes"`        // standing approvals: repository-relative path prefixes writable without a confirm
 
 	// L1 is the secret-scanner policy (Phase 4).
 	L1 L1 `toml:"l1"`
@@ -486,7 +486,7 @@ type L1 struct {
 }
 
 // RepoAllow is <repo>/.nodwyn/allow.toml: standing approvals for one
-// repository, merged with policy.allow_commands.
+// repository, merged with policy.allow_commands only after project trust.
 type RepoAllow struct {
 	Commands []string `toml:"commands"`
 	Writes   []string `toml:"writes"`

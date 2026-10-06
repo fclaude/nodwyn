@@ -31,7 +31,7 @@ func TestScratchDirectory(t *testing.T) {
     (fs-write file "print(1)\n")
     (set! seen (fs-read file))
     (model-turn)))`), 0o644)
-	s, err := New(o)
+	s, err := newInitSession(o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestScratchDirectoryWithTheDefaultLayout(t *testing.T) {
 	if b, err := os.ReadFile(filepath.Join(s.scratch, "a.py")); err != nil || string(b) != "print(1)\n" {
 		t.Fatalf("the model's scratch file: %q %v", b, err)
 	}
-	if !strings.HasPrefix(s.scratch, filepath.Join(paths.DataDir, "scratch")+string(filepath.Separator)) {
+	if !strings.HasPrefix(s.scratch, config.CanonicalPath(filepath.Join(paths.DataDir, "scratch"))+string(filepath.Separator)) {
 		t.Fatalf("scratch directory %q", s.scratch)
 	}
 	if got := r.eval(`(let ((found (index-grep "$TMPDIR" "print"))) (list (assoc-ref found "files") (assoc-ref found "skipped")))`); got != "(1 0)" {
