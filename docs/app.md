@@ -116,7 +116,7 @@ The desktop dependency is pinned to Wails `v3.0.0-beta.28`. Version 3 is
 still beta; its direct window URL API lets the app keep the existing
 loopback console, pairing tickets, cookies, CSP and WebSocket origin checks.
 We do not serve the console through Wails' asset server or expose task
-methods as Wails services. ADR 43 records the choice.
+methods as Wails services. ADR 44 records the choice.
 
 To run the native window check in a desktop session:
 

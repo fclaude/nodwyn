@@ -3,7 +3,7 @@
 One decision per file. Amend by editing and noting the change; never delete.
 
 - [0042](./0042-gitea-releases.md) — Gitea distributes binaries and books; GitHub CI is manual-only
-- [0043](./0043-wails-desktop.md) — Wails owns the native window while console RPC keeps its origin and authentication
+- [0044](./0044-wails-desktop.md) — Wails owns the native window while console RPC keeps its origin and authentication
 
 - [0001](./0001-value-representation.md) — Value representation
 - [0002](./0002-log-format.md) — Log format and event kinds

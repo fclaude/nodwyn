@@ -1,5 +1,6 @@
 # build outputs
 /bin/
+/validate
 /dist/
 *.test
 coverage.out

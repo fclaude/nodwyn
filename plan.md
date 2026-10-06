@@ -70,21 +70,22 @@ grouping, with the browser check `worktrees`. What is left of each phase:
   remove [--force]`. Removal refuses a dirty tree without `--force`, keeps
   an unmerged branch and logs `worktree.remove`. `nodwyn sessions` shows the
   branch.
-- **WT3 — the session's git (medium).** Two questions are open in ADR 34
-  first: whether the default prompt pushes to `main` only when the request
-  asks for it, and whether a push to `main` fast-forwards the user's own
-  clean checkout of it.
-  - Worktree sessions get `git-commit`, `git-rebase` (with `"continue"` and
-    `"abort"`) and `git-push`: the session's branch with a lease, or
-    `"main"` by fast-forward. They take fixed arguments and refuse unless
-    `HEAD` is the session's branch.
-  - `allow.toml` gains `push = [URL, …]`, the remote URLs a session may push
-    to; an unlisted URL is a security confirm.
-  - Before a push, L1 scans the outgoing diff. A hook the model could have
-    written makes the call a confirm. A push logs `git.push`, and the local
-    `main` moves only by compare and swap or `--ff-only`.
-  - This amends ADR 17 and B3 for worktree sessions only. `dev/git.scm`'s
-    comment changes with it.
+- **WT3 — the session's git (medium).** Built on 2026-10-05 as
+  `(git-land message)` (ADR 34, amended): one primitive offered only in
+  worktree sessions commits the work, rebases the session's commits onto
+  the newest base, pushes to the base's upstream by fast-forward only,
+  and moves the local base safely. The prompt calls it after validate
+  when the request asks for the work to land. It scans the outgoing diff
+  with L1 and refuses credential-shaped text and hooks inside the
+  worktree. A clean checkout of the base fast-forwards; a dirty one stays
+  as it is, with that said. This settles the two questions originally
+  open before WT3.
+  - Not built: pushing the session's branch itself with a lease, a rebase
+    abort action (the person aborts from a terminal), the
+    `push = [URL, …]` list in `allow.toml`, and the `git.push` log record.
+    Landing is irreversible and asks through the guard; its decision and
+    the tool result record what was pushed where. The amendment replaces
+    the separate `git-commit`, `git-rebase` and `git-push` primitives.
 - **WT4 — daemon and clients (medium).** Left:
   - RPC adds `worktree.list` and `worktree.remove` (local only), and
     `run.start` gains `worktree`. Each change goes into the method table,

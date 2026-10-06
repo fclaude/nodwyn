@@ -1,4 +1,4 @@
-# ADR 43: Wails owns the desktop window
+# ADR 44: Wails owns the desktop window
 
 Date: 2026-10-05. Status: accepted.
 
