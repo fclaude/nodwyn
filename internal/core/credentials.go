@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -293,6 +294,9 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 		if m.CacheKey != config.CacheKeyOff {
 			oai.CacheKey = cacheKey(s.id)
 			oai.CacheKeyHeaderOnly = m.CacheKey == config.CacheKeyHeader
+			// A ChatGPT plan's token is the one granted plan usage, a scope
+			// the keychain requires of a plan sign-in.
+			oai.CodexHeaders = m.Credential != "" && slices.Contains(s.credentialScopes(m.Credential, ""), "chatgpt.tokens.use.direct")
 		}
 		p = oai
 	case "anthropic":

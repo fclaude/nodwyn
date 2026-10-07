@@ -210,7 +210,9 @@ type Model struct {
 	// holds its prompt cache (ADR 9): "session" (the default) sends a key
 	// derived from the session id as the X-Session-Id header and as
 	// prompt_cache_key, "header" only as the header, for a server that
-	// refuses fields it does not know, and "off" sends neither. openai only.
+	// refuses fields it does not know, and "off" sends neither. A ChatGPT
+	// plan's requests carry it as Codex's session headers too, unless "off"
+	// (ADR 9, amended 2026-10-07). openai only.
 	CacheKey string `toml:"cache_key"`
 	// CacheControl asks a chat-completions provider to cache the prompt:
 	// "ephemeral" for the provider's own lifetime (five minutes) or "1h". A

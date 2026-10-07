@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/window"
+	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -33,7 +35,10 @@ type fakeOpenAI struct {
 	requests []seenRequest
 }
 
-type seenRequest struct{ body, auth, session string }
+type seenRequest struct {
+	body, auth, session string
+	header              http.Header
+}
 
 // oaiText and oaiCall are assistant messages in the protocol's JSON.
 func oaiText(s string) string { return `{"role":"assistant","content":` + quote(s) + `}` }
@@ -48,7 +53,7 @@ func newFakeOpenAI(t *testing.T, replies ...string) *fakeOpenAI {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		f.requests = append(f.requests, seenRequest{string(body), r.Header.Get("Authorization"), r.Header.Get("X-Session-Id")})
+		f.requests = append(f.requests, seenRequest{string(body), r.Header.Get("Authorization"), r.Header.Get("X-Session-Id"), r.Header.Clone()})
 		if len(f.replies) == 0 {
 			http.Error(w, `{"error":"script exhausted"}`, http.StatusInternalServerError)
 			return
@@ -166,6 +171,63 @@ func TestModelRequestsCarryTheSessionsCacheKey(t *testing.T) {
 	}
 	if len(cacheKey("a")) != 32 || cacheKey("a") == cacheKey("b") {
 		t.Fatalf("keys %q %q", cacheKey("a"), cacheKey("b"))
+	}
+}
+
+// A ChatGPT plan's requests name the session by the headers Codex sends as
+// well, since by prompt_cache_key alone the plan's server read almost none of
+// a session from its cache. An API key's requests, which it does cache, are
+// as they were, and cache_key = "off" sends neither (ADR 9, amended
+// 2026-10-07).
+func TestPlanRequestsCarryCodexSessionHeaders(t *testing.T) {
+	t.Parallel()
+	issuer := fakeoauth.New("nodwyn-test")
+	t.Cleanup(issuer.Close)
+	plan := []string{"openid", "resource.invoke", "chatgpt.tokens.use.direct"}
+	for _, tc := range []struct {
+		credential, setting string
+		named               bool
+	}{
+		{"plan", "", true},
+		{"plan", config.CacheKeyHeader, true},
+		{"plan", config.CacheKeyOff, false},
+		{"key", "", false},
+	} {
+		kc, err := keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		g := keychain.Grant{Profile: keychain.Custom(issuer.AuthURL(), issuer.TokenURL(), ""), ClientID: issuer.ClientID, Scopes: plan}
+		if _, err := kc.AddOAuth2(context.Background(), "plan", g, issuer.Browser); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := kc.Add("key", []byte("sk-test-key")); err != nil {
+			t.Fatal(err)
+		}
+		table := binding.Table{Bind: []binding.Binding{
+			{Class: "plan", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}, Scopes: plan},
+			{Class: "key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}},
+		}}
+		impl := newFakeOpenAI(t, oaiText("hello"))
+		r := modelRig(t, `(define (agent-turn request) (model-turn "impl"))`,
+			map[string]config.Model{"impl": {Provider: "openai", URL: impl.URL + "/v1", Model: "m", Credential: tc.credential, CacheKey: tc.setting}},
+			Options{Keychain: kc, Bindings: table})
+		if e := r.turn("hi"); e != "" {
+			t.Fatal(e)
+		}
+		want := ""
+		if tc.named {
+			want = cacheKey(r.s.ID())
+		}
+		seen := impl.seen()
+		if len(seen) != 1 || seen[0].auth == "" {
+			t.Fatalf("%s, cache_key %q: requests %+v", tc.credential, tc.setting, seen)
+		}
+		for _, name := range []string{"session-id", "thread-id", "x-client-request-id"} {
+			if got := seen[0].header.Get(name); got != want {
+				t.Errorf("%s, cache_key %q: %s %q, want %q", tc.credential, tc.setting, name, got, want)
+			}
+		}
 	}
 }
 

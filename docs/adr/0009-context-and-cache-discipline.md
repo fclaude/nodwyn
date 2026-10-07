@@ -419,3 +419,43 @@ The RPC and log formats are unchanged; no usage is inferred for providers
 or older logs that do not report it. Browser regressions cover weighted
 aggregation, unknown versus zero, live replies, reopening, retained
 history and aggregation reuse over a large log, using fake providers only.
+
+## Amendment 2026-10-07: a ChatGPT plan's requests name their session as Codex does
+
+A ChatGPT plan's requests read almost nothing from the cache. Three
+sessions with gpt-6.1-sol on a plan's credential (20261007T182910Z-0eb4973f,
+20261007T181306Z-8facf414 and 20261007T191149Z-0d89bd79) read 0.9%, 5.6% and
+8.1% of their prompt tokens from it; 20261007T183700Z-dc3eb569, the same
+model at the same address with an API key, read 94%, each request reading
+its predecessor's whole prompt but three tokens. Rebuilt with `nodwyn replay
+--window`, every request of 0d89bd79 matched its recorded hash and was its
+predecessor with messages appended, under the same system prompt and 29
+tools, so the prefix the cache needs was there. The plan's hits were partial
+and matched older requests, in multiples of 128 tokens (2,560, 6,784, 24,448
+and 56,704): what replicas with caches of their own look like, the shape this
+ADR's 2026-10-02 amendment saw at OpenRouter. The plan's replies also took two
+to five times as long.
+
+The requests differed only in their credential: both carried the session's
+`prompt_cache_key` and headers. Codex, signed in to the same plan, read 95%
+of a 257-reply session's prompt tokens from the cache that day, but over its
+own endpoint (`chatgpt.com/backend-api/codex`), which a plan's token may not
+reach (`checkOpenAISink`). opencode reported the same miss with a plan's token at
+`api.openai.com/v1` (3.44%, anomalyco/opencode#53765) and now sends the
+session headers Codex sends there, `session-id`, `thread-id` and
+`x-client-request-id`, which a maintainer saw raise the hits
+(anomalyco/opencode#53767). Codex dropped the underscored `session_id` for
+the hyphenated name (anomalyco/opencode#29471).
+
+A request whose credential was granted ChatGPT plan usage
+(`chatgpt.tokens.use.direct`, a scope the keychain requires of a plan's
+sign-in) now carries the session's cache key as those three headers as well,
+whenever it carries the key at all: `cache_key` `session` or `header`, never
+`off`. The scope comes from the token response the keychain stored, not from
+a file in the repository, and the headers say only what `prompt_cache_key`
+already says. An API key's requests, which the server caches, are unchanged,
+as are the provider-neutral request, its hash and replay. The test is the
+cached share of the next plan session's append-only requests. If it stays
+low, what Codex and opencode also send back, the reply's encrypted reasoning
+(`include: ["reasoning.encrypted_content"]`), is the remaining difference;
+that is not built.

@@ -1789,7 +1789,11 @@ gets them. Each request to a chat-completions server therefore names its
 session: a key derived from the session id, the same for every request of
 the session and resumed ones, saying nothing else about it. It goes as
 OpenRouter's `X-Session-Id` header (Baseten's `X-Session-Affinity` carries the
-same key) and as `prompt_cache_key`, the field OpenAI routes by. A server that
+same key) and as `prompt_cache_key`, the field OpenAI routes by. A ChatGPT
+plan's requests also carry it as the `session-id`, `thread-id` and
+`x-client-request-id` headers Codex sends: with `prompt_cache_key` alone,
+the plan's server read under a tenth of a session's prompt from its cache,
+where an API key's same requests read nineteen twentieths. A server that
 refuses fields it does not know takes the headers alone, and `off` sends
 none:
 

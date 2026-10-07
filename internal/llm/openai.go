@@ -40,6 +40,12 @@ type OpenAI struct {
 	// OpenRouter also reads). "" sends none.
 	CacheKey           string
 	CacheKeyHeaderOnly bool
+	// CodexHeaders sends CacheKey also as the session-id, thread-id and
+	// x-client-request-id headers Codex sends, for a ChatGPT plan's requests:
+	// with prompt_cache_key alone, the plan's server read 1% to 8% of a
+	// session's prompt tokens from its cache where an API key's read 94% of
+	// the same requests (ADR 9, amended 2026-10-07).
+	CodexHeaders bool
 	// CacheControl asks the provider to cache the prompt, as the request's
 	// top-level cache_control: "ephemeral" or "1h". A Claude model reached
 	// through OpenRouter, Bedrock or Vertex reads and writes its cache only
@@ -441,6 +447,11 @@ func cacheAsk(setting string) *oaiCacheControl {
 	return &oaiCacheControl{Type: setting}
 }
 
+// codexHeaders are the headers Codex names its session by, hyphenated as it
+// now sends them; opencode sends the same three with a plan's token
+// (anomalyco/opencode#53767).
+var codexHeaders = []string{"session-id", "thread-id", "x-client-request-id"}
+
 // send makes one authorized request and returns a 200 response. A redirect
 // is an error (NoRedirect), and a permanent one: asking again gets the same
 // answer. A request with a body, a chat completion, carries the cache key.
@@ -456,6 +467,11 @@ func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*h
 			// Baseten routes by the same key under its own name; a server
 			// that knows neither header ignores them.
 			hreq.Header.Set("X-Session-Affinity", o.CacheKey)
+			if o.CodexHeaders {
+				for _, name := range codexHeaders {
+					hreq.Header.Set(name, o.CacheKey)
+				}
+			}
 		}
 	}
 	if o.Authorize != nil {
