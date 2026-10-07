@@ -425,7 +425,7 @@ history and aggregation reuse over a large log, using fake providers only.
 A ChatGPT plan's requests read almost nothing from the cache. Three
 sessions with gpt-6.1-sol on a plan's credential (20261007T182910Z-0eb4973f,
 20261007T181306Z-8facf414 and 20261007T191149Z-0d89bd79) read 0.9%, 5.6% and
-8.1% of their prompt tokens from it; 20261007T183700Z-dc3eb569, the same
+3.6% of their prompt tokens from it; 20261007T183700Z-dc3eb569, the same
 model at the same address with an API key, read 94%, each request reading
 its predecessor's whole prompt but three tokens. Rebuilt with `nodwyn replay
 --window`, every request of 0d89bd79 matched its recorded hash and was its
@@ -440,8 +440,8 @@ The requests differed only in their credential: both carried the session's
 `prompt_cache_key` and headers. Codex, signed in to the same plan, read 95%
 of a 257-reply session's prompt tokens from the cache that day, but over its
 own endpoint (`chatgpt.com/backend-api/codex`), which a plan's token may not
-reach (`checkOpenAISink`). opencode reported the same miss with a plan's token at
-`api.openai.com/v1` (3.44%, anomalyco/opencode#53765) and now sends the
+reach (`checkOpenAISink`). opencode reported the same miss with a plan's
+token at `api.openai.com/v1` (3.44%, anomalyco/opencode#53765) and now sends the
 session headers Codex sends there, `session-id`, `thread-id` and
 `x-client-request-id`, which a maintainer saw raise the hits
 (anomalyco/opencode#53767). Codex dropped the underscored `session_id` for
@@ -454,8 +454,17 @@ whenever it carries the key at all: `cache_key` `session` or `header`, never
 `off`. The scope comes from the token response the keychain stored, not from
 a file in the repository, and the headers say only what `prompt_cache_key`
 already says. An API key's requests, which the server caches, are unchanged,
-as are the provider-neutral request, its hash and replay. The test is the
-cached share of the next plan session's append-only requests. If it stays
-low, what Codex and opencode also send back, the reply's encrypted reasoning
-(`include: ["reasoning.encrypted_content"]`), is the remaining difference;
-that is not built.
+as are the provider-neutral request, its hash and replay. The test was the
+cached share of the next plan session's append-only requests.
+
+The next plan session on this build, 20261007T194139Z-eef2d1d4, read 84.3% of
+its 520,881 prompt tokens from the cache. Each of its nine requests after the
+first read its predecessor's whole prompt but less than 128 tokens (98% to
+99.9% of it), where only one of 0d89bd79's twelve had read any of its
+predecessor's. The share is below the per-request figure because a
+request adds what the reply and its results brought, which no cache holds
+yet. The hits are still multiples of 128 tokens, unlike the API key's, and
+the replies still took 17 to 56 seconds, so the headers changed where the
+plan's requests go, not how fast its server answers. The reply's encrypted
+reasoning (`include: ["reasoning.encrypted_content"]`), which Codex and
+opencode also send back, was not needed for the cache; it is not built.
