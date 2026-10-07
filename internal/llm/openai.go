@@ -46,6 +46,14 @@ type OpenAI struct {
 	// session's prompt tokens from its cache where an API key's read 94% of
 	// the same requests (ADR 9, amended 2026-10-07).
 	CodexHeaders bool
+	// ReasoningOrigin keeps each Responses reply's reasoning, which the
+	// request asks for encrypted, on the reply (Message.Blocks) under this
+	// name, and gives back the reasoning kept under it, with earlier turns'
+	// left where they were (reasoning.context "all_turns"). It names the
+	// server and the model: a plan's credential and an API key share an
+	// address, and one may not read what the other encrypted. "" keeps none
+	// (ADR 9, amended 2026-10-07).
+	ReasoningOrigin string
 	// CacheControl asks the provider to cache the prompt, as the request's
 	// top-level cache_control: "ephemeral" or "1h". A Claude model reached
 	// through OpenRouter, Bedrock or Vertex reads and writes its cache only

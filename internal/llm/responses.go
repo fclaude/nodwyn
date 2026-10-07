@@ -22,10 +22,11 @@ import (
 //
 // Each request carries the whole conversation, as a chat completion does, and
 // store is false, so the server keeps nothing to be continued from and nodwyn
-// never sends previous_response_id. A reply's reasoning is not sent back: the
-// API takes it back only as the encrypted item it came as, which nodwyn does
-// not keep (ADR 9, amended 2026-10-02). Its summary, when the server gives
-// one, is read as the reply's thinking.
+// never sends previous_response_id. A reply's reasoning goes back only as the
+// encrypted item it came as, and only for a model that keeps it
+// (OpenAI.ReasoningOrigin, ADR 9 amended 2026-10-07); otherwise it is not
+// kept. Its summary, when the server gives one, is read as the reply's
+// thinking.
 
 type respRequest struct {
 	Model string `json:"model"`
@@ -49,10 +50,30 @@ type respRequest struct {
 	PromptCacheKey string           `json:"prompt_cache_key,omitempty"`
 	Reasoning      *respReasoning   `json:"reasoning,omitempty"`
 	CacheControl   *oaiCacheControl `json:"cache_control,omitempty"`
+	// Include asks for each reply's reasoning encrypted, for a model that
+	// keeps it.
+	Include []string `json:"include,omitempty"`
 }
 
 type respReasoning struct {
-	Effort string `json:"effort"`
+	Effort string `json:"effort,omitempty"`
+	// Context is "all_turns" for a model that keeps its reasoning: earlier
+	// turns' stays in what the model reads, so what a turn's requests sent
+	// is still the start of the next turn's and the cache holds.
+	Context string `json:"context,omitempty"`
+}
+
+// respReasoningItem is a reply's reasoning given back as it came: the
+// encrypted content is what the server reads.
+type respReasoningItem struct {
+	Type             string        `json:"type"` // "reasoning"
+	Summary          []respSummary `json:"summary"`
+	EncryptedContent string        `json:"encrypted_content"`
+}
+
+type respSummary struct {
+	Type string `json:"type"` // "summary_text"
+	Text string `json:"text"`
 }
 
 type respMessage struct {
@@ -117,16 +138,21 @@ type respItem struct {
 	Summary []struct {
 		Text string `json:"text"`
 	} `json:"summary"`
-	CallID    string `json:"call_id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
+	// EncryptedContent is a reasoning item's reasoning, when it was asked
+	// for (respRequest.Include).
+	EncryptedContent string `json:"encrypted_content"`
+	CallID           string `json:"call_id"`
+	Name             string `json:"name"`
+	Arguments        string `json:"arguments"`
 }
 
 // toResponses is req as a Responses request. A system message is the
 // request's instructions; a tool result is the output of the call it answers;
 // an assistant reply is its text, if it has any, and then its calls; its
-// thinking stays out (above).
-func toResponses(req Request) respRequest {
+// thinking stays out (above). A reply's reasoning blocks from origin go back
+// as reasoning items, each where it came among the reply's calls; "" sends
+// none.
+func toResponses(req Request, origin string) respRequest {
 	w := respRequest{Model: req.Model, MaxOutputTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed}
 	if req.Effort != "" {
 		w.Reasoning = &respReasoning{Effort: req.Effort}
@@ -145,11 +171,26 @@ func toResponses(req Request) respRequest {
 			w.Input = append(w.Input, respOutput{Type: "function_call_output", CallID: m.ToolCallID, Output: m.Content})
 			continue
 		}
+		reasoning := func(before int) {
+			for _, b := range m.Blocks {
+				if origin != "" && b.Type == "reasoning" && b.Origin == origin && b.Before == before && b.Data != "" {
+					item := respReasoningItem{Type: "reasoning", Summary: []respSummary{}, EncryptedContent: b.Data}
+					if b.Thinking != "" {
+						item.Summary = append(item.Summary, respSummary{Type: "summary_text", Text: b.Thinking})
+					}
+					w.Input = append(w.Input, item)
+				}
+			}
+		}
+		reasoning(0)
 		// A reply that only calls tools is its calls.
 		if m.Content != "" || len(m.ToolCalls) == 0 {
 			w.Input = append(w.Input, respMessage{Type: "message", Role: m.Role, Content: responsesContent(m)})
 		}
-		for _, tc := range m.ToolCalls {
+		for i, tc := range m.ToolCalls {
+			if i > 0 {
+				reasoning(i)
+			}
 			args := string(tc.Args)
 			if args == "" {
 				args = "{}"
@@ -186,7 +227,14 @@ func responsesContent(m Message) any {
 // completion's: "length" when the cap cut it short, "tool_calls" when it
 // calls tools, else "stop".
 func (o *OpenAI) respond(ctx context.Context, req Request, onDelta func(Delta)) (*Response, error) {
-	wire := toResponses(req)
+	wire := toResponses(req, o.ReasoningOrigin)
+	if o.ReasoningOrigin != "" {
+		wire.Include = []string{"reasoning.encrypted_content"}
+		if wire.Reasoning == nil {
+			wire.Reasoning = &respReasoning{}
+		}
+		wire.Reasoning.Context = "all_turns"
+	}
 	wire.Stream = true
 	wire.CacheControl = o.cacheControl()
 	if !o.CacheKeyHeaderOnly {
@@ -221,11 +269,17 @@ func (o *OpenAI) respond(ctx context.Context, req Request, onDelta func(Delta)) 
 				out.Message.Content += c.Text + c.Refusal
 			}
 		case "reasoning":
+			var summary []string
 			for _, s := range item.Summary {
-				thinking = append(thinking, s.Text)
+				summary = append(summary, s.Text)
 			}
+			thinking = append(thinking, summary...)
 			for _, c := range item.Content {
 				thinking = append(thinking, c.Text)
+			}
+			if o.ReasoningOrigin != "" && item.EncryptedContent != "" {
+				out.Message.Blocks = append(out.Message.Blocks, ThinkingBlock{Type: "reasoning", Thinking: strings.Join(summary, "\n\n"),
+					Data: item.EncryptedContent, Before: len(out.Message.ToolCalls), Origin: o.ReasoningOrigin})
 			}
 		case "function_call":
 			args := json.RawMessage(item.Arguments)

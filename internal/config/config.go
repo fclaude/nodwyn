@@ -224,6 +224,13 @@ type Model struct {
 	// refuse. Anthropic's own API reads it the same way and caches nothing
 	// without it. openai and anthropic only.
 	CacheControl string `toml:"cache_control"`
+	// KeepReasoning keeps each reply's reasoning, encrypted as a Responses
+	// server gives it, and gives it back with the reply and with earlier
+	// turns' where they were, so the model need not think again what it
+	// thought before its calls. Unset or false keeps none, as before: whether
+	// it saves the model work is being measured (ADR 9, amended 2026-10-07).
+	// openai servers with dialect = "responses" only.
+	KeepReasoning *bool `toml:"keep_reasoning"`
 	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
 	// per million tokens, in USD, for estimating what a request cost when
 	// the provider does not report it (OpenRouter does). Unset is what the
@@ -887,6 +894,9 @@ func (m Model) validate() error {
 	if isOllama(m.Provider) && m.CacheControl != "" {
 		return errors.New("cache_control is for openai and anthropic servers; ollama keeps its own prompt cache")
 	}
+	if m.KeepReasoning != nil && (m.Provider != "openai" || m.Dialect != llm.ChatResponses) {
+		return errors.New(`keep_reasoning is for openai servers with dialect = "responses": only the Responses API gives reasoning back to keep`)
+	}
 	for name, p := range map[string]*float64{"price_input": m.PriceInput, "price_cached_input": m.PriceCachedInput, "price_output": m.PriceOutput} {
 		if p != nil && (*p < 0 || math.IsNaN(*p) || math.IsInf(*p, 0)) {
 			return fmt.Errorf("%s %v must be a price of 0 or more (USD per million tokens)", name, *p)
@@ -977,13 +987,13 @@ func (c Config) SameModel(a, b Model) bool {
 // Tuned is m, a model that is not itself a [models.NAME] entry ([control], or
 // a model chosen by its server and id), with each setting it leaves unset
 // (num_ctx, keep_alive, max_output, output_field, temperature, seed, vision,
-// cache_key, cache_control and the price_* entries) taken from the first
-// [models.NAME], in name order, for the same model at the same address. A
-// model's settings are said once, in its own entry (ADR 41, amended
-// 2026-10-05), so the [control] that names it as the default cannot hold a
-// copy that goes stale beside it. What m sets itself stands. An entry has
-// its own settings and borrows none: two entries for one model, such as one
-// with a smaller context, are two sets of settings.
+// cache_key, cache_control, keep_reasoning and the price_* entries) taken
+// from the first [models.NAME], in name order, for the same model at the
+// same address. A model's settings are said once, in its own entry (ADR 41,
+// amended 2026-10-05), so the [control] that names it as the default cannot
+// hold a copy that goes stale beside it. What m sets itself stands. An entry
+// has its own settings and borrows none: two entries for one model, such as
+// one with a smaller context, are two sets of settings.
 func (c Config) Tuned(m Model) Model {
 	for _, name := range slices.Sorted(maps.Keys(c.Models)) {
 		if o := c.Models[name]; c.SameModel(m, o) {
@@ -1021,6 +1031,9 @@ func (m Model) WithSettings(o Model) Model {
 	}
 	if m.CacheControl == "" {
 		m.CacheControl = o.CacheControl
+	}
+	if m.KeepReasoning == nil {
+		m.KeepReasoning = o.KeepReasoning
 	}
 	if m.PriceInput == nil {
 		m.PriceInput = o.PriceInput

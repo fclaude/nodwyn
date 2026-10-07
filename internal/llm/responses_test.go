@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -21,7 +22,7 @@ import (
 func responsesServer(t *testing.T, reply string) (*httptest.Server, *[]map[string]json.RawMessage) {
 	t.Helper()
 	known := map[string]bool{"model": true, "instructions": true, "input": true, "tools": true, "stream": true, "store": true, "max_output_tokens": true,
-		"temperature": true, "prompt_cache_key": true, "reasoning": true}
+		"temperature": true, "prompt_cache_key": true, "reasoning": true, "include": true}
 	var bodies []map[string]json.RawMessage
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/responses" || r.Method != http.MethodPost {
@@ -136,6 +137,58 @@ func TestResponsesRoundTrip(t *testing.T) {
 	u := resp.Usage
 	if u.PromptTokens != 12 || u.OutputTokens != 3 || u.CachedTokens == nil || *u.CachedTokens != 4 || u.ReasoningTokens != 2 || u.Unreported {
 		t.Fatalf("usage: %+v", u)
+	}
+}
+
+// A model that keeps its reasoning asks for it encrypted, keeps it on the
+// reply under its origin, and gives back what came from that origin, each
+// item before the call it came before, with earlier turns' left in what the
+// model reads. Reasoning from another origin, Anthropic's blocks, and
+// everything without an origin stay out (ADR 9, amended 2026-10-07).
+func TestResponsesKeptReasoningGoesBackWhereItCame(t *testing.T) {
+	srv, bodies := responsesServer(t, `{"status":"completed","output":[
+		{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"look"},{"type":"summary_text","text":"first"}],"encrypted_content":"enc-new"},
+		{"type":"function_call","id":"fc_1","call_id":"c9","name":"fs-list","arguments":"{}"}],
+		"usage":{"input_tokens":12,"output_tokens":3}}`)
+	reply := Message{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "c1", Name: "fs-list"}, {ID: "c2", Name: "fs-read"}}, Blocks: []ThinkingBlock{
+		{Type: "reasoning", Thinking: "list it", Data: "enc-1", Origin: "plan gpt"},
+		{Type: "reasoning", Data: "enc-other", Origin: "api gpt"},
+		{Type: "thinking", Thinking: "claude", Signature: "sig"},
+		{Type: "reasoning", Data: "enc-2", Before: 1, Origin: "plan gpt"},
+	}}
+	req := Request{Model: "gpt-6.1-sol", Messages: []Message{
+		{Role: RoleUser, Content: "look"},
+		reply,
+		{Role: RoleTool, Content: "a.go", ToolCallID: "c1"},
+		{Role: RoleTool, Content: "package a", ToolCallID: "c2"},
+	}}
+	for _, origin := range []string{"plan gpt", ""} {
+		o := NewOpenAI(srv.URL+"/v1", nil)
+		o.Dialect = ChatResponses
+		o.ReasoningOrigin = origin
+		resp, err := o.Chat(context.Background(), req, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := (*bodies)[len(*bodies)-1]
+		calls := `{"type":"function_call","call_id":"c1","name":"fs-list","arguments":"{}"},`
+		second := `{"type":"function_call","call_id":"c2","name":"fs-read","arguments":"{}"},`
+		input, include, reasoning := `[{"type":"message","role":"user","content":"look"},`+calls+second, "", ""
+		blocks := []ThinkingBlock(nil)
+		if origin != "" {
+			input = `[{"type":"message","role":"user","content":"look"},` +
+				`{"type":"reasoning","summary":[{"type":"summary_text","text":"list it"}],"encrypted_content":"enc-1"},` + calls +
+				`{"type":"reasoning","summary":[],"encrypted_content":"enc-2"},` + second
+			include, reasoning = `["reasoning.encrypted_content"]`, `{"context":"all_turns"}`
+			blocks = []ThinkingBlock{{Type: "reasoning", Thinking: "look\n\nfirst", Data: "enc-new", Origin: "plan gpt"}}
+		}
+		input += `{"type":"function_call_output","call_id":"c1","output":"a.go"},{"type":"function_call_output","call_id":"c2","output":"package a"}]`
+		if string(got["input"]) != input || string(got["include"]) != include || string(got["reasoning"]) != reasoning {
+			t.Errorf("origin %q: input %s\ninclude %s, reasoning %s", origin, got["input"], got["include"], got["reasoning"])
+		}
+		if !slices.Equal(resp.Message.Blocks, blocks) || resp.Message.Thinking != "look\n\nfirst" || len(resp.Message.ToolCalls) != 1 {
+			t.Errorf("origin %q: reply %+v", origin, resp.Message)
+		}
 	}
 }
 

@@ -455,3 +455,76 @@ func TestWindowSizedFromTheModelList(t *testing.T) {
 		})
 	}
 }
+
+// A Responses model with keep_reasoning keeps each reply's encrypted
+// reasoning in the log and gives it back before the call it came with, and a
+// later turn still sends it where it was, so a turn's requests stay the start
+// of the next turn's. Without the setting none is kept or asked for. Every
+// request still replays from the log (ADR 9, amended 2026-10-07).
+func TestKeptReasoningGoesBackWithItsReply(t *testing.T) {
+	t.Parallel()
+	init := `
+(define (agent-turn request)
+  (let loop ((reply (model-turn "impl")))
+    (unless (null? (assoc-ref reply 'tool-calls '()))
+      (run-tools (assoc-ref reply 'tool-calls))
+      (loop (model-turn "impl")))))`
+	replies := []string{
+		`{"status":"completed","output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"list first"}],"encrypted_content":"enc-1"},` +
+			`{"type":"function_call","call_id":"c1","name":"fs-list","arguments":"{\"path\":\".\"}"}],"usage":{"input_tokens":1,"output_tokens":1}}`,
+		`{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"listed"}]}],"usage":{"input_tokens":1,"output_tokens":1}}`,
+		`{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"again"}]}],"usage":{"input_tokens":1,"output_tokens":1}}`,
+	}
+	for _, keep := range []bool{true, false} {
+		var mu sync.Mutex
+		var bodies []map[string]json.RawMessage
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]json.RawMessage
+			json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			defer mu.Unlock()
+			if len(bodies) == len(replies) {
+				http.Error(w, `{"error":{"message":"script exhausted"}}`, http.StatusInternalServerError)
+				return
+			}
+			bodies = append(bodies, body)
+			w.Write([]byte(replies[len(bodies)-1]))
+		}))
+		t.Cleanup(srv.Close)
+		m := config.Model{Provider: "openai", Dialect: llm.ChatResponses, URL: srv.URL + "/v1", Model: "m"}
+		if keep {
+			m.KeepReasoning = &keep
+		}
+		r := modelRig(t, init, map[string]config.Model{"impl": m}, Options{})
+		if e := r.turn("list files"); e != "" {
+			t.Fatal(e)
+		}
+		if e := r.turn("again"); e != "" {
+			t.Fatal(e)
+		}
+		mu.Lock()
+		got := append([]map[string]json.RawMessage(nil), bodies...)
+		mu.Unlock()
+		if len(got) != 3 {
+			t.Fatalf("keep %v: %d requests", keep, len(got))
+		}
+		item := `{"type":"reasoning","summary":[{"type":"summary_text","text":"list first"}],"encrypted_content":"enc-1"},{"type":"function_call","call_id":"c1"`
+		for i, body := range got {
+			asked := string(body["include"]) == `["reasoning.encrypted_content"]` && string(body["reasoning"]) == `{"context":"all_turns"}`
+			sent := strings.Contains(string(body["input"]), item)
+			if asked != keep || sent != (keep && i > 0) {
+				t.Errorf("keep %v, request %d: include %s, reasoning %s, input %s", keep, i, body["include"], body["reasoning"], body["input"])
+			}
+		}
+		second, third := string(got[1]["input"]), string(got[2]["input"])
+		if !strings.HasPrefix(third, strings.TrimSuffix(second, "]")) {
+			t.Errorf("keep %v: the second turn changed what the first sent:\n%s\n%s", keep, second, third)
+		}
+		if logged := strings.Contains(r.logb.String(), `"data":"enc-1"`); logged != keep {
+			t.Errorf("keep %v: the reasoning was logged: %v", keep, logged)
+		}
+		if n := replayAll(t, r.logb); n != 3 {
+			t.Fatalf("keep %v: replayed %d requests", keep, n)
+		}
+	}
+}

@@ -293,6 +293,16 @@
         "KeepAlive": {
           "type": "string"
         },
+        "KeepReasoning": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "MaxOutput": {
           "type": "integer"
         },
@@ -390,6 +400,7 @@
         "Vision",
         "CacheKey",
         "CacheControl",
+        "KeepReasoning",
         "PriceInput",
         "PriceCachedInput",
         "PriceOutput",
@@ -2016,6 +2027,9 @@
           "type": "integer"
         },
         "data": {
+          "type": "string"
+        },
+        "origin": {
           "type": "string"
         },
         "signature": {

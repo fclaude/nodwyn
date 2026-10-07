@@ -328,7 +328,7 @@ func toAnthropic(req Request) anthRequest {
 			// came between its calls before the call it came before.
 			thought := func(before int) {
 				for _, tb := range m.Blocks {
-					if tb.Before == before && (tb.Signature != "" || tb.Data != "") {
+					if tb.Before == before && (tb.Type == "thinking" || tb.Type == "redacted_thinking") && (tb.Signature != "" || tb.Data != "") {
 						blocks = append(blocks, anthBlock{Type: tb.Type, Thinking: tb.Thinking, Signature: tb.Signature, Data: tb.Data})
 						replayed = true
 					}

@@ -451,7 +451,7 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		// in config.toml; choosing another model starts from its defaults.
 		if providerName(old.Provider) == providerName(srv.Provider) && strings.TrimRight(old.URL, "/") == strings.TrimRight(srv.URL, "/") && old.Model == m.Model {
 			m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
-			m.Temperature, m.Seed, m.Vision, m.CacheKey, m.CacheControl = old.Temperature, old.Seed, old.Vision, old.CacheKey, old.CacheControl
+			m.Temperature, m.Seed, m.Vision, m.CacheKey, m.CacheControl, m.KeepReasoning = old.Temperature, old.Seed, old.Vision, old.CacheKey, old.CacheControl, old.KeepReasoning
 			m.PriceInput, m.PriceCachedInput, m.PriceOutput = old.PriceInput, old.PriceCachedInput, old.PriceOutput
 			m.Efforts, m.Effort = old.Efforts, old.Effort
 		}

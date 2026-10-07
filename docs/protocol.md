@@ -779,10 +779,13 @@ out here, …: read them with fs-read, start A, count N ...]`, or `of this
 result` for other tools). Earlier recipes retain their exact historical
 shape, even where a trim left orphaned tool messages; a resumed runtime uses
 v18. Version 18 gives a reply's signed reasoning back with it: `llm.resp`
-has `blocks`, each `{type, thinking?, signature?, data?, before?}` as an
-Anthropic reply gave it (`before` is how many of its calls came first), and
-the window leaves out the blocks of a reply made before a fold or an
-elision of an earlier entry. The recorded `max_result_tokens` is the window's cap as sized for the
+has `blocks`, each `{type, thinking?, signature?, data?, before?, origin?}`
+as an Anthropic reply gave it, or as a Responses reply's encrypted reasoning
+(`type` `reasoning`, `data` the encrypted content) for a model with
+`keep_reasoning`, whose `origin` names the server and model it goes back to
+(`before` is how many of its calls came first), and the window leaves out
+the blocks of a reply made before a fold or an elision of an earlier
+entry. The recorded `max_result_tokens` is the window's cap as sized for the
 model: a 48th of the high water when the window grows with a large context,
 up to 16,384, unless `config.toml` sets it.
 

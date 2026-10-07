@@ -202,6 +202,7 @@ type ThinkingBlock struct {
 	Signature string `json:"signature,omitempty"`
 	Data      string `json:"data,omitempty"`
 	Before    int    `json:"before,omitempty"`
+	Origin    string `json:"origin,omitempty"`
 }
 
 // LLMResp is the model's full output for one request.

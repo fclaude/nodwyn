@@ -298,6 +298,9 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 			// the keychain requires of a plan sign-in.
 			oai.CodexHeaders = m.Credential != "" && slices.Contains(s.credentialScopes(m.Credential, ""), "chatgpt.tokens.use.direct")
 		}
+		if m.KeepReasoning != nil && *m.KeepReasoning {
+			oai.ReasoningOrigin = reasoningOrigin(m)
+		}
 		p = oai
 	case "anthropic":
 		a := llm.NewAnthropic(m.URL, auth)
@@ -321,6 +324,18 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 func cacheKey(id string) string {
 	sum := sha256.Sum256([]byte("nodwyn cache key\x00" + id))
 	return hex.EncodeToString(sum[:16])
+}
+
+// reasoningOrigin names where a model's kept reasoning came from, so it goes
+// back only there: its server by name, which says which credential it is
+// asked with, or, for a model that names its address itself, the address and
+// credential, and the model.
+func reasoningOrigin(m config.Model) string {
+	where := m.Server
+	if where == "" {
+		where = m.URL + " " + m.Credential
+	}
+	return where + " " + m.Model
 }
 
 // modelHost is where requests to a model's URL go, host and port as the

@@ -462,4 +462,13 @@ func TestAnthropicThinkingGoesBackSigned(t *testing.T) {
 	if _, ok := b["thinking"]; !ok || b["signature"] != "sig-2" {
 		t.Fatalf("an empty summary: %v", b)
 	}
+	// A Responses model's kept reasoning is not Anthropic's to read, as when
+	// a session moves from one to the other: the reply goes without it.
+	msgs[1].Blocks = []ThinkingBlock{{Type: "reasoning", Data: "enc-1"}}
+	if _, err := a.Chat(context.Background(), Request{Model: "claude-x", Messages: msgs, MaxTokens: 100}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if b := srv.body["messages"].([]any)[1].(map[string]any)["content"].([]any)[0].(map[string]any); b["type"] != "tool_use" || srv.body["thinking"] != nil {
+		t.Fatalf("a reasoning item went to Anthropic: %v, thinking %v", b, srv.body["thinking"])
+	}
 }

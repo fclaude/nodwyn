@@ -468,3 +468,50 @@ the replies still took 17 to 56 seconds, so the headers changed where the
 plan's requests go, not how fast its server answers. The reply's encrypted
 reasoning (`include: ["reasoning.encrypted_content"]`), which Codex and
 opencode also send back, was not needed for the cache; it is not built.
+
+## Amendment 2026-10-07: a Responses model may keep its reasoning, as an experiment
+
+A Responses reply's reasoning went back to no one (2026-10-02): the API reads
+it again only as the encrypted item it came as. OpenAI's guides ask for that
+item back after a function call, so the model goes on from where it was
+rather than working its reasoning out again; the one figure they give is
+about 3% more of SWE-bench solved, measured on o3 and o4-mini. What it would
+save here is bounded. Over the 119 gpt-6.1-sol replies of 2026-10-07,
+reasoning was 14,406 of 53,475 output tokens (27%); a reply after a tool
+result reasoned 113 tokens on average (median 65) and none more than 947; and
+a reply took about 8.1 seconds plus 35 ms per token it wrote (r = 0.71). So
+the reasoning of an average reply cost about four of its seconds, against the
+19,000 tokens a call that Claude's signed thinking (2026-10-05) spent again.
+Codex sends its reasoning back and reasoned 40 tokens a reply that day, but
+at medium effort against nodwyn's high, which explains as much.
+
+So it is a model setting, `keep_reasoning`, off unless set, until a pair of
+runs of one task, without and with it, says whether it is worth having:
+
+- With it, a request to a Responses server asks for each reply's reasoning
+  encrypted (`include: ["reasoning.encrypted_content"]`). Each reasoning
+  item is kept on its reply as a block (`llm.ThinkingBlock`, type
+  `reasoning`, its summary as the thinking, the encrypted content as data),
+  logged with the reply and given back by the window as recipe v18 gives
+  back Claude's, each before the call it came before. A fold or an elision
+  leaves out the blocks it made stale, as it does for Claude's.
+- A block names its origin: the server by name, or the address and
+  credential of a model that names no server, and the model. It goes back
+  only to the same origin. A plan's credential and an API key share
+  `api.openai.com/v1`, and what one encrypted the other may not read; and a
+  session that moves to another model sends it nothing it cannot read.
+  Anthropic's requests now give back only Anthropic's two block types.
+- Requests that keep reasoning ask for `reasoning.context: "all_turns"`.
+  Under `current_turn`, the API's guide says, earlier turns' reasoning is
+  not rendered into the next sample, so the first request of each turn would
+  differ from the last of the turn before where its first reasoning item
+  was, and read everything after it uncached.
+- The setting is read from the person's config.toml, never the repository.
+  It is lent to `[control]` by the model's own entry like the other
+  settings, written back by Settings, and kept when Settings saves the same
+  model again; it is not on the wire to the console.
+
+What is not known: whether gpt-6.1-sol reasons less with its reasoning given
+back, whether it solves more, and whether encrypted content survives the
+log's redaction, which rewrites only known secret shapes, as for Claude's
+signatures. A summary of several parts goes back joined as one.

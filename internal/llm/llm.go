@@ -22,9 +22,10 @@ type Message struct {
 	Content   string     `json:"content"`
 	Thinking  string     `json:"thinking,omitempty"` // on a response, and sent back on the reply it came with (window recipe v14, ADR 9)
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
-	// Blocks are a reply's reasoning as its provider signed it, given back
-	// with the reply to a provider that reads it again (Anthropic; window
-	// recipe v18, ADR 9 amended 2026-10-05).
+	// Blocks are a reply's reasoning as its provider signed or encrypted it,
+	// given back with the reply to a provider that reads it again (Anthropic,
+	// and a Responses model that keeps its reasoning; window recipe v18, ADR 9
+	// amended 2026-10-05 and 2026-10-07).
 	Blocks     []ThinkingBlock `json:"blocks,omitempty"`
 	ToolName   string          `json:"tool_name,omitempty"`    // role=tool
 	ToolCallID string          `json:"tool_call_id,omitempty"` // role=tool
@@ -37,14 +38,18 @@ type Message struct {
 // ThinkingBlock is one block of a reply's reasoning as its provider gave
 // it, to go back unchanged with that reply: Anthropic signs each, and reads
 // the reasoning behind a signature again only from a block that comes back
-// as it was. Before is how many of the reply's tool calls came before it,
-// so it goes back where it was.
+// as it was; a Responses server encrypts a reasoning item's. Before is how
+// many of the reply's tool calls came before it, so it goes back where it
+// was. Each provider gives back only the types it makes.
 type ThinkingBlock struct {
-	Type      string `json:"type"`                // "thinking" or "redacted_thinking"
+	Type      string `json:"type"`                // "thinking" or "redacted_thinking" (Anthropic), "reasoning" (Responses)
 	Thinking  string `json:"thinking,omitempty"`  // the summary given, empty when none was
 	Signature string `json:"signature,omitempty"` // a thinking block's
-	Data      string `json:"data,omitempty"`      // a redacted_thinking block's
+	Data      string `json:"data,omitempty"`      // a redacted_thinking block's, or a reasoning item's encrypted content
 	Before    int    `json:"before,omitempty"`
+	// Origin is the server and model a reasoning item came from, the only
+	// ones it goes back to (OpenAI.ReasoningOrigin).
+	Origin string `json:"origin,omitempty"`
 }
 
 // Image is a picture sent with a message. Only its media type and digest

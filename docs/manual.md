@@ -1941,11 +1941,28 @@ server reported it and redacted: ollama gets it as `thinking`, a
 chat-completions server as `reasoning_content` (OpenRouter reads it as
 `reasoning`), or as `reasoning` with `dialect = "cerebras"`; with
 `dialect = "responses"` it is not sent back (OpenAI takes back only its
-encrypted reasoning). It counts toward the window and is trimmed with its reply. A
+encrypted reasoning), unless the model keeps that (below). It counts toward
+the window and is trimmed with its reply. A
 server that reports only a summary of the thinking, or none, gives back
 only that; encrypted reasoning (OpenRouter's `reasoning_details`) is not
 kept. Anthropic's own API is the exception: its signed thinking blocks are
-kept and given back whole (above). A reply that thought at length three
+kept and given back whole (above).
+
+A model on a Responses server can keep its reasoning the same way, as an
+experiment: with `keep_reasoning = true` in its entry, each request asks for
+the reply's reasoning encrypted, the log keeps it, and it goes back before
+the call it came with, so the model need not work out again what it thought
+before calling a tool. It goes back only to the server and model it came
+from, since a plan's credential and an API key may not read each other's;
+earlier turns' stays where it was (`reasoning.context` `all_turns`), so the
+cached prompt holds across messages. Unset, nothing is kept, as before:
+
+```toml
+[models.openai-plan-gpt-6-1-sol]
+keep_reasoning = true      # openai servers with dialect = "responses" only
+```
+
+A reply that thought at length three
 rounds in a row without changing anything (10,000 reasoning tokens or more
 each) gets a line asking the model to write down the design it reached and
 make the edit (`stall-rounds`, `stall-reasoning-tokens`).
