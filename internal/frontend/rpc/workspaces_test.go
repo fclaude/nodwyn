@@ -72,6 +72,57 @@ func TestWorkspaceSaveListAndSessions(t *testing.T) {
 	}
 }
 
+func TestForgetWorkspaceHistoryAndLastPick(t *testing.T) {
+	o := options(t)
+	socket, _ := start(t, o)
+	c := connect(t, socket)
+	c.hello()
+	repo := t.TempDir()
+	id := opened(t, c, repo)
+	forgotten := func() []string {
+		t.Helper()
+		var list []string
+		if err := json.Unmarshal(c.ok("workspace.forgotten", map[string]any{}), &list); err != nil {
+			t.Fatal(err)
+		}
+		return list
+	}
+	c.ok("session.close", map[string]any{"id": id})
+	c.ok("workspace.active", map[string]any{"path": repo})
+	c.ok("workspace.remove", map[string]any{"path": repo})
+	var last workspaceActiveResult
+	if err := json.Unmarshal(c.ok("workspace.active", map[string]any{}), &last); err != nil || last.Path != "" {
+		t.Fatalf("forgotten last pick: %+v %v", last, err)
+	}
+	if got := forgotten(); len(got) != 1 || got[0] != config.CanonicalPath(repo) {
+		t.Fatalf("forgotten list: %v", got)
+	}
+	// workspace.list keeps its one result type, the named workspaces.
+	var named []workspaceInfo
+	if err := json.Unmarshal(c.ok("workspace.list", map[string]any{}), &named); err != nil || len(named) != 0 {
+		t.Fatalf("workspace.list: %+v %v", named, err)
+	}
+	// The task is kept, so it resumes. Resuming a task there, starting one,
+	// or naming the folder is using it again, and each brings it back.
+	c.ok("session.resume", map[string]any{"id": id})
+	if got := forgotten(); len(got) != 0 {
+		t.Fatalf("resuming a task left the folder forgotten: %v", got)
+	}
+	c.ok("workspace.remove", map[string]any{"path": repo})
+	opened(t, c, repo)
+	if got := forgotten(); len(got) != 0 {
+		t.Fatalf("a new task left the folder forgotten: %v", got)
+	}
+	c.ok("workspace.remove", map[string]any{"path": repo})
+	c.ok("workspace.save", map[string]any{"path": repo, "name": "Again", "mounts": []any{}})
+	if err := json.Unmarshal(c.ok("workspace.list", map[string]any{}), &named); err != nil || len(named) != 1 || len(forgotten()) != 0 {
+		t.Fatalf("re-added: %+v %v", named, err)
+	}
+	if r := c.call("workspace.remove", map[string]any{"path": "relative"}); r.Error == nil {
+		t.Fatal("forgot a relative path")
+	}
+}
+
 func TestRestoreAKeptVersionAsksFirst(t *testing.T) {
 	o := options(t)
 	path, _ := start(t, o)

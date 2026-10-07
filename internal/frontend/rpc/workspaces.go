@@ -101,6 +101,21 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 			result = append(result, describeWorkspace(r))
 		}
 		return result, nil
+	case "workspace.forgotten":
+		// The folders the console leaves out of its suggestions, a method of
+		// its own so that workspace.list keeps one result type and a console
+		// on an older daemon, which lacks it, still lists its workspaces.
+		if err := params(req.Params, &struct{}{}); err != nil {
+			return nil, err
+		}
+		forgotten, err := config.LoadForgotten(registry)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		if forgotten == nil {
+			forgotten = []string{}
+		}
+		return forgotten, nil
 	case "workspace.active":
 		// The folder the console last picked for a new task, which a window
 		// or tab that has not picked yet starts in. The window's console is
@@ -133,6 +148,20 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 		var p workspacePathParams
 		if err := params(req.Params, &p, "path"); err != nil {
 			return nil, err
+		}
+		if !filepath.IsAbs(p.Path) {
+			return nil, failure(-32602, "path must be absolute")
+		}
+		p.Path = config.CanonicalPath(p.Path)
+		last := config.LastWorkspaceFile(s.options.Paths)
+		folder, err := config.LoadLastWorkspace(last)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		if folder == p.Path {
+			if err := config.SaveLastWorkspace(last, ""); err != nil {
+				return nil, failure(-32000, err.Error())
+			}
 		}
 		if err := config.RemoveRegistered(registry, p.Path); err != nil {
 			return nil, failure(-32000, err.Error())

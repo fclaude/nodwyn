@@ -182,20 +182,24 @@ it, else takes that model's own default, and says so.
 
 **Starting.** Home's composer starts a task in the folder picked last,
 which this browser remembers like the theme; until a folder has been
-picked, it starts in the first one on the list. **Add a
-folder** names one and says what it holds — documents, code or both — and,
-in the app window, opens the system's folder chooser. The kind is a label: every
-kind has the same tools and the same guard (see
-[ADR 22](adr/0022-cowork-workspaces-attachments-mcp.md), amended). The
-Workspaces page lists every named folder: **Add a workspace** names another,
-**Edit** changes a folder's name, kind and **mounted folders** (other folders
-a task may read, or read and write, by absolute path), and **Remove** takes
-it off the list after a confirm, leaving the folder, its files and its tasks
-as they were. Home offers the first six folders; the rest are a click away on
-Workspaces. The name and the mounted folders are kept in `workspaces.toml`
-in the config directory, never in the folder, so a folder someone else
-commits cannot mount anything (ADR 22). They apply to tasks started
-afterwards.
+picked, it starts in the first one on the list. **Add a folder** names one
+and, in the app window, opens the system's folder chooser. Workspaces lists
+named folders and **Folders tasks used**. **Add a workspace** names another;
+**Edit** changes its name and **mounted folders** (other folders a task may
+read, or read and write, by absolute path). **Forget**, available on both
+kinds of row, removes its name and mounts after confirmation and keeps it
+out of Workspaces and Home's suggestions, even after a reload or restart.
+The folder, its files and its tasks stay as they were; old task history does
+not add it back. A matching last-folder pick is cleared. **Keep** cancels.
+Using the folder again restores it to the suggestions: adding it, or starting
+or resuming a task there, from the console, a paired device or a terminal.
+Forget is available only on the computer running nodwyn. A paired device
+cannot forget a folder, but may still choose a forgotten one by its path. Home offers the
+first six folders; the rest are a click away on Workspaces. The name,
+mounted folders and forgotten markers are kept in `workspaces.toml` in the
+config directory, never in the folder, so a folder someone else commits
+cannot mount anything (ADR 22). Mount changes apply to tasks started
+afterwards; already-open tasks keep what they loaded.
 
 **In a worktree.** Beside the folder, **In a worktree** starts the task in
 a git worktree of its own

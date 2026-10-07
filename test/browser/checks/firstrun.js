@@ -171,11 +171,12 @@ check(async () => {
   assert.deepStrictEqual(sent.of("workspace.save")[1], { path: `${root}/receipts`, name: "Receipts", mounts: [{ path: `${root}/reference`, access: "read" }] });
   assert.ok(!fs.existsSync(`${root}/receipts/.nodwyn`), "a mount was written into the folder");
   await page.waitForSelector(".ws-row:has-text('Receipts') >> text=read only");
-  await page.click("button[aria-label='Remove Letters']");
+  await page.click("button[aria-label='Forget Letters']");
   await page.click(".ws-row .end button.danger:not([aria-label])");
   await page.waitForSelector(".ws-row strong:has-text('Letters')", { state: "detached" });
   assert.deepStrictEqual(sent.of("workspace.save").map((w) => w.name), ["Family papers", "Receipts", "Letters"]);
   assert.deepStrictEqual(sent.of("workspace.remove"), [{ path: `${root}/letters` }]);
+  assert.ok(fs.statSync(`${root}/letters`).isDirectory(), "forget deleted the folder");
   const registry = fs.readFileSync(`${root}/config/nodwyn/workspaces.toml`, "utf8");
   assert.ok(registry.includes("Family papers") && registry.includes("Receipts") && !registry.includes("Letters"), "workspaces.toml: " + registry);
   assert.ok(registry.includes(`[[workspace.mount]]\npath = "${root}/reference"\naccess = "read"`), "the mount is not in workspaces.toml: " + registry);

@@ -133,6 +133,34 @@ func TestUnattendedPromptNamesMounts(t *testing.T) {
 	}
 }
 
+// A task started in a forgotten folder is the person using it again: it comes
+// back to the console's suggestions, and other forgotten folders stay as they
+// are (ADR 22, amended 2026-10-07).
+func TestUsingAForgottenFolderBringsItBack(t *testing.T) {
+	t.Parallel()
+	repo, other := t.TempDir(), t.TempDir()
+	paths := config.PathsUnder(t.TempDir(), t.TempDir())
+	registry := config.RegistryFile(paths)
+	for _, folder := range []string{repo, other} {
+		if err := config.RemoveRegistered(registry, folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srv := fake.NewT(t)
+	t.Cleanup(srv.Close)
+	cfg := config.Default()
+	cfg.Control.URL, cfg.Control.Model = srv.URL, "test-model"
+	s, err := New(Options{Config: cfg, Repo: repo, Paths: paths, Version: "test", Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	forgotten, err := config.LoadForgotten(registry)
+	if err != nil || len(forgotten) != 1 || forgotten[0] != config.CanonicalPath(other) {
+		t.Fatalf("forgotten after a task in %s: %v %v", repo, forgotten, err)
+	}
+}
+
 // A folder's own .nodwyn/workspace.toml, which whoever commits to it writes,
 // grants nothing: a session there reads only its folder and what the
 // person's workspace list mounts, and every confirm answered no changes

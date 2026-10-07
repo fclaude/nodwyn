@@ -691,8 +691,13 @@ path = "/home/me/Reference/contracts"
 access = "read"
 \end{txt}
 
-The console's Workspaces page adds, names and removes folders and edits
-their mounts; removing one forgets its name and mounts, never the folder.
+The console's Workspaces page adds and names folders and edits their mounts.
+\textbf{Forget}, with confirmation, removes a named or unnamed folder from
+Workspaces and Home's suggestions, including after a restart. It forgets
+its name and mounts and clears a matching last pick, never the folder,
+its files or its task history; open tasks keep their loaded mounts.
+Using the folder again restores it to the suggestions: adding it, or
+starting or resuming a task there from any console or a terminal.
 Attachments come in through the console's composers (or
 \code{session.attach} over the protocol); Chapter~\ref{ch:io} says what
 happens to them.

@@ -174,6 +174,7 @@ var methodTable = map[string]handler{
 	"settings.docs.write":      (*server).docsSettingsMethod,
 	"settings.write":           (*server).settingsWrite,
 	"workspace.list":           (*server).workspaces,
+	"workspace.forgotten":      (*server).workspaces,
 	"workspace.active":         (*server).workspaces,
 	"workspace.save":           (*server).workspaces,
 	"workspace.remove":         (*server).workspaces,

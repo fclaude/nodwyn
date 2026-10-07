@@ -6,13 +6,18 @@ const { execFileSync } = require("child_process");
 const { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, shows, until, check } = require("../lib");
 
 check(async () => {
-  const root = tempDir("nodwyn-remote-");
+  // The real path: the folder the phone types is compared with the forgotten
+  // marker, which the daemon keeps with symbolic links resolved.
+  const root = fs.realpathSync(tempDir("nodwyn-remote-"));
   for (const d of ["config/nodwyn", "data", "work"]) fs.mkdirSync(`${root}/${d}`, { recursive: true, mode: 0o700 });
   fs.writeFileSync(`${root}/work/app.js`, 'function sessionRow(session) {\n  const row = node("button", "", "session");\n  row.append(node("span", session.first, "title"));\n  row.append(node("span", session.repo, "meta"));\n  return row;\n}\n');
   const env = { ...process.env, XDG_CONFIG_HOME: `${root}/config`, XDG_DATA_HOME: `${root}/data`, XDG_RUNTIME_DIR: runtimeDir() };
   const model = start(process.env.DEMO, ["-model-only", "-pace=0"]);
   const [modelURL] = await line(model, /MODEL (\S+)/);
   fs.writeFileSync(`${root}/config/nodwyn/config.toml`, `[control]\nurl = "${modelURL}"\nmodel = "demo"\n`);
+  // The folder the phone works in was forgotten on this computer: the phone
+  // may still choose it by its path, and its task there brings it back.
+  fs.writeFileSync(`${root}/config/nodwyn/workspaces.toml`, `forgotten = ["${root}/work"]\n`, { mode: 0o600 });
   const daemon = start(process.env.NODWYN, ["daemon", "--no-keychain"], { env });
   await line(daemon, /(listening)/, "stderr");
   // The console's address has to be known before it starts, since the phone
@@ -91,6 +96,14 @@ check(async () => {
   });
   assert.strictEqual(refused, 403, "a launch ticket from the phone");
   step("a launch ticket is refused remotely");
+
+  await page.evaluate(() => (location.hash = "#/workspaces"));
+  await page.waitForSelector(`.ws-row:has(span.mono[title="${root}/work"])`);
+  assert.ok(!fs.readFileSync(`${root}/config/nodwyn/workspaces.toml`, "utf8").includes(`${root}/work`), "the phone's task left its folder forgotten");
+  step("a folder forgotten on the computer is used from the phone and comes back");
+  assert.strictEqual(await page.getByRole("button", { name: /^Forget/ }).count(), 0, "the phone can forget folders");
+  assert.strictEqual(sent.of("workspace.remove").length, 0, "the phone asked to forget a folder");
+  step("forgetting folders is offered only on this computer");
 
   const logs = () => fs.readdirSync(`${root}/data/nodwyn/sessions`).map((f) => fs.readFileSync(`${root}/data/nodwyn/sessions/${f}`, "utf8")).join("");
   await until("answer logged as the phone", () => /"actor":"unix:uid=\d+,gid=\d+,pid=\d+ via web:phone"/.test(logs()));

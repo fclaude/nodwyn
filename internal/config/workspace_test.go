@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -88,8 +89,8 @@ func TestRegistry(t *testing.T) {
 	if err := RemoveRegistered(path, "/tmp/n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := RemoveRegistered(path, "/tmp/n"); err == nil {
-		t.Fatal("removed twice")
+	if err := RemoveRegistered(path, "/tmp/n"); err != nil {
+		t.Fatalf("forgetting twice should be harmless: %v", err)
 	}
 }
 
@@ -123,6 +124,68 @@ func TestRegistryKeysOnTheCleanPath(t *testing.T) {
 	}
 	if list, _ := LoadRegistry(registry); len(list) != 0 {
 		t.Fatalf("left after removing: %+v", list)
+	}
+}
+
+func TestForgetFolders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "workspaces.toml")
+	named, unnamed := t.TempDir(), t.TempDir()
+	if _, err := SaveRegistered(path, Registered{Name: "Named", Path: named}); err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range []string{named, unnamed} {
+		file := filepath.Join(folder, "keep.txt")
+		if err := os.WriteFile(file, []byte("keep"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := RemoveRegistered(path, folder); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(raw), "forgotten = [") || !strings.Contains(string(raw), quote(CanonicalPath(folder))) {
+			t.Fatalf("forgotten folder not recorded: %s %v", raw, err)
+		}
+		if b, err := os.ReadFile(file); err != nil || string(b) != "keep" {
+			t.Fatalf("forget changed the folder: %q %v", b, err)
+		}
+	}
+	if _, err := SaveRegistered(path, Registered{Name: "Restored", Path: named}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(raw), "forgotten = ["+quote(CanonicalPath(unnamed))+"]") {
+		t.Fatalf("adding did not clear just its forgotten marker: %s %v", raw, err)
+	}
+}
+
+// A marker only hides a suggestion: one that is not an absolute path is
+// skipped, so a session in any folder still loads its workspace, and using a
+// forgotten folder clears just its own marker.
+func TestForgottenFolderComesBackWhenUsed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "workspaces.toml")
+	used, other := t.TempDir(), t.TempDir()
+	marked := "forgotten = [\"relative/folder\", " + quote(used) + ", " + quote(other) + "]\n"
+	if err := os.WriteFile(path, []byte(marked), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadWorkspace(path, t.TempDir()); err != nil {
+		t.Fatalf("a bad marker refused a session elsewhere: %v", err)
+	}
+	if err := ClearForgotten(path, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if raw, err := os.ReadFile(path); err != nil || string(raw) != marked {
+		t.Fatalf("a folder without a marker rewrote the registry: %q %v", raw, err)
+	}
+	if err := ClearForgotten(path, used); err != nil {
+		t.Fatal(err)
+	}
+	forgotten, err := LoadForgotten(path)
+	if err != nil || !slices.Equal(forgotten, []string{CanonicalPath(other)}) {
+		t.Fatalf("forgotten after using %s: %v %v", used, forgotten, err)
+	}
+	if err := ClearForgotten("", used); err != nil {
+		t.Fatalf("no registry: %v", err)
 	}
 }
 

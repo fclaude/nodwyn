@@ -2138,6 +2138,20 @@ source catalogue; the PDFs are release attachments. `make book` and
 use a fresh clone for new work; old clones retain the old objects and commit
 identities. See the release guide for the migration details.
 
+## Forgetting a folder in the console
+
+On **Workspaces**, choose **Forget** beside a named workspace or a folder
+listed under **Folders tasks used**, then confirm. This removes its saved
+name and mounts and keeps it out of the workspace list and Home's folder
+suggestions, even after a restart. It does **not** delete the folder, any
+files, or task history; tasks already open keep their loaded mounts. If it
+was the folder picked last for a new task, that pick is cleared. **Keep**
+cancels the confirmation. Using the folder again brings it back: **Add a
+workspace**, Home's **Add a folder**, or starting or resuming a task there,
+from the console, a paired device or a terminal. Forget is available only on
+the computer running nodwyn. A paired device cannot forget a folder, but can
+still choose a forgotten one by typing its path.
+
 ## The Wails desktop window
 
 `make build-webview` builds the Wails native window on Linux or macOS;

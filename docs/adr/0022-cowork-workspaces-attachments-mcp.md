@@ -499,3 +499,38 @@ user trust record; executable identity is resolved, credential transport is a us
 setting with secure defaults, keychain decoding and persistence are bounded, and
 project paths resolve symlinks consistently. Its compatibility rules apply to
 existing sessions, workspaces, notes and worktrees.
+
+## Amendment 2026-10-07: forgetting folders without deleting them
+
+Workspaces listed unnamed folders inferred from task history without a remove
+action. Removing a named workspace could immediately list it again as an unnamed
+folder. **Forget**, with confirmation, now applies to both: it removes the
+registered name and mounts and stores the canonical folder in a top-level
+`forgotten` list in `workspaces.toml`. Home and Workspaces omit those suggestions,
+but files, task history and already-open tasks are untouched. A matching last
+pick is cleared in the daemon and in the console; a folder picked in the tab
+is kept even if it is forgotten. Using the folder again brings it back: adding
+it through `workspace.save`, or a task started or resumed there, clears its
+marker. Repeated forgetting is harmless.
+
+Who writes these markers: the daemon on `workspace.remove` from a console on
+this computer, or the person editing the private configuration directory.
+Neither a model nor a repository can reach that file. Paired devices cannot
+forget a folder, but they may choose one by its path, as before. A task
+started there from a device clears the marker as a side effect, as a task
+started from a terminal does. That is safe because a marker changes only
+suggestions: it never grants access or changes a task's project identity, so
+clearing one widens nothing. No file inside the repository is consulted to
+make this decision. Session start, in core and so in the daemon and the
+terminal alike, clears only a marker that names its folder, and writes the
+file only then. It and the console's changes hold a sibling
+`workspaces.toml.lock` while they reread and rewrite the file, so neither loses
+the other's change. A marker that is not an absolute path is skipped, not an
+error, since every session start reads this file for its mounts.
+
+The list is its own read-only method, `workspace.forgotten`, so that
+`workspace.list` keeps one result type. A console on an older daemon, which
+lacks the method, still lists the daemon's workspaces and hides nothing. Browser checks
+exercise cancellation, unnamed and named folders, reload, re-adding, retained
+files/history, the paired-device restriction, and a folder forgotten on the
+computer that a phone chooses by path and brings back by using it.

@@ -393,6 +393,12 @@ func (s *Session) initialize() (err error) {
 	if s.workspace, err = config.LoadWorkspace(registry, s.project()); err != nil {
 		return fmt.Errorf("core: %w", err)
 	}
+	// A task started or resumed in a forgotten folder brings it back to the
+	// console's suggestions (ADR 22, amended 2026-10-07). The marker only
+	// hides a suggestion, so failing to clear it is noted, not a refusal.
+	if err := config.ClearForgotten(registry, s.project()); err != nil {
+		s.note("the folder stays forgotten in the console: " + err.Error())
+	}
 	// The model this conversation talks to: config.toml's [control] model,
 	// or the one chosen for it (ADR 40). Every part of the session that
 	// asks it (the loop, the window, the planner, the image checks) reads

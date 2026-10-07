@@ -2906,6 +2906,9 @@
           "$ref": "#/$defs/request.workspace.active"
         },
         {
+          "$ref": "#/$defs/request.workspace.forgotten"
+        },
+        {
           "$ref": "#/$defs/request.workspace.list"
         },
         {
@@ -4980,6 +4983,38 @@
       ],
       "type": "object"
     },
+    "request.workspace.forgotten": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "workspace.forgotten"
+        },
+        "params": {
+          "allOf": [
+            {
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method"
+      ],
+      "type": "object"
+    },
     "request.workspace.list": {
       "properties": {
         "id": {
@@ -5488,6 +5523,15 @@
     },
     "result.workspace.active": {
       "$ref": "#/$defs/rpc.workspaceActiveResult"
+    },
+    "result.workspace.forgotten": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
     },
     "result.workspace.list": {
       "items": {

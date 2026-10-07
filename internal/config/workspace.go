@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/BurntSushi/toml"
 )
@@ -102,6 +103,7 @@ type Registered struct {
 
 type registry struct {
 	Workspace []Registered `toml:"workspace"`
+	Forgotten []string     `toml:"forgotten"`
 }
 
 // RegistryFile is where named workspaces are kept.
@@ -149,25 +151,51 @@ func SaveLastWorkspace(path, folder string) error {
 
 // LoadRegistry reads the named workspaces; missing is none.
 func LoadRegistry(path string) ([]Registered, error) {
+	r, err := loadRegistry(path)
+	return r.Workspace, err
+}
+
+// LoadForgotten reads folders hidden from suggestions, not from task history.
+func LoadForgotten(path string) ([]string, error) {
+	r, err := loadRegistry(path)
+	return r.Forgotten, err
+}
+
+func loadRegistry(path string) (registry, error) {
 	var r registry
 	_, err := toml.DecodeFile(path, &r)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return registry{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("workspaces: %w", err)
+		return registry{}, fmt.Errorf("workspaces: %w", err)
 	}
 	out := make([]Registered, 0, len(r.Workspace))
 	for _, entry := range r.Workspace {
 		entry.Path = CanonicalPath(entry.Path)
 		for _, previous := range out {
 			if previous.Path == entry.Path {
-				return nil, fmt.Errorf("workspaces: duplicate aliases for %s; keep one entry with the intended mounts", entry.Path)
+				return registry{}, fmt.Errorf("workspaces: duplicate aliases for %s; keep one entry with the intended mounts", entry.Path)
 			}
 		}
 		out = append(out, entry)
 	}
-	return out, nil
+	r.Workspace = out
+	// A marker only hides a suggestion, and every session start reads this
+	// file for its mounts: one that is not an absolute path is skipped, not
+	// a reason to refuse every task.
+	forgotten := make([]string, 0, len(r.Forgotten))
+	for _, folder := range r.Forgotten {
+		if !filepath.IsAbs(folder) {
+			continue
+		}
+		folder = CanonicalPath(folder)
+		if !slices.Contains(forgotten, folder) {
+			forgotten = append(forgotten, folder)
+		}
+	}
+	r.Forgotten = forgotten
+	return r, nil
 }
 
 // SaveRegistered adds the workspace at entry.Path, or renames it and sets
@@ -189,34 +217,104 @@ func SaveRegistered(path string, entry Registered) (Registered, error) {
 		return Registered{}, err
 	}
 	entry.Mounts = ws.Mounts
-	list, err := LoadRegistry(path)
+	unlock, err := lockRegistry(path)
 	if err != nil {
 		return Registered{}, err
 	}
-	list = slices.DeleteFunc(list, func(r Registered) bool { return CanonicalPath(r.Path) == entry.Path })
-	list = append(list, entry)
-	return entry, writeRegistry(path, list)
+	defer unlock()
+	r, err := loadRegistry(path)
+	if err != nil {
+		return Registered{}, err
+	}
+	r.Workspace = slices.DeleteFunc(r.Workspace, func(w Registered) bool { return w.Path == entry.Path })
+	r.Workspace = append(r.Workspace, entry)
+	r.Forgotten = slices.DeleteFunc(r.Forgotten, func(folder string) bool { return folder == entry.Path })
+	return entry, writeRegistry(path, r)
 }
 
-// RemoveRegistered forgets a workspace; its folder and files are untouched.
+// RemoveRegistered forgets even an unnamed folder, without touching its files
+// or tasks. The marker keeps task history from offering the folder again.
 func RemoveRegistered(path, root string) error {
-	list, err := LoadRegistry(path)
+	if !filepath.IsAbs(root) {
+		return errors.New("workspaces: path must be absolute")
+	}
+	unlock, err := lockRegistry(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, err := loadRegistry(path)
 	if err != nil {
 		return err
 	}
 	root = CanonicalPath(root)
-	kept := slices.DeleteFunc(slices.Clone(list), func(r Registered) bool { return CanonicalPath(r.Path) == root })
-	if len(kept) == len(list) {
-		return fmt.Errorf("workspaces: %s is not registered", root)
+	r.Workspace = slices.DeleteFunc(r.Workspace, func(w Registered) bool { return w.Path == root })
+	if !slices.Contains(r.Forgotten, root) {
+		r.Forgotten = append(r.Forgotten, root)
 	}
-	return writeRegistry(path, kept)
+	return writeRegistry(path, r)
 }
 
-func writeRegistry(path string, list []Registered) error {
+// ClearForgotten brings a forgotten folder back to the suggestions: a task
+// started or resumed there is the person using it again. It writes only when
+// root has a marker, so a session start leaves the file as it was otherwise.
+// An empty registry path is no registry.
+func ClearForgotten(path, root string) error {
+	if path == "" {
+		return nil
+	}
+	root = CanonicalPath(root)
+	if r, err := loadRegistry(path); err != nil || !slices.Contains(r.Forgotten, root) {
+		return err
+	}
+	unlock, err := lockRegistry(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	r, err := loadRegistry(path)
+	if err != nil || !slices.Contains(r.Forgotten, root) {
+		return err
+	}
+	r.Forgotten = slices.DeleteFunc(r.Forgotten, func(folder string) bool { return folder == root })
+	return writeRegistry(path, r)
+}
+
+// lockRegistry serializes changes to the registry across processes: the
+// daemon's console writes it, and any session start, in the daemon or a
+// terminal, may clear a marker. Each change rereads the file under the lock,
+// so none is lost to another made meanwhile.
+func lockRegistry(path string) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	fd, err := syscall.Open(path+".lock", syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("workspaces: lock: %w", err)
+	}
+	for {
+		err = syscall.Flock(fd, syscall.LOCK_EX)
+		if !errors.Is(err, syscall.EINTR) {
+			break
+		}
+	}
+	if err != nil {
+		syscall.Close(fd)
+		return nil, fmt.Errorf("workspaces: lock: %w", err)
+	}
+	return func() {
+		_ = syscall.Flock(fd, syscall.LOCK_UN)
+		_ = syscall.Close(fd)
+	}, nil
+}
+
+func writeRegistry(path string, r registry) error {
 	var b strings.Builder
 	b.WriteString("# Workspaces nodwyn lists by name, and the folders outside each its tasks may use.\n")
 	b.WriteString("# Removing one here forgets the name and its mounts, not the folder.\n")
-	for _, r := range list {
+	b.WriteString("# Forgotten folders stay out of suggestions until one is added or used again.\n")
+	fmt.Fprintf(&b, "forgotten = %s\n", quoteList(r.Forgotten))
+	for _, r := range r.Workspace {
 		fmt.Fprintf(&b, "\n[[workspace]]\nname = %s\npath = %s\n", quote(r.Name), quote(r.Path))
 		for _, m := range r.Mounts {
 			fmt.Fprintf(&b, "\n[[workspace.mount]]\npath = %s\naccess = %s\n", quote(m.Path), quote(m.Access))

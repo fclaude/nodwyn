@@ -73,5 +73,47 @@ check(async () => {
     "the folder picked before the restart was not what a fresh window starts in",
   );
   step("the folder picked last survives an app restart");
+
+  // Every folder can be forgotten, including one only known from tasks.
+  // Its tasks and files remain, but history must not add it back to Home.
+  const fs = require("fs");
+  const marker = `${receipts}/forget-check.txt`;
+  fs.writeFileSync(marker, "keep this file\n");
+  const tasksBefore = await fresh.locator("#sidebar a.nav-task").count();
+  await fresh.evaluate(() => (location.hash = "#/workspaces"));
+  const row = (folder) => fresh.locator(`.ws-row:has(span.mono[title="${folder}"])`);
+  await row(receipts).getByRole("button", { name: /^Forget/ }).click();
+  await row(receipts).getByRole("button", { name: "Keep", exact: true }).click();
+  assert.strictEqual(sent.of("workspace.remove").length, 0, "Keep removed a folder");
+  await row(receipts).getByRole("button", { name: /^Forget/ }).click();
+  await row(receipts).getByRole("button", { name: "Forget", exact: true }).click();
+  await row(receipts).waitFor({ state: "detached" });
+  assert.deepStrictEqual(sent.of("workspace.remove").at(-1), { path: receipts });
+  assert.strictEqual(fs.readFileSync(marker, "utf8"), "keep this file\n");
+  assert.strictEqual(await fresh.locator("#sidebar a.nav-task").count(), tasksBefore, "forgetting removed task history");
+  await fresh.reload();
+  await fresh.waitForSelector("html[data-ready]");
+  assert.strictEqual(await row(receipts).count(), 0, "task history resurrected the forgotten folder");
+  await fresh.evaluate(() => (location.hash = "#/"));
+  await fresh.waitForSelector("#work-in");
+  assert.strictEqual(await fresh.locator(`#work-in button.chip[title="${receipts}"]`).count(), 0, "Home still offers the forgotten folder");
+  assert.strictEqual(await fresh.$eval("#work-in button.chip[aria-pressed=true]", (b) => b.title), consoleRepo, "the forgotten last pick remained selected");
+
+  // Re-adding explicitly clears the marker; forgetting a named folder
+  // must not turn it back into an unnamed history-derived row.
+  await fresh.evaluate(() => (location.hash = "#/workspaces"));
+  await fresh.getByRole("button", { name: "Add a workspace", exact: true }).click();
+  await fresh.fill("#ws-path", receipts);
+  await fresh.fill("#ws-name", "Receipts again");
+  await fresh.getByRole("button", { name: "Add this folder", exact: true }).click();
+  await row(receipts).getByRole("button", { name: "Edit", exact: true }).waitFor();
+  await row(receipts).getByRole("button", { name: "Forget Receipts again", exact: true }).click();
+  await row(receipts).getByRole("button", { name: "Forget", exact: true }).click();
+  await row(receipts).waitFor({ state: "detached" });
+  await fresh.reload();
+  await fresh.waitForSelector("html[data-ready]");
+  assert.strictEqual(await row(receipts).count(), 0, "a named workspace came back from its task history");
+  assert.strictEqual(fs.readFileSync(marker, "utf8"), "keep this file\n");
+  step("forgetting unnamed and named folders persists without deleting files or tasks; adding restores them");
   await fresh.screenshot({ path: `${out}/lastfolder.png` });
 });

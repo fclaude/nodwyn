@@ -35,7 +35,15 @@ refuses every write. Mounts may not overlap the workspace or each other, and
 git worktree of its own has its repository's mounts.
 
 The console's \textbf{Workspaces} page edits this for you, and Home offers
-the folders it names. From Scheme:
+the folders it names. \textbf{Forget} is available for named folders and
+folders known only from tasks: after confirmation it removes the name and
+mounts and keeps the folder out of Workspaces and Home's suggestions, even
+after a restart. The folder, files and task history are untouched; open
+tasks keep their mounts. A matching last pick is cleared. Using the folder
+again clears its forgotten marker: adding it, or a task started or resumed
+there, since session start in core clears a marker that names its folder.
+Forgetting is local to the computer running \nodwyn{}, not offered to paired
+devices, which may still choose a forgotten folder by its path. From Scheme:
 
 \begin{txt}
 you> :eval (workspace)

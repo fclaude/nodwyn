@@ -14,6 +14,7 @@ export class Desk {
     this.settings = null; // settings.read: the daemon's model configuration
     this.keychain = null; // keychain.status
     this.workspaces = []; // workspace.list: folders the person named
+    this.forgotten = new Set(); // workspace.forgotten: folders left out of the suggestions, not out of task history
     this.last = ""; // workspace.active: the folder the daemon last saw picked for a new task
     this.listeners = new Set();
     this.version = 0;
@@ -73,6 +74,10 @@ export class Desk {
       if (state) Object.assign(item, { open: state.open, busy: state.busy, needs_answer: state.needs_answer });
       this.sessions.set(item.id, item);
     }
+    // A task started or resumed in a forgotten folder, here, on another
+    // device or in a terminal, brings the folder back (ADR 22): the daemon
+    // has cleared its marker, so the list is read again.
+    if ([...this.sessions.values()].some((s) => s.open && this.forgotten.has(this.project(s)))) await this.refreshForgotten();
     await this.refreshAttention();
     this.changed("list");
   }
@@ -111,6 +116,19 @@ export class Desk {
     } catch {
       this.workspaces = [];
     }
+    await this.refreshForgotten();
+    this.changed("workspaces");
+  }
+  // refreshForgotten reads the folders left out of the suggestions; an older
+  // daemon has none.
+  async refreshForgotten() {
+    if (!this.conn.has("workspace.forgotten")) return;
+    try {
+      this.forgotten = new Set((await this.conn.call("workspace.forgotten")) || []);
+    } catch {
+      this.forgotten = new Set();
+    }
+    if (this.forgotten.has(this.last)) this.last = "";
     this.changed("workspaces");
   }
   // workspace returns the named workspace at path, if any.
@@ -198,7 +216,7 @@ export class Desk {
     const out = this.workspaces.map((w) => w.path);
     for (const s of this.all()) {
       const folder = this.project(s);
-      if (folder && !seen.has(folder)) {
+      if (folder && !seen.has(folder) && !this.forgotten.has(folder)) {
         seen.add(folder);
         out.push(folder);
       }

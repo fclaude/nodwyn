@@ -78,7 +78,16 @@ export function renderHome(root, ctx) {
   const folders = desk.folders();
   // A tab that has not picked yet starts in the folder picked last: this
   // browser's, else the daemon's, which an app restart keeps.
-  if (!chosen) chosen = localStorage.getItem(LAST_KEY) || desk.last || "";
+  // A remembered pick of a folder forgotten since is dropped; a folder
+  // picked in this tab is kept, forgotten or not, since a device that cannot
+  // add folders chooses one by its path, and using it brings it back.
+  if (!chosen) {
+    chosen = localStorage.getItem(LAST_KEY) || desk.last || "";
+    if (desk.forgotten.has(chosen)) {
+      forgetFolder(chosen);
+      chosen = "";
+    }
+  }
   if (!chosen || !folders.includes(chosen)) chosen = chosen && !folders.includes(chosen) && chosen.startsWith("/") ? chosen : folders[0] || "";
   const control = desk.control();
   // Every task is a chat (ADR 35): a long request is a message like any

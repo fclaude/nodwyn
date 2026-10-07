@@ -9,7 +9,7 @@ import { renderCredentials } from "./credentials.js";
 // ---------- workspaces ----------
 let editing = ""; // the folder whose editor is open
 let addingWorkspace = false; // the editor for a folder not on the list yet is open
-let removing = ""; // the named folder whose removal waits for its confirm
+let removing = ""; // the folder whose forgetting waits for confirmation
 export function renderWorkspaces(root, ctx) {
   const { desk, navigate, conn } = ctx;
   const counts = new Map();
@@ -23,14 +23,15 @@ export function renderWorkspaces(root, ctx) {
   const redraw = () => renderWorkspaces(root, ctx);
   // Removing forgets the name and the mounted folders; the folder and its
   // files stay, and tasks there keep their history.
-  const remove = async (ws) => {
+  const remove = async (folder) => {
+    const name = desk.folderName(folder);
     try {
-      await conn.call("workspace.remove", { path: ws.path });
+      await conn.call("workspace.remove", { path: folder });
       removing = "";
-      if (editing === ws.path) editing = "";
-      forgetFolder(ws.path);
+      if (editing === folder) editing = "";
+      forgetFolder(folder);
       await desk.refreshWorkspaces();
-      toast(`Removed ${ws.name} from the list. The folder and its files are as they were.`);
+      toast(`Forgot ${name}. The folder, its files and its tasks are as they were.`);
     } catch (e) {
       toast(e.message);
     }
@@ -40,16 +41,16 @@ export function renderWorkspaces(root, ctx) {
     const count = counts.get(folder);
     const mounts = ws?.mounts || [];
     const actions =
-      ws && removing === folder
+      removing === folder
         ? [
-            h("span", { class: "confirm-text" }, "Remove it from the list? The folder stays."),
-            h("button", { type: "button", class: "btn small danger", onclick: () => remove(ws) }, "Remove"),
+            h("span", { class: "confirm-text" }, "Forget this folder? Its files and tasks stay."),
+            h("button", { type: "button", class: "btn small danger", onclick: () => remove(folder) }, "Forget"),
             h("button", { type: "button", class: "btn small ghost", onclick: () => { removing = ""; redraw(); } }, "Keep"),
           ]
         : [
             h("button", { type: "button", class: "btn small", onclick: () => { chooseFolder(folder, desk); navigate("#/"); } }, "New task here"),
             canEdit ? h("button", { type: "button", class: "btn small ghost", onclick: () => { editing = editing === folder ? "" : folder; addingWorkspace = false; removing = ""; redraw(); } }, ws ? "Edit" : "Name it") : null,
-            ws && canRemove ? h("button", { type: "button", class: "btn small danger", "aria-label": `Remove ${ws.name}`, onclick: () => { removing = folder; redraw(); } }, "Remove") : null,
+            canRemove ? h("button", { type: "button", class: "btn small danger", "aria-label": `Forget ${desk.folderName(folder)}`, onclick: () => { removing = folder; redraw(); } }, "Forget") : null,
           ];
     const node = h(
       "div",
