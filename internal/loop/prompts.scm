@@ -341,12 +341,21 @@
 ;; the planner is asked for what plan-write checks (ADR 32, amended
 ;; 2026-10-03): each step gives a short name for what it does, before the
 ;; detail the console folds away.
+;; A step says what the code should do, not the code: the planner reads the
+;; code but cannot run it, and the model that carries the plan out follows it
+;; (ADR 32's first failure: a plan written without running anything
+;; overriding what the model's own checks showed). A name or signature
+;; written from memory that the code does not have sends that model after
+;; it. None of the 89 plans in the local session logs of 2026-09-21 to 10-05
+;; quotes code, so this is a guard, not a repair (ADR 32, amended
+;; 2026-10-06).
 (define (plan-shape)
   (string-append
    "Each step starts with its kind and a short name for what it does, then a dash (—) and the detail after it:"
    (apply string-append (map (lambda (k) (string-append "\n- " (car k) ": " (cdr k) ".")) plan-kinds))
    (if plan-last-kind (string-append "\nThe last step is a " plan-last-kind ": step.") "")
-   " A step that says all it should in its name needs no dash. A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."))
+   " A step that says all it should in its name needs no dash. A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."
+   " Say what the code should do as behaviour, in which cases and with what result, not as code to type: whoever carries the plan out reads the code and writes it, and a function name or signature quoted from memory that the code does not have misleads them."))
 
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)

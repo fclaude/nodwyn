@@ -361,7 +361,7 @@ func (l *Loop) runTools(c *scheme.Call) (scheme.Value, error) {
 		}
 		results = append(results, resultValue(res, value, outcome))
 		if reason := t.progress.observe(tc, outcome); reason != "" {
-			stuck := fmt.Errorf("progress stop: %s; inspect the results before continuing", reason)
+			stuck := &ProgressStop{Reason: reason}
 			if err := l.record(log.KindNote, log.Note{Text: stuck.Error()}); err != nil {
 				return scheme.Void, err
 			}

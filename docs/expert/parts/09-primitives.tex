@@ -63,6 +63,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(fs-find path glob)} & file names matching a glob, at most 500 \\
 \code{(index-grep path regex [glob [context]])} & search contents with a regular expression \\
 \code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree: what changed, since the last commit or since \code{against}, and the commit HEAD is on; read-only, no approval \\
+\code{(keep-passing)} & keep the changes as a test run passed on them (hidden): an unattended turn that a hard limit or the progress guard stops has its files put back to it, and what they held saved \\
 \code{(shell-exec cmd args)} & run a program with a list of arguments, no shell, in the folder (irreversible) \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background (irreversible) \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\

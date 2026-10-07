@@ -308,20 +308,44 @@
                           (match (cdr ps)))))
                (any (cdr ls)))))))
 
-;; Whether a call that ran ended with a non-zero exit status, #f for one that
-;; did not run to an exit (denied, not executed, interrupted) and for a result
-;; with no status.
-(define (run-failed? result)
+;; The exit status of a call that ran to an exit, #f for one that did not
+;; (denied, not executed, interrupted) and for a result with no status.
+(define (run-status result)
   (and (assoc-ref result 'ok #f)
        (let ((v (guard (e (else #f)) (json-parse (format "~a" (assoc-ref result 'value ""))))))
          (and (pair? v)
-              (let ((status (assoc-ref v "status" 0)))
-                (and (integer? status) (not (= status 0))))))))
+              (let ((status (assoc-ref v "status" #f)))
+                (and (integer? status) status))))))
 
-;; Whether the latest run counted as a test is red: a run that ran decides it,
-;; one that did not leaves it as it was.
-(define (run-red result red)
-  (if (assoc-ref result 'ok #f) (run-failed? result) red))
+;; What the latest test or check run since the last edit came to, given what
+;; it was before: 'none (no run yet, or it did not run to an exit and leaves
+;; the answer as it was), 'failed (a non-zero exit), 'passed (exit 0) or
+;; 'kept (passed, and the state it passed on is kept, keep-passed).
+(define (run-outcome result last)
+  (let ((status (run-status result)))
+    (cond ((not status) last)
+          ((= status 0) 'passed)
+          (else 'failed))))
+
+;; Whether the turn has changed the repository: the file tools wrote to it,
+;; or git sees a tracked file differ from how the turn found it.
+(define (turn-changed? before edited)
+  (or edited
+      (let ((now (and before (git-state))))
+        (and now (not (equal? (git-tracked now) (git-tracked before)))))))
+
+;; In a turn nobody reads, a test run that passed after the turn changed
+;; something is a state worth going back to: the host keeps it, and puts it
+;; back if a hard limit or the progress guard stops the turn later, which
+;; ends this strategy and with it any chance to (ADR 18, amended
+;; 2026-10-06). A turn that has changed nothing keeps nothing: the state
+;; its tests passed on before any edit is no result to go back to. A keep
+;; that fails is not tried again for the same run; the host remembers why.
+(define (keep-passed outcome before edited)
+  (if (and (equal? outcome 'passed) (unattended?) (turn-changed? before edited))
+      (begin (guard (e (else #f)) (keep-passing))
+             'kept)
+      outcome))
 
 (define (evidence-loop request)
   (let ((before (git-state)))
@@ -329,35 +353,37 @@
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
     ;; reading: the rounds in a row that only looked (reading-rounds).
-    ;; red: the latest test or check run since the last edit exited non-zero.
+    ;; outcome: what the latest test or check run since the last edit came to
+    ;; (run-outcome).
     (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0)
-               (scripts '()) (written '()) (noted #f) (excused #f) (reading 0) (red #f))
+               (scripts '()) (written '()) (noted #f) (excused #f) (reading 0) (outcome 'none))
       (let ((calls (assoc-ref reply 'tool-calls '())))
         (if (pair? calls)
             (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs)
-                       (scripts scripts) (written written) (red red))
+                       (scripts scripts) (written written) (outcome outcome))
               (cond ((pair? cs)
                      (let ((c (car cs)) (r (car rs)))
                        (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
                               (let ((name (scratch-name c)))
                                 (if name
                                     (walk (cdr cs) (cdr rs) edited tested failed
-                                          (if (member name scripts) scripts (cons name scripts)) written red)
-                                    (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written) #f))))
+                                          (if (member name scripts) scripts (cons name scripts)) written outcome)
+                                    (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written) 'none))))
                              ;; A check fails until the work is done: only a
                              ;; run that went through says the setup works.
                              ((check-run? c scripts)
-                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 failed) scripts written (run-red r red)))
+                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 failed) scripts written (run-outcome r outcome)))
                              ((test-call? c)
-                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written (run-red r red)))
-                             (else (walk (cdr cs) (cdr rs) edited tested failed scripts written red)))))
+                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written (run-outcome r outcome)))
+                             (else (walk (cdr cs) (cdr rs) edited tested failed scripts written outcome)))))
                     (else
                      (maybe-compact request reply)
                      (let ((stuck (and (not offered) (>= failed unrunnable-after)))
-                           (reading (reading-rounds calls reading)))
+                           (reading (reading-rounds calls reading))
+                           (outcome (keep-passed outcome before edited)))
                        (when stuck (add-message (finish-unrunnable-message failed)))
                        (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted excused
-                             reading red)))))
+                             reading outcome)))))
             (let* ((now (and before (git-state)))
                    (new-lines (if now (filter (lambda (l) (not (member l before))) now) '()))
                    ;; With git: a tracked file changed, the file tools wrote
@@ -374,16 +400,16 @@
                               ((and (not changed) (not excused))
                                (if reviewed finish-no-change-reviewed-message finish-no-change-message))
                               ((and changed (not tested) (not offered)) finish-untested-message)
-                              ((and changed red (not offered)) finish-failing-message)
+                              ((and changed (equal? outcome 'failed) (not offered)) finish-failing-message)
                               (else #f)))
                    (new (if (and now changed (not noted)) (git-new-files before now) '())))
               (cond ((and gap (< reminders finish-reminders))
                      (add-message gap)
-                     ;; A run the model was told failed is red again only if it
-                     ;; runs and fails again: it may answer that the tests fail
-                     ;; on the unchanged code too, and end.
+                     ;; A run the model was told failed counts as failed again
+                     ;; only if it runs and fails again: it may answer that the
+                     ;; tests fail on the unchanged code too, and end.
                      (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted
-                           (or excused (and (not changed) reviewed)) 0 #f))
+                           (or excused (and (not changed) reviewed)) 0 'none))
                     ((and (pair? new) (not turn-stopping))
                      (add-message (finish-new-files-message new))
-                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0 red)))))))))
+                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0 outcome)))))))))

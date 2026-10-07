@@ -257,3 +257,26 @@ func TestPlannerAndJudgeAskForTheShape(t *testing.T) {
 		t.Errorf("the top level does not ask for tests that say what they check and for the docs: %q", top)
 	}
 }
+
+// The planner is asked for behaviour, not code to type: it reads the code
+// but cannot run it, and the model that follows its plan would go after a
+// name it wrote from memory (ADR 32, amended 2026-10-06). The same shape
+// goes into the revision prompt.
+func TestThePlannerIsAskedForBehaviourNotCode(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true,
+		fake.Turn{Content: "main.go declares package main."}, // the explorer
+		fake.Turn{Content: "1. Edit main.go."},               // the planner
+		fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+	)
+	if err := r.s.SendPlanned("change main.go"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if len(r.srv.Requests) < 2 {
+		t.Fatalf("%d requests: the planner was not asked", len(r.srv.Requests))
+	}
+	if !strings.Contains(string(r.srv.Requests[1].Raw), "as behaviour, in which cases and with what result, not as code to type") {
+		t.Fatalf("the planner's request does not ask for behaviour:\n%s", r.srv.Requests[1].Raw)
+	}
+}

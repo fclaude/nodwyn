@@ -516,7 +516,14 @@ overrule its refusals. Still denied, exactly as with a human at the prompt:
   person at the prompt.
 
 Budgets are what stop a runaway turn when nobody is watching, so set
-`--max-tool-calls`, `--budget-wall` and `--budget-actions` for the job.
+`--max-tool-calls`, `--budget-wall` and `--budget-actions` for the job. A turn
+that one of them, or the progress guard, stops is not left one edit past its
+tests: each time a test run passes after the turn changed something, nodwyn
+keeps the changes as they are, and on the stop it puts the files back to that
+state. The files it replaced are saved in the session's scratch directory
+(`kept/discarded`), the stop says what it did, and a credential file, a
+protected path and a link are left alone. A chat, your own Stop and a
+checkpoint you answered put nothing back.
 Every decision is logged with its verdict and `nodwyn replay` shows exactly
 what the run did.
 

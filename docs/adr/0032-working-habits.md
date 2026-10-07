@@ -819,3 +819,20 @@ turns, 59 of which changed a repository file), read from `llm.resp`,
   none of the 89 logged plans quotes code. Keeping the last passing patch when
   a turn hits its limit: the repository already holds every edit, and
   restoring an earlier state would delete work the person can see.
+
+## Amendment 2026-10-06: plans say what the code should do, not code
+
+`plan-shape`, the shape the planner and the revision prompt ask for, now adds:
+say what the code should do as behaviour, in which cases and with what result,
+not as code to type, since whoever carries the plan out reads the code and
+writes it, and a function name or signature quoted from memory that the code
+does not have misleads them. It answers the failure in this ADR's context, a
+plan written without running anything overriding what the model's own checks
+showed, from the plan's side: the planner reads the code but cannot run it.
+**No logged plan has the fault**: none of the 89 in the local session logs of
+2026-09-21 to 10-05 quotes code, so this is a guard that costs a sentence a
+plan, not a repair. It was added at the person's request, and is worth
+removing if a plan's quality, as the judge scores it, falls. The companion
+rule, that a model checks a helper's definition before an edit that calls it,
+is not added: it repeats "Read before you write" and cannot be checked.
+`TestThePlannerIsAskedForBehaviourNotCode` covers the request.

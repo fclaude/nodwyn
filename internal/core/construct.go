@@ -271,6 +271,10 @@ func (s *Session) primitiveOptions() prim.Options {
 		po.Docs = s
 		po.DocsConfig = prim.DocsOptions{GoogleClass: class, GoogleUploadURL: o.Config.Docs.GoogleUploadURL}
 	}
+	// What an unattended turn's passing test runs keep, for a hard stop to
+	// put back (keep.go).
+	po.Keeper = prim.NewKeeper(po)
+	s.keeper = po.Keeper
 	return po
 }
 

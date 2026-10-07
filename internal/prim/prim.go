@@ -46,6 +46,9 @@ type Options struct {
 	// Procs holds the session's background processes (shell-start and the
 	// rest); nil offers none, as in nodwyn repl.
 	Procs *Procs
+	// Keeper keeps the changes as they stood at a passing test run, for a
+	// turn that a hard limit stops (keep.go); nil keeps nothing.
+	Keeper *Keeper
 
 	// P3 egress (all optional; nil disables the egress primitives — bootstrap
 	// has none). The guard's E3 checker enforces the binding table before any
@@ -111,7 +114,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o), keepPassing(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}

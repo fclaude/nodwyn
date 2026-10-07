@@ -127,8 +127,9 @@ type Session struct {
 	// P3 egress.
 	keychain *keychain.Store
 	bindings *binding.Live
-	scratch  string      // the session's scratch directory (scratch.go)
-	procs    *prim.Procs // background processes; stopped when the session closes
+	scratch  string       // the session's scratch directory (scratch.go)
+	keeper   *prim.Keeper // the state a passing test run kept, for a hard stop (keep.go)
+	procs    *prim.Procs  // background processes; stopped when the session closes
 	// workspace is the folders outside the root the session may use, as
 	// the workspace list named them at construction (ADR 22).
 	workspace config.Workspace
@@ -307,6 +308,9 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 			end := turnOutcome(ctx, turnErr)
 			if end.Outcome != "completed" && end.Outcome != "canceled" {
 				end.Where = s.whereStopped()
+				if kept := s.restoreKept(turnErr); kept != "" {
+					end.Where += "; " + kept
+				}
 			}
 			_, _ = s.Record(log.KindTurnEnd, end)
 			s.flushOutput()

@@ -8,6 +8,16 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 )
 
+// ProgressStop is the error a turn ends with when the progress guard stops
+// it. It is a type so the session can tell it from other errors: like a hard
+// limit, it ends a turn that has stopped getting anywhere (ADR 18, amended
+// 2026-10-06).
+type ProgressStop struct{ Reason string }
+
+func (e *ProgressStop) Error() string {
+	return "progress stop: " + e.Reason + "; inspect the results before continuing"
+}
+
 // turnProgress notices a turn going in circles (ADR 18): the same call four
 // times in a row, a denied call retried three times, ten failures in a row,
 // the same tool failing on the same file in six of the last sixteen model

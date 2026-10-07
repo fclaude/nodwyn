@@ -432,3 +432,59 @@ TestProgressPollsOfARunningCommandHaveTheirOwnCeiling,
 TestAStoppedTurnSaysWhereItStopped, TestOpenAIRateLimitWithRetryAfterIsWaitedFor,
 TestChatRetryingWaitsForRetryAfterAndStopsAtPaymentRequired and the
 transcript browser check cover them.
+
+## Amendment 2026-10-06: a stopped unattended turn goes back to its last passing state
+
+A hard limit stops a turn where it happens to be, and so does the progress
+guard, and neither can be caught by the strategy. In a turn nobody reads
+(`--yolo`, judged or unattended), that is often one edit past the last state
+its own tests accepted, and the work is collected as it lies.
+
+- **Keeping.** After a test or check run that exits 0 in a turn that has
+  changed the repository, the evidence loop calls `(keep-passing)`
+  (strategy.scm, `keep-passed`). The host (`prim.Keeper`) keeps the changes
+  git lists against HEAD, as the bytes on disk, in the scratch directory,
+  replacing the earlier keep. A turn that changed nothing keeps nothing: the
+  state its tests passed on before any edit is no result to go back to
+  (`TestAHardStopBeforeAnyEditPutsNothingBack`).
+- **Putting back.** When the turn ends in a hard budget stop or a
+  `loop.ProgressStop` (now a type, so the session can tell it), in a session
+  that is `--yolo`, judged or unattended, the core restores
+  (`Session.restoreKept`): a kept file as it was, a path changed since and not
+  kept as HEAD has it or gone, a file made since removed. Each file it
+  replaces is saved first under `kept/discarded`, in the same relative path.
+  What it did goes to the log as a note and to the end of `turn.end`'s
+  `where`, so the person is told. It refuses, saying so, when HEAD is not the
+  commit the state was kept on, and when nothing was kept it says why a keep
+  failed, if one did.
+- **What it never touches.** A file the credential denylist refuses, a path
+  `guard.IsProtected` names (`.nodwyn/`, `.git/`, `.github/`, `.gitea/`,
+  `scripts/`, `Makefile`: a write there is a security confirm), links and
+  directories, the index, and a path whose directory a link now leads out of
+  the repository. Files over 8 MiB, more than 64 MiB or 4000 files are not
+  kept at all. Git is asked for the list of changes and for HEAD's blobs only,
+  as the git tools ask it, with nothing that runs another program, and not
+  through `git checkout`, whose hooks a stranger's clone could make run.
+- **Not for** a chat, a person's own Stop, a soft limit the person answered,
+  or an ordinary error: where someone is there to decide, the files stay as
+  they are.
+- **Why this, and what it costs.** Asked for as "keep the last passing patch
+  at the round limit". Of the 190 turn ends in the 161 local session logs of
+  2026-09-21 to 10-05, three were a hard or progress stop (an actions budget,
+  and two progress stops on a poll that was only waiting, 20261003T143916Z-48f31857
+  and 20261003T002506Z-f564a28c), and all three were chats a person was
+  answering, which this leaves alone. So, like the failing-run reminder of ADR
+  32's same-day amendment, it comes from the code and not from a logged
+  failure: a hard stop ends the strategy with it, and a benchmark harness
+  collects whatever is on disk. It deletes
+  nothing the model wrote, but it does change what is on disk, for the
+  sessions that nobody reads. A passing run of one test is not a proof of the
+  whole change; it is the best state the turn's own evidence names. A file
+  changed through the shell before the keep is in it; a change the shell makes
+  to a protected path is not undone.
+- **Tests.** `internal/prim` (`TestKeeper*`, `TestKeepPassingPrimitive`: the
+  state put back, HEAD moved, a link in the way, too large, nothing kept) and
+  `internal/core` (`TestHardStopPutsBackTheLastPassingState` runs it through
+  a scripted model and the real strategy; it fails with `keep-passing` taken
+  out, as `TestRestoreKeptOnlyForAHardStopOfAnUnattendedTurn` covers which
+  stops and sessions it applies to).

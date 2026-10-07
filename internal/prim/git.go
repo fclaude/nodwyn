@@ -282,6 +282,12 @@ func changeDiff(ctx context.Context, o Options, pin *os.Root, base string, c Cha
 // runGit runs one fixed git command in the root and returns its output, or
 // an error carrying git's own message.
 func runGit(parent context.Context, o Options, args ...string) (string, error) {
+	return runGitLimit(parent, o, o.MaxOutput, args...)
+}
+
+// runGitLimit is runGit with its own cap on what it returns: a file's whole
+// content (cat-file) must not be cut at the size of a tool's answer.
+func runGitLimit(parent context.Context, o Options, limit int, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(parent, gitTimeout)
 	defer cancel()
 	full := []string{"--no-pager", "--no-optional-locks",
@@ -294,7 +300,7 @@ func runGit(parent context.Context, o Options, args ...string) (string, error) {
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 5 * time.Second
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &capped{&stdout, o.MaxOutput}
+	cmd.Stdout = &capped{&stdout, limit}
 	cmd.Stderr = &capped{&stderr, 4096}
 	err := cmd.Run()
 	if parent.Err() != nil {

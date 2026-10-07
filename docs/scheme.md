@@ -566,6 +566,14 @@ The scratch directory is not the repository: a file the model writes there
 (as `$TMPDIR/…` or by its path) is not a change, and a command that runs one
 of those files — its check script — is a test run. A check fails until the
 work is done, so its failing runs never count toward `unrunnable-after`.
+In a turn nobody reads (`(unattended?)`), a test or check run that passed
+after the turn changed something has the loop call `(keep-passing)`: the host
+keeps the repository's changes as they are. If a hard limit or the progress
+guard then stops the turn, which no strategy can catch, the core puts the
+files back to that state, saves what they held after it, and says so in the
+log and in the turn's end (ADR 18, amended 2026-10-06). A turn that changed
+nothing keeps nothing, and a chat, a person's own stop or a soft limit put
+nothing back.
 Where `git-status` exists, git says whether anything changed, edits made
 through the shell included: a tracked file's status differs from the start
 of the turn, or the file tools wrote a file git now lists as new or listed
@@ -927,6 +935,7 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `(plan-required?)` | true when this turn must plan before it acts, as a supervised run's turns must |
 | `(reviewed?)` | true when a person reads this turn's answer before anything else happens: a chat's turn, and a supervised run's turn that a run checkpoint follows; false in an unattended run, in a run's last turn (no checkpoint follows it) and outside a turn. The evidence loop lets a reviewed turn end unchanged when the request asks for no change yet |
 | `(plan-recorded?)` | true once this turn has recorded a non-empty plan |
+| `(keep-passing)` | keep the repository's uncommitted changes as they are now, as a state a test run passed on, and return how many files were kept; `#f` when the session has no keeper, an error saying why when it cannot keep (not a git work tree, a file over 8 MiB, more than 64 MiB or 4000 files). What is kept is the files git lists as changed (modified, new, deleted) as the bytes on disk, in the scratch directory, replacing the earlier keep. A file the credential denylist refuses, a path the guard protects (`.nodwyn/`, `.git/`, `Makefile`, `scripts/` …), a link and a directory are neither kept nor touched, and the index is not. The evidence loop calls it after a passing run in a turn nobody reads; when a hard limit or the progress guard stops the turn, the core puts back what differs from it, from the files kept or from HEAD, never through a link out of the repository, and refuses if HEAD moved. What it replaces is saved under the scratch directory's `kept/discarded` |
 | `(run-plan)` | the plan of the run this turn belongs to, as its earlier turns left it, read from the log: `((plan . text) (steps . list) (marks . list) (next . n))`, where `marks` are the latest mark per step, in step order, each `((step . n) (state . s) (note . t))`, and `next` is the first unmarked step, or `#f` when every step is marked. `#f` when this turn is not a run's (its `user.msg` follows no `run.turn`) or no turn of the run has recorded a plan. Only the run's turns count: a chat turn between leaves its plan alone, a resume keeps it, and a run started afresh has none |
 | `(unfinished-plan)` | the plan a turn that did not finish left to this one, read from the log, in the shape `run-plan` gives. A turn did not finish when an error, a limit or the person's Stop ended it (its `turn.end` outcome is `error`, `stopped`, `hard_budget`, `spend_limit` or `canceled`), or when nothing ended it; its plan, with every mark made since, goes on through such turns. `#f` when the latest turn that ended finished (outcome `completed`, or none recorded, as in an older log) or no turn since has recorded a plan. `plan-gate` carries it in a chat's turn when a step is unmarked (`plan-left`) |
 | `(plan-carry run)` | record `run`'s plan, from `(run-plan)` or `(unfinished-plan)`, as this turn's, decision `carried`, with its marks |
