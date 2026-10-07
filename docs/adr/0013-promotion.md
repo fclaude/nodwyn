@@ -38,3 +38,15 @@ proves is unchanged — the candidate's model client, window, log and replay
 work end to end — and what it cannot prove, that a real model still
 understands the prompts, was never a promotion gate: `scripts/smoke.sh`
 remains the manual check against a real model.
+
+## Amendment — 2026-10-06 (project trust)
+Since project trust (ADR 45), `.nodwyn/init.scm`, which registers the dev
+tools the selfcheck runs `go-test` through, loads only once its revision is
+accepted, and the selfcheck's temporary config trusts nothing: every
+promotion failed with `unbound variable: go-test`. The selfcheck now reviews
+the repository with `nodwyn trust --repo .` and accepts the revision it
+shows, in that temporary config, so the user's own trust record is neither
+read nor written. This trusts no file the person has not: promote refuses a
+dirty tree, so the files accepted are the committed ones the candidate was
+built from. It also proves the candidate's trust review and acceptance work
+end to end.

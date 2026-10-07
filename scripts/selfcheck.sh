@@ -39,6 +39,14 @@ printf '[control]\nprovider = "ollama"\nurl = "%s"\nmodel = "fake"\n' "$MODEL_UR
 echo "selfcheck: $CAND ($("$CAND" version))"
 test "$("$CAND" eval -e '(+ 1 2)')" = "3"
 
+# The dev tools come from .nodwyn/init.scm, which loads only once its revision
+# is trusted (ADR 45). The record goes in the temporary config, so the user's
+# trust is untouched; promote has refused a dirty tree, so the files trusted are
+# the committed ones the candidate was built from.
+REVISION=$("$CAND" trust --repo . | awk '$1 == "Revision:" { print $2; exit }')
+test -n "$REVISION" || { echo "selfcheck: trust review showed no revision"; exit 1; }
+"$CAND" trust --repo . --accept "$REVISION" >/dev/null
+
 printf '%s\n' \
 	':tools' \
 	':eval (string-length (fs-read "README.md"))' \
