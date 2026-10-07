@@ -292,6 +292,46 @@ func TestResponsesStreamIsToldByItsBody(t *testing.T) {
 	}
 }
 
+// A stream whose terminal response has an empty output, as a ChatGPT plan's
+// server ends one, is the items it finished one by one, in their order: every
+// reply in session 20261007T170623Z-89018e45 read as empty. A terminal output
+// that has items is the reply, whatever the stream finished before it.
+func TestResponsesStreamItemsStandInForAnEmptyOutput(t *testing.T) {
+	event := func(v string) string { return "data: " + v + "\n\n" }
+	items := event(`{"type":"response.created","response":{"status":"in_progress","output":[]}}`) +
+		event(`{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","summary":[]}}`) +
+		event(`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","summary":[{"type":"summary_text","text":"look first"}]}}`) +
+		event(`{"type":"response.output_item.done","output_index":2,"item":{"type":"function_call","call_id":"c1","name":"fs-list","arguments":"{\"path\":\".\"}"}}`) +
+		event(`{"type":"response.output_text.delta","output_index":1,"delta":"listing"}`) +
+		event(`{"type":"response.output_item.done","output_index":1,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"listing"}]}}`)
+	for _, tc := range []struct {
+		name, terminal, content, thinking string
+		calls                             int
+	}{
+		{"empty output", `{"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":9,"output_tokens":5}}}`, "listing", "look first", 1},
+		{"output given", `{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"text":"final"}]}],"usage":{"input_tokens":9,"output_tokens":5}}}`, "final", "", 0},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, items+event(tc.terminal))
+		}))
+		o := NewOpenAI(srv.URL, nil)
+		o.Dialect = ChatResponses
+		out, err := o.Chat(context.Background(), Request{Model: "test"}, nil)
+		srv.Close()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		m := out.Message
+		if m.Content != tc.content || m.Thinking != tc.thinking || len(m.ToolCalls) != tc.calls || out.Usage.OutputTokens != 5 {
+			t.Errorf("%s: %+v", tc.name, out)
+		}
+		if tc.calls > 0 && len(m.ToolCalls) > 0 && (m.ToolCalls[0].ID != "c1" || m.ToolCalls[0].Name != "fs-list" || string(m.ToolCalls[0].Args) != `{"path":"."}` || out.DoneReason != "tool_calls") {
+			t.Errorf("%s: call %+v, done %q", tc.name, m.ToolCalls, out.DoneReason)
+		}
+	}
+}
+
 func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
 	for _, body := range []string{
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n",

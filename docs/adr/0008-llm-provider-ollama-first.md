@@ -242,3 +242,24 @@ plan credential: the sessions that ran gpt-6.1-sol and gpt-6-luna at
 the three sessions on the plan credential, all on 2026-10-07, failed on their
 first request. The **Try** check in Settings sends no system prompt, so it
 could not meet the first refusal.
+
+## Amendment 2026-10-07: a stream's finished items stand in for an empty output
+
+With both amendments above, session `20261007T170623Z-89018e45` (the same plan
+credential and model) got four replies, each with usage (about 6,500 prompt and
+160 output tokens), and every one read as empty: no text and no call, so the
+loop asked again and then ended the turn. nodwyn took a streamed reply from the
+terminal response alone, and the plan's server ends its stream with a response
+whose `output` is empty; the reply is only in the stream's
+`response.output_item.done` events.
+
+A stream's finished items are now kept as they arrive, and when the terminal
+response's `output` is empty they are its output, in their `output_index`
+order. A terminal response whose `output` has items is the reply, as before, so
+a server that repeats them there is read once. Partial items
+(`response.output_item.added`) and deltas are still not read: the reply is
+still buffered through the terminal event (ADR 25).
+
+Not checked: a whole turn on the plan. The shape of the stream is inferred from
+the empty replies the log records, which do not keep the stream itself; nothing
+run here talks to OpenAI.

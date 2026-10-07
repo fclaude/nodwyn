@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -100,22 +101,25 @@ type respResponse struct {
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
-	Output []struct {
-		Type string `json:"type"` // "message", "function_call", "reasoning"
-		// Content is a message's output_text and refusal parts, or a
-		// reasoning item's reasoning_text.
-		Content []struct {
-			Text    string `json:"text"`
-			Refusal string `json:"refusal"`
-		} `json:"content"`
-		Summary []struct {
-			Text string `json:"text"`
-		} `json:"summary"`
-		CallID    string `json:"call_id"`
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
-	} `json:"output"`
-	Usage json.RawMessage `json:"usage"`
+	Output []respItem      `json:"output"`
+	Usage  json.RawMessage `json:"usage"`
+}
+
+// respItem is one item of a reply's output.
+type respItem struct {
+	Type string `json:"type"` // "message", "function_call", "reasoning"
+	// Content is a message's output_text and refusal parts, or a
+	// reasoning item's reasoning_text.
+	Content []struct {
+		Text    string `json:"text"`
+		Refusal string `json:"refusal"`
+	} `json:"content"`
+	Summary []struct {
+		Text string `json:"text"`
+	} `json:"summary"`
+	CallID    string `json:"call_id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 // toResponses is req as a Responses request. A system message is the
@@ -270,6 +274,16 @@ func readResponses(resp *http.Response) (respResponse, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 4096), 32<<20)
 	var data []string
+	// items are the output items the stream finished one by one. A ChatGPT
+	// plan's server ends with a response whose output is empty, so its reply
+	// is only these: read from the terminal response alone, every reply was
+	// empty though the model wrote 160 tokens (session
+	// 20261007T170623Z-89018e45).
+	type doneItem struct {
+		index int
+		item  respItem
+	}
+	var items []doneItem
 	consume := func() (bool, error) {
 		if len(data) == 0 {
 			return false, nil
@@ -280,17 +294,29 @@ func readResponses(resp *http.Response) (respResponse, error) {
 			return false, nil
 		}
 		var event struct {
-			Type     string       `json:"type"`
-			Response respResponse `json:"response"`
+			Type        string       `json:"type"`
+			Response    respResponse `json:"response"`
+			OutputIndex int          `json:"output_index"`
+			Item        respItem     `json:"item"`
 		}
 		if err := json.Unmarshal([]byte(raw), &event); err != nil {
 			return false, errors.New("openai: malformed Responses stream event")
 		}
 		switch event.Type {
+		case "response.output_item.done":
+			items = append(items, doneItem{event.OutputIndex, event.Item})
 		case "response.completed", "response.incomplete", "response.failed":
 			out = event.Response
 			if out.Status != strings.TrimPrefix(event.Type, "response.") {
 				return false, errors.New("openai: Responses terminal event has the wrong status")
+			}
+			// The terminal response's own output is the whole reply when it
+			// has any; the items stand in only for an empty one.
+			if len(out.Output) == 0 {
+				slices.SortStableFunc(items, func(a, b doneItem) int { return a.index - b.index })
+				for _, d := range items {
+					out.Output = append(out.Output, d.item)
+				}
 			}
 			return true, nil
 		case "error":
