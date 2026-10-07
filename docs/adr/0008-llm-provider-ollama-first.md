@@ -213,3 +213,32 @@ counting them as the head of the prompt that a system message was. Not
 checked: nothing run here talks to OpenAI (tests use no real key), so that the
 plan server accepts the request as sent is not shown, and a field of the request
 it refuses next, as it refused this one, would show on the first real turn.
+
+## Amendment 2026-10-07: a Responses reply is a stream unless it opens as an object
+
+After the amendment above, session `20261007T165642Z-97ee33d1` (the same plan
+credential and model) got past the refusal: each of its three attempts was
+answered `200 OK` after about four seconds, so the server accepted the request
+as sent. Each then failed with `openai: bad response: invalid character 'e'
+looking for beginning of value`. nodwyn read a reply as a stream only when its
+`Content-Type` began `text/event-stream`, and as JSON otherwise; a stream opens
+`event: response.created`, and this one came under some other type.
+
+The request asks for a stream, so a reply is now read as JSON only when its
+first byte after white space opens an object, and as a stream otherwise,
+whatever its `Content-Type` says; a reply labelled `text/event-stream` is
+still always a stream. A stream that ends without a terminal event says the
+`Content-Type` it came with, and not its body, which may hold what redaction
+has not yet seen (ADR 25). The redaction boundary is unchanged: the reply is
+still buffered through its terminal event.
+
+Not checked: the `Content-Type` the plan server sends, which the log does not
+record; if it streams something other than server-sent events, the error now
+names the type.
+
+Until this amendment, no nodwyn session had completed a request on a ChatGPT
+plan credential: the sessions that ran gpt-6.1-sol and gpt-6-luna at
+`api.openai.com` on 2026-10-05 used an API key (`model-api-openai-com`), and
+the three sessions on the plan credential, all on 2026-10-07, failed on their
+first request. The **Try** check in Settings sends no system prompt, so it
+could not meet the first refusal.

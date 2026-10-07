@@ -253,16 +253,21 @@ func (o *OpenAI) respond(ctx context.Context, req Request, onDelta func(Delta)) 
 
 // readResponses buffers a Responses event stream through its terminal event,
 // so a credential split across deltas cannot escape redaction (ADR 25).
-// Compatible servers that answer JSON are still accepted.
+// Compatible servers that answer JSON are still accepted. A reply is JSON
+// only if it opens as an object: the request asks for a stream, and a ChatGPT
+// plan's server sent one that its Content-Type did not name, which was read as
+// JSON ("invalid character 'e'", session 20261007T165642Z-97ee33d1).
 func readResponses(resp *http.Response) (respResponse, error) {
 	var out respResponse
-	if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 32<<20)).Decode(&out); err != nil {
+	contentType := resp.Header.Get("Content-Type")
+	body := bufio.NewReader(io.LimitReader(resp.Body, 32<<20))
+	if !strings.HasPrefix(contentType, "text/event-stream") && startsJSON(body) {
+		if err := json.NewDecoder(body).Decode(&out); err != nil {
 			return out, fmt.Errorf("openai: bad response: %w", err)
 		}
 		return out, nil
 	}
-	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 32<<20))
+	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 4096), 32<<20)
 	var data []string
 	consume := func() (bool, error) {
@@ -310,5 +315,23 @@ func readResponses(resp *http.Response) (respResponse, error) {
 	if done, err := consume(); done || err != nil {
 		return out, err
 	}
-	return out, errors.New("openai: Responses stream ended without a terminal response")
+	// The header is named, not the body: the body may hold what redaction
+	// has not seen.
+	return out, fmt.Errorf("openai: Responses stream ended without a terminal response (Content-Type %q)", contentType)
+}
+
+// startsJSON says whether r's first byte after white space opens a JSON
+// object, without reading it.
+func startsJSON(r *bufio.Reader) bool {
+	for n := 1; ; n++ {
+		b, err := r.Peek(n)
+		if err != nil {
+			return false
+		}
+		switch c := b[n-1]; c {
+		case ' ', '\t', '\r', '\n':
+		default:
+			return c == '{'
+		}
+	}
 }

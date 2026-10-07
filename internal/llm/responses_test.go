@@ -260,6 +260,38 @@ func TestResponsesEventStreamBuffersUntilCompleted(t *testing.T) {
 	}
 }
 
+// A stream is read as one whatever its Content-Type says, as a ChatGPT plan's
+// server sent one that nodwyn read as JSON (session 20261007T165642Z-97ee33d1,
+// "invalid character 'e'"); a reply that opens as an object is still JSON.
+func TestResponsesStreamIsToldByItsBody(t *testing.T) {
+	stream := "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\"}}\n\n" +
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"text\":\"ok\"}]}]}}\n\n"
+	object := "\n  {\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"text\":\"ok\"}]}]}"
+	for _, tc := range []struct{ contentType, body string }{
+		{"", stream},
+		{"application/json", stream},
+		{"text/plain; charset=utf-8", stream},
+		{"application/json", object},
+		{"", object},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// An empty value is sent as no header at all, not sniffed.
+			w.Header()["Content-Type"] = nil
+			if tc.contentType != "" {
+				w.Header().Set("Content-Type", tc.contentType)
+			}
+			fmt.Fprint(w, tc.body)
+		}))
+		o := NewOpenAI(srv.URL, nil)
+		o.Dialect = ChatResponses
+		out, err := o.Chat(context.Background(), Request{Model: "test"}, nil)
+		srv.Close()
+		if err != nil || out.Message.Content != "ok" {
+			t.Errorf("Content-Type %q, body %.20q: %+v, %v", tc.contentType, tc.body, out, err)
+		}
+	}
+}
+
 func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
 	for _, body := range []string{
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n",
