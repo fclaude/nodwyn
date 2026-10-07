@@ -58,12 +58,19 @@ func newRigWith(t *testing.T, noConfirm bool, adjust func(*config.Config), turns
 	return &rig{t: t, s: s, srv: srv, repo: config.CanonicalPath(repo), logb: logb}
 }
 
+// idleWait is how long drain waits for a session to go idle. It only has to
+// tell a stuck session from a slow one, and a slow one is ordinary: the
+// heaviest tests take about a second alone and 5 to 12 seconds when this
+// package's tests run in parallel under -race beside the other packages', so
+// a limit of 10 seconds failed them in make promote.
+const idleWait = 60 * time.Second
+
 // drain collects events until the session goes idle, answering prompts
 // with answer.
 func (r *rig) drain(answer string) []event.Event {
 	r.t.Helper()
 	var evs []event.Event
-	timeout := time.After(10 * time.Second)
+	timeout := time.After(idleWait)
 	for {
 		select {
 		case ev := <-r.s.Events():
@@ -79,7 +86,7 @@ func (r *rig) drain(answer string) []event.Event {
 				}
 			}
 		case <-timeout:
-			r.t.Fatalf("no idle after 10s; events: %d", len(evs))
+			r.t.Fatalf("no idle after %v; events: %d", idleWait, len(evs))
 		}
 	}
 }
