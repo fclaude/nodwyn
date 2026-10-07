@@ -26,9 +26,30 @@
 ;; model-turn, asked again when the reply was cut at the output limit with no
 ;; tool call to answer, up to output-cut-retries times: a cut-off reply would
 ;; otherwise end the turn, or leave the planner with a partial plan.
+;; A plain (ask-model), the one that offers every tool, is also asked again
+;; when the reply has no words and no tool call, up to empty-reply-retries
+;; times, with a note saying so: such a reply would otherwise end the turn
+;; with nothing for the person to read (ADR 32, amended 2026-10-06). The
+;; planner and the asks that offer no tools have their own ways (plan-empty-retries)
+;; or none, and keep them.
+(define empty-reply-retries 1)
+
+(define empty-reply-message
+  "Your previous reply was empty: it said nothing and called no tool. Make your next tool call, or give your answer.")
+
+(define (empty-reply? reply)
+  (and (null? (assoc-ref reply 'tool-calls '()))
+       (not (equal? (assoc-ref reply 'done "") "length"))
+       (string-empty? (string-trim (format "~a" (assoc-ref reply 'content ""))))))
+
 (define (ask-model . args)
-  (let* ((args (if turn-stopping '("control" ((tools . #f))) args)))
-    (ask-model-with args)))
+  (let* ((plain (and (null? args) (not turn-stopping)))
+         (args (if turn-stopping '("control" ((tools . #f))) args)))
+    (let again ((reply (ask-model-with args)) (left empty-reply-retries))
+      (if (and plain (> left 0) (empty-reply? reply))
+          (begin (add-message empty-reply-message)
+                 (again (ask-model-with args) (- left 1)))
+          reply))))
 
 (define (ask-model-with args)
   (let again ((reply (apply model-turn args)) (left output-cut-retries))
@@ -155,8 +176,11 @@
 
 ;; When nobody reviews the work as it happens (unattended, or a supervised
 ;; run), a turn ends on evidence, not on the model's word: something changed,
-;; and a test ran after the last edit. A reply that stops without that gets a
-;; reminder, at most finish-reminders times. When a person reads the answer
+;; and a test ran after the last edit, and that run did not fail. A reply that
+;; stops without that gets a reminder, at most finish-reminders times; a
+;; failing run is told once (finish-failing-message) and the model may answer
+;; that the tests fail on the unchanged code too. A run with failures counted
+;; as a run (shell.scm), so a turn could end with its last test run red. When a person reads the answer
 ;; before anything else happens ((reviewed?): a chat, or a run's turn a
 ;; checkpoint follows), the no-change reminder says the request may ask for
 ;; no change yet, a proposal to review first, and after it the turn may end
@@ -284,40 +308,56 @@
                           (match (cdr ps)))))
                (any (cdr ls)))))))
 
+;; Whether a call that ran ended with a non-zero exit status, #f for one that
+;; did not run to an exit (denied, not executed, interrupted) and for a result
+;; with no status.
+(define (run-failed? result)
+  (and (assoc-ref result 'ok #f)
+       (let ((v (guard (e (else #f)) (json-parse (format "~a" (assoc-ref result 'value ""))))))
+         (and (pair? v)
+              (let ((status (assoc-ref v "status" 0)))
+                (and (integer? status) (not (= status 0))))))))
+
+;; Whether the latest run counted as a test is red: a run that ran decides it,
+;; one that did not leaves it as it was.
+(define (run-red result red)
+  (if (assoc-ref result 'ok #f) (run-failed? result) red))
+
 (define (evidence-loop request)
   (let ((before (git-state)))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
     ;; reading: the rounds in a row that only looked (reading-rounds).
+    ;; red: the latest test or check run since the last edit exited non-zero.
     (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0)
-               (scripts '()) (written '()) (noted #f) (excused #f) (reading 0))
+               (scripts '()) (written '()) (noted #f) (excused #f) (reading 0) (red #f))
       (let ((calls (assoc-ref reply 'tool-calls '())))
         (if (pair? calls)
             (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs)
-                       (scripts scripts) (written written))
+                       (scripts scripts) (written written) (red red))
               (cond ((pair? cs)
                      (let ((c (car cs)) (r (car rs)))
                        (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
                               (let ((name (scratch-name c)))
                                 (if name
                                     (walk (cdr cs) (cdr rs) edited tested failed
-                                          (if (member name scripts) scripts (cons name scripts)) written)
-                                    (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written)))))
+                                          (if (member name scripts) scripts (cons name scripts)) written red)
+                                    (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written) #f))))
                              ;; A check fails until the work is done: only a
                              ;; run that went through says the setup works.
                              ((check-run? c scripts)
-                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 failed) scripts written))
+                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 failed) scripts written (run-red r red)))
                              ((test-call? c)
-                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written))
-                             (else (walk (cdr cs) (cdr rs) edited tested failed scripts written)))))
+                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written (run-red r red)))
+                             (else (walk (cdr cs) (cdr rs) edited tested failed scripts written red)))))
                     (else
                      (maybe-compact request reply)
                      (let ((stuck (and (not offered) (>= failed unrunnable-after)))
                            (reading (reading-rounds calls reading)))
                        (when stuck (add-message (finish-unrunnable-message failed)))
                        (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted excused
-                             reading)))))
+                             reading red)))))
             (let* ((now (and before (git-state)))
                    (new-lines (if now (filter (lambda (l) (not (member l before))) now) '()))
                    ;; With git: a tracked file changed, the file tools wrote
@@ -334,12 +374,16 @@
                               ((and (not changed) (not excused))
                                (if reviewed finish-no-change-reviewed-message finish-no-change-message))
                               ((and changed (not tested) (not offered)) finish-untested-message)
+                              ((and changed red (not offered)) finish-failing-message)
                               (else #f)))
                    (new (if (and now changed (not noted)) (git-new-files before now) '())))
               (cond ((and gap (< reminders finish-reminders))
                      (add-message gap)
+                     ;; A run the model was told failed is red again only if it
+                     ;; runs and fails again: it may answer that the tests fail
+                     ;; on the unchanged code too, and end.
                      (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted
-                           (or excused (and (not changed) reviewed)) 0))
+                           (or excused (and (not changed) reviewed)) 0 #f))
                     ((and (pair? new) (not turn-stopping))
                      (add-message (finish-new-files-message new))
-                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0)))))))))
+                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0 red)))))))))

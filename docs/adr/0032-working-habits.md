@@ -777,3 +777,45 @@ because its new revision has not yet been trusted. It now keeps that edit and
 reports that it has not run, while ordinary reload failures still roll back.
 This is a host-authority correction, not a new model working rule; the regression
 is `TestOptimizeKeepsAnEditPendingTrustReview`, using a scripted model.
+
+## Amendment 2026-10-06: a failing test run is told, and an empty reply is asked again
+
+Two checks in the default loop, built after a review of its finish gate. The
+counts below are from the 161 local session logs of 2026-09-21 to 10-05 (185
+turns, 59 of which changed a repository file), read from `llm.resp`,
+`tool.call` and `tool.result`.
+
+- **A test run that exited non-zero is told once.** The evidence loop set
+  `tested` for any test or check run however it ended, and `shell.scm` counts a
+  run with failures as a run so the "cannot run the tests" way out stays for
+  commands that never ran. A turn could therefore end with its last test run
+  red and the evidence satisfied. The loop now tracks whether the latest test
+  or check run since the last edit exited non-zero (`run-failed?`, `red` in
+  `evidence-loop`), and a turn that ends on one is told
+  `finish-failing-message` once: fix it, or compare on the unchanged code as
+  the working rules ask, say the failure is not the change's, and finish. A
+  run the model was told of is not told again unless it runs and fails again,
+  and `finish-reminders` still caps the turn. A check script's failing run
+  counts, so `TestCheckScriptIsATestNotAChange` and
+  `TestFailingCheckRunsAreNotUnrunnable` now expect the reminder before the
+  turn ends. **No logged turn ended this way**: of the 59, 25 ended after a
+  green last run, 33 had no `shell-exec` test command after the last edit
+  (this loop does not run in a chat, and a run through the `validate` tool is
+  not such a command), and the one my count marked red had run `validate`
+  green after it. The gate comes
+  from reading the code, not from a logged failure.
+  `TestAFailingRunBeforeTheLastEditIsNotTold` passes without the change; it
+  is there so the reminder never counts a run before the last edit.
+- **An empty reply is asked again once.** A plain `(ask-model)`, the one that
+  offers every tool, whose reply has no words and no tool call, is asked
+  again with `empty-reply-message`, once (`empty-reply-retries`). The planner
+  has its own retry (`plan-empty-retries`) and asks that offer no tools are
+  left as they were. **No logged reply was empty**: 0 of 205 replies without
+  a tool call, in the main context, across the local logs.
+- **Not built.** A re-ask for a reply that announces an action and calls
+  nothing ("Let me…"): one of the 205, glm ending on "Committing now:"
+  (20261004T043621Z-4f1e4886 seq 419), is too few for a rule that reads the
+  reply's words. A planner rule to write steps as behaviour and not as code:
+  none of the 89 logged plans quotes code. Keeping the last passing patch when
+  a turn hits its limit: the repository already holds every edit, and
+  restoring an earlier state would delete work the person can see.

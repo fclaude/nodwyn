@@ -198,6 +198,10 @@ evidence:
     \code{finish-no-change-message}.
   \item A reply that stops after a change, with no test run since the last
     edit, gets \code{finish-untested-message}.
+  \item A reply that stops after a change whose last test or check run since
+    the last edit exited non-zero gets \code{finish-failing-message}, once
+    for that run: the model may answer that the tests fail on the unchanged
+    code too, and end.
   \item At most \code{finish-reminders} (2) such reminders per turn.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),

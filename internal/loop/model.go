@@ -147,9 +147,13 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		_ = l.record(log.KindNote, log.Note{Text: "model request failed: " + err.Error()})
 		return nil, err
 	}
+	notes := l.tidyCalls(resp)
 	l.show(resp)
 	if err := l.record(log.KindLLMResp, responseRecord(resp, ep.Rates)); err != nil {
 		return nil, err
+	}
+	for _, text := range notes {
+		_ = l.record(log.KindNote, log.Note{Text: text})
 	}
 	if resp.DoneReason == "length" {
 		// The reply is cut short; a strategy decides what to do about it
@@ -161,6 +165,27 @@ func (l *Loop) ask(ctx context.Context, name string, offer toolOffer, headroom b
 		_ = l.record(log.KindNote, log.Note{Text: note})
 	}
 	return resp, nil
+}
+
+// tidyCalls puts the arguments of the reply's calls that came wrapped in a
+// JSON string in the plain shape (scheme.TidyArgs; ADR 29, amended
+// 2026-10-06) before anything reads them: the log, the strategy and the
+// tool see one form, and the history the model reads next shows its call
+// as the tool took it. It returns a note for each call it changed, which
+// ask records after the reply, so the log says it happened.
+func (l *Loop) tidyCalls(resp *llm.Response) []string {
+	var notes []string
+	for i, tc := range resp.Message.ToolCalls {
+		p, ok := l.interp.Lookup(tc.Name)
+		if !ok || !p.Tool() {
+			continue
+		}
+		if args, note := p.TidyArgs(tc.Args); note != "" {
+			resp.Message.ToolCalls[i].Args = args
+			notes = append(notes, fmt.Sprintf("%s call %s: %s; read as the plain call", tc.Name, tc.ID, note))
+		}
+	}
+	return notes
 }
 
 func hasUserMessage(msgs []llm.Message) bool {

@@ -66,6 +66,32 @@ func TestCutRepliesAreRetriedAtMostTwice(t *testing.T) {
 	}
 }
 
+// A reply with no words and no tool call would end the turn with nothing to
+// read: the plain ask is made again once, and the model is told why (ADR 32,
+// amended 2026-10-06). The one retry is all there is: a second empty reply
+// stands.
+func TestAnEmptyReplyIsAskedAgainOnce(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, "", 10, fake.Turn{Thinking: "hm"}, fake.Turn{Content: "done"})
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 2 {
+		t.Fatalf("%d requests, want 2", len(r.srv.Requests))
+	}
+	if !strings.Contains(string(r.srv.Requests[1].Raw), "Your previous reply was empty") {
+		t.Fatal("the model was not told its reply was empty")
+	}
+
+	r = strategyRig(t, "", 10, fake.Turn{Thinking: "hm"}, fake.Turn{Thinking: "hm"}, fake.Turn{Content: "never asked"})
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 2 {
+		t.Fatalf("%d requests, want 2", len(r.srv.Requests))
+	}
+}
+
 // A model's own max_output caps its replies instead of the window's, which a
 // remote reasoning model may need; the request records it, so it replays.
 func TestAModelMayCapItsOwnReplies(t *testing.T) {

@@ -1004,7 +1004,7 @@ A turn is a Scheme procedure. For each user message the session calls
 \code{(nodwyn-turn request)}, which runs the plan gate when the turn must
 plan and then \code{(agent-turn request)}. Both are defined before
 \file{init.scm} loads, so a project can redefine either. Stripped of the
-plan gate, \code{/compact}, \code{/optimize}, the retry of cut replies and
+plan gate, \code{/compact}, \code{/optimize}, the retry of cut and empty replies and
 the evidence loop of unattended turns, the default \code{agent-turn} is this
 loop:
 

@@ -128,3 +128,53 @@ func TestOptionalParameters(t *testing.T) {
 		}
 	}
 }
+
+// A model sometimes wraps what it sends in a JSON string: the whole object,
+// or a list or object parameter. TidyArgs unwraps those and nothing else
+// (ADR 29, amended 2026-10-06). A string that is not the JSON the parameter
+// takes stays as it is, and ArgsFromJSON refuses it as before.
+func TestTidyArgsUnwrapsJSONStrings(t *testing.T) {
+	p := &Prim{Name: "run", Meta: Meta{Doc: "d", Params: []Param{
+		{Name: "cmd", Type: "string"},
+		{Name: "args", Type: "list", Optional: true},
+		{Name: "opts", Type: "alist", Optional: true},
+	}}}
+	for _, c := range []struct{ name, raw, want, note string }{
+		{"plain", `{"cmd":"bash","args":["-c","echo <hi>"]}`, ``, ``},
+		{"object in a string", `"{\"cmd\":\"bash\",\"args\":[\"-c\",\"x\"]}"`, `{"cmd":"bash","args":["-c","x"]}`,
+			"the arguments came as a JSON string holding the object"},
+		{"list in a string", `{"cmd":"bash","args":"[\"-c\", \"echo <hi>\"]"}`, `{"args":["-c","echo <hi>"],"cmd":"bash"}`,
+			`argument "args" came as a JSON string holding its list`},
+		{"list after a line break", `{"cmd":"bash","args":"\n[\"-c\", \"x\"]"}`, `{"args":["-c","x"],"cmd":"bash"}`,
+			`argument "args" came as a JSON string holding its list`},
+		{"object in a string, in an object parameter", `{"cmd":"bash","opts":"{\"k\":1}"}`, `{"cmd":"bash","opts":{"k":1}}`,
+			`argument "opts" came as a JSON string holding its object`},
+		{"both", `"{\"cmd\":\"bash\",\"args\":\"[\\\"-c\\\"]\"}"`, `{"args":["-c"],"cmd":"bash"}`,
+			`the arguments came as a JSON string holding the object; argument "args" came as a JSON string holding its list`},
+		{"text that is not JSON", `{"cmd":"bash","args":"-c"}`, ``, ``},
+		{"a string parameter keeps its text", `{"cmd":"[1]"}`, ``, ``},
+		{"an object where a list goes", `{"cmd":"bash","args":"{\"k\":1}"}`, ``, ``},
+		{"a list after trailing text", `{"cmd":"bash","args":"[1] and more"}`, ``, ``},
+		{"a whole string that is not an object", `"not json"`, ``, ``},
+		{"a whole string that holds a list", `"[1]"`, ``, ``},
+	} {
+		got, note := p.TidyArgs([]byte(c.raw))
+		want := c.want
+		if want == "" {
+			want = c.raw
+		}
+		if string(got) != want || note != c.note {
+			t.Errorf("%s: %s, %q; want %s, %q", c.name, got, note, want, c.note)
+		}
+		if c.note != "" {
+			if _, err := p.ArgsFromJSON(got); err != nil {
+				t.Errorf("%s: the tidy arguments are refused: %v", c.name, err)
+			}
+		}
+	}
+	for _, raw := range []string{`{"cmd":"bash","args":"-c"}`, `{"cmd":"bash","args":"{\"k\":1}"}`} {
+		if _, err := p.ArgsFromJSON([]byte(raw)); err == nil {
+			t.Errorf("%s is accepted", raw)
+		}
+	}
+}

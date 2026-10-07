@@ -244,6 +244,12 @@
   "No file has changed yet. Make the change in the repository before finishing, unless the request asks for no change yet (to propose something first and wait for review, or to answer a question): then say so in your report and finish, since a person reads it before anything else happens.")
 (define finish-untested-message
   "You changed files after your last test run. Run the tests that cover what you changed, and a check of the behaviour you fixed or added, then finish.")
+;; A run with failures counted as a run (shell.scm), so a turn could end with
+;; its last test run red and the evidence satisfied. The way out is the
+;; working rules' comparison on the unchanged code: a failure that is there
+;; too is not the change's (ADR 32, amended 2026-10-06).
+(define finish-failing-message
+  "Your last test run after your last edit failed. If those failures come from your change, fix them and run the tests again. If the same tests fail on the unchanged code too (compare on a copy of the last commit, as the rules ask), say so in your report and finish.")
 (define (finish-unrunnable-message attempts)
   (string-append
    "Your last " (number->string attempts)

@@ -497,7 +497,8 @@ written unless every edit applies.
 test rig never stops to ask. With nobody watching, nodwyn's defaults also
 change (docs/scheme.md §9): the system prompt is how to work rather than
 what to tell an approver, and a turn ends on evidence — a change, and a test
-run after it — with an honest way out when the tests cannot run at all. It answers the guard's questions; it does not
+run after it that did not fail — with an honest way out when the tests cannot
+run at all. It answers the guard's questions; it does not
 overrule its refusals. Still denied, exactly as with a human at the prompt:
 
 - anything outside the repository, and symlinks that leave it;

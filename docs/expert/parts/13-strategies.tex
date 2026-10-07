@@ -227,7 +227,9 @@ A reply that reaches the output limit comes back with \code{done} set to
 \code{"length"}. If it had no tool call to answer, the turn would simply
 end with half an answer. \code{ask-model} is \code{model-turn} with a
 remedy: it adds a note asking the model to be briefer and asks again, at
-most \code{output-cut-retries} (2) times. Use \code{ask-model} wherever you
+most \code{output-cut-retries} (2) times. A plain \code{(ask-model)}, which
+offers every tool, also asks again once when the reply has no words and no
+tool call, with \code{empty-reply-message}. Use \code{ask-model} wherever you
 would use \code{model-turn}; the default loop, the planner and sub-agents
 all do.
 

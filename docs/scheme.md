@@ -521,7 +521,7 @@ of cut replies and the evidence loop for unattended turns (all below, and in
 
 | | |
 |---|---|
-| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and `'((tools "fs-read" "fs-list"))` only the named ones (an unknown name is an error that lists the tools), as a sub-agent's requests do. Both are recorded (`llm.req` `no_tools`, `offered_tools`) so replay rebuilds the request. Any other value but `#t` is an error: `'((tools #f))`, a list holding #f, is not a silent yes. `'((headroom . #t))` lets the request run past the window's high water, up to its ceiling (`(window-limits)`), before older context is trimmed, as compaction's note request does; `llm.req` records that trim line as `high_water`. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none), `cached-tokens`, the prompt tokens the provider read from its cache (`#f` when it does not say), `reasoning-tokens`, the part of `output-tokens` spent thinking (0 when the server does not say), and `cost`, the request's cost in USD as the provider reported it or as the model's configured prices estimate it (`#f` when neither). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nodwyn replay --window`. An attached image in the window goes only to a model that takes images at the host its confirm named; any other request carries a line saying why it does not, recorded as `llm.req` `withheld_images` (ADR 22, amended 2026-10-01). |
+| `(model-turn)` `(model-turn name)` `(model-turn name options)` | Ask a model once: the control model (`"control"`), or the configured model `[models.NAME]` (manual, "Choosing models"). `options` is an alist; `'((tools . #f))` offers the model no tools, as the planner's request does, and `'((tools "fs-read" "fs-list"))` only the named ones (an unknown name is an error that lists the tools), as a sub-agent's requests do. Both are recorded (`llm.req` `no_tools`, `offered_tools`) so replay rebuilds the request. Any other value but `#t` is an error: `'((tools #f))`, a list holding #f, is not a silent yes. `'((headroom . #t))` lets the request run past the window's high water, up to its ceiling (`(window-limits)`), before older context is trimmed, as compaction's note request does; `llm.req` records that trim line as `high_water`. Returns an alist: `content`, `thinking`, `done` (why it stopped), `tool-calls`, each call an alist of `id`, `name` and `args` (the model's JSON text; a call whose arguments the model wrapped in a JSON string, the whole object or a list or object parameter, arrives unwrapped and the log notes it, ADR 29), and `prompt-tokens` and `output-tokens`, the server's counts for this request (0 when it gives none), `cached-tokens`, the prompt tokens the provider read from its cache (`#f` when it does not say), `reasoning-tokens`, the part of `output-tokens` spent thinking (0 when the server does not say), and `cost`, the request's cost in USD as the provider reported it or as the model's configured prices estimate it (`#f` when neither). The window is built from the log, so the model sees what the strategy's earlier calls recorded; each request is recorded, with the model it went to, for `nodwyn replay --window`. An attached image in the window goes only to a model that takes images at the host its confirm named; any other request carries a line saying why it does not, recorded as `llm.req` `withheld_images` (ADR 22, amended 2026-10-01). |
 | `(run-tools calls)` | Run calls in order, each through the guard. Returns an alist per call: `id`, `name`, `ok`, `value` (the text the model reads, carrying the tool's provenance), `error`, `denied`. |
 | `(skip-tools calls reason)` | Answer calls without running them; the model reads `Not executed: reason`. |
 | `(add-message text)` | Add text to the conversation, logged as `harness.msg`. The model reads it as a user message at the next `model-turn`; the current task stays the user's. Refused while calls from the latest `model-turn` are unanswered, since a call must be followed by its result. |
@@ -544,7 +544,10 @@ run's `auto_approve`, `--judge`, `--unattended`) or a supervised run's turn
 default `agent-turn` ends a turn on evidence, not on the model's word
 (`evidence-loop`): a reply that stops before anything changed, or with a
 change and no test run after it, gets `finish-no-change-message` or
-`finish-untested-message`, at most `finish-reminders` (2) times. A command is
+`finish-untested-message`, at most `finish-reminders` (2) times; one whose
+last test or check run after the last edit exited non-zero gets
+`finish-failing-message` once for that run, and may answer that the tests fail
+on the unchanged code too and end. A command is
 a test run when its command line contains one of `test-command-words`
 (pytest, go test, cargo test, npm test, make test, …; a project may redefine
 the list). After `unrunnable-after` (6) test commands in a row fail to run,
@@ -600,8 +603,11 @@ A reply's `done` is `"length"` when the model reached the output cap (the
 model's reply cap: its `max_output`, else the longest reply its provider publishes (at most a quarter of its context), else `window.output_reserve`, at most a quarter of a context too small for the window and that reply); the core notes it in the log. What to do is the
 strategy's: `(ask-model …)` is `model-turn`, asked again with
 `output-cut-message` when the reply was cut with no tool call to answer, at
-most `output-cut-retries` (2) times. The default loop, the planner and
-`sub-agent` use it.
+most `output-cut-retries` (2) times. A plain `(ask-model)`, the one that offers
+every tool, is also asked again, once (`empty-reply-retries`), with
+`empty-reply-message`, when the reply has no words and no tool call: such a
+reply would end the turn with nothing to read. The default loop, the planner
+and `sub-agent` use it.
 
 A strategy talks to the model through tools: a tool's description is an
 instruction, its result and a skip reason are feedback. `add-message` is for
@@ -649,7 +655,7 @@ strings (§1.1):
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them; a question is answered, and a request for something never built is told so, with what exists, what is missing and what the model would build, before it builds anything |
 | `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the files, tests and docs involved, and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
-| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)` | what the evidence loop tells the model (§9) |
+| `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)` | what the evidence loop tells the model (§9) |
 | `(reading-reminder-message n)`, `(reading-reminder-reviewed-message n)` | what the default loop tells a model whose last `n` rounds only looked (§9) |
 | `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5) |
 | `task-header` `plan-header` | the headers under which the window shows the user's request, at the head of their message, and its plan, as a message of its own after the calls it came with are answered; neither is ever trimmed away. The system prompt stays the same, so a new request or a plan keeps the server's cached prefix (window recipe v15); before v15 the system prompt carried both |

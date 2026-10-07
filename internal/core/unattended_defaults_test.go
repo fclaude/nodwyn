@@ -88,6 +88,68 @@ func TestUnattendedTurnEndsOnEvidence(t *testing.T) {
 	}
 }
 
+// A test run that exits non-zero is a run, but it is no evidence that the
+// change works: a turn that ends on one is told once (ADR 32, amended
+// 2026-10-06), and ends after the model has run the tests green.
+func TestUnattendedTurnIsToldOfAFailingTestRun(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w"),                       // a change
+		shell("t1", "false # go test ./..."), // a test run that fails
+		fake.Turn{Content: "done"},           // told the run failed
+		shell("t2", "true # go test ./..."),  // fixed, and run again
+		fake.Turn{Content: "done"},           // ends
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5", len(r.srv.Requests))
+	}
+	if !strings.Contains(lastMessage(r, 3), "last test run after your last edit failed") {
+		t.Fatalf("failing-run reminder: %q", lastMessage(r, 3))
+	}
+}
+
+// The reminder offers a way out, that the tests fail on the unchanged code
+// too: a model that says so ends the turn without running them again, and
+// is not asked a second time about the run it was told of.
+func TestAFailingTestRunIsToldOnce(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w"),
+		shell("t1", "false # go test ./..."),
+		fake.Turn{Content: "done"}, // told
+		fake.Turn{Content: "TestX fails on the unchanged code too; the change is not the cause."},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 4 {
+		t.Fatalf("%d requests, want 4", len(r.srv.Requests))
+	}
+}
+
+// A failing run before the last edit says nothing about the change as it
+// now is: only the runs after the last edit count. This holds without the
+// failing-run reminder too, and is here so the reminder does not nag.
+func TestAFailingRunBeforeTheLastEditIsNotTold(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w"),
+		shell("t1", "false # go test ./..."),
+		write("w2", "fix.txt", "y\n"),
+		shell("t2", "true # go test ./..."),
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5", len(r.srv.Requests))
+	}
+}
+
 // A person reads a chat's reply before anything else happens, so a turn
 // asked for a proposal may end unchanged once the model says so: the
 // reminder says it may, once.
@@ -162,24 +224,29 @@ func gitWorkTree(t *testing.T) string {
 }
 
 // The check script lives in the scratch directory: writing it is not a
-// change, and running it is a test run, failing or not.
+// change, and running it is a test run, failing or not. A failing one is a
+// run, so the turn is told it failed and not that nothing ran.
 func TestCheckScriptIsATestNotAChange(t *testing.T) {
 	t.Parallel()
 	r := unattendedRig(t,
 		write("c", "$TMPDIR/check.sh", "exit 1\n"), // the check, failing
 		fake.Turn{Content: "done"},                 // nothing changed yet: reminded
 		writeFile("w"),                             // a change
-		shellArgs("t", "bash", "$TMPDIR/check.sh"), // the check, after the change
+		shellArgs("t", "bash", "$TMPDIR/check.sh"), // the check, after the change: a run, though it fails
+		fake.Turn{Content: "done"},                 // told it failed
 		fake.Turn{Content: "done"},                 // ends
 	)
 	if e := r.turn("fix it"); e != "" {
 		t.Fatal(e)
 	}
-	if len(r.srv.Requests) != 5 {
-		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
 	}
 	if !strings.Contains(lastMessage(r, 2), "No file has changed yet") {
 		t.Fatalf("a write to $TMPDIR counted as a change: %q", lastMessage(r, 2))
+	}
+	if !strings.Contains(lastMessage(r, 5), "last test run after your last edit failed") {
+		t.Fatalf("a failing check was not told as a failing run: %q", lastMessage(r, 5))
 	}
 }
 
@@ -191,13 +258,13 @@ func TestFailingCheckRunsAreNotUnrunnable(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		turns = append(turns, shellArgs("t"+string(rune('a'+i)), "bash", "$TMPDIR/check.sh", string(rune('a'+i))))
 	}
-	turns = append(turns, fake.Turn{Content: "done"})
+	turns = append(turns, fake.Turn{Content: "done"}, fake.Turn{Content: "done"}) // told the last run failed, then ends
 	r := unattendedRig(t, turns...)
 	if e := r.turn("fix it"); e != "" {
 		t.Fatal(e)
 	}
-	if len(r.srv.Requests) != 9 {
-		t.Fatalf("%d requests, want 9", len(r.srv.Requests))
+	if len(r.srv.Requests) != 10 {
+		t.Fatalf("%d requests, want 10", len(r.srv.Requests))
 	}
 	for i := range r.srv.Requests {
 		if strings.Contains(lastMessage(r, i), "did not run successfully") {

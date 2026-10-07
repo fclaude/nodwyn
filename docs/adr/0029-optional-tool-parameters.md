@@ -38,3 +38,30 @@ A Go primitive may declare trailing parameters `Optional`.
 ## Consequences
 Tools can gain options without new names or breaking project code. Replay
 is unaffected: requests carry the tool schemas recorded in the log.
+
+## Amendment 2026-10-06: arguments the model wrapped in a JSON string
+
+Of 12,109 tool results in the 161 local session logs of 2026-09-21 to 10-05,
+23 were refused for the shape of their arguments, and 12 of those were a
+model wrapping JSON in a string: the whole object sent as a JSON string (7,
+glm: six `shell-exec` and an `fs-edit`), and `args` sent as a JSON string
+holding the list (5: qwen three times, glm, qwen3.8-max). Each cost a round
+to be sent again. The other 11 were names the tool does not have (`limit`,
+`offset`, `timeout`, `commentary`, `parameters`) and a missing `path` or
+`cmd`.
+
+`scheme.Prim.TidyArgs` unwraps the first two. When a reply arrives
+(`Loop.tidyCalls`, before the log, the strategy and the tool read it), a
+call's arguments that are a JSON string holding an object, and a list or
+object parameter that is a JSON string holding a list or an object, are
+replaced by what the string holds, and the log gets a note saying which call
+and what was read that way. A string that is not exactly that JSON is left as
+it is, and `ArgsFromJSON` still refuses it. The guard is unchanged and judges
+what it always judged: the values `ArgsFromJSON` makes of the arguments, which
+are the same values the plain call would give. Strategies that parse a call's
+`args` (the test and check detection, `shell.scm`, the read tracking) see the
+unwrapped text, so a wrapped `go test` is still counted as a test run.
+
+Names the tool does not have stay errors. Ignoring a `limit` on `fs-read`
+would tell the model a bound applied that did not, and ADR 38 already refuses
+an unknown field for the same reason.

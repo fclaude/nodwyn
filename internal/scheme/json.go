@@ -78,6 +78,86 @@ func paramsSchema(params []Param) ToolSchema {
 	return s
 }
 
+// TidyArgs puts a call's arguments in the plain shape when a model wrapped
+// them in a JSON string: the whole object sent as a string, or a list or
+// object parameter sent as a string that holds it. In the local session
+// logs (12,109 tool results, 2026-09-21 to 10-05) that was 12 of the 23
+// calls refused for their argument shapes, from glm, qwen and qwen3.8-max
+// (ADR 29, amended 2026-10-06). It returns raw and "" when the arguments
+// are already plain, or what it unwrapped, said for the log. A string that
+// does not hold exactly the JSON the parameter takes is left as it is, so
+// ArgsFromJSON still refuses it. What the guard judges is the values
+// ArgsFromJSON makes of these arguments, so reading them in this shape
+// first gives it nothing it would not have had from the plain call.
+func (p *Prim) TidyArgs(raw []byte) ([]byte, string) {
+	body := bytes.TrimSpace(raw)
+	var notes []string
+	if inner, ok := jsonStringHolding(body, '{'); ok {
+		body = inner
+		notes = append(notes, "the arguments came as a JSON string holding the object")
+	}
+	var named map[string]json.RawMessage
+	if len(body) == 0 || body[0] != '{' || json.Unmarshal(body, &named) != nil {
+		return rawOrUnwrapped(raw, body, notes)
+	}
+	changed := false
+	for _, pa := range p.Meta.Params {
+		var open byte
+		var kind string
+		switch pa.Type {
+		case "list":
+			open, kind = '[', "list"
+		case "alist":
+			open, kind = '{', "object"
+		default:
+			continue
+		}
+		inner, ok := jsonStringHolding(bytes.TrimSpace(named[pa.Name]), open)
+		if !ok {
+			continue
+		}
+		named[pa.Name] = json.RawMessage(inner)
+		changed = true
+		notes = append(notes, fmt.Sprintf("argument %q came as a JSON string holding its %s", pa.Name, kind))
+	}
+	if !changed {
+		return rawOrUnwrapped(raw, body, notes)
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(named); err != nil {
+		return raw, ""
+	}
+	return bytes.TrimSpace(buf.Bytes()), strings.Join(notes, "; ")
+}
+
+// rawOrUnwrapped is TidyArgs's answer when it changed no parameter: the
+// call as sent, or the object that was inside the string it was sent as.
+func rawOrUnwrapped(raw, body []byte, notes []string) ([]byte, string) {
+	if len(notes) == 0 {
+		return raw, ""
+	}
+	return body, strings.Join(notes, "; ")
+}
+
+// jsonStringHolding returns the text inside a JSON string, when that text is
+// valid JSON that opens with open ('[' or '{') and nothing else.
+func jsonStringHolding(raw []byte, open byte) ([]byte, bool) {
+	if len(raw) == 0 || raw[0] != '"' {
+		return nil, false
+	}
+	var s string
+	if json.Unmarshal(raw, &s) != nil {
+		return nil, false
+	}
+	inner := bytes.TrimSpace([]byte(s))
+	if len(inner) == 0 || inner[0] != open || !json.Valid(inner) {
+		return nil, false
+	}
+	return inner, true
+}
+
 // ArgsFromJSON orders a JSON object of named arguments into p's positional
 // parameters. Unknown or missing names are errors so the model gets a
 // precise correction. Optional parameters that are missing or null at the
