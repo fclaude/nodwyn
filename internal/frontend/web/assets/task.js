@@ -1189,22 +1189,24 @@ export class TaskView {
             "How fast the models answered: output tokens per second of wall time, from each request to its reply, added up over the requests that reported tokens; whichever model answered, this is the speed the session experienced",
           )
         : null,
+      statRow("Token cache rate", t.cache.prompt > 0 ? `${Math.round((100 * t.cache.cached) / t.cache.prompt)}%` : "unknown", {}, "The share of raw prompt tokens read from the provider's cache, added up across the session's model replies that reported cache reads and prompt tokens; missing or unreported usage stays out, and without a positive prompt total the rate is unknown; this is not the share of requests hitting cache or the discounted token budget"),
       statRow("Tool time", spanWords(t.tools), { dataset: { tools: "1" } }, "How long the task's tool calls took to run, from a call to its result, with the wait for a person's approval left out; the time waiting for you to answer is in no figure here"),
     );
   }
   // totals adds the task up over its whole log: what its requests cost, as
   // far as the log prices them, how long it ran and worked, how much of
   // that went waiting for a model and running tools, and how fast the
-  // models answered. Null before the first turn: nothing has run to add up.
+  // models answered and the share of their prompts read from cache. Null
+  // before the first turn: nothing has run to add up.
   totals(evs = this.events()) {
-    const { spend, split, speed } = this.tally(evs);
+    const { spend, split, speed, cache } = this.tally(evs);
     if (!spend) return null;
     // A request or tool still open counts on to now, or stops at the log's
     // last record when a prompt holds the session: nobody's time then.
     const until = this.clockUntil(evs);
     const model = split.model + (split.openModel !== null ? Math.max(0, until - split.openModel) : 0);
     const tools = Math.max(0, split.tools + (split.openTool !== null ? Math.max(0, until - split.openTool) : 0));
-    return { ...spend, ...this.turnClocks(evs), model, tools, speed };
+    return { ...spend, ...this.turnClocks(evs), model, tools, speed, cache };
   }
   // turnClocks is how long the task ran and worked (walkTurns), and a turn
   // still here in a busy session counts up to now — running time always,
@@ -1222,7 +1224,7 @@ export class TaskView {
   // once a second, so the log is walked once per new event (events() hands
   // out one list until one arrives), not on every redraw and tick.
   tally(evs) {
-    if (this.tallied?.evs !== evs) this.tallied = { evs, spend: spendOf(evs), run: walkTurns(evs), split: splitTime(evs), speed: speedOf(evs) };
+    if (this.tallied?.evs !== evs) this.tallied = { evs, spend: spendOf(evs), run: walkTurns(evs), split: splitTime(evs), speed: speedOf(evs), cache: cacheOf(evs) };
     return this.tallied;
   }
 
@@ -1766,6 +1768,23 @@ function spendOf(evs) {
   // A judge cost is an estimate from the judge's prices, never a report.
   estimated ||= j.cost > 0;
   return { cost, unpriced, estimated };
+}
+
+// cacheOf adds raw prompt tokens and cache reads over the replies that
+// report both, so the rate is token-weighted across turns and models, not
+// a mean of request rates or the budget's discounted token count. Unknown
+// usage and replies without a positive prompt count cannot give a share.
+function cacheOf(evs) {
+  let prompt = 0,
+    cached = 0;
+  for (const e of evs) {
+    if (e.kind !== "llm.resp") continue;
+    const u = e.payload?.usage;
+    if (!u || u.unreported || u.cached_tokens == null || !(u.prompt_tokens > 0)) continue;
+    prompt += u.prompt_tokens;
+    cached += u.cached_tokens;
+  }
+  return { prompt, cached };
 }
 
 // speedOf is how fast the task's models answered: output tokens per second

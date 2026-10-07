@@ -381,15 +381,36 @@ check(async () => {
     const { TaskView } = await import("/task.js");
     const view = new TaskView({ onEvent: () => () => {} }, {}, () => {});
     const base = Date.now() - 3600_000;
-    for (let s = 1; s <= 20000; s++) view.seen.set(s, { seq: s, ts: new Date(base + s * 100).toISOString(), kind: s === 1 ? "user.msg" : "llm.resp", payload: { usage: { cost: 0.001 } } });
+    let reads = 0;
+    for (let s = 1; s <= 20000; s++) view.seen.set(s, { seq: s, ts: new Date(base + s * 100).toISOString(), kind: s === 1 ? "user.msg" : "llm.resp", payload: { get usage() { reads++; return { cost: 0.001, prompt_tokens: 100, cached_tokens: 25 }; } } });
     view.busy = true;
     const first = view.totals();
+    const tallied = view.tallied;
+    const initialReads = reads;
     const began = performance.now();
     for (let i = 0; i < 1000; i++) view.totals();
-    return { ms: performance.now() - began, cost: first.cost };
+    const ms = performance.now() - began;
+    const rate = (panel) => [...panel.querySelectorAll(".kv")].find((n) => n.firstElementChild.textContent === "Token cache rate")?.lastElementChild.textContent ?? null;
+    let rendered;
+    for (let i = 0; i < 1000; i++) rendered = rate(view.totalsPanel());
+    const reused = view.tallied === tallied && view.totals().cache === first.cache && reads === initialReads;
+    // A newly recorded response invalidates the same cached aggregation
+    // the clocks use, and changes the rendered rate, not just its inputs.
+    view.seen.set(20001, { seq: 20001, ts: new Date(base + 20001 * 100).toISOString(), kind: "llm.resp", payload: { usage: { prompt_tokens: 1999900, cached_tokens: 1999900 } } });
+    const updated = rate(view.totalsPanel());
+    const result = { ms, cost: first.cost, cache: first.cache, rendered, reused, refreshed: view.tallied !== tallied && reads > initialReads, updated, newCache: view.totals().cache };
+    view.dispose();
+    return result;
   });
   assert.ok(Math.abs(ticks.cost - 19.999) < 1e-6, `the long log's spend: ${ticks.cost}`);
   assert.ok(ticks.ms < 250, `a thousand ticks over a long log took ${Math.round(ticks.ms)} ms`);
+  assert.deepStrictEqual(ticks.cache, { prompt: 1999900, cached: 499975 }, "session cache totals reuse: whole-session raw token totals");
+  assert.strictEqual(ticks.rendered, "25%", "session cache totals reuse: repeated Totals renders show the rate");
+  assert.ok(ticks.reused, "session cache totals reuse: a thousand ticks and renders do not read usage again");
+  assert.ok(ticks.refreshed, "session cache totals reuse: new usage invalidates the aggregation");
+  assert.deepStrictEqual(ticks.newCache, { prompt: 3999800, cached: 2499875 }, "session cache totals reuse: new usage reaches token totals");
+  assert.strictEqual(ticks.updated, "63%", "session cache totals reuse: new usage updates the rendered percentage");
+  step("session cache totals reuse");
   step("totals rules");
 
   // Home: nothing waits for an answer now, and the task is with the finished.

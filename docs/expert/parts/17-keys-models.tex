@@ -408,7 +408,16 @@ Where you see it:
     request had no known cost, how long the task's turns took all in, how
     long they took without the time it spent waiting for your answers, how
     much of that went waiting for a model's reply, and how long its tool
-    calls ran with the wait for an approval left out;
+    calls ran with the wait for an approval left out; also ``Token cache
+    rate'', the rounded whole-session percentage of raw prompt tokens read
+    from cache, summed across turns and models before dividing. Only model
+    replies reporting cache reads and prompt tokens count; missing or
+    unreported usage stays out. A reported zero with positive prompt tokens
+    gives 0\%; without a positive prompt total it says ``unknown''. This
+    measures prompt-token share, not the percentage of requests hitting
+    cache or the budget's discounted token count. If history was truncated,
+    the Totals label ``from the log that remains'' applies to the rate too
+    (\adr{9});
   \item \code{:budget} in the terminal client: the latest turn's spend over
     all its model requests and the share of prompt tokens from cache, or
     why the spend is unknown;

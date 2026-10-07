@@ -1858,7 +1858,16 @@ taken back out. A third, "Model speed", says how fast the models answered:
 output tokens per second of that wall time, added up over the requests that
 reported tokens, with the request count — the speed the session
 experienced, whichever model answered, and the figure to compare providers
-and models by. All are in tenths of a second while short. A turn still
+and models by. "Token cache rate" is the rounded percentage of raw prompt
+tokens read from the provider's cache over all the session's model replies
+that reported cache reads and prompt tokens, across turns and models. It
+adds tokens before dividing, not request percentages: it is not the share
+of requests hitting cache, and does not use the token budget's discount.
+Missing or unreported usage stays out of both totals. A reported zero cache
+read with positive prompt tokens gives 0%; without a positive prompt total
+the figure is "unknown", not 0%. Like the other totals, it covers only the
+log that remains if history was truncated. Times are in tenths of a second
+while short. A turn still
 running counts up to now, into the running time even while it waits for
 you and into the working time only while it does not; a request or a tool
 still open stops at the log's last record while a prompt holds the

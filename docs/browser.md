@@ -32,7 +32,17 @@ each request to a model from its sending to its reply, and "Tool time",
 each tool call from its start to its result, the wait for your approval
 left out. Only a figure with a limit behind it is a bar (Time, Tool calls,
 Tokens used and Context, and the total spend when a spend limit is set);
-the bars come first and the rest are plain rows under them. A compaction is
+the bars come first and the rest are plain rows under them. Live's **Totals**
+includes a plain "Token cache rate" row: the rounded whole-session share of
+raw prompt tokens read from cache, summed across turns and models before
+dividing. Only replies reporting cache reads and prompt tokens count;
+missing or unreported usage stays out. A reported zero with positive
+prompt tokens is 0%; without a positive prompt total the row says
+"unknown". This is neither the fraction of requests hitting cache nor the
+budget-discounted token count. If history was truncated, the Totals label
+"from the log that remains" applies to this rate too. Its aggregation is
+cached between recorded events, so clock ticks do not rescan the log.
+A compaction is
 a note behind **Activity**: what set it off, and the context's size before
 and after. Routine activity (judge requests, focused contexts, instructions
 to the model, groups of calls and the token line) shares one closed

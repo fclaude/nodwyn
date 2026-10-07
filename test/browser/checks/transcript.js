@@ -761,6 +761,71 @@ check(async () => {
       };
       out.early = { fresh: await bars("fresh"), planning: await bars("planning"), folded: await bars("folded") };
     }
+    // The session token cache rate is a raw prompt-token share across
+    // turns and models, not a mean of their rates or the discounted budget.
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const listeners = new Set();
+      const ev = (seq, kind, payload = {}) => ({ seq, kind, payload, ts: new Date(Date.UTC(2026, 0, 1) + seq * 1000).toISOString() });
+      const replies = (...usages) => [ev(1, "user.msg", { text: "Begin" }), ...usages.map((usage, i) => ev(i + 2, "llm.resp", { usage }))];
+      const logs = {
+        weighted: [
+          ev(1, "user.msg", { text: "First turn" }),
+          ev(2, "llm.req", { model: "first" }),
+          ev(3, "llm.resp", { usage: { prompt_tokens: 100, cached_tokens: 100, output_tokens: 9000 } }),
+          ev(4, "turn.end"),
+          ev(5, "user.msg", { text: "Second turn" }),
+          ev(6, "llm.req", { model: "second" }),
+          ev(7, "llm.resp", { usage: { prompt_tokens: 900, cached_tokens: 0, output_tokens: 9000 } }),
+        ],
+        mixed: replies({ prompt_tokens: 100, cached_tokens: 67 }, { prompt_tokens: 9000 }, undefined, { prompt_tokens: 10000, cached_tokens: 10000, unreported: true }, { prompt_tokens: 10000, cached_tokens: null }),
+        zero: replies({ prompt_tokens: 100, cached_tokens: 0, cache_write_tokens: 100 }),
+        full: replies({ prompt_tokens: 100, cached_tokens: 100 }),
+        unknown: replies({ prompt_tokens: 100 }, { prompt_tokens: 100, cache_write_tokens: 100 }),
+        unreported: replies({ prompt_tokens: 100, cached_tokens: 100, unreported: true }),
+        noPrompt: replies({ cached_tokens: 80 }, { prompt_tokens: 0, cached_tokens: 0 }),
+        missing: replies(undefined),
+        fresh: replies(),
+        retained: [ev(101, "user.msg", { text: "After truncation" }), ev(102, "llm.resp", { usage: { prompt_tokens: 200, cached_tokens: 100 } })],
+      };
+      const conn = {
+        live: true,
+        has() { return false; },
+        onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        onResult() { return () => {}; },
+        async call(method, params) {
+          if (method === "session.subscribe") return { page: { events: logs[params.id], through: logs[params.id].at(-1).seq, more: false, truncated: params.id === "retained" }, busy: false };
+          if (method === "session.info" || method === "session.unsubscribe") return {};
+          throw new Error(`unexpected request: ${method}`);
+        },
+      };
+      const desk = new Desk(conn);
+      for (const id of Object.keys(logs)) desk.sessions.set(id, { id, repo: `/tmp/${id}`, open: true, busy: false });
+      const task = new TaskView(conn, desk, () => {});
+      document.body.replaceChildren(task.root);
+      const figure = () => {
+        const panel = task.el.side.querySelector("[data-totals]");
+        const row = [...(panel?.querySelectorAll(".kv") || [])].find((n) => n.firstElementChild.textContent === "Token cache rate");
+        return { value: row?.lastElementChild.textContent ?? null, title: row?.title, scope: panel?.querySelector("h2").textContent };
+      };
+      const rates = {};
+      for (const id of Object.keys(logs)) {
+        await task.open(id);
+        rates[id] = figure();
+      }
+      await task.open("weighted");
+      const response = ev(8, "llm.resp", { usage: { prompt_tokens: 1000, cached_tokens: 1000 } });
+      logs.weighted.push(response);
+      for (const fn of listeners) fn({ method: "session.event", params: { id: "weighted", ...response } });
+      rates.incremental = figure();
+      // Reopening reads the recorded usage again, rather than losing the
+      // new response or carrying another task's cached aggregation across.
+      await task.open("weighted");
+      rates.reopened = figure();
+      out.sessionCacheRate = rates;
+      task.dispose();
+    }
     return out;
   });
   console.log(JSON.stringify(results, null, 1));
@@ -820,6 +885,14 @@ check(async () => {
   want(s.unchangedAway && s.caughtUp, `parked stream: unchanged=${s.unchangedAway}, caught up=${s.caughtUp}`);
   want(s.reloaded && s.disposed, `queued streams outlived reload or disposal: ${JSON.stringify(s)}`);
   want(s.closed && s.closedOnce, "session closure lost or duplicated its queued text, or left the reply enabled");
+  const cache = results.sessionCacheRate;
+  want(cache.weighted.value === "10%", `session token cache rate: token-weighted across turns and models, without output or budget discounts: ${JSON.stringify(cache.weighted)}`);
+  want(cache.mixed.value === "67%", `session token cache rate: unknown and unreported replies excluded, percentage rounded: ${JSON.stringify(cache.mixed)}`);
+  want(cache.zero.value === "0%" && cache.full.value === "100%", `session token cache rate: reported zero (cache writes are not reads) and full cache: ${JSON.stringify({ zero: cache.zero, full: cache.full })}`);
+  for (const id of ["unknown", "unreported", "noPrompt", "missing", "fresh"]) want(cache[id].value === "unknown", `session token cache rate: ${id} has no usable denominator: ${JSON.stringify(cache[id])}`);
+  want(cache.incremental.value === "55%" && cache.reopened.value === "55%", `session token cache rate: live recorded reply and reopening update the totals: ${JSON.stringify({ incremental: cache.incremental, reopened: cache.reopened })}`);
+  want(cache.retained.value === "50%" && cache.retained.scope === "Totalsfrom the log that remains", `session token cache rate: retained history scope: ${JSON.stringify(cache.retained)}`);
+  want(/raw prompt tokens/.test(cache.weighted.title) && /not the share of requests/.test(cache.weighted.title) && /unreported usage/.test(cache.weighted.title), `session token cache rate: tooltip explains the denominator and unknown usage: ${JSON.stringify(cache.weighted)}`);
   want(results.totals.speed === "Model speed | 320.0 tok/s · 2 requests | row" && results.totals.wait?.endsWith("| row") && results.totals.tools?.endsWith("| row"), `totals speed: ${JSON.stringify(results.totals)}`);
   want(results.meters.order.join() === "meter:Time,meter:Tool calls,meter:Tokens used,meter:Context,kv:Model wait,kv:Tool time", `this turn: bars first, then rows: ${JSON.stringify(results.meters.order)}`);
   want(results.meters.context === "Context~100 / ~774,143", `the context against the high water: ${results.meters.context}`);

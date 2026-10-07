@@ -316,6 +316,16 @@ from the model's configured prices is marked $\approx$); the time only when
 the server reports it. A budget checkpoint says what the turn has cost so
 far, ``at least'' when some requests had no known cost.
 
+The console's Live tab also shows a whole-session ``Token cache rate'' in
+Totals: the rounded percentage of raw prompt tokens read from cache, summed
+across turns and models before dividing. Only model replies reporting cache
+reads and prompt tokens count; missing or unreported usage stays out. A
+reported zero with positive prompt tokens gives 0\%; without a positive
+prompt total the rate is ``unknown''. It is not the percentage of requests
+hitting cache, nor the budget's discounted token count. Where history was
+truncated, Totals says ``from the log that remains'', and the rate covers
+only that retained history (\adr{9}).
+
 The full-screen client takes the same commands and adds inspectors:
 \code{:plan} shows the turn's plan gate, its plan, and each step (each
 starts with its kind: \code{Change:}, \code{Test:}, \code{Docs:} or

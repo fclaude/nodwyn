@@ -395,3 +395,27 @@ text, the thinking summaries working out the same parseDiff fix again
 The window's own staleness rule was written from the API's documented check,
 and nothing here was run against Anthropic's API: the tests use recorded
 shapes.
+
+## Amendment 2026-10-07: whole-session token cache rate
+
+The console showed cache use per turn, but its whole-session Totals had no
+cache figure for comparing sessions. Totals now has a plain **Token cache
+rate** row: the rounded percentage of raw prompt tokens read from the
+provider's cache across the session's recorded model replies. It sums
+`cached_tokens` and `prompt_tokens` before dividing, across turns and
+models, rather than averaging request percentages. Only replies reporting
+cache reads and a positive prompt count contribute; missing or
+`unreported` usage stays out. A reported cache read of zero with positive
+prompt tokens gives 0%; without a positive prompt total the rate is
+**unknown**, never an invented 0%.
+
+This measures reported prompt-token share, not the fraction of requests
+hitting cache, cache writes or the budget's token count (which discounts
+cache reads to a tenth). It uses the same retained events as the other
+Totals figures, so a truncated log keeps the label **from the log that
+remains**. The raw token totals are cached with the existing event
+aggregation and refreshed on a new recorded event, not on clock ticks.
+The RPC and log formats are unchanged; no usage is inferred for providers
+or older logs that do not report it. Browser regressions cover weighted
+aggregation, unknown versus zero, live replies, reopening, retained
+history and aggregation reuse over a large log, using fake providers only.
