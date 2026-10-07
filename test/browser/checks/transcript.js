@@ -49,7 +49,7 @@ check(async () => {
       const { root, t } = fresh();
       root.className = "transcript";
       t.render({ kind: "user.msg", payload: { text: "review all setting options against the documentation, what makes and what doesn't make sense anymore?" } });
-      t.render({ kind: "jev.req", payload: { tool: "jev-noul", ok: true, model: "fake", answer: "proceed", usage: { input_tokens: 338, output_tokens: 20 } } });
+      t.render({ kind: "jev.req", payload: { tool: "judge-yes-no", ok: true, model: "fake", answer: "proceed", usage: { input_tokens: 338, output_tokens: 20 } } });
       t.render({ kind: "context.narrow", payload: { system: "Focus on settings." } });
       t.render({ kind: "harness.msg", payload: { text: "Review the settings and their documentation." } });
       for (let i = 0; i < 14; i++) read(t, `docs/settings-${i}.md`);
@@ -64,7 +64,7 @@ check(async () => {
         closed: fold ? !fold.open : false,
         hidden: body ? !body.checkVisibility() : false,
         rows: [...root.querySelectorAll(".turn.agent > :not(.who)")].map((n) => n.className),
-        kept: ["Asked the judge (jev-noul)", "Started a focused context", "nodwyn told the model", "read 14 files", "searched 13 times", "listed 9 folders", "91,086 → 1,070 tokens"].every((text) => body?.textContent.includes(text)),
+        kept: ["Asked the judge (yes-no)", "Started a focused context", "nodwyn told the model", "read 14 files", "searched 13 times", "listed 9 folders", "91,086 → 1,070 tokens"].every((text) => body?.textContent.includes(text)),
       };
       fold?.querySelector("summary").click();
       const expanded = !!fold?.open && !!body?.checkVisibility();

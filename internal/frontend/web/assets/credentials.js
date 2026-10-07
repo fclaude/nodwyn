@@ -6,7 +6,7 @@ import { h, icon, ago, clock, shortPath, toast } from "./dom.js";
 import { keychainForm, noPassphraseWarning } from "./setup.js";
 
 let selected = ""; // the credential whose detail is open: its id, and where it is shown
-let selectedPanel = ""; // "judge", "models" or "": the subpanel whose detail is open
+let selectedPanel = ""; // "models" or "": the subpanel whose detail is open
 let adding = ""; // "key" or "oauth2": the add form that is open
 let addingPanel = ""; // the subpanel whose add form is open: "" is the generic one below
 let draft = {}; // what the add-a-key form was given before a redraw
@@ -37,8 +37,9 @@ export async function renderCredentials(body, ctx, redraw) {
   const canEdit = conn.has("credentials.add");
   const keychain = list.keychain;
   ctx.desk.keychain = keychain;
-  // Settings reads its judge-key row from the desk's settings: refresh them
-  // now that a key may have been stored, so the row agrees with this tab.
+  // Settings reads the judge's and the providers' key states from the
+  // desk's settings: refresh them now that a key may have been stored, so
+  // they agree with this tab.
   if (conn.has("settings.read")) {
     try {
       ctx.desk.settings = await conn.call("settings.read");
@@ -67,17 +68,13 @@ export async function renderCredentials(body, ctx, redraw) {
     if (a) concluded(a, list);
   }
   const waiting = list.authorizations.filter((a) => a.state === "waiting");
-  // The judge and the model keys have their own subpanels, so the generic
-  // list below is only the keys neither uses: what used_by calls "the
-  // judge" is the jev-key, and the daemon marks what a configured model
-  // sends.
-  const jev = list.jev || {};
-  const judgeClass = jev.class || "jev-key";
-  const jevCred = list.credentials.find((c) => c.class === judgeClass);
+  // The providers' keys, the judge's among them (ADR 46), have their own
+  // subpanel, so the generic list below is only the keys no provider sends:
+  // the daemon marks what a configured provider sends.
   const modelCreds = list.credentials.filter((c) => c.model);
-  const otherCreds = list.credentials.filter((c) => c.class !== judgeClass && !c.model);
+  const otherCreds = list.credentials.filter((c) => !c.model);
   const modelMissing = list.missing.filter((m) => m.model);
-  const otherMissing = list.missing.filter((m) => !m.model && m.class !== judgeClass);
+  const otherMissing = list.missing.filter((m) => !m.model);
   // A detail opens in the subpanel whose row was clicked, not at the bottom
   // of the page: opening one panel's closes the others'.
   const open = (panel, id) => {
@@ -99,7 +96,6 @@ export async function renderCredentials(body, ctx, redraw) {
         ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "The keychain has no passphrase. "), noPassphraseWarning, " ", h("a", { href: "#/settings" }, "Set one in Settings"), "."))
         : null,
       list.bindings_error ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "bindings.toml does not load: "), list.bindings_error, ". Where each credential may go is shown as nodwyn last loaded it.")) : null,
-      judgeCard(jev, jevCred, credential && selectedPanel === "judge" ? credential : null, list, ctx, redraw, (id) => open("judge", id)),
       modelsCard(list, modelCreds, modelMissing, credential && selectedPanel === "models" ? credential : null, ctx, redraw, (id) => open("models", id)),
       h("h2", { class: "section-title", id: "other-keys" }, "Other keys & accounts"),
       ...otherMissing.map((m) =>
@@ -157,7 +153,7 @@ function concluded(a, list) {
     toast(`${a.class} is authorized.`);
     selected = a.credential;
     const done = list.credentials.find((c) => c.id === selected);
-    selectedPanel = done && done.class === list.jev?.class ? "judge" : done?.model ? "models" : "";
+    selectedPanel = done?.model ? "models" : "";
     adding = "";
     addingPanel = "";
   } else if (a.state === "failed") toast(`${a.class}: ${a.error}`);
@@ -170,113 +166,10 @@ function sentence(names) {
   return capital(`${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 }
 
-// judgeCard is the Judge subpanel: one card for the jev-key, with its
-// status and, when none is stored, one field to add it. The daemon tells
-// it the class, host, methods and position, so the person never types a
-// name the judge would not recognize. jev is list.jev, c the stored
-// credential of that class, open the credential whose detail shows in this
-// panel, if any.
-function judgeCard(jev, c, open, list, ctx, redraw, pick) {
-  const { conn } = ctx;
-  const canEdit = conn.has("credentials.add");
-  // BoundHosts is what the panel reports: the hosts the stored jev-key may
-  // go to, whatever the judge's host now is. where is the same list, so the
-  // status agrees with the rows shown.
-  const where = [...(jev.bound_hosts || [])];
-  const off = jev.off ? ` (${jev.off})` : "";
-  const status = !jev.enabled
-    ? `Off: the judge sees nothing${off}.`
-    : !jev.stored
-      ? "No key stored: the judge cannot answer a run's confirms."
-      : !jev.bound
-        ? jev.host
-          ? (where.length ? `Not allowed for ${jev.host}: the key may go to ${where.join(", ")}, so judge calls fail until you allow it there.` : `Not allowed for ${jev.host}: the key reaches nothing until you allow it there.`)
-          : "Stored, but the judge has no address: set jev.url."
-        : `Ready: stored, and allowed for ${where.length === 1 ? where[0] : `${where.length} hosts`}.`;
-  const dot = !jev.enabled || !jev.stored ? "warn" : !jev.bound ? "bad" : "ok";
-  const about =
-    c && !jev.bound && where.length
-      ? `A bearer token sent to ${jev.host} with POST, as the Authorization header. It may now go to ${where.join(", ")}. What it may see is Settings › Judge › What the judge sees.`
-      : jev.host
-        ? `A bearer token sent to ${jev.host} with POST, as the Authorization header. What it may see is Settings › Judge › What the judge sees.`
-        : "Set the judge's address (jev.url) to know where its key goes. What it may see is Settings › Judge › What the judge sees.";
-  // The field shows whenever the host is known, even while the judge is
-  // off: storing the key first and switching it on after is the point.
-  const usable = canEdit && jev.host;
-  if (!jev.stored && usable)
-    return h(
-      "section",
-      { class: "card", id: "judge" },
-      h("h2", { class: "section-title" }, "Judge (Jev)"),
-      h("div", { class: "list-row cred-status" }, h("span", { class: `dot ${dot}` }), h("span", {}, status)),
-      h("p", { class: "hint" }, about),
-      jevAddForm(jev, ctx, redraw),
-      h("div", { class: "row-actions" }, h("a", { class: "btn small ghost", href: "#/settings" }, "Judge settings")),
-    );
-  return h(
-    "section",
-    { class: "card", id: "judge" },
-    h("h2", { class: "section-title" }, "Judge (Jev)"),
-    h("div", { class: "list-row cred-status" }, h("span", { class: `dot ${dot}` }), h("span", {}, status)),
-    h("p", { class: "hint" }, about),
-    c ? row(c, redraw, pick) : null,
-    open ? detail(open, list, ctx, redraw) : null,
-    h(
-      "div",
-      { class: "row-actions" },
-      canEdit && c && !jev.bound && jev.host ? h("button", { type: "button", class: "btn small", onclick: () => allowJev(jev, c, ctx, redraw) }, `Allow it for ${jev.host}`) : null,
-      h("a", { class: "btn small ghost", href: "#/settings" }, "Judge settings"),
-    ),
-  );
-}
-
-// allowJev binds a stored jev-key the daemon reports as not allowed for
-// the judge's host, at the values its summary names.
-async function allowJev(jev, c, ctx, redraw) {
-  try {
-    await ctx.conn.call("credentials.bind", { id: c.id, dest: jev.host, methods: jev.methods, position: jev.position });
-    toast(`${jev.class} is allowed for ${jev.host}.`);
-    redraw();
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-// jevAddForm stores the judge's key with the daemon's values: one secret
-// field, no class, host, method or position to remember.
-function jevAddForm(jev, ctx, redraw) {
-  const value = h("input", { class: "input", id: "jev-value", type: "password", required: true, autocomplete: "off", spellcheck: false });
-  const error = h("p", { class: "error", role: "alert" });
-  return h(
-    "form",
-    {
-      class: "setup-form",
-      onsubmit: async (event) => {
-        event.preventDefault();
-        error.textContent = "";
-        try {
-          const list = await ctx.conn.call("credentials.add", { class: jev.class, value: value.value, dest: jev.host, methods: jev.methods, position: jev.position });
-          value.value = "";
-          toast(`${jev.class} is stored, and allowed for ${jev.host}.`);
-          const id = list.credentials.find((x) => x.class === jev.class)?.id || "";
-          selected = id;
-          selectedPanel = id ? "judge" : "";
-          redraw();
-        } catch (e) {
-          error.textContent = e.message;
-        }
-      },
-    },
-    h("div", { class: "field" }, h("label", { for: "jev-value" }, "Judge key"), value, h("p", { class: "hint" }, "Stored encrypted in the keychain. Nothing shows it again: not this page, not a task, not the model.")),
-    error,
-    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn dark" }, "Store the judge key")),
-  );
-}
-
-// modelsCard is the Model keys subpanel: a summary of the credentials the
-// models send, kept where they are changed — the Settings form that binds
-// a key when it saves one. open is the credential whose detail shows in
-// this panel, if any.
+// modelsCard is the Provider keys subpanel: a summary of the credentials
+// the providers send, for their models and the judge, kept where they are
+// changed — the Settings form that binds a key when it saves one. open is
+// the credential whose detail shows in this panel, if any.
 function modelsCard(list, creds, missing, open, ctx, redraw, pick) {
   const { conn } = ctx;
   const canEdit = conn.has("credentials.add");
@@ -284,7 +177,7 @@ function modelsCard(list, creds, missing, open, ctx, redraw, pick) {
   return h(
     "section",
     { class: "card", id: "model-keys" },
-    h("h2", { class: "section-title" }, "Model keys"),
+    h("h2", { class: "section-title" }, "Provider keys"),
     ...missing.map((m) =>
       h(
         "div",
@@ -293,10 +186,10 @@ function modelsCard(list, creds, missing, open, ctx, redraw, pick) {
         canEdit ? h("button", { type: "button", class: "btn small", style: "margin-left:auto", onclick: () => { adding = "key"; addingPanel = "models"; draft = { class: m.class }; selected = ""; selectedPanel = ""; redraw(); } }, "Add it") : null,
       ),
     ),
-    creds.length ? h("div", { class: "list" }, creds.map((c) => row(c, redraw, pick))) : missing.length ? null : h("div", { class: "callout plain" }, "No model keys yet. Add a model in Settings and its key is stored and allowed at once."),
+    creds.length ? h("div", { class: "list" }, creds.map((c) => row(c, redraw, pick))) : missing.length ? null : h("div", { class: "callout plain" }, "No provider keys yet. Add a provider in Settings › Models and its key is stored and allowed at once."),
     open ? detail(open, list, ctx, redraw) : null,
     showAdd ? addKey(ctx, redraw) : null,
-    h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings" }, "Change the main model")),
+    h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings" }, "Change the providers")),
   );
 }
 
@@ -541,10 +434,10 @@ function addKey(ctx, redraw) {
           toast(params.dest ? `${params.class} is stored, and allowed for ${params.dest}.` : `${params.class} is stored. Allow it for a host before anything can use it.`);
           const added = list.credentials.find((c) => c.class === params.class)?.id || "";
           selected = added;
-          // A jev-key's or a model key's detail belongs to its own panel,
-          // wherever it was added; anything else opens below.
+          // A provider's key's detail belongs to its own panel, wherever it
+          // was added; anything else opens below.
           const addedCred = list.credentials.find((c) => c.id === added);
-          selectedPanel = !added ? "" : addedCred?.class === list.jev?.class ? "judge" : addedCred?.model ? "models" : "";
+          selectedPanel = addedCred?.model ? "models" : "";
           addingPanel = "";
           adding = "";
           draft = {};

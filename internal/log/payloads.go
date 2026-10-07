@@ -317,25 +317,26 @@ type PlanStep struct {
 // The payload hash is a short digest; the raw payload is never logged, and a
 // redacted payload is never logged either (only the events it triggered).
 type JevReq struct {
-	Tool        string   `json:"tool"`                 // jev-noul, jev-score, jev-choice, or judge-* for the model
+	Tool        string   `json:"tool"`                 // judge-yes-no, judge-score or judge-choice (jev-noul, jev-score, jev-choice, judge-noul before ADR 46)
 	Origin      string   `json:"origin"`               // user, model or harness
 	Level       string   `json:"level"`                // none | plan | plan+summaries | full
 	Bytes       int      `json:"bytes"`                // bytes of the redacted payload sent
 	PayloadHash string   `json:"payload_hash"`         // hex sha256[:16] of the redacted payload
 	Redactions  []string `json:"redactions,omitempty"` // class names removed by L1
-	Answer      any      `json:"answer,omitempty"`     // the answer object Jev returned (no content of ours)
+	Answer      any      `json:"answer,omitempty"`     // the judge's answer, in System One's shape whichever API gave it (no content of ours)
 	OK          bool     `json:"ok"`
 	Error       string   `json:"error,omitempty"`
 	// Model is the judge model that answered, as the API names it
-	// (jev-1.13.0 for jev-latest); Usage what the request used. Both absent
-	// when no answer came back.
+	// (jev-1.13.0 for jev-latest; the Decisions API names none); Usage what
+	// the request used. Both absent when no answer came back.
 	Model string    `json:"model,omitempty"`
 	Usage *JevUsage `json:"usage,omitempty"`
 }
 
 // JevUsage is what one judge request used, as the API reports it, and what
-// it cost: an estimate from [jev] price_input and price_output, since the
-// API reports no cost; absent when no prices are set.
+// it cost: an estimate from the judge's prices ([judge] price_input and
+// price_output, else its provider's), since the API reports no cost; absent
+// when no prices are known.
 type JevUsage struct {
 	InputTokens  int      `json:"input_tokens"`
 	OutputTokens int      `json:"output_tokens"`

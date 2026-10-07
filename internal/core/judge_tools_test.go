@@ -2,7 +2,6 @@ package core
 
 import (
 	"bytes"
-	"github.com/fclaude/nodwyn/internal/catalogue"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,24 +13,27 @@ import (
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
-// The model is offered judge-noul, judge-score and judge-choice only when
-// the session starts with a jev-key stored and jev.content = "full"; the
-// handle-taking jev-* primitives are never offered.
+// The judge's primitives, judge-yes-no, judge-score and judge-choice, are
+// registered when the session starts with the judge's server's key stored,
+// and offered to the model only at judge.content = "full"; below that they
+// are Scheme's alone (ADR 46).
 func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		content string
-		key     bool
-		want    bool
+		content    string
+		key        bool
+		registered bool
+		want       bool
 	}{
-		{config.JevContentFull, true, true},
-		{config.JevContentPlan, true, false},
-		{config.JevContentFull, false, false},
+		{config.JudgeContentFull, true, true, true},
+		{config.JudgeContentPlan, true, true, false},
+		{config.JudgeContentFull, false, false, false},
 	} {
 		srv := fake.NewT(t)
 		t.Cleanup(srv.Close)
 		cfg := config.Default()
-		cfg.Jev.Content = tc.content
+		cfg.Servers = map[string]config.Server{"jev": {Provider: "jev", URL: "https://api.typesafe.ai", Credential: "jev-key"}}
+		cfg.Judge.Server, cfg.Judge.Content = "jev", tc.content
 		kc, err := keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p"))
 		if err != nil {
 			t.Fatal(err)
@@ -47,42 +49,40 @@ func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 		for _, tool := range s.Tools() {
 			names = append(names, tool.Name)
 		}
-		s.Close()
 		got := strings.Join(names, " ")
-		if strings.Contains(got, "jev-") {
-			t.Fatalf("%+v: a handle-taking jev primitive is offered: %s", tc, got)
-		}
-		for _, name := range []string{"judge-noul", "judge-score", "judge-choice"} {
+		for _, name := range []string{"judge-yes-no", "judge-score", "judge-choice"} {
+			if _, ok := s.interp.Lookup(name); ok != tc.registered {
+				t.Fatalf("%+v: %s registered = %v", tc, name, ok)
+			}
 			if strings.Contains(" "+got+" ", " "+name+" ") != tc.want {
 				t.Fatalf("%+v: %s offered = %v; tools: %s", tc, name, !tc.want, got)
 			}
 		}
+		s.Close()
 	}
 }
 
-// What the judge used is recorded with each answer, priced at [jev]'s prices
-// or, when it sets none, at what its provider publishes (the judge reports
-// what it used, never what it cost), and counted in the task's spend; its
-// tokens stay out of the token budget, which counts model tokens.
+// What the judge used is recorded with each answer, priced at [judge]'s
+// prices (the judge reports what it used, never what it cost), and counted
+// in the task's spend; its tokens stay out of the token budget, which counts
+// model tokens. What a provider publishes is the price when [judge] sets
+// none (TestJudgeOptionsTakePublishedPrices).
 func TestJudgeUsageIsRecordedAndPriced(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		setup func(o *Options)
 	}{
-		{"at [jev]'s prices", func(o *Options) {
+		{"at [judge]'s prices", func(o *Options) {
 			in, out := 1000.0, 2000.0
-			o.Config.Jev.PriceInput, o.Config.Jev.PriceOutput = &in, &out
-		}},
-		{"at its provider's", func(o *Options) {
-			o.Config.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"127.0.0.1": {o.Config.Jev.Model: {Price: &catalogue.Price{Input: 1000, Output: 2000}}}})
+			o.Config.Judge.PriceInput, o.Config.Judge.PriceOutput = &in, &out
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			judge := newFakeJudge(t, noul(0.2), noul(0.75))
-			r := judgedRigWith(t, judge, config.JevContentFull, "", tc.setup,
-				fake.Turn{ToolCalls: []fake.ToolCall{{Name: "judge-noul", Args: map[string]any{"state": "the diff", "instructions": "is it complete?"}}}},
+			r := judgedRigWith(t, judge, config.JudgeContentFull, "", tc.setup,
+				fake.Turn{ToolCalls: []fake.ToolCall{{Name: "judge-yes-no", Args: map[string]any{"state": "the diff", "instructions": "is it complete?"}}}},
 				fake.Turn{Content: "done"})
 			if e := r.turn("check it"); e != "" {
 				t.Fatal(e)
@@ -115,14 +115,14 @@ func TestJudgeUsageIsRecordedAndPriced(t *testing.T) {
 	}
 }
 
-// A model's judge-noul call goes through the session: the guard checks
+// A model's judge-yes-no call goes through the session: the guard checks
 // jev-key's binding, the key is injected, the answer comes back as the
 // tool's result, and jev.req says the model sent it.
 func TestModelCallsTheJudge(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), noul(0.75))
-	r := judgedRigAt(t, judge, config.JevContentFull, "",
-		fake.Turn{ToolCalls: []fake.ToolCall{{Name: "judge-noul", Args: map[string]any{"state": "the diff", "instructions": "is it complete?"}}}},
+	r := judgedRigAt(t, judge, config.JudgeContentFull, "",
+		fake.Turn{ToolCalls: []fake.ToolCall{{Name: "judge-yes-no", Args: map[string]any{"state": "the diff", "instructions": "is it complete?"}}}},
 		fake.Turn{Content: "done"})
 	if e := r.turn("check it"); e != "" {
 		t.Fatal(e)
@@ -148,7 +148,7 @@ func TestModelCallsTheJudge(t *testing.T) {
 			result = tr.Value + tr.Error
 		}
 	}
-	if len(reqs) != 2 || reqs[0].Tool != "jev-noul" || reqs[0].Origin != "harness" || reqs[1].Tool != "judge-noul" || reqs[1].Origin != "model" || !reqs[1].OK {
+	if len(reqs) != 2 || reqs[0].Tool != "judge-yes-no" || reqs[0].Origin != "harness" || reqs[1].Tool != "judge-yes-no" || reqs[1].Origin != "model" || !reqs[1].OK {
 		t.Fatalf("jev.req records: %+v", reqs)
 	}
 	if result != "0.75" {

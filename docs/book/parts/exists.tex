@@ -72,8 +72,8 @@ Every session offers \code{fs-read}, \code{fs-write}, \code{fs-edit},
 \code{shell-start}, \code{shell-read}, \code{shell-send},
 \code{shell-stop} and \code{doc-export}; in a git work tree also
 \code{git-status} and \code{git-diff}; with a stored \code{google}
-credential, \code{google-doc-upload}; with a stored \code{jev-key} and
-\code{jev.content} set to \code{full}, \code{judge-noul}, \code{judge-score} and
+credential, \code{google-doc-upload}; with the judge's key stored and
+\code{judge.content} set to \code{full}, \code{judge-yes-no}, \code{judge-score} and
 \code{judge-choice}. The default loop adds four tools of its own, written
 in Scheme: \code{read-definition}, \code{second-look}, \code{plan-write}
 and \code{plan-step}. A repository adds
@@ -87,7 +87,8 @@ approved and that is offered in this workspace, appears as
 
 \begin{sloppypar}
 Hidden from the model, callable from Scheme: \code{http-request},
-\code{credential}, \code{credential-register}, the \code{jev} primitives,
+\code{credential}, \code{credential-register}, the \code{judge}
+primitives below \code{full},
 the session's own (\code{scratch-dir}, \code{repository},
 \code{workspace}, \code{project-notes}, \code{project-notes-save},
 \code{project-instructions}), the

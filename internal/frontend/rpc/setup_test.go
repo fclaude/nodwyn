@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -13,63 +12,6 @@ import (
 	"github.com/fclaude/nodwyn/internal/llm"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
-
-// Settings reports the judge's host and whether a jev-key is stored, so
-// its judge-key row never points at a Judge panel with no field and never
-// offers to add a key that is already there.
-func TestSettingsJevHost(t *testing.T) {
-	o := options(t)
-	o.Config.Jev.URL = "https://judge.example:8443"
-	path, _ := start(t, o)
-	c := connect(t, path)
-	c.hello()
-	c.ok("keychain.create", map[string]any{"no_passphrase": true})
-	var settings settingsResult
-	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
-	if settings.JevHost != "judge.example" || settings.JevStored {
-		t.Fatalf("jev before storing: %+v", settings)
-	}
-	c.ok("credentials.add", map[string]any{"class": "jev-key", "value": "sk-judge-canary-0001",
-		"dest": "judge.example", "methods": []string{"POST"}, "position": "header:Authorization:Bearer"})
-	json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings)
-	if !settings.JevStored {
-		t.Fatalf("jev after storing: %+v", settings)
-	}
-}
-
-// The judge is ready only when its key can be sent: stored, unlocked and
-// allowed for the judge's host, as a provider's key is checked. Settings
-// said Ready for a jev-key stored for another host, which the guard refuses
-// on the judge's first request. The settings are read as JSON, as the
-// console reads them.
-func TestTheJudgeIsReadyOnlyWithAKeyAllowedForItsHost(t *testing.T) {
-	o := options(t)
-	o.Config.Jev.URL = "https://judge.example:8443"
-	path, _ := start(t, o)
-	c := connect(t, path)
-	c.hello()
-	c.ok("keychain.create", map[string]any{"no_passphrase": true})
-	read := func() map[string]any {
-		var settings map[string]any
-		if err := json.Unmarshal(c.ok("settings.read", map[string]any{}), &settings); err != nil {
-			t.Fatal(err)
-		}
-		return settings
-	}
-	if s := read(); s["judge"] != false || s["jev_key"] != "needs_key" {
-		t.Fatalf("no key: judge %v, jev_key %v", s["judge"], s["jev_key"])
-	}
-	var stored credentialsResult
-	into(t, c.ok("credentials.add", map[string]any{"class": "jev-key", "value": "sk-judge-canary-0002",
-		"dest": "elsewhere.example", "methods": []string{"POST"}, "position": "header:Authorization:Bearer"}), &stored)
-	if s := read(); s["judge"] != false || s["jev_key"] != "unbound" || !strings.Contains(fmt.Sprint(s["jev_key_detail"]), "judge.example") {
-		t.Fatalf("a key for another host: judge %v, jev_key %v (%v)", s["judge"], s["jev_key"], s["jev_key_detail"])
-	}
-	c.ok("credentials.bind", map[string]any{"id": stored.Credentials[0].ID, "dest": "judge.example", "methods": []string{"POST"}, "position": "header:Authorization:Bearer"})
-	if s := read(); s["judge"] != true || s["jev_key"] != "ready" {
-		t.Fatalf("a key for the judge's host: judge %v, jev_key %v (%v)", s["judge"], s["jev_key"], s["jev_key_detail"])
-	}
-}
 
 func TestKeychainCreateUnlockOverTheSocket(t *testing.T) {
 	o := options(t)
@@ -397,7 +339,7 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 	json.Unmarshal(c.ok("settings.write", map[string]any{"set": map[string]any{
 		"budget.tokens_soft": 500, "budget.tokens_hard": 1000, "budget.cost_hard": 2.5,
 		"approval.commands": "ask", "approval.writes": "ask", "loop.shell_timeout": "5m",
-		"jev.price_input": 0.5, "jev.price_output": 2,
+		"judge.price_input": 0.5, "judge.price_output": 2,
 	}}), &settings)
 	if v := settings.Values["budget.tokens_hard"]; v.Value != float64(1000) || !v.Set {
 		t.Fatalf("tokens_hard written: %+v", v)
@@ -438,7 +380,7 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 		{},
 		{"control.url": "http://elsewhere:11434"},
 		{"policy.unbound": "confirm"},
-		{"jev.url": "https://judge.example"},
+		{"servers.jev.url": "https://judge.example"},
 		{"budget.tokens_hard": "lots"},
 		{"budget.tokens_hard": 1.5},
 		{"budget.tokens_hard": 50}, // below the soft limit
@@ -447,7 +389,8 @@ func TestSettingsWriteAppliesToNewTasks(t *testing.T) {
 		{"tasks.mode": "chat"},
 		{"control.vision": true},
 		{"control.price_input": 1.5},
-		{"jev.price_output": -1},
+		{"judge.price_output": -1},
+		{"jev.content": "full"},
 	} {
 		if r := c.call("settings.write", map[string]any{"set": set}); r.Error == nil {
 			t.Errorf("accepted %v", set)
@@ -498,7 +441,7 @@ func TestSettableSettingsExist(t *testing.T) {
 		}
 		withTables(defaults, defaults, map[string]bool{table: true})
 	}
-	for _, left := range []string{"control.url", "control.credential", "jev.url", "mcp.egress", "docs.google_upload_url", "policy.unbound", "loop.max_tool_calls"} {
+	for _, left := range []string{"control.url", "control.credential", "servers.jev.url", "servers.jev.credential", "mcp.egress", "docs.google_upload_url", "policy.unbound", "loop.max_tool_calls"} {
 		if _, ok := settable[left]; ok {
 			t.Errorf("%s is settable from the console", left)
 		}

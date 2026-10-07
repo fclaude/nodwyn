@@ -156,7 +156,7 @@ func (s *server) providers() []modelServer {
 	}
 	for _, name := range slices.Sorted(maps.Keys(cfg.Servers)) {
 		sv := cfg.Servers[name]
-		m := modelServer{Name: name, Provider: providerName(sv.Provider), Dialect: string(sv.Dialect), URL: sv.URL, Credential: sv.Credential}
+		m := modelServer{Name: name, Provider: providerName(sv.Provider), Dialect: string(sv.Dialect), URL: sv.URL, Credential: sv.Credential, Judge: name == cfg.Judge.Server}
 		for _, e := range entries {
 			if e.model.Server == name || (e.model.Server == "" && at(sv, e.model)) {
 				m.Uses = append(m.Uses, e.name)
@@ -248,12 +248,13 @@ func published(cfg config.Config, m config.Model) *publishedModel {
 	return out
 }
 
-// judgePublished is what the judge's provider publishes about it: its
-// prices, when the catalogue describes jev.model at jev.url. cfg is a copy,
-// so leaving out [jev]'s own prices leaves the daemon's alone.
+// judgePublished is what the judge's provider publishes about it: the
+// prices of its questions, when nodwyn knows them for its model at its
+// server's address. cfg is a copy, so leaving out [judge]'s own prices
+// leaves the daemon's alone.
 func judgePublished(cfg config.Config) *publishedModel {
-	cfg.Jev.PriceInput, cfg.Jev.PriceOutput = nil, nil
-	in, out := cfg.JevPrices()
+	cfg.Judge.PriceInput, cfg.Judge.PriceOutput = nil, nil
+	in, out := cfg.JudgePrices()
 	if in == nil || out == nil {
 		return nil
 	}
@@ -333,8 +334,8 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 	key := []byte(p.APIKey)
 	defer clear(key)
 	p.URL = strings.TrimRight(strings.TrimSpace(p.URL), "/")
-	if p.Provider != "ollama" && p.Provider != "openai" && p.Provider != "anthropic" {
-		return nil, failure(-32602, `provider must be "ollama", "openai" or "anthropic"`)
+	if p.Provider != "ollama" && p.Provider != "openai" && p.Provider != "anthropic" && p.Provider != "jev" {
+		return nil, failure(-32602, `provider must be "ollama", "openai", "anthropic" or "jev"`)
 	}
 	parsed, err := url.Parse(p.URL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
@@ -345,6 +346,9 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 	}
 	if p.Provider == "anthropic" && p.Dialect != "" {
 		return nil, failure(-32602, "An Anthropic server takes no dialect: it speaks the Messages API")
+	}
+	if p.Provider == "jev" && p.Dialect != "" {
+		return nil, failure(-32602, "A Jev server takes no dialect: it answers the judge's questions in System One")
 	}
 	var selected keychain.Info
 	if p.Credential != "" {
@@ -451,12 +455,12 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 			if err != nil {
 				return nil, config.Config{}, failure(-32000, err.Error())
 			}
-			if err := s.bindKey(srv.Credential, host, config.KeyPosition(srv.Provider)); err != nil {
+			if err := s.bindKey(srv.Credential, host, srv.Provider); err != nil {
 				return nil, config.Config{}, failure(-32000, err.Error())
 			}
 		}
 		if selected.ID != "" {
-			if err := s.bindKey(selected.Class, host, config.KeyPosition(srv.Provider)); err != nil {
+			if err := s.bindKey(selected.Class, host, srv.Provider); err != nil {
 				return nil, config.Config{}, failure(-32000, err.Error())
 			}
 		}
@@ -470,15 +474,21 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 
 // modelKeyMethods are what a model key is bound for: POST for the model's
 // requests, and GET for its server's model list, which OpenAI and Cerebras
-// give only to a key.
+// give only to a key. A Jev key is bound for POST alone: the judge's
+// questions are its only requests, and a Jev server lists no models.
 var modelKeyMethods = []string{http.MethodPost, http.MethodGet}
 
-// bindKey allows class for host as a model key: a row for each of
-// modelKeyMethods, at position (config.KeyPosition: where the provider reads
-// the key), that the table does not have.
-func (s *server) bindKey(class, host, position string) error {
+// bindKey allows class for host as the key of a provider's server: a row
+// for each of modelKeyMethods (POST alone for Jev), at the position the
+// provider reads the key (config.KeyPosition), that the table does not have.
+func (s *server) bindKey(class, host, provider string) error {
+	methods := modelKeyMethods
+	if provider == "jev" {
+		methods = []string{http.MethodPost}
+	}
+	position := config.KeyPosition(provider)
 	var rows []binding.Binding
-	for _, method := range modelKeyMethods {
+	for _, method := range methods {
 		if bound, _ := s.bindingTable().Lookup(class, host, method, position); bound {
 			continue
 		}
@@ -546,6 +556,9 @@ func (s *server) providerRemove(req request, _ *peer) (any, *rpcError) {
 		var uses []string
 		if current.Control.Server == p.Name {
 			uses = append(uses, "the default model")
+		}
+		if current.Judge.Server == p.Name {
+			uses = append(uses, "the judge")
 		}
 		for _, name := range slices.Sorted(maps.Keys(current.Models)) {
 			if current.Models[name].Server == p.Name {

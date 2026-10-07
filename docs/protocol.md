@@ -404,7 +404,10 @@ A `jev.req` event records one judge request: the tool, its origin, the
 content level, the redacted payload's size and hash, the redactions, the
 answer, and, when an answer came back, the `model` that answered and its
 `usage` (`input_tokens`, `output_tokens`, and `cost`, an estimate from
-`[jev]` prices, else those its provider publishes; the API reports none). A budget checkpoint's state counts
+`[judge]` prices, else those its provider publishes for its questions; the
+API reports none). The answer is in System One's shape whichever provider
+gave it (`noul`; `score` and `confidence`; `choice`, `confidence` and
+`probabilities` by option), and the Decisions API names no `model`. A budget checkpoint's state counts
 the turn's judge requests apart: `judge_calls`, `judge_tokens`,
 `judge_cost`, `judge_unpriced`.
 
@@ -462,10 +465,10 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `keychain.create` | `{"passphrase":"…"}` or `{"no_passphrase":true}` | Keychain status; tasks opened afterwards receive the keychain. A passphrase has at least 8 characters |
 | `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain. `""` opens a keychain without a passphrase |
 | `keychain.passphrase` | `{"current"?, "passphrase"?, "no_passphrase"?}` | Keychain status after setting, changing or (`no_passphrase`) removing the open keychain's passphrase; `current` is required when it has one, and a wrong one waits a second as `keychain.unlock` does |
-| `settings.read` | `{}` | `{config_file, control, models, servers, choices, keychain, docs, values, judge}` |
+| `settings.read` | `{}` | `{config_file, control, models, servers, choices, keychain, docs, values, judge, judge_key?, judge_key_detail?, judge_host?, judge_model?, judge_published?}` |
 | `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}`, or `{"provider","url","model","api_key"?,"effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on), and saving the server it names; the model it replaces stays in the list |
-| `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?,"credential"?}` | Settings after adding a provider (`[servers.NAME]`, named by `name`, else after its host) or changing the one `name` names; servers are keyed by name, so a second can share an address (an API key and a ChatGPT plan at api.openai.com), and without `name` the address picks the server only when one is at it; `provider` is `ollama`, `openai` or `anthropic` (a dialect is for `openai` alone); `credential` is a ChatGPT plan credential in place of a key (below); the key goes to the keychain, bound for `POST` and `GET` at the host where the provider reads it (a bearer header; Anthropic's `x-api-key`) |
-| `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model is on |
+| `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?,"credential"?}` | Settings after adding a provider (`[servers.NAME]`, named by `name`, else after its host) or changing the one `name` names; servers are keyed by name, so a second can share an address (an API key and a ChatGPT plan at api.openai.com), and without `name` the address picks the server only when one is at it; `provider` is `ollama`, `openai`, `anthropic` or `jev` (a dialect is for `openai` alone; a `jev` server answers the judge and carries no model, ADR 46); `credential` is a ChatGPT plan credential in place of a key (below); the key goes to the keychain, bound for `POST` and `GET` at the host where the provider reads it (a bearer header; Anthropic's `x-api-key`), and for `POST` alone for `jev` |
+| `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model and not the judge is on |
 | `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?,"settings"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts, starting effort and settings |
 | `settings.model.remove` | `{"name"}` | Settings after removing a model from the list; the default model is not removed |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
@@ -508,10 +511,10 @@ accept, or a key that was not sent (the keychain is locked, the binding
 refused it). `servers` in the settings are the model providers: the
 `[servers.NAME]` tables of `config.toml`, and the address a model gives inline,
 `{name, provider, dialect?, url, credential?, host, inline?, key?, key_detail?,
-uses}`, `credential` being the key's keychain class (never the key), `key` what
+uses, judge?}`, `credential` being the key's keychain class (never the key), `key` what
 the keychain says of it without asking the server (`ready`, `needs_key`,
-`locked`, `unbound`; absent for a provider with none), and `uses` the names of
-the models on it. `choices` are the models a task can be started on or moved to,
+`locked`, `unbound`; absent for a provider with none), `uses` the names of
+the models on it, and `judge` true when `[judge] server` names it. `choices` are the models a task can be started on or moved to,
 `[control]` first as `control` with `default: true`, then each `[models.NAME]`
 that is not the default model again: `{name, server?, provider, model, host,
 efforts?, effort?, default?, settings, published?}`, where `efforts` are the
@@ -559,22 +562,28 @@ lock sessions take when they save the same answer, and writes it 0600.
 
 `values` in the settings maps each setting `settings.write` may change, by
 dotted name, to `{value, default, set}`: the value tasks opened now get
-(`null` for an optional one left unset, such as `jev.price_input`), its
+(`null` for an optional one left unset, such as `judge.price_input`), its
 default, and whether `config.toml` sets it. `judge` says whether a judge can
-answer confirms now: `jev.content` is not `none` and `jev_key` is `ready`.
-`jev_key` is what the keychain and the binding table say of the judge's
-key, as a provider's `key` says of its own: `ready` (stored, unlocked and
-allowed for the judge's host), or `needs_key`, `locked` or `unbound`, with
-`jev_key_detail` saying what to do. Nothing is asked of the judge's service. `jev_published` is what the judge's provider publishes
-about `jev.model` at `jev.url`, `{price_input, price_output}`, which prices its
-requests when `[jev]` sets no prices; absent when the catalogue does not
-describe it (ADR 41, amended 2026-10-05). `settings.write` takes `set`, from those names to new
+answer confirms now: `judge.server` names a provider, `judge.content` is not
+`none` and `judge_key` is `ready` (ADR 46). `judge_key` is what the keychain
+and the binding table say of the key of the judge's server, as a
+provider's `key` says of its own: `ready` (stored, unlocked and allowed for
+the judge's host), or `needs_key`, `locked` or `unbound`, with
+`judge_key_detail` saying what to do; absent with no judge. Nothing is asked
+of the judge's service. `judge_host` is that server's host, `judge_model`
+the model the judge asks (`judge.model`, else its provider's: `jev-latest`
+for Jev, `gpt-6-luna` for OpenAI), and `judge_published` what its provider
+publishes as the price of its questions, `{price_input, price_output}`,
+which prices its requests when `[judge]` sets no prices; absent when nodwyn
+does not know it (ADR 41, amended 2026-10-05). `settings.write` takes `set`, from those names to new
 values; `null` removes a key so its default applies. It accepts only
 `approval.writes` and `approval.commands` (what a task does without asking,
 ADR 35), `approval.dont_ask` (`true` or `false`: whether tasks offer "don't
 ask"; saving `false` also turns it off in every open session, ADR 17), the `budget.*` limits, `loop.request_timeout`
-and `loop.shell_timeout`, the `window.*` marks, `jev.content`,
-`jev.approve_threshold`, `jev.timeout`, `jev.model`, the judge prices and `mcp.runtime`,
+and `loop.shell_timeout`, the `window.*` marks, `judge.server` (one of the
+configured providers, a `jev` server or an `openai` one with a key),
+`judge.content`, `judge.approve_threshold`, `judge.timeout`, `judge.model`,
+the judge prices and `mcp.runtime`,
 and `policy.allow_insecure_http` (boolean, default false). The latter permits
 credential injection on remote HTTP, taking effect in new/resumed tasks and in
 current provider setup, tests and model lists. It does not relax bindings, redirect
@@ -602,11 +611,12 @@ Each entry of `credentials` is `{id, class, kind, created, used_by,
 bindings}`, and for OAuth2 `provider`, `scopes`, `expires`, `refreshable`,
 `needs_reauth` and `token_host`; `shadowed` marks a credential a lookup by
 class never reaches, since an earlier one has the class. `used_by` names what
-is configured to send the class (the main model, `model NAME`, `MCP server
-NAME`, Google Docs, the judge), and `bindings` are the rows of
-`bindings.toml` that name it, read as the file is now. `missing` lists the
-classes a model or an MCP server is configured to send that the keychain
-does not hold. No result carries a value or a token. A class is letters,
+is configured to send the class (the main model, `model NAME`, `server
+NAME`, `MCP server NAME`, Google Docs, the judge: the key of the server
+`[judge]` names), `model` marks a class a configured provider sends, and
+`bindings` are the rows of `bindings.toml` that name it, read as the file
+is now. `missing` lists the classes a model, an MCP server or the judge is
+configured to send that the keychain does not hold. No result carries a value or a token. A class is letters,
 digits, dots, dashes or underscores (at most 64), and adding a second
 credential of a class is refused.
 

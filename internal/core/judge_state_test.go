@@ -37,7 +37,7 @@ func TestTheJudgeKnowsWhetherAPersonIsAtHand(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			judge := newFakeJudge(t, noul(0.2), choice(0.9))
-			r := judgedRigWith(t, judge, config.JevContentPlan, quiet, tc.adjust, commandTurn("1", "true"), fake.Turn{Content: "done"})
+			r := judgedRigWith(t, judge, config.JudgeContentPlan, quiet, tc.adjust, commandTurn("1", "true"), fake.Turn{Content: "done"})
 			if asked := r.asked("run the check", "y"); len(asked) != 0 {
 				t.Fatalf("the person was asked: %+v", asked)
 			}
@@ -57,7 +57,7 @@ func TestTheJudgeKnowsWhetherAPersonIsAtHand(t *testing.T) {
 func TestTheJudgeSeesPlanProgressAndEarlierAnswers(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.9), score(3.6), choice(0.3), choice(0.9))
-	r := judgedRigWith(t, judge, config.JevContentPlan, quiet, func(o *Options) { o.NoConfirm = false },
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, quiet, func(o *Options) { o.NoConfirm = false },
 		fake.Turn{Content: "1. run the check\n2. run it again\n3. report"},
 		commandTurn("a", "echo", "check"),
 		fake.Turn{ToolCalls: []fake.ToolCall{stepCall("b", 1, "done", "the check ran")}},
@@ -93,7 +93,7 @@ func TestTheJudgeSeesPlanProgressAndEarlierAnswers(t *testing.T) {
 // described.
 func TestTheJudgeIsToldOfAScratchScript(t *testing.T) {
 	t.Parallel()
-	for _, content := range []string{config.JevContentPlan, config.JevContentFull} {
+	for _, content := range []string{config.JudgeContentPlan, config.JudgeContentFull} {
 		t.Run(content, func(t *testing.T) {
 			t.Parallel()
 			judge := newFakeJudge(t, noul(0.2), choice(0.9))
@@ -112,7 +112,7 @@ func TestTheJudgeIsToldOfAScratchScript(t *testing.T) {
 			if strings.Contains(state, "absent.sh: a") || strings.Contains(state, "hostname: a") {
 				t.Fatalf("a file not in the scratch directory was described:\n%s", state)
 			}
-			if shown := strings.Contains(state, "script-marker-7731"); shown != (content == config.JevContentFull) {
+			if shown := strings.Contains(state, "script-marker-7731"); shown != (content == config.JudgeContentFull) {
 				t.Fatalf("at %s the script's text shown = %v:\n%s", content, shown, state)
 			}
 		})
@@ -128,7 +128,7 @@ func TestTheJudgeReadsAChatsEarlierMessages(t *testing.T) {
 	t.Parallel()
 	const first, reply = "that is still verbose, compacting should be possible there", "folding, to reduce visual polution for the user"
 	judge := newFakeJudge(t, noul(0.2), noul(0.9), score(3.6), choice(0.9))
-	r := judgedRigWith(t, judge, config.JevContentPlan, quiet, func(o *Options) { o.NoConfirm = false },
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, quiet, func(o *Options) { o.NoConfirm = false },
 		fake.Turn{Content: "Do you mean folding the activity rows, or compacting the context?"},
 		fake.Turn{Content: "1. Change: transcript.js — fold the activity rows."},
 		commandTurn("1", "date", "-I"),

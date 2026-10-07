@@ -24,7 +24,7 @@ type runParams struct {
 	// Unattended: nobody answers the run's prompts, and it goes on from a
 	// turn only when that turn marked a plan step done (ADR 18 §5).
 	Unattended bool `json:"unattended,omitempty"`
-	// Judge has the judge (Jev) answer the run's ordinary tool confirms
+	// Judge has the judge answer the run's ordinary tool confirms
 	// instead of a person; it excludes auto_approve and needs a judge.
 	Judge bool `json:"judge,omitempty"`
 	// Cost is the run's spend limit in US dollars, for the whole run; it

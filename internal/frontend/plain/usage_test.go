@@ -78,17 +78,21 @@ func TestCompactLine(t *testing.T) {
 
 func TestJudgeLineAndTally(t *testing.T) {
 	cost := 0.00022
-	priced := log.JevReq{Tool: "jev-choice", OK: true, Usage: &log.JevUsage{InputTokens: 318, OutputTokens: 34, Cost: &cost}}
-	if got := JudgeLine(priced); got != "[judge jev-choice: 318→34 tok · ≈$0.0002]" {
+	priced := log.JevReq{Tool: "judge-choice", OK: true, Usage: &log.JevUsage{InputTokens: 318, OutputTokens: 34, Cost: &cost}}
+	if got := JudgeLine(priced); got != "[judge choice: 318→34 tok · ≈$0.0002]" {
 		t.Fatalf("priced: %q", got)
 	}
-	bare := log.JevReq{Tool: "jev-noul", OK: true, Usage: &log.JevUsage{InputTokens: 296, OutputTokens: 20}}
-	if got := JudgeLine(bare); got != "[judge jev-noul: 296→20 tok]" {
+	bare := log.JevReq{Tool: "judge-yes-no", OK: true, Usage: &log.JevUsage{InputTokens: 296, OutputTokens: 20}}
+	if got := JudgeLine(bare); got != "[judge yes-no: 296→20 tok]" {
 		t.Fatalf("unpriced: %q", got)
 	}
-	failed := log.JevReq{Tool: "jev-noul", Error: "401 Unauthorized"}
-	if got := JudgeLine(failed); got != "[judge jev-noul failed: 401 Unauthorized]" {
+	failed := log.JevReq{Tool: "judge-yes-no", Error: "401 Unauthorized"}
+	if got := JudgeLine(failed); got != "[judge yes-no failed: 401 Unauthorized]" {
 		t.Fatalf("failed: %q", got)
+	}
+	// A log from before the judge's primitives were renamed shows its names.
+	if got := JudgeLine(log.JevReq{Tool: "jev-noul", Error: "401 Unauthorized"}); got != "[judge jev-noul failed: 401 Unauthorized]" {
+		t.Fatalf("an older log: %q", got)
 	}
 	var j JudgeTally
 	j.Add(priced)
@@ -102,7 +106,7 @@ func TestJudgeLineAndTally(t *testing.T) {
 	}
 	var none JudgeTally
 	none.Add(bare)
-	if got := none.String(); got != "1 judge call, 316 tokens, not priced ([jev] price_input, price_output)" {
+	if got := none.String(); got != "1 judge call, 316 tokens, not priced ([judge] price_input, price_output)" {
 		t.Fatalf("unpriced: %q", got)
 	}
 	if JudgeSoFar(budget.State{}) != "" {

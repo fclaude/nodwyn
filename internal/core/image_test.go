@@ -392,7 +392,8 @@ func TestImagesStayOutOfNarrowedContextsAndTheJudge(t *testing.T) {
 		}
 		o.Keychain = kc
 		o.Bindings = binding.Table{Bind: []binding.Binding{{Class: "jev-key", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}}
-		o.Config.Jev.URL, o.Config.Jev.Content = judge.URL, config.JevContentPlan
+		o.Config.Servers = map[string]config.Server{"jev": {Provider: "jev", URL: judge.URL, Credential: "jev-key"}}
+		o.Config.Judge.Server, o.Config.Judge.Content = "jev", config.JudgeContentPlan
 		o.Config.Models = map[string]config.Model{"other": {URL: other.URL, Model: "other-vision"}}
 	},
 		fake.Turn{Content: "1. Describe the image."}, // planner

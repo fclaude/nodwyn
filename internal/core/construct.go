@@ -37,10 +37,10 @@ type Options struct {
 	// confirms with "no" (guard.AutoAllow). Denials are unaffected: this
 	// answers the guard's questions, it does not overrule its refusals.
 	AutoApprove bool
-	// JudgeApprove has the judge (Jev) answer ordinary confirms, decided in
-	// Go (judge.go) so no Scheme can approve a call; security confirms are
-	// declined without asking, and a failure is a no. It needs a judge: Jev enabled
-	// and a jev-key stored (ADR 18 §5, ADR 20 Seam C).
+	// JudgeApprove has the judge answer ordinary confirms, decided in Go
+	// (judge.go) so no Scheme can approve a call; security confirms are
+	// declined without asking, and a failure is a no. It needs a judge: a
+	// [judge] server whose key is stored (ADR 18 §5, ADR 20 Seam C, ADR 46).
 	JudgeApprove bool
 	// Unattended means nobody is there to answer anything (an unattended
 	// run, ADR 18 §5): no prompt ever waits for a person. Tool confirms are
@@ -164,21 +164,23 @@ func fileExists(p string) bool {
 	return err == nil && !st.IsDir()
 }
 
-// jevOptions resolves the existing per-session defaults before registration;
-// the judge's prices are [jev]'s, else what its provider publishes
-// (config.JevPrices).
-func jevOptions(c config.Config) prim.JevOptions {
-	j := c.Jev
+// judgeOptions resolves the existing per-session defaults before
+// registration: the provider, address and key class are the judge's
+// server's (ADR 46), the model its own or its provider's, and the prices
+// [judge]'s, else what its provider publishes (config.JudgePrices).
+func judgeOptions(c config.Config) prim.JudgeOptions {
+	j := c.Judge
 	timeout, err := time.ParseDuration(j.Timeout)
 	if err != nil {
 		timeout = 10 * time.Second
 	}
 	content := j.Content
 	if content == "" {
-		content = config.JevContentPlan
+		content = config.JudgeContentPlan
 	}
-	in, out := c.JevPrices()
-	return prim.JevOptions{URL: j.URL, Model: j.Model, Content: content, Timeout: timeout, PriceInput: in, PriceOutput: out}
+	srv, _ := c.JudgeServer()
+	in, out := c.JudgePrices()
+	return prim.JudgeOptions{Provider: srv.Provider, URL: srv.URL, Model: c.JudgeModel(), Class: srv.Credential, Content: content, Timeout: timeout, PriceInput: in, PriceOutput: out}
 }
 
 func resolveOptions(o Options) (Options, error) {
@@ -253,15 +255,16 @@ func (s *Session) primitiveOptions() prim.Options {
 	if s.keychain != nil {
 		po.Credentials = s
 	}
-	// P5 Jev (ADR 19/20): Jev egress primitives are registered if Jev is
-	// enabled and a keychain is available. The session is the JevClient.
-	// The model's judge-* tools also need a jev-key stored now, since the
-	// tool list is fixed for the session, and the "full" content level,
-	// since the model chooses what it sends.
-	if o.Config.Jev.Enabled() && s.keychain != nil {
-		po.Jev = s
-		po.JevConfig = jevOptions(o.Config)
-		po.JevConfig.Tools = po.JevConfig.Content == config.JevContentFull && s.HandleForClass(prim.JevClass) != nil
+	// The judge (ADR 19/20, ADR 46): its egress primitives are registered
+	// if [judge] names a server whose key is stored now, since the
+	// primitive table, the tools among it, is fixed for the session, as the
+	// judge's server is. The session is the JudgeClient. They are the
+	// model's tools as well only at the "full" content level, since the
+	// model chooses what it sends.
+	if _, ok := o.Config.JudgeServer(); ok && s.keychain != nil && s.judgeKey() != nil {
+		po.Judge = s
+		po.JudgeConfig = judgeOptions(o.Config)
+		po.JudgeConfig.Tools = po.JudgeConfig.Content == config.JudgeContentFull
 	}
 	// W5 documents: google-doc-upload is offered only when a credential of
 	// the configured class is stored now, since the tool list is fixed for
@@ -400,8 +403,8 @@ func (s *Session) initialize() (err error) {
 	// Interpreter: output becomes an event, never stdout.
 	s.interp = scheme.New(scheme.WithOutput(outputWriter{s}), scheme.WithBaseDir(o.Repo))
 	po := s.primitiveOptions()
-	if o.JudgeApprove && (po.Jev == nil || s.HandleForClass(prim.JevClass) == nil) {
-		return errors.New("core: judged approval needs a judge: jev.content other than none, an unlocked keychain and a jev-key stored")
+	if o.JudgeApprove && po.Judge == nil {
+		return errors.New("core: judged approval needs a judge: a [judge] server whose key is stored, judge.content other than none, and an unlocked keychain")
 	}
 	if err := prim.Register(s.interp, po); err != nil {
 		return err

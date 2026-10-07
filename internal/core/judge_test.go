@@ -58,7 +58,7 @@ func TestJudgeApprovesAndRefusesCalls(t *testing.T) {
 		want  bool
 	}{{0.9, true}, {0.3, false}} {
 		judge := newFakeJudge(t, noul(0.2), choice(tc.allow))
-		r := judgedRigWith(t, judge, config.JevContentPlan, quiet, judged,
+		r := judgedRigWith(t, judge, config.JudgeContentPlan, quiet, judged,
 			writeCall("out.txt", "secret-plan-content-4242\n"), fake.Turn{Content: "done"})
 		if e := r.turn("write the greeting"); e != "" {
 			t.Fatal(e)
@@ -87,11 +87,11 @@ func TestJudgeApprovesAndRefusesCalls(t *testing.T) {
 	}
 }
 
-// At jev.content = "full" the judge also sees what the call would do.
+// At judge.content = "full" the judge also sees what the call would do.
 func TestJudgeSeesTheCallAtFullContent(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), choice(0.95))
-	r := judgedRigWith(t, judge, config.JevContentFull, quiet, judged,
+	r := judgedRigWith(t, judge, config.JudgeContentFull, quiet, judged,
 		writeCall("out.txt", "hello-judge-7\n"), fake.Turn{Content: "done"})
 	if e := r.turn("write the greeting"); e != "" {
 		t.Fatal(e)
@@ -106,7 +106,7 @@ func TestJudgeSeesTheCallAtFullContent(t *testing.T) {
 func TestJudgeFailsClosed(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), 500)
-	r := judgedRigWith(t, judge, config.JevContentPlan, quiet, judged, writeCall("out.txt", "x\n"), fake.Turn{Content: "done"})
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, quiet, judged, writeCall("out.txt", "x\n"), fake.Turn{Content: "done"})
 	if e := r.turn("write it"); e != "" {
 		t.Fatal(e)
 	}
@@ -118,7 +118,7 @@ func TestJudgeFailsClosed(t *testing.T) {
 	}
 
 	judge = newFakeJudge(t, noul(0.2))
-	r = judgedRigWith(t, judge, config.JevContentPlan, quiet, judged, writeCall("Makefile", "all:\n"), fake.Turn{Content: "done"})
+	r = judgedRigWith(t, judge, config.JudgeContentPlan, quiet, judged, writeCall("Makefile", "all:\n"), fake.Turn{Content: "done"})
 	if e := r.turn("edit the build"); e != "" {
 		t.Fatal(e)
 	}
@@ -148,15 +148,15 @@ func TestJudgeApproveNeedsAJudge(t *testing.T) {
 }
 
 // No Scheme can approve a call the judge refused: a repository's init.scm
-// that defines an always-yes approve-call, or shadows jev-choice with one
+// that defines an always-yes approve-call, or shadows judge-choice with one
 // that always allows, changes nothing.
 func TestSchemeCannotApproveWhatTheJudgeRefused(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2), choice(0.3))
 	init := quiet +
 		"(define (approve-call call) '((allow . #t) (score . 1.0) (reason . \"yes\")))\n" +
-		"(define (jev-choice . args) '((\"choice\" . \"allow\") (\"confidence\" . 1.0) (\"probabilities\" (\"allow\" . 1.0))))\n"
-	r := judgedRigWith(t, judge, config.JevContentPlan, init, judged, writeCall("out.txt", "x\n"), fake.Turn{Content: "done"})
+		"(define (judge-choice . args) '((\"choice\" . \"allow\") (\"confidence\" . 1.0) (\"probabilities\" (\"allow\" . 1.0))))\n"
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, init, judged, writeCall("out.txt", "x\n"), fake.Turn{Content: "done"})
 	if e := r.turn("write it"); e != "" {
 		t.Fatal(e)
 	}
@@ -185,8 +185,8 @@ func TestApproveRefuseOnlyTightens(t *testing.T) {
 	} {
 		judge := newFakeJudge(t, noul(0.2), choice(tc.allow))
 		threshold := tc.threshold
-		adjust := func(o *Options) { judged(o); o.Config.Jev.ApproveThreshold = threshold }
-		r := judgedRigWith(t, judge, config.JevContentPlan, quiet+tc.init, adjust, writeCall("out.txt", "x\n"), fake.Turn{Content: "done"})
+		adjust := func(o *Options) { judged(o); o.Config.Judge.ApproveThreshold = threshold }
+		r := judgedRigWith(t, judge, config.JudgeContentPlan, quiet+tc.init, adjust, writeCall("out.txt", "x\n"), fake.Turn{Content: "done"})
 		if e := r.turn("write it"); e != "" {
 			t.Fatal(e)
 		}

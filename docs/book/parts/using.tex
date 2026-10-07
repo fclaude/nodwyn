@@ -116,12 +116,14 @@ wall_hard       = "4h"
 # cost_soft     = 2.0       # US dollars for the whole task; off unless set
 # cost_hard     = 10.0
 
-[jev]
+[judge]
+# server = "jev"            # a [servers.NAME] of provider jev, or openai with
+                            #   an API key; unset, there is no judge
 content = "plan"            # none | plan | plan+summaries | full
 approve_threshold = 0.8     # the judge allows a call at or above this
 # price_input   = 0.5       # US dollars per million tokens: the judge reports
-# price_output  = 2.0       #   its tokens, never its cost; unset, jev-latest
-                            #   is priced as typesafe.ai publishes it
+# price_output  = 2.0       #   its tokens, never its cost; unset, its
+                            #   questions are priced as its provider publishes
 
 [docs]
 google_credential = "google"  # the class google-doc-upload sends; "" for none
@@ -354,8 +356,9 @@ Approvals, decides which of them go ahead without you (\adr{35}):
   directory is the session's own. If the judge allows it,
   it runs, recorded with the judge as the one
   who answered. If the judge refuses or fails, you are asked, and the
-  prompt says what it answered. Without a judge (no \code{jev-key} stored,
-  \code{jev.content = "none"}, or a locked keychain) you are asked.
+  prompt says what it answered. Without a judge (no \code{[judge]}
+  provider, its key not stored, \code{judge.content = "none"}, or a locked
+  keychain) you are asked.
 \item[\code{commands = "ask"}] you answer each one.
 \item[\code{commands = "allow"}] they run, recorded with the actor
   \code{setting}.
@@ -526,15 +529,18 @@ methods = ["POST"]
 
 A keyed model names the class as its \code{credential}; the binding is
 checked on every request and recorded as \code{egress.check}. The judge
-works the same way with the class \code{jev-key}, bound to its host: the
-console's Connections page keeps a Judge card at the top of its
-Credentials, with one field for the key when none is stored, and the
-binding it writes is the judge's own (its host, Bearer token, \code{POST}).
-Once that key exists, the default loop's plan gate runs before each message,
-and the judge answers commands before you are asked
-(\code{approval.commands = "judge"}, the default). Set
-\code{jev.content = "none"} to send it nothing, or \code{"full"} to
-give the model the judge as tools (\code{judge-noul}, \code{judge-score},
+is a provider's too (\adr{46}): \code{[judge] server} names a
+\code{[servers.NAME]} of provider \code{jev}, TypeSafe's Jev, which has no
+chat models, or one of provider \code{openai} at OpenAI's address, whose
+Decisions API answers with the key its models use. The console adds Jev in
+Settings \(\rightarrow\) Models like any provider, its key bound for its
+host by \code{POST} alone, and Settings \(\rightarrow\) Judge chooses the
+judge's provider; the key is listed with the other providers' keys under
+Connections. Once the judge is on a provider whose key is stored, the
+default loop's plan gate runs before each message, and the judge answers
+commands before you are asked (\code{approval.commands = "judge"}, the
+default). Set \code{judge.content = "none"} to send it nothing, or \code{"full"} to
+give the model the judge as tools (\code{judge-yes-no}, \code{judge-score},
 \code{judge-choice}) in sessions started after the key was stored. A daemon holds the
 keychain for every session it opens: unlock it once, from its terminal or
 the console, and sessions opened afterwards can use it.
@@ -830,10 +836,10 @@ which is its claim, not proof. \code{--yolo} answers a run's ordinary tool
 confirms with yes; it does not answer security confirms, and it does not
 continue the run between turns. \code{-{}-judge} has the judge answer them
 instead: it is shown the task, the plan and the call (at
-\code{jev.content = "full"}, also what the call would write or send), and
+\code{judge.content = "full"}, also what the call would write or send), and
 the call runs only if the judge's probability of allow is at least
-\code{jev.approve\_threshold} and the project's \code{approve-refuse?}, if
-it defines one, does not refuse it. It needs a stored \code{jev-key},
+\code{judge.approve\_threshold} and the project's \code{approve-refuse?}, if
+it defines one, does not refuse it. It needs a judge whose key is stored,
 excludes \code{--yolo}, and declines security confirms. Use either on a
 throwaway checkout: the guard makes an unattended run survivable, not safe.
 \code{-{}-unattended} goes further: nobody answers at all. Tool confirms

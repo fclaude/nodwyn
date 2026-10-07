@@ -221,28 +221,27 @@ type settingsResult struct {
 	Docs     docsSettings   `json:"docs"`
 	// Values are the settings settings.write may change, by dotted name.
 	Values map[string]settingValue `json:"values"`
-	// Judge says a judge can answer a run's confirms now: jev.content is
-	// not "none" and JevKey is ready.
+	// Judge says a judge can answer a run's confirms now: judge.server
+	// names a provider, judge.content is not "none" and JudgeKey is ready.
 	Judge bool `json:"judge"`
-	// JevKey is what the keychain and the binding table say of the judge's
-	// key, as a provider's Key says of its own: ready, or needs_key, locked
-	// or unbound, with JevKeyDetail saying what to do. Nothing is asked of
-	// the judge's service, so ready says the key can be sent, not that the
-	// service accepts it.
-	JevKey       string `json:"jev_key"`
-	JevKeyDetail string `json:"jev_key_detail,omitempty"`
-	// JevHost is the host of jev.url: where a jev-key goes. Empty when the
-	// judge has no address. Settings shows its judge-key row only when it
-	// is known, so the row never points at a panel with no field.
-	JevHost string `json:"jev_host"`
-	// JevStored says a jev-key is in the keychain, whether or not the judge
-	// is enabled: Settings needs it to tell "no key stored" from "the judge
-	// is off with a key stored". The key's value is never included.
-	JevStored bool `json:"jev_stored"`
-	// JevPublished is what the judge's provider publishes about jev.model at
-	// jev.url, its prices, which price its requests when [jev] sets none;
-	// absent when the catalogue does not describe it.
-	JevPublished *publishedModel `json:"jev_published,omitempty"`
+	// JudgeKey is what the keychain and the binding table say of the key of
+	// the judge's server, as a provider's Key says of its own: ready, or
+	// needs_key, locked or unbound, with JudgeKeyDetail saying what to do;
+	// empty when there is no judge. Nothing is asked of the judge's service,
+	// so ready says the key can be sent, not that the service accepts it.
+	JudgeKey       string `json:"judge_key,omitempty"`
+	JudgeKeyDetail string `json:"judge_key_detail,omitempty"`
+	// JudgeHost is the host of the judge's server: where its questions go.
+	// Empty when there is no judge.
+	JudgeHost string `json:"judge_host,omitempty"`
+	// JudgeModel is the model the judge asks: judge.model, else its
+	// provider's judge model (config.JudgeModels), which Settings shows as
+	// the field's placeholder.
+	JudgeModel string `json:"judge_model,omitempty"`
+	// JudgePublished is what the judge's provider publishes as the price of
+	// its questions, which prices its requests when [judge] sets none;
+	// absent when nodwyn does not know it.
+	JudgePublished *publishedModel `json:"judge_published,omitempty"`
 }
 
 // docsSettings is how documents leave this computer: whether a Google
@@ -303,6 +302,8 @@ type modelServer struct {
 	KeyDetail string `json:"key_detail,omitempty"`
 	// Uses names the models that are on it: "control", and [models.NAME].
 	Uses []string `json:"uses"`
+	// Judge says the judge's questions go to it (judge.server).
+	Judge bool `json:"judge,omitempty"`
 }
 
 // modelChoice is a model a person can choose, as the pickers show it.
@@ -341,15 +342,17 @@ func (s *server) settings() settingsResult {
 	if cfg, err := config.Load(s.options.Paths.ConfigFile); err == nil {
 		docs = cfg.Docs
 	}
+	result := settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: s.providers(), Choices: s.choices(), Keychain: s.keychainStatus(),
+		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(),
+		JudgeModel: s.options.Config.JudgeModel(), JudgePublished: judgePublished(s.options.Config)}
 	// A key stored but not allowed for the judge's host is refused by the
 	// guard on the judge's first request, so it is not ready.
-	jevHost := prim.JevHost(prim.JevOptions{URL: s.options.Config.Jev.URL})
-	jevKey, jevKeyDetail := s.keyCheck(prim.JevClass, jevHost, prim.JevPosition)
-	judge := s.options.Config.Jev.Enabled() && jevKey == stateReady
-	stored := s.options.Keychain != nil && s.options.Keychain.HandleForClass(prim.JevClass) != nil
-	return settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: s.providers(), Choices: s.choices(), Keychain: s.keychainStatus(),
-		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(), Judge: judge,
-		JevHost: jevHost, JevStored: stored, JevKey: jevKey, JevKeyDetail: jevKeyDetail, JevPublished: judgePublished(s.options.Config)}
+	if srv, ok := s.options.Config.JudgeServer(); ok {
+		result.JudgeHost = prim.JudgeHost(prim.JudgeOptions{URL: srv.URL})
+		result.JudgeKey, result.JudgeKeyDetail = s.keyCheck(srv.Credential, result.JudgeHost, prim.JudgePosition)
+		result.Judge = result.JudgeKey == stateReady
+	}
+	return result
 }
 
 // docsSettingsMethod answers settings.docs.write: it saves how an upload to
@@ -488,7 +491,7 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		if _, err := s.options.Keychain.Add(class, key); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
-		if err := s.bindKey(class, host, config.KeyPosition(srv.Provider)); err != nil {
+		if err := s.bindKey(class, host, srv.Provider); err != nil {
 			return nil, failure(-32000, err.Error())
 		}
 	}

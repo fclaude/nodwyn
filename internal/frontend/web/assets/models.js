@@ -21,9 +21,13 @@ const kinds = {
   ollama: { label: "Ollama", needs: "Ollama on this computer or your network. It needs an address, and no key." },
   openai: { label: "OpenAI-compatible", needs: "Any server that speaks OpenAI's API, chat completions or Responses. It needs an address and, for a hosted one, an API key or an eligible ChatGPT account, kept in the keychain." },
   anthropic: { label: "Anthropic", needs: "Claude on Anthropic's own API, the Messages API. It needs its address and an API key, which is kept in the keychain and sent in the x-api-key header." },
+  jev: { label: "Jev", needs: "TypeSafe's judge, which answers the judge's questions and has no chat models: choose it under Judge once it is saved. It needs its address and an API key, kept in the keychain and sent only with the judge's questions." },
 };
 // hasKey says whether a kind of server takes a key.
-const hasKey = (kind) => kind === "openai" || kind === "anthropic";
+const hasKey = (kind) => kind === "openai" || kind === "anthropic" || kind === "jev";
+// carriesModels says whether models can be on a provider: a Jev server only
+// answers the judge (ADR 46).
+const carriesModels = (p) => !p.inline && p.provider !== "jev";
 const presets = [
   { id: "ollama", label: "Ollama", kind: "ollama", url: "http://localhost:11434", dialect: "" },
   { id: "openai", label: "OpenAI", kind: "openai", url: "https://api.openai.com/v1", dialect: "responses" },
@@ -31,6 +35,7 @@ const presets = [
   { id: "baseten", label: "Baseten", kind: "openai", url: "https://inference.baseten.co/v1", dialect: "" },
   { id: "openrouter", label: "OpenRouter", kind: "openai", url: "https://openrouter.ai/api/v1", dialect: "" },
   { id: "cerebras", label: "Cerebras", kind: "openai", url: "https://api.cerebras.ai/v1", dialect: "cerebras" },
+  { id: "jev", label: "Jev (judge)", kind: "jev", url: "https://api.typesafe.ai", dialect: "" },
   { id: "other", label: "Other server", kind: "openai", url: "", dialect: "" },
 ];
 const dialects = [["", "Standard (reasoning_content)"], ["cerebras", "Cerebras (reasoning)"], ["responses", "OpenAI Responses (/responses)"]];
@@ -154,7 +159,19 @@ function providerRows(ctx, redraw) {
     const status = worst(desk, p);
     const result = ui.results.get(key);
     const first = (p.uses || []).find((name) => choicesOf(desk).some((c) => c.name === name)) || (p.uses || [])[0];
-    const detail = status.detail || (status.state ? "" : first ? "Not checked yet: Test asks it for a reply." : "No model is on it yet: add one to test it.");
+    const judgeOnly = p.provider === "jev";
+    const detail =
+      status.detail ||
+      (judgeOnly
+        ? p.judge
+          ? "The judge asks it: whether it accepts the key shows on the judge's first answer."
+          : "Not used yet: choose it as the judge's provider under Judge."
+        : status.state
+          ? ""
+          : first
+            ? "Not checked yet: Test asks it for a reply."
+            : "No model is on it yet: add one to test it.");
+    const users = [...(p.uses || []), ...(p.judge ? ["the judge"] : [])];
     const confirming = ui.removing === key;
     return h(
       "div",
@@ -167,7 +184,7 @@ function providerRows(ctx, redraw) {
           "div",
           { class: "main" },
           h("strong", {}, p.inline ? p.host : p.name),
-          h("span", {}, `${kinds[p.provider]?.label || p.provider}${p.dialect ? ` (${p.dialect})` : ""} · ${p.host}${p.credential ? (p.authentication === "chatgpt" ? " · ChatGPT plan" : p.key === "ready" ? " · key stored" : "") : hasKey(p.provider) ? " · no key" : ""}`),
+          h("span", {}, `${kinds[p.provider]?.label || p.provider}${p.dialect ? ` (${p.dialect})` : ""} · ${p.host}${p.credential ? (p.authentication === "chatgpt" ? " · ChatGPT plan" : p.key === "ready" ? " · key stored" : "") : hasKey(p.provider) ? " · no key" : ""}${p.judge ? " · the judge's" : ""}`),
           detail ? h("span", { class: status.state && status.state !== "ready" ? "warn-text" : "" }, detail) : null,
         ),
         h("div", { class: "end" }, status.state ? h("span", { class: "state-word" }, state.words[status.state] || status.state) : null),
@@ -175,9 +192,9 @@ function providerRows(ctx, redraw) {
       h(
         "div",
         { class: "row-actions provider-actions" },
-        h("button", { type: "button", class: "btn small", disabled: !first || !conn.has("models.test") || result?.pending, title: first ? "Sends one short request to a model on this provider, as a task would" : "Add a model on this provider to test it", onclick: () => test(ctx, key, first ? { name: first } : null, redraw) }, "Test"),
+        judgeOnly ? null : h("button", { type: "button", class: "btn small", disabled: !first || !conn.has("models.test") || result?.pending, title: first ? "Sends one short request to a model on this provider, as a task would" : "Add a model on this provider to test it", onclick: () => test(ctx, key, first ? { name: first } : null, redraw) }, "Test"),
         editable && !p.inline ? h("button", { type: "button", class: "btn small", onclick: () => openProvider(ctx, p, redraw) }, "Edit") : null,
-        editable && !p.inline ? (confirming ? [h("span", { class: "muted" }, "Remove it? Its key stays in the keychain."), h("button", { type: "button", class: "btn small danger", onclick: () => removeProvider(ctx, p.name, redraw) }, "Remove"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((ui.removing = ""), redraw()) }, "Cancel")] : h("button", { type: "button", class: "btn small danger", disabled: (p.uses || []).length > 0, title: (p.uses || []).length ? `Still used by ${p.uses.join(", ")}` : "", onclick: () => ((ui.removing = key), redraw()) }, "Remove")) : null,
+        editable && !p.inline ? (confirming ? [h("span", { class: "muted" }, "Remove it? Its key stays in the keychain."), h("button", { type: "button", class: "btn small danger", onclick: () => removeProvider(ctx, p.name, redraw) }, "Remove"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((ui.removing = ""), redraw()) }, "Cancel")] : h("button", { type: "button", class: "btn small danger", disabled: users.length > 0, title: users.length ? `Still used by ${users.join(", ")}` : "", onclick: () => ((ui.removing = key), redraw()) }, "Remove")) : null,
       ),
       p.inline ? h("p", { class: "hint" }, "Given by a model's own table in config.toml. Choosing a default model on a provider below moves it to one.") : null,
       resultLine(result),
@@ -354,7 +371,7 @@ function providerForm(ctx, redraw, first = false) {
           ui.provider = null;
           await desk.refreshModels();
           const key = saved ? worst(desk, saved) : null;
-          toast(saved?.key && saved.key !== "ready" ? `Saved, but ${saved.key_detail}.` : key?.state && key.state !== "ready" ? `Saved, but ${key.detail || state.words[key.state]}.` : adding ? (first ? "Provider saved. Choose its model." : "Provider saved. Add a model on it, then Test.") : "Provider saved.");
+          toast(saved?.key && saved.key !== "ready" ? `Saved, but ${saved.key_detail}.` : key?.state && key.state !== "ready" ? `Saved, but ${key.detail || state.words[key.state]}.` : adding ? (params.provider === "jev" ? "Provider saved. Choose it under Judge to have the judge ask it." : first ? "Provider saved. Choose its model." : "Provider saved. Add a model on it, then Test.") : "Provider saved.");
         } catch (error) {
           f.error = error.message;
           f.saving = false;
@@ -363,8 +380,9 @@ function providerForm(ctx, redraw, first = false) {
       },
     },
     h("h3", { class: "form-title" }, adding ? (first ? "Where does the model run?" : "Add a provider") : `Change ${f.name}`),
-    adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), (f.authentication = "api_key"), redraw()) }, p.label))) : null,
-    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai"), kind("anthropic")),
+    adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.filter((p) => !first || p.kind !== "jev").map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), (f.authentication = "api_key"), redraw()) }, p.label))) : null,
+    // The first run sets up a model, which a Jev server cannot carry.
+    h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai"), kind("anthropic"), first ? null : kind("jev")),
     h("p", { class: "hint" }, kinds[f.kind].needs),
     field("provider-name", "Name", h("input", { class: "input", id: "provider-name", spellcheck: false, autocomplete: "off", disabled: !adding, value: f.name, placeholder: adding ? "named after its address" : "", oninput: (event) => (f.name = event.target.value) }), adding ? "What models name it. Two providers can share an address, such as an API key and a ChatGPT plan at OpenAI." : ""),
     f.kind === "openai" ? h("div", { class: "row-actions", role: "group", "aria-label": "Authentication" },
@@ -379,7 +397,7 @@ function providerForm(ctx, redraw, first = false) {
         }
         redraw();
       } }, auth === "chatgpt" ? "ChatGPT plan" : "API key"))) : null,
-    field("provider-url", "Address", url, f.kind === "ollama" ? "Such as http://localhost:11434, or http://workshop:11434 on your network." : `Including the version, such as ${f.kind === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"}.`),
+    field("provider-url", "Address", url, f.kind === "ollama" ? "Such as http://localhost:11434, or http://workshop:11434 on your network." : f.kind === "jev" ? "Without a version: https://api.typesafe.ai." : `Including the version, such as ${f.kind === "anthropic" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1"}.`),
     f.kind === "openai" ? field("provider-dialect", "How it reads the protocol", dialect, "Chosen by you, never guessed from the address. Cerebras needs its own for reasoning to survive tool calls; OpenAI needs Responses for a reasoning model to take an effort and tools together.") : null,
     hasKey(f.kind) && !plan
       ? field(
@@ -390,7 +408,9 @@ function providerForm(ctx, redraw, first = false) {
             ? "Create or unlock the keychain first: keys are kept there, never in config.toml."
             : f.hasKey
               ? "Stored encrypted and sent only to this address. Type a new key to replace it."
-              : "Stored encrypted and sent only to this address. Every model on this provider uses it.",
+              : f.kind === "jev"
+                ? "Stored encrypted and sent only to this address, with the judge's questions."
+                : "Stored encrypted and sent only to this address. Every model on this provider uses it.",
         )
       : null,
     plan ? h("div", { class: "chatgpt-setup" },
@@ -472,7 +492,7 @@ function modelRows(ctx, redraw) {
     "Models you can choose",
     choices.length ? h("div", { class: "models" }, list) : h("p", { class: "hint" }, "No model yet."),
     ui.model ? modelForm(ctx, redraw) : null,
-    editable && !ui.model ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "add-model", disabled: !(desk.settings?.servers || []).some((p) => !p.inline), title: (desk.settings?.servers || []).some((p) => !p.inline) ? "" : "Add a provider first", onclick: () => openModel(null, redraw) }, icon("plus", 14), "Add a model")) : null,
+    editable && !ui.model ? h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "add-model", disabled: !(desk.settings?.servers || []).some(carriesModels), title: (desk.settings?.servers || []).some(carriesModels) ? "" : "Add a provider first", onclick: () => openModel(null, redraw) }, icon("plus", 14), "Add a model")) : null,
     h("p", { class: "hint" }, "These are the models the New task window and a conversation offer. Each has its own settings: its efforts, its context length, its reply cap, its prices and whether it takes images. What a model's own settings leave empty is what its provider publishes, as models.dev collects it, for the providers nodwyn knows (OpenAI, OpenRouter, Cerebras and others); nothing is guessed from a model's name, and a model nothing is known of takes no effort setting unless you say which."),
   );
 }
@@ -785,7 +805,7 @@ function modelForm(ctx, redraw, first = false) {
   const { conn, desk } = ctx;
   const f = ui.model;
   const adding = f.mode === "add";
-  const providers = (desk.settings?.servers || []).filter((p) => !p.inline);
+  const providers = (desk.settings?.servers || []).filter(carriesModels);
   if (!f.server) f.server = providers[0]?.name || "";
   // Claude is billed in full on every request unless it is asked to cache, so a
   // form adding a model on Anthropic's API starts with the ask chosen, as it
@@ -950,7 +970,7 @@ export function modelsRows(ctx, redraw) {
 // Settings keeps it, so a redraw while a form is typed into loses nothing.
 export function firstModel(ctx, redraw) {
   const { desk } = ctx;
-  const providers = (desk.settings?.servers || []).filter((p) => !p.inline);
+  const providers = (desk.settings?.servers || []).filter(carriesModels);
   // Ollama first: it needs no key, and nothing leaves the computer until a
   // person picks a service.
   if (!providers.length && !ui.provider) ui.provider = providerDraft(null, "ollama");

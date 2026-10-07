@@ -94,12 +94,25 @@ func TestTheBuiltInSnapshot(t *testing.T) {
 	}
 }
 
-// The judge, which models.dev does not list, is described by nodwyn itself
-// at typesafe.ai's address: its published input price, and output free.
-func TestTheJudgeIsDescribed(t *testing.T) {
-	m, ok := Default().Lookup("https://api.typesafe.ai", "jev-latest")
-	if !ok || m.Price == nil || m.Price.Input != 0.042 || m.Price.Output != 0 {
-		t.Fatalf("jev-latest: %+v, %v", m, ok)
+// The judges' prices are nodwyn's own, at each provider's address: Jev's,
+// which models.dev does not list, and OpenAI's Decisions API's, which is not
+// gpt-6-luna's chat price. Input is priced and output free; gpt-6-luna's chat
+// entry keeps what models.dev publishes, output price included.
+func TestTheJudgesArePriced(t *testing.T) {
+	for _, tc := range []struct {
+		url, model string
+		input      float64
+	}{{"https://api.typesafe.ai", "jev-latest", 0.042}, {"https://api.openai.com/v1", "gpt-6-luna", 0.10}} {
+		p, ok := JudgePrice(tc.url, tc.model)
+		if !ok || p.Input != tc.input || p.Output != 0 {
+			t.Fatalf("%s: %+v, %v", tc.model, p, ok)
+		}
+	}
+	if _, ok := JudgePrice("https://api.openai.com/v1", "gpt-6-sol"); ok {
+		t.Fatal("a chat model is priced as a judge")
+	}
+	if m, ok := Default().Lookup("https://api.openai.com/v1", "gpt-6-luna"); !ok || m.Price == nil || m.Price.Output == 0 || m.Context == 0 {
+		t.Fatalf("gpt-6-luna's chat entry: %+v, %v", m, ok)
 	}
 }
 

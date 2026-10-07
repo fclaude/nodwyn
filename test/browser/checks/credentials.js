@@ -1,6 +1,7 @@
 // Credentials from the console: a keychain without a passphrase, a key
-// stored and allowed for one host, replaced, the judge key stored through
-// its own panel with its details opened inside that panel, an OAuth2
+// stored and allowed for one host, replaced, the Jev key saved with its
+// provider and shown with the providers' keys, its details opened inside
+// that panel, the judge put on it and its key's state reported, an OAuth2
 // account connected through a fake provider, a credential removed, the
 // passphrase set and removed again; and after a restart, a keychain
 // without a passphrase is open without anyone unlocking it.
@@ -94,46 +95,59 @@ check(async () => {
   assert.deepStrictEqual(sent.of("credentials.replace"), [{ id: replaced.id, value: canary + "-rotated" }]);
   step("key replaced");
 
-  // The Judge panel: store the judge key through its own field. Its details
-  // open inside that panel at once; any shadowing of the detail renderer
-  // blanks the whole tab, so this step guards the panel's wiring too.
-  await page.fill("#judge #jev-value", "sk-judge-canary-0001");
-  await page.click("#judge button:has-text('Store the judge key')");
-  await page.waitForSelector("#judge .cred-row:has-text('jev-key')", { timeout: 10000 });
-  await page.waitForSelector("#judge .cred-detail td", { timeout: 10000 });
-  if (!(await page.isVisible("#judge .cred-detail"))) throw new Error("the judge key's details opened outside its panel");
-  assert.deepStrictEqual(sent.of("credentials.add")[1], { class: "jev-key", value: "sk-judge-canary-0001", dest: "api.typesafe.ai", methods: ["POST"], position: "header:Authorization:Bearer" });
-  step("judge key stored through its own panel, details inside it");
+  // The judge's key is a provider's (ADR 46): the Jev key is saved with its
+  // provider in Settings › Models and listed with the providers' keys, not
+  // in a panel of its own, allowed for typesafe.ai by POST alone. Its
+  // details open inside that panel at once; any shadowing of the detail
+  // renderer blanks the whole tab, so this step guards the panel's wiring
+  // too.
+  await go("#/settings");
+  await page.click("#add-provider");
+  await page.click("#preset-jev");
+  await page.fill("#provider-name", "jev");
+  await page.fill("#provider-key", "sk-judge-canary-0001");
+  await page.click("#provider-save");
+  await page.waitForSelector("#provider-jev", { timeout: 10000 });
+  await go("#/connections/credentials");
+  await page.waitForSelector("#model-keys .cred-row:has-text('model-api-typesafe-ai')", { timeout: 10000 });
+  if (await page.locator("#judge").count()) throw new Error("the Judge subpanel is still shown");
+  await page.click("#model-keys .cred-row:has-text('model-api-typesafe-ai')");
+  await page.waitForSelector("#model-keys .cred-detail td:has-text('api.typesafe.ai')", { timeout: 10000 });
+  const jevDetail = await page.innerText("#model-keys .cred-detail");
+  assert.ok(jevDetail.includes("POST") && !jevDetail.includes("GET"), "the Jev key is allowed for more than POST:\n" + jevDetail);
+  step("the Jev key is saved with its provider and shown with the providers' keys, details inside that panel");
   // And through its row: closing and reopening must keep the tab alive too.
-  await page.click("#judge .cred-row:has-text('jev-key')");
-  await page.waitForSelector("#judge .cred-detail", { state: "detached", timeout: 10000 });
-  await page.click("#judge .cred-row:has-text('jev-key')");
-  await page.waitForSelector("#judge .cred-detail td", { timeout: 10000 });
-  step("judge key's row reopens its details inside its panel");
+  await page.click("#model-keys .cred-row:has-text('model-api-typesafe-ai')");
+  await page.waitForSelector("#model-keys .cred-detail", { state: "detached", timeout: 10000 });
+  await page.click("#model-keys .cred-row:has-text('model-api-typesafe-ai')");
+  await page.waitForSelector("#model-keys .cred-detail td", { timeout: 10000 });
+  step("the Jev key's row reopens its details inside its panel");
   await page.screenshot({ path: `${out}/credentials-judge.png`, fullPage: true });
 
-  // Settings › Judge: with the key stored, the Key row says so and offers
-  // no second add.
+  // Settings › Judge: put on the Jev provider, the judge's key is ready.
   await go("#/settings");
-  await page.waitForSelector("text=Stored in the keychain.", { timeout: 10000 });
-  if (await page.isVisible("a:has-text('Judge key')")) throw new Error("Settings still offers to add a stored judge key");
-  await page.waitForSelector("#section-judge >> text=Key ready: a jev-key is stored, unlocked and allowed for api.typesafe.ai.", { timeout: 10000 });
-  step("settings reports the stored judge key");
+  await page.waitForSelector("#section-judge >> text=Off: no provider is chosen", { timeout: 10000 });
+  await page.click("#section-judge [id='set-judge.server-jev']");
+  await page.click(".save-bar button:text-is('Save')");
+  await page.waitForSelector("#section-judge >> text=Key ready: jev's key is stored, unlocked and allowed for api.typesafe.ai.", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": "jev" } });
+  step("settings reports the judge's key ready once the judge is on its provider");
   // A key stored but not allowed for the judge's host is not ready: the
   // guard would refuse the judge's first request. Settings are read once
   // per connection, so the page is reloaded to see the file's change.
   const bindingsFile = `${root}/config/nodwyn/bindings.toml`;
   const allBindings = fs.readFileSync(bindingsFile, "utf8");
-  fs.writeFileSync(bindingsFile, allBindings.split("[[bind]]").filter((b) => !b.includes('class = "jev-key"')).join("[[bind]]"));
+  fs.writeFileSync(bindingsFile, allBindings.split("[[bind]]").filter((b) => !b.includes('class = "model-api-typesafe-ai"')).join("[[bind]]"));
   await page.reload();
   await page.waitForSelector("#section-judge >> text=Not available: The key is stored but not allowed for api.typesafe.ai", { timeout: 10000 });
   fs.writeFileSync(bindingsFile, allBindings);
   step("settings says a judge key not allowed for the judge's host is not available");
 
   // Back to Credentials for the OAuth2 account: the check left the page on
-  // Settings, where there is no Connect button.
+  // Settings, where there is no Connect button. The Jev key is now the
+  // judge's too.
   await go("#/connections/credentials");
-  await page.waitForSelector("#judge .cred-row:has-text('jev-key')", { timeout: 10000 });
+  await page.waitForSelector("#model-keys .cred-row:has-text('model-api-typesafe-ai') >> text=the judge", { timeout: 10000 });
 
   // Connect an account through the fake provider: the console opens its
   // consent page, the provider sends the browser back to nodwyn, and the

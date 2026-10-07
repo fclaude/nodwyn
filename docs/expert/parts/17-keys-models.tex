@@ -425,23 +425,37 @@ in Chapter~\ref{ch:contexts}).
 
 \section{The judge}
 
-The judge, Jev, is a keyed service like any other. The plan gate asks it
-whether a request needs a plan and how good a plan is
-(Chapter~\ref{ch:plans}). A chat asks it first whether to allow a command
-no standing approval covers (\code{[approval] commands = "judge"}, the
-default; Chapter~\ref{ch:primitives}), and you when it does not; a run
-started with \code{-{}-judge} asks it about every ordinary confirm. Without
-a judge, those commands are yours to answer. It is set up in three places:
-the \code{[jev]} table of \file{config.toml}, a key, and a binding.
+The judge is a keyed service like a model, and a provider's like one
+(ADR~46). The plan gate asks it whether a request needs a plan and how
+good a plan is (Chapter~\ref{ch:plans}). A chat asks it first whether to
+allow a command no standing approval covers (\code{[approval] commands =
+"judge"}, the default; Chapter~\ref{ch:primitives}), and you when it does
+not; a run started with \code{-{}-judge} asks it about every ordinary
+confirm. Without a judge, those commands are yours to answer.
+
+Its provider is one of two. Jev, TypeSafe's judge, is a provider of its
+own kind, \code{jev}: it answers the judge's questions and has no chat
+models, so no model can be put on it. OpenAI answers them through its
+Decisions API with \code{gpt-6-luna}, with the key an OpenAI server at
+\code{https://api.openai.com/v1} already has for its models. In the
+console, Settings \(\rightarrow\) Models adds Jev with its preset (its key
+goes to the keychain, allowed for its host by POST alone), and Settings
+\(\rightarrow\) Judge chooses the provider. By hand, a server and the
+\code{[judge]} table that names it:
 
 \begin{toml}
-[jev]
-url = "https://api.typesafe.ai"   # the default
+[servers.jev]
+provider = "jev"
+url = "https://api.typesafe.ai"
+credential = "jev-key"
+
+[judge]
+server = "jev"                    # or an OpenAI server with an API key
 content = "plan"                  # none, plan (the default), plan+summaries or full
 approve_threshold = 0.8           # a call it judges runs at this probability of allow or above
 price_input = 0.5                 # US dollars per million tokens, to price
 price_output = 2.0                #   what the judge reports it used; unset,
-                                  #   jev-latest is priced as published
+                                  #   its questions are priced as published
 \end{toml}
 
 \begin{txt}
@@ -456,25 +470,33 @@ positions = ["header:Authorization:Bearer"]
 methods = ["POST"]
 \end{toml}
 
+The judge asks its provider's model (\code{jev-latest}, \code{gpt-6-luna})
+unless \code{model} names another. A \file{config.toml} that still has the
+old \code{[jev]} table does not load, and says what replaces it. The
+thresholds were set against Jev's probabilities; another judge may put the
+same command higher or lower.
+
 \code{content} is how much may leave for the judge. At \code{none} there is
 no judge. At \code{plan} the plan gate sends the request and the plan, and
 a judged call is described by its tool, reasons and target. At \code{full}
 the judge also sees what a judged call would write or send, and a session
-that starts with a \code{jev-key} stored offers the model three tools of
-its own: \code{judge-noul} (a yes-or-no question; the probability of yes),
+offers the model the judge's three primitives as tools of its own:
+\code{judge-yes-no} (a yes-or-no question; the probability of yes),
 \code{judge-score} (a rating along levels the model lists) and
-\code{judge-choice} (one of several options). They are the hidden
-\code{jev-noul}, \code{jev-score} and \code{jev-choice} without the handle:
-Go looks the stored key up when the call is made, and the guard checks the
-call against the \code{jev-key} binding as it checks the plan gate's. Every
-string sent is redacted first, and \code{jev.req} logs each call, never its
-text.
+\code{judge-choice} (one of several options). Below \code{full} they are
+hidden, for the plan gate and your Scheme. They exist only in a session
+that started with the judge's key stored; Go looks the key up when the
+call is made, and the guard checks the call against the binding of the
+judge's server, whoever made it. Every string sent is redacted first, whichever API it goes to, and
+\code{jev.req} logs each call, never its text.
 
 The judge reports what each request used, in tokens, and never what it
 cost. \nodwyn{} records the counts and the model that answered with each
 call, and prices them with \code{price\_input} and \code{price\_output},
-each one you leave unset the published one. Each call is a line in the conversation
-(\code{[judge jev-choice: 318$\to$34 tok · $\approx$\$0.0002]}), and the running total
+each one you leave unset the published one: Jev's \$0.042 and the
+Decisions API's \$0.10 per million input tokens, both with nothing for
+output. Each call is a line in the conversation
+(\code{[judge choice: 318$\to$34 tok · $\approx$\$0.0002]}), and the running total
 is in the console's side panel, at checkpoints and in \code{:budget}. Its
 tokens are not model tokens and stay out of the token budget; its cost
 counts against a spend limit.

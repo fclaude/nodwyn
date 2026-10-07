@@ -49,6 +49,6 @@ func (s *Session) endSpend(turn *budget.Turn) {
 		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set (budget.cost_hard), but %d model request(s) this turn had no known cost: the provider reported none, and the model has no prices (Settings › Models, or price_* in its entry in config.toml). The limit does not count them.", unpriced)})
 	}
 	if judge > 0 && !judgeNoted {
-		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set (budget.cost_hard), but %d judge request(s) this turn had no price: the judge reports what it used, not what it cost, and [jev] has no price_input and price_output in config.toml. The limit does not count them.", judge)})
+		_, _ = s.Record(log.KindNote, log.Note{Text: fmt.Sprintf("A spend limit is set (budget.cost_hard), but %d judge request(s) this turn had no price: the judge reports what it used, not what it cost, and [judge] has no price_input and price_output in config.toml, nor does its provider publish them. The limit does not count them.", judge)})
 	}
 }

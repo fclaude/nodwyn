@@ -1132,7 +1132,7 @@ export class TaskView {
     };
   }
   // judgeLine is what the judge has used in this task, when it was asked at
-  // all: its calls, tokens and, with [jev] prices, what they cost.
+  // all: its calls, tokens and, with its prices, what they cost.
   judgeLine() {
     const j = judgeTally(this.events());
     if (!j.calls) return null;
@@ -1141,7 +1141,7 @@ export class TaskView {
       "Judge, this task",
       `${j.calls} call${j.calls === 1 ? "" : "s"} · ${j.tokens.toLocaleString()} tokens${cost}`,
       {},
-      "The judge reports what it used, not what it cost; [jev] price_input and price_output estimate it. Its tokens are not in the token budget; its cost counts against a spend limit.",
+      "The judge reports what it used, not what it cost; its prices ([judge] price_input and price_output, else its provider's) estimate it. Its tokens are not in the token budget; its cost counts against a spend limit.",
     );
   }
   // contextMeter is how full the conversation's context is, against the
@@ -1763,7 +1763,7 @@ function spendOf(evs) {
   const j = judgeTally(evs);
   cost += j.cost;
   unpriced += j.unpriced;
-  // A judge cost is an estimate from [jev] prices, never a report.
+  // A judge cost is an estimate from the judge's prices, never a report.
   estimated ||= j.cost > 0;
   return { cost, unpriced, estimated };
 }

@@ -456,34 +456,98 @@ model = "sol"
 	}
 }
 
-// Each of the judge's prices is [jev]'s when it sets it, else what its
-// provider publishes for jev.model at jev.url; with either known to neither,
-// none: its requests are then counted, not priced. A price set alone was
-// dropped for the published pair, though Settings says an empty field is
-// the published price.
-func TestJevPrices(t *testing.T) {
+// Each of the judge's prices is [judge]'s when it sets it, else what its
+// provider publishes for a judge's question to its model at its server's
+// address; with either known to neither, none: its requests are then
+// counted, not priced. A price set alone was dropped for the published pair,
+// though Settings says an empty field is the published price.
+func TestJudgePrices(t *testing.T) {
 	c := Default()
-	c.Catalogue = catalogue.New(map[string]map[string]catalogue.Model{"api.typesafe.ai": {"jev-latest": {Price: &catalogue.Price{Input: 0.042}}}})
-	if in, out := c.JevPrices(); in == nil || *in != 0.042 || out == nil || *out != 0 {
+	c.Servers = map[string]Server{"jev": {Provider: "jev", URL: "https://api.typesafe.ai", Credential: "jev-key"}}
+	c.Judge.Server = "jev"
+	if in, out := c.JudgePrices(); in == nil || *in != 0.042 || out == nil || *out != 0 {
 		t.Fatalf("published: %v %v", in, out)
 	}
 	five, six := 5.0, 6.0
-	c.Jev.PriceInput, c.Jev.PriceOutput = &five, &six
-	if in, out := c.JevPrices(); in != &five || out != &six {
-		t.Fatalf("[jev]'s own: %v %v", in, out)
+	c.Judge.PriceInput, c.Judge.PriceOutput = &five, &six
+	if in, out := c.JudgePrices(); in != &five || out != &six {
+		t.Fatalf("[judge]'s own: %v %v", in, out)
 	}
-	c.Jev.PriceOutput = nil
-	if in, out := c.JevPrices(); in != &five || out == nil || *out != 0 {
-		t.Fatalf("[jev]'s input alone: %v %v", in, out)
+	c.Judge.PriceOutput = nil
+	if in, out := c.JudgePrices(); in != &five || out == nil || *out != 0 {
+		t.Fatalf("[judge]'s input alone: %v %v", in, out)
 	}
-	c.Jev.PriceInput, c.Jev.PriceOutput = nil, nil
-	c.Jev.Model = "jev-9"
-	if in, out := c.JevPrices(); in != nil || out != nil {
+	c.Judge.PriceInput, c.Judge.PriceOutput = nil, nil
+	c.Judge.Model = "jev-9"
+	if in, out := c.JudgePrices(); in != nil || out != nil {
 		t.Fatalf("a model nothing is published of: %v %v", in, out)
 	}
-	c.Jev.PriceOutput = &six
-	if in, out := c.JevPrices(); in != nil || out != nil {
+	c.Judge.PriceOutput = &six
+	if in, out := c.JudgePrices(); in != nil || out != nil {
 		t.Fatalf("an output price alone, nothing published: %v %v", in, out)
+	}
+}
+
+// The judge is a provider's (ADR 46): [judge] names a jev or openai server
+// with a key, takes its provider's judge model when it names none, and is
+// off without a server or at content "none". A file with the old [jev]
+// table is refused with what replaces it, a jev server carries no model,
+// and a judge on a server that cannot answer typed questions, or has no
+// key, is refused when the file loads.
+func TestTheJudgeIsAProvidersServer(t *testing.T) {
+	servers := `
+[servers.jev]
+provider = "jev"
+url = "https://api.typesafe.ai"
+credential = "jev-key"
+
+[servers.openai-api]
+provider = "openai"
+url = "https://api.openai.com/v1"
+credential = "model-api-openai-com"
+
+[servers.local]
+provider = "ollama"
+url = "http://localhost:11434"
+
+[servers.bare]
+provider = "openai"
+url = "https://api.openai.com/v1"
+`
+	if c, err := Parse([]byte(servers)); err != nil {
+		t.Fatal(err)
+	} else if _, ok := c.JudgeServer(); ok {
+		t.Fatal("a judge without [judge] server")
+	}
+	for server, want := range map[string]string{"jev": "jev-latest", "openai-api": "gpt-6-luna"} {
+		c, err := Parse([]byte(servers + "\n[judge]\nserver = \"" + server + "\"\n"))
+		if err != nil {
+			t.Fatalf("%s: %v", server, err)
+		}
+		if srv, ok := c.JudgeServer(); !ok || srv != c.Servers[server] || c.JudgeModel() != want {
+			t.Fatalf("%s: %+v %v %s", server, srv, ok, c.JudgeModel())
+		}
+	}
+	c, err := Parse([]byte(servers + "\n[judge]\nserver = \"openai-api\"\nmodel = \"gpt-6-luna-2\"\ncontent = \"none\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.JudgeServer(); ok || c.JudgeModel() != "gpt-6-luna-2" {
+		t.Fatalf("content none: judge on, or model %s", c.JudgeModel())
+	}
+	for name, tc := range map[string]struct{ body, says string }{
+		"the old table":     {"[jev]\nurl = \"https://api.typesafe.ai\"\n", "[jev] is now [judge]"},
+		"a missing server":  {"[judge]\nserver = \"nowhere\"\n", "not configured"},
+		"an ollama server":  {"[judge]\nserver = \"local\"\n", "is an ollama server"},
+		"a keyless server":  {"[judge]\nserver = \"bare\"\n", "has no credential"},
+		"a model on jev":    {"[models.j]\nserver = \"jev\"\nmodel = \"jev-latest\"\n", "no model can be on it"},
+		"a jev dialect":     {"[servers.jev2]\nprovider = \"jev\"\ndialect = \"responses\"\nurl = \"https://api.typesafe.ai\"\n", "dialect is for openai servers"},
+		"a bad judge level": {"[judge]\nserver = \"jev\"\ncontent = \"all\"\n", "judge.content"},
+	} {
+		_, err := Parse([]byte(servers + "\n" + tc.body))
+		if err == nil || !strings.Contains(err.Error(), tc.says) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 

@@ -48,7 +48,7 @@ This is the spine. Read these in order and you have read the system.
 |---|---|---|
 | `internal/scheme` | the language: values, reader, eval/apply, builtins, primitive table | [docs/scheme.md](scheme.md) then `interp.go` `Eval` |
 | `internal/guard` | the one decision point and its checkers | `guard.go` `Before` |
-| `internal/prim` | host primitives and the diff; the document tools; the judge's primitives and tools | `prim.go` `Register`, `Checkers`; `docs.go`; `jev.go` |
+| `internal/prim` | host primitives and the diff; the document tools; the judge's primitives and tools | `prim.go` `Register`, `Checkers`; `docs.go`; `judge.go` |
 | `internal/llm` | the provider seam, the Ollama, OpenAI-compatible and Anthropic clients, what a request cost | `llm.go` `Provider`; `cost.go` |
 | `internal/window` | the derived context | `Build` |
 | `internal/loop` | the loop's primitives and default strategy | the package comment's reading order, starting at `loop.go` `Turn` |
@@ -137,7 +137,7 @@ servers (W3b) live.
 |---|---|
 | P3 credentials | `scheme.KHandle`; `Param.Role = "credential"`; `internal/keychain`; `guard.Egress` checks the binding table (`internal/binding`) |
 | P4 L1 | `internal/detect/l1`; `guard.TextSecret` scans `Role: payload`/`argv` text |
-| P5 Jev + plan gate | `internal/loop/plan.scm`; `internal/prim/jev.go`; `log.KindGatePlan`; `ArgvTrigger` is the hard-trigger list |
+| P5 Jev + plan gate | `internal/loop/plan.scm`; `internal/prim/judge.go`; `log.KindGatePlan`; `ArgvTrigger` is the hard-trigger list |
 | P6 taint | `Value.Taint`, propagated in `taintResult`; `guard.Taint` runs before L1 |
 | P7 redaction | `Session.Record` sanitizes payloads; the log writer enforces redaction; `window.Build` derives context from written events |
 | P9 TUI | `internal/frontend/tui` over `core.Session`, no core change |
@@ -448,7 +448,7 @@ dont_ask = false    # the default: no task offers "Don't ask" ("Standing approva
   unchanged), so `nodwyn undo` or the console's Restore takes it back.
 - **Commands**, and other calls that act such as an MCP tool, that no
   standing approval covers go to the judge first when one is set up
-  ("The judge (Jev)" below): if it allows the call, it runs; if it refuses,
+  ("The judge" below): if it allows the call, it runs; if it refuses,
   or there is no judge, you are asked, and the prompt says what it answered.
 - **Always you**, whatever `[approval]` says: a write to a protected path,
   content that looks like a credential, a command built from tool output,
@@ -538,7 +538,7 @@ plan step done, stopping otherwise for you to review and
 `nodwyn run resume --unattended SESSION`. With `--judge` instead of
 `--yolo`, the judge answers each ordinary confirm: it is shown the task,
 the plan and the call, and the call runs only if it judges it called for
-and safe (probability of allow at least `jev.approve_threshold` in
+and safe (probability of allow at least `judge.approve_threshold` in
 config.toml, 0.8 by default); security confirms are still declined. The
 decision is Go's: no Scheme can approve what the judge refused, and a
 project's `(approve-refuse? call)` can only refuse more. See [runs](runs.md).
@@ -644,9 +644,36 @@ Approve only commands whose code you trust: builds and tests run project code
 with your operating-system privileges, can write files and can use the network.
 The guard's file-tool checks do not sandbox an approved process.
 
-### The judge (Jev)
+### The judge
 
-The plan gate runs once a `jev-key` credential exists and is bound:
+The judge answers typed questions about a task: whether a message needs a
+plan, how well a plan fits the request, and whether a command may run
+without asking you. It is a provider's, as a model is (ADR 46): `[judge]`
+names a `[servers.NAME]` whose provider is one of
+
+- `jev`, TypeSafe's Jev (its System One API), which answers the judge's
+  questions and has no chat models; or
+- `openai` at `https://api.openai.com/v1` with an API key, whose Decisions
+  API answers them with `gpt-6-luna`, sent the key the server's models use.
+
+In the console, add Jev under Settings › Models › Add a provider (the
+"Jev (judge)" preset; its key is kept in the keychain and allowed for its
+host by POST alone, since the judge's questions are its only requests),
+then choose the provider under Settings › Judge, which offers Jev and the
+providers at OpenAI's address. By hand:
+
+```toml
+# ~/.config/nodwyn/config.toml
+[servers.jev]
+provider = "jev"
+url = "https://api.typesafe.ai"
+credential = "jev-key"
+
+[judge]
+server = "jev"          # or an OpenAI server with an API key
+```
+
+with its key stored and bound as any server's:
 
 ```bash
 nodwyn keychain init                       # once
@@ -663,16 +690,24 @@ positions = ["header:Authorization:Bearer"]
 methods = ["POST"]
 ```
 
+The judge asks its provider's model (`jev-latest`, `gpt-6-luna`) unless
+`[judge] model` names another. Without `[judge] server` there is no judge:
+no plan gate, and every command no standing approval covers is put to you.
+A `config.toml` that still has the `[jev]` table of earlier versions does
+not load, and says what replaces it. The thresholds (`judge.approve_threshold`
+below, and the plan gate's in Scheme) were set against Jev's probabilities;
+another judge may put the same command higher or lower.
+
 Before each user message the default strategy's plan gate
-(`internal/loop/plan.scm`, [docs/scheme.md](scheme.md) §9.5) asks Jev
-whether the message needs a plan: a change in several steps or files does;
+(`internal/loop/plan.scm`, [docs/scheme.md](scheme.md) §9.5) asks the
+judge whether the message needs a plan: a change in several steps or files does;
 a question, a review, an explanation or a proposal is answered, not
 planned, however much reading it takes. A later message in a chat is read
 after your two before it, so a reply to the model's question or a
 correction is not judged alone; the model that explores and drafts the plan
 also reads the agent's last answer and the names of the files you attached,
 which the judge is not sent. If it needs a plan, the model drafts one,
-Jev scores it against the ask (up to three revisions), and the plan goes
+the judge scores it against the ask (up to three revisions), and the plan goes
 into the task block the model sees. Its thresholds and prompts are Scheme definitions a
 project may redefine. As the model works it marks the plan's steps done or
 skipped with the `plan-step` tool, and the console's plan panel (`:plan` in
@@ -722,10 +757,12 @@ read the same files again. The explorer has twelve tool rounds, sixteen for
 the muse-spark, glm, qwen, deepseek and gpt-6-luna families, which ask for
 fewer calls in a round; the same table is where a project gives a model
 another count.
-Every Jev call is a guarded egress: bound credential, L1 redaction of
-what leaves, a `jev.req` log line with origin, size, hash and the answer.
-Set `jev.content = "none"` in `config.toml` to turn it off. Without a
-`jev-key` credential nothing is sent and the loop runs without a gate.
+Every judge call is a guarded egress: bound credential, L1 redaction of
+what leaves, a `jev.req` log line with origin, size, hash and the answer
+(read into the same shape whichever provider gave it; a Decisions API
+refusal is no answer). Set `judge.content = "none"` in `config.toml` to
+turn it off. Without its server's key stored nothing is sent and the loop
+runs without a gate.
 
 With `[approval] commands = "judge"`, the default, the judge also answers a
 command before you are asked ("Confirms" above). It is told that you are at
@@ -738,29 +775,32 @@ after your two messages before it, the turn's plan with the steps marked so
 far and the next one, the command line, what it and you answered about the same
 command earlier in the turn, and, for a script the command runs from the
 session's scratch directory, that the script is the session's own (at
-`jev.content = "full"` also the script's text and what the call would send).
+`judge.content = "full"` also the script's text and what the call would send).
 It is not told that a command is irreversible, which every command is. The
 command runs if its probability of allow is at least
-`jev.approve_threshold` (0.8). The decision is Go's: no Scheme can approve
+`judge.approve_threshold` (0.8). The decision is Go's: no Scheme can approve
 what the judge refused, and a project's `(approve-refuse? call)` can only
 refuse more. When it refuses, you are asked, and told its answer.
 
 **What the judge used.** The judge reports each request's tokens, never its
 cost, and nodwyn records them in `jev.req` with the model that answered
-(`jev-1.13.0` for `jev-latest`). nodwyn prices `jev-latest` at what
-typesafe.ai publishes, $0.042 per million input tokens and nothing for
-output (an entry nodwyn keeps itself, since models.dev does not list the
-judge); give it other prices, in US dollars per million tokens, to estimate
-the cost instead (one left unset stays the published one):
+(`jev-1.13.0` for `jev-latest`; the Decisions API names none). nodwyn
+prices `jev-latest` at what typesafe.ai publishes, $0.042 per million input
+tokens, and `gpt-6-luna`'s questions at what OpenAI's Decisions guide
+gives, $0.10 per million input tokens, both with nothing for output
+(prices nodwyn keeps itself: models.dev does not list Jev, and lists
+gpt-6-luna at its chat prices); give it other prices, in US dollars per
+million tokens, to estimate the cost instead (one left unset stays the
+published one):
 
 ```toml
-[jev]
+[judge]
 price_input = 0.5
 price_output = 2.0
 ```
 
 Every client shows each judge request as one line
-(`[judge jev-choice: 318→34 tok · ≈$0.0002]` in the terminal; behind
+(`[judge choice: 318→34 tok · ≈$0.0002]` in the terminal; behind
 **Activity** in the console). They also show the judge's
 running total when it has been asked: in the console's side panel ("Judge,
 this task"), at a budget checkpoint, and in the TUI's `:budget` (this turn
@@ -771,19 +811,19 @@ tokens, so the token budget leaves them out, but a spend limit counts their
 cost; a judge request with no prices is not counted, and the first turn
 with one says so.
 
-The model can ask the judge too, with `judge-noul`, `judge-score` and
-`judge-choice`: Go injects the stored `jev-key`, the binding above decides
+The model can ask the judge too, with `judge-yes-no`, `judge-score` and
+`judge-choice`: Go injects the key of the judge's server, its binding decides
 each call, and what the model sends is redacted the same way. Because the
 model chooses that text, which may be file contents or command output, the
 tools are offered only at the level that lets content leave:
 
 ```toml
 # ~/.config/nodwyn/config.toml
-[jev]
+[judge]
 content = "full"
 ```
 
-and only to sessions started after the `jev-key` was stored. The plan gate
+and only to sessions started after that key was stored. The plan gate
 does not need them, and works at the default `plan` level.
 
 `register-check` in `.nodwyn/init.scm` adds your own tightening-only guard
@@ -1734,7 +1774,7 @@ types one, a cache write costs the input price and a long prompt no more
 than a short one. A reported cost always wins. Ollama reports neither, and its line reads as before; so does an older
 log. The TUI's `:budget` adds the turn's spend over every model request (the
 planner's, sub-agents' and compaction's included) and the judge's requests
-apart (priced by `[jev] price_*`, "Plan gate" above), and a budget
+apart (priced by `[judge] price_*`, else its provider's, "The judge" above), and a budget
 checkpoint says what the turn has cost so far. The
 token budget counts a prompt token the provider read from its cache as a
 tenth of one, about what it costs and what it asks of the server; one it

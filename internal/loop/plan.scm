@@ -77,7 +77,7 @@
 ;; 'there' refers to" when a screenshot and the agent's own question did;
 ;; in 20261005T151325Z-d9519026 the explorer and the planner of "fix all of
 ;; them" could not see the findings the agent's last answer listed. The
-;; judge is not shown them: at jev.content "plan" it reads the person's
+;; judge is not shown them: at judge.content "plan" it reads the person's
 ;; asks and the plan, and the agent's replies are not sent (ADR 19).
 (define (plan-model-request asked)
   (let* ((context (guard (e (else '())) (request-context)))
@@ -103,10 +103,11 @@
           (set! sub-agent-max-rounds rounds)
           found))))
 
-;; The judge's key when a judge is configured, or #f.
-(define (plan-judge)
-  (and (guard (e (else #f)) (primitive-info "jev-noul") #t)
-       (credential "jev-key")))
+;; Whether a judge is configured: [judge] on a provider whose key was stored
+;; when the session started, which is when the core registers the judge's
+;; primitives (ADR 46).
+(define (plan-judge?)
+  (guard (e (else #f)) (primitive-info "judge-yes-no") #t))
 
 ;; A plan from the control model, asked in a context of its own that is then
 ;; folded away: the conversation keeps only the plan the gate records. The
@@ -132,19 +133,19 @@
 
 ;; The judge's normalised score (0 to 1) for plan against request, or the
 ;; error it failed with.
-(define (plan-score judge request plan)
+(define (plan-score request plan)
   (guard (e (else e))
-    (assoc-ref (jev-score judge (string-append "Request:\n" request "\n\nPlan:\n" plan)
-                          plan-score-rubric plan-score-levels)
+    (assoc-ref (judge-score (string-append "Request:\n" request "\n\nPlan:\n" plan)
+                            plan-score-rubric plan-score-levels)
                "score")))
 
-;; Drafts a plan and, with a judge, revises it until it scores
+;; Drafts a plan and, when judged, revises it until it scores
 ;; plan-accept-score or the revisions run out. A judge failure, or a
 ;; revision that comes back empty, keeps the best plan so far. Records the
 ;; best plan under decision, and returns it.
 ;; The judge scores against request; the explorer and the planner read
 ;; seen, when given, instead (plan-model-request).
-(define (plan-best judge request decision . seen)
+(define (plan-best judged request decision . seen)
   (define shown (if (pair? seen) (car seen) request))
   (define findings (plan-explore shown))
   (define (keep best best-score revisions reason)
@@ -154,14 +155,14 @@
     best)
   (let loop ((plan (plan-ask (plan-draft-with-findings shown findings)))
              (round 0) (best #f) (best-score 0) (revisions 0))
-    (let* ((score (if judge (plan-score judge request plan) #f))
+    (let* ((score (if judged (plan-score request plan) #f))
            (scored (number? score))
            (better (or (not best) (and scored (> score best-score))))
            (best (if better plan best))
            (best-score (if (and better scored) score best-score)))
-      (cond ((and judge (not scored))
+      (cond ((and judged (not scored))
              (keep best best-score revisions
-                   (string-append "jev-score failed at round " (number->string round)
+                   (string-append "judge-score failed at round " (number->string round)
                                   ": " (assoc-ref score 'message ""))))
             ((or (not scored) (>= score plan-accept-score) (= round plan-max-revisions))
              (keep best best-score revisions ""))
@@ -190,28 +191,28 @@
     (and left (assoc-ref left 'next #f) left)))
 
 (define (plan-gate request)
-  (let ((judge (plan-judge)))
+  (let ((judged (plan-judge?)))
     (cond ((plan-recorded?) #f) ; this turn has its plan already
           ((plan-required?)
            (let ((run (run-plan)))
              (if (and run (assoc-ref run 'next #f))
                  (plan-carry run)
-                 (let ((plan (plan-best judge (plan-run-request request run) (if judge "plan" "required"))))
+                 (let ((plan (plan-best judged (plan-run-request request run) (if judged "plan" "required"))))
                    (when (string-empty? (string-trim plan))
                      (error "required plan: the planner returned an empty plan"))))))
           ((plan-left) => plan-carry)
-          ((not judge) #f)
+          ((not judged) #f)
           (else
            (let* ((asked (plan-chat-request request))
                   (seen (plan-model-request asked))
-                  (p (guard (e (else e)) (jev-noul judge asked plan-needed-question))))
+                  (p (guard (e (else e)) (judge-yes-no asked plan-needed-question))))
              (cond ((not (number? p)) ; the judge failed: plan anyway, unscored
                     (record-plan (list (cons 'decision "degraded")
                                        (cons 'plan (plan-ask (plan-draft-prompt seen)))
-                                       (cons 'reason (string-append "jev-noul failed: " (assoc-ref p 'message ""))))))
+                                       (cons 'reason (string-append "judge-yes-no failed: " (assoc-ref p 'message ""))))))
                    ((< p plan-needed-threshold)
                     (record-plan (list (cons 'decision "proceed") (cons 'score p))))
-                   (else (plan-best judge asked "plan" seen))))))))
+                   (else (plan-best judged asked "plan" seen))))))))
 
 ;; Plan step progress. The model marks a step of the turn's plan done, or
 ;; skipped, as it goes (plan-step); the strategy records the mark

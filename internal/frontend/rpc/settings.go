@@ -29,9 +29,11 @@ const (
 // value. Settings changes only on the computer nodwyn runs on (ADR 30), so
 // what a task asks a person about, [approval] (ADR 35), is here. What
 // decides where content goes is not: the model's address and key
-// (settings.control.write), the judge's address, credentials and bindings,
-// the egress proxy and the rest of [policy] are set where they are reviewed,
-// or in config.toml by hand. A model's own settings (its context length,
+// (settings.control.write), a provider's address and key
+// (settings.provider.write), credentials and bindings, the egress proxy and
+// the rest of [policy] are set where they are reviewed, or in config.toml by
+// hand. judge.server only chooses which of those providers the judge asks
+// (ADR 46), as choosing a default model chooses among them. A model's own settings (its context length,
 // prices, whether it takes images) are not here either: each model has its
 // own, set with settings.model.write (ADR 41, amended 2026-10-05).
 // The one transport exception here is an explicit local user choice (ADR 45).
@@ -49,8 +51,8 @@ var settable = map[string]settingKind{
 	"window.high_water": whole, "window.low_water": whole,
 	"window.max_result_tokens": whole, "window.output_reserve": whole,
 
-	"jev.content": text, "jev.approve_threshold": number, "jev.timeout": text, "jev.model": text,
-	"jev.price_input": number, "jev.price_output": number,
+	"judge.server": text, "judge.content": text, "judge.approve_threshold": number, "judge.timeout": text, "judge.model": text,
+	"judge.price_input": number, "judge.price_output": number,
 
 	"mcp.runtime": text,
 }
@@ -204,8 +206,8 @@ func withTables(held, parsed config.Config, tables map[string]bool) config.Confi
 			held.Loop = parsed.Loop
 		case "window":
 			held.Window = parsed.Window
-		case "jev":
-			held.Jev = parsed.Jev
+		case "judge":
+			held.Judge = parsed.Judge
 		case "mcp":
 			held.MCP = parsed.MCP
 		default:

@@ -89,12 +89,13 @@ const specs = {
   "budget.cost_hard": { kind: "decimal", label: "Spend, stop at" },
   "loop.request_timeout": { kind: "duration", label: "A model reply" },
   "loop.shell_timeout": { kind: "duration", label: "A command" },
-  "jev.content": { kind: "choice", label: "What the judge sees" },
-  "jev.approve_threshold": { kind: "decimal", label: "Allows a command at" },
-  "jev.price_input": { kind: "decimal", label: "Judge price of input" },
-  "jev.price_output": { kind: "decimal", label: "Judge price of output" },
-  "jev.timeout": { kind: "duration", label: "Waits for an answer" },
-  "jev.model": { kind: "text", label: "Judge model" },
+  "judge.server": { kind: "choice", label: "Judge provider" },
+  "judge.content": { kind: "choice", label: "What the judge sees" },
+  "judge.approve_threshold": { kind: "decimal", label: "Allows a command at" },
+  "judge.price_input": { kind: "decimal", label: "Judge price of input" },
+  "judge.price_output": { kind: "decimal", label: "Judge price of output" },
+  "judge.timeout": { kind: "duration", label: "Waits for an answer" },
+  "judge.model": { kind: "text", label: "Judge model" },
   "mcp.runtime": { kind: "choice", label: "Container runtime" },
   "window.high_water": { kind: "count", label: "High water" },
   "window.low_water": { kind: "count", label: "Low water" },
@@ -472,64 +473,88 @@ function modelsSection(ctx, root) {
     "Models",
     "The providers nodwyn talks to, the models you choose between with each one's own settings, what new tasks start on, and the judge's model. Saved in config.toml with its other lines kept; a key goes to the keychain. Tasks already open keep the model and effort they have, and change them under their own message box.",
     ...modelsRows(ctx, () => renderSettings(root, ctx)),
-    ...(values(ctx.desk)["jev.model"] ? judgeModelRows(ctx) : []),
+    ...(values(ctx.desk)["judge.server"]?.value ? judgeModelRows(ctx) : []),
   );
 }
 
 // judgeModelRows are the judge's model settings, beside the other models'
-// (ADR 41, amended 2026-10-05): which model it is, its prices, with what its
-// provider publishes as their placeholders, and how long it may take. What it
-// sees and when it allows a command are under Judge.
+// (ADR 41, amended 2026-10-05), once the judge is on a provider: which model
+// it asks, with its provider's judge model as the placeholder, its prices,
+// with what its provider publishes as their placeholders, and how long it
+// may take. Which provider, what it sees and when it allows a command are
+// under Judge.
 function judgeModelRows(ctx) {
-  const published = ctx.desk.settings?.jev_published || {};
+  const settings = ctx.desk.settings || {};
+  const published = settings.judge_published || {};
   const price = (x) => (x === undefined || x === null ? "unknown" : String(x));
+  const server = values(ctx.desk)["judge.server"]?.value;
   return [
-    ...row("Judge model", input(ctx, "jev.model"), h("p", { class: "hint" }, `The model at ${ctx.desk.settings?.jev_host || "the judge's address"} that scores plans and answers commands (Judge, below).`)),
+    ...row("Judge model", input(ctx, "judge.model", { placeholder: settings.judge_model || "" }), h("p", { class: "hint" }, `The model the judge asks on ${server}${settings.judge_host ? ` at ${settings.judge_host}` : ""}, which scores plans and answers commands (Judge, below). Empty is its provider's judge model.`)),
     ...row(
       "Judge prices",
       h(
         "div",
         { class: "row-actions" },
-        input(ctx, "jev.price_input", { width: "narrow", prefix: "$", placeholder: price(published.price_input) }),
+        input(ctx, "judge.price_input", { width: "narrow", prefix: "$", placeholder: price(published.price_input) }),
         h("span", { class: "muted" }, "input,"),
-        input(ctx, "jev.price_output", { width: "narrow", prefix: "$", placeholder: price(published.price_output) }),
+        input(ctx, "judge.price_output", { width: "narrow", prefix: "$", placeholder: price(published.price_output) }),
         h("span", { class: "muted" }, "output"),
       ),
       h(
         "p",
         { class: "hint" },
         published.price_input !== undefined
-          ? "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: each one empty is what its provider publishes. Tasks show the judge's spend, and a spend limit counts it."
+          ? "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: each one empty is what its provider publishes for the judge's questions. Tasks show the judge's spend, and a spend limit counts it."
           : "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: tasks show the judge's spend, and a spend limit counts it.",
       ),
     ),
-    ...row("Judge waits", input(ctx, "jev.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
+    ...row("Judge waits", input(ctx, "judge.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
   ];
+}
+
+// judgeProviders are the providers the judge can be on (ADR 46): a Jev
+// server, and an OpenAI server at OpenAI's own address, whose Decisions API
+// the judge asks; another OpenAI-compatible server does not have one.
+function judgeProviders(desk) {
+  const openai = (url) => {
+    try {
+      return new URL(url).hostname === "api.openai.com";
+    } catch {
+      return false;
+    }
+  };
+  // The one config.toml names stays a choice whatever its address, so what
+  // is saved is always shown.
+  const saved = values(desk)["judge.server"]?.value;
+  return (desk.settings?.servers || []).filter((s) => !s.inline && (s.name === saved || s.provider === "jev" || (s.provider === "openai" && openai(s.url))));
 }
 
 function judgeSection(ctx, redraw) {
   const { desk } = ctx;
-  const content = picked(desk, "jev.content");
-  // What the keychain and the binding table say of the judge's key, as a
-  // provider's is said: nothing is asked of the judge's service here, so
-  // "Key ready" is all that can be known before its first answer.
-  const key = desk.settings?.jev_key;
-  const status =
-    content === "none"
-      ? "Off: nothing goes to the judge, and plans are drafted without its score."
-      : key === "ready"
-        ? `Key ready: a jev-key is stored, unlocked and allowed for ${desk.settings.jev_host}. Whether the judge accepts it shows on its first answer.`
-        : key === "locked"
-          ? "Not available: the keychain is locked."
-          : key === "unbound"
-            ? `Not available: ${desk.settings.jev_key_detail}.`
-            : "Not available: no jev-key is stored.";
-  // The row shows only when the Judge panel has a field for it: the
-  // judge's host is known and no key is stored. With a stored key the row
-  // stays out whatever the judge's content level, so it never offers to
-  // add a key that is already there. The label is neutral: the row is
-  // about the key, not about enabling the judge.
-  const keyAction = desk.settings?.jev_host && !desk.settings?.jev_stored ? h("a", { class: "btn small", href: "#/connections/credentials" }, "Judge key") : null;
+  const settings = desk.settings || {};
+  const content = picked(desk, "judge.content");
+  const server = picked(desk, "judge.server");
+  const saved = values(desk)["judge.server"]?.value || "";
+  const providers = judgeProviders(desk);
+  // What the keychain and the binding table say of the key of the judge's
+  // server, as a provider's is said: nothing is asked of the judge's
+  // service here, so "Key ready" is all that can be known before its first
+  // answer.
+  const key = settings.judge_key;
+  const status = !server
+    ? "Off: no provider is chosen, so plans are drafted without the judge's score and you answer every command."
+    : server !== saved
+      ? `Save to have the judge ask ${server}.`
+      : content === "none"
+        ? "Off: nothing goes to the judge, and plans are drafted without its score."
+        : key === "ready"
+          ? `Key ready: ${server}'s key is stored, unlocked and allowed for ${settings.judge_host}. Whether the judge accepts it shows on its first answer.`
+          : key === "locked"
+            ? "Not available: the keychain is locked."
+            : key === "unbound"
+              ? `Not available: ${settings.judge_key_detail}.`
+              : `Not available: ${server} has no key stored. Add it under Models › Providers.`;
+  const kind = { jev: "Jev", openai: "OpenAI" };
   const levels = [
     ["none", "Off"],
     ["plan", "The task and plan"],
@@ -545,11 +570,21 @@ function judgeSection(ctx, redraw) {
   return section(
     "judge",
     "Judge",
-    "The judge (Jev) scores plans before a task acts, and answers its commands before you're asked (Approvals, above).",
+    "The judge scores plans before a task acts, and answers its commands before you're asked (Approvals, above).",
     ...row("Status", h("p", { class: "hint" }, status)),
-    ...row("Key", keyAction || h("p", { class: "hint" }, desk.settings?.jev_stored ? "Stored in the keychain." : "Set the judge's address (jev.url) first.")),
-    ...row("What it sees", choice(ctx, "jev.content", levels, redraw), h("p", { class: "hint" }, contentHint[content] || "")),
-    ...row("Allows a command at", input(ctx, "jev.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a command go ahead. Below that, or with no answer, you're asked.")),
+    ...row(
+      "Provider",
+      choice(ctx, "judge.server", [["", "None"], ...providers.map((p) => [p.name, `${p.name} (${kind[p.provider]}${p.authentication === "chatgpt" ? ", ChatGPT plan" : ""})`])], redraw),
+      h(
+        "p",
+        { class: "hint" },
+        "Jev answers the judge's questions only. An OpenAI provider is asked through OpenAI's Decisions API (gpt-6-luna) with the key its models use. Either is added under ",
+        h("a", { href: "#section-models" }, "Models › Providers"),
+        ".",
+      ),
+    ),
+    ...row("What it sees", choice(ctx, "judge.content", levels, redraw), h("p", { class: "hint" }, contentHint[content] || "")),
+    ...row("Allows a command at", input(ctx, "judge.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a command go ahead. Below that, or with no answer, you're asked.")),
     ...row("Model and prices", h("p", { class: "hint" }, h("a", { href: "#section-models" }, "Under Models"), ", with the other models' settings.")),
   );
 }

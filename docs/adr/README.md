@@ -49,3 +49,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 - [0043](./0043-fs-edit-works-on-the-text-the-model-reads.md) — fs-edit works on the text the model reads, so a line with a credential on it can be edited (amends 25, 38)
 
 - [0045](./0045-project-trust-and-security-boundaries.md) — User-owned project trust, executable identity, credential transport settings, keychain bounds and persistence, and canonical project paths
+- [0046](./0046-the-judge-is-a-providers.md) — The judge is a provider's: Jev or OpenAI's Decisions API, chosen in Settings, with `[jev]` become `[judge]` and one set of judge primitives, `judge-yes-no`, `judge-score` and `judge-choice` (amends 19, 20, 41)

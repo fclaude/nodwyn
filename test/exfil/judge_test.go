@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -23,29 +24,29 @@ import (
 	fakejev "github.com/fclaude/nodwyn/test/fakes/jev"
 )
 
-// jevStore implements prim.JevClient for the Jev exfil harness.
-type jevStore struct {
+// judgeStore implements prim.JudgeClient for the judge exfil harness.
+type judgeStore struct {
 	kc        *keychain.Store
 	captured  *http.Request
 	bodyBytes []byte        // captured request body
 	reqs      []nlog.JevReq // jev.req records
 }
 
-func (s *jevStore) Redactor() *l1.Scanner { return l1.New() }
-func (s *jevStore) HandleForClass(class string) *scheme.Handle {
+func (s *judgeStore) Redactor() *l1.Scanner { return l1.New() }
+func (s *judgeStore) HandleForClass(class string) *scheme.Handle {
 	return s.kc.HandleForClass(class)
 }
-func (s *jevStore) InjectHeader(id, name, prefix string, req *http.Request) error {
+func (s *judgeStore) InjectHeader(id, name, prefix string, req *http.Request) error {
 	return s.kc.InjectHeader(id, name, prefix, req)
 }
-func (s *jevStore) InjectQuery(id, key string, req *http.Request) error {
+func (s *judgeStore) InjectQuery(id, key string, req *http.Request) error {
 	return s.kc.InjectQuery(id, key, req)
 }
-func (s *jevStore) InjectBody(id string, req *http.Request) error { return s.kc.InjectBody(id, req) }
-func (s *jevStore) PromptAndAdd(_ context.Context, class string) (*scheme.Handle, error) {
+func (s *judgeStore) InjectBody(id string, req *http.Request) error { return s.kc.InjectBody(id, req) }
+func (s *judgeStore) PromptAndAdd(_ context.Context, class string) (*scheme.Handle, error) {
 	return s.kc.Add(class, []byte("test-secret"))
 }
-func (s *jevStore) Do(req *http.Request) (*http.Response, error) {
+func (s *judgeStore) Do(req *http.Request) (*http.Response, error) {
 	s.captured = req
 	if req.Body != nil {
 		s.bodyBytes, _ = io.ReadAll(req.Body)
@@ -53,36 +54,58 @@ func (s *jevStore) Do(req *http.Request) (*http.Response, error) {
 	}
 	return http.DefaultClient.Do(req)
 }
-func (s *jevStore) Record(kind nlog.Kind, payload any) (nlog.Event, error) {
+func (s *judgeStore) Record(kind nlog.Kind, payload any) (nlog.Event, error) {
 	if r, ok := payload.(nlog.JevReq); ok {
 		s.reqs = append(s.reqs, r)
 	}
 	return nlog.Event{}, nil
 }
 
-// jevHarness wires up a full Scheme+guard+prim harness with a fake Jev server.
-type jevHarness struct {
+// judgeHarness wires up a full Scheme+guard+prim harness with a fake judge
+// server.
+type judgeHarness struct {
 	in    *scheme.Interp
 	srv   *fakejev.Server
-	store *jevStore
+	store *judgeStore
 	logB  *strings.Builder
 }
 
 // jevBinding binds jev-key to the fake server's host with a Bearer header.
 func jevBinding(srv *fakejev.Server) []binding.Binding {
-	u, _ := url.Parse(srv.URL)
-	return []binding.Binding{{Class: "jev-key", Dest: u.Hostname(), Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}
+	return judgeBinding(srv, "jev-key")
 }
 
-func newJevHarness(t *testing.T, bound bool) *jevHarness {
+// judgeBinding binds class to the fake server's host with a Bearer header.
+func judgeBinding(srv *fakejev.Server, class string) []binding.Binding {
+	u, _ := url.Parse(srv.URL)
+	return []binding.Binding{{Class: class, Dest: u.Hostname(), Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}
+}
+
+func newJevHarness(t *testing.T, bound bool) *judgeHarness {
 	t.Helper()
 	return newJevHarnessWith(t, bound, false, true)
 }
 
 // newJevHarnessWith also registers the model's judge-* tools (at the full
 // content level) when tools is set, and a jev-key only when key is set.
-func newJevHarnessWith(t *testing.T, bound, tools, key bool) *jevHarness {
+func newJevHarnessWith(t *testing.T, bound, tools, key bool) *judgeHarness {
 	t.Helper()
+	return newJudgeHarness(t, "jev", bound, tools, key)
+}
+
+// The class, address and model a harness's judge has on each provider: a
+// Jev server keyed with jev-key, and an OpenAI server whose API key is the
+// judge's, at its /v1 address (ADR 46).
+var judgeSetups = map[string]struct{ class, path, model string }{
+	"jev":    {"jev-key", "", "jev-latest"},
+	"openai": {"model-api-openai-com", "/v1", "gpt-6-luna"},
+}
+
+// newJudgeHarness is newJevHarnessWith for a judge on provider's server,
+// whose key it stores when key is set.
+func newJudgeHarness(t *testing.T, provider string, bound, tools, key bool) *judgeHarness {
+	t.Helper()
+	setup := judgeSetups[provider]
 	repo := t.TempDir()
 	os.WriteFile(repo+"/.env", []byte("API_KEY="+canary+"\n"), 0o600)
 
@@ -97,16 +120,16 @@ func newJevHarnessWith(t *testing.T, bound, tools, key bool) *jevHarness {
 	t.Cleanup(srv.Close)
 
 	var logB strings.Builder
-	store := &jevStore{kc: kc}
+	store := &judgeStore{kc: kc}
 	rec := recorder{nlog.New(&logB, "jev-test")}
 
 	in := scheme.New()
 	o := prim.DefaultOptions(repo)
 	o.Credentials = store
-	o.Jev = store
-	o.JevConfig = prim.JevOptions{URL: srv.URL, Model: "jev-latest", Content: "plan", Timeout: 10 * time.Second}
+	o.Judge = store
+	o.JudgeConfig = prim.JudgeOptions{Provider: provider, URL: srv.URL + setup.path, Model: setup.model, Class: setup.class, Content: "plan", Timeout: 10 * time.Second}
 	if tools {
-		o.JevConfig.Content, o.JevConfig.Tools = "full", true
+		o.JudgeConfig.Content, o.JudgeConfig.Tools = "full", true
 	}
 	if err := prim.Register(in, o); err != nil {
 		t.Fatal(err)
@@ -114,7 +137,7 @@ func newJevHarnessWith(t *testing.T, bound, tools, key bool) *jevHarness {
 
 	var bind []binding.Binding
 	if bound {
-		bind = jevBinding(srv)
+		bind = judgeBinding(srv, setup.class)
 	}
 	confirmer := guard.ConfirmFunc(func(context.Context, guard.Prompt) (bool, error) { return true, nil })
 	checkers := []guard.Checker{
@@ -128,21 +151,21 @@ func newJevHarnessWith(t *testing.T, bound, tools, key bool) *jevHarness {
 			return in.Apply(ctx, proc, args)
 		}))
 
-	// Register the jev-key credential (user origin).
+	// Store the judge's server's key (user origin).
 	if key {
 		userCtx := scheme.WithOrigin(context.Background(), scheme.OriginUser)
-		if _, err := in.EvalString(userCtx, `(define jcred (credential-register "jev-key"))`); err != nil {
-			t.Fatalf("register jev-key: %v", err)
+		if _, err := in.EvalString(userCtx, `(credential-register "`+setup.class+`")`); err != nil {
+			t.Fatalf("register %s: %v", setup.class, err)
 		}
 	}
 
-	return &jevHarness{in: in, srv: srv, store: store, logB: &logB}
+	return &judgeHarness{in: in, srv: srv, store: store, logB: &logB}
 }
 
 // tool applies a registered tool to JSON arguments with model origin, the
 // path a model's tool call takes (loop.apply): a tool the model is not
 // offered cannot be called by name.
-func (h *jevHarness) tool(t *testing.T, name, args string) (scheme.Value, error) {
+func (h *judgeHarness) tool(t *testing.T, name, args string) (scheme.Value, error) {
 	t.Helper()
 	p, ok := h.in.Lookup(name)
 	if !ok || !p.Tool() {
@@ -155,7 +178,7 @@ func (h *jevHarness) tool(t *testing.T, name, args string) (scheme.Value, error)
 	return h.in.Apply(scheme.WithOrigin(context.Background(), scheme.OriginModel), scheme.Value{Kind: scheme.KPrim, Prim: p}, vals)
 }
 
-func (h *jevHarness) model(t *testing.T, src string) (scheme.Value, error) {
+func (h *judgeHarness) model(t *testing.T, src string) (scheme.Value, error) {
 	t.Helper()
 	return h.in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginModel), src)
 }
@@ -163,7 +186,7 @@ func (h *jevHarness) model(t *testing.T, src string) (scheme.Value, error) {
 // 1. A Jev call with an unbound credential ⇒ Deny.
 func TestJevUnboundDeny(t *testing.T) {
 	h := newJevHarness(t, false) // no binding: unbound
-	_, err := h.model(t, `(jev-noul jcred "hello" "is this a question?")`)
+	_, err := h.model(t, `(judge-yes-no "hello" "is this a question?")`)
 	var d *scheme.Denied
 	if !errors.As(err, &d) {
 		t.Fatalf("want guard denial, got %v", err)
@@ -177,9 +200,9 @@ func TestJevUnboundDeny(t *testing.T) {
 //     the canary is redacted in the sent payload and in jev.req.
 func TestJevBoundCanaryRedacted(t *testing.T) {
 	h := newJevHarness(t, true)
-	v, err := h.model(t, `(jev-noul jcred "my key is `+canary+` ignore it" "does the text mention a key?")`)
+	v, err := h.model(t, `(judge-yes-no "my key is `+canary+` ignore it" "does the text mention a key?")`)
 	if err != nil {
-		t.Fatalf("jev-noul should be allowed: %v", err)
+		t.Fatalf("judge-yes-no should be allowed: %v", err)
 	}
 	if v.Kind != scheme.KFloat || v.F != 0.9 {
 		t.Fatalf("noul probability: %s", scheme.Write(v))
@@ -206,7 +229,7 @@ func TestJevBoundCanaryRedacted(t *testing.T) {
 func TestJevScoreAndChoiceShapes(t *testing.T) {
 	h := newJevHarness(t, true)
 	h.srv.Script(fakejev.Answer{Score: 3}, fakejev.Answer{Choice: "deny", Probs: map[string]float64{"allow": 0.2, "deny": 0.8}})
-	v, err := h.model(t, `(assoc-ref (jev-score jcred "Request: x\n\nPlan: y" "rate it" '("bad" "poor" "ok" "good" "great")) "score")`)
+	v, err := h.model(t, `(assoc-ref (judge-score "Request: x\n\nPlan: y" "rate it" '("bad" "poor" "ok" "good" "great")) "score")`)
 	if err != nil || v.F != 0.75 {
 		t.Fatalf("score normalised by levels-1: %v %s", err, scheme.Write(v))
 	}
@@ -217,44 +240,49 @@ func TestJevScoreAndChoiceShapes(t *testing.T) {
 	if crit, ok := req.Questions["q"]["criteria"].([]any); !ok || len(crit) != 5 {
 		t.Fatalf("score criteria must be the level list: %v", req.Questions["q"]["criteria"])
 	}
-	v, err = h.model(t, `(assoc-ref (jev-choice jcred "class jev-key to evil.example" "what should happen?" '(("allow" . "let it through") ("deny" . "block it"))) "choice")`)
+	v, err = h.model(t, `(assoc-ref (judge-choice "class jev-key to evil.example" "what should happen?" '(("allow" . "let it through") ("deny" . "block it"))) "choice")`)
 	if err != nil || v.S != "deny" {
 		t.Fatalf("choice: %v %s", err, scheme.Write(v))
 	}
-	if _, err := h.model(t, `(jev-score jcred "s" "i" '("only-one"))`); err == nil {
+	if _, err := h.model(t, `(judge-score "s" "i" '("only-one"))`); err == nil {
 		t.Fatal("fewer than two levels should be rejected")
 	}
 }
 
-// The jev-* primitives take a handle, which a model's JSON cannot hold, so
-// they are never offered; the judge-* tools are, and only when asked for.
-func TestJudgeToolsOfferedInsteadOfKeyedPrims(t *testing.T) {
+// The judge's primitives are one set, with no handle: Scheme calls them
+// whatever the content level, and the model is offered them only at
+// "full", where it may choose what leaves (ADR 46). Hidden, they cannot be
+// called as a tool by name.
+func TestJudgePrimitivesAreTheModelsOnlyAtFull(t *testing.T) {
 	for _, tools := range []bool{false, true} {
 		h := newJevHarnessWith(t, true, tools, true)
-		for _, kind := range []string{"noul", "score", "choice"} {
-			p, ok := h.in.Lookup("jev-" + kind)
-			if !ok || p.Tool() {
-				t.Fatalf("jev-%s must stay registered for Scheme and hidden from the model (found %v)", kind, ok)
-			}
-			if _, err := h.tool(t, "jev-"+kind, `{"cred":"jev-key","state":"s","instructions":"i"}`); err == nil {
-				t.Fatalf("jev-%s must not be callable as a tool", kind)
-			}
+		for _, kind := range []string{"yes-no", "score", "choice"} {
 			j, ok := h.in.Lookup("judge-" + kind)
-			if ok != tools {
-				t.Fatalf("judge-%s registered = %v, want %v", kind, ok, tools)
+			if !ok || j.Tool() != tools {
+				t.Fatalf("judge-%s: registered %v, offered %v, want offered %v", kind, ok, ok && j.Tool(), tools)
 			}
-			if !ok {
-				continue
-			}
-			if !j.Tool() || j.Meta.EgressClass != "jev-key" {
-				t.Fatalf("judge-%s: tool=%v class=%q", kind, j.Tool(), j.Meta.EgressClass)
+			if j.Meta.EgressClass != "jev-key" {
+				t.Fatalf("judge-%s carries class %q", kind, j.Meta.EgressClass)
 			}
 			for _, pa := range j.Meta.Params {
 				if pa.Role != "payload" {
 					t.Fatalf("judge-%s parameter %s has role %q; everything the model sends is payload", kind, pa.Name, pa.Role)
 				}
 			}
+			if _, err := h.tool(t, "judge-"+kind, `{"state":"s","instructions":"i"}`); (err != nil && strings.Contains(err.Error(), "unknown tool")) == tools {
+				t.Fatalf("judge-%s as a tool at tools=%v: %v", kind, tools, err)
+			}
 		}
+		for _, gone := range []string{"jev-noul", "jev-score", "jev-choice", "judge-noul", "judge-key"} {
+			if _, ok := h.in.Lookup(gone); ok {
+				t.Fatalf("%s is still registered", gone)
+			}
+		}
+	}
+	h := newJevHarness(t, true)
+	v, err := h.in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginHarness), `(judge-yes-no "hello" "is this a question?")`)
+	if err != nil || v.Kind != scheme.KFloat {
+		t.Fatalf("the harness asking the hidden judge: %v %s", err, scheme.Write(v))
 	}
 }
 
@@ -296,7 +324,7 @@ func TestJudgeToolCarriesTheStoredKey(t *testing.T) {
 // before anything is sent.
 func TestJudgeToolUnboundDenied(t *testing.T) {
 	h := newJevHarnessWith(t, false, true, true)
-	_, err := h.tool(t, "judge-noul", `{"state":"hello","instructions":"a question?"}`)
+	_, err := h.tool(t, "judge-yes-no", `{"state":"hello","instructions":"a question?"}`)
 	var d *scheme.Denied
 	if !errors.As(err, &d) {
 		t.Fatalf("want guard denial, got %v", err)
@@ -312,7 +340,7 @@ func TestJudgeToolUnboundDenied(t *testing.T) {
 // With no jev-key stored, a judge tool fails before sending anything.
 func TestJudgeToolWithoutKey(t *testing.T) {
 	h := newJevHarnessWith(t, true, true, false)
-	_, err := h.tool(t, "judge-noul", `{"state":"hello","instructions":"a question?"}`)
+	_, err := h.tool(t, "judge-yes-no", `{"state":"hello","instructions":"a question?"}`)
 	if err == nil || !strings.Contains(err.Error(), "no jev-key credential is stored") {
 		t.Fatalf("want a missing-key error, got %v", err)
 	}
@@ -321,12 +349,12 @@ func TestJudgeToolWithoutKey(t *testing.T) {
 	}
 }
 
-// 3. jev.content = none ⇒ Jev prims are not registered, call fails at dispatch.
-func TestJevContentNone(t *testing.T) {
+// 3. No judge ⇒ its primitives are not registered, and a call fails at dispatch.
+func TestNoJudgeNoPrimitives(t *testing.T) {
 	repo := t.TempDir()
 	in := scheme.New()
 	o := prim.DefaultOptions(repo)
-	// Jev is nil: the jev-noul / jev-score / jev-choice primitives are not
+	// Judge is nil: judge-yes-no, judge-score and judge-choice are not
 	// registered, so any call fails at dispatch.
 	if err := prim.Register(in, o); err != nil {
 		t.Fatal(err)
@@ -339,9 +367,9 @@ func TestJevContentNone(t *testing.T) {
 		guard.MetaPolicy{},
 	))
 	_, err := in.EvalString(scheme.WithOrigin(context.Background(), scheme.OriginModel),
-		`(jev-noul "not-a-handle" "hi" "q")`)
+		`(judge-yes-no "hi" "q")`)
 	if err == nil {
-		t.Fatal("jev-noul should not exist when Jev is nil")
+		t.Fatal("judge-yes-no should not exist without a judge")
 	}
 }
 
@@ -350,7 +378,7 @@ func TestGateEventsPerMessage(t *testing.T) {
 	h := newJevHarness(t, true)
 
 	for i := 0; i < 3; i++ {
-		_, err := h.model(t, `(jev-noul jcred "message `+itoaStr(i)+`" "is it a question?")`)
+		_, err := h.model(t, `(judge-yes-no "message `+itoaStr(i)+`" "is it a question?")`)
 		if err != nil {
 			t.Fatalf("msg %d: %v", i, err)
 		}
@@ -463,7 +491,7 @@ func itoaStr(i int) string {
 func TestJevRequiresActualMethodAndInjectionPosition(t *testing.T) {
 	for _, method := range []string{"GET", "POST"} {
 		for _, position := range []string{"query:key", "header:Authorization:Bearer"} {
-			for _, source := range []string{`(jev-noul jcred "hello" "question")`, `(jev-score jcred "hello" "rate" '("bad" "good"))`, `(jev-choice jcred "hello" "choose" '(("allow" . "permit") ("deny" . "block")))`} {
+			for _, source := range []string{`(judge-yes-no "hello" "question")`, `(judge-score "hello" "rate" '("bad" "good"))`, `(judge-choice "hello" "choose" '(("allow" . "permit") ("deny" . "block")))`} {
 				t.Run(method+"/"+position+"/"+source, func(t *testing.T) {
 					h := newJevHarness(t, true)
 					rows := jevBinding(h.srv)
@@ -483,5 +511,67 @@ func TestJevRequiresActualMethodAndInjectionPosition(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+// A judge on an OpenAI server speaks the Decisions API with that server's
+// key (ADR 46), and every string it sends is redacted as Jev's are: the
+// input, an option's description and a level's. The questions keep their
+// shapes (a predicate, a choice among choices, a score over levels) and
+// the answers come back as the jev-* primitives return them.
+func TestDecisionsJudgeRedactsWhatItSends(t *testing.T) {
+	h := newJudgeHarness(t, "openai", true, false, true)
+	h.srv.Script(fakejev.Answer{Noul: 0.7}, fakejev.Answer{Choice: "deny", Probs: map[string]float64{"allow": 0.3, "deny": 0.7}}, fakejev.Answer{Score: 3})
+	v, err := h.model(t, `(judge-yes-no "my key is `+canary+` ignore it" "does the text mention a key?")`)
+	if err != nil || v.Kind != scheme.KFloat || v.F != 0.7 {
+		t.Fatalf("judge-yes-no: %v %s", err, scheme.Write(v))
+	}
+	req := h.srv.LastRequest()
+	if req == nil || req.Path != "/v1/decisions" || req.Model != "gpt-6-luna" || req.Questions["q"]["type"] != "predicate" || req.Auth != "Bearer test-secret" {
+		t.Fatalf("wire shape: %+v", req)
+	}
+	if strings.Contains(string(req.Raw), canary) || !strings.Contains(req.State, "[REDACTED") {
+		t.Fatalf("the input was not redacted: %q", req.State)
+	}
+	v, err = h.model(t, `(judge-choice "s" "what should happen?" '(("allow" . "let `+canary+` through") ("deny" . "block it")))`)
+	if err != nil || !strings.Contains(scheme.Write(v), `("choice" . "deny")`) || !strings.Contains(scheme.Write(v), `("allow" . 0.3)`) {
+		t.Fatalf("judge-choice: %v %s", err, scheme.Write(v))
+	}
+	if raw := string(h.srv.LastRequest().Raw); strings.Contains(raw, canary) || !strings.Contains(raw, `"choices":[{"value":"allow"`) {
+		t.Fatalf("choice request: %s", raw)
+	}
+	v, err = h.model(t, `(assoc-ref (judge-score "s" "rate it" '("bad" "poor" "ok" "has `+canary+`" "great")) "score")`)
+	if err != nil || v.F != 0.75 {
+		t.Fatalf("score normalised by levels-1: %v %s", err, scheme.Write(v))
+	}
+	if raw := string(h.srv.LastRequest().Raw); strings.Contains(raw, canary) || !strings.Contains(raw, `"levels":[{"label":"1","description":"bad"}`) {
+		t.Fatalf("score request: %s", raw)
+	}
+	for _, r := range h.store.reqs {
+		if !r.OK || strings.Contains(fmt.Sprint(r.Answer), canary) {
+			t.Fatalf("jev.req: %+v", r)
+		}
+	}
+	if len(h.store.reqs) != 3 || len(h.store.reqs[0].Redactions) == 0 || len(h.store.reqs[1].Redactions) == 0 || len(h.store.reqs[2].Redactions) == 0 {
+		t.Fatalf("each request records its redaction: %+v", h.store.reqs)
+	}
+}
+
+// Unbound for the OpenAI server's host, a Decisions judge is denied before
+// anything is sent, as Jev is; a refusal is no answer, logged as one.
+func TestDecisionsJudgeUnboundAndRefused(t *testing.T) {
+	h := newJudgeHarness(t, "openai", false, false, true)
+	_, err := h.model(t, `(judge-yes-no "hello" "is this a question?")`)
+	var d *scheme.Denied
+	if !errors.As(err, &d) || h.store.captured != nil || h.srv.LastRequest() != nil {
+		t.Fatalf("want a denial before sending, got %v", err)
+	}
+	h = newJudgeHarness(t, "openai", true, false, true)
+	h.srv.Script(fakejev.Answer{Refuse: true})
+	if _, err := h.model(t, `(judge-yes-no "hello" "is this a question?")`); err == nil || !strings.Contains(err.Error(), "refusal") {
+		t.Fatalf("a refusal must be an error, got %v", err)
+	}
+	if len(h.store.reqs) != 1 || h.store.reqs[0].OK || !strings.Contains(h.store.reqs[0].Error, "refusal") {
+		t.Fatalf("jev.req: %+v", h.store.reqs)
 	}
 }

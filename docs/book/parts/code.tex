@@ -1506,14 +1506,17 @@ hidden, so the model reaches it only through a tool a user registered. Its other
 facts from the call itself, L1 scans the headers and body, and L2 reads
 their provenance. Its result is tagged \code{external:http}. The binding is
 checked once, in the guard; the handler injects the key without looking
-again. The judge's primitives (\code{jev-noul}, \code{jev-score},
-\code{jev-choice}, \file{internal/prim/jev.go}) are built the same way,
+again. The judge's primitives (\code{judge-yes-no}, \code{judge-score},
+\code{judge-choice}, \file{internal/prim/judge.go}) are built the same way,
 with the destination, method and position fixed in their metadata, and
-redact what they send before sending it. The model's \code{judge-noul},
-\code{judge-score} and \code{judge-choice} are the same handlers without
-the handle: their \code{EgressClass} is \code{jev-key}, as an MCP tool's
-is its server's key class, so E3 judges them as carrying it, and the
-handler looks the key up itself.
+redact what they send before sending it. Their destination is the server
+\code{[judge]} names, and its provider says which wire they write and
+read: System One for Jev, the Decisions API for OpenAI, whose answer is
+read back into System One's shape (\adr{46}). They take no handle: their
+\code{EgressClass} is the class of that server's key, as an MCP tool's is
+its server's key class, so E3 judges them as carrying it, and the handler
+looks the key up itself. They are hidden from the model unless
+\code{judge.content} is \code{full}.
 
 \code{google-doc-upload} (\file{internal/prim/docs.go}) is built the same
 way, with the class \code{docs.google\_credential} names (\code{google}
@@ -1718,7 +1721,7 @@ Field & What it means, and who reads it \\
 \code{TaintSource} & the tag the result carries (\code{external:file}, \code{external:shell}, \code{external:http}, \code{external:mcp}, \code{external:log}) \\
 \code{TaintOpaque} & the result is a measurement of the arguments and inherits none of their taint \\
 \code{TaintStrip} & removes taint; L2 refuses it to model and harness origin \\
-\code{EgressHost}, \code{EgressMethod}, \code{EgressPosition} & fixed egress facts for a primitive whose arguments do not carry them (the \code{jev-*} and \code{judge-*} primitives, \code{google-doc-upload}, MCP) \\
+\code{EgressHost}, \code{EgressMethod}, \code{EgressPosition} & fixed egress facts for a primitive whose arguments do not carry them (the \code{judge-*} primitives, \code{google-doc-upload}, MCP) \\
 \code{EgressClass} & the credential class a host integration injects itself; makes the call credential-bearing for E3 (\code{judge-*}, \code{google-doc-upload}, a keyed remote MCP server) \\
 \code{EgressApproved} & the person named \code{EgressHost} outside the binding table; L2 counts it as a named destination for this primitive (MCP) \\
 \code{EgressContained}, \code{EgressOnward} & a contained MCP server's tool, and the hosts its container may send on to; L1 and L2 bind a key in its arguments only if its class is bound for every one \\
@@ -1759,7 +1762,7 @@ those calls on its own declaration.
   an MCP tool);
 \item \code{credential}, \code{dest}, \code{method}, \code{position}: the
   facts E3 looks up in the binding table (\code{http-request}; the
-  \code{jev-*} primitives have \code{credential} and fixed facts).
+  \code{judge-*} primitives have a fixed class and facts).
 \end{itemize}
 A checker that switches on a primitive's name is a bug; none in
 \file{internal/guard} does.

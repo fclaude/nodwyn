@@ -23,7 +23,7 @@ Kind & What it records \\
 \code{egress.check} & a binding lookup for a keyed request: class, host, method, an OAuth2 credential's scopes, outcome \\
 \code{gate.plan} & the plan gate's outcome for a message \\
 \code{plan.step} & the model marked a step of the plan done or skipped, with its note \\
-\code{jev.req} & a call to the judge: which call, its origin, content level, size, payload hash, redactions, answer, the model that answered and its tokens (priced with \code{[jev]} prices, else the published ones) \\
+\code{jev.req} & a call to the judge: which call, its origin, content level, size, payload hash, redactions, answer, the model that answered and its tokens (priced with \code{[judge]} prices, else the published ones) \\
 \code{cred.register} & a credential stored: class and handle id only \\
 \code{cred.refresh} & an OAuth2 credential refreshed before a use: class, handle id, token endpoint, expiry or error; never a token \\
 \code{mcp.egress} & a contained MCP server's connection through its egress proxy, allowed or refused: server, method, host, port, why; past a limit, how many were not recorded \\
@@ -126,9 +126,10 @@ ADR & Title & Status \\
   attempt.
 \item[handle] an opaque reference to a keychain entry; a Scheme value that
   can never become text.
-\item[Jev] the external calibrated judge, admitted at Seam A (plans against
-  asks) and Seam C (egress situations), over redacted content, never a
-  secret value.
+\item[Jev] TypeSafe's external calibrated judge, one of the judge's two
+  providers with OpenAI's Decisions API (\adr{46}), admitted at Seam A
+  (plans against asks) and Seam C (egress situations), over redacted
+  content, never a secret value.
 \item[manifest] an MCP server's tool list; its hash is what you approve.
 \item[model server] a provider's address and key, configured as
   \code{[servers.NAME]}; the models on it name it with \code{server}.

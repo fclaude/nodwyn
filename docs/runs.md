@@ -39,7 +39,8 @@ approval waits and time spent stopped. The daemon's configured per-turn budgets
 still apply, including planning tokens reported by the control provider. A
 provider response can exceed its token ceiling; no further operation then starts.
 The judge's tokens are recorded (`jev.req`) and shown, not counted against
-the token budget; its cost, when `[jev]` has prices, counts against a spend
+the token budget; its cost, when its prices are known (`[judge]`, else its
+provider's), counts against a spend
 limit.
 
 `--budget-cost USD` (`run.start {cost}`) gives the run a spend limit: what
@@ -69,7 +70,7 @@ Each turn requires a nonempty, durably recorded plan before execution. The
 Scheme `nodwyn-turn` runs the plan gate first in every run turn, whatever `agent-turn`
 a project defines ([docs/scheme.md](scheme.md) §9.5). The first turn drafts
 the plan: the control model writes it in a context of its own, offered no
-tools, and with a Jev credential the score/revise path runs through the
+tools, and with a judge (`[judge]` on a provider whose key is stored) the score/revise path runs through the
 guard; the noul decision cannot skip a required plan. Without a judge the
 model still drafts a plan. Judge outages retain the plain-plan fallback.
 Each later turn carries the run's plan: it records the same plan again
@@ -163,19 +164,20 @@ fewer, and nothing in it ever waits for a person:
   kept claiming progress, step by step, in a log that can be reviewed step by
   step.
 - **With `--judge`, the judge answers instead.** Each ordinary tool confirm is
-  put to the judge (Jev): it is shown the task, the turn's plan and the call
+  put to the judge: it is shown the task, the turn's plan and the call
   (the tool, why it needs approval, the file it writes or the command line
-  it runs; at `jev.content = "full"` also what it would write or send), and
+  it runs; at `judge.content = "full"` also what it would write or send), and
   asked whether a call like this should run with nobody watching. The call
   runs only if the judge's probability of "allow" is at least
-  `jev.approve_threshold` in config.toml (0.8). The decision is Go's: no
+  `judge.approve_threshold` in config.toml (0.8). The decision is Go's: no
   Scheme, a repository's `.nodwyn/init.scm` included, can approve a call the
   judge refused. A project may only refuse more, by defining
   `(approve-refuse? call)`. A judge that fails or cannot be reached is a no;
   security confirms are declined without asking it. Each answer is the
   guard's decision with actor `judge`, a note with the judge's probability,
-  and the judge's `jev.req`. `--judge` needs a judge (a `jev-key` stored and
-  bound, `jev.content` other than `none`) and excludes `--yolo`; it also
+  and the judge's `jev.req`. `--judge` needs a judge (`[judge]` on a provider
+  whose key is stored and bound, `judge.content` other than `none`) and
+  excludes `--yolo`; it also
   works in a supervised run, where you still answer the run checkpoints.
 - Everything else is as for a supervised run: a recorded plan in every turn,
   the run's, carried until every step is marked,

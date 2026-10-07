@@ -836,23 +836,79 @@ check(async () => {
   await page.click("#model-form >> text=Cancel");
   step("a model Anthropic or Baseten publishes has its context, reply cap, efforts and prices without any being typed");
 
-  // ---------- the judge's model settings, with the models' ----------
-  // The judge's model, prices and wait are under Models, its prices'
-  // placeholders what typesafe.ai publishes; what it sees stays under Judge,
-  // which points there. A price typed is saved to [jev].
+  // ---------- the judge on a provider (ADR 46) ----------
+  // Jev is a provider of its own: its preset fills in typesafe.ai's address,
+  // its key is stored and allowed for that host by POST alone, it offers no
+  // Test and no model can be put on it. The judge is off until Settings ›
+  // Judge chooses a provider, which offers Jev and the provider at OpenAI's
+  // address, not the chat servers elsewhere, which have no Decisions API; one
+  // without a key is refused. Chosen, the judge's model, prices and wait sit
+  // with the models, its model and prices as its provider publishes them
+  // until set, and the provider cannot be removed from under it; a price
+  // typed is saved to [judge]. The judge is put back to none at the end, so
+  // nothing later asks typesafe.ai anything. The app was last started with
+  // the keychain locked, and a key needs it.
   await go("#/settings");
-  await page.waitForSelector("#section-models [id='set-jev.model']", { timeout: 10000 });
-  assert.strictEqual(await page.getAttribute("#section-models [id='set-jev.price_input']", "placeholder"), "0.042", "the judge's published input price");
-  assert.strictEqual(await page.getAttribute("#section-models [id='set-jev.price_output']", "placeholder"), "0");
-  assert.strictEqual(await page.locator("#section-judge [id='set-jev.price_input']").count(), 0, "the judge's prices are also under Judge");
-  await shows("#section-judge", "Model and prices", "Under Models");
-  await page.fill("#section-models [id='set-jev.price_input']", "0.05");
+  await page.waitForSelector("#section-judge");
+  await page.waitForSelector("#section-keys #keychain-pass", { timeout: 10000 });
+  await page.fill("#section-keys #keychain-pass", "family passphrase");
+  await page.click("#section-keys button:text-is('Unlock')");
+  await page.waitForSelector("#section-keys >> text=Unlocked", { timeout: 20000 });
+  await shows("#section-judge", "Off: no provider is chosen");
+  assert.strictEqual(await page.locator("#section-models [id='set-judge.model']").count(), 0, "the judge's model rows show with no judge");
+  await page.click("#add-provider");
+  await page.click("#preset-jev");
+  assert.strictEqual(await page.inputValue("#provider-url"), "https://api.typesafe.ai", "the Jev preset's address");
+  assert.strictEqual(await page.locator("#provider-dialect").count(), 0, "a Jev provider is offered a dialect");
+  await page.fill("#provider-name", "jev");
+  await page.fill("#provider-key", "sk-judge-canary-0001");
+  await page.click("#provider-save");
+  await page.waitForSelector("#provider-jev", { timeout: 10000 });
+  await page.waitForSelector(".toast >> text=Provider saved. Choose it under Judge to have the judge ask it.", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { name: "jev", provider: "jev", url: "https://api.typesafe.ai", api_key: "sk-judge-canary-0001" });
+  assert.ok(config().includes('[servers.jev]\nprovider = "jev"\nurl = "https://api.typesafe.ai"\ncredential = "model-api-typesafe-ai"\n'), "the Jev provider in config.toml:\n" + config());
+  assert.ok(!config().includes("sk-judge-canary"), "the Jev key is in config.toml");
+  const jevRows = fs.readFileSync(`${root}/config/nodwyn/bindings.toml`, "utf8").split("[[bind]]").filter((b) => b.includes('class = "model-api-typesafe-ai"'));
+  assert.ok(jevRows.length === 1 && /methods = \["POST"\]/.test(jevRows[0]) && jevRows[0].includes('dest = "api.typesafe.ai"'), "the Jev key's binding rows:\n" + jevRows.join("[[bind]]"));
+  await shows("#provider-jev", "Jev · api.typesafe.ai · key stored", "Not used yet: choose it as the judge's provider under Judge.");
+  assert.strictEqual(await page.locator("#provider-jev button:text-is('Test')").count(), 0, "a Jev provider offers a Test");
+  await page.click("#add-model");
+  assert.ok(!(await page.$$eval("#model-provider option", (o) => o.map((x) => x.value))).includes("jev"), "a model can be put on the Jev provider");
+  await page.click("#model-form >> text=Cancel");
+  assert.deepStrictEqual(await page.$$eval("#section-judge [aria-label='Judge provider'] button", (b) => b.map((x) => x.textContent)), ["None", "jev (Jev)", "openai (OpenAI)"], "the judge's providers");
+  await page.click("#section-judge [id='set-judge.server-openai']");
+  await page.click(".save-bar button:text-is('Save')");
+  await page.waitForSelector(".save-bar >> text=has no credential, and the judge sends its server's key", { timeout: 10000 });
+  assert.ok(!config().includes("[judge]"), "a judge on a provider without a key was saved:\n" + config());
+  await page.click("#section-judge [id='set-judge.server-jev']");
   await page.click(".save-bar button:text-is('Save')");
   await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
-  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "jev.price_input": 0.05 } });
-  assert.ok(/\[jev\][^[]*price_input = 0\.05/.test(config()), "the judge's price is not in [jev]:\n" + config());
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": "jev" } });
+  assert.ok(/\[judge\]\nserver = "jev"\n/.test(config()), "the judge's provider is not in [judge]:\n" + config());
+  await page.waitForSelector("#section-judge >> text=Key ready: jev's key is stored, unlocked and allowed for api.typesafe.ai.", { timeout: 10000 });
+  await shows("#provider-jev", "the judge's", "The judge asks it");
+  assert.ok(await page.isDisabled("#provider-jev button:text-is('Remove')"), "the judge's provider can be removed");
+  assert.strictEqual(await page.getAttribute("#provider-jev button:text-is('Remove')", "title"), "Still used by the judge");
+  assert.strictEqual(await page.getAttribute("#section-models [id='set-judge.model']", "placeholder"), "jev-latest", "the judge's model as its provider's");
+  assert.strictEqual(await page.getAttribute("#section-models [id='set-judge.price_input']", "placeholder"), "0.042", "the judge's published input price");
+  assert.strictEqual(await page.getAttribute("#section-models [id='set-judge.price_output']", "placeholder"), "0");
+  assert.strictEqual(await page.locator("#section-judge [id='set-judge.price_input']").count(), 0, "the judge's prices are also under Judge");
+  await shows("#section-judge", "Model and prices", "Under Models");
+  await page.fill("#section-models [id='set-judge.price_input']", "0.05");
+  await page.click(".save-bar button:text-is('Save')");
+  await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.price_input": 0.05 } });
+  assert.ok(/\[judge\][^[]*price_input = 0\.05/.test(config()), "the judge's price is not in [judge]:\n" + config());
   await page.locator("#section-models").screenshot({ path: `${out}/models-judge.png` });
-  step("the judge's model, prices and wait sit with the models, its prices as published until set");
+  await page.locator("#section-judge").screenshot({ path: `${out}/models-judge-provider.png` });
+  await page.click("#section-judge [id='set-judge.server-default']");
+  await page.click(".save-bar button:text-is('Save')");
+  await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": null } });
+  assert.ok(!/^server = "jev"/m.test(config()), "the judge still names jev:\n" + config());
+  await page.waitForSelector("#section-judge >> text=Off: no provider is chosen", { timeout: 10000 });
+  assert.strictEqual(await page.locator("#section-models [id='set-judge.model']").count(), 0, "the judge's model rows stay with no judge");
+  step("Jev is a provider the judge is put on, with its model, prices and wait beside the models' and its prices as published until set");
 
   // The ChatGPT setup UI uses synthetic RPC consent and account replies;
   // provider persistence and binding are checked by the RPC integration test.

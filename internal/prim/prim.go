@@ -62,10 +62,11 @@ type Options struct {
 	// session resolved them (XDG overrides included); the denylist refuses
 	// them to every path argument, like the default places it names.
 	Private []string
-	// Jev is optional: nil disables its primitives. The host owns credential
-	// injection, redaction, transport and recording; settings are ordinary data.
-	Jev       JevClient
-	JevConfig JevOptions
+	// Judge is optional: nil disables its primitives. The host owns
+	// credential injection, redaction, transport and recording; settings are
+	// ordinary data.
+	Judge       JudgeClient
+	JudgeConfig JudgeOptions
 
 	// Documents (W5). Pandoc is the program doc-export runs; "" finds
 	// pandoc on PATH. Docs is optional: nil offers no google-doc-upload,
@@ -126,12 +127,8 @@ func Register(in *scheme.Interp, o Options) error {
 			}
 		}
 	}
-	if o.Jev != nil {
-		ps := []*scheme.Prim{jevNoul(o.JevConfig, o.Jev, true), jevScore(o.JevConfig, o.Jev, true), jevChoice(o.JevConfig, o.Jev, true)}
-		if o.JevConfig.Tools {
-			ps = append(ps, jevNoul(o.JevConfig, o.Jev, false), jevScore(o.JevConfig, o.Jev, false), jevChoice(o.JevConfig, o.Jev, false))
-		}
-		for _, p := range ps {
+	if o.Judge != nil {
+		for _, p := range []*scheme.Prim{judgeYesNo(o.JudgeConfig, o.Judge), judgeScore(o.JudgeConfig, o.Judge), judgeChoice(o.JudgeConfig, o.Judge)} {
 			if err := in.Register(p); err != nil {
 				return err
 			}

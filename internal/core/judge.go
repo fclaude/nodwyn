@@ -10,15 +10,14 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/prim"
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
-// judgeConfirmer answers a session's confirms with the judge (Jev) instead of
+// judgeConfirmer answers a session's confirms with the judge instead of
 // a person: a run started with --judge (ADR 18 §5, ADR 20 Seam C). Each
 // ordinary confirm is put to the judge as a choice between allowing and
 // refusing the call, and the call runs only if the judge's probability of
-// allow reaches jev.approve_threshold. A security confirm is declined
+// allow reaches judge.approve_threshold. A security confirm is declined
 // without asking: those exist for the case where a person is the control.
 // Whatever goes wrong is a no.
 //
@@ -79,17 +78,15 @@ const (
 
 // judgeCall asks the judge about p and decides; watched says a person can
 // be asked when it does not allow it, so its question says so. The question
-// goes through the jev-choice primitive from the primitive table, with the
-// jev-key handle Go holds and harness origin, so it crosses the guard as the
-// plan gate's calls do: the key's binding is checked, what is sent is
-// redacted and jev.req is logged. Its answer is kept for the rest of the
+// goes through the judge-choice primitive from the primitive table, with
+// harness origin, so it crosses the guard as the plan gate's calls do: the
+// key's binding is checked, what is sent is redacted and jev.req is logged. Its answer is kept for the rest of the
 // turn, so a later ask about the same call says how it went.
 func (s *Session) judgeCall(ctx context.Context, p guard.Prompt, watched bool) (bool, string) {
 	if !s.judgeAvailable() {
 		return false, "no judge is configured"
 	}
-	choose, _ := s.interp.Lookup("jev-choice")
-	h := s.HandleForClass(prim.JevClass)
+	choose, _ := s.interp.Lookup("judge-choice")
 	question, allowText, denyText := approveQuestion, approveAllow, approveDeny
 	if watched {
 		question, allowText, denyText = approveQuestionWatched, approveAllowWatched, approveDenyWatched
@@ -100,14 +97,14 @@ func (s *Session) judgeCall(ctx context.Context, p guard.Prompt, watched bool) (
 	)
 	harness := scheme.WithOrigin(ctx, scheme.OriginHarness)
 	answer, err := s.interp.Apply(harness, scheme.Value{Kind: scheme.KPrim, Prim: choose},
-		[]scheme.Value{scheme.HandleValue(h), scheme.Str(s.approveState(p)), scheme.Str(question), options})
+		[]scheme.Value{scheme.Str(s.approveState(p)), scheme.Str(question), options})
 	if err != nil {
 		return false, "the judge did not answer: " + err.Error()
 	}
 	allow := allowProbability(answer)
-	threshold := s.opts.Config.Jev.ApproveThreshold
+	threshold := s.opts.Config.Judge.ApproveThreshold
 	if threshold == 0 {
-		threshold = config.Default().Jev.ApproveThreshold
+		threshold = config.Default().Judge.ApproveThreshold
 	}
 	why := fmt.Sprintf("the judge's probability of allow is %.2f, %s %.2f", allow, map[bool]string{true: "at least", false: "below"}[allow >= threshold], threshold)
 	if allow < threshold {
@@ -130,7 +127,7 @@ func (s *Session) judgeCall(ctx context.Context, p guard.Prompt, watched bool) (
 // target, the path a write names or the command line a program runs — what
 // was answered about the same call earlier this turn, and a script it runs
 // from the session's own scratch directory: that it is the session's, and
-// at jev.content = "full" its text. At "full" it also gets what the call
+// at judge.content = "full" its text. At "full" it also gets what the call
 // would write or send.
 func (s *Session) approveState(p guard.Prompt) string {
 	task, before, plan, marks, earlier := s.turnState(p)
@@ -145,7 +142,7 @@ func (s *Session) approveState(p guard.Prompt) string {
 	case len(p.Argv) > 0:
 		target = ": " + strings.Join(p.Argv, " ")
 	}
-	full := jevOptions(s.opts.Config).Content == config.JevContentFull
+	full := judgeOptions(s.opts.Config).Content == config.JudgeContentFull
 	var b strings.Builder
 	for _, r := range before {
 		fmt.Fprintf(&b, "Earlier in this conversation the person wrote:\n%s\n\n", r)
@@ -177,7 +174,7 @@ func (s *Session) approveState(p guard.Prompt) string {
 }
 
 // allowProbability reads the judge's probability of allow from a
-// jev-choice answer: its probability for "allow", or its confidence when it
+// judge-choice answer: its probability for "allow", or its confidence when it
 // chose allow without probabilities, else 0.
 func allowProbability(answer scheme.Value) float64 {
 	if probs, ok := alistGet(answer, "probabilities"); ok {

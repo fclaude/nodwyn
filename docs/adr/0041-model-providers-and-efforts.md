@@ -1,6 +1,6 @@
 # ADR 0041: Providers, models and efforts are chosen in the console
 
-- Status: accepted; implemented 2026-10-04
+- Status: accepted; implemented 2026-10-04; amended by ADR 46: Jev is a provider, and the judge's settings are `[judge]`
 - Date: 2026-10-04
 - Amends: 8 (effort controls, deferred there), 40 (the picker it left unbuilt; a switch while a turn runs; the fallback for a model that is gone)
 

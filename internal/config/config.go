@@ -80,7 +80,7 @@ type Config struct {
 	Policy  Policy `toml:"policy"`
 	Loop    Loop   `toml:"loop"`
 	Budget  Budget `toml:"budget"`
-	Jev     Jev    `toml:"jev"`
+	Judge   Judge  `toml:"judge"`
 	Docs    Docs   `toml:"docs"`
 	MCP     MCP    `toml:"mcp"`
 	// Approval is what a session a person can answer does without asking
@@ -259,7 +259,7 @@ func (m Model) isZero() bool { return reflect.DeepEqual(m, Model{}) }
 // key, so the models on it name the server rather than repeat them.
 type Server struct {
 	Dialect    llm.ChatDialect `toml:"dialect"`    // Empty keeps the compatible dialect; never inferred from the URL.
-	Provider   string          `toml:"provider"`   // as Model.Provider
+	Provider   string          `toml:"provider"`   // as Model.Provider, or "jev" for a server only the judge asks
 	URL        string          `toml:"url"`        // as Model.URL
 	Credential string          `toml:"credential"` // as Model.Credential
 }
@@ -277,14 +277,18 @@ const (
 	CacheKeyOff     = "off"
 )
 
-// Jev is the judge's configuration (ADR 19/20). Jev is keyed: it runs only
-// when a credential of class jev-key is registered and bound to the URL's
-// host. Content is the level of what may leave (ADR 19); in v0 the gate
-// sends the ask and the plan whatever the level says, so "plan" is the
-// honest default and the higher levels are reserved.
-type Jev struct {
-	URL     string `toml:"url"`     // base URL; default https://api.typesafe.ai
-	Model   string `toml:"model"`   // default jev-latest
+// Judge is the judge's configuration (ADR 19/20, ADR 46): the service that
+// answers the plan gate's questions and a session's confirms. It is a
+// provider's, as a model is: Server names a [servers.NAME] whose provider is
+// "jev" (TypeSafe's System One API) or "openai" (OpenAI's Decisions API),
+// and the judge's requests go to that server's address with its key, which
+// its binding rows must allow there. Without a server there is no judge.
+// Content is the level of what may leave (ADR 19); in v0 the gate sends the
+// ask and the plan whatever the level says, so "plan" is the honest default
+// and the higher levels are reserved.
+type Judge struct {
+	Server  string `toml:"server"`  // a [servers.NAME] whose provider is jev or openai; empty: no judge
+	Model   string `toml:"model"`   // unset: its provider's judge model (JudgeModels)
 	Timeout string `toml:"timeout"` // per request, e.g. "10s"
 	Content string `toml:"content"` // "none" | "plan" | "plan+summaries" | "full" (default "plan")
 	// ApproveThreshold is the judge's probability of "allow" at which it
@@ -295,23 +299,43 @@ type Jev struct {
 	ApproveThreshold float64 `toml:"approve_threshold"`
 	// PriceInput and PriceOutput are the judge's prices, USD per million
 	// tokens: the API reports what a request used, never what it cost, so
-	// these estimate it. Unset, judge requests are counted, not priced.
+	// these estimate it. Unset, they are what its provider publishes
+	// (JudgePrices), else judge requests are counted, not priced.
 	PriceInput  *float64 `toml:"price_input"`
 	PriceOutput *float64 `toml:"price_output"`
 }
 
 // Valid content levels, lowest to highest.
 const (
-	JevContentNone    = "none"
-	JevContentPlan    = "plan"
-	JevContentPlanSum = "plan+summaries"
-	JevContentFull    = "full"
+	JudgeContentNone    = "none"
+	JudgeContentPlan    = "plan"
+	JudgeContentPlanSum = "plan+summaries"
+	JudgeContentFull    = "full"
 )
 
-// Enabled reports whether Jev may be used at all: a URL and a content level
-// other than "none". Whether it actually runs also needs a jev-key credential.
-func (j Jev) Enabled() bool {
-	return j.URL != "" && j.Content != JevContentNone
+// JudgeModels are the model a judge asks when judge.model is unset, by its
+// server's provider: the providers a judge may be on, each with the one
+// model its typed-question API offers.
+var JudgeModels = map[string]string{"jev": "jev-latest", "openai": "gpt-6-luna"}
+
+// JudgeServer is the server the judge's requests go to: ok is false when
+// there is no judge, because judge.server is empty or judge.content is
+// "none". Whether it runs also needs the server's key stored.
+func (c Config) JudgeServer() (Server, bool) {
+	if c.Judge.Server == "" || c.Judge.Content == JudgeContentNone {
+		return Server{}, false
+	}
+	s, ok := c.Servers[c.Judge.Server]
+	return s, ok
+}
+
+// JudgeModel is the model the judge asks: judge.model, else its server's
+// provider's judge model.
+func (c Config) JudgeModel() string {
+	if c.Judge.Model != "" {
+		return c.Judge.Model
+	}
+	return JudgeModels[c.Servers[c.Judge.Server].Provider]
 }
 
 // Docs configures the document tools (W5, ADR 22 answer 4). doc-export
@@ -526,10 +550,9 @@ func Default() Config {
 		// The soft limits are the hard ones: no checkpoint interrupts a turn
 		// unless the person asks for one (ADR 35).
 		Budget: Budget{ToolCallsSoft: 500, ToolCallsHard: 500, TokensSoft: 10_000_000, TokensHard: 10_000_000, ActionsSoft: 200, ActionsHard: 200, WallSoft: "4h", WallHard: "4h"},
-		// Jev defaults: no service (nodwyn runs file-only, gate is "plan"), full
-		// content when one is configured. A developer points jev.url at their
-		// instance to enable the gate (ADR 19).
-		Jev:      Jev{URL: "https://api.typesafe.ai", Model: "jev-latest", Timeout: "10s", Content: JevContentPlan, ApproveThreshold: 0.8},
+		// No judge until judge.server names a provider for it (ADR 46); the
+		// plan gate sees the ask and the plan once one does (ADR 19).
+		Judge:    Judge{Timeout: "10s", Content: JudgeContentPlan, ApproveThreshold: 0.8},
 		Docs:     Docs{GoogleCredential: "google", GoogleUploadURL: GoogleUploadURL},
 		Approval: Approval{Writes: ApproveAllow, Commands: ApproveJudge},
 	}
@@ -558,6 +581,13 @@ func Parse(raw []byte) (Config, error) {
 	md, err := toml.Decode(string(raw), &c)
 	if err != nil {
 		return Config{}, err
+	}
+	// [jev] gave the judge an address of its own and sent the key of class
+	// jev-key; the judge is now a provider's (ADR 46), and a file that still
+	// has the table is told what replaces it rather than which keys are
+	// unknown.
+	if md.IsDefined("jev") {
+		return Config{}, errors.New(`[jev] is now [judge], on a provider: add [servers.jev] with provider = "jev", url = "https://api.typesafe.ai" and credential = "jev-key", then [judge] with server = "jev" and the other [jev] settings (ADR 46)`)
 	}
 	// [tasks] chose how the console started a task (ADR 18); a chat is the
 	// only way now (ADR 35), and a file that still has the table loads.
@@ -682,37 +712,14 @@ func (c Config) Validate() error {
 			return fmt.Errorf("%s must be a positive duration, got %q", name, v)
 		}
 	}
-	if c.Jev.URL != "" {
-		u, err := url.Parse(c.Jev.URL)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			return fmt.Errorf("jev.url must be an absolute URL, got %q", c.Jev.URL)
-		}
-	}
-	if d, err := time.ParseDuration(c.Jev.Timeout); err != nil || d <= 0 {
-		return fmt.Errorf("jev.timeout must be a positive duration, got %q", c.Jev.Timeout)
-	}
-	if c.Jev.Model == "" {
-		return errors.New("jev.model is required")
-	}
-	if c.Jev.ApproveThreshold <= 0 || c.Jev.ApproveThreshold > 1 {
-		return fmt.Errorf("jev.approve_threshold must be above 0 and at most 1, got %v", c.Jev.ApproveThreshold)
-	}
-	for name, p := range map[string]*float64{"price_input": c.Jev.PriceInput, "price_output": c.Jev.PriceOutput} {
-		if p != nil && (math.IsNaN(*p) || math.IsInf(*p, 0) || *p < 0) {
-			return fmt.Errorf("jev.%s must be US dollars per million tokens, at least 0, got %v", name, *p)
-		}
+	if err := c.validateJudge(); err != nil {
+		return err
 	}
 	if err := c.Docs.validate(); err != nil {
 		return err
 	}
 	if err := c.Approval.validate(); err != nil {
 		return err
-	}
-	switch c.Jev.Content {
-	case JevContentNone, JevContentPlan, JevContentPlanSum, JevContentFull, "":
-	default:
-		return fmt.Errorf("jev.content must be one of %q, got %q",
-			[]string{JevContentNone, JevContentPlan, JevContentPlanSum, JevContentFull}, c.Jev.Content)
 	}
 	switch c.MCP.Runtime {
 	case "", "podman", "docker":
@@ -732,8 +739,9 @@ func (l Loop) Durations() (request, shell time.Duration) {
 	return request, shell
 }
 
-// The positions a model's key goes at: the chat-completions family takes it
-// as a bearer token, Anthropic's API in its own header, with no scheme.
+// The positions a server's key goes at: the chat-completions family and Jev
+// take it as a bearer token, Anthropic's API in its own header, with no
+// scheme.
 const (
 	KeyPositionBearer    = "header:Authorization:Bearer"
 	KeyPositionAnthropic = "header:x-api-key"
@@ -752,19 +760,64 @@ func KeyPosition(provider string) string {
 // isOllama says whether provider is Ollama, which is what an unset one means.
 func isOllama(provider string) bool { return provider == "" || provider == "ollama" }
 
+// validateJudge checks [judge]: the server it names is configured, keyed,
+// and of a provider that answers typed questions (JudgeModels), so a judge
+// that cannot be asked is refused when the file loads rather than on its
+// first request.
+func (c Config) validateJudge() error {
+	j := c.Judge
+	if j.Server != "" {
+		s, ok := c.Servers[j.Server]
+		switch {
+		case !ok:
+			return fmt.Errorf("judge.server: server %q is not configured: add a [servers.%s] table with its provider, url and credential", j.Server, j.Server)
+		case JudgeModels[s.Provider] == "":
+			return fmt.Errorf("judge.server: %q is an %s server; the judge asks Jev (provider \"jev\") or OpenAI's Decisions API (provider \"openai\")", j.Server, providerOrOllama(s.Provider))
+		case s.Credential == "":
+			return fmt.Errorf("judge.server: server %q has no credential, and the judge sends its server's key", j.Server)
+		}
+	}
+	if d, err := time.ParseDuration(j.Timeout); err != nil || d <= 0 {
+		return fmt.Errorf("judge.timeout must be a positive duration, got %q", j.Timeout)
+	}
+	if j.ApproveThreshold <= 0 || j.ApproveThreshold > 1 {
+		return fmt.Errorf("judge.approve_threshold must be above 0 and at most 1, got %v", j.ApproveThreshold)
+	}
+	for name, p := range map[string]*float64{"price_input": j.PriceInput, "price_output": j.PriceOutput} {
+		if p != nil && (math.IsNaN(*p) || math.IsInf(*p, 0) || *p < 0) {
+			return fmt.Errorf("judge.%s must be US dollars per million tokens, at least 0, got %v", name, *p)
+		}
+	}
+	switch j.Content {
+	case JudgeContentNone, JudgeContentPlan, JudgeContentPlanSum, JudgeContentFull, "":
+	default:
+		return fmt.Errorf("judge.content must be one of %q, got %q",
+			[]string{JudgeContentNone, JudgeContentPlan, JudgeContentPlanSum, JudgeContentFull}, j.Content)
+	}
+	return nil
+}
+
+// providerOrOllama names provider as config.toml means it: unset is Ollama.
+func providerOrOllama(provider string) string {
+	if isOllama(provider) {
+		return "ollama"
+	}
+	return provider
+}
+
 // validate checks a server's own settings, which a model that does not
 // name a server sets itself.
 func (s Server) validate() error {
 	switch s.Provider {
-	case "", "ollama", "openai", "anthropic": // unset is ollama
+	case "", "ollama", "openai", "anthropic", "jev": // unset is ollama
 	default:
-		return fmt.Errorf("provider %q is not supported (ollama, openai, anthropic)", s.Provider)
+		return fmt.Errorf("provider %q is not supported (ollama, openai, anthropic, jev)", s.Provider)
 	}
 	if err := s.Dialect.Validate(); err != nil {
 		return err
 	}
 	if s.Provider != "openai" && s.Dialect != "" {
-		return errors.New("dialect is for openai servers; ollama and anthropic use their own protocols")
+		return errors.New("dialect is for openai servers; ollama, anthropic and jev use their own protocols")
 	}
 	u, err := url.Parse(s.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -779,6 +832,10 @@ func (s Server) validate() error {
 func (m Model) validate() error {
 	if err := (Server{Provider: m.Provider, Dialect: m.Dialect, URL: m.URL, Credential: m.Credential}).validate(); err != nil {
 		return err
+	}
+	// Jev answers the judge's typed questions and has no chat model.
+	if m.Provider == "jev" {
+		return errors.New("a jev server answers the judge only ([judge] server); no model can be on it")
 	}
 	if m.Model == "" {
 		return errors.New("model is required")
@@ -1033,19 +1090,21 @@ func (c Config) catalogue() *catalogue.Catalogue {
 	return catalogue.Default()
 }
 
-// JevPrices are the judge's prices, USD per million tokens: each [jev]'s own
-// when it sets it, else what its provider publishes for jev.model at jev.url
-// (internal/catalogue); nil when either is known to neither, and the judge's
-// requests are counted, not priced. A price set alone is not dropped for
-// the published pair, which Settings' empty fields promise.
-func (c Config) JevPrices() (input, output *float64) {
-	input, output = c.Jev.PriceInput, c.Jev.PriceOutput
-	if m, ok := c.catalogue().Lookup(c.Jev.URL, c.Jev.Model); ok && m.Price != nil {
+// JudgePrices are the judge's prices, USD per million tokens: each
+// [judge]'s own when it sets it, else what its provider publishes for a
+// judge's question to its model at its server's address
+// (catalogue.JudgePrice); nil when either is
+// known to neither, and the judge's requests are counted, not priced. A
+// price set alone is not dropped for the published pair, which Settings'
+// empty fields promise.
+func (c Config) JudgePrices() (input, output *float64) {
+	input, output = c.Judge.PriceInput, c.Judge.PriceOutput
+	if p, ok := catalogue.JudgePrice(c.Servers[c.Judge.Server].URL, c.JudgeModel()); ok {
 		if input == nil {
-			input = &m.Price.Input
+			input = &p.Input
 		}
 		if output == nil {
-			output = &m.Price.Output
+			output = &p.Output
 		}
 	}
 	if input == nil || output == nil {

@@ -63,7 +63,7 @@ them.
 \item \textbf{The log is the single source of truth.} Index and window are
   derived, revocable views; a stale summary means recompute-from-log.
 \item \textbf{The judge judges intent and plans over redacted content; the
-  local stack judges \emph{what}.} Jev\,---\,the external calibrated judge used
+  local stack judges \emph{what}.} The judge\,---\,an external calibrated service used
   at two seams\,---\,sees the ask, the plan, and egress \emph{situations}
   (class, destination, scope), after redaction, and more only at the
   content level you choose. It never sees a secret value. (Wording amended
@@ -138,7 +138,7 @@ Channel & What crosses & Who decides & Recorded as \\
 Models & out: the window (the conversation, or a narrowed part of it); in: text, thinking, tool calls & you, by configuring the model; for a keyed model, the binding table, on every request & \code{llm.req}, \code{llm.resp}, \code{egress.check} \\
 MCP servers & at session start: the server's tool list; per call: arguments out, a result in; from a contained server, its connections through the proxy & you, in \file{mcp.toml}: which servers, which tools, in which workspaces, which hosts a contained one reaches; the pinned manifest; the guard, per call & \code{egress.check}, \code{guard.decision}, \code{tool.call}, \code{tool.result}, \code{mcp.egress} \\
 Keyed HTTP & a request with a credential injected at a bound position, and its response; the model reaches it only through a tool you registered & the binding table; the guard's L1 and L2 checkers & \code{egress.check}, \code{guard.decision}, \code{cred.refresh} for an OAuth2 credential \\
-The judge & the ask and the plan; each call it is asked to allow, a command in a session you answer (\code{approval.commands}) or any ordinary confirm in a \code{-{}-judge} run; at \code{full}, what the call would do, and what the model sends with the \code{judge} tools; all redacted & the binding table; the content level \code{jev.content}; for a judged call, Go, against \code{jev.approve\_threshold} & \code{jev.req}, \code{gate.plan}, \code{guard.decision} \\
+The judge & the ask and the plan; each call it is asked to allow, a command in a session you answer (\code{approval.commands}) or any ordinary confirm in a \code{-{}-judge} run; at \code{full}, what the call would do, and what the model sends with the \code{judge} tools; all redacted & the binding table; the judge's provider, \code{[judge] server}; the content level \code{judge.content}; for a judged call, Go, against \code{judge.approve\_threshold} & \code{jev.req}, \code{gate.plan}, \code{guard.decision} \\
 Files & file contents in; writes out to disk & the pin, the path denylist, \code{approval.writes}; the confirm for a protected path, credential-shaped content, or with \code{writes = "ask"} & \code{guard.decision}, \code{tool.result}, \code{file.version} \\
 Programs & a command line out; its output in; anything the program itself does & a standing approval, the judge, or you (\code{approval.commands}); the guard sees the command line only & \code{guard.decision}, \code{tool.result} \\
 You & messages, answers to prompts, secrets typed into a masked prompt, Scheme you evaluate & you & \code{user.msg}, \code{guard.decision}, \code{cred.register}, \code{eval.req} \\
@@ -290,17 +290,18 @@ and reads the provenance of the payload (L2): content that came from a file,
 a command or another response may go only to a host some binding names.
 The response is tagged \code{external:http}.
 
-The judge, Jev, is reached through three primitives, \code{jev-noul},
-\code{jev-score} and \code{jev-choice}, built the same way: a bound
+The judge is reached through three primitives, \code{judge-yes-no},
+\code{judge-score} and \code{judge-choice}, built the same way: a bound
 credential, a fixed host, the payload redacted before it is sent, and a
 \code{jev.req} record of the origin, content level, size, payload hash and
-redactions of every call. The default plan gate uses them only when a
-\code{jev-key} credential exists; without one, nothing is sent. They are
-hidden from the model, which cannot hold a handle; it has
-\code{judge-noul}, \code{judge-score} and \code{judge-choice}, the same
-calls with the stored key supplied by Go and judged by the guard as
-carrying \code{jev-key}. Since the model chooses what those send, they are
-offered only when \code{jev.content} is \code{full}.
+redactions of every call. The host and the key are those of the provider
+\code{[judge]} names, Jev or OpenAI, whose API the call speaks (\adr{46}).
+Go supplies the stored key, and the guard judges each call as carrying its
+class. They exist only in a session that started with that key stored;
+without one, nothing is sent, and the default plan gate does not run.
+Since the model chooses what it would send, they are its tools only when
+\code{judge.content} is \code{full}; below that they are hidden, for the
+plan gate and your Scheme.
 
 Neither follows a redirect, any more than the MCP client or a model
 request does: the binding was checked for the host the request went to, and
@@ -525,16 +526,17 @@ The deterministic layers early-terminate the learned one: if L1 or L2 already
 
 \section{The judge: where it is allowed}
 
-Jev is an external calibrated judge with no retention guarantee. The
+The judge is an external calibrated service, Jev or OpenAI's Decisions API
+(\adr{46}), with no retention guarantee \nodwyn{} can check. The
 original spec drew the line at ``never content''; \adr{19} redrew it where
 it belongs, at ``never a secret value''. The question at Seam A\,---\,\emph{is
 this plan good enough for the user's ask?}\,---\,has no answer without the ask
 and the plan, and both are content.
 
-So Jev is treated as what it is: an \emph{egress edge}. Its credential is a
+So the judge is treated as what it is: an \emph{egress edge}. Its credential is a
 bound credential (E3), and its payload passes the same redaction controller
 as the model context (E2/E4) before it leaves. What may go beyond the ask
-and the plan is a user policy\,---\,\code{jev.content}: \code{none},
+and the plan is a user policy\,---\,\code{judge.content}: \code{none},
 \code{plan} (default), \code{plan+summaries}, or \code{full}\,---\,and every
 call is logged with its level, size, payload hash and the redactions it
 triggered. At \code{none} nothing is sent: there is no judge. At
@@ -558,9 +560,9 @@ Two seams:
   with \code{approval.commands = "judge"} (the default, \adr{35}), for a
   command, input to a running program or an MCP tool that acts; a
   \code{-{}-judge} run uses it for all its ordinary confirms. Either way Go
-  (\file{internal/core/judge.go}) asks \code{jev-choice} whether to allow
+  (\file{internal/core/judge.go}) asks \code{judge-choice} whether to allow
   the call and allows it only if the probability of allow is at least
-  \code{jev.approve\_threshold} (0.8 by default), and Scheme can only
+  \code{judge.approve\_threshold} (0.8 by default), and Scheme can only
   refuse more (\code{approve-refuse?}). In a session you answer, a refusal
   is a question for you, told what the judge answered; in a run it is a
   no. A security confirm never reaches the judge: you are asked, and a run

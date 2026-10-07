@@ -15,7 +15,7 @@ import (
 // (ADR 28) names only the script: in session 20261005T054223Z-36b27caa the
 // judge saw `bash "$TMPDIR/check.sh" tests`, could not tell what it would
 // run or whose it was, and sent each run to the person. It is now told that
-// the script is the session's, and at jev.content = "full", where file
+// the script is the session's, and at judge.content = "full", where file
 // contents may leave (ADR 19), shown its text.
 
 // scriptShown is the most of a script's text the judge is shown, and

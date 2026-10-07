@@ -25,8 +25,11 @@ import (
 // The plan gate is Scheme (internal/loop/plan.scm); these tests drive it
 // through a session against a fake judge.
 
-// fakeJudge answers Jev requests in order: a map is the answer to the
-// question, an int is an HTTP status to fail with.
+// fakeJudge answers the judge's requests in order: a map is the answer to
+// the question, in System One's shape, an int is an HTTP status to fail
+// with. It speaks System One at /v1/systemone and OpenAI's Decisions API at
+// any path ending in /decisions, rendering the same scripted answer in that
+// API's shape.
 type fakeJudge struct {
 	*httptest.Server
 	mu        sync.Mutex
@@ -34,6 +37,8 @@ type fakeJudge struct {
 	questions []string // the type of each question asked
 	states    []string // the state each question was about
 	bodies    []string // each request as sent
+	paths     []string // the path of each request
+	auths     []string // the Authorization header of each request
 }
 
 func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
@@ -43,13 +48,30 @@ func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
 			State     string                           `json:"state"`
 			Questions map[string]struct{ Type string } `json:"questions"`
 		}
+		var decisions struct {
+			Input     string `json:"input"`
+			Questions []struct{ Type, Name string }
+		}
 		raw, _ := io.ReadAll(r.Body)
-		json.Unmarshal(raw, &body)
+		decides := strings.HasSuffix(r.URL.Path, "/decisions")
+		kind := ""
+		if decides {
+			json.Unmarshal(raw, &decisions)
+			body.State = decisions.Input
+			if len(decisions.Questions) == 1 && decisions.Questions[0].Name == "q" {
+				kind = decisions.Questions[0].Type
+			}
+		} else {
+			json.Unmarshal(raw, &body)
+			kind = body.Questions["q"].Type
+		}
 		j.mu.Lock()
 		defer j.mu.Unlock()
-		j.questions = append(j.questions, body.Questions["q"].Type)
+		j.questions = append(j.questions, kind)
 		j.states = append(j.states, body.State)
 		j.bodies = append(j.bodies, string(raw))
+		j.paths = append(j.paths, r.URL.Path)
+		j.auths = append(j.auths, r.Header.Get("Authorization"))
 		if len(j.answers) == 0 {
 			http.Error(w, "no scripted answer", http.StatusInternalServerError)
 			return
@@ -60,6 +82,12 @@ func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
 			http.Error(w, "judge down", status)
 			return
 		}
+		if decides {
+			// The Decisions API's documented shape, which reports no model.
+			json.NewEncoder(w).Encode(map[string]any{"answers": []any{decisionAnswer(kind, answer.(map[string]any))},
+				"usage": map[string]int{"input_tokens": len(raw) / 4}})
+			return
+		}
 		// The API's documented shape: the model that answered and the usage.
 		json.NewEncoder(w).Encode(map[string]any{"model": "jev-1.13.0", "answers": map[string]any{"q": answer},
 			"usage": map[string]int{"input_tokens": len(raw) / 4, "output_tokens": 20}})
@@ -68,20 +96,40 @@ func newFakeJudge(t *testing.T, answers ...any) *fakeJudge {
 	return j
 }
 
+// decisionAnswer is a scripted answer in System One's shape as the
+// Decisions API gives it for a question of type kind named q.
+func decisionAnswer(kind string, a map[string]any) map[string]any {
+	out := map[string]any{"type": kind, "name": "q"}
+	switch kind {
+	case "predicate":
+		out["probability"] = a["noul"]
+	case "score":
+		out["score"], out["confidence"] = a["score"], a["confidence"]
+	case "choice":
+		out["choice"], out["confidence"] = a["choice"], a["confidence"]
+		var probs []map[string]any
+		for value, p := range a["probabilities"].(map[string]any) {
+			probs = append(probs, map[string]any{"value": value, "probability": p})
+		}
+		out["probabilities"] = probs
+	}
+	return out
+}
+
 func (j *fakeJudge) asked() []string {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return append([]string(nil), j.questions...)
 }
 
-// judgedRig is a session with a judge: a jev-key in the keychain, bound to
-// the fake judge's host.
+// judgedRig is a session with a judge: [judge] on a jev server at the fake
+// judge's address, with its key in the keychain, bound to that host.
 func judgedRig(t *testing.T, judge *fakeJudge, init string, turns ...fake.Turn) *rig {
 	t.Helper()
-	return judgedRigAt(t, judge, config.JevContentPlan, init, turns...)
+	return judgedRigAt(t, judge, config.JudgeContentPlan, init, turns...)
 }
 
-// judgedRigAt is judgedRig at a jev.content level.
+// judgedRigAt is judgedRig at a judge.content level.
 func judgedRigAt(t *testing.T, judge *fakeJudge, content, init string, turns ...fake.Turn) *rig {
 	t.Helper()
 	return judgedRigWith(t, judge, content, init, nil, turns...)
@@ -99,10 +147,11 @@ func judgedRigWith(t *testing.T, judge *fakeJudge, content, init string, adjust 
 	srv := fake.NewT(t, turns...)
 	t.Cleanup(srv.Close)
 	cfg := config.Default()
-	cfg.Jev.Content = content
+	cfg.Judge.Content = content
 	var kc *keychain.Store
 	if judge != nil {
-		cfg.Jev.URL = judge.URL
+		cfg.Servers = map[string]config.Server{"jev": {Provider: "jev", URL: judge.URL, Credential: "jev-key"}}
+		cfg.Judge.Server = "jev"
 		var err error
 		if kc, err = keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p")); err != nil {
 			t.Fatal(err)
@@ -234,7 +283,7 @@ func TestPlanGateDegradesWhenTheJudgeFails(t *testing.T) {
 		t.Fatal(e)
 	}
 	plans := r.gatePlans()
-	if len(plans) != 1 || plans[0].Noul != "degraded" || plans[0].Plan != "1. degraded plan" || !strings.Contains(plans[0].Reason, "jev-noul failed") {
+	if len(plans) != 1 || plans[0].Noul != "degraded" || plans[0].Plan != "1. degraded plan" || !strings.Contains(plans[0].Reason, "judge-yes-no failed") {
 		t.Fatalf("plans %+v", plans)
 	}
 }

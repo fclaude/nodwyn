@@ -8,7 +8,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/prim"
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // A session a person can answer asks them less (ADR 35). approval.writes
@@ -96,8 +96,19 @@ func (a approvalConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) 
 }
 
 // judgeAvailable reports whether the judge can be asked: its primitives
-// are registered (Jev enabled, a keychain) and a jev-key is stored.
+// are registered ([judge] names a server whose key was stored when the
+// session started) and the key is still stored.
 func (s *Session) judgeAvailable() bool {
-	_, ok := s.interp.Lookup("jev-choice")
-	return ok && s.HandleForClass(prim.JevClass) != nil
+	_, ok := s.interp.Lookup("judge-choice")
+	return ok && s.judgeKey() != nil
+}
+
+// judgeKey is the handle of the judge's key, its server's credential, or
+// nil when no judge is configured or the key is not stored.
+func (s *Session) judgeKey() *scheme.Handle {
+	srv, ok := s.opts.Config.JudgeServer()
+	if !ok || srv.Credential == "" {
+		return nil
+	}
+	return s.HandleForClass(srv.Credential)
 }

@@ -9,8 +9,8 @@ Runs, the batch tool for scripts and benchmarks, are built on top of both.
 \section{The plan gate}
 
 Before a turn's work, \code{(plan-gate request)} may have a plan made. With
-a \textbf{judge} configured (Jev: its primitives registered and a
-\code{jev-key} credential stored and bound; Chapter~\ref{ch:keys}), it goes
+a \textbf{judge} configured (\code{[judge]} on a provider, Jev or OpenAI,
+whose key is stored and bound; Chapter~\ref{ch:keys}), it goes
 like this:
 
 \begin{enumerate}
@@ -23,7 +23,7 @@ like this:
     text. The explorer and the planner read it after the agent's last
     answer and with the names of the files attached
     (\code{plan-model-request}, from \code{(request-context)}); the judge
-    is not sent them, since at \code{jev.content = "plan"} it reads the
+    is not sent them, since at \code{judge.content = "plan"} it reads the
     person's asks and the plan (\adr{19}). Below \code{plan-needed-threshold}
     (0.5), the turn just proceeds.
   \item A read-only sub-agent labelled \code{explorer} looks at the folder
@@ -398,17 +398,18 @@ supervised: how a run goes on is said again at every resume.
 
 With \code{-{}-judge} instead of \code{-{}-yolo} (the two exclude each
 other), the judge answers the run's ordinary confirms, in an unattended run
-or a supervised one. It needs a judge: a \code{jev-key} stored and
-\code{jev.content} other than \code{none} (Chapter~\ref{ch:keys}); without
+or a supervised one. It needs a judge: \code{[judge]} on a provider whose
+key is stored, and \code{judge.content} other than \code{none}
+(Chapter~\ref{ch:keys}); without
 one the run does not start. The judge is told nobody is watching and shown
 the task, the plan with the steps marked so far and the next one, and the
 call (the tool, why it needs approval when that is more than that the tool
 is irreversible, the path it writes or the command line it runs, what it
 answered about the same call earlier in the turn, and that a script the
 command runs from the session's scratch directory is the session's own; at
-\code{jev.content = "full"} also the script's text and what it would write or
+\code{judge.content = "full"} also the script's text and what it would write or
 send) and asked whether to allow it; the call runs only if the probability
-of allow is at least \code{jev.approve\_threshold} (0.8) in your config.
+of allow is at least \code{judge.approve\_threshold} (0.8) in your config.
 The answer is for that call only, never a standing one, and the log notes
 each one with the judge's probability. Security confirms are declined
 without asking, and a failed judge is a no.

@@ -1,6 +1,6 @@
 # ADR 0019: Jev sees content, never secrets
 
-- Status: accepted (amends SPEC "Jev — where it is allowed" and plan P5)
+- Status: accepted (amends SPEC "Jev — where it is allowed" and plan P5); amended by ADR 46: the judge is a provider's, and `jev.content` is `judge.content`
 - Date: 2026-09-21
 
 ## Context

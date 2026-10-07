@@ -74,7 +74,7 @@ type State struct {
 	// spend limit counts it with Cost.
 	EarlierCost float64 `json:"earlier_cost,omitempty"`
 	// The judge's requests this turn: how many answered, their tokens, and
-	// their cost as far as priced ([jev] price_*), JudgeUnpriced the ones
+	// their cost as far as priced ([judge] price_*, else its provider's), JudgeUnpriced the ones
 	// not priced. Judge tokens are not model tokens, so the token budget
 	// leaves them out; a spend limit counts JudgeCost.
 	JudgeCalls    int64   `json:"judge_calls,omitempty"`

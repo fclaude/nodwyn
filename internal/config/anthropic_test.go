@@ -42,7 +42,7 @@ temperature = 1
 		"a temperature of 2":  {server + "[models.m]\nserver = \"claude\"\nmodel = \"m\"\ntemperature = 2\n", "between 0 and 1 for anthropic"},
 		"a session key":       {server + "[models.m]\nserver = \"claude\"\nmodel = \"m\"\ncache_key = \"header\"\n", "cache_key is for openai servers"},
 		"a reply cap field":   {server + "[models.m]\nserver = \"claude\"\nmodel = \"m\"\noutput_field = \"max_tokens\"\n", "output_field is for openai servers"},
-		"an unknown provider": {"[servers.s]\nprovider = \"gemini\"\nurl = \"https://a.test\"\n", "provider \"gemini\" is not supported (ollama, openai, anthropic)"},
+		"an unknown provider": {"[servers.s]\nprovider = \"gemini\"\nurl = \"https://a.test\"\n", "provider \"gemini\" is not supported (ollama, openai, anthropic, jev)"},
 	} {
 		if _, err := Parse([]byte(tc.body)); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v, want an error saying %q", name, err, tc.want)

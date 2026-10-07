@@ -70,7 +70,7 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(shell-send id text)} & type into it (asks every time) \\
 \code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc (irreversible, a write of \code{target}) \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a Google Doc (only with a stored \code{google} credential; asks, or not, as you chose at the first upload) \\
-\code{(judge-noul state question)}, \code{judge-score}, \code{judge-choice} & ask the judge (only at \code{jev.content = "full"} with a \code{jev-key} stored; Chapter~\ref{ch:keys}) \\
+\code{(judge-yes-no state question)}, \code{judge-score}, \code{judge-choice} & ask the judge (the model's only at \code{judge.content = "full"}; Chapter~\ref{ch:keys}) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions; the second is also the model's tool \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, as the system prompt carries it \\
@@ -85,7 +85,8 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \end{center}
 
 A few more are for you only and never shown to the model:
-\code{credential-register} (masked input into the keychain),
+\code{credential-register} (masked input into the keychain), the judge's
+three below \code{full},
 \code{policy-read} and \code{policy-write} (the bindings and approval
 files, with a diff confirm), \code{register-check} (next chapter) and
 \code{wipe}.
@@ -319,12 +320,13 @@ commands = "judge"   # the default: the judge, then you; "ask": you; "allow": no
     script the call runs from the session's scratch directory is the
     session's own (its text only at \code{full}); the decision is made in Go
     against
-    \code{jev.approve\_threshold}, and a project's
+    \code{judge.approve\_threshold}, and a project's
     \code{(approve-refuse? call)} may refuse more. A call it allows runs,
     recorded with actor \code{judge}. When it refuses or fails, you are
     asked, and the prompt carries its answer as a reason, \emph{``the judge
-    did not allow it: \ldots''}. Without a judge (no \code{jev-key} stored,
-    \code{jev.content = "none"} or a locked keychain) you are asked. At
+    did not allow it: \ldots''}. Without a judge (no \code{[judge]} provider,
+    its key not stored, \code{judge.content = "none"} or a locked keychain)
+    you are asked. At
     \code{"ask"}, you are asked. At \code{"allow"}, the call runs, recorded
     with actor \code{setting}.
 \end{description}

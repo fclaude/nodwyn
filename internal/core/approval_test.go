@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -104,7 +105,7 @@ func TestJudgeAnswersCommandsThenThePerson(t *testing.T) {
 		asks  bool
 	}{{0.9, false}, {0.3, true}} {
 		judge := newFakeJudge(t, noul(0.2), choice(tc.allow))
-		r := judgedRigWith(t, judge, config.JevContentPlan, "", func(o *Options) { o.NoConfirm = false },
+		r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) { o.NoConfirm = false },
 			shellTurn("1", "true"), fake.Turn{Content: "done"})
 		asked := r.asked("run the check", "y")
 		if (len(asked) == 1) != tc.asks || len(asked) > 1 {
@@ -126,12 +127,48 @@ func TestJudgeAnswersCommandsThenThePerson(t *testing.T) {
 	}
 }
 
+// A judge on an OpenAI server asks OpenAI's Decisions API with that
+// server's key (ADR 46): the plan gate's yes/no question is a predicate and
+// a command's is a choice, both at /v1/decisions with the server's key as a
+// bearer token, and their answers decide as Jev's do. The jev-key stored
+// beside it is not sent.
+func TestTheJudgeAsksOpenAIWithItsServersKey(t *testing.T) {
+	t.Parallel()
+	judge := newFakeJudge(t, noul(0.2), choice(0.9))
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) {
+		o.NoConfirm = false
+		if _, err := o.Keychain.Add("model-api-openai-com", []byte("sk-openai-judge-0002")); err != nil {
+			t.Fatal(err)
+		}
+		o.Config.Servers = map[string]config.Server{"openai-api": {Provider: "openai", URL: judge.URL + "/v1", Credential: "model-api-openai-com"}}
+		o.Config.Judge.Server = "openai-api"
+		o.Bindings = binding.Table{Bind: []binding.Binding{{Class: "model-api-openai-com", Dest: "127.0.0.1", Positions: []string{"header:Authorization:Bearer"}, Methods: []string{"POST"}}}}
+	}, shellTurn("1", "true"), fake.Turn{Content: "done"})
+	if asked := r.asked("run the check", "y"); len(asked) != 0 {
+		t.Fatalf("the person was asked: %+v", asked)
+	}
+	if d := r.decision("shell-exec", ""); d.Answer != "yes" || d.Actor != "judge" {
+		t.Fatalf("decision %+v", d)
+	}
+	if got := strings.Join(judge.asked(), " "); got != "predicate choice" {
+		t.Fatalf("judge asked %s", got)
+	}
+	for i, path := range judge.paths {
+		if path != "/v1/decisions" || judge.auths[i] != "Bearer sk-openai-judge-0002" {
+			t.Fatalf("request %d went to %s with %q", i, path, judge.auths[i])
+		}
+	}
+	if !strings.Contains(judge.bodies[0], `"model":"gpt-6-luna"`) || !strings.Contains(judge.bodies[1], `"choices":[{"value":"allow"`) {
+		t.Fatalf("bodies: %s", judge.bodies)
+	}
+}
+
 // A write is approval.writes', so the judge is never asked about one: with
 // writes that ask, the person answers it.
 func TestJudgeIsNotAskedAboutWrites(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2))
-	r := judgedRigWith(t, judge, config.JevContentPlan, "", func(o *Options) {
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) {
 		o.NoConfirm = false
 		o.Config.Approval.Writes = config.ApproveAsk
 	}, writeTurn("1", "out.txt", "x\n"), fake.Turn{Content: "done"})
@@ -162,7 +199,7 @@ func TestCommandsAllowedBySetting(t *testing.T) {
 func TestCommandsAskBySetting(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2))
-	r := judgedRigWith(t, judge, config.JevContentPlan, "", func(o *Options) {
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) {
 		o.NoConfirm = false
 		o.Config.Approval.Commands = config.ApproveAsk
 	}, shellTurn("1", "true"), fake.Turn{Content: "done"})
@@ -179,7 +216,7 @@ func TestCommandsAskBySetting(t *testing.T) {
 func TestDontAskSkipsTheJudge(t *testing.T) {
 	t.Parallel()
 	judge := newFakeJudge(t, noul(0.2))
-	r := judgedRigWith(t, judge, config.JevContentPlan, "", func(o *Options) { o.NoConfirm = false },
+	r := judgedRigWith(t, judge, config.JudgeContentPlan, "", func(o *Options) { o.NoConfirm = false },
 		shellTurn("1", "true"), fake.Turn{Content: "done"})
 	if err := r.s.SetApproveAll(true, "unix:uid=1"); err != nil {
 		t.Fatal(err)

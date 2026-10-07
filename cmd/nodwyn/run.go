@@ -29,7 +29,7 @@ func runTask(args []string) error {
 	turns := flags.Int("max-turns", 0, "required maximum number of turns")
 	cost := flags.Float64("budget-cost", 0, "spend limit for the whole run in US dollars, as far as costs are known (replaces budget.cost_hard)")
 	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
-	judge := flags.Bool("judge", false, "the judge (Jev) answers this run's ordinary confirms instead of a person, allowing a call only when it judges it called for and safe; security confirms are declined; needs a jev-key")
+	judge := flags.Bool("judge", false, "the judge answers this run's ordinary confirms instead of a person, allowing a call only when it judges it called for and safe; security confirms are declined; needs a [judge] server whose key is stored")
 	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done")
 	if err := flags.Parse(args); err != nil {
 		return err

@@ -77,12 +77,15 @@ func SpendSoFar(s budget.State) string {
 	return USD(s.Cost, false) + " so far"
 }
 
-// JudgeLine is one judge request as the transcript shows it: the tool, the
-// judge's tokens and, with [jev] prices, its estimated cost; or why it
-// failed. "[judge jev-choice: 318→34 tok · ≈$0.0002]".
+// JudgeLine is one judge request as the transcript shows it: the kind of
+// question, the judge's tokens and, with its prices, its estimated cost; or
+// why it failed. "[judge choice: 318→34 tok · ≈$0.0002]". The kind is the
+// tool without its judge- prefix; a log from before ADR 46 names jev-choice
+// and the like, which show as they are.
 func JudgeLine(p log.JevReq) string {
+	kind := strings.TrimPrefix(p.Tool, "judge-")
 	if !p.OK && p.Usage == nil {
-		return fmt.Sprintf("[judge %s failed: %s]", p.Tool, p.Error)
+		return fmt.Sprintf("[judge %s failed: %s]", kind, p.Error)
 	}
 	parts := []string{"no usage reported"}
 	if u := p.Usage; u != nil {
@@ -94,7 +97,7 @@ func JudgeLine(p log.JevReq) string {
 	if !p.OK {
 		parts = append(parts, "no answer: "+p.Error)
 	}
-	return fmt.Sprintf("[judge %s: %s]", p.Tool, strings.Join(parts, " · "))
+	return fmt.Sprintf("[judge %s: %s]", kind, strings.Join(parts, " · "))
 }
 
 // JudgeTally adds judge requests up: how many, their tokens, and their cost
@@ -119,7 +122,7 @@ func (j *JudgeTally) Add(p log.JevReq) {
 }
 
 // String is the tally for a person: "3 judge calls, 1,240 tokens, ≈$0.0012",
-// "" for none. Costs are estimates from [jev] prices: the judge reports
+// "" for none. Costs are estimates from the judge's prices ([judge], else its provider's): the judge reports
 // none.
 func (j JudgeTally) String() string {
 	if j.Calls == 0 {
@@ -136,7 +139,7 @@ func (j JudgeTally) String() string {
 	case j.Unpriced < j.Calls && j.Cost > 0:
 		s += ", at least " + USD(j.Cost, true)
 	case j.Unpriced > 0:
-		s += ", not priced ([jev] price_input, price_output)"
+		s += ", not priced ([judge] price_input, price_output)"
 	}
 	return s
 }

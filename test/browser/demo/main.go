@@ -145,7 +145,6 @@ func run(seed bool, port int, docs bool, given string) error {
 	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
 	cfg := config.Default()
 	cfg.Control = config.Model{URL: model.URL, Model: "demo"}
-	cfg.Jev.Content = config.JevContentNone
 	runtime, err := fakecontainer.Install(filepath.Join(root, "runtime"), "podman")
 	if err != nil {
 		return err
@@ -187,7 +186,6 @@ func run(seed bool, port int, docs bool, given string) error {
 		return err
 	}
 	if raw, cfg, err = config.Edit(raw,
-		config.Change{Table: "jev", Key: "content", Value: cfg.Jev.Content},
 		config.Change{Table: "mcp", Key: "egress", Value: cfg.MCP.Egress},
 		config.Change{Table: "docs", Key: "google_upload_url", Value: cfg.Docs.GoogleUploadURL}); err != nil {
 		return err

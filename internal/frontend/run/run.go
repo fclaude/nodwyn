@@ -40,7 +40,7 @@ type State struct {
 	// restored from the log: a resume says again how the run goes on.
 	Unattended  bool `json:"unattended,omitempty"`
 	AutoApprove bool `json:"auto_approve,omitempty"`
-	// Judge: the judge (Jev) answers the run's ordinary tool confirms.
+	// Judge: the judge answers the run's ordinary tool confirms.
 	Judge bool `json:"judge,omitempty"`
 	// Cost is the run's spend limit in US dollars, replacing
 	// budget.cost_hard for its session; 0 keeps the configured one. A

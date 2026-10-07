@@ -57,6 +57,9 @@ check(async () => {
   assert.strictEqual(await page.locator("#provider-key").count(), 0, "Ollama is asked for a key");
   assert.strictEqual(await page.locator("#first-keychain").count(), 0, "a keychain is asked for before a key is");
   for (const preset of ["ollama", "openai", "anthropic", "baseten", "openrouter", "cerebras", "other"]) assert.strictEqual(await page.locator(`#preset-${preset}`).count(), 1, `no ${preset} preset`);
+  // Jev answers the judge and carries no model, so the first run does not offer it.
+  assert.strictEqual(await page.locator("#preset-jev").count(), 0, "the first run offers the Jev preset");
+  assert.strictEqual(await page.locator("[aria-label='Kind of server'] button:text-is('Jev')").count(), 0, "the first run offers the Jev kind");
   assert.strictEqual(await page.locator("#first-model button:text-is('Cancel')").count(), 0, "the first provider form can be cancelled");
   assert.strictEqual(await page.locator("#add-model, #add-provider").count(), 0, "setup shows Settings' own buttons");
   await page.screenshot({ path: `${out}/firstrun-setup.png` });

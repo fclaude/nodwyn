@@ -86,13 +86,25 @@ var Providers = []Provider{
 	{"ollama-cloud", "https://ollama.com/v1"},
 }
 
-// maintained are models nodwyn describes itself, by host, because
-// models.dev does not list them: the judge, whose price typesafe.ai publishes
-// on its home page as "$42 per billion input tokens"; it charges nothing for
-// output, which is a typed decision of a few dozen tokens. Whoever changes
-// one cites its provider's page here.
-var maintained = map[string]map[string]Model{
-	"api.typesafe.ai": {"jev-latest": {Price: &Price{Input: 0.042, Output: 0}}},
+// judges are the prices of the judges' typed-question APIs, by host and
+// model, which nodwyn keeps itself: models.dev does not list Jev, and lists
+// gpt-6-luna at its chat prices, while OpenAI's Decisions API charges only
+// for input. typesafe.ai publishes Jev's price on its home page as "$42 per
+// billion input tokens"; OpenAI's Decisions guide
+// (developers.openai.com/api/docs/guides/decisions) gives gpt-6-luna's as
+// "$0.10 per 1M tokens" of input, with no output charge. Whoever changes one
+// cites its provider's page here.
+var judges = map[string]map[string]Price{
+	"api.typesafe.ai": {"jev-latest": {Input: 0.042, Output: 0}},
+	"api.openai.com":  {"gpt-6-luna": {Input: 0.10, Output: 0}},
+}
+
+// JudgePrice is what model's provider publishes as the price of a judge's
+// question to it at the server whose base URL is baseURL, which is not the
+// price of a chat with the same model; false when nodwyn does not know it.
+func JudgePrice(baseURL, model string) (Price, bool) {
+	p, ok := judges[host(baseURL)][model]
+	return p, ok
 }
 
 // Data is the snapshot as models.json holds it: where it came from, when,
@@ -123,9 +135,6 @@ var builtIn = sync.OnceValue(func() *Catalogue {
 		if models, ok := d.Providers[p.ID]; ok {
 			byHost[host(p.URL)] = models
 		}
-	}
-	for h, models := range maintained {
-		byHost[h] = models
 	}
 	return New(byHost)
 })

@@ -565,9 +565,9 @@ mount may supply it.
 primitives, the loop's own primitives and the three tools the default loop
 registers (\code{read-definition}, \code{second-look} and
 \code{plan-step}): 161 in a git repository opened without a keychain. A keychain adds \code{http-request}
-and \code{credential-register}; a judge, which needs the keychain too, adds
-the three \code{jev} primitives, and the model's three \code{judge} tools
-when a \code{jev-key} is stored and \code{jev.content} is \code{full}; a
+and \code{credential-register}; a judge, whose key must be stored when the
+session starts, adds the three \code{judge} primitives, which are the
+model's tools too when \code{judge.content} is \code{full}; a
 stored \code{google} credential adds \code{google-doc-upload};
 every approved MCP tool and every tool a project registers adds one more. Section~\ref{sch:reference} lists them by
 group.
@@ -604,8 +604,7 @@ Primitive & What it does \\
 \code{(git-land message)} & in a worktree session only: commit, rebase onto the newest base, push by fast-forward and move the local base branch, in one irreversible step \\
 \code{(credential class)}, \code{(credential-register class)} & the handle of a stored key, or \code{\#f}; store a new key (Section~\ref{sch:keys}) \\
 \code{(http-request cred url method position headers body)} & a keyed request, checked against the binding table and credential transport policy \\
-\code{(jev-noul ...)}, \code{(jev-score ...)}, \code{(jev-choice ...)} & ask the configured judge a question about a text; hidden, they take the key's handle \\
-\code{(judge-noul ...)}, \code{(judge-score ...)}, \code{(judge-choice ...)} & the same, for the model: Go supplies the stored \code{jev-key} \\
+\code{(judge-yes-no ...)}, \code{(judge-score ...)}, \code{(judge-choice ...)} & ask the configured judge, Jev or OpenAI's Decisions API, a question about a text; Go supplies the stored key of the judge's server; the model's tools only at \code{judge.content = "full"} \\
 \code{(policy-read name)}, \code{(policy-write name revision content)} & read or replace the bindings or approvals file; user only \\
 \bottomrule
 \end{tabular}
@@ -697,8 +696,8 @@ contains. A host primitive tags its result: \code{fs-read}, \code{fs-list},
 \code{fs-find}, \code{index-grep}, \code{git-status}, \code{git-diff},
 \code{doc-export} and \code{policy-read} with \code{external:file};
 \code{shell-exec} and the background-process primitives with
-\code{external:shell}; \code{http-request}, the \code{jev} and
-\code{judge} primitives and \code{google-doc-upload} with
+\code{external:shell}; \code{http-request}, the \code{judge}
+primitives and \code{google-doc-upload} with
 \code{external:http}; MCP tools with \code{external:mcp};
 \code{session-list} and \code{session-events} with
 \code{external:log}. A handle carries \code{cred:<class>}. The tags of a
@@ -908,8 +907,7 @@ refused to model-originated code.
 A handle is opaque. It prints as its class and id; no builtin turns it into
 the key, and \code{json-emit} refuses it. What it is good for is being passed
 to a primitive that injects the key itself, such as \code{http-request},
-which puts it at a named position on the way out (the \code{jev} primitives
-take a handle too):
+which puts it at a named position on the way out:
 
 \begin{scm}
 (http-request cred url method position headers body)
@@ -1115,8 +1113,8 @@ Documents    doc-export; google-doc-upload             (with a google credential
 Session      scratch-dir repository workspace project-notes project-notes-save
              project-instructions
 Keys         credential; with a keychain, credential-register http-request
-Judge        jev-noul jev-score jev-choice         (with a judge configured)
-             judge-noul judge-score judge-choice   (the model's; jev.content = "full")
+Judge        judge-yes-no judge-score judge-choice   (with the judge's key stored;
+                                                  the model's at judge.content = "full")
 Policy       policy-read policy-write
 MCP          server__tool, one per tool you turned on
 Loop         model-turn run-tools skip-tools answer-call add-message log-note

@@ -180,7 +180,7 @@ func (s *Session) Do(req *http.Request) (*http.Response, error) {
 
 var egressClient = &http.Client{Timeout: 2 * time.Minute, CheckRedirect: llm.NoRedirect}
 
-// Redactor returns the L1 scanner used to redact Jev payloads (ADR 19).
+// Redactor returns the L1 scanner used to redact the judge's payloads (ADR 19).
 func (s *Session) Redactor() *l1.Scanner {
 	sc := l1.New()
 	for _, cl := range s.opts.Config.Policy.L1.AllowClasses {
