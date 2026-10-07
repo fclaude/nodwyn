@@ -1589,6 +1589,18 @@ this computer only:
 - *Default for new tasks* is a model from that list and its default effort.
   Choosing another default keeps the one it replaces in the list.
 
+**First run.** With no default model, Home has no task window: it draws the
+provider form and then the model form of Settings › Models, in that order. The
+provider is chosen from the same presets, starting on Ollama, which needs no
+key; one that wants a key is saved only once there is a keychain, which the
+page makes beside the form without losing what was typed. The model form
+offers what the provider lists and the efforts it takes, tests the model on
+request, and **Save and use it** adds the model to the list and makes it the
+default, at the effort chosen. Its context length, prices and the rest of its
+settings are what its provider publishes until Settings › Models changes them.
+**Use another provider** returns to the provider form, and a provider saved by
+mistake is removed in Settings › Models.
+
 **The pickers.** The New task window and a conversation both show a Model and
 an Effort select under the message. The model select groups the list by
 provider and says in each label what is wrong with one that cannot be used; the

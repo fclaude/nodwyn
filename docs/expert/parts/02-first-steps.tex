@@ -50,15 +50,18 @@ desktop release builds are not supplied by this shell migration.
 
 \section{The quickest start: the app}
 
-Open \file{Nodwyn.app} (or run \code{nodwyn app}). The first time, Home asks
-which model to use: an Ollama address, Anthropic's API or an OpenAI-compatible server, and
-for the latter a key. The server is written to a \code{[servers.NAME]}
-table of your \file{config.toml}, and the model, naming it, to
-\code{[control]}; to choose another model on the same server later,
-Settings offers the server by name and the models it lists. A key never
+Open \file{Nodwyn.app} (or run \code{nodwyn app}). The first time, Home draws
+the forms of Settings \textrightarrow{} Models, one after the other. First the
+provider: an Ollama address, Anthropic's API, OpenAI, or any other server from
+the presets, and a key for the services that want one. Then the model, from the
+list the provider gives, with the efforts it takes; saving it makes it the
+default for new tasks. The server is written to a \code{[servers.NAME]}
+table of your \file{config.toml}, the model to a \code{[models.NAME]} table
+and the choice to \code{[control]}; to choose another model on the same server
+later, Settings offers the server by name and the models it lists. A key never
 goes into \file{config.toml}. It goes into the encrypted
-keychain, which the app asks you to create with a passphrase, and a
-\emph{binding} allows that key only for that server's host.
+keychain, which the page makes beside the provider form with a passphrase if there
+is none, and a \emph{binding} allows that key only for that server's host.
 
 Then pick a folder, type what you want, and watch. Every task is a chat:
 a request that takes long is a message like any other, and the turn goes

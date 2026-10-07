@@ -1,7 +1,8 @@
 // Home: start anything, and see what needs you across every task.
 import { h, icon, repoName, shortPath, ago, minutes, diffStats, toast, basename } from "./dom.js";
 import { summary } from "./prompts.js";
-import { modelForm, keychainForm } from "./setup.js";
+import { keychainForm } from "./setup.js";
+import { firstModel } from "./models.js";
 import { Attachments, isImage } from "./attach.js";
 import { keepDraft } from "./task.js";
 import { ModelPicker, defaultSelection, choicesOf, blocked } from "./modelpicker.js";
@@ -380,14 +381,21 @@ export function renderHome(root, ctx) {
     ),
   );
 
-  const settingUp = !desk.configured && conn.has("settings.control.write");
+  // The first run sets a model up with the forms of Settings › Models, which
+  // write a provider, a model and the default: all three are this computer's.
+  const settingUp = !desk.configured && ["settings.provider.write", "settings.model.write", "settings.control.write"].every((method) => conn.has(method));
+  // The forms ask the daemon and draw again when it answers: a page left
+  // meanwhile is not drawn over.
+  const redrawSetup = () => {
+    if (root.querySelector("#first-model")) renderHome(root, { ...ctx, keepTop: false });
+  };
   const top = settingUp
     ? h(
         "div",
         { class: "home-col" },
         h("h1", {}, "Let's connect nodwyn to a model"),
         h("p", { class: "lede" }, "nodwyn thinks with a language model you choose: one running on this computer or your network, or a service you have a key for. Nothing is sent anywhere until you set this up."),
-        h("div", { class: "card" }, modelForm(ctx, { onSaved: () => renderHome(root, { ...ctx, keepTop: false }) })),
+        h("div", { class: "card" }, firstModel(ctx, redrawSetup)),
       )
     : h(
         "div",
@@ -401,9 +409,24 @@ export function renderHome(root, ctx) {
 
   // The composer on the page is this one now.
   files.onChange = () => (submit.disabled = !ready());
+  // Setting a model up is typed into, and any change on the desk draws the
+  // page again: the field being typed in keeps the focus, as in Settings.
+  const focused = settingUp && root.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
+  const typing = focused ? { id: focused.id, start: focused.selectionStart, end: focused.selectionEnd } : null;
   root.replaceChildren(h("main", { class: waiting.length ? "home urgent" : "home" }, top, grid));
+  if (typing) {
+    const node = document.getElementById(typing.id);
+    node?.focus({ preventScroll: true });
+    try {
+      if (typing.start !== null && typing.start !== undefined) node?.setSelectionRange(typing.start, typing.end);
+    } catch {
+      /* not a text field */
+    }
+  }
   const focus = () => (root.querySelector("#keychain-pass") || task).focus();
-  if (!draft && canStart && document.activeElement === document.body) focus();
+  // Not while setting up: the keychain form beside the provider's key is not
+  // the field to land in.
+  if (!draft && canStart && !settingUp && document.activeElement === document.body) focus();
   if (canChoose) drawPicker();
   current = {
     focus,

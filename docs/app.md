@@ -29,20 +29,29 @@ pair with the code the app prints to its log.
 
 ## First run
 
-With no model configured (no `[control]` in `config.toml`), Home asks which model to use: an Ollama server (on this
-computer or another one on the network), Anthropic's own API or any OpenAI-compatible server. Once
-one is set up, Settings › Models adds more providers and models, and chooses
-the default model and its effort (the manual, "Choosing models"). The
-choice is written to the `[control]` table of `config.toml`; every other line
-of an existing file is kept, and saving the same model on the same server
-again keeps its hand-tuned settings (`num_ctx`, `temperature`, `seed`, prices, …). An API key is never written there: it goes into
+With no model configured (no `[control]` in `config.toml`), Home draws the
+forms of Settings › Models, one after the other (ADR 41), and no task starts
+until they are done. First the provider, from the presets Settings has
+(Ollama, OpenAI, Anthropic, Baseten, OpenRouter, Cerebras, or another server),
+started on Ollama, on this computer or another one on the network, which needs
+no key. Then the model, on the provider just saved: the models it lists are
+offered, the efforts it takes are chosen (or the provider's own, as published),
+and **Save and use it** saves the model and makes it the default for new tasks
+at that effort. Its context length, prices and the rest of its settings are
+what its provider publishes, and Settings › Models changes them, adds more
+providers and models, and chooses another default (the manual, "Choosing
+models"). The provider is written to a `[servers.NAME]` table of `config.toml`,
+the model to a `[models.NAME]` table and the choice to `[control]`; every other
+line of an existing file is kept. An API key is never written there: it goes into
 the encrypted keychain, and a binding row allows it only for that server's
 host, `POST` (and `GET` for its model list), as a bearer `Authorization` header
 (Anthropic's: its `x-api-key` header). A model with a key must be
-reached over HTTPS, unless it runs on this computer. A keychain is created from
-Settings with a passphrase (at least 8 characters, not recoverable), or, if
-you tick "Don't protect it with a passphrase", without one (not recommended:
-see below).
+reached over HTTPS, unless it runs on this computer. A provider that wants a key
+is not saved until there is a keychain to hold it, so the provider form shows the
+keychain form beside it: a passphrase (at least 8 characters, not recoverable),
+or, if you tick "Don't protect it with a passphrase", none (not recommended:
+see below). What was typed in the provider form is kept while the keychain is
+made. Settings makes one too, and sets or changes its passphrase.
 
 When a keychain with a passphrase exists, a new app starts with it locked;
 Home offers to unlock it. While the model's own key is in a locked keychain,
@@ -82,9 +91,10 @@ sessions — lives where the command-line nodwyn keeps it (`nodwyn paths`), per 
    an unidentified developer: **right-click → Open → Open** (once). The app is
    signed only ad hoc; signing with a Developer ID and notarizing is what would
    remove that step.
-3. On first launch they choose the model. For a model running on your machine,
-   give its address on your network (for example `http://workshop:11434`, over
-   Tailscale); nothing leaves their computer until they do.
+3. On first launch they choose a provider and a model (see First run). For a model
+   running on your machine, give its address on your network (for example
+   `http://workshop:11434`, over Tailscale); nothing leaves their computer until
+   they do.
 
 Each person's tasks, keys and settings stay in their own account.
 

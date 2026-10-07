@@ -1,5 +1,7 @@
 // First run of `nodwyn app`: no config, no keychain. Set up a model from the
-// page, create a keychain, switch to another model on the saved server, add
+// page with the forms of Settings › Models (a provider, then a model that is
+// made the default; a service that wants a key is `firstmodel`), create a
+// keychain, switch to another model on the saved server, add
 // workspaces (one with a mounted folder, kept in the workspace list and not
 // in the folder), attach a file with a secret in it, start
 // a task in the folder and answer it; then History stays open through the
@@ -46,26 +48,50 @@ check(async () => {
     });
   });
   await page.goto(url);
-  await page.waitForSelector("#model-url", { timeout: 10000 });
+  await page.waitForSelector("#provider-url", { timeout: 10000 });
   step("setup shown without a pairing code");
+  // It is the provider form of Settings › Models, with its presets, started on
+  // Ollama, which asks for no key; there is nothing to cancel back to yet.
+  assert.strictEqual(await page.getAttribute("#preset-ollama", "aria-pressed"), "true", "setup does not start on Ollama");
+  assert.strictEqual(await page.inputValue("#provider-url"), "http://localhost:11434");
+  assert.strictEqual(await page.locator("#provider-key").count(), 0, "Ollama is asked for a key");
+  assert.strictEqual(await page.locator("#first-keychain").count(), 0, "a keychain is asked for before a key is");
+  for (const preset of ["ollama", "openai", "anthropic", "baseten", "openrouter", "cerebras", "other"]) assert.strictEqual(await page.locator(`#preset-${preset}`).count(), 1, `no ${preset} preset`);
+  assert.strictEqual(await page.locator("#first-model button:text-is('Cancel')").count(), 0, "the first provider form can be cancelled");
+  assert.strictEqual(await page.locator("#add-model, #add-provider").count(), 0, "setup shows Settings' own buttons");
   await page.screenshot({ path: `${out}/firstrun-setup.png` });
-  // The kind of server Anthropic is takes its own address and, like OpenAI, a
-  // key; Ollama takes none. Choosing back leaves the address as it was.
-  await page.click("text=Anthropic");
-  assert.strictEqual(await page.inputValue("#model-url"), "https://api.anthropic.com/v1");
-  assert.strictEqual(await page.isVisible("#model-key"), true, "Anthropic is not asked for a key");
-  assert.strictEqual(await page.getAttribute("#model-name", "placeholder"), "for example claude-sonnet-5-5");
-  await page.click("text=Ollama");
-  assert.strictEqual(await page.inputValue("#model-url"), "http://localhost:11434");
-  assert.strictEqual(await page.isVisible("#model-key"), false, "Ollama is asked for a key");
-  await page.fill("#model-url", modelURL);
-  await page.fill("#model-name", "demo");
-  await page.click("text=Save and check");
+  // Anthropic takes its own address and a key, kept in a keychain that is made
+  // here, beside the form, if there is none. Choosing Ollama back leaves its
+  // address as it was and asks for neither.
+  await page.click("#preset-anthropic");
+  assert.strictEqual(await page.inputValue("#provider-url"), "https://api.anthropic.com/v1");
+  assert.strictEqual(await page.isVisible("#provider-key"), true, "Anthropic is not asked for a key");
+  assert.strictEqual(await page.isVisible("#first-keychain #keychain-pass"), true, "no keychain to make for the key");
+  await page.click("#preset-ollama");
+  assert.strictEqual(await page.inputValue("#provider-url"), "http://localhost:11434");
+  assert.strictEqual(await page.locator("#provider-key").count(), 0, "Ollama is asked for a key");
+  assert.strictEqual(await page.locator("#first-keychain").count(), 0, "Ollama is asked for a keychain");
+  await page.fill("#provider-url", modelURL);
+  await page.click("#provider-save");
+  // The model is the next form, on the provider just saved: the models it
+  // lists are offered, and the one chosen is saved and made the default.
+  await page.waitForSelector("#model-id", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.provider.write"), [{ provider: "ollama", url: modelURL }]);
+  assert.strictEqual(await page.inputValue("#model-provider"), "127-0-0-1", "the saved server is the provider offered");
+  assert.strictEqual(await page.locator("#first-another").count(), 1, "no way back to another provider");
+  assert.strictEqual(await page.locator("#model-form button:text-is('Cancel')").count(), 0, "the first model form can be cancelled");
+  assert.strictEqual(await page.locator("#model-num_ctx").count(), 0, "setup asks for a context length");
+  await page.focus("#model-id");
+  await page.waitForFunction(() => [...document.querySelectorAll("#model-id-options option")].map((o) => o.value).join() === "demo,fake", null, { timeout: 10000 });
+  await page.fill("#model-id", "demo");
+  await page.screenshot({ path: `${out}/firstrun-model-setup.png` });
+  await page.click("#model-save");
   await page.waitForSelector("#task", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("settings.control.write"), [{ provider: "ollama", url: modelURL, model: "demo" }]);
+  assert.deepStrictEqual(sent.of("settings.model.write"), [{ server: "127-0-0-1", model: "demo", efforts: [] }]);
+  assert.deepStrictEqual(sent.of("settings.control.write"), [{ name: "127-0-0-1-demo", effort: "" }]);
   const cfg = fs.readFileSync(`${root}/config/nodwyn/config.toml`, "utf8");
-  assert.ok(cfg.includes(`[servers.127-0-0-1]\nprovider = "ollama"\nurl = "${modelURL}"\n`) && cfg.includes('[control]\nserver = "127-0-0-1"\nmodel = "demo"\n'), "config not written: " + cfg);
-  step("model saved; composer shown");
+  assert.ok(cfg.includes(`[servers.127-0-0-1]\nprovider = "ollama"\nurl = "${modelURL}"\n`) && cfg.includes('[control]\nserver = "127-0-0-1"\nmodel = "demo"\n') && cfg.includes('[models.127-0-0-1-demo]\nserver = "127-0-0-1"\nmodel = "demo"\n'), "config not written: " + cfg);
+  step("provider and model saved, the model the default; composer shown");
 
   // Settings: create a keychain.
   await page.evaluate(() => (location.hash = "#/settings"));
@@ -91,7 +117,7 @@ check(async () => {
   await page.screenshot({ path: `${out}/firstrun-model.png` });
   await page.click("#model-save");
   await page.waitForSelector("[data-model='127-0-0-1-fake']");
-  assert.deepStrictEqual(sent.of("settings.model.write"), [{ server: "127-0-0-1", model: "fake", efforts: [] }]);
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { server: "127-0-0-1", model: "fake", efforts: [] });
   await page.selectOption("#default-model-model", "127-0-0-1-fake");
   await page.click("#default-save");
   await page.waitForSelector("text=Saved. New tasks start on this model", { timeout: 10000 });

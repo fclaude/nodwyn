@@ -549,8 +549,8 @@ client for session data. There is no JavaScript build system, second history sto
 `app.js` is the entry point (pairing, router, shell); `connection.js` is the one
 connection to the bridge; `desk.js` holds what every page reads (tasks, what
 needs you); `sidebar.js`, `home.js`, `task.js`, `transcript.js` and `pages.js`
-draw the views; `prompts.js` renders review choices; `setup.js` the first-run
-model and keychain setup; `modelpicker.js` the model and effort picker of the New task window, a conversation and Settings; `models.js` Settings › Models; `credentials.js` Connections › Credentials; `attach.js` attachments; `markdown.js` model replies;
+draw the views; `prompts.js` renders review choices; `setup.js` the keychain
+forms; `modelpicker.js` the model and effort picker of the New task window, a conversation and Settings; `models.js` Settings › Models, whose provider and model forms the first run draws too; `credentials.js` Connections › Credentials; `attach.js` attachments; `markdown.js` model replies;
 `inspectors.js` fixed snapshots from the same redacted records; `policy.js`
 policy drafts and review controls; `dom.js` the helpers that keep every string
 text. A pinned WebSocket library avoids a

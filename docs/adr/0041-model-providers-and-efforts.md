@@ -417,3 +417,42 @@ before the catalogue existed (20261004T182412Z-747045aa).
   state says why (`context_unknown` in `session.info`); the console says so
   above the task's conversation, with a button to Settings, rather than only
   in a log note nobody reads.
+
+## Amendment 2026-10-06: the first run sets a model up as Settings does
+
+The page that welcomes a person was still ADR 30's: one form, "Let's connect
+nodwyn to a model", with an Ollama, OpenAI-compatible and Anthropic choice, an
+address, a key and a model's name, written by `settings.control.write` with a
+provider and an address in it. It knew none of what this ADR built: no
+presets (Baseten, OpenRouter, Cerebras, OpenAI's plan), no list of what the
+provider offers to its key, no efforts, nothing published, and a provider and
+its default model saved as one act. A person's first model was chosen one way
+and every later one another.
+
+- **The first run draws Settings' forms.** With no default model and the
+  provider, model and control writes available (this computer's, as before),
+  Home draws the provider form of Settings › Models, then the model form on
+  the provider saved, from `models.js`: the same fields, state and checks, so
+  there is one way to set a model up. The provider form starts on Ollama,
+  which needs no key, as the old page did; its Cancel appears once a provider
+  exists, and the model form's **Use another provider** returns to it.
+- **Saving the model makes it the default.** **Save and use it** is
+  `settings.model.write` and then `settings.control.write` by the entry's name
+  with the effort chosen, sent even when empty, as Settings sends the default's.
+  The context length, prices and the rest of its settings are left to
+  Settings › Models: a model answers without them, and its provider's
+  published values apply until a person says otherwise (amended 2026-10-05).
+- **A key's keychain is made beside the form.** A provider that wants a key is
+  not saved without a keychain (`settings.provider.write` refuses), and the
+  page used to give the key field and no keychain. The provider form now has
+  the keychain form under it, and what was typed, held in the module's state,
+  is still there once the keychain exists.
+- **The old form is gone** from the console (`modelForm` in `setup.js`, which
+  only Home used). `settings.control.write` still takes `provider`, `url`,
+  `model` and `api_key`, for clients that name a server and a model together;
+  the console no longer sends them.
+
+Not built: choosing among models already in a hand-written config.toml that
+names models and no default (the model form's provider and model are asked for,
+and a model already listed is changed, not listed twice), and the first run for
+a paired device, which cannot change providers.

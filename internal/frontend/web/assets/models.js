@@ -11,6 +11,7 @@
 // key typed is kept out of the page's own state the moment it is sent.
 import { h, icon, toast } from "./dom.js";
 import { ModelPicker, choicesOf, effortLabel, statusOf, defaultSelection } from "./modelpicker.js";
+import { keychainForm } from "./setup.js";
 
 // What each kind of provider needs, said before it is asked for: where it is,
 // whether it takes a key and, for a chat-completions server, how it reads the
@@ -198,13 +199,18 @@ function providerRows(ctx, redraw) {
   );
 }
 
-function openProvider(ctx, p, redraw) {
-  const preset = p ? "" : "openai";
+// providerDraft is a provider form's state: the provider being changed, or a
+// new one starting from a preset.
+function providerDraft(p, preset = "openai") {
   const dflt = presets.find((x) => x.id === preset);
-  ui.provider = p
+  const f = p
     ? { mode: "edit", name: p.name, preset: "", kind: p.provider, url: p.url, dialect: p.dialect || "", key: "", hasKey: !!p.credential, host: p.host, error: "" }
     : { mode: "add", name: "", preset, kind: dflt.kind, url: dflt.url, dialect: dflt.dialect, key: "", hasKey: false, host: "", error: "" };
-  Object.assign(ui.provider, { authentication: p?.authentication || "api_key", credential: "", credentialClass: p?.authentication === "chatgpt" ? p.credential : "", accounts: null, authorization: null, connecting: false });
+  return Object.assign(f, { authentication: p?.authentication || "api_key", credential: "", credentialClass: p?.authentication === "chatgpt" ? p.credential : "", accounts: null, authorization: null, connecting: false });
+}
+
+function openProvider(ctx, p, redraw) {
+  ui.provider = providerDraft(p);
   if (ui.provider.authentication === "chatgpt") loadAccounts(ctx, ui.provider, redraw);
   redraw();
 }
@@ -281,10 +287,14 @@ function suggestName(f, taken) {
   return name;
 }
 
-function providerForm(ctx, redraw) {
+// providerForm is the form that adds a provider or changes one. first is the
+// first-run page's: it has nothing to cancel back to until a provider exists,
+// and the keychain a key needs is made beside it, not in Settings.
+function providerForm(ctx, redraw, first = false) {
   const { conn, desk } = ctx;
   const f = ui.provider;
   const adding = f.mode === "add";
+  const cancellable = !first || (desk.settings?.servers || []).some((p) => !p.inline);
   const plan = f.kind === "openai" && f.authentication === "chatgpt";
   const account = (f.accounts || []).find((c) => c.id === f.credential);
   const field = (id, label, control, hint) => h("div", { class: "field" }, h("label", { for: id }, label), control, hint ? h("p", { class: "hint" }, hint) : null);
@@ -344,7 +354,7 @@ function providerForm(ctx, redraw) {
           ui.provider = null;
           await desk.refreshModels();
           const key = saved ? worst(desk, saved) : null;
-          toast(saved?.key && saved.key !== "ready" ? `Saved, but ${saved.key_detail}.` : key?.state && key.state !== "ready" ? `Saved, but ${key.detail || state.words[key.state]}.` : adding ? "Provider saved. Add a model on it, then Test." : "Provider saved.");
+          toast(saved?.key && saved.key !== "ready" ? `Saved, but ${saved.key_detail}.` : key?.state && key.state !== "ready" ? `Saved, but ${key.detail || state.words[key.state]}.` : adding ? (first ? "Provider saved. Choose its model." : "Provider saved. Add a model on it, then Test.") : "Provider saved.");
         } catch (error) {
           f.error = error.message;
           f.saving = false;
@@ -352,7 +362,7 @@ function providerForm(ctx, redraw) {
         redraw();
       },
     },
-    h("h3", { class: "form-title" }, adding ? "Add a provider" : `Change ${f.name}`),
+    h("h3", { class: "form-title" }, adding ? (first ? "Where does the model run?" : "Add a provider") : `Change ${f.name}`),
     adding ? h("div", { class: "row-actions", role: "group", "aria-label": "Provider" }, presets.map((p) => h("button", { type: "button", class: "chip", id: `preset-${p.id}`, "aria-pressed": String(f.preset === p.id), onclick: () => ((f.preset = p.id), (f.kind = p.kind), (f.url = p.url), (f.dialect = p.dialect), (f.authentication = "api_key"), redraw()) }, p.label))) : null,
     h("div", { class: "row-actions", role: "group", "aria-label": "Kind of server" }, kind("ollama"), kind("openai"), kind("anthropic")),
     h("p", { class: "hint" }, kinds[f.kind].needs),
@@ -397,11 +407,11 @@ function providerForm(ctx, redraw) {
         account ? h("button", { type: "button", class: "btn small", id: "provider-reauthorize", disabled: !keychainReady || f.connecting || f.saving, onclick: () => connectChatGPT(ctx, f, redraw, account.id) }, "Sign in again") : null),
       f.authorization ? h("p", { class: "hint" }, "Finish sign-in in your browser. ", h("a", { href: f.authorization.url, target: "_blank", rel: "noopener" }, "Open the sign-in page")) : null,
       account?.needs_reauth ? h("p", { class: "warn-text" }, "This account needs you to sign in again before saving.") : null) : null,
-    hasKey(f.kind) && !keychainReady ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings", onclick: () => setTimeout(() => document.getElementById("section-keys")?.scrollIntoView({ block: "start" }), 0) }, "Open the keychain settings")) : null,
+    hasKey(f.kind) && !keychainReady && !first ? h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings", onclick: () => setTimeout(() => document.getElementById("section-keys")?.scrollIntoView({ block: "start" }), 0) }, "Open the keychain settings")) : null,
     !plan && !sameHostNow && f.hasKey ? h("p", { class: "warn-text" }, "This is another host. The saved key is not sent there: type its key, or the provider is left without one.") : null,
     !plan && f.credentialClass && !f.key ? h("p", { class: "hint" }, "Type an API key to switch this provider from its ChatGPT plan. The connected account stays in the keychain.") : null,
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
-    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn accent", id: "provider-save", disabled: f.saving || f.connecting || (plan && (!keychainReady || !account || account.needs_reauth)) || (!plan && !!f.credentialClass && !f.key) || (hasKey(f.kind) && !!f.key && !keychainReady) }, f.saving ? "Saving…" : "Save the provider"), h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.provider = null), redraw()) }, "Cancel")),
+    h("div", { class: "row-actions" }, h("button", { type: "submit", class: "btn accent", id: "provider-save", disabled: f.saving || f.connecting || (plan && (!keychainReady || !account || account.needs_reauth)) || (!plan && !!f.credentialClass && !f.key) || (hasKey(f.kind) && !!f.key && !keychainReady) }, f.saving ? "Saving…" : "Save the provider"), cancellable ? h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.provider = null), redraw()) }, "Cancel") : null),
   );
   return form;
 }
@@ -719,14 +729,19 @@ function setOf(efforts) {
   return found ? found.id : "custom";
 }
 
-function openModel(c, redraw) {
+// modelDraft is a model form's state: the model being changed, or a new one.
+function modelDraft(c) {
   // A model whose efforts are those its provider publishes is shown as such,
   // whether its entry repeats them or says none.
   const same = (a = [], b = []) => a.length === b.length && a.every((e, i) => e === b[i]);
   const published = c?.published || null;
-  ui.model = c
+  return c
     ? { mode: "edit", name: c.name, server: c.server, model: c.model, set: published?.efforts?.length && same(c.efforts, published.efforts) ? "published" : setOf(c.efforts || []), custom: (c.efforts || []).join(", "), effort: c.effort || "", isDefault: !!c.default, settings: settingsForm(c.settings), published, more: false, error: "" }
     : { mode: "add", name: "", server: "", model: "", set: "none", custom: "", effort: "", isDefault: false, settings: settingsForm(), published: null, more: false, error: "" };
+}
+
+function openModel(c, redraw) {
+  ui.model = modelDraft(c);
   redraw();
 }
 
@@ -762,7 +777,11 @@ async function askPublished(ctx, f, redraw) {
   redraw();
 }
 
-function modelForm(ctx, redraw) {
+// modelForm is the form that adds a model or changes one. first is the
+// first-run page's: the model it saves is also the default, which is what
+// that page is for, and the settings Settings › Models keeps (context,
+// prices, sampling) are left to it, since a model answers without them.
+function modelForm(ctx, redraw, first = false) {
   const { conn, desk } = ctx;
   const f = ui.model;
   const adding = f.mode === "add";
@@ -778,7 +797,7 @@ function modelForm(ctx, redraw) {
   server.value = f.server;
   const offered = ui.offered.get(f.server);
   // The buttons follow what is typed without a redraw of the form under it.
-  const save = h("button", { type: "submit", class: "btn accent", id: "model-save" }, f.saving ? "Saving…" : "Save the model");
+  const save = h("button", { type: "submit", class: "btn accent", id: "model-save" }, f.saving ? "Saving…" : first ? "Save and use it" : "Save the model");
   const testButton = h("button", { type: "button", class: "btn", id: "model-test", title: "Sends one short request to this model, without saving it", onclick: () => test(ctx, "form", { server: f.server, model: f.model.trim() }, redraw) }, "Test it");
   const sync = () => {
     save.disabled = f.saving || !f.model.trim() || !f.server;
@@ -817,10 +836,17 @@ function modelForm(ctx, redraw) {
           if (!f.isDefault && f.effort) params.effort = f.effort;
           if (!adding && !f.isDefault) params.name = f.name;
           desk.settings = await conn.call("settings.model.write", params);
+          if (first) {
+            // The entry the daemon named is the default, at the effort chosen:
+            // sent even when empty, as Settings sends the default's.
+            const saved = choicesOf(desk).find((c) => c.server === params.server && c.model === params.model);
+            if (!saved) throw new Error(`${params.model} was saved, but is not in the list of models: choose it as the default in Settings › Models.`);
+            desk.settings = await conn.call("settings.control.write", { name: saved.name, effort: f.effort });
+          }
           ui.model = null;
           ui.results.delete("form");
           await desk.refreshModels();
-          toast(`${params.model} saved. Test asks it for a reply.`);
+          toast(first ? `${params.model} is the default for new tasks.` : `${params.model} saved. Test asks it for a reply.`);
         } catch (error) {
           f.error = error.message;
           f.saving = false;
@@ -828,7 +854,7 @@ function modelForm(ctx, redraw) {
         redraw();
       },
     },
-    h("h3", { class: "form-title" }, adding ? "Add a model" : `Change ${f.model}`),
+    h("h3", { class: "form-title" }, adding ? (first ? "Which model?" : "Add a model") : `Change ${f.model}`),
     field("model-provider", "Provider", server),
     field("model-id", "Model", [id, options], Array.isArray(offered) ? `${f.server} offers ${offered.length} model${offered.length === 1 ? "" : "s"}: type to pick one.` : typeof offered === "string" ? `${offered}. Type the model's name.` : ""),
     h(
@@ -845,12 +871,12 @@ function modelForm(ctx, redraw) {
       // Efforts typed before nodwyn knew the provider's may have gone stale.
       f.set !== "published" && f.published?.efforts?.length ? h("p", { class: "hint", id: "efforts-published-differ" }, `Its provider publishes ${f.published.efforts.map(effortLabel).join(", ")}: As published follows them.`) : null,
     ),
-    efforts.length && !f.isDefault ? field("model-effort", "Starts at", effort, "The effort a task asks of this model unless one is chosen.") : null,
+    efforts.length && !f.isDefault ? field("model-effort", "Starts at", effort, first ? "The effort a new task asks of it unless one is chosen." : "The effort a task asks of this model unless one is chosen.") : null,
     efforts.length && f.isDefault ? h("p", { class: "hint" }, "The effort a new task starts at is the default's, above.") : null,
-    settingsFields(f, providerOf(desk, f.server)?.provider, redraw, desk),
+    first ? h("p", { class: "hint" }, "Its context length, prices and the rest of its settings are what its provider publishes, and Settings › Models changes them once it answers.") : settingsFields(f, providerOf(desk, f.server)?.provider, redraw, desk),
     f.error ? h("p", { class: "error", role: "alert" }, f.error) : null,
     resultLine(testing),
-    h("div", { class: "row-actions" }, save, testButton, h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.model = null), redraw()) }, "Cancel")),
+    h("div", { class: "row-actions" }, save, testButton, first ? null : h("button", { type: "button", class: "btn ghost", onclick: () => ((ui.model = null), redraw()) }, "Cancel")),
   );
   sync();
   return form;
@@ -915,4 +941,40 @@ function resultLine(result) {
 // modelsRows is the body of Settings › Models, as [label, value] pairs.
 export function modelsRows(ctx, redraw) {
   return [...defaultRow(ctx, redraw), ...providerRows(ctx, redraw), ...modelRows(ctx, redraw)];
+}
+
+// firstModel is the first-run page's model setup: the forms of Settings ›
+// Models one after the other, a provider and then a model on it, which
+// becomes the default. There is one way to set a model up, so the page that
+// welcomes a person does not describe another. The state is the module's, as
+// Settings keeps it, so a redraw while a form is typed into loses nothing.
+export function firstModel(ctx, redraw) {
+  const { desk } = ctx;
+  const providers = (desk.settings?.servers || []).filter((p) => !p.inline);
+  // Ollama first: it needs no key, and nothing leaves the computer until a
+  // person picks a service.
+  if (!providers.length && !ui.provider) ui.provider = providerDraft(null, "ollama");
+  if (providers.length && !ui.provider && !ui.model) ui.model = modelDraft(null);
+  const body = [];
+  if (ui.provider) {
+    body.push(providerForm(ctx, redraw, true));
+    // A key is kept in the keychain, which the person may not have made yet:
+    // made here, beside the form that needs it. It is a form of its own: forms
+    // do not nest.
+    if (hasKey(ui.provider.kind) && !desk.keychain?.unlocked) {
+      body.push(h("div", { class: "callout plain", id: "first-keychain" }, keychainForm(ctx, { onDone: redraw })));
+    }
+  } else {
+    const p = providerOf(desk, ui.model.server);
+    body.push(
+      h(
+        "div",
+        { class: "first-provider" },
+        h("p", { class: "hint" }, p ? `${kinds[p.provider]?.label || p.provider} at ${p.host}${p.credential ? (p.authentication === "chatgpt" ? ", with your ChatGPT plan" : p.key === "ready" ? ", with its key stored" : "") : ""}.` : ""),
+        h("button", { type: "button", class: "btn small", id: "first-another", onclick: () => ((ui.provider = providerDraft(null, "ollama")), redraw()) }, "Use another provider"),
+      ),
+      modelForm(ctx, redraw, true),
+    );
+  }
+  return h("div", { id: "first-model" }, ...body);
 }
