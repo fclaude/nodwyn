@@ -5,8 +5,10 @@
 // does not have (404), a reasoning_effort for a model that does not take one,
 // or a word it does not know (400), an effort beside tools on
 // /chat/completions for a model that takes them together only on /responses
-// (400, as OpenAI refuses gpt-6.1-sol), and a parameter /responses does not
-// know (400), so a test shows that a request carried exactly the effort
+// (400, as OpenAI refuses gpt-6.1-sol), a parameter /responses does not
+// know (400), and a system message in a Responses input (400, in the
+// {"detail": ...} shape a ChatGPT plan's server answers in; the system prompt
+// is the request's instructions), so a test shows that a request carried exactly the effort
 // chosen, and none where none was meant, in the protocol it was meant for.
 // Anthropic's Messages API is beside them at /v1/messages: it takes its key in
 // x-api-key (and refuses a bearer one), wants an anthropic-version, needs
@@ -227,6 +229,8 @@ type asked struct {
 	tools        int
 	cacheControl json.RawMessage
 	thinking     json.RawMessage // Messages only
+	// systemInput says a Responses request put a system message in its input.
+	systemInput bool
 }
 
 func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
@@ -246,7 +250,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 
 // responsesParams are the parameters of a Responses request the fake knows:
 // those nodwyn may send, and cache_control for a route that caches (Caches).
-var responsesParams = []string{"model", "input", "tools", "stream", "store", "max_output_tokens", "temperature", "prompt_cache_key", "reasoning", "cache_control"}
+var responsesParams = []string{"model", "instructions", "input", "tools", "stream", "store", "max_output_tokens", "temperature", "prompt_cache_key", "reasoning", "cache_control"}
 
 func (s *Server) respond(w http.ResponseWriter, r *http.Request) {
 	var params map[string]json.RawMessage
@@ -261,9 +265,10 @@ func (s *Server) respond(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var body struct {
-		Model     string            `json:"model"`
-		Input     []json.RawMessage `json:"input"`
-		Reasoning *struct {
+		Model        string            `json:"model"`
+		Instructions string            `json:"instructions"`
+		Input        []json.RawMessage `json:"input"`
+		Reasoning    *struct {
 			Effort *string `json:"effort"`
 		} `json:"reasoning"`
 		Tools        []json.RawMessage `json:"tools"`
@@ -275,6 +280,20 @@ func (s *Server) respond(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a := asked{model: body.Model, messages: body.Input, tools: len(body.Tools), cacheControl: body.CacheControl}
+	for _, item := range body.Input {
+		var m struct {
+			Role string `json:"role"`
+		}
+		if json.Unmarshal(item, &m) == nil && m.Role == "system" {
+			a.systemInput = true
+		}
+	}
+	// The instructions open the prompt, so they are counted, and cached, as
+	// the system message they replace was.
+	if body.Instructions != "" {
+		head, _ := json.Marshal(body.Instructions)
+		a.messages = append([]json.RawMessage{head}, a.messages...)
+	}
 	if body.Reasoning != nil {
 		a.effort = body.Reasoning.Effort
 	}
@@ -353,6 +372,7 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request, a asked) {
 	hold := s.hold
 	s.mu.Unlock()
 	status, code, message := http.StatusOK, "", ""
+	detail := false
 	switch {
 	case !req.Authenticated && messages:
 		status, code, message = http.StatusUnauthorized, "authentication_error", "invalid x-api-key"
@@ -362,6 +382,10 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request, a asked) {
 		status, code, message = http.StatusBadRequest, "invalid_request_error", "anthropic-version: header is required"
 	case model == nil && messages:
 		status, code, message = http.StatusNotFound, "not_found_error", "model: "+a.model
+	case a.systemInput:
+		// As a plan-authenticated Responses request is refused, in the
+		// shape of that server's errors, which is not OpenAI's.
+		status, message, detail = http.StatusBadRequest, "System messages are not allowed", true
 	case model == nil:
 		status, code, message = http.StatusNotFound, "model_not_found", fmt.Sprintf("The model `%s` does not exist or you do not have access to it.", a.model)
 	case messages && req.Thinking != "" && len(model.Efforts) == 0:
@@ -400,6 +424,12 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request, a asked) {
 	s.mu.Unlock()
 	if status != http.StatusOK && messages {
 		refuseMessages(w, status, code, message)
+		return
+	}
+	if status != http.StatusOK && detail {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{"detail": message})
 		return
 	}
 	if status != http.StatusOK {

@@ -188,3 +188,28 @@ stream for all credentials. It buffers through `response.completed`,
 success, so ADR 25's redaction boundary is unchanged. A stream that ends
 without a terminal response is an error. Compatible servers answering JSON
 remain supported. Chat completions still request non-streamed replies.
+
+## Amendment 2026-10-07: the Responses dialect sends the system prompt as instructions
+
+Session `20261007T152356Z-a337f2a9` ran gpt-6.1-sol on a ChatGPT plan
+credential at `api.openai.com` with the Responses dialect. Both of its turns
+failed on their first request, in milliseconds, with `400 {"detail":"System
+messages are not allowed"}`: the request carried the system prompt as an input
+item with role `system`, which that server refuses. The refusal is in the
+shape of the ChatGPT backend's errors (`detail`), not OpenAI's API errors, and
+the advice nodwyn attaches to a 400 (choose another effort) did not apply.
+
+The dialect now sends the system prompt as the request's top-level
+`instructions`, which the Responses API has for it, and no `system` message in
+`input`. The window builds one system message, first; were there more, their
+text is joined in order, so none is dropped. This holds for every credential:
+the field is the API's own, and one wire shape is easier to check than one per
+credential. Nothing else of the request changed, and the canonical request, its
+hash and replay are as before; the dialect transforms only the wire.
+
+The fake Responses servers now refuse a `system` input item in that server's
+shape, so a request that carries one fails a test, and accept `instructions`,
+counting them as the head of the prompt that a system message was. Not
+checked: nothing run here talks to OpenAI (tests use no real key), so that the
+plan server accepts the request as sent is not shown, and a field of the request
+it refuses next, as it refused this one, would show on the first real turn.

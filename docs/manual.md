@@ -1430,10 +1430,12 @@ For OpenAI itself, `dialect = "responses"` speaks its Responses API
 (`POST /responses`) instead of chat completions. Some of OpenAI's reasoning
 models take an effort beside tools only there: on chat completions
 gpt-6.1-sol refuses `reasoning_effort` with tools ("use /v1/responses"), and
-a task always offers tools. The effort goes as `reasoning.effort`, nothing is
-stored on OpenAI's side (`store` is false, and each request carries the
-conversation, as before), and a reply's thinking is not sent back, since the
-API takes it back only encrypted; a `seed` is sent as it is, and refused.
+a task always offers tools. The effort goes as `reasoning.effort`, the system
+prompt as `instructions` (a ChatGPT plan's server refuses a system message in
+the input), nothing is stored on OpenAI's side (`store` is false, and each
+request carries the conversation, as before), and a reply's thinking is not
+sent back, since the API takes it back only encrypted; a `seed` is sent as it
+is, and refused.
 
 ```toml
 [servers.openai]

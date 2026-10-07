@@ -15,10 +15,12 @@ import (
 // responsesServer is a strict Responses endpoint: like OpenAI's, it refuses a
 // request to any other path and a parameter it does not know, such as the
 // chat-completions messages or reasoning_effort, so a request in the wrong
-// protocol fails instead of passing. It records each body and gives reply.
+// protocol fails instead of passing. Like a plan-authenticated one, it refuses
+// a system message in the input, in its own {"detail": ...} shape. It records
+// each body and gives reply.
 func responsesServer(t *testing.T, reply string) (*httptest.Server, *[]map[string]json.RawMessage) {
 	t.Helper()
-	known := map[string]bool{"model": true, "input": true, "tools": true, "stream": true, "store": true, "max_output_tokens": true,
+	known := map[string]bool{"model": true, "instructions": true, "input": true, "tools": true, "stream": true, "store": true, "max_output_tokens": true,
 		"temperature": true, "prompt_cache_key": true, "reasoning": true}
 	var bodies []map[string]json.RawMessage
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +40,16 @@ func responsesServer(t *testing.T, reply string) (*httptest.Server, *[]map[strin
 				return
 			}
 		}
+		var input []struct {
+			Role string `json:"role"`
+		}
+		json.Unmarshal(body["input"], &input)
+		for _, item := range input {
+			if item.Role == "system" {
+				http.Error(w, `{"detail":"System messages are not allowed"}`, http.StatusBadRequest)
+				return
+			}
+		}
 		bodies = append(bodies, body)
 		w.Write([]byte(reply))
 	}))
@@ -45,8 +57,9 @@ func responsesServer(t *testing.T, reply string) (*httptest.Server, *[]map[strin
 	return srv, &bodies
 }
 
-// A conversation goes out as Responses input items: messages, a reply's
-// calls after its text, and each result as its call's output, with the tools
+// A conversation goes out as Responses input items: the system prompt as the
+// request's instructions, messages, a reply's calls after its text, and each
+// result as its call's output, with the tools
 // flat and not strict, the effort as reasoning.effort, the cap as
 // max_output_tokens, and nothing stored. Thinking stays out. The reply's
 // reasoning summary is its thinking, its text its content, its call a tool
@@ -84,9 +97,9 @@ func TestResponsesRoundTrip(t *testing.T) {
 	}
 	got := (*bodies)[0]
 	want := map[string]string{
-		"model": `"gpt-6.1-sol"`,
-		"input": `[{"type":"message","role":"system","content":"sys"},` +
-			`{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":"data:image/png;base64,AQI="}]},` +
+		"model":        `"gpt-6.1-sol"`,
+		"instructions": `"sys"`,
+		"input": `[{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":"data:image/png;base64,AQI="}]},` +
 			`{"type":"function_call","call_id":"c1","name":"fs-list","arguments":"{\"path\":\".\"}"},` +
 			`{"type":"function_call","call_id":"c2","name":"fs-list","arguments":"{}"},` +
 			`{"type":"function_call_output","call_id":"c1","output":"a.go"},` +
@@ -123,6 +136,32 @@ func TestResponsesRoundTrip(t *testing.T) {
 	u := resp.Usage
 	if u.PromptTokens != 12 || u.OutputTokens != 3 || u.CachedTokens == nil || *u.CachedTokens != 4 || u.ReasoningTokens != 2 || u.Unreported {
 		t.Fatalf("usage: %+v", u)
+	}
+}
+
+// The system prompt is the request's instructions and never an input message,
+// which a plan-authenticated server refuses (session
+// 20261007T152356Z-a337f2a9); a request without one sends no instructions.
+func TestResponsesSystemPromptIsInstructions(t *testing.T) {
+	srv, bodies := responsesServer(t, `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"hi"}]}]}`)
+	o := NewOpenAI(srv.URL+"/v1", nil)
+	o.Dialect = "responses"
+	for _, tc := range []struct {
+		name     string
+		messages []Message
+		want     string // the instructions sent; "" sends none
+	}{
+		{"one", []Message{{Role: RoleSystem, Content: "be brief"}, {Role: RoleUser, Content: "hi"}}, `"be brief"`},
+		{"several are all kept", []Message{{Role: RoleSystem, Content: "a"}, {Role: RoleUser, Content: "hi"}, {Role: RoleSystem, Content: "b"}}, `"a\n\nb"`},
+		{"none", []Message{{Role: RoleUser, Content: "hi"}}, ""},
+	} {
+		*bodies = nil
+		if _, err := o.Chat(context.Background(), Request{Model: "m", Messages: tc.messages}, nil); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got := string((*bodies)[0]["instructions"]); got != tc.want {
+			t.Errorf("%s: instructions %s, want %s", tc.name, got, tc.want)
+		}
 	}
 }
 

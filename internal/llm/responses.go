@@ -28,6 +28,11 @@ import (
 
 type respRequest struct {
 	Model string `json:"model"`
+	// Instructions is the system prompt. A plan-authenticated request is
+	// refused a system message in its input ("System messages are not
+	// allowed", session 20261007T152356Z-a337f2a9), and instructions are the field the API
+	// has for the system prompt, so they go there for every credential.
+	Instructions string `json:"instructions,omitempty"`
 	// Input is the conversation: respMessage, respCall and respOutput items.
 	Input  []any      `json:"input"`
 	Tools  []respTool `json:"tools,omitempty"`
@@ -113,15 +118,25 @@ type respResponse struct {
 	Usage json.RawMessage `json:"usage"`
 }
 
-// toResponses is req as a Responses request. A tool result is the output of
-// the call it answers; an assistant reply is its text, if it has any, and then
-// its calls; its thinking stays out (above).
+// toResponses is req as a Responses request. A system message is the
+// request's instructions; a tool result is the output of the call it answers;
+// an assistant reply is its text, if it has any, and then its calls; its
+// thinking stays out (above).
 func toResponses(req Request) respRequest {
 	w := respRequest{Model: req.Model, MaxOutputTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed}
 	if req.Effort != "" {
 		w.Reasoning = &respReasoning{Effort: req.Effort}
 	}
 	for _, m := range req.Messages {
+		if m.Role == RoleSystem {
+			// The window sends one, first; any more are joined, so none
+			// is dropped.
+			if w.Instructions != "" {
+				w.Instructions += "\n\n"
+			}
+			w.Instructions += m.Content
+			continue
+		}
 		if m.Role == RoleTool {
 			w.Input = append(w.Input, respOutput{Type: "function_call_output", CallID: m.ToolCallID, Output: m.Content})
 			continue
