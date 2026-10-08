@@ -373,8 +373,12 @@ immediately. Reading earlier text keeps your scroll position.
 The console folds routine activity (judge requests, focused contexts,
 instructions to the model, groups of calls and the token line) into one
 closed **Activity** row per stretch between replies; click it to see it
-all. Its summary follows the work without opening, and counts a failed
-call in red ("1 failed"), whose run or group is open inside. A call that
+all. Its summary follows the work without opening and names the active
+command. A wrapper tool also shows the shell invocation recorded by the
+guard beside its tool row (arguments may be shortened). The active command
+leaves the summary when the tool returns; this is not live command output.
+The row counts a failed call in red ("1 failed"), whose run or group is
+open inside. A call that
 was skipped without running (an explorer out of rounds, the rest of a
 batch after a failure) did not fail: it is a note in the row that says
 why, one note for the calls skipped in a row for the same reason. Replies,

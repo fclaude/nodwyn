@@ -231,6 +231,8 @@ export class Transcript {
     }
     if (notes) parts.unshift(`${notes} ${notes === 1 ? "note" : "notes"}`);
     if (calls) parts.push(`${calls} ${calls === 1 ? "call" : "calls"}`);
+    const active = this.call;
+    if (active?.fold === f && active.command) parts.push(`${active.command} · ${active.waiting ? "waiting for your answer" : "running…"}`);
     f.what.textContent = parts.join(" · ") || "Tokens and timing";
     const failed = f.body.querySelectorAll(".stat.failed, .result.failed").length;
     f.failed.textContent = failed ? `${failed} failed` : "";
@@ -726,7 +728,8 @@ export class Transcript {
       g.waiting = false;
       this.paintCommands(g);
       this.startClock();
-      this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), commandGroup: g, fold: this.fold };
+      this.call = { id: p.id, name: p.name, kind, row, stat: row.querySelector(".stat"), body: row.querySelector(".call-body"), commandGroup: g, command: commandLine(p.args) || summaryText, fold: this.fold };
+      this.paintActivity();
       return;
     }
     this.group = null;
@@ -742,7 +745,8 @@ export class Transcript {
     const step = h("div", { class: "step" }, line, result, note);
     const detail = h("details", { class: "step-detail" }, h("summary", {}, "Details"), h("pre", {}, typeof p.args === "string" ? p.args : JSON.stringify(p.args, null, 2)));
     this.activity(step, detail);
-    this.call = { id: p.id, name: p.name, kind, step, result, note, detail, fold: this.fold };
+    this.call = { id: p.id, name: p.name, kind, step, result, note, detail, command: p.name === "shell-start" ? commandLine(p.args) : "", fold: this.fold };
+    this.paintActivity();
   }
   // waiting marks the call in progress as stopped at a question, or not. It
   // is called each time the page places its prompts, so only a change of
@@ -750,6 +754,10 @@ export class Transcript {
   // says it waits until the answer comes.
   waiting(on) {
     const c = this.call;
+    if (c) {
+      c.waiting = on;
+      this.paintActivity(c.fold);
+    }
     if (c?.commandGroup) {
       const g = c.commandGroup;
       if (g.waiting === on) return;
@@ -777,6 +785,17 @@ export class Transcript {
       // is still audit history.
       if (p.decision !== "allow" || p.checker) this.audit(`Guard: ${p.prim} ${p.decision}${p.reason ? ` · ${p.reason}` : ""}`, p, p.decision === "deny" ? "bad" : "");
       return;
+    }
+    // A wrapper's empty tool arguments do not say which command it runs.
+    // The guard's recorded arguments are already redacted for display.
+    if ((p.prim === "shell-exec" || p.prim === "shell-start") && p.args && c.kind !== "command") {
+      c.command = `${p.prim} ${p.args}`;
+      if (!c.commandNode) {
+        c.commandNode = h("span", { class: "mono" });
+        c.step.append(c.commandNode);
+      }
+      c.commandNode.textContent = c.command;
+      this.paintActivity(c.fold);
     }
     if (!text) return;
     if (c.note) c.note.textContent = text;
@@ -855,8 +874,8 @@ export class Transcript {
     }
     // A bad note between the call and its result starts a new fold: the
     // count belongs on the call's.
-    this.paintActivity(c.fold);
     this.call = null;
+    this.paintActivity(c.fold);
   }
 }
 

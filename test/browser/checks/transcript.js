@@ -43,6 +43,28 @@ check(async () => {
     const header = (root) => { const g = [...root.querySelectorAll(".activity.commands")].pop(); return g ? `${g.querySelector(".label").textContent} | ${g.querySelector(".what").textContent}` : null; };
     const out = {};
 
+    {
+      const { root, t } = fresh();
+      const summary = () => root.querySelector(".activity-fold > summary").textContent;
+      const id = call(t, "validate", {});
+      t.render({ kind: "guard.decision", payload: { origin: "model", prim: "shell-start", decision: "allow", checker: "standing", args: '("make" ("validate"))' } });
+      const wrapped = summary().includes('shell-start ("make" ("validate"))') && root.querySelector(".step").textContent.includes('shell-start ("make" ("validate"))');
+      t.waiting(true);
+      const waiting = summary().includes("waiting for your answer") && summary().includes('("make" ("validate"))');
+      t.waiting(false);
+      done(t, id, "validate", "PASS", 20);
+      const finished = !summary().includes('("make" ("validate"))') && !summary().includes("running");
+      const command = call(t, "shell-exec", { cmd: "go", args: ["test", "./..."] });
+      const direct = summary().includes("go test ./...");
+      done(t, command, "shell-exec", "exit 0", 20);
+      const cleared = !summary().includes("go test ./...");
+      const background = call(t, "shell-start", { cmd: "make", args: ["validate"] });
+      const started = summary().includes("make validate");
+      done(t, background, "shell-start", "p1: running", 20);
+      out.runningCommand = { wrapped, waiting, finished, direct, cleared, started };
+      t.end();
+    }
+
     // The screenshot's routine judge, context, harness and tool activity is
     // one closed row, not a stack of separate disclosures and token lines.
     async function activityCollapsePreservesContent() {
@@ -922,6 +944,7 @@ check(async () => {
   console.log(JSON.stringify(results, null, 1));
   const fail = [];
   const want = (ok, what) => ok || fail.push(what);
+  want(Object.values(results.runningCommand).every(Boolean), `running command is visible through wrapping, waiting and completion: ${JSON.stringify(results.runningCommand)}`);
   const ac = results.activityCollapsePreservesContent;
   want(ac.initial.folds === 1 && ac.initial.agents === 1 && ac.initial.closed && ac.initial.hidden && ac.initial.rows.join() === "activity-fold" && ac.initial.kept, `activityCollapsePreservesContent: screenshot activity folds into one closed row: ${JSON.stringify(ac.initial)}`);
   want(ac.expanded && ac.harnessVisible && ac.live && ac.collapsedLive, `activityCollapsePreservesContent: expansion and live updates retain content and choice: ${JSON.stringify(ac)}`);

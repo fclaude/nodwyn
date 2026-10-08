@@ -253,8 +253,11 @@ provider that cannot read one refuses that request, and the turn says so
   requests, focused contexts, instructions to the model, groups of calls
   and the token line) shares one closed \textbf{Activity} row per stretch
   between replies; click it to see it all. Its summary follows the work
-  without opening, and counts a failed call in red, whose run or group is
-  open inside. Replies, warnings, errors, a turn that stopped short and a
+  without opening and names the active command, including a wrapper's
+  shell invocation recorded by the guard (arguments may be shortened).
+  The command leaves the summary when the tool returns; this is not live
+  output. It counts a failed call in red, whose run or group is open inside.
+  Replies, warnings, errors, a turn that stopped short and a
   worktree that left uncommitted files out stay in view, and a question is
   asked in its card at the end of the conversation. This folds the display
   only: \code{/compact [focus]} changes the model's context.
