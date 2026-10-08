@@ -18,8 +18,8 @@ you wrote should do is not evidence.
 
 **Before calling work done, run `validate`** (the tool; `make validate`
 outside nodwyn) after your last edit (ADR 37). It runs what the list below
-asks for the files you changed (`gofmt`, `make accept`, the browser checks,
-the book), runs each Go test you added or changed against the unchanged
+asks for the files you changed (`gofmt`, `make accept`, the browser checks),
+runs each Go test you added or changed against the unchanged
 code, and checks the house rules a diff can show. Fix what fails, and quote
 its summary in your answer, answering each warning: a test that passes on
 the unchanged code is fixed or explained. A failure the unchanged code has
@@ -65,8 +65,8 @@ are faster.
   failure it comes from.
 - **Guard, denylist, bindings, keychain, egress, redaction:** `make exfil`.
   Never loosen a check to make a test pass.
-- **The book and the expert guide:** `make book`, `make expert` (texlive). If
-  they cannot build here, say so.
+- **The book and the expert guide** are built by the release flow
+  (`scripts/release.py build`, ADR 42), not by `validate` or a session.
   After changing tracked Go or Scheme files, regenerate their inventory with
   `python3 docs/book/source/generate.py` and check it with `--check`; its counts
   include test files even though the listings omit Go tests. Commit the sources

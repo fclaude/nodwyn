@@ -32,7 +32,8 @@ func TestMain(m *testing.M) {
 
 // The checks follow the files: documentation no test reads needs none, the
 // console needs the browser checks as well as make accept, and the browser
-// checks' own scripts need only those.
+// checks' own scripts need only those. The books are documentation here:
+// the release flow builds them.
 func TestPlanFollowsTheChangedFiles(t *testing.T) {
 	t.Chdir("../..")
 	for _, c := range []struct {
@@ -46,7 +47,7 @@ func TestPlanFollowsTheChangedFiles(t *testing.T) {
 		{[]string{"test/browser/checks/screens.js"}, []string{"node --check", "browser checks"}},
 		{[]string{"internal/frontend/rpc/sessions.go"}, []string{"gofmt", "make accept", "browser checks"}},
 		{[]string{"internal/frontend/rpc/server_test.go"}, []string{"gofmt", "make accept"}},
-		{[]string{"docs/book/parts/scheme.tex", "docs/expert/parts/09-primitives.tex"}, []string{"make book", "make expert"}},
+		{[]string{"docs/book/parts/scheme.tex", "docs/expert/parts/09-primitives.tex", "docs/book/source/catalogue.tex"}, nil},
 		{[]string{"internal/core/deleted.go"}, []string{"make accept"}},
 	} {
 		var got []string

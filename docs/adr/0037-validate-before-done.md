@@ -223,3 +223,32 @@ getting wrong in the worktrees most work now runs in (ADR 34):
   of it with this checkout's Playwright. It fails only for a check that
   fails with the change and passes without it; flaky checks and checks that
   fail on the unchanged code too are a warning to answer.
+
+## Amendment 2026-10-07: the books are built by the release flow, not by validate
+
+Since ADR 42's amendment of 2026-10-05 the PDFs are not tracked. The release
+flow's `scripts/release.py build` checks the source catalogue
+(`generate.py --check`) and builds both books in a scratch checkout of the
+release's commit, and nothing else keeps them. validate still built the
+book whenever a file under `docs/book/` changed, and `AGENTS.md` has every
+Go or Scheme change regenerate `docs/book/source/catalogue.tex`, whose
+counts line then changes; it did in 8 of the 10 commits before this one.
+Of the nine validate runs of 2026-10-07, four built the book (81 to 83 s)
+and one the expert guide as well (88 s); the rest of a run took 40 to 60 s.
+The books were 58 to 74% of those runs' time, for PDFs nobody kept.
+`latexmk -c` removes the auxiliary files after each build, so every build
+was a cold one.
+
+- **validate builds neither book.** Their sources are documentation to it,
+  as the rest of `docs/` is: they need no check.
+- **Nor does a session.** `AGENTS.md` no longer asks for `make book` or
+  `make expert` after a change to the books; the release flow builds them.
+  The targets stay, for anyone who wants to read a copy.
+- **The note that a rebuilt PDF goes with the change is gone** with the
+  build: an untracked PDF never differs, so it could not show.
+
+A LaTeX error in a book edit, or a Go or Scheme file the listings cannot
+typeset, is now found when a release is built, which fails before it
+publishes anything. The catalogue at this amendment's parent was stale (456
+Go files counted, 457 tracked), which validate did not check and that build
+would have refused; it is regenerated here.

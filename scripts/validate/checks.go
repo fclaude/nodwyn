@@ -21,10 +21,15 @@ type check struct {
 // reads needs none; anything else needs make accept, which is what
 // promotion runs; the console, its contract and its checks need the
 // browser checks, since Go's tests do not run the console.
+//
+// The books are not built here: the release flow checks their catalogue and
+// builds them (ADR 42), and nothing else keeps the PDFs. The catalogue's
+// counts change with almost every Go change, and building the book for them
+// cost about 80 s a run (ADR 37, amended 2026-10-07).
 func plan(base string, changed []string) []check {
 	var checks []check
 	var goFiles, jsFiles []string
-	accept, browser, book, expert := false, false, false, false
+	accept, browser := false, false
 	for _, p := range changed {
 		exists := fileExists(p)
 		switch {
@@ -40,8 +45,6 @@ func plan(base string, changed []string) []check {
 			(strings.HasPrefix(p, "internal/frontend/rpc/") && strings.HasSuffix(p, ".go") && !strings.HasSuffix(p, "_test.go")) {
 			browser = true
 		}
-		book = book || (strings.HasPrefix(p, "docs/book/") && !strings.HasSuffix(p, ".pdf"))
-		expert = expert || (strings.HasPrefix(p, "docs/expert/") && !strings.HasSuffix(p, ".pdf"))
 	}
 	if len(goFiles) > 0 {
 		checks = append(checks, check{"gofmt", func(string) result { return gofmtCheck(goFiles) }})
@@ -56,14 +59,6 @@ func plan(base string, changed []string) []check {
 	}
 	if browser {
 		checks = append(checks, check{"browser checks", func(logs string) result { return browserChecks(base, logs) }})
-	}
-	if book {
-		checks = append(checks, check{"make book", func(logs string) result { return latex("make book", "book", "docs/book/nodwyn.pdf", logs) }})
-	}
-	if expert {
-		checks = append(checks, check{"make expert", func(logs string) result {
-			return latex("make expert", "expert", "docs/expert/expert.pdf", logs)
-		}})
 	}
 	return checks
 }
@@ -121,21 +116,6 @@ func nodeCheck(files []string) result {
 		return result{status: "FAIL", name: "node --check", detail: "does not parse: " + strings.Join(bad, " "), tail: tail.String()}
 	}
 	return result{status: "PASS", name: "node --check", detail: fmt.Sprintf("%d changed scripts parse", len(files))}
-}
-
-// latex builds the book or the expert guide when its sources changed. A
-// machine without texlive cannot, and the summary says so (AGENTS.md).
-func latex(name, target, pdf, logs string) result {
-	if _, err := exec.LookPath("latexmk"); err != nil {
-		return result{status: "WARN", name: name, detail: "latexmk is not installed, so it was not built here: say so"}
-	}
-	r := step(name, target, logs, 15*time.Minute, "make", target)
-	if r.status == "PASS" {
-		if _, err := git("diff", "--quiet", "--", pdf); err != nil {
-			r.detail += "; " + pdf + " was rebuilt and goes with the change"
-		}
-	}
-	return r
 }
 
 // docRules are the house rules a command cannot run but a diff can show
