@@ -1,8 +1,8 @@
-// Several tasks on one repository (ADR 34): each started "In a worktree"
-// works in a git worktree of its own, on a branch of its own, and is listed
-// under the repository; and switching between open tasks shows each as it
-// was, with what happened while it was off screen, without reading its log
-// again.
+// Several tasks on one repository (ADR 34): a git workspace starts with
+// "In a worktree" checked; each task then works in a worktree of its own,
+// on a branch of its own, and is listed under the repository. Switching
+// between open tasks shows each as it was, with what happened while it was
+// off screen, without reading its log again.
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -37,17 +37,17 @@ check(async () => {
   await page.fill("#add-name", "project");
   await page.click('.add-folder button:text-is("Add this folder")');
   await page.waitForSelector(`button.chip[title="${repo}"][aria-pressed="true"]`);
-  await page.check(".worktree-toggle input");
+  assert.ok(await page.isChecked(".worktree-toggle input"), "a new git workspace did not default to a worktree");
   await page.screenshot({ path: `${out}/worktree-ask.png` });
 
   // Two tasks, each in a worktree of its own: the console asks for one with
   // worktree.open, never session.open.
   // settle waits for the task's turn to end; a task held by a question has
   // none to wait for.
-  const startTask = async (text, settle = true) => {
+  const startTask = async (text, settle = true, useWorktree = true) => {
     await page.evaluate(() => (location.hash = "#/"));
     await page.waitForSelector(".worktree-toggle input");
-    assert.ok(await page.isChecked(".worktree-toggle input"), "the folder's choice of a worktree was not kept");
+    assert.strictEqual(await page.isChecked(".worktree-toggle input"), useWorktree, `the folder's worktree choice was not kept (${useWorktree})`);
     await page.fill("#task", text);
     await page.press("#task", "Control+Enter");
     await page.waitForFunction(() => location.hash.startsWith("#/task/"));
@@ -298,4 +298,14 @@ check(async () => {
   assert.strictEqual(sent.of("worktree.diff").length, asked, "a closed task's diff was asked for");
   assert.ok(!(await page.innerText(".task-aside .review")).includes("not open in this daemon"), "the closed task shows the daemon's refusal");
   await page.screenshot({ path: `${out}/worktree-review-closed.png` });
+
+  // A folder can still opt out, and the next task then starts in that folder.
+  await page.evaluate(() => (location.hash = "#/"));
+  await page.waitForSelector(".worktree-toggle input");
+  await page.uncheck(".worktree-toggle input");
+  const plainOpens = sent.of("session.open").length;
+  const worktreeOpens = sent.of("worktree.open").length;
+  await startTask("Plain folder task", true, false);
+  assert.deepStrictEqual(sent.of("session.open").slice(plainOpens), [{ repo }], "opting out did not start the task in the folder");
+  assert.strictEqual(sent.of("worktree.open").length, worktreeOpens, "opting out still opened a worktree");
 });

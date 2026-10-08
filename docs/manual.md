@@ -291,9 +291,11 @@ committed unchanged Git files rely on Git rather than this store.
 
 Tasks in one folder share its files, its git index and its stash: one
 task's edit shows up in another's test run. In the console, **In a
-worktree** beside the folder on Home starts a task in a git worktree of its
-own instead (ADR 34): `<repo>/.nodwyn/worktrees/<id>` on a new branch
-`nodwyn/<id>`, from the repository's `HEAD`. The task's tools, commands and
+worktree** beside a git workspace on Home is checked by default, starting a task
+in a git worktree of its own (ADR 34):
+`<repo>/.nodwyn/worktrees/<id>` on a new branch `nodwyn/<id>`, from the
+repository's `HEAD`. Uncheck it to start in the folder itself; this choice
+is kept per git workspace in this tab. The task's tools, commands and
 `.nodwyn/` settings are the worktree's, exactly as if you had checked the
 branch out there; the notes, MCP servers and session history are the
 repository's, and the task is listed under it. The folder ignores itself

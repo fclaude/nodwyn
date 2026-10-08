@@ -231,13 +231,14 @@ config directory, never in the folder, so a folder someone else commits
 cannot mount anything (ADR 22). Mount changes apply to tasks started
 afterwards; already-open tasks keep what they loaded.
 
-**In a worktree.** Beside the folder, **In a worktree** starts the task in
-a git worktree of its own
+**In a worktree.** Beside a git workspace, **In a worktree** is checked
+by default and starts the task in a git worktree of its own
 ([ADR 34](adr/0034-sessions-in-git-worktrees.md)): a checkout of the
 repository on a branch of its own, `nodwyn/<id>`, in
 `.nodwyn/worktrees/<id>`, so several tasks can work on one repository at
-once without touching each other's files or the ones you are editing. The
-choice is kept for that folder in this tab. Only a git repository's top
+once without touching each other's files or the ones you are editing.
+Uncheck it to start in the folder itself; the choice is kept for that
+git workspace in this tab. Only a git repository's top
 folder with a commit can have one; any other is refused, in a sentence,
 when the task starts. Uncommitted changes in the folder are not in the
 worktree, and the conversation says how many. The task is listed under

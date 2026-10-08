@@ -17,9 +17,9 @@ let draft = "";
 let current = null;
 let files = null; // the files chosen for the next task, kept across redraws
 let starting = false; // a start is in flight: one task per ask
-// The folders whose next task starts in a git worktree of its own (ADR 34),
-// this tab only: a choice made once for a folder holds for its next tasks.
-const inWorktree = new Set();
+// A choice made for a folder in this tab; otherwise a known git workspace
+// defaults to a worktree.
+const worktreeChoices = new Map();
 
 // The model and effort chosen for the next task, if they are not the default
 // (ADR 41): kept while the window is left and come back to, and in this
@@ -229,14 +229,15 @@ export function renderHome(root, ctx) {
   // A task in a worktree works on its own checkout and branch, so several
   // can work on one repository without touching each other's files or the
   // one you work in. Only a daemon that offers worktree.open, and a bridge
-  // that lets it through, shows the choice; a folder that is not a git
-  // repository is refused with a sentence when the task starts.
-  const worktree = () => conn.has("worktree.open") && inWorktree.has(chosen);
+  // that lets it through, shows the choice; only known git workspaces default
+  // to it because other folders cannot be opened as worktrees.
+  const worktreeDefault = () => !!desk.workspace(chosen)?.git;
+  const worktree = () => conn.has("worktree.open") && (worktreeChoices.has(chosen) ? worktreeChoices.get(chosen) : worktreeDefault());
   const worktreeBox = conn.has("worktree.open") && chosen
     ? h(
         "label",
         { class: "worktree-toggle", title: "Start this task in a new git worktree of the folder, on a branch of its own: it does not touch the files you or other tasks are working on. Its changes stay on that branch until it is merged." },
-        h("input", { type: "checkbox", checked: inWorktree.has(chosen), onchange: (event) => { if (event.target.checked) inWorktree.add(chosen); else inWorktree.delete(chosen); } }),
+        h("input", { type: "checkbox", checked: worktreeChoices.has(chosen) ? worktreeChoices.get(chosen) : worktreeDefault(), onchange: (event) => worktreeChoices.set(chosen, event.target.checked) }),
         h("span", {}, "In a worktree"),
       )
     : null;

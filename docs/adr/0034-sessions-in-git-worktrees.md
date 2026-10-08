@@ -327,15 +327,18 @@ when a person merges the branch.
   in the conversation.
 - Changed: the toggle shows for every folder when the daemon offers
   `worktree.open`, since the console cannot tell a git folder before a task
-  opens there; the daemon refuses any other folder in a sentence.
+  opens there; the daemon refuses any other folder in a sentence. The choice
+  is checked by default for git workspaces; unchecking it opts that workspace
+  out for the tab. Other folders remain on the ordinary task path by default.
 - Not built: `worktree.list`, `worktree.remove`, `run.start`'s
   `worktree`, commits ahead and the last push, Remove, and the TUI's row and
   title.
 
-The browser check `worktrees` starts two tasks in worktrees of one
-repository from the ask bar. It checks the requests sent, where each
-task's file landed, the sidebar's grouping and the branch shown. It also
-checks that closing keeps a worktree with work in it. The core tests run
+The browser check `worktrees` verifies that a new git workspace defaults to
+`worktree.open`, that unchecking it starts a task with `session.open`, and
+that checked tasks work in separate worktrees. It checks the requests sent,
+where each task's file landed, the sidebar's grouping and the branch shown.
+It also checks that closing keeps a worktree with work in it. The core tests run
 real git in temporary repositories: the removal rules, restore,
 refusals, the link check and the shared project.
 
@@ -494,11 +497,18 @@ never to turn signing off. Clause by clause:
   nor the `git.push` log record; the guard's own `guard.decision` and the
   tool result say what was pushed where.
 
-## Amendment 2026-10-06: security review and project identity
+## Amendment 2026-10-08: worktrees are the console default
 
-[ADR 45](0045-project-trust-and-security-boundaries.md) supersedes the earlier
-behaviour where it differs: repository startup and approval files need an external
-user trust record; executable identity is resolved, credential transport is a user
-setting with secure defaults, keychain decoding and persistence are bounded, and
-project paths resolve symlinks consistently. Its compatibility rules apply to
-existing sessions, workspaces, notes and worktrees.
+The console's **In a worktree** choice in the ask bar is checked by default
+for named workspaces the daemon identifies as git repositories. Unchecking
+it starts the next task in that folder itself. The choice remains per-folder
+for the current tab, so one folder may opt out without changing another.
+Unknown and non-git folders remain on the ordinary task path by default, since
+the console cannot safely open those in a worktree. This changes only
+new task creation in the console; it does not change how existing tasks
+resume or how other front-ends start tasks.
+
+The `worktrees` browser check verifies both paths: a new git workspace starts
+with the choice checked and opens through `worktree.open`; after unchecking,
+a task opens through `session.open`. The two checked tasks still verify their
+work remains isolated in separate worktrees.
