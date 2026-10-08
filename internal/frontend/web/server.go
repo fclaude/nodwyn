@@ -524,9 +524,10 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
 		"session.notes.write", "run.start", "run.stop", "run.resume", "session.restore", "session.rename", "session.archive":
 		return true
-	// Choosing a conversation's model decides where its content goes next,
-	// so it stays with the computer nodwyn runs on (ADR 30, ADR 40).
-	case "session.model.set":
+	// Choosing a conversation's model, or the judge its plans and commands
+	// go to, decides where its content goes next, so it stays with the
+	// computer nodwyn runs on (ADR 30, ADR 40, ADR 47).
+	case "session.model.set", "session.judge.set":
 		return !remote
 	// A log is the record of what a session did, devices included: only
 	// this computer removes one (ADR 39).

@@ -97,7 +97,7 @@ check(async () => {
   step("provider and model saved, the model the default; composer shown");
 
   // Settings: create a keychain.
-  await page.evaluate(() => (location.hash = "#/settings"));
+  await page.evaluate(() => (location.hash = "#/settings/keys"));
   await page.waitForSelector("#keychain-pass");
   await page.fill("#keychain-pass", "family passphrase");
   await page.fill("#keychain-again", "family passphrase");
@@ -111,6 +111,7 @@ check(async () => {
   // Settings › Models: the server saved above is listed as a provider, a
   // model it offers is added from the list it gives, and chosen as the
   // default; the model that was the default stays in the list (ADR 41).
+  await page.click("#settings-tab-models");
   await page.waitForSelector("#provider-127-0-0-1");
   await page.click("#add-model");
   assert.strictEqual(await page.inputValue("#model-provider"), "127-0-0-1", "the saved server is the provider offered");

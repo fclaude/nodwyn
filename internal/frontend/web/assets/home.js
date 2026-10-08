@@ -5,7 +5,7 @@ import { keychainForm } from "./setup.js";
 import { firstModel } from "./models.js";
 import { Attachments, isImage } from "./attach.js";
 import { keepDraft } from "./task.js";
-import { ModelPicker, defaultSelection, choicesOf, blocked } from "./modelpicker.js";
+import { ModelPicker, defaultSelection, choicesOf, blocked, defaultJudge, judgesOf } from "./modelpicker.js";
 
 // The folder the next task starts in, for this tab. A tab that has not
 // picked yet starts in the folder picked last: this browser's, else the
@@ -40,6 +40,32 @@ function loadPicked() {
     /* a browser that refuses storage starts on the default */
   }
 }
+// The judge chosen for the next task, if it is not the default (ADR 47), kept
+// as the model's choice is and dropped as it is. "" is no judge; null is the
+// default of Settings.
+const NEW_JUDGE_KEY = "nodwyn-new-task-judge";
+let pickedJudge = null;
+let pickedJudgeLoaded = false;
+function loadPickedJudge() {
+  if (pickedJudgeLoaded) return;
+  pickedJudgeLoaded = true;
+  try {
+    const v = JSON.parse(localStorage.getItem(NEW_JUDGE_KEY) || "null");
+    if (typeof v === "string") pickedJudge = v;
+  } catch {
+    /* a browser that refuses storage starts on the default */
+  }
+}
+function pickJudge(name, desk) {
+  pickedJudge = name === null || name === defaultJudge(desk) ? null : name;
+  try {
+    if (pickedJudge !== null) localStorage.setItem(NEW_JUDGE_KEY, JSON.stringify(pickedJudge));
+    else localStorage.removeItem(NEW_JUDGE_KEY);
+  } catch {
+    /* kept for this tab only */
+  }
+}
+
 function pick(selection, desk) {
   const dflt = defaultSelection(desk);
   picked = selection && !(dflt && selection.name === dflt.name && selection.effort === dflt.effort) ? selection : null;
@@ -97,8 +123,13 @@ export function renderHome(root, ctx) {
   // This computer chooses where a task's content goes (ADR 30, ADR 40): a
   // paired device starts tasks on the default model and says which it is.
   loadPicked();
+  loadPickedJudge();
   const canChoose = conn.has("session.model.set") && choicesOf(desk).length > 0;
   const selection = () => picked || defaultSelection(desk);
+  // The judge is chosen beside the model (ADR 47), on this computer only,
+  // and only where there is a judge to choose.
+  const canJudge = canChoose && conn.has("session.judge.set") && judgesOf(desk).length > 0;
+  const judgeChoice = () => (pickedJudge !== null ? pickedJudge : defaultJudge(desk));
 
   // Needs you: each waiting task says what it asks.
   const needs = h("section", { class: "home-section", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
@@ -255,6 +286,15 @@ export function renderHome(root, ctx) {
         submit.disabled = !ready();
         if (reset) toast("That model takes other efforts: its own default is chosen.");
       },
+      ...(canJudge
+        ? {
+            judge: judgeChoice(),
+            onJudge: (name) => {
+              pickJudge(name, desk);
+              drawPicker();
+            },
+          }
+        : {}),
     });
   };
   const form = h(
@@ -278,6 +318,9 @@ export function renderHome(root, ctx) {
             params.name = sel.name;
             if (sel.effort) params.effort = sel.effort;
           }
+          // So is a judge chosen here; left alone, the task asks the
+          // default of Settings, as a task always did.
+          if (canJudge && pickedJudge !== null) params.judge = pickedJudge;
           const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
           opened = info.id;
           // An image waits for its own confirm, which the task's page shows.
@@ -287,6 +330,7 @@ export function renderHome(root, ctx) {
           await conn.call("session.send", { id: info.id, text: task.value });
           draft = "";
           pick(null, desk);
+          pickJudge(null, desk);
           await desk.refresh();
           navigate(`#/task/${info.id}`);
         } catch (error) {

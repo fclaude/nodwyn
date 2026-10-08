@@ -244,35 +244,62 @@ const row = (label, ...value) => [h("div", { class: "label" }, label), h("div", 
 const section = (id, title, intro, ...rows) => h("section", { class: "settings-section", id: `section-${id}`, "aria-labelledby": `heading-${id}` }, h("h2", { id: `heading-${id}` }, title), intro ? h("p", { class: "hint intro" }, intro) : null, h("div", { class: "settings-grid" }, ...rows));
 
 // ---------- the page ----------
+
+// tabs are Settings' pages, each a few sections: what a task does, the
+// models, the judge (ADR 47), the context window, documents and containers,
+// keys and devices, and this browser. The tab is in the address
+// (#/settings/judge), so a link opens it and a reload keeps it; an unknown
+// one is the first.
+const tabs = [
+  { id: "general", label: "General" },
+  { id: "models", label: "Models" },
+  { id: "judge", label: "Judge" },
+  { id: "context", label: "Context" },
+  { id: "tools", label: "Documents & containers" },
+  { id: "keys", label: "Keys & devices" },
+  { id: "browser", label: "This browser" },
+];
+// tabOf is the tab a route names, else the first.
+export const tabOf = (name) => (tabs.some((t) => t.id === name) ? name : tabs[0].id);
+let shownTab = "";
+
 export function renderSettings(root, ctx) {
   const { conn, desk } = ctx;
   const redraw = () => renderSettings(root, ctx);
+  const tab = tabOf(ctx.tab);
   // Redrawn in place (a choice, a save, the models' status): keep the
   // scroll position and the field that has focus.
   const before = root.querySelector(":scope > main.settings-page");
   // Coming to Settings from another page, nothing is half-typed (a key in
   // particular is not kept across a visit).
-  if (!before) resetModelsUi();
-  const scrolled = before ? before.scrollTop : 0;
+  if (!before) {
+    resetModelsUi();
+    resetJudgeUi();
+  }
+  // Another tab starts at its top; a redraw of the same one stays where it was.
+  const scrolled = before && shownTab === tab ? before.scrollTop : 0;
+  shownTab = tab;
   const active = root.contains(document.activeElement) ? document.activeElement : null;
   const focus = active?.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
 
   // An older daemon reports no values: its settings live in config.toml.
   const known = !!desk.settings?.values;
-  const sections = [
-    ...(known ? [approvalSection(ctx, redraw), limitsSection(ctx)] : []),
-    modelsSection(ctx, root),
-    ...(known ? [judgeSection(ctx, redraw)] : []),
-    documentsSection(ctx),
-    ...(known ? [containersSection(ctx, redraw), windowSection(ctx)] : []),
-    keysSection(ctx, root),
-    browserSection(ctx),
-    connectionSection(ctx),
-  ].filter(Boolean);
+  // Only the tab shown is drawn; the edits waiting in the bar are kept across
+  // tabs, so a change made in one is saved with one made in another.
+  const build = {
+    general: () => (known ? [approvalSection(ctx, redraw), limitsSection(ctx)] : [h("p", { class: "hint" }, "This daemon's settings live in config.toml.")]),
+    models: () => [modelsSection(ctx, root)],
+    judge: () => (known ? [judgeSection(ctx, redraw, root)] : [h("p", { class: "hint" }, "This daemon's judge is set in config.toml.")]),
+    context: () => (known ? [windowSection(ctx)] : []),
+    tools: () => [documentsSection(ctx), ...(known ? [containersSection(ctx, redraw)] : [])],
+    keys: () => [keysSection(ctx, root)],
+    browser: () => [browserSection(ctx), connectionSection(ctx)],
+  };
+  const sections = build[tab]().filter(Boolean);
   const nav = h(
     "nav",
-    { class: "settings-nav row-actions", "aria-label": "Settings sections" },
-    sections.map((s) => h("button", { type: "button", class: "chip", onclick: () => s.scrollIntoView({ behavior: "smooth", block: "start" }) }, s.querySelector("h2").textContent)),
+    { class: "settings-tabs", role: "tablist", "aria-label": "Settings" },
+    tabs.map((t) => h("a", { class: "settings-tab", role: "tab", id: `settings-tab-${t.id}`, href: `#/settings/${t.id}`, "aria-selected": String(t.id === tab), "aria-current": t.id === tab ? "page" : null }, t.label)),
   );
   const bar = h("div", { class: "save-bar", role: "region", "aria-label": "Unsaved settings", hidden: true });
   refreshBar = () => drawBar(bar, ctx, redraw);
@@ -286,15 +313,17 @@ export function renderSettings(root, ctx) {
       h("h1", {}, "Settings"),
       known && !editable(conn) ? h("div", { class: "callout plain" }, "These are the settings tasks start with. Only the computer nodwyn runs on can change them.") : null,
       nav,
-      ...sections,
+      h("div", { class: "settings-panel", role: "tabpanel", "aria-labelledby": `settings-tab-${tab}`, id: `settings-panel-${tab}` }, ...sections),
       bar,
     ),
   );
   root.replaceChildren(page);
   page.scrollTop = scrolled;
   refreshBar();
-  if (conn.has("devices.list")) showDevices(root.querySelector("#devices"), ctx);
-  if (desk.settings?.docs) showUploads(root.querySelector("#uploads"), ctx);
+  const devices = root.querySelector("#devices");
+  if (devices && conn.has("devices.list")) showDevices(devices, ctx);
+  const uploads = root.querySelector("#uploads");
+  if (uploads && desk.settings?.docs) showUploads(uploads, ctx);
   if (focus) {
     const node = document.getElementById(focus.id);
     node?.focus({ preventScroll: true });
@@ -471,121 +500,261 @@ function modelsSection(ctx, root) {
   return section(
     "models",
     "Models",
-    "The providers nodwyn talks to, the models you choose between with each one's own settings, what new tasks start on, and the judge's model. Saved in config.toml with its other lines kept; a key goes to the keychain. Tasks already open keep the model and effort they have, and change them under their own message box.",
+    "The providers nodwyn talks to and the models on each, with each model's own settings, and what new tasks start on. Saved in config.toml with its other lines kept; a key goes to the keychain. Tasks already open keep the model, effort and judge they have, and change them under their own message box.",
     ...modelsRows(ctx, () => renderSettings(root, ctx)),
-    ...(values(ctx.desk)["judge.server"]?.value ? judgeModelRows(ctx) : []),
   );
 }
 
-// judgeModelRows are the judge's model settings, beside the other models'
-// (ADR 41, amended 2026-10-05), once the judge is on a provider: which model
-// it asks, with its provider's judge model as the placeholder, its prices,
-// with what its provider publishes as their placeholders, and how long it
-// may take. Which provider, what it sees and when it allows a command are
-// under Judge.
-function judgeModelRows(ctx) {
-  const settings = ctx.desk.settings || {};
-  const published = settings.judge_published || {};
-  const price = (x) => (x === undefined || x === null ? "unknown" : String(x));
-  const server = values(ctx.desk)["judge.server"]?.value;
-  return [
-    ...row("Judge model", input(ctx, "judge.model", { placeholder: settings.judge_model || "" }), h("p", { class: "hint" }, `The model the judge asks on ${server}${settings.judge_host ? ` at ${settings.judge_host}` : ""}, which scores plans and answers commands (Judge, below). Empty is its provider's judge model.`)),
-    ...row(
-      "Judge prices",
-      h(
-        "div",
-        { class: "row-actions" },
-        input(ctx, "judge.price_input", { width: "narrow", prefix: "$", placeholder: price(published.price_input) }),
-        h("span", { class: "muted" }, "input,"),
-        input(ctx, "judge.price_output", { width: "narrow", prefix: "$", placeholder: price(published.price_output) }),
-        h("span", { class: "muted" }, "output"),
-      ),
-      h(
-        "p",
-        { class: "hint" },
-        published.price_input !== undefined
-          ? "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: each one empty is what its provider publishes for the judge's questions. Tasks show the judge's spend, and a spend limit counts it."
-          : "US dollars per million tokens. The judge reports what each request used, never what it cost, so these estimate it: tasks show the judge's spend, and a spend limit counts it.",
-      ),
-    ),
-    ...row("Judge waits", input(ctx, "judge.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
-  ];
+// ---------- the judge (ADR 46, ADR 47) ----------
+
+// What the Judge tab is typing: a key for a judge being added, by kind, kept
+// out of the page's state the moment it is sent, and dropped when Settings
+// is left.
+const judgeKeys = { jev: "", openai: "", busy: "", replacing: "", replacement: "", removing: "" };
+export function resetJudgeUi() {
+  Object.assign(judgeKeys, { jev: "", openai: "", busy: "", replacing: "", replacement: "", removing: "" });
 }
 
-// judgeProviders are the providers the judge can be on (ADR 46): a Jev
-// server, and an OpenAI server at OpenAI's own address, whose Decisions API
-// the judge asks; another OpenAI-compatible server does not have one.
-function judgeProviders(desk) {
-  const openai = (url) => {
+const judgeWords = { ready: "ready", needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed", plan: "needs an API key" };
+const judgeKind = { jev: "Jev", openai: "OpenAI Decisions" };
+const usd = (x) => `$${x}`;
+
+// judgePrice says what a judge's questions cost, as far as anyone says.
+function judgePrice(j) {
+  if (j.price_input === undefined || j.price_output === undefined) return "price unknown: its requests are counted, not priced";
+  return `${usd(j.price_input)} per million input tokens, ${j.price_output ? `${usd(j.price_output)} per million output tokens` : "output free"}`;
+}
+
+// judgeCard is one judge a task may ask: where its questions go, the model
+// they ask, what they cost and whether it can be asked now. Its model is its
+// provider's judge model, which is all either API answers to, so nobody
+// types it.
+function judgeCard(ctx, j, redraw) {
+  const { conn, desk } = ctx;
+  const dot = j.state === "ready" ? "ok" : "warn";
+  // A Jev server carries no model, so it is kept here rather than under
+  // Models: its key is replaced and it is removed here. An OpenAI server is
+  // a model provider too, kept under Models.
+  const server = (desk.settings?.servers || []).find((s) => s.name === j.name);
+  const jev = j.provider === "jev" && server && conn.has("settings.provider.write");
+  const replacing = judgeKeys.replacing === j.name;
+  const key = h("input", { class: "input", id: `judge-replace-${j.name}`, type: "password", autocomplete: "off", spellcheck: false, placeholder: "New API key", oninput: () => (judgeKeys.replacement = key.value) });
+  key.value = judgeKeys.replacement;
+  const replace = async () => {
+    const value = judgeKeys.replacement;
+    judgeKeys.replacement = "";
+    judgeKeys.busy = j.name;
+    redraw();
     try {
-      return new URL(url).hostname === "api.openai.com";
-    } catch {
-      return false;
+      desk.settings = await conn.call("settings.provider.write", { name: j.name, provider: "jev", url: server.url, api_key: value });
+      judgeKeys.replacing = "";
+      toast(`${j.name}'s key replaced.`);
+      await desk.refreshModels();
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      judgeKeys.busy = "";
+      redraw();
     }
   };
-  // The one config.toml names stays a choice whatever its address, so what
-  // is saved is always shown.
-  const saved = values(desk)["judge.server"]?.value;
-  return (desk.settings?.servers || []).filter((s) => !s.inline && (s.name === saved || s.provider === "jev" || (s.provider === "openai" && openai(s.url))));
+  const remove = async () => {
+    judgeKeys.removing = "";
+    try {
+      desk.settings = await conn.call("settings.provider.remove", { name: j.name });
+      toast(`${j.name} removed. Its key stays in the keychain: Connections › Credentials removes it.`);
+      await desk.refreshModels();
+    } catch (error) {
+      toast(error.message);
+    }
+    redraw();
+  };
+  const actions = jev
+    ? h(
+        "div",
+        { class: "row-actions" },
+        replacing
+          ? [key, h("button", { type: "button", class: "btn small", disabled: !!judgeKeys.busy, onclick: replace }, judgeKeys.busy === j.name ? "Saving…" : "Save the key"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((judgeKeys.replacing = ""), (judgeKeys.replacement = ""), redraw()) }, "Cancel")]
+          : h("button", { type: "button", class: "btn small", onclick: () => ((judgeKeys.replacing = j.name), redraw()) }, "Replace the key"),
+        judgeKeys.removing === j.name
+          ? [h("span", { class: "muted" }, "Remove it? Its key stays in the keychain."), h("button", { type: "button", class: "btn small danger", onclick: remove }, "Remove"), h("button", { type: "button", class: "btn small ghost", onclick: () => ((judgeKeys.removing = ""), redraw()) }, "Cancel")]
+          : h("button", { type: "button", class: "btn small danger", disabled: j.default, title: j.default ? "New tasks ask it: choose another default first" : "", onclick: () => ((judgeKeys.removing = j.name), redraw()) }, "Remove"),
+      )
+    : null;
+  return h(
+    "div",
+    { class: "judge-card", id: `judge-${j.name}`, dataset: { judge: j.name } },
+    h(
+      "div",
+      { class: "list-row" },
+      h("span", { class: `dot ${dot}` }),
+      h(
+        "div",
+        { class: "main" },
+        h("strong", {}, j.name, j.default ? h("span", { class: "badge plain default-badge" }, "default") : null),
+        h("span", {}, `${judgeKind[j.provider] || j.provider} · ${j.host} · ${j.model}`),
+        h("span", { class: "judge-price" }, judgePrice(j)),
+        j.state !== "ready" ? h("span", { class: "warn-text" }, j.detail || judgeWords[j.state] || j.state) : null,
+      ),
+      h("div", { class: "end" }, h("span", { class: "state-word" }, judgeWords[j.state] || j.state)),
+    ),
+    actions,
+  );
 }
 
-function judgeSection(ctx, redraw) {
+// addJudge adds the provider a judge of kind is on, with its key, and makes
+// it the default when there is none. It is settings.provider.write, as
+// adding it under Models is: the key goes to the keychain, bound for that
+// host, and config.toml gets the [servers.NAME].
+async function addJudge(ctx, kind, redraw) {
+  const { conn, desk } = ctx;
+  const key = judgeKeys[kind];
+  judgeKeys[kind] = "";
+  judgeKeys.busy = kind;
+  redraw();
+  const taken = new Set((desk.settings?.servers || []).map((s) => s.name));
+  const base = kind === "jev" ? "Jev" : "OpenAI-API";
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
+  const params =
+    kind === "jev"
+      ? { name, provider: "jev", url: "https://api.typesafe.ai", api_key: key }
+      : { name, provider: "openai", url: "https://api.openai.com/v1", dialect: "responses", api_key: key };
+  try {
+    desk.settings = await conn.call("settings.provider.write", params);
+    const made = (desk.settings.judges || []).find((j) => j.name === name);
+    if (!values(desk)["judge.server"]?.value && made?.state === "ready") {
+      desk.settings = await conn.call("settings.write", { set: { "judge.server": name } });
+      toast(`${name} added, and new tasks ask it.`);
+    } else toast(made?.state && made.state !== "ready" ? `${name} added, but ${made.detail || judgeWords[made.state]}.` : `${name} added. Choose it for new tasks above, or for a task beside its model.`);
+    await desk.refreshModels();
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    judgeKeys.busy = "";
+    redraw();
+  }
+}
+
+// addJudgeCard offers a judge of kind that is not set up: what it is, and a
+// field for its key. A ChatGPT plan cannot ask the Decisions API, which the
+// card says when that is what the person has.
+function addJudgeCard(ctx, kind, redraw) {
+  const { conn, desk } = ctx;
+  const unlocked = !!desk.keychain?.unlocked;
+  const plans = (desk.settings?.servers || []).filter((s) => s.provider === "openai" && s.authentication === "chatgpt");
+  const what =
+    kind === "jev"
+      ? "Jev, TypeSafe's judge: it answers the judge's questions and nothing else. Paste the API key from typesafe.ai: its model and its price are known, so you type neither."
+      : `OpenAI's Decisions API, which takes an OpenAI API key${plans.length ? `: ${plans.map((p) => p.name).join(", ")} signs in with a ChatGPT plan, which only reaches its chat models` : ""}. Its model and its price are known, so you type neither. The key is also listed under Models, where models can be put on it.`;
+  const input = h("input", {
+    class: "input",
+    id: `judge-key-${kind}`,
+    type: "password",
+    autocomplete: "off",
+    spellcheck: false,
+    placeholder: kind === "jev" ? "Jev API key" : "OpenAI API key (sk-…)",
+    disabled: !unlocked || !!judgeKeys.busy,
+    oninput: () => {
+      judgeKeys[kind] = input.value;
+      button.disabled = !input.value.trim() || !unlocked || !!judgeKeys.busy;
+    },
+  });
+  input.value = judgeKeys[kind];
+  const button = h(
+    "button",
+    { type: "submit", class: "btn", id: `judge-add-${kind}`, disabled: !judgeKeys[kind].trim() || !unlocked || !!judgeKeys.busy },
+    judgeKeys.busy === kind ? "Adding…" : kind === "jev" ? "Add Jev" : "Add the OpenAI key",
+  );
+  return h(
+    "form",
+    { class: "judge-card judge-add", id: `judge-add-card-${kind}`, onsubmit: (event) => (event.preventDefault(), addJudge(ctx, kind, redraw)) },
+    h("div", { class: "main" }, h("strong", {}, kind === "jev" ? "Jev" : "OpenAI Decisions"), h("p", { class: "hint" }, what)),
+    conn.has("settings.provider.write") ? h("div", { class: "row-actions" }, input, button) : null,
+    unlocked ? null : h("p", { class: "hint" }, "Keys are kept in the keychain: ", h("a", { href: "#/settings/keys" }, "create or unlock it"), " first."),
+  );
+}
+
+function judgeSection(ctx, redraw, root) {
   const { desk } = ctx;
   const settings = desk.settings || {};
+  const judges = settings.judges || [];
   const content = picked(desk, "judge.content");
-  const server = picked(desk, "judge.server");
   const saved = values(desk)["judge.server"]?.value || "";
-  const providers = judgeProviders(desk);
-  // What the keychain and the binding table say of the key of the judge's
-  // server, as a provider's is said: nothing is asked of the judge's
-  // service here, so "Key ready" is all that can be known before its first
-  // answer.
-  const key = settings.judge_key;
+  const server = picked(desk, "judge.server");
+  const chosen = judges.find((j) => j.name === server);
   const status = !server
-    ? "Off: no provider is chosen, so plans are drafted without the judge's score and you answer every command."
+    ? "New tasks start with no judge: their plans are drafted without its score, and you answer every command they ask."
     : server !== saved
-      ? `Save to have the judge ask ${server}.`
+      ? `Save to have new tasks ask ${server}.`
       : content === "none"
-        ? "Off: nothing goes to the judge, and plans are drafted without its score."
-        : key === "ready"
-          ? `Key ready: ${server}'s key is stored, unlocked and allowed for ${settings.judge_host}. Whether the judge accepts it shows on its first answer.`
-          : key === "locked"
-            ? "Not available: the keychain is locked."
-            : key === "unbound"
-              ? `Not available: ${settings.judge_key_detail}.`
-              : `Not available: ${server} has no key stored. Add it under Models › Providers.`;
-  const kind = { jev: "Jev", openai: "OpenAI" };
-  const levels = [
-    ["none", "Off"],
-    ["plan", "The task and plan"],
-    ...(content === "plan+summaries" ? [["plan+summaries", "Plan and summaries"]] : []),
-    ["full", "Also what calls would send"],
-  ];
+        ? "Off in config.toml (judge.content = \"none\"): no task asks the judge."
+        : chosen?.state === "ready"
+          ? `New tasks ask ${server}. Its key is stored, unlocked and allowed for ${chosen.host}; whether the service takes it shows on its first answer.`
+          : `New tasks ask ${server}, which can't be asked now: ${chosen?.detail || "it is not set up"}. You answer instead.`;
+  const levels = [["plan", "The task and plan"], ...(content === "plan+summaries" ? [["plan+summaries", "Plan and summaries"]] : []), ["full", "Also what calls would send"], ...(content === "none" ? [["none", "Nothing (off)"]] : [])];
   const contentHint = {
-    none: "The judge is not asked anything.",
+    none: "The judge is not asked anything, by any task.",
     plan: "It is shown the task and the plan, which is all the plan gate needs. The default.",
     "plan+summaries": "Reserved: for now the judge sees what it sees at “The task and plan”.",
     full: "When it answers a command it also sees what the call would send, and the model may ask it questions itself (judge-* tools). Credentials are never shown to it.",
   };
+  const kinds = new Set(judges.map((j) => (j.provider === "openai" && j.state === "plan" ? "plan" : j.provider)));
+  // A judge model or prices in config.toml are the default judge's: shown
+  // only where they say something its provider does not.
+  const model = values(desk)["judge.model"];
+  const own = (name) => !!values(desk)[name]?.set;
+  const providerModel = chosen?.provider_model || "";
+  const wrongModel = chosen && model?.set && model.value && model.value !== providerModel && edits.get("judge.model") !== "";
   return section(
     "judge",
     "Judge",
-    "The judge scores plans before a task acts, and answers its commands before you're asked (Approvals, above).",
-    ...row("Status", h("p", { class: "hint" }, status)),
+    "The judge scores a task's plan before it acts, and answers its commands before you're asked (General › Approvals). Each task asks the judge chosen for it beside its model; new tasks start with the default here.",
+    ...row("Status", h("p", { class: "hint", id: "judge-status" }, status)),
     ...row(
-      "Provider",
-      choice(ctx, "judge.server", [["", "None"], ...providers.map((p) => [p.name, `${p.name} (${kind[p.provider]}${p.authentication === "chatgpt" ? ", ChatGPT plan" : ""})`])], redraw),
-      h(
-        "p",
-        { class: "hint" },
-        "Jev answers the judge's questions only. An OpenAI provider is asked through OpenAI's Decisions API (gpt-6-luna) with the key its models use. Either is added under ",
-        h("a", { href: "#section-models" }, "Models › Providers"),
-        ".",
-      ),
+      "Default for new tasks",
+      choice(ctx, "judge.server", [["", "No judge"], ...judges.map((j) => [j.name, `${j.name}${judgeKind[j.provider] && judgeKind[j.provider] !== j.name ? ` · ${judgeKind[j.provider]}` : ""}${j.state !== "ready" ? ` (${judgeWords[j.state] || j.state})` : ""}`])], redraw),
+      h("p", { class: "hint" }, "A task's own choice, beside its model, changes only that task. Tasks already open keep theirs."),
     ),
+    ...row(
+      "Judges",
+      judges.length ? h("div", { class: "judges" }, judges.map((j) => judgeCard(ctx, j, redraw))) : h("p", { class: "hint" }, "No judge is set up yet."),
+      kinds.has("jev") ? null : addJudgeCard(ctx, "jev", redraw),
+      kinds.has("openai") ? null : addJudgeCard(ctx, "openai", redraw),
+      h("p", { class: "hint" }, "An OpenAI judge is on a model provider, whose key is replaced under ", h("a", { href: "#/settings/models" }, "Models"), ". A key is stored encrypted in the keychain and sent only to its judge's address."),
+    ),
+    ...(wrongModel
+      ? row(
+          "Its model",
+          h(
+            "div",
+            { class: "callout warn", id: "judge-model-warning" },
+            h("p", {}, `config.toml asks ${server} for the model “${model.value}”, which its API does not answer to, so its questions fail and are not priced. ${chosen.provider === "jev" ? "Jev" : "OpenAI's Decisions API"} answers to ${providerModel}.`),
+            h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn", id: "judge-model-fix", onclick: () => (edits.set("judge.model", ""), (saveError = ""), redraw()) }, `Use ${providerModel}`)),
+          ),
+        )
+      : []),
     ...row("What it sees", choice(ctx, "judge.content", levels, redraw), h("p", { class: "hint" }, contentHint[content] || "")),
     ...row("Allows a command at", input(ctx, "judge.approve_threshold", { width: "narrow" }), h("p", { class: "hint" }, "The judge's probability of “allow”, from above 0 to 1, at which it lets a command go ahead. Below that, or with no answer, you're asked.")),
-    ...row("Model and prices", h("p", { class: "hint" }, h("a", { href: "#section-models" }, "Under Models"), ", with the other models' settings.")),
+    ...row("Waits for an answer", input(ctx, "judge.timeout", { width: "narrow" }), h("p", { class: "hint" }, "For each answer. A judge that doesn't answer in time allows nothing: you're asked instead, or in a judged run, it's a no.")),
+    ...(saved
+      ? row(
+          "Your own prices",
+          h(
+            "details",
+            { class: "judge-prices", open: own("judge.price_input") || own("judge.price_output") || (chosen && chosen.price_input === undefined) },
+            h("summary", {}, `For ${saved} only, if its published price is wrong`),
+            h(
+              "div",
+              { class: "row-actions" },
+              input(ctx, "judge.price_input", { width: "narrow", prefix: "$", placeholder: settings.judge_published?.price_input !== undefined ? String(settings.judge_published.price_input) : "unknown" }),
+              h("span", { class: "muted" }, "input,"),
+              input(ctx, "judge.price_output", { width: "narrow", prefix: "$", placeholder: settings.judge_published?.price_output !== undefined ? String(settings.judge_published.price_output) : "unknown" }),
+              h("span", { class: "muted" }, "output, per million tokens"),
+            ),
+            h("p", { class: "hint" }, "The judge reports what each request used, never what it cost, so a price estimates it. Empty is what its provider publishes. Tasks show the judge's spend, and a spend limit counts it."),
+          ),
+        )
+      : []),
   );
 }
 

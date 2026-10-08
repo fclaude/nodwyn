@@ -442,6 +442,18 @@ type SessionModel struct {
 	Context *WindowContext `json:"context,omitempty"`
 }
 
+// SessionJudge records the judge a task asks, chosen as it opened or since
+// (ADR 47): its server, or "" for none, with the provider, host and model
+// its questions go to, so the log says where they went even after
+// config.toml changes. Resuming restores it.
+type SessionJudge struct {
+	Actor    string `json:"actor,omitempty"`
+	Server   string `json:"server"`
+	Provider string `json:"provider,omitempty"`
+	Host     string `json:"host,omitempty"`
+	Model    string `json:"model,omitempty"`
+}
+
 // TurnCheckpoint records a budget decision, including cancellation and the
 // unchanged hard ceiling. Text is redacted by the ordinary Record boundary.
 type TurnCheckpoint struct {

@@ -17,7 +17,8 @@ nodwyn has four ways in, over one core:
   `replay`, `versions`, `undo`, `credential`, `keychain`, `mcp`, `trust`,
   `devices`, `run`, `summary`, `eval`, `repl`).
 
-This page records what each one can do as of 2026-10-08, so work on a
+This page records what each one can do as of 2026-10-08 (the judge choice,
+ADR 47, included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -77,6 +78,17 @@ it can see the thing but not change it.
 | A choice while a turn runs is queued | yes | yes, and the conversation says so | — | — |
 | Choosing from a paired device | refused (ADR 30) | — | — | — |
 
+## The judge (ADR 46, ADR 47)
+
+| | Console | TUI | Line mode | CLI |
+|---|---|---|---|---|
+| See the task's judge, and the judges set up | yes, the picker's Judge select | yes, `:judge` | — | — |
+| Choose a task's judge as it opens | yes, New task's picker | not built: `[judge]`'s; use `:judge` before the first message | `[judge]`'s | `nodwyn run`: `[judge]`'s |
+| Move a task to another judge, or none | yes, between turns | yes, `:judge NAME`, `:judge none` | not built | — |
+| Set a judge up: Jev's key, an OpenAI API key | Settings › Judge, in place | — | — | edit `config.toml`, `:eval (credential-register …)` |
+| The default judge | Settings › Judge, or beside the default model under Models | — | — | `[judge] server` |
+| Choosing from a paired device | refused (ADR 30, ADR 47) | — | — | — |
+
 ## Files and changes
 
 | | Console | TUI | Line mode | CLI |
@@ -111,10 +123,10 @@ needs.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
-| Providers, models, efforts, judge, limits, timeouts | Settings | — | — | edit `config.toml` |
+| Providers, models, efforts, judges, limits, timeouts | Settings, one tab each (General, Models, Judge, Context) | — | — | edit `config.toml` |
 | MCP servers: add, inspect, approve, pull | Connections › Tools | — | — | `nodwyn mcp` |
 | Credentials, OAuth2 sign-in | Connections › Credentials | — | — | `nodwyn credential` |
-| Keychain: create, unlock, passphrase | Settings | unlocks at start | unlocks at start | `nodwyn keychain` |
+| Keychain: create, unlock, passphrase | Settings › Keys & devices, and beside a provider form that needs it | unlocks at start | unlocks at start | `nodwyn keychain` |
 | Named workspaces and mounts | Workspaces | — | — | edit `workspaces.toml` |
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
 | Pair and revoke devices | yes, on this computer | — | — | `nodwyn devices` |
@@ -139,9 +151,9 @@ needs.
 
 ## Found while writing this
 
-- [protocol.md](protocol.md) says the console starts runs from Home with
+- [protocol.md](protocol.md) said the console starts runs from Home with
   `run.start`. It does not (ADR 35, [browser.md](browser.md), "Runs"), though
-  the bridge still lets the method through.
+  the bridge still lets the method through; protocol.md says so now.
 - The TUI's local mode makes worktrees without the daemon's task-root
   refusal, as it opens any `--repo` without it. The refusal moving into core
   is still not built (ADR 34, amended 2026-10-08).

@@ -312,7 +312,8 @@ same binding check, since OpenAI, Cerebras and Anthropic list their models only 
 a model key is bound for \code{GET} as well as \code{POST}.
 
 The New task window and a conversation share one picker, a Model select
-grouped by provider and an Effort select of what that model takes. New task
+grouped by provider, an Effort select of what that model takes, and, where a
+judge is set up, a Judge select (\adr{47}). New task
 shows both fields; a conversation tucks them behind a compact model-and-effort
 summary, opened by a click or by focusing it and pressing Enter. Warnings and
 change notices remain visible when collapsed, and an unavailable conversation
@@ -463,11 +464,18 @@ Its provider is one of two. Jev, TypeSafe's judge, is a provider of its
 own kind, \code{jev}: it answers the judge's questions and has no chat
 models, so no model can be put on it. OpenAI answers them through its
 Decisions API with \code{gpt-6-luna}, with the key an OpenAI server at
-\code{https://api.openai.com/v1} already has for its models. In the
-console, Settings \(\rightarrow\) Models adds Jev with its preset (its key
-goes to the keychain, allowed for its host by POST alone), and Settings
-\(\rightarrow\) Judge chooses the provider. By hand, a server and the
-\code{[judge]} table that names it:
+\code{https://api.openai.com/v1} already has for its models. A ChatGPT
+plan's sign-in cannot ask it, since the keychain sends a plan's token only
+to its chat endpoints, so such a server is refused as a judge (\adr{47}).
+In the console, Settings \(\rightarrow\) Judge sets either up in place:
+paste Jev's key, or an OpenAI API key, and that is all, since each judge's
+model and price are known; its key goes to the keychain, allowed for its
+host by POST alone, and a judge added when there is none becomes the
+default. A task asks \code{[judge]}'s judge unless it chose another, beside
+its model, in the New task window, its conversation, or the terminal's
+\code{:judge}; each choice is a \code{session.judge} record, and a resumed
+task asks the judge it chose. By hand, a server and the \code{[judge]}
+table that names it:
 
 \begin{toml}
 [servers.jev]
@@ -496,8 +504,11 @@ positions = ["header:Authorization:Bearer"]
 methods = ["POST"]
 \end{toml}
 
-The judge asks its provider's model (\code{jev-latest}, \code{gpt-6-luna})
-unless \code{model} names another. A \file{config.toml} that still has the
+The judge asks its provider's model (\code{jev-latest}, \code{gpt-6-luna}),
+which is all either API answers to; \code{model} and the prices above apply
+only on the server \code{[judge]} names, and Settings says when
+\code{model} names one its provider does not answer to, with a button that
+clears it. A \file{config.toml} that still has the
 old \code{[jev]} table does not load, and says what replaces it. The
 thresholds were set against Jev's probabilities; another judge may put the
 same command higher or lower.

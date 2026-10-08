@@ -182,3 +182,11 @@ changes the daemon, the event protocol or guard checks. The transcript
 browser check measures DOM mutations for a fragment burst and exercises
 scroll following, questions, final responses, switching, reload and
 disposal; energy savings still require a separate power measurement.
+
+## Amendment 2026-10-08: a device chooses no judge (ADR 47)
+
+A task's judge is chosen as its model is, and for the same reason it stays
+with this computer: the judge is shown the task's plan and commands. The
+bridge lists `session.judge.set` only for this computer, and the daemon
+refuses `judge` in `session.open` and `session.judge.set` from a paired
+device.

@@ -89,24 +89,30 @@ window and first-run setup see [app.md](app.md).
 
 Settings is what tasks start with when nobody says otherwise, kept in
 `config.toml`; every other line of the file, comments included, stays as
-you wrote it. Its sections:
+you wrote it. It is tabs, each at an address of its own (`#/settings/judge`),
+so a link opens one and a reload keeps it; `#/settings` is the first. Only
+the tab shown is drawn, and the bar of unsaved changes keeps those made in
+every tab. The tabs:
 
-- **Approvals** — what a task does without asking you (ADR 35): whether it
+- **General** — Approvals and Limits:
+  - **Approvals** — what a task does without asking you (ADR 35): whether it
   writes files in its folder without asking (the default) or asks first,
   and who answers a command no allow list covers: the judge, then you when
   it refuses or there is none (the default); you; or nobody, and it runs. A
   write to a protected file, content that looks like a credential and a
   command built from what a tool returned always ask. The transcript says
   which calls went ahead, which the judge allowed, and why it refused one.
-- **Limits** — each turn's tool calls, tokens used, actions and time: where
+  - **Limits** — each turn's tool calls, tokens used, actions and time: where
   it stops, and, if you set it lower, where it asks first whether to go
   on (by default it doesn't); the spend limit on a whole
   task, in dollars, off until you set where it stops; and how long a model
   reply and a command may take.
-- **Models** (ADR 41) — three things.
-  *Default for new tasks* is a model from the list and its default effort,
-  saved on its own button, since it is a write to `config.toml` that the bar
-  below does not carry. *Providers* lists each model server with whether it can
+- **Models** (ADR 41, ADR 47) — two things.
+  *Default for new tasks* is a model from the list, its default effort and the
+  judge new tasks ask, side by side as a task chooses them, saved together on
+  their own button, since they are writes the bar below does not carry.
+  *Providers and their models* lists each model server as a card with the
+  models on it under it, each with whether it can
   be used and, when not, the sentence that says what to fix (needs its key,
   keychain locked, key not allowed, not answering); **Test** sends it one short
   request and shows the reply or the provider's refusal; **Check again** asks
@@ -134,23 +140,32 @@ you wrote it. Its sections:
   visit, so the readiness checks that arrive while one is being typed into
   redraw the page without losing what was typed, and leaving Settings drops
   it, a key included.
-- **Judge** — whether a judge is available (its key stored, unlocked and
-  allowed for the judge's host, as a provider's key is checked; the judge's
-  service is not asked, so *Key ready* is not yet its answer), what it may
-  be shown and the probability at which it lets a command run. Its model, its prices (with
-  what typesafe.ai publishes as their placeholders) and how long it may take
-  are under **Models**, after the models' own.
-- **Documents** — how uploads to Google Docs are handled (the manual,
-  "Documents out").
-- **Containers** — podman, docker, or whichever is installed, for contained
-  MCP servers.
-- **Context window** — the water marks between which a task's context is
+- **Judge** (ADR 46, ADR 47) — what new tasks ask, and the judges set up.
+  *Status* says which judge new tasks ask and whether it can be asked: its
+  key stored, unlocked and allowed for its host, as a provider's key is
+  checked (the judge's service is not asked, so ready is not yet its answer),
+  or why not. *Default for new tasks* chooses among them, or none. *Judges*
+  is a card for each judge set up, with its host, its model and its price
+  (both known: its provider's judge model, and the price nodwyn keeps for its
+  questions), and, for Jev, **Replace the key** and **Remove**. A judge not
+  set up yet is offered in place: paste Jev's key, or an OpenAI API key, and
+  that is all; one added when there is none becomes the default. A ChatGPT
+  plan's server is no judge, since the Decisions API takes an API key, and
+  the OpenAI card says so. *What it sees*, *Allows a command at* and *Waits
+  for an answer* follow, and under a fold, the default judge's own prices,
+  each empty for the published one. A `[judge] model` its provider does not
+  answer to is said, with a button that clears it.
+- **Context** — the water marks between which a task's context is
   summarized or trimmed (unset, they follow each model's context less its
   reply cap; set, they shrink only for a model that cannot hold them), the
   largest tool result shown whole, and the fallback reply cap of a model
   that has none of its own and none its provider publishes.
-- The keychain, paired devices, this browser's appearance, whether it
-  shows the model's thinking, and its notifications, and this connection.
+- **Documents & containers** — how uploads to Google Docs are handled (the
+  manual, "Documents out"), and podman, docker, or whichever is installed,
+  for contained MCP servers.
+- **Keys & devices** — the keychain and paired devices.
+- **This browser** — its appearance, whether it shows the model's thinking,
+  its notifications, and this connection.
 
 A field left empty takes its default, which it shows; clearing one puts the
 default back. Changes wait in a bar at the bottom of the page and are saved
@@ -184,7 +199,12 @@ a conversation's, a **Model** and an **Effort** select. Both list the models
 of Settings grouped by provider, each labelled with what is wrong when it
 cannot be used, and the efforts that model takes (*Not configurable* when it
 takes none). Choosing another model keeps the effort when the new model takes
-it, else takes that model's own default, and says so.
+it, else takes that model's own default, and says so. Beside them, where a
+judge is set up and on this computer, a **Judge** select (ADR 47): *No judge*,
+then each judge of Settings › Judge, labelled with what is wrong when it
+cannot be asked. A judge that cannot be asked does not stop a task, since you
+answer instead; the lines under the picker say why. A conversation's summary
+says which judge it asks ("judged by Jev", or "no judge").
 
 - *New task.* It starts on the default of Settings. A choice is kept while
   another page is shown and in this browser across a reload (an unsent choice,
@@ -192,6 +212,8 @@ it, else takes that model's own default, and says so.
   again, and never changes the default. A choice left alone is not sent. A
   model that cannot be used is said so and a task is not started on it; one
   removed from the list is said to be gone, and the page does not pick another.
+  A judge chosen here is kept and dropped the same way, and sent as
+  `session.open`'s `judge` only when it is not the default.
 - *A conversation.* The selects show what the next message is answered with
   and change it (`session.model.set`). After a choice, the lines under them
   say that the change takes effect from the next message; an unchanged running
@@ -205,10 +227,15 @@ it, else takes that model's own default, and says so.
   any window. An open task whose model's context nobody knows (its model
   state's `context_unknown`) says under its heading that it works in the
   default window, which compacts early, with an **Open Settings** button
-  (ADR 41, amended 2026-10-05).
+  (ADR 41, amended 2026-10-05) to Settings › Models. Its Judge select moves
+  the task to another judge, or none, from its next question
+  (`session.judge.set`); while a response runs it waits, since a judge is
+  chosen between turns, and the transcript says each choice ("Judge: Jev ·
+  jev-latest at api.typesafe.ai").
 - A paired device sees the selects, disabled, and a line saying the model is
   chosen on the computer nodwyn runs on; Home shows only the default model's
-  name.
+  name. It has no Judge select: the judge is chosen on that computer too
+  (ADR 47).
 
 ## Tasks, folders and files
 

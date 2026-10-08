@@ -104,6 +104,9 @@ type sessionDetails struct {
 	MCP []core.MCPServer `json:"mcp"`
 	// Worktree is the git worktree Repo is, made for this session (ADR 34).
 	Worktree *log.Worktree `json:"worktree,omitempty"`
+	// Judge is the judge the task asks now (ADR 47); its server is empty
+	// when it has none.
+	Judge core.JudgeState `json:"judge"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
@@ -112,7 +115,7 @@ func (s *server) details(session *core.Session) sessionDetails {
 	limits := session.Limits()
 	trust, actor := session.TurnApproval()
 	all, allActor := session.ApproveAll()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree()}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge()}
 }
 
 func orEmpty[T any](list []T) []T {
@@ -195,6 +198,7 @@ var methodTable = map[string]handler{
 	"worktree.review":          (*server).worktreeReview,
 	"session.resume":           (*server).resume,
 	"session.model.set":        (*server).model,
+	"session.judge.set":        (*server).judge,
 	"session.info":             (*server).info,
 	"session.close":            (*server).closeSession,
 	"session.rename":           (*server).rename,
@@ -303,12 +307,19 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 // repository with a commit. Both take the same model choice (ADR 40).
 func (s *server) open(req request, client *peer) (any, *rpcError) {
 	var p openParams
-	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort"); err != nil {
+	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort", "judge"); err != nil {
 		return nil, err
 	}
 	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort, Actor: client.actor}
 	if why := deviceModelRefusal(client.actor, choice); why != nil {
 		return nil, why
+	}
+	var judge *core.JudgeChoice
+	if p.Judge != nil {
+		if strings.Contains(client.actor, " via ") {
+			return nil, failure(-32602, "The judge a task asks is chosen on the computer nodwyn runs on, not from a paired device")
+		}
+		judge = &core.JudgeChoice{Server: *p.Judge, Actor: client.actor}
 	}
 	if !filepath.IsAbs(p.Repo) {
 		return nil, failure(-32602, "repo must be an absolute directory")
@@ -325,6 +336,7 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	options := s.options
 	options.Repo = p.Repo
 	options.Model = choice
+	options.Judge = judge
 	options.Worktree = req.Method == "worktree.open"
 	// Making a session can take a while (a worktree is checked out, with
 	// the repository's hooks and filters), so it is made without the
@@ -413,6 +425,35 @@ func (s *server) model(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32000, "Stop the active run before switching the model")
 	}
 	state, err := owned.session.SetModel(choice)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return state, nil
+}
+
+// judge is session.judge.set: a task's judge, from its next question (ADR
+// 47). The judge is shown the task's plan and commands, so where they go is
+// this computer's choice, as a model's is (ADR 30), and a run, whose judge
+// may be answering its confirms, keeps the one it started with.
+func (s *server) judge(req request, client *peer) (any, *rpcError) {
+	var p judgeSetParams
+	if err := params(req.Params, &p, "id", "judge"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	if strings.Contains(client.actor, " via ") {
+		return nil, failure(-32602, "The judge a task asks is chosen on the computer nodwyn runs on, not from a paired device")
+	}
+	owned, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before choosing the judge")
+	}
+	state, err := owned.session.SetJudge(p.Judge, client.actor)
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}

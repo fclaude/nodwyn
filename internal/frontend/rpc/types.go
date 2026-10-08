@@ -26,6 +26,16 @@ type openParams struct {
 	// Effort is the reasoning effort the conversation starts with: one the
 	// model takes (ADR 41). Left out, it is the model's own default.
 	Effort string `json:"effort,omitempty"`
+	// Judge is the [servers.NAME] the task's judge is on, "" for none
+	// (ADR 47). Left out, it is config.toml's [judge] server.
+	Judge *string `json:"judge,omitempty"`
+}
+
+// judgeSetParams choose a task's judge: a [servers.NAME] whose provider
+// answers typed questions, or "" for none (ADR 47).
+type judgeSetParams struct {
+	ID    string `json:"id"`
+	Judge string `json:"judge"`
 }
 
 // modelSetParams choose a conversation's model: a [models.NAME] entry by

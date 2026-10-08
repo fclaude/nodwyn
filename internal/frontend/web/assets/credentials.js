@@ -93,7 +93,7 @@ export async function renderCredentials(body, ctx, redraw) {
   body.append(
     ...[
       keychain.no_passphrase
-        ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "The keychain has no passphrase. "), noPassphraseWarning, " ", h("a", { href: "#/settings" }, "Set one in Settings"), "."))
+        ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "The keychain has no passphrase. "), noPassphraseWarning, " ", h("a", { href: "#/settings/keys" }, "Set one in Settings"), "."))
         : null,
       list.bindings_error ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "bindings.toml does not load: "), list.bindings_error, ". Where each credential may go is shown as nodwyn last loaded it.")) : null,
       modelsCard(list, modelCreds, modelMissing, credential && selectedPanel === "models" ? credential : null, ctx, redraw, (id) => open("models", id)),
@@ -189,7 +189,7 @@ function modelsCard(list, creds, missing, open, ctx, redraw, pick) {
     creds.length ? h("div", { class: "list" }, creds.map((c) => row(c, redraw, pick))) : missing.length ? null : h("div", { class: "callout plain" }, "No provider keys yet. Add a provider in Settings › Models and its key is stored and allowed at once."),
     open ? detail(open, list, ctx, redraw) : null,
     showAdd ? addKey(ctx, redraw) : null,
-    h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings" }, "Change the providers")),
+    h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/settings/models" }, "Change the providers")),
   );
 }
 

@@ -199,6 +199,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if err == nil {
 			m.append(modelLine(p))
 		}
+	case string(log.KindSessionJudge):
+		var p log.SessionJudge
+		p, err = decode[log.SessionJudge](e.Payload)
+		if err == nil {
+			m.append(judgeLine(p))
+		}
 	case string(log.KindWorktreeCreate), string(log.KindWorktreeRestore), string(log.KindWorktreeRemove):
 		var p log.WorktreeChange
 		p, err = decode[log.WorktreeChange](e.Payload)

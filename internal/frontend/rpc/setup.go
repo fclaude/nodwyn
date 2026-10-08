@@ -242,6 +242,10 @@ type settingsResult struct {
 	// its questions, which prices its requests when [judge] sets none;
 	// absent when nodwyn does not know it.
 	JudgePublished *publishedModel `json:"judge_published,omitempty"`
+	// Judges are the judges a task may ask (ADR 47), for the pickers and
+	// Settings' Judge tab: each Jev server and each OpenAI server at
+	// OpenAI's own address, with whether it can be asked now.
+	Judges []judgeChoice `json:"judges"`
 }
 
 // docsSettings is how documents leave this computer: whether a Google
@@ -344,12 +348,12 @@ func (s *server) settings() settingsResult {
 	}
 	result := settingsResult{ConfigFile: s.options.Paths.ConfigFile, Control: s.options.Config.Control, Models: names, Servers: s.providers(), Choices: s.choices(), Keychain: s.keychainStatus(),
 		Docs: docsSettings{Google: docs.GoogleCredential != "", GoogleUpload: docs.GoogleUpload}, Values: s.values(),
-		JudgeModel: s.options.Config.JudgeModel(), JudgePublished: judgePublished(s.options.Config)}
+		JudgeModel: s.options.Config.JudgeModel(), JudgePublished: judgePublished(s.options.Config), Judges: s.judges()}
 	// A key stored but not allowed for the judge's host is refused by the
 	// guard on the judge's first request, so it is not ready.
 	if srv, ok := s.options.Config.JudgeServer(); ok {
 		result.JudgeHost = prim.JudgeHost(prim.JudgeOptions{URL: srv.URL})
-		result.JudgeKey, result.JudgeKeyDetail = s.keyCheck(srv.Credential, result.JudgeHost, prim.JudgePosition)
+		result.JudgeKey, result.JudgeKeyDetail = s.judgeKeyCheck(s.options.Config.Judge.Server, srv.Credential, result.JudgeHost)
 		result.Judge = result.JudgeKey == stateReady
 	}
 	return result

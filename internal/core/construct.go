@@ -56,6 +56,10 @@ type Options struct {
 	// that switched its model takes that choice back, when config.toml
 	// still has it.
 	Model ModelChoice
+	// Judge is the judge the task asks (ADR 47); nil is config.toml's
+	// [judge] server. A session resumed from a log that chose its judge
+	// takes that choice back, when config.toml still has it.
+	Judge *JudgeChoice
 	// EventBuffer is the events channel capacity (default 256).
 	EventBuffer int
 	// LogWriter overrides the session log destination (tests).
@@ -91,6 +95,7 @@ func New(o Options) (*Session, error) {
 		out:     make(chan event.Event, o.EventBuffer),
 		prompts: map[string]pendingConfirmation{},
 		secrets: map[string]pendingSecret{},
+		judge:   initialJudge(o),
 	}
 	// The worktree comes first: it is the root everything else loads from
 	// (init.scm, allow.toml). A session that never starts
@@ -138,6 +143,11 @@ func New(o Options) (*Session, error) {
 		Model: s.model.Model, URL: s.model.URL, Tools: len(s.loop.Tools()),
 		Worktree: s.worktree,
 	})
+	if err == nil && o.Judge != nil {
+		// A task opened with a judge of its own records it, so resuming it
+		// asks that judge again whatever [judge] says later (ADR 47).
+		_, err = s.Record(log.KindSessionJudge, judgeRecord(o.Config, o.Judge.Server, o.Judge.Actor))
+	}
 	if c := s.opts.Model; err == nil && (c.Name != loop.ControlModel || s.effort != "") {
 		// A conversation opened on a chosen model, or asking for an effort,
 		// records the choice as a switch does, so resuming it talks to that
@@ -164,25 +174,6 @@ func fileExists(p string) bool {
 	return err == nil && !st.IsDir()
 }
 
-// judgeOptions resolves the existing per-session defaults before
-// registration: the provider, address and key class are the judge's
-// server's (ADR 46), the model its own or its provider's, and the prices
-// [judge]'s, else what its provider publishes (config.JudgePrices).
-func judgeOptions(c config.Config) prim.JudgeOptions {
-	j := c.Judge
-	timeout, err := time.ParseDuration(j.Timeout)
-	if err != nil {
-		timeout = 10 * time.Second
-	}
-	content := j.Content
-	if content == "" {
-		content = config.JudgeContentPlan
-	}
-	srv, _ := c.JudgeServer()
-	in, out := c.JudgePrices()
-	return prim.JudgeOptions{Provider: srv.Provider, URL: srv.URL, Model: c.JudgeModel(), Class: srv.Credential, Content: content, Timeout: timeout, PriceInput: in, PriceOutput: out}
-}
-
 func resolveOptions(o Options) (Options, error) {
 	if _, err := o.Config.Budget.Limits(o.Config.Loop.MaxToolCalls); err != nil {
 		return Options{}, err
@@ -196,6 +187,13 @@ func resolveOptions(o Options) (Options, error) {
 	}
 	if o.Model.Name == "" && o.Model.Server == "" && o.Model.Model == "" {
 		o.Model.Name = loop.ControlModel
+	}
+	// A judge chosen for the task is checked as a choice made later is
+	// (ADR 47), so a refusal says what is wrong before a session exists.
+	if o.Judge != nil {
+		if err := CheckJudge(o.Config, o.Keychain, o.Judge.Server); err != nil {
+			return Options{}, fmt.Errorf("judge: %w", err)
+		}
 	}
 	if o.Repo == "" {
 		return Options{}, errors.New("core: repo root is required")
@@ -255,16 +253,19 @@ func (s *Session) primitiveOptions() prim.Options {
 	if s.keychain != nil {
 		po.Credentials = s
 	}
-	// The judge (ADR 19/20, ADR 46): its egress primitives are registered
-	// if [judge] names a server whose key is stored now, since the
-	// primitive table, the tools among it, is fixed for the session, as the
-	// judge's server is. The session is the JudgeClient. They are the
-	// model's tools as well only at the "full" content level, since the
-	// model chooses what it sends.
-	if _, ok := o.Config.JudgeServer(); ok && s.keychain != nil && s.judgeKey() != nil {
+	// The judge (ADR 19/20, ADR 46, ADR 47): its egress primitives are
+	// registered when a judge could be asked at all (a keychain is open,
+	// the judge is not off, and config.toml has a judge provider), since
+	// the primitive table is fixed for the session while the task's judge
+	// may be chosen later. The session is the JudgeClient, and each call
+	// asks it for the judge the task has then. They are the model's tools
+	// only at the "full" content level, since the model chooses what it
+	// sends, and only when the task starts with a judge it can ask: the
+	// tool list cannot gain them later.
+	if s.keychain != nil && judgeContent(o.Config) != config.JudgeContentNone && len(o.Config.JudgeChoices()) > 0 {
 		po.Judge = s
-		po.JudgeConfig = judgeOptions(o.Config)
-		po.JudgeConfig.Tools = po.JudgeConfig.Content == config.JudgeContentFull
+		po.JudgeConfig, _ = s.JudgeOptions()
+		po.JudgeConfig.Tools = judgeContent(o.Config) == config.JudgeContentFull && s.judgeKey() != nil
 	}
 	// W5 documents: google-doc-upload is offered only when a credential of
 	// the configured class is stored now, since the tool list is fixed for

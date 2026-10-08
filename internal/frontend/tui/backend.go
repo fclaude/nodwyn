@@ -38,6 +38,10 @@ type backend interface {
 	// moved to; SetModel moves it, by a choice's name and an effort (ADR 41).
 	Models(context.Context, string) (modelView, error)
 	SetModel(context.Context, string, string, string) (core.ModelState, error)
+	// Judges says which judge the task asks and which it may ask instead;
+	// SetJudge moves it, by a judge's name or "" for none (ADR 47).
+	Judges(context.Context, string) (judgeView, error)
+	SetJudge(context.Context, string, string) (core.JudgeState, error)
 	// AttachFile adds a file the person named to the conversation (ADR 22).
 	// An image's confirm arrives as a prompt while it waits.
 	AttachFile(context.Context, string, string) (log.Attach, error)

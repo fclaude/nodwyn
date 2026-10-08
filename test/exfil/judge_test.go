@@ -30,9 +30,13 @@ type judgeStore struct {
 	captured  *http.Request
 	bodyBytes []byte        // captured request body
 	reqs      []nlog.JevReq // jev.req records
+	judge     prim.JudgeOptions
 }
 
 func (s *judgeStore) Redactor() *l1.Scanner { return l1.New() }
+
+// JudgeOptions is the judge the harness registered, which every call asks.
+func (s *judgeStore) JudgeOptions() (prim.JudgeOptions, bool) { return s.judge, true }
 func (s *judgeStore) HandleForClass(class string) *scheme.Handle {
 	return s.kc.HandleForClass(class)
 }
@@ -131,6 +135,7 @@ func newJudgeHarness(t *testing.T, provider string, bound, tools, key bool) *jud
 	if tools {
 		o.JudgeConfig.Content, o.JudgeConfig.Tools = "full", true
 	}
+	store.judge = o.JudgeConfig
 	if err := prim.Register(in, o); err != nil {
 		t.Fatal(err)
 	}

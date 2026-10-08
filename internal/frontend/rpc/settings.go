@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/policyfile"
 )
 
@@ -171,7 +172,15 @@ func (s *server) settingsWrite(req request, client *peer) (any, *rpcError) {
 		// The daemon takes the changed tables from the file; the rest of
 		// what it holds must still agree with them.
 		next = withTables(s.options.Config, parsed, tables)
-		return out, next.Validate()
+		if err := next.Validate(); err != nil {
+			return nil, err
+		}
+		// A ChatGPT plan's sign-in is never sent to the Decisions API (the
+		// keychain refuses), so a judge on one would never answer (ADR 47).
+		if j := next.Judge.Server; tables["judge"] && j != "" && core.PlanSignIn(s.options.Keychain, next.Servers[j].Credential) {
+			return nil, fmt.Errorf("judge.server: %s signs in with a ChatGPT plan, which only reaches its chat models; the judge asks OpenAI's Decisions API with an API key, so add an OpenAI provider with one", j)
+		}
+		return out, nil
 	})
 	if err != nil {
 		return nil, failure(-32602, err.Error())

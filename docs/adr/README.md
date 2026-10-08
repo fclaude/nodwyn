@@ -50,3 +50,4 @@ One decision per file. Amend by editing and noting the change; never delete.
 
 - [0045](./0045-project-trust-and-security-boundaries.md) — User-owned project trust, executable identity, credential transport settings, keychain bounds and persistence, and canonical project paths
 - [0046](./0046-the-judge-is-a-providers.md) — The judge is a provider's: Jev or OpenAI's Decisions API, chosen in Settings, with `[jev]` become `[judge]` and one set of judge primitives, `judge-yes-no`, `judge-score` and `judge-choice` (amends 19, 20, 41)
+- [0047](./0047-a-tasks-judge-is-a-choice.md) — A task's judge is a choice beside its model, a ChatGPT plan's sign-in is no judge, its model is not typed, and Settings is tabs with one for the judge (amends 30, 41, 46)

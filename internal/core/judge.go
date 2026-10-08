@@ -142,7 +142,7 @@ func (s *Session) approveState(p guard.Prompt) string {
 	case len(p.Argv) > 0:
 		target = ": " + strings.Join(p.Argv, " ")
 	}
-	full := judgeOptions(s.opts.Config).Content == config.JudgeContentFull
+	full := judgeContent(s.opts.Config) == config.JudgeContentFull
 	var b strings.Builder
 	for _, r := range before {
 		fmt.Fprintf(&b, "Earlier in this conversation the person wrote:\n%s\n\n", r)

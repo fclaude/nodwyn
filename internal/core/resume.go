@@ -91,7 +91,17 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if err != nil {
 		return nil, err
 	}
-	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree, modelLost: gone}
+	// A task keeps the judge it chose (ADR 47). One config.toml no longer
+	// offers is not swapped for [judge]'s: the task has none until a judge
+	// is chosen, so its plans and commands go nowhere nobody chose.
+	judge, judgeGone := initialJudge(o), ""
+	if rec, found := lastJudgeChoice(history); found {
+		judge = rec.Server
+		if err := CheckJudge(o.Config, o.Keychain, rec.Server); err != nil {
+			judge, judgeGone = "", fmt.Sprintf("%s: %s", rec.Server, err)
+		}
+	}
+	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree, modelLost: gone, judge: judge}
 	if err = s.restoreHistory(history); err != nil {
 		return nil, err
 	}
@@ -127,6 +137,11 @@ func Resume(o Options, id string) (_ *Session, err error) {
 		// The conversation says what it lost, rather than silently talking
 		// to another model than the one it was left on.
 		if _, err = s.Record(log.KindNote, log.Note{Text: "The model this conversation was left on is not available (" + gone + "), so no turn will be asked until a model is chosen for it."}); err != nil {
+			return nil, err
+		}
+	}
+	if judgeGone != "" {
+		if _, err = s.Record(log.KindNote, log.Note{Text: "The judge this task chose is not available (" + judgeGone + "), so it has no judge until one is chosen."}); err != nil {
 			return nil, err
 		}
 	}

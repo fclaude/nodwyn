@@ -64,7 +64,7 @@ check(async () => {
   await page.goto(url);
   await page.waitForSelector("#task", { timeout: 10000 });
   // Settings: a keychain without a passphrase.
-  await go("#/settings");
+  await go("#/settings/keys");
   await page.waitForSelector("#keychain-none");
   await page.check("#keychain-none");
   if (await page.isVisible("#keychain-pass")) throw new Error("passphrase still asked for");
@@ -95,19 +95,16 @@ check(async () => {
   assert.deepStrictEqual(sent.of("credentials.replace"), [{ id: replaced.id, value: canary + "-rotated" }]);
   step("key replaced");
 
-  // The judge's key is a provider's (ADR 46): the Jev key is saved with its
-  // provider in Settings › Models and listed with the providers' keys, not
-  // in a panel of its own, allowed for typesafe.ai by POST alone. Its
-  // details open inside that panel at once; any shadowing of the detail
-  // renderer blanks the whole tab, so this step guards the panel's wiring
-  // too.
-  await go("#/settings");
-  await page.click("#add-provider");
-  await page.click("#preset-jev");
-  await page.fill("#provider-name", "jev");
-  await page.fill("#provider-key", "sk-judge-canary-0001");
-  await page.click("#provider-save");
-  await page.waitForSelector("#provider-jev", { timeout: 10000 });
+  // The judge's key is a provider's (ADR 46): the Jev key is added in
+  // Settings › Judge with its key alone (ADR 47) and listed with the
+  // providers' keys, not in a panel of its own, allowed for typesafe.ai by
+  // POST alone. Its details open inside that panel at once; any shadowing of
+  // the detail renderer blanks the whole tab, so this step guards the
+  // panel's wiring too.
+  await go("#/settings/judge");
+  await page.fill("#judge-key-jev", "sk-judge-canary-0001");
+  await page.click("#judge-add-jev");
+  await page.waitForSelector("#judge-Jev", { timeout: 10000 });
   await go("#/connections/credentials");
   await page.waitForSelector("#model-keys .cred-row:has-text('model-api-typesafe-ai')", { timeout: 10000 });
   if (await page.locator("#judge").count()) throw new Error("the Judge subpanel is still shown");
@@ -124,13 +121,11 @@ check(async () => {
   step("the Jev key's row reopens its details inside its panel");
   await page.screenshot({ path: `${out}/credentials-judge.png`, fullPage: true });
 
-  // Settings › Judge: put on the Jev provider, the judge's key is ready.
-  await go("#/settings");
-  await page.waitForSelector("#section-judge >> text=Off: no provider is chosen", { timeout: 10000 });
-  await page.click("#section-judge [id='set-judge.server-jev']");
-  await page.click(".save-bar button:text-is('Save')");
-  await page.waitForSelector("#section-judge >> text=Key ready: jev's key is stored, unlocked and allowed for api.typesafe.ai.", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": "jev" } });
+  // Settings › Judge: added when there was no judge, Jev is the default, and
+  // its key is ready.
+  await go("#/settings/judge");
+  await page.waitForSelector("#section-judge >> text=New tasks ask Jev. Its key is stored, unlocked and allowed for api.typesafe.ai", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": "Jev" } });
   step("settings reports the judge's key ready once the judge is on its provider");
   // A key stored but not allowed for the judge's host is not ready: the
   // guard would refuse the judge's first request. Settings are read once
@@ -139,7 +134,7 @@ check(async () => {
   const allBindings = fs.readFileSync(bindingsFile, "utf8");
   fs.writeFileSync(bindingsFile, allBindings.split("[[bind]]").filter((b) => !b.includes('class = "model-api-typesafe-ai"')).join("[[bind]]"));
   await page.reload();
-  await page.waitForSelector("#section-judge >> text=Not available: The key is stored but not allowed for api.typesafe.ai", { timeout: 10000 });
+  await page.waitForSelector("#section-judge >> text=New tasks ask Jev, which can't be asked now: The key is stored but not allowed for api.typesafe.ai", { timeout: 10000 });
   fs.writeFileSync(bindingsFile, allBindings);
   step("settings says a judge key not allowed for the judge's host is not available");
 
@@ -200,7 +195,7 @@ check(async () => {
   if (html.includes("canary")) throw new Error("a key value reached the page");
 
   // A passphrase, then none again.
-  await go("#/settings");
+  await go("#/settings/keys");
   await page.waitForSelector("#keychain-new");
   await page.fill("#keychain-new", "family passphrase");
   await page.fill("#keychain-new-again", "family passphrase");
@@ -254,7 +249,7 @@ check(async () => {
   assert.deepStrictEqual(sent.of("keychain.unlock"), [{ passphrase: "wrong passphrase" }, { passphrase: "family passphrase" }]);
   assert.strictEqual(await page.inputValue("#task"), "");
   step("startup and retry keep password typing out of chat");
-  await go("#/settings");
+  await go("#/settings/keys");
   await page.waitForSelector("summary:has-text('Change or remove the passphrase')");
   await page.click("summary:has-text('Change or remove the passphrase')");
   await page.click("button:has-text('Remove the passphrase')");

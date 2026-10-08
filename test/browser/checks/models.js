@@ -96,7 +96,7 @@ check(async () => {
   await page.waitForSelector("#task", { timeout: 10000 });
 
   // ---------- Settings › Models, from a config that names one inline model ----------
-  await go("#/settings");
+  await go("#/settings/models");
   await page.waitForSelector("#section-models");
   await page.waitForSelector("#default-model");
   assert.strictEqual(await page.inputValue("#default-model-model"), "control");
@@ -125,11 +125,15 @@ check(async () => {
   await page.fill("#provider-url", chatURL);
   await shows("#provider-form", "Create or unlock the keychain first");
   await page.click("#provider-form >> text=Cancel");
+  // The keychain is under Keys & devices, a tab of its own.
+  await go("#/settings/keys");
   await page.waitForSelector("#keychain-pass");
   await page.fill("#keychain-pass", "family passphrase");
   await page.fill("#keychain-again", "family passphrase");
   await page.click("text=Create the keychain");
   await page.waitForSelector("text=Unlocked", { timeout: 20000 });
+  await go("#/settings/models");
+  await page.waitForSelector("#section-models");
   step("keychain created");
 
   // ---------- a provider with a wrong key ----------
@@ -368,7 +372,7 @@ check(async () => {
   await page.screenshot({ path: `${out}/models-home-mobile.png` });
   await page.setViewportSize({ width: 1280, height: 1000 });
   // An unsent choice survives leaving the page and a reload, and is not the default.
-  await go("#/settings");
+  await go("#/settings/models");
   await page.waitForSelector("#default-model");
   await go("#/");
   await page.waitForSelector("#new-task-model-model");
@@ -546,7 +550,7 @@ check(async () => {
   // ---------- a model that is removed while it is in use ----------
   // The task on "fast" is closed; "fast" leaves the list; opening the task
   // again does not hand it to another model.
-  await go("#/settings");
+  await go("#/settings/models");
   await page.waitForSelector("[data-model='127-0-0-1-fast']");
   await page.click("[data-model='127-0-0-1-fast'] button:text-is('Remove')");
   await page.click("[data-model='127-0-0-1-fast'] button:text-is('Remove')"); // the confirm
@@ -619,7 +623,7 @@ check(async () => {
   // added on it starts with the ask to cache its prompt chosen, and a test of
   // it goes to the Messages API with its effort (ADR 8, amended 2026-10-05).
   // The fake chat provider speaks that API at the same address.
-  await go("#/settings");
+  await go("#/settings/models");
   await page.waitForSelector("#add-provider");
   await page.click("#add-provider");
   await page.click("#preset-anthropic");
@@ -671,7 +675,7 @@ check(async () => {
   // ---------- a provider that does not answer ----------
   chat.kill("SIGTERM");
   await chat.exited;
-  await go("#/settings");
+  await go("#/settings/models");
   await page.waitForSelector("#provider-127-0-0-1");
   await page.click("#check-again");
   await page.waitForSelector("#provider-127-0-0-1 .state-word:text-is('not answering')", { timeout: 20000 });
@@ -701,7 +705,7 @@ check(async () => {
   fs.writeFileSync(configFile, `[models.demo]\nprovider = "ollama"\nurl = "${ollamaURL}"\nmodel = "demo"\n`);
   ({ app, url } = await startApp());
   await page.goto(url);
-  await go("#/settings");
+  await go("#/settings/models");
   await page.waitForSelector("#default-model-model", { timeout: 15000 });
   assert.strictEqual(await selected("#default-model-model"), "No model");
   assert.strictEqual(await page.isDisabled("#default-save"), true, "nothing to save yet");
@@ -745,7 +749,7 @@ check(async () => {
   fs.writeFileSync(configFile, `${config()}\n[servers.openai]\nprovider = "openai"\ndialect = "responses"\nurl = "https://api.openai.com/v1"\n\n[models.openai-a]\nserver = "openai"\nmodel = "${first}"\n\n[models.openai-c]\nserver = "openai"\nmodel = "${third}"\nefforts = ["low", "high"]\n\n[models.openai-text]\nserver = "openai"\nmodel = "${textOnly}"\n\n[servers.anthropic]\nprovider = "anthropic"\nurl = "https://api.anthropic.com/v1"\n\n[models.claude-a]\nserver = "anthropic"\nmodel = "${claudeModel}"\n\n[servers.baseten]\nprovider = "openai"\nurl = "https://inference.baseten.co/v1"\n\n[models.baseten-a]\nserver = "baseten"\nmodel = "${basetenModel}"\n`);
   ({ app, url } = await startApp());
   await page.goto(url);
-  await go("#/settings");
+  await go("#/settings/models");
   await page.waitForSelector("[data-model='openai-a']", { timeout: 15000 });
   const a = expect(first);
   await shows("[data-model='openai-a']", a.line);
@@ -826,7 +830,7 @@ check(async () => {
   );
   // Anthropic's and Baseten's models are described the same way, by their own
   // addresses; a Claude model's efforts read as what its API takes them for.
-  await go("#/settings");
+  await go("#/settings/models");
   await page.waitForSelector("[data-model='claude-a']");
   await shows("[data-model='claude-a']", expect(claudeModel, snapshot.anthropic).line);
   await shows("[data-model='baseten-a']", expect(basetenModel, snapshot.baseten).line);
@@ -837,79 +841,119 @@ check(async () => {
   await page.click("#model-form >> text=Cancel");
   step("a model Anthropic or Baseten publishes has its context, reply cap, efforts and prices without any being typed");
 
-  // ---------- the judge on a provider (ADR 46) ----------
-  // Jev is a provider of its own: its preset fills in typesafe.ai's address,
-  // its key is stored and allowed for that host by POST alone, it offers no
-  // Test and no model can be put on it. The judge is off until Settings ›
-  // Judge chooses a provider, which offers Jev and the provider at OpenAI's
-  // address, not the chat servers elsewhere, which have no Decisions API; one
-  // without a key is refused. Chosen, the judge's model, prices and wait sit
-  // with the models, its model and prices as its provider publishes them
-  // until set, and the provider cannot be removed from under it; a price
-  // typed is saved to [judge]. The judge is put back to none at the end, so
+  // ---------- the judge (ADR 46, ADR 47) ----------
+  // Settings › Judge sets a judge up in place: Jev with its key alone, since
+  // its model and its price are known, so nobody types either. Its key is
+  // stored and allowed for typesafe.ai by POST alone; it is no model
+  // provider, so Models neither lists it nor offers it for a model; and
+  // added when there is no judge, it becomes the default. A provider without
+  // a key is no judge. A new task and a conversation choose their judge
+  // beside their model. A judge model config.toml names that the provider
+  // does not answer to is said, and put right in one click; a price can be
+  // set for the default judge. The judge is put back to none at the end, so
   // nothing later asks typesafe.ai anything. The app was last started with
   // the keychain locked, and a key needs it.
-  await go("#/settings");
-  await page.waitForSelector("#section-judge");
+  await go("#/settings/keys");
   await page.waitForSelector("#section-keys #keychain-pass", { timeout: 10000 });
   await page.fill("#section-keys #keychain-pass", "family passphrase");
   await page.click("#section-keys button:text-is('Unlock')");
   await page.waitForSelector("#section-keys >> text=Unlocked", { timeout: 20000 });
-  await shows("#section-judge", "Off: no provider is chosen");
-  assert.strictEqual(await page.locator("#section-models [id='set-judge.model']").count(), 0, "the judge's model rows show with no judge");
-  await page.click("#add-provider");
-  await page.click("#preset-jev");
-  assert.strictEqual(await page.inputValue("#provider-url"), "https://api.typesafe.ai", "the Jev preset's address");
-  assert.strictEqual(await page.locator("#provider-dialect").count(), 0, "a Jev provider is offered a dialect");
-  await page.fill("#provider-name", "jev");
-  await page.fill("#provider-key", "sk-judge-canary-0001");
-  await page.click("#provider-save");
-  await page.waitForSelector("#provider-jev", { timeout: 10000 });
-  await page.waitForSelector(".toast >> text=Provider saved. Choose it under Judge to have the judge ask it.", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { name: "jev", provider: "jev", url: "https://api.typesafe.ai", api_key: "sk-judge-canary-0001" });
-  assert.ok(config().includes('[servers.jev]\nprovider = "jev"\nurl = "https://api.typesafe.ai"\ncredential = "model-api-typesafe-ai"\n'), "the Jev provider in config.toml:\n" + config());
+  await go("#/settings/judge");
+  await page.waitForSelector("#section-judge");
+  await shows("#section-judge", "New tasks start with no judge", "No judge is set up yet.");
+  assert.deepStrictEqual(await page.$$eval("#section-judge [aria-label='Judge provider'] button", (b) => b.map((x) => x.textContent)), ["No judge"], "a provider without a key offered as a judge");
+  assert.strictEqual(await page.locator("[id='set-judge.model']").count(), 0, "the judge's model is a field to type");
+  await page.fill("#judge-key-jev", "sk-judge-canary-0001");
+  await page.click("#judge-add-jev");
+  await page.waitForSelector("#judge-Jev", { timeout: 10000 });
+  await page.waitForSelector(".toast >> text=Jev added, and new tasks ask it.", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("settings.provider.write").at(-1), { name: "Jev", provider: "jev", url: "https://api.typesafe.ai", api_key: "sk-judge-canary-0001" });
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": "Jev" } });
+  assert.ok(config().includes('[servers.Jev]\nprovider = "jev"\nurl = "https://api.typesafe.ai"\ncredential = "model-api-typesafe-ai"\n'), "the Jev provider in config.toml:\n" + config());
+  assert.ok(/\[judge\]\nserver = "Jev"\n/.test(config()), "the default judge is not in [judge]:\n" + config());
   assert.ok(!config().includes("sk-judge-canary"), "the Jev key is in config.toml");
   const jevRows = fs.readFileSync(`${root}/config/nodwyn/bindings.toml`, "utf8").split("[[bind]]").filter((b) => b.includes('class = "model-api-typesafe-ai"'));
   assert.ok(jevRows.length === 1 && /methods = \["POST"\]/.test(jevRows[0]) && jevRows[0].includes('dest = "api.typesafe.ai"'), "the Jev key's binding rows:\n" + jevRows.join("[[bind]]"));
-  await shows("#provider-jev", "Jev · api.typesafe.ai · key stored", "Not used yet: choose it as the judge's provider under Judge.");
-  assert.strictEqual(await page.locator("#provider-jev button:text-is('Test')").count(), 0, "a Jev provider offers a Test");
+  await shows("#judge-Jev", "Jev · api.typesafe.ai · jev-latest", "$0.042 per million input tokens, output free", "ready");
+  await shows("#section-judge", "New tasks ask Jev. Its key is stored, unlocked and allowed for api.typesafe.ai");
+  assert.ok(await page.isDisabled("#judge-Jev button:text-is('Remove')"), "the default judge can be removed");
+  assert.strictEqual(await page.locator("#judge-add-card-jev").count(), 0, "Jev is offered again once it is set up");
+  await page.locator("#section-judge").screenshot({ path: `${out}/models-judge.png` });
+  await go("#/settings/models");
+  await page.waitForSelector("#section-models");
+  assert.strictEqual(await page.locator("#provider-Jev").count(), 0, "Models lists the Jev provider");
   await page.click("#add-model");
-  assert.ok(!(await page.$$eval("#model-provider option", (o) => o.map((x) => x.value))).includes("jev"), "a model can be put on the Jev provider");
+  assert.ok(!(await page.$$eval("#model-provider option", (o) => o.map((x) => x.value))).includes("Jev"), "a model can be put on the Jev provider");
   await page.click("#model-form >> text=Cancel");
-  assert.deepStrictEqual(await page.$$eval("#section-judge [aria-label='Judge provider'] button", (b) => b.map((x) => x.textContent)), ["None", "jev (Jev)", "openai (OpenAI)"], "the judge's providers");
-  await page.click("#section-judge [id='set-judge.server-openai']");
-  await page.click(".save-bar button:text-is('Save')");
-  await page.waitForSelector(".save-bar >> text=has no credential, and the judge sends its server's key", { timeout: 10000 });
-  assert.ok(!config().includes("[judge]"), "a judge on a provider without a key was saved:\n" + config());
-  await page.click("#section-judge [id='set-judge.server-jev']");
+  await page.click("#add-provider");
+  assert.strictEqual(await page.locator("#preset-jev").count(), 0, "Models offers Jev as a model provider");
+  await page.click("#provider-form >> text=Cancel");
+  assert.deepStrictEqual(await page.$$eval("#default-model-judge option", (o) => o.map((x) => x.value)), ["", "Jev"], "the default's judge beside its model");
+  step("Jev is added as a judge in place, its model and price known, and becomes the default; Models keeps it out");
+
+  // A new task and a conversation choose their judge beside their model:
+  // none here, so nothing asks typesafe.ai.
+  await go("#/");
+  await page.waitForSelector("#new-task-model-judge");
+  assert.strictEqual(await page.inputValue("#new-task-model-judge"), "Jev", "a new task starts with the default judge");
+  await page.selectOption("#new-task-model-judge", "");
+  await page.fill("#task", "Say hello");
+  await page.click("button[aria-label='Start the task']");
+  await page.waitForSelector(".task[data-loaded]", { timeout: 20000 });
+  assert.strictEqual(sent.of("session.open").at(-1).judge, "", "the judge chosen was not sent");
+  const judged = sent.of("session.send").at(-1).id;
+  await idle();
+  await openPicker();
+  assert.strictEqual(await page.inputValue("#task-model-judge"), "", "the conversation's judge");
+  await page.selectOption("#task-model-judge", "Jev");
+  await page.waitForSelector(".toast >> text=Jev judges this task from its next question.", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("session.judge.set").at(-1), { id: judged, judge: "Jev" });
+  await page.waitForFunction(() => document.querySelector(".transcript").textContent.includes("Judge: Jev · jev-latest at api.typesafe.ai"), null, { timeout: 10000 });
+  await page.selectOption("#task-model-judge", "");
+  await page.waitForSelector(".toast >> text=This task has no judge now", { timeout: 10000 });
+  assert.deepStrictEqual(sent.of("session.judge.set").at(-1), { id: judged, judge: "" });
+  await shows("#task-model summary", "no judge");
+  step("a new task and a conversation choose their judge beside their model");
+
+  // A judge model config.toml names that its API does not answer to (the
+  // name of its server, say) fails every question and prices none: Settings
+  // says so, and puts it right in one click.
+  app.kill("SIGTERM");
+  assert.strictEqual(await app.exited, 0, "the app's exit on SIGTERM");
+  fs.writeFileSync(configFile, config().replace('[judge]\nserver = "Jev"\n', '[judge]\nserver = "Jev"\nmodel = "Jev"\n'));
+  ({ app, url } = await startApp());
+  await page.goto(url);
+  await page.waitForSelector("#task", { timeout: 15000 });
+  await go("#/settings/judge");
+  await page.waitForSelector("#judge-model-warning", { timeout: 10000 });
+  await shows("#judge-model-warning", "config.toml asks Jev for the model “Jev”", "Jev answers to jev-latest");
+  await shows("#judge-Jev", "Jev · api.typesafe.ai · Jev", "price unknown");
+  await page.click("#judge-model-fix");
   await page.click(".save-bar button:text-is('Save')");
   await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
-  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": "jev" } });
-  assert.ok(/\[judge\]\nserver = "jev"\n/.test(config()), "the judge's provider is not in [judge]:\n" + config());
-  await page.waitForSelector("#section-judge >> text=Key ready: jev's key is stored, unlocked and allowed for api.typesafe.ai.", { timeout: 10000 });
-  await shows("#provider-jev", "the judge's", "The judge asks it");
-  assert.ok(await page.isDisabled("#provider-jev button:text-is('Remove')"), "the judge's provider can be removed");
-  assert.strictEqual(await page.getAttribute("#provider-jev button:text-is('Remove')", "title"), "Still used by the judge");
-  assert.strictEqual(await page.getAttribute("#section-models [id='set-judge.model']", "placeholder"), "jev-latest", "the judge's model as its provider's");
-  assert.strictEqual(await page.getAttribute("#section-models [id='set-judge.price_input']", "placeholder"), "0.042", "the judge's published input price");
-  assert.strictEqual(await page.getAttribute("#section-models [id='set-judge.price_output']", "placeholder"), "0");
-  assert.strictEqual(await page.locator("#section-judge [id='set-judge.price_input']").count(), 0, "the judge's prices are also under Judge");
-  await shows("#section-judge", "Model and prices", "Under Models");
-  await page.fill("#section-models [id='set-judge.price_input']", "0.05");
+  assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.model": null } });
+  assert.ok(!/^model = "Jev"/m.test(config()), "the wrong judge model stays:\n" + config());
+  await page.waitForSelector("#judge-model-warning", { state: "detached", timeout: 10000 });
+  await shows("#judge-Jev", "Jev · api.typesafe.ai · jev-latest", "$0.042 per million input tokens");
+  step("a judge model the provider does not answer to is said, and put right in one click");
+
+  // A price for the default judge is its own, under a fold: it overrides
+  // the published one, and empty puts that back.
+  await page.click("#section-judge .judge-prices > summary");
+  assert.strictEqual(await page.getAttribute("[id='set-judge.price_input']", "placeholder"), "0.042", "the published input price");
+  await page.fill("[id='set-judge.price_input']", "0.05");
   await page.click(".save-bar button:text-is('Save')");
   await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
   assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.price_input": 0.05 } });
   assert.ok(/\[judge\][^[]*price_input = 0\.05/.test(config()), "the judge's price is not in [judge]:\n" + config());
-  await page.locator("#section-models").screenshot({ path: `${out}/models-judge.png` });
-  await page.locator("#section-judge").screenshot({ path: `${out}/models-judge-provider.png` });
+  await shows("#judge-Jev", "$0.05 per million input tokens");
   await page.click("#section-judge [id='set-judge.server-default']");
   await page.click(".save-bar button:text-is('Save')");
   await page.waitForSelector(".save-bar", { state: "hidden", timeout: 10000 });
   assert.deepStrictEqual(sent.of("settings.write").at(-1), { set: { "judge.server": null } });
-  assert.ok(!/^server = "jev"/m.test(config()), "the judge still names jev:\n" + config());
-  await page.waitForSelector("#section-judge >> text=Off: no provider is chosen", { timeout: 10000 });
-  assert.strictEqual(await page.locator("#section-models [id='set-judge.model']").count(), 0, "the judge's model rows stay with no judge");
-  step("Jev is a provider the judge is put on, with its model, prices and wait beside the models' and its prices as published until set");
+  assert.ok(!/^server = "Jev"/m.test(config()), "the judge still names Jev:\n" + config());
+  await page.waitForSelector("#section-judge >> text=New tasks start with no judge", { timeout: 10000 });
+  step("a price for the default judge overrides the published one, and the default is put back to none");
 
   // The ChatGPT setup UI uses synthetic RPC consent and account replies;
   // provider persistence and binding are checked by the RPC integration test.
@@ -966,6 +1010,7 @@ check(async () => {
       socket.send(message);
     });
   });
+  await go("#/settings/models");
   await page.reload();
   await page.waitForSelector("#provider-openai");
   await page.click("#provider-openai button:text-is('Edit')");
@@ -1013,7 +1058,7 @@ check(async () => {
 
   // ---------- the phone: nothing sideways ----------
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const hash of ["#/", "#/settings", `#/task/${fastId}`]) {
+  for (const hash of ["#/", "#/settings", "#/settings/models", "#/settings/judge", `#/task/${fastId}`]) {
     await go(hash);
     await page.waitForTimeout(300);
     const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

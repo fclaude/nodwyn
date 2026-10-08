@@ -84,6 +84,14 @@ long for the target's context. A model given by a server and its id is not
 offered, as the console's picker does not offer it. The TUI is always on
 this computer, so the choice is never refused as a paired device's is.
 
+`:judge` shows the judge the task asks (ADR 47): its model, host and price,
+or that it has none, and why it cannot be asked when it cannot, with the
+judges set up, the same list as the console's Judge select. `:judge NAME`
+moves the task to that judge from its next question, and `:judge none` to
+none; it is chosen while the task is idle, so a busy session says to wait.
+Each choice is a `judge →` line in the conversation. Judges are set up in
+the console's Settings › Judge, or in `config.toml`.
+
 `:attach PATH` adds a file to the conversation (ADR 22). The rest of the
 line is the path. `~/` is the home directory, and a relative path is from
 the folder nodwyn was started in, as a shell would read it. Text is
@@ -125,6 +133,8 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 | `:tools [name]` | List model-facing tools; an exact name shows the input schema |
 | `:model` | Show the conversation's model and the models it may be moved to |
 | `:model NAME [EFFORT]` | Move the conversation to that model from its next turn |
+| `:judge` | Show the judge this task asks and the judges set up |
+| `:judge NAME`, `:judge none` | Ask that judge, or none, from the task's next question |
 | `:attach PATH` | Add a file to the conversation; an image asks first |
 | `:allow` | Open the bindings/current approvals inspector |
 | `:help`, `:h` | Show available controls in a scrollable view |
@@ -294,6 +304,7 @@ text is redacted and stripped of terminal control sequences before rendering.
 - `inspect.go` and `inspect_backend.go`: snapshot viewers and their read paths.
 - `tools.go`: model-facing tool list and input-schema presentation.
 - `models.go`: `:model`'s view and the model choice over core or RPC.
+- `judges.go`: `:judge`'s view and the judge choice over core or RPC.
 - `tool_calls.go`: serial call/result grouping and guard/result presentation.
 - `plan_budget.go`: recorded gate outcomes, checkpoint history and budget display.
 - `run.go` and `cmd/nodwyn/tui.go`: lifecycle and command startup.
@@ -344,6 +355,7 @@ adds no desktop client or supervisor.
 | Worktree row, `--worktree`, branch in the title and list | `TestChooserOpensAWorktreeThroughBothBackends`, `TestChooserStillOpensInTheFolder`, `TestWorktreeFlagSkipsTheChooser` |
 | `:model`, a switch the next turn asks, a choice queued behind a turn | `TestModelChoiceThroughBothBackends`, `TestModelChoiceWhileBusyIsQueued` |
 | `:attach` of text and of an image whose confirm is answered while it waits; Ctrl+C cancels | `TestAttachThroughBothBackends`, `TestCtrlCCancelsAnAttachment`, `TestAttachPathAndRefusals` |
+| `:judge`, a switch, none, and a judge not configured | `TestJudgeChoiceThroughBothBackends` |
 
 Real-terminal smoke checks supplement these tests for composer input, local and
 remote inspectors, tool cards, checkpoint choices, masked credentials and the

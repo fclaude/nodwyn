@@ -551,6 +551,11 @@ export class Transcript {
         this.audit(p.queued ? `Next message: ${what}` : `Model: ${what}`);
         break;
       }
+      case "session.judge":
+        // The judge the task asks from here on, chosen as it opened or since
+        // (ADR 47), and who chose it.
+        this.audit(p.server ? `Judge: ${p.server}${p.model ? ` · ${p.model}` : ""}${p.host ? ` at ${p.host}` : ""}` : "No judge: you answer the commands");
+        break;
       case "context.narrow":
         // A lasting narrowing, such as a compaction's, is where later turns
         // start; any other ends with its turn.

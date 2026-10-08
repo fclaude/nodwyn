@@ -70,7 +70,8 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(shell-send id text)} & type into it (asks every time) \\
 \code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc (irreversible, a write of \code{target}) \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a Google Doc (only with a stored \code{google} credential; asks, or not, as you chose at the first upload) \\
-\code{(judge-yes-no state question)}, \code{judge-score}, \code{judge-choice} & ask the judge (the model's only at \code{judge.content = "full"}; Chapter~\ref{ch:keys}) \\
+\code{(judge-yes-no state question)}, \code{judge-score}, \code{judge-choice} & ask the task's judge (the model's only at \code{judge.content = "full"}; Chapter~\ref{ch:keys}) \\
+\code{(judge-available?)} & whether the task has a judge now whose key is stored (the plan gate asks it) \\
 \code{(scratch-dir)} & the session's private scratch directory \\
 \code{(project-notes)}, \code{(project-notes-save text)} & notes kept across sessions; the second is also the model's tool \\
 \code{(project-instructions)} & the repository's \file{AGENTS.md}, as the system prompt carries it \\

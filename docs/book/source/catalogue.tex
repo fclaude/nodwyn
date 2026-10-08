@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 231 of 461 tracked Go files: every non-test Go file, 52,003 of 95,716 Go source lines (54.3\% by lines). It also includes all 35 tracked Scheme files (2,979 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 234 of 467 tracked Go files: every non-test Go file, 52,670 of 96,747 Go source lines (54.4\% by lines). It also includes all 35 tracked Scheme files (2,979 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -211,6 +211,8 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 \sourcefile{internal/core/inspection.go}{Go}
 
 \sourcefile{internal/core/judge.go}{Go}
+
+\sourcefile{internal/core/judge_choice.go}{Go}
 
 \sourcefile{internal/core/judgescripts.go}{Go}
 
@@ -496,6 +498,8 @@ The subdirectories are independent entry routes to core. Plain implements line-o
 
 \sourcefile{internal/frontend/rpc/identity_linux.go}{Go}
 
+\sourcefile{internal/frontend/rpc/judges.go}{Go}
+
 \sourcefile{internal/frontend/rpc/mcp.go}{Go}
 
 \sourcefile{internal/frontend/rpc/peer.go}{Go}
@@ -539,6 +543,8 @@ The subdirectories are independent entry routes to core. Plain implements line-o
 \sourcefile{internal/frontend/tui/inspect.go}{Go}
 
 \sourcefile{internal/frontend/tui/inspect_backend.go}{Go}
+
+\sourcefile{internal/frontend/tui/judges.go}{Go}
 
 \sourcefile{internal/frontend/tui/model.go}{Go}
 

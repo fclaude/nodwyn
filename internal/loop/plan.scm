@@ -103,11 +103,11 @@
           (set! sub-agent-max-rounds rounds)
           found))))
 
-;; Whether a judge is configured: [judge] on a provider whose key was stored
-;; when the session started, which is when the core registers the judge's
-;; primitives (ADR 46).
+;; Whether the task has a judge it can ask now: one chosen for it, or
+;; [judge]'s, whose key is stored (ADR 46, ADR 47). The primitive is
+;; registered only where a judge could be asked at all.
 (define (plan-judge?)
-  (guard (e (else #f)) (primitive-info "judge-yes-no") #t))
+  (guard (e (else #f)) (judge-available?)))
 
 ;; A plan from the control model, asked in a context of its own that is then
 ;; folded away: the conversation keeps only the plan the gate records. The

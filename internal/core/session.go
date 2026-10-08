@@ -78,6 +78,10 @@ type Session struct {
 	// which may ask the server's model list, so nothing that a turn needs
 	// takes it.
 	modelMu sync.Mutex
+	// judge is the [servers.NAME] the task's judge is on, "" for none (ADR
+	// 47): config.toml's [judge] server, or the one a person chose for the
+	// task. It changes only while the task is idle, under mu.
+	judge string
 
 	// The plan a turn must record before it may do anything irreversible
 	// (SendPlanned; plan.go).

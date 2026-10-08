@@ -182,13 +182,13 @@ function render(routeChanged = false, what = "") {
   } else if (route.name === "home") {
     homeState = renderHome(view, { ...ctx, keepTop: key === lastRoute && !routeChanged });
   } else if (key !== lastRoute || routeChanged) {
-    if (route.name === "settings") renderSettings(view, ctx);
+    if (route.name === "settings") renderSettings(view, { ...ctx, tab: route.tab });
     else if (route.name === "workspaces") renderWorkspaces(view, ctx);
     else if (route.name === "connections") renderConnections(view, { ...ctx, tab: route.tab });
   } else if (route.name === "settings" && (!what || what === "setup" || what === "models")) {
     // Settings holds fields being typed into: a task's progress elsewhere
     // does not redraw it.
-    renderSettings(view, ctx);
+    renderSettings(view, { ...ctx, tab: route.tab });
   }
   lastRoute = key;
 }

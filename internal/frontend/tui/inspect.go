@@ -41,7 +41,7 @@ func isInspectorCommand(s string) bool {
 	switch fields[0] {
 	case ":log", ":bindings", ":replay", ":friction", ":tools", ":allow", ":plan", ":budget":
 		return true
-	case ":model":
+	case ":model", ":judge":
 		// With a name it is a choice, not a view.
 		return len(fields) == 1
 	}
@@ -92,6 +92,12 @@ func (m *model) inspect(command string) tea.Cmd {
 			view, err = b.Models(ctx, id)
 			if err == nil {
 				content = formatModels(view)
+			}
+		} else if kind == ":judge" {
+			var view judgeView
+			view, err = b.Judges(ctx, id)
+			if err == nil {
+				content = formatJudges(view)
 			}
 		} else if kind == ":bindings" || kind == ":allow" {
 			var policy policyView
@@ -243,6 +249,8 @@ const helpText = `Commands
 :bindings, :allow      Loaded bindings and current approvals.
 :model                 The model this conversation talks to, and the choices.
 :model NAME [EFFORT]   Move the conversation to that model from its next turn.
+:judge                 The judge this task asks, and the judges set up.
+:judge NAME|none       Ask that judge, or none, from the next question.
 :attach PATH           Add a file to the conversation; an image asks first.
                        ~/ is home; a relative path is from where nodwyn started.
 :replay                Read-only transcript from the durable log.

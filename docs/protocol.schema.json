@@ -434,6 +434,53 @@
       ],
       "type": "object"
     },
+    "core.JudgeState": {
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "price_input": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "price_output": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        },
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "available"
+      ],
+      "type": "object"
+    },
     "core.LogPage": {
       "properties": {
         "events": {
@@ -1842,6 +1889,29 @@
       ],
       "type": "object"
     },
+    "log.SessionJudge": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server"
+      ],
+      "type": "object"
+    },
     "log.SessionModel": {
       "properties": {
         "actor": {
@@ -2593,6 +2663,9 @@
     "payload.session.end": {
       "$ref": "#/$defs/log.SessionEnd"
     },
+    "payload.session.judge": {
+      "$ref": "#/$defs/log.SessionJudge"
+    },
     "payload.session.model": {
       "$ref": "#/$defs/log.SessionModel"
     },
@@ -2836,6 +2909,9 @@
         },
         {
           "$ref": "#/$defs/request.session.info"
+        },
+        {
+          "$ref": "#/$defs/request.session.judge.set"
         },
         {
           "$ref": "#/$defs/request.session.list"
@@ -4212,6 +4288,37 @@
       ],
       "type": "object"
     },
+    "request.session.judge.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.judge.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.judgeSetParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.list": {
       "properties": {
         "id": {
@@ -5430,6 +5537,9 @@
     "result.session.info": {
       "$ref": "#/$defs/rpc.sessionDetails"
     },
+    "result.session.judge.set": {
+      "$ref": "#/$defs/core.JudgeState"
+    },
     "result.session.list": {
       "items": {
         "$ref": "#/$defs/rpc.sessionInfo"
@@ -6220,6 +6330,78 @@
       ],
       "type": "object"
     },
+    "rpc.judgeChoice": {
+      "properties": {
+        "default": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "price_input": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "price_output": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "type": "string"
+        },
+        "provider_model": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "provider",
+        "host",
+        "model",
+        "provider_model",
+        "state"
+      ],
+      "type": "object"
+    },
+    "rpc.judgeSetParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "judge": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "judge"
+      ],
+      "type": "object"
+    },
     "rpc.keychainCreateParams": {
       "properties": {
         "no_passphrase": {
@@ -6761,6 +6943,16 @@
         "effort": {
           "type": "string"
         },
+        "judge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "model": {
           "type": "string"
         },
@@ -7215,6 +7407,9 @@
         "id": {
           "type": "string"
         },
+        "judge": {
+          "$ref": "#/$defs/core.JudgeState"
+        },
         "mcp": {
           "items": {
             "$ref": "#/$defs/core.MCPServer"
@@ -7274,7 +7469,8 @@
         "approve_all_offered",
         "workspace",
         "git",
-        "mcp"
+        "mcp",
+        "judge"
       ],
       "type": "object"
     },
@@ -7471,6 +7667,15 @@
             }
           ]
         },
+        "judges": {
+          "items": {
+            "$ref": "#/$defs/rpc.judgeChoice"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "keychain": {
           "$ref": "#/$defs/rpc.keychainStatus"
         },
@@ -7511,7 +7716,8 @@
         "keychain",
         "docs",
         "values",
-        "judge"
+        "judge",
+        "judges"
       ],
       "type": "object"
     },
@@ -8783,6 +8989,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.SessionEnd"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "session.judge"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionJudge"
             },
             "seq": {
               "minimum": 0,

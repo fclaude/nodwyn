@@ -232,9 +232,11 @@ larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 The console's Settings page changes these limits, the timeouts
 (`loop.request_timeout`, `loop.shell_timeout`), the window, the model
 providers and the models and efforts to choose between ("Choosing models"
-below), the default model's tuning, the judge's settings and what a task does
-without asking (`[approval]`, "Confirms" below), keeping every other line of
-`config.toml` as written. Tasks
+below), the default model's tuning, the judges ("The judge" below) and what
+a task does without asking (`[approval]`, "Confirms" below), keeping every
+other line of `config.toml` as written. It is tabs, each at an address of its
+own (`#/settings/models`, `#/settings/judge`): General, Models, Judge,
+Context, Documents & containers, Keys & devices and This browser. Tasks
 started afterwards get the new values; open ones keep theirs ([the browser
 view](browser.md), "Settings").
 
@@ -683,12 +685,17 @@ names a `[servers.NAME]` whose provider is one of
   questions and has no chat models; or
 - `openai` at `https://api.openai.com/v1` with an API key, whose Decisions
   API answers them with `gpt-6-luna`, sent the key the server's models use.
+  A ChatGPT plan's sign-in cannot ask it: the keychain sends a plan's token
+  only to the plan's chat endpoints, so a server signed in with a plan is
+  refused as a judge, in Settings and when a task chooses it (ADR 47).
 
-In the console, add Jev under Settings › Models › Add a provider (the
-"Jev (judge)" preset; its key is kept in the keychain and allowed for its
-host by POST alone, since the judge's questions are its only requests),
-then choose the provider under Settings › Judge, which offers Jev and the
-providers at OpenAI's address. By hand:
+In the console, Settings › Judge sets a judge up in place: paste Jev's key,
+or an OpenAI API key, and that is all, since each judge's model and price
+are known. The key is kept in the keychain and allowed for its host by POST
+alone; a judge added when there is none becomes the default for new tasks.
+Each judge set up is listed with its host, model, price and whether it can
+be asked. `[judge]` is the default judge; a task chooses its own beside its
+model (below). By hand:
 
 ```toml
 # ~/.config/nodwyn/config.toml
@@ -718,9 +725,25 @@ positions = ["header:Authorization:Bearer"]
 methods = ["POST"]
 ```
 
-The judge asks its provider's model (`jev-latest`, `gpt-6-luna`) unless
-`[judge] model` names another. Without `[judge] server` there is no judge:
-no plan gate, and every command no standing approval covers is put to you.
+The judge asks its provider's model (`jev-latest`, `gpt-6-luna`), which is
+all either API answers to, so Settings has no field for it. `[judge] model`
+may name another by hand, for the server `[judge]` names only; one its
+provider does not answer to fails every question, and Settings › Judge says
+so with a button that clears it. Without a judge, `[judge]`'s or the task's
+own, there is no plan gate, and every command no standing approval covers is
+put to you.
+
+**Each task's judge.** A task asks the judge chosen for it, which is
+`[judge]`'s unless it was opened with another or moved to one (ADR 47): the
+New task window and a conversation have a **Judge** select beside the model
+and effort, with **No judge** first, and the TUI has `:judge NAME` and
+`:judge none`. A judge is moved while the task is idle, from its next
+question; the log records each choice as `session.judge`, and a resumed task
+asks the judge it chose. One `config.toml` no longer has leaves it with none,
+with a note, rather than `[judge]`'s. A judge that cannot be asked (its key
+locked, not allowed, or a plan's) does not stop a task: you answer instead,
+and the picker says why. Only this computer chooses a task's judge, as it
+chooses its model.
 A `config.toml` that still has the `[jev]` table of earlier versions does
 not load, and says what replaces it. The thresholds (`judge.approve_threshold`
 below, and the plan gate's in Scheme) were set against Jev's probabilities;
@@ -832,9 +855,9 @@ Every client shows each judge request as one line
 **Activity** in the console). They also show the judge's
 running total when it has been asked: in the console's side panel ("Judge,
 this task"), at a budget checkpoint, and in the TUI's `:budget` (this turn
-and this session). Settings › Models sets the judge's model, prices and wait,
-beside the models' own settings; what it sees and when it allows a command
-are under Settings › Judge. Judge tokens are not model
+and this session). Settings › Judge holds all of it: the judges, the default,
+what it sees, when it allows a command, how long it waits, and under a fold
+the default judge's own prices. Judge tokens are not model
 tokens, so the token budget leaves them out, but a spend limit counts their
 cost; a judge request with no prices is not counted, and the first turn
 with one says so.
@@ -1601,10 +1624,13 @@ file loads. Every request
 records the effort it asked for (`llm.req`), and replays to its hash.
 
 **Settings › Models.** The console sets all of this up without the file, on
-this computer only:
+this computer only. Each provider is a card with the models on it listed
+under it, and **Add a model** on it there; the default for new tasks is its
+Model · Effort · Judge, saved together:
 
-- *Providers* lists each `[servers.NAME]` (and the address a model gives
-  inline, read-only), says whether it can be used, and why not: *needs its
+- *Providers* lists each `[servers.NAME]` but Jev's, which is a judge under
+  Settings › Judge (and the address a model gives inline, read-only), says
+  whether it can be used, and why not: *needs its
   key* (none stored, or the server answers 401 and none is configured),
   *keychain locked*, *key not allowed* (stored, but no binding row lets it go
   to that host), *not answering*, or *model not installed*. The key's state is
@@ -1630,8 +1656,8 @@ this computer only:
   the request* (an effort the model does not take, for one), or *no quota*. A
   provider that models are on is not removed; its key stays in the keychain
   (Connections › Credentials removes it).
-- *Models you can choose* is the list the pickers offer: `[control]` and each
-  `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
+- *Models you can choose*, under each provider, are the list the pickers
+  offer: `[control]` and each `[models.NAME]`. **Add a model** takes a provider, a model id (the provider's
   own list, asked with its key, fills in suggestions) and the efforts it
   takes: *As published* (offered once the id is given, for a model its
   provider publishes; the entry then lists none, so the provider's apply, and

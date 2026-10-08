@@ -5,7 +5,14 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/prim"
 )
+
+// judgeOptions are the options a task whose judge is [judge]'s asks with.
+func judgeOptions(c config.Config) prim.JudgeOptions {
+	o, _ := (&Session{opts: Options{Config: c}, judge: c.Judge.Server}).JudgeOptions()
+	return o
+}
 
 func TestJudgeOptionsPreserveDefaults(t *testing.T) {
 	t.Parallel()
@@ -18,7 +25,7 @@ func TestJudgeOptionsPreserveDefaults(t *testing.T) {
 	}
 	// Successfully parsed durations are preserved, including zero.
 	for _, timeout := range []time.Duration{0, 3 * time.Second} {
-		got := judgeOptions(config.Config{Judge: config.Judge{Content: "plan+summaries", Timeout: timeout.String()}})
+		got := judgeOptions(config.Config{Servers: servers, Judge: config.Judge{Server: "judge", Content: "plan+summaries", Timeout: timeout.String()}})
 		if got.Content != "plan+summaries" || got.Timeout != timeout {
 			t.Fatalf("explicit settings: %+v", got)
 		}

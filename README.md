@@ -316,11 +316,13 @@ with their history, attachments (documents and images),
 project notes and the workspace. Connections adds and reviews MCP servers
 and manages credentials (keys, OAuth2 accounts, and where each may go);
 Workspaces names folders, their kind (documents, code or both) and mounted
-folders; Settings sets what a task does without asking you (writes in its
-folder, and who answers a command: the judge, then you, by default), the
-limits, the model and its tuning, the judge and the context window, and
-unlocks the keychain or sets its passphrase (a keychain
-may have none, which is not recommended). It runs as
+folders; Settings, in tabs, sets what a task does without asking you (writes
+in its folder, and who answers a command: the judge, then you, by default),
+the limits, the providers with their models, the judges (Jev or an OpenAI
+API key, set up with the key alone) and the context window, and unlocks the
+keychain or sets its passphrase (a keychain may have none, which is not
+recommended). A task chooses its model, effort and judge beside each other,
+as it opens and between turns. It runs as
 `nodwyn ui` for a daemon, as `nodwyn app` without one (see [the app](docs/app.md)),
 and on a phone paired by name. See [the browser guide](docs/browser.md).
 

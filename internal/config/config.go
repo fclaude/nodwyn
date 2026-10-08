@@ -340,13 +340,75 @@ func (c Config) JudgeServer() (Server, bool) {
 	return s, ok
 }
 
-// JudgeModel is the model the judge asks: judge.model, else its server's
-// provider's judge model.
+// JudgeModel is the model the default judge asks: judge.model, else its
+// server's provider's judge model.
 func (c Config) JudgeModel() string {
 	if c.Judge.Model != "" {
 		return c.Judge.Model
 	}
 	return JudgeModels[c.Servers[c.Judge.Server].Provider]
+}
+
+// JudgeSpec is a judge a task may ask (ADR 47): a [servers.NAME] whose
+// provider answers typed questions, the model its questions go to and their
+// prices, USD per million tokens (nil when unknown).
+type JudgeSpec struct {
+	Server, Provider, URL, Class, Model string
+	PriceInput, PriceOutput             *float64
+}
+
+// JudgeOn is the judge on server, or why server cannot be one. Its model is
+// its provider's judge model and its prices what the provider publishes for
+// that model's questions; [judge]'s own model and prices apply only on the
+// server [judge] names, since they were set for it, and a task that chooses
+// another judge must not be priced or asked as that one.
+func (c Config) JudgeOn(server string) (JudgeSpec, error) {
+	s, ok := c.Servers[server]
+	switch {
+	case server == "":
+		return JudgeSpec{}, errors.New("no judge is named")
+	case !ok:
+		return JudgeSpec{}, fmt.Errorf("server %q is not configured: add a [servers.%s] table with its provider, url and credential", server, server)
+	case JudgeModels[s.Provider] == "":
+		return JudgeSpec{}, fmt.Errorf("%q is an %s server; the judge asks Jev (provider \"jev\") or OpenAI's Decisions API (provider \"openai\")", server, providerOrOllama(s.Provider))
+	case s.Credential == "":
+		return JudgeSpec{}, fmt.Errorf("server %q has no credential, and the judge sends its server's key", server)
+	}
+	spec := JudgeSpec{Server: server, Provider: s.Provider, URL: s.URL, Class: s.Credential, Model: JudgeModels[s.Provider]}
+	own := server == c.Judge.Server
+	if own && c.Judge.Model != "" {
+		spec.Model = c.Judge.Model
+	}
+	if own {
+		spec.PriceInput, spec.PriceOutput = c.Judge.PriceInput, c.Judge.PriceOutput
+	}
+	if p, ok := catalogue.JudgePrice(s.URL, spec.Model); ok {
+		if spec.PriceInput == nil {
+			spec.PriceInput = &p.Input
+		}
+		if spec.PriceOutput == nil {
+			spec.PriceOutput = &p.Output
+		}
+	}
+	// A price set alone is not dropped for the published pair, but a judge
+	// with only one of them is not priced at all.
+	if spec.PriceInput == nil || spec.PriceOutput == nil {
+		spec.PriceInput, spec.PriceOutput = nil, nil
+	}
+	return spec, nil
+}
+
+// JudgeChoices are the servers a task's judge may be on, in name order:
+// each [servers.NAME] JudgeOn accepts. Whether its key is stored, and
+// whether it is a key the judge's API takes, is the keychain's to say.
+func (c Config) JudgeChoices() []string {
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(c.Servers)) {
+		if _, err := c.JudgeOn(name); err == nil {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // Docs configures the document tools (W5, ADR 22 answer 4). doc-export
@@ -778,14 +840,8 @@ func isOllama(provider string) bool { return provider == "" || provider == "olla
 func (c Config) validateJudge() error {
 	j := c.Judge
 	if j.Server != "" {
-		s, ok := c.Servers[j.Server]
-		switch {
-		case !ok:
-			return fmt.Errorf("judge.server: server %q is not configured: add a [servers.%s] table with its provider, url and credential", j.Server, j.Server)
-		case JudgeModels[s.Provider] == "":
-			return fmt.Errorf("judge.server: %q is an %s server; the judge asks Jev (provider \"jev\") or OpenAI's Decisions API (provider \"openai\")", j.Server, providerOrOllama(s.Provider))
-		case s.Credential == "":
-			return fmt.Errorf("judge.server: server %q has no credential, and the judge sends its server's key", j.Server)
+		if _, err := c.JudgeOn(j.Server); err != nil {
+			return fmt.Errorf("judge.server: %w", err)
 		}
 	}
 	if d, err := time.ParseDuration(j.Timeout); err != nil || d <= 0 {
@@ -1143,19 +1199,11 @@ func (c Config) catalogue() *catalogue.Catalogue {
 // price set alone is not dropped for the published pair, which Settings'
 // empty fields promise.
 func (c Config) JudgePrices() (input, output *float64) {
-	input, output = c.Judge.PriceInput, c.Judge.PriceOutput
-	if p, ok := catalogue.JudgePrice(c.Servers[c.Judge.Server].URL, c.JudgeModel()); ok {
-		if input == nil {
-			input = &p.Input
-		}
-		if output == nil {
-			output = &p.Output
-		}
-	}
-	if input == nil || output == nil {
+	spec, err := c.JudgeOn(c.Judge.Server)
+	if err != nil {
 		return nil, nil
 	}
-	return input, output
+	return spec.PriceInput, spec.PriceOutput
 }
 
 // Rates are the prices m's requests are estimated at (ADR 41, amended

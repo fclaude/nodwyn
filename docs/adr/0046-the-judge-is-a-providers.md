@@ -140,3 +140,15 @@ binding table whoever holds it.
   reports `input_tokens` and unpriced otherwise, and whether a ChatGPT plan
   credential is accepted there is unknown (Settings offers that server; the
   first answer would show).
+
+## Amendment 2026-10-08: chosen per task, and set up in place (ADR 47)
+
+ADR 47 changes three clauses. §1's `[judge]` is the default judge, and a
+task may open with another or move to one between turns. §5's primitives
+are registered whenever a judge could be asked and read the task's judge on
+every call, their egress metadata moved with it. §6's Settings › Judge
+offers no ChatGPT plan's server, which the keychain never lets reach the
+Decisions API (the first answers, refused, showed it), and has no field for
+the model, which is the provider's; it sets Jev and an OpenAI API key up in
+place, without Models. The "Not built" line on whether a plan's sign-in is
+accepted is answered: it is not.

@@ -96,19 +96,19 @@ func (a approvalConfirmer) ConfirmApproval(ctx context.Context, p guard.Prompt) 
 }
 
 // judgeAvailable reports whether the judge can be asked: its primitives
-// are registered ([judge] names a server whose key was stored when the
-// session started) and the key is still stored.
+// are registered and the task has a judge whose key is stored (ADR 47).
 func (s *Session) judgeAvailable() bool {
 	_, ok := s.interp.Lookup("judge-choice")
 	return ok && s.judgeKey() != nil
 }
 
-// judgeKey is the handle of the judge's key, its server's credential, or
-// nil when no judge is configured or the key is not stored.
+// judgeKey is the handle of the key of the task's judge, or nil when it
+// has none, the key is not stored, or it is not one the judge's API takes.
 func (s *Session) judgeKey() *scheme.Handle {
-	srv, ok := s.opts.Config.JudgeServer()
-	if !ok || srv.Credential == "" {
+	spec, ok := s.judgeSpec()
+	if !ok {
 		return nil
 	}
-	return s.HandleForClass(srv.Credential)
+	h, _ := s.judgeHandle(spec)
+	return h
 }

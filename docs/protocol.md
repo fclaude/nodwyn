@@ -60,13 +60,14 @@ IDs are transport data and are echoed unchanged.
 | Method | Named parameters | Result |
 |---|---|---|
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
-| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"` | Open-session details |
+| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"` | Open-session details |
 | `worktree.open` | as `session.open` | Open-session details of a session in a new git worktree of `repo` |
 | `worktree.diff` | `{"id"}` | `{base,changes:[{path,status,diff}],omitted}`: what the open session changed in its worktree since its base commit |
 | `worktree.review` | `{"id","comments":[{"path","line"?,"text"}],"note"?}` | `{}`: sends the comments to the session as one message |
 | `session.resume` | `{"id":"SESSION_ID"}` | Open-session details |
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
 | `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"`, and `"effort"` | The model and effort the conversation talks to now, and the choice queued behind a running turn |
+| `session.judge.set` | `{"id":"SESSION_ID","judge":"jev"}`, or `"judge":""` for none | The judge the task asks now |
 | `session.close` | `{"id":"SESSION_ID"}` | `{}` after releasing the session writer |
 | `session.rename` | `{"id":"SESSION_ID","title":"…"}` | `{}` after recording the name; `""` takes it back |
 | `session.archive` | `{"id":"SESSION_ID","archived":true}` | `{}` after archiving a closed session, or bringing it back |
@@ -131,6 +132,25 @@ computer (ADR 30). Resuming a session restores the model and effort its log
 last named; when config.toml no longer offers the model, or the effort, the
 session opens with `unavailable` and `session.send` is refused until a model
 is chosen with `session.model.set`.
+
+A task's judge is a choice as its model is (ADR 47). Details contain
+`judge`: `server` (the `[servers.NAME]` it is on, empty for none),
+`provider`, `host`, `model` (its provider's judge model, or `[judge] model`
+on the server `[judge]` names), `price_input` and `price_output` when known,
+`available` (its key stored, unlocked, allowed for its host, and not a
+ChatGPT plan's sign-in) and `why` when not. `session.open` takes `judge` the
+same way: absent is `[judge]`'s server, `""` is none, and a name must be a
+server whose provider is `jev` or `openai` with a credential (`-32000`
+otherwise, with why). `session.judge.set` moves an open task to another
+judge, or none, from its next question; it is refused while a turn runs or
+an attachment is added (`-32000`: choose it when the turn ends), and during
+a run. A ChatGPT plan's sign-in is refused as a judge wherever it is chosen,
+since the keychain never sends it to the Decisions API. Each choice, at open
+and later, is a `session.judge` event (`server`, `provider`, `host`, `model`,
+`actor`); resuming asks the last one's judge, or none, with a note, when
+`config.toml` no longer offers it. A paired device may do neither: `judge`
+in `session.open` and `session.judge.set` are refused to it (`-32602`), as a
+model choice is.
 Session details also contain `bindings`, a copied array of loaded metadata rows
 with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
 `Scopes` (OAuth2 scopes the row allows, ADR 24) fields. No credential values are
@@ -472,7 +492,7 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `keychain.create` | `{"passphrase":"…"}` or `{"no_passphrase":true}` | Keychain status; tasks opened afterwards receive the keychain. A passphrase has at least 8 characters |
 | `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain. `""` opens a keychain without a passphrase |
 | `keychain.passphrase` | `{"current"?, "passphrase"?, "no_passphrase"?}` | Keychain status after setting, changing or (`no_passphrase`) removing the open keychain's passphrase; `current` is required when it has one, and a wrong one waits a second as `keychain.unlock` does |
-| `settings.read` | `{}` | `{config_file, control, models, servers, choices, keychain, docs, values, judge, judge_key?, judge_key_detail?, judge_host?, judge_model?, judge_published?}` |
+| `settings.read` | `{}` | `{config_file, control, models, servers, choices, keychain, docs, values, judge, judge_key?, judge_key_detail?, judge_host?, judge_model?, judge_published?, judges}` |
 | `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}`, or `{"provider","url","model","api_key"?,"effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on), and saving the server it names; the model it replaces stays in the list |
 | `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?,"credential"?}` | Settings after adding a provider (`[servers.NAME]`, named by `name`, else after its host) or changing the one `name` names; servers are keyed by name, so a second can share an address (an API key and a ChatGPT plan at api.openai.com), and without `name` the address picks the server only when one is at it; `provider` is `ollama`, `openai`, `anthropic` or `jev` (a dialect is for `openai` alone; a `jev` server answers the judge and carries no model, ADR 46); `credential` is a ChatGPT plan credential in place of a key (below); the key goes to the keychain, bound for `POST` and `GET` at the host where the provider reads it (a bearer header; Anthropic's `x-api-key`), and for `POST` alone for `jev` |
 | `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model and not the judge is on |
@@ -586,13 +606,21 @@ the model the judge asks (`judge.model`, else its provider's: `jev-latest`
 for Jev, `gpt-6-luna` for OpenAI), and `judge_published` what its provider
 publishes as the price of its questions, `{price_input, price_output}`,
 which prices its requests when `[judge]` sets no prices; absent when nodwyn
-does not know it (ADR 41, amended 2026-10-05). `settings.write` takes `set`, from those names to new
+does not know it (ADR 41, amended 2026-10-05). `judge_key` is `plan` for a
+ChatGPT plan's sign-in, which no judge question reaches. `judges` are the
+judges a task may ask (ADR 47), for the pickers: each Jev server and each
+OpenAI server at `api.openai.com` with a credential, and the server
+`[judge]` names wherever it is, as `{name, provider, host, model,
+provider_model, price_input?, price_output?, state, detail?, default?}`,
+`state` being `ready`, `needs_key`, `locked`, `unbound` or `plan`.
+`settings.write` takes `set`, from those names to new
 values; `null` removes a key so its default applies. It accepts only
 `approval.writes` and `approval.commands` (what a task does without asking,
 ADR 35), `approval.dont_ask` (`true` or `false`: whether tasks offer "don't
 ask"; saving `false` also turns it off in every open session, ADR 17), the `budget.*` limits, `loop.request_timeout`
 and `loop.shell_timeout`, the `window.*` marks, `judge.server` (one of the
-configured providers, a `jev` server or an `openai` one with a key),
+configured providers, a `jev` server or an `openai` one with a key, never a
+ChatGPT plan's sign-in),
 `judge.content`, `judge.approve_threshold`, `judge.timeout`, `judge.model`,
 the judge prices and `mcp.runtime`,
 and `policy.allow_insecure_http` (boolean, default false). The latter permits
@@ -677,12 +705,13 @@ its approved manifest; any other change needs approval again.
 `settings.control.write`, `settings.provider.write`, `settings.provider.remove`,
 `settings.model.write`, `settings.model.remove`, `models.test`,
 `settings.docs.write`, `settings.write`, `keychain.create`,
-`keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `workspace.save`,
+`keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `session.model.set`, `session.judge.set`, `workspace.save`,
 `workspace.active`, `workspace.remove`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
 `mcp.remove` and `mcp.pull` methods, and every `credentials.*` method but
 `credentials.list` are refused to a paired remote device in
 the web console (browser.md); `mcp.runtime` and `credentials.list` only read. The console never
-offers `session.eval`. It starts runs from Home with `run.start`, but a
+offers `session.eval`, and does not start runs (ADR 35), though the bridge
+lets `run.start` through for another client of it; a
 paired remote device may start or resume only a run whose requests a person
 answers: `run.start` and `run.resume` with `auto_approve`, `judge` or
 `unattended` are refused to it, by the console and by the daemon (whose

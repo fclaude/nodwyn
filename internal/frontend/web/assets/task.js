@@ -9,7 +9,7 @@ import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
 import { keychainForm } from "./setup.js";
-import { ModelPicker, choiceNamed, effortLabel } from "./modelpicker.js";
+import { ModelPicker, choiceNamed, effortLabel, judgesOf } from "./modelpicker.js";
 
 const drafts = new Map(); // per task, this tab only
 const openSteps = new Map(); // per task, the plan steps the reader unfolded, this tab only
@@ -64,6 +64,7 @@ export class TaskView {
     this.renameBox = null;
     this.uploading = false; // attachments on their way, an image perhaps waiting for its confirm
     this.changing = false; // a model or effort is being changed (session.model.set)
+    this.judging = false; // the judge is being changed (session.judge.set)
     this.modelChanged = false; // a choice made between turns, which the next message is the first to use
     this.logModel = null; // the model and effort the log last names, for a task that is not open
     this.timer = 0;
@@ -337,7 +338,7 @@ export class TaskView {
     if (event.kind === "session.title" && !this.loading) this.desk.refresh().catch(() => {});
     // A model or effort chosen here or on another screen, or applied as a
     // response ended: the picker shows what the conversation has now.
-    if (event.kind === "session.model" && !this.loading && this.item?.open) this.loadInfo();
+    if ((event.kind === "session.model" || event.kind === "session.judge") && !this.loading && this.item?.open) this.loadInfo();
     if (event.kind === "session.start" || event.kind === "session.resume" || event.kind === "session.model") this.noteModel(event.kind, p);
     if (event.kind === "user.msg") this.modelChanged = false;
     switch (event.kind) {
@@ -575,6 +576,11 @@ export class TaskView {
     if (m.unavailable) notes.push({ kind: "error", text: `This conversation's model is not available (${m.unavailable}). Nothing is sent until you choose one.` });
     if (!canChoose) notes.push({ text: "The model is chosen on the computer nodwyn runs on." });
     else if (running) notes.push({ text: "Stop the run to change the model." });
+    // The judge the task asks (ADR 47) is chosen beside its model, on this
+    // computer, between turns: the daemon refuses a change while a response
+    // runs, so the select waits for it.
+    const judge = this.info?.judge;
+    const canJudge = this.conn.has("session.judge.set") && (judgesOf(this.desk).length > 0 || !!judge?.server);
     picker.update({
       desk: this.desk,
       selection,
@@ -583,7 +589,38 @@ export class TaskView {
       disabled: !canChoose || this.changing || this.uploading || running,
       notes,
       onPick: (sel, reset) => this.chooseModel(sel, reset),
+      ...(canJudge && judge
+        ? {
+            judge: judge.server || "",
+            judgeDisabled: this.judging || this.busy,
+            judgeHint: this.busy ? "The judge can be changed once this response is done." : "",
+            onJudge: (name) => this.chooseJudge(name),
+          }
+        : {}),
     });
+  }
+  // chooseJudge makes name the task's judge, or none with "", from its next
+  // question. Nothing is retried; the picker is drawn again from what the
+  // daemon says.
+  async chooseJudge(name) {
+    const item = this.item,
+      version = this.version;
+    if (!item || this.judging) return;
+    this.judging = true;
+    this.controls();
+    try {
+      const state = await this.conn.call("session.judge.set", { id: item.id, judge: name });
+      if (version === this.version && this.info) this.info.judge = state;
+      toast(name ? `${name} judges this task from its next question.` : "This task has no judge now: you answer its commands.");
+    } catch (error) {
+      toast(`${error.message} Nothing was retried; the task keeps the judge it had.`);
+    } finally {
+      this.judging = false;
+      if (version === this.version) {
+        await this.loadInfo();
+        this.controls();
+      }
+    }
   }
   // chooseModel moves the conversation to a model and effort for its next
   // message. The daemon refuses what the model does not take, and queues the
@@ -764,7 +801,7 @@ export class TaskView {
             "div",
             { class: "callout context-unknown", role: "note" },
             h("span", {}, `This task works in a ${(this.desk.settings?.values?.["window.high_water"]?.value || 61440).toLocaleString("en-US")}-token window: nodwyn doesn't know how much context ${this.info.model.model} holds, so it compacts early and forgets more. Set its context length in Settings › Models.`),
-            h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => this.navigate("#/settings") }, "Open Settings")),
+            h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small", onclick: () => this.navigate("#/settings/models") }, "Open Settings")),
           )
         : "",
     ];

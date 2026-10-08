@@ -42,7 +42,8 @@ check(async () => {
     await shows(page, "#view", "What should we get done?", "Run ls -la", "Allow once", "RECENTLY FINISHED", "Summarize what is in this folder");
     const picker = await page.$eval("#new-task-model .mp-controls", (el) => {
       const box = el.getBoundingClientRect();
-      const fields = [...el.querySelectorAll(".mp-field")];
+      // The judge's field is hidden where there is no judge to choose.
+      const fields = [...el.querySelectorAll(".mp-field")].filter((field) => !field.hidden);
       const selects = fields.map((field) => field.querySelector("select").getBoundingClientRect());
       return {
         height: box.height,
@@ -81,7 +82,7 @@ check(async () => {
   // Settings › This browser shows it and hides it again, and remembers.
   const thinking = () => document.documentElement.dataset.thinking + "," + localStorage.getItem("nodwyn-thinking");
   const showThinking = async (page) => {
-    await go(page, "#/settings");
+    await go(page, "#/settings/browser");
     await page.click('button.chip:has-text("Shown")');
     assert.strictEqual(await page.evaluate(thinking), "shown,shown", "after Shown");
   };
@@ -236,12 +237,26 @@ check(async () => {
     await shoot(`review-phone-${theme}`, { width: 390, height: 844 }, theme, review(`review-phone-${theme}`));
   }
   await shoot("settings", { width: 1280, height: 800 }, "light", async (page) => {
+    // Settings opens on its first tab; the others are a click, and an
+    // address, away.
     await go(page, "#/settings");
-    await shows(page, "#view", "Settings", "Approvals", "Writing files", "Running commands");
+    await shows(page, "#view", "Settings", "General", "Models", "Judge", "Approvals", "Writing files", "Running commands");
     await until("settings loaded", () => page.evaluate(() => !document.querySelector("#view").innerText.includes("Loading…")));
+    assert.strictEqual(await page.getAttribute("#settings-tab-general", "aria-selected"), "true");
     // The token budget and the reply cap are named for what they are.
-    await shows(page, "#view", "Tokens used", "a prompt token the provider read from its cache counted as a tenth", "Fallback reply cap", "and none its provider publishes");
+    await shows(page, "#view", "Tokens used", "a prompt token the provider read from its cache counted as a tenth");
+    await page.click("#settings-tab-context");
+    await page.waitForSelector("#section-window");
+    assert.strictEqual(await page.evaluate(() => location.hash), "#/settings/context");
+    await shows(page, "#view", "Fallback reply cap", "and none its provider publishes");
+    assert.strictEqual(await page.locator("#section-approval").count(), 0, "another tab's section is drawn");
   });
+  for (const tab of ["models", "judge"]) {
+    await shoot(`settings-${tab}`, { width: 1280, height: 800 }, "light", async (page) => {
+      await go(page, `#/settings/${tab}`);
+      await page.waitForSelector(`#section-${tab}`);
+    });
+  }
   await shoot("connections", { width: 1280, height: 800 }, "light", async (page) => {
     await go(page, "#/connections");
     await page.waitForSelector("text=No MCP servers yet");

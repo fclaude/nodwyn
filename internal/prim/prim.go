@@ -64,7 +64,10 @@ type Options struct {
 	Private []string
 	// Judge is optional: nil disables its primitives. The host owns
 	// credential injection, redaction, transport and recording; settings are
-	// ordinary data.
+	// ordinary data. JudgeConfig is the judge the task starts with, which
+	// sets the primitives' egress metadata and whether the model is offered
+	// them (Tools); each call asks Judge for the judge the task has then
+	// (ADR 47).
 	Judge       JudgeClient
 	JudgeConfig JudgeOptions
 
@@ -128,7 +131,7 @@ func Register(in *scheme.Interp, o Options) error {
 		}
 	}
 	if o.Judge != nil {
-		for _, p := range []*scheme.Prim{judgeYesNo(o.JudgeConfig, o.Judge), judgeScore(o.JudgeConfig, o.Judge), judgeChoice(o.JudgeConfig, o.Judge)} {
+		for _, p := range []*scheme.Prim{judgeYesNo(o.JudgeConfig, o.Judge), judgeScore(o.JudgeConfig, o.Judge), judgeChoice(o.JudgeConfig, o.Judge), judgeAvailable(o.Judge)} {
 			if err := in.Register(p); err != nil {
 				return err
 			}

@@ -64,7 +64,9 @@ import (
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
-// JudgeOptions are fixed for the session, separate from the host services.
+// JudgeOptions are the judge a task asks, separate from the host services.
+// A task may choose another between turns (ADR 47), so the handlers ask the
+// JudgeClient for them on every call.
 type JudgeOptions struct {
 	// Provider is the provider of the judge's server, which says the API
 	// its requests speak: "jev" for System One, "openai" for the Decisions
@@ -131,6 +133,8 @@ type JudgeClient interface {
 	InjectHeader(id, name, prefix string, req *http.Request) error
 	Do(req *http.Request) (*http.Response, error)
 	Record(kind nlog.Kind, payload any) (nlog.Event, error)
+	// JudgeOptions are the task's judge now; false when it has none.
+	JudgeOptions() (JudgeOptions, bool)
 }
 
 const (
@@ -296,7 +300,11 @@ func readAnswer(o JudgeOptions, raw []byte) (model string, usage json.RawMessage
 
 // judgeAsk sends one question about state and returns its answer object, in
 // System One's shape whichever API the judge's server speaks.
-func judgeAsk(o JudgeOptions, jc JudgeClient, c *scheme.Call, tool, state string, q question) (map[string]any, error) {
+func judgeAsk(jc JudgeClient, c *scheme.Call, tool, state string, q question) (map[string]any, error) {
+	o, ok := jc.JudgeOptions()
+	if !ok {
+		return nil, fmt.Errorf("%s: this task has no judge", tool)
+	}
 	cred, err := judgeCred(o, jc, tool)
 	if err != nil {
 		return nil, err
@@ -427,6 +435,33 @@ func judgeMeta(o JudgeOptions, doc string, params ...scheme.Param) scheme.Meta {
 	}
 }
 
+// RetargetJudge points the judge's primitives at the judge o: the host and
+// the key class the guard checks each call against are the new judge's, so
+// it never judges one destination while bytes go to another. The tool list
+// is fixed for the session (ADR 9), so the primitives are kept and their
+// metadata moved. The caller holds the session idle: no call is being
+// checked while it changes.
+func RetargetJudge(in *scheme.Interp, o JudgeOptions) {
+	for _, name := range []string{"judge-yes-no", "judge-score", "judge-choice"} {
+		if p, ok := in.Lookup(name); ok {
+			p.Meta.EgressHost, p.Meta.EgressClass = JudgeHost(o), o.Class
+		}
+	}
+}
+
+// judgeAvailable: (judge-available?) -> whether the task has a judge now
+// whose key is stored, which the plan gate asks before scoring a plan.
+func judgeAvailable(jc JudgeClient) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "judge-available?",
+		Meta: scheme.Meta{Doc: "Whether this task has a judge now whose key is stored.", Host: true, Hidden: true},
+		Handler: func(*scheme.Call) (scheme.Value, error) {
+			o, ok := jc.JudgeOptions()
+			return scheme.Bool(ok && jc.HandleForClass(o.Class) != nil), nil
+		},
+	}
+}
+
 // judgeYesNo: (judge-yes-no state instructions) -> probability that the
 // answer to the yes/no instructions about state is yes: System One's noul,
 // the Decisions API's predicate.
@@ -447,7 +482,7 @@ func judgeYesNo(o JudgeOptions, jc JudgeClient) *scheme.Prim {
 			if err != nil {
 				return scheme.Void, err
 			}
-			ans, err := judgeAsk(o, jc, c, name, state, question{Type: "noul", Instructions: instr})
+			ans, err := judgeAsk(jc, c, name, state, question{Type: "noul", Instructions: instr})
 			if err != nil {
 				return scheme.Void, err
 			}
@@ -495,7 +530,7 @@ func judgeScore(o JudgeOptions, jc JudgeClient) *scheme.Prim {
 				}
 				levels[i] = it.S
 			}
-			ans, err := judgeAsk(o, jc, c, name, state, question{Type: "score", Instructions: instr, Criteria: levels})
+			ans, err := judgeAsk(jc, c, name, state, question{Type: "score", Instructions: instr, Criteria: levels})
 			if err != nil {
 				return scheme.Void, err
 			}
@@ -551,7 +586,7 @@ func judgeChoice(o JudgeOptions, jc JudgeClient) *scheme.Prim {
 			if len(opts) < 2 {
 				return scheme.Void, fmt.Errorf("%s: at least two options are required", name)
 			}
-			ans, err := judgeAsk(o, jc, c, name, state, question{Type: "choice", Instructions: instr, Criteria: opts})
+			ans, err := judgeAsk(jc, c, name, state, question{Type: "choice", Instructions: instr, Criteria: opts})
 			if err != nil {
 				return scheme.Void, err
 			}

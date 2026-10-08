@@ -578,11 +578,12 @@ checked on every request and recorded as \code{egress.check}. The judge
 is a provider's too (\adr{46}): \code{[judge] server} names a
 \code{[servers.NAME]} of provider \code{jev}, TypeSafe's Jev, which has no
 chat models, or one of provider \code{openai} at OpenAI's address, whose
-Decisions API answers with the key its models use. The console adds Jev in
-Settings \(\rightarrow\) Models like any provider, its key bound for its
-host by \code{POST} alone, and Settings \(\rightarrow\) Judge chooses the
-judge's provider; the key is listed with the other providers' keys under
-Connections. Once the judge is on a provider whose key is stored, the
+Decisions API answers with an API key; a ChatGPT plan's sign-in cannot ask
+it (\adr{47}). The console sets a judge up in Settings \(\rightarrow\)
+Judge with its key alone, since its model and price are known, the key bound
+for its host by \code{POST} alone and listed with the other providers' keys
+under Connections; \code{[judge]} is the default, and each task chooses its
+own beside its model. Once a task has a judge whose key is stored, the
 default loop's plan gate runs before each message, and the judge answers
 commands before you are asked (\code{approval.commands = "judge"}, the
 default). Set \code{judge.content = "none"} to send it nothing, or \code{"full"} to

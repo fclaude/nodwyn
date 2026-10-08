@@ -61,6 +61,27 @@ export function problem(desk, selection, extra) {
 // blocked says a new task cannot start on the selection.
 export const blocked = (desk, selection) => problem(desk, selection)?.kind === "error";
 
+// The judge (ADR 47): which judge a task asks is chosen beside its model, from
+// the judges settings.read lists. A judge that cannot be asked does not stop a
+// task: you are asked instead, so it only warns.
+export const judgesOf = (desk) => desk.settings?.judges || [];
+export const judgeNamed = (desk, name) => judgesOf(desk).find((j) => j.name === name) || null;
+// defaultJudge is the judge new tasks start with: [judge]'s server, or "".
+export const defaultJudge = (desk) => judgesOf(desk).find((j) => j.default)?.name || "";
+const judgeKinds = { jev: "Jev", openai: "OpenAI Decisions" };
+const judgeSuffix = { needs_key: "needs its key", locked: "keychain locked", unbound: "key not allowed", plan: "needs an API key" };
+// judgeLabel names a judge as the pickers list it.
+export const judgeLabel = (j) => (j ? `${j.name}${judgeKinds[j.provider] && judgeKinds[j.provider] !== j.name ? ` · ${judgeKinds[j.provider]}` : ""}` : "No judge");
+
+// judgeProblem says why a task's judge cannot be asked, in words, or null.
+export function judgeProblem(desk, name) {
+  if (!name) return null;
+  const j = judgeNamed(desk, name);
+  if (!j) return { kind: "warn", text: `The judge ${name} is no longer set up, so you answer this task's commands.`, fix: "Settings › Judge" };
+  if (j.state !== "ready") return { kind: "warn", text: `${j.detail || `${j.name} ${judgeSuffix[j.state] || j.state}`}. Until it can be asked, you answer the commands.`, fix: "Settings › Judge" };
+  return null;
+}
+
 const label = (text, control) => h("label", { class: "mp-field" }, h("span", {}, text), control);
 
 export class ModelPicker {
@@ -70,12 +91,17 @@ export class ModelPicker {
     this.props = null;
     this.model = h("select", { class: "mp-select", id: `${id}-model`, "aria-label": "Model", onchange: () => this.pickModel() });
     this.effort = h("select", { class: "mp-select", id: `${id}-effort`, "aria-label": "Effort", onchange: () => this.pickEffort() });
+    this.judge = h("select", { class: "mp-select", id: `${id}-judge`, "aria-label": "Judge", onchange: () => this.props?.onJudge?.(this.judge.value) });
+    this.judgeField = label("Judge", this.judge);
+    this.judgeField.hidden = true;
     this.note = h("div", { class: "mp-notes" });
-    const controls = h("div", { class: "mp-controls" }, label("Model", this.model), label("Effort", this.effort));
+    const controls = h("div", { class: "mp-controls" }, label("Model", this.model), label("Effort", this.effort), this.judgeField);
     if (compact) {
       this.summaryModel = h("span", { class: "mp-summary-model" });
       this.summaryEffort = h("span", { class: "mp-summary-effort" });
-      this.summary = h("summary", { class: "mp-summary" }, this.summaryModel, this.summaryEffort);
+      this.summaryJudge = h("span", { class: "mp-summary-effort mp-summary-judge" });
+      this.summaryJudge.hidden = true;
+      this.summary = h("summary", { class: "mp-summary" }, this.summaryModel, this.summaryEffort, this.summaryJudge);
       this.details = h("details", { class: "mp-details" }, this.summary, controls);
     }
     this.el = h("div", { class: "model-picker", id, role: "group", "aria-label": "Model and effort" }, this.details || controls, this.note);
@@ -87,15 +113,20 @@ export class ModelPicker {
   // can use: none is shown as chosen, and one is asked for); disabled; notes
   // (more lines to say, {kind, text}); onPick(selection, reset), called when a
   // person picks, with reset saying the effort was changed because the new
-  // model does not take it. It redraws only what changed, so a list being open
-  // is not closed by the desk refreshing under it.
+  // model does not take it. With judge (the server of the judge chosen, ""
+  // for none) it also shows the Judge select (ADR 47), calling onJudge(name)
+  // when a person picks one; judgeDisabled turns that select off alone. It
+  // redraws only what changed, so a list being open is not closed by the
+  // desk refreshing under it.
   update(props) {
     this.props = props;
-    const { desk, selection, extra, disabled = false, notes = [], unavailable = false } = props;
+    const { desk, selection, extra, disabled = false, notes = [], unavailable = false, judge, judgeDisabled = false, judgeHint = "" } = props;
     const choices = choicesOf(desk);
     const states = choices.map((c) => statusOf(desk, c.name)?.state || "");
     const found = unavailable ? null : problem(desk, selection, extra);
-    const sig = JSON.stringify([choices, states, selection, extra, disabled, notes, found, unavailable]);
+    const judges = judge === undefined ? null : judgesOf(desk);
+    const judgeFound = judge === undefined ? null : judgeProblem(desk, judge);
+    const sig = JSON.stringify([choices, states, selection, extra, disabled, notes, found, unavailable, judges, judge, judgeDisabled, judgeHint]);
     if (sig === this.sig) return;
     this.sig = sig;
     const { listed, choice } = choiceOf(desk, selection, extra);
@@ -105,8 +136,11 @@ export class ModelPicker {
       this.summaryModel.textContent = model;
       this.summaryEffort.textContent = effort;
       this.summaryEffort.hidden = !effort;
-      this.summary.title = "Change model and effort";
-      this.summary.setAttribute("aria-label", `Model: ${model}${effort ? `, effort: ${effort}` : ""}. Change model and effort`);
+      const judged = judge === undefined ? "" : judge ? `judged by ${judge}` : "no judge";
+      this.summaryJudge.textContent = judged;
+      this.summaryJudge.hidden = !judged;
+      this.summary.title = judged ? "Change model, effort and judge" : "Change model and effort";
+      this.summary.setAttribute("aria-label", `Model: ${model}${effort ? `, effort: ${effort}` : ""}${judged ? `, ${judged}` : ""}. ${this.summary.title}`);
       // A task that cannot run should offer the choice, rather than hide its remedy.
       if (unavailable) this.details.open = true;
     }
@@ -148,14 +182,27 @@ export class ModelPicker {
       this.effort.title = "";
     }
 
-    const lines = [...(found ? [{ kind: found.kind, text: found.text, fix: found.fix }] : []), ...notes];
+    // The judge's select lists no judge, then each judge the daemon lists,
+    // and a chosen one it no longer lists as it is, so what is shown is
+    // what the task has.
+    this.judgeField.hidden = judges === null;
+    if (judges !== null) {
+      const opts = [h("option", { value: "" }, "No judge"), ...judges.map((j) => h("option", { value: j.name }, `${judgeLabel(j)}${j.default ? " (default)" : ""}${judgeSuffix[j.state] ? ` — ${judgeSuffix[j.state]}` : ""}`))];
+      if (judge && !judges.some((j) => j.name === judge)) opts.push(h("option", { value: judge }, `${judge} (no longer set up)`));
+      this.judge.replaceChildren(...opts);
+      this.judge.value = judge || "";
+      this.judge.disabled = disabled || judgeDisabled;
+      this.judge.title = judgeHint;
+    }
+
+    const lines = [...(found ? [{ kind: found.kind, text: found.text, fix: found.fix }] : []), ...(judgeFound ? [judgeFound] : []), ...notes];
     this.note.replaceChildren(
       ...lines.map((line) =>
         h(
           "p",
           { class: `mp-note ${line.kind || ""}`, role: line.kind === "error" ? "alert" : null },
           line.text,
-          line.fix ? [" ", h("a", { href: line.fix.startsWith("Set") ? "#/" : "#/settings" }, line.fix)] : null,
+          line.fix ? [" ", h("a", { href: line.fix.startsWith("Set") ? "#/" : line.fix.includes("Judge") ? "#/settings/judge" : "#/settings/models" }, line.fix)] : null,
         ),
       ),
     );

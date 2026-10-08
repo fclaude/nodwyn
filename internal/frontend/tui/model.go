@@ -458,6 +458,8 @@ func (m *model) submit() tea.Cmd {
 		return m.inspect(text)
 	case fields[0] == ":model":
 		return m.chooseModel(fields[1:])
+	case fields[0] == ":judge":
+		return m.chooseJudge(fields[1:])
 	case fields[0] == ":attach":
 		return m.attachFile(strings.TrimPrefix(strings.TrimSpace(text), ":attach"))
 	case text == ":q" || text == ":quit" || text == ":exit":
@@ -520,6 +522,30 @@ func (m *model) chooseModel(args []string) tea.Cmd {
 	b, id := m.backend, m.id
 	return m.action("model", "", func(ctx context.Context) error {
 		_, err := b.SetModel(ctx, id, name, effort)
+		return err
+	})
+}
+
+// chooseJudge makes a judge the task's, or none (ADR 47). The session.judge
+// record says so in the conversation; a refusal is the status line. A
+// judge is chosen while the task is idle, which the daemon and core hold.
+func (m *model) chooseJudge(args []string) tea.Cmd {
+	if len(args) != 1 {
+		m.status = "usage: :judge shows the judges; :judge NAME asks that one, :judge none asks none"
+		return nil
+	}
+	if m.busy {
+		m.status = "Choose the judge when this turn ends."
+		return nil
+	}
+	name := args[0]
+	if name == "none" {
+		name = ""
+	}
+	m.composer.Reset()
+	b, id := m.backend, m.id
+	return m.action("judge", "", func(ctx context.Context) error {
+		_, err := b.SetJudge(ctx, id, name)
 		return err
 	})
 }

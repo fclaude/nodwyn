@@ -14,32 +14,47 @@ import (
 )
 
 // The judge's primitives, judge-yes-no, judge-score and judge-choice, are
-// registered when the session starts with the judge's server's key stored,
-// and offered to the model only at judge.content = "full"; below that they
-// are Scheme's alone (ADR 46).
+// registered when a judge could be asked at all: a keychain is open and
+// config.toml has a judge provider, since a task may choose its judge after
+// it starts (ADR 47). They are offered to the model only at judge.content =
+// "full" and when the task starts with a judge whose key is stored; below
+// that they are Scheme's alone (ADR 46).
 func TestJudgeToolsOfferedAtFullContentWithAKey(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		content    string
 		key        bool
+		noKeychain bool
+		noProvider bool
 		registered bool
 		want       bool
 	}{
-		{config.JudgeContentFull, true, true, true},
-		{config.JudgeContentPlan, true, true, false},
-		{config.JudgeContentFull, false, false, false},
+		{content: config.JudgeContentFull, key: true, registered: true, want: true},
+		{content: config.JudgeContentPlan, key: true, registered: true},
+		{content: config.JudgeContentFull, registered: true},
+		{content: config.JudgeContentFull, noKeychain: true},
+		{content: config.JudgeContentFull, key: true, noProvider: true},
+		{content: config.JudgeContentNone, key: true},
 	} {
 		srv := fake.NewT(t)
 		t.Cleanup(srv.Close)
 		cfg := config.Default()
 		cfg.Servers = map[string]config.Server{"jev": {Provider: "jev", URL: "https://api.typesafe.ai", Credential: "jev-key"}}
 		cfg.Judge.Server, cfg.Judge.Content = "jev", tc.content
+		if tc.noProvider {
+			cfg.Servers, cfg.Judge.Server = nil, ""
+		}
 		kc, err := keychain.Create(filepath.Join(t.TempDir(), "kc"), keychain.FastKDF, []byte("p"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if tc.key {
-			kc.Add("jev-key", []byte("sk-judge-canary-0001"))
+			if _, err := kc.Add("jev-key", []byte("sk-judge-canary-0001")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if tc.noKeychain {
+			kc = nil
 		}
 		s, err := New(Options{Config: cfg, Repo: t.TempDir(), Provider: llm.NewOllama(srv.URL), NoConfirm: true, LogWriter: &bytes.Buffer{}, Keychain: kc})
 		if err != nil {

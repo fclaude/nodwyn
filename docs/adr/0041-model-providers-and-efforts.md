@@ -473,3 +473,13 @@ since the picker offers only names.
 Not built: a model chosen as a TUI session opens (`--model NAME`; it opens on
 `[control]`, and `:model` before the first message moves it), and a command
 in line mode.
+
+## Amendment 2026-10-08: Settings is tabs, and providers carry their models (ADR 47)
+
+Settings › Models is a tab of its own. Each provider is a card with the
+models on it listed under it and Add a model there, rather than a list of
+providers above a list of models; the default for new tasks is Model ·
+Effort · Judge. Jev is no longer a preset or a kind of model provider: it is
+added under Settings › Judge, since it carries no model. A provider form
+that needs a key while the keychain is locked shows the keychain's form
+beside it.

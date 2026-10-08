@@ -604,7 +604,8 @@ Primitive & What it does \\
 \code{(git-land message)} & in a worktree session only: commit, rebase onto the newest base, push by fast-forward and move the local base branch, in one irreversible step \\
 \code{(credential class)}, \code{(credential-register class)} & the handle of a stored key, or \code{\#f}; store a new key (Section~\ref{sch:keys}) \\
 \code{(http-request cred url method position headers body)} & a keyed request, checked against the binding table and credential transport policy \\
-\code{(judge-yes-no ...)}, \code{(judge-score ...)}, \code{(judge-choice ...)} & ask the configured judge, Jev or OpenAI's Decisions API, a question about a text; Go supplies the stored key of the judge's server; the model's tools only at \code{judge.content = "full"} \\
+\code{(judge-yes-no ...)}, \code{(judge-score ...)}, \code{(judge-choice ...)} & ask the task's judge, Jev or OpenAI's Decisions API, a question about a text; Go supplies the stored key of the judge's server; the model's tools only at \code{judge.content = "full"} \\
+\code{(judge-available?)} & whether the task has a judge now whose key is stored, which the plan gate asks \\
 \code{(policy-read name)}, \code{(policy-write name revision content)} & read or replace the bindings or approvals file; user only \\
 \bottomrule
 \end{tabular}
@@ -1113,8 +1114,8 @@ Documents    doc-export; google-doc-upload             (with a google credential
 Session      scratch-dir repository workspace project-notes project-notes-save
              project-instructions
 Keys         credential; with a keychain, credential-register http-request
-Judge        judge-yes-no judge-score judge-choice   (with the judge's key stored;
-                                                  the model's at judge.content = "full")
+Judge        judge-yes-no judge-score judge-choice   (where a judge can be asked;
+             judge-available?                     the model's at judge.content = "full")
 Policy       policy-read policy-write
 MCP          server__tool, one per tool you turned on
 Loop         model-turn run-tools skip-tools answer-call add-message log-note
