@@ -537,3 +537,38 @@ The `worktrees` browser check verifies both paths: a new git workspace starts
 with the choice checked and opens through `worktree.open`; after unchecking,
 a task opens through `session.open`. The two checked tasks still verify their
 work remains isolated in separate worktrees.
+
+## Amendment 2026-10-08: worktrees in the TUI
+
+The TUI clause of the Decision is built, with `--worktree` from §1:
+
+- The chooser's first row, selected at start, is "New session in a new
+  worktree of <repo>" when `--repo` has its own `.git` (a folder, or the file
+  a worktree has), so Enter twice gives the console's default. The row below
+  opens in the folder itself. The `.git` check decides only what is offered:
+  whoever can write the folder can make it look like a repository, and then
+  the row asks core, which refuses a folder that is not a repository's top
+  with a sentence, as `worktree.open` does. Nothing else reads it.
+- `nodwyn tui --worktree` opens a new session in a worktree without the
+  chooser, in local and daemon mode alike; with `--resume` it is refused,
+  since a resumed session keeps its folder.
+- The title shows the branch, the chooser lists a stored worktree session
+  by its repository and branch, and the conversation shows `worktree.create`,
+  `worktree.restore` and `worktree.remove` in the console's words, with the
+  count of uncommitted files left out.
+- Local mode makes the worktree through `core.Options.Worktree`, without the
+  daemon's task-root refusal, as local mode has always opened any `--repo`
+  without it. The worktree is inside a repository the local TUI could already
+  open as a root, so it reaches nothing new. The refusal moving into core is
+  still not built.
+
+The TUI has no diff or review view, and is not to have one: a worktree is
+a folder on the person's own computer, and in a terminal `git diff` and an
+editor already read it, beside the TUI, at the path the conversation names.
+A comment on the changes is a message to the task, which `worktree.review`
+only formats. The console's Review exists because a browser, a paired
+phone above all, cannot open the folder.
+
+Not built: `--worktree-base`, and `--worktree` for line mode and `nodwyn run`.
+`internal/frontend/tui/worktree_test.go` opens through the chooser and the
+flag over both backends, against a real git repository.

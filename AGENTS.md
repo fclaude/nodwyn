@@ -5,7 +5,9 @@ binaries, `internal/` the host (guard, keychain, bindings, egress, the loop's
 window, the JSON-RPC frontend and the console in
 `internal/frontend/web/assets`), `internal/loop/*.scm` the default prompts and
 loop, `docs/` the decisions (`docs/adr`), the Scheme reference
-(`docs/scheme.md`), the protocol, the manual, the book and the expert guide,
+(`docs/scheme.md`), the protocol, the manual, what each client can do
+(`docs/clients.md`, read it before closing a gap between clients rather than
+surveying the code), the book and the expert guide,
 `test/` the exfiltration suite, fakes, browser checks and session fixtures.
 
 ## Validating a change
@@ -52,6 +54,8 @@ are faster.
   that does nothing. If Chromium is missing: `cd test/browser && npx
   playwright install chromium`.
   To look by hand: `go run ./test/browser/demo -seed` prints a launch URL.
+- **What a client can do** (the console, the TUI, line mode, a CLI
+  command): its row in `docs/clients.md` changes in the same commit.
 - **RPC types** (`internal/frontend/rpc`): `go generate ./internal/frontend/rpc`
   rewrites `docs/protocol.schema.json` (`TestWireSchemaMatchesContract` fails
   until you do); new methods and fields go in `docs/protocol.md`.

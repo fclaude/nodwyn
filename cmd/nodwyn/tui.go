@@ -18,6 +18,7 @@ func runTUI(paths config.Paths, args []string) error {
 	socket := flags.String("socket", "", "attach to a running daemon's Unix socket")
 	repo := flags.String("repo", ".", "repository for new sessions")
 	resume := flags.String("resume", "", "open this session directly")
+	worktree := flags.Bool("worktree", false, "start a new session directly, in a new git worktree of --repo")
 	noKeychain := flags.Bool("no-keychain", false, "run locally without opening the keychain")
 	thinking := flags.Bool("show-thinking", false, "show model thinking")
 	if err := flags.Parse(args); err != nil {
@@ -31,6 +32,9 @@ func runTUI(paths config.Paths, args []string) error {
 	}
 	if *socket != "" && *noKeychain {
 		return fmt.Errorf("tui: --no-keychain applies only to local sessions; the daemon owns its keychain")
+	}
+	if *worktree && *resume != "" {
+		return fmt.Errorf("tui: --worktree starts a new session; a resumed one keeps the folder it has")
 	}
 	root, err := filepath.Abs(*repo)
 	if err != nil {
@@ -48,5 +52,5 @@ func runTUI(paths config.Paths, args []string) error {
 			}
 		}
 	}
-	return tui.Run(context.Background(), tui.Options{Core: o, Socket: *socket, Resume: *resume, ShowThinking: *thinking, Input: os.Stdin, Output: os.Stdout})
+	return tui.Run(context.Background(), tui.Options{Core: o, Socket: *socket, Resume: *resume, Worktree: *worktree, ShowThinking: *thinking, Input: os.Stdin, Output: os.Stdout})
 }

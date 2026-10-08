@@ -5,9 +5,14 @@ import (
 
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
+	"github.com/fclaude/nodwyn/internal/log"
 )
 
-type remote struct{ client *rpc.Client }
+type remote struct {
+	client *rpc.Client
+	// socket is the daemon's, for a call that needs a connection of its own.
+	socket string
+}
 
 func (r *remote) List(ctx context.Context) (out []rpc.SessionInfo, err error) {
 	err = r.client.Call(ctx, "session.list", struct{}{}, &out)
@@ -22,6 +27,12 @@ func (r *remote) Attach(ctx context.Context, repo, id string) (snapshot, error) 
 	if err := r.client.Call(ctx, method, params, &info); err != nil {
 		return snapshot{}, err
 	}
+	return r.subscribe(ctx, info)
+}
+
+// subscribe follows an open session and reads its history up to the live
+// events, page by page.
+func (r *remote) subscribe(ctx context.Context, info rpc.SessionDetails) (snapshot, error) {
 	var sub struct {
 		Page    core.LogPage      `json:"page"`
 		Busy    bool              `json:"busy"`
@@ -31,6 +42,9 @@ func (r *remote) Attach(ctx context.Context, repo, id string) (snapshot, error) 
 		return snapshot{}, err
 	}
 	result := snapshot{ID: info.ID, Repo: info.Repo, Busy: sub.Busy, History: sub.Page.Events, Pending: sub.Pending}
+	if info.Worktree != nil {
+		result.Branch = info.Worktree.Branch
+	}
 	page := sub.Page
 	for page.More {
 		if err := r.client.Call(ctx, "log.read", map[string]any{"id": info.ID, "after": page.Next, "through": page.Through, "limit": 100}, &page); err != nil {
@@ -61,6 +75,29 @@ func (r *remote) Abort(ctx context.Context, id string) error {
 	return r.client.Call(ctx, "session.abort", map[string]any{"id": id}, nil)
 }
 func (r *remote) Close() { r.client.Close() }
+
+// OpenWorktree is Attach's new session, made in a git worktree of repo.
+func (r *remote) OpenWorktree(ctx context.Context, repo string) (snapshot, error) {
+	var info rpc.SessionDetails
+	if err := r.client.Call(ctx, "worktree.open", map[string]any{"repo": repo}, &info); err != nil {
+		return snapshot{}, err
+	}
+	return r.subscribe(ctx, info)
+}
+
+// AttachFile asks on a connection of its own: the daemon runs one
+// connection's calls in order, so an image's confirm could not be answered
+// on this one while session.attach waits for it.
+func (r *remote) AttachFile(ctx context.Context, id, path string) (log.Attach, error) {
+	c, err := rpc.Dial(ctx, r.socket)
+	if err != nil {
+		return log.Attach{}, err
+	}
+	defer c.Close()
+	var receipt log.Attach
+	err = c.Call(ctx, "session.attach", map[string]any{"id": id, "path": path}, &receipt)
+	return receipt, err
+}
 
 func (r *remote) Bind(ctx context.Context, id, prompt string) error {
 	return r.client.Call(ctx, "session.binding.create", map[string]any{"id": id, "prompt_id": prompt}, nil)

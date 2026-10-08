@@ -74,7 +74,7 @@ func testRemote(t *testing.T, o core.Options) (*remote, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(c.Close)
-	return &remote{client: c}, path
+	return &remote{client: c, socket: path}, path
 }
 func nextKind(t *testing.T, b backend, kind string, observed *[]rpc.ClientEvent) rpc.ClientEvent {
 	t.Helper()
@@ -196,7 +196,7 @@ func TestRemoteReconnectRecoversPendingPromptAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := &remote{c}
+	second := &remote{client: c, socket: path}
 	defer second.Close()
 	restored, err := second.Attach(ctx, o.Repo, snap.ID)
 	if err != nil {

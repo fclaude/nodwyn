@@ -15,9 +15,12 @@ import (
 
 type snapshot struct {
 	ID, Repo string
-	Busy     bool
-	History  []log.Event
-	Pending  []rpc.ClientEvent
+	// Branch is the session's own branch when it works in a git worktree
+	// (ADR 34), which the title shows.
+	Branch  string
+	Busy    bool
+	History []log.Event
+	Pending []rpc.ClientEvent
 }
 
 // backend is the small set of operations these views need. Core and RPC retain
@@ -25,8 +28,19 @@ type snapshot struct {
 // a connection; neither adapter retries a submitted operation.
 type backend interface {
 	List(context.Context) ([]rpc.SessionInfo, error)
+	// Attach opens a session: the stored one id names, or with id "" a new
+	// one in repo. OpenWorktree opens a new one in a git worktree of repo, on
+	// a branch of its own (ADR 34).
 	Attach(context.Context, string, string) (snapshot, error)
+	OpenWorktree(context.Context, string) (snapshot, error)
 	Next(context.Context) (rpc.ClientEvent, error)
+	// Models says which model the conversation talks to and which it may be
+	// moved to; SetModel moves it, by a choice's name and an effort (ADR 41).
+	Models(context.Context, string) (modelView, error)
+	SetModel(context.Context, string, string, string) (core.ModelState, error)
+	// AttachFile adds a file the person named to the conversation (ADR 22).
+	// An image's confirm arrives as a prompt while it waits.
+	AttachFile(context.Context, string, string) (log.Attach, error)
 	Send(context.Context, string, string, bool) error
 	Answer(context.Context, string, string, string) error
 	Grant(context.Context, string, string, string) error
@@ -56,11 +70,27 @@ func (l *local) List(context.Context) ([]rpc.SessionInfo, error) {
 	items, err := (core.Store{Dir: l.options.Paths.SessionsDir}).List()
 	var out []rpc.SessionInfo
 	for _, s := range items {
-		out = append(out, rpc.SessionInfo{ID: s.ID, Repo: s.Repo, FirstMessage: s.FirstMessage, LastEvent: s.LastEvent, InFlight: s.InFlight, Truncated: s.Truncated})
+		out = append(out, rpc.SessionInfo{ID: s.ID, Repo: s.Repo, FirstMessage: s.FirstMessage, LastEvent: s.LastEvent, InFlight: s.InFlight, Truncated: s.Truncated, Worktree: s.Worktree})
 	}
 	return out, err
 }
 func (l *local) Attach(ctx context.Context, repo, id string) (snapshot, error) {
+	o := l.options
+	o.Repo = repo
+	if id == "" {
+		return l.start(ctx, func() (*core.Session, error) { return core.New(o) })
+	}
+	o.Repo = ""
+	return l.start(ctx, func() (*core.Session, error) { return core.Resume(o, id) })
+}
+func (l *local) OpenWorktree(ctx context.Context, repo string) (snapshot, error) {
+	o := l.options
+	o.Repo, o.Worktree = repo, true
+	return l.start(ctx, func() (*core.Session, error) { return core.New(o) })
+}
+
+// start makes the session this process owns and forwards its events.
+func (l *local) start(ctx context.Context, open func() (*core.Session, error)) (snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return snapshot{}, err
 	}
@@ -69,16 +99,7 @@ func (l *local) Attach(ctx context.Context, repo, id string) (snapshot, error) {
 		return snapshot{}, context.Canceled
 	default:
 	}
-	o := l.options
-	o.Repo = repo
-	var s *core.Session
-	var err error
-	if id == "" {
-		s, err = core.New(o)
-	} else {
-		o.Repo = ""
-		s, err = core.Resume(o, id)
-	}
+	s, err := open()
 	if err != nil {
 		return snapshot{}, err
 	}
@@ -106,7 +127,11 @@ func (l *local) Attach(ctx context.Context, repo, id string) (snapshot, error) {
 		l.session = s
 		l.mu.Unlock()
 	}
-	return snapshot{ID: s.ID(), Repo: s.Repo(), History: s.EventsSoFar(), Busy: s.Busy()}, nil
+	result := snapshot{ID: s.ID(), Repo: s.Repo(), History: s.EventsSoFar(), Busy: s.Busy()}
+	if w := s.Worktree(); w != nil {
+		result.Branch = w.Branch
+	}
+	return result, nil
 }
 func (l *local) Next(ctx context.Context) (rpc.ClientEvent, error) {
 	select {
@@ -135,6 +160,12 @@ func (l *local) Secret(_ context.Context, _, prompt string, value []byte) error 
 	return l.session.SecretReplyFrom(prompt, value, "terminal")
 }
 func (l *local) Abort(context.Context, string) error { l.session.Abort(); return nil }
+
+// AttachFile waits for an image's confirm, which reaches this view as a
+// prompt and is answered through Answer meanwhile.
+func (l *local) AttachFile(_ context.Context, _, path string) (log.Attach, error) {
+	return l.session.Attach(path, "", "terminal")
+}
 func (l *local) Close() {
 	l.once.Do(func() {
 		l.mu.Lock()

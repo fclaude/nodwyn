@@ -1049,6 +1049,34 @@ func (m Model) WithSettings(o Model) Model {
 	return m
 }
 
+// NamedModel is a model by the name a conversation is opened on or moved to
+// with: "control" for [control], else its [models.NAME].
+type NamedModel struct {
+	Name  string
+	Model Model
+}
+
+// ModelChoices are the models a conversation can be opened on or moved to
+// (ADR 41): [control] first, when it names a model, then each [models.NAME]
+// in name order that is not the same model again. Every front-end offers this
+// list, so the console and the terminal offer the same models.
+func (c Config) ModelChoices() []NamedModel {
+	var out []NamedModel
+	control := c.Tuned(c.Resolve(c.Control))
+	configured := control.URL != "" && control.Model != ""
+	if configured {
+		out = append(out, NamedModel{ControlModel, control})
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.Models)) {
+		m := c.Resolve(c.Models[name])
+		if configured && c.SameModel(m, control) {
+			continue
+		}
+		out = append(out, NamedModel{name, m})
+	}
+	return out
+}
+
 // Choice is m without its settings and its efforts: which model it is, where,
 // and the effort it starts at. It is what [control] keeps of a model that has
 // an entry of its own, which holds the rest (Tuned, Efforts).

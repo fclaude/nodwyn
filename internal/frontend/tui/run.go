@@ -16,6 +16,7 @@ type Options struct {
 	Core         core.Options // for a session in this process, when Socket is ""
 	Socket       string       // a daemon to attach to instead
 	Resume       string       // session to reopen; "" starts a new one
+	Worktree     bool         // start the new one in a git worktree of Core.Repo (ADR 34)
 	ShowThinking bool
 	Input        io.Reader
 	Output       io.Writer
@@ -36,7 +37,7 @@ func Run(ctx context.Context, o Options) error {
 		if err != nil {
 			return nil, err
 		}
-		b := &remote{client: c}
+		b := &remote{client: c, socket: o.Socket}
 		mu.Lock()
 		defer mu.Unlock()
 		if closing {
@@ -68,6 +69,7 @@ func Run(ctx context.Context, o Options) error {
 		opened = append(opened, b)
 	}
 	m := newModel(ctx, b, o.Core.Repo, o.Resume, o.ShowThinking)
+	m.worktree = o.Worktree
 	if o.Socket != "" {
 		m.reconnect = connect
 	}

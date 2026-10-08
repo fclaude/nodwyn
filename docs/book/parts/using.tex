@@ -228,7 +228,10 @@ provider that cannot read one refuses that request, and the turn says so
   in this process, and ends with it. Scriptable; \code{--no-confirm}
   answers every confirm with no.
 \item[\code{nodwyn tui}] The full-screen terminal client, in its own
-  process or attached to a daemon with \code{--socket}.
+  process or attached to a daemon with \code{--socket}. In a git
+  repository it offers a session in a worktree of its own first
+  (\code{--worktree} opens one directly); \code{:model} moves the
+  conversation to another model, and \code{:attach PATH} adds a file.
 \item[\code{nodwyn daemon}] Owns sessions over a private Unix socket, so
   they outlive the client that started them. Everything below talks to it.
 \item[\code{nodwyn ui}] The browser console for a running daemon: tasks,

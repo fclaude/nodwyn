@@ -121,3 +121,8 @@ Decision change:
 A choice also carries the effort its requests ask for (`session.model`
 `effort`), and `session.model.set` with the model the conversation is on
 changes the effort alone, without sizing or fitting anything again.
+
+## Amendment 2026-10-08: the TUI chooses too
+
+The TUI's command, "still not built" above, is built: `:model` and
+`:model NAME [EFFORT]` (ADR 41, amended 2026-10-08).

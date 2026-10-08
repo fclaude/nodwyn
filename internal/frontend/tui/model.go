@@ -2,6 +2,9 @@ package tui
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,6 +28,7 @@ type model struct {
 	backend                                      backend
 	reconnect                                    func(context.Context) (backend, error)
 	repo, id                                     string
+	branch                                       string // the session's own, in a git worktree
 	sessions                                     []rpc.SessionInfo
 	selected                                     int
 	loading, active, busy, working, disconnected bool
@@ -44,6 +48,12 @@ type model struct {
 	status                                       string
 	generation                                   int
 	operations                                   int
+	// gitRepo is whether repo looks like a git repository's top folder, so the
+	// chooser offers a worktree; worktree opens a new one at once (--worktree).
+	gitRepo, worktree bool
+	// attaching is while a file is being added: an image waits for its
+	// confirm, so the keyboard stays free to answer it.
+	attaching bool
 }
 type listResult struct {
 	items []rpc.SessionInfo
@@ -52,6 +62,10 @@ type listResult struct {
 type attachResult struct {
 	snapshot snapshot
 	err      error
+}
+type attachFileResult struct {
+	name string
+	err  error
 }
 type nextResult struct {
 	event      rpc.ClientEvent
@@ -74,17 +88,29 @@ func newModel(ctx context.Context, b backend, repo, id string, thinking bool) *m
 	input.Placeholder = "Type a displayed choice, then Enter"
 	input.SetVirtualCursor(true)
 	input.CharLimit = 0
-	m := &model{ctx: ctx, backend: b, repo: repo, id: id, width: 80, height: 24, promptInput: input, composer: newComposer(), viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(18)), thinking: thinking, resolved: map[string]bool{}}
+	m := &model{ctx: ctx, backend: b, repo: repo, id: id, gitRepo: gitTop(repo), width: 80, height: 24, promptInput: input, composer: newComposer(), viewport: viewport.New(viewport.WithWidth(80), viewport.WithHeight(18)), thinking: thinking, resolved: map[string]bool{}}
 	m.viewport.SoftWrap = true
 	m.viewport.FillHeight = true
 	m.composer.Focus()
 	m.layout()
 	return m
 }
+
+// gitTop is whether dir has its own .git, a folder or a worktree's file: a
+// repository's top folder, which is what a worktree is made from. It only
+// decides what the chooser offers; core refuses any other folder in a
+// sentence (ADR 34).
+func gitTop(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil
+}
 func (m *model) Init() tea.Cmd {
 	m.loading = true
 	if m.id != "" {
 		return m.attach(m.id)
+	}
+	if m.worktree {
+		return m.openWorktree()
 	}
 	return func() tea.Msg { items, err := m.backend.List(m.ctx); return listResult{items, err} }
 }
@@ -93,6 +119,18 @@ func (m *model) attach(id string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 		defer cancel()
 		s, err := m.backend.Attach(ctx, m.repo, id)
+		return attachResult{s, err}
+	}
+}
+
+// openWorktree starts a new session in a git worktree of repo. Checking a
+// worktree out runs the repository's hooks and filters, so it may take a
+// while.
+func (m *model) openWorktree() tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(m.ctx, 2*time.Minute)
+		defer cancel()
+		s, err := m.backend.OpenWorktree(ctx, m.repo)
 		return attachResult{s, err}
 	}
 }
@@ -110,7 +148,7 @@ func (m *model) action(kind, prompt string, work func(context.Context) error) te
 	}
 }
 func (m *model) restore(s snapshot) {
-	m.id, m.repo, m.busy, m.active = s.ID, s.Repo, s.Busy, true
+	m.id, m.repo, m.branch, m.busy, m.active = s.ID, s.Repo, s.Branch, s.Busy, true
 	m.loading, m.disconnected = false, false
 	m.lastSeq = 0
 	m.gauge = contextGauge{}
@@ -151,6 +189,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.actionFinished(msg)
 	case attachResult:
 		return m, m.attached(msg)
+	case attachFileResult:
+		m.fileAttached(msg)
 	case reconnectResult:
 		return m, m.reconnected(msg)
 	case nextResult:
@@ -303,11 +343,13 @@ func (m *model) globalKey(key string) (tea.Cmd, bool) {
 	case "ctrl+q":
 		return tea.Quit, true
 	case "ctrl+c":
-		if m.active && m.busy && !m.disconnected {
+		// An attachment is cancelled as a turn is: an image's confirm is
+		// declined, and nothing is added.
+		if m.active && (m.busy || m.attaching) && !m.disconnected {
 			b, id := m.backend, m.id
 			return m.action("abort", "", func(ctx context.Context) error { return b.Abort(ctx, id) }), true
 		}
-		if m.busy {
+		if m.busy || m.attaching {
 			return nil, true
 		}
 		return tea.Quit, true
@@ -356,20 +398,35 @@ func (m *model) startReconnect() tea.Cmd {
 	}
 }
 
-// listKey moves through the session list; entry 0 opens a new session.
+// newRows are the chooser's first rows, each a new session: in a new git
+// worktree of the folder first when it is a repository's top folder, as the
+// console starts tasks in a git workspace by default (ADR 34), then in the
+// folder itself.
+func (m *model) newRows() []string {
+	folder := safe(m.repo)
+	if m.gitRepo {
+		return []string{"New session in a new worktree of " + folder, "New session in " + folder}
+	}
+	return []string{"New session in " + folder}
+}
+
+// listKey moves through the session list, below the new-session rows.
 func (m *model) listKey(key string) tea.Cmd {
+	news := len(m.newRows())
 	switch key {
 	case "up":
 		m.selected = max(0, m.selected-1)
 	case "down":
-		m.selected = min(len(m.sessions), m.selected+1)
+		m.selected = min(news+len(m.sessions)-1, m.selected+1)
 	case "enter":
 		m.loading = true
-		id := ""
-		if m.selected > 0 {
-			id = m.sessions[m.selected-1].ID
+		switch {
+		case m.selected >= news:
+			return m.attach(m.sessions[m.selected-news].ID)
+		case m.gitRepo && m.selected == 0:
+			return m.openWorktree()
 		}
-		return m.attach(id)
+		return m.attach("")
 	}
 	return nil
 }
@@ -395,9 +452,14 @@ func (m *model) submit() tea.Cmd {
 	if text == "" {
 		return nil
 	}
+	fields := strings.Fields(text)
 	switch {
 	case isInspectorCommand(text):
 		return m.inspect(text)
+	case fields[0] == ":model":
+		return m.chooseModel(fields[1:])
+	case fields[0] == ":attach":
+		return m.attachFile(strings.TrimPrefix(strings.TrimSpace(text), ":attach"))
 	case text == ":q" || text == ":quit" || text == ":exit":
 		return tea.Quit
 	case text == ":help" || text == ":h":
@@ -426,6 +488,10 @@ func (m *model) submit() tea.Cmd {
 		m.status = "Session is busy. Ctrl+C aborts; your draft is kept."
 		return nil
 	}
+	if m.attaching {
+		m.status = "A file is being attached. Ctrl+C cancels it; your draft is kept."
+		return nil
+	}
 	eval := strings.HasPrefix(text, ":eval ")
 	source := text
 	if eval {
@@ -435,6 +501,84 @@ func (m *model) submit() tea.Cmd {
 	m.busy = true
 	b, id := m.backend, m.id
 	return m.action("send", "", func(ctx context.Context) error { return b.Send(ctx, id, source, eval) })
+}
+
+// chooseModel moves the conversation to a model by its choice's name, with an
+// effort or the model's own (ADR 41). The session.model record says what
+// happened in the conversation, a switch or a choice waiting for the turn
+// under way; a refusal is the status line.
+func (m *model) chooseModel(args []string) tea.Cmd {
+	if len(args) == 0 || len(args) > 2 {
+		m.status = "usage: :model shows the choices; :model NAME [EFFORT] moves the conversation"
+		return nil
+	}
+	name, effort := args[0], ""
+	if len(args) == 2 {
+		effort = args[1]
+	}
+	m.composer.Reset()
+	b, id := m.backend, m.id
+	return m.action("model", "", func(ctx context.Context) error {
+		_, err := b.SetModel(ctx, id, name, effort)
+		return err
+	})
+}
+
+// attachFile adds the file the rest of the line names. It runs beside the
+// keyboard, not as an action, so an image's confirm can be answered while
+// the attachment waits for it; the daemon and core bound that wait.
+func (m *model) attachFile(arg string) tea.Cmd {
+	path, err := attachPath(arg)
+	switch {
+	case err != nil:
+		m.status = err.Error()
+		return nil
+	case m.busy:
+		m.status = "Attach when the session is idle. Ctrl+C aborts busy work."
+		return nil
+	case m.attaching:
+		m.status = "A file is already being attached."
+		return nil
+	}
+	m.composer.Reset()
+	m.attaching = true
+	name := filepath.Base(path)
+	m.status = "Attaching " + safe(name) + "…"
+	b, id := m.backend, m.id
+	return func() tea.Msg {
+		_, err := b.AttachFile(m.ctx, id, path)
+		return attachFileResult{name, err}
+	}
+}
+
+// attachPath is the file :attach names, read as the shell it was typed in
+// would read it: ~/ is the home directory, and a relative path is from the
+// folder nodwyn was started in.
+func attachPath(arg string) (string, error) {
+	p := strings.TrimSpace(arg)
+	if p == "" {
+		return "", errors.New("usage: :attach PATH (the rest of the line is the path)")
+	}
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		p = filepath.Join(home, p[1:])
+	}
+	return filepath.Abs(p)
+}
+
+// fileAttached ends an attachment. What was added is the attach record in
+// the conversation; only a failure needs the status line.
+func (m *model) fileAttached(msg attachFileResult) {
+	m.attaching = false
+	if msg.err != nil {
+		m.status = "Not attached: " + safe(msg.name) + ": " + safe(msg.err.Error())
+	} else {
+		m.status = ""
+	}
+	m.refresh(false)
 }
 func (m *model) View() tea.View {
 	if m.width < 30 || m.height < 8 {
@@ -452,7 +596,13 @@ func (m *model) View() tea.View {
 	if m.disconnected {
 		state = "disconnected"
 	}
+	if m.attaching && !m.busy {
+		state = "attaching"
+	}
 	title := "nodwyn · " + state
+	if m.branch != "" && m.active {
+		title += " · " + safe(m.branch)
+	}
 	if g := m.gauge.title(); g != "" && m.active {
 		title += " · " + g
 	}
@@ -464,7 +614,10 @@ func (m *model) View() tea.View {
 		// reserved first, so a long first message is clipped instead of
 		// pushing the identifying detail off the end.
 		type row struct{ label, meta string }
-		rows := []row{{label: "New session in " + safe(m.repo)}}
+		var rows []row
+		for _, label := range m.newRows() {
+			rows = append(rows, row{label: label})
+		}
 		for _, s := range m.sessions {
 			label := s.FirstMessage
 			if label == "" {
@@ -477,6 +630,11 @@ func (m *model) View() tea.View {
 				label += " [interrupted]"
 			}
 			meta := safe(repoName(s.Repo))
+			if w := s.Worktree; w != nil {
+				// A worktree's folder is named by the session; the
+				// repository and the branch say which work it is.
+				meta = safe(repoName(w.Repository) + " · " + w.Branch)
+			}
 			if age := since(s.LastEvent); age != "" {
 				meta += " · " + age
 			}

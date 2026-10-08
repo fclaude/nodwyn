@@ -41,6 +41,9 @@ func isInspectorCommand(s string) bool {
 	switch fields[0] {
 	case ":log", ":bindings", ":replay", ":friction", ":tools", ":allow", ":plan", ":budget":
 		return true
+	case ":model":
+		// With a name it is a choice, not a view.
+		return len(fields) == 1
 	}
 	return false
 }
@@ -83,6 +86,12 @@ func (m *model) inspect(command string) tea.Cmd {
 			catalog, err = b.Tools(ctx, id)
 			if err == nil {
 				content, err = formatTools(catalog, filter)
+			}
+		} else if kind == ":model" {
+			var view modelView
+			view, err = b.Models(ctx, id)
+			if err == nil {
+				content = formatModels(view)
 			}
 		} else if kind == ":bindings" || kind == ":allow" {
 			var policy policyView
@@ -232,6 +241,10 @@ const helpText = `Commands
 :budget                Configured limits and latest turn’s recorded checkpoints.
 :tools [name]          Tools offered to the model; exact name shows input schema.
 :bindings, :allow      Loaded bindings and current approvals.
+:model                 The model this conversation talks to, and the choices.
+:model NAME [EFFORT]   Move the conversation to that model from its next turn.
+:attach PATH           Add a file to the conversation; an image asks first.
+                       ~/ is home; a relative path is from where nodwyn started.
 :replay                Read-only transcript from the durable log.
 :friction              Guarded read of docs/friction.md; needs an idle session.
 :eval EXPR             User-origin Scheme evaluation.

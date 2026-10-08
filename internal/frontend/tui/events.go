@@ -27,6 +27,31 @@ func safe(s string) string {
 func clip(s string, width int) string {
 	return ansi.Truncate(strings.ReplaceAll(s, "\n", " "), max(1, width), "…")
 }
+
+// worktreeLine says where a session works when it has a git worktree of its
+// own (ADR 34), in the console's words. Files the repository has that the
+// worktree does not are news, so they are counted.
+func worktreeLine(kind log.Kind, p log.WorktreeChange) string {
+	switch kind {
+	case log.KindWorktreeRestore:
+		return fmt.Sprintf("Made its worktree again, on %s, at %s", p.Branch, p.Path)
+	case log.KindWorktreeRemove:
+		return fmt.Sprintf("Removed its worktree and %s: nothing in them was unlanded", p.Branch)
+	}
+	commit := p.BaseCommit[:min(7, len(p.BaseCommit))]
+	from := "commit " + commit
+	if p.Base != "" {
+		from = p.Base + " at " + commit
+	}
+	line := fmt.Sprintf("Working in a git worktree of its own, on %s, from %s, at %s.", p.Branch, from, p.Path)
+	switch {
+	case p.Uncommitted == 1:
+		line += " 1 uncommitted file is in the repository but not here."
+	case p.Uncommitted > 1:
+		line += fmt.Sprintf(" %d uncommitted files are in the repository but not here.", p.Uncommitted)
+	}
+	return line
+}
 func decode[T any](raw json.RawMessage) (T, error) {
 	var p T
 	err := json.Unmarshal(raw, &p)
@@ -167,6 +192,18 @@ func (m *model) consume(e rpc.ClientEvent) {
 		p, err = decode[log.Attach](e.Payload)
 		if err == nil {
 			m.append(plain.AttachSummary(p))
+		}
+	case string(log.KindSessionModel):
+		var p log.SessionModel
+		p, err = decode[log.SessionModel](e.Payload)
+		if err == nil {
+			m.append(modelLine(p))
+		}
+	case string(log.KindWorktreeCreate), string(log.KindWorktreeRestore), string(log.KindWorktreeRemove):
+		var p log.WorktreeChange
+		p, err = decode[log.WorktreeChange](e.Payload)
+		if err == nil {
+			m.append(worktreeLine(log.Kind(e.Kind), p))
 		}
 	case string(log.KindFileVersion):
 		var p log.FileVersion

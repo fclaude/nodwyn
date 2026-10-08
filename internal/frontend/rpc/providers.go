@@ -193,19 +193,13 @@ func (s *server) providers() []modelServer {
 func (s *server) choices() []modelChoice {
 	cfg := s.options.Config
 	out := []modelChoice{}
-	var control *config.Model
-	for _, e := range s.registry() {
-		if e.name == config.ControlModel {
-			control = &e.model
-		} else if control != nil && cfg.SameModel(e.model, *control) {
-			continue
-		}
-		host := e.model.URL
-		if u, err := url.Parse(e.model.URL); err == nil {
+	for _, e := range cfg.ModelChoices() {
+		host := e.Model.URL
+		if u, err := url.Parse(e.Model.URL); err == nil {
 			host = u.Host
 		}
-		out = append(out, modelChoice{Name: e.name, Server: e.model.Server, Provider: providerName(e.model.Provider), Model: e.model.Model, Host: host,
-			Efforts: cfg.Efforts(e.model), Effort: e.model.Effort, Default: e.name == config.ControlModel, Settings: settingsOf(e.model), Published: published(cfg, e.model)})
+		out = append(out, modelChoice{Name: e.Name, Server: e.Model.Server, Provider: providerName(e.Model.Provider), Model: e.Model.Model, Host: host,
+			Efforts: cfg.Efforts(e.Model), Effort: e.Model.Effort, Default: e.Name == config.ControlModel, Settings: settingsOf(e.Model), Published: published(cfg, e.Model)})
 	}
 	return out
 }

@@ -329,7 +329,8 @@ A conversation whose recorded model, or effort, \code{config.toml} no longer
 offers opens as \code{unavailable} and asks no turn until a model is chosen: it
 is never handed to another model, which would send its content to a provider
 nobody chose for it. All of it is this computer's act, not a paired
-device's.
+device's. The terminal client offers the same list: \code{:model} shows it
+with the conversation's model, and \code{:model NAME [EFFORT]} chooses.
 
 A conversation may be moved to another model between turns
 (\adr{40}). The choice names a \code{[models.NAME]} entry, config.toml's

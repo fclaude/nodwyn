@@ -121,8 +121,10 @@ ahead, that is the fastest safe way to let \nodwyn{} make a large change.
 
 \section{Attachments}
 
-In the console, the paperclip attaches files to your next message: text
-formats, Word (\file{.docx}), Excel (\file{.xlsx}), PowerPoint
+In the console, the paperclip attaches files to your next message; in the
+terminal client, \code{:attach PATH} does, with \code{\textasciitilde/} for
+your home and a relative path read from where \nodwyn{} started. Both take
+text formats, Word (\file{.docx}), Excel (\file{.xlsx}), PowerPoint
 (\file{.pptx}), and PDF when \code{pdftotext} is installed, and images
 (below). Each file other than an image is:
 
@@ -246,7 +248,10 @@ of its own (\adr{34}): \file{.nodwyn/worktrees/<id>/} on a new branch
 task's root, with its own \file{.nodwyn/} settings; the notes, mounted
 folders, MCP servers and history are the repository's, and the task is
 listed under it. Uncheck the toggle to start in the folder itself; its
-choice is kept per folder in this tab.
+choice is kept per folder in this tab. In the terminal client the chooser's
+first row in a repository's top folder starts a session in a worktree, and
+\code{nodwyn tui -{}-worktree} starts one directly; its title shows the
+branch.
 Uncommitted changes are not carried over, and the conversation says how
 many there were. \code{(worktree)} tells a strategy where the task works,
 and the system prompt tells the model, with a warning against

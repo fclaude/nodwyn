@@ -456,3 +456,20 @@ Not built: choosing among models already in a hand-written config.toml that
 names models and no default (the model form's provider and model are asked for,
 and a model already listed is changed, not listed twice), and the first run for
 a paired device, which cannot change providers.
+
+## Amendment 2026-10-08: the TUI's model command
+
+The TUI offers what the console's picker offers, as commands. `:model`
+shows the conversation's model, its effort and the efforts it takes, a
+queued choice, a notice and an unavailable model, with the choices.
+`:model NAME [EFFORT]` is `session.model.set`, or core's `SetModel` in local
+mode. A choice made while a turn runs is queued and said so in the
+conversation, and each `session.model` record is a line there. The list
+of choices is one function, `config.ModelChoices`. The daemon's
+`settings.read` choices and the local TUI both use it, so the two cannot
+offer different models. A model named by its server and id is not offered,
+since the picker offers only names.
+
+Not built: a model chosen as a TUI session opens (`--model NAME`; it opens on
+`[control]`, and `:model` before the first message moves it), and a command
+in line mode.

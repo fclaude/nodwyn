@@ -244,6 +244,8 @@ a window or a browser ([the app](app.md), [the browser view](browser.md)),
 and `nodwyn run` carries a task to its end with no conversation, a batch
 tool for scripts and benchmarks ([runs](runs.md)). Everywhere else a task is
 a chat: a request that takes long is a message like any other.
+[The clients](clients.md) lists what each of them can do, and what is
+still built in one and not another.
 `nodwyn -h` lists every command and flag.
 
 ### Programs that keep running
@@ -295,7 +297,10 @@ worktree** beside a git workspace on Home is checked by default, starting a task
 in a git worktree of its own (ADR 34):
 `<repo>/.nodwyn/worktrees/<id>` on a new branch `nodwyn/<id>`, from the
 repository's `HEAD`. Uncheck it to start in the folder itself; this choice
-is kept per git workspace in this tab. The task's tools, commands and
+is kept per git workspace in this tab. In the TUI, the chooser's first row in
+a repository's top folder is "New session in a new worktree of" it, and
+`nodwyn tui --worktree` opens one directly; the title shows the branch
+([the TUI](tui.md)). The task's tools, commands and
 `.nodwyn/` settings are the worktree's, exactly as if you had checked the
 branch out there; the notes, MCP servers and session history are the
 repository's, and the task is listed under it. The folder ignores itself
@@ -331,8 +336,10 @@ repository's, in its `.nodwyn/versions/`, so they never keep a worktree and
 outlast it.
 Committing through `shell-exec` (`git commit`) still asks, as everywhere.
 
-**Reviewing a task's changes.** A task in a worktree has a **Review** button
-beside its conversation. It opens in the centre panel; Home's **Recently
+**Reviewing a task's changes.** In the console, a task in a worktree has a
+**Review** button beside its conversation (the TUI has none, by decision: run
+`git diff` in the worktree, whose path the conversation gives, and write
+comments to the task as a message; ADR 34). It opens in the centre panel; Home's **Recently
 finished** also has a **Review** link beside each worktree task. Review shows
 every file changed since it branched (committed or not, untracked files too),
 with its status (added, modified, deleted) and the comparison commit.
@@ -363,7 +370,8 @@ are not stored beyond the page, so reloading loses them. Home's pending-approval
 **Review** links still open the conversation's request card, not worktree
 review. A change of direction is not a comment: close review and write it to
 the task as a message.
-Not built yet: `--worktree` for the plain CLI, `nodwyn run` and the TUI;
+Not built yet: `--worktree` for the plain CLI and `nodwyn run`, and
+`--worktree-base`;
 `nodwyn worktree list` and `remove`; and a list of push destinations in
 `.nodwyn/allow.toml` that would let git-land push without asking (ADR 34,
 amended 2026-10-05).
@@ -1755,9 +1763,9 @@ On the wire this is `session.open` with `name`, or `server` and `model`, and
 `effort`; and `session.model.set` for a session already open, which with the
 model the conversation is on changes the effort alone. `session.info` reports
 the model the conversation talks to now, the efforts it takes, a choice that
-is queued and why one could not be applied. The console's picker is above; the
-TUI's command is not built, so there a person chooses through a client that
-speaks the protocol, on this computer.
+is queued and why one could not be applied. The console's picker is above.
+In the TUI, `:model` shows the same list and `:model NAME [EFFORT]` chooses
+([the TUI](tui.md)). Line mode has no command for it.
 
 **What a request cost.** After each reply the TUI, line mode and the
 console show its tokens, and when the provider says so, how much of the
@@ -2071,7 +2079,8 @@ seed = 42
 ```
 
 **Images.** Files are attached from the console's composer
-([the browser view](browser.md), "Attaching"). An image can be attached
+([the browser view](browser.md), "Attaching") or with `:attach PATH` in the
+TUI ([the TUI](tui.md)). An image can be attached
 when the conversation's model takes images. Ollama says whether a model does
 (`ollama show MODEL` lists `vision` among its capabilities), and nodwyn asks it
 once per session. A chat-completions server does not say, so for a model on

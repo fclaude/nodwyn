@@ -534,3 +534,29 @@ lacks the method, still lists the daemon's workspaces and hides nothing. Browser
 exercise cancellation, unnamed and named folders, reload, re-adding, retained
 files/history, the paired-device restriction, and a folder forgotten on the
 computer that a phone chooses by path and brings back by using it.
+
+## Amendment 2026-10-08: attaching from the TUI
+
+`:attach PATH` in the TUI attaches a file the person names, in local mode
+through `core.Session.Attach` and in daemon mode through `session.attach`,
+which W2 made for daemon clients that name a path. The path is read as a
+shell reads it (`~/`, relative to where nodwyn started). It is the person's
+choice, as the console's file picker is, and the daemon reads it as the same
+user. The model never names it, and the commands of the TUI are typed, never
+taken from session content. Extraction, redaction, the cap and an image's
+security confirm are those of every attachment.
+
+An image's `session.attach` waits for its confirm, and the daemon runs one
+connection's calls in order, so the TUI asks it on a connection of its own
+and answers the confirm on its usual one. The attachment runs beside the
+keyboard, so the confirm takes the screen like any prompt. Ctrl+C meanwhile
+is `session.abort`, which declines the confirm, rather than quitting. The
+TUI counted every prompt as a turn waiting, busy until the turn ends. An
+image's confirm (`Prim` `attach image`) is asked by no turn, so it no longer
+counts, or every message after an image would have been refused. That held
+for an image a console attached while the TUI watched, too.
+`TestAttachThroughBothBackends` attaches text and an image over both
+backends. On one connection the daemon-mode case waits for the confirm until
+the test gives up, which was checked by making that change.
+
+Not built: attaching in line mode.

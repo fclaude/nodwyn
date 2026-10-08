@@ -5,6 +5,7 @@ used by scripts and promotion selfchecks.
 
 ```sh
 nodwyn tui --repo /path/to/project
+nodwyn tui --repo /path/to/project --worktree
 nodwyn tui --resume SESSION_ID
 nodwyn tui --socket /absolute/private/directory/sock --repo /path/to/project
 ```
@@ -35,6 +36,22 @@ recorded repository and the core's resume rules. `--resume` skips the chooser.
 Another process's writer lock remains authoritative; the TUI reports an attach
 error rather than opening a second writer.
 
+When `--repo` is a git repository's top folder (it has its own `.git`), the
+first row, selected at start, is "New session in a new worktree of" it, as
+the console starts a task in a git workspace by default (ADR 34). The session
+then works in `<repo>/.nodwyn/worktrees/<id>` on a branch `nodwyn/<id>` from
+the repository's `HEAD`; the conversation says so, with the number of
+uncommitted files the worktree does not have, and the title shows the
+branch. The next row opens in the folder itself. The `.git` check only
+decides what is offered: core refuses a folder that cannot have a worktree,
+with a sentence saying why. `--worktree` opens a new session in a worktree
+at once, without the chooser; it does not combine with `--resume`. A stored
+session in a worktree is listed with its repository and branch. Closing it
+removes the worktree and its branch when nothing in them is unlanded, as in
+every client. The TUI has no diff or review view, by decision (ADR 34,
+amended 2026-10-08): `git diff` and an editor read the worktree at the path
+the conversation gives, and a comment on the changes is a message.
+
 The conversation shows user and model text, tool calls/results, guard outcomes,
 plan scores, the steps the model marks done or skipped (`plan-step`),
 attachments, document uploads and evaluation output. After each reply a
@@ -52,6 +69,34 @@ log remains the source of truth; scrollback is a display derived from it.
 
 A message that starts with `/compact` or `/optimize` runs that command
 instead of an ordinary turn, as in every client ([the manual](manual.md)).
+
+`:model` shows the model the conversation talks to, its effort and the
+efforts it takes, a choice waiting for the turn under way, and why a choice
+could not be applied or the model is unavailable. It lists the models the
+conversation may be moved to, the same list as the console's picker
+(`[control]` as `control`, then each `[models.NAME]`). `:model NAME [EFFORT]`
+moves the conversation from its next turn (ADR 40, ADR 41). Naming the
+current model changes only the effort, and a choice made while a turn runs
+waits for that turn to end. The conversation shows each switch, or the
+choice waiting, as a `model →` line. A refusal is the status line: a name
+not configured, an effort the model does not take, or a conversation too
+long for the target's context. A model given by a server and its id is not
+offered, as the console's picker does not offer it. The TUI is always on
+this computer, so the choice is never refused as a paired device's is.
+
+`:attach PATH` adds a file to the conversation (ADR 22). The rest of the
+line is the path. `~/` is the home directory, and a relative path is from
+the folder nodwyn was started in, as a shell would read it. Text is
+extracted, redacted and capped as in every client, and the conversation
+shows the attach line. An image asks its own security confirm, which naming
+the file does not answer. It takes the screen like any other prompt, and the
+attachment waits for its answer. Ctrl+C meanwhile cancels the attachment
+instead of quitting. A message waits until the attachment is done, and a
+busy session refuses one. In daemon mode the attachment is asked on a
+connection of its own, because the daemon runs one connection's calls in
+order and the confirm's answer could not pass the waiting call. The file is
+the person's choice, as the console's file picker is. The daemon reads it
+as the same user, and the model never names it.
 Attached to a daemon, the TUI also follows a run (`nodwyn run`): its
 checkpoint arrives as an ordinary prompt ([runs](runs.md)). A question with
 named answers, such as the first upload's to Google Docs, lists them; type
@@ -59,12 +104,13 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 
 | Control | Meaning |
 |---|---|
+| Up / Down, Enter | In the chooser: select and open a row |
 | Enter | Send the whole draft or submit the displayed prompt answer |
 | Alt+Enter / Ctrl+J | Insert a newline in the message composer |
 | Up / Down | Move within the draft; the editor scrolls to follow the cursor |
 | PgUp / PgDn | Scroll conversation or the current approval diff |
 | Ctrl+End | Jump to the bottom |
-| Ctrl+C | Abort busy work; quit when idle |
+| Ctrl+C | Abort busy work or an attachment; quit when idle |
 | Ctrl+Q | Quit immediately (detach in daemon mode) |
 | Ctrl+R | Reconnect to the daemon and refresh history/prompts |
 | `:eval EXPR` | Evaluate user-origin Scheme through the usual guard |
@@ -77,6 +123,9 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 | `:budget` | Inspect configured limits, the latest submitted turn’s spend and its checkpoints |
 | `:details` | Expand or collapse tool-call groups (see below) |
 | `:tools [name]` | List model-facing tools; an exact name shows the input schema |
+| `:model` | Show the conversation's model and the models it may be moved to |
+| `:model NAME [EFFORT]` | Move the conversation to that model from its next turn |
+| `:attach PATH` | Add a file to the conversation; an image asks first |
 | `:allow` | Open the bindings/current approvals inspector |
 | `:help`, `:h` | Show available controls in a scrollable view |
 | `:q`, `:quit`, `:exit` | Quit using the same lifecycle as Ctrl+Q |
@@ -244,6 +293,7 @@ text is redacted and stripped of terminal control sequences before rendering.
 - `composer.go`: multiline editor setup, input routing and editor/viewport sizing.
 - `inspect.go` and `inspect_backend.go`: snapshot viewers and their read paths.
 - `tools.go`: model-facing tool list and input-schema presentation.
+- `models.go`: `:model`'s view and the model choice over core or RPC.
 - `tool_calls.go`: serial call/result grouping and guard/result presentation.
 - `plan_budget.go`: recorded gate outcomes, checkpoint history and budget display.
 - `run.go` and `cmd/nodwyn/tui.go`: lifecycle and command startup.
@@ -262,8 +312,11 @@ binding. Applied/failed outcomes appear in the transcript and replay. Plain
 mode offers the same choices. Older daemon prompts omit the binding action.
 
 The initial client, multiline composer, tool discovery, read-only inspectors,
-tool/plan/budget presentation and guarded binding edits are implemented.
-P9 line-mode flow parity is complete. Live budget counters are not exposed by
+tool/plan/budget presentation, guarded binding edits, worktree sessions, the
+model choice and attachments are implemented.
+P9 line-mode flow parity is complete; parity with the console is not, and
+[clients.md](clients.md) records what each client does and what is still
+to build. Live budget counters are not exposed by
 the current API; the budget view explicitly reports recorded usage. The
 browser console and app window ([browser](browser.md), [app](app.md)) are
 other clients of the same daemon, which also drives runs ([runs](runs.md)).
@@ -288,6 +341,9 @@ adds no desktop client or supervisor.
 | Resize, multiline paste, draft preservation and scrollable prompts | `TestComposerNewlinesPasteResizeAndBusyDraft`, `TestContentCannotControlTerminalAndDiffScrolls` |
 | Abort kills shell children; quit releases local ownership | `TestAbortThroughTUIBackendKillsShellChildren`, `TestLocalCloseDrainsBackpressureAndReleasesLog` |
 | Reconnect restores history and pending prompts without resending | `TestRemoteReconnectRecoversPendingPromptAndHistory` |
+| Worktree row, `--worktree`, branch in the title and list | `TestChooserOpensAWorktreeThroughBothBackends`, `TestChooserStillOpensInTheFolder`, `TestWorktreeFlagSkipsTheChooser` |
+| `:model`, a switch the next turn asks, a choice queued behind a turn | `TestModelChoiceThroughBothBackends`, `TestModelChoiceWhileBusyIsQueued` |
+| `:attach` of text and of an image whose confirm is answered while it waits; Ctrl+C cancels | `TestAttachThroughBothBackends`, `TestCtrlCCancelsAnAttachment`, `TestAttachPathAndRefusals` |
 
 Real-terminal smoke checks supplement these tests for composer input, local and
 remote inspectors, tool cards, checkpoint choices, masked credentials and the

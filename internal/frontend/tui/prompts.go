@@ -92,7 +92,12 @@ func (m *model) setPrompt(e rpc.ClientEvent) error {
 	m.prompt = p
 	m.composer.Blur()
 	m.promptInput.Focus()
-	m.busy = true
+	// A prompt pauses the turn that asked it, and that turn's end makes the
+	// session idle again. An image's confirm (Prim "attach image", protocol.md)
+	// comes from an attachment, outside any turn, so nothing would.
+	if !(e.Kind == event.PromptConfirm && p.title == "attach image") {
+		m.busy = true
+	}
 	m.promptInput.Reset()
 	m.promptInput.EchoMode = textinput.EchoNormal
 	m.promptInput.Placeholder = "Type a displayed choice, then Enter"

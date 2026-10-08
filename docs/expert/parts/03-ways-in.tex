@@ -77,8 +77,12 @@ source for something, it says so instead of guessing.
 composer (\key{Alt+Enter} or \key{Ctrl+J} for a newline, \key{Enter} to
 send), and inspectors behind colon commands: \code{:plan}, \code{:budget},
 \code{:tools NAME} (a tool's input schema), \code{:bindings},
-\code{:replay}, \code{:log [n] [kind]}. \key{Ctrl+C} aborts busy work,
-\key{Ctrl+Q} detaches, \key{Ctrl+R} reconnects.
+\code{:replay}, \code{:log [n] [kind]}. \code{:model} shows the
+conversation's model and the choices, and \code{:model NAME [EFFORT]} moves
+it from its next turn; \code{:attach PATH} adds a file. In a git
+repository's top folder the chooser offers a new session in a worktree of its
+own first, and \code{-{}-worktree} opens one directly. \key{Ctrl+C} aborts busy
+work or an attachment, \key{Ctrl+Q} detaches, \key{Ctrl+R} reconnects.
 
 \section{Runs, for scripts and benchmarks}
 

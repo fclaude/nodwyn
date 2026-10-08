@@ -294,9 +294,14 @@ model marked done or skipped; `:budget` shows configured limits, the latest
 turn’s checkpoint snapshots and its spend.
 Use `:log`, `:bindings` (also `:allow`), `:replay` and `:friction` for read-only inspection;
 Esc returns to the conversation and `r` refreshes a snapshot.
+`:model` shows the conversation's model and the choices, and `:model NAME
+[EFFORT]` moves it from its next turn; `:attach PATH` adds a file. In a git
+repository the chooser offers a session in a worktree of its own first, and
+`--worktree` opens one directly.
 Enter sends the whole draft; Alt+Enter or Ctrl+J adds a newline. Bracketed paste
 preserves line breaks without sending. Prompts keep their own single-line input.
-See [the TUI guide](docs/tui.md) for controls, ownership and the acceptance coverage.
+See [the TUI guide](docs/tui.md) for controls, ownership and the acceptance coverage,
+and [the clients](docs/clients.md) for what each front-end can do.
 
 See [session memory](docs/memory.md) for exact request replay, summary creation
 and revocation, and the remaining structural-retrieval work.
