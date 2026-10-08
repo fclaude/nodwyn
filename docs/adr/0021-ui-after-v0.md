@@ -559,9 +559,15 @@ calls for two reasons and fails a stray result.
 
 The Live tab stacked turn statistics, a variable-length plan and task
 totals in one scrolling column. A longer plan, or opening a step, pushed
-statistics out of view. Monitoring now has four reserved slots above the
-selected content: task-wide spend, current turn time, context fullness
-and turn tool calls. Unknown values are dashes, not invented zeroes;
+statistics out of view. Monitoring now has five reserved slots above the
+selected content: task-wide spend, current turn time, context fullness,
+turn tool calls and Cache hit. Cache hit exposes the cached, token-weighted
+session cache rate already in Statistics' Totals: raw cache-read prompt
+tokens divided by raw prompt tokens from replies reporting both, not a
+percentage of requests or discounted budget tokens. Missing or unreported
+usage is excluded; no positive denominator is unknown, and reported zero
+cache reads remain 0%. Truncated history covers the log that remains, as
+its tooltip explains. Other unknown values are dashes, not invented zeroes;
 unpriced spend remains a lower bound and truncated history is identified
 in its tooltip. A fixed-height warning line flags displayed limits at
 90% and distinguishes a reached limit; this does not change enforcement.
@@ -569,6 +575,9 @@ in its tooltip. A fixed-height warning line flags displayed limits at
 Bottom navigation separates Progress (the plan), Statistics (the existing
 turn budgets and task totals), Changes and Workspace. Retained notes
 belong inside Workspace alongside the folder, access, tools and Details.
+Smaller labels and tighter spacing keep all five worktree tabs, including
+Review with its comment count, on one row at the 344px and 300px desktop
+panel widths. Keyboard navigation and visible focus are retained.
 On desktop only the content scrolls, preserving its per-tab reading
 position across events and switches. Narrow screens stack normally
 without a nested scrolling content area. The summary stays available
@@ -580,5 +589,6 @@ Consolidating them, and relocating attachments from Changes, is explicitly
 not built in this iteration: the user wants to iterate on Changes next.
 No log, RPC or accounting semantics change. Browser checks cover a long
 plan, step expansion, event redraws, tab returns, empty values, limit
-warnings, live summary updates, mobile layout and editing notes in
-Workspace.
+warnings, live summary updates, cache rates and cached aggregation reuse,
+five-tab geometry at both desktop widths, keyboard focus, mobile layout
+and editing notes in Workspace.

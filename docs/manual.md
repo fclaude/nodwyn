@@ -1853,9 +1853,15 @@ run.
 
 The console's right panel keeps a compact summary above its content:
 total task spend, current turn time (including waits for your answer),
-context fullness and this turn's tool calls, against their limit when one
-is configured. The four positions stay reserved even before a figure is
-known; a dash means unknown, not zero. Context is a percentage of its
+context fullness, this turn's tool calls against their configured limit,
+and **Cache hit**. The five positions stay reserved even before a figure is
+known. Cache hit is the same token-weighted session cache rate as Statistics'
+Totals: raw prompt tokens read from cache divided by raw prompt tokens across
+replies that report both, not the percentage of requests hitting cache.
+Missing or unreported usage stays out; no positive prompt total shows
+**unknown**, and reported zero cache reads give **0%**. It covers only retained
+history when the log was truncated, as its tooltip says. For the other
+figures, a dash means unknown, not zero. Context is a percentage of its
 recorded high water, or a token estimate if no high water is known. A
 reserved warning line flags tokens, time, tool calls, spend or context
 when they reach 90% of the displayed limit, and says when they reach it;
@@ -1866,6 +1872,8 @@ approved previews, attachments and file recovery; **Statistics**, for all
 turn and task figures; and **Workspace**, for the folder, branch, access,
 tools, Details and retained project notes. A worktree task still has its
 separate **Review** tab; Changes and Review have not yet been consolidated.
+Smaller labels and tighter spacing keep all five tabs on a single row at
+both desktop panel widths; keyboard focus remains visible.
 The summary stays visible across tabs. On desktop only the selected
 content scrolls: a long plan or an expanded step cannot displace the
 summary or navigation, and tabs keep their reading position across events

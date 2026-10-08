@@ -67,6 +67,28 @@ check(async () => {
     assert.strictEqual(fs.readFileSync(written, "utf8"), `Write ${name}\n`, `${written}`);
     assert.ok(!fs.existsSync(path.join(repo, "notes", `${name}.md`)), `${name}.md reached the repository's own checkout`);
   }
+  const tabsFit = async () => {
+    for (const [viewport, panel] of [[1440, 344], [1100, 300]]) {
+      await page.setViewportSize({ width: viewport, height: 1000 });
+      const layout = await page.evaluate(() => {
+        const side = document.querySelector(".task-aside");
+        const bar = side.querySelector("[role=tablist]");
+        const bounds = bar.getBoundingClientRect();
+        return {
+          width: side.getBoundingClientRect().width,
+          tabs: [...bar.querySelectorAll("[role=tab]")].map((b) => ({ label: b.textContent, ...b.getBoundingClientRect().toJSON() })),
+          left: bounds.left,
+          right: bounds.right,
+          overflow: bar.scrollWidth > bar.clientWidth,
+        };
+      });
+      assert.strictEqual(layout.width, panel, `right panel width at ${viewport}px`);
+      assert.strictEqual(layout.tabs.length, 5, "all five worktree tabs are present");
+      assert.ok(layout.tabs.every((t) => t.top === layout.tabs[0].top && t.left >= layout.left && t.right <= layout.right + 1 && t.width > 0) && !layout.overflow, `Five tabs fit one row at ${panel}px: ${JSON.stringify(layout)}`);
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  };
+  await tabsFit();
   await shows(page, ".task-head .task-meta", "project", branches[second]);
   const worktreeNote = `Working in a git worktree of its own, on ${branches[second]}, from main`;
   const activity = page.locator(".activity-fold").filter({ hasText: worktreeNote });
@@ -114,6 +136,7 @@ check(async () => {
   await page.fill(".review-form textarea", "Name the file better");
   await page.click(".review-form button:text-is('Add comment')");
   await shows(page, ".task-aside [role=tab][aria-selected=true]", "Review (2)");
+  await tabsFit();
   assert.strictEqual(sent.of("worktree.review").length, 0, "comments were sent before Send review");
   // A comment is taken back with Remove, and written again.
   await page.locator(".review-comment", { hasText: "Name the file better" }).locator("button:text-is('Remove')").click();

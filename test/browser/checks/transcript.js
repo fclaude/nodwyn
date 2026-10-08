@@ -583,6 +583,9 @@ check(async () => {
       tabs.left = press("ArrowLeft");
       tabs.leftTwice = press("ArrowLeft");
       tabs.home = press("Home");
+      tabs.end = press("End");
+      tabs.edge = press("ArrowRight");
+      tabs.focusVisible = !!bar().querySelector(":focus-visible");
       pick("Changes");
       emit("guard.decision", { prim: "fs-write", path: "old.txt", decision: "confirm", answer: "yes" }, 3);
       const toggle = task.el.side.querySelector(".change-toggle");
@@ -839,11 +842,14 @@ check(async () => {
       const task = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(task.root);
       const figure = () => {
+        const summary = task.el.side.querySelector('[data-monitor="cache"]');
+        const hit = summary?.textContent ?? null;
+        const hint = summary?.title;
         task.tab = "statistics";
         task.aside();
         const panel = task.el.side.querySelector("[data-totals]");
         const row = [...(panel?.querySelectorAll(".kv") || [])].find((n) => n.firstElementChild.textContent === "Token cache rate");
-        return { value: row?.lastElementChild.textContent ?? null, title: row?.title, scope: panel?.querySelector("h2").textContent };
+        return { value: row?.lastElementChild.textContent ?? null, title: row?.title, scope: panel?.querySelector("h2").textContent, hit, hint, redrawn: task.el.side.querySelector('[data-monitor="cache"]')?.textContent ?? null };
       };
       const rates = {};
       for (const id of Object.keys(logs)) {
@@ -896,7 +902,7 @@ check(async () => {
         const summary = task.el.side.querySelector(".task-monitor");
         const body = task.el.side.querySelector(".aside-panel");
         const bar = task.el.side.querySelector(".aside-tabs");
-        return { summary: summary?.getBoundingClientRect().toJSON(), body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), scroll: body.scrollTop, overflow: body.scrollHeight > body.clientHeight, sideScroll: task.el.side.scrollTop };
+        return { summary: summary?.getBoundingClientRect().toJSON(), slots: [...summary.querySelectorAll(".monitor-stat")].map((s) => s.getBoundingClientRect().toJSON()), body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), scroll: body.scrollTop, overflow: body.scrollHeight > body.clientHeight, sideScroll: task.el.side.scrollTop };
       };
       const initial = values();
       emit("user.msg", { text: "Work through this long plan" });
@@ -912,21 +918,27 @@ check(async () => {
       task.aside();
       emit("session.model", { context: { high_water: 100 } });
       emit("llm.req", { est_tokens: 50 });
-      emit("llm.resp", { usage: { prompt_tokens: 900, output_tokens: 50, cost: 0.42 } });
+      emit("llm.resp", { usage: { prompt_tokens: 900, cached_tokens: 0, output_tokens: 50, cost: 0.42 } });
       emit("tool.call", { id: "call", name: "fs-read", args: { path: "file" } });
+      // The model event refreshes session info asynchronously; let that redraw
+      // finish before checking that a clock tick keeps the summary nodes.
+      await sleep(0);
       const updated = values();
       task.busy = true;
       const oldTime = task.el.side.querySelector('[data-monitor="time"]')?.textContent;
+      const tallied = task.tallied;
+      const cacheNode = task.el.side.querySelector('[data-monitor="cache"]');
       await sleep(1100);
       task.meters();
       const ticked = task.el.side.querySelector('[data-monitor="time"]')?.textContent !== oldTime;
+      const reused = task.tallied === tallied && task.el.side.querySelector('[data-monitor="cache"]') === cacheNode && cacheNode?.textContent === "0%";
       task.busy = false;
       task.tab = "workspace";
       task.aside();
       const workspace = values();
       task.tab = "progress";
       task.aside();
-      out.monitor = { initial, before, expanded, redrawn, updated, ticked, workspace, returned: geometry(), warning: task.el.side.querySelector(".monitor-warning")?.textContent };
+      out.monitor = { initial, before, expanded, redrawn, updated, ticked, reused, workspace, returned: geometry(), warning: task.el.side.querySelector(".monitor-warning")?.textContent };
       window.monitorFixture = task;
     }
     return out;
@@ -936,7 +948,7 @@ check(async () => {
     const task = window.monitorFixture;
     const body = task.el.side.querySelector(".aside-panel");
     const bar = task.el.side.querySelector(".aside-tabs");
-    const result = { overflow: getComputedStyle(body).overflowY, body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), width: task.el.side.getBoundingClientRect().width };
+    const result = { overflow: getComputedStyle(body).overflowY, body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), width: task.el.side.getBoundingClientRect().width, sideways: document.documentElement.scrollWidth > window.innerWidth };
     task.dispose();
     delete window.monitorFixture;
     return result;
@@ -1000,6 +1012,11 @@ check(async () => {
   want(s.reloaded && s.disposed, `queued streams outlived reload or disposal: ${JSON.stringify(s)}`);
   want(s.closed && s.closedOnce, "session closure lost or duplicated its queued text, or left the reply enabled");
   const cache = results.sessionCacheRate;
+  for (const [id, rate] of Object.entries(cache)) {
+    want(rate.hit === rate.value && rate.redrawn === rate.value, `Summary cache hit matches Totals before and after redraw for ${id}: ${JSON.stringify(rate)}`);
+    want(/token-weighted/.test(rate.hint) && /not the percentage of requests/.test(rate.hint) && /unreported usage/.test(rate.hint), `Summary cache hit explains its denominator for ${id}: ${rate.hint}`);
+  }
+  want(cache.retained.hint?.startsWith("From the log that remains."), "Summary cache hit identifies truncated history");
   want(cache.weighted.value === "10%", `session token cache rate: token-weighted across turns and models, without output or budget discounts: ${JSON.stringify(cache.weighted)}`);
   want(cache.mixed.value === "67%", `session token cache rate: unknown and unreported replies excluded, percentage rounded: ${JSON.stringify(cache.mixed)}`);
   want(cache.zero.value === "0%" && cache.full.value === "100%", `session token cache rate: reported zero (cache writes are not reads) and full cache: ${JSON.stringify({ zero: cache.zero, full: cache.full })}`);
@@ -1021,14 +1038,15 @@ check(async () => {
   // a tenth: 100 + 800, then 30 - 20 + 20 / 10 + 10.
   want(early.folded.tokens?.text === "Tokens used922 / 2,000,000", `tokens used counts prompts, replies and cached tokens at a tenth: ${JSON.stringify(early.folded)}`);
   const m = results.monitor;
-  want(m.initial.join() === "—,—,—,—", `monitor reserves four empty slots: ${JSON.stringify(m.initial)}`);
+  want(m.initial.join() === "—,—,—,—,unknown", `monitor reserves five slots with unknown cache usage: ${JSON.stringify(m.initial)}`);
   want(m.before.overflow && m.before.summary?.bottom <= m.before.body.top && m.before.body.bottom <= m.before.bar.top, `monitor and bottom tabs surround scrollable plan: ${JSON.stringify(m.before)}`);
   want(m.expanded.summary?.top === m.before.summary?.top && m.expanded.bar.top === m.before.bar.top, "expanding a plan does not move summary or tabs");
   want(m.redrawn.scroll === 160 && m.redrawn.sideScroll === 0 && m.redrawn.bar.top === m.before.bar.top, `redraw keeps content scroll and fixed navigation: ${JSON.stringify(m.redrawn)}`);
-  want(m.updated[0]?.includes("0.42") && m.updated[2] === "50%" && m.updated[3] === "1 / 80" && m.ticked, `summary updates on events and clock ticks outside Progress: ${JSON.stringify(m)}`);
-  want(m.workspace.join() === m.updated.join() || (m.workspace[0] === m.updated[0] && m.workspace[2] === m.updated[2] && m.workspace[3] === m.updated[3]), "summary stays visible in Workspace");
+  want(m.before.slots.length === 5 && m.before.slots.every((s) => s.top >= m.before.summary.top && s.bottom <= m.before.summary.bottom && s.left >= m.before.summary.left && s.right <= m.before.summary.right), "all five monitoring slots stay inside the summary");
+  want(m.updated[0]?.includes("0.42") && m.updated[2] === "50%" && m.updated[3] === "1 / 80" && m.updated[4] === "0%" && m.ticked && m.reused, `summary updates on events and clock ticks outside Progress: ${JSON.stringify(m)}`);
+  want(m.workspace.join() === m.updated.join() || (m.workspace[0] === m.updated[0] && m.workspace[2] === m.updated[2] && m.workspace[3] === m.updated[3] && m.workspace[4] === m.updated[4]), "summary stays visible in Workspace");
   want(m.returned.scroll === 160 && m.warning?.includes("Tokens"), `tab return preserves scroll and warns about near token limit: ${JSON.stringify(m.returned)} ${m.warning}`);
-  want(m.mobile.overflow === "visible" && m.mobile.body.bottom <= m.mobile.bar.top && m.mobile.width <= 390, `phone stacks content without nested scrolling: ${JSON.stringify(m.mobile)}`);
+  want(m.mobile.overflow === "visible" && m.mobile.body.bottom <= m.mobile.bar.top && m.mobile.width <= 390 && !m.mobile.sideways, `phone stacks content without nested scrolling: ${JSON.stringify(m.mobile)}`);
   const tb = results.tabs;
   want(tb.names.join() === "Progress,Changes,Statistics,Workspace" && tb.first === "Progress", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
   want(tb.live.join() === "Plan", `Progress tab panels: ${JSON.stringify(tb.live)}`);
@@ -1038,6 +1056,7 @@ check(async () => {
   want(tb.notes.chosen === "Workspace" && tb.notes.shown.join() === "Workspace,Details,What nodwyn knows here", `Workspace notes: ${JSON.stringify(tb.notes)}`);
   want(tb.statistics.chosen === "Statistics" && tb.statistics.shown.join() === "This turn,Totals", `Statistics panels: ${JSON.stringify(tb.statistics)}`);
   want(tb.left.chosen === "Statistics" && tb.left.focused === "Statistics" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Progress" && tb.home.focused === "Progress", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
+  want(tb.end.chosen === "Workspace" && tb.end.focused === "Workspace" && tb.edge.chosen === "Workspace" && tb.edge.focused === "Workspace" && tb.focusVisible, `tab End, right edge and visible keyboard focus: ${JSON.stringify(tb)}`);
   want(Object.values(tb.inspector).every(Boolean), `change inspector states and stale replies: ${JSON.stringify(tb.inspector)}`);
   const c = results.clocks;
   want(c.model === "5.0 s" && c.tools === "0.0 s", `the clocks count only answered pairs: ${JSON.stringify(c)}`);

@@ -693,8 +693,8 @@ comment control shows when the line is hovered or focused. */
 .monitor-label { font-size: 11px; color: var(--faint); }
 .monitor-value { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .monitor-warning { grid-column: 1 / -1; height: 16px; line-height: 16px; font-size: 11px; color: var(--warn-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.task-aside .aside-tabs { flex-shrink: 0; border-bottom: 0; border-top: 1px solid var(--line); padding-top: 8px; }
-.task-aside .tabs button { padding: 7px 10px; font-size: 13px; }
+.task-aside .aside-tabs { flex-shrink: 0; flex-wrap: nowrap; gap: 0; border-bottom: 0; border-top: 1px solid var(--line); padding-top: 8px; }
+.task-aside .tabs button { padding: 7px 2px; font-size: 10px; white-space: nowrap; }
 .panel { display: flex; flex-direction: column; gap: 10px; }
 .panel h2 {
   margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px;

@@ -5,8 +5,14 @@ a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
 beside it a compact monitoring summary above four bottom tabs (five for a
 worktree task, which still adds **Review**). The summary keeps total task
-spend, current turn time, context fullness and turn tool calls in fixed
-positions across tabs; unknown figures stay as a dash. Context shows a
+spend, current turn time, context fullness, turn tool calls and **Cache hit**
+in five fixed positions across tabs. Cache hit is the rounded, token-weighted
+share of raw prompt tokens read from cache across the session, matching
+Statistics → Totals' Token cache rate, not the percentage of requests hitting
+cache. Missing or unreported usage is excluded; no positive prompt total
+shows **unknown**, while reported zero cache reads give **0%**. With truncated
+history it covers the log that remains, as its tooltip explains. Other unknown
+figures stay as a dash. Context shows a
 percentage against the recorded high water, or an estimate when no high
 water is known. A reserved warning line flags tokens, time, tool calls,
 spend or context at 90% of their displayed limit, and says when that limit
@@ -16,7 +22,9 @@ task's totals; **Changes** still holds recorded write approvals, each
 file's kept versions and attachments; **Workspace** holds where it works,
 the tools it was offered, Details inspectors and retained project notes.
 **Review** still holds a worktree task's actual changes since it branched,
-to comment on; consolidation with Changes is deferred. On desktop only
+to comment on; consolidation with Changes is deferred. Smaller tab labels
+and tighter spacing keep all five worktree tabs on one row at both desktop
+panel widths, with visible keyboard focus. On desktop only
 the selected content scrolls, so expanding a plan step cannot move the
 summary or bottom navigation; each tab keeps its scroll position through
 redraws and tab switches. On narrow screens the summary, content and

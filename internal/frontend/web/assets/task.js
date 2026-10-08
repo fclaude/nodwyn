@@ -1065,11 +1065,11 @@ export class TaskView {
     } else if (p.reason) panel.append(h("p", { class: "hint" }, p.reason));
     return panel;
   }
-  // Four fixed slots keep monitoring independent of the plan's length.
+  // Five fixed slots keep monitoring independent of the plan's length.
   // Unknown values stay unknown, and context is fullness, not token usage.
   monitorPanel() {
     const panel = h("section", { class: "task-monitor", "aria-label": "Task monitoring" });
-    for (const [key, label] of [["spend", "Total spend"], ["time", "Turn time"], ["context", "Context"], ["calls", "Tool calls"]])
+    for (const [key, label] of [["spend", "Total spend"], ["time", "Turn time"], ["context", "Context"], ["calls", "Tool calls"], ["cache", "Cache hit"]])
       panel.append(h("div", { class: "monitor-stat" }, h("span", { class: "monitor-label" }, label), h("strong", { class: "monitor-value", dataset: { monitor: key } }, "—")));
     panel.append(h("div", { class: "monitor-warning" }));
     this.fillMonitor(panel);
@@ -1085,6 +1085,7 @@ export class TaskView {
       time: "—",
       context: context.est ? (context.high ? `${Math.round(100 * context.est / context.high)}%` : `~${context.est.toLocaleString()}`) : "—",
       calls: "—",
+      cache: totals?.cache.prompt > 0 ? `${Math.round((100 * totals.cache.cached) / totals.cache.prompt)}%` : "unknown",
     };
     const warnings = [];
     const near = (label, used, limit) => {
@@ -1116,6 +1117,7 @@ export class TaskView {
     panel.querySelector('[data-monitor="spend"]').title = `${totals?.unpriced ? "Lower bound: some requests are unpriced. " : ""}${this.truncated ? "From the log that remains. " : ""}${budgets?.cost?.soft ? `Spend limit: ${usd(budgets.cost.soft / 1e6, false)}.` : "Task-wide model and judge spend."}`;
     panel.querySelector('[data-monitor="time"]').title = "Current turn's elapsed time, including waits for your answer.";
     panel.querySelector('[data-monitor="context"]').title = `${context.agent ? `${context.agent}'s context. ` : ""}${context.high ? `Estimated fullness against ${context.high.toLocaleString()} tokens; older context is trimmed beyond this high water.` : "Context estimate; no high water recorded."}`;
+    panel.querySelector('[data-monitor="cache"]').title = `${this.truncated ? "From the log that remains. " : ""}The token-weighted share of raw prompt tokens read from the provider's cache across the session, not the percentage of requests hitting cache; missing or unreported usage stays out, and without a positive prompt total the rate is unknown.`;
     const warning = panel.querySelector(".monitor-warning");
     warning.textContent = warnings.join(" · ");
     warning.title = warning.textContent;

@@ -417,11 +417,15 @@ Where you see it:
     measures prompt-token share, not the percentage of requests hitting
     cache or the budget's discounted token count. If history was truncated,
     the Totals label ``from the log that remains'' applies to the rate too
-    (\adr{9}). A compact summary above every tab keeps total spend, turn
-    time, context fullness and tool calls available without opening
-    Statistics. Progress holds the plan, Workspace includes retained
-    project notes, and bottom navigation stays outside the desktop
-    content's scroll area. Changes and worktree Review remain separate
+    (\adr{9}). A compact summary above every tab keeps five figures available:
+    total spend, turn time, context fullness, tool calls and ``Cache hit''.
+    Cache hit is this same token-weighted rate without opening Statistics,
+    not a percentage of requests; it likewise distinguishes ``unknown'' from
+    0\% and covers only retained history, as its tooltip explains. Progress
+    holds the plan, Workspace includes retained project notes, and smaller
+    bottom-tab labels and tighter spacing keep all five worktree tabs on one
+    row at both desktop panel widths, retaining visible keyboard focus.
+    Navigation stays outside the desktop content's scroll area. Changes and worktree Review remain separate
     pending their own redesign; narrow screens stack normally;
   \item \code{:budget} in the terminal client: the latest turn's spend over
     all its model requests and the share of prompt tokens from cache, or
