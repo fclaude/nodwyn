@@ -437,6 +437,7 @@ check(async () => {
   // settings do: the window is sized for 1,050,000 tokens less its
   // 128,000-token reply cap, as the form said, and the reply is priced (an
   // estimate, ≈).
+  await page.click(".task-aside [role=tab]:has-text('Statistics')");
   await page.waitForFunction(() => document.body.textContent.includes("691,500"), null, { timeout: 10000 });
   assert.strictEqual(await page.$(".task-head .context-unknown"), null, "a task sized for its model's context says the context is not known");
   await page.waitForFunction(() => /≈\$\d/.test(document.querySelector(".transcript").textContent), null, { timeout: 10000 });

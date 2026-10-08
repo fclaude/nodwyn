@@ -403,7 +403,7 @@ Where you see it:
     when some requests had no known cost; and, if you set
     \code{cost\_hard} in \code{[budget]}, a checkpoint and a stop on what
     the whole task has cost (Chapter~\ref{ch:first});
-  \item the console's side panel, ``Totals'' in its Live tab: the whole
+  \item the console's side panel, ``Totals'' in its Statistics tab: the whole
     task's spend, the judge's priced cost counted in, ``at least'' when a
     request had no known cost, how long the task's turns took all in, how
     long they took without the time it spent waiting for your answers, how
@@ -417,7 +417,12 @@ Where you see it:
     measures prompt-token share, not the percentage of requests hitting
     cache or the budget's discounted token count. If history was truncated,
     the Totals label ``from the log that remains'' applies to the rate too
-    (\adr{9});
+    (\adr{9}). A compact summary above every tab keeps total spend, turn
+    time, context fullness and tool calls available without opening
+    Statistics. Progress holds the plan, Workspace includes retained
+    project notes, and bottom navigation stays outside the desktop
+    content's scroll area. Changes and worktree Review remain separate
+    pending their own redesign; narrow screens stack normally;
   \item \code{:budget} in the terminal client: the latest turn's spend over
     all its model requests and the share of prompt tokens from cache, or
     why the spend is unknown;

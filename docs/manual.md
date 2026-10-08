@@ -1847,7 +1847,28 @@ whose cost nobody knows is not counted, and a note says so the first time.
 The README has the details; `--budget-cost USD` sets it for one session or
 run.
 
-The console's side panel adds the task up in "Totals", in its Live tab:
+The console's right panel keeps a compact summary above its content:
+total task spend, current turn time (including waits for your answer),
+context fullness and this turn's tool calls, against their limit when one
+is configured. The four positions stay reserved even before a figure is
+known; a dash means unknown, not zero. Context is a percentage of its
+recorded high water, or a token estimate if no high water is known. A
+reserved warning line flags tokens, time, tool calls, spend or context
+when they reach 90% of the displayed limit, and says when they reach it;
+the configured budgets still decide when to ask or stop.
+
+The bottom tabs are **Progress**, for the plan; **Changes**, still for
+approved previews, attachments and file recovery; **Statistics**, for all
+turn and task figures; and **Workspace**, for the folder, branch, access,
+tools, Details and retained project notes. A worktree task still has its
+separate **Review** tab; Changes and Review have not yet been consolidated.
+The summary stays visible across tabs. On desktop only the selected
+content scrolls: a long plan or an expanded step cannot displace the
+summary or navigation, and tabs keep their reading position across events
+and switches. Narrow screens use ordinary stacked sections and page
+scrolling instead of a nested scroll area.
+
+The console's side panel adds the task up in "Totals", in its Statistics tab:
 "Total spend", what its model and judge requests cost as far as the log
 prices them (the same accounting a spend limit counts; with a limit set,
 the total is a bar against it, and every other figure here is a plain row);

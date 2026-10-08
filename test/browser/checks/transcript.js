@@ -497,7 +497,7 @@ check(async () => {
       out.streaming = { burst, thoughts, followed, stayed, final, afterFinalFrame, promptOrder, unchangedAway, caughtUp, reloaded, closed, closedOnce, disposed };
     }
 
-    // The side's tabs: Live first with the ticking panels, the chosen tab
+    // The side's tabs: Progress first with the plan, the chosen tab
     // kept through the redraw every event makes, an empty tab saying so,
     // and the arrow keys moving the choice.
     {
@@ -544,8 +544,12 @@ check(async () => {
       tabs.afterEvent = { chosen: chosen(), shown: shown() };
       pick("Workspace");
       tabs.workspace = { chosen: chosen(), shown: shown() };
-      pick("Notes");
+      task.notes = "Project knowledge";
+      task.aside();
       tabs.notes = { chosen: chosen(), shown: shown() };
+      pick("Statistics");
+      tabs.statistics = { chosen: chosen(), shown: shown() };
+      pick("Workspace");
       // The arrows move both the choice and the focus, from wherever the
       // reader is, Home jumping to the first tab.
       const press = (key) => {
@@ -640,6 +644,8 @@ check(async () => {
       const task = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(task.root);
       await task.open("clocks");
+      task.tab = "statistics";
+      task.aside();
       const totals = task.el.side.querySelector("[data-totals]");
       out.clocks = {
         model: totals?.querySelector("[data-model]")?.textContent,
@@ -711,6 +717,8 @@ check(async () => {
       const task = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(task.root);
       await task.open("speed");
+      task.tab = "statistics";
+      task.aside();
       const panel = [...task.el.side.querySelectorAll(".panel")].find((p) => p.querySelector("h2")?.childNodes[0].textContent === "Totals");
       const row = (name) => {
         const m = [...(panel?.querySelectorAll(".meter,.kv") || [])].find((n) => n.firstElementChild?.textContent === name || n.querySelector(".meter-head span")?.textContent === name);
@@ -740,6 +748,8 @@ check(async () => {
       const older = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(older.root);
       await older.open("old");
+      older.tab = "statistics";
+      older.aside();
       const unlimited = [...older.el.side.querySelectorAll("[data-meters] > *")].find((n) => n.textContent.startsWith("Context"));
       out.noHighWater = { class: unlimited?.className, text: unlimited?.textContent };
       older.dispose();
@@ -751,6 +761,8 @@ check(async () => {
         const view = new TaskView(conn, desk, () => {});
         document.body.replaceChildren(view.root);
         await view.open(id);
+        view.tab = "statistics";
+        view.aside();
         const found = {};
         for (const m of view.el.side.querySelectorAll("[data-meters] .meter")) {
           const label = m.querySelector(".meter-head span").textContent;
@@ -805,6 +817,8 @@ check(async () => {
       const task = new TaskView(conn, desk, () => {});
       document.body.replaceChildren(task.root);
       const figure = () => {
+        task.tab = "statistics";
+        task.aside();
         const panel = task.el.side.querySelector("[data-totals]");
         const row = [...(panel?.querySelectorAll(".kv") || [])].find((n) => n.firstElementChild.textContent === "Token cache rate");
         return { value: row?.lastElementChild.textContent ?? null, title: row?.title, scope: panel?.querySelector("h2").textContent };
@@ -826,7 +840,84 @@ check(async () => {
       out.sessionCacheRate = rates;
       task.dispose();
     }
+    // A long plan must not displace monitoring or navigation. Real events
+    // update the summary even while Statistics or Workspace is selected.
+    {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const listeners = new Set();
+      const conn = {
+        live: true,
+        has() { return false; },
+        onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+        onResult() { return () => {}; },
+        async call(method) {
+          if (method === "session.subscribe") return { page: { events: [], through: 0, more: false }, busy: false };
+          if (method === "session.info") return { budgets: { tool_calls: { soft: 80, hard: 80 }, tokens: { soft: 1000, hard: 1000 }, wall_ns: { soft: 60e9, hard: 60e9 }, cost: { soft: 1e6, hard: 1e6 } } };
+          if (method === "session.unsubscribe") return {};
+          throw new Error(`unexpected request: ${method}`);
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("monitor", { id: "monitor", repo: "/tmp/monitor", open: true, busy: false });
+      const task = new TaskView(conn, desk, () => {});
+      task.root.style.height = "680px";
+      task.root.style.flexShrink = "0";
+      document.body.replaceChildren(task.root);
+      await task.open("monitor");
+      let seq = 0;
+      const emit = (kind, payload) => {
+        for (const fn of listeners) fn({ method: "session.event", params: { id: "monitor", seq: ++seq, ts: new Date(Date.now() - 10000 + seq * 1000).toISOString(), kind, payload } });
+      };
+      const values = () => [...task.el.side.querySelectorAll(".monitor-value")].map((n) => n.textContent);
+      const geometry = () => {
+        const summary = task.el.side.querySelector(".task-monitor");
+        const body = task.el.side.querySelector(".aside-panel");
+        const bar = task.el.side.querySelector(".aside-tabs");
+        return { summary: summary?.getBoundingClientRect().toJSON(), body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), scroll: body.scrollTop, overflow: body.scrollHeight > body.clientHeight, sideScroll: task.el.side.scrollTop };
+      };
+      const initial = values();
+      emit("user.msg", { text: "Work through this long plan" });
+      emit("gate.plan", { noul: "model", plan: Array.from({ length: 40 }, (_, i) => `${i + 1}. Change: Step ${i + 1} — ${"Detailed explanation. ".repeat(20)}`).join("\n") });
+      const before = geometry();
+      task.el.side.querySelector(".plan li.fold")?.click();
+      const expanded = geometry();
+      const body = task.el.side.querySelector(".aside-panel");
+      body.scrollTop = 160;
+      emit("plan.step", { step: 1, state: "done", note: "Checked" });
+      const redrawn = geometry();
+      task.tab = "statistics";
+      task.aside();
+      emit("session.model", { context: { high_water: 100 } });
+      emit("llm.req", { est_tokens: 50 });
+      emit("llm.resp", { usage: { prompt_tokens: 900, output_tokens: 50, cost: 0.42 } });
+      emit("tool.call", { id: "call", name: "fs-read", args: { path: "file" } });
+      const updated = values();
+      task.busy = true;
+      const oldTime = task.el.side.querySelector('[data-monitor="time"]')?.textContent;
+      await sleep(1100);
+      task.meters();
+      const ticked = task.el.side.querySelector('[data-monitor="time"]')?.textContent !== oldTime;
+      task.busy = false;
+      task.tab = "workspace";
+      task.aside();
+      const workspace = values();
+      task.tab = "progress";
+      task.aside();
+      out.monitor = { initial, before, expanded, redrawn, updated, ticked, workspace, returned: geometry(), warning: task.el.side.querySelector(".monitor-warning")?.textContent };
+      window.monitorFixture = task;
+    }
     return out;
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  results.monitor.mobile = await page.evaluate(() => {
+    const task = window.monitorFixture;
+    const body = task.el.side.querySelector(".aside-panel");
+    const bar = task.el.side.querySelector(".aside-tabs");
+    const result = { overflow: getComputedStyle(body).overflowY, body: body.getBoundingClientRect().toJSON(), bar: bar.getBoundingClientRect().toJSON(), width: task.el.side.getBoundingClientRect().width };
+    task.dispose();
+    delete window.monitorFixture;
+    return result;
   });
   console.log(JSON.stringify(results, null, 1));
   const fail = [];
@@ -906,14 +997,24 @@ check(async () => {
   // Tokens used is every request's prompt and reply, a cached prompt token
   // a tenth: 100 + 800, then 30 - 20 + 20 / 10 + 10.
   want(early.folded.tokens?.text === "Tokens used922 / 2,000,000", `tokens used counts prompts, replies and cached tokens at a tenth: ${JSON.stringify(early.folded)}`);
+  const m = results.monitor;
+  want(m.initial.join() === "—,—,—,—", `monitor reserves four empty slots: ${JSON.stringify(m.initial)}`);
+  want(m.before.overflow && m.before.summary?.bottom <= m.before.body.top && m.before.body.bottom <= m.before.bar.top, `monitor and bottom tabs surround scrollable plan: ${JSON.stringify(m.before)}`);
+  want(m.expanded.summary?.top === m.before.summary?.top && m.expanded.bar.top === m.before.bar.top, "expanding a plan does not move summary or tabs");
+  want(m.redrawn.scroll === 160 && m.redrawn.sideScroll === 0 && m.redrawn.bar.top === m.before.bar.top, `redraw keeps content scroll and fixed navigation: ${JSON.stringify(m.redrawn)}`);
+  want(m.updated[0]?.includes("0.42") && m.updated[2] === "50%" && m.updated[3] === "1 / 80" && m.ticked, `summary updates on events and clock ticks outside Progress: ${JSON.stringify(m)}`);
+  want(m.workspace.join() === m.updated.join() || (m.workspace[0] === m.updated[0] && m.workspace[2] === m.updated[2] && m.workspace[3] === m.updated[3]), "summary stays visible in Workspace");
+  want(m.returned.scroll === 160 && m.warning?.includes("Tokens"), `tab return preserves scroll and warns about near token limit: ${JSON.stringify(m.returned)} ${m.warning}`);
+  want(m.mobile.overflow === "visible" && m.mobile.body.bottom <= m.mobile.bar.top && m.mobile.width <= 390, `phone stacks content without nested scrolling: ${JSON.stringify(m.mobile)}`);
   const tb = results.tabs;
-  want(tb.names.join() === "Live,Changes,Workspace,Notes" && tb.first === "Live", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
-  want(tb.live.join() === "This turn,Plan,Totals", `Live tab panels: ${JSON.stringify(tb.live)}`);
+  want(tb.names.join() === "Progress,Changes,Statistics,Workspace" && tb.first === "Progress", `aside tabs: ${JSON.stringify(tb.names)} first ${tb.first}`);
+  want(tb.live.join() === "Plan", `Progress tab panels: ${JSON.stringify(tb.live)}`);
   want(tb.changes.chosen === "Changes" && tb.changes.shown === "No approved changes yet.", `Changes tab: ${JSON.stringify(tb.changes)}`);
   want(tb.afterEvent.chosen === "Changes" && tb.afterEvent.shown === "No approved changes yet.", `the tab kept through an event's redraw: ${JSON.stringify(tb.afterEvent)}`);
   want(tb.workspace.chosen === "Workspace" && tb.workspace.shown.join() === "Workspace,Details", `Workspace tab: ${JSON.stringify(tb.workspace)}`);
-  want(tb.notes.chosen === "Notes" && tb.notes.shown === "Reading the notes…", `Notes tab: ${JSON.stringify(tb.notes)}`);
-  want(tb.left.chosen === "Workspace" && tb.left.focused === "Workspace" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Live" && tb.home.focused === "Live", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
+  want(tb.notes.chosen === "Workspace" && tb.notes.shown.join() === "Workspace,Details,What nodwyn knows here", `Workspace notes: ${JSON.stringify(tb.notes)}`);
+  want(tb.statistics.chosen === "Statistics" && tb.statistics.shown.join() === "This turn,Totals", `Statistics panels: ${JSON.stringify(tb.statistics)}`);
+  want(tb.left.chosen === "Statistics" && tb.left.focused === "Statistics" && tb.leftTwice.chosen === "Changes" && tb.leftTwice.focused === "Changes" && tb.home.chosen === "Progress" && tb.home.focused === "Progress", `the tabs' arrow keys: ${JSON.stringify({ left: tb.left, leftTwice: tb.leftTwice, home: tb.home })}`);
   want(Object.values(tb.inspector).every(Boolean), `change inspector states and stale replies: ${JSON.stringify(tb.inspector)}`);
   const c = results.clocks;
   want(c.model === "5.0 s" && c.tools === "0.0 s", `the clocks count only answered pairs: ${JSON.stringify(c)}`);

@@ -287,8 +287,8 @@ check(async () => {
   // Every event redraws the side panel. Notes being edited must come
   // through a follow-up's events, as those that come just after a turn
   // ends, with what was typed, and the field typed in keeps the focus.
-  // Notes live in their tab too.
-  await page.click(".task-aside [role=tab]:has-text('Notes')");
+  // Notes live with the workspace they describe.
+  await page.click(".task-aside [role=tab]:has-text('Workspace')");
   const notesPanel = "section.panel:has(h2:has-text('What nodwyn knows here'))";
   const notes = `${notesPanel} textarea[aria-label='Project notes']`;
   const replies = () => page.evaluate(() => (document.querySelector(".transcript").innerText.match(/Glad that helps/g) || []).length);

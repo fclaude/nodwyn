@@ -3,12 +3,24 @@
 The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
-beside it four tabs (five for a task in a worktree, which adds **Review**): **Live** holds this turn's budget, the plan and the
-task's totals, everything that moves while the task works; **Changes**
-holds recorded write approvals, each file's kept versions and the attachments;
-**Workspace** holds where it works, the tools it was offered and the
-Details inspectors; **Notes** holds the project notes; **Review** (a worktree
-task's) holds what it changed since it branched, to comment on. The plan shows the
+beside it a compact monitoring summary above four bottom tabs (five for a
+worktree task, which still adds **Review**). The summary keeps total task
+spend, current turn time, context fullness and turn tool calls in fixed
+positions across tabs; unknown figures stay as a dash. Context shows a
+percentage against the recorded high water, or an estimate when no high
+water is known. A reserved warning line flags tokens, time, tool calls,
+spend or context at 90% of their displayed limit, and says when that limit
+has been reached. These are monitoring hints, not new enforcement rules.
+**Progress** holds the plan; **Statistics** holds this turn's budget and the
+task's totals; **Changes** still holds recorded write approvals, each
+file's kept versions and attachments; **Workspace** holds where it works,
+the tools it was offered, Details inspectors and retained project notes.
+**Review** still holds a worktree task's actual changes since it branched,
+to comment on; consolidation with Changes is deferred. On desktop only
+the selected content scrolls, so expanding a plan step cannot move the
+summary or bottom navigation; each tab keeps its scroll position through
+redraws and tab switches. On narrow screens the summary, content and
+navigation stack with ordinary page scrolling. The plan shows the
 model's progress through
 it: the steps it marked done (with what it says shows it), the ones it
 skipped, and the next. A step folds to its title, the clause up to its
@@ -18,7 +30,7 @@ After each reply the conversation shows its tokens,
 and when the provider reports them or the model has prices, how much of the
 prompt came from the cache and what it cost (the manual, "Choosing models");
 over several requests, the largest single prompt too, since each request
-sends the whole prompt again. The side panel's Context meter shows how full
+sends the whole prompt again. Statistics' Context meter shows how full
 the context the model holds is against the window's high water, from the
 start of a task: while the explorer, the planner or a sub-agent asks in a
 context of its own, the meter follows it and names it (*Context ·
@@ -32,7 +44,7 @@ each request to a model from its sending to its reply, and "Tool time",
 each tool call from its start to its result, the wait for your approval
 left out. Only a figure with a limit behind it is a bar (Time, Tool calls,
 Tokens used and Context, and the total spend when a spend limit is set);
-the bars come first and the rest are plain rows under them. Live's **Totals**
+the bars come first and the rest are plain rows under them. Statistics' **Totals**
 includes a plain "Token cache rate" row: the rounded whole-session share of
 raw prompt tokens read from cache, summed across turns and models before
 dividing. Only replies reporting cache reads and prompt tokens count;

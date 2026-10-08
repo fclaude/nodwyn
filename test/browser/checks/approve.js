@@ -110,6 +110,7 @@ check(async () => {
       const text = (name) => [...panel.querySelectorAll(".meter,.kv")].find((n) => n.firstElementChild?.textContent === name || n.querySelector(".meter-head span")?.textContent === name)?.textContent;
       return { spend: text("Total spend"), running: text("Total running time"), working: text("Total working time") };
     });
+  await page.click(".task-aside [role=tab]:has-text('Statistics')");
   const held = await totals();
   assert.match(held.spend, /^Total spendat least \$0\.0000$/, `the unpriced spend: ${held.spend}`);
   assert.match(held.running, /^Total running time\d/, `the running time: ${held.running}`);
@@ -169,7 +170,7 @@ check(async () => {
   // values are what compare.
   const value = (head) => head.replace(/^Total (running|working) time/, "");
   await page.click(".task-aside [role=tab]:has-text('Changes')");
-  await page.click(".task-aside [role=tab]:has-text('Live')");
+  await page.click(".task-aside [role=tab]:has-text('Statistics')");
   const switched = await totals();
   assert.notStrictEqual(value(switched.working), value(switched.running), `the working time matched the running time once the switch answered: ${switched.running} / ${switched.working}`);
   // The same on the log the panel adds up: the switch's wait, read off
@@ -206,7 +207,7 @@ check(async () => {
   assert.strictEqual(ran.open, false, "the finished run is folded");
   assert.deepStrictEqual(ran.rows.map((r) => r.name.replace(/\s+/g, " ").trim()), ["wc -l app.js"]);
   assert.ok(ran.rows.every((r) => /^exit 0/.test(r.stat)), `the run's rows: ${JSON.stringify(ran.rows)}`);
-  // The changes are in their tab now; Live comes back for the plan below.
+  // The changes are in their tab now; Progress comes back for the plan below.
   await page.click(".task-aside [role=tab]:has-text('Changes')");
   const after = await page.evaluate(() => ({
     card: !!document.querySelector(".ask-card"),
@@ -223,14 +224,14 @@ check(async () => {
     await shows(page, ".change-inspector", "Approved preview—not proof of a successful write");
     assert.ok(await page.locator(".change-inspector .diff-line.add").count(), "recorded additions missing");
     assert.ok(await page.locator(".change-inspector .diff-line.del").count(), "recorded deletions missing");
-    await page.click(".task-aside [role=tab]:has-text('Live')");
+    await page.click(".task-aside [role=tab]:has-text('Progress')");
     await page.click(".task-aside [role=tab]:has-text('Changes')");
     assert.strictEqual(await page.getAttribute(".change-toggle", "aria-expanded"), "true", "preview folded during redraw");
     await page.screenshot({ path: `${out}/changes-preview.png` });
   }
   await changesPreviewInspector();
   assert.strictEqual(after.code, 'const meta = [session.repo, when, state].join(" · ");');
-  await page.click(".task-aside [role=tab]:has-text('Live')");
+  await page.click(".task-aside [role=tab]:has-text('Progress')");
   const marked = await planPanel();
   assert.deepStrictEqual(marked.steps, before.steps, "the plan's steps after the approvals");
   assert.strictEqual(marked.head, "Plan3 of 4 done · drafted");
@@ -279,6 +280,7 @@ check(async () => {
   // The work since the first ask (the commands, the follow-up and the
   // rate-limited turn) moved both clocks on: the wait counted for running,
   // not for working, and the work after it counted for both.
+  await page.click(".task-aside [role=tab]:has-text('Statistics')");
   const moved = await totals();
   assert.notStrictEqual(moved.running, held.running, `the running time did not move with the wait and the work: ${held.running}`);
   assert.notStrictEqual(moved.working, held.working, `the working time did not move with the work: ${held.working}`);

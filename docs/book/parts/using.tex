@@ -316,7 +316,18 @@ from the model's configured prices is marked $\approx$); the time only when
 the server reports it. A budget checkpoint says what the turn has cost so
 far, ``at least'' when some requests had no known cost.
 
-The console's Live tab also shows a whole-session ``Token cache rate'' in
+The console keeps a compact monitoring summary above its content: task
+spend, current turn time, context fullness and turn tool calls. Unknown
+figures remain a dash, and a reserved warning line flags displayed limits
+from 90\% onwards. Bottom tabs separate Progress (the plan), Statistics
+(the turn's budget and task totals), Changes (approved previews,
+attachments and file recovery), and Workspace (folder, access, tools,
+inspectors and retained project notes). Worktree tasks still have a
+separate Review tab; its consolidation with Changes is deferred. On
+desktop the content scrolls independently, keeping the summary and tabs
+stable even with a long or expanded plan; narrow screens stack normally.
+
+The console's Statistics tab also shows a whole-session ``Token cache rate'' in
 Totals: the rounded percentage of raw prompt tokens read from cache, summed
 across turns and models before dividing. Only model replies reporting cache
 reads and prompt tokens count; missing or unreported usage stays out. A

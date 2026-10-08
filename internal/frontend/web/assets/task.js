@@ -40,6 +40,7 @@ export class TaskView {
     this.resolved = new Set();
     this.info = null;
     this.notes = null;
+    this.asideScroll = new Map();
     // The project notes being edited, or null when they are not. Every
     // event redraws the side panel, so the field is drawn from here and
     // what was typed outlives the redraw.
@@ -101,6 +102,7 @@ export class TaskView {
     }
     this.item = item;
     this.loading = true;
+    this.asideScroll.clear();
     this.failed = false;
     this.scroll = null;
     this.queued = [];
@@ -900,6 +902,9 @@ export class TaskView {
   aside() {
     if (!this.el || !this.item) return;
     const side = this.el.side;
+    // Each tab keeps its reading position through events and tab switches.
+    const previousBody = side.querySelector(".aside-panel");
+    if (previousBody) this.asideScroll.set(previousBody.dataset.tab, previousBody.scrollTop);
     // A redraw replaces the text field being typed in (the project notes, a
     // review comment or its note, each named by data-notes): the new one
     // takes the focus and the caret, so typing carries on where it was.
@@ -941,10 +946,11 @@ export class TaskView {
     const shown = tabs[at].draw().filter(Boolean);
     const body = h(
       "div",
-      { class: "aside-panel", role: "tabpanel", id: "aside-panel", "aria-labelledby": `aside-tab-${tabs[at].id}` },
+      { class: "aside-panel", dataset: { tab: tabs[at].id }, role: "tabpanel", id: "aside-panel", "aria-labelledby": `aside-tab-${tabs[at].id}` },
       ...(shown.length ? shown : [h("p", { class: "hint" }, tabs[at].empty)]),
     );
-    side.replaceChildren(bar, body);
+    side.replaceChildren(this.monitorPanel(), body, bar);
+    body.scrollTop = this.asideScroll.get(tabs[at].id) || 0;
     if (focusing) side.querySelector(`#${focusing.id}`)?.focus();
     const area = caret && side.querySelector(`textarea[data-notes="${typing.dataset.notes}"]`);
     if (area) {
@@ -954,19 +960,15 @@ export class TaskView {
     }
   }
 
-  // asideTabs names the side's four tabs, and a fifth, Review, for a task in
-  // a worktree, and the panels each holds. The
-  // grouping is by what a reader comes for: Live holds everything that
-  // ticks while the task works, Changes what it has written and brought
-  // in, Workspace where it works and what it may reach, and Notes what
-  // nodwyn knows here. A tab whose panels all come out empty says so
-  // instead of showing nothing at all.
+  // The summary stays visible across tabs; diagnostic figures belong in
+  // Statistics, and retained notes belong with the workspace they describe.
+  // Changes and Review keep their existing behaviour until their own redesign.
   asideTabs() {
     const tabs = [
-      { id: "live", label: "Live", draw: () => [this.turnPanel(), this.planPanel(), this.totalsPanel()], empty: "Nothing has run yet." },
+      { id: "progress", label: "Progress", draw: () => [this.planPanel()], empty: "No plan recorded yet." },
       { id: "changes", label: "Changes", draw: () => [this.changesPanel(), this.attachmentsPanel()], empty: "No approved changes yet." },
-      { id: "workspace", label: "Workspace", draw: () => [this.workspacePanel(), this.toolsPanel(), this.detailsPanel()], empty: "Nothing to show." },
-      { id: "notes", label: "Notes", draw: () => [this.notesPanel()], empty: "Reading the notes…" },
+      { id: "statistics", label: "Statistics", draw: () => [this.turnPanel(), this.totalsPanel()], empty: "Nothing has run yet." },
+      { id: "workspace", label: "Workspace", draw: () => [this.workspacePanel(), this.toolsPanel(), this.detailsPanel(), this.notesPanel()], empty: "Nothing to show." },
     ];
     // Review is for a task in a worktree, where the base commit says what the
     // task changed (ADR 34).
@@ -1063,6 +1065,61 @@ export class TaskView {
     } else if (p.reason) panel.append(h("p", { class: "hint" }, p.reason));
     return panel;
   }
+  // Four fixed slots keep monitoring independent of the plan's length.
+  // Unknown values stay unknown, and context is fullness, not token usage.
+  monitorPanel() {
+    const panel = h("section", { class: "task-monitor", "aria-label": "Task monitoring" });
+    for (const [key, label] of [["spend", "Total spend"], ["time", "Turn time"], ["context", "Context"], ["calls", "Tool calls"]])
+      panel.append(h("div", { class: "monitor-stat" }, h("span", { class: "monitor-label" }, label), h("strong", { class: "monitor-value", dataset: { monitor: key } }, "—")));
+    panel.append(h("div", { class: "monitor-warning" }));
+    this.fillMonitor(panel);
+    return panel;
+  }
+  fillMonitor(panel) {
+    const totals = this.totals();
+    const turn = this.lastTurn();
+    const budgets = this.info?.budgets;
+    const context = contextGauge(this.events());
+    const values = {
+      spend: totals ? `${totals.unpriced ? "at least " : ""}${usd(totals.cost, totals.estimated)}` : "—",
+      time: "—",
+      context: context.est ? (context.high ? `${Math.round(100 * context.est / context.high)}%` : `~${context.est.toLocaleString()}`) : "—",
+      calls: "—",
+    };
+    const warnings = [];
+    const near = (label, used, limit) => {
+      if (limit && used >= limit * 0.9) warnings.push(`${label} ${used >= limit ? "at limit" : "near limit"}`);
+    };
+    if (turn) {
+      const ended = turn.tail.find((e) => e.kind === "turn.end");
+      const start = tsOf(turn.start);
+      const until = ended ? tsOf(ended) : this.busy ? Date.now() : tsOf(turn.tail.at(-1) || turn.start);
+      const elapsed = start ? Math.max(0, until - start) : 0;
+      values.time = minutes(elapsed);
+      const calls = turn.tail.filter((e) => e.kind === "tool.call").length;
+      values.calls = `${calls}${budgets?.tool_calls?.soft ? ` / ${budgets.tool_calls.soft.toLocaleString()}` : ""}`;
+      let tokens = 0;
+      for (const e of turn.tail) {
+        if (e.kind !== "llm.resp") continue;
+        const u = e.payload.usage || {};
+        const prompt = u.prompt_tokens || 0;
+        const cached = Math.min(Math.max(u.cached_tokens || 0, 0), prompt);
+        tokens += prompt - cached + Math.floor(cached / 10) + (u.output_tokens || 0);
+      }
+      near("Tokens", tokens, budgets?.tokens?.soft);
+      near("Time", elapsed, budgets?.wall_ns?.soft / 1e6);
+      near("Tool calls", calls, budgets?.tool_calls?.soft);
+    }
+    near("Spend", totals?.cost || 0, budgets?.cost?.soft / 1e6);
+    near("Context", context.est, context.high);
+    for (const [key, value] of Object.entries(values)) panel.querySelector(`[data-monitor="${key}"]`).textContent = value;
+    panel.querySelector('[data-monitor="spend"]').title = `${totals?.unpriced ? "Lower bound: some requests are unpriced. " : ""}${this.truncated ? "From the log that remains. " : ""}${budgets?.cost?.soft ? `Spend limit: ${usd(budgets.cost.soft / 1e6, false)}.` : "Task-wide model and judge spend."}`;
+    panel.querySelector('[data-monitor="time"]').title = "Current turn's elapsed time, including waits for your answer.";
+    panel.querySelector('[data-monitor="context"]').title = `${context.agent ? `${context.agent}'s context. ` : ""}${context.high ? `Estimated fullness against ${context.high.toLocaleString()} tokens; older context is trimmed beyond this high water.` : "Context estimate; no high water recorded."}`;
+    const warning = panel.querySelector(".monitor-warning");
+    warning.textContent = warnings.join(" · ");
+    warning.title = warning.textContent;
+  }
   turnPanel() {
     const turn = this.lastTurn();
     const budgets = this.info?.budgets;
@@ -1076,6 +1133,8 @@ export class TaskView {
     return panel;
   }
   meters() {
+    const monitor = this.el?.side.querySelector(".task-monitor");
+    if (monitor) this.fillMonitor(monitor);
     const node = this.el?.side.querySelector("[data-meters]");
     const turn = this.lastTurn();
     if (node && turn) this.fillMeters(node, turn);
