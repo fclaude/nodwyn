@@ -37,7 +37,8 @@ function dimension(name) {
   return { tool_calls: "tool-call", tokens: "token", actions: "action", wall: "time", cost: "spend" }[name] || name;
 }
 
-// parseDiff turns the guard's unified diff into rows with line numbers.
+// parseDiff keeps the preview's line number and both file positions, so a
+// worktree review can change layout without changing comment numbering.
 export function parseDiff(detail) {
   const rows = [];
   let oldLine = 0,
@@ -52,18 +53,42 @@ export function parseDiff(detail) {
       inHunk = true;
       oldLine = Number(hunk[1]);
       newLine = Number(hunk[2]);
-      rows.push({ kind: "hunk", n: "", sign: "", text: hunk[3].trim() || "⋯" });
-    } else if (line.startsWith("+")) rows.push({ kind: "add", n: newLine++, sign: "+", text: line.slice(1) });
-    else if (line.startsWith("-")) rows.push({ kind: "del", n: oldLine++, sign: "−", text: line.slice(1) });
-    else if (line.startsWith("\\")) continue;
-    else {
-      rows.push({ kind: "ctx", n: newLine || "", sign: "", text: line.startsWith(" ") ? line.slice(1) : line });
-      if (newLine) newLine++;
-      if (oldLine) oldLine++;
+      rows.push({ kind: "hunk", n: "", old: "", new: "", sign: "", text: hunk[3].trim() || "⋯" });
+    } else if (line.startsWith("+")) {
+      rows.push({ kind: "add", n: newLine, old: "", new: inHunk ? newLine : "", sign: "+", text: line.slice(1) });
+      newLine++;
+    } else if (line.startsWith("-")) {
+      rows.push({ kind: "del", n: oldLine, old: inHunk ? oldLine : "", new: "", sign: "−", text: line.slice(1) });
+      oldLine++;
+    } else if (line.startsWith("\\")) continue;
+    else if (inHunk && line.startsWith(" ")) {
+      rows.push({ kind: "ctx", n: newLine || "", old: oldLine || "", new: newLine || "", sign: "", text: line.slice(1) });
+      newLine++;
+      oldLine++;
+    } else if (line) rows.push({ kind: "note", n: "", old: "", new: "", sign: "", text: line });
+  }
+  return rows;
+}
+
+// Split rows align a replacement block in order; unmatched lines leave a
+// blank on the other side, and neither context nor a hunk can be paired away.
+export function splitDiff(rows) {
+  const aligned = [];
+  for (let i = 0; i < rows.length;) {
+    const row = rows[i];
+    if (row.kind === "add" || row.kind === "del") {
+      const old = [], current = [];
+      while (i < rows.length && ["add", "del"].includes(rows[i].kind)) {
+        const next = rows[i++];
+        (next.kind === "del" ? old : current).push(next);
+      }
+      for (let j = 0; j < Math.max(old.length, current.length); j++) aligned.push({ old: old[j] || null, current: current[j] || null });
+    } else {
+      i++;
+      aligned.push(row.kind === "ctx" ? { old: row, current: row } : { note: row });
     }
   }
-  while (rows.length && rows.at(-1).kind === "ctx" && rows.at(-1).text === "") rows.pop();
-  return rows;
+  return aligned;
 }
 
 export function diffView(detail, label) {
@@ -76,7 +101,7 @@ export function diffView(detail, label) {
       "div",
       { class: "diff-body" },
       parseDiff(detail).map((row) =>
-        h("div", { class: `diff-line ${row.kind}` }, h("span", { class: "n" }, String(row.n)), h("span", { class: "s" }, row.sign), h("span", { class: "t" }, row.text)),
+        h("div", { class: `diff-line ${row.kind === "note" ? "ctx" : row.kind}` }, h("span", { class: "n" }, String(row.n)), h("span", { class: "s" }, row.sign), h("span", { class: "t" }, row.text)),
       ),
     ),
   );

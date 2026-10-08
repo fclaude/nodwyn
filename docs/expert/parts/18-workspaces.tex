@@ -252,12 +252,26 @@ many there were. \code{(worktree)} tells a strategy where the task works,
 and the system prompt tells the model, with a warning against
 \code{git stash}, which every worktree shares.
 
-The console's \textbf{Review} tab shows what the task changed since its
-base commit (\code{worktree.diff}, read without the daemon's lock, capped in
-size and time) and sends the comments written on it as one message
-(\code{worktree.review}), ordered by file and line and carrying no file
-content; only comments are built, and a change of direction is a message of
-its own.
+The console's \textbf{Review} button and Home's \textbf{Recently finished}
+worktree \textbf{Review} link open the task's changes in the centre panel,
+replacing the conversation until \textbf{Close review} restores it and its
+reply draft. The changes are since the base commit (\code{worktree.diff},
+read without the daemon's lock, capped in size and time). \textbf{Unified}
+is the default, with old and current-file line numbers; \textbf{Side-by-side}
+aligns replacements with blanks for unmatched lines. Long lines wrap within
+the columns, and a phone scrolls the split diff rather than the page.
+
+\textbf{Send review} sends comments as one message (\code{worktree.review}),
+ordered by file and current-file line and carrying no file content. Old-only
+deletions and explanatory notes have no line-comment control, but whole-file
+comments are available. Send waits while the task works; only acceptance
+clears comments and the overall note. Mode changes, redraws and closing/reopening
+retain saved comments, the unfinished comment, note, reading position and
+textarea selection in tab memory; reloading loses them. Failed refreshes keep
+the preceding diff, and late replies cannot reopen a closed review. A closed
+task's review says to resume it. Approval previews and kept-version comparisons
+remain in Changes. Only comments are built, not branch approval/rejection;
+a change of direction is a message of its own.
 
 The work stays on the branch until you merge it. Closing the task removes
 the worktree and its branch only when nothing would be lost: no change, no

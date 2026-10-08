@@ -331,24 +331,38 @@ repository's, in its `.nodwyn/versions/`, so they never keep a worktree and
 outlast it.
 Committing through `shell-exec` (`git commit`) still asks, as everywhere.
 
-**Reviewing a task's changes.** A task in a worktree has a **Review** tab in
-its side panel: every file it changed since it branched (committed or not,
-untracked files too), as a diff, with what happened to each (added, modified,
-deleted) and the commit it is compared with. A link, a binary file, a file too
-large to show or an empty one says so instead of showing nothing; if a branch
-has more changes than a reply holds, the rest are counted. The tab reads the
-worktree while the task is open, and says to resume a closed one; it is read
-again when a turn ends, and **Refresh** reads it now.
-Hover a line and press **+** to comment on it, or use **Comment on file**; add
-an overall note if you like. **Send review** sends all the comments to the
-task together, as one message ordered by file and line, and clears them; the
-task answers them in one turn. Only your comment and the line's number go to
-the task, not the text of the line. A comment on a line the diff no longer
+**Reviewing a task's changes.** A task in a worktree has a **Review** button
+beside its conversation. It opens in the centre panel; Home's **Recently
+finished** also has a **Review** link beside each worktree task. Review shows
+every file changed since it branched (committed or not, untracked files too),
+with its status (added, modified, deleted) and the comparison commit.
+**Unified** is the default; **Side-by-side** aligns the old and new files,
+with blanks for unmatched lines. Both show old/current-file positions. Long
+lines wrap within the diff, and the side-by-side view scrolls within the diff
+on a phone without widening the page. **Close review** brings back the
+conversation and its reply draft; it does not close the task.
+A link, a binary file, a file too large to show or an empty one says so instead
+of showing nothing; if a branch
+has more changes than a reply holds, the rest are counted. Review reads the
+worktree while the task is open, and says to resume a closed one; once opened
+it is read again when a turn ends, and **Refresh** reads it now. Failed refreshes
+keep the previous diff; a late reply does not reopen a review you closed.
+Hover a current-file line and press **+** to comment on it, or use **Comment
+on file** (including for deletions, whose old-only lines have no comment
+control); add an overall note if you like. **Send review** sends all comments
+together, as one message ordered by file and current-file line, and clears
+them after acceptance; the task answers them in one turn. Only your comment
+and the line's number go to the task, not the text of the line. A comment on
+a line the diff no longer
 shows is listed under its own heading so it can be read or removed, and one
 whose line now says something else is marked. Send waits while the task is
-working, and a refused review keeps its comments. Comments are kept in the
-page until sent, so reloading loses them. A change of direction is not a
-comment: write it to the task as a message.
+working, and a refused review keeps its comments and note. Saved comments,
+the unfinished comment and overall note, the chosen mode, reading position
+and textarea caret survive redraws and closing/reopening in this tab. They
+are not stored beyond the page, so reloading loses them. Home's pending-approval
+**Review** links still open the conversation's request card, not worktree
+review. A change of direction is not a comment: close review and write it to
+the task as a message.
 Not built yet: `--worktree` for the plain CLI, `nodwyn run` and the TUI;
 `nodwyn worktree list` and `remove`; and a list of push destinations in
 `.nodwyn/allow.toml` that would let git-land push without asking (ADR 34,
@@ -1872,10 +1886,13 @@ the configured budgets still decide when to ask or stop.
 The bottom tabs are **Progress**, for the plan; **Changes**, still for
 approved previews, attachments and file recovery; **Statistics**, for all
 turn and task figures; and **Workspace**, for the folder, branch, access,
-tools, Details and retained project notes. A worktree task still has its
-separate **Review** tab; Changes and Review have not yet been consolidated.
-Smaller labels and tighter spacing keep all five tabs on a single row at
-both desktop panel widths; keyboard focus remains visible.
+tools, Details and retained project notes. A worktree task has a **Review**
+button opening its actual changes in the centre, separate from Changes'
+approved previews and recovery. **Unified** is the default, with a
+**Side-by-side** option; **Close review** restores the conversation and reply
+form while retaining review drafts and reading position in this tab. Smaller
+labels and tighter spacing keep the four detail tabs on a single row at both
+desktop panel widths; keyboard focus remains visible.
 The summary stays visible across tabs. On desktop only the selected
 content scrolls: a long plan or an expanded step cannot displace the
 summary or navigation, and tabs keep their reading position across events

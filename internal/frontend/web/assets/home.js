@@ -177,6 +177,7 @@ export function renderHome(root, ctx) {
                 item.changes?.length ? [icon("file", 14), h("span", { class: "mono" }, basename(item.changes[0])), h("span", {}, `${item.changes.length > 1 ? ` and ${item.changes.length - 1} more` : ""} · ${desk.folderName(desk.project(item))}`)] : [icon("folder", 14), h("span", {}, `No files changed · ${desk.folderName(desk.project(item))}`)],
               ),
             ),
+            item.worktree && conn.has("worktree.diff") ? h("a", { class: "btn small ghost", href: `#/task/${item.id}/review` }, "Review") : null,
           ),
         ),
       ),

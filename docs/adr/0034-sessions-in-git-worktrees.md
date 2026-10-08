@@ -426,6 +426,23 @@ A task in a worktree can be reviewed from the console. Decisions:
   holds the message, not a separate record. A review is refused while the task
   is answering, and a closed task has no worktree to read, so the console
   waits for the first and says so for the second.
+- **Centre review, two layouts.** The task's Review button and Home's
+  Recently finished worktree Review link open the existing centre inspector,
+  replacing conversation/reply until Close review restores them. Unified is
+  the default; Side-by-side pairs contiguous deletion/addition blocks in
+  order, keeps hunks apart and leaves blanks for unmatched lines. Paths,
+  content and explanatory notes are literal text. Long lines wrap within
+  the diff, with contained horizontal scrolling for both sides on a phone.
+  Old/new columns are display only: line comments always target the current
+  file, never an old-only deletion; file comments remain available. Existing
+  inline approvals and Changes previews/kept-version comparisons are unchanged.
+- **Drafts survive closing.** Saved comments, the unfinished comment, overall
+  note, layout, reading position and textarea selection are kept per task in
+  tab memory across redraws, mode changes and closing/reopening. A failed
+  refresh keeps the preceding diff; stale replies are discarded and late
+  replies do not reopen a closed review. Only acceptance clears the submitted
+  comments and note; reloading still loses drafts. No log or RPC field changes.
+  Home's pending-approval Review links stay on the conversation.
 - **Comments only in the first version.** Approving or rejecting a branch is
   not built. A change of direction is not a comment: it is a message the
   user writes to the task.
@@ -440,7 +457,15 @@ Tests: `TestChangedFilesSinceBase`, `...StopsAtTheTotalLimit`,
 (web, the allow list); and the browser check `worktrees`, which writes and
 removes comments, holds a task on a question to see Send wait and the diff read
 again, lists an orphaned comment, marks a changed line, checks the one request
-and a closed task's tab. Of the tests added with this round, `...StopsAtTheTotalLimit`,
+and a closed task's review. The `worktrees` browser check also holds diff
+and review replies to check loading, stale reads, failed-refresh retention,
+drafts, refusal and acceptance-only clearing. It checks centre placement,
+Home entry, closing/reopening, both modes, unequal replacements, multiple
+hunks, literal text and current-file-only comments. `screens` exercises both
+layouts on desktop and phone in light and dark, long lines, bounded scrolling
+and the close action. These centre-layout checks fail on the preceding sidebar
+implementation; the response guards and existing `transcript`, `approve` and
+`firstrun` preview checks pass on both. Of the tests added with this round, `...StopsAtTheTotalLimit`,
 `...NotesAFileItCannotRead` and `...SaysWhatHasNoLines` (prim), and
 `...GroupsCommentsByFileAndLine`, `...DoesNotSendFileContent`,
 `...DoesNotHoldOtherMethods` and `...AnswersWithinAFrameForALargeBranch` (rpc)

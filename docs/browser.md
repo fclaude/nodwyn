@@ -3,16 +3,16 @@
 The console is organized around tasks (ADR 21's design canvas): **Home** starts
 a task in a folder and lists what needs an answer, what is running and what
 finished; a **task** shows its conversation with the approval inline, and
-beside it a compact monitoring summary above four bottom tabs (five for a
-worktree task, which still adds **Review**). The summary keeps total task
-spend, current turn time, context fullness, turn tool calls and **Cache hit**
-in five fixed positions across tabs. Cache hit is the rounded, token-weighted
-share of raw prompt tokens read from cache across the session, matching
-Statistics → Totals' Token cache rate, not the percentage of requests hitting
-cache. Missing or unreported usage is excluded; no positive prompt total
-shows **unknown**, while reported zero cache reads give **0%**. With truncated
-history it covers the log that remains, as its tooltip explains. Other unknown
-figures stay as a dash. Context shows a
+beside it a compact monitoring summary above four bottom tabs. Worktree tasks
+also have a **Review** button which opens their changes in the centre panel.
+The summary keeps total task spend, current turn time, context fullness,
+turn tool calls and **Cache hit** in five fixed positions across tabs. Cache
+hit is the rounded, token-weighted share of raw prompt tokens read from cache
+across the session, matching Statistics → Totals' Token cache rate, not the
+percentage of requests hitting cache. Missing or unreported usage is excluded;
+no positive prompt total shows **unknown**, while reported zero cache reads
+give **0%**. With truncated history it covers the log that remains, as its
+tooltip explains. Other unknown figures stay as a dash. Context shows a
 percentage against the recorded high water, or an estimate when no high
 water is known. A reserved warning line flags tokens, time, tool calls,
 spend or context at 90% of their displayed limit, and says when that limit
@@ -21,10 +21,12 @@ has been reached. These are monitoring hints, not new enforcement rules.
 task's totals; **Changes** still holds recorded write approvals, each
 file's kept versions and attachments; **Workspace** holds where it works,
 the tools it was offered, Details inspectors and retained project notes.
-**Review** still holds a worktree task's actual changes since it branched,
-to comment on; consolidation with Changes is deferred. Smaller tab labels
-and tighter spacing keep all five worktree tabs on one row at both desktop
-panel widths, with visible keyboard focus. On desktop only
+**Review** replaces the centre conversation with a worktree task's actual
+changes since it branched, to comment on; **Close review** restores the
+conversation and its reply draft. It stays separate from Changes' approval
+previews and recovery tools. Smaller tab labels and tighter spacing keep the
+four detail tabs on one row at both desktop panel widths, with visible keyboard
+focus. On desktop only
 the selected content scrolls, so expanding a plan step cannot move the
 summary or bottom navigation; each tab keeps its scroll position through
 redraws and tab switches. On narrow screens the summary, content and
@@ -244,18 +246,30 @@ when the task starts. Uncommitted changes in the folder are not in the
 worktree, and the conversation says how many. The task is listed under
 its repository; its heading shows the branch, and its Workspace panel the
 branch and where it started. Its changes stay on that branch until it is
-merged. Its **Review** tab lists what it changed since it branched, one diff
-per file with its status, drawn as literal text like every diff here and
-numbered as the file is (a line that starts with `++` or `--` is a line, not a
-header). A closed task's tab says to resume it. **+** on a line (or **Comment
-on file**) writes a comment, which **Remove** takes back; **Send review** sends
-all of them to the task as one message ordered by file and line, with only the
-line's number and the comment, and clears them. Send waits while the task
-works, since the daemon refuses a review then, and a refusal keeps the
-comments. The diff is read again when a turn ends. A comment whose file or line
-the diff no longer shows is listed under its own heading, still counted, and
-one whose line now says something else is marked. Comments live in the page
-until sent.
+merged. The task's **Review** button, or **Review** beside a worktree task
+under Home's **Recently finished**, opens its changes in the centre panel.
+Each file has its status and a diff, rendered as literal text. **Unified** is
+the default, with old and current-file line numbers; **Side-by-side** aligns
+the old and new files, leaving a blank where only one has a line. Long lines
+wrap within the diff; on a phone the split diff scrolls sideways without
+widening the page. A line starting with `++` or `--` is content, not a header.
+A closed task's review says to resume it. **Close review** restores the
+conversation and reply form without discarding either draft.
+
+**+** on a current-file line (or **Comment on file**) writes a comment, which
+**Remove** takes back. Old-only deletions have no line-comment control; use a
+file comment instead. **Send review** sends all comments as one message ordered
+by file and line, with only the current-file line number and the comment,
+and clears them only after acceptance. Send waits while the task works;
+a refusal keeps the comments and overall note. Once opened, the diff is read
+again when a turn ends; **Refresh** reads it now. A failed refresh keeps the
+previous diff, and late replies cannot reopen a closed review. A comment whose
+file or line the diff no longer shows is listed under its own heading, still
+counted, and one whose line now says something else is marked. Comments, an
+unfinished comment and the overall note survive redraws, mode changes and
+closing/reopening in this tab, with the reading position and textarea caret.
+Reloading the page loses these drafts. Home's approval **Review** links still
+open the conversation's pending request, not this worktree review.
 Closing the task removes the worktree and its branch only when
 nothing in them would be lost: no change, no untracked or ignored file (an
 attachment is one), no commit its base lacks. Otherwise both stay, and

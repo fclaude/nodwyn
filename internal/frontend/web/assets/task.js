@@ -4,7 +4,7 @@
 // session.info; a panel with no source says so instead of guessing.
 import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
 import { Transcript, planSteps, stepTitle, usd, contextGauge, judgeTally, spanWords } from "./transcript.js";
-import { askCard, shortcut, summary, parseDiff, diffView } from "./prompts.js";
+import { askCard, shortcut, summary, parseDiff, splitDiff, diffView } from "./prompts.js";
 import { Attachments, attachmentChip } from "./attach.js";
 import { renderInspector } from "./inspectors.js";
 import { policyChoices, renderPolicyEditor } from "./policy.js";
@@ -45,9 +45,8 @@ export class TaskView {
     // event redraws the side panel, so the field is drawn from here and
     // what was typed outlives the redraw.
     this.notesDraft = null;
-    // The Review tab's state for a task in a worktree: the diff worktree.diff
-    // answered, the comments written so far, and the one being written. Every
-    // event redraws the side panel, so all of it is drawn from here.
+    // A worktree review keeps its diff and drafts here, so closing the centre
+    // view or redrawing it for an event does not discard the reader's work.
     this.review = null;
     // The Changes panel's open History lists, by path: what versions.list
     // answered, or an empty record while it has not. Every event redraws the
@@ -364,7 +363,7 @@ export class TaskView {
           // A choice made while the response ran has applied, or said why it
           // could not: the state has it now.
           if (!this.loading && this.item?.open) this.loadInfo();
-          // What the turn changed is in the Review tab once it has been
+          // What the turn changed is in the review once it has been
           // opened, without asking for a refresh.
           if (this.review?.files && !this.loading && this.item?.open) this.loadReview();
         } else this.busy = true;
@@ -502,7 +501,7 @@ export class TaskView {
       send,
     );
     const main = h("div", { class: "task-main" }, transcript, form);
-    const inspector = h("div", { class: "inspector-view", hidden: true });
+    const inspector = h("div", { class: "inspector-view", id: "task-inspector", hidden: true });
     main.append(inspector);
     const side = h("aside", { class: "task-aside", "aria-label": "Task details" });
     const head = h("header", { class: "task-head" });
@@ -899,14 +898,13 @@ export class TaskView {
     const start = events.findLastIndex((e) => e.kind === "user.msg" || e.kind === "eval.req");
     return start < 0 ? null : { start: events[start], tail: events.slice(start + 1) };
   }
-  aside() {
+  aside(reviewOpening = false) {
     if (!this.el || !this.item) return;
     const side = this.el.side;
     // Each tab keeps its reading position through events and tab switches.
     const previousBody = side.querySelector(".aside-panel");
     if (previousBody) this.asideScroll.set(previousBody.dataset.tab, previousBody.scrollTop);
-    // A redraw replaces the text field being typed in (the project notes, a
-    // review comment or its note, each named by data-notes): the new one
+    // A redraw replaces the project notes field being typed in: the new one
     // takes the focus and the caret, so typing carries on where it was.
     const typing = [...side.querySelectorAll("textarea[data-notes]")].find((field) => field === document.activeElement);
     const caret = typing ? [typing.selectionStart, typing.selectionEnd, typing.scrollTop] : null;
@@ -949,7 +947,12 @@ export class TaskView {
       { class: "aside-panel", dataset: { tab: tabs[at].id }, role: "tabpanel", id: "aside-panel", "aria-labelledby": `aside-tab-${tabs[at].id}` },
       ...(shown.length ? shown : [h("p", { class: "hint" }, tabs[at].empty)]),
     );
-    side.replaceChildren(this.monitorPanel(), body, bar);
+    const review = this.item.worktree && this.conn.has("worktree.diff")
+      ? h("button", { type: "button", class: "btn small review-open", "aria-expanded": String(this.inspecting === "review"), "aria-controls": "task-inspector", onclick: () => this.openReview() }, this.reviewLabel())
+      : null;
+    const reviewFocused = side.querySelector(".review-open:focus");
+    side.replaceChildren(...[this.monitorPanel(), review, body, bar].filter(Boolean));
+    if (reviewFocused) review?.focus({ preventScroll: true });
     body.scrollTop = this.asideScroll.get(tabs[at].id) || 0;
     if (focusing) side.querySelector(`#${focusing.id}`)?.focus();
     const area = caret && side.querySelector(`textarea[data-notes="${typing.dataset.notes}"]`);
@@ -958,11 +961,11 @@ export class TaskView {
       area.setSelectionRange(caret[0], caret[1]);
       area.scrollTop = caret[2];
     }
+    if (this.inspecting === "review") this.drawReview(reviewOpening);
   }
 
   // The summary stays visible across tabs; diagnostic figures belong in
   // Statistics, and retained notes belong with the workspace they describe.
-  // Changes and Review keep their existing behaviour until their own redesign.
   asideTabs() {
     const tabs = [
       { id: "progress", label: "Progress", draw: () => [this.planPanel()], empty: "No plan recorded yet." },
@@ -970,9 +973,6 @@ export class TaskView {
       { id: "statistics", label: "Statistics", draw: () => [this.turnPanel(), this.totalsPanel()], empty: "Nothing has run yet." },
       { id: "workspace", label: "Workspace", draw: () => [this.workspacePanel(), this.toolsPanel(), this.detailsPanel(), this.notesPanel()], empty: "Nothing to show." },
     ];
-    // Review is for a task in a worktree, where the base commit says what the
-    // task changed (ADR 34).
-    if (this.item?.worktree && this.conn.has("worktree.diff")) tabs.splice(2, 0, { id: "review", label: this.reviewLabel(), draw: () => [this.reviewPanel()], empty: "Nothing to review." });
     return tabs;
   }
 
@@ -1465,6 +1465,58 @@ export class TaskView {
     const undo = this.info ? (this.info.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the previous version of anything else before it writes. Restore it from Changes." : "Not a git repository, so nodwyn keeps the previous version of a file before it writes. Restore it from Changes.") : "";
     return h("section", { class: "panel" }, h("h2", {}, "Workspace"), rows, worktree ? h("p", { class: "hint" }, worktree) : null, undo ? h("p", { class: "hint" }, undo) : null);
   }
+  // Review shares the centre inspector, not its snapshot semantics: events
+  // redraw it and an idle task refreshes the diff without reopening it.
+  openReview() {
+    if (!this.el || !this.item?.worktree || !this.conn.has("worktree.diff")) return;
+    const first = !this.review;
+    this.review ||= { comments: [], composing: null, draft: "", note: "", loading: false, mode: "unified", scroll: 0, positions: new Map(), focus: null };
+    this.inspecting = "review";
+    this.el.transcript.hidden = true;
+    this.el.inspector.hidden = false;
+    this.el.inspector.classList.add("review-view");
+    this.controls();
+    this.aside(true);
+    if (first && this.item.open) this.loadReview();
+  }
+  // Nested file diffs and the centre view each keep their reading position.
+  // Selection is recorded as it changes, since clicking Close takes focus
+  // away before its handler can save the caret in an unfinished draft.
+  rememberReview() {
+    const state = this.review;
+    if (!state || this.inspecting !== "review") return;
+    const view = this.el.inspector;
+    if (!view.querySelector(".review")) return;
+    state.scroll = view.scrollTop;
+    for (const body of view.querySelectorAll(".review-file .diff-body")) state.positions.set(body.dataset.path, [body.scrollTop, body.scrollLeft]);
+    const field = view.querySelector("textarea:focus");
+    if (field) state.focus = { name: field.dataset.notes, caret: [field.selectionStart, field.selectionEnd, field.scrollTop] };
+  }
+  drawReview(focusDraft = false) {
+    if (this.inspecting !== "review" || !this.el) return;
+    this.rememberReview();
+    const state = this.review;
+    const view = this.el.inspector;
+    const active = view.contains(document.activeElement) ? document.activeElement : null;
+    const control = active?.getAttribute("aria-label");
+    const focus = state.focus && { name: state.focus.name, caret: [...state.focus.caret] };
+    view.replaceChildren(
+      h("div", { class: "bar review-bar" }, h("h2", {}, "Review changes"), h("button", { type: "button", class: "btn small review-close", "aria-label": "Close review", onclick: () => this.closeInspector() }, icon("cross", 14), "Close review")),
+      this.reviewPanel(),
+    );
+    view.scrollTop = state.scroll;
+    for (const body of view.querySelectorAll(".review-file .diff-body")) {
+      const position = state.positions.get(body.dataset.path);
+      if (position) [body.scrollTop, body.scrollLeft] = position;
+    }
+    const field = focus && [...view.querySelectorAll("textarea[data-notes]")].find((area) => area.dataset.notes === focus.name);
+    if (field) {
+      if (focusDraft || active?.matches("textarea[data-notes]")) field.focus({ preventScroll: true });
+      field.setSelectionRange(focus.caret[0], focus.caret[1]);
+      field.scrollTop = focus.caret[2];
+    }
+    if (control && !active?.matches("textarea[data-notes]")) [...view.querySelectorAll("[aria-label]")].find((node) => node.getAttribute("aria-label") === control)?.focus({ preventScroll: true });
+  }
   reviewLabel() {
     const n = this.review?.comments.length;
     return n ? `Review (${n})` : "Review";
@@ -1477,6 +1529,7 @@ export class TaskView {
   async loadReview() {
     const version = this.version;
     const state = this.review;
+    if (!state || !this.item?.open || !this.item.worktree || !this.conn.has("worktree.diff")) return;
     const asked = (state.asked = (state.asked || 0) + 1);
     state.loading = true;
     this.aside();
@@ -1505,6 +1558,7 @@ export class TaskView {
     state.comments.push({ path, line, quote, text });
     state.composing = null;
     state.draft = "";
+    state.focus = null;
     this.aside();
   }
   // working is whether the task is answering something: a review is refused
@@ -1533,20 +1587,17 @@ export class TaskView {
   }
   reviewPanel() {
     const item = this.item;
-    const panel = h("section", { class: "panel review" }, h("h2", {}, "Review changes"));
+    const panel = h("section", { class: "panel review", "aria-label": "Worktree review" });
     // The changes are read from the worktree of an open task.
     if (!item.open) {
       panel.append(h("p", { class: "hint" }, "Resume this task to review its changes: they are read from its worktree while it is open."));
       return panel;
     }
-    // The first draw starts the read, after it, so aside() does not draw
-    // itself.
-    if (!this.review) {
-      this.review = { comments: [], composing: null, draft: "", note: "", loading: false };
-      queueMicrotask(() => this.loadReview());
-    }
     const state = this.review;
-    panel.querySelector("h2").append(h("button", { type: "button", class: "btn small ghost", disabled: state.loading, onclick: () => this.loadReview() }, "Refresh"));
+    panel.append(h("div", { class: "row-actions review-controls" },
+      h("div", { class: "review-modes", role: "group", "aria-label": "Diff layout" }, [["unified", "Unified"], ["split", "Side-by-side"]].map(([mode, label]) => h("button", { type: "button", class: "btn small", "aria-label": label, "aria-pressed": String(state.mode === mode), onclick: () => { state.mode = mode; this.aside(); } }, label))),
+      h("button", { type: "button", class: "btn small ghost", "aria-label": "Refresh review", disabled: state.loading, onclick: () => this.loadReview() }, "Refresh"),
+    ));
     if (state.error) panel.append(h("p", { class: "error", role: "status" }, state.error));
     if (!state.files) {
       if (!state.error) panel.append(h("p", { class: "hint", role: "status" }, "Reading the changes…"));
@@ -1559,25 +1610,45 @@ export class TaskView {
     // Diff content is session content: h() makes it text, never markup.
     const drawn = new Set();
     for (const file of state.files) {
-      const body = h("div", { class: "diff-body" });
-      for (const row of parseDiff(file.diff)) {
-        const line = h("div", { class: `diff-line ${row.kind}` }, h("span", { class: "n" }, String(row.n)), h("span", { class: "s" }, row.sign), h("span", { class: "t" }, row.text));
-        body.append(line);
-        // Only a line the file has now can be commented: its number is the
-        // number in the file the task edits.
-        if ((row.kind !== "add" && row.kind !== "ctx") || !row.n) continue;
-        const key = `${file.path}:${row.n}`;
-        line.append(h("button", { type: "button", class: "add-comment", title: "Add a comment", "aria-label": `Comment on ${file.path} line ${row.n}`, onclick: () => { state.composing = key; state.draft = ""; this.aside(); } }, "+"));
-        for (const c of state.comments.filter((c) => c.path === file.path && c.line === row.n)) {
+      const body = h("div", { class: `diff-body ${state.mode === "split" ? "diff-split" : "diff-unified"}`, dataset: { path: file.path } });
+      const rows = parseDiff(file.diff);
+      const comment = (row, line, target) => {
+        // Old-only deletions have no current-file position to send.
+        if (!row?.new) return;
+        const key = `${file.path}:${row.new}`;
+        line.append(h("button", { type: "button", class: "add-comment", title: "Add a comment", "aria-label": `Comment on ${file.path} line ${row.new}`, onclick: () => { state.composing = key; state.draft = ""; state.focus = null; this.aside(); } }, "+"));
+        for (const c of state.comments.filter((c) => c.path === file.path && c.line === row.new)) {
           drawn.add(c);
-          body.append(this.commentCard(c, c.quote === row.text ? "" : "This line has changed since you commented on it."));
+          target.append(this.commentCard(c, c.quote === row.text ? "" : "This line has changed since you commented on it."));
         }
-        if (state.composing === key) body.append(this.commentForm("comment", () => this.addComment(file.path, row.n, row.text)));
+        if (state.composing === key) target.append(this.commentForm("comment", () => this.addComment(file.path, row.new, row.text)));
+      };
+      if (state.mode === "split") {
+        body.append(h("div", { class: "review-columns" }, h("span", {}, "Old"), h("span", {}, "New · current file")));
+        const cell = (row, side) => h("div", { class: `diff-line ${side} ${row?.kind || "blank"}` }, h("span", { class: "n" }, String(row?.[side === "old" ? "old" : "new"] || "")), h("span", { class: "s" }, row?.sign || ""), h("span", { class: "t" }, row?.text || ""));
+        for (const pair of splitDiff(rows)) {
+          if (pair.note) {
+            body.append(h("div", { class: `diff-line ${pair.note.kind}` }, h("span", { class: "t" }, pair.note.text)));
+            continue;
+          }
+          const current = cell(pair.current, "new");
+          const notes = h("div", { class: "review-line-notes" });
+          const line = h("div", { class: "diff-pair" }, cell(pair.old, "old"), current, notes);
+          comment(pair.current, current, notes);
+          body.append(line);
+        }
+      } else {
+        body.append(h("div", { class: "review-columns unified-columns" }, h("span", {}, "Old"), h("span", {}, "New"), h("span", {}, "Current-file comments")));
+        for (const row of rows) {
+          const line = h("div", { class: `diff-line ${row.kind}` }, h("span", { class: "n old", title: "Old line" }, String(row.old)), h("span", { class: "n new", title: "Current-file line" }, String(row.new)), h("span", { class: "s" }, row.sign), h("span", { class: "t" }, row.text));
+          body.append(line);
+          comment(row, line, body);
+        }
       }
       const whole = state.comments.filter((c) => c.path === file.path && !c.line);
       for (const c of whole) drawn.add(c);
       const [word, tone] = statuses[file.status] || [file.status, "plain"];
-      panel.append(h("div", { class: "diff review-file" }, h("div", { class: "diff-head" }, h("span", { class: "mono" }, file.path, " ", h("span", { class: `badge ${tone}` }, word)), h("button", { type: "button", class: "btn small ghost", onclick: () => { state.composing = file.path; state.draft = ""; this.aside(); } }, "Comment on file")), body, whole.map((c) => this.commentCard(c, "")), state.composing === file.path ? this.commentForm("comment", () => this.addComment(file.path, 0, "")) : null));
+      panel.append(h("div", { class: "diff review-file" }, h("div", { class: "diff-head" }, h("span", { class: "mono" }, file.path, " ", h("span", { class: `badge ${tone}` }, word)), h("button", { type: "button", class: "btn small ghost", onclick: () => { state.composing = file.path; state.draft = ""; state.focus = null; this.aside(); } }, "Comment on file")), body, whole.map((c) => this.commentCard(c, "")), state.composing === file.path ? this.commentForm("comment", () => this.addComment(file.path, 0, "")) : null));
     }
     if (!state.files.length) panel.append(h("p", { class: "hint" }, "This task has not changed anything since it branched."));
     // A comment whose file or line the diff no longer shows is still sent, so
@@ -1589,7 +1660,11 @@ export class TaskView {
       note.value = state.note;
       panel.append(note, h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small dark", disabled: state.sending || this.working(), onclick: () => this.sendReview() }, `Send review (${state.comments.length})`), this.working() ? h("span", { class: "hint" }, "The task is working: send when it is idle.") : null));
     }
-    panel.append(h("p", { class: "hint" }, "Comments go to the task together, as one message. To change direction, write to the task instead."));
+    panel.append(h("p", { class: "hint" }, "Comments go to the task together, as one message. To change direction, close review and write to the task instead."));
+    for (const area of panel.querySelectorAll("textarea[data-notes]")) {
+      const remember = () => { state.focus = { name: area.dataset.notes, caret: [area.selectionStart, area.selectionEnd, area.scrollTop] }; };
+      for (const event of ["focus", "input", "select", "keyup", "click", "blur"]) area.addEventListener(event, remember);
+    }
     return panel;
   }
   // commentCard draws a comment, with a line of what is wrong with where it
@@ -1598,12 +1673,12 @@ export class TaskView {
     return h("div", { class: "review-comment" }, h("div", {}, remark ? h("div", { class: "hint" }, remark) : null, h("span", {}, c.text)), h("button", { type: "button", class: "btn small ghost", "aria-label": "Remove comment", onclick: () => { this.review.comments.splice(this.review.comments.indexOf(c), 1); this.aside(); } }, "Remove"));
   }
   // commentForm is the field a comment is written in. kind names it for
-  // aside(), which keeps the caret in the field being typed in.
+  // drawReview(), which keeps the caret in the field being typed in.
   commentForm(kind, save) {
     const state = this.review;
     const area = h("textarea", { class: "input", rows: 2, spellcheck: true, "aria-label": "Comment", dataset: { notes: kind }, oninput: (event) => (state.draft = event.target.value) });
     area.value = state.draft;
-    return h("div", { class: "review-form" }, area, h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small dark", onclick: save }, "Add comment"), h("button", { type: "button", class: "btn small ghost", onclick: () => { state.composing = null; this.aside(); } }, "Cancel")));
+    return h("div", { class: "review-form" }, area, h("div", { class: "row-actions" }, h("button", { type: "button", class: "btn small dark", onclick: save }, "Add comment"), h("button", { type: "button", class: "btn small ghost", onclick: () => { state.composing = null; state.focus = null; this.aside(); } }, "Cancel")));
   }
   async history(path) {
     if (this.histories.has(path)) {
@@ -1665,6 +1740,8 @@ export class TaskView {
 
   // ---------- inspectors (U3), under Details ----------
   async inspect(kind, reread = false) {
+    if (this.inspecting === "review") this.rememberReview();
+    this.el.inspector.classList.remove("review-view");
     const version = this.version;
     this.inspecting = kind;
     const view = this.el.inspector;
@@ -1698,11 +1775,18 @@ export class TaskView {
     draw();
   }
   closeInspector() {
+    const review = this.inspecting === "review";
+    if (review) this.rememberReview();
     this.inspecting = null;
     this.policy = null;
     this.el.inspector.hidden = true;
     this.el.transcript.hidden = false;
+    this.el.inspector.classList.remove("review-view");
     this.controls();
+    if (review) {
+      this.aside();
+      this.el.side.querySelector(".review-open")?.focus({ preventScroll: true });
+    }
   }
   showPolicy(content) {
     renderPolicyEditor(

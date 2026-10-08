@@ -201,6 +201,13 @@ and nothing is sent. `line` counts the file as it is now, absent for a
 comment on the whole file. The text of the line is not part of a comment: it
 is file content, which would reach the model in a message with the user's
 authority, and a client that sends one as `quote` has it ignored.
+The console may display the unified diff as old/new columns or aligned
+side-by-side rows; this is client-side presentation only. Line comments still
+use the new/current-file number, never an old-only deletion's number. A whole
+file comment has no line (the console sends `0`); explanatory notes have no
+line targets. Both layouts use the same `worktree.diff` reply and
+`worktree.review` payload: no mode, old-line or quoted-content field is added,
+and the wire schema is unchanged.
 
 `session.resume` returns the already-open session if this daemon owns it.
 Otherwise it uses `core.Resume`, including its exclusive writer lock, recovery

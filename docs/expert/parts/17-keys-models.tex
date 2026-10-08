@@ -423,10 +423,17 @@ Where you see it:
     not a percentage of requests; it likewise distinguishes ``unknown'' from
     0\% and covers only retained history, as its tooltip explains. Progress
     holds the plan, Workspace includes retained project notes, and smaller
-    bottom-tab labels and tighter spacing keep all five worktree tabs on one
+    bottom-tab labels and tighter spacing keep the four detail tabs on one
     row at both desktop panel widths, retaining visible keyboard focus.
-    Navigation stays outside the desktop content's scroll area. Changes and worktree Review remain separate
-    pending their own redesign; narrow screens stack normally;
+    Navigation stays outside the desktop content's scroll area. A worktree
+    task's Review button opens its actual branch diff in the centre; Home's
+    Recently finished Review link does too. Unified is the default, with a
+    Side-by-side option; Close review restores conversation/reply while
+    retaining review drafts and reading position. Comments use current-file
+    numbers in either layout, with whole-file comments for old-only deletions.
+    Changes' approval previews and recovery stay separate; narrow screens
+    stack normally, with split diffs scrolling inside their body rather than
+    widening the page;
   \item \code{:budget} in the terminal client: the latest turn's spend over
     all its model requests and the share of prompt tokens from cache, or
     why the spend is unknown;

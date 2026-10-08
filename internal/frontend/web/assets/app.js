@@ -26,7 +26,7 @@ let homeState = null;
 function parse() {
   const hash = location.hash.replace(/^#/, "");
   const parts = hash.split("/").filter(Boolean);
-  if (parts[0] === "task" && parts[1]) return { name: "task", id: decodeURIComponent(parts[1]) };
+  if (parts[0] === "task" && parts[1]) return { name: "task", id: decodeURIComponent(parts[1]), review: parts[2] === "review" };
   if (["settings", "workspaces", "connections"].includes(parts[0])) return { name: parts[0], tab: parts[1] };
   return { name: "home" };
 }
@@ -106,7 +106,7 @@ function openMenu() {
 
 // showTask puts task id's view on screen: the kept one as it is, or one
 // that reads the conversation.
-function showTask(id) {
+function showTask(id, review = false) {
   let view = views.get(id);
   views.delete(id);
   if (task && task !== view) putAway(task);
@@ -115,12 +115,17 @@ function showTask(id) {
     task = view;
     $("view").replaceChildren(view.root);
     view.show(desk.sessions.get(id));
+    if (review) view.openReview();
+    else if (view.inspecting === "review" && view.activePrompt()) view.closeInspector();
   } else {
     view ||= new TaskView(conn, desk, navigate);
     views.set(id, view);
     task = view;
     $("view").replaceChildren(view.root);
-    view.open(id);
+    view.open(id).then(() => {
+      // A navigation may finish after the reader has already left the task.
+      if (review && task === view && route.name === "task" && route.id === id && route.review && !view.failed) view.openReview();
+    });
   }
   for (const [other, kept] of views) {
     if (views.size <= keptViews) break;
@@ -165,7 +170,7 @@ function render(routeChanged = false, what = "") {
   const key = route.name === "task" ? `task:${route.id}` : route.name;
   const ctx = { conn, desk, navigate, rerender: () => render(), pickFolder: window.nodwynPickFolder };
   if (route.name === "task") {
-    if (key !== lastRoute || routeChanged || !task) showTask(route.id);
+    if (key !== lastRoute || routeChanged || !task) showTask(route.id, route.review);
     else {
       // The list changed: keep the conversation, refresh what the task shows.
       const fresh = desk.sessions.get(route.id);

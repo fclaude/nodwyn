@@ -143,6 +143,98 @@ check(async () => {
     await shoot(`changes-${theme}`, { width: 1440, height: 1080 }, theme, inspector);
     await shoot(`changes-phone-${theme}`, { width: 390, height: 844 }, theme, inspector);
   }
+  // Real layout and controls, with bounded synthetic diff data: approvals
+  // above keep their own renderer and their existing narrow-pane behaviour.
+  const review = (name) => async (page) => {
+    await task(page);
+    await page.evaluate(async () => {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const long = "const veryLongLine = '" + "literal content ".repeat(80) + "';";
+      const diff = "--- old\n+++ new\n@@ -1,80 +1,81 @@\n-old heading\n+new heading\n+" + long + "\n" + Array.from({ length: 79 }, (_, i) => ` line ${i + 2}`).join("\n") + "\n";
+      const conn = {
+        live: true,
+        has(method) { return ["session.send", "worktree.diff", "worktree.review"].includes(method); },
+        onEvent() { return () => {}; },
+        onResult() { return () => {}; },
+        async call(method) {
+          if (method === "session.subscribe") return { page: { events: [{ seq: 1, kind: "user.msg", payload: { text: "Review the changes" } }], through: 1 }, busy: false };
+          if (method === "worktree.diff") return { base: "1234567890", omitted: 0, changes: [
+            { path: "src/a-long-file-name-that-should-remain-readable-in-either-layout.js", status: "M", diff },
+            { path: "notes/another-file.md", status: "A", diff: "--- /dev/null\n+++ file\n@@ -0,0 +1 @@\n+Another file\n" },
+          ] };
+          return {};
+        },
+      };
+      const desk = new Desk(conn);
+      desk.sessions.set("review-layout", { id: "review-layout", title: "Review layout", repo: "/tmp/review-layout", open: true, worktree: { branch: "nodwyn/layout", base: "main" } });
+      const view = new TaskView(conn, desk, () => {});
+      document.querySelector("#view").replaceChildren(view.root);
+      await view.open("review-layout");
+      window.reviewFixture = view;
+    });
+    await page.fill("#reply", "Kept conversation draft");
+    await page.click(".task-aside .review-open, .task-aside [role=tab]:has-text('Review')");
+    await page.waitForFunction(() => document.querySelector(".review")?.textContent.includes("new heading"));
+    assert.strictEqual(await page.locator(".task-main .inspector-view .review").count(), 1, "review is not in the centre inspector");
+    const bounds = async () => {
+      const got = await page.evaluate(() => {
+        const body = document.querySelector(".review-file .diff-body");
+        const pane = document.querySelector(".inspector-view");
+        const close = document.querySelector(".review-close");
+        const box = close.getBoundingClientRect();
+        const old = document.querySelector(".diff-pair > .old")?.getBoundingClientRect();
+        const current = document.querySelector(".diff-pair > .new")?.getBoundingClientRect();
+        return {
+          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          paneOverflow: pane.scrollWidth - pane.clientWidth,
+          bodyWidth: body.clientWidth, paneWidth: pane.clientWidth,
+          close: box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth,
+          aligned: !old || (old.top === current.top && old.height === current.height && old.right <= current.left),
+        };
+      });
+      assert.ok(got.pageOverflow <= 0 && got.paneOverflow <= 0 && got.bodyWidth <= got.paneWidth, `${name}: review escaped its pane: ${JSON.stringify(got)}`);
+      assert.ok(got.close, `${name}: Close review is outside the viewport`);
+      assert.ok(got.aligned, `${name}: old and new rows do not align`);
+    };
+    await page.locator(".review-bar").scrollIntoViewIfNeeded();
+    await bounds();
+    await shows(page, ".review", "veryLongLine", "Old", "New");
+    await page.screenshot({ path: `${out}/${name}-unified.png` });
+    await page.click("button:text-is('Side-by-side')");
+    assert.ok(await page.locator(".diff-pair .old.del").count(), `${name}: deletions missing from the old column`);
+    assert.ok(await page.locator(".diff-pair .new.add").count(), `${name}: additions missing from the new column`);
+    await bounds();
+    await page.screenshot({ path: `${out}/${name}-split.png` });
+    const scrolled = await page.evaluate(() => {
+      const body = document.querySelector(".review-file .diff-body");
+      body.scrollTop = 200;
+      body.scrollLeft = body.scrollWidth;
+      const current = document.querySelector(".diff-pair > .new").getBoundingClientRect();
+      const box = body.getBoundingClientRect();
+      return { top: body.scrollTop, left: body.scrollLeft, newVisible: current.right <= box.right && current.left >= box.left };
+    });
+    assert.ok(scrolled.top > 0 && scrolled.newVisible, `${name}: cannot scroll the long diff and read its new side: ${JSON.stringify(scrolled)}`);
+    await page.evaluate(() => window.reviewFixture.aside());
+    const retained = await page.$eval(".review-file .diff-body", (body) => [body.scrollTop, body.scrollLeft]);
+    assert.deepStrictEqual(retained, [scrolled.top, scrolled.left], `${name}: redraw lost the diff's reading position`);
+    await page.evaluate(() => { document.querySelector(".inspector-view").scrollTop = 100; });
+    await bounds();
+    await page.click("button:text-is('Unified')");
+    await page.click("button:text-is('Close review')");
+    assert.ok(await page.locator(".transcript").isVisible(), `${name}: closing did not restore the conversation`);
+    assert.ok(await page.locator(".reply").isVisible(), `${name}: closing did not restore reply`);
+    assert.strictEqual(await page.inputValue("#reply"), "Kept conversation draft", `${name}: closing lost the reply draft`);
+    await page.click(".task-aside .review-open");
+    await page.locator(".review-bar").scrollIntoViewIfNeeded();
+    await page.click("button:text-is('Side-by-side')");
+    await page.evaluate(() => { const body = document.querySelector(".review-file .diff-body"); body.scrollTop = 0; body.scrollLeft = 0; });
+    await bounds();
+  };
+  for (const theme of ["light", "dark"]) {
+    await shoot(`review-${theme}`, { width: 1440, height: 1080 }, theme, review(`review-${theme}`));
+    await shoot(`review-phone-${theme}`, { width: 390, height: 844 }, theme, review(`review-phone-${theme}`));
+  }
   await shoot("settings", { width: 1280, height: 800 }, "light", async (page) => {
     await go(page, "#/settings");
     await shows(page, "#view", "Settings", "Approvals", "Writing files", "Running commands");

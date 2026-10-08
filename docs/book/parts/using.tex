@@ -243,10 +243,16 @@ provider that cannot read one refuses that request, and the turn says so
   (\adr{39}). For a git workspace, the checked-by-default
   \textbf{In a worktree} choice starts a task in a git worktree of its own,
   on its own branch, so several can work on one repository at once (\adr{34});
-  unchecking it starts the task in the folder itself. Its \textbf{Review} tab
-  shows what it changed
-  since it branched, read again when a turn ends, and \textbf{Send review}
-  sends your line comments to it as one message once it is idle. Switching back to an open task shows it
+  unchecking it starts the task in the folder itself. Its \textbf{Review}
+  button, or \textbf{Review} beside it under Home's \textbf{Recently finished},
+  opens the changes in the centre panel. \textbf{Unified} is the default;
+  \textbf{Side-by-side} aligns old and new lines. \textbf{Close review} restores
+  the conversation and reply draft, retaining comments, unfinished comment,
+  note and reading position. Once opened the diff is read again when a turn
+  ends, and \textbf{Send review} sends current-file line or whole-file comments
+  as one message once idle, clearing them only after acceptance. Old-only
+  deletions offer file comments, not line comments; no file content is sent.
+  Switching back to an open task shows it
   as it was, without reading its conversation again.
   Streamed text and thinking are joined for the next display frame, keeping
   the heading and detail panels in place. A task kept off screen catches
@@ -331,12 +337,16 @@ warning line flags displayed limits
 from 90\% onwards. Bottom tabs separate Progress (the plan), Statistics
 (the turn's budget and task totals), Changes (approved previews,
 attachments and file recovery), and Workspace (folder, access, tools,
-inspectors and retained project notes). Worktree tasks still have a
-separate Review tab; its consolidation with Changes is deferred. Smaller
-labels and tighter spacing keep all five tabs on one row at both desktop
-panel widths, retaining visible keyboard focus. On desktop the content
-scrolls independently, keeping the summary and tabs
+inspectors and retained project notes). Worktree tasks also have a Review
+button opening their branch diff in the centre, separate from Changes'
+approval previews and recovery. Close review restores the conversation;
+Unified and Side-by-side layouts keep drafts and current-file comment targets.
+Smaller labels and tighter spacing keep the four detail tabs on one row at
+both desktop panel widths, retaining visible keyboard focus. On desktop the
+content scrolls independently, keeping the summary and tabs
 stable even with a long or expanded plan; narrow screens stack normally.
+Long review lines wrap inside the diff; phone side-by-side views scroll within
+it, not the page. Review drafts are tab memory, not saved across a reload.
 
 The console's Statistics tab also shows a whole-session ``Token cache rate'' in
 Totals: the rounded percentage of raw prompt tokens read from cache, summed

@@ -592,3 +592,32 @@ plan, step expansion, event redraws, tab returns, empty values, limit
 warnings, live summary updates, cache rates and cached aggregation reuse,
 five-tab geometry at both desktop widths, keyboard focus, mobile layout
 and editing notes in Workspace.
+
+## Amendment 2026-10-08: Worktree review opens in the centre
+
+The sidebar was too narrow for reading a task's full changes, and Review had
+no way to close without choosing another tab. A worktree task now has a Review
+button alongside the fixed monitoring summary; Home's Recently finished list
+also has a direct Review link. Review uses the existing centre inspector,
+replacing the conversation and reply form until Close review restores them.
+The four detail tabs and monitoring remain available; Changes still means
+recorded approval previews, kept versions and attachments, not the branch diff.
+
+Unified is the default, with old and current-file line numbers. Side-by-side
+aligns contiguous replacements in order, leaves unmatched additions/deletions
+opposite blanks and keeps hunk boundaries and explanatory notes. Comments
+target current-file lines only; old-only deletions can receive file comments.
+Content and paths remain literal text. Long lines wrap within the columns and
+phone split diffs scroll inside their bounded body, never the whole page.
+The close control stays visible while the centre review scrolls.
+
+Saved comments, unfinished comment and overall note, display mode, reading
+position and textarea selection stay in each task's tab-memory state through
+redraws and closing/reopening. Late replies update that state but cannot reopen
+a closed review; stale replies cannot replace newer diffs, and a failed refresh
+retains the preceding diff. Existing inline approval and Details inspector
+behaviour stays separate, including Home's pending-approval entry points.
+No RPC, log or schema changes. The worktrees and screens checks fail on the
+previous sidebar implementation and pass on this one; controlled-response
+guards and transcript, approve and firstrun checks pass on both. Branch approval,
+Changes consolidation and persistent review drafts are not built.
