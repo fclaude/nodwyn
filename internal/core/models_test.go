@@ -491,10 +491,7 @@ func TestKeptReasoningGoesBackWithItsReply(t *testing.T) {
 			w.Write([]byte(replies[len(bodies)-1]))
 		}))
 		t.Cleanup(srv.Close)
-		m := config.Model{Provider: "openai", Dialect: llm.ChatResponses, URL: srv.URL + "/v1", Model: "m"}
-		if keep {
-			m.KeepReasoning = &keep
-		}
+		m := config.Model{Provider: "openai", Dialect: llm.ChatResponses, URL: srv.URL + "/v1", Model: "m", KeepReasoning: keep}
 		r := modelRig(t, init, map[string]config.Model{"impl": m}, Options{})
 		if e := r.turn("list files"); e != "" {
 			t.Fatal(e)

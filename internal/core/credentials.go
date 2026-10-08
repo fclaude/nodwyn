@@ -298,7 +298,7 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 			// the keychain requires of a plan sign-in.
 			oai.CodexHeaders = m.Credential != "" && slices.Contains(s.credentialScopes(m.Credential, ""), "chatgpt.tokens.use.direct")
 		}
-		if m.KeepReasoning != nil && *m.KeepReasoning {
+		if m.KeepReasoning {
 			oai.ReasoningOrigin = reasoningOrigin(m)
 		}
 		p = oai

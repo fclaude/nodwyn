@@ -335,8 +335,8 @@ func modelBlock(table string, m Model) string {
 	}
 	field("cache_key", m.CacheKey)
 	field("cache_control", m.CacheControl)
-	if m.KeepReasoning != nil {
-		fmt.Fprintf(&b, "keep_reasoning = %t\n", *m.KeepReasoning)
+	if m.KeepReasoning {
+		b.WriteString("keep_reasoning = true\n")
 	}
 	price := func(name string, p *float64) {
 		if p != nil {

@@ -1948,18 +1948,22 @@ only that; encrypted reasoning (OpenRouter's `reasoning_details`) is not
 kept. Anthropic's own API is the exception: its signed thinking blocks are
 kept and given back whole (above).
 
-A model on a Responses server can keep its reasoning the same way, as an
-experiment: with `keep_reasoning = true` in its entry, each request asks for
-the reply's reasoning encrypted, the log keeps it, and it goes back before
-the call it came with, so the model need not work out again what it thought
-before calling a tool. It goes back only to the server and model it came
-from, since a plan's credential and an API key may not read each other's;
-earlier turns' stays where it was (`reasoning.context` `all_turns`), so the
-cached prompt holds across messages. Unset, nothing is kept, as before:
+A model on a Responses server can keep its reasoning the same way: with
+`keep_reasoning = true` in its entry, each request asks for the reply's
+reasoning encrypted, the log keeps it, and it goes back before the call it
+came with, so the model need not work out again what it thought before
+calling a tool. It goes back only to the server and model it came from,
+since a plan's credential and an API key may not read each other's; earlier
+turns' stays where it was (`reasoning.context` `all_turns`), so the cached
+prompt holds across messages. The default is `false`, which keeps none, and
+`false` is the setting for gpt-6.1-sol: in three runs of one task each way it
+saved no time, output or tool calls, reasoned more a reply, and solved the
+task the same way (ADR 9). A later model may do better with it; measure
+before turning it on:
 
 ```toml
 [models.openai-plan-gpt-6-1-sol]
-keep_reasoning = true      # openai servers with dialect = "responses" only
+keep_reasoning = false     # the default; true only on openai servers with dialect = "responses"
 ```
 
 A reply that thought at length three

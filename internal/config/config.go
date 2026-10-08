@@ -227,10 +227,12 @@ type Model struct {
 	// KeepReasoning keeps each reply's reasoning, encrypted as a Responses
 	// server gives it, and gives it back with the reply and with earlier
 	// turns' where they were, so the model need not think again what it
-	// thought before its calls. Unset or false keeps none, as before: whether
-	// it saves the model work is being measured (ADR 9, amended 2026-10-07).
-	// openai servers with dialect = "responses" only.
-	KeepReasoning *bool `toml:"keep_reasoning"`
+	// thought before its calls. false, the default, keeps none. For
+	// gpt-6.1-sol false is the setting to use: in six runs of one task it
+	// saved no time, output or tool calls and solved the task the same way
+	// (ADR 9, amended 2026-10-07); a later model may differ. true is for openai
+	// servers with dialect = "responses" only.
+	KeepReasoning bool `toml:"keep_reasoning"`
 	// PriceInput, PriceCachedInput and PriceOutput are the model's prices
 	// per million tokens, in USD, for estimating what a request cost when
 	// the provider does not report it (OpenRouter does). Unset is what the
@@ -894,7 +896,7 @@ func (m Model) validate() error {
 	if isOllama(m.Provider) && m.CacheControl != "" {
 		return errors.New("cache_control is for openai and anthropic servers; ollama keeps its own prompt cache")
 	}
-	if m.KeepReasoning != nil && (m.Provider != "openai" || m.Dialect != llm.ChatResponses) {
+	if m.KeepReasoning && (m.Provider != "openai" || m.Dialect != llm.ChatResponses) {
 		return errors.New(`keep_reasoning is for openai servers with dialect = "responses": only the Responses API gives reasoning back to keep`)
 	}
 	for name, p := range map[string]*float64{"price_input": m.PriceInput, "price_cached_input": m.PriceCachedInput, "price_output": m.PriceOutput} {
@@ -1032,7 +1034,7 @@ func (m Model) WithSettings(o Model) Model {
 	if m.CacheControl == "" {
 		m.CacheControl = o.CacheControl
 	}
-	if m.KeepReasoning == nil {
+	if !m.KeepReasoning {
 		m.KeepReasoning = o.KeepReasoning
 	}
 	if m.PriceInput == nil {

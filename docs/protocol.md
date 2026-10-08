@@ -542,7 +542,11 @@ configured, is `compatible`, `cerebras` or `responses`; the first two select
 Chat Completions history encoding, and `responses` sends requests to OpenAI's
 Responses API instead (ADR 8, amended 2026-10-05). `control` is the main
 model with its server's `Provider`, optional `Dialect`, `URL` and
-`Credential` filled in, and `Server` naming that server. Set a dialect in
+`Credential` filled in, and `Server` naming that server. Its
+`KeepReasoning` is the model's `keep_reasoning`, `false` unless config.toml
+sets it (ADR 9, amended 2026-10-07); `settings` does not carry it, so
+`settings.model.write` keeps an entry's own and a model given another id or
+server starts without it. Set a dialect in
 config.toml; `settings.control.write` preserves it when selecting a saved
 server, or moving an inline control to a server at the same endpoint. `settings.control.write` keeps every other
 line of `config.toml`, validates the result as the loader would, writes it

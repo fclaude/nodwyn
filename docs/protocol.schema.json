@@ -294,14 +294,7 @@
           "type": "string"
         },
         "KeepReasoning": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": "boolean"
         },
         "MaxOutput": {
           "type": "integer"

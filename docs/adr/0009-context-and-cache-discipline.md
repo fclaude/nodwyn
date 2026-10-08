@@ -469,7 +469,7 @@ plan's requests go, not how fast its server answers. The reply's encrypted
 reasoning (`include: ["reasoning.encrypted_content"]`), which Codex and
 opencode also send back, was not needed for the cache; it is not built.
 
-## Amendment 2026-10-07: a Responses model may keep its reasoning, as an experiment
+## Amendment 2026-10-07: a Responses model may keep its reasoning; gpt-6.1-sol does not
 
 A Responses reply's reasoning went back to no one (2026-10-02): the API reads
 it again only as the encrypted item it came as. OpenAI's guides ask for that
@@ -485,8 +485,8 @@ the reasoning of an average reply cost about four of its seconds, against the
 Codex sends its reasoning back and reasoned 40 tokens a reply that day, but
 at medium effort against nodwyn's high, which explains as much.
 
-So it is a model setting, `keep_reasoning`, off unless set, until a pair of
-runs of one task, without and with it, says whether it is worth having:
+So it is a model setting, `keep_reasoning`, false by default and measured
+before it is recommended for any model:
 
 - With it, a request to a Responses server asks for each reply's reasoning
   encrypted (`include: ["reasoning.encrypted_content"]`). Each reasoning
@@ -511,7 +511,48 @@ runs of one task, without and with it, says whether it is worth having:
   settings, written back by Settings, and kept when Settings saves the same
   model again; it is not on the wire to the console.
 
-What is not known: whether gpt-6.1-sol reasons less with its reasoning given
-back, whether it solves more, and whether encrypted content survives the
-log's redaction, which rewrites only known secret shapes, as for Claude's
-signatures. A summary of several parts goes back joined as one.
+A summary of several parts goes back joined as one.
+
+It was measured on gpt-6.1-sol at high effort on a ChatGPT plan, three runs
+each way, in the order off, on, on, off, off, on so that neither setting had
+the later hours, when the server answered faster. Each run started from the
+same repository: the tree of f589361, the commit before 76b960d fixed empty
+plan replies, as a fresh repository of one commit with fixed dates, so its
+history gave nothing away, recreated before each run, with the notes the
+previous run saved moved aside and the repository's `init.scm` skipped as
+untrusted in all six. Each was sent the same request, the symptom session
+20261007T170623Z-89018e45 showed (empty replies with usage), and runs 3 to 6
+then a follow-up asking for the tests once more. A run was graded by
+76b960d's TestResponsesStreamItemsStandInForAnEmptyOutput, which it never
+saw, and by whether its own tests failed on the unfixed code. The sessions:
+off 20261007T201217Z-7d611533, 20261007T225443Z-6c584927 and
+20261007T233707Z-4a835174; on 20261007T204524Z-a784ecdd,
+20261007T221723Z-dabcfc29 and 20261008T022751Z-6eeb89b2.
+
+Over the first request's turn, off against on (range, then mean):
+
+| | off | on |
+|---|---|---|
+| replies | 46–49 (47) | 38–44 (42) |
+| tool calls | 104–121 (111) | 90–131 (109) |
+| reasoning tokens a reply | 109–344 (199) | 270–327 (301) |
+| output tokens | 20,075–34,786 (26,794) | 24,344–30,946 (28,363) |
+| model time | 668–1,069 s (886) | 830–1,291 s (989) |
+
+The server took 26 to 53 ms a token it wrote across the six, more than any
+difference between the settings. Every run fixed the empty replies (the
+hidden test's case of an empty terminal output), every run read a terminal
+output that has items by merging the streamed items into it (its other case,
+which wants the terminal output alone), and every run's own tests failed on
+the unfixed code. With its reasoning given back the model took fewer replies
+in every run, but made as many calls, more to a reply, and reasoned more a
+reply, not less; it saved no time, output or calls. The cache held across
+the second message either way: its first request of the main conversation read
+99.7% to 99.8% of the first turn's last prompt from the cache (runs 3 to 6).
+No request was refused for its reasoning items, so what the log kept went
+back as it came. One stream ended without a terminal response and was asked
+again in run 2 (on) and one in run 4 (off).
+
+So `keep_reasoning = false`, the default, is the setting for gpt-6.1-sol.
+The setting stays for the models that follow, which may reason differently
+with their reasoning given back; the runs above are the way to find out.
