@@ -354,6 +354,13 @@ func modelBlock(table string, m Model) string {
 		fmt.Fprintf(&b, "efforts = [%s]\n", strings.Join(quoted, ", "))
 	}
 	field("effort", m.Effort)
+	if len(m.Labels) > 0 {
+		quoted := make([]string, len(m.Labels))
+		for i, l := range m.Labels {
+			quoted[i] = quote(l)
+		}
+		fmt.Fprintf(&b, "labels = [%s]\n", strings.Join(quoted, ", "))
+	}
 	b.WriteString("\n")
 	return b.String()
 }

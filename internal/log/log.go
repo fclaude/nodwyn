@@ -32,49 +32,50 @@ import (
 type Kind string
 
 const (
-	KindRunState       Kind = "run.state"
-	KindRunTurn        Kind = "run.turn"
-	KindRunCheckpoint  Kind = "run.checkpoint"
-	KindSessionStart   Kind = "session.start"   // session identity: version, cwd, config summary
-	KindSessionResume  Kind = "session.resume"  // restarted process, same conversation
-	KindSessionModel   Kind = "session.model"   // the model the conversation talks to changed (ADR 40)
-	KindSessionJudge   Kind = "session.judge"   // the judge the task asks was chosen (ADR 47)
-	KindTurnCheckpoint Kind = "turn.checkpoint" // budget state and operator answer
-	KindTurnEnd        Kind = "turn.end"        // durable end of a submitted turn
-	KindSessionEnd     Kind = "session.end"     // clean shutdown; absent after a crash
-	KindEvalReq        Kind = "eval.req"        // explicit user Scheme evaluation
-	KindEvalResult     Kind = "eval.result"     // evaluation outcome, redacted
-	KindUserMsg        Kind = "user.msg"        // text the user sent (redacted from P7)
-	KindHarnessMsg     Kind = "harness.msg"     // text the loop's strategy added for the model (add-message)
-	KindContextNarrow  Kind = "context.narrow"  // the window starts here, with its own system prompt (narrow-context)
-	KindContextWiden   Kind = "context.widen"   // the window is the whole conversation again (widen)
-	KindContextFold    Kind = "context.fold"    // the innermost narrowed context ends, hidden from later windows (fold-context)
-	KindResultFold     Kind = "result.fold"     // later windows show a tool result as the given text (fold-result)
-	KindContextCompact Kind = "context.compact" // one compaction: what set it off, whether it compacted, the context's size before and after
-	KindLLMReq         Kind = "llm.req"         // request to the control-plane model (window snapshot metadata)
-	KindLLMResp        Kind = "llm.resp"        // model output: text, thinking, tool calls, usage
-	KindToolCall       Kind = "tool.call"       // a tool application about to be evaluated
-	KindToolResult     Kind = "tool.result"     // its result or error (redacted from P7)
-	KindBindingChange  Kind = "binding.change"  // requested/applied/failed persistent binding update
-	KindSettingChange  Kind = "setting.change"  // a setting in config.toml changed by a person's answer or the console
-	KindApprovalChange Kind = "approval.change" // explicit temporary policy expansion
-	KindGuardDecision  Kind = "guard.decision"  // Allow / Deny / Confirm at apply->Prim
-	KindEgressCheck    Kind = "egress.check"    // binding lookup for a secret-bearing egress (P3)
-	KindGatePlan       Kind = "gate.plan"       // noul gate + Seam A outcome per message (P5)
-	KindPlanStep       Kind = "plan.step"       // the model marked a step of the turn's plan done or skipped
-	KindJevReq         Kind = "jev.req"         // a Jev call: content level, bytes, payload hash, redaction, score (P5)
-	KindCredRegister   Kind = "cred.register"   // class + handle id only, never a value (P3)
-	KindCredRefresh    Kind = "cred.refresh"    // an OAuth2 credential refreshed before use: class, handle id, endpoint, expiry; never a token (ADR 24)
-	KindMCPEgress      Kind = "mcp.egress"      // a contained MCP server reaching, or refused, a host through its egress proxy (ADR 23 W3b)
-	KindRedact         Kind = "redact.event"    // a [REDACTED class] substitution at an ingress (P7)
-	KindSummaryDrop    Kind = "summary.drop"    // revoke a summary without deleting history
-	KindSummary        Kind = "summary"         // a rebuildable summary covering a seq range (P10)
-	KindNote           Kind = "note"            // free-form operator annotation
-	KindFileVersion    Kind = "file.version"    // a file's previous content kept before a write (ADR 22)
-	KindAttach         Kind = "attach"          // a file the person attached: its extracted, redacted text (ADR 22)
-	KindDocUpload      Kind = "doc.upload"      // a document sent to a document service: file, size, hash, destination, the document's id; never content (W5)
-	KindSessionTitle   Kind = "session.title"   // the name a person gave the session; an empty one gives it back its first message (ADR 39)
-	KindSessionArchive Kind = "session.archive" // a person archived the session or brought it back (ADR 39)
+	KindRunState         Kind = "run.state"
+	KindRunTurn          Kind = "run.turn"
+	KindRunCheckpoint    Kind = "run.checkpoint"
+	KindSessionStart     Kind = "session.start"     // session identity: version, cwd, config summary
+	KindSessionResume    Kind = "session.resume"    // restarted process, same conversation
+	KindSessionModel     Kind = "session.model"     // the model the conversation talks to changed (ADR 40)
+	KindSessionJudge     Kind = "session.judge"     // the judge the task asks was chosen (ADR 47)
+	KindSessionDelegates Kind = "session.delegates" // the models the task may delegate to were chosen (ADR 27)
+	KindTurnCheckpoint   Kind = "turn.checkpoint"   // budget state and operator answer
+	KindTurnEnd          Kind = "turn.end"          // durable end of a submitted turn
+	KindSessionEnd       Kind = "session.end"       // clean shutdown; absent after a crash
+	KindEvalReq          Kind = "eval.req"          // explicit user Scheme evaluation
+	KindEvalResult       Kind = "eval.result"       // evaluation outcome, redacted
+	KindUserMsg          Kind = "user.msg"          // text the user sent (redacted from P7)
+	KindHarnessMsg       Kind = "harness.msg"       // text the loop's strategy added for the model (add-message)
+	KindContextNarrow    Kind = "context.narrow"    // the window starts here, with its own system prompt (narrow-context)
+	KindContextWiden     Kind = "context.widen"     // the window is the whole conversation again (widen)
+	KindContextFold      Kind = "context.fold"      // the innermost narrowed context ends, hidden from later windows (fold-context)
+	KindResultFold       Kind = "result.fold"       // later windows show a tool result as the given text (fold-result)
+	KindContextCompact   Kind = "context.compact"   // one compaction: what set it off, whether it compacted, the context's size before and after
+	KindLLMReq           Kind = "llm.req"           // request to the control-plane model (window snapshot metadata)
+	KindLLMResp          Kind = "llm.resp"          // model output: text, thinking, tool calls, usage
+	KindToolCall         Kind = "tool.call"         // a tool application about to be evaluated
+	KindToolResult       Kind = "tool.result"       // its result or error (redacted from P7)
+	KindBindingChange    Kind = "binding.change"    // requested/applied/failed persistent binding update
+	KindSettingChange    Kind = "setting.change"    // a setting in config.toml changed by a person's answer or the console
+	KindApprovalChange   Kind = "approval.change"   // explicit temporary policy expansion
+	KindGuardDecision    Kind = "guard.decision"    // Allow / Deny / Confirm at apply->Prim
+	KindEgressCheck      Kind = "egress.check"      // binding lookup for a secret-bearing egress (P3)
+	KindGatePlan         Kind = "gate.plan"         // noul gate + Seam A outcome per message (P5)
+	KindPlanStep         Kind = "plan.step"         // the model marked a step of the turn's plan done or skipped
+	KindJevReq           Kind = "jev.req"           // a Jev call: content level, bytes, payload hash, redaction, score (P5)
+	KindCredRegister     Kind = "cred.register"     // class + handle id only, never a value (P3)
+	KindCredRefresh      Kind = "cred.refresh"      // an OAuth2 credential refreshed before use: class, handle id, endpoint, expiry; never a token (ADR 24)
+	KindMCPEgress        Kind = "mcp.egress"        // a contained MCP server reaching, or refused, a host through its egress proxy (ADR 23 W3b)
+	KindRedact           Kind = "redact.event"      // a [REDACTED class] substitution at an ingress (P7)
+	KindSummaryDrop      Kind = "summary.drop"      // revoke a summary without deleting history
+	KindSummary          Kind = "summary"           // a rebuildable summary covering a seq range (P10)
+	KindNote             Kind = "note"              // free-form operator annotation
+	KindFileVersion      Kind = "file.version"      // a file's previous content kept before a write (ADR 22)
+	KindAttach           Kind = "attach"            // a file the person attached: its extracted, redacted text (ADR 22)
+	KindDocUpload        Kind = "doc.upload"        // a document sent to a document service: file, size, hash, destination, the document's id; never content (W5)
+	KindSessionTitle     Kind = "session.title"     // the name a person gave the session; an empty one gives it back its first message (ADR 39)
+	KindSessionArchive   Kind = "session.archive"   // a person archived the session or brought it back (ADR 39)
 )
 
 // A session's git worktree (ADR 34).
@@ -86,7 +87,7 @@ const (
 
 var kinds = map[Kind]bool{
 	KindRunState: true, KindRunTurn: true, KindRunCheckpoint: true,
-	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindSessionModel: true, KindSessionJudge: true, KindTurnEnd: true, KindTurnCheckpoint: true,
+	KindSessionStart: true, KindSessionEnd: true, KindSessionResume: true, KindSessionModel: true, KindSessionJudge: true, KindSessionDelegates: true, KindTurnEnd: true, KindTurnCheckpoint: true,
 	KindUserMsg: true, KindHarnessMsg: true, KindContextNarrow: true, KindContextWiden: true, KindContextFold: true, KindResultFold: true, KindContextCompact: true, KindEvalReq: true, KindEvalResult: true, KindLLMReq: true, KindLLMResp: true,
 	KindToolCall: true, KindToolResult: true,
 	KindGuardDecision: true, KindApprovalChange: true, KindBindingChange: true, KindSettingChange: true, KindSummaryDrop: true, KindEgressCheck: true, KindGatePlan: true, KindPlanStep: true,

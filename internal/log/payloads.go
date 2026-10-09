@@ -454,6 +454,14 @@ type SessionJudge struct {
 	Model    string `json:"model,omitempty"`
 }
 
+// SessionDelegates records the configured models a task may hand work to
+// with its delegate tool (ADR 27, amended 2026-10-09), chosen as it opened.
+// Resuming restores them, those config.toml still has.
+type SessionDelegates struct {
+	Actor  string   `json:"actor,omitempty"`
+	Models []string `json:"models"`
+}
+
 // TurnCheckpoint records a budget decision, including cancellation and the
 // unchanged hard ceiling. Text is redacted by the ordinary Record boundary.
 type TurnCheckpoint struct {

@@ -101,7 +101,11 @@ func Resume(o Options, id string) (_ *Session, err error) {
 			judge, judgeGone = "", fmt.Sprintf("%s: %s", rec.Server, err)
 		}
 	}
-	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree, modelLost: gone, judge: judge}
+	delegates := initialDelegates(o)
+	if rec, found := lastDelegates(history); found {
+		delegates = keepConfigured(o.Config, rec.Models)
+	}
+	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree, modelLost: gone, judge: judge, delegates: delegates}
 	if err = s.restoreHistory(history); err != nil {
 		return nil, err
 	}

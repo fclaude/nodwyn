@@ -170,3 +170,57 @@ again and its id from memory.
   server's key, which is bound for `GET` as well as `POST`.)
 - Not built: adding and removing `[models.NAME]` tables and servers from the
   app. They are written in `config.toml` by hand.
+
+## Amendment 2026-10-09: labels, and the task's model chooses its helper
+
+A sub-agent always asked the control model, and nothing told a strategy or
+the model which configured models suit which work. Names are the user's to
+change, so choosing by name does not last.
+
+- A model, `[control]` or `[models.NAME]`, may carry `labels = [...]`:
+  lower-case words (`[a-z0-9][a-z0-9_-]*`, no repeats). They are found as
+  efforts are (`Config.LabelsOf`): a model's own, else those of another entry
+  for the same model. `[control]` chosen from the list keeps no copy
+  (`Model.Choice`), since a copy would go stale when the entry's labels are
+  edited and win over them: the default goes by its entry's.
+  `(model-info)` reports them and `(model-names label)` lists the models that
+  carry one, so user code routes by label. Settings › Models edits them
+  (`settings.model.write` `labels`), and a label edited reaches the tasks
+  already open (`Session.SetLabels`): labels change what a model is called by,
+  not where a request goes or which tools are offered, so the prompt cache
+  and the frozen tool list (ADR 9) are untouched.
+- `(sub-agent system task tools [name [options]])` takes
+  `'((model . "NAME"))` and asks that model, wrap-up included. An error on
+  the way folds the sub-agent's context before it is raised again,
+  unchanged, so a caller that catches it goes on in its own context.
+- **Exposure is per task, and the default is none.** A task opens with the
+  `[models.NAME]` its model may hand work to (`session.open` `delegates`,
+  `core.Options.Delegates`, recorded as `session.delegates` and restored on
+  resume for the models `config.toml` still has). With none, the `delegate`
+  tool does not exist and the task works with its own model alone. With some,
+  `delegate` is offered: its description is fixed with the tool list, so it
+  lists nothing; a call with an empty task answers with the exposed models, their
+  context lengths and their labels as they are then, which is how an edited
+  label shows mid-task. The model chooses by labels. A name outside the exposed
+  set is refused whatever the model asks for. The helper is offered every
+  tool but `delegate` (`(tool-names)`, hidden), so it cannot hand the work
+  on. A helper that fails, its provider down, out of quota or refusing the
+  request, answers the call with its error: a helper is on another provider,
+  and its failure should not end the task's turn. `(delegate-models)` (hidden)
+  gives user code the same set. An earlier draft gated eligibility on a
+  `subagent` label; per-task consent replaced it, since a label says what a
+  model is for, not that every task may send it work.
+- Who chooses: the person, on this computer. Labels are written only in the
+  user's `config.toml` and Settings, never by a project's files, and
+  `delegates` is refused from a paired device as a model choice is (ADR 30).
+  Exposing a model is the consent that the task, and what its helper reads on
+  the way, may reach that model's provider, as configuring one already was for
+  a strategy. The console says so where the choice is made.
+- Not built: changing a task's exposure after it opened (the tool list is
+  fixed for the session, so a task that opened with none cannot gain the tool;
+  one that opened with some could change the set, which nothing asks for yet),
+  offering the default model in the console as a helper of a task on another
+  model (the session takes its `[models.NAME]`, but the console's list shows
+  the default as `control`, which in a task names the task's own model), the
+  TUI, line mode and `nodwyn run` choosing delegates, and descriptions beyond
+  labels.

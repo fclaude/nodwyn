@@ -1097,3 +1097,12 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .test-result .dot { margin-top: 5px; }
 .test-result.bad { color: var(--bad); }
 .test-result.ok { color: var(--ok); }
+
+/* The helpers a new task's model may hand work to (ADR 27, amended 2026-10-09). */
+.helpers { position: relative; font-size: 13px; color: var(--muted); }
+.helpers summary { cursor: pointer; user-select: none; list-style: none; }
+.helpers-pop { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 5; width: 320px; max-width: 80vw; padding: 10px 12px; background: var(--panel, #fff); border: 1px solid var(--line, #ddd); border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12); }
+.helper { display: flex; align-items: center; gap: 6px; padding: 3px 0; color: inherit; cursor: pointer; }
+.helper input { margin: 0; }
+.model-labels { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.task-helpers { font-size: 13px; color: var(--muted); }

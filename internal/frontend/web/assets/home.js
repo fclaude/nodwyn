@@ -66,6 +66,45 @@ function pickJudge(name, desk) {
   }
 }
 
+// The models the next task's model may hand work to (ADR 27, amended
+// 2026-10-09). Never kept between tasks, not even in this tab's storage: where
+// a task's work may go is chosen for each, and the default is the task's own
+// model alone.
+const pickedHelpers = new Set();
+
+// helpersBox is the control for it: a fold that says how many are chosen, and
+// lists the other models with the labels each carries. The model the task
+// talks to is not offered, since it is the one delegating.
+function helpersBox(desk, driving) {
+  // The default is listed as "control", which in a task names the model the
+  // task talks to, so it is not offered: its own entry's name is not here.
+  const others = choicesOf(desk).filter((c) => c.name !== driving && c.name !== "control");
+  for (const name of [...pickedHelpers]) if (!others.some((c) => c.name === name)) pickedHelpers.delete(name);
+  if (!others.length) return null;
+  const count = h("span", {});
+  const say = () => (count.textContent = pickedHelpers.size ? `Helpers: ${pickedHelpers.size}` : "Helpers: none");
+  say();
+  return h(
+    "details",
+    { class: "helpers", id: "new-task-helpers" },
+    h("summary", { title: "Other models this task's model may hand pieces of work to" }, count),
+    h(
+      "div",
+      { class: "helpers-pop" },
+      h("p", { class: "hint" }, "By default the task works with its own model alone. Tick a model to let it hand self-contained pieces of work to it; it chooses by the labels. What it sends there leaves for that model's provider."),
+      others.map((c) =>
+        h(
+          "label",
+          { class: "helper", dataset: { model: c.name } },
+          h("input", { type: "checkbox", checked: pickedHelpers.has(c.name), onchange: (event) => { if (event.target.checked) pickedHelpers.add(c.name); else pickedHelpers.delete(c.name); say(); } }),
+          h("span", {}, c.model),
+          (c.labels || []).map((l) => h("span", { class: "badge plain" }, l)),
+        ),
+      ),
+    ),
+  );
+}
+
 function pick(selection, desk) {
   const dflt = defaultSelection(desk);
   picked = selection && !(dflt && selection.name === dflt.name && selection.effort === dflt.effort) ? selection : null;
@@ -128,6 +167,7 @@ export function renderHome(root, ctx) {
   const selection = () => picked || defaultSelection(desk);
   // The judge is chosen beside the model (ADR 47), on this computer only,
   // and only where there is a judge to choose.
+  const canDelegate = canChoose && conn.has("session.judge.set");
   const canJudge = canChoose && conn.has("session.judge.set") && judgesOf(desk).length > 0;
   const judgeChoice = () => (pickedJudge !== null ? pickedJudge : defaultJudge(desk));
 
@@ -275,8 +315,11 @@ export function renderHome(root, ctx) {
     : null;
   // The model and effort the task starts on. What is shown is what is sent.
   const picker = new ModelPicker("new-task-model");
+  // The helpers on offer follow the model chosen, which is not one of them.
+  const helpersSlot = h("span", { class: "helpers-slot" });
   const drawPicker = () => {
     const sel = selection();
+    if (canDelegate) helpersSlot.replaceChildren(...[helpersBox(desk, sel.name)].filter(Boolean));
     picker.update({
       desk,
       selection: sel,
@@ -321,6 +364,8 @@ export function renderHome(root, ctx) {
           // So is a judge chosen here; left alone, the task asks the
           // default of Settings, as a task always did.
           if (canJudge && pickedJudge !== null) params.judge = pickedJudge;
+          // And the helpers ticked for this task, if any.
+          if (canDelegate && pickedHelpers.size) params.delegates = [...pickedHelpers].sort();
           const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
           opened = info.id;
           // An image waits for its own confirm, which the task's page shows.
@@ -331,6 +376,7 @@ export function renderHome(root, ctx) {
           draft = "";
           pick(null, desk);
           pickJudge(null, desk);
+          pickedHelpers.clear();
           await desk.refresh();
           navigate(`#/task/${info.id}`);
         } catch (error) {
@@ -362,6 +408,7 @@ export function renderHome(root, ctx) {
       attach,
       worktreeBox,
       canChoose ? picker.el : h("span", { class: "where" }, where),
+      helpersSlot,
       submit,
     ),
   );

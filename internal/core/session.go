@@ -82,7 +82,10 @@ type Session struct {
 	// 47): config.toml's [judge] server, or the one a person chose for the
 	// task. It changes only while the task is idle, under mu.
 	judge string
-
+	// delegates are the configured models the task may hand work to with its
+	// delegate tool, chosen as it opened (ADR 27, amended 2026-10-09). The
+	// tool list is fixed for the session, so they are fixed too.
+	delegates []string
 	// The plan a turn must record before it may do anything irreversible
 	// (SendPlanned; plan.go).
 	planRequired atomic.Bool

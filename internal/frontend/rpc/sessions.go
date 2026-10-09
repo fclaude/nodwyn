@@ -107,6 +107,9 @@ type sessionDetails struct {
 	// Judge is the judge the task asks now (ADR 47); its server is empty
 	// when it has none.
 	Judge core.JudgeState `json:"judge"`
+	// Delegates are the models the task's model may hand work to (ADR 27,
+	// amended 2026-10-09); none unless the task was opened with some.
+	Delegates []string `json:"delegates"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
@@ -115,7 +118,7 @@ func (s *server) details(session *core.Session) sessionDetails {
 	limits := session.Limits()
 	trust, actor := session.TurnApproval()
 	all, allActor := session.ApproveAll()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge()}
+	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge(), Delegates: orEmpty(session.Delegates())}
 }
 
 func orEmpty[T any](list []T) []T {
@@ -307,7 +310,7 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 // repository with a commit. Both take the same model choice (ADR 40).
 func (s *server) open(req request, client *peer) (any, *rpcError) {
 	var p openParams
-	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort", "judge"); err != nil {
+	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort", "judge", "delegates"); err != nil {
 		return nil, err
 	}
 	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort, Actor: client.actor}
@@ -320,6 +323,15 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 			return nil, failure(-32602, "The judge a task asks is chosen on the computer nodwyn runs on, not from a paired device")
 		}
 		judge = &core.JudgeChoice{Server: *p.Judge, Actor: client.actor}
+	}
+	var delegates *core.DelegateChoice
+	if len(p.Delegates) > 0 {
+		// Where a task's work may go is this computer's choice, as its model
+		// and judge are (ADR 30).
+		if strings.Contains(client.actor, " via ") {
+			return nil, failure(-32602, "The models a task may delegate to are chosen on the computer nodwyn runs on, not from a paired device")
+		}
+		delegates = &core.DelegateChoice{Models: p.Delegates, Actor: client.actor}
 	}
 	if !filepath.IsAbs(p.Repo) {
 		return nil, failure(-32602, "repo must be an absolute directory")
@@ -337,6 +349,7 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	options.Repo = p.Repo
 	options.Model = choice
 	options.Judge = judge
+	options.Delegates = delegates
 	options.Worktree = req.Method == "worktree.open"
 	// Making a session can take a while (a worktree is checked out, with
 	// the repository's hooks and filters), so it is made without the

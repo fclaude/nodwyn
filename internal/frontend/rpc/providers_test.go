@@ -292,8 +292,8 @@ func TestModelsAreListedWithTheirEfforts(t *testing.T) {
 	// Choosing the default by name, with an effort of its own.
 	into(t, c.ok("settings.control.write", map[string]any{"name": "127-0-0-1-thinker", "effort": "high"}), &settings)
 	want := []modelChoice{
-		{Name: "control", Server: "127-0-0-1", Provider: "openai", Model: "thinker", Host: strings.TrimPrefix(srv.URL, "http://"), Efforts: levels, Effort: "high", Default: true},
-		{Name: "127-0-0-1-plain", Server: "127-0-0-1", Provider: "openai", Model: "plain", Host: strings.TrimPrefix(srv.URL, "http://")},
+		{Name: "control", Server: "127-0-0-1", Provider: "openai", Model: "thinker", Host: strings.TrimPrefix(srv.URL, "http://"), Efforts: levels, Effort: "high", Labels: []string{}, Default: true},
+		{Name: "127-0-0-1-plain", Server: "127-0-0-1", Provider: "openai", Model: "plain", Host: strings.TrimPrefix(srv.URL, "http://"), Labels: []string{}},
 	}
 	if !reflect.DeepEqual(settings.Choices, want) {
 		t.Fatalf("choices:\n got %+v\nwant %+v", settings.Choices, want)

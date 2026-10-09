@@ -29,6 +29,10 @@ type openParams struct {
 	// Judge is the [servers.NAME] the task's judge is on, "" for none
 	// (ADR 47). Left out, it is config.toml's [judge] server.
 	Judge *string `json:"judge,omitempty"`
+	// Delegates are the [models.NAME] the task's model may hand work to with
+	// its delegate tool (ADR 27, amended 2026-10-09). Left out, none: the task
+	// talks to its own model alone. Fixed for the task, since the tool list is.
+	Delegates []string `json:"delegates,omitempty"`
 }
 
 // judgeSetParams choose a task's judge: a [servers.NAME] whose provider

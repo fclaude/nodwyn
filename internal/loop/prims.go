@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
@@ -199,7 +200,7 @@ func (l *Loop) install() error {
 		{
 			Name: "model-info",
 			Meta: scheme.Meta{
-				Doc:      "What is known about a model before asking it: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys name, model (the provider's id), provider, num-ctx (its context length; 0 when unset), max-output (the reply cap its requests carry), and temperature and seed (#f when the server decides).",
+				Doc:      "What is known about a model before asking it: the control model, or with a name the configured model [models.NAME]. Returns an alist with keys name, model (the provider's id), provider, num-ctx (its context length; 0 when unset), max-output (the reply cap its requests carry), temperature and seed (#f when the server decides) and labels (the words its config entry gives it, a list of strings).",
 				Variadic: true, // (model-info) or (model-info name)
 				Hidden:   true,
 				Origin:   "builtin",
@@ -209,11 +210,30 @@ func (l *Loop) install() error {
 		{
 			Name: "model-names",
 			Meta: scheme.Meta{
-				Doc:    "The names model-turn and model-info accept: \"control\" and each configured [models.NAME], sorted.",
+				Doc:      "The names model-turn and model-info accept: \"control\" and each configured [models.NAME], sorted. With a label, only the models whose config entry carries it.",
+				Variadic: true, // (model-names) or (model-names label)
+				Hidden:   true,
+				Origin:   "builtin",
+			},
+			Handler: l.modelNames,
+		},
+		{
+			Name: "delegate-models",
+			Meta: scheme.Meta{
+				Doc:    "The configured models this task's model may hand work to with the delegate tool, chosen when the task opened: names model-turn accepts, sorted; empty by default. The control model is never in it.",
 				Hidden: true,
 				Origin: "builtin",
 			},
-			Handler: l.modelNames,
+			Handler: l.delegateModels,
+		},
+		{
+			Name: "tool-names",
+			Meta: scheme.Meta{
+				Doc:    "The names of the tools the model is offered, in the order it is offered them: names model-turn's tools option and sub-agent's tools list accept. Empty until the tool list is fixed, once the session's Scheme has loaded (ADR 9).",
+				Hidden: true,
+				Origin: "builtin",
+			},
+			Handler: l.offeredTools,
 		},
 		{
 			Name: "window-limits",
@@ -1181,6 +1201,10 @@ func (l *Loop) modelInfo(c *scheme.Call) (scheme.Value, error) {
 		maxOutput = ep.MaxOutput
 	}
 	temperature, seed := scheme.False, scheme.False
+	labels := make([]scheme.Value, len(ep.Labels))
+	for i, l := range ep.Labels {
+		labels[i] = scheme.Str(l)
+	}
 	if ep.Temperature != nil {
 		temperature = scheme.Float(*ep.Temperature)
 	}
@@ -1195,16 +1219,29 @@ func (l *Loop) modelInfo(c *scheme.Call) (scheme.Value, error) {
 		scheme.Cons(scheme.Sym("max-output"), scheme.Int(int64(maxOutput))),
 		scheme.Cons(scheme.Sym("temperature"), temperature),
 		scheme.Cons(scheme.Sym("seed"), seed),
+		scheme.Cons(scheme.Sym("labels"), scheme.List(labels...)),
 	), nil
 }
 
-// modelNames is (model-names).
-func (l *Loop) modelNames(*scheme.Call) (scheme.Value, error) {
+// modelNames is (model-names [label]).
+func (l *Loop) modelNames(c *scheme.Call) (scheme.Value, error) {
+	label := ""
+	if len(c.Args) > 1 {
+		return scheme.Void, errors.New("expected at most a label")
+	}
+	if len(c.Args) == 1 {
+		var err error
+		if label, err = c.String(0); err != nil {
+			return scheme.Void, err
+		}
+	}
 	// The registry's map is the one a switch writes the control model into.
 	l.controlMu.RLock()
 	names := make([]string, 0, len(l.cfg.Models))
-	for n := range l.cfg.Models {
-		names = append(names, n)
+	for n, ep := range l.cfg.Models {
+		if label == "" || slices.Contains(ep.Labels, label) {
+			names = append(names, n)
+		}
 	}
 	l.controlMu.RUnlock()
 	sort.Strings(names)
@@ -1213,6 +1250,48 @@ func (l *Loop) modelNames(*scheme.Call) (scheme.Value, error) {
 		vs[i] = scheme.Str(n)
 	}
 	return scheme.List(vs...), nil
+}
+
+// delegateModels is (delegate-models).
+func (l *Loop) delegateModels(*scheme.Call) (scheme.Value, error) {
+	l.controlMu.RLock()
+	var names []string
+	for _, n := range l.cfg.Delegates {
+		if _, ok := l.cfg.Models[n]; ok && n != ControlModel {
+			names = append(names, n)
+		}
+	}
+	l.controlMu.RUnlock()
+	sort.Strings(names)
+	vs := make([]scheme.Value, len(names))
+	for i, n := range names {
+		vs[i] = scheme.Str(n)
+	}
+	return scheme.List(vs...), nil
+}
+
+// offeredTools is (tool-names).
+func (l *Loop) offeredTools(*scheme.Call) (scheme.Value, error) {
+	vs := make([]scheme.Value, len(l.tools))
+	for i, t := range l.tools {
+		vs[i] = scheme.Str(t.Name)
+	}
+	return scheme.List(vs...), nil
+}
+
+// SetLabels replaces the labels of the configured models named in labels, so
+// a label edited in Settings reaches a task that is already open: labels
+// change what a model is called by, not where requests go, so the tool list
+// and the prompt cache are not touched.
+func (l *Loop) SetLabels(labels map[string][]string) {
+	l.controlMu.Lock()
+	defer l.controlMu.Unlock()
+	for name, ls := range labels {
+		if ep, ok := l.cfg.Models[name]; ok {
+			ep.Labels = ls
+			l.cfg.Models[name] = ep
+		}
+	}
 }
 
 // windowLimits is (window-limits).

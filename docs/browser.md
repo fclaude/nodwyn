@@ -232,6 +232,16 @@ says which judge it asks ("judged by Jev", or "no judge").
   (`session.judge.set`); while a response runs it waits, since a judge is
   chosen between turns, and the transcript says each choice ("Judge: Jev ·
   jev-latest at api.typesafe.ai").
+- **Helpers** (ADR 27, amended 2026-10-09). Beside the picker, New task has
+  a **Helpers: none** fold listing the other models with the labels each
+  carries; ticked models are sent as `delegates` in `session.open` /
+  `worktree.open`, so the task's model may hand work to them with its
+  `delegate` tool. None is the default, nothing is remembered for the next
+  task (not even in this tab's storage), the model chosen and the default
+  model are not offered, and the fold is on this computer only, like the
+  Judge select. A task's page says "May hand work to: ..." beside its
+  picker. Settings › Models edits a model's labels (*What it is for*, with
+  hint buttons); the change reaches open tasks.
 - A paired device sees the selects, disabled, and a line saying the model is
   chosen on the computer nodwyn runs on; Home shows only the default model's
   name. It has no Judge select: the judge is chosen on that computer too

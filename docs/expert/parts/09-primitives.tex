@@ -68,6 +68,8 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(shell-start cmd args)} & start a program that keeps running, in the background (irreversible) \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
 \code{(shell-send id text)} & type into it (asks every time) \\
+\code{(delegate-models)} & the configured models this task's model may hand work to with the \code{delegate} tool, chosen when the task opened; none by default, and then there is no such tool \\
+\code{(tool-names)} & the names of the tools the model is offered, in order: what \code{model-turn}'s \code{tools} option and \code{sub-agent}'s list accept \\
 \code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc (irreversible, a write of \code{target}) \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a Google Doc (only with a stored \code{google} credential; asks, or not, as you chose at the first upload) \\
 \code{(judge-yes-no state question)}, \code{judge-score}, \code{judge-choice} & ask the task's judge (the model's only at \code{judge.content = "full"}; Chapter~\ref{ch:keys}) \\

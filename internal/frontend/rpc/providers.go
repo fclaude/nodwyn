@@ -68,6 +68,10 @@ type modelWriteParams struct {
 	// starts with: one of Efforts, or none.
 	Efforts []string `json:"efforts,omitempty"`
 	Effort  string   `json:"effort,omitempty"`
+	// Labels say what the model is for: lower-case words, which a task's model
+	// chooses a helper by (ADR 27, amended 2026-10-09). Left out, the entry
+	// keeps its labels; an empty list clears them.
+	Labels *[]string `json:"labels,omitempty"`
 	// Settings are the model's own settings, all of them: what is left out
 	// is unset. Left out altogether, the entry keeps those it has.
 	Settings *modelSettings `json:"settings,omitempty"`
@@ -199,7 +203,7 @@ func (s *server) choices() []modelChoice {
 			host = u.Host
 		}
 		out = append(out, modelChoice{Name: e.Name, Server: e.Model.Server, Provider: providerName(e.Model.Provider), Model: e.Model.Model, Host: host,
-			Efforts: cfg.Efforts(e.Model), Effort: e.Model.Effort, Default: e.Name == config.ControlModel, Settings: settingsOf(e.Model), Published: published(cfg, e.Model)})
+			Efforts: cfg.Efforts(e.Model), Effort: e.Model.Effort, Labels: orEmpty(cfg.LabelsOf(e.Model)), Default: e.Name == config.ControlModel, Settings: settingsOf(e.Model), Published: published(cfg, e.Model)})
 	}
 	return out
 }
@@ -314,6 +318,11 @@ func (s *server) rewriteConfig(change func(raw []byte, current config.Config) ([
 		return failure(-32000, err.Error())
 	}
 	s.options.Config.Servers, s.options.Config.Models, s.options.Config.Control = next.Servers, next.Models, next.Control
+	// Labels reach the tasks already open: they change what a model is called
+	// by, not where requests go or which tools are offered.
+	for _, owned := range s.sessions {
+		owned.session.SetLabels(next)
+	}
 	forgetProbes()
 	return nil
 }
@@ -589,7 +598,7 @@ func modelName(server, model string) string {
 // held besides moves to the entry, so a change here is what the default gets.
 func (s *server) modelWrite(req request, _ *peer) (any, *rpcError) {
 	var p modelWriteParams
-	if err := params(req.Params, &p, "name", "server", "model", "efforts", "effort", "settings"); err != nil {
+	if err := params(req.Params, &p, "name", "server", "model", "efforts", "effort", "labels", "settings"); err != nil {
 		return nil, err
 	}
 	if err := knownSettings(req.Params); err != nil {
@@ -639,13 +648,20 @@ func (s *server) modelWrite(req request, _ *peer) (any, *rpcError) {
 		}
 		if isDefault {
 			// The default's settings move to its entry: those [control] held
-			// itself fill what the entry leaves unset.
+			// itself fill what the entry leaves unset. So do its labels, since
+			// [control] is written back without them (Choice).
 			entry = entry.WithSettings(current.Control)
+			if len(entry.Labels) == 0 {
+				entry.Labels = current.Control.Labels
+			}
 		}
 		if p.Settings != nil {
 			entry = p.Settings.on(entry)
 		}
 		entry.Server, entry.Model, entry.Efforts, entry.Effort = p.Server, p.Model, p.Efforts, p.Effort
+		if p.Labels != nil {
+			entry.Labels = *p.Labels
+		}
 		text, cfg, err := config.SetModel(raw, name, entry)
 		if err == nil && isDefault {
 			text, cfg, err = config.SetControl(text, current.Control.Choice())

@@ -491,7 +491,9 @@ export class TaskView {
     // The model and effort the next message is answered with, changeable
     // here at any time: while a response runs the change waits for its end.
     const picker = new ModelPicker("task-model", true);
-    const opts = h("div", { class: "reply-opts" }, picker.el, dontAsk);
+    // The models this task's model may hand work to, chosen when it opened.
+    const helpers = h("span", { class: "task-helpers", id: "task-helpers", hidden: true, title: "Chosen when the task started; labels can be edited in Settings › Models at any time" });
+    const opts = h("div", { class: "reply-opts" }, picker.el, helpers, dontAsk);
     picker.el.hidden = true;
     const form = h(
       "form",
@@ -508,7 +510,7 @@ export class TaskView {
     const head = h("header", { class: "task-head" });
     this.root.replaceChildren(head, h("div", { class: "task-body" }, main, side));
     this.picker = picker;
-    this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk };
+    this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk, helpers };
     this.transcript = new Transcript(transcript);
   }
   controls() {
@@ -516,6 +518,9 @@ export class TaskView {
     const open = !!this.item?.open;
     const prompt = !!this.activePrompt();
     const lost = open && this.info?.model?.unavailable;
+    const delegates = this.info?.delegates || [];
+    this.el.helpers.hidden = !open || !delegates.length;
+    this.el.helpers.textContent = delegates.length ? `May hand work to: ${delegates.join(", ")}` : "";
     const canSend = this.conn.has("session.send") && open && !this.loading && !this.acting && !this.uploading && !lost;
     this.el.form.hidden = !this.conn.has("session.send") || !!this.inspecting;
     this.el.reply.disabled = !canSend;

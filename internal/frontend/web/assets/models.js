@@ -526,6 +526,7 @@ function modelRow(ctx, c, redraw) {
         { class: "main" },
         h("strong", {}, c.model, c.default ? h("span", { class: "badge plain default-badge" }, "default") : null),
         h("span", {}, c.efforts?.length ? `effort: ${c.efforts.map(effortLabel).join(" · ")}${c.effort ? `, starts at ${effortLabel(c.effort)}` : ""}` : "no effort setting"),
+        c.labels?.length ? h("span", { class: "model-labels" }, c.labels.map((l) => h("span", { class: "badge plain" }, l))) : null,
         h("span", { class: "model-settings" }, settingsLine(c.settings, c.provider, c.published)),
         status && status.state !== "ready" ? h("span", { class: "warn-text" }, status.detail || state.words[status.state]) : null,
       ),
@@ -802,8 +803,8 @@ function modelDraft(c) {
   const same = (a = [], b = []) => a.length === b.length && a.every((e, i) => e === b[i]);
   const published = c?.published || null;
   return c
-    ? { mode: "edit", name: c.name, server: c.server, model: c.model, set: published?.efforts?.length && same(c.efforts, published.efforts) ? "published" : setOf(c.efforts || []), custom: (c.efforts || []).join(", "), effort: c.effort || "", isDefault: !!c.default, settings: settingsForm(c.settings), published, more: false, error: "" }
-    : { mode: "add", name: "", server: "", model: "", set: "none", custom: "", effort: "", isDefault: false, settings: settingsForm(), published: null, more: false, error: "" };
+    ? { mode: "edit", name: c.name, server: c.server, model: c.model, set: published?.efforts?.length && same(c.efforts, published.efforts) ? "published" : setOf(c.efforts || []), custom: (c.efforts || []).join(", "), effort: c.effort || "", labels: (c.labels || []).join(", "), isDefault: !!c.default, settings: settingsForm(c.settings), published, more: false, error: "" }
+    : { mode: "add", name: "", server: "", model: "", set: "none", custom: "", effort: "", labels: "", isDefault: false, settings: settingsForm(), published: null, more: false, error: "" };
 }
 
 function openModel(c, redraw, server = "") {
@@ -811,6 +812,17 @@ function openModel(c, redraw, server = "") {
   if (server) ui.model.server = server;
   redraw();
 }
+
+// labelWords are the labels a form's text holds: lower-case words, as the
+// daemon requires, split on commas and spaces, each once.
+export function labelWords(text) {
+  return [...new Set(String(text || "").toLowerCase().split(/[\s,]+/).filter(Boolean))];
+}
+
+// labelHints are words people tend to want, offered as buttons that add or
+// remove them. What a label means is the person's: nothing reads these words
+// but the model that picks a helper by them.
+const labelHints = ["fast", "cheap", "strong", "code", "long-context", "vision"];
 
 // effortsOf is the efforts a model form offers: as published, the provider's.
 function effortsOf(f) {
@@ -878,6 +890,19 @@ function modelForm(ctx, redraw, first = false) {
   const effort = h("select", { class: "input", id: "model-effort", onchange: () => (f.effort = effort.value) }, [h("option", { value: "" }, "Provider default"), ...efforts.map((e) => h("option", { value: e }, effortLabel(e)))]);
   effort.value = efforts.includes(f.effort) ? f.effort : "";
   if (f.effort && !efforts.includes(f.effort)) f.effort = "";
+  const labels = h("input", { class: "input", id: "model-labels", spellcheck: false, autocomplete: "off", placeholder: "for example fast, cheap", oninput: () => ((f.labels = labels.value), syncLabels()) });
+  labels.value = f.labels;
+  const hintButtons = labelHints.map((w) => h("button", { type: "button", class: "chip", "data-label": w, onclick: () => {
+    const words = labelWords(f.labels);
+    f.labels = (words.includes(w) ? words.filter((x) => x !== w) : [...words, w]).join(", ");
+    labels.value = f.labels;
+    syncLabels();
+  } }, w));
+  const syncLabels = () => {
+    const words = labelWords(f.labels);
+    for (const b of hintButtons) b.setAttribute("aria-pressed", String(words.includes(b.dataset.label)));
+  };
+  syncLabels();
   const field = (forId, label, control, hint) => h("div", { class: "field" }, h("label", { for: forId }, label), control, hint ? h("p", { class: "hint" }, hint) : null);
   const testing = ui.results.get("form");
   const form = h(
@@ -901,6 +926,10 @@ function modelForm(ctx, redraw, first = false) {
           // The default model's own effort is the default's above; a model
           // of the list starts at the one chosen here.
           if (!f.isDefault && f.effort) params.effort = f.effort;
+          // Labels belong to the entry: sent when the form has some or edits a
+          // model, so clearing the field clears them, while a model added with
+          // none typed keeps those of one the list has already.
+          if (!adding || labelWords(f.labels).length) params.labels = labelWords(f.labels);
           if (!adding && !f.isDefault) params.name = f.name;
           desk.settings = await conn.call("settings.model.write", params);
           if (first) {
@@ -937,6 +966,14 @@ function modelForm(ctx, redraw, first = false) {
       h("p", { class: "hint" }, efforts.length ? `Offered as ${efforts.map(effortLabel).join(", ")}${f.set === "published" ? ", as its provider publishes them" : ""}. Sent as the provider's own words: ${{ anthropic: "output_config.effort, with adaptive thinking, to Anthropic (Claude 4.6 and later)", ollama: "think to Ollama" }[providerOf(desk, f.server)?.provider] || "reasoning_effort to a chat-completions server"}.` : "No effort setting is sent to this model, and none is offered."),
       // Efforts typed before nodwyn knew the provider's may have gone stale.
       f.set !== "published" && f.published?.efforts?.length ? h("p", { class: "hint", id: "efforts-published-differ" }, `Its provider publishes ${f.published.efforts.map(effortLabel).join(", ")}: As published follows them.`) : null,
+    ),
+    h(
+      "div",
+      { class: "field" },
+      h("label", { for: "model-labels" }, "What it is for"),
+      labels,
+      h("div", { class: "row-actions", role: "group", "aria-label": "Common labels" }, hintButtons),
+      h("p", { class: "hint" }, "Words of your own, such as fast or strong, separated by commas. A task you let hand work to other models shows the model its helpers by these, so it can choose without knowing their names; a change reaches tasks already open."),
     ),
     efforts.length && !f.isDefault ? field("model-effort", "Starts at", effort, first ? "The effort a new task asks of it unless one is chosen." : "The effort a task asks of this model unless one is chosen.") : null,
     efforts.length && f.isDefault ? h("p", { class: "hint" }, "The effort a new task starts at is the default's, above.") : null,

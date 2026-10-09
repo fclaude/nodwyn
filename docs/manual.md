@@ -1449,6 +1449,27 @@ A model that names a server takes its `provider`, `dialect`, `url` and
 comes from the first `[models.NAME]` for the same model at the same address,
 as its efforts do, so a model's settings are said once, in its own entry, and
 a model chosen in a picker has the same settings as when it is the default.
+A model may carry `labels = ["fast", "cheap"]`: lower-case words of your
+choosing that say what it is for. Settings › Models edits them (under *What it
+is for*, with a few common words to press), and a change reaches tasks already
+open. Labels are set only by you, and are how strategies pick models
+(`(model-names "fast")`, `labels` in `(model-info name)`). Like efforts, a
+model's labels are said once, in its own entry: the default model goes by
+those of its entry.
+
+A task works with its own model alone unless you let it do more. In New task,
+**Helpers** lists the other models; tick the ones this task's model may hand
+self-contained pieces of work to. It then has a `delegate` tool, which it
+calls with no task to see the models and their labels and with a model and a
+task to run the work there; it chooses by the labels, so names can change.
+The helper has the task's tools except `delegate`, and if its provider fails,
+the task's model reads the error and carries on without it.
+Nothing ticked, the default, gives it no such tool. Ticking a model is your
+consent that the task and what its helper reads may go to that model's
+provider. The choice is for that task only, is not kept for the next, is kept
+when the task is resumed, and is made on this computer, not from a paired
+device. New task does not offer the default model as a helper of a task on
+another model, and a task's helpers cannot be changed once it has started.
 A model may also give those settings itself instead of naming a server,
 as every model did before servers. In the app, Settings saves the server the first time you choose a
 model on it, named after its host (`openrouter` for `openrouter.ai`), with

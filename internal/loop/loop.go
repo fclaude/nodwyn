@@ -63,6 +63,9 @@ type Config struct {
 	// handover note's). Not above the high water when the context length is
 	// unknown, or when the reply reserve takes all the rest.
 	Ceiling int
+	// Delegates are the configured models the task's model may hand work to
+	// (the delegate tool, agents.scm); none registers no such tool.
+	Delegates []string
 	// MaxOutput caps the tokens a model generates per request, thinking
 	// included (window.output_reserve), so prompt and output fit num_ctx.
 	MaxOutput int
@@ -125,6 +128,8 @@ type Endpoint struct {
 	// Effort is the reasoning effort its requests ask for; empty leaves it to
 	// the provider (ADR 41).
 	Effort string
+	// Labels are the config entry's labels: what a strategy picks a model by.
+	Labels []string
 }
 
 //go:embed strategy.scm

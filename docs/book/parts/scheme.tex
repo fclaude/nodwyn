@@ -1122,7 +1122,8 @@ Loop         model-turn run-tools skip-tools answer-call add-message log-note
              fold-result narrow-context fold-context widen record-plan
              plan-steps record-step
              session-requests request-context session-system-prompt session-list session-events
-             model-info model-names window-limits context-tokens
+             model-info model-names delegate-models tool-names window-limits
+             context-tokens
              unattended? plan-required? plan-recorded? run-plan
              unfinished-plan reload
 \end{txt}
@@ -1132,6 +1133,11 @@ The default loop's own procedures (\code{nodwyn-turn}, \code{agent-turn},
 \code{run-calls}, \code{sub-agent}, \code{define-agent-tool},
 \code{maybe-compact}, the prompts and their settings) are Scheme
 definitions, not primitives; \file{docs/scheme.md} \S9 lists them.
+\code{(delegate-models)} is a primitive: the configured models this task's
+model may hand work to with the \code{delegate} tool, chosen when the task
+opened (none by default, which leaves the tool out). So is
+\code{(tool-names)}, the tools the model is offered: a helper is offered all
+of them but \code{delegate}.
 \end{sloppypar}
 
 \section{Not in \nodwyn{} Scheme}

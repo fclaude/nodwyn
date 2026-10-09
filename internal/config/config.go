@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -254,6 +255,13 @@ type Model struct {
 	// model to its provider's default. For [control] it is the effort of the
 	// default model, which a new task starts with.
 	Effort string `toml:"effort"`
+	// Labels say what the model is for ("fast", "strong"), in words the
+	// person chooses. Like Efforts they may be left off a model that another
+	// entry for it declares them for (Config.LabelsOf), and only the user's
+	// config sets them: a strategy picks models by label, and a task's model
+	// chooses its helpers by them (agents.scm), but which models a task may
+	// hand work to is chosen for each task, never by a label.
+	Labels []string `toml:"labels"`
 }
 
 // TakesImages says whether an image may be sent to m, a chat-completions
@@ -975,8 +983,20 @@ func (m Model) validate() error {
 			return err
 		}
 	}
+	labels := map[string]bool{}
+	for _, l := range m.Labels {
+		if !labelPattern.MatchString(l) {
+			return fmt.Errorf("labels: %q must be a lower-case word of letters, digits, - and _", l)
+		}
+		if labels[l] {
+			return fmt.Errorf("labels: %q is listed twice", l)
+		}
+		labels[l] = true
+	}
 	return nil
 }
+
+var labelPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 // checkEffort says whether m's default effort is one the model takes. A
 // model that declares no efforts, here or on another entry for the same
@@ -1133,11 +1153,32 @@ func (c Config) ModelChoices() []NamedModel {
 	return out
 }
 
-// Choice is m without its settings and its efforts: which model it is, where,
-// and the effort it starts at. It is what [control] keeps of a model that has
-// an entry of its own, which holds the rest (Tuned, Efforts).
+// Choice is m without its settings, its efforts and its labels: which model it
+// is, where, and the effort it starts at. It is what [control] keeps of a model
+// that has an entry of its own, which holds the rest (Tuned, Efforts,
+// LabelsOf): a copy in [control] would go stale when the entry changes, and
+// win over it.
 func (m Model) Choice() Model {
 	return Model{Server: m.Server, Provider: m.Provider, Dialect: m.Dialect, URL: m.URL, Credential: m.Credential, Model: m.Model, Effort: m.Effort}
+}
+
+// LabelsOf are the labels m goes by: its own, else those of the first entry in
+// config.toml for the same model at the same address ([control] first, then
+// the [models.NAME] in name order), as Efforts are found, so the default model
+// goes by the labels its entry gives it.
+func (c Config) LabelsOf(m Model) []string {
+	if len(m.Labels) > 0 {
+		return m.Labels
+	}
+	if len(c.Control.Labels) > 0 && c.SameModel(m, c.Control) {
+		return c.Control.Labels
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.Models)) {
+		if other := c.Models[name]; len(other.Labels) > 0 && c.SameModel(m, other) {
+			return other.Labels
+		}
+	}
+	return nil
 }
 
 // Efforts are the efforts m takes: its own, else those declared by another

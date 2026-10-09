@@ -60,7 +60,7 @@ IDs are transport data and are echoed unchanged.
 | Method | Named parameters | Result |
 |---|---|---|
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
-| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"` | Open-session details |
+| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"`, and `"delegates":["MODEL",…]` | Open-session details |
 | `worktree.open` | as `session.open` | Open-session details of a session in a new git worktree of `repo` |
 | `worktree.diff` | `{"id"}` | `{base,changes:[{path,status,diff}],omitted}`: what the open session changed in its worktree since its base commit |
 | `worktree.review` | `{"id","comments":[{"path","line"?,"text"}],"note"?}` | `{}`: sends the comments to the session as one message |
@@ -151,6 +151,14 @@ and later, is a `session.judge` event (`server`, `provider`, `host`, `model`,
 `config.toml` no longer offers it. A paired device may do neither: `judge`
 in `session.open` and `session.judge.set` are refused to it (`-32602`), as a
 model choice is.
+`delegates` in `session.open` and `worktree.open` names the `[models.NAME]` the
+task's model may hand work to with its `delegate` tool (ADR 27, amended
+2026-10-09; none by default, which offers no such tool; an unknown name or
+`control` is refused with `-32602`). It is fixed for the task, since the tool
+list is, and recorded as a `session.delegates` event (`models`, `actor`), which
+resuming restores for the models `config.toml` still has. A paired device may
+not choose them (`-32602`). Session details report them as `delegates`, and
+each model in `settings.read`'s `choices` carries its `labels`.
 Session details also contain `bindings`, a copied array of loaded metadata rows
 with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
 `Scopes` (OAuth2 scopes the row allows, ADR 24) fields. No credential values are
@@ -496,7 +504,7 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}`, or `{"provider","url","model","api_key"?,"effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on), and saving the server it names; the model it replaces stays in the list |
 | `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?,"credential"?}` | Settings after adding a provider (`[servers.NAME]`, named by `name`, else after its host) or changing the one `name` names; servers are keyed by name, so a second can share an address (an API key and a ChatGPT plan at api.openai.com), and without `name` the address picks the server only when one is at it; `provider` is `ollama`, `openai`, `anthropic` or `jev` (a dialect is for `openai` alone; a `jev` server answers the judge and carries no model, ADR 46); `credential` is a ChatGPT plan credential in place of a key (below); the key goes to the keychain, bound for `POST` and `GET` at the host where the provider reads it (a bearer header; Anthropic's `x-api-key`), and for `POST` alone for `jev` |
 | `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model and not the judge is on |
-| `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?,"settings"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts, starting effort and settings |
+| `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?,"labels"?,"settings"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts, starting effort, labels and settings; `labels` (lower-case words) left out keeps the entry's, `[]` clears them, and tasks already open see the new ones at once |
 | `settings.model.remove` | `{"name"}` | Settings after removing a model from the list; the default model is not removed |
 | `settings.docs.write` | `{"google_upload"}` | Settings after setting `[docs] google_upload` (`ask`, `allow` or `deny`) in `config.toml` |
 | `settings.write` | `{"set": {"budget.tokens_hard": 20000000, "budget.cost_hard": null, …}}` | Settings after changing those settings in `config.toml` together |

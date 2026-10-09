@@ -324,6 +324,9 @@ type modelChoice struct {
 	// asks none, which leaves the model to its provider.
 	Efforts []string `json:"efforts,omitempty"`
 	Effort  string   `json:"effort,omitempty"`
+	// Labels are the words config.toml gives the model for what it is for
+	// (ADR 27, amended 2026-10-09): how a task's model chooses a helper.
+	Labels []string `json:"labels"`
 	// Default marks the model new tasks start on.
 	Default bool `json:"default,omitempty"`
 	// Settings are the model's: its entry's own, and for the default those
@@ -457,7 +460,7 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 			m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
 			m.Temperature, m.Seed, m.Vision, m.CacheKey, m.CacheControl, m.KeepReasoning = old.Temperature, old.Seed, old.Vision, old.CacheKey, old.CacheControl, old.KeepReasoning
 			m.PriceInput, m.PriceCachedInput, m.PriceOutput = old.PriceInput, old.PriceCachedInput, old.PriceOutput
-			m.Efforts, m.Effort = old.Efforts, old.Effort
+			m.Efforts, m.Effort, m.Labels = old.Efforts, old.Effort, old.Labels
 		}
 	}
 	// The effort asked for is the default's own; left out, it is what the

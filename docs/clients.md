@@ -17,8 +17,8 @@ nodwyn has four ways in, over one core:
   `replay`, `versions`, `undo`, `credential`, `keychain`, `mcp`, `trust`,
   `devices`, `run`, `summary`, `eval`, `repl`).
 
-This page records what each one can do as of 2026-10-08 (the judge choice,
-ADR 47, included), so work on a
+This page records what each one can do as of 2026-10-09 (the judge choice,
+ADR 47, and a task's helpers, ADR 27, included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -77,6 +77,8 @@ it can see the thing but not change it.
 | A model on a server with no `[models.NAME]` entry (`server` + `model`) | not offered: the picker lists names | not offered | — | — |
 | A choice while a turn runs is queued | yes | yes, and the conversation says so | — | — |
 | Choosing from a paired device | refused (ADR 30) | — | — | — |
+| Edit a model's labels (ADR 27, amended 2026-10-09) | yes, Settings › Models; reaches open tasks | not built | — | edit `config.toml` |
+| Let a task's model hand work to other models (`delegates`) | yes, New task's Helpers fold, this computer only | not built: a task opens with none | none | `nodwyn run`: none |
 
 ## The judge (ADR 46, ADR 47)
 

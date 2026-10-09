@@ -314,7 +314,7 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 		}
 	}
 	return loop.Endpoint{Provider: p, Model: m.Model, Host: modelHost(m.URL), Server: m.Server, NumCtx: m.NumCtx, KeepAlive: m.KeepAlive, MaxOutput: s.replyCap(m.NumCtx, m.MaxOutput), Temperature: m.Temperature, Seed: m.Seed,
-		Rates: rates, Effort: effort}
+		Rates: rates, Effort: effort, Labels: s.opts.Config.LabelsOf(m)}
 }
 
 // cacheKey is what a session's requests to a chat-completions server name

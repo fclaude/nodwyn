@@ -317,6 +317,7 @@ check(async () => {
     server: "127-0-0-1",
     model: "reasoner",
     efforts: ["low", "medium", "high"],
+    labels: [],
     settings: { num_ctx: 1050000, max_output: 128000, price_input: 5, price_cached_input: 0.5, price_output: 40, cache_control: "ephemeral" },
   });
   const reasonerBlock = block("models.127-0-0-1-reasoner");
@@ -341,12 +342,40 @@ check(async () => {
   await page.click("#model-vision-false");
   await page.click("#model-save");
   await page.waitForSelector("#model-form", { state: "detached" });
-  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "127-0-0-1-fast", server: "127-0-0-1", model: "fast", efforts: [], settings: { vision: false } });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "127-0-0-1-fast", server: "127-0-0-1", model: "fast", efforts: [], labels: [], settings: { vision: false } });
   assert.ok(block("models.127-0-0-1-fast").includes("vision = false\n") && !/vision/.test(block("models.127-0-0-1-reasoner")), "vision is not the fast model's alone:\n" + config());
   await shows("[data-model='127-0-0-1-fast']", "takes no images");
   assert.ok(!(await page.innerText("[data-model='control']")).includes("takes no images"), "the default took the other model's word on images");
   await page.locator("#section-models").screenshot({ path: `${out}/models-settings-per-model.png` });
   step("each model has its own context, reply cap, prices, images and ask to cache; [control] holds none of them");
+
+  // ---------- labels ----------
+  // A model says what it is for in words of its own; a hint button adds one,
+  // what is typed is made lower case, and the entry in config.toml holds them.
+  await page.click("[data-model='127-0-0-1-fast'] button:text-is('Edit')");
+  assert.strictEqual(await page.inputValue("#model-labels"), "", "a model nobody labelled has labels");
+  await page.click("#model-form [data-label=cheap]");
+  assert.strictEqual(await page.getAttribute("#model-form [data-label=cheap]", "aria-pressed"), "true");
+  await page.fill("#model-labels", "Fast, cheap  REVIEW");
+  assert.strictEqual(await page.getAttribute("#model-form [data-label=fast]", "aria-pressed"), "true", "typing a label did not press its hint");
+  await page.click("#model-save");
+  await page.waitForSelector("#model-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1).labels, ["fast", "cheap", "review"]);
+  assert.ok(block("models.127-0-0-1-fast").includes('labels = ["fast", "cheap", "review"]\n'), "the entry lacks its labels:\n" + config());
+  await shows("[data-model='127-0-0-1-fast'] .model-labels", "review");
+  // Editing it again shows them, and clearing the field clears them.
+  await page.click("[data-model='127-0-0-1-fast'] button:text-is('Edit')");
+  assert.strictEqual(await page.inputValue("#model-labels"), "fast, cheap, review");
+  await page.fill("#model-labels", "");
+  await page.click("#model-save");
+  await page.waitForSelector("#model-form", { state: "detached" });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1).labels, []);
+  assert.ok(!/labels/.test(block("models.127-0-0-1-fast")), "cleared labels stayed in the entry:\n" + config());
+  await page.click("[data-model='127-0-0-1-fast'] button:text-is('Edit')");
+  await page.fill("#model-labels", "fast, review");
+  await page.click("#model-save");
+  await page.waitForSelector("#model-form", { state: "detached" });
+  step("a model's labels are edited in Settings, lower-cased, kept in its entry and cleared by emptying the field");
 
   // ---------- the New task window ----------
   await go("#/");
@@ -382,6 +411,15 @@ check(async () => {
   assert.strictEqual(await page.inputValue("#new-task-model-model"), "127-0-0-1-fast", "the choice was lost in a reload");
   step("an unsent choice survives navigation and a reload");
 
+  // Helpers: by default a task works with its own model alone; the model it is
+  // on is not offered as its own helper, and ticking then unticking sends none.
+  assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: none/);
+  await page.click("#new-task-helpers summary");
+  assert.deepStrictEqual(await page.$$eval("#new-task-helpers .helper", (e) => e.map((x) => x.dataset.model)), ["127-0-0-1-demo"], "the helpers on offer are the models besides the one chosen and the default");
+  await page.check("#new-task-helpers [data-model='127-0-0-1-demo'] input");
+  assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: 1/);
+  await page.uncheck("#new-task-helpers [data-model='127-0-0-1-demo'] input");
+  assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: none/);
   // A task on the model that takes no effort sends none: the provider would refuse it.
   await page.fill("#task", "Say a word");
   await page.click("button[aria-label='Start the task']");
@@ -425,10 +463,18 @@ check(async () => {
   await go("#/");
   await page.waitForSelector("#new-task-model-model");
   await page.selectOption("#new-task-model-effort", "low");
+  assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: none/, "helpers ticked for one task were kept for the next");
+  await page.click("#new-task-helpers summary");
+  await shows("#new-task-helpers [data-model='127-0-0-1-fast']", "review");
+  await page.check("#new-task-helpers [data-model='127-0-0-1-fast'] input");
+  assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: 1/);
+  await page.screenshot({ path: `${out}/models-home-helpers.png` });
   await page.fill("#task", "Say hello");
   await page.click("button[aria-label='Start the task']");
   await page.waitForSelector(".task[data-loaded]", { timeout: 20000 });
-  assert.deepStrictEqual(sent.of("session.open").at(-1), { repo: `${root}/work`, name: "control", effort: "low" });
+  assert.deepStrictEqual(sent.of("session.open").at(-1), { repo: `${root}/work`, name: "control", effort: "low", delegates: ["127-0-0-1-fast"] });
+  await shows("#task-helpers", "May hand work to: 127-0-0-1-fast");
+  step("a task is started with the helpers ticked for it, shows them, and the next task starts with none");
   await idle();
   const id = sent.of("session.send").at(-1).id;
   await page.waitForFunction(() => document.querySelector(".transcript").innerText.includes("Answered by reasoner with low effort."));
@@ -773,7 +819,7 @@ check(async () => {
   await page.click("#efforts-published");
   await page.click("#model-save");
   await page.waitForSelector("#model-form", { state: "detached" });
-  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-c", server: "openai", model: third, efforts: [], settings: {} });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-c", server: "openai", model: third, efforts: [], labels: [], settings: {} });
   assert.ok(!(config().split("[models.openai-c]")[1] || "").split("\n[")[0].includes("efforts"), "the typed efforts stayed:\n" + config());
   // A model its provider publishes as reading no images shows No until its
   // entry says otherwise, and Yes is saved, so the entry overrides the
@@ -786,7 +832,7 @@ check(async () => {
   await page.click("#model-vision-true");
   await page.click("#model-save");
   await page.waitForSelector("#model-form", { state: "detached" });
-  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-text", server: "openai", model: textOnly, efforts: [], settings: { vision: true } });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-text", server: "openai", model: textOnly, efforts: [], labels: [], settings: { vision: true } });
   assert.ok((config().split("[models.openai-text]")[1] || "").split("\n[")[0].includes("vision = true\n"), "Yes was not saved:\n" + config());
   await page.waitForFunction(() => !document.querySelector("[data-model='openai-text']")?.innerText.includes("takes no images"), null, { timeout: 10000 });
   // A price typed alone is kept, and the other is still the published one.
@@ -800,7 +846,7 @@ check(async () => {
   await page.fill("#model-price_output", "99");
   await page.click("#model-save");
   await page.waitForSelector("#model-form", { state: "detached" });
-  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-a", server: "openai", model: first, efforts: [], settings: { price_output: 99 } });
+  assert.deepStrictEqual(sent.of("settings.model.write").at(-1), { name: "openai-a", server: "openai", model: first, efforts: [], labels: [], settings: { price_output: 99 } });
   assert.ok((config().split("[models.openai-a]")[1] || "").split("\n[")[0].includes("price_output = 99"), "the output price was not saved:\n" + config());
   await shows("[data-model='openai-a']", `$${a.m.price.input} in, $99 out per million tokens`);
   // A model added on the provider takes its published efforts once its id is

@@ -100,7 +100,7 @@ to fold. You rarely need these primitives directly, because
 \section{Sub-agents}
 
 \begin{txt}
-(sub-agent system task tools [name])        ; [name] is optional
+(sub-agent system task tools [name [options]]) ; [name] and [options] are optional; options '((model . "NAME")) asks that model
 \end{txt}
 
 runs \code{task} in a narrowed context under \code{system}, lets the model

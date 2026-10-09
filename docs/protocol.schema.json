@@ -296,6 +296,15 @@
         "KeepReasoning": {
           "type": "boolean"
         },
+        "Labels": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "MaxOutput": {
           "type": "integer"
         },
@@ -398,7 +407,8 @@
         "PriceCachedInput",
         "PriceOutput",
         "Efforts",
-        "Effort"
+        "Effort",
+        "Labels"
       ],
       "type": "object"
     },
@@ -1878,6 +1888,26 @@
       ],
       "type": "object"
     },
+    "log.SessionDelegates": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "models"
+      ],
+      "type": "object"
+    },
     "log.SessionEnd": {
       "properties": {
         "reason": {
@@ -2659,6 +2689,9 @@
     },
     "payload.session.archive": {
       "$ref": "#/$defs/log.SessionArchive"
+    },
+    "payload.session.delegates": {
+      "$ref": "#/$defs/log.SessionDelegates"
     },
     "payload.session.end": {
       "$ref": "#/$defs/log.SessionEnd"
@@ -6610,6 +6643,15 @@
         "host": {
           "type": "string"
         },
+        "labels": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "model": {
           "type": "string"
         },
@@ -6641,6 +6683,7 @@
         "provider",
         "model",
         "host",
+        "labels",
         "settings"
       ],
       "type": "object"
@@ -6853,6 +6896,22 @@
             "null"
           ]
         },
+        "labels": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "model": {
           "type": "string"
         },
@@ -6940,6 +6999,15 @@
     },
     "rpc.openParams": {
       "properties": {
+        "delegates": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "effort": {
           "type": "string"
         },
@@ -7401,6 +7469,15 @@
         "busy": {
           "type": "boolean"
         },
+        "delegates": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "git": {
           "type": "boolean"
         },
@@ -7470,7 +7547,8 @@
         "workspace",
         "git",
         "mcp",
-        "judge"
+        "judge",
+        "delegates"
       ],
       "type": "object"
     },
@@ -8965,6 +9043,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.SessionArchive"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "session.delegates"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionDelegates"
             },
             "seq": {
               "minimum": 0,

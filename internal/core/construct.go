@@ -60,6 +60,11 @@ type Options struct {
 	// [judge] server. A session resumed from a log that chose its judge
 	// takes that choice back, when config.toml still has it.
 	Judge *JudgeChoice
+	// Delegates are the configured models, besides the one the task talks
+	// to, its model may hand work to with the delegate tool (ADR 27, amended
+	// 2026-10-09). None, the default, offers no such tool. A session resumed
+	// from a log that chose some takes them back, those config.toml still has.
+	Delegates *DelegateChoice
 	// EventBuffer is the events channel capacity (default 256).
 	EventBuffer int
 	// LogWriter overrides the session log destination (tests).
@@ -90,12 +95,13 @@ func New(o Options) (*Session, error) {
 		return nil, err
 	}
 	s := &Session{
-		opts:    o,
-		id:      log.NewSessionID(time.Now()),
-		out:     make(chan event.Event, o.EventBuffer),
-		prompts: map[string]pendingConfirmation{},
-		secrets: map[string]pendingSecret{},
-		judge:   initialJudge(o),
+		opts:      o,
+		id:        log.NewSessionID(time.Now()),
+		out:       make(chan event.Event, o.EventBuffer),
+		prompts:   map[string]pendingConfirmation{},
+		secrets:   map[string]pendingSecret{},
+		judge:     initialJudge(o),
+		delegates: initialDelegates(o),
 	}
 	// The worktree comes first: it is the root everything else loads from
 	// (init.scm, allow.toml). A session that never starts
@@ -148,6 +154,11 @@ func New(o Options) (*Session, error) {
 		// asks that judge again whatever [judge] says later (ADR 47).
 		_, err = s.Record(log.KindSessionJudge, judgeRecord(o.Config, o.Judge.Server, o.Judge.Actor))
 	}
+	if err == nil && o.Delegates != nil && len(o.Delegates.Models) > 0 {
+		// The models the task may hand work to are recorded, so resuming it
+		// offers the same ones whatever the picker defaults to later.
+		_, err = s.Record(log.KindSessionDelegates, log.SessionDelegates{Actor: o.Delegates.Actor, Models: o.Delegates.Models})
+	}
 	if c := s.opts.Model; err == nil && (c.Name != loop.ControlModel || s.effort != "") {
 		// A conversation opened on a chosen model, or asking for an effort,
 		// records the choice as a switch does, so resuming it talks to that
@@ -194,6 +205,13 @@ func resolveOptions(o Options) (Options, error) {
 		if err := CheckJudge(o.Config, o.Keychain, o.Judge.Server); err != nil {
 			return Options{}, fmt.Errorf("judge: %w", err)
 		}
+	}
+	if o.Delegates != nil {
+		models, err := checkDelegates(o.Config, o.Delegates.Models)
+		if err != nil {
+			return Options{}, err
+		}
+		o.Delegates = &DelegateChoice{Models: models, Actor: o.Delegates.Actor}
 	}
 	if o.Repo == "" {
 		return Options{}, errors.New("core: repo root is required")
@@ -449,6 +467,7 @@ func (s *Session) initialize() (err error) {
 		Models:         models,
 		RequestTimeout: requestTimeout,
 		Root:           o.Repo,
+		Delegates:      s.delegates,
 	})
 	if err != nil {
 		return err

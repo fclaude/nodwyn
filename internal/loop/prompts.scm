@@ -439,7 +439,7 @@
    - prompts: (system-prompt repo), task-header and plan-header, (plan-draft-prompt request) and the other plan prompts, (run-turn-prompt task complete-line turn max-turns); extend a default with (define base-system-prompt system-prompt) first;
    - the loop: (agent-turn request) over model-turn, run-calls, skip-tools, add-message; the default asks, runs the calls, compacts when needed and asks again until a reply has no calls;
    - compaction: (define compact-threshold N);
-   - sub-agents: (sub-agent system task tools [name]) and tools the model calls, (define-agent-tool name doc params handler).
+   - sub-agents: (sub-agent system task tools [name [options]]), options '((model . \"NAME\")) to ask another configured model (see (model-names label)), and tools the model calls, (define-agent-tool name doc params handler).
    How to work:
    - From the history, find what went wrong or was slow more than once: repeated failures, refused calls, corrections from the user, work redone, wrong commands.
    - Read .nodwyn/init.scm, then make the smallest changes that address those patterns; prefer precise prompt additions over new machinery, and keep what already works.
