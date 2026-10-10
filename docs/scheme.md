@@ -548,8 +548,17 @@ default `agent-turn` ends a turn on evidence, not on the model's word
 change and no test run after it, gets `finish-no-change-message` or
 `finish-untested-message`, at most `finish-reminders` (2) times; one whose
 last test or check run after the last edit exited non-zero gets
-`finish-failing-message` once for that run, and may answer that the tests fail
-on the unchanged code too and end. A command is
+`finish-failing-message` once until the next edit, and may answer that the
+tests fail on the unchanged code too and end. An exit that says no test ran
+is no failure: `not-run-statuses` (126 and 127, a program not found or not
+executable) and, for a pytest command, `pytest-not-run-statuses` (4 and 5, a
+path it could not find, no tests collected). A run on the copy of the last
+commit (`$TMPDIR/base`, `base-run?`) tests nothing of the change; one that
+fails after the change's run failed is the comparison done, and the failing
+run is not told. After `finish-no-change-message` a turn that has run a test
+or check may end unchanged: the code may already do what the request asks,
+and the message says to show it with a check (ADR 32, amended 2026-10-10). A
+command is
 a test run when its command line contains one of `test-command-words`
 (pytest, go test, cargo test, npm test, make test, …; a project may redefine
 the list). After `unrunnable-after` (6) test commands in a row fail to run,
@@ -582,7 +591,8 @@ of the turn, or the file tools wrote a file git now lists as new or listed
 already; files a run leaves behind are no change. Files new
 since the turn began that git does not track get
 `(finish-new-files-message files)` once before the turn ends: whatever is
-left in the repository is in the change.
+left in the repository is in the change. Files the turn's plan names, by path
+or by name (`plan-names?`), are left out of it: the plan asked for them.
 
 Both loops also count, in `stall-check`, the rounds in a row whose reply
 thought at length (`stall-reasoning-tokens`, 10,000, or more reasoning
@@ -664,10 +674,10 @@ strings (§1.1):
 | | |
 |---|---|
 | `(system-prompt repo)` | the control model's system prompt: `(unattended-system-prompt repo)` when `(unattended?)`, else `(interactive-system-prompt repo)`. Unattended, it is how to work — understand the request, set up a check that runs, make the whole change, validate by running it, report honestly — instead of announcing each call to an approver. Interactive, the answer says what changed, how it was checked and what was not, and names the choices made when the user went ahead without answering them; a question is answered, and a request for something never built is told so, with what exists, what is missing and what the model would build, before it builds anything |
-| `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the files, tests and docs involved, and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
+| `plan-explore-system`, `(plan-explore-task request)`, `(plan-draft-with-findings request findings)` | the explorer that looks before a plan is drafted (§9.5): the code at the place the request describes first, every place the change must reach, the request's own examples and formats copied exactly, the options it finds without choosing one, the tests involved, and the documents and what the repository's instructions for coding agents (`AGENTS.md`) ask a change to include; and the draft request that carries what it found |
 | `finish-no-change-message`, `finish-no-change-reviewed-message`, `finish-untested-message`, `finish-failing-message`, `(finish-unrunnable-message n)`, `(finish-new-files-message files)` | what the evidence loop tells the model (§9) |
 | `(reading-reminder-message n)`, `(reading-reminder-reviewed-message n)` | what the default loop tells a model whose last `n` rounds only looked (§9) |
-| `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5) |
+| `(plan-findings-message findings)` | what the model doing the work is told of the explorer's findings once a plan is recorded (§9.5): leads found without running anything, and any fix in them a guess to test |
 | `task-header` `plan-header` | the headers under which the window shows the user's request, at the head of their message, and its plan, as a message of its own after the calls it came with are answered; neither is ever trimmed away. The system prompt stays the same, so a new request or a plan keeps the server's cached prefix (window recipe v15); before v15 the system prompt carried both |
 | `(run-turn-prompt task complete-line turn max-turns)` | the message a supervised run sends for each turn; `complete-line` is the marker the run looks for. It asks for the plan's next unmarked step and says the plan carries over to the next turn (§9.5) |
 | `(plan-system-prompt repo)` | the planner's system prompt |
@@ -764,12 +774,12 @@ calls it, in this turn or the next, and the request is used once.
 | | |
 |---|---|
 | `compact-threshold` | context tokens, as `(context-tokens)` counts them, past which the context is compacted; `#f` never compacts on its own (`/compact` and `compact-next-round` still do). The default is just under the window's high water, a twenty-fifth below it (`(window-limits)`: 58983 at the default 61440), so only work that really runs long compacts (ADR 32) |
-| `compact-attempts` | replies to the note request that may be tool calls (they are skipped) before compaction gives up; after giving up it waits for the context to grow another quarter of the threshold |
+| `compact-attempts` | replies to the note request that may be tool calls (they are skipped), or notes cut off at the output limit (asked for again, shorter, with `compact-note-cut-message`), before compaction gives up or keeps the cut note; after giving up it waits for the context to grow another quarter of the threshold |
 | `compact-stop-unchanged` | `#t` (the default): the second automatic compaction of a turn with no `fs-write` or `fs-edit` asked for since the first stops the turn instead, with `compact-stop-message` and `turn-stopping` set, so the model's next reply is asked without tools and ends the turn; `#f` compacts as often as the context fills |
 | `turn-stopping` | (strategy.scm) `#f`, or the message that stopped the turn: while it is set `ask-model` offers no tools and the finish checks ask nothing more; each turn starts with it `#f` |
-| `compact-summary-prompt` | the request for the note (a prompt, §9.1) |
+| `compact-summary-prompt`, `compact-note-cut-message` | the request for the note, at most 600 words with an edit decided and not made first, and the request for a shorter one when it was cut off (prompts, §9.1) |
 | `(compact-focus-prompt focus)` | what the note must keep, as the user put it after `/compact` or a strategy gave `compact-next-round`, added after `compact-summary-prompt` |
-| `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to re-run its reproduction and re-check its findings before building on them |
+| `(compact-handover-prompt request note)` | what the compacted context starts with: the request, and the note with a request to make the edit it names as decided and not made, then re-run its reproduction and re-check its findings before building on them |
 | `(maybe-compact request reply)` | compact if a strategy asked for it with `compact-next-round`, or if the context the next `model-turn` would send passed the threshold; call it once the reply's calls are answered (`reply` itself is not read) |
 | `(compact-context request [focus [trigger]])` | compact now, handing over `request`; `#t` if the turn continues in the narrowed context. `trigger` (`auto`, `command`, or `requested`, the default) is what the record says set it off |
 | `(compact-next-round [focus])` | compact at the next `maybe-compact`, whatever the size; `compact-requested` holds the request (`#f` when there is none) |
@@ -930,7 +940,7 @@ scores against the shape, and `plan-write` turns down a plan without it.
 | `plan-needed-threshold` | the judge's probability of "needs a plan" at which a request gets one (0.5) |
 | `plan-accept-score` | the normalised score at which a plan is accepted (0.7) |
 | `plan-max-revisions` | revisions after the first draft (3) |
-| `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2); an empty revision keeps the best plan |
+| `plan-empty-retries` | more times the planner is asked when it answers with no plan, in a fresh context each time and noted in the log (2): an empty reply, tool calls, a line that opens a fenced code block, or more than `plan-max-chars` (8000) characters (`plan-not-a-plan`); after the retries the last reply stands. An empty revision keeps the best plan |
 | `plan-explore-rounds` | before the first draft, a read-only sub-agent labelled `explorer` (fs-read, fs-list, index-grep, fs-find) looks at the repository for up to this many tool rounds and the planner is told what it found, so the plan is not written blind (12, and 16 for the muse-spark, glm, qwen, deepseek and gpt-6-luna families, whose rounds hold fewer calls: a table, §9.7); 0 skips it. Once the plan is recorded the model doing the work is told too (`plan-hand-over`, `plan-findings-message`), so it does not read the same files again to learn it. Its reads come before the plan is recorded, which the core allows: none is irreversible |
 | `plan-earlier-requests` | in a chat's later turn, how many of the person's messages before it the gate's judge, explorer and planner read first, so a reply to the model's question or a correction is not read alone (2); 0 reads the request alone. Each is cut at `plan-earlier-cap` characters (2000). A run's turns each repeat the run's task, and read it alone |
 | `(record-compaction facts)` | record a compaction as `context.compact`, from an alist: `trigger` (`auto`, `command` or `requested`), `compacted`, `before` (the size `(context-tokens)` gave before it), `threshold` and `focus`. The size after and the note's reply are read when it is called, so call it once the handover is in place, as `compact-context` does |

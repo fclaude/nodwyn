@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/scheme"
@@ -55,5 +56,19 @@ func TestScratchIsASecondRootForAbsolutePaths(t *testing.T) {
 	other := []scheme.Value{scheme.Str("python3"), scheme.List(scheme.Str(filepath.Join(outside, "x.py")))}
 	if d := argv.Check(context.Background(), shell, other); d.Verdict != Confirm {
 		t.Errorf("a command naming a path outside both was not flagged: %+v", d)
+	}
+}
+
+// A write refused for a path outside the repository and the scratch
+// directory says where a throwaway file goes, as the prompts write it: on
+// the long-context benchmark 68 writes were refused so in 56 of nodwyn's
+// 107 attempts, though the prompts name $TMPDIR (ADR 17, amended
+// 2026-10-10).
+func TestRepoPinRefusalNamesTheScratchDirectory(t *testing.T) {
+	repo, scratch, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	pin := RepoPin{Root: repo, Scratch: scratch}
+	d := pin.Check(context.Background(), writePrim, writeArgs(filepath.Join(outside, "check.sh")))
+	if d.Verdict != Deny || !strings.Contains(d.Reason, "a throwaway file goes in the scratch directory, written as $TMPDIR/check.sh") {
+		t.Fatalf("refusal: %+v", d)
 	}
 }

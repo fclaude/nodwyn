@@ -69,6 +69,13 @@ gets the same checks. Shell scripts with variables or substitutions cannot
 inherit standing approval and retain their ordinary confirmation and hard
 triggers. `ArgvTrigger` independently asks a person about explicit outside paths,
 including flag values; the session's scratch directory retains its exception.
+It reads a shell's `-c` line word by word, variables, substitutions, subshells
+and redirection targets included, so a path anywhere in the line is seen; a
+line it cannot split is read as one word. A program in a Python environment's
+`bin` folder (conda or virtualenv) that only root or the person can change
+runs without the question, as a program on `PATH` does, and sed, awk, grep and
+rg scripts or patterns and `git log -L` ranges are not read as paths (ADR 17,
+amended 2026-10-10).
 
 These checks inspect argv and executable paths, not binary signatures or the
 behaviour of an approved process. Builds and tests execute project code with the

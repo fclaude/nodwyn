@@ -114,18 +114,49 @@
 ;; planner is offered no tools, so it answers in text. A model sometimes
 ;; answers with thinking only; it is then asked again, in a fresh context, up
 ;; to plan-empty-retries more times, each noted in the log.
+;;
+;; A reply that is not a plan is asked again the same way. On the
+;; long-context benchmark (ADR 32, amended 2026-10-10) 4 of 107 recorded
+;; plans were not plans: a call the planner was refused ("Let me examine the
+;; relevant code files", sphinx-10466 r2; django-15280 r3), or command
+;; transcripts in ```bash blocks, 20,660 and 45,577 characters of them
+;; (django-11790 r1, django-15280 r1), each recorded as a plan the work
+;; then had to write again. Two more quoted code in fenced blocks, which
+;; plan-shape asks a plan not to do (pytest-7205 r2, 21 blocks, a losing
+;; run; django-16899 r3). A reply with a line that opens a fenced block, a
+;; call, or more than plan-max-chars characters is asked again; backticks
+;; inside a line are a plan naming a file or a function, as most do. After
+;; the retries the last reply stands, as an empty one does.
+(define plan-max-chars 8000)
+
+;; Whether text has a line that opens or closes a fenced code block.
+(define (plan-fenced? text)
+  (let any ((lines (string-split text "\n")))
+    (and (pair? lines)
+         (or (string-prefix? "```" (string-trim (car lines)))
+             (any (cdr lines))))))
+
+;; Why reply, with its text, is not a plan, or #f when it may be one.
+(define (plan-not-a-plan reply text)
+  (cond ((string-empty? (string-trim text)) "an empty plan")
+        ((pair? (assoc-ref reply 'tool-calls '())) "tool calls instead of a plan")
+        ((plan-fenced? text) "code blocks instead of a plan")
+        ((> (string-length text) plan-max-chars) "a reply too long to be a plan")
+        (else #f)))
+
 (define (plan-ask prompt)
   (let ask ((attempt 0))
     (narrow-context (plan-system-prompt (repository)) "planner")
     (add-message prompt)
     (let* ((reply (ask-model "control" '((tools . #f))))
-           (text (assoc-ref reply 'content "")))
+           (text (assoc-ref reply 'content ""))
+           (fault (plan-not-a-plan reply text)))
       (skip-tools (assoc-ref reply 'tool-calls '())
                   "Plan only: reply with the plan as text; the work comes after it.")
       (fold-context)
-      (if (and (string-empty? (string-trim text)) (< attempt plan-empty-retries))
+      (if (and fault (< attempt plan-empty-retries))
           (begin
-            (log-note (string-append "planner returned an empty plan, asking again ("
+            (log-note (string-append "planner returned " fault ", asking again ("
                                      (number->string (+ attempt 1)) "/"
                                      (number->string plan-empty-retries) ")"))
             (ask (+ attempt 1)))
@@ -264,10 +295,21 @@
 ;; whole work as the title, cut at the console's cap, with nothing to fold
 ;; to. plan-name-cap says how long a name may be, over the boundaries the
 ;; console folds on. A project may redefine any of these, or plan-problems.
+;;
+;; The long-context benchmark (ADR 32, amended 2026-10-10) added three
+;; clauses. A Change: reaches every place the request covers: runs that
+;; fixed the one line the example names lost scikit-learn-12973 (0 of 6)
+;; where the run that listed both sites won. A Test: uses an input that tells
+;; the right behaviour from the nearest wrong one: every losing run's test
+;; passed its own wrong fix (xarray-6599, django-16877, django-11790). And a
+;; Docs: step is for a document that describes the changed behaviour: 45 of
+;; 107 nodwyn patches edited docs or release notes (pi 23 of 120, OpenCode
+;; 13 of 120), some citing a ticket number the run made up (django-14351,
+;; django-16116).
 (define plan-kinds
-  '(("Change" . "a file (or function) and what changes in it")
-    ("Test" . "the test file and name, the behaviour it checks, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works")
-    ("Docs" . "each file a person or a later session reads that the change makes wrong or incomplete")
+  '(("Change" . "a file (or function) and what changes in it, at every place the change must reach")
+    ("Test" . "the test file and name, the behaviour it checks with an input that tells it apart from the nearest wrong behaviour, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works")
+    ("Docs" . "each file a person or a later session reads that the change makes wrong or incomplete: a document that describes the behaviour the change alters, not one that only mentions the code, and never a ticket or issue number the request or the repository does not give")
     ("Check" . "the command that shows the whole change works")))
 (define plan-required-kinds '("Change" "Test" "Docs")) ; a plan has a step of each
 (define plan-last-kind "Check")                         ; and ends with a step of this one; #f for any
@@ -422,7 +464,7 @@
                 (plan-recorded-message (length (plan-steps)) problems)))))))
 
 (define-agent-tool "plan-write"
-  "Write down your plan for the task: numbered steps, each starting with its kind and a short name for what it does, then a dash (—) and the detail after it. Change: a file (or function) and what changes in it. Test: the test file and name, the behaviour it checks, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works. Docs: each file a person or a later session reads that the change makes wrong or incomplete. Check: the command that shows the whole change works, as the last step. With no test or no doc to change, say so and why (\"Test: none — only docs change\"). For example:\n1. Change: src/flags.go parseFlags — accept --verbose.\n2. Test: src/flags_test.go TestVerboseFlag — --verbose sets Verbose; fails today: the flag is unknown.\nYour thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps as the work happens. Write it once you know what to change, before changing it, and write it again only when it must change."
+  "Write down your plan for the task: numbered steps, each starting with its kind and a short name for what it does, then a dash (—) and the detail after it. Change: a file (or function) and what changes in it, at every place the change must reach. Test: the test file and name, the behaviour it checks with an input that tells it apart from the nearest wrong behaviour, and why it fails on the unchanged code (\"fails today: …\"), or \"passes today: guards …\" for a test of behaviour that already works. Docs: each file a person or a later session reads that the change makes wrong or incomplete. Check: the command that shows the whole change works, as the last step. With no test or no doc to change, say so and why (\"Test: none — only docs change\"). For example:\n1. Change: src/flags.go parseFlags — accept --verbose.\n2. Test: src/flags_test.go TestVerboseFlag — --verbose sets Verbose; fails today: the flag is unknown.\nYour thinking comes back to you only as the server reported it, often as a summary or not at all; the plan stays in front of you for the rest of the task, and plan-step marks its steps as the work happens. Write it once you know what to change, before changing it, and write it again only when it must change."
   '(("plan" "string" "the numbered steps, each starting with Change:, Test:, Docs: or Check:, a short name for what it does, then — and the detail; the last a Check:"))
   (lambda (call args)
     (guard (e (else (string-append "plan-write failed: " (format "~a" (assoc-ref e 'message "")))))

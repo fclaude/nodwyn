@@ -20,8 +20,13 @@
 ;; briefer; the core records each cut in the log.
 (define output-cut-retries 2)
 
+;; "Think less" alone was answered on xarray-6599 with "Let me be decisive:
+;; the minimal fix that makes the MVCE correct is offset=None (the plan)",
+;; dropping the option the model's own runs had just shown right (ADR 32,
+;; amended 2026-10-10): a choice cut short goes to a run, not to the
+;; shorter or the planned option.
 (define output-cut-message
-  "Your previous reply was cut off at the output limit before you finished. Think less and answer, or make your next tool call, more directly.")
+  "Your previous reply was cut off at the output limit before you finished. Think less and answer, or make your next tool call, more directly. If you were weighing options, do not settle them by which is shorter or which the plan named: write each in a line and run the check that tells them apart.")
 
 ;; model-turn, asked again when the reply was cut at the output limit with no
 ;; tool call to answer, up to output-cut-retries times: a cut-off reply would
@@ -178,13 +183,16 @@
 ;; run), a turn ends on evidence, not on the model's word: something changed,
 ;; and a test ran after the last edit, and that run did not fail. A reply that
 ;; stops without that gets a reminder, at most finish-reminders times; a
-;; failing run is told once (finish-failing-message) and the model may answer
-;; that the tests fail on the unchanged code too. A run with failures counted
-;; as a run (shell.scm), so a turn could end with its last test run red. When a person reads the answer
-;; before anything else happens ((reviewed?): a chat, or a run's turn a
-;; checkpoint follows), the no-change reminder says the request may ask for
-;; no change yet, a proposal to review first, and after it the turn may end
-;; unchanged. Test commands that keep failing to run get
+;; failing run is told once until the next edit (finish-failing-message) and
+;; the model may answer that the tests fail on the unchanged code too. A run
+;; with failures counted as a run (shell.scm), so a turn could end with its
+;; last test run red. The no-change reminder offers a way out with
+;; evidence: after it, a turn that has run a test or check may end
+;; unchanged, since the code may already do what the request asks. When a
+;; person reads the answer before anything else happens ((reviewed?): a
+;; chat, or a run's turn a checkpoint follows), the no-change reminder says
+;; the request may ask for no change yet, a proposal to review first, and
+;; after it the turn may end unchanged. Test commands that keep failing to run get
 ;; finish-unrunnable-message once, so a broken environment ends in an honest
 ;; report rather than a spent budget.
 ;; The scratch directory is not the repository: writing the check script
@@ -319,13 +327,47 @@
 
 ;; What the latest test or check run since the last edit came to, given what
 ;; it was before: 'none (no run yet, or it did not run to an exit and leaves
-;; the answer as it was), 'failed (a non-zero exit), 'passed (exit 0) or
-;; 'kept (passed, and the state it passed on is kept, keep-passed).
-(define (run-outcome result last)
+;; the answer as it was), 'failed (a non-zero exit), 'passed (exit 0),
+;; 'kept (passed, and the state it passed on is kept, keep-passed), or
+;; 'compared (failed, and the same run on the unchanged code failed too).
+;;
+;; An exit that says the tests never ran is no outcome either: a shell's 126
+;; and 127 (a program not found or not executable) and pytest's 4 and 5 (a
+;; path it could not find, no tests collected). On the long-context
+;; benchmark (ADR 32, amended 2026-10-10) the failing-run reminder fired for
+;; a flake8 that was not installed, at the end of a line whose tests had
+;; passed (django-15161), and for pytest naming a file that did not exist,
+;; after the work was done and reported; the second cost 35 calls
+;; (scikit-learn-13124).
+(define not-run-statuses '(126 127))
+(define pytest-not-run-statuses '(4 5))
+
+(define (run-outcome call result last)
   (let ((status (run-status result)))
     (cond ((not status) last)
           ((= status 0) 'passed)
+          ((member status not-run-statuses) last)
+          ((and (member status pytest-not-run-statuses) (string-contains? (command-line call) "pytest")) last)
           (else 'failed))))
+
+;; A run on the copy of the last commit the working rules compare with
+;; ($TMPDIR/base): it says how the unchanged code fares, not the change. A
+;; failure there after the change's run failed is the comparison the
+;; failing-run reminder asks for, done: the reminder fired again after a
+;; model had shown the failures were there on the unchanged code too
+;; (django-13158, about 12 calls).
+(define (base-run? call)
+  (let ((line (command-line call))
+        (dir (guard (e (else #f)) (scratch-dir))))
+    (or (string-contains? line "$TMPDIR/base")
+        (string-contains? line "${TMPDIR}/base")
+        (and dir (string-contains? line (string-append dir "/base"))))))
+
+(define (base-outcome result last)
+  (let ((status (run-status result)))
+    (if (and (equal? last 'failed) status (not (= status 0)))
+        'compared
+        last)))
 
 ;; Whether the turn has changed the repository: the file tools wrote to it,
 ;; or git sees a tracked file differ from how the turn found it.
@@ -347,6 +389,19 @@
              'kept)
       outcome))
 
+;; Files new in the repository that the turn's plan names: the test file a
+;; Test: step adds, the release note a Docs: step writes. The untracked-files
+;; reminder is for what a run left behind, and on the long-context benchmark
+;; it fired on the files the plan had asked for in 13 of 107 attempts, each
+;; answered by keeping them, after a call or four (ADR 32, amended
+;; 2026-10-10). A file is named when the plan gives its path or its name.
+(define (plan-names? path)
+  (let* ((text (guard (e (else "")) (string-join (plan-steps) "\n")))
+         (p (if (string-suffix? "/" path) (substring path 0 (- (string-length path) 1)) path))
+         (name (car (reverse (string-split p "/")))))
+    (and (not (string-empty? name))
+         (or (string-contains? text p) (string-contains? text name)))))
+
 (define (evidence-loop request)
   (let ((before (git-state)))
     ;; written: the repository paths the file tools changed, for git to
@@ -355,27 +410,38 @@
     ;; reading: the rounds in a row that only looked (reading-rounds).
     ;; outcome: what the latest test or check run since the last edit came to
     ;; (run-outcome).
+    ;; told: the failing-run reminder was said since the last edit, so a run
+    ;; that fails the same way again is not told again until something
+    ;; changes.
+    ;; unchanged-told: the no-change reminder was said; a turn that has run a
+    ;; check since may then end unchanged, the way out the reminder offers.
     (let loop ((reply (ask-model)) (edited #f) (tested #f) (failed-runs 0) (offered #f) (reminders 0)
-               (scripts '()) (written '()) (noted #f) (excused #f) (reading 0) (outcome 'none))
+               (scripts '()) (written '()) (noted #f) (excused #f) (reading 0) (outcome 'none)
+               (told #f) (unchanged-told #f))
       (let ((calls (assoc-ref reply 'tool-calls '())))
         (if (pair? calls)
             (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs)
-                       (scripts scripts) (written written) (outcome outcome))
+                       (scripts scripts) (written written) (outcome outcome) (told told))
               (cond ((pair? cs)
                      (let ((c (car cs)) (r (car rs)))
                        (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
                               (let ((name (scratch-name c)))
                                 (if name
                                     (walk (cdr cs) (cdr rs) edited tested failed
-                                          (if (member name scripts) scripts (cons name scripts)) written outcome)
-                                    (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written) 'none))))
+                                          (if (member name scripts) scripts (cons name scripts)) written outcome told)
+                                    (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written) 'none #f))))
+                             ;; A run on the unchanged copy tests nothing of
+                             ;; the change; it can only show a failure was
+                             ;; there before it.
+                             ((and (base-run? c) (or (test-call? c) (check-run? c scripts)))
+                              (walk (cdr cs) (cdr rs) edited tested failed scripts written (base-outcome r outcome) told))
                              ;; A check fails until the work is done: only a
                              ;; run that went through says the setup works.
                              ((check-run? c scripts)
-                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 failed) scripts written (run-outcome r outcome)))
+                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 failed) scripts written (run-outcome c r outcome) told))
                              ((test-call? c)
-                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written (run-outcome r outcome)))
-                             (else (walk (cdr cs) (cdr rs) edited tested failed scripts written outcome)))))
+                              (walk (cdr cs) (cdr rs) edited #t (if (ran-ok? r) 0 (+ failed 1)) scripts written (run-outcome c r outcome) told))
+                             (else (walk (cdr cs) (cdr rs) edited tested failed scripts written outcome told)))))
                     (else
                      (maybe-compact request reply)
                      (let ((stuck (and (not offered) (>= failed unrunnable-after)))
@@ -383,7 +449,7 @@
                            (outcome (keep-passed outcome before edited)))
                        (when stuck (add-message (finish-unrunnable-message failed)))
                        (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written noted excused
-                             reading outcome)))))
+                             reading outcome told unchanged-told)))))
             (let* ((now (and before (git-state)))
                    (new-lines (if now (filter (lambda (l) (not (member l before))) now) '()))
                    ;; With git: a tracked file changed, the file tools wrote
@@ -397,19 +463,24 @@
                                 edited))
                    (reviewed (reviewed?))
                    (gap (cond (turn-stopping #f)
-                              ((and (not changed) (not excused))
+                              ((and (not changed) (not excused) (not (and unchanged-told tested)))
                                (if reviewed finish-no-change-reviewed-message finish-no-change-message))
                               ((and changed (not tested) (not offered)) finish-untested-message)
-                              ((and changed (equal? outcome 'failed) (not offered)) finish-failing-message)
+                              ((and changed (equal? outcome 'failed) (not offered) (not told)) finish-failing-message)
                               (else #f)))
-                   (new (if (and now changed (not noted)) (git-new-files before now) '())))
+                   (new (if (and now changed (not noted))
+                            (filter (lambda (f) (not (plan-names? f))) (git-new-files before now))
+                            '())))
               (cond ((and gap (< reminders finish-reminders))
                      (add-message gap)
-                     ;; A run the model was told failed counts as failed again
-                     ;; only if it runs and fails again: it may answer that the
-                     ;; tests fail on the unchanged code too, and end.
+                     ;; A run the model was told failed is not told again
+                     ;; until an edit: it may answer that the tests fail on the
+                     ;; unchanged code too, and end.
                      (loop (ask-model) edited tested failed-runs offered (+ reminders 1) scripts written noted
-                           (or excused (and (not changed) reviewed)) 0 'none))
+                           (or excused (and (not changed) reviewed)) 0 outcome
+                           (or told (equal? gap finish-failing-message))
+                           (or unchanged-told (not changed))))
                     ((and (pair? new) (not turn-stopping))
                      (add-message (finish-new-files-message new))
-                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0 outcome)))))))))
+                     (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0 outcome
+                           told unchanged-told)))))))))

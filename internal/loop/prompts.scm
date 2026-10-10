@@ -65,7 +65,7 @@
            " Other sessions may be working at the same time in other worktrees of that repository: work only in this folder, and leave branches you did not make alone."
            " Your changes reach the repository through this branch: when you finish, say that they are on it."
            " When the request asks for the work to land (to commit and push it, or to push it to " (if (string-empty? (assoc-ref w "base" "")) "the base branch" (assoc-ref w "base" "")) "), run validate first, then call git-land with the commit message: it commits, rebases your commits onto the newest base, pushes them to it and moves the local branch when that is safe. Do not commit, rebase or push through the shell, and never turn commit signing off: if git-land says signing failed, say so and stop."
-           "\n- Never use git stash here: every worktree of the repository shares one stash, so it can take another session's work or give yours away. To compare with the unchanged code, run the command on a copy of the last commit instead: mkdir -p \"$TMPDIR/base\" && git archive HEAD | tar -x -C \"$TMPDIR/base\", then the same command in $TMPDIR/base.")))))
+           "\n- Never use git stash here: every worktree of the repository shares one stash, so it can take another session's work or give yours away. To compare with the unchanged code, run the command on a copy of the last commit instead: mkdir -p \"$TMPDIR/base\" && git archive HEAD | tar -x -C \"$TMPDIR/base\", then the same command in $TMPDIR/base, with the copy first on the import path when the project is installed in development mode.")))))
 
 ;; What the workspace adds to the system prompt (ADR 22): the folders
 ;; outside it the session may use, or nothing without mounted folders, so a
@@ -165,7 +165,15 @@
    ;; that runs it; say so up front.
    "\n- shell-exec runs one program with its arguments. For pipes, redirects, cd or chained commands, run cmd \"bash\" with args [\"-c\", \"<command line>\"], and keep long output short with | tail -n 40 or | grep."
    "\n- shell-exec waits for its command to end and stops one that runs too long. A program that keeps running (a server, a watcher) or that may hang goes to shell-start instead: read its output with shell-read, which can wait for it, and end it with shell-stop."
-   "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; ls /opt/*/envs .venv venv 2>/dev/null; conda env list)."
+   ;; The example used to list /opt/*/envs, a path outside the repository,
+   ;; which the guard asks a person about and an unattended turn is refused:
+   ;; on the long-context benchmark (nodwyn d64209d, 107 attempts on 40
+   ;; SWE-bench tasks, 2026-10-07 to 10) 223 shell commands were refused in
+   ;; 94 attempts: 98 for naming the environment's interpreter, 55 for
+   ;; listing /opt or / as this line said. conda env list names no path, and
+   ;; the guard lets an environment's interpreter run by its full path
+   ;; (guard.ArgvTrigger, ADR 17, amended 2026-10-10).
+   "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; conda env list; ls -d .venv venv 2>/dev/null), then run that environment's interpreter by the full path it shows, or with conda run -n NAME. Listing folders outside the repository asks for approval; running an environment's interpreter does not."
    "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
    "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
    ;; project-notes-save was the person's alone, so no model ever kept a
@@ -181,15 +189,48 @@
    ;; 32, amended 2026-10-05).
    "\n- Calls that do not depend on each other go in the same reply: the reads and searches you already know you need, several at once, or a read beside the test it waits for. They run in the order you give them and their results come back together, and every reply sends the whole conversation again, so one call a reply is the slow way to look around."
    ;; plan.scm writes its plan without running anything; on one task the
-   ;; model reverted a right edit to follow it.
-   "\n- A plan may be given before you start. It was written by someone who read the code but could not run it: treat it as a first guess, and when your own checks contradict it, follow the evidence and say so."
+   ;; model reverted a right edit to follow it. The rule used to call the
+   ;; plan's author "someone who read the code", and on the long-context
+   ;; benchmark (ADR 32, amended 2026-10-10) a model quoted that back as
+   ;; authority: on xarray-6599 it had shown with a round trip and a NaT probe
+   ;; that the plan's offset=None was wrong, then wrote "The plan (written by
+   ;; someone who read the code) proposed offset=None ... the hidden reference
+   ;; patch likely uses offset=None" and shipped it. Elsewhere a run that
+   ;; contradicted the plan was edited until it agreed (django-15916) and
+   ;; tests were rewritten to fit the plan's design (scikit-learn-13124,
+   ;; matplotlib-25960).
+   "\n- A plan may be given before you start. It was written before anything ran, from reading alone: it says where to work and what to cover, and each choice it makes (which helper, which literal, which of several fixes) is a guess to check. When a run contradicts it, the run wins: write the plan again with plan-write, saying what you saw, and never change a test, a reproduction or an expected value to make them agree with the plan. A choice is not right because the plan made it."
+   ;; Where the request leaves a detail open, the harnesses that won on the
+   ;; long-context benchmark chose it at the edit, with what decides it in
+   ;; view, and nodwyn chose it in the plan: django-16877 (conditional_escape,
+   ;; not escape: 0 of 3 nodwyn runs, 3 of 3 OpenCode runs, which read the
+   ;; escape filter's definition right before writing), django-16938
+   ;; (select_related(None), read in the docstring), django-16899 and
+   ;; django-11815 (the sibling message's wording, the request's literal
+   ;; Status['GOOD']). Memory of another version decided others wrongly in
+   ;; every harness: now() for utcnow() (django-11848), "upstream did exactly
+   ;; that" (scikit-learn-12973). The 2026-10-06 amendment left this rule out
+   ;; as unmeasured; these runs measure it.
+   "\n- Before an edit that settles a detail the request leaves open (which function or helper to call, a literal's type, format or wording, which of several fixes), put what decides it in front of you, in that reply or the one before: the definition you call or imitate (read-definition), the code nearby that already does the same kind of thing, and the request's own example, copied character for character. Choose from them, not from what you remember of another version of the project or of how it was fixed upstream, and say in a line which of them decided it."
+   ;; Every losing run on those tasks, in all three harnesses, checked its
+   ;; change with the case it was designed for: timedelta data starting at 0,
+   ;; where the right and the wrong offset agree (xarray-6599), plain strings,
+   ;; where escape and conditional_escape agree (django-16877), the string
+   ;; '255' asserted where the hidden test wants 255 (django-11790), a repro
+   ;; that printed the wrong __name__ and was accepted (django-14787).
+   "\n- A test or check that is to show your change is right includes an input that tells it apart from the nearest wrong version: the one you considered and rejected, or the simpler fix. A value that does not start at zero, an item already marked safe, a dict where the example used an object, the second call site, the expected value with its exact type. A check built only from the case you designed for passes for the wrong fix as readily as for the right one."
    ;; plan.scm: thinking was not sent back, and a model re-derived one
    ;; design at every request of a turn without changing anything. It is
    ;; sent back since window recipe v14, but only as the server reported
    ;; it (ADR 9, amended 2026-10-02).
    "\n- Your thinking comes back to you only as the server reported it, often as a summary or not at all, and a reply that only calls tools keeps nothing else. Once you know what to change, write your plan with plan-write instead of working it out again at every step, then make the change."
    "\n- Your check loop: before changing code, write one script in $TMPDIR (for example $TMPDIR/check.sh) that runs everything you use to judge your work, with the project's own interpreter or build: the example from the request exactly as written, the nearby cases it implies (other inputs of the same kind, the edges), and the existing tests that cover the code you will touch. Run it and see it show what is wrong or missing. If the request reports something broken, reproducing it is the first step: before you change anything, the check must fail on the current code the way the request describes; if it passes, you have not reproduced the problem yet, so compare your input with the request's, character for character, until you find one that fails. If reproducing the whole scenario needs something the repository does not have (another project, a service, real data), reproduce the smallest part you can: call the function or class that makes the wrong output directly, with inputs like the request's. After every change, run that same script, never a retyped variant, and extend it when you learn a new case. It lives on disk, so it survives when older context is cleared. When the request shows outputs (printed results, errors) rather than the inputs behind them, work out which input produces the wrong output it shows, not one that produces the right output, and put that input in the check. If your check still does not show a reported problem and you cannot see why, call second-look with your check script: a helper compares it with the request word for word and suggests what you may have read differently."
-   "\n- When the request weighs more than one way to do something, follow the way it concludes for. When it asks for behaviour to change, change it, and update the existing tests that encode the old behaviour, instead of keeping the old behaviour behind a narrower special case."
+   ;; The second sentence was quoted to leave eight existing tests red
+   ;; (django-16938) and read as licence to rewrite a pinned test the request
+   ;; never mentions (scikit-learn-13124, matplotlib-25960) on the
+   ;; long-context benchmark (ADR 32, amended 2026-10-10), so it now says
+   ;; which tests it means.
+   "\n- When the request weighs more than one way to do something, follow the way it concludes for. When it asks for behaviour to change, change it, and update the existing tests that encode the old behaviour the request changes, instead of keeping the old behaviour behind a narrower special case. Only those: an existing test of something the request does not mention is a constraint, and when your change breaks it, the change is what is wrong. Name in your report each existing test whose expectations you changed, and the words of the request that called for it."
    "\n- When you widen a definition, widen what belongs with it the same way, and prefer the general form the language or library provides (its character classes, types, interfaces) over a hand-written list of cases: a change that covers only the example's case breaks on the next one."
    ;; The jev-key console change (ADR 32, amended 2026-10-02): Go tests and
    ;; node --check passed in every round while the page went blank on a
@@ -205,26 +246,51 @@
    ;; stashed around tests that had passed, and once to rebase, in the
    ;; person's own checkout (20261003T002506Z-f564a28c seq 3111, 4515,
    ;; 5803). A copy of the last commit compares the same, and touches
-   ;; nothing (ADR 32, amended 2026-10-05).
-   "\n- Only when tests fail after your change, run the same command on the unchanged code and compare, on a copy of the last commit so your change is never touched: mkdir -p \"$TMPDIR/base\" && git archive HEAD | tar -x -C \"$TMPDIR/base\", then the same command in $TMPDIR/base. A test that passes before and fails after is yours to fix; one that fails both times is not. Never use git stash for this."
+   ;; nothing (ADR 32, amended 2026-10-05). Unless the project is installed
+   ;; in development mode, as SWE-bench's environments are: the copy then
+   ;; still imported the repository's patched code, so the "unchanged" run
+   ;; showed the change, and unpicking that cost about 25 calls on
+   ;; django-10914 and about 50 on django-16938 (ADR 32, amended 2026-10-10).
+   "\n- Only when tests fail after your change, run the same command on the unchanged code and compare, on a copy of the last commit so your change is never touched: mkdir -p \"$TMPDIR/base\" && git archive HEAD | tar -x -C \"$TMPDIR/base\", then the same command in $TMPDIR/base. If the project is installed in development (editable) mode, the copy still imports the repository's code: put the copy first on the import path (for Python, PYTHONPATH=$TMPDIR/base) and print where the module was loaded from before you trust the comparison. A test that passes before and fails after is yours to fix; one that fails both times is not. Never use git stash for this."
    "\n- When your changes break tests and the cause is not clear, find regressions by applying changes one file at a time."))
 
 ;; The explorer's system prompt and task: before a plan is drafted, a
 ;; read-only sub-agent looks at the repository so the plan is not written
 ;; blind (plan.scm).
+;;
+;; On the long-context benchmark (ADR 32, amended 2026-10-10) what the
+;; explorer listed won tasks and what it decided lost them. Listing every
+;; copy_X use (scikit-learn-12973: nodwyn 2 of 3, the other harnesses 0 of
+;; 6), the exports a scope covers (django-15161) and how sibling artists set
+;; a gid (matplotlib-24637) carried into the plan and the work. Deciding lost
+;; them: "The fix is a one-line change … offset=None" went into the plan word
+;; for word (xarray-6599, 0 of 3), "escape is already imported" became every
+;; plan's helper (django-16877, 0 of 3), and rounds spent on release notes
+;; and ticket numbers ran out before the definition that settled
+;; django-16938. A detail found and then left out of the report (utcnow,
+;; django-11848) was lost to the plan. So the code first, everything the
+;; change must reach, the request's literals as written, and options without
+;; a choice.
 (define plan-explore-system
-  "You explore a repository to prepare a plan for a request. You can read files, list directories and search; you cannot change anything or run commands. Find the code the request involves and the code around it, how it is used, existing helpers and conventions that apply, and how the project runs its tests. Use a few reads, then answer.")
+  "You explore a repository to prepare a plan for a request. You can read files, list directories and search; you cannot change anything or run commands. Read the code the request involves first: the definitions at the place it describes, their callers, and the code nearby that does the same kind of thing; then how the project runs its tests. Do not decide the fix: you cannot run anything, and a fix chosen by reading alone is the one the plan would carry. Use a few reads, then answer.")
 
 (define (plan-explore-task request)
   (string-append
    "Request:\n" request
-   "\n\nReport what a plan for this request needs to know: the files, functions and tests involved (with paths), the documentation that describes them and what the repository's instructions for coding agents (such as AGENTS.md) ask a change to include, conventions and helpers to reuse, and how the project runs its tests. Facts only, briefly; no plan."))
+   "\n\nReport what a plan for this request needs to know, as facts with paths:"
+   "\n- every place the change must reach: each function, call site, class or export the request's words cover, not only the one its example uses;"
+   "\n- the request's own examples, expected outputs, names and formats, copied exactly, and any detail of the code that decides between ways of doing it (a helper's behaviour, a type, a convention), quoted from where you read it;"
+   "\n- where more than one helper, convention or fix could serve, each of them with its path and what it does, without choosing;"
+   "\n- the tests involved and how the project runs them;"
+   "\n- the documents that describe the behaviour the request changes, and what the repository's instructions for coding agents (such as AGENTS.md) ask a change to include."
+   "\nFacts only, briefly: no plan, and no chosen fix."))
 
 ;; The explorer's report, handed to the model that does the work once the
-;; plan is recorded (plan.scm).
+;; plan is recorded (plan.scm). It was found by reading alone, and a fix it
+;; suggests anyway is a guess (xarray-6599, above).
 (define (plan-findings-message findings)
   (string-append
-   "What a read-only look at the repository found while the plan was made (read a file again only where you need its exact text):\n"
+   "What a read-only look at the repository found while the plan was made. Nothing was run to find it: its facts are leads, and any fix it suggests is a guess to test (read a file again only where you need its exact text):\n"
    findings))
 
 ;; The planner's request, given what exploring found.
@@ -236,8 +302,14 @@
 ;; The evidence the default loop asks for before an unattended turn ends
 ;; (strategy.scm): a change, a test run after the last edit, and a way out
 ;; when the tests cannot run at all.
+;; A request whose fix the repository already has is answered with no
+;; change: on django-13513 every harness found the fix in place, and
+;; OpenCode and pi ended in 2 to 4 minutes while this reminder sent all
+;; three nodwyn runs back to change something anyway, one of them breaking
+;; five tests for a while (ADR 32, amended 2026-10-10). The way out is a
+;; check, so a reply that stops early ("Let me look at …") is still sent on.
 (define finish-no-change-message
-  "No file has changed yet. Make the change in the repository before finishing.")
+  "No file has changed yet. Make the change in the repository before finishing. If you have found that the code already does what the request asks, show it instead: run a check with the request's own example on the unchanged code, say in your report what it showed, and finish.")
 ;; The same when a person reads the answer before anything else happens
 ;; ((reviewed?)): the request may ask for no change yet.
 (define finish-no-change-reviewed-message
@@ -247,9 +319,12 @@
 ;; A run with failures counted as a run (shell.scm), so a turn could end with
 ;; its last test run red and the evidence satisfied. The way out is the
 ;; working rules' comparison on the unchanged code: a failure that is there
-;; too is not the change's (ADR 32, amended 2026-10-06).
+;; too is not the change's (ADR 32, amended 2026-10-06). "Fix them" was read
+;; as fix the tests: on matplotlib-25960 a run rewrote two existing tests
+;; and copied its own renders over five baseline images until the turn was
+;; cancelled (ADR 32, amended 2026-10-10).
 (define finish-failing-message
-  "Your last test run after your last edit failed. If those failures come from your change, fix them and run the tests again. If the same tests fail on the unchanged code too (compare on a copy of the last commit, as the rules ask), say so in your report and finish.")
+  "Your last test run after your last edit failed. If those failures come from your change, fix the change and run the tests again; do not edit an existing test's expectations to make it pass unless the request asks for the behaviour it checks to change. If the same tests fail on the unchanged code too (compare on a copy of the last commit, as the rules ask), say so in your report and finish.")
 (define (finish-unrunnable-message attempts)
   (string-append
    "Your last " (number->string attempts)
@@ -304,8 +379,10 @@
 ;; where it was recorded; neither is ever trimmed away, and the system
 ;; prompt stays the same, so a new request or a plan keeps the cached
 ;; prefix (window recipe v15). Read once, like the system prompt.
+;; The plan header said "follow it", and a model kept the plan's wrong
+;; choice against its own runs (xarray-6599, ADR 32, amended 2026-10-10).
 (define task-header "Current task (the user's latest request):")
-(define plan-header "Plan for the current task (follow it; mark each step with plan-step as its work is done, before you start the next — never several together at the end; say so if you must deviate):")
+(define plan-header "Plan for the current task (work through it, and mark each step with plan-step as its work is done, before you start the next — never several together at the end; it was written before anything ran, so when a run contradicts it, follow the run and write the plan again):")
 
 ;; The message a supervised run sends for each of its turns (docs/runs.md).
 ;; complete-line is the marker the run looks for to know the task is done.
@@ -349,13 +426,21 @@
 ;; it. None of the 89 plans in the local session logs of 2026-09-21 to 10-05
 ;; quotes code, so this is a guard, not a repair (ADR 32, amended
 ;; 2026-10-06).
+;; Behaviour alone did not keep a wrong detail out: on the long-context
+;; benchmark every django-16877 plan still named the helper to apply, and it
+;; was the wrong one, and one django-11848 plan lost the detail (utcnow) the
+;; exploration had found (ADR 32, amended 2026-10-10). So a plan says where
+;; to work and what to cover, names an open choice with what decides it
+;; rather than making it, copies the request's literals, and asks for a test
+;; input that tells the right behaviour from the nearest wrong one.
 (define (plan-shape)
   (string-append
    "Each step starts with its kind and a short name for what it does, then a dash (—) and the detail after it:"
    (apply string-append (map (lambda (k) (string-append "\n- " (car k) ": " (cdr k) ".")) plan-kinds))
    (if plan-last-kind (string-append "\nThe last step is a " plan-last-kind ": step.") "")
    " A step that says all it should in its name needs no dash. A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."
-   " Say what the code should do as behaviour, in which cases and with what result, not as code to type: whoever carries the plan out reads the code and writes it, and a function name or signature quoted from memory that the code does not have misleads them."))
+   " Say what the code should do as behaviour, in which cases and with what result, not as code to type: whoever carries the plan out reads the code and writes it, and a function name or signature quoted from memory that the code does not have misleads them."
+   " Where the request or the code leaves a detail open (which helper or function to call, a literal's type or format, which of several fixes), name the options and what will decide between them (the definition to read, the code nearby to imitate, the request's example), and leave the choice to whoever carries the plan out, who can run the code: a choice made by reading alone is the one most often wrong. Copy the request's own examples, names and formats word for word."))
 
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)
@@ -458,18 +543,31 @@
 ;; reproduce", from a check that used a different input than the request's)
 ;; misled a benchmark run for twenty minutes after the context was cleared,
 ;; so each finding keeps its evidence and marks what is unsure (ADR 32).
+;; On the long-context benchmark (ADR 32, amended 2026-10-10) a note listed
+;; the right fix as "Ruled out" because it seemed less likely to match the
+;; maintainers' (xarray-6599), two notes were cut off at the output limit
+;; after tens of thousands of characters of thinking and kept one sentence
+;; (django-15280), and a fix found before the clear went in 11 to 13
+;; minutes after it (django-14351). So: an edit already decided comes
+;; first, ruled out means a run ruled it out, and the note is short.
 (define compact-summary-prompt
   """
-  The conversation is getting long and will be cleared to make room. Before that, write a handover note for yourself; it is all you will keep. Do not call tools. Include:
+  The conversation is getting long and will be cleared to make room. Before that, write a handover note for yourself; it is all you will keep. Do not call tools. Write it straight away, in at most 600 words: a note cut off at the output limit is lost. Include:
+  - the edit you have decided on and not yet made, if there is one, first and exactly: the file and what changes in it;
   - the task in one or two sentences, what done looks like, and the task's own example exactly as given;
   - what you found, each finding with its evidence: the exact command or code you ran and what it printed (`command` -> output), marked verified or unsure;
   - what you changed so far, file by file, and why;
   - the commands that run the tests and reproduce the problem, and their latest results;
   - open questions, including any conclusion that surprised you (such as "it does not reproduce"), with what you tested to reach it;
-  - what is left to do, in order, and what you ruled out and on what evidence.
+  - what is left to do, in order, and what you ruled out, each with the run that ruled it out. An option you set aside without such a run is an open question, not ruled out.
   Be specific: names, paths and commands, not descriptions of them.
   Name your check script (its path) and what its latest run showed; the script itself is still on disk.
   """)
+
+;; Asked again when the note itself was cut off at the output limit
+;; (compact.scm, compact-note).
+(define compact-note-cut-message
+  "Your handover note was cut off at the output limit. Write it again, shorter: at most 400 words, the findings and what is left, without working them out again first.")
 
 ;; What the user asked the handover note to keep ("/compact" followed by
 ;; words), added after compact-summary-prompt.
@@ -484,7 +582,7 @@
    """
 
 
-   The conversation so far was cleared to make room; this is your own handover note from before it was cleared. The repository still holds every change you made. The note may contain mistakes: before building on it, re-run its reproduction with the task's own example exactly as given, and check that the findings you rely on still hold. Then continue the task; re-read files when you need their exact content.
+   The conversation so far was cleared to make room; this is your own handover note from before it was cleared. The repository still holds every change you made. If the note names an edit you had decided on and not yet made, make it first. The note may contain mistakes: before building on it, re-run its reproduction with the task's own example exactly as given, which also shows whether that edit works, and check that the findings you rely on still hold. Then continue the task; re-read files when you need their exact content.
 
    Handover note:
    """

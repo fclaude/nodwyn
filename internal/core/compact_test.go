@@ -662,3 +662,33 @@ func TestCompactionGoingRoundInCirclesStopsTheTurn(t *testing.T) {
 		t.Fatalf("%d compactions after a write, want 2", len(c))
 	}
 }
+
+// A handover note cut off at the output limit is asked for again, shorter:
+// on django-15280 two notes spent the reply on thinking and kept one
+// sentence, all the run had to go on after the clear (ADR 32, amended
+// 2026-10-10).
+func TestACutHandoverNoteIsAskedForAgain(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, "", 10,
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("a", "big.txt")}},
+		fake.Turn{ToolCalls: []fake.ToolCall{readPath("b", "big.txt")}},
+		fake.Turn{Content: "I have gathered substantial evidence. Let me record", DoneReason: "length"},
+		fake.Turn{Content: "NOTE: main.go only declares package main."},
+		fake.Turn{Content: "done"},
+	)
+	writeTokens(t, r.repo, "big.txt", 1000)
+	r.compactAfter(1500) // passed by the second read
+	if err := r.turn("make main.go print hello"); err != "" {
+		t.Fatal(err)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5", len(r.srv.Requests))
+	}
+	if ask := requestMessages(t, r.srv.Requests[3]); !strings.Contains(ask[len(ask)-1].Content, "handover note was cut off at the output limit") {
+		t.Fatalf("the cut note was not asked for again: %+v", ask[len(ask)-1])
+	}
+	after := requestMessages(t, r.srv.Requests[4])
+	if handover := after[len(after)-1].Content; !strings.HasSuffix(handover, "Handover note:\nNOTE: main.go only declares package main.") {
+		t.Fatalf("hand-over:\n%s", handover)
+	}
+}

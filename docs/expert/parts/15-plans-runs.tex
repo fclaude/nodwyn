@@ -30,9 +30,18 @@ like this:
     for up to \code{plan-explore-rounds} (12; 16 for the families that ask
     for few calls in a round, a table by model family) rounds (\code{fs-read},
     \code{fs-list}, \code{index-grep}, \code{fs-find}), so the plan is not
-    written blind.
+    written blind. It reads the code at the place the request describes
+    first, lists every place the change must reach and the options it finds
+    without choosing one, and copies the request's examples as written: on
+    the long-context benchmark what it listed won tasks and what it decided
+    lost them (\adr{32}, amended 2026-10-10).
   \item The control model drafts a plan in a narrowed context, offered no
-    tools, with the explorer's findings, in the shape described below.
+    tools, with the explorer's findings, in the shape described below. A
+    detail the request leaves open (which helper, a literal's type, which of
+    several fixes) it names with what will decide it, and leaves to the model
+    that does the work, which can run the code. A reply that is not a plan
+    (tool calls, a fenced code block, more than \code{plan-max-chars}
+    characters) is asked again, as an empty one is.
   \item The judge scores the plan against the request and the shape. Below
     \code{plan-accept-score} (0.7) the model revises it, at most
     \code{plan-max-revisions} (3) times; the best plan wins.
@@ -195,13 +204,17 @@ evidence:
 
 \begin{itemize}
   \item A reply that stops before anything changed gets
-    \code{finish-no-change-message}.
+    \code{finish-no-change-message}. A turn that has run a test or check
+    may then end unchanged: the code may already do what was asked, and the
+    message asks for a check that shows it.
   \item A reply that stops after a change, with no test run since the last
     edit, gets \code{finish-untested-message}.
   \item A reply that stops after a change whose last test or check run since
     the last edit exited non-zero gets \code{finish-failing-message}, once
-    for that run: the model may answer that the tests fail on the unchanged
-    code too, and end.
+    until the next edit: the model may answer that the tests fail on the
+    unchanged code too, and end. An exit that says no test ran (126, 127,
+    and pytest's 4 and 5) is no failure, and a run on the copy of the last
+    commit (\code{\$TMPDIR/base}) that fails too is the comparison done.
   \item At most \code{finish-reminders} (2) such reminders per turn.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),

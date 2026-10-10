@@ -168,8 +168,9 @@ func TestReviewedTurnMayEndUnchanged(t *testing.T) {
 }
 
 // Nobody reads a planned turn's answer outside a run, or a run's last turn,
-// before it ends: it changes something or runs out of reminders, and the
-// reminder offers no way out.
+// before it ends: it changes something or runs out of reminders. The
+// reminder's way out is a check that shows the code already does what the
+// request asks; a turn that runs none is reminded again.
 func TestUnreviewedTurnIsNotOfferedAWayOut(t *testing.T) {
 	t.Parallel()
 	r := newRig(t, true,
@@ -185,7 +186,7 @@ func TestUnreviewedTurnIsNotOfferedAWayOut(t *testing.T) {
 		t.Fatalf("%d requests, want 5", len(r.srv.Requests))
 	}
 	for _, i := range []int{3, 4} {
-		if got := lastMessage(r, i); got != "No file has changed yet. Make the change in the repository before finishing." {
+		if got := lastMessage(r, i); !strings.HasPrefix(got, "No file has changed yet. Make the change in the repository before finishing. If you have found") {
 			t.Fatalf("reminder %d: %q", i, got)
 		}
 	}
@@ -382,7 +383,7 @@ func TestPlannerExploresFirst(t *testing.T) {
 	}
 	// The model that does the work is told too, after the plan, so it does
 	// not read the same files again to learn it.
-	if worker := lastMessage(r, 2); worker != "What a read-only look at the repository found while the plan was made (read a file again only where you need its exact text):\nmain.go declares package main; tests run with go test ./..." {
+	if worker := lastMessage(r, 2); worker != "What a read-only look at the repository found while the plan was made. Nothing was run to find it: its facts are leads, and any fix it suggests is a guess to test (read a file again only where you need its exact text):\nmain.go declares package main; tests run with go test ./..." {
 		t.Fatalf("the worker was not told what exploring found:\n%s", worker)
 	}
 }
@@ -416,6 +417,195 @@ func TestThePromptsCompareWithACopyNotAStash(t *testing.T) {
 	} {
 		if strings.Contains(sys, "git stash;") || !strings.Contains(sys, "git archive HEAD | tar -x -C") || !strings.Contains(sys, "Never use git stash for this") {
 			t.Errorf("the %s prompt's comparison with the unchanged code:\n%s", name, sys)
+		}
+	}
+}
+
+// A request the code already answers ends unchanged once a check has run:
+// on django-13513 every harness found the fix in place, and the no-change
+// reminder sent all three nodwyn runs back to change something anyway (ADR
+// 32, amended 2026-10-10). The way out is a check, so a turn that runs none
+// is reminded again (TestUnreviewedTurnIsNotOfferedAWayOut).
+func TestAnUnattendedTurnMayEndUnchangedAfterACheck(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true,
+		fake.Turn{Content: "debug.py already handles it."},                               // the explorer
+		fake.Turn{Content: "1. Check: the fix — confirm it is in place."},                // the planner
+		fake.Turn{Content: "The fix is already there."},                                  // nothing changed: reminded
+		shell("t", "true # pytest tests/test_debug.py"),                                  // the check the reminder asks for
+		fake.Turn{Content: "The check passes on the unchanged code: nothing to change."}, // ends
+	)
+	if err := r.s.SendPlanned("make the debug page show the cause"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if !strings.Contains(lastMessage(r, 3), "show it instead: run a check with the request's own example") {
+		t.Fatalf("no-change reminder: %q", lastMessage(r, 3))
+	}
+}
+
+// A run on the copy of the last commit that fails as the change's run did is
+// the comparison the failing-run reminder asks for, done: the reminder is
+// not said. On django-13158 it was, after the model had shown the failures
+// on the unchanged code, at a cost of about 12 calls (ADR 32, amended
+// 2026-10-10).
+func TestAFailureOnTheUnchangedCodeTooIsNotTold(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w"),
+		shell("t1", "false # go test ./..."),
+		shell("b", "false # cd $TMPDIR/base && go test ./..."),
+		fake.Turn{Content: "TestX fails on the unchanged code too."}, // ends
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 4 {
+		t.Fatalf("%d requests, want 4; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// An exit that says no test ran is no failure: a program not found (127),
+// as a missing flake8 at the end of a line whose tests had passed was
+// (django-15161), or pytest given a path that does not exist (4), which
+// cost scikit-learn-13124 35 calls after its work was done (ADR 32, amended
+// 2026-10-10).
+func TestAnExitThatRanNoTestsIsNoFailure(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w"),
+		shell("t", "true # go test ./..."),
+		shell("l", "exit 127 # go test ./... && flake8"),
+		shell("p", "exit 4 # pytest tests/missing.py"),
+		fake.Turn{Content: "done"}, // ends
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// A failing run the model was told of is not told again until it edits:
+// running the same failing tests again says nothing new.
+func TestAFailingRunIsToldOncePerEdit(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w"),
+		shell("t1", "false # go test ./..."),
+		fake.Turn{Content: "done"}, // told
+		shell("t2", "false # go test ./... -run TestX"),
+		fake.Turn{Content: "TestX fails without my change too."}, // ends
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// Files new in the repository that the turn's plan names are part of the
+// change, not what a run left behind: the reminder names only the others.
+// On the long-context benchmark it named the test and release-note files
+// the plan had asked for in 13 of 107 attempts (ADR 32, amended
+// 2026-10-10).
+func TestNewFilesThePlanNamesAreNotNamed(t *testing.T) {
+	t.Parallel()
+	const plan = "1. Change: tracked.txt — say two.\n" +
+		"2. Test: tests/test_two.py test_two — it reads two; fails today: it says one.\n" +
+		"3. Docs: none — no doc describes it.\n" +
+		"4. Check: pytest tests/test_two.py"
+	r := unattendedRigIn(t, gitWorkTree(t),
+		fake.Turn{ToolCalls: []fake.ToolCall{planWriteCall("p", plan)}},
+		write("w", "tests/test_two.py", "def test_two(): pass\n"),
+		write("s", "repro.py", "print(1)\n"),
+		shell("t", "true # pytest tests/test_two.py"),
+		fake.Turn{Content: "done"}, // repro.py named
+		fake.Turn{Content: "done"}, // ends
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6", len(r.srv.Requests))
+	}
+	if note := lastMessage(r, 5); !strings.Contains(note, "git does not track them: repro.py.") || strings.Contains(note, "tests") {
+		t.Fatalf("new files note: %q", note)
+	}
+}
+
+// Both system prompts leave the plan's choices to the runs, ask for the
+// evidence that decides a detail at the edit, and for a test that tells the
+// fix from its nearest wrong version; the plan's author is not called one
+// "who read the code", which a model quoted back to keep the plan's wrong
+// choice (xarray-6599). The environment is found without listing folders
+// outside the repository, and the comparison with the unchanged code runs
+// the copy's code (ADR 32, amended 2026-10-10).
+func TestThePromptsLeaveThePlansChoicesToTheRuns(t *testing.T) {
+	t.Parallel()
+	for name, sys := range map[string]string{
+		"unattended":  unattendedRig(t).s.loop.WindowContext().System,
+		"interactive": newRig(t, true).s.loop.WindowContext().System,
+	} {
+		for _, want := range []string{
+			"A choice is not right because the plan made it",
+			"Before an edit that settles a detail the request leaves open",
+			"includes an input that tells it apart from the nearest wrong version",
+			"the existing tests that encode the old behaviour the request changes",
+			"Only those: an existing test of something the request does not mention is a constraint",
+			"conda env list",
+			"PYTHONPATH=$TMPDIR/base",
+		} {
+			if !strings.Contains(sys, want) {
+				t.Errorf("the %s prompt lacks %q", name, want)
+			}
+		}
+		for _, gone := range []string{"someone who read the code", "ls /opt/*/envs"} {
+			if strings.Contains(sys, gone) {
+				t.Errorf("the %s prompt still says %q", name, gone)
+			}
+		}
+	}
+}
+
+// The explorer reads the code first, lists every place the change must
+// reach and the options it finds without choosing, and copies the request's
+// literals; the planner leaves an open detail open, copies the literals and
+// asks for a test input that tells right from nearly right. On the
+// long-context benchmark what the explorer listed won tasks and what it
+// decided lost them (ADR 32, amended 2026-10-10).
+func TestTheExplorerAndThePlannerLeaveChoicesOpen(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true,
+		fake.Turn{Content: "main.go declares package main."}, // the explorer
+		fake.Turn{Content: "1. Edit main.go."},               // the planner
+		fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+	)
+	if err := r.s.SendPlanned("change main.go"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	explorer := requestMessages(t, r.srv.Requests[0])
+	for _, want := range []string{"Read the code the request involves first", "Do not decide the fix"} {
+		if !strings.Contains(explorer[0].Content, want) {
+			t.Errorf("the explorer's system prompt lacks %q", want)
+		}
+	}
+	for _, want := range []string{"every place the change must reach", "copied exactly", "without choosing", "no chosen fix"} {
+		if !strings.Contains(explorer[1].Content, want) {
+			t.Errorf("the explorer's task lacks %q", want)
+		}
+	}
+	planner := lastMessage(r, 1)
+	for _, want := range []string{"name the options and what will decide between them", "Copy the request's own examples",
+		"with an input that tells it apart from the nearest wrong behaviour", "never a ticket or issue number"} {
+		if !strings.Contains(planner, want) {
+			t.Errorf("the planner's request lacks %q", want)
 		}
 	}
 }

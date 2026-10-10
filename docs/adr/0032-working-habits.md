@@ -836,3 +836,128 @@ removing if a plan's quality, as the judge scores it, falls. The companion
 rule, that a model checks a helper's definition before an edit that calls it,
 is not added: it repeats "Read before you write" and cannot be checked.
 `TestThePlannerIsAskedForBehaviourNotCode` covers the request.
+
+## Amendment 2026-10-10: the plan says where, the run decides how
+
+The long-context SWE-bench cohort on workshop ran pi, OpenCode and nodwyn
+(`d64209d`) on the same 40 tasks, three times each, with the same model
+(qwen3.8-27b at 160k context) and the same task text, 2026-10-07 to 10.
+Every attempt was read by hand; the per-task notes are kept with the
+benchmark runs, not in this repository. nodwyn resolved the most (73 of 107
+evaluated attempts, against 73 of 120 for pi and 66 of 120 for OpenCode), and
+lost on two counts. On process: a median attempt took 11.6 minutes and 78
+calls, against 5.1 and 44 for pi, half of it before the plan was recorded. On
+outcome, on one kind of task: where a single detail decides (which helper,
+which literal, which of two fixes), the harnesses without a plan chose it at
+the edit, with the definition on screen, and nodwyn chose it in the plan,
+from reading alone, and kept it.
+
+- **The plan's choices are guesses; the run decides.** The working rule
+  called the plan's author "someone who read the code", and a model quoted
+  that back to keep the plan's wrong `offset=None` against its own round
+  trip (xarray-6599, 0 of 3, pi 3 of 3). The rule, `plan-header` and
+  `plan-findings-message` now say the plan was written before anything ran,
+  that a run which contradicts it wins, and that a plan is rewritten, never a
+  test or a reproduction made to agree with it (django-15916 edited its
+  repro; scikit-learn-13124 and matplotlib-25960 rewrote tests).
+  `TestThePromptsLeaveThePlansChoicesToTheRuns`.
+- **A detail is settled at the edit, from what decides it.** A new working
+  rule asks for the definition called or imitated, the code nearby that does
+  the same, and the request's own example in view before an edit that
+  settles an open detail, and not memory of an upstream fix. The 2026-10-06
+  amendment left this rule out as unmeasured; these runs measure it:
+  django-16877 (`conditional_escape`, nodwyn 0 of 3, OpenCode 3 of 3 with
+  `escape_filter` read just before the edit), django-16938, django-16899,
+  django-11815; and recall lost django-11848 and scikit-learn-12973.
+- **A test tells the fix from its nearest wrong version.** Every losing run,
+  in all three harnesses, checked its change with the case it was designed
+  for (timedelta data starting at 0, plain strings, `'255'` for 255). A
+  working rule and the `Test:` kind now ask for an input that tells them
+  apart.
+- **The explorer lists; it does not choose.** Its system prompt and task
+  put the code at the failure site first, ask for every place the change
+  must reach, the request's literals copied exactly and the options found
+  without a choice. What it listed won scikit-learn-12973 (nodwyn 2 of 3,
+  the others 0 of 6), django-15161 and matplotlib-24637; what it decided
+  ("The fix is a one-line change … `offset=None`", "`escape` is already
+  imported") lost xarray-6599 and django-16877, and rounds spent on release
+  notes ran out before the definition that settled django-16938.
+  `plan-shape` asks the planner to name an open choice and what decides it
+  rather than make it, and to copy the request's literals; the
+  behaviour-only rule alone had dropped a detail exploration found
+  (`utcnow`, django-11848). A `Change:` reaches every place the request
+  covers, and a `Docs:` step names a document that describes the changed
+  behaviour, never a ticket number nobody gave: 45 of 107 nodwyn patches
+  edited docs (pi 23 of 120, OpenCode 13 of 120), two citing invented
+  tickets. `TestTheExplorerAndThePlannerLeaveChoicesOpen`.
+- **Only the tests the request changes are updated.** "Update the existing
+  tests that encode the old behaviour" was quoted to leave eight tests red
+  (django-16938) and read as licence to rewrite pinned tests the request
+  never named. It now says which tests, that another test the change breaks
+  means the change is wrong, and asks the report to name each existing test
+  whose expectations changed. `finish-failing-message` says to fix the
+  change, not an existing test's expectations.
+- **The unchanged code is the copy's code.** In an editable install the copy
+  of the last commit still imported the repository's patched code, and
+  unpicking that cost about 25 calls on django-10914 and 50 on django-16938.
+  The comparison rule puts the copy first on the import path and prints
+  where the module came from. The stash stays forbidden (amended 2026-10-05).
+- **Finding the environment names no folder outside the repository.** The
+  rule's example listed `/opt/*/envs`, which the guard asks a person about:
+  55 of the 223 shell commands refused in nodwyn's attempts did that. It now
+  uses `conda env list` and runs the environment's interpreter by its path,
+  which the guard lets through (ADR 17, amended 2026-10-10).
+- **The evidence loop reads state, not events.**
+  - An exit that says no test ran is no outcome: 126 and 127, and pytest's 4
+    and 5 (`not-run-statuses`, `pytest-not-run-statuses`). A missing
+    `flake8` after passing tests (django-15161) and pytest on a missing path
+    after the work was reported (scikit-learn-13124, 35 calls) were told as
+    failing runs. `TestAnExitThatRanNoTestsIsNoFailure`.
+  - A run on `$TMPDIR/base` that fails after the change's run failed is the
+    comparison done (`base-run?`, outcome `compared`), and the failing-run
+    reminder is not said (django-13158, about 12 calls).
+    `TestAFailureOnTheUnchangedCodeTooIsNotTold`.
+  - The failing-run reminder is said once per edit, not again when the same
+    tests are run again. `TestAFailingRunIsToldOncePerEdit`.
+  - `finish-no-change-message` offers a way out with evidence: a request the
+    code already answers ends unchanged once a check has run. All three
+    nodwyn runs of django-13513 found the fix in place and were sent back to
+    change something, one breaking five tests for a while; pi and OpenCode
+    stopped in 2 to 4 minutes. A stop with no check run is reminded as
+    before. `TestAnUnattendedTurnMayEndUnchangedAfterACheck`.
+  - New files the plan names are not called leftovers: the reminder named
+    the test and release-note files the plan asked for in 13 attempts.
+    `TestNewFilesThePlanNamesAreNotNamed`.
+  - A reply cut off while it weighed options is told to settle them with a
+    run, not by which is shorter or which the plan named: told only to think
+    less, xarray-6599 r1 wrote "Let me be decisive: … `offset=None` (the
+    plan)". `TestACutReplyIsToldToSettleOptionsWithARun`.
+- **The planner is asked again for a reply that is not a plan.** Four of
+  107 recorded plans were none (a refused call, or command transcripts of
+  20,660 and 45,577 characters in fenced blocks), and two more quoted code in
+  fenced blocks. A reply with a call, a line opening a fenced block, or more
+  than `plan-max-chars` (8000) characters is asked again within
+  `plan-empty-retries`. `TestPlanGateAsksAgainForANonPlan`.
+- **Handover notes are short and act first.** Two notes on django-15280 were
+  cut off at the output limit after about 59,000 characters of thinking and
+  kept one sentence, and a note listed the right fix as "ruled out" because
+  it seemed unlikely to match the maintainers'. The note request asks for at
+  most 600 words, the decided but unmade edit first, and "ruled out" only
+  for what a run ruled out; a note cut off is asked for again, shorter
+  (`compact-note-cut-message`), and the handover makes the decided edit
+  before re-running the reproduction, which a fix found before the clear on
+  django-14351 waited 11 to 13 minutes for.
+  `TestACutHandoverNoteIsAskedForAgain`.
+- **Not built.** Letting the explorer run code, or planning after the first
+  reproduction: the core allows nothing irreversible before a plan is
+  recorded in a turn that must plan, and the shell is irreversible, so it
+  would change what the gate guarantees (ADR 19). A fast path that skips
+  exploration and the plan for an ask that points at one function: the 40
+  tasks show no sign in the request that separates those where the
+  explorer's listing won (scikit-learn-12973, django-15161, matplotlib-24637)
+  from those where it was overhead (django-13315, sympy-15809,
+  django-16116); the narrower explorer task above is what the data supports.
+
+Each test above fails on `d208b2c` and passes with the change.
+`TestPlannerExploresFirst`, `TestUnreviewedTurnIsNotOfferedAWayOut` and
+`TestModelWritesItsOwnPlan` now expect the new texts.

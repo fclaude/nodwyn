@@ -519,7 +519,10 @@ written unless every edit applies.
   is denied outright.
 - Read the reason lines. `command line names a path outside the
   repository` and `uses the network tool curl` are the guard telling you
-  what a `y` would do.
+  what a `y` would do. A path anywhere in a `bash -c` line counts, a
+  redirection's target included; the interpreter of a Python environment
+  (`…/envs/NAME/bin/python`, `.venv/bin/python`) that only you or root can
+  change runs without asking, as a program on your `PATH` does.
 
 ### Unattended runs
 
@@ -528,7 +531,8 @@ test rig never stops to ask. With nobody watching, nodwyn's defaults also
 change (docs/scheme.md §9): the system prompt is how to work rather than
 what to tell an approver, and a turn ends on evidence — a change, and a test
 run after it that did not fail — with an honest way out when the tests cannot
-run at all. It answers the guard's questions; it does not
+run at all, and another when the code already does what was asked: a check
+that shows it. It answers the guard's questions; it does not
 overrule its refusals. Still denied, exactly as with a human at the prompt:
 
 - anything outside the repository, and symlinks that leave it;

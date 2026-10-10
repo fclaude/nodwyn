@@ -417,3 +417,33 @@ func TestPlanFlagsEndWithTheTurn(t *testing.T) {
 		t.Fatalf("plan flags after the turn: %s", got)
 	}
 }
+
+// A planner reply that is not a plan is asked again, as an empty one is: a
+// call the planner was refused, or a transcript of commands in fenced
+// blocks, was recorded as the plan on the long-context benchmark, and the
+// work had to write it again (ADR 32, amended 2026-10-10). Backticks inside
+// a line are a plan naming a file, and stand.
+func TestPlanGateAsksAgainForANonPlan(t *testing.T) {
+	t.Parallel()
+	done := fake.Turn{Content: "done"}
+	r := judgedRig(t, nil, "",
+		fake.Turn{Content: "Let me look first.", ToolCalls: []fake.ToolCall{readPath("x", "main.go")}},
+		fake.Turn{Content: "Looking at it:\n```bash\nls\n```"},
+		fake.Turn{Content: "1. Change: `main.go` — print the greeting."},
+		done, done, done)
+	if e := r.planned("work"); e != "" {
+		t.Fatal(e)
+	}
+	plans := r.gatePlans()
+	if len(plans) != 1 || plans[0].Plan != "1. Change: `main.go` — print the greeting." {
+		t.Fatalf("plans %+v", plans)
+	}
+	for _, note := range []string{
+		"planner returned tool calls instead of a plan, asking again (1/2)",
+		"planner returned code blocks instead of a plan, asking again (2/2)",
+	} {
+		if !strings.Contains(r.logb.String(), note) {
+			t.Errorf("the log lacks %q", note)
+		}
+	}
+}

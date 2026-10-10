@@ -99,6 +99,14 @@ func (r RepoPin) Check(_ context.Context, p *scheme.Prim, args []scheme.Value) D
 			if len(r.Mounts) > 0 {
 				where += " and the workspace's mounted folders"
 			}
+			// Models write their throwaway scripts to /tmp by habit: on the
+			// long-context benchmark 68 writes were refused so in 56 of
+			// nodwyn's 107 attempts, though the prompts name $TMPDIR (ADR
+			// 17, amended 2026-10-10). The refusal says where the file goes,
+			// as the prompts write it.
+			if r.Scratch != "" && filepath.IsAbs(raw) {
+				where += "; a throwaway file goes in the scratch directory, written as $TMPDIR/" + filepath.Base(raw)
+			}
 			return Decision{Verdict: Deny, Reason: "path " + raw + " is outside " + where}
 		}
 		// A source is only read, so a read-only mount may supply it even to
@@ -323,22 +331,38 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			reasons = append(reasons, "command line matches the hard-trigger pattern "+strings.TrimSpace(pat))
 		}
 	}
-	commands := []shellCommand{{words: argv}}
-	if parsed, wrapped := shellCommands(argv); wrapped && parsed != nil {
-		commands = parsed
+	// A shell's -c line is read word by word (scriptWords), the shell itself
+	// a command of its own; a line that cannot be split, or one with
+	// positional parameters after it, is read as it always was, as words of
+	// one command.
+	commands := []scriptCommand{{words: argv}}
+	if len(argv) == 3 && shells[filepath.Base(argv[0])] && argv[1] == "-c" {
+		if parsed, ok := scriptWords(argv[2]); ok {
+			commands = append([]scriptCommand{{words: argv[:2]}}, parsed...)
+		}
+	}
+	outside := func(tok string) {
+		if devices[tok] {
+			return
+		}
+		if path := argumentPath(tok, a.Root, false); path != "" {
+			if a.Scratch != "" && filepath.IsAbs(path) && filepath.Clean(path) == path && within(resolveExisting(path), resolveExisting(a.Scratch)) {
+				return
+			}
+			reasons = append(reasons, "command line names a path outside the repository: "+path)
+			security = true
+		}
 	}
 	for _, command := range commands {
+		programs, patterns := programs(command.words), patternWords(command.words)
 		for i, tok := range command.words {
-			if i == 0 && isSystemBinary(tok) {
+			if programs[i] && (isSystemBinary(tok) || envExecutable(tok)) || patterns[i] {
 				continue
 			}
-			if path := argumentPath(tok, a.Root, false); path != "" {
-				if a.Scratch != "" && filepath.IsAbs(path) && filepath.Clean(path) == path && within(resolveExisting(path), resolveExisting(a.Scratch)) {
-					continue
-				}
-				reasons = append(reasons, "command line names a path outside the repository: "+path)
-				security = true
-			}
+			outside(tok)
+		}
+		for _, tok := range command.targets {
+			outside(tok)
 		}
 	}
 	if len(reasons) > 0 {

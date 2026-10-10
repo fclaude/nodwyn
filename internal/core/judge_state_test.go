@@ -90,7 +90,10 @@ func TestTheJudgeSeesPlanProgressAndEarlierAnswers(t *testing.T) {
 // tells the judge the script is the session's; at "full", where file
 // contents may leave (ADR 19), it also shows the script's text. A file the
 // command names outside the scratch directory, or that is not there, is not
-// described.
+// described. The file outside it is the repository's: a path outside the
+// repository, /etc/hostname as this test had it, is a question for a person
+// now that the guard reads a line with a variable word by word (ADR 17,
+// amended 2026-10-10).
 func TestTheJudgeIsToldOfAScratchScript(t *testing.T) {
 	t.Parallel()
 	for _, content := range []string{config.JudgeContentPlan, config.JudgeContentFull} {
@@ -98,7 +101,7 @@ func TestTheJudgeIsToldOfAScratchScript(t *testing.T) {
 			t.Parallel()
 			judge := newFakeJudge(t, noul(0.2), choice(0.9))
 			r := judgedRigWith(t, judge, content, quiet, func(o *Options) { o.NoConfirm = false },
-				commandTurn("1", "bash", "-c", `bash "$TMPDIR/check.sh" tests; cat "$TMPDIR/absent.sh" /etc/hostname`), fake.Turn{Content: "done"})
+				commandTurn("1", "bash", "-c", `bash "$TMPDIR/check.sh" tests; cat "$TMPDIR/absent.sh" hostname.txt`), fake.Turn{Content: "done"})
 			if err := os.WriteFile(filepath.Join(r.s.scratch, "check.sh"), []byte("# script-marker-7731\necho checking\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -109,7 +112,7 @@ func TestTheJudgeIsToldOfAScratchScript(t *testing.T) {
 			if !strings.Contains(state, `It runs $TMPDIR/check.sh: a 2-line file in this session's own scratch directory`) {
 				t.Fatalf("the judge was not told of the script:\n%s", state)
 			}
-			if strings.Contains(state, "absent.sh: a") || strings.Contains(state, "hostname: a") {
+			if strings.Contains(state, "absent.sh: a") || strings.Contains(state, "hostname.txt: a") {
 				t.Fatalf("a file not in the scratch directory was described:\n%s", state)
 			}
 			if shown := strings.Contains(state, "script-marker-7731"); shown != (content == config.JudgeContentFull) {

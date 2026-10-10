@@ -59,6 +59,14 @@
 ;; Ask for the handover note, with the room above the high water: its text,
 ;; or #f if the model kept calling tools or wrote nothing. An optional
 ;; focus, when not empty, says what it must keep.
+;;
+;; A note cut off at the output limit is asked for again, shorter, within
+;; the same compact-attempts: on django-15280 (the long-context benchmark,
+;; ADR 32, amended 2026-10-10) two notes in one run spent the reply on about
+;; 59,000 characters of thinking and kept one sentence, "I've gathered
+;; substantial evidence. Let me record a precise handover note", which was
+;; all the run had to go on after the clear. A note still cut off on the
+;; last attempt is kept as it is: part of a note is more than none.
 (define (compact-note . focus)
   (let ((keep (if (pair? focus) (string-trim (car focus)) "")))
     (add-message (if (string-empty? keep)
@@ -71,6 +79,9 @@
       (cond ((pair? calls)
              (skip-tools calls "write the handover note first; tools are off for it")
              (and (> left 1) (ask (- left 1))))
+            ((and (equal? (assoc-ref reply 'done "") "length") (> left 1))
+             (add-message compact-note-cut-message)
+             (ask (- left 1)))
             ((string-empty? note) #f)
             (else note)))))
 

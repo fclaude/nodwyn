@@ -235,3 +235,55 @@ guard with a non-credential-shaped canary, checking the outside output file and
 the Scheme result, output and log. All three tests compile against `fcc5c42`
 and fail there. Existing scratch and judge tests preserve their confirmation
 behaviour; executable identity tests still cover a retargeted relative symlink.
+
+## Amendment 2026-10-10: the argv trigger reads a script word by word
+
+On the long-context SWE-bench cohort (ADR 32, amended 2026-10-10), 223 of
+nodwyn's shell commands were refused in 94 of its 107 attempts, all as
+security confirms for a path outside the repository, which an unattended run
+cannot answer. 98 named the project environment's interpreter
+(`/opt/miniconda3/envs/testbed/bin/python`), which the system prompt tells the
+model to find and use; 48 were `-c` lines that `shellLine` would not split (a
+variable, an interpreter, a continued line) and that the trigger therefore read
+as one word, so `PYTHONPATH=/testbed python \…` was flagged as the path
+`/testbed python \` though `/testbed` is the repository; a few were sed
+addresses (`/^def polyval/,/^def /p`) and a `git log -L` range. Each was
+answered by a way round the guard (`conda run`, a script, Python walking
+`/opt`), which the guard does not see at all. The same one-word reading hid
+paths: a redirection to a file outside, `cat $(ls /outside)`, or
+`cat "$X" /etc/hostname`, asked nobody.
+
+- `ArgvTrigger` splits a shell's `-c` line with `scriptWords`
+  (`internal/guard/scriptwords.go`) whatever it holds: variables,
+  substitutions, subshells, background jobs, assignments and redirections.
+  Each command's words and each redirection's target are judged on their own;
+  a backslash before a newline joins lines, as in the shell; a here-document's
+  body is data, as it was. A line it cannot split (an unclosed quote), or one
+  with positional parameters, is read as one word, as before. `shellLine`
+  still alone decides what a standing approval covers.
+- A command's program, or the program a wrapper runs (`env`, `timeout`,
+  `nice`, `nohup`, `time`, `exec`, `command`), needs no question when it is in
+  the `bin` folder of a Python environment, conda (`conda-meta`) or a
+  virtualenv (`pyvenv.cfg`), and the program, its real folder, that `bin`
+  folder and the environment's folder belong to root or the person and nobody
+  else may write them (`envExecutable`). That is the authority a program on
+  `PATH` has: its arguments are still read, the same path given as an
+  argument is still asked about, and an environment another user could have
+  put there is not let through.
+- sed's and awk's script, grep's, rg's and `git grep`'s pattern, the values of
+  their `-e`, and `git log`'s `-L` range are not paths; the files they read
+  (`-f`, the operands) still are. `/dev/null` and the other standard devices
+  are no outside path.
+- The file tools' refusal of a path outside the repository and the scratch
+  directory now says where a throwaway file goes, written as
+  `$TMPDIR/<name>`: 68 writes were refused so in 56 attempts.
+
+The checks a person answers are otherwise unchanged: a path outside is still
+a security confirm, never covered by a standing approval, the judge or an
+unattended setting. Evidence: `TestArgvTriggerReadsAScriptWordByWord`,
+`TestArgvTriggerLetsAnEnvironmentsInterpreterRun`,
+`TestArgvTriggerReadsPatternsAsPatterns` and
+`TestRepoPinRefusalNamesTheScratchDirectory` fail on `d208b2c` and pass with
+the change. `TestTheJudgeIsToldOfAScratchScript` named `/etc/hostname` in a
+line with a variable and expected the judge to answer; it now names a
+repository file, since the outside path is a question for a person.

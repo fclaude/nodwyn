@@ -118,7 +118,7 @@ func TestModelWritesItsOwnPlan(t *testing.T) {
 		t.Fatal(e)
 	}
 	if msgs := requestMessages(t, r.srv.Requests[1]); msgs[len(msgs)-2].Role != "tool" ||
-		!strings.HasSuffix(msgs[len(msgs)-1].Content, "say so if you must deviate):\n"+shapedPlan) {
+		!strings.HasSuffix(msgs[len(msgs)-1].Content, "follow the run and write the plan again):\n"+shapedPlan) {
 		t.Fatalf("the plan does not follow plan-write's answer: %+v", msgs)
 	}
 	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))

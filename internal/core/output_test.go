@@ -173,3 +173,21 @@ func TestAModelMaySetSampling(t *testing.T) {
 		t.Fatal("no request replayed")
 	}
 }
+
+// A reply cut off while it weighed options is told to settle them with a
+// run, not by which is shorter or which the plan named: told only to think
+// less, a model on xarray-6599 dropped the option its runs had shown right
+// for "the minimal fix … (the plan)" (ADR 32, amended 2026-10-10).
+func TestACutReplyIsToldToSettleOptionsWithARun(t *testing.T) {
+	t.Parallel()
+	r := strategyRig(t, "", 10,
+		fake.Turn{Thinking: "option A or option B", DoneReason: "length"},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 2 || !strings.Contains(string(r.srv.Requests[1].Raw), "run the check that tells them apart") {
+		t.Fatalf("%d requests; the cut reply was not told to settle options with a run", len(r.srv.Requests))
+	}
+}
