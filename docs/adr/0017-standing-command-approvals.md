@@ -287,3 +287,59 @@ unattended setting. Evidence: `TestArgvTriggerReadsAScriptWordByWord`,
 the change. `TestTheJudgeIsToldOfAScratchScript` named `/etc/hostname` in a
 line with a variable and expected the judge to answer; it now names a
 repository file, since the outside path is a question for a person.
+
+## Amendment 2026-10-10: what a command does with a path
+
+Reading a `-c` line word by word (above) saw every path in it, and asked
+about more than before. Replayed through the trigger, the 2,874 shell commands
+of nodwyn's long-context benchmark attempts and the first canary of `85695c5`
+gave 442 questions, against 226 when they ran: 115 of those were gone, and 331
+commands that had run unasked now asked. The 331 were the trigger seeing what
+the one-word reading had hidden, and nearly all of them found or used the
+project's environment: `source /opt/miniconda3/etc/profile.d/conda.sh` (89),
+`ls /opt/*/envs` and `find / -maxdepth 6 -name python3.6`,
+`PY=$(ls -d /opt/*/envs/*/bin/python)`, reads of its installed packages, and
+`for p in /usr/bin/python3 …; do $p -V; done`. The canary of `85695c5` asked
+once in 36 commands, for `P=/opt/miniconda3/envs/testbed/bin/python`.
+
+A path outside the repository asks a person because the command may read what
+is there, change it or run it. So the trigger now asks what the command does
+with its paths (`access`, `internal/guard/scriptwords.go`):
+
+- A program that shows only names and metadata (`ls`, `stat`, `which`,
+  `readlink`, `realpath`, `du`, `test`, and `find` without `-exec`, `-ok`,
+  `-delete` or `-fprint`) may name any path. Inside a substitution, whose
+  output may become another command's arguments (`cat $(ls -d /etc/*)`), it
+  may name only a Python environment's paths.
+- A program that only reads (`cat`, `head`, `tail`, `grep`, `rg` without
+  `--pre`, `wc`, `diff`, `sort` without `-o`, …) may read in a Python
+  environment, a conda or virtualenv folder only root or the person can
+  change (`inEnvironment`, globs matched). `sed` and `awk` are not readers:
+  their scripts can write and run commands.
+- `source` and `.` may run a script in such an environment, the script and its
+  folder owned as the environment must be: conda's activation scripts.
+- A `for` loop's list and what `echo` and `printf` print are not file
+  accesses.
+- An assignment, before a command or after `export` and its kin, names its
+  paths: each element of a `:` list is judged on its own, and an
+  environment's may be named (`PATH=…/envs/testbed/bin:$PATH`,
+  `PYTHONPATH=/testbed:/testbed/tests`).
+- A program is always judged as a program: `/elsewhere/ls` is no names-only
+  `ls`.
+- The scratch directory written with a trailing slash is the scratch
+  directory. A refused `/tmp` path says where a throwaway file goes.
+
+Everything else asks as before: a command that writes or runs what it names
+outside (`cp`, `python3 /tmp/x.py`, `find -exec`, `sort -o`), a read outside
+an environment (`cat /etc/…`), `cd` outside, and a redirection to a file
+outside. Replayed again, the 2,874 commands ask 39 times: `/tmp` paths,
+mistyped scratch paths, the repository's parent, `/dev0` typos, a read of
+`/etc/ld.so.preload`, `cd /`, and three environment globs that matched nothing
+in the replay's stand-in tree. The model may now list any folder without the
+question, `~/.ssh` included: names, never contents, which the person chose
+over a question on every search for the environment.
+
+`TestArgvTriggerAsksWhatACommandDoesWithAPath` fails on `85695c5` and passes
+with the change. `TestArgvTriggerLetsAnEnvironmentsInterpreterRun` asked
+about `cat` on the environment's interpreter, a read now let through; it asks
+about `cp` over it instead.

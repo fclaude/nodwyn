@@ -460,7 +460,10 @@ and ``uses the network tool curl'' are the guard telling you what a
 \code{y} would do. A path anywhere in a \code{bash -c} line counts, a
 redirection's target included; the interpreter of a Python environment that
 only you or root can change runs without asking, as a program on your
-\code{PATH} does. A \emph{security} confirm\,---\,a write to \file{.nodwyn/},
+\code{PATH} does. Listing a folder anywhere (\code{ls}, \code{find} without
+\code{-exec}), reading or sourcing what is in such an environment, and a
+\code{for} loop's list ask nothing; reading a file elsewhere, writing or
+running something outside, and \code{cd} outside still ask. A \emph{security} confirm\,---\,a write to \file{.nodwyn/},
 \file{.git/}, CI configuration, \file{scripts/} or the \file{Makefile},
 content that looks like a key, a command line built from tool output, an
 image to attach\,---\,offers only \code{y} and \code{N}. No standing

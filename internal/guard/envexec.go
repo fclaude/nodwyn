@@ -3,6 +3,8 @@ package guard
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 )
 
@@ -29,9 +31,7 @@ func envExecutable(p string) bool {
 		return false
 	}
 	env := filepath.Dir(bin)
-	conda, cerr := os.Stat(filepath.Join(env, "conda-meta"))
-	venv, verr := os.Stat(filepath.Join(env, "pyvenv.cfg"))
-	if !(cerr == nil && conda.IsDir()) && !(verr == nil && venv.Mode().IsRegular()) {
+	if !isEnvironment(env) {
 		return false
 	}
 	real, err := filepath.EvalSymlinks(p)
@@ -48,6 +48,58 @@ func envExecutable(p string) bool {
 		}
 	}
 	return true
+}
+
+// isEnvironment reports whether dir is a Python environment's folder: it
+// holds conda-meta (a conda environment, or conda's own base) or pyvenv.cfg
+// (a virtualenv).
+func isEnvironment(dir string) bool {
+	conda, cerr := os.Stat(filepath.Join(dir, "conda-meta"))
+	venv, verr := os.Stat(filepath.Join(dir, "pyvenv.cfg"))
+	return (cerr == nil && conda.IsDir()) || (verr == nil && venv.Mode().IsRegular())
+}
+
+// inEnvironment reports whether path, or every match of it when it is a
+// glob, lies where it really points in a Python environment's folder that
+// only root or the person can change: the installed packages, the
+// environment's interpreters and conda's activation scripts. A path with a
+// parent component is not judged, since cleaning it before its links are
+// resolved could hide where it leads.
+func inEnvironment(path string) bool {
+	if !filepath.IsAbs(path) || slices.Contains(strings.Split(path, string(filepath.Separator)), "..") {
+		return false
+	}
+	paths := []string{filepath.Clean(path)}
+	if strings.ContainsAny(path, "*?[") {
+		matches, err := filepath.Glob(path)
+		if err != nil || len(matches) == 0 {
+			return false
+		}
+		paths = matches
+	}
+	for _, p := range paths {
+		if environmentOf(resolveExisting(p)) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// environmentOf returns the folder of the Python environment p is in, the
+// nearest one above it or p itself, when only root or the person can
+// change it; "" otherwise.
+func environmentOf(p string) string {
+	for dir := p; ; dir = filepath.Dir(dir) {
+		if isEnvironment(dir) {
+			if ownedSafely(dir) {
+				return dir
+			}
+			return ""
+		}
+		if filepath.Dir(dir) == dir {
+			return ""
+		}
+	}
 }
 
 // ownedSafely reports whether path belongs to root or to the person nodwyn

@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"bytes"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -20,20 +21,25 @@ import (
 // read as one word.
 
 // scriptCommand is one simple command of a -c line as the argv trigger reads
-// it: its words, assignments before the program included, and the files its
-// redirections name.
+// it: its words, assignments before the program included, the files its
+// redirections name, and whether it runs inside a command substitution,
+// whose output another command may then use as its own arguments.
 type scriptCommand struct {
 	words   []string
 	targets []string
+	sub     bool
 }
 
 var assignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
+// keywords open a compound command; the word after one is a program.
+var keywords = map[string]bool{"if": true, "then": true, "elif": true, "else": true, "do": true, "while": true, "until": true, "!": true, "{": true}
+
 // program is the index of a command's program among words: the first word
-// that is not an assignment, or len(words) when there is none.
+// that is not an assignment or a keyword, or len(words) when there is none.
 func program(words []string) int {
 	for i, w := range words {
-		if !assignment.MatchString(w) {
+		if !assignment.MatchString(w) && !keywords[w] {
 			return i
 		}
 	}
@@ -58,6 +64,8 @@ func scriptWords(line string) ([]scriptCommand, bool) {
 		in      bool
 		target  bool     // the word being read is a redirection's target
 		pending []string // the delimiters of here-documents whose bodies start at the next newline
+		nesting []byte   // the open $( (s) and ( (p) around the command being read
+		tick    bool     // inside a backquoted command
 	)
 	endWord := func() {
 		if !in {
@@ -75,6 +83,7 @@ func scriptWords(line string) ([]scriptCommand, bool) {
 	endCommand := func() {
 		endWord()
 		if len(cur.words) > 0 || len(cur.targets) > 0 {
+			cur.sub = tick || bytes.IndexByte(nesting, 's') >= 0
 			out = append(out, cur)
 		}
 		cur = scriptCommand{}
@@ -119,6 +128,7 @@ func scriptWords(line string) ([]scriptCommand, bool) {
 			endWord()
 		case c == '$' && i+1 < len(line) && line[i+1] == '(':
 			endCommand()
+			nesting = append(nesting, 's')
 			i++
 		case c == '&' && i+1 < len(line) && line[i+1] == '>':
 			// &> and &>> send both streams to the file that follows.
@@ -163,6 +173,14 @@ func scriptWords(line string) ([]scriptCommand, bool) {
 			target = true
 		case c == '\n' || c == ';' || c == '|' || c == '&' || c == '(' || c == ')' || c == '`':
 			endCommand()
+			switch {
+			case c == '(':
+				nesting = append(nesting, 'p')
+			case c == ')' && len(nesting) > 0:
+				nesting = nesting[:len(nesting)-1]
+			case c == '`':
+				tick = !tick
+			}
 			if c == '\n' {
 				for _, delim := range pending {
 					i = bodyEnd(line, i+1, delim)
@@ -322,3 +340,70 @@ func firstOperand(args []string, short, long, fileShort, fileLong string) map[in
 // devices are files every program may name: no data of the person's lives
 // there.
 var devices = map[string]bool{"/dev/null": true, "/dev/stdin": true, "/dev/stdout": true, "/dev/stderr": true, "/dev/tty": true, "/dev/zero": true, "/dev/random": true, "/dev/urandom": true}
+
+// How a command treats the paths among its words, by its program. The
+// trigger asks a person about a path outside the repository because a
+// command may read what is there, change it or run it; what a command only
+// lists, only prints or only reads in a Python environment needs no
+// question. Reading the line word by word took the trigger, on the 2,874
+// shell commands of the long-context benchmark, from 226 refusals to 442,
+// for commands of these kinds: finding the environment (ls /opt/*/envs,
+// find / -name python3.6), activating it (source
+// /opt/miniconda3/etc/profile.d/conda.sh, 89 of them), reading its packages,
+// and for loops over candidate interpreters (ADR 17, amended 2026-10-10:
+// what a command does with a path).
+const (
+	accessAny    = iota // it may read, change or run what it is given
+	accessNames         // names and metadata only
+	accessReads         // contents, read and never changed
+	accessSource        // the file runs in the shell itself
+	accessNone          // no file access: a for loop's list, what echo prints
+)
+
+// namesOnly show the names and metadata of what they are given; find is one
+// unless it runs, deletes or writes (writingFlags).
+var namesOnly = map[string]bool{"ls": true, "find": true, "stat": true, "which": true, "whereis": true, "type": true, "readlink": true, "realpath": true, "dirname": true, "basename": true, "du": true, "test": true, "[": true, "pwd": true}
+
+// readers read what they are given and write nothing; sort and rg only
+// without the flags in writingFlags. sed and awk are not among them: their
+// scripts can write files and run commands.
+var readers = map[string]bool{"cat": true, "head": true, "tail": true, "less": true, "more": true, "grep": true, "egrep": true, "fgrep": true, "rg": true, "ag": true, "wc": true, "diff": true, "cmp": true, "file": true, "strings": true, "od": true, "hexdump": true, "md5sum": true, "sha1sum": true, "sha256sum": true, "nl": true, "tac": true, "sort": true}
+
+// writingFlags make a names-only or reading program one that runs, deletes
+// or writes: find's actions, sort's output file, rg's preprocessor.
+var writingFlags = map[string][]string{
+	"find": {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"},
+	"sort": {"-o", "--output"},
+	"rg":   {"--pre"},
+}
+
+// access is how the command of words treats its paths: by the program a
+// wrapper runs, if any, else by its program.
+func access(words []string) int {
+	at := -1
+	for i := range programs(words) {
+		at = max(at, i)
+	}
+	if at < 0 {
+		return accessAny
+	}
+	base := filepath.Base(words[at])
+	for _, a := range words[at+1:] {
+		for _, f := range writingFlags[base] {
+			if a == f || strings.HasPrefix(a, f+"=") || (f == "-o" && strings.HasPrefix(a, "-o")) || (f == "--pre" && strings.HasPrefix(a, f)) {
+				return accessAny
+			}
+		}
+	}
+	switch {
+	case namesOnly[base]:
+		return accessNames
+	case readers[base]:
+		return accessReads
+	case base == "source" || base == ".":
+		return accessSource
+	case base == "for" || base == "echo" || base == "printf":
+		return accessNone
+	}
+	return accessAny
+}

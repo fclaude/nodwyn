@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/fclaude/nodwyn/internal/scheme"
@@ -341,34 +342,90 @@ func (a ArgvTrigger) Check(_ context.Context, p *scheme.Prim, args []scheme.Valu
 			commands = append([]scriptCommand{{words: argv[:2]}}, parsed...)
 		}
 	}
-	outside := func(tok string) {
+	var flagged []string
+	// outside asks about tok when it names a path outside the repository
+	// and the scratch directory, unless ok, given the path, lets it be.
+	outside := func(tok string, ok func(string) bool) {
 		if devices[tok] {
 			return
 		}
-		if path := argumentPath(tok, a.Root, false); path != "" {
-			if a.Scratch != "" && filepath.IsAbs(path) && filepath.Clean(path) == path && within(resolveExisting(path), resolveExisting(a.Scratch)) {
-				return
-			}
-			reasons = append(reasons, "command line names a path outside the repository: "+path)
-			security = true
+		path := argumentPath(tok, a.Root, false)
+		if path == "" || a.inScratch(path) || (ok != nil && ok(path)) {
+			return
 		}
+		reasons = append(reasons, "command line names a path outside the repository: "+path)
+		flagged = append(flagged, path)
+		security = true
 	}
 	for _, command := range commands {
 		programs, patterns := programs(command.words), patternWords(command.words)
+		first, kind := program(command.words), access(command.words)
 		for i, tok := range command.words {
-			if programs[i] && (isSystemBinary(tok) || envExecutable(tok)) || patterns[i] {
-				continue
+			switch {
+			case patterns[i]:
+			case programs[i]:
+				// A program is judged as one, whatever kind of command it
+				// makes: an ls from outside is no names-only ls.
+				if !isSystemBinary(tok) && !envExecutable(tok) {
+					outside(tok, nil)
+				}
+			case assignment.MatchString(tok) && (i < first || declares[filepath.Base(command.words[first])]):
+				// An assignment only names its paths, a list of them for
+				// PATH and PYTHONPATH: each is judged, and one in a Python
+				// environment may be named. export and its kin assign too.
+				_, value, _ := strings.Cut(tok, "=")
+				for _, part := range strings.Split(value, ":") {
+					outside(part, inEnvironment)
+				}
+			case kind == accessNone:
+			case kind == accessNames && !command.sub:
+				// Names and metadata are shown, never contents. Inside a
+				// substitution they may become another command's
+				// arguments, so there only an environment's may be named.
+			case kind == accessNames || kind == accessReads:
+				outside(tok, inEnvironment)
+			case kind == accessSource:
+				outside(tok, sourceable)
+			default:
+				outside(tok, nil)
 			}
-			outside(tok)
 		}
 		for _, tok := range command.targets {
-			outside(tok)
+			outside(tok, nil)
+		}
+	}
+	// Models write throwaway files to /tmp by habit: the refusal says where
+	// they go, as the prompts write it.
+	for _, p := range flagged {
+		if a.Scratch != "" && (p == "/tmp" || strings.HasPrefix(p, "/tmp/")) {
+			reasons = append(reasons, "a throwaway file goes in the scratch directory, written as $TMPDIR/"+filepath.Base(p))
+			break
 		}
 	}
 	if len(reasons) > 0 {
 		return Decision{Verdict: Confirm, Security: security, Reason: strings.Join(reasons, "; "), Detail: line}
 	}
 	return Decision{Verdict: Allow}
+}
+
+// declares are the shell builtins whose NAME=value arguments are
+// assignments, as one before a command is.
+var declares = map[string]bool{"export": true, "declare": true, "typeset": true, "local": true, "readonly": true}
+
+// inScratch reports whether path, absolute and without a parent component,
+// lies in the session's scratch directory, written with a trailing slash or
+// not: "<scratch>/" was asked about on the benchmark.
+func (a ArgvTrigger) inScratch(path string) bool {
+	return a.Scratch != "" && filepath.IsAbs(path) && !slices.Contains(strings.Split(path, string(filepath.Separator)), "..") &&
+		within(resolveExisting(filepath.Clean(path)), resolveExisting(a.Scratch))
+}
+
+// sourceable reports whether path is a script a shell may source without
+// the question: one in a Python environment, as conda's activation scripts
+// are, that it and its folder only root or the person can change.
+func sourceable(path string) bool {
+	real := resolveExisting(filepath.Clean(path))
+	return inEnvironment(path) && ownedSafely(real) && ownedSafely(filepath.Dir(real))
 }
 
 // isSystemBinary allows absolute paths to executables in the usual bin

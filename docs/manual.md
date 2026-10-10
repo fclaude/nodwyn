@@ -522,7 +522,12 @@ written unless every edit applies.
   what a `y` would do. A path anywhere in a `bash -c` line counts, a
   redirection's target included; the interpreter of a Python environment
   (`…/envs/NAME/bin/python`, `.venv/bin/python`) that only you or root can
-  change runs without asking, as a program on your `PATH` does.
+  change runs without asking, as a program on your `PATH` does. What the
+  command does with a path counts too: listing a folder anywhere (`ls`,
+  `find` without `-exec` or `-delete`, `which`), reading or `source`-ing
+  what is in such an environment (conda's activation script) and a `for`
+  loop's list ask nothing; reading a file elsewhere, writing or running
+  something outside, and `cd` outside still ask.
 
 ### Unattended runs
 

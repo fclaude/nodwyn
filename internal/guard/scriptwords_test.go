@@ -58,8 +58,8 @@ func TestArgvTriggerReadsAScriptWordByWord(t *testing.T) {
 // without the question, as one on PATH does: the system prompt tells the
 // model to find the project's environment and use its interpreter, and
 // naming it was 98 of the 223 refusals on the long-context benchmark (ADR
-// 17, amended 2026-10-10). Its arguments are still read, the same path as
-// an argument is still a path, and a folder that is not an environment, or
+// 17, amended 2026-10-10). Its arguments are still read, a command that
+// writes over it still asks, and a folder that is not an environment, or
 // one others may write, gets the question.
 func TestArgvTriggerLetsAnEnvironmentsInterpreterRun(t *testing.T) {
 	repo, base := t.TempDir(), t.TempDir()
@@ -102,7 +102,7 @@ func TestArgvTriggerLetsAnEnvironmentsInterpreterRun(t *testing.T) {
 	for _, argv := range [][]string{
 		{plain, "-c", "1"},
 		{open, "-c", "1"},
-		{"cat", conda},
+		{"cp", "x.py", conda},
 		{conda, filepath.Join(base, "x.py")},
 	} {
 		if d := argvVerdict(repo, argv...); d.Verdict != guard.Confirm || !d.Security {
@@ -141,5 +141,80 @@ func TestArgvTriggerReadsPatternsAsPatterns(t *testing.T) {
 		if d := argvVerdict(repo, argv...); d.Verdict != guard.Confirm || !strings.Contains(d.Reason, outside) {
 			t.Errorf("%q was not asked about: %+v", argv, d)
 		}
+	}
+}
+
+// What a command does with a path decides whether it needs the question
+// (ADR 17, amended 2026-10-10: what a command does with a path). Listing
+// names, a for loop's list, reading or sourcing what is in a Python
+// environment, an environment's paths in an assignment and the scratch
+// directory written with a trailing slash need none: on the long-context
+// benchmark they were most of the 442 commands the word-by-word reading
+// asked about. Reading contents outside an environment, listing inside a
+// substitution whose output another command takes, find's actions, sort's
+// output file, sourcing a script from elsewhere, writing into an
+// environment, running a program from outside and a /tmp path still ask,
+// the last with where a throwaway file goes.
+func TestArgvTriggerAsksWhatACommandDoesWithAPath(t *testing.T) {
+	repo, base, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	conda := filepath.Join(base, "miniconda3")
+	testbed := filepath.Join(conda, "envs", "testbed")
+	for _, dir := range []string{filepath.Join(conda, "conda-meta"), filepath.Join(conda, "etc", "profile.d"),
+		filepath.Join(testbed, "conda-meta"), filepath.Join(testbed, "bin"), filepath.Join(testbed, "lib", "site-packages")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, mode := range map[string]os.FileMode{
+		filepath.Join(conda, "etc", "profile.d", "conda.sh"):   0o644,
+		filepath.Join(testbed, "bin", "python"):                0o755,
+		filepath.Join(testbed, "lib", "site-packages", "x.py"): 0o644,
+		filepath.Join(outside, "evil.sh"):                      0o644,
+	} {
+		if err := os.WriteFile(path, []byte("#\n"), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scratch := filepath.Join(base, "scratch")
+	if err := os.Mkdir(scratch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	trigger := guard.DefaultArgvTrigger(repo)
+	trigger.Scratch = scratch
+	verdict := func(argv ...string) guard.Decision {
+		return trigger.Check(scheme.WithOrigin(context.Background(), scheme.OriginModel), shellP(), shellArgs(argv[0], argv[1:]...))
+	}
+	python := filepath.Join(testbed, "bin", "python")
+	for _, argv := range [][]string{
+		{"ls", "-la", outside},
+		{"bash", "-c", "ls -d " + base + "/*/envs 2>/dev/null; find / -maxdepth 1 -name python3.6 2>/dev/null | head -n 3"},
+		{"bash", "-c", "for p in /usr/bin/python3 " + python + "; do echo -n \"$p: \"; $p -V; done"},
+		{"bash", "-c", "source " + filepath.Join(conda, "etc", "profile.d", "conda.sh") + "; conda activate testbed; python -V"},
+		{"bash", "-c", "PY=$(ls -d " + base + "/*/envs/*/bin/python | head -1); \"$PY\" -V"},
+		{"bash", "-c", "P=" + python + "; \"$P\" --version"},
+		{"bash", "-c", "PYTHONPATH=" + repo + ":" + repo + "/tests PATH=" + filepath.Join(testbed, "bin") + ":$PATH python -m pytest -q"},
+		{"cat", filepath.Join(testbed, "lib", "site-packages", "x.py")},
+		{"ls", scratch + "/"},
+	} {
+		if d := verdict(argv...); d.Verdict != guard.Allow {
+			t.Errorf("%q asked: %+v", argv, d)
+		}
+	}
+	for _, argv := range [][]string{
+		{"cat", filepath.Join(outside, "evil.sh")},
+		{"bash", "-c", "cat $(ls -d " + outside + "/*)"},
+		{"find", outside, "-name", "*.sh", "-exec", "cat", "{}", "+"},
+		{"sort", "-o", filepath.Join(outside, "out"), "x.txt"},
+		{"bash", "-c", "source " + filepath.Join(outside, "evil.sh")},
+		{"cp", "x.py", filepath.Join(testbed, "lib", "site-packages", "x.py")},
+		{filepath.Join(outside, "ls"), repo},
+		{"python3", filepath.Join(outside, "evil.sh")},
+	} {
+		if d := verdict(argv...); d.Verdict != guard.Confirm || !d.Security {
+			t.Errorf("%q was not a security path confirm: %+v", argv, d)
+		}
+	}
+	if d := verdict("python3", "/tmp/check.py"); d.Verdict != guard.Confirm || !strings.Contains(d.Reason, "written as $TMPDIR/check.py") {
+		t.Errorf("a /tmp path's refusal does not say where a throwaway file goes: %+v", d)
 	}
 }

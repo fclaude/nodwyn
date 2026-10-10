@@ -75,7 +75,14 @@ line it cannot split is read as one word. A program in a Python environment's
 `bin` folder (conda or virtualenv) that only root or the person can change
 runs without the question, as a program on `PATH` does, and sed, awk, grep and
 rg scripts or patterns and `git log -L` ranges are not read as paths (ADR 17,
-amended 2026-10-10).
+amended 2026-10-10). What the command does with a path decides the rest: a
+program that only lists names and metadata (`ls`, `find` without actions,
+`stat`, `which`) may name any path, except inside a substitution; one that only
+reads (`cat`, `grep`, `head`) and `source` may use paths in such an
+environment; a `for` list and what `echo` prints are no file access; and an
+assignment's `:`-separated paths are judged one by one. A command that writes or
+runs what it names outside, a read outside an environment and `cd` outside still
+ask. The model may therefore list any folder unasked, names but not contents.
 
 These checks inspect argv and executable paths, not binary signatures or the
 behaviour of an approved process. Builds and tests execute project code with the
