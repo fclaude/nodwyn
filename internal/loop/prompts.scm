@@ -218,6 +218,10 @@
    ;; where escape and conditional_escape agree (django-16877), the string
    ;; '255' asserted where the hidden test wants 255 (django-11790), a repro
    ;; that printed the wrong __name__ and was accepted (django-14787).
+   ;; The same, for a choice: a check that passes for the option rejected
+   ;; as well does not decide it (django-16877 r2 chose by recall and its
+   ;; test asserted the recalled output; ADR 32, amended 2026-10-11).
+   "\n- When you chose between options (the plan's, or your own), run your check once against the option you rejected too: if it passes there as well, the check does not decide the choice, so extend it until it fails for the rejected option."
    "\n- A test or check that is to show your change is right includes an input that tells it apart from the nearest wrong version: the one you considered and rejected, or the simpler fix. A value that does not start at zero, an item already marked safe, a dict where the example used an object, the second call site, the expected value with its exact type. A check built only from the case you designed for passes for the wrong fix as readily as for the right one."
    ;; plan.scm: thinking was not sent back, and a model re-derived one
    ;; design at every request of a turn without changing anything. It is
@@ -329,6 +333,34 @@
   (string-append
    "Your last " (number->string attempts)
    " test commands did not run successfully. If the project's tests cannot run here, stop trying: finish, and say in your report that the change is unverified and why."))
+;; The parts of the change the passing check still passed without
+;; (check-without, strategy.scm): a check that cannot fail for a part does
+;; not test it. On the long-context benchmark every losing run checked its
+;; change with something that passed whether or not the change was right, and
+;; in the person's sessions Go tests stayed green while the page the change
+;; was for went blank (ADR 32, amended 2026-10-11).
+(define (finish-untested-parts-message check parts)
+  (string-append
+   "Your check (" (if (> (string-length check) 160) (string-append (substring check 0 160) "…") check)
+   ") still passes with each of these parts of your change taken out in turn, so it does not test them: "
+   (string-join
+    (map (lambda (p)
+           (let ((line (assoc-ref p "line" 0)))
+             (string-append (format "~a" (assoc-ref p "path" ""))
+                            (if (and (integer? line) (> line 0)) (string-append ":" (number->string line)) "")
+                            " (" (format "~a" (assoc-ref p "kind" "")) ", +" (format "~a" (assoc-ref p "added" 0))
+                            " -" (format "~a" (assoc-ref p "removed" 0)) " lines)")))
+         parts)
+    "; ")
+   ". Either a part is not needed, or the check cannot tell whether it works: extend the check so it fails without each part (an input, a case or a step that needs it) and run it again, or remove the part."))
+
+;; Commands the report cites that have not run since the last edit
+;; (strategy.scm, stale-citations).
+(define (finish-stale-citations-message spans)
+  (string-append
+   "Your report cites " (string-join (map (lambda (s) (string-append "`" s "`")) spans) ", ")
+   ", which has not run since your last edit. What you say works stands on a run of the code as it is now: run it again and report what it shows, or say the claim is unchecked."))
+
 ;; In a git work tree, files new since the turn began that git does not
 ;; track, said once: whatever is left in the repository is in the change.
 (define (finish-new-files-message files)

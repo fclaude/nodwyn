@@ -389,6 +389,65 @@
              'kept)
       outcome))
 
+;; Whether the host offers check-without (a git work tree with a scratch
+;; directory): it is hidden from the model, so primitive-info says.
+(define (check-without?)
+  (guard (e (else #f)) (primitive-info "check-without") #t))
+
+;; The parts of the change the passing call's check does not test: the ones
+;; check-without ran it without and it still exited 0. A check-without that
+;; fails says nothing, and is noted in the log.
+(define (untested-parts call)
+  (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+         (cmd (if (pair? a) (format "~a" (assoc-ref a "cmd" "")) ""))
+         (args (if (pair? a)
+                   (let ((l (assoc-ref a "args" '()))) (if (list? l) (map (lambda (x) (format "~a" x)) l) '()))
+                   '()))
+         (parts (guard (e (else (log-note (string-append "check-without failed: " (format "~a" (assoc-ref e 'message ""))))
+                                '()))
+                  (check-without cmd args)))
+         (untested (filter (lambda (p) (equal? (assoc-ref p "status" #f) 0)) parts)))
+    (log-note (string-append "check-without: " (number->string (length parts)) " parts taken out, "
+                             (number->string (length untested)) " the check still passed without"))
+    untested))
+
+;; The programs a command line runs: the first word of each command in it,
+;; and of a shell's -c line, by its plain words. A rough reading, enough to
+;; tell a command the report cites from a name or a value in backquotes.
+(define (command-programs line)
+  (let* ((cleaned (fold (lambda (s sep) (string-join (string-split s sep) " ; ")) line '("&&" "||" "|" "\n" "(" ")")))
+         (segments (string-split cleaned ";")))
+    (apply append
+           (map (lambda (seg)
+                  (let ((words (filter (lambda (w) (not (string-empty? w))) (string-split (string-trim seg) " "))))
+                    (cond ((null? words) '())
+                          ((and (pair? (cdr words)) (member (car words) '("bash" "sh")) (equal? (cadr words) "-c"))
+                           (if (pair? (cddr words)) (list (car (reverse (string-split (caddr words) "/")))) '()))
+                          (else (list (car (reverse (string-split (car words) "/"))))))))
+                segments))))
+
+;; The text between backquotes in a reply.
+(define (code-spans text)
+  (let walk ((parts (string-split text "`")) (i 0) (out '()))
+    (cond ((null? parts) (reverse out))
+          ((odd? i) (walk (cdr parts) (+ i 1) (cons (string-trim (car parts)) out)))
+          (else (walk (cdr parts) (+ i 1) out)))))
+
+;; The commands a report cites that have not run since the last edit: spans
+;; in backquotes that start with a program the turn ran, matched by no
+;; command line run since. In the person's sessions, "done" was claimed on
+;; the strength of a run that predated the last edit, and on runs never made
+;; at all (ADR 32, amended 2026-10-11).
+(define (stale-citations text ran programs)
+  (filter (lambda (span)
+            (let ((first (car (string-split span " "))))
+              (and (string-contains? span " ")
+                   (member first programs)
+                   (not (let any ((ls ran))
+                          (and (pair? ls)
+                               (or (string-contains? (car ls) span) (string-contains? span (car ls)) (any (cdr ls)))))))))
+          (code-spans text)))
+
 ;; Files new in the repository that the turn's plan names: the test file a
 ;; Test: step adds, the release note a Docs: step writes. The untracked-files
 ;; reminder is for what a run left behind, and on the long-context benchmark
@@ -403,7 +462,13 @@
          (or (string-contains? text p) (string-contains? text name)))))
 
 (define (evidence-loop request)
-  (let ((before (git-state)))
+  ;; passing: the latest check or test call that exited 0 since the last
+  ;; edit, for check-without. ran: the command lines run since the last edit,
+  ;; and every program the turn ran, for the report's citations. ablated and
+  ;; cited: whether those two checks were made, once a turn each. named: the
+  ;; new files the untracked-files reminder named, which check-without's
+  ;; answer leaves out rather than name them twice.
+  (let ((before (git-state)) (passing #f) (ran '()) (programs '()) (ablated #f) (cited #f) (named '()))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
@@ -424,6 +489,15 @@
                        (scripts scripts) (written written) (outcome outcome) (told told))
               (cond ((pair? cs)
                      (let ((c (car cs)) (r (car rs)))
+                       (when (equal? (assoc-ref c 'name) "shell-exec")
+                         (set! ran (cons (command-line c) ran))
+                         (set! programs (append (command-programs (command-line c)) programs)))
+                       (when (and (not (base-run? c)) (or (check-run? c scripts) (test-call? c))
+                                  (equal? (run-status r) 0))
+                         (set! passing c))
+                       (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)))
+                         (set! passing #f)
+                         (set! ran '()))
                        (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
                               (let ((name (scratch-name c)))
                                 (if name
@@ -481,6 +555,27 @@
                            (or told (equal? gap finish-failing-message))
                            (or unchanged-told (not changed))))
                     ((and (pair? new) (not turn-stopping))
+                     (set! named new)
                      (add-message (finish-new-files-message new))
                      (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0 outcome
-                           told unchanged-told)))))))))
+                           told unchanged-told))
+                    ;; The change's parts the passing check does not test
+                    ;; (check-without), asked once a turn.
+                    ((and changed (not turn-stopping) (not ablated) passing (memq outcome '(passed kept)) (check-without?))
+                     (set! ablated #t)
+                     (let ((parts (filter (lambda (p) (not (member (assoc-ref p "path" "") named))) (untested-parts passing))))
+                       (if (pair? parts)
+                           (begin (add-message (finish-untested-parts-message (command-line passing) parts))
+                                  (loop (ask-model) edited tested failed-runs offered reminders scripts written noted excused 0
+                                        outcome told unchanged-told))
+                           (loop reply edited tested failed-runs offered reminders scripts written noted excused 0
+                                 outcome told unchanged-told))))
+                    ;; A command the report cites that has not run since the
+                    ;; last edit, asked once a turn.
+                    ((and changed (not turn-stopping) (not cited)
+                          (pair? (stale-citations (format "~a" (assoc-ref reply 'content "")) ran programs)))
+                     (set! cited #t)
+                     (add-message (finish-stale-citations-message
+                                   (stale-citations (format "~a" (assoc-ref reply 'content "")) ran programs)))
+                     (loop (ask-model) edited tested failed-runs offered reminders scripts written noted excused 0
+                           outcome told unchanged-told)))))))))

@@ -216,6 +216,11 @@ evidence:
     and pytest's 4 and 5) is no failure, and a run on the copy of the last
     commit (\code{\$TMPDIR/base}) that fails too is the comparison done.
   \item At most \code{finish-reminders} (2) such reminders per turn.
+  \item Before a turn with a change ends on a passing check, that check runs
+    again with each part of the change taken out in turn
+    (\code{check-without}); the parts it still passes without are named, once:
+    the check does not test them. A command the report cites that has not run
+    since the last edit is named too, once.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),
     the no-change reminder is \code{finish-no-change-reviewed-message}: make

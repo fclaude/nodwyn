@@ -558,6 +558,7 @@ func TestThePromptsLeaveThePlansChoicesToTheRuns(t *testing.T) {
 			"includes an input that tells it apart from the nearest wrong version",
 			"the existing tests that encode the old behaviour the request changes",
 			"Only those: an existing test of something the request does not mention is a constraint",
+			"run your check once against the option you rejected too",
 			"conda env list",
 			"PYTHONPATH=$TMPDIR/base",
 		} {
@@ -607,5 +608,72 @@ func TestTheExplorerAndThePlannerLeaveChoicesOpen(t *testing.T) {
 		if !strings.Contains(planner, want) {
 			t.Errorf("the planner's request lacks %q", want)
 		}
+	}
+}
+
+// codeRepo is a git repository with calc.py committed, for the checks that
+// look at code: check-without leaves documents such as tracked.txt alone.
+func codeRepo(t *testing.T) string {
+	t.Helper()
+	repo := gitWorkTree(t)
+	cmd := exec.Command("sh", "-c", "printf 'def one():\\n    return 1\\n\\n\\ndef two():\\n    return 2\\n' > calc.py && git add calc.py && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m code")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return repo
+}
+
+// Before an unattended turn ends on a passing check, the check runs again
+// with each part of the change taken out in turn (check-without), and the
+// parts it still passes without are named: it does not test them. Here the
+// check looks at one()'s return only, so two()'s change is named, once (ADR
+// 32, amended 2026-10-11).
+func TestTheChecksUntestedPartsAreNamed(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // told the check does not test two()'s change
+		fake.Turn{Content: "two() is part of the change; the check now covers it."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 4)
+	if !strings.Contains(msg, "still passes with each of these parts of your change taken out") || !strings.Contains(msg, "calc.py:6 (hunk") || strings.Contains(msg, "calc.py:2 (hunk") {
+		t.Fatalf("untested parts message: %q", msg)
+	}
+	if data, _ := os.ReadFile(filepath.Join(repo, "calc.py")); !strings.Contains(string(data), "return 20") {
+		t.Fatalf("calc.py was not put back as the model left it:\n%s", data)
+	}
+}
+
+// A report that cites a command as its evidence is asked about it, once,
+// when that command has not run since the last edit: "done" was claimed on
+// runs that predated the last edit (ADR 32, amended 2026-10-11).
+func TestAReportCitingAnOldRunIsAsked(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w1"),
+		shellArgs("t1", "bash", "-c", "pytest -q tests || true"), // a run, before the last edit
+		write("w2", "fix.txt", "y\n"),
+		shell("t2", "true # go test ./..."), // a run after it, of something else
+		fake.Turn{Content: "Done: `pytest -q tests` passes."},
+		fake.Turn{Content: "Re-ran it: unchecked after the last edit."},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 5); !strings.Contains(msg, "cites `pytest -q tests`, which has not run since your last edit") {
+		t.Fatalf("citation message: %q", msg)
 	}
 }

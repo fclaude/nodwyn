@@ -961,3 +961,47 @@ from reading alone, and kept it.
 Each test above fails on `d208b2c` and passes with the change.
 `TestPlannerExploresFirst`, `TestUnreviewedTurnIsNotOfferedAWayOut` and
 `TestModelWritesItsOwnPlan` now expect the new texts.
+
+## Amendment 2026-10-11: a check must be able to fail
+
+Two runs of `9c44245` on the long-context cohort, read by hand against the
+d64209d runs, showed one failure behind every task that flipped: no run fed the
+candidate fixes the input that tells them apart. django-16877 r2 asserted its
+recalled output; xarray-6599 never ran timedelta data that does not start at
+0; django-14787 r2 read `bound_method called with…` as success; pytest-7205
+r2's reproduction used a flag that does not reproduce. The person's own
+sessions show the same in work that is no bug fix: Go tests and `node --check`
+green while the page went blank on a click (the jev-key console change), and
+"done" twice on broken UI with Go tests green (muse-spark). A rule to test the
+nearest wrong version (2026-10-10) shows up in plans and rarely in the tests
+that run, so the loop now checks what a rule cannot:
+
+- **Each part of the change against the check.** Before an unattended turn
+  with a change ends on a check that passed since the last edit, the host runs
+  that check again with each part of the change taken out in turn and put back
+  (`check-without`, `internal/prim/without.go`): a hunk of a changed code file,
+  or a whole new or deleted file, at most 8 and within 5 minutes in all,
+  documents, tests and comment-only hunks left out. The parts it still passes without are named, once a turn
+  (`finish-untested-parts-message`): either a part is not needed, or the check
+  cannot tell whether it works. It needs no notion of the task, only the diff
+  and the model's own check, so it applies to a feature, a refactor or a fix
+  alike. New files the untracked-files reminder already named are left out of
+  the answer. `TestCheckWithoutTakesOutEachPart`,
+  `TestCheckWithoutStopsAtItsBudget`, `TestTheChecksUntestedPartsAreNamed`.
+- **A cited command must have run since the last edit.** A command the final
+  report cites in backquotes, starting with a program the turn ran, that no
+  command line run since the last edit matches is named, once
+  (`stale-citations`, `finish-stale-citations-message`). A plain "done" cites
+  nothing and is not asked. `TestAReportCitingAnOldRunIsAsked`.
+- **The rejected option, too.** A working rule asks to run the check once
+  against the option a choice rejected: a check that passes there as well does
+  not decide it. `TestThePromptsLeaveThePlansChoicesToTheRuns` covers its text.
+- **Not built.** Asking every claim in a report for its run: most reports end
+  on a plain "done" with the evidence above it, and a reminder on each would
+  nag. A check that the rejected option really fails: that needs the option
+  written out as code, which the plan only names.
+
+They are to be measured on the commit-replay set kept with the benchmark runs
+(features, refactors and fixes from this repository's history, graded by each
+commit's own tests) as well as on SWE-bench, since SWE-bench alone covers bug
+fixes. Each test above fails on `9c44245` and passes with the change.
