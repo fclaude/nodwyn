@@ -6,6 +6,14 @@ become side-work in the next phase.
 
 Format: `date · session · what happened · what it cost · idea`
 
+- 2026-10-12 · promotion · `make accept` stopped at `staticcheck ./...` on
+  this Mac after Go moved to 1.27.2: the latest release, v0.8.1, reads
+  unified export data up to version 4 and Go 1.27.2 writes 5, so the lint
+  failed before a test ran and every promotion with it · **resolved:
+  `staticcheck` is a `tool` in go.mod run by `make lint` (`go tool
+  staticcheck`), pinned with `golang.org/x/tools` v0.51.0, which reads
+  version 5; the installed analyzer no longer decides, and CI installs none
+  (ADR 33, amended)**
 - 2026-10-03 · chat on the worktree task (`20261003T063228Z-73791682`) · a provider's 429 ended a turn with two of five plan steps marked; after "continue" the plan panel said "none recorded for this ask", the model read again and wrote the plan again, marking steps 1 and 2 a second time; later the reading reminder asked for a plan it had, and it wrote it a third time with "[done]" in the steps' text · minutes of repeated work and a plan panel that showed nothing marked · **resolved: a turn that did not finish leaves its plan, with its marks, to the next message (ADR 35, amended); a turn with a plan is told to go on with it (ADR 32, amended)**
 - 2026-10-02 · chat on the jev-key UI task, read back from its log · nothing in the log says the machine slept: a suspend eight seconds after a `shell-exec` call shows as 2 h 11 min between the call and its result in `ts`, while the result's `ms` (monotonic) says 20.7 s · a review took a suspend for a two-hour approval wait · record a note when the host notices a jump between wall and monotonic time
 - 2026-10-02 · chat on the jev-key UI task · with "allow all" off and no judge set up, `node --check` asked like any other command; `.nodwyn/allow.toml` lists only Go and git commands · a confirm for a read-only syntax check · decide whether syntax and lint checks belong in the list (plan.md, smaller gaps)

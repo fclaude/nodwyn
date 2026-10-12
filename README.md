@@ -86,7 +86,8 @@ make selfcheck  # the candidate proves itself (ADR 13)
 make promote    # accept + selfcheck, then ~/.local/bin/nodwyn-stable and nodwyn-egress (webview build; version = commit)
 ```
 
-Requires Go 1.26 or newer (ADR 33) and `staticcheck` (`go install honnef.co/go/tools/cmd/staticcheck@latest`).
+Requires Go 1.26 or newer (ADR 33). `make lint` builds its `staticcheck`
+from the module (`go.mod`'s `tool`), so nothing else needs installing.
 
 Text search (`index-grep`) uses the shared guard and produces session-scoped
 results. See [memory and retrieval](docs/memory.md) for its limits.
