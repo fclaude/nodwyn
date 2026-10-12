@@ -483,3 +483,33 @@ Effort · Judge. Jev is no longer a preset or a kind of model provider: it is
 added under Settings › Judge, since it carries no model. A provider form
 that needs a key while the keychain is locked shows the keychain's form
 beside it.
+
+## Amendment 2026-10-12: a conversation is matched by the model it talks to
+
+A conversation opened on a `[models.NAME]` entry was said to be gone once
+that entry became the default: the picker said "127-0-0-1-fast is no longer in
+your list of models" and offered to start nothing, while the daemon went on
+resolving the name and sending to that model. `session.info` names the entry
+the conversation was opened on, and the entry is listed once, as `control`
+(above): the console matched a selection to a choice by name alone, so a model
+that had merely changed its name in the list looked lost.
+
+- **A choice is matched to a selection by the model it is, not by the name it
+  had.** A conversation knows the model it talks to and where (the server
+  `session.info` reports), and a listed choice naming that model on that
+  server is what the conversation is, whatever it is called now. A choice kept
+  for the next task names no model of its own and is matched by its name; a
+  name the choices do not list is looked up in the daemon's registry
+  (`models.status`, which holds every entry), so an entry listed under another
+  name is not called gone. A name in neither is gone, as before: a model a
+  person removes still says so.
+- **The efforts are the conversation's own.** A choice matched to a
+  conversation by name or model need not take the same efforts when two
+  entries name one model (`Config.ModelChoices` skips only the default's
+  double), so the daemon's word on the conversation's model is what its
+  effort select and its refusal of an effort the model does not take use.
+
+Not built: matching a conversation to a choice when the conversation's model
+has no server name and the choice's does (an entry on a named server whose
+address and provider match an inline `[control]`), which `session.info` says
+nothing of.

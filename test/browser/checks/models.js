@@ -73,6 +73,26 @@ check(async () => {
   const page = watch(await browser.newPage({ viewport: { width: 1280, height: 1000 } }));
   const sent = requests(page);
   const step = (m) => console.log("step:", m);
+  // saveDefault chooses a default model and effort in Settings and waits for
+  // the page to have finished with it. The toast is the last thing before
+  // the settings page redraws itself, and that redraw replaces whatever page
+  // is shown (renderSettings draws straight into the view): a wait that a
+  // toast still up from an earlier save satisfies returns before it, and the
+  // redraw then lands over the task the check goes back to. The toast is
+  // hidden first, so the wait sees this save's own.
+  const saveDefault = async (name, effort) => {
+    await page.selectOption("#default-model-model", name);
+    if (effort) await page.selectOption("#default-model-effort", effort);
+    await page.evaluate(() => {
+      const toast = document.querySelector("#toast");
+      if (toast) toast.hidden = true;
+    });
+    await page.click("#default-save");
+    await page.waitForFunction(() => {
+      const toast = document.querySelector("#toast");
+      return !!toast && !toast.hidden && toast.textContent.includes("Saved. New tasks start on this model and effort");
+    }, null, { timeout: 10000 });
+  };
   const go = (hash) => page.evaluate((h) => (location.hash = h), hash);
   const config = () => fs.readFileSync(configFile, "utf8");
   // What the chat provider was sent, as [model, effort] ("-" for none).
@@ -592,6 +612,62 @@ check(async () => {
     return reply.error?.message || "";
   }, id);
   assert.ok(refused.includes("does not take the effort") && refused.includes("low, medium, high"), "refusal: " + refused);
+
+  // ---------- a model that becomes the default while a conversation is on it ----------
+  // The conversation names the [models.NAME] entry it was opened on. Made the
+  // default, that entry is listed once, as "control" (ModelChoices): the
+  // conversation talks to that model still, and the picker says so rather
+  // than calling the entry gone.
+  await go(`#/task/${fastId}`);
+  await page.waitForSelector(".task[data-loaded]");
+  await page.click(".task-actions button:text-is('Resume')");
+  await page.waitForSelector(".task-actions button:text-is('Close')");
+  await page.waitForSelector("#task-model-model", { state: "attached" });
+  await go("#/settings/models");
+  await page.waitForSelector("#default-model");
+  await saveDefault("127-0-0-1-fast");
+  assert.deepStrictEqual(sent.of("settings.control.write").at(-1), { name: "127-0-0-1-fast", effort: "" });
+  await go(`#/task/${fastId}`);
+  await page.waitForSelector(".task[data-loaded]");
+  // The picker is redrawn when the change reaches the page, and a redraw
+  // replaces the element: wait for what it says, not for the element. The
+  // entry is no longer one of the choices once it is the default.
+  await until("the conversation's picker to have read the change", async () => !(await page.$$eval("#task-model-model option", (os) => os.map((o) => o.value))).includes("127-0-0-1-fast"));
+  assert.ok(!(await noteText()).includes("no longer in your list"), "the conversation on the model that became the default is said to be gone: " + (await noteText()));
+  assert.strictEqual(await page.inputValue("#task-model-model"), "control", "the picker does not show the model that is now the default");
+  assert.ok((await selected("#task-model-model")).startsWith("fast (default)"), "the picker does not show the default: " + (await selected("#task-model-model")));
+  const answered = await page.locator(".prose").count();
+  await page.fill("#reply", "Still here");
+  await page.press("#reply", "Enter");
+  await page.waitForFunction((n) => document.querySelectorAll(".prose").length > n, answered, { timeout: 20000 });
+  await idle();
+  step("a conversation on a model that became the default says so, and still sends");
+  // A choice kept for the next task that names the entry is not gone either:
+  // the daemon still lists the name, and the choice it is has become the
+  // default.
+  await go("#/");
+  await page.evaluate(() => localStorage.setItem("nodwyn-new-task-model", JSON.stringify({ name: "127-0-0-1-fast", effort: "" })));
+  await page.reload();
+  await page.waitForSelector("html[data-ready]", { timeout: 20000 });
+  assert.ok(!(await page.innerText("#new-task-model")).includes("no longer in your list"), "a choice kept for the next task on the model that became the default is said to be gone: " + (await page.innerText("#new-task-model")));
+  assert.strictEqual(await page.inputValue("#new-task-model-model"), "control", "the kept choice does not show the model that is now the default");
+  await page.fill("#task", "Anything");
+  assert.strictEqual(await page.isDisabled("button[aria-label='Start the task']"), false, "a task cannot start on the model that became the default");
+  await page.fill("#task", "");
+  await page.evaluate(() => localStorage.removeItem("nodwyn-new-task-model"));
+  step("a choice kept for the next task on that model is not called gone");
+  // The default moves back; the conversation is on its entry again.
+  await go("#/settings/models");
+  await page.waitForSelector("#default-model");
+  await saveDefault("127-0-0-1-reasoner", "high");
+  await go(`#/task/${fastId}`);
+  await page.waitForSelector(".task[data-loaded]");
+  await until("the conversation's picker to have read the change", async () => (await page.$$eval("#task-model-model option", (os) => os.map((o) => o.value))).includes("127-0-0-1-fast"));
+  assert.strictEqual(await page.inputValue("#task-model-model"), "127-0-0-1-fast", "the conversation did not return to its entry");
+  assert.ok(!(await noteText()).includes("no longer in your list"), "the conversation on the entry is said to be gone: " + (await noteText()));
+  await page.click(".task-actions button:text-is('Close')");
+  await page.waitForSelector(".task-actions button:text-is('Resume')");
+  step("with the default moved back, the conversation names its entry again");
 
   // ---------- a model that is removed while it is in use ----------
   // The task on "fast" is closed; "fast" leaves the list; opening the task
