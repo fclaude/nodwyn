@@ -64,6 +64,116 @@ check(async () => {
       out.runningCommand = { wrapped, waiting, finished, direct, cleared, started };
       t.end();
     }
+    {
+      const { root, t } = fresh();
+      const id = call(t, "git-log", { n: 3 });
+      const decision = { origin: "model", prim: "shell-exec", decision: "allow", args: '("git" ("log" "--oneline" "-3"))' };
+      try {
+        t.render({ kind: "guard.decision", payload: decision });
+        t.render({ kind: "guard.decision", payload: { ...decision, args: '("git" ("log" "--oneline" "-5"))' } });
+      } catch (error) {
+        out.readWrapperDecisionError = error.message;
+      }
+      out.readWrapperRepeatedDecisions = { nodes: root.querySelectorAll(".call .args").length, command: root.querySelector(".call .args")?.textContent, active: root.querySelector(".activity-fold-what")?.textContent };
+      done(t, id, "git-log", "exit 0", 20);
+      out.readWrapperRepeatedDecisions.finished = !root.querySelector(".activity-fold-what").textContent.includes("running");
+      t.end();
+    }
+
+    // A read-style wrapper can run a shell primitive: newer logs retain its
+    // redacted arguments, but its disclosure has no step node. Replay must
+    // reach the replies after it, so Statistics includes their usage too.
+    async function newerSessionReplayLoadsHistoryAndStatistics() {
+      const { TaskView } = await import("/task.js");
+      const { Desk } = await import("/desk.js");
+      const ev = (seq, kind, payload = {}) => ({ seq, kind, payload, ts: new Date(Date.UTC(2026, 0, 1, 0, 0, seq)).toISOString() });
+      const commands = ['shell-exec ("git" ("log" "--oneline" "-3"))', 'shell-start ("go" ("test" "./..."))'];
+      const history = [
+        ev(1, "user.msg", { text: "Load newer session" }),
+        ev(2, "llm.req", { model: "fake" }),
+        ev(3, "llm.resp", { usage: { prompt_tokens: 100, cached_tokens: 25, output_tokens: 20, cost: 0.02, wall_ms: 200 } }),
+        ev(4, "tool.call", { id: "g1", name: "git-log", args: { n: 3 }, origin: "model" }),
+        ev(5, "guard.decision", { origin: "model", prim: "shell-exec", decision: "allow", checker: "standing", args: '("git" ("log" "--oneline" "-3"))' }),
+        ev(6, "tool.result", { id: "g1", name: "git-log", ok: true, value: "exit 0\nRecent commits", ms: 12 }),
+        ev(7, "tool.call", { id: "r1", name: "read-check", args: {}, origin: "model" }),
+        ev(8, "guard.decision", { origin: "model", prim: "shell-start", decision: "confirm", answer: "yes", scope: "once", args: '("go" ("test" "./..."))' }),
+        ev(9, "tool.result", { id: "r1", name: "read-check", ok: true, value: "p1: running", ms: 20 }),
+        ev(10, "llm.req", { model: "fake" }),
+        ev(11, "llm.resp", { content: "History loaded.", usage: { prompt_tokens: 300, cached_tokens: 75, output_tokens: 60, cost: 0.06, wall_ms: 600 } }),
+        ev(12, "turn.end", { outcome: "completed" }),
+      ];
+      const replay = async (open, empty = false, delivery = "history") => {
+        const requests = [];
+        const listeners = new Set();
+        const errors = [];
+        const emit = (event) => {
+          for (const fn of listeners) {
+            try { fn({ method: "session.event", params: { id: "newer", ...event } }); }
+            catch (error) { errors.push(error.message); }
+          }
+        };
+        const conn = {
+          live: true,
+          has: () => false,
+          onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+          onResult: () => () => {},
+          async call(method, params) {
+            requests.push({ method, params });
+            const page = (after) => ({ events: empty ? [] : after ? history.slice(5) : history.slice(0, 5), next: after ? 12 : 5, through: empty ? 0 : 12, more: !empty && !after });
+            if (method === "session.subscribe") {
+              if (delivery === "live") return { page: { events: [], through: 0, more: false }, busy: false };
+              if (delivery === "queued") {
+                // The durable prefix and queued delivery overlap at the
+                // watermark; that call must not be drawn or counted twice.
+                for (const event of history.slice(3)) { emit(event); emit(event); }
+                return { page: { events: history.slice(0, 4), through: 4, more: false }, busy: false };
+              }
+              return { page: page(0), busy: false };
+            }
+            if (method === "log.read") return page(params.after);
+            if (method === "session.info" || method === "session.unsubscribe") return {};
+            throw new Error(`unexpected request: ${method}`);
+          },
+        };
+        const desk = new Desk(conn);
+        desk.sessions.set("newer", { id: "newer", repo: "/tmp/newer", open, busy: false });
+        const task = new TaskView(conn, desk, () => {});
+        document.body.replaceChildren(task.root);
+        await task.open("newer");
+        if (delivery === "live") for (const event of history) { emit(event); emit(event); }
+        const figures = () => {
+          task.el.side.querySelectorAll('[role="tab"]')[2].click();
+          const panel = task.el.side.querySelector("[data-totals]");
+          const rows = Object.fromEntries([...(panel?.querySelectorAll(".kv") || [])].map((row) => [row.firstElementChild.textContent, row.lastElementChild.textContent]));
+          return {
+            loaded: task.root.hasAttribute("data-loaded"), failed: task.failed, errors: [...errors],
+            completed: task.el.transcript.textContent.includes("History loaded."),
+            commands: [...task.el.transcript.querySelectorAll(".call .args")].map((node) => node.textContent),
+            decisions: [...task.el.transcript.querySelectorAll(".call .stat")].map((node) => node.textContent),
+            rows, empty: task.el.side.querySelector(".aside-panel")?.textContent,
+            cache: task.el.side.querySelector('[data-monitor="cache"]')?.textContent,
+            requests: requests.filter((r) => ["session.subscribe", "log.read"].includes(r.method)),
+          };
+        };
+        const result = figures();
+        if (delivery !== "history") {
+          delivery = "history";
+          await task.open("newer");
+          result.reopened = figures();
+          task.item.open = false;
+          await task.open("newer");
+          result.closed = figures();
+        }
+        task.dispose();
+        return result;
+      };
+      async function newerSessionLiveAndReopenedStatisticsAgree() {
+        return { live: await replay(true, false, "live"), queued: await replay(true, false, "queued") };
+      }
+      out.newerSessionLiveAndReopenedStatisticsAgree = await newerSessionLiveAndReopenedStatisticsAgree();
+      return { open: await replay(true), closed: await replay(false), empty: await replay(false, true), commands };
+    }
+    out.newerSessionReplayLoadsHistoryAndStatistics = await newerSessionReplayLoadsHistoryAndStatistics();
 
     // The screenshot's routine judge, context, harness and tool activity is
     // one closed row, not a stack of separate disclosures and token lines.
@@ -956,6 +1066,24 @@ check(async () => {
   console.log(JSON.stringify(results, null, 1));
   const fail = [];
   const want = (ok, what) => ok || fail.push(what);
+  const replay = results.newerSessionReplayLoadsHistoryAndStatistics;
+  for (const [state, r] of [["open", replay.open], ["closed", replay.closed]]) {
+    want(r.loaded && !r.failed && r.completed, `newerSessionReplayLoadsHistoryAndStatistics ${state}: replay reaches completion: ${JSON.stringify(r)}`);
+    want(r.commands.join(";") === replay.commands.join(";"), `newerSessionReplayLoadsHistoryAndStatistics ${state}: nested commands retained on read rows: ${JSON.stringify(r.commands)}`);
+    want(r.decisions[0]?.includes("standing approval") && r.decisions[1]?.includes("you allowed once"), `newerSessionReplayLoadsHistoryAndStatistics ${state}: approval receipts retained: ${JSON.stringify(r.decisions)}`);
+    want(r.rows["Total spend"] === "$0.080" && r.rows["Total running time"] === "11 s" && r.rows["Total working time"] === "10 s" && r.rows["Model wait"] === "2.0 s" && r.rows["Tool time"] === "3.0 s" && r.rows["Model speed"] === "100.0 tok/s · 2 requests" && r.rows["Token cache rate"] === "25%" && r.cache === "25%", `newerSessionReplayLoadsHistoryAndStatistics ${state}: independently calculated Statistics: ${JSON.stringify(r.rows)}`);
+    want(r.requests.length === 2 && r.requests[0].method === (state === "open" ? "session.subscribe" : "log.read") && r.requests[1].method === "log.read" && r.requests[1].params.after === 5 && r.requests[1].params.through === 12, `newerSessionReplayLoadsHistoryAndStatistics ${state}: fixed watermark paging: ${JSON.stringify(r.requests)}`);
+  }
+  want(replay.empty.loaded && !replay.empty.failed && replay.empty.empty === "Nothing has run yet." && Object.keys(replay.empty.rows).length === 0, `newerSessionReplayLoadsHistoryAndStatistics: genuinely empty history stays empty: ${JSON.stringify(replay.empty)}`);
+  const repeated = results.readWrapperRepeatedDecisions;
+  want(!results.readWrapperDecisionError && repeated.nodes === 1 && repeated.command === 'shell-exec ("git" ("log" "--oneline" "-5"))' && repeated.active.includes(repeated.command) && repeated.finished, `read wrapper repeated decisions update one node and clear activity after result: ${JSON.stringify(repeated)}`);
+  const delivered = results.newerSessionLiveAndReopenedStatisticsAgree;
+  for (const [state, r] of Object.entries(delivered)) {
+    for (const view of [r, r.reopened, r.closed]) {
+      want(view.loaded && !view.failed && view.errors.length === 0 && view.completed && JSON.stringify(view.rows) === JSON.stringify(replay.open.rows) && view.cache === "25%", `newerSessionLiveAndReopenedStatisticsAgree ${state}: live/queued, reopened and saved Statistics agree: ${JSON.stringify(view)}`);
+      want(view.commands.join(";") === replay.commands.join(";") && view.decisions.join(";") === replay.open.decisions.join(";"), `newerSessionLiveAndReopenedStatisticsAgree ${state}: duplicate delivery retains one call and its receipt: ${JSON.stringify(view)}`);
+    }
+  }
   want(Object.values(results.runningCommand).every(Boolean), `running command is visible through wrapping, waiting and completion: ${JSON.stringify(results.runningCommand)}`);
   const ac = results.activityCollapsePreservesContent;
   want(ac.initial.folds === 1 && ac.initial.agents === 1 && ac.initial.closed && ac.initial.hidden && ac.initial.rows.join() === "activity-fold" && ac.initial.kept, `activityCollapsePreservesContent: screenshot activity folds into one closed row: ${JSON.stringify(ac.initial)}`);
