@@ -796,8 +796,13 @@ export class Transcript {
     if ((p.prim === "shell-exec" || p.prim === "shell-start") && p.args && c.kind !== "command") {
       c.command = `${p.prim} ${p.args}`;
       if (!c.commandNode) {
-        c.commandNode = h("span", { class: "mono" });
-        c.step.append(c.commandNode);
+        // Read-style wrappers have a disclosure row, not a step. Keep the
+        // nested command in its argument span so replay can finish too.
+        if (c.kind === "read") c.commandNode = c.row.querySelector(".args");
+        else {
+          c.commandNode = h("span", { class: "mono" });
+          c.step.append(c.commandNode);
+        }
       }
       c.commandNode.textContent = c.command;
       this.paintActivity(c.fold);

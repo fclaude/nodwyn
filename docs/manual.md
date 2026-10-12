@@ -1964,6 +1964,11 @@ summary or navigation, and tabs keep their reading position across events
 and switches. Narrow screens use ordinary stacked sections and page
 scrolling instead of a nested scroll area.
 
+Reopening a task reads its recorded replies into Statistics, just as live
+replies update it. A read-style tool wrapper can run a shell command; the
+transcript keeps the guard's recorded, redacted command on that tool's row
+and continues loading the history and its figures.
+
 The console's side panel adds the task up in "Totals", in its Statistics tab:
 "Total spend", what its model and judge requests cost as far as the log
 prices them (the same accounting a spend limit counts; with a limit set,

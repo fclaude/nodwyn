@@ -524,16 +524,20 @@ those that failed; a failed or refused command opens its row and the run. A
 read, a command, a mark or a reply of more than a line ends the other groups,
 so the transcript keeps its order. The model's marks on its plan join one
 line in a row ("Steps 1, 2 of 5 marked done"), their notes behind its fold.
-All of these sit inside their stretch's **Activity** row.
+All of these sit inside their stretch's **Activity** row. A read-style wrapper
+that runs a shell command keeps the guard's recorded, redacted command in its
+call row without changing the read group into a run of commands.
 The model's thinking is hidden, as in the TUI without `:thinking`, unless
 Settings › This browser › The model's thinking is **Shown** (kept in this
 browser); shown, a reply that only thinks and calls tools puts its thinking
 in the group or run its calls join, between the calls, under the thought's
 first line. It reads a fixed log prefix in pages
 before applying live events, deduplicating durable sequence numbers. Reloading
-the page reads that prefix again. A reconnect never retries an operation. Browser
-reload retains pairing through the session cookie, and the address keeps the
-task, so the same task opens again.
+the page reads that prefix again. Statistics includes usage from the recorded
+replies in that history, just as it does for replies delivered live; nested
+shell decisions inside read-style wrappers do not interrupt replay. A reconnect
+never retries an operation. Browser reload retains pairing through the session
+cookie, and the address keeps the task, so the same task opens again.
 Untrusted text is rendered as literal text, never HTML or executable Markdown.
 
 Create a session with an existing absolute repository directory, resume a saved
