@@ -39,6 +39,8 @@ export class TaskView {
     this.prompts = new Map(); // live prompt events by ID, in arrival order
     this.resolved = new Set();
     this.info = null;
+    this.infoVersion = 0; // only the newest session.info read may redraw this task
+    this.approveAllPending = null;
     this.notes = null;
     this.asideScroll = new Map();
     // The project notes being edited, or null when they are not. Every
@@ -110,6 +112,9 @@ export class TaskView {
     this.prompts = new Map();
     this.resolved = new Set();
     this.info = null;
+    this.infoVersion++;
+    this.switching = false;
+    this.approveAllPending = null;
     this.notes = null;
     this.notesDraft = null;
     this.review = null;
@@ -240,9 +245,10 @@ export class TaskView {
   }
   async loadInfo() {
     const version = this.version;
+    const infoVersion = ++this.infoVersion;
     try {
       const info = await this.conn.call("session.info", { id: this.item.id });
-      if (version === this.version) {
+      if (version === this.version && infoVersion === this.infoVersion) {
         this.info = info;
         this.aside();
         this.header();
@@ -544,7 +550,8 @@ export class TaskView {
     const offered = !!(this.info?.approve_all_offered || this.info?.approve_all);
     box.hidden = !this.conn.has("session.approve_all") || !open || !offered || !!(run && (run.auto_approve || run.unattended || run.judge));
     const check = box.querySelector("input");
-    check.checked = !!this.info?.approve_all;
+    const approveAll = this.switching ? this.approveAllPending : !!this.info?.approve_all;
+    check.checked = !!approveAll;
     check.disabled = !this.info || this.switching || !this.conn.live;
     box.classList.toggle("on", check.checked);
     this.drawModel();
@@ -660,18 +667,24 @@ export class TaskView {
   }
   async setApproveAll(on) {
     const id = this.item?.id;
-    if (!id) return;
+    if (!id || this.switching) return;
+    const version = this.version;
     this.switching = true;
+    this.approveAllPending = on;
     this.controls();
     try {
       await this.conn.call("session.approve_all", { id, on });
     } catch (error) {
       toast(error.message);
     } finally {
+      if (version !== this.version) return;
+      // Keep the clicked state drawn until the latest authoritative details
+      // arrive; a concurrent approval.change read cannot replace that result.
+      await this.loadInfo();
+      this.approveAllPending = null;
       this.switching = false;
+      this.controls();
     }
-    await this.loadInfo();
-    this.controls();
   }
   async send() {
     if (this.el.send.disabled) return;

@@ -23,6 +23,35 @@ check(async () => {
   const browser = await launch();
   const page = watch(await browser.newPage({ viewport: { width: 1440, height: 1000 } }));
   const sent = requests(page);
+  let socket, approveReplyID = null, heldApproveReply = null, failNextApprove = false;
+  let approvalEventSeen = false, approvalInfoIDs = new Set(), heldApprovalInfo = null;
+  await page.routeWebSocket("**/socket", (ws) => {
+    const server = ws.connectToServer();
+    socket = ws;
+    ws.onMessage((message) => {
+      const frame = JSON.parse(message);
+      if (frame.method === "session.approve_all") {
+        if (failNextApprove) {
+          failNextApprove = false;
+          ws.send(JSON.stringify({ jsonrpc: "2.0", id: frame.id, error: { code: -32000, message: "simulated approval refusal" } }));
+          return;
+        }
+        approveReplyID = frame.id;
+      } else if (frame.method === "session.info" && approvalEventSeen && approveReplyID !== null) {
+        approvalInfoIDs.add(frame.id);
+      }
+      server.send(message);
+    });
+    server.onMessage((message) => {
+      const frame = JSON.parse(message);
+      if (frame.method === "session.event" && frame.params?.kind === "approval.change" && frame.params?.payload?.kind === "all") {
+        approvalEventSeen = true;
+        ws.send(message);
+      } else if (approvalInfoIDs.has(frame.id)) heldApprovalInfo = message;
+      else if (frame.id === approveReplyID) heldApproveReply = message;
+      else ws.send(message);
+    });
+  });
   const step = (m) => console.log("step:", m);
   const transcript = () => page.innerText(".transcript");
   await page.goto(url);
@@ -155,12 +184,49 @@ check(async () => {
   await shows(page, ".ask-card", "Run ls -la");
   step("Don't ask offered in Settings, behind its warning");
   await page.$eval(".dont-ask input", (el) => el.click());
-  await until("the ask cleared by the switch", async () => !(await page.$(".ask-card")));
+  assert.deepStrictEqual(await page.$eval(".dont-ask", (el) => ({ checked: el.querySelector("input").checked, on: el.classList.contains("on"), disabled: el.querySelector("input").disabled })), { checked: true, on: true, disabled: true }, "the tick appears immediately and stays while the server decides");
+  await until("the switch cleared the waiting ask", async () => !(await page.$(".ask-card")));
+  await until("the approval.change info reload held", async () => heldApprovalInfo !== null);
+  socket.send(heldApprovalInfo);
+  heldApprovalInfo = null;
+  approvalEventSeen = false;
+  await until("the approval.change info reload applied", async () => page.$eval(".dont-ask input", (el) => el.checked && el.disabled));
+  assert.deepStrictEqual(await page.$eval(".dont-ask", (el) => ({ checked: el.querySelector("input").checked, on: el.classList.contains("on"), disabled: el.querySelector("input").disabled })), { checked: true, on: true, disabled: true }, "approval.change info reload keeps the tick while the RPC reply is pending");
+  socket.send(heldApproveReply);
+  heldApproveReply = null;
+  await until("the switch state reloaded", async () => !(await page.$eval(".dont-ask input", (el) => el.disabled)));
   await page.screenshot({ path: `${out}/switched.png` });
+  // An overlapping older info read must not overwrite the newest result.
+  const newestInfoWins = await page.evaluate(async () => {
+    const { TaskView } = await import("/task.js");
+    const pending = [];
+    const view = Object.create(TaskView.prototype);
+    Object.assign(view, {
+      conn: { call: () => new Promise((resolve) => pending.push(resolve)) },
+      item: { id: "race" }, version: 1, infoVersion: 0, info: null,
+      aside() {}, header() {}, controls() {},
+    });
+    const old = view.loadInfo();
+    const fresh = view.loadInfo();
+    pending[1]({ approve_all: true });
+    await fresh;
+    pending[0]({ approve_all: false });
+    await old;
+    return view.info.approve_all;
+  });
+  assert.strictEqual(newestInfoWins, true, "an older session.info reply cannot overwrite the newest state");
+  await until("the ask cleared by the switch", async () => !(await page.$(".ask-card")));
   await page.waitForSelector(".prose strong", { timeout: 15000 });
   await until("the turn's end", async () => (await page.textContent(".task-head .pill")) === "Idle");
   assert.deepStrictEqual(sent.of("session.answer").map((a) => [a.id, a.reply]), [], "the switch answered; no Y was sent");
   step("the ask answered by the switch; task answered");
+  // A refused switch-off restores the server's on-state and reports the refusal.
+  failNextApprove = true;
+  await page.$eval(".dont-ask input", (el) => el.click());
+  assert.deepStrictEqual(await page.$eval(".dont-ask", (el) => ({ checked: el.querySelector("input").checked, on: el.classList.contains("on"), disabled: el.querySelector("input").disabled })), { checked: false, on: false, disabled: true }, "the requested off-state appears while pending");
+  await until("the refusal toast", async () => (await page.textContent(".toast"))?.includes("simulated approval refusal"));
+  await until("the refused switch restored", async () => page.$eval(".dont-ask", (el) => el.querySelector("input").checked && el.classList.contains("on") && !el.querySelector("input").disabled));
+  await page.screenshot({ path: `${out}/switch-refused.png` });
   // The panel ticks only while the turn runs, and a turn faster than a
   // tick leaves it stale, so a tab away and back redraws it from the
   // settled log before the two lines are read. What must hold is that
