@@ -33,12 +33,32 @@ export function carryEffort(choice, effort) {
   return effort && (choice.efforts || []).includes(effort) ? effort : choice.effort || "";
 }
 
+// choiceFor is the listed choice a selection names. A conversation says which
+// model it talks to and where (session.info), and is matched by that: a
+// choice's name can change meaning under it, since a [models.NAME] entry that
+// becomes the default is listed once, as "control" (ModelChoices), and
+// "control" itself is whichever model is the default. A choice kept for the
+// next task names no model of its own, so its name is matched, and a name the
+// choices do not list is looked up in the daemon's registry (models.status),
+// which holds every entry: one listed under another name is not gone.
+function choiceFor(desk, selection) {
+  if (!selection?.name) return null;
+  const named = choiceNamed(desk, selection.name);
+  const known = selection.model ? { model: selection.model, server: selection.server } : statusOf(desk, selection.name);
+  if (!known?.model) return named;
+  const server = known.server || "";
+  if (named && named.model === known.model && (named.server || "") === server) return named;
+  return choicesOf(desk).find((c) => c.model === known.model && (c.server || "") === server) || named;
+}
+
 // choiceOf is what a selection names: a listed model, or, for a conversation
-// on a model that is not in the list, what the daemon says of it.
+// on a model that is not in the list, what the daemon says of it. The daemon's
+// word on a conversation's own model carries the efforts it takes, which a
+// choice matched by the model it names may not when two entries name one model.
 function choiceOf(desk, selection, extra) {
   if (!selection) return { listed: null, choice: null };
-  const listed = selection.name ? choiceNamed(desk, selection.name) : null;
-  return { listed, choice: listed || extra || null };
+  const listed = choiceFor(desk, selection);
+  return { listed, choice: listed && extra ? { ...listed, ...extra } : listed || extra || null };
 }
 
 // problem says why a selection cannot be used, or may not work, in the words
@@ -108,7 +128,7 @@ export class ModelPicker {
   }
 
   // update draws the picker from props: desk; selection ({name, server?, model?,
-  // effort}); extra (what the daemon says of a model that is not in the list:
+  // effort}); extra (what the daemon says of a conversation's own model:
   // {model, efforts, effort}); unavailable (the conversation has no model it
   // can use: none is shown as chosen, and one is asked for); disabled; notes
   // (more lines to say, {kind, text}); onPick(selection, reset), called when a
