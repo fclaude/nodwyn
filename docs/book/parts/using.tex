@@ -41,9 +41,10 @@ make app                         # bin/Nodwyn.app for macOS
 make promote                     # accept + selfcheck, then ~/.local/bin/nodwyn-stable
 \end{sh}
 
-Building needs Go~1.26 or newer (\adr{33}). Working on \nodwyn{} itself
-also needs \code{staticcheck}, and you should use \code{nodwyn-stable} for
-real work and \file{bin/nodwyn} only to test a change to \nodwyn{}.
+Building needs Go~1.26 or newer (\adr{33}). \code{make lint} builds its
+analyzer, \code{staticcheck}, from the module, so working on \nodwyn{}
+itself needs nothing else; you should use \code{nodwyn-stable} for real
+work and \file{bin/nodwyn} only to test a change to \nodwyn{}.
 \code{nodwyn app} opens a native window only in a build with the
 \code{webview} tag, which needs cgo and the platform's web view (WebKitGTK
 on Linux); \code{make build} leaves it out and \code{nodwyn app} then

@@ -40,8 +40,6 @@ jobs:
           # Host jobs reuse local Go caches. Archive restore cannot overwrite
           # read-only module files with the runner's dropped capabilities.
           cache: false
-      - name: Install analyzer
-        run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
       - name: Acceptance checks
         run: make accept GO_TEST_FLAGS=-count=1
       - name: Release publisher checks
