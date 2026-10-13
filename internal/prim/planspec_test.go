@@ -15,6 +15,11 @@ import (
 func TestRequestNamesAreTheNamesARequestGives(t *testing.T) {
 	got := requestNames("opencode found the same miss and now sends the headers Codex names its session by, session-id, thread-id and x-client-request-id (anomalyco/opencode#53767). A request whose credential was granted chatgpt.tokens.use.direct now carries the session's cache key as those headers too, unless cache_key is off; see https://example.com/a-b and v1.2.3. `X-Session-Id` stays, and readResponses too.")
 	want := []string{"session-id", "thread-id", "x-client-request-id", "chatgpt.tokens.use.direct", "cache_key", "X-Session-Id", "readResponses"}
+	// A marker and a file every task names, and a product's name, are not
+	// asked for.
+	for _, n := range requestNames("Read AGENTS.md; end with NODWYN_RUN_COMPLETE. ChatGPT and OpenAI call it.") {
+		t.Errorf("asked for %q", n)
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("requestNames = %q, want %q", got, want)
 	}

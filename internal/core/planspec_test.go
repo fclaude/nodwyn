@@ -124,3 +124,57 @@ func TestAPlannedTestThatPassesBeforeTheChangeIsSaid(t *testing.T) {
 		t.Fatalf("evidence message: %q", msg)
 	}
 }
+
+// A planner's slips that the reading forgives: a (run ...) inside
+// (fails-today ...), and the closing parenthesis that leaves it short. The
+// plan is read as written, without asking the planner again (commit-bench,
+// 556d6d12, 2026-10-13).
+func TestAPlanReadsDespiteANestedRun(t *testing.T) {
+	t.Parallel()
+	slipped := `(change "calc.py" "one" "return 10")
+(test "calc_test.py" "test_one" "one() is 10, not 1" (fails-today "it is 1" (run "python3 -m pytest calc_test.py"))
+(none docs "no document describes calc")
+(check "python3 -m pytest")`
+	r := newRig(t, true,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: slipped},                  // the planner, once
+		fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	main := string(r.srv.Requests[2].Raw)
+	if !strings.Contains(main, "2. Test: calc_test.py test_one — one() is 10, not 1; fails today: it is 1; run: python3 -m pytest calc_test.py") {
+		t.Fatalf("the slipped plan was not read as written:\n%s", main)
+	}
+}
+
+// The repository's whole check passing after the last edit stands for a
+// test step's own run, and a document's edit after it does not make it
+// stale: neither is said before the turn ends (commit-bench, 556d6d12: make
+// validate passed last, and both test steps were said not to have passed).
+func TestAWholeCheckStandsForThePlansTests(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "python3 -m pytest calc_test.py -k test_one"))
+(docs "NOTES.md" "say one() is 10")
+(check "grep -q 'return 10' calc.py")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("t", "calc_test.py", "def test_one():\n    assert __import__('calc').one() == 10\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py # make validate"),
+		write("d", "NOTES.md", "one() is 10\n"),
+		fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	for i := range r.srv.Requests {
+		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") {
+			t.Fatalf("evidence message after a whole check and a document's edit: %q", msg)
+		}
+	}
+}

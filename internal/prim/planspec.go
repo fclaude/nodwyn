@@ -49,14 +49,23 @@ var (
 	requestNameRE = regexp.MustCompile("`([^`\\n]{2,60})`|\\b([A-Za-z][A-Za-z0-9]*(?:[-_.][A-Za-z0-9]+)+|[a-z]+[A-Z][A-Za-z0-9]*|[A-Z][a-z0-9]+[A-Z][A-Za-z0-9]*)\\b")
 	issueRefRE    = regexp.MustCompile(`#\d+$`)
 	linkRE        = regexp.MustCompile(`\b[A-Za-z][A-Za-z0-9+.-]*://\S+`)
+	// markerRE is a word in capitals, with an extension or not: a marker or
+	// a file every task names (NODWYN_RUN_COMPLETE, AGENTS.md), not a name the
+	// change produces. brandRE is a capitalised word with a capital inside
+	// and no separator (ChatGPT, OpenAI): a product's name more often than the
+	// code's. On commit-bench both made the planner write its plan again
+	// for names that did not matter (ADR 32, amended 2026-10-13).
+	markerRE = regexp.MustCompile(`^[A-Z][A-Z0-9_]*(\.[A-Za-z0-9]+)?$`)
+	brandRE  = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
 	versionRE     = regexp.MustCompile(`^v?\d+([._-]\d+)*$`)
 )
 
-// requestNames is the names a request gives: spans in backquotes without a
-// space, and words that read as names, with a hyphen, an underscore or a dot
-// inside or a capital after the first letter (session-id, cache_key,
-// response.output_item.done, readResponses, JevStored). Not a link, an issue
-// number or a version.
+// requestNames is the names a request gives that read as code: spans in
+// backquotes without a space, and words with a hyphen, an underscore or a
+// dot inside, or a small letter first and a capital after it (session-id,
+// cache_key, response.output_item.done, readResponses). Not a link, an issue
+// number, a version, a word in capitals (markerRE) or a capitalised one
+// without a separator (brandRE).
 func requestNames(text string) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -66,7 +75,8 @@ func requestNames(text string) []string {
 			s = m[2]
 		}
 		if s == "" || strings.ContainsAny(s, " \t") || strings.Contains(s, "://") || strings.HasPrefix(s, "www.") ||
-			issueRefRE.MatchString(s) || versionRE.MatchString(s) || s == "e.g" || s == "i.e" {
+			issueRefRE.MatchString(s) || versionRE.MatchString(s) || s == "e.g" || s == "i.e" ||
+			markerRE.MatchString(s) || brandRE.MatchString(s) {
 			continue
 		}
 		if !seen[s] {

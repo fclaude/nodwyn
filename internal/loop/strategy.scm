@@ -295,6 +295,12 @@
        (filter (lambda (l) (and (string-prefix? "?? " l) (not (member l before)))) state)))
 
 ;; A call's path argument as git-status names it: relative to the root.
+;; Whether a repository path is a document: what a test or a check does not
+;; run (planspec.scm keeps the commands that passed across its edits).
+(define (doc-path? path)
+  (let any ((exts '(".md" ".tex" ".rst" ".adoc")))
+    (and (pair? exts) (or (string-suffix? (car exts) path) (any (cdr exts))))))
+
 (define (repo-path call)
   (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
          (p (if (pair? a) (format "~a" (assoc-ref a "path" "")) ""))
@@ -630,18 +636,28 @@
                          (set! passing c))
                        (when (and (equal? (assoc-ref c 'name) "shell-exec") (not (base-run? c)) (equal? (run-status r) 0))
                          (set! passed (cons (command-line c) passed)))
-                       (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)))
+                       ;; A document's edit leaves the plan's evidence standing
+                       ;; (passed): no test or check reads a .md or a .tex.
+                       (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)) (not (doc-path? (repo-path c))))
+                         (set! passed '()))
+                       (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)) (not (doc-path? (repo-path c))))
                          (set! passing #f)
-                         (set! passed '())
                          (set! ran '())
                          (set! started-ids '())
                          (set! started-calls '()))
                        (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
                               (let ((name (scratch-name c)))
-                                (if name
-                                    (walk (cdr cs) (cdr rs) edited tested failed
-                                          (if (member name scripts) scripts (cons name scripts)) written outcome told)
-                                    (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written) 'none #f))))
+                                (cond (name
+                                       (walk (cdr cs) (cdr rs) edited tested failed
+                                             (if (member name scripts) scripts (cons name scripts)) written outcome told))
+                                      ;; A document's edit is a change, and no test
+                                      ;; or check reads it: the runs before it stand
+                                      ;; (commit-bench, 2026-10-13: a turn that edited
+                                      ;; its ADR last was told it had not tested).
+                                      ((doc-path? (repo-path c))
+                                       (walk (cdr cs) (cdr rs) #t tested failed scripts (cons (repo-path c) written) outcome told))
+                                      (else
+                                       (walk (cdr cs) (cdr rs) #t #f failed scripts (cons (repo-path c) written) 'none #f)))))
                              ;; A run on the unchanged copy tests nothing of
                              ;; the change; it can only show a failure was
                              ;; there before it.

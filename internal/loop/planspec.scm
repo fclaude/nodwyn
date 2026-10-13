@@ -121,9 +121,9 @@
    "\n(docs \"path\" \"what the change makes wrong or incomplete in it\") — a document that describes the behaviour the change alters, never a ticket or issue number the request or the repository does not give"
    "\n(check \"the command that shows the whole change works\") — the last step"
    "\n(none test \"why there is no test\") or (none docs \"why no document changes\")"
-   "\n(names \"name\" ...) — every name the request gives for something the change must produce (a header, a flag, a field, a function, a file), spelled as the request spells it"
-   "\n(context \"name\" ...) — every other name the request gives: what the change only uses or reads"
-   "\nEvery name the request gives appears in names or context. If you think one is already in the code under another name, keep it in names anyway: the change is checked for the request's own spelling."
+   "\n(names \"name\" ...) — every name the request gives for something the change must write into a file (a header, a flag, a field, a new function, a key), spelled as the request spells it; not a function or file the change only edits, and not words of the request's instructions to you (such as a line to end your answer with)"
+   "\n(context \"name\" ...) — the other names the request gives that read as code: what the change only uses or edits; nothing else"
+   "\nEvery name of the request that reads as code (session-id, cache_key, output_index) appears in names or context. If you think one is already in the code under another name, keep it in names anyway: the change is checked for the request's own spelling."
    "\nSay what the code should do as behaviour, in which cases and with what result, not as code to type. Where the request or the code leaves a detail open (which helper to call, a literal's format, which of several fixes), name the options and what will decide between them inside the step, and leave the choice to whoever carries the plan out. Copy the request's own examples, names and formats word for word."
    "\nFor example:"
    "\n(change \"src/flags.go\" \"parseFlags\" \"accept --verbose and set Verbose\")"
@@ -158,12 +158,15 @@
 
 ;; The strings among a form's arguments, in order, and its sub-forms.
 (define (plan-form-strings form) (filter string? (cdr form)))
+;; A sub-form found at any depth: a planner wrote (run ...) inside
+;; (fails-today ...) on commit-bench (556d6d12), and the reply did not read.
 (define (plan-form-sub form head)
   (let find ((xs (cdr form)))
     (cond ((null? xs) #f)
           ((equal? (plan-form-head (car xs)) head)
            (let ((s (plan-form-strings (car xs)))) (if (pair? s) (car s) "")))
-          (else (find (cdr xs))))))
+          (else (let ((inner (and (pair? (car xs)) (plan-form-head (car xs)) (plan-form-sub (car xs) head))))
+                  (or inner (find (cdr xs))))))))
 
 (define (plan-nth xs n) (if (> (length xs) n) (list-ref xs n) ""))
 
@@ -205,8 +208,30 @@
 
 ;; A plan's text read as data: (steps names context problems), or #f when it
 ;; is not readable as forms at all.
+;; A chunk of a plan read with up to three closing parentheses added, or #f.
+(define (plan-language-read-chunk t)
+  (let try ((t t) (left 3))
+    (or (guard (e (else #f)) (read-data t))
+        (and (> left 0) (try (string-append t ")") (- left 1))))))
+
+;; A reply's forms: read whole, or else form by form, a form being a line
+;; that starts with "(" and the indented lines after it, each forgiven a
+;; missing closing parenthesis or three: the planner of commit-bench's
+;; 556d6d12 wrote (run ...) inside (fails-today ...) and closed its test one
+;; parenthesis short, and the whole reply did not read.
+(define (plan-language-forms text)
+  (or (guard (e (else #f)) (read-data text))
+      (let walk ((lines (string-split text "\n")) (chunk "") (out '()))
+        (let ((flush (lambda () (if (string-empty? (string-trim chunk)) '() (or (plan-language-read-chunk chunk) #f)))))
+          (cond ((null? lines)
+                 (let ((last (flush))) (and last (append out last))))
+                ((string-prefix? "(" (car lines))
+                 (let ((done (flush)))
+                   (and done (walk (cdr lines) (car lines) (append out done)))))
+                (else (walk (cdr lines) (string-append chunk "\n" (car lines)) out)))))))
+
 (define (plan-language-read text)
-  (let ((forms (guard (e (else #f)) (read-data text))))
+  (let ((forms (plan-language-forms text)))
     (and forms (pair? forms) (pair? (car forms))
          (let walk ((fs forms) (i 1) (steps '()) (names '()) (context '()) (problems '()))
            (if (null? fs)
@@ -320,7 +345,7 @@
 (define (plan-language-whole? passed)
   (let any ((ps passed))
     (and (pair? ps)
-         (or (let w ((ws whole-check-words)) (and (pair? w) (or (string-contains? (car ps) (car w)) (w (cdr w)))))
+         (or (let w ((ws whole-check-words)) (and (pair? ws) (or (string-contains? (car ps) (car ws)) (w (cdr ws)))))
              (any (cdr ps))))))
 
 ;; The plan's steps that lack their evidence, as lines, and the steps that
