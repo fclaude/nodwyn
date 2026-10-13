@@ -533,3 +533,38 @@ func TestAChangeWithADocumentIsNotToldOfOthers(t *testing.T) {
 		}
 	}
 }
+
+// A new file the plan names is marked for the next commit as it is written,
+// so a generator that lists the tracked files counts it (commit-bench, dsl8
+// 107251d0: the book's catalogue missed a new test file).
+func TestANewFileThePlanNamesIsListedByGit(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"))
+(none docs "no document describes calc")
+(check "grep -q 'return 10' calc.py && echo checked")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("t", "calc_test.py", "def test_one():\n    pass\n"),
+		write("s", "scratch_repro.py", "print(1)\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py && echo checked"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	cmd := exec.Command("git", "ls-files")
+	cmd.Dir = repo
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "calc_test.py") || strings.Contains(string(out), "scratch_repro.py") {
+		t.Errorf("git ls-files after the turn:\n%s", out)
+	}
+}

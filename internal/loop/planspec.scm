@@ -129,6 +129,9 @@
 (define plan-language-base-run-calls run-calls)
 (define (run-calls calls)
   (let ((results (plan-language-base-run-calls calls)))
+    (when (and plan-language (= (guard (e (else 0)) hygiene-depth) 0))
+      (guard (e (else (log-note (format "plan language: new files were not marked: ~a" e))))
+        (plan-language-intend calls results)))
     (when (and plan-language (pair? plan-spec) (= (guard (e (else 0)) hygiene-depth) 0))
       (guard (e (else (log-note (format "plan language: the round's commands were not read: ~a" e))))
         (plan-language-before-round calls results))
@@ -203,6 +206,31 @@
 ;; unattended turn's "you have not tested" reminder (strategy.scm).
 (define (plan-language-auto-tested?)
   (and plan-language (pair? plan-spec) (> plan-language-auto-runs 0)))
+
+;; New files the model writes that the plan names (a test file a Test:
+;; step adds) are marked as intended for the next commit (git-intend), so a tool that lists the tracked files sees them: the
+;; book's catalogue generator does, and on commit-bench (dsl8 107251d0) a
+;; test file the model added was missing from the catalogue it had just
+;; regenerated, which both reviewers found stale.
+(define (plan-language-intend calls results)
+  (let ((paths (let walk ((cs calls) (rs results) (out '()))
+                 (if (or (null? cs) (null? rs))
+                     out
+                     (let* ((c (car cs)) (r (car rs))
+                            (a (guard (e (else '())) (json-parse (format "~a" (assoc-ref c 'args "{}")))))
+                            (p (if (pair? a) (format "~a" (assoc-ref a "path" "")) "")))
+                       (walk (cdr cs) (cdr rs)
+                             (if (and (equal? (assoc-ref c 'name "") "fs-write") (assoc-ref r 'ok #f)
+                                      (not (string-empty? p)) (not (string-prefix? "$TMPDIR" p)) (not (string-prefix? "/" p))
+                                      ;; Only what the plan asks for: a file a run left
+                                      ;; behind stays untracked, for the new-files reminder.
+                                      (guard (e (else #f)) (plan-names? p)))
+                                 (cons p out)
+                                 out)))))))
+    (when (pair? paths)
+      (let ((marked (guard (e (else '())) (git-intend paths))))
+        (when (pair? marked)
+          (log-note (string-append "plan language: new files marked for the next commit: " (string-join marked ", "))))))))
 
 ;; The plan's commands, run by the harness as the work goes (2026-10-13).
 ;; On commit-bench the plan's check, make validate, failed in every build's

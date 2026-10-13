@@ -899,3 +899,56 @@ func docsMentioningPrim(o Options) *scheme.Prim {
 		},
 	}
 }
+
+// gitIntend builds (git-intend paths): mark new, untracked, not ignored files
+// of the working tree as intended for the next commit (git add -N), so tools
+// that list the tracked files see them. The book's catalogue generator lists
+// files with git ls-files: on commit-bench (dsl8 107251d0) a test file the
+// model added was left out of the catalogue it had just regenerated, and both
+// reviewers found the catalogue stale (2026-10-13). Nothing is staged: an
+// intended file is an empty entry until it is added.
+func gitIntend(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "git-intend",
+		Meta: scheme.Meta{
+			Doc:    "Mark new files of the working tree as intended for the next commit (git add -N): those of paths that are untracked, inside the repository and not ignored. Returns the paths it marked. Hidden; registered in a git work tree.",
+			Params: []scheme.Param{{Name: "paths", Type: "list", Doc: "repository paths"}},
+			Host:   true,
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			items, err := c.List(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			k := &Keeper{o: o}
+			var marked []scheme.Value
+			for _, it := range items {
+				if it.Kind != scheme.KString {
+					continue
+				}
+				rel := filepath.ToSlash(filepath.Clean(strings.TrimPrefix(it.S, "./")))
+				if rel == "." || strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) {
+					continue
+				}
+				abs := filepath.Join(o.Root, filepath.FromSlash(rel))
+				if !k.inside(abs) {
+					continue
+				}
+				if info, err := os.Lstat(abs); err != nil || !info.Mode().IsRegular() {
+					continue
+				}
+				if _, err := runGitLimit(c.Ctx, o, 4096, "ls-files", "--error-unmatch", "--", rel); err == nil {
+					continue // tracked already
+				}
+				if _, err := runGitLimit(c.Ctx, o, 4096, "check-ignore", "-q", "--", rel); err == nil {
+					continue // ignored
+				}
+				if _, err := runGitLimit(c.Ctx, o, 4096, "add", "-N", "--", rel); err == nil {
+					marked = append(marked, scheme.Str(rel))
+				}
+			}
+			return scheme.List(marked...), nil
+		},
+	}
+}

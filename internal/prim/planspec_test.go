@@ -195,3 +195,28 @@ func TestDocsMentioningFindsWhereABehaviourIsWritten(t *testing.T) {
 		t.Errorf("docsMentioning = %q, want %q", got, want)
 	}
 }
+
+// git-intend marks a new file as intended for the next commit, so git
+// ls-files lists it; a tracked, an ignored and an outside path are left alone.
+func TestGitIntendMakesANewFileListed(t *testing.T) {
+	root, k, git := keepRepo(t)
+	write(t, root, ".gitignore", "*.log\n", 0o644)
+	git("add", ".gitignore")
+	git("commit", "-q", "-m", "ignore")
+	write(t, root, "sub/new_test.go", "package sub\n", 0o644)
+	write(t, root, "run.log", "x\n", 0o644)
+	in := scheme.New()
+	if err := in.Register(gitIntend(k.o)); err != nil {
+		t.Fatal(err)
+	}
+	v, err := in.EvalString(context.Background(), `(git-intend '("sub/new_test.go" "plants.txt" "run.log" "../escape.txt" "missing.go"))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := v.String(); got != `("sub/new_test.go")` {
+		t.Errorf("git-intend marked %s", got)
+	}
+	if out := git("ls-files"); !strings.Contains(out, "sub/new_test.go") || strings.Contains(out, "run.log") {
+		t.Errorf("ls-files:\n%s", out)
+	}
+}
