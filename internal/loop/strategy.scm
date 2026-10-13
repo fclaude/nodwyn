@@ -289,10 +289,12 @@
 ;; The lines of state for files git tracks.
 (define (git-tracked state) (filter (lambda (l) (not (string-prefix? "?? " l))) state))
 
-;; Files git does not track in state that it did not show in before.
+;; Files git does not track in state that it did not show in before, and
+;; files only intended for the next commit (" A", git add -N): planspec.scm
+;; marks the model's new files so, and they are as new as untracked ones.
 (define (git-new-files before state)
   (map git-state-path
-       (filter (lambda (l) (and (string-prefix? "?? " l) (not (member l before)))) state)))
+       (filter (lambda (l) (and (or (string-prefix? "?? " l) (string-prefix? " A " l)) (not (member l before)))) state)))
 
 ;; A call's path argument as git-status names it: relative to the root.
 ;; Whether a repository path is a document: what a test or a check does not

@@ -61,6 +61,9 @@
   (set! plan-language-started-lines '())
   (set! plan-language-started-texts '())
   (set! plan-language-missing-told '())
+  (set! plan-language-untracked-before
+        (guard (e (else '()))
+          (map git-state-path (filter (lambda (l) (string-prefix? "?? " l)) (or (git-state) '())))))
   (set! plan-language-auto-passed '())
   (set! plan-language-auto-runs 0)
   (plan-language-base-turn request))
@@ -129,7 +132,7 @@
 (define plan-language-base-run-calls run-calls)
 (define (run-calls calls)
   (let ((results (plan-language-base-run-calls calls)))
-    (when (and plan-language (= (guard (e (else 0)) hygiene-depth) 0))
+    (when (and plan-language (pair? plan-spec) (= (guard (e (else 0)) hygiene-depth) 0))
       (guard (e (else (log-note (format "plan language: new files were not marked: ~a" e))))
         (plan-language-intend calls results)))
     (when (and plan-language (pair? plan-spec) (= (guard (e (else 0)) hygiene-depth) 0))
@@ -207,11 +210,16 @@
 (define (plan-language-auto-tested?)
   (and plan-language (pair? plan-spec) (> plan-language-auto-runs 0)))
 
-;; New files the model writes that the plan names (a test file a Test:
-;; step adds) are marked as intended for the next commit (git-intend), so a tool that lists the tracked files sees them: the
-;; book's catalogue generator does, and on commit-bench (dsl8 107251d0) a
-;; test file the model added was missing from the catalogue it had just
-;; regenerated, which both reviewers found stale.
+;; New files the model writes in the repository are marked as intended for
+;; the next commit (git-intend), so a tool that lists the tracked files sees
+;; them: the book's catalogue generator does, and on commit-bench (dsl8
+;; 107251d0, dsl13 3422faf1) a new test file or exfil scenario was missing
+;; from the catalogue the model had just regenerated. Marked only when the
+;; plan named them (dsl12), the scenario of 3422faf1 was missed: the model's
+;; own plan described it without its file name. The new-files reminder
+;; counts marked files as new (strategy.scm, git-new-files).
+(define plan-language-untracked-before '()) ; the untracked files at the turn's start
+
 (define (plan-language-intend calls results)
   (let ((paths (let walk ((cs calls) (rs results) (out '()))
                  (if (or (null? cs) (null? rs))
@@ -222,9 +230,8 @@
                        (walk (cdr cs) (cdr rs)
                              (if (and (equal? (assoc-ref c 'name "") "fs-write") (assoc-ref r 'ok #f)
                                       (not (string-empty? p)) (not (string-prefix? "$TMPDIR" p)) (not (string-prefix? "/" p))
-                                      ;; Only what the plan asks for: a file a run left
-                                      ;; behind stays untracked, for the new-files reminder.
-                                      (guard (e (else #f)) (plan-names? p)))
+                                      ;; A file git showed before the turn is the person's.
+                                      (not (member p plan-language-untracked-before)))
                                  (cons p out)
                                  out)))))))
     (when (pair? paths)

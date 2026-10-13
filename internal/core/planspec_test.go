@@ -534,10 +534,12 @@ func TestAChangeWithADocumentIsNotToldOfOthers(t *testing.T) {
 	}
 }
 
-// A new file the plan names is marked for the next commit as it is written,
-// so a generator that lists the tracked files counts it (commit-bench, dsl8
-// 107251d0: the book's catalogue missed a new test file).
-func TestANewFileThePlanNamesIsListedByGit(t *testing.T) {
+// A new file the model writes is marked for the next commit as it is
+// written, so a generator that lists the tracked files counts it (commit-bench,
+// dsl8 107251d0 and dsl13 3422faf1: the book's catalogue missed a new test
+// file and a new scenario); one the plan does not name is still said to be
+// new before the turn ends.
+func TestANewFileIsListedByGitAndStillSaidNew(t *testing.T) {
 	t.Parallel()
 	repo := codeRepo(t)
 	plan := `(change "calc.py" "one" "return 10")
@@ -564,8 +566,17 @@ func TestANewFileThePlanNamesIsListedByGit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(out), "calc_test.py") || strings.Contains(string(out), "scratch_repro.py") {
+	if !strings.Contains(string(out), "calc_test.py") || !strings.Contains(string(out), "scratch_repro.py") {
 		t.Errorf("git ls-files after the turn:\n%s", out)
+	}
+	told := false
+	for i := range r.srv.Requests {
+		if msg := lastMessage(r, i); strings.Contains(msg, "scratch_repro.py") && !strings.Contains(msg, "calc_test.py") {
+			told = true
+		}
+	}
+	if !told {
+		t.Errorf("the new file the plan does not name was not said to be new")
 	}
 }
 
