@@ -500,3 +500,36 @@ func TestADocumentOnWhatTheChangeAltersIsSaid(t *testing.T) {
 		t.Fatalf("evidence message: %q", msg)
 	}
 }
+
+// A change that edited a document of its own is not told of others: which
+// documents it needed is the work's to judge.
+func TestAChangeWithADocumentIsNotToldOfOthers(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	cmd := exec.Command("sh", "-c", "mkdir -p docs/adr && printf '# Values\\n\\n`one_value` returns 1.\\n' > docs/adr/0001-values.md && printf 'notes\\n' > NOTES.md && git add docs NOTES.md && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m adr")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	plan := `(change "calc.py" "one_value" "return 10")
+(none test "a one-line change")
+(docs "NOTES.md" "say one() is 10")
+(check "grep -q 'return 10' calc.py # make validate")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		write("d", "NOTES.md", "one() is 10\n"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py # make validate"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	for i := range r.srv.Requests {
+		if msg := lastMessage(r, i); strings.Contains(msg, "documents that describe what your change alters") {
+			t.Fatalf("told of other documents: %q", msg)
+		}
+	}
+}

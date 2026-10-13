@@ -763,13 +763,49 @@ const (
 // said no document changed; the reference and the build without plans
 // amended ADR 25, which describes Scanner.Scan and the guard's TextSecret
 // the change altered (2026-10-13).
-func docsMentioning(ctx context.Context, o Options, names []string) ([][2]string, error) {
+func docsMentioning(ctx context.Context, o Options, names, packages []string) ([][2]string, error) {
 	type doc struct {
 		path  string
 		names []string
 	}
 	byPath := map[string]*doc{}
 	var order []string
+	add := func(p, n string) {
+		d := byPath[p]
+		if d == nil {
+			d = &doc{path: p}
+			byPath[p] = d
+			order = append(order, p)
+		}
+		d.names = append(d.names, n)
+	}
+	// An ADR is named for what it decides (0025-ingress-redaction.md): one
+	// whose name has a word starting with the name of a package the change
+	// alters (redact) is about it, whether or not it names a function.
+	if len(packages) > 0 {
+		out, err := runGitLimit(ctx, o, 4<<20, "ls-tree", "-r", "--name-only", "HEAD")
+		if err == nil {
+			for _, p := range strings.Fields(out) {
+				if !strings.Contains("/"+p, "/adr/") || !docExt(p) {
+					continue
+				}
+				base := strings.ToLower(strings.TrimSuffix(filepath.Base(p), filepath.Ext(p)))
+				words := strings.FieldsFunc(base, func(r rune) bool { return r == '-' || r == '_' || r == '.' })
+				for _, pkg := range packages {
+					pkg = strings.ToLower(pkg)
+					if len(pkg) < 3 {
+						continue
+					}
+					for _, w := range words {
+						if strings.HasPrefix(w, pkg) {
+							add(p, pkg)
+							break
+						}
+					}
+				}
+			}
+		}
+	}
 	for _, n := range names {
 		if strings.ContainsAny(n, " \t\n") || len(n) < 4 {
 			continue
@@ -793,13 +829,7 @@ func docsMentioning(ctx context.Context, o Options, names []string) ([][2]string
 			continue
 		}
 		for _, p := range holding {
-			d := byPath[p]
-			if d == nil {
-				d = &doc{path: p}
-				byPath[p] = d
-				order = append(order, p)
-			}
-			d.names = append(d.names, n)
+			add(p, n)
 		}
 	}
 	docs := make([]*doc, 0, len(order))
@@ -817,12 +847,21 @@ func docsMentioning(ctx context.Context, o Options, names []string) ([][2]string
 	return res, nil
 }
 
+func docExt(p string) bool {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".md", ".tex", ".rst", ".adoc":
+		return true
+	}
+	return false
+}
+
 func docsMentioningPrim(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "docs-mentioning",
 		Meta: scheme.Meta{
-			Doc:    "The repository's documents (Markdown, LaTeX, reStructuredText, AsciiDoc, as HEAD has them) that hold one of names whole, most names first, at most " + fmt.Sprint(docsMentioningMax) + ": a list of (path . \"the names it holds\"). A name in more than " + fmt.Sprint(docsMentioningCommon) + " documents, or shorter than 4 characters, is left out. Registered in a git work tree.",
-			Params: []scheme.Param{{Name: "names", Type: "list", Doc: "the names, such as the functions a change alters"}},
+			Doc: "The repository's documents (Markdown, LaTeX, reStructuredText, AsciiDoc, as HEAD has them) that hold one of names whole, and the ADRs whose file name has a word starting with one of packages, most names first, at most " + fmt.Sprint(docsMentioningMax) + ": a list of (path . \"the names it holds\"). A name in more than " + fmt.Sprint(docsMentioningCommon) + " documents, or shorter than 4 characters, is left out. Registered in a git work tree.",
+			Params: []scheme.Param{{Name: "names", Type: "list", Doc: "the names, such as the functions a change alters"},
+				{Name: "packages", Type: "list", Doc: "the names of the packages (directories) the change alters: an ADR whose file name has a word starting with one is about it", Optional: true}},
 			Host:   true,
 			Hidden: true,
 		},
@@ -831,13 +870,24 @@ func docsMentioningPrim(o Options) *scheme.Prim {
 			if err != nil {
 				return scheme.Value{}, err
 			}
-			var names []string
+			var names, packages []string
 			for _, it := range items {
 				if it.Kind == scheme.KString {
 					names = append(names, it.S)
 				}
 			}
-			docs, err := docsMentioning(c.Ctx, o, names)
+			if len(c.Args) > 1 {
+				pkgs, err := c.List(1)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				for _, it := range pkgs {
+					if it.Kind == scheme.KString {
+						packages = append(packages, it.S)
+					}
+				}
+			}
+			docs, err := docsMentioning(c.Ctx, o, names, packages)
 			if err != nil {
 				return scheme.Value{}, fmt.Errorf("docs-mentioning: %w", err)
 			}

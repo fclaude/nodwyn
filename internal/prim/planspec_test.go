@@ -183,11 +183,14 @@ func TestDocsMentioningFindsWhereABehaviourIsWritten(t *testing.T) {
 	}
 	git("add", ".")
 	git("commit", "-q", "-m", "docs")
-	got, err := docsMentioning(context.Background(), k.o, []string{"Scanner.Scan", "TextSecret", "Overview", "Run", "nowhere"})
+	write(t, root, "docs/adr/0025-ingress-redaction.md", "L1 is the scanner every place uses.\n", 0o644)
+	git("add", ".")
+	git("commit", "-q", "-m", "adr")
+	got, err := docsMentioning(context.Background(), k.o, []string{"Scanner.Scan", "TextSecret", "Overview", "Run", "nowhere"}, []string{"redact", "l1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := [][2]string{{"docs/adr/0001.md", "Scanner.Scan, TextSecret"}, {"docs/guide.tex", "TextSecret"}}
+	want := [][2]string{{"docs/adr/0001.md", "Scanner.Scan, TextSecret"}, {"docs/adr/0025-ingress-redaction.md", "redact"}, {"docs/guide.tex", "TextSecret"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("docsMentioning = %q, want %q", got, want)
 	}

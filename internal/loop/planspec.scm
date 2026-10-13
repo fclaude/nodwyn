@@ -754,17 +754,37 @@
           (else (string-append label " " run ": it fails when the harness runs it now (exit " (number->string status) "):\n"
                                (plan-language-last-lines tail 15))))))
 
-;; Documents that describe what the change alters and that it left as they
-;; were: the repository's documents (docs-mentioning) holding a function the
-;; plan's change steps name, unchanged by the change, said once as one item.
+;; Documents that describe what the change alters, when the change edited
+;; none: the repository's documents (docs-mentioning) holding a function the
+;; plan's change steps name, and the ADRs named for a package they change
+;; (docs/adr/0025-ingress-redaction.md for internal/redact), unchanged by the
+;; change, said once as one item.
 ;; On commit-bench (dsl9 3422faf1) the planner wrote (none docs ...) and the
 ;; executor followed it; the reference, and the build without plans, amended
 ;; ADR 25, which describes the Scanner.Scan and TextSecret the change altered.
 (define (plan-language-docs-unmet)
+  (if (let any ((ps plan-language-edited))
+        (and (pair? ps) (or (and (doc-path? (car ps)) (not (string-contains? (car ps) "catalogue"))) (any (cdr ps)))))
+      ;; The change has a document of its own: which ones it needed is the
+      ;; work's to judge, and naming others costs reads (556d6d12 amends ADR
+      ;; 9; ADR 8 is named for its llm package).
+      '()
+      (plan-language-docs-candidates)))
+
+(define (plan-language-docs-candidates)
   (let* ((names (filter (lambda (n) (>= (string-length n) 4))
                         (map (lambda (st) (assoc-ref st 'name ""))
                              (filter (lambda (st) (equal? (assoc-ref st 'kind "") "Change")) plan-spec))))
-         (docs (if (pair? names) (guard (e (else '())) (docs-mentioning names)) '()))
+         (packages (let walk ((ss plan-spec) (out '()))
+                     (if (null? ss)
+                         (reverse out)
+                         (let* ((st (car ss)) (path (assoc-ref st 'path ""))
+                                (parts (string-split path "/"))
+                                (dir (if (and (equal? (assoc-ref st 'kind "") "Change") (> (length parts) 1))
+                                         (list-ref parts (- (length parts) 2))
+                                         #f)))
+                           (walk (cdr ss) (if (and dir (not (member dir out))) (cons dir out) out))))))
+         (docs (if (or (pair? names) (pair? packages)) (guard (e (else '())) (docs-mentioning names packages)) '()))
          (unchanged (if (pair? docs)
                         (assoc-ref (guard (e (else '())) (plan-evidence '() (map car docs))) "unchanged" '())
                         '()))
