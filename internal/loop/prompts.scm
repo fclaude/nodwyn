@@ -185,6 +185,9 @@
    ;; (guard.ArgvTrigger, ADR 17, amended 2026-10-10).
    "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; conda env list; ls -d .venv venv 2>/dev/null), then run that environment's interpreter by the full path it shows, or with conda run -n NAME. Listing folders outside the repository asks for approval; running an environment's interpreter does not."
    "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
+   ;; The main loop shared the planner's belief on 556d6d12 (session-id read
+   ;; as X-Session-Id) and never tested it (ADR 32, amended 2026-10-12).
+   "\n- Take each name the request gives (a header, a flag, a field, a file) as meant literally. If you conclude it is a different name the code already has, show that with a run before you rely on it."
    "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
    ;; project-notes-save was the person's alone, so no model ever kept a
    ;; note, and each session found out again how the tests run (ADR 32,
@@ -475,6 +478,15 @@
 ;; to work and what to cover, names an open choice with what decides it
 ;; rather than making it, copies the request's literals, and asks for a test
 ;; input that tells the right behaviour from the nearest wrong one.
+;; Copying was not enough when the planner decided a name the request gave
+;; was one the code already had: on commit-bench (556d6d12, 2026-10-12) the
+;; request named three headers, session-id, thread-id and
+;; x-client-request-id; the planner read session-id as the X-Session-Id the
+;; code already sent, planned the other two, and the change failed the
+;; maintainers' test. Two of three planners on that task reasoned the same
+;; way, and so did the main loops that followed them. So a name the request
+;; lists stays in the plan as the request spells it, and a belief that it is
+;; already there becomes a test of the request's own spelling.
 (define (plan-shape)
   (string-append
    "Each step starts with its kind and a short name for what it does, then a dash (—) and the detail after it:"
@@ -482,7 +494,8 @@
    (if plan-last-kind (string-append "\nThe last step is a " plan-last-kind ": step.") "")
    " A step that says all it should in its name needs no dash. A plan with no test or no doc to change says so in a step, and why (\"Test: none — only docs change\")."
    " Say what the code should do as behaviour, in which cases and with what result, not as code to type: whoever carries the plan out reads the code and writes it, and a function name or signature quoted from memory that the code does not have misleads them."
-   " Where the request or the code leaves a detail open (which helper or function to call, a literal's type or format, which of several fixes), name the options and what will decide between them (the definition to read, the code nearby to imitate, the request's example), and leave the choice to whoever carries the plan out, who can run the code: a choice made by reading alone is the one most often wrong. Copy the request's own examples, names and formats word for word."))
+   " Where the request or the code leaves a detail open (which helper or function to call, a literal's type or format, which of several fixes), name the options and what will decide between them (the definition to read, the code nearby to imitate, the request's example), and leave the choice to whoever carries the plan out, who can run the code: a choice made by reading alone is the one most often wrong. Copy the request's own examples, names and formats word for word."
+   " Every name the request lists for what the change must produce or touch (a header, a flag, a field, a command, a file) appears in a step, spelled as the request spells it; if you think one is already there under another name, keep it anyway: the step names both, and a Test: step checks the request's own spelling, so a run shows whether they are the same."))
 
 ;; The planner's request for a plan.
 (define (plan-draft-prompt request)

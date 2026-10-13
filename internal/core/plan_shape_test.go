@@ -280,3 +280,31 @@ func TestThePlannerIsAskedForBehaviourNotCode(t *testing.T) {
 		t.Fatalf("the planner's request does not ask for behaviour:\n%s", r.srv.Requests[1].Raw)
 	}
 }
+
+// A name the request lists stays in the plan as the request spells it: the
+// planner is told to keep one it thinks the code already has under another
+// name, with a test of the request's spelling, and the main loop to show
+// such a belief with a run. On commit-bench a planner read the request's
+// session-id header as the X-Session-Id the code sent, planned the other two
+// headers, and the change failed (ADR 32, amended 2026-10-12).
+func TestTheRequestsNamesAreKeptAsSpelled(t *testing.T) {
+	t.Parallel()
+	r := newRig(t, true,
+		fake.Turn{Content: "main.go declares package main."}, // the explorer
+		fake.Turn{Content: "1. Edit main.go."},               // the planner
+		fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+	)
+	if err := r.s.SendPlanned("send the headers session-id and thread-id"); err != nil {
+		t.Fatal(err)
+	}
+	r.drain("n")
+	if len(r.srv.Requests) < 3 {
+		t.Fatalf("%d requests: the planner or the main loop was not asked", len(r.srv.Requests))
+	}
+	if planner := string(r.srv.Requests[1].Raw); !strings.Contains(planner, "spelled as the request spells it") || !strings.Contains(planner, "a Test: step checks the request's own spelling") {
+		t.Fatalf("the planner's request does not keep the request's names:\n%s", planner)
+	}
+	if sys := r.s.loop.WindowContext().System; !strings.Contains(sys, "Take each name the request gives") {
+		t.Fatalf("the system prompt lacks the rule on the request's names")
+	}
+}
