@@ -127,3 +127,14 @@ func TestCheckBeforeRunsOnACleanCloneOfHead(t *testing.T) {
 		t.Errorf("the working tree changed: %q", data)
 	}
 }
+
+// The programs a failing run says are missing: make validate's staticcheck
+// on commit-bench, a shell's and Go's; a missing file is no program.
+func TestMissingProgramsAreReadOffTheOutput(t *testing.T) {
+	got := missingPrograms("      | staticcheck ./...\n      | make[1]: staticcheck: No such file or directory\n      | make[1]: *** [Makefile:28: lint] Error 127\n" +
+		"bash: line 1: golangci-lint: command not found\nsh: 1: ruff: not found\nexec: \"node\": executable file not found in $PATH\n" +
+		"cat: notes.txt: No such file or directory\nMakefile:3: extra.mk: No such file or directory\n")
+	if want := []string{"golangci-lint", "ruff", "staticcheck", "node"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("missingPrograms = %q, want %q", got, want)
+	}
+}

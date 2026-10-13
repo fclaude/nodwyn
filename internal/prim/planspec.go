@@ -552,3 +552,53 @@ func runCheckBefore(ctx context.Context, o Options, name string, args []string) 
 	}
 	return 0, "", err
 }
+
+// missingProgramREs are how a shell, make and Go's exec say a program is not
+// installed. On commit-bench every attempt of every build met make
+// validate's "make[1]: staticcheck: No such file or directory", and spent up
+// to 19 calls looking for, building or installing it (2026-10-13).
+var missingProgramREs = []*regexp.Regexp{
+	regexp.MustCompile(`(?m)\b([A-Za-z0-9_.+-]+): command not found`),
+	regexp.MustCompile(`(?m)\b(?:sh|bash|dash|zsh)(?:: line \d+|: \d+)?: ([A-Za-z0-9_.+-]+): not found`),
+	regexp.MustCompile(`(?m)\bmake(?:\[\d+\])?: ([A-Za-z0-9_.+-]+): No such file or directory`),
+	regexp.MustCompile(`exec: "([A-Za-z0-9_.+-]+)": executable file not found`),
+}
+
+// missingPrograms is the programs a command's output says are not
+// installed, once each, in order.
+func missingPrograms(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, re := range missingProgramREs {
+		for _, m := range re.FindAllStringSubmatch(text, -1) {
+			if !seen[m[1]] {
+				seen[m[1]] = true
+				out = append(out, m[1])
+			}
+		}
+	}
+	return out
+}
+
+func missingProgramsPrim() *scheme.Prim {
+	return &scheme.Prim{
+		Name: "missing-programs",
+		Meta: scheme.Meta{
+			Doc:    "The programs a command's output says are not installed (a shell's \"command not found\", make's \"make: prog: No such file or directory\", Go's \"executable file not found\"), once each, in order.",
+			Params: []scheme.Param{{Name: "text", Type: "string", Doc: "the output"}},
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			text, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			names := missingPrograms(text)
+			out := make([]scheme.Value, len(names))
+			for i, n := range names {
+				out[i] = scheme.Str(n)
+			}
+			return scheme.List(out...), nil
+		},
+	}
+}

@@ -59,6 +59,7 @@
   (set! plan-language-tests-before '())
   (set! plan-language-started-ids '())
   (set! plan-language-started-lines '())
+  (set! plan-language-missing-told '())
   (plan-language-base-turn request))
 
 ;; The steps the harness has marked in this turn, and the repository paths
@@ -221,16 +222,41 @@
        (when (and (integer? status) line (plan-language-check-line? line))
          (set! plan-language-as-before (filter (lambda (l) (not (equal? l line))) plan-language-as-before)))
        (when (and (integer? status) (not (= status 0)) line)
-         (let ((text (plan-language-output r)))
-           (when (plan-language-check-line? line)
-             (plan-language-before-run))
-           (when (plan-language-as-before? text)
-             (when (plan-language-check-line? line)
-               (set! plan-language-as-before (cons line plan-language-as-before)))
-             (when (< plan-language-before-noted plan-language-before-notes)
-               (set! plan-language-before-noted (+ plan-language-before-noted 1))
-               (fold-result (assoc-ref c 'id) (string-append (format "~a" (assoc-ref r 'value "")) (plan-language-before-note)))))))))
+         (let* ((text (plan-language-output r))
+                (value (format "~a" (assoc-ref r 'value "")))
+                (check? (plan-language-check-line? line))
+                (missing (guard (e (else '())) (missing-programs text))))
+           (cond ((pair? missing)
+                  ;; A program the environment lacks: the run says nothing
+                  ;; of the change past where it stopped.
+                  (when check? (set! plan-language-as-before (cons line plan-language-as-before)))
+                  (let ((new (filter (lambda (p) (not (member p plan-language-missing-told))) missing)))
+                    (when (pair? new)
+                      (set! plan-language-missing-told (append new plan-language-missing-told))
+                      (fold-result (assoc-ref c 'id) (string-append value (plan-language-missing-note new check?))))))
+                 (else
+                  (when check? (plan-language-before-run))
+                  (when (plan-language-as-before? text)
+                    (when check? (set! plan-language-as-before (cons line plan-language-as-before)))
+                    (when (< plan-language-before-noted plan-language-before-notes)
+                      (set! plan-language-before-noted (+ plan-language-before-noted 1))
+                      (fold-result (assoc-ref c 'id) (string-append value (plan-language-before-note)))))))))))
    calls results))
+
+;; The programs a failing run said are not installed, told once each a turn.
+;; On commit-bench every build's attempts met make validate's missing
+;; staticcheck and spent up to 19 calls finding, building or installing it,
+;; at best to see the rest of validate pass (2026-10-13).
+(define plan-language-missing-told '())
+
+(define (plan-language-missing-note progs check?)
+  (let ((names (string-join (map (lambda (p) (string-append "`" p "`")) progs) ", "))
+        (them (if (pair? (cdr progs)) "them" "it")))
+    (string-append "\n[hint: " names (if (pair? (cdr progs)) " are" " is") " not installed here, so the run stopped where it needed " them
+                   ". Do not spend calls installing or building " them
+                   ": if the run stopped before the rest of what it checks (for a make target, the recipe's later lines), run those parts yourself, and say in your report that "
+                   names " could not run here."
+                   (if check? " The plan counts this run of its check as passing." "") "]")))
 
 ;; What a run printed: shell-exec's stdout and stderr, from the JSON its
 ;; result is, or a background run's result as it reads.

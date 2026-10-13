@@ -254,3 +254,37 @@ func TestACheckFailingInANewWayIsTheChanges(t *testing.T) {
 		t.Errorf("the check step was not said to lack its evidence")
 	}
 }
+
+// A failing run that says a program is not installed is told, once, not to
+// spend calls on it but to run what the run did not reach; a run of the
+// plan's check that failed so counts as the check passing (commit-bench,
+// make validate's missing staticcheck, 2026-10-13).
+func TestAMissingProgramIsSaidOnceAndNotHunted(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	check := "printf 'make[1]: staticcheck: No such file or directory\\nmake[1]: *** [Makefile:28: lint] Error 127\\n'; exit 2 # make validate"
+	plan := `(change "calc.py" "one" "return 10")
+(none test "a one-line change")
+(none docs "no document describes calc")
+(check "` + strings.ReplaceAll(check, `\`, `\\`) + `")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", check),
+		shellArgs("d", "bash", "-c", check),
+		fake.Turn{Content: "done; staticcheck could not run here"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 4); !strings.Contains(msg, "`staticcheck` is not installed here") || !strings.Contains(msg, "The plan counts this run of its check as passing") {
+		t.Errorf("the first failing run: %q", msg)
+	}
+	if msg := lastMessage(r, 5); strings.Contains(msg, "not installed here") {
+		t.Errorf("told twice: %q", msg)
+	}
+}
