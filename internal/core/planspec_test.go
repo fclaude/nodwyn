@@ -178,3 +178,79 @@ func TestAWholeCheckStandsForThePlansTests(t *testing.T) {
 		}
 	}
 }
+
+// When a run of the plan's check fails, the check runs once on a clone of
+// the last commit (check-before): a failure only like the one there is said,
+// in the run's own result, to have been there before the change, and the
+// check step counts as passing, with no reminder that the last run failed.
+// A planned test's first pass says whether it fails on the unchanged code.
+// On commit-bench make validate failed on a program the environment lacks,
+// in every build's attempts, and the model spent up to 19 calls on it
+// (2026-10-13).
+func TestACheckThatFailedBeforeTheChangeIsSaidSo(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"))
+(none docs "no document describes calc")
+(check "ls no-such-tool-here && grep -q 'return 10' calc.py # make validate")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("t", "calc_test.py", "def test_one():\n    pass\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("u", "bash", "-c", "grep -q 'return 10' calc.py && grep -q test_one calc_test.py # pytest"),
+		shellArgs("c", "bash", "-c", "ls no-such-tool-here && grep -q 'return 10' calc.py # make validate"),
+		fake.Turn{Content: "done; make validate fails on the unchanged code too"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 5); !strings.Contains(msg, "test_one fails on the unchanged code") {
+		t.Errorf("the test's first pass: %q", msg)
+	}
+	if msg := lastMessage(r, 6); !strings.Contains(msg, "fails on the unchanged code too (run on a clone of the last commit)") || !strings.Contains(msg, "no-such-tool-here") {
+		t.Errorf("the failing check's result: %q", msg)
+	}
+}
+
+// A run of the check that fails with a line the unchanged code's run did not
+// print is the change's failure: nothing is said in its result, and the
+// check step lacks its evidence before the turn ends.
+func TestACheckFailingInANewWayIsTheChanges(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(none test "a one-line change")
+(none docs "no document describes calc")
+(check "ls no-such-tool-here; grep -q 'return 1$' calc.py || echo 'error: one() changed'; exit 2 # make validate")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", "ls no-such-tool-here; grep -q 'return 1$' calc.py || echo 'error: one() changed'; exit 2 # make validate"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	for i := range r.srv.Requests {
+		if strings.Contains(lastMessage(r, i), "fails on the unchanged code too") {
+			t.Fatalf("request %d says the new failure was there before: %q", i, lastMessage(r, i))
+		}
+	}
+	found := false
+	for i := range r.srv.Requests {
+		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") && strings.Contains(msg, "it has not passed since your last edit") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the check step was not said to lack its evidence")
+	}
+}

@@ -209,13 +209,16 @@ func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
 	if _, err := interp.EvalString(harness, defaultPlanGate); err != nil {
 		return nil, fmt.Errorf("loop: default plan gate: %w", err)
 	}
-	if _, err := interp.EvalString(harness, defaultPlanLanguage); err != nil {
-		return nil, fmt.Errorf("loop: default plan language: %w", err)
-	}
 	for _, h := range defaultHabits {
 		if _, err := interp.EvalString(harness, h.src); err != nil {
 			return nil, fmt.Errorf("loop: default habit %s: %w", h.name, err)
 		}
+	}
+	// The plan language goes last: its run-calls wraps the habits', so the
+	// notes it appends to a result are folded after the shell habit has
+	// rendered the result as plain text, and stay.
+	if _, err := interp.EvalString(harness, defaultPlanLanguage); err != nil {
+		return nil, fmt.Errorf("loop: default plan language: %w", err)
 	}
 	return l, nil
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/scheme"
@@ -55,9 +56,9 @@ var (
 	// and no separator (ChatGPT, OpenAI): a product's name more often than the
 	// code's. On commit-bench both made the planner write its plan again
 	// for names that did not matter (ADR 32, amended 2026-10-13).
-	markerRE = regexp.MustCompile(`^[A-Z][A-Z0-9_]*(\.[A-Za-z0-9]+)?$`)
-	brandRE  = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
-	versionRE     = regexp.MustCompile(`^v?\d+([._-]\d+)*$`)
+	markerRE  = regexp.MustCompile(`^[A-Z][A-Z0-9_]*(\.[A-Za-z0-9]+)?$`)
+	brandRE   = regexp.MustCompile(`^[A-Z][A-Za-z0-9]*$`)
+	versionRE = regexp.MustCompile(`^v?\d+([._-]\d+)*$`)
 )
 
 // requestNames is the names a request gives that read as code: spans in
@@ -253,7 +254,7 @@ func testBefore(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "test-before",
 		Meta: scheme.Meta{
-			Doc:    "Run a test on the code as it was before the change: a copy of HEAD in the scratch directory (plan-base) with the working tree's version of the file at path put in, the command run there within " + testBeforeBudget.String() + ". Returns its exit status, or fails when it could not run. Hidden; registered in a git work tree; its command is judged by the guard as a command's is.",
+			Doc: "Run a test on the code as it was before the change: a copy of HEAD in the scratch directory (plan-base) with the working tree's version of the file at path put in, the command run there within " + testBeforeBudget.String() + ". Returns its exit status, or fails when it could not run. Hidden; registered in a git work tree; its command is judged by the guard as a command's is.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "the test file, relative to the repository root"},
 				{Name: "cmd", Type: "string", Doc: "the program", Role: "argv"},
@@ -346,4 +347,208 @@ func runTestBefore(ctx context.Context, o Options, rel, name string, args []stri
 		return 0, err
 	}
 	return r.status, nil
+}
+
+// failureLineRE is a line of a command's output that says something failed:
+// a test or a step that failed, an error, a panic, a missing file or
+// program. On commit-bench the plan's check, make validate, failed in every
+// attempt of every build on a program the environment lacks (staticcheck:
+// No such file or directory), and the model spent up to 19 calls of an
+// attempt finding that out (2026-10-13).
+var failureLineRE = regexp.MustCompile(`(?i)\b(fail|fails|failed|failing|failure|error|errors|panic|fatal)\b|no such file|not found|cannot |undefined: `)
+
+// failureLines is the lines of text that say something failed, each with
+// its noise masked (checkNoise) and its spaces made single, once each, in
+// order: what two runs of a check are compared by.
+func failureLines(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.FieldsFunc(text, func(r rune) bool { return r == '\n' || r == '\r' }) {
+		if !failureLineRE.MatchString(line) {
+			continue
+		}
+		for _, n := range checkNoise {
+			line = n.re.ReplaceAllString(line, n.with)
+		}
+		line = strings.Join(strings.Fields(line), " ")
+		if line != "" && !seen[line] {
+			seen[line] = true
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func failureLinesPrim() *scheme.Prim {
+	return &scheme.Prim{
+		Name: "failure-lines",
+		Meta: scheme.Meta{
+			Doc:    "The lines of a command's output that say something failed (a failed test or step, an error, a panic, a missing file or program), each with durations, clock times, addresses and long numbers masked and its spaces made single, once each, in order.",
+			Params: []scheme.Param{{Name: "text", Type: "string", Doc: "the output"}},
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			text, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			lines := failureLines(text)
+			out := make([]scheme.Value, len(lines))
+			for i, l := range lines {
+				out[i] = scheme.Str(l)
+			}
+			return scheme.List(out...), nil
+		},
+	}
+}
+
+// checkBeforeBudget is how long (check-before ...) may run the plan's check,
+// and checkBeforeShown how many of its failing lines it gives as printed.
+var checkBeforeBudget = 10 * time.Minute
+
+const checkBeforeShown = 8
+
+// checkBefore builds (check-before cmd args): run the plan's check on the
+// code as it was, so a failure the check had before the change is told
+// apart from one the change made.
+func checkBefore(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "check-before",
+		Meta: scheme.Meta{
+			Doc: "Run a check on the code as it was before the change: a clone of HEAD in the scratch directory (plan-check-base), the command run there within " + checkBeforeBudget.String() + ". Returns an alist of status, its exit status; lines, the lines of its output that say something failed, as failure-lines gives them; and shown, the first of those lines as printed. Fails when it could not run. Hidden; registered in a git work tree; its command is judged by the guard as a command's is.",
+			Params: []scheme.Param{
+				{Name: "cmd", Type: "string", Doc: "the program", Role: "argv"},
+				{Name: "args", Type: "list", Doc: "its arguments", Role: "argv"},
+			},
+			Host:   true,
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			name, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			items, err := c.List(1)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			args := make([]string, len(items))
+			for i, it := range items {
+				if it.Kind != scheme.KString {
+					return scheme.Value{}, errors.New("args must be a list of strings")
+				}
+				args[i] = it.S
+			}
+			status, output, err := runCheckBefore(c.Ctx, o, name, args)
+			if err != nil {
+				return scheme.Value{}, fmt.Errorf("check-before: %w", err)
+			}
+			lines := failureLines(output)
+			var norm, shown []scheme.Value
+			for _, l := range lines {
+				norm = append(norm, scheme.Str(l))
+			}
+			for _, l := range strings.FieldsFunc(output, func(r rune) bool { return r == '\n' || r == '\r' }) {
+				if len(shown) == checkBeforeShown {
+					break
+				}
+				if failureLineRE.MatchString(l) {
+					if len(l) > 200 {
+						l = l[:200] + "..."
+					}
+					shown = append(shown, scheme.Str(strings.TrimSpace(l)))
+				}
+			}
+			return scheme.List(
+				scheme.Cons(scheme.Str("status"), scheme.Int(int64(status))),
+				scheme.Cons(scheme.Str("lines"), scheme.List(norm...)),
+				scheme.Cons(scheme.Str("shown"), scheme.List(shown...)),
+			), nil
+		},
+	}
+}
+
+// checkBeforeOutput keeps what a command prints, up to its last
+// checkBeforeKeep bytes.
+type checkBeforeOutput struct{ b []byte }
+
+const checkBeforeKeep = 4 << 20
+
+func (w *checkBeforeOutput) Write(p []byte) (int, error) {
+	w.b = append(w.b, p...)
+	if len(w.b) > 2*checkBeforeKeep {
+		w.b = append([]byte(nil), w.b[len(w.b)-checkBeforeKeep:]...)
+	}
+	return len(p), nil
+}
+
+// runCheckBefore clones the repository's HEAD into plan-check-base, shared
+// with the repository's objects and checked out at HEAD's commit, so a check
+// that asks git what changed sees nothing changed, and runs the command
+// there. It says the exit status and what the command printed, stdout and
+// stderr in turn.
+func runCheckBefore(ctx context.Context, o Options, name string, args []string) (int, string, error) {
+	if o.Scratch == "" || !isGitWorkTree(o.Root) {
+		return 0, "", errors.New("not a git work tree with a scratch directory")
+	}
+	base := filepath.Join(o.Scratch, "plan-check-base")
+	if err := os.RemoveAll(base); err != nil {
+		return 0, "", err
+	}
+	gctx, cancel := context.WithTimeout(ctx, checkBeforeBudget)
+	defer cancel()
+	git := func(dir string, args ...string) (string, error) {
+		cmd := exec.CommandContext(gctx, "git", args...)
+		cmd.Dir = dir
+		cmd.Env = scrubEnv(o.EnvAllow)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(out)))
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	head, err := git(o.Root, "rev-parse", "HEAD")
+	if err != nil {
+		return 0, "", err
+	}
+	if _, err := git(o.Root, "clone", "-q", "--shared", "--no-checkout", o.Root, base); err != nil {
+		return 0, "", err
+	}
+	if _, err := git(base, "checkout", "-q", "--detach", head); err != nil {
+		return 0, "", err
+	}
+	timeout := checkBeforeBudget
+	if dl, ok := gctx.Deadline(); ok {
+		timeout = time.Until(dl)
+	}
+	cctx, ccancel := context.WithTimeout(ctx, timeout)
+	defer ccancel()
+	cmd := exec.CommandContext(cctx, name, pipefail(name, args)...)
+	cmd.Dir = base
+	cmd.Env = scrubEnv(o.EnvAllow)
+	cmd.Env = append(cmd.Env, "TMPDIR="+o.Scratch)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = 5 * time.Second
+	var stdout, stderr checkBeforeOutput
+	err = runStopping(cmd, &stdout, &stderr)
+	if ctx.Err() != nil {
+		return 0, "", ctx.Err()
+	}
+	if cctx.Err() != nil {
+		return 0, "", fmt.Errorf("timed out after %s", timeout)
+	}
+	output := string(stdout.b) + "\n" + string(stderr.b)
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return 0, output, nil
+	case errors.As(err, &exitErr):
+		status := exitErr.ExitCode()
+		if status < 0 {
+			status = 128
+		}
+		return status, output, nil
+	}
+	return 0, "", err
 }
