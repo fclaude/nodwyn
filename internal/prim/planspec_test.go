@@ -87,6 +87,15 @@ func TestPlanEvidenceReadsTheChange(t *testing.T) {
 	if got := v.String(); !strings.Contains(got, `"cache_key"`) || strings.Contains(got, "session-id") || strings.Contains(got, "store") || !strings.Contains(got, `"Session"`) {
 		t.Errorf("plan-evidence asked the change for %s", got)
 	}
+	// A step that names a directory is changed by an edit to a file in it.
+	write(t, root, "sub/deep.txt", "deeper\n", 0o644)
+	v, err = in.EvalString(context.Background(), `(plan-evidence '() '("sub/" "sub" "nothere/"))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := v.String(); !strings.Contains(got, `("unchanged" "nothere/")`) {
+		t.Errorf("a directory with a changed file in it: %s", got)
+	}
 }
 
 // test-before runs a command on a copy of HEAD with the working tree's test

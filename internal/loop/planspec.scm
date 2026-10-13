@@ -77,8 +77,12 @@
     (guard (e (else #f)) (record-step n "done" note))))
 
 (define (plan-language-same-path? a b)
-  (let ((strip (lambda (p) (if (string-prefix? "./" p) (substring p 2 (string-length p)) p))))
-    (equal? (strip a) (strip b))))
+  (let* ((strip (lambda (p) (if (string-prefix? "./" p) (substring p 2 (string-length p)) p)))
+         (a (strip a)) (b (strip b))
+         (dir (if (string-suffix? "/" a) a (string-append a "/"))))
+    ;; A step may name a directory (docs/adr/): an edit to a file in it is
+    ;; its change.
+    (or (equal? a b) (and (not (string-empty? a)) (string-prefix? dir b)))))
 
 ;; Marks as the work happens: after each round of the main context's calls,
 ;; a change or docs step whose file a call wrote, a test step whose file was
@@ -650,7 +654,18 @@
                (set! plan-spec-names (cadr read))
                (set! plan-spec-context (caddr read))
                (plan-language-base-write call (list (cons "plan" (plan-language-text (car read) (cadr read) (caddr read))))))
-        (plan-language-base-write call args))))
+        (let ((answer (plan-language-base-write call args)))
+          ;; A plan the model writes in prose replaces the planner's forms:
+          ;; set against the old forms, its steps were said to lack evidence
+          ;; they did not need (commit-bench, dsl8 107251d0: a rewritten plan
+          ;; of 7 steps, told of the forms' step 8). The prose plan is kept
+          ;; as prose plans are, with the generic checks.
+          (when (and (pair? plan-spec) (string-prefix? "Plan recorded" (format "~a" answer)))
+            (log-note "plan language: the model wrote its plan in prose; the planner's forms no longer stand for it")
+            (set! plan-spec '())
+            (set! plan-spec-names '())
+            (set! plan-spec-context '()))
+          answer))))
 
 ;; Whether a command the turn ran and saw pass since the last edit (passed)
 ;; covers cmd: it contains it, or it is the repository's whole check.

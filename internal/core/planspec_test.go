@@ -437,3 +437,34 @@ func TestANameTheCodeHasIsContextWithoutAskingAgain(t *testing.T) {
 		t.Fatalf("the planner was asked again, or the plan lacks the name:\n%s", main)
 	}
 }
+
+// A plan the model writes again in prose replaces the planner's forms: the
+// forms' steps are not held against the work (commit-bench, dsl8 107251d0:
+// the rewritten plan had 7 steps, and the turn was told its forms' step 8
+// lacked its evidence).
+func TestAPlanWrittenInProseReplacesTheForms(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	forms := `(change "calc.py" "one" "return 10")
+(none test "a one-line change")
+(docs "NOTES.md" "say one() is 10")
+(check "grep -q 'return 10' calc.py # make validate")`
+	prose := "1. Change: calc.py one — return 10.\n2. Test: none — a one-line change.\n3. Docs: none — nothing a person reads changes.\n4. Check: grep -q 'return 10' calc.py # make validate"
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: forms},                    // the planner
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "p", Name: "plan-write", Args: map[string]any{"plan": prose}}}},
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py # make validate"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	for i := range r.srv.Requests {
+		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") {
+			t.Fatalf("the planner's forms were held against the work: %q", msg)
+		}
+	}
+}

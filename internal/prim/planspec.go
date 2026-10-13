@@ -234,7 +234,7 @@ func planEvidence(o Options) *scheme.Prim {
 			}
 			for _, p := range paths {
 				clean := filepath.ToSlash(filepath.Clean(strings.TrimPrefix(p, "./")))
-				if !changed[clean] {
+				if !changed[clean] && !changedUnder(changed, clean) {
 					unchanged = append(unchanged, scheme.Str(p))
 				}
 			}
@@ -244,6 +244,22 @@ func planEvidence(o Options) *scheme.Prim {
 			), nil
 		},
 	}
+}
+
+// changedUnder is whether the change touches a file under dir: a plan's
+// step may name a directory (docs/adr/, its planner not knowing the file),
+// and an edit to a file in it is that step's change (commit-bench, dsl8
+// 107251d0, 2026-10-13).
+func changedUnder(changed map[string]bool, dir string) bool {
+	if dir == "." || dir == "" {
+		return false
+	}
+	for p := range changed {
+		if strings.HasPrefix(p, dir+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // headHasName is whether a file of HEAD holds name whole (hasName): git
