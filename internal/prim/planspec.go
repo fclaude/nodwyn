@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -743,6 +744,108 @@ func headHasNamePrim(o Options) *scheme.Prim {
 				return scheme.Value{}, err
 			}
 			return scheme.Bool(!strings.ContainsAny(name, " \t\n") && headHasName(c.Ctx, o, name)), nil
+		},
+	}
+}
+
+// docsMentioningMax is how many documents (docs-mentioning ...) names, and
+// docsMentioningCommon how many documents a name may be in before it is too
+// common to say anything (a word every ADR uses).
+const (
+	docsMentioningMax    = 4
+	docsMentioningCommon = 8
+)
+
+// docsMentioning is the repository's documents (Markdown, LaTeX,
+// reStructuredText, AsciiDoc, as HEAD has them) that hold one of names
+// whole, with the names each holds, most names first: where the behaviour a
+// change alters is written down. On commit-bench (dsl9 3422faf1) the plan
+// said no document changed; the reference and the build without plans
+// amended ADR 25, which describes Scanner.Scan and the guard's TextSecret
+// the change altered (2026-10-13).
+func docsMentioning(ctx context.Context, o Options, names []string) ([][2]string, error) {
+	type doc struct {
+		path  string
+		names []string
+	}
+	byPath := map[string]*doc{}
+	var order []string
+	for _, n := range names {
+		if strings.ContainsAny(n, " \t\n") || len(n) < 4 {
+			continue
+		}
+		out, err := runGitLimit(ctx, o, 1<<20, "grep", "-I", "-i", "-F", "-l", "-e", n, "HEAD", "--", "*.md", "*.tex", "*.rst", "*.adoc")
+		if err != nil {
+			continue
+		}
+		files := strings.Fields(out)
+		var holding []string
+		for _, f := range files {
+			if len(holding) > docsMentioningCommon {
+				break
+			}
+			blob, err := runGitLimit(ctx, o, withoutMaxFile, "show", f)
+			if err == nil && hasName(blob, n) {
+				holding = append(holding, strings.TrimPrefix(f, "HEAD:"))
+			}
+		}
+		if len(holding) > docsMentioningCommon {
+			continue
+		}
+		for _, p := range holding {
+			d := byPath[p]
+			if d == nil {
+				d = &doc{path: p}
+				byPath[p] = d
+				order = append(order, p)
+			}
+			d.names = append(d.names, n)
+		}
+	}
+	docs := make([]*doc, 0, len(order))
+	for _, p := range order {
+		docs = append(docs, byPath[p])
+	}
+	sort.SliceStable(docs, func(i, j int) bool { return len(docs[i].names) > len(docs[j].names) })
+	var res [][2]string
+	for _, d := range docs {
+		if len(res) == docsMentioningMax {
+			break
+		}
+		res = append(res, [2]string{d.path, strings.Join(d.names, ", ")})
+	}
+	return res, nil
+}
+
+func docsMentioningPrim(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "docs-mentioning",
+		Meta: scheme.Meta{
+			Doc:    "The repository's documents (Markdown, LaTeX, reStructuredText, AsciiDoc, as HEAD has them) that hold one of names whole, most names first, at most " + fmt.Sprint(docsMentioningMax) + ": a list of (path . \"the names it holds\"). A name in more than " + fmt.Sprint(docsMentioningCommon) + " documents, or shorter than 4 characters, is left out. Registered in a git work tree.",
+			Params: []scheme.Param{{Name: "names", Type: "list", Doc: "the names, such as the functions a change alters"}},
+			Host:   true,
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			items, err := c.List(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			var names []string
+			for _, it := range items {
+				if it.Kind == scheme.KString {
+					names = append(names, it.S)
+				}
+			}
+			docs, err := docsMentioning(c.Ctx, o, names)
+			if err != nil {
+				return scheme.Value{}, fmt.Errorf("docs-mentioning: %w", err)
+			}
+			out := make([]scheme.Value, len(docs))
+			for i, d := range docs {
+				out[i] = scheme.Cons(scheme.Str(d[0]), scheme.Str(d[1]))
+			}
+			return scheme.List(out...), nil
 		},
 	}
 }

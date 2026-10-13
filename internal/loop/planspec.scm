@@ -701,7 +701,8 @@
                             (list (string-append "the change does not contain "
                                                  (string-join (map (lambda (n) (string-append "\"" n "\"")) missing) ", ")
                                                  ", which the plan says it produces"))
-                            '()))
+                            '())
+                        (plan-language-docs-unmet))
                 (reverse met))
           (let* ((st (car ss)) (kind (assoc-ref st 'kind "")) (path (assoc-ref st 'path "")) (name (assoc-ref st 'name ""))
                  (label (string-append "step " (number->string i) " (" kind (if (string-empty? path) "" (string-append " " path))
@@ -752,6 +753,27 @@
           ((begin (plan-language-before-run) (plan-language-as-before? tail)) #f)
           (else (string-append label " " run ": it fails when the harness runs it now (exit " (number->string status) "):\n"
                                (plan-language-last-lines tail 15))))))
+
+;; Documents that describe what the change alters and that it left as they
+;; were: the repository's documents (docs-mentioning) holding a function the
+;; plan's change steps name, unchanged by the change, said once as one item.
+;; On commit-bench (dsl9 3422faf1) the planner wrote (none docs ...) and the
+;; executor followed it; the reference, and the build without plans, amended
+;; ADR 25, which describes the Scanner.Scan and TextSecret the change altered.
+(define (plan-language-docs-unmet)
+  (let* ((names (filter (lambda (n) (>= (string-length n) 4))
+                        (map (lambda (st) (assoc-ref st 'name ""))
+                             (filter (lambda (st) (equal? (assoc-ref st 'kind "") "Change")) plan-spec))))
+         (docs (if (pair? names) (guard (e (else '())) (docs-mentioning names)) '()))
+         (unchanged (if (pair? docs)
+                        (assoc-ref (guard (e (else '())) (plan-evidence '() (map car docs))) "unchanged" '())
+                        '()))
+         (left (filter (lambda (d) (member (car d) unchanged)) docs)))
+    (if (null? left)
+        '()
+        (list (string-append "documents that describe what your change alters are unchanged: "
+                             (string-join (map (lambda (d) (string-append (car d) " (" (cdr d) ")")) left) "; ")
+                             ". Read what each says of it, and amend what no longer holds, or say in your report why it still holds")))))
 
 ;; Whether a test step that says it fails today passes on the code as it
 ;; was (test-before): #f when it fails there, as it should, when it could not

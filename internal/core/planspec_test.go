@@ -468,3 +468,35 @@ func TestAPlanWrittenInProseReplacesTheForms(t *testing.T) {
 		}
 	}
 }
+
+// Before the turn ends, a document that describes a function the plan's
+// change steps name, and that the change left as it was, is said once
+// (commit-bench, dsl9 3422faf1: the plan said no document changed, and the
+// reference amended ADR 25, which describes the functions changed).
+func TestADocumentOnWhatTheChangeAltersIsSaid(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	cmd := exec.Command("sh", "-c", "mkdir -p docs/adr && printf '# Values\\n\\n`one_value` returns 1.\\n' > docs/adr/0001-values.md && git add docs && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m adr")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	plan := `(change "calc.py" "one_value" "return 10")
+(none test "a one-line change")
+(none docs "nothing describes it")
+(check "grep -q 'return 10' calc.py # make validate")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py # make validate"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "the ADR describes the old value on purpose: it is history."},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	if msg := lastMessage(r, 5); !strings.Contains(msg, "documents that describe what your change alters are unchanged: docs/adr/0001-values.md (one_value)") {
+		t.Fatalf("evidence message: %q", msg)
+	}
+}

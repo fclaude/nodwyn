@@ -2,6 +2,7 @@ package prim
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -167,5 +168,27 @@ func TestMissingProgramsAreReadOffTheOutput(t *testing.T) {
 		"cat: notes.txt: No such file or directory\nMakefile:3: extra.mk: No such file or directory\n")
 	if want := []string{"golangci-lint", "ruff", "staticcheck", "node"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("missingPrograms = %q, want %q", got, want)
+	}
+}
+
+// The documents that hold a name whole, as HEAD has them, most names first;
+// a name in too many documents says nothing, and code is no document.
+func TestDocsMentioningFindsWhereABehaviourIsWritten(t *testing.T) {
+	root, k, git := keepRepo(t)
+	write(t, root, "docs/adr/0001.md", "`Scanner.Scan` lists blocks first; TextSecret judges one.\n", 0o644)
+	write(t, root, "docs/guide.tex", "TextSecret guards egress.\n", 0o644)
+	write(t, root, "scan.go", "func (s Scanner) Scan() {} // Scanner.Scan TextSecret\n", 0o644)
+	for i := 0; i <= docsMentioningCommon; i++ {
+		write(t, root, fmt.Sprintf("docs/n%d.md", i), "every page says Overview\n", 0o644)
+	}
+	git("add", ".")
+	git("commit", "-q", "-m", "docs")
+	got, err := docsMentioning(context.Background(), k.o, []string{"Scanner.Scan", "TextSecret", "Overview", "Run", "nowhere"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][2]string{{"docs/adr/0001.md", "Scanner.Scan, TextSecret"}, {"docs/guide.tex", "TextSecret"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("docsMentioning = %q, want %q", got, want)
 	}
 }
