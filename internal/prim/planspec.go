@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
@@ -224,4 +226,114 @@ func planEvidence(o Options) *scheme.Prim {
 			), nil
 		},
 	}
+}
+
+// testBeforeBudget is how long (test-before ...) may run a test.
+var testBeforeBudget = 3 * time.Minute
+
+// testBefore builds (test-before path cmd args): run a test on the code as it
+// was before the change. A copy of HEAD goes to plan-base in the scratch
+// directory, the working tree's version of the test file at path is put in
+// it, and the command runs there. A test the plan says fails today and that
+// passes there does not show the change: the review of commit-bench's
+// patches ran each patch's own tests on the unchanged code by hand to find
+// those (3 of 22 nodwyn tests, 2026-10-12); this is the same check, made by
+// the harness at no cost in tokens.
+func testBefore(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "test-before",
+		Meta: scheme.Meta{
+			Doc:    "Run a test on the code as it was before the change: a copy of HEAD in the scratch directory (plan-base) with the working tree's version of the file at path put in, the command run there within " + testBeforeBudget.String() + ". Returns its exit status, or fails when it could not run. Hidden; registered in a git work tree; its command is judged by the guard as a command's is.",
+			Params: []scheme.Param{
+				{Name: "path", Type: "string", Doc: "the test file, relative to the repository root"},
+				{Name: "cmd", Type: "string", Doc: "the program", Role: "argv"},
+				{Name: "args", Type: "list", Doc: "its arguments", Role: "argv"},
+			},
+			Host:   true,
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			rel, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			name, err := c.String(1)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			items, err := c.List(2)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			args := make([]string, len(items))
+			for i, it := range items {
+				if it.Kind != scheme.KString {
+					return scheme.Value{}, errors.New("args must be a list of strings")
+				}
+				args[i] = it.S
+			}
+			status, err := runTestBefore(c.Ctx, o, rel, name, args)
+			if err != nil {
+				return scheme.Value{}, fmt.Errorf("test-before: %w", err)
+			}
+			return scheme.Int(int64(status)), nil
+		},
+	}
+}
+
+func runTestBefore(ctx context.Context, o Options, rel, name string, args []string) (int, error) {
+	if o.Scratch == "" || !isGitWorkTree(o.Root) {
+		return 0, errors.New("not a git work tree with a scratch directory")
+	}
+	clean := filepath.Clean(filepath.FromSlash(strings.TrimPrefix(rel, "./")))
+	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+		return 0, errors.New("the test file is not a repository path")
+	}
+	src := filepath.Join(o.Root, clean)
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return 0, err
+	}
+	base := filepath.Join(o.Scratch, "plan-base")
+	if err := os.RemoveAll(base); err != nil {
+		return 0, err
+	}
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		return 0, err
+	}
+	actx, cancel := context.WithTimeout(ctx, testBeforeBudget)
+	defer cancel()
+	archive := exec.CommandContext(actx, "git", "archive", "--format=tar", "HEAD")
+	archive.Dir = o.Root
+	archive.Env = scrubEnv(o.EnvAllow)
+	untar := exec.CommandContext(actx, "tar", "-x", "-C", base)
+	pipe, err := archive.StdoutPipe()
+	if err != nil {
+		return 0, err
+	}
+	untar.Stdin = pipe
+	if err := untar.Start(); err != nil {
+		return 0, err
+	}
+	if err := archive.Run(); err != nil {
+		_ = untar.Wait()
+		return 0, fmt.Errorf("git archive: %w", err)
+	}
+	if err := untar.Wait(); err != nil {
+		return 0, fmt.Errorf("tar: %w", err)
+	}
+	dst := filepath.Join(base, clean)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return 0, err
+	}
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		return 0, err
+	}
+	run := o
+	run.Root = base
+	r, err := runCheck(ctx, run, name, args, time.Now().Add(testBeforeBudget))
+	if err != nil {
+		return 0, err
+	}
+	return r.status, nil
 }

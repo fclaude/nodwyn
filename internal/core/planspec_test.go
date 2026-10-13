@@ -94,3 +94,33 @@ func TestAPlansEvidenceIsCheckedBeforeTheTurnEnds(t *testing.T) {
 		}
 	}
 }
+
+// A test step that says its test fails today is run on the unchanged code
+// (test-before): a test that passes there too does not show the change, and
+// is said so before the turn ends.
+func TestAPlannedTestThatPassesBeforeTheChangeIsSaid(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'def test_one' calc_test.py"))
+(none docs "no document describes calc")
+(check "grep -q 'return 10' calc.py")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("t", "calc_test.py", "def test_one():\n    pass\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py && grep -q 'def test_one' calc_test.py # pytest"),
+		fake.Turn{Content: "done"}, // told the test passes on the unchanged code too
+		fake.Turn{Content: "the test now calls one()."},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 6); !strings.Contains(msg, "step 2 (Test calc_test.py test_one): it passes on the unchanged code too") {
+		t.Fatalf("evidence message: %q", msg)
+	}
+}

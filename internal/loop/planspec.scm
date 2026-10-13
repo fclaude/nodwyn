@@ -51,7 +51,65 @@
   (set! plan-spec '())
   (set! plan-spec-names '())
   (set! plan-spec-context '())
+  (set! plan-language-marked '())
+  (set! plan-language-edited '())
   (plan-language-base-turn request))
+
+;; The steps the harness has marked in this turn, and the repository paths
+;; the turn's edits wrote (plan-language-round).
+(define plan-language-marked '())
+(define plan-language-edited '())
+
+;; A step marked done, once.
+(define (plan-language-mark-one n note)
+  (unless (member n plan-language-marked)
+    (set! plan-language-marked (cons n plan-language-marked))
+    (guard (e (else #f)) (record-step n "done" note))))
+
+(define (plan-language-same-path? a b)
+  (let ((strip (lambda (p) (if (string-prefix? "./" p) (substring p 2 (string-length p)) p))))
+    (equal? (strip a) (strip b))))
+
+;; Marks as the work happens: after each round of the main context's calls,
+;; a change or docs step whose file a call wrote, a test step whose file was
+;; written and whose test a command that passed named, and a check step whose
+;; command passed. The marks are the console's progress; what counts at the
+;; end is plan-language-check, after the last edit.
+(define (plan-language-round calls results)
+  (let walk ((cs calls) (rs results))
+    (when (and (pair? cs) (pair? rs))
+      (let* ((c (car cs)) (r (car rs)) (name (assoc-ref c 'name ""))
+             (a (guard (e (else '())) (json-parse (format "~a" (assoc-ref c 'args "{}"))))))
+        (cond ((and (member name '("fs-edit" "fs-write")) (assoc-ref r 'ok #f) (pair? a))
+               (let ((path (format "~a" (assoc-ref a "path" ""))))
+                 (set! plan-language-edited (cons path plan-language-edited))
+                 (let mark ((ss plan-spec) (i 1))
+                   (when (pair? ss)
+                     (when (and (member (assoc-ref (car ss) 'kind "") '("Change" "Docs"))
+                                (plan-language-same-path? (assoc-ref (car ss) 'path "") path))
+                       (plan-language-mark-one i (string-append "evidence: " path " written")))
+                     (mark (cdr ss) (+ i 1))))))
+              ((and (equal? name "shell-exec") (equal? (run-status r) 0))
+               (let ((line (command-line c)))
+                 (let mark ((ss plan-spec) (i 1))
+                   (when (pair? ss)
+                     (let* ((st (car ss)) (kind (assoc-ref st 'kind "")) (run (assoc-ref st 'run "")))
+                       (cond ((and (equal? kind "Test")
+                                   (let any ((ps plan-language-edited)) (and (pair? ps) (or (plan-language-same-path? (car ps) (assoc-ref st 'path "")) (any (cdr ps)))))
+                                   (or (string-contains? line (assoc-ref st 'name "_"))
+                                       (and (not (string-empty? run)) (string-contains? line run))))
+                              (plan-language-mark-one i (string-append "evidence: " (assoc-ref st 'name "") " passed")))
+                             ((and (equal? kind "Check") (not (string-empty? run)) (string-contains? line run))
+                              (plan-language-mark-one i "evidence: the check passed"))))
+                     (mark (cdr ss) (+ i 1)))))))
+        (walk (cdr cs) (cdr rs))))))
+
+(define plan-language-base-run-calls run-calls)
+(define (run-calls calls)
+  (let ((results (plan-language-base-run-calls calls)))
+    (when (and plan-language (pair? plan-spec) (= (guard (e (else 0)) hygiene-depth) 0))
+      (guard (e (else #f)) (plan-language-round calls results)))
+    results))
 
 ;; The planner's instructions: the forms, the rule on names, and the rest of
 ;; plan-shape's guidance on behaviour and open choices.
@@ -300,6 +358,9 @@
                                 (string-append label ": the test is not in that file"))
                                ((not (or (plan-language-passed? passed name) (plan-language-passed? passed (assoc-ref st 'run "")) whole))
                                 (string-append label ": it has not passed since your last edit"))
+                               ((plan-language-passes-before? st)
+                                (string-append label ": it passes on the unchanged code too (`" (assoc-ref st 'run "")
+                                               "` on a copy of the last commit with your test file in it), so it does not show the change: make it fail there"))
                                (else #f)))
                         ((equal? kind "Check")
                          (and (not (or (plan-language-passed? passed (assoc-ref st 'run "")) whole))
@@ -309,9 +370,18 @@
                 (walk (cdr ss) (+ i 1) (cons problem unmet) met)
                 (walk (cdr ss) (+ i 1) unmet (cons (cons i (if (assoc-ref st 'none #f) "none" (string-append "evidence: " kind " step met"))) met))))))))
 
+;; Whether a test step that says it fails today passes on the code as it
+;; was (test-before): #f when it fails there, as it should, when it could not
+;; run there (a not-found exit), or when the step says it passes today.
+(define (plan-language-passes-before? st)
+  (and (string-prefix? "fails today" (assoc-ref st 'today ""))
+       (not (string-empty? (assoc-ref st 'run "")))
+       (let ((status (guard (e (else #f)) (test-before (assoc-ref st 'path "") "bash" (list "-c" (assoc-ref st 'run ""))))))
+         (equal? status 0))))
+
 ;; Mark the steps that have their evidence, so the model need not.
 (define (plan-language-mark met)
-  (for-each (lambda (m) (guard (e (else #f)) (record-step (car m) "done" (cdr m)))) met))
+  (for-each (lambda (m) (plan-language-mark-one (car m) (cdr m))) met))
 
 (define (plan-language-unmet-message unmet)
   (string-append "Before you finish, your plan's evidence is missing:"

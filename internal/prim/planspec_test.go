@@ -2,6 +2,8 @@ package prim
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -57,5 +59,30 @@ func TestPlanEvidenceReadsTheChange(t *testing.T) {
 	}
 	if !changed["calc.py"] || !changed["flags.py"] || changed["docs.md"] {
 		t.Errorf("changed paths %v", changed)
+	}
+}
+
+// test-before runs a command on a copy of HEAD with the working tree's test
+// file put in: the unchanged code, so a test of the change fails there, and
+// one that passes there does not show the change.
+func TestTestBeforeRunsOnTheUnchangedCode(t *testing.T) {
+	root, k, git := keepRepo(t)
+	write(t, root, "calc.py", "def one():\n    return 1\n", 0o644)
+	git("add", ".")
+	git("commit", "-q", "-m", "code")
+	write(t, root, "calc.py", "def one():\n    return 10\n", 0o644)
+	write(t, root, "calc_test.py", "# checks one() is 10\n", 0o644)
+	o := k.o
+	o.EnvAllow = []string{"PATH"}
+	status, err := runTestBefore(context.Background(), o, "calc_test.py", "sh", []string{"-c", "grep -q 'return 10' calc.py"})
+	if err != nil || status == 0 {
+		t.Fatalf("a check of the change on the unchanged code: status %d, error %v; want it to fail", status, err)
+	}
+	status, err = runTestBefore(context.Background(), o, "calc_test.py", "sh", []string{"-c", "grep -q 'checks one' calc_test.py"})
+	if err != nil || status != 0 {
+		t.Fatalf("the test file is not in the copy: status %d, error %v", status, err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(root, "calc.py")); string(data) != "def one():\n    return 10\n" {
+		t.Errorf("the working tree changed: %q", data)
 	}
 }
