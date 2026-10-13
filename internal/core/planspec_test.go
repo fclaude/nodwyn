@@ -180,234 +180,6 @@ func TestAWholeCheckStandsForThePlansTests(t *testing.T) {
 	}
 }
 
-// When a run of the plan's check fails, the check runs once on a clone of
-// the last commit (check-before): a failure only like the one there is said,
-// in the run's own result, to have been there before the change, and the
-// check step counts as passing, with no reminder that the last run failed.
-// The planned test runs after each edit, by the harness, and its first pass
-// says whether it fails on the unchanged code.
-// On commit-bench make validate failed on a program the environment lacks,
-// in every build's attempts, and the model spent up to 19 calls on it
-// (2026-10-13).
-func TestACheckThatFailedBeforeTheChangeIsSaidSo(t *testing.T) {
-	t.Parallel()
-	repo := codeRepo(t)
-	plan := `(change "calc.py" "one" "return 10")
-(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"))
-(none docs "no document describes calc")
-(check "ls no-such-tool-here && grep -q 'return 10' calc.py # make validate")`
-	r := unattendedRigIn(t, repo,
-		fake.Turn{Content: "calc.py defines one()."}, // the explorer
-		fake.Turn{Content: plan},                     // the planner
-		write("t", "calc_test.py", "def test_one():\n    pass\n"),
-		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
-		shellArgs("u", "bash", "-c", "grep -q 'return 10' calc.py && grep -q test_one calc_test.py # pytest"),
-		shellArgs("c", "bash", "-c", "ls no-such-tool-here && grep -q 'return 10' calc.py # make validate"),
-		fake.Turn{Content: "done; make validate fails on the unchanged code too"},
-	)
-	if e := r.planned("make one() return 10"); e != "" {
-		t.Fatal(e)
-	}
-	if len(r.srv.Requests) != 7 {
-		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
-	}
-	// The harness ran the planned test after each edit: failing before the
-	// change, then passing, and on its first pass on the unchanged code too.
-	if msg := lastMessage(r, 3); !strings.Contains(msg, "the plan's tests after this edit, run by the harness") || !strings.Contains(msg, "test_one: fails (exit 1)") {
-		t.Errorf("the test file's edit: %q", msg)
-	}
-	if msg := lastMessage(r, 4); !strings.Contains(msg, "test_one: passes — test_one fails on the unchanged code") {
-		t.Errorf("the code's edit: %q", msg)
-	}
-	if msg := lastMessage(r, 6); !strings.Contains(msg, "fails on the unchanged code too (run on a clone of the last commit)") || !strings.Contains(msg, "no-such-tool-here") {
-		t.Errorf("the failing check's result: %q", msg)
-	}
-}
-
-// A run of the check that fails with a line the unchanged code's run did not
-// print is the change's failure: nothing is said in its result, and before
-// the turn ends the harness runs the check again and says how it fails.
-func TestACheckFailingInANewWayIsTheChanges(t *testing.T) {
-	t.Parallel()
-	repo := codeRepo(t)
-	plan := `(change "calc.py" "one" "return 10")
-(none test "a one-line change")
-(none docs "no document describes calc")
-(check "ls no-such-tool-here; grep -q 'return 1$' calc.py || echo 'error: one() changed'; exit 2 # make validate")`
-	r := unattendedRigIn(t, repo,
-		fake.Turn{Content: "calc.py defines one()."}, // the explorer
-		fake.Turn{Content: plan},                     // the planner
-		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
-		shellArgs("c", "bash", "-c", "ls no-such-tool-here; grep -q 'return 1$' calc.py || echo 'error: one() changed'; exit 2 # make validate"),
-		fake.Turn{Content: "done"},
-		fake.Turn{Content: "done"},
-		fake.Turn{Content: "done"},
-	)
-	if e := r.planned("make one() return 10"); e != "" {
-		t.Fatal(e)
-	}
-	for i := range r.srv.Requests {
-		if strings.Contains(lastMessage(r, i), "fails on the unchanged code too") {
-			t.Fatalf("request %d says the new failure was there before: %q", i, lastMessage(r, i))
-		}
-	}
-	found := false
-	for i := range r.srv.Requests {
-		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") && strings.Contains(msg, "it fails when the harness runs it now (exit 2)") && strings.Contains(msg, "error: one() changed") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("the check step was not said to lack its evidence")
-	}
-}
-
-// A failing run that says a program is not installed is told, once, not to
-// spend calls on it but to run what the run did not reach; a run of the
-// plan's check that failed so counts as the check passing (commit-bench,
-// make validate's missing staticcheck, 2026-10-13).
-func TestAMissingProgramIsSaidOnceAndNotHunted(t *testing.T) {
-	t.Parallel()
-	repo := codeRepo(t)
-	check := "printf 'make[1]: staticcheck: No such file or directory\\nmake[1]: *** [Makefile:28: lint] Error 127\\n'; exit 2 # make validate"
-	plan := `(change "calc.py" "one" "return 10")
-(none test "a one-line change")
-(none docs "no document describes calc")
-(check "` + strings.ReplaceAll(check, `\`, `\\`) + `")`
-	r := unattendedRigIn(t, repo,
-		fake.Turn{Content: "calc.py defines one()."}, // the explorer
-		fake.Turn{Content: plan},                     // the planner
-		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
-		shellArgs("c", "bash", "-c", check),
-		shellArgs("d", "bash", "-c", check),
-		fake.Turn{Content: "done; staticcheck could not run here"},
-	)
-	if e := r.planned("make one() return 10"); e != "" {
-		t.Fatal(e)
-	}
-	if len(r.srv.Requests) != 6 {
-		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
-	}
-	if msg := lastMessage(r, 4); !strings.Contains(msg, "`staticcheck` is not installed here") || !strings.Contains(msg, "The plan counts a run of its check that stops only on this as passing") {
-		t.Errorf("the first failing run: %q", msg)
-	}
-	if msg := lastMessage(r, 5); strings.Contains(msg, "not installed here") {
-		t.Errorf("told twice: %q", msg)
-	}
-}
-
-// The plan's tests run by the harness after each edit to the code stand for
-// the model's own runs: a turn that wrote the test and the code and ran only
-// the check is told neither that it did not test nor that the test lacks its
-// evidence, and the test step is marked by the harness (2026-10-13).
-func TestThePlansTestsRunAfterEachEdit(t *testing.T) {
-	t.Parallel()
-	repo := codeRepo(t)
-	plan := `(change "calc.py" "one" "return 10")
-(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"))
-(none docs "no document describes calc")
-(check "grep -q 'return 10' calc.py && echo checked")`
-	r := unattendedRigIn(t, repo,
-		fake.Turn{Content: "calc.py defines one()."}, // the explorer
-		fake.Turn{Content: plan},                     // the planner
-		write("t", "calc_test.py", "def test_one():\n    pass\n"),
-		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
-		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py && echo checked"),
-		fake.Turn{Content: "done"},
-	)
-	if e := r.planned("make one() return 10"); e != "" {
-		t.Fatal(e)
-	}
-	if len(r.srv.Requests) != 6 {
-		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
-	}
-	if main := string(r.srv.Requests[2].Raw); !strings.Contains(main, "After each of your edits to the code the harness runs the plan's tests") {
-		t.Errorf("the plan does not say the harness runs its tests:\n%s", main)
-	}
-	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	byHarness := false
-	for _, ev := range evs {
-		var p log.PlanStep
-		if ev.Kind == log.KindPlanStep && ev.Decode(&p) == nil && p.Step == 2 && strings.Contains(p.Note, "run by the harness") {
-			byHarness = true
-		}
-	}
-	if !byHarness {
-		t.Errorf("the test step was not marked from the harness's run")
-	}
-}
-
-// A check the model did not run after its last edit is run by the harness
-// before the turn ends, and a pass stands for the step: nothing is asked of
-// the model (commit-bench, dsl6 556d6d12: the model's make validate printed
-// its PASS, the model read no further, and was asked to run it again).
-func TestTheHarnessRunsTheCheckTheTurnLeftUnseen(t *testing.T) {
-	t.Parallel()
-	repo := codeRepo(t)
-	plan := `(change "calc.py" "one" "return 10")
-(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"))
-(none docs "no document describes calc")
-(check "grep -q 'return 10' calc.py && grep -q test_one calc_test.py && echo checked")`
-	r := unattendedRigIn(t, repo,
-		fake.Turn{Content: "calc.py defines one()."}, // the explorer
-		fake.Turn{Content: plan},                     // the planner
-		write("t", "calc_test.py", "def test_one():\n    pass\n"),
-		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
-		fake.Turn{Content: "done"},
-	)
-	if e := r.planned("make one() return 10"); e != "" {
-		t.Fatal(e)
-	}
-	if len(r.srv.Requests) != 5 {
-		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
-	}
-	if !strings.Contains(r.logb.String(), "the harness ran the check before the turn ended: exit 0") {
-		t.Errorf("the harness did not run the check")
-	}
-}
-
-// A background run's output is read as it comes: the missing program is told
-// with the read that shows it, while the run goes on, and the read that sees
-// the run exit, whose output no longer holds it, still counts the check's
-// run as stopping only on it (commit-bench, dsl6 556d6d12).
-func TestABackgroundRunsMissingProgramIsReadAcrossReads(t *testing.T) {
-	t.Parallel()
-	repo := codeRepo(t)
-	check := "echo 'make[1]: staticcheck: No such file or directory'; sleep 3; echo done; exit 2 # make validate"
-	plan := `(change "calc.py" "one" "return 10")
-(none test "a one-line change")
-(none docs "no document describes calc")
-(check "` + check + `")`
-	r := unattendedRigIn(t, repo,
-		fake.Turn{Content: "calc.py defines one()."}, // the explorer
-		fake.Turn{Content: plan},                     // the planner
-		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
-		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "shell-start", Args: map[string]any{"cmd": "bash", "args": []any{"-c", check}}}}},
-		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r1", Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 1}}}},
-		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r2", Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 30}}}},
-		fake.Turn{Content: "done; staticcheck could not run here"},
-	)
-	if e := r.planned("make one() return 10"); e != "" {
-		t.Fatal(e)
-	}
-	told := -1
-	for i := range r.srv.Requests {
-		if strings.Contains(lastMessage(r, i), "`staticcheck` is not installed here") {
-			told = i
-			break
-		}
-	}
-	if told < 0 || told > 5 {
-		t.Fatalf("the missing program was told at request %d", told)
-	}
-	if len(r.srv.Requests) != 7 {
-		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
-	}
-}
-
 // A name of the request the plan leaves out and the code already has goes
 // into the plan's context without asking the planner again; one the code
 // lacks is still asked for (commit-bench: every attempt of dsl3 and dsl6
@@ -552,7 +324,10 @@ func TestANewFileIsListedByGitAndStillSaidNew(t *testing.T) {
 		write("t", "calc_test.py", "def test_one():\n    pass\n"),
 		write("s", "scratch_repro.py", "print(1)\n"),
 		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("x", "bash", "-c", "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"),
 		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py && echo checked"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"}, // twice told to test: a grep is no test run
 		fake.Turn{Content: "done"},
 		fake.Turn{Content: "done"},
 		fake.Turn{Content: "done"},
@@ -581,9 +356,9 @@ func TestANewFileIsListedByGitAndStillSaidNew(t *testing.T) {
 }
 
 // The forms a prose rewrite still holds keep their checks, under the new
-// plan's numbers: the planned test, now step 1, runs after each edit and is
-// marked by the harness (commit-bench: the model wrote its own plan in 4 of
-// 6 attempts, and dsl9 dropped every form with it).
+// plan's numbers: the planned test, now step 1, is marked by the harness when
+// a run of it passes (commit-bench: the model wrote its own plan in 4 of 6
+// attempts, and dsl9 dropped every form with it).
 func TestAPlanWrittenInProseKeepsTheFormsItHolds(t *testing.T) {
 	t.Parallel()
 	repo := codeRepo(t)
@@ -598,6 +373,7 @@ func TestAPlanWrittenInProseKeepsTheFormsItHolds(t *testing.T) {
 		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "p", Name: "plan-write", Args: map[string]any{"plan": prose}}}},
 		write("t", "calc_test.py", "def test_one():\n    pass\n"),
 		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("x", "bash", "-c", "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"),
 		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py # make validate"),
 		fake.Turn{Content: "done"},
 		fake.Turn{Content: "done"},
@@ -609,9 +385,6 @@ func TestAPlanWrittenInProseKeepsTheFormsItHolds(t *testing.T) {
 		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") {
 			t.Fatalf("a dropped form was held against the work: %q", msg)
 		}
-	}
-	if msg := lastMessage(r, 5); !strings.Contains(msg, "test_one: passes") {
-		t.Errorf("the kept test step was not run after the edit: %q", msg)
 	}
 	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
 	if err != nil {

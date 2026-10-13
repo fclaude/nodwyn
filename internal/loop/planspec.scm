@@ -53,19 +53,10 @@
   (set! plan-spec-context '())
   (set! plan-language-marked '())
   (set! plan-language-edited '())
-  (set! plan-language-before #f)
-  (set! plan-language-as-before '())
-  (set! plan-language-before-noted 0)
   (set! plan-language-tests-before '())
-  (set! plan-language-started-ids '())
-  (set! plan-language-started-lines '())
-  (set! plan-language-started-texts '())
-  (set! plan-language-missing-told '())
   (set! plan-language-untracked-before
         (guard (e (else '()))
           (map git-state-path (filter (lambda (l) (string-prefix? "?? " l)) (or (git-state) '())))))
-  (set! plan-language-auto-passed '())
-  (set! plan-language-auto-runs 0)
   (plan-language-base-turn request))
 
 ;; The steps the harness has marked in this turn, and the repository paths
@@ -134,81 +125,10 @@
   (let ((results (plan-language-base-run-calls calls)))
     (when (and plan-language (pair? plan-spec) (= (guard (e (else 0)) hygiene-depth) 0))
       (guard (e (else (log-note (format "plan language: new files were not marked: ~a" e))))
-        (plan-language-intend calls results)))
-    (when (and plan-language (pair? plan-spec) (= (guard (e (else 0)) hygiene-depth) 0))
-      (guard (e (else (log-note (format "plan language: the round's commands were not read: ~a" e))))
-        (plan-language-before-round calls results))
+        (plan-language-intend calls results))
       (guard (e (else (log-note (format "plan language: the round's marks were not made: ~a" e))))
-        (plan-language-round calls results))
-      (guard (e (else (log-note (format "plan language: the plan's tests did not run: ~a" e))))
-        (plan-language-test-round calls results)))
+        (plan-language-round calls results)))
     results))
-
-;; The plan's tests, run by the harness after each round that edited the
-;; code (2026-10-13, dsl5): the model writes the test and the code, and the
-;; result of the round's last edit says how each planned test now runs, so
-;; the model need not ask for a run to see it. In dsl3's attempts a third of
-;; the main loop's calls ran tests or checks (556d6d12: 24 of 66).
-;; A test runs when its file holds its name and its command names it (a
-;; command that runs one test, not a whole suite).
-(define plan-language-auto-passed '())   ; the tests the harness saw pass since the last edit
-(define plan-language-auto-runs 0)       ; harness runs of tests in the turn
-
-(define (plan-language-runnable-tests)
-  (filter (lambda (st)
-            (let ((name (assoc-ref st 'name "")) (run (assoc-ref st 'run "")))
-              (and (equal? (assoc-ref st 'kind "") "Test") (not (assoc-ref st 'none #f))
-                   (not (string-empty? name)) (string-contains? run name)
-                   (string-contains? (guard (e (else "")) (format "~a" (fs-read (assoc-ref st 'path "")))) name))))
-          plan-spec))
-
-(define (plan-language-step-number st)
-  (let find ((ss plan-spec) (i 1))
-    (cond ((null? ss) #f) ((eq? (car ss) st) (plan-language-at st i)) (else (find (cdr ss) (+ i 1))))))
-
-(define (plan-language-test-round calls results)
-  (let find ((cs calls) (rs results) (last #f))
-    (cond ((pair? cs)
-           (find (cdr cs) (cdr rs) (if (plan-language-code-edit? (car cs) (car rs)) (cons (car cs) (car rs)) last)))
-          (last
-           (set! plan-language-auto-passed '())
-           (let ((tests (plan-language-runnable-tests)))
-             (when (pair? tests)
-               (let ((lines
-                      (map (lambda (st)
-                             (let* ((name (assoc-ref st 'name "")) (run (assoc-ref st 'run ""))
-                                    (r (guard (e (else #f)) (plan-run "bash" (list "-c" run))))
-                                    (status (and (pair? r) (assoc-ref r "status" #f))))
-                               (set! plan-language-auto-runs (+ plan-language-auto-runs 1))
-                               (cond ((not (integer? status)) (string-append name ": could not run"))
-                                     ((= status 0)
-                                      (set! plan-language-auto-passed (cons name plan-language-auto-passed))
-                                      (let* ((i (plan-language-step-number st))
-                                             (new (and i (not (member i plan-language-marked)))))
-                                        (when i (plan-language-mark-one i (string-append "evidence: " name " passed (run by the harness)")))
-                                        (string-append name ": passes"
-                                                       (let ((note (and new (plan-language-test-note st))))
-                                                         (if note (string-append " —" (substring note 7 (- (string-length note) 1))) "")))))
-                                     (else
-                                      (string-append name ": fails (exit " (number->string status) ")\n"
-                                                     (plan-language-last-lines (format "~a" (assoc-ref r "tail" "")) 15))))))
-                           tests)))
-                 (let ((c (car last)) (r (cdr last)))
-                   (fold-result (assoc-ref c 'id)
-                                (string-append (format "~a" (assoc-ref r 'value ""))
-                                               "\n[hint: the plan's tests after this edit, run by the harness:\n"
-                                               (string-join lines "\n") "]")))))))
-          (else #f))))
-
-;; The last n lines of a text.
-(define (plan-language-last-lines text n)
-  (let* ((ls (string-split text "\n")) (k (length ls)))
-    (string-join (if (> k n) (list-tail ls (- k n)) ls) "\n")))
-
-;; Whether the harness's own runs since the last edit count for an
-;; unattended turn's "you have not tested" reminder (strategy.scm).
-(define (plan-language-auto-tested?)
-  (and plan-language (pair? plan-spec) (> plan-language-auto-runs 0)))
 
 ;; New files the model writes in the repository are marked as intended for
 ;; the next commit (git-intend), so a tool that lists the tracked files sees
@@ -239,173 +159,11 @@
         (when (pair? marked)
           (log-note (string-append "plan language: new files marked for the next commit: " (string-join marked ", "))))))))
 
-;; The plan's commands, run by the harness as the work goes (2026-10-13).
-;; On commit-bench the plan's check, make validate, failed in every build's
-;; attempts on a program the environment lacks (staticcheck: No such file or
-;; directory), and the model spent up to 19 calls of an attempt on it; and to
-;; see its new test fail without the change, it set the unchanged code up by
-;; hand (git archive, the test file copied in, the test run: four calls in
-;; dsl3's 556d6d12), which test-before does at no cost in tokens. So when a
-;; run of the plan's check fails, the check runs once on a clone of the last
-;; commit (check-before); a failing run whose failing lines are all among
-;; that run's is told so, in its own result, and counts for the check step.
-;; And when a planned test first passes, it runs on the unchanged code and
-;; its result says whether it fails there.
-(define plan-language-before #f)         ; check-before's alist, or 'none when it could not run
-(define plan-language-as-before '())     ; the check's command lines whose latest run since the last edit failed only as before
-(define plan-language-before-notes 2)    ; failing runs told so, per turn
-(define plan-language-before-noted 0)
+;; A planned test that says it fails today runs on the unchanged code when it
+;; first passes (test-before), and its result says whether it fails there:
+;; the model need not set the unchanged code up by hand (four calls in dsl3's
+;; 556d6d12).
 (define plan-language-tests-before '())  ; ((path run content) . status) of test-before runs
-(define plan-language-started-ids '())   ; background runs: their ids (tool output, only compared) and command lines
-(define plan-language-started-lines '())
-(define plan-language-started-texts '()) ; what each has printed so far, read by read
-
-;; The plan's check command, or #f.
-(define (plan-language-check-run)
-  (let find ((ss plan-spec))
-    (cond ((null? ss) #f)
-          ((equal? (assoc-ref (car ss) 'kind "") "Check")
-           (let ((run (assoc-ref (car ss) 'run ""))) (and (not (string-empty? run)) run)))
-          (else (find (cdr ss))))))
-
-(define (plan-language-check-line? line)
-  (let ((run (plan-language-check-run)))
-    (and run line (string-contains? line run))))
-
-;; The check on the unchanged code, run once a turn, when a run of it fails.
-(define (plan-language-before-run)
-  (or plan-language-before
-      (let* ((run (plan-language-check-run))
-             (r (and run (guard (e (else #f)) (check-before "bash" (list "-c" run))))))
-        (set! plan-language-before (if (pair? r) r 'none))
-        (log-note (if (pair? r)
-                      (string-append "plan language: the check on the unchanged code exited "
-                                     (number->string (assoc-ref r "status" 0)) ", "
-                                     (number->string (length (assoc-ref r "lines" '()))) " failing lines")
-                      "plan language: the check could not run on the unchanged code"))
-        plan-language-before)))
-
-;; Whether a failing run's output fails only as the check did on the
-;; unchanged code: it has failing lines, and each is among that run's.
-(define (plan-language-as-before? text)
-  (let ((b plan-language-before))
-    (and (pair? b)
-         (not (equal? (assoc-ref b "status" 0) 0))
-         (let ((known (assoc-ref b "lines" '()))
-               (lines (guard (e (else '())) (failure-lines text))))
-           (and (pair? lines)
-                (let all ((ls lines)) (or (null? ls) (and (member (car ls) known) (all (cdr ls))))))))))
-
-(define (plan-language-before-note)
-  (string-append "\n[hint: the plan's check `" (plan-language-check-run)
-                 "` fails on the unchanged code too (run on a clone of the last commit), with:"
-                 (apply string-append (map (lambda (l) (string-append "\n  " l)) (assoc-ref plan-language-before "shown" '())))
-                 "\nEvery failing line above is among those: the failure was there before your change (the environment or the code as it was), and a run that fails only this way counts as the check passing for your plan. If it stops the check before the check's later parts run, run those parts yourself.]"))
-
-(define (plan-language-started-line id)
-  (let find ((ids plan-language-started-ids) (lines plan-language-started-lines))
-    (cond ((or (not id) (null? ids) (null? lines)) #f)
-          ((equal? (car ids) id) (car lines))
-          (else (find (cdr ids) (cdr lines))))))
-
-;; An edit to the code: a repository file that is not a document.
-(define (plan-language-code-edit? c r)
-  (and (member (assoc-ref c 'name "") '("fs-edit" "fs-write")) (assoc-ref r 'ok #f)
-       (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref c 'args "{}")))))
-              (p (if (pair? a) (format "~a" (assoc-ref a "path" "")) "")))
-         (not (or (string-empty? p) (string-prefix? "$TMPDIR" p) (string-prefix? "/" p) (doc-path? p))))))
-
-(define (plan-language-started-text id)
-  (let find ((ids plan-language-started-ids) (ts plan-language-started-texts))
-    (cond ((or (not id) (null? ids) (null? ts)) "")
-          ((equal? (car ids) id) (car ts))
-          (else (find (cdr ids) (cdr ts))))))
-
-;; A background run's output arrives read by read: on commit-bench (dsl6,
-;; 556d6d12) make validate's missing staticcheck was in a read that said the
-;; run was still going, and the read that saw it exit held only its last
-;; lines. So each run's output is kept as it comes, its first and last
-;; 100,000 characters.
-(define (plan-language-add-text! id more)
-  (set! plan-language-started-texts
-        (let walk ((ids plan-language-started-ids) (ts plan-language-started-texts))
-          (cond ((or (null? ids) (null? ts)) '())
-                ((equal? (car ids) id)
-                 (let* ((t (string-append (car ts) "\n" more)) (n (string-length t)))
-                   (cons (if (> n 200000) (string-append (substring t 0 100000) (substring t (- n 100000) n)) t) (cdr ts))))
-                (else (cons (car ts) (walk (cdr ids) (cdr ts))))))))
-
-(define (plan-language-before-round calls results)
-  (for-each
-   (lambda (c r)
-     (let* ((name (assoc-ref c 'name ""))
-            (shell? (member name '("shell-exec" "shell-start" "shell-read")))
-            (status (cond ((equal? name "shell-exec") (run-status r))
-                          ((member name '("shell-start" "shell-read")) (proc-exit-status r))
-                          (else #f)))
-            (line (cond ((member name '("shell-exec" "shell-start")) (command-line c))
-                        ((equal? name "shell-read") (plan-language-started-line (proc-call-id c)))
-                        (else #f)))
-            (check? (and line (plan-language-check-line? line)))
-            (out (if shell? (plan-language-output r) ""))
-            (value (format "~a" (assoc-ref r 'value ""))))
-       (when (and (equal? name "shell-start") (not status) (proc-id r))
-         (set! plan-language-started-ids (cons (proc-id r) plan-language-started-ids))
-         (set! plan-language-started-lines (cons (command-line c) plan-language-started-lines))
-         (set! plan-language-started-texts (cons out plan-language-started-texts)))
-       (when (and (equal? name "shell-read") (proc-call-id c))
-         (plan-language-add-text! (proc-call-id c) out))
-       (when (plan-language-code-edit? c r)
-         (set! plan-language-as-before '()))
-       ;; A missing program is told as soon as a result shows it, whether
-       ;; the run has ended or not.
-       (when shell?
-         (let* ((missing (guard (e (else '())) (missing-programs out)))
-                (new (filter (lambda (p) (not (member p plan-language-missing-told))) missing)))
-           (when (pair? new)
-             (set! plan-language-missing-told (append new plan-language-missing-told))
-             (fold-result (assoc-ref c 'id) (string-append value (plan-language-missing-note new check?))))))
-       (when (and (integer? status) check?)
-         (set! plan-language-as-before (filter (lambda (l) (not (equal? l line))) plan-language-as-before)))
-       (when (and (integer? status) (not (= status 0)) line)
-         (let ((text (if (equal? name "shell-read") (plan-language-started-text (proc-call-id c)) out)))
-           (cond ((pair? (guard (e (else '())) (missing-programs text)))
-                  ;; A program the environment lacks: the run says nothing
-                  ;; of the change past where it stopped.
-                  (when check? (set! plan-language-as-before (cons line plan-language-as-before))))
-                 (else
-                  (when check? (plan-language-before-run))
-                  (when (plan-language-as-before? text)
-                    (when check? (set! plan-language-as-before (cons line plan-language-as-before)))
-                    (when (< plan-language-before-noted plan-language-before-notes)
-                      (set! plan-language-before-noted (+ plan-language-before-noted 1))
-                      (fold-result (assoc-ref c 'id) (string-append value (plan-language-before-note)))))))))))
-   calls results))
-
-;; The programs a failing run said are not installed, told once each a turn.
-;; On commit-bench every build's attempts met make validate's missing
-;; staticcheck and spent up to 19 calls finding, building or installing it,
-;; at best to see the rest of validate pass (2026-10-13).
-(define plan-language-missing-told '())
-
-(define (plan-language-missing-note progs check?)
-  (let ((names (string-join (map (lambda (p) (string-append "`" p "`")) progs) ", "))
-        (them (if (pair? (cdr progs)) "them" "it")))
-    (string-append "\n[hint: " names (if (pair? (cdr progs)) " are" " is") " not installed here, so the run stopped where it needed " them
-                   ". Do not spend calls installing or building " them
-                   ": if the run stopped before the rest of what it checks (for a make target, the recipe's later lines), run those parts yourself, and say in your report that "
-                   names " could not run here."
-                   (if check? " The plan counts a run of its check that stops only on this as passing." "") "]")))
-
-;; What a run printed: shell-exec's stdout and stderr, from the JSON its
-;; result is, or a background run's result as it reads.
-(define (plan-language-output r)
-  (let* ((value (format "~a" (assoc-ref r 'value "")))
-         (v (guard (e (else #f)) (json-parse value))))
-    (if (pair? v)
-        (string-append (format "~a" (assoc-ref v "stdout" "")) "\n" (format "~a" (assoc-ref v "stderr" "")))
-        value)))
-
 ;; A planned test that says it fails today, run on the unchanged code
 ;; (test-before), once for each version of its file: its exit status, or #f
 ;; when it could not run there.
@@ -434,17 +192,6 @@
                (else
                 (string-append "\n[hint: " (assoc-ref st 'name "") " fails on the unchanged code" where
                                ", as the plan says: no need to check that yourself.]"))))))
-
-;; A run of the plan's check that failed only as it did on the unchanged
-;; code is no failing run for the reminders: what it failed on was there
-;; before the change.
-(define plan-language-base-run-outcome run-outcome)
-(define (run-outcome call result last)
-  (let ((o (plan-language-base-run-outcome call result last)))
-    (if (and (eq? o 'failed) plan-language (pair? plan-spec)
-             (member (command-line call) plan-language-as-before))
-        'passed
-        o)))
 
 ;; The planner's instructions: the forms, the rule on names, and the rest of
 ;; plan-shape's guidance on behaviour and open choices.
@@ -632,10 +379,7 @@
         (string-join (append (reverse out)
                              (if (pair? names) (list (string-append "Names the change produces, as the request spells them: "
                                                                     (string-join (map (lambda (n) (string-append "\"" n "\"")) names) ", ") ".")) '())
-                             (if (pair? context) (list (string-append "Names it only uses: " (string-join context ", ") ".")) '())
-                             (if (let any ((ss steps)) (and (pair? ss) (or (equal? (assoc-ref (car ss) 'kind "") "Test") (any (cdr ss)))))
-                                 (list "After each of your edits to the code the harness runs the plan's tests (each test's command, once its file has the test) and adds how they ran to that edit's result: run them yourself only to see more than it shows.")
-                                 '()))
+                             (if (pair? context) (list (string-append "Names it only uses: " (string-join context ", ") ".")) '()))
                      "\n")
         (let* ((st (car ss)) (kind (assoc-ref st 'kind "")) (n (number->string i))
                (line (cond ((assoc-ref st 'none #f) (string-append n ". " kind ": none — " (assoc-ref st 'what "")))
@@ -797,44 +541,19 @@
                          (cond ((let ((text (guard (e (else "")) (format "~a" (fs-read path)))))
                                   (not (string-contains? text name)))
                                 (string-append label ": the test is not in that file"))
-                               ((not (or (plan-language-passed? passed name) (plan-language-passed? passed (assoc-ref st 'run "")) whole
-                                         (member name plan-language-auto-passed)))
+                               ((not (or (plan-language-passed? passed name) (plan-language-passed? passed (assoc-ref st 'run "")) whole))
                                 (string-append label ": it has not passed since your last edit"))
                                ((plan-language-passes-before? st)
                                 (string-append label ": it passes on the unchanged code too (`" (assoc-ref st 'run "")
                                                "` on a copy of the last commit with your test file in it), so it does not show the change: make it fail there"))
                                (else #f)))
                         ((equal? kind "Check")
-                         (and (not (or (plan-language-passed? passed (assoc-ref st 'run "")) whole
-                                       (plan-language-passed? plan-language-as-before (assoc-ref st 'run ""))))
-                              (plan-language-final-check st label)))
+                         (and (not (or (plan-language-passed? passed (assoc-ref st 'run "")) whole))
+                              (string-append label " " (assoc-ref st 'run "") ": it has not passed since your last edit")))
                         (else #f))))
             (if problem
                 (walk (cdr ss) (+ i 1) (cons problem unmet) met)
                 (walk (cdr ss) (+ i 1) unmet (cons (cons (plan-language-at st i) (if (assoc-ref st 'none #f) "none" (string-append "evidence: " kind " step met"))) met))))))))
-
-;; A check step not seen to pass since the last edit, run by the harness
-;; before the turn ends: #f when it passes there, or fails only on a program
-;; the environment lacks or only as it did on the unchanged code; else what
-;; is missing, with the end of its output. On commit-bench (dsl6, 556d6d12)
-;; the model's own make validate printed its PASS, and the model read no
-;; further than that: the run was not seen to exit, and the model was asked
-;; to run it again.
-(define plan-language-final-budget 900)
-
-(define (plan-language-final-check st label)
-  (let* ((run (assoc-ref st 'run ""))
-         (r (guard (e (else #f)) (plan-run "bash" (list "-c" run) plan-language-final-budget)))
-         (status (and (pair? r) (assoc-ref r "status" #f)))
-         (tail (if (pair? r) (format "~a" (assoc-ref r "tail" "")) "")))
-    (log-note (string-append "plan language: the harness ran the check before the turn ended: "
-                             (if (integer? status) (string-append "exit " (number->string status)) "it could not run")))
-    (cond ((not (integer? status)) (string-append label " " run ": it has not passed since your last edit"))
-          ((= status 0) #f)
-          ((pair? (guard (e (else '())) (missing-programs tail))) #f)
-          ((begin (plan-language-before-run) (plan-language-as-before? tail)) #f)
-          (else (string-append label " " run ": it fails when the harness runs it now (exit " (number->string status) "):\n"
-                               (plan-language-last-lines tail 15))))))
 
 ;; Documents that describe what the change alters, when the change edited
 ;; none: the repository's documents (docs-mentioning) holding a function the

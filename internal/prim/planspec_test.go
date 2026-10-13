@@ -135,53 +135,6 @@ func TestTestBeforeRunsOnTheUnchangedCode(t *testing.T) {
 	}
 }
 
-// The lines of a check's output that say something failed, masked so that
-// two runs of the same failure read alike: make validate's on commit-bench,
-// run once with a change and once without, and a passing line left out.
-func TestFailureLinesAreHowAFailureReads(t *testing.T) {
-	with := failureLines("PASS  gofmt                  4 changed Go files\nFAIL  make accept            staticcheck: No such file or directory (exit 127, 29s)\nvalidate: FAIL (1 failed, 0 warnings)\n")
-	without := failureLines("PASS  gofmt   0 changed Go files\nFAIL  make accept   staticcheck: No such file or directory (exit 127, 31.2s)\n\nvalidate: FAIL (1 failed, 0 warnings)\nok  \tpkg\t0.41s\n")
-	if !reflect.DeepEqual(with, without) || len(with) != 2 {
-		t.Errorf("failureLines:\n%q\n%q", with, without)
-	}
-	if got := failureLines("--- PASS: TestErrorHandling (0.00s)\nok  \tgithub.com/x/y\t0.3s\n"); len(got) != 0 {
-		t.Errorf("a passing run's lines: %q", got)
-	}
-}
-
-// check-before runs the check on a clone of HEAD: the working tree's change
-// is not in it, and git there sees nothing changed.
-func TestCheckBeforeRunsOnACleanCloneOfHead(t *testing.T) {
-	root, k, git := keepRepo(t)
-	write(t, root, "calc.py", "def one():\n    return 1\n", 0o644)
-	git("add", ".")
-	git("commit", "-q", "-m", "code")
-	write(t, root, "calc.py", "def one():\n    return 10\n", 0o644)
-	o := k.o
-	o.EnvAllow = []string{"PATH", "HOME"}
-	status, out, err := runCheckBefore(context.Background(), o, "sh", []string{"-c", "grep -q 'return 1$' calc.py && test -z \"$(git status --porcelain)\" && echo error: none here >&2; exit 3"})
-	if err != nil || status != 3 {
-		t.Fatalf("status %d, error %v, output %q", status, err, out)
-	}
-	if lines := failureLines(out); !reflect.DeepEqual(lines, []string{"error: none here"}) {
-		t.Errorf("the run on the clone printed %q", out)
-	}
-	if data, _ := os.ReadFile(filepath.Join(root, "calc.py")); string(data) != "def one():\n    return 10\n" {
-		t.Errorf("the working tree changed: %q", data)
-	}
-}
-
-// The programs a failing run says are missing: make validate's staticcheck
-// on commit-bench, a shell's and Go's; a missing file is no program.
-func TestMissingProgramsAreReadOffTheOutput(t *testing.T) {
-	got := missingPrograms("      | staticcheck ./...\n      | make[1]: staticcheck: No such file or directory\n      | make[1]: *** [Makefile:28: lint] Error 127\n" +
-		"bash: line 1: golangci-lint: command not found\nsh: 1: ruff: not found\nexec: \"node\": executable file not found in $PATH\n" +
-		"cat: notes.txt: No such file or directory\nMakefile:3: extra.mk: No such file or directory\n")
-	if want := []string{"golangci-lint", "ruff", "staticcheck", "node"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("missingPrograms = %q, want %q", got, want)
-	}
-}
-
 // The documents that hold a name whole, as HEAD has them, most names first;
 // a name in too many documents says nothing, and code is no document.
 func TestDocsMentioningFindsWhereABehaviourIsWritten(t *testing.T) {

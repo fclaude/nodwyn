@@ -106,7 +106,7 @@ func Register(in *scheme.Interp, o Options) error {
 	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o), docExport(o, pin)}
 	if isGitWorkTree(o.Root) {
 		prims = append(prims, gitPrims(o, pin)...)
-		prims = append(prims, checkWithout(o), planEvidence(o), testBefore(o), checkBefore(o), planRun(o), headHasNamePrim(o), docsMentioningPrim(o), gitIntend(o))
+		prims = append(prims, checkWithout(o), planEvidence(o), testBefore(o), headHasNamePrim(o), docsMentioningPrim(o), gitIntend(o))
 		if o.Worktree != nil {
 			prims = append(prims, gitLand(o))
 		}
@@ -119,7 +119,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), shellCommandsPrim(), readData(), requestNamesPrim(), failureLinesPrim(), missingProgramsPrim(), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o), keepPassing(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), shellCommandsPrim(), readData(), requestNamesPrim(), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o), keepPassing(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
