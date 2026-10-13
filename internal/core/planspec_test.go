@@ -438,11 +438,11 @@ func TestANameTheCodeHasIsContextWithoutAskingAgain(t *testing.T) {
 	}
 }
 
-// A plan the model writes again in prose replaces the planner's forms: the
-// forms' steps are not held against the work (commit-bench, dsl8 107251d0:
-// the rewritten plan had 7 steps, and the turn was told its forms' step 8
-// lacked its evidence).
-func TestAPlanWrittenInProseReplacesTheForms(t *testing.T) {
+// A plan the model writes again in prose is the plan from then on: a form it
+// dropped is not held against the work (commit-bench, dsl8 107251d0: the
+// rewritten plan had 7 steps, and the turn was told its forms' step 8 lacked
+// its evidence).
+func TestAPlanWrittenInProseDropsTheFormsItLeftOut(t *testing.T) {
 	t.Parallel()
 	repo := codeRepo(t)
 	forms := `(change "calc.py" "one" "return 10")
@@ -566,5 +566,54 @@ func TestANewFileThePlanNamesIsListedByGit(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "calc_test.py") || strings.Contains(string(out), "scratch_repro.py") {
 		t.Errorf("git ls-files after the turn:\n%s", out)
+	}
+}
+
+// The forms a prose rewrite still holds keep their checks, under the new
+// plan's numbers: the planned test, now step 1, runs after each edit and is
+// marked by the harness (commit-bench: the model wrote its own plan in 4 of
+// 6 attempts, and dsl9 dropped every form with it).
+func TestAPlanWrittenInProseKeepsTheFormsItHolds(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	forms := `(change "calc.py" "one" "return 10")
+(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"))
+(docs "NOTES.md" "say one() is 10")
+(check "grep -q 'return 10' calc.py # make validate")`
+	prose := "1. Test: calc_test.py test_one — one() is 10; fails today: it is 1.\n2. Change: calc.py one — return 10.\n3. Docs: none — nothing a person reads changes.\n4. Check: grep -q 'return 10' calc.py # make validate"
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: forms},                    // the planner
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "p", Name: "plan-write", Args: map[string]any{"plan": prose}}}},
+		write("t", "calc_test.py", "def test_one():\n    pass\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py # make validate"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	for i := range r.srv.Requests {
+		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") {
+			t.Fatalf("a dropped form was held against the work: %q", msg)
+		}
+	}
+	if msg := lastMessage(r, 5); !strings.Contains(msg, "test_one: passes") {
+		t.Errorf("the kept test step was not run after the edit: %q", msg)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked := false
+	for _, ev := range evs {
+		var p log.PlanStep
+		if ev.Kind == log.KindPlanStep && ev.Decode(&p) == nil && p.Step == 1 && strings.Contains(p.Note, "test_one passed") {
+			marked = true
+		}
+	}
+	if !marked {
+		t.Errorf("the test step was not marked under the new plan's number 1")
 	}
 }

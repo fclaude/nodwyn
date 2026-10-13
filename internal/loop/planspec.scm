@@ -101,7 +101,7 @@
                    (when (pair? ss)
                      (when (and (member (assoc-ref (car ss) 'kind "") '("Change" "Docs"))
                                 (plan-language-same-path? (assoc-ref (car ss) 'path "") path))
-                       (plan-language-mark-one i (string-append "evidence: " path " written")))
+                       (plan-language-mark-one (plan-language-at (car ss) i) (string-append "evidence: " path " written")))
                      (mark (cdr ss) (+ i 1))))))
               ((and (equal? name "shell-exec") (equal? (run-status r) 0))
                (let ((line (command-line c)) (notes '()))
@@ -112,14 +112,14 @@
                                    (let any ((ps plan-language-edited)) (and (pair? ps) (or (plan-language-same-path? (car ps) (assoc-ref st 'path "")) (any (cdr ps)))))
                                    (or (string-contains? line (assoc-ref st 'name "_"))
                                        (and (not (string-empty? run)) (string-contains? line run))))
-                              (let ((new (not (member i plan-language-marked))))
-                                (plan-language-mark-one i (string-append "evidence: " (assoc-ref st 'name "") " passed"))
+                              (let ((new (not (member (plan-language-at st i) plan-language-marked))))
+                                (plan-language-mark-one (plan-language-at st i) (string-append "evidence: " (assoc-ref st 'name "") " passed"))
                                 ;; Its first pass: is it a test of the change?
                                 (when new
                                   (let ((note (plan-language-test-note st)))
                                     (when note (set! notes (cons note notes)))))))
                              ((and (equal? kind "Check") (not (string-empty? run)) (string-contains? line run))
-                              (plan-language-mark-one i "evidence: the check passed"))))
+                              (plan-language-mark-one (plan-language-at st i) "evidence: the check passed"))))
                      (mark (cdr ss) (+ i 1))))
                  (when (pair? notes)
                    (fold-result (assoc-ref c 'id)
@@ -161,7 +161,7 @@
 
 (define (plan-language-step-number st)
   (let find ((ss plan-spec) (i 1))
-    (cond ((null? ss) #f) ((eq? (car ss) st) i) (else (find (cdr ss) (+ i 1))))))
+    (cond ((null? ss) #f) ((eq? (car ss) st) (plan-language-at st i)) (else (find (cdr ss) (+ i 1))))))
 
 (define (plan-language-test-round calls results)
   (let find ((cs calls) (rs results) (last #f))
@@ -689,11 +689,58 @@
           ;; of 7 steps, told of the forms' step 8). The prose plan is kept
           ;; as prose plans are, with the generic checks.
           (when (and (pair? plan-spec) (string-prefix? "Plan recorded" (format "~a" answer)))
-            (log-note "plan language: the model wrote its plan in prose; the planner's forms no longer stand for it")
-            (set! plan-spec '())
-            (set! plan-spec-names '())
-            (set! plan-spec-context '()))
+            (let* ((before (length plan-spec)) (kept (plan-language-reconcile)))
+              (log-note (string-append "plan language: the model wrote its plan in prose; " (number->string (length kept))
+                                       " of the planner's " (number->string before) " steps carry over, numbered as the new plan numbers them"))))
           answer))))
+
+;; A step's number in the plan the model reads: the one a rewrite matched
+;; it to ('at), or its place among the plan's forms.
+(define (plan-language-at st i) (assoc-ref st 'at i))
+
+;; The model may write its plan again, in its own words: on commit-bench it
+;; did so in 4 of 6 attempts once it had read the code ("let me write the
+;; plan and make the changes"), carrying what it had learned (a separator,
+;; an existing test to change, the ADR's file). The rewrite is the plan from
+;; then on; the planner's forms that it still holds keep their checks: each
+;; form is matched to the new plan's step of the same kind that names its
+;; file (Change, Docs), its test (Test) or its command (Check), and takes
+;; that step's number; a form the new plan dropped is dropped. The names and
+;; context the request gave stay.
+(define (plan-language-line-kind line)
+  (let ((head (if (> (string-length line) 40) (substring line 0 40) line)))
+    (let find ((ks '("Change" "Test" "Docs" "Check")))
+      (cond ((null? ks) #f)
+            ((string-contains? head (string-append (car ks) ":")) (car ks))
+            (else (find (cdr ks)))))))
+
+(define (plan-language-basename p)
+  (let ((parts (string-split p "/"))) (if (pair? parts) (car (reverse parts)) p)))
+
+(define (plan-language-match st lines)
+  (let* ((kind (assoc-ref st 'kind "")) (path (assoc-ref st 'path "")) (name (assoc-ref st 'name ""))
+         (key (cond ((assoc-ref st 'none #f) "none")
+                    ((equal? kind "Test") name)
+                    ((equal? kind "Check") (assoc-ref st 'run ""))
+                    (else (plan-language-basename path)))))
+    (let find ((ls lines) (j 1) (first-of-kind #f))
+      (cond ((null? ls) (and (equal? kind "Check") first-of-kind))
+            ((equal? (plan-language-line-kind (car ls)) kind)
+             (if (and (not (string-empty? key)) (string-contains? (car ls) key))
+                 j
+                 (find (cdr ls) (+ j 1) (or first-of-kind j))))
+            (else (find (cdr ls) (+ j 1) first-of-kind))))))
+
+(define (plan-language-reconcile)
+  (let* ((lines (guard (e (else '())) (plan-steps)))
+         (kept (let walk ((ss plan-spec) (out '()))
+                 (if (null? ss)
+                     (reverse out)
+                     (let ((j (plan-language-match (car ss) lines)))
+                       (walk (cdr ss) (if j (cons (cons (cons 'at j) (car ss)) out) out)))))))
+    (set! plan-spec kept)
+    (set! plan-language-marked '())
+    kept))
 
 ;; Whether a command the turn ran and saw pass since the last edit (passed)
 ;; covers cmd: it contains it, or it is the repository's whole check.
@@ -733,7 +780,7 @@
                         (plan-language-docs-unmet))
                 (reverse met))
           (let* ((st (car ss)) (kind (assoc-ref st 'kind "")) (path (assoc-ref st 'path "")) (name (assoc-ref st 'name ""))
-                 (label (string-append "step " (number->string i) " (" kind (if (string-empty? path) "" (string-append " " path))
+                 (label (string-append "step " (number->string (plan-language-at st i)) " (" kind (if (string-empty? path) "" (string-append " " path))
                                        (if (string-empty? name) "" (string-append " " name)) ")"))
                  (problem
                   (cond ((assoc-ref st 'none #f) #f)
@@ -757,7 +804,7 @@
                         (else #f))))
             (if problem
                 (walk (cdr ss) (+ i 1) (cons problem unmet) met)
-                (walk (cdr ss) (+ i 1) unmet (cons (cons i (if (assoc-ref st 'none #f) "none" (string-append "evidence: " kind " step met"))) met))))))))
+                (walk (cdr ss) (+ i 1) unmet (cons (cons (plan-language-at st i) (if (assoc-ref st 'none #f) "none" (string-append "evidence: " kind " step met"))) met))))))))
 
 ;; A check step not seen to pass since the last edit, run by the harness
 ;; before the turn ends: #f when it passes there, or fails only on a program
