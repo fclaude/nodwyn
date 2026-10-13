@@ -550,6 +550,25 @@
   (let* ((parts (string-split request "\n\nWork on the plan's next unmarked step")))
     (car parts)))
 
+;; The request's names a plan holds nowhere.
+(define (plan-language-absent steps names context)
+  (let ((said (plan-language-said steps names context))
+        (asked (guard (e (else '())) (request-names (plan-language-task plan-language-request)))))
+    (filter (lambda (n) (not (string-contains? said n))) asked)))
+
+;; A read plan with the request's names it left out that the code already
+;; has put in its context: such a name is one the change uses, and asking the
+;; planner for it again cost a reply in every attempt on commit-bench (dsl3
+;; and dsl6, gpt-6.1-sol, api.openai.com: 2026-10-13). A name the code lacks
+;; is still asked for: session-id, which planners took for the X-Session-Id
+;; the code had, is not in it whole.
+(define (plan-language-with-known read)
+  (let* ((absent (plan-language-absent (car read) (cadr read) (caddr read)))
+         (known (filter (lambda (n) (guard (e (else #f)) (head-has-name n))) absent)))
+    (when (pair? known)
+      (log-note (string-append "plan language: names the code already has, put in the plan's context: " (string-join known ", "))))
+    (list (car read) (cadr read) (append (caddr read) known) (list-ref read 3))))
+
 ;; What is wrong with a read plan as a whole.
 (define (plan-language-problems steps names context)
   (let* ((kinds (map (lambda (st) (assoc-ref st 'kind "")) steps))
@@ -597,7 +616,7 @@
   (if (not plan-language)
       (plan-language-base-ask prompt)
       (let ask ((text (plan-language-base-ask prompt)) (left plan-language-retries))
-        (let* ((read (plan-language-read text))
+        (let* ((read (let ((r (plan-language-read text))) (and r (plan-language-with-known r))))
                (forms? (string-prefix? "(" (string-trim text)))
                (problems (if read
                              (append (list-ref read 3) (plan-language-problems (car read) (cadr read) (caddr read)))

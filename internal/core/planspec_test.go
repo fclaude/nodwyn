@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -404,5 +405,35 @@ func TestABackgroundRunsMissingProgramIsReadAcrossReads(t *testing.T) {
 	}
 	if len(r.srv.Requests) != 7 {
 		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// A name of the request the plan leaves out and the code already has goes
+// into the plan's context without asking the planner again; one the code
+// lacks is still asked for (commit-bench: every attempt of dsl3 and dsl6
+// spent a planner reply on gpt-6.1-sol, a model's name the code has).
+func TestANameTheCodeHasIsContextWithoutAskingAgain(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	cmd := exec.Command("sh", "-c", "printf 'use_cache = True\\n' > flags.py && git add flags.py && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m flags")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	plan := `(change "calc.py" "one" "return 10 behind answer_ten")
+(none test "a one-line change")
+(none docs "no document describes calc")
+(names "answer_ten")
+(check "grep -q 'return 10' calc.py")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner, once
+		fake.Turn{Content: "done"}, fake.Turn{Content: "done"}, fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10 behind the flag answer_ten, read with use_cache"); e != "" {
+		t.Fatal(e)
+	}
+	if main := string(r.srv.Requests[2].Raw); !strings.Contains(main, "Names it only uses: use_cache.") || !strings.Contains(main, `Names the change produces, as the request spells them: \"answer_ten\".`) {
+		t.Fatalf("the planner was asked again, or the plan lacks the name:\n%s", main)
 	}
 }

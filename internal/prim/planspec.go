@@ -709,3 +709,24 @@ func planRun(o Options) *scheme.Prim {
 		},
 	}
 }
+
+// headHasNamePrim builds (head-has-name name): whether a file of HEAD holds
+// name whole, as plan-evidence decides a name the change need not produce.
+func headHasNamePrim(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "head-has-name",
+		Meta: scheme.Meta{
+			Doc:    "Whether a file of HEAD holds name whole and in any case (session-id is not in X-Session-Id): a name the code already has. Registered in a git work tree.",
+			Params: []scheme.Param{{Name: "name", Type: "string", Doc: "the name"}},
+			Host:   true,
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			name, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			return scheme.Bool(!strings.ContainsAny(name, " \t\n") && headHasName(c.Ctx, o, name)), nil
+		},
+	}
+}
