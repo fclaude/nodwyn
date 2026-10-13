@@ -40,18 +40,8 @@
 ;; they had. glm, qwen and deepseek have no explorer run there; they batch as
 ;; muse-spark does in the main loop (1.2 to 1.4 calls a round), so they share
 ;; its row. 16 is a first step, to be read against the next logs.
-;; Read against them for qwen (commit-bench, qwen3.8-27b on nine tasks,
-;; nodwyn 0a9f700 and c768750, 2026-10-12): the explorer used all 16 rounds
-;; in every attempt, at 1.4 to 1.8 calls a round, and was stopped with calls
-;; still asked for; rounds 9 to 16 cost twice rounds 1 to 8 (a context three
-;; times larger), read mostly tests and documents (71 of 106 reads), and the
-;; main loop read 63% of the explorer's files again in its first dozen calls.
-;; What the plan needs, where the change goes and the conventions around it,
-;; the first rounds found; the documents the late rounds read did not keep
-;; the catalogue fresh (stale in 4 of 5 patches that had one to keep). So
-;; qwen's row is 8 (ADR 32, amended 2026-10-12).
 (define plan-explore-rounds
-  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 8) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
+  '(("muse-spark" . 16) ("glm" . 16) ("qwen" . 16) ("deepseek" . 16) ("gpt-6-luna" . 16) (default . 12)))
 (define plan-earlier-requests 2)   ; a chat's earlier messages the gate reads with its latest
 (define plan-earlier-cap 2000)     ; the characters of each it reads
 
