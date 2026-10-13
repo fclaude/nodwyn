@@ -579,8 +579,10 @@
   ;; of the last commit, which no edit makes stale; started-ids and
   ;; started-calls: the background runs started since the last edit
   ;; (started-call).
+  ;; passed: the command lines that exited 0 since the last edit; planned:
+  ;; whether the plan's evidence was checked (planspec.scm), once a turn.
   (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
-        (ablated #f) (cited #f) (named '()))
+        (passed '()) (planned #f) (ablated #f) (cited #f) (named '()))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
@@ -626,8 +628,11 @@
                        (when (and (not (base-run? c)) (or (check-run? c scripts) (test-call? c))
                                   (equal? (run-status r) 0))
                          (set! passing c))
+                       (when (and (equal? (assoc-ref c 'name) "shell-exec") (not (base-run? c)) (equal? (run-status r) 0))
+                         (set! passed (cons (command-line c) passed)))
                        (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)))
                          (set! passing #f)
+                         (set! passed '())
                          (set! ran '())
                          (set! started-ids '())
                          (set! started-calls '()))
@@ -692,6 +697,19 @@
                      (add-message (finish-new-files-message new))
                      (loop (ask-model) edited tested failed-runs offered reminders scripts written #t excused 0 outcome
                            told unchanged-told))
+                    ;; The plan's steps set against what happened, when the
+                    ;; plan is data (planspec.scm): what lacks its evidence
+                    ;; is said once; what has it is marked.
+                    ((and changed (not turn-stopping) (not planned) plan-language (pair? plan-spec))
+                     (set! planned #t)
+                     (let* ((check (plan-language-check passed)) (unmet (car check)))
+                       (plan-language-mark (cadr check))
+                       (if (pair? unmet)
+                           (begin (add-message (plan-language-unmet-message unmet))
+                                  (loop (ask-model) edited tested failed-runs offered reminders scripts written noted excused 0
+                                        outcome told unchanged-told))
+                           (loop reply edited tested failed-runs offered reminders scripts written noted excused 0
+                                 outcome told unchanged-told))))
                     ;; The change's parts the passing check does not test
                     ;; (check-without), asked once a turn.
                     ((and changed (not turn-stopping) (not ablated) passing (memq outcome '(passed kept)) (check-without?))

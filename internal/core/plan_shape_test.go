@@ -141,7 +141,7 @@ func TestPlanWithoutShortNamesIsTurnedDown(t *testing.T) {
 func TestNoneStepsAreAccepted(t *testing.T) {
 	t.Parallel()
 	answers, plans := planWriteTurns(t, []string{"1. Change: README.md — fix the install command.\n2. **Test:** none — only docs change.\n3. Docs: none — README.md is the doc, changed in step 1.\n4. Check: git diff"})
-	if len(plans) != 1 || answers[0] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as its work is done, in the same reply as the next step's first call — never several together at the end." {
+	if len(plans) != 1 || answers[0] != "Plan recorded: 4 steps. It stays in front of you; the harness marks a step done when it sees its evidence (its file changed, its test passed after your last edit, its check passed): mark one with plan-step only to skip it, saying why, or when its evidence is something the harness cannot see." {
 		t.Fatalf("plans %+v, answer %q", plans, answers[0])
 	}
 }
@@ -225,7 +225,9 @@ func TestPlannerAndJudgeAskForTheShape(t *testing.T) {
 	for i, what := range []string{"draft", "revision"} {
 		msgs := requestMessages(t, r.srv.Requests[i])
 		asked := msgs[len(msgs)-1].Content
-		for _, want := range []string{"a short name", "\n- Change: a file", "\n- Test: the test file and name", "fails today", "\n- Docs: each file", "\n- Check: the command", "The last step is a Check: step."} {
+		// The plan is asked for as data (planspec.scm, ADR 32, amended
+		// 2026-10-13): the same kinds, as forms.
+		for _, want := range []string{"Scheme data: one form per step", "(change \"path\"", "(test \"path\" \"TestName\"", "fails-today", "(docs \"path\"", "(check \"", "the last step"} {
 			if !strings.Contains(asked, want) {
 				t.Errorf("the planner's %s request lacks %q:\n%s", what, want, asked)
 			}
@@ -301,7 +303,7 @@ func TestTheRequestsNamesAreKeptAsSpelled(t *testing.T) {
 	if len(r.srv.Requests) < 3 {
 		t.Fatalf("%d requests: the planner or the main loop was not asked", len(r.srv.Requests))
 	}
-	if planner := string(r.srv.Requests[1].Raw); !strings.Contains(planner, "spelled as the request spells it") || !strings.Contains(planner, "a Test: step checks the request's own spelling") {
+	if planner := string(r.srv.Requests[1].Raw); !strings.Contains(planner, "spelled as the request spells it") || !strings.Contains(planner, "keep it in names anyway") {
 		t.Fatalf("the planner's request does not keep the request's names:\n%s", planner)
 	}
 	if sys := r.s.loop.WindowContext().System; !strings.Contains(sys, "Take each name the request gives") {

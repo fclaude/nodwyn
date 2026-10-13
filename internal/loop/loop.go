@@ -150,6 +150,11 @@ var defaultOptimizer string
 //go:embed plan.scm
 var defaultPlanGate string
 
+// planspec.scm: the plan as data (ADR 32, amended 2026-10-13), over plan.scm.
+//
+//go:embed planspec.scm
+var defaultPlanLanguage string
+
 // The working habits (ADR 32), loaded after the defaults they wrap, in this
 // order: shell.scm wraps run-calls and fold-result innermost, hygiene.scm
 // also wraps model-turn, readdef.scm feeds hygiene.scm's reads, and
@@ -203,6 +208,9 @@ func New(host Host, interp *scheme.Interp, cfg Config) (*Loop, error) {
 	}
 	if _, err := interp.EvalString(harness, defaultPlanGate); err != nil {
 		return nil, fmt.Errorf("loop: default plan gate: %w", err)
+	}
+	if _, err := interp.EvalString(harness, defaultPlanLanguage); err != nil {
+		return nil, fmt.Errorf("loop: default plan language: %w", err)
 	}
 	for _, h := range defaultHabits {
 		if _, err := interp.EvalString(harness, h.src); err != nil {

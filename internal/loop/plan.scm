@@ -275,7 +275,7 @@
 ;; else, each a request that sends the whole context again, and their notes
 ;; ran to 716 characters (ADR 32, amended 2026-10-12).
 (define-agent-tool "plan-step"
-  "Mark a step of the current plan done as soon as its work is done, in the same reply as the next step's first call (a reply can hold several calls; a mark alone costs a whole request) — never several together at the end: whoever follows the task sees the plan's progress move as the work happens. Mark it skipped when you decided against it, with what shows it: a test that passed, the file you changed, or why you skipped it. A Test: step is done once its test has failed without your change and passes with it (or passed both times, for one that guards behaviour that already works): the note names both runs. Steps are numbered from 1, as in the plan."
+  "Mark a step of the current plan skipped when you decided against it, saying why. The harness marks a step done when it sees its evidence (its file changed, its test passed after your last edit, its check passed), so mark one done yourself only when its evidence is something the harness cannot see, with what shows it, and in the same reply as your next call (a mark alone costs a whole request). A Test: step is done once its test has failed without your change and passes with it (or passed both times, for one that guards behaviour that already works): the note names both runs. Steps are numbered from 1, as in the plan."
   '(("step" "integer" "the step's number in the plan")
     ("state" "string" "done or skipped")
     ("note" "string" "what shows it, in one line"))
@@ -425,10 +425,10 @@
 (define (plan-recorded-message n problems)
   (string-append "Plan recorded: " (number->string n) (if (= n 1) " step" " steps")
                  (if (null? problems)
-                     ". It stays in front of you; mark each step with plan-step as its work is done, in the same reply as the next step's first call — never several together at the end."
+                     ". It stays in front of you; the harness marks a step done when it sees its evidence (its file changed, its test passed after your last edit, its check passed): mark one with plan-step only to skip it, saying why, or when its evidence is something the harness cannot see."
                      (string-append ", as written, since plan-write has turned down " (number->string plan-write-refusals)
                                     " plans in this turn. Still missing:" (plan-problem-lines problems)
-                                    "\nIt stays in front of you: cover what is missing as you work, and mark each step with plan-step as its work is done, in the same reply as the next step's first call — never several together at the end."))))
+                                    "\nIt stays in front of you: cover what is missing as you work, and the harness marks a step done when it sees its evidence (its file changed, its test passed after your last edit, its check passed): mark one with plan-step only to skip it, saying why, or when its evidence is something the harness cannot see."))))
 
 ;; plan-write's refusals in a turn: the turn, as the number of the person's
 ;; messages so far (read from the log, so a project that redefines

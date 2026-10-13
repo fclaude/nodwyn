@@ -38,7 +38,7 @@ func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "fs-read",
 		Meta: scheme.Meta{
-			Doc: "Read a UTF-8 text file inside the repository. Without start, returns the whole file. With start (a 1-based line number) and count (default 200), returns a header [lines A-B of N] and those lines exactly as in the file, without line numbers. Read files over about 9 KB in ranges: a whole read that large is shortened in your context. index-grep gives line numbers to start from.",
+			Doc: "Read a UTF-8 text file inside the repository. Without start, returns the whole file. With start (a 1-based line number) and count (default 200), returns a header [lines A-B of N] and those lines exactly as in the file, without line numbers. Read files over about 18 KB in ranges: a whole read that large is shortened in your context. index-grep gives line numbers to start from.",
 			Params: []scheme.Param{
 				{Name: "path", Type: "string", Doc: "path relative to the repository root", Role: "path"},
 				{Name: "start", Type: "integer", Doc: "first line to read, 1-based; omit both start and count to read the whole file", Optional: true},
