@@ -119,7 +119,7 @@ func Register(in *scheme.Interp, o Options) error {
 			return err
 		}
 	}
-	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o), keepPassing(o)} {
+	for _, p := range []*scheme.Prim{policyRead(o), policyWrite(o), credential(o.Credentials), scratchDir(o), shellCommandsPrim(), repository(o), workspace(o), worktree(o), projectNotes(o), projectNotesSave(o), projectInstructions(o), keepPassing(o)} {
 		if err := in.Register(p); err != nil {
 			return err
 		}
@@ -207,6 +207,46 @@ func scratchDir(o Options) *scheme.Prim {
 				return scheme.False, nil
 			}
 			return scheme.Str(o.Scratch), nil
+		},
+	}
+}
+
+// shellCommandsPrim builds (shell-commands cmd args): the simple commands a
+// command line runs (guard.ShellCommands), for the evidence loop to match a
+// report's citations against.
+func shellCommandsPrim() *scheme.Prim {
+	return &scheme.Prim{
+		Name: "shell-commands",
+		Meta: scheme.Meta{
+			Doc: "The simple commands a command line runs, each as its words from the program on joined by spaces: a shell's -c line read as the shell reads it (a here-document's body, a quoted pattern and a redirection's target are no command; a substitution's commands are left out), anything else as one command. () for a line that does not parse.",
+			Params: []scheme.Param{
+				{Name: "cmd", Type: "string", Doc: "the program"},
+				{Name: "args", Type: "list", Doc: "its arguments"},
+			},
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			name, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			items, err := c.List(1)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			argv := []string{name}
+			for _, it := range items {
+				if it.Kind != scheme.KString {
+					return scheme.Value{}, errors.New("args must be a list of strings")
+				}
+				argv = append(argv, it.S)
+			}
+			cmds := guard.ShellCommands(argv)
+			out := make([]scheme.Value, len(cmds))
+			for i, s := range cmds {
+				out[i] = scheme.Str(s)
+			}
+			return scheme.List(out...), nil
 		},
 	}
 }

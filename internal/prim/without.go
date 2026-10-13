@@ -1,14 +1,17 @@
 package prim
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
+	"hash"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -38,6 +41,16 @@ import (
 // the end whatever happens. The runs share one time budget, so a slow check
 // (a whole test suite) cannot take a turn's wall time: a part not reached
 // before it runs out is not reported.
+//
+// A part counts as tested when the check fails without it or prints
+// something else (amended 2026-10-12). On commit-bench most of the alarms
+// came from checks whose exit status could not fail: `... | tail -n 5; echo
+// EXIT=${PIPESTATUS[0]}`, `bash check.sh; echo CHECK-EXIT=$?`. Such a check
+// "passed" without every part, the model believed it, and two attempts ran
+// into their wall clock building ablation experiments of their own. The
+// check runs once more with the whole change first: what it prints then is
+// what each run without a part is compared with, and a check that does not
+// pass again there says nothing about the parts.
 const (
 	withoutMaxHunks = 8
 	withoutMaxLines = 6000 // a longer file is left out, as Unified leaves out a longer diff
@@ -69,7 +82,7 @@ func checkWithout(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "check-without",
 		Meta: scheme.Meta{
-			Doc: "Run a check again with each part of the uncommitted change taken out in turn (a hunk of a changed code file, or a whole new or deleted one; documents, tests and comment-only hunks are left alone), putting each part back after its run. Returns a list with one alist per part: path, line (its first line now, 0 for a whole file), added, removed, kind (hunk, new file or deleted file), and status, the check's exit status without that part, or error. At most " + fmt.Sprint(withoutMaxHunks) + " parts, run within " + withoutBudget.String() + " in all: a part not reached in that time is not in the list. The evidence loop calls it before an unattended turn ends on a passing check; a part whose check still exits 0 is one the check does not test.",
+			Doc: "Run a check again with each part of the uncommitted change taken out in turn (a hunk of a changed code file, or a whole new or deleted one; documents, tests and comment-only hunks are left alone), putting each part back after its run. The check runs once with the whole change first, and fails with an error if it does not exit 0 then. Returns a list with one alist per part: path, line (its first line now, 0 for a whole file), added, removed, kind (hunk, new file or deleted file), and status, the check's exit status without that part, and same, whether it printed what it printed with the whole change (durations, (cached), clock times, hex addresses and long numbers masked); or error. At most " + fmt.Sprint(withoutMaxHunks) + " parts, run within " + withoutBudget.String() + " in all, the run with the whole change included: a part not reached in that time is not in the list. The evidence loop calls it before an unattended turn ends on a passing check; a part whose check still exits 0 and prints the same is one the check does not test.",
 			Params: []scheme.Param{
 				{Name: "cmd", Type: "string", Doc: "the check's program, as it was run", Role: "argv"},
 				{Name: "args", Type: "list", Doc: "its arguments", Role: "argv"},
@@ -109,7 +122,8 @@ func checkWithout(o Options) *scheme.Prim {
 				if s := statuses[i]; s.err != nil {
 					fields = append(fields, scheme.Cons(scheme.Str("error"), scheme.Str(s.err.Error())))
 				} else {
-					fields = append(fields, scheme.Cons(scheme.Str("status"), scheme.Int(int64(s.status))))
+					fields = append(fields, scheme.Cons(scheme.Str("status"), scheme.Int(int64(s.status))),
+						scheme.Cons(scheme.Str("same"), scheme.Bool(s.same)))
 				}
 				out[i] = scheme.List(fields...)
 			}
@@ -118,13 +132,16 @@ func checkWithout(o Options) *scheme.Prim {
 	}
 }
 
+// withoutStatus is how the check ended without one part: its exit status,
+// and whether it printed what it printed with the whole change.
 type withoutStatus struct {
 	status int
+	same   bool
 	err    error
 }
 
-// runWithout finds the change's parts, then runs the check once without
-// each, and puts every file back.
+// runWithout finds the change's parts, runs the check once with the whole
+// change and then once without each part, and puts every file back.
 func runWithout(ctx context.Context, o Options, name string, args []string) ([]withoutPart, []withoutStatus, error) {
 	k := &Keeper{o: o}
 	_, paths, err := k.look(ctx)
@@ -191,7 +208,17 @@ func runWithout(ctx context.Context, o Options, name string, args []string) ([]w
 		}
 	}()
 	statuses := make([]withoutStatus, len(parts))
+	if len(parts) == 0 {
+		return parts, statuses, nil
+	}
 	deadline := time.Now().Add(withoutBudget)
+	whole, err := runCheck(ctx, o, name, args, deadline)
+	if err != nil {
+		return nil, nil, fmt.Errorf("the check did not run again with the whole change: %w", err)
+	}
+	if whole.status != 0 {
+		return nil, nil, fmt.Errorf("the check exits %d with the whole change in place, so its runs without each part would say nothing", whole.status)
+	}
 	for i, p := range parts {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
@@ -204,8 +231,8 @@ func runWithout(ctx context.Context, o Options, name string, args []string) ([]w
 			statuses[i] = withoutStatus{err: err}
 			continue
 		}
-		status, err := runCheck(ctx, o, name, args, deadline)
-		statuses[i] = withoutStatus{status: status, err: err}
+		run, err := runCheck(ctx, o, name, args, deadline)
+		statuses[i] = withoutStatus{status: run.status, same: err == nil && run.output == whole.output, err: err}
 		if err := putBackWithout(k, o, p.path, originals[p.path]); err != nil {
 			return nil, nil, fmt.Errorf("could not put %s back: %w", p.path, err)
 		}
@@ -346,9 +373,17 @@ func putBackWithout(k *Keeper, o Options, rel string, orig withoutOriginal) erro
 	return os.Chmod(abs, orig.mode)
 }
 
+// checkRun is how one run of a check ended: its exit status, and a digest
+// of what it printed (checkOutput).
+type checkRun struct {
+	status int
+	output [sha256.Size]byte
+}
+
 // runCheck runs the check as shell-exec runs a command, stopped at the
-// deadline if that comes first, and says its exit status.
-func runCheck(parent context.Context, o Options, name string, args []string, deadline time.Time) (int, error) {
+// deadline if that comes first, and says its exit status and what it
+// printed.
+func runCheck(parent context.Context, o Options, name string, args []string, deadline time.Time) (checkRun, error) {
 	timeout := o.ShellTimeout
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
@@ -367,22 +402,91 @@ func runCheck(parent context.Context, o Options, name string, args []string, dea
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 5 * time.Second
-	err := runStopping(cmd, io.Discard, io.Discard)
+	var stdout, stderr checkOutput
+	err := runStopping(cmd, &stdout, &stderr)
 	if parent.Err() != nil {
-		return 0, parent.Err()
+		return checkRun{}, parent.Err()
 	}
 	if ctx.Err() != nil {
-		return 0, fmt.Errorf("timed out after %s", timeout)
+		return checkRun{}, fmt.Errorf("timed out after %s", timeout)
 	}
+	run := checkRun{output: sha256.Sum256(append(stdout.sum(), stderr.sum()...))}
 	var exitErr *exec.ExitError
 	switch {
 	case err == nil:
-		return 0, nil
+		return run, nil
 	case errors.As(err, &exitErr):
-		if s := exitErr.ExitCode(); s >= 0 {
-			return s, nil
+		if run.status = exitErr.ExitCode(); run.status < 0 {
+			run.status = 128
 		}
-		return 128, nil
+		return run, nil
 	}
-	return 0, err
+	return checkRun{}, err
+}
+
+// checkNoise is what differs between two runs of the same code, masked
+// before two runs' output is compared: durations ("0.41s", "1m28s", and
+// "(cached)", which go test prints for a package it did not run again), clock
+// times, hex addresses, and long numbers (process ids, ports, the random part
+// of a temporary name).
+var checkNoise = []struct {
+	re   *regexp.Regexp
+	with string
+}{
+	{regexp.MustCompile(`\(cached\)`), "T"},
+	{regexp.MustCompile(`\b\d{1,2}:\d{2}(:\d{2})?(\.\d+)?\b`), "T"},
+	{regexp.MustCompile(`\b(\d+(\.\d+)?(ns|µs|us|ms|s|m|h))+\b`), "T"},
+	{regexp.MustCompile(`\b0x[0-9a-fA-F]+\b`), "X"},
+	{regexp.MustCompile(`\d{4,}`), "N"},
+}
+
+// checkLineMax is the longest line checkOutput holds before it digests what
+// it has as a line of its own.
+const checkLineMax = 64 << 10
+
+// checkOutput digests what a check prints, a line at a time with its noise
+// masked (checkNoise) and blank lines left out, so two runs compare by their
+// digests whatever their size.
+type checkOutput struct {
+	h    hash.Hash
+	line []byte
+}
+
+func (c *checkOutput) Write(p []byte) (int, error) {
+	n := len(p)
+	for {
+		i := bytes.IndexAny(p, "\r\n")
+		if i < 0 {
+			c.line = append(c.line, p...)
+			if len(c.line) > checkLineMax {
+				c.flush()
+			}
+			return n, nil
+		}
+		c.line = append(c.line, p[:i]...)
+		c.flush()
+		p = p[i+1:]
+	}
+}
+
+func (c *checkOutput) flush() {
+	if c.h == nil {
+		c.h = sha256.New()
+	}
+	line := strings.TrimSpace(string(c.line))
+	c.line = c.line[:0]
+	if line == "" {
+		return
+	}
+	for _, n := range checkNoise {
+		line = n.re.ReplaceAllString(line, n.with)
+	}
+	c.h.Write([]byte(line))
+	c.h.Write([]byte{'\n'})
+}
+
+// sum is the digest of everything written so far.
+func (c *checkOutput) sum() []byte {
+	c.flush()
+	return c.h.Sum(nil)
 }

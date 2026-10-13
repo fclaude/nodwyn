@@ -677,3 +677,89 @@ func TestAReportCitingAnOldRunIsAsked(t *testing.T) {
 		t.Fatalf("citation message: %q", msg)
 	}
 }
+
+// A check whose exit status cannot fail (; echo EXIT=0) still tells a part
+// apart when it prints something else without it: only the parts it prints
+// the same without are named. Here it counts one()'s return, so two()'s
+// change alone is named, as for a check that fails (ADR 32, amended
+// 2026-10-12).
+func TestAMaskedCheckTellsPartsApartByWhatItPrints(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -c 'return 10' calc.py; echo EXIT=0\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // told the check does not test two()'s change
+		fake.Turn{Content: "two() is part of the change; the check now covers it."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 4)
+	if !strings.Contains(msg, "calc.py:6 (hunk") || strings.Contains(msg, "calc.py:2 (hunk") {
+		t.Fatalf("untested parts message: %q", msg)
+	}
+}
+
+// Output a report quotes, the lines of a here-document and the words of a
+// grep pattern are no command the turn ran, and a command it never ran is no
+// citation of an old run: none of them is asked about (ADR 32, amended
+// 2026-10-12).
+func TestAReportQuotingOutputIsNotAsked(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		shellArgs("t1", "bash", "-c", "cat > $TMPDIR/out.txt <<'EOF'\nok in 0.4s\n--- PASS: TestX\nEOF\ngrep -E '^(--- PASS|ok in)' $TMPDIR/out.txt || true"),
+		writeFile("w"),
+		shell("t2", "true # go test ./..."),
+		fake.Turn{Content: "Done: the run printed `ok in 0.4s` and `--- PASS: TestX`; `make accept` should pass too."},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 4 {
+		t.Fatalf("%d requests, want 4; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// A check that the repository's whole check runs again is not asked about
+// once the whole check has passed since the last edit: make validate runs go
+// test -race ./... itself (ADR 32, amended 2026-10-12).
+func TestACitationTheWholeCheckRanAgainIsNotAsked(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w1"),
+		shellArgs("t1", "bash", "-c", "go test -race ./... 2>&1 | tail -n 5 || true"), // before the last edit
+		write("w2", "fix.txt", "y\n"),
+		shellArgs("t2", "bash", "-c", "true # make validate"), // the whole check, after it
+		fake.Turn{Content: "Done: `go test -race ./...` and `make validate` pass."},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}
+
+// A test run in the background that exits after the last edit is a test run
+// as shell-exec's is: the turn is not told it changed files after its last
+// one (ADR 32, amended 2026-10-12).
+func TestABackgroundTestRunIsATestRun(t *testing.T) {
+	t.Parallel()
+	r := unattendedRig(t,
+		writeFile("w"),
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "shell-start", Args: map[string]any{"cmd": "sh", "args": []any{"-c", "sleep 2; true # go test ./..."}}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 30}}}},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("fix it"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 4 {
+		t.Fatalf("%d requests, want 4; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}

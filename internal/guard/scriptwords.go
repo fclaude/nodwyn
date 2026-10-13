@@ -407,3 +407,35 @@ func access(words []string) int {
 	}
 	return accessAny
 }
+
+// ShellCommands is the simple commands a command line runs, each as its
+// words from the program on, joined by single spaces: the inside of a shell's
+// -c line read as scriptWords reads it, so a quoted pattern, a here-document's
+// body and a redirection's target are no command, and the commands inside a
+// substitution are left out. argv that is no -c line is one command. The
+// evidence loop matches the commands a report cites against these (ADR 32,
+// amended 2026-10-12): read by its plain words, every line of a heredoc and
+// every word after a | inside a grep pattern had counted as a program run.
+// A line scriptWords cannot split gives nil.
+func ShellCommands(argv []string) []string {
+	if len(argv) == 0 {
+		return nil
+	}
+	if len(argv) < 3 || !shells[filepath.Base(argv[0])] || argv[1] != "-c" {
+		return []string{strings.Join(argv, " ")}
+	}
+	cmds, ok := scriptWords(argv[2])
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, c := range cmds {
+		if c.sub {
+			continue
+		}
+		if p := program(c.words); p < len(c.words) {
+			out = append(out, strings.Join(c.words[p:], " "))
+		}
+	}
+	return out
+}

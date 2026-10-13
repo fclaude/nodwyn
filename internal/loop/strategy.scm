@@ -210,6 +210,7 @@
   '("pytest" "unittest" "runtests" "tox" "nox" "bin/test" "go test" "cargo test"
     "npm test" "npm run test" "yarn test" "pnpm test" "jest" "vitest" "mocha"
     "mvn test" "gradle test" "gradlew test" "ctest" "make test" "make check"
+    "make validate" "make verify" "make ci"
     "rspec" "rake test" "phpunit" "dotnet test" "mix test" "swift test"))
 
 ;; A shell-exec call's command line, cmd and args joined.
@@ -406,25 +407,59 @@
          (parts (guard (e (else (log-note (string-append "check-without failed: " (format "~a" (assoc-ref e 'message ""))))
                                 '()))
                   (check-without cmd args)))
-         (untested (filter (lambda (p) (equal? (assoc-ref p "status" #f) 0)) parts)))
+         (passed (filter (lambda (p) (equal? (assoc-ref p "status" #f) 0)) parts))
+         ;; A check that passes without a part but prints something else
+         ;; told it apart: the status may be one it cannot fail (; echo $?).
+         (untested (filter (lambda (p) (assoc-ref p "same" #t)) passed)))
     (log-note (string-append "check-without: " (number->string (length parts)) " parts taken out, "
-                             (number->string (length untested)) " the check still passed without"))
+                             (number->string (length passed)) " the check still passed without, "
+                             (number->string (length untested)) " of them printing the same"))
     untested))
 
-;; The programs a command line runs: the first word of each command in it,
-;; and of a shell's -c line, by its plain words. A rough reading, enough to
-;; tell a command the report cites from a name or a value in backquotes.
-(define (command-programs line)
-  (let* ((cleaned (fold (lambda (s sep) (string-join (string-split s sep) " ; ")) line '("&&" "||" "|" "\n" "(" ")")))
-         (segments (string-split cleaned ";")))
-    (apply append
-           (map (lambda (seg)
-                  (let ((words (filter (lambda (w) (not (string-empty? w))) (string-split (string-trim seg) " "))))
-                    (cond ((null? words) '())
-                          ((and (pair? (cdr words)) (member (car words) '("bash" "sh")) (equal? (cadr words) "-c"))
-                           (if (pair? (cddr words)) (list (car (reverse (string-split (caddr words) "/")))) '()))
-                          (else (list (car (reverse (string-split (car words) "/"))))))))
-                segments))))
+;; The simple commands a shell-exec or shell-start call runs: a -c line
+;; read as the shell reads it (shell-commands), so a here-document's body, a
+;; quoted pattern and a redirection's target are no command.
+(define (call-commands call)
+  (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+         (cmd (if (pair? a) (format "~a" (assoc-ref a "cmd" "")) ""))
+         (args (if (pair? a)
+                   (let ((l (assoc-ref a "args" '()))) (if (list? l) (map (lambda (x) (format "~a" x)) l) '()))
+                   '())))
+    (if (string-empty? cmd) '() (guard (e (else '())) (shell-commands cmd args)))))
+
+;; Whether two commands are the same run as a report cites it: the one, or
+;; the one with more arguments after it (`go test ./...` and `go test ./...
+;; -count=1`). A program's name alone is none.
+(define (same-command? a b)
+  (let* ((a-shorter (< (string-length a) (string-length b)))
+         (shorter (if a-shorter a b))
+         (longer (if a-shorter b a)))
+    (and (string-contains? shorter " ")
+         (or (equal? a b) (string-prefix? (string-append shorter " ") longer)))))
+
+(define (any-command? cmd cmds)
+  (let any ((cs cmds))
+    (and (pair? cs) (or (same-command? cmd (car cs)) (any (cdr cs))))))
+
+;; The repository's whole check, by the names a Makefile gives it by
+;; convention, and the commands that check the code, whole or in part: once
+;; the whole check has passed since the last edit, a report that cites one of
+;; them stands on that run.
+(define whole-check-words '("make validate" "make check" "make test" "make ci" "make verify"))
+
+(define (whole-check? call)
+  (let ((line (command-line call)))
+    (let any ((ws whole-check-words))
+      (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws)))))))
+
+(define check-command-words
+  (append test-command-words
+          '("make " "go build" "go vet" "gofmt" "staticcheck" "golangci-lint" "cargo build" "cargo check"
+            "cargo clippy" "ruff" "flake8" "mypy" "pylint" "eslint" "tsc" "npm run" "yarn " "pnpm ")))
+
+(define (check-command? cmd)
+  (let any ((ws check-command-words))
+    (and (pair? ws) (or (string-contains? cmd (car ws)) (any (cdr ws))))))
 
 ;; The text between backquotes in a reply.
 (define (code-spans text)
@@ -434,19 +469,67 @@
           (else (walk (cdr parts) (+ i 1) out)))))
 
 ;; The commands a report cites that have not run since the last edit: spans
-;; in backquotes that start with a program the turn ran, matched by no
-;; command line run since. In the person's sessions, "done" was claimed on
-;; the strength of a run that predated the last edit, and on runs never made
-;; at all (ADR 32, amended 2026-10-11).
-(define (stale-citations text ran programs)
-  (filter (lambda (span)
-            (let ((first (car (string-split span " "))))
-              (and (string-contains? span " ")
-                   (member first programs)
-                   (not (let any ((ls ran))
-                          (and (pair? ls)
-                               (or (string-contains? (car ls) span) (string-contains? span (car ls)) (any (cdr ls)))))))))
-          (code-spans text)))
+;; in backquotes whose first command the turn ran (same-command?), matched by
+;; no command run since. In the person's sessions, "done" was claimed on the
+;; strength of a run that predated the last edit (ADR 32, amended
+;; 2026-10-11). A command that checks the code (check-command?) is not stale
+;; once the repository's whole check has passed since the last edit
+;; (checked): that run is what the report stands on. Matched by program names read off every line, the
+;; reminder fired in 12 of 18 commit-bench attempts: for output the report
+;; quoted (`--- PASS: TestX`, `ok in 0.4s`), whose first word a heredoc line
+;; or a grep pattern had made a program, for commands never run, and for
+;; make accept and go test -race ./... after a later make validate that runs
+;; both (ADR 32, amended 2026-10-12).
+(define (stale-citations text ran ran-all checked)
+  (let walk ((spans (code-spans text)) (out '()))
+    (if (null? spans)
+        (reverse out)
+        (let* ((span (car spans))
+               (cmds (guard (e (else '())) (shell-commands "bash" (list "-c" span))))
+               (cmd (and (pair? cmds) (car cmds))))
+          (walk (cdr spans)
+                (if (and cmd (not (member span out))
+                         (any-command? cmd ran-all)
+                         (not (any-command? cmd ran))
+                         (not (and checked (check-command? cmd))))
+                    (cons span out)
+                    out))))))
+
+;; A background run's id and exit status from the first line shell-start,
+;; shell-read and shell-stop give ("p1: exited 0 (the command line)"), or #f
+;; while it runs.
+(define (proc-exit result)
+  (and (assoc-ref result 'ok #f)
+       (let* ((line (car (string-split (format "~a" (assoc-ref result 'value "")) "\n")))
+              (head (string-split line ": "))
+              (words (if (pair? (cdr head)) (string-split (cadr head) " ") '())))
+         (and (pair? words) (equal? (car words) "exited") (pair? (cdr words))
+              (let ((status (string->number (cadr words))))
+                (and (integer? status) (cons (car head) status)))))))
+
+(define (proc-id result)
+  (and (assoc-ref result 'ok #f)
+       (let ((id (car (string-split (car (string-split (format "~a" (assoc-ref result 'value "")) "\n")) ":"))))
+         (and (not (string-empty? id)) id))))
+
+;; A background run that has exited, as the shell-exec call it amounts to:
+;; the command shell-start ran (started: id and call, for the runs started
+;; since the last edit), with the status it exited with. Read with waits of
+;; 60 seconds, the repository's whole check often ran this way, and the loop,
+;; which counted shell-exec runs only, then asked for the tests to be run
+;; after the last edit when they had been (5 of the 6 such reminders on
+;; commit-bench; ADR 32, amended 2026-10-12).
+(define (background-run call result started)
+  (and (member (assoc-ref call 'name) '("shell-start" "shell-read" "shell-stop"))
+       (let* ((exit (proc-exit result))
+              (start (and exit (if (equal? (assoc-ref call 'name) "shell-start")
+                                   call
+                                   (assoc-ref started (car exit) #f)))))
+         (and start
+              (cons (list (cons 'name "shell-exec") (cons 'id (assoc-ref call 'id ""))
+                          (cons 'args (assoc-ref start 'args "{}")))
+                    (list (cons 'ok #t)
+                          (cons 'value (string-append "{\"status\": " (number->string (cdr exit)) "}"))))))))
 
 ;; Files new in the repository that the turn's plan names: the test file a
 ;; Test: step adds, the release note a Docs: step writes. The untracked-files
@@ -468,7 +551,11 @@
   ;; cited: whether those two checks were made, once a turn each. named: the
   ;; new files the untracked-files reminder named, which check-without's
   ;; answer leaves out rather than name them twice.
-  (let ((before (git-state)) (passing #f) (ran '()) (programs '()) (ablated #f) (cited #f) (named '()))
+  ;; ran-all: the commands run in the turn; base-ran: those run on the copy
+  ;; of the last commit, which no edit makes stale; started: the background
+  ;; runs started since the last edit (background-run).
+  (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started '())
+        (ablated #f) (cited #f) (named '()))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
     ;; excused: a reviewed turn was told it may end unchanged.
@@ -488,16 +575,29 @@
             (let walk ((cs calls) (rs (run-calls calls)) (edited edited) (tested tested) (failed failed-runs)
                        (scripts scripts) (written written) (outcome outcome) (told told))
               (cond ((pair? cs)
-                     (let ((c (car cs)) (r (car rs)))
-                       (when (equal? (assoc-ref c 'name) "shell-exec")
-                         (set! ran (cons (command-line c) ran))
-                         (set! programs (append (command-programs (command-line c)) programs)))
+                     (let* ((c0 (car cs)) (r0 (car rs))
+                            (bg (background-run c0 r0 started))
+                            (c (if bg (car bg) c0))
+                            (r (if bg (cdr bg) r0)))
+                       (when (member (assoc-ref c0 'name) '("shell-exec" "shell-start"))
+                         (let ((cmds (call-commands c0)))
+                           (set! ran (append cmds ran))
+                           (set! ran-all (append cmds ran-all))
+                           (when (base-run? c0)
+                             (set! base-ran (append cmds base-ran)))))
+                       ;; A run is counted once, when it is seen to exit.
+                       (let ((exit (proc-exit r0)))
+                         (cond ((and (equal? (assoc-ref c0 'name) "shell-start") (not exit) (proc-id r0))
+                                (set! started (cons (cons (proc-id r0) c0) started)))
+                               (exit
+                                (set! started (filter (lambda (s) (not (equal? (car s) (car exit)))) started)))))
                        (when (and (not (base-run? c)) (or (check-run? c scripts) (test-call? c))
                                   (equal? (run-status r) 0))
                          (set! passing c))
                        (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)))
                          (set! passing #f)
-                         (set! ran '()))
+                         (set! ran '())
+                         (set! started '()))
                        (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
                               (let ((name (scratch-name c)))
                                 (if name
@@ -573,9 +673,9 @@
                     ;; A command the report cites that has not run since the
                     ;; last edit, asked once a turn.
                     ((and changed (not turn-stopping) (not cited)
-                          (pair? (stale-citations (format "~a" (assoc-ref reply 'content "")) ran programs)))
+                          (pair? (stale-citations (format "~a" (assoc-ref reply 'content "")) (append ran base-ran) ran-all (and passing (whole-check? passing)))))
                      (set! cited #t)
                      (add-message (finish-stale-citations-message
-                                   (stale-citations (format "~a" (assoc-ref reply 'content "")) ran programs)))
+                                   (stale-citations (format "~a" (assoc-ref reply 'content "")) (append ran base-ran) ran-all (and passing (whole-check? passing)))))
                      (loop (ask-model) edited tested failed-runs offered reminders scripts written noted excused 0
                            outcome told unchanged-told)))))))))

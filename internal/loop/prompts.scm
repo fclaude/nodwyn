@@ -164,7 +164,17 @@
    ;; shell.scm: a command line through cmd/args is answered with the call
    ;; that runs it; say so up front.
    "\n- shell-exec runs one program with its arguments. For pipes, redirects, cd or chained commands, run cmd \"bash\" with args [\"-c\", \"<command line>\"], and keep long output short with | tail -n 40 or | grep."
-   "\n- shell-exec waits for its command to end and stops one that runs too long. A program that keeps running (a server, a watcher) or that may hang goes to shell-start instead: read its output with shell-read, which can wait for it, and end it with shell-stop."
+   ;; "Or that may hang" sent the repository's whole check to shell-start:
+   ;; on commit-bench (nodwyn 0a9f700, 2026-10-12) 75 background runs, nearly
+   ;; all make validate or go test -race ./... piped into tail, which prints
+   ;; nothing until the end, read with 115 waits of 60 seconds, each a request
+   ;; that sends the whole conversation again. A check that ends by itself is
+   ;; one shell-exec call however slow it is. The same runs ended checks in
+   ;; ; echo EXIT=$?, which exits 0 whatever the check did: the loop reads
+   ;; the status (run-outcome, check-without), so such a check passed for it
+   ;; with the change broken (ADR 32, amended 2026-10-12).
+   "\n- shell-exec waits for its command to end, however long a test suite or a build takes, and stops one that runs past the shell timeout. A program that keeps running (a server, a watcher) goes to shell-start instead: read its output with shell-read, which can wait for it, and end it with shell-stop."
+   "\n- shell-exec and shell-read report a command's exit status, and a bash -c line runs with pipefail. Let a check's status be its result: do not end it with ; echo $?, || true or anything else that exits 0 when the check fails."
    ;; The example used to list /opt/*/envs, a path outside the repository,
    ;; which the guard asks a person about and an unattended turn is refused:
    ;; on the long-context benchmark (nodwyn d64209d, 107 attempts on 40

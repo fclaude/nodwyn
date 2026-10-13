@@ -23,7 +23,7 @@ const (
 	procLimit      = 4               // running at once per session
 	procBufferSize = 1 << 20         // output kept per process: the latest MiB
 	procSettle     = 1 * time.Second // how long shell-start waits for first output
-	procMaxWait    = 60              // seconds shell-read may wait
+	procMaxWait    = 600             // seconds shell-read may wait: a whole test suite, read once
 	procStopGrace  = 2 * time.Second // SIGTERM, then SIGKILL
 )
 
@@ -288,10 +288,10 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 		{
 			Name: "shell-read",
 			Meta: scheme.Meta{
-				Doc: "Read what a background process printed since the last read, and whether it is still running or how it exited. With wait, first wait up to that many seconds (at most 60) for new output or an exit. Needs no approval.",
+				Doc: "Read what a background process printed since the last read, and whether it is still running or how it exited. With wait, first wait up to that many seconds (at most 600) for new output or an exit. Needs no approval.",
 				Params: []scheme.Param{
 					{Name: "id", Type: "string", Doc: "the id shell-start returned, such as p1"},
-					{Name: "wait", Type: "integer", Doc: "seconds to wait for new output, 0 to 60; 0 returns at once", Optional: true},
+					{Name: "wait", Type: "integer", Doc: "seconds to wait for new output, 0 to 600; 0 returns at once", Optional: true},
 				},
 				Host: true, TaintSource: scheme.TagShell,
 			},

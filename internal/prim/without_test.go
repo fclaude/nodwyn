@@ -41,6 +41,9 @@ func TestCheckWithoutTakesOutEachPart(t *testing.T) {
 		if statuses[i].err != nil {
 			t.Fatalf("%s: %v", p.path, statuses[i].err)
 		}
+		if statuses[i].status == 0 && !statuses[i].same {
+			t.Errorf("%s:%d: a check that prints nothing printed something else", p.path, p.line)
+		}
 		got[p.kind+" "+p.path+":"+strconv.Itoa(p.line)] = statuses[i].status
 	}
 	want := map[string]int{
@@ -68,9 +71,56 @@ func TestCheckWithoutTakesOutEachPart(t *testing.T) {
 	}
 }
 
-// The runs share one time budget: a check slower than the budget is stopped
-// on the first part, the parts after it are not reported, and the files end
-// as the change left them.
+// A check whose exit status cannot fail (`...; echo EXIT=$?`, `|| true`)
+// still tells a part apart when it prints something else without it: the
+// part counts as tested, and only the parts it prints the same without are
+// the check's blind spots (amended 2026-10-12).
+func TestCheckWithoutComparesWhatTheCheckPrints(t *testing.T) {
+	root, k, git := keepRepo(t)
+	write(t, root, "calc.py", "def one():\n    return 1\n\n\ndef two():\n    return 2\n", 0o644)
+	git("add", ".")
+	git("commit", "-q", "-m", "code")
+	write(t, root, "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n", 0o644)
+	o := k.o
+	o.EnvAllow = []string{"PATH"}
+	parts, statuses, err := runWithout(context.Background(), o, "sh", []string{"-c", "grep -c 'return 10' calc.py; echo EXIT=0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := map[int]bool{}
+	for i, p := range parts {
+		if statuses[i].err != nil || statuses[i].status != 0 {
+			t.Fatalf("%s:%d: status %d, error %v; the check always exits 0", p.path, p.line, statuses[i].status, statuses[i].err)
+		}
+		same[p.line] = statuses[i].same
+	}
+	if len(same) != 2 || same[2] || !same[6] {
+		t.Errorf("same by line %v, want line 2 (one's return, which the check counts) printing something else and line 6 the same", same)
+	}
+}
+
+// A check that does not pass again with the whole change in place says
+// nothing about the parts: check-without fails rather than report them.
+func TestCheckWithoutNeedsTheCheckToPass(t *testing.T) {
+	root, k, git := keepRepo(t)
+	write(t, root, "calc.py", "def one():\n    return 1\n", 0o644)
+	git("add", ".")
+	git("commit", "-q", "-m", "code")
+	changed := "def one():\n    return 10\n"
+	write(t, root, "calc.py", changed, 0o644)
+	o := k.o
+	o.EnvAllow = []string{"PATH"}
+	if _, _, err := runWithout(context.Background(), o, "sh", []string{"-c", "exit 3"}); err == nil {
+		t.Fatal("no error for a check that exits 3 with the whole change")
+	}
+	if data, _ := os.ReadFile(filepath.Join(root, "calc.py")); string(data) != changed {
+		t.Errorf("calc.py changed:\n%s", data)
+	}
+}
+
+// The runs share one time budget, the run with the whole change included: a
+// check slower than what is left is stopped, the parts after it are not
+// reported, and the files end as the change left them.
 func TestCheckWithoutStopsAtItsBudget(t *testing.T) {
 	root, k, git := keepRepo(t)
 	write(t, root, "calc.py", "def one():\n    return 1\n\n\ndef two():\n    return 2\n", 0o644)
@@ -80,24 +130,64 @@ func TestCheckWithoutStopsAtItsBudget(t *testing.T) {
 	write(t, root, "calc.py", changed, 0o644)
 	write(t, root, "helper.py", "def help():\n    pass\n", 0o644)
 	defer func(b time.Duration) { withoutBudget = b }(withoutBudget)
-	withoutBudget = 200 * time.Millisecond
+	withoutBudget = time.Second
 	o := k.o
 	o.EnvAllow = []string{"PATH"}
 	start := time.Now()
-	parts, statuses, err := runWithout(context.Background(), o, "sh", []string{"-c", "sleep 5"})
+	// Fast while two's return is in place, slow without it.
+	parts, statuses, err := runWithout(context.Background(), o, "sh", []string{"-c", "grep -q 'return 20' calc.py || sleep 5"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if took := time.Since(start); took > 4*time.Second {
 		t.Errorf("took %s, past the budget", took)
 	}
-	if len(parts) != 1 || statuses[0].err == nil {
-		t.Fatalf("parts %v statuses %v, want the first part alone, timed out", parts, statuses)
+	if len(parts) != 2 || statuses[0].err != nil || statuses[1].err == nil {
+		t.Fatalf("parts %v statuses %v, want one's return run and two's timed out, helper.py not reached", parts, statuses)
 	}
 	if data, _ := os.ReadFile(filepath.Join(root, "calc.py")); string(data) != changed {
 		t.Errorf("calc.py was not put back:\n%s", data)
 	}
 	if _, err := os.Stat(filepath.Join(root, "helper.py")); err != nil {
 		t.Errorf("the new file was not put back: %v", err)
+	}
+}
+
+// Two runs of the same code print the same once durations, (cached), clock
+// times, hex addresses and long numbers are masked; a different result does
+// not.
+func TestCheckOutputMasksWhatDiffersBetweenRuns(t *testing.T) {
+	digest := func(text string) string {
+		var c checkOutput
+		// Written in pieces, as a pipe delivers it.
+		for len(text) > 0 {
+			n := min(7, len(text))
+			_, _ = c.Write([]byte(text[:n]))
+			text = text[n:]
+		}
+		return string(c.sum())
+	}
+	same := [][2]string{
+		{"ok  \tgithub.com/x/y\t0.412s\n", "ok  \tgithub.com/x/y\t(cached)\n"},
+		{"PASS  make book  book (1m28s)\n", "PASS  make book  book (2m3s)\n"},
+		{"full output in /tmp/nodwyn-validate-639603802\n", "full output in /tmp/nodwyn-validate-3560882220\n"},
+		{"panic at 0xc000123abc\n12:01:33 done\n", "panic at 0xc000999def\n12:04:07 done\n"},
+		{"a\n\nb\r\n", "a\nb\n"},
+	}
+	for _, c := range same {
+		if digest(c[0]) != digest(c[1]) {
+			t.Errorf("%q and %q differ", c[0], c[1])
+		}
+	}
+	differ := [][2]string{
+		{"ok  \tgithub.com/x/y\t0.412s\n", "FAIL\tgithub.com/x/y\t0.412s\n"},
+		{"EXIT=0\n", "EXIT=1\n"},
+		{"validate: PASS (0 warnings)\n", "validate: FAIL (1 failed, 0 warnings)\n"},
+		{"1\n", "0\n"},
+	}
+	for _, c := range differ {
+		if digest(c[0]) == digest(c[1]) {
+			t.Errorf("%q and %q are the same", c[0], c[1])
+		}
 	}
 }
