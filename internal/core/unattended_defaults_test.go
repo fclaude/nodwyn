@@ -763,3 +763,31 @@ func TestABackgroundTestRunIsATestRun(t *testing.T) {
 		t.Fatalf("%d requests, want 4; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
 	}
 }
+
+// A check run in the background is the passing check check-without runs
+// again, as shell-exec's is. The call it runs is the shell-start call, the
+// model's own words: one rebuilt from the shell's output carries its taint,
+// and the guard refused it as a command built from tool output, which ended
+// a finished turn in an error (commit-bench, nodwyn c768750, 556d6d12; ADR
+// 32, amended 2026-10-12).
+func TestABackgroundCheckIsTakenApartLikeAnyOther(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	r := unattendedRigIn(t, repo,
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "shell-start", Args: map[string]any{"cmd": "bash", "args": []any{"-c", "sleep 2; bash $TMPDIR/check.sh"}}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r", Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 30}}}},
+		fake.Turn{Content: "done"}, // told the check does not test two()'s change
+		fake.Turn{Content: "two() is part of the change; the check now covers it."},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 5); !strings.Contains(msg, "calc.py:6 (hunk") || strings.Contains(msg, "calc.py:2 (hunk") {
+		t.Fatalf("untested parts message: %q", msg)
+	}
+}

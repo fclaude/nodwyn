@@ -573,7 +573,7 @@ stands on it. A command is a test run when its command line contains one of
 `test-command-words` (pytest, go test, cargo test, npm test, make test, make
 validate, …; a project may redefine the list), whether shell-exec ran it or
 shell-start did and shell-read or shell-stop saw it exit after the last edit
-(`background-run`). After `unrunnable-after` (6) test commands in a row fail to run,
+(`background-call`: the shell-start call itself, never one rebuilt from the shell's output, whose taint the guard would refuse when check-without runs it again). After `unrunnable-after` (6) test commands in a row fail to run,
 the model gets `(finish-unrunnable-message n)` once: finish and report the
 change as unverified rather than spend the budget on a broken environment.
 When a person reads the turn's answer before anything else happens,

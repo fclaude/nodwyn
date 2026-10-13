@@ -495,41 +495,65 @@
                     (cons span out)
                     out))))))
 
-;; A background run's id and exit status from the first line shell-start,
+;; A background run's exit status, from the first line shell-start,
 ;; shell-read and shell-stop give ("p1: exited 0 (the command line)"), or #f
-;; while it runs.
-(define (proc-exit result)
+;; while it runs. It is tool output: it decides whether the run counts and
+;; goes into the result background-result makes, never into a call.
+(define (proc-exit-status result)
   (and (assoc-ref result 'ok #f)
        (let* ((line (car (string-split (format "~a" (assoc-ref result 'value "")) "\n")))
               (head (string-split line ": "))
               (words (if (pair? (cdr head)) (string-split (cadr head) " ") '())))
          (and (pair? words) (equal? (car words) "exited") (pair? (cdr words))
               (let ((status (string->number (cadr words))))
-                (and (integer? status) (cons (car head) status)))))))
+                (and (integer? status) status))))))
 
+;; The id a shell-start's result names ("p1"): tool output, only ever compared
+;; with the id a later shell-read or shell-stop call names.
 (define (proc-id result)
   (and (assoc-ref result 'ok #f)
        (let ((id (car (string-split (car (string-split (format "~a" (assoc-ref result 'value "")) "\n")) ":"))))
          (and (not (string-empty? id)) id))))
 
+;; The id a shell-read or shell-stop call names, in the model's own words.
+(define (proc-call-id call)
+  (let ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}"))))))
+    (and (pair? a) (let ((id (assoc-ref a "id" #f))) (and (string? id) id)))))
+
+;; The background runs started since the last edit are kept as two lists in
+;; step: the ids their results named (ids) and the shell-start calls (calls).
+;; A value made from a tainted one is tainted, so a call looked up through a
+;; pair holding a tool-output id would carry the taint of the shell's output,
+;; and check-without, which the guard judges, would be refused as a command
+;; built from tool output: on commit-bench (nodwyn c768750, 556d6d12) that
+;; ended a finished turn in an error. The ids are only compared, and a call
+;; comes from the calls list alone.
+(define (started-call id ids calls)
+  (cond ((or (not id) (null? ids) (null? calls)) #f)
+        ((equal? (car ids) id) (car calls))
+        (else (started-call id (cdr ids) (cdr calls)))))
+
+(define (started-calls-without id ids calls)
+  (cond ((or (null? ids) (null? calls)) '())
+        ((equal? (car ids) id) (started-calls-without id (cdr ids) (cdr calls)))
+        (else (cons (car calls) (started-calls-without id (cdr ids) (cdr calls))))))
+
+(define (started-ids-without id ids)
+  (filter (lambda (i) (not (equal? i id))) ids))
+
 ;; A background run that has exited, as the shell-exec call it amounts to:
-;; the command shell-start ran (started: id and call, for the runs started
-;; since the last edit), with the status it exited with. Read with waits of
-;; 60 seconds, the repository's whole check often ran this way, and the loop,
-;; which counted shell-exec runs only, then asked for the tests to be run
-;; after the last edit when they had been (5 of the 6 such reminders on
-;; commit-bench; ADR 32, amended 2026-10-12).
-(define (background-run call result started)
-  (and (member (assoc-ref call 'name) '("shell-start" "shell-read" "shell-stop"))
-       (let* ((exit (proc-exit result))
-              (start (and exit (if (equal? (assoc-ref call 'name) "shell-start")
-                                   call
-                                   (assoc-ref started (car exit) #f)))))
-         (and start
-              (cons (list (cons 'name "shell-exec") (cons 'id (assoc-ref call 'id ""))
-                          (cons 'args (assoc-ref start 'args "{}")))
-                    (list (cons 'ok #t)
-                          (cons 'value (string-append "{\"status\": " (number->string (cdr exit)) "}"))))))))
+;; the command shell-start ran (start), under the id of the call that saw it
+;; exit. Read with waits of 60 seconds, the repository's whole check often
+;; ran this way, and the loop, which counted shell-exec runs only, then asked
+;; for the tests to be run after the last edit when they had been (5 of the 6
+;; such reminders on commit-bench; ADR 32, amended 2026-10-12).
+(define (background-call call start)
+  (list (cons 'name "shell-exec") (cons 'id (assoc-ref call 'id ""))
+        (cons 'args (assoc-ref start 'args "{}"))))
+
+;; Its result: the status it exited with, as shell-exec reports one.
+(define (background-result status)
+  (list (cons 'ok #t) (cons 'value (string-append "{\"status\": " (number->string status) "}"))))
 
 ;; Files new in the repository that the turn's plan names: the test file a
 ;; Test: step adds, the release note a Docs: step writes. The untracked-files
@@ -552,9 +576,10 @@
   ;; new files the untracked-files reminder named, which check-without's
   ;; answer leaves out rather than name them twice.
   ;; ran-all: the commands run in the turn; base-ran: those run on the copy
-  ;; of the last commit, which no edit makes stale; started: the background
-  ;; runs started since the last edit (background-run).
-  (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started '())
+  ;; of the last commit, which no edit makes stale; started-ids and
+  ;; started-calls: the background runs started since the last edit
+  ;; (started-call).
+  (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
         (ablated #f) (cited #f) (named '()))
     ;; written: the repository paths the file tools changed, for git to
     ;; place.
@@ -576,29 +601,36 @@
                        (scripts scripts) (written written) (outcome outcome) (told told))
               (cond ((pair? cs)
                      (let* ((c0 (car cs)) (r0 (car rs))
-                            (bg (background-run c0 r0 started))
-                            (c (if bg (car bg) c0))
-                            (r (if bg (cdr bg) r0)))
-                       (when (member (assoc-ref c0 'name) '("shell-exec" "shell-start"))
+                            (name0 (assoc-ref c0 'name))
+                            (status (and (member name0 '("shell-start" "shell-read" "shell-stop"))
+                                         (proc-exit-status r0)))
+                            (start (and status (if (equal? name0 "shell-start")
+                                                   c0
+                                                   (started-call (proc-call-id c0) started-ids started-calls))))
+                            (c (if start (background-call c0 start) c0))
+                            (r (if start (background-result status) r0)))
+                       (when (member name0 '("shell-exec" "shell-start"))
                          (let ((cmds (call-commands c0)))
                            (set! ran (append cmds ran))
                            (set! ran-all (append cmds ran-all))
                            (when (base-run? c0)
                              (set! base-ran (append cmds base-ran)))))
                        ;; A run is counted once, when it is seen to exit.
-                       (let ((exit (and (member (assoc-ref c0 'name) '("shell-start" "shell-read" "shell-stop"))
-                                        (proc-exit r0))))
-                         (cond ((and (equal? (assoc-ref c0 'name) "shell-start") (not exit) (proc-id r0))
-                                (set! started (cons (cons (proc-id r0) c0) started)))
-                               (exit
-                                (set! started (filter (lambda (s) (not (equal? (car s) (car exit)))) started)))))
+                       (cond ((and (equal? name0 "shell-start") (not status) (proc-id r0))
+                              (set! started-ids (cons (proc-id r0) started-ids))
+                              (set! started-calls (cons c0 started-calls)))
+                             ((and status (not (equal? name0 "shell-start")))
+                              (let ((id (proc-call-id c0)))
+                                (set! started-calls (started-calls-without id started-ids started-calls))
+                                (set! started-ids (started-ids-without id started-ids)))))
                        (when (and (not (base-run? c)) (or (check-run? c scripts) (test-call? c))
                                   (equal? (run-status r) 0))
                          (set! passing c))
                        (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)))
                          (set! passing #f)
                          (set! ran '())
-                         (set! started '()))
+                         (set! started-ids '())
+                         (set! started-calls '()))
                        (cond ((and (edit-call? c) (assoc-ref r 'ok #f))
                               (let ((name (scratch-name c)))
                                 (if name
