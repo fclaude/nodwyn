@@ -586,7 +586,8 @@
                            (when (base-run? c0)
                              (set! base-ran (append cmds base-ran)))))
                        ;; A run is counted once, when it is seen to exit.
-                       (let ((exit (proc-exit r0)))
+                       (let ((exit (and (member (assoc-ref c0 'name) '("shell-start" "shell-read" "shell-stop"))
+                                        (proc-exit r0))))
                          (cond ((and (equal? (assoc-ref c0 'name) "shell-start") (not exit) (proc-id r0))
                                 (set! started (cons (cons (proc-id r0) c0) started)))
                                (exit
