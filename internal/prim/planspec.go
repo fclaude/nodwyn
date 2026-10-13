@@ -221,6 +221,13 @@ func planEvidence(o Options) *scheme.Prim {
 			}
 			var missing, unchanged []scheme.Value
 			for _, n := range names {
+				// A phrase is a quote, and a name the unchanged code has is
+				// no name the change must produce: asked for them, a model
+				// on commit-bench wrote an old error message and a setting
+				// the code already had into its ADR (5040f9fe, 2026-10-13).
+				if strings.ContainsAny(n, " \t\n") || headHasName(c.Ctx, o, n) {
+					continue
+				}
 				if !hasName(text, n) {
 					missing = append(missing, scheme.Str(n))
 				}
@@ -238,6 +245,29 @@ func planEvidence(o Options) *scheme.Prim {
 		},
 	}
 }
+
+// headHasName is whether a file of HEAD holds name whole (hasName): git
+// grep finds the files with it in any case, and up to headNameFiles of them
+// are read whole.
+func headHasName(ctx context.Context, o Options, name string) bool {
+	out, err := runGitLimit(ctx, o, 1<<20, "grep", "-I", "-i", "-F", "-l", "-e", name, "HEAD", "--")
+	if err != nil {
+		return false
+	}
+	files := strings.Fields(out)
+	if len(files) > headNameFiles {
+		files = files[:headNameFiles]
+	}
+	for _, f := range files {
+		blob, err := runGitLimit(ctx, o, withoutMaxFile, "show", f)
+		if err == nil && hasName(blob, name) {
+			return true
+		}
+	}
+	return false
+}
+
+const headNameFiles = 40
 
 // testBeforeBudget is how long (test-before ...) may run a test.
 var testBeforeBudget = 3 * time.Minute

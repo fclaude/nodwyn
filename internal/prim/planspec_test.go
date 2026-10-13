@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/fclaude/nodwyn/internal/scheme"
 )
 
 // The names a request gives: hyphenated, underscored and dotted words,
@@ -64,6 +67,25 @@ func TestPlanEvidenceReadsTheChange(t *testing.T) {
 	}
 	if !changed["calc.py"] || !changed["flags.py"] || changed["docs.md"] {
 		t.Errorf("changed paths %v", changed)
+	}
+	// A name the unchanged code holds whole, and a phrase, are not asked of
+	// the change; one the unchanged code holds only inside another is.
+	if !headHasName(context.Background(), k.o, "session-id") || headHasName(context.Background(), k.o, "thread-id") {
+		t.Errorf("headHasName: session-id is in HEAD's calc.py, thread-id is not")
+	}
+	write(t, root, "calc.py", "def one():\n    return 10  # X-Session-Id session-id\n", 0o644)
+	git("commit", "-q", "-am", "session")
+	write(t, root, "calc.py", "def one():\n    return 11\n", 0o644)
+	in := scheme.New()
+	if err := in.Register(planEvidence(k.o)); err != nil {
+		t.Fatal(err)
+	}
+	v, err := in.EvalString(context.Background(), `(plan-evidence '("session-id" "cache_key" "store = false" "Session") '())`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := v.String(); !strings.Contains(got, `"cache_key"`) || strings.Contains(got, "session-id") || strings.Contains(got, "store") || !strings.Contains(got, `"Session"`) {
+		t.Errorf("plan-evidence asked the change for %s", got)
 	}
 }
 
