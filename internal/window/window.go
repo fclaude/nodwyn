@@ -82,6 +82,23 @@ type Policy struct {
 	// after the reply, which the provider would find stale (ADR 9, amended
 	// 2026-10-05). Older recipes send none.
 	Blocks bool
+	// WideReads shows an fs-read's result up to twice MaxResultTokens
+	// (ReadCap, recipe v19): cut at MaxResultTokens, 60 of the 150 whole-file
+	// reads in nodwyn 0a9f700's commit-bench sessions lost their middle (a
+	// file over about 9 KB), and 31 of them were followed by 40 reads of the
+	// lines left out, each a request that sends the whole context again,
+	// where the lines cost a fraction of that (ADR 9, amended 2026-10-12).
+	// Older recipes cut every result at MaxResultTokens.
+	WideReads bool
+}
+
+// ReadCap is the cap on one fs-read result, in the window's tokens:
+// MaxResultTokens, twice it with WideReads.
+func (p Policy) ReadCap() int {
+	if p.WideReads {
+		return 2 * p.MaxResultTokens
+	}
+	return p.MaxResultTokens
 }
 
 // The default headers for the task and its plan: what a recipe that records
@@ -366,7 +383,11 @@ func buildV1(events []log.Event, system string, fixedTokens int, pol Policy) Res
 					content = text
 				}
 				if pol.NamedCuts {
-					content = capNamed(content, pol.MaxResultTokens, p.Name)
+					limit := pol.MaxResultTokens
+					if p.Name == "fs-read" {
+						limit = pol.ReadCap()
+					}
+					content = capNamed(content, limit, p.Name)
 				} else {
 					content = capResult(content, pol.MaxResultTokens)
 				}

@@ -141,7 +141,7 @@ func TestPlanWithoutShortNamesIsTurnedDown(t *testing.T) {
 func TestNoneStepsAreAccepted(t *testing.T) {
 	t.Parallel()
 	answers, plans := planWriteTurns(t, []string{"1. Change: README.md — fix the install command.\n2. **Test:** none — only docs change.\n3. Docs: none — README.md is the doc, changed in step 1.\n4. Check: git diff"})
-	if len(plans) != 1 || answers[0] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as its work is done, before you start the next — never several together at the end." {
+	if len(plans) != 1 || answers[0] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as its work is done, in the same reply as the next step's first call — never several together at the end." {
 		t.Fatalf("plans %+v, answer %q", plans, answers[0])
 	}
 }

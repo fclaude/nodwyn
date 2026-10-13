@@ -142,7 +142,7 @@ func TestModelWritesItsOwnPlan(t *testing.T) {
 	if len(plans) != 2 || plans[0].Noul != "model" || plans[1].Plan != revised {
 		t.Fatalf("plans %+v", plans)
 	}
-	if answers["w"] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as its work is done, before you start the next — never several together at the end." ||
+	if answers["w"] != "Plan recorded: 4 steps. It stays in front of you; mark each step with plan-step as its work is done, in the same reply as the next step's first call — never several together at the end." ||
 		answers["a"] != "Step 1 is done. Next unmarked: 2. Test: main_test.go TestGreeting — main prints it; fails today: main prints nothing." {
 		t.Fatalf("answers %q", answers)
 	}

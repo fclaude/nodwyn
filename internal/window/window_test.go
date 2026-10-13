@@ -553,3 +553,34 @@ func TestBlocksGoBackUnlessWhatCameBeforeChanged(t *testing.T) {
 		t.Fatalf("recipe v17: %v", got)
 	}
 }
+
+// From recipe v19 an fs-read's result is shown up to twice the cap on other
+// results (Policy.WideReads, ReadCap): a whole file of up to about 18 KB at
+// the benchmark's 3,072 is shown whole, where the lines left out sent the
+// model back for them. A command's output of the same size is still cut, and
+// so is every result under an older recipe.
+func TestWideReadsShowAnFsReadUpToTwiceTheCap(t *testing.T) {
+	var file strings.Builder
+	for i := 1; i <= 300; i++ {
+		fmt.Fprintf(&file, "line %03d of the file\n", i) // 21 bytes a line: about 2,100 tokens
+	}
+	build := func(name string, wide bool) string {
+		var buf bytes.Buffer
+		w := log.New(&buf, "s")
+		w.Append(log.KindToolResult, log.ToolResult{ID: "c", Name: name, OK: true, Value: file.String()})
+		evs, _ := log.Read(&buf)
+		return Build(evs, "sys", 0, Policy{HighWater: 1 << 20, LowWater: 1 << 19, MaxResultTokens: 1500, NamedCuts: true, WideReads: wide}).Messages[1].Content
+	}
+	if got := build("fs-read", true); got != file.String() {
+		t.Errorf("a read under twice the cap was cut:\n%.200s", got)
+	}
+	if got := build("shell-exec", true); !strings.Contains(got, "of this result left out here") {
+		t.Errorf("a command's output over the cap was shown whole")
+	}
+	if got := build("fs-read", false); !strings.Contains(got, "of the file left out here") {
+		t.Errorf("without WideReads a read over the cap was shown whole")
+	}
+	if (Policy{MaxResultTokens: 1500, WideReads: true}).ReadCap() != 3000 || (Policy{MaxResultTokens: 1500}).ReadCap() != 1500 {
+		t.Error("ReadCap")
+	}
+}

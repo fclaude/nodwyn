@@ -270,11 +270,15 @@
                                 (string-append "Next unmarked: " (number->string next) ". " (list-ref steps (- next 1)))
                                 "Every step of the plan is marked.")))))))
 
+;; A mark goes with the next step's first call: on commit-bench (nodwyn
+;; 0a9f700, nine tasks) 69 of the 103 replies that marked a step held nothing
+;; else, each a request that sends the whole context again, and their notes
+;; ran to 716 characters (ADR 32, amended 2026-10-12).
 (define-agent-tool "plan-step"
-  "Mark a step of the current plan done as soon as its work is done, before you start the next step — never several together at the end: whoever follows the task sees the plan's progress move as the work happens. Mark it skipped when you decided against it, with what shows it: a test that passed, the file you changed, or why you skipped it. A Test: step is done once its test has failed without your change and passes with it (or passed both times, for one that guards behaviour that already works): the note names both runs. Steps are numbered from 1, as in the plan."
+  "Mark a step of the current plan done as soon as its work is done, in the same reply as the next step's first call (a reply can hold several calls; a mark alone costs a whole request) — never several together at the end: whoever follows the task sees the plan's progress move as the work happens. Mark it skipped when you decided against it, with what shows it: a test that passed, the file you changed, or why you skipped it. A Test: step is done once its test has failed without your change and passes with it (or passed both times, for one that guards behaviour that already works): the note names both runs. Steps are numbered from 1, as in the plan."
   '(("step" "integer" "the step's number in the plan")
     ("state" "string" "done or skipped")
-    ("note" "string" "what shows it"))
+    ("note" "string" "what shows it, in one line"))
   (lambda (call args)
     (guard (e (else (string-append "plan-step failed: " (format "~a" (assoc-ref e 'message "")))))
       (plan-step-answer call args))))
@@ -421,10 +425,10 @@
 (define (plan-recorded-message n problems)
   (string-append "Plan recorded: " (number->string n) (if (= n 1) " step" " steps")
                  (if (null? problems)
-                     ". It stays in front of you; mark each step with plan-step as its work is done, before you start the next — never several together at the end."
+                     ". It stays in front of you; mark each step with plan-step as its work is done, in the same reply as the next step's first call — never several together at the end."
                      (string-append ", as written, since plan-write has turned down " (number->string plan-write-refusals)
                                     " plans in this turn. Still missing:" (plan-problem-lines problems)
-                                    "\nIt stays in front of you: cover what is missing as you work, and mark each step with plan-step as its work is done, before you start the next — never several together at the end."))))
+                                    "\nIt stays in front of you: cover what is missing as you work, and mark each step with plan-step as its work is done, in the same reply as the next step's first call — never several together at the end."))))
 
 ;; plan-write's refusals in a turn: the turn, as the number of the person's
 ;; messages so far (read from the log, so a project that redefines

@@ -189,10 +189,10 @@
           (* hygiene-cache-share (fold (lambda (n r) (+ n (car r))) 0 hygiene-cache)))))
 
 ;; Tokens folding reads takes out of the window: what each shows there,
-;; shortened past max-result-tokens as the window shortens it, less its
+;; shortened past max-read-tokens as the window shortens an fs-read, less its
 ;; outline.
 (define (hygiene-saved due)
-  (let ((cap (assoc-ref (window-limits) 'max-result-tokens 0)))
+  (let ((cap (assoc-ref (window-limits) 'max-read-tokens (assoc-ref (window-limits) 'max-result-tokens 0))))
     (fold (lambda (n r)
             (let ((shown (hygiene-tokens (list-ref r 3))))
               (+ n (max 0 (- (if (and (> cap 0) (> shown cap)) cap shown)

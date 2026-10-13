@@ -238,7 +238,7 @@ func (l *Loop) install() error {
 		{
 			Name: "window-limits",
 			Meta: scheme.Meta{
-				Doc:    "The window's sizes, in tokens as the window estimates them: an alist with keys high-water (past it older context is trimmed), low-water (what trimming goes down to), ceiling (the most a request with headroom may carry; the high water when nothing is known above it), max-result-tokens (a longer tool result is shortened) and output-reserve (the default reply cap).",
+				Doc:    "The window's sizes, in tokens as the window estimates them: an alist with keys high-water (past it older context is trimmed), low-water (what trimming goes down to), ceiling (the most a request with headroom may carry; the high water when nothing is known above it), max-result-tokens (a longer tool result is shortened), max-read-tokens (the same for an fs-read's result) and output-reserve (the default reply cap).",
 				Hidden: true,
 				Origin: "builtin",
 			},
@@ -1302,6 +1302,7 @@ func (l *Loop) windowLimits(*scheme.Call) (scheme.Value, error) {
 		scheme.Cons(scheme.Sym("low-water"), scheme.Int(int64(w.LowWater))),
 		scheme.Cons(scheme.Sym("ceiling"), scheme.Int(int64(max(ceiling, w.HighWater)))),
 		scheme.Cons(scheme.Sym("max-result-tokens"), scheme.Int(int64(w.MaxResultTokens))),
+		scheme.Cons(scheme.Sym("max-read-tokens"), scheme.Int(int64(w.ReadCap()))),
 		scheme.Cons(scheme.Sym("output-reserve"), scheme.Int(int64(l.cfg.MaxOutput))),
 	), nil
 }

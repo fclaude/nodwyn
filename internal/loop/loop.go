@@ -485,6 +485,12 @@ func (l *Loop) ResultCap() int {
 	return pol.MaxResultTokens
 }
 
+// ReadCap is the window's cap on one fs-read result now (Policy.ReadCap).
+func (l *Loop) ReadCap() int {
+	pol, _ := l.policy()
+	return pol.ReadCap()
+}
+
 // WindowTokens is the window's estimate of the next model-turn's request
 // were the window's water marks and result cap marks': what choosing another
 // model compares with the context that model reads (ADR 40).
