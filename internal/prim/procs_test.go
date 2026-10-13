@@ -67,6 +67,12 @@ func TestShellReadWaitsForOutputOrExit(t *testing.T) {
 	if !strings.HasPrefix(out, "p1: exited 3") {
 		t.Fatalf("exit: %q", out)
 	}
+	// A run that prints its last line and exits a moment later is read as
+	// exited, with that line: its summary and its status come together.
+	evalStr(t, in, `(shell-start "sh" (list "-c" "sleep 1; echo PASS; sleep 0.2; exit 0"))`)
+	if out := evalStr(t, in, `(shell-read "p2" 10)`); !strings.HasPrefix(out, "p2: exited 0") || !strings.Contains(out, "PASS") {
+		t.Fatalf("a summary and the exit after it: %q", out)
+	}
 	for _, src := range []string{`(shell-read "p1" -1)`, `(shell-start "sh" (list 1))`} {
 		if _, err := in.EvalString(context.Background(), src); err == nil {
 			t.Errorf("%s accepted", src)

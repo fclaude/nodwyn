@@ -59,6 +59,7 @@
   (set! plan-language-tests-before '())
   (set! plan-language-started-ids '())
   (set! plan-language-started-lines '())
+  (set! plan-language-started-texts '())
   (set! plan-language-missing-told '())
   (set! plan-language-auto-passed '())
   (set! plan-language-auto-runs 0)
@@ -218,6 +219,7 @@
 (define plan-language-tests-before '())  ; ((path run content) . status) of test-before runs
 (define plan-language-started-ids '())   ; background runs: their ids (tool output, only compared) and command lines
 (define plan-language-started-lines '())
+(define plan-language-started-texts '()) ; what each has printed so far, read by read
 
 ;; The plan's check command, or #f.
 (define (plan-language-check-run)
@@ -274,36 +276,64 @@
               (p (if (pair? a) (format "~a" (assoc-ref a "path" "")) "")))
          (not (or (string-empty? p) (string-prefix? "$TMPDIR" p) (string-prefix? "/" p) (doc-path? p))))))
 
+(define (plan-language-started-text id)
+  (let find ((ids plan-language-started-ids) (ts plan-language-started-texts))
+    (cond ((or (not id) (null? ids) (null? ts)) "")
+          ((equal? (car ids) id) (car ts))
+          (else (find (cdr ids) (cdr ts))))))
+
+;; A background run's output arrives read by read: on commit-bench (dsl6,
+;; 556d6d12) make validate's missing staticcheck was in a read that said the
+;; run was still going, and the read that saw it exit held only its last
+;; lines. So each run's output is kept as it comes, its first and last
+;; 100,000 characters.
+(define (plan-language-add-text! id more)
+  (set! plan-language-started-texts
+        (let walk ((ids plan-language-started-ids) (ts plan-language-started-texts))
+          (cond ((or (null? ids) (null? ts)) '())
+                ((equal? (car ids) id)
+                 (let* ((t (string-append (car ts) "\n" more)) (n (string-length t)))
+                   (cons (if (> n 200000) (string-append (substring t 0 100000) (substring t (- n 100000) n)) t) (cdr ts))))
+                (else (cons (car ts) (walk (cdr ids) (cdr ts))))))))
+
 (define (plan-language-before-round calls results)
   (for-each
    (lambda (c r)
      (let* ((name (assoc-ref c 'name ""))
+            (shell? (member name '("shell-exec" "shell-start" "shell-read")))
             (status (cond ((equal? name "shell-exec") (run-status r))
                           ((member name '("shell-start" "shell-read")) (proc-exit-status r))
                           (else #f)))
             (line (cond ((member name '("shell-exec" "shell-start")) (command-line c))
                         ((equal? name "shell-read") (plan-language-started-line (proc-call-id c)))
-                        (else #f))))
+                        (else #f)))
+            (check? (and line (plan-language-check-line? line)))
+            (out (if shell? (plan-language-output r) ""))
+            (value (format "~a" (assoc-ref r 'value ""))))
        (when (and (equal? name "shell-start") (not status) (proc-id r))
          (set! plan-language-started-ids (cons (proc-id r) plan-language-started-ids))
-         (set! plan-language-started-lines (cons (command-line c) plan-language-started-lines)))
+         (set! plan-language-started-lines (cons (command-line c) plan-language-started-lines))
+         (set! plan-language-started-texts (cons out plan-language-started-texts)))
+       (when (and (equal? name "shell-read") (proc-call-id c))
+         (plan-language-add-text! (proc-call-id c) out))
        (when (plan-language-code-edit? c r)
          (set! plan-language-as-before '()))
-       (when (and (integer? status) line (plan-language-check-line? line))
+       ;; A missing program is told as soon as a result shows it, whether
+       ;; the run has ended or not.
+       (when shell?
+         (let* ((missing (guard (e (else '())) (missing-programs out)))
+                (new (filter (lambda (p) (not (member p plan-language-missing-told))) missing)))
+           (when (pair? new)
+             (set! plan-language-missing-told (append new plan-language-missing-told))
+             (fold-result (assoc-ref c 'id) (string-append value (plan-language-missing-note new check?))))))
+       (when (and (integer? status) check?)
          (set! plan-language-as-before (filter (lambda (l) (not (equal? l line))) plan-language-as-before)))
        (when (and (integer? status) (not (= status 0)) line)
-         (let* ((text (plan-language-output r))
-                (value (format "~a" (assoc-ref r 'value "")))
-                (check? (plan-language-check-line? line))
-                (missing (guard (e (else '())) (missing-programs text))))
-           (cond ((pair? missing)
+         (let ((text (if (equal? name "shell-read") (plan-language-started-text (proc-call-id c)) out)))
+           (cond ((pair? (guard (e (else '())) (missing-programs text)))
                   ;; A program the environment lacks: the run says nothing
                   ;; of the change past where it stopped.
-                  (when check? (set! plan-language-as-before (cons line plan-language-as-before)))
-                  (let ((new (filter (lambda (p) (not (member p plan-language-missing-told))) missing)))
-                    (when (pair? new)
-                      (set! plan-language-missing-told (append new plan-language-missing-told))
-                      (fold-result (assoc-ref c 'id) (string-append value (plan-language-missing-note new check?))))))
+                  (when check? (set! plan-language-as-before (cons line plan-language-as-before))))
                  (else
                   (when check? (plan-language-before-run))
                   (when (plan-language-as-before? text)
@@ -326,7 +356,7 @@
                    ". Do not spend calls installing or building " them
                    ": if the run stopped before the rest of what it checks (for a make target, the recipe's later lines), run those parts yourself, and say in your report that "
                    names " could not run here."
-                   (if check? " The plan counts this run of its check as passing." "") "]")))
+                   (if check? " The plan counts a run of its check that stops only on this as passing." "") "]")))
 
 ;; What a run printed: shell-exec's stdout and stderr, from the JSON its
 ;; result is, or a background run's result as it reads.
@@ -660,11 +690,34 @@
                         ((equal? kind "Check")
                          (and (not (or (plan-language-passed? passed (assoc-ref st 'run "")) whole
                                        (plan-language-passed? plan-language-as-before (assoc-ref st 'run ""))))
-                              (string-append label " " (assoc-ref st 'run "") ": it has not passed since your last edit")))
+                              (plan-language-final-check st label)))
                         (else #f))))
             (if problem
                 (walk (cdr ss) (+ i 1) (cons problem unmet) met)
                 (walk (cdr ss) (+ i 1) unmet (cons (cons i (if (assoc-ref st 'none #f) "none" (string-append "evidence: " kind " step met"))) met))))))))
+
+;; A check step not seen to pass since the last edit, run by the harness
+;; before the turn ends: #f when it passes there, or fails only on a program
+;; the environment lacks or only as it did on the unchanged code; else what
+;; is missing, with the end of its output. On commit-bench (dsl6, 556d6d12)
+;; the model's own make validate printed its PASS, and the model read no
+;; further than that: the run was not seen to exit, and the model was asked
+;; to run it again.
+(define plan-language-final-budget 900)
+
+(define (plan-language-final-check st label)
+  (let* ((run (assoc-ref st 'run ""))
+         (r (guard (e (else #f)) (plan-run "bash" (list "-c" run) plan-language-final-budget)))
+         (status (and (pair? r) (assoc-ref r "status" #f)))
+         (tail (if (pair? r) (format "~a" (assoc-ref r "tail" "")) "")))
+    (log-note (string-append "plan language: the harness ran the check before the turn ended: "
+                             (if (integer? status) (string-append "exit " (number->string status)) "it could not run")))
+    (cond ((not (integer? status)) (string-append label " " run ": it has not passed since your last edit"))
+          ((= status 0) #f)
+          ((pair? (guard (e (else '())) (missing-programs tail))) #f)
+          ((begin (plan-language-before-run) (plan-language-as-before? tail)) #f)
+          (else (string-append label " " run ": it fails when the harness runs it now (exit " (number->string status) "):\n"
+                               (plan-language-last-lines tail 15))))))
 
 ;; Whether a test step that says it fails today passes on the code as it
 ;; was (test-before): #f when it fails there, as it should, when it could not

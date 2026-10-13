@@ -224,8 +224,8 @@ func TestACheckThatFailedBeforeTheChangeIsSaidSo(t *testing.T) {
 }
 
 // A run of the check that fails with a line the unchanged code's run did not
-// print is the change's failure: nothing is said in its result, and the
-// check step lacks its evidence before the turn ends.
+// print is the change's failure: nothing is said in its result, and before
+// the turn ends the harness runs the check again and says how it fails.
 func TestACheckFailingInANewWayIsTheChanges(t *testing.T) {
 	t.Parallel()
 	repo := codeRepo(t)
@@ -252,7 +252,7 @@ func TestACheckFailingInANewWayIsTheChanges(t *testing.T) {
 	}
 	found := false
 	for i := range r.srv.Requests {
-		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") && strings.Contains(msg, "it has not passed since your last edit") {
+		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") && strings.Contains(msg, "it fails when the harness runs it now (exit 2)") && strings.Contains(msg, "error: one() changed") {
 			found = true
 		}
 	}
@@ -287,7 +287,7 @@ func TestAMissingProgramIsSaidOnceAndNotHunted(t *testing.T) {
 	if len(r.srv.Requests) != 6 {
 		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
 	}
-	if msg := lastMessage(r, 4); !strings.Contains(msg, "`staticcheck` is not installed here") || !strings.Contains(msg, "The plan counts this run of its check as passing") {
+	if msg := lastMessage(r, 4); !strings.Contains(msg, "`staticcheck` is not installed here") || !strings.Contains(msg, "The plan counts a run of its check that stops only on this as passing") {
 		t.Errorf("the first failing run: %q", msg)
 	}
 	if msg := lastMessage(r, 5); strings.Contains(msg, "not installed here") {
@@ -336,5 +336,73 @@ func TestThePlansTestsRunAfterEachEdit(t *testing.T) {
 	}
 	if !byHarness {
 		t.Errorf("the test step was not marked from the harness's run")
+	}
+}
+
+// A check the model did not run after its last edit is run by the harness
+// before the turn ends, and a pass stands for the step: nothing is asked of
+// the model (commit-bench, dsl6 556d6d12: the model's make validate printed
+// its PASS, the model read no further, and was asked to run it again).
+func TestTheHarnessRunsTheCheckTheTurnLeftUnseen(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"))
+(none docs "no document describes calc")
+(check "grep -q 'return 10' calc.py && grep -q test_one calc_test.py && echo checked")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("t", "calc_test.py", "def test_one():\n    pass\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 5 {
+		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if !strings.Contains(r.logb.String(), "the harness ran the check before the turn ended: exit 0") {
+		t.Errorf("the harness did not run the check")
+	}
+}
+
+// A background run's output is read as it comes: the missing program is told
+// with the read that shows it, while the run goes on, and the read that sees
+// the run exit, whose output no longer holds it, still counts the check's
+// run as stopping only on it (commit-bench, dsl6 556d6d12).
+func TestABackgroundRunsMissingProgramIsReadAcrossReads(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	check := "echo 'make[1]: staticcheck: No such file or directory'; sleep 3; echo done; exit 2 # make validate"
+	plan := `(change "calc.py" "one" "return 10")
+(none test "a one-line change")
+(none docs "no document describes calc")
+(check "` + check + `")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "shell-start", Args: map[string]any{"cmd": "bash", "args": []any{"-c", check}}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r1", Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 1}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "r2", Name: "shell-read", Args: map[string]any{"id": "p1", "wait": 30}}}},
+		fake.Turn{Content: "done; staticcheck could not run here"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	told := -1
+	for i := range r.srv.Requests {
+		if strings.Contains(lastMessage(r, i), "`staticcheck` is not installed here") {
+			told = i
+			break
+		}
+	}
+	if told < 0 || told > 5 {
+		t.Fatalf("the missing program was told at request %d", told)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
 	}
 }

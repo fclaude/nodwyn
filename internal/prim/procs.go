@@ -100,14 +100,36 @@ func (p *proc) state() string {
 	return "running"
 }
 
+// procReadSettle is how long a waiting read that has new output waits on,
+// for more of it or for the exit, before it returns. A check that prints its
+// summary and then exits was read as still running: on commit-bench (nodwyn
+// dsl6, 556d6d12) make validate's PASS came with "running", the model read
+// no further, and the loop never saw the run end (2026-10-13).
+var procReadSettle = time.Second
+
 // read waits up to wait for new output or an exit, then returns what the
 // model reads: the id and state on the first line, then the new output.
-func (p *proc) read(ctx context.Context, wait time.Duration, limit int) (string, error) {
+// Once there is new output it waits settleFor more for the rest, or for the
+// exit, within wait (shell-read gives procReadSettle).
+func (p *proc) read(ctx context.Context, wait time.Duration, limit int, settleFor time.Duration) (string, error) {
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
+	var settle *time.Timer
+	settled := false
+	defer func() {
+		if settle != nil {
+			settle.Stop()
+		}
+	}()
 	for {
 		p.mu.Lock()
-		if wait <= 0 || p.done || p.cursor < p.total {
+		if p.cursor < p.total && settle == nil && settleFor > 0 && wait > 0 && !p.done {
+			settle = time.NewTimer(settleFor)
+		}
+		if settleFor <= 0 {
+			settled = true
+		}
+		if wait <= 0 || p.done || p.cursor < p.total && settled {
 			text, dropped, left := p.take(limit)
 			var b strings.Builder
 			fmt.Fprintf(&b, "%s: %s (%s)\n", p.id, p.state(), p.line)
@@ -123,11 +145,17 @@ func (p *proc) read(ctx context.Context, wait time.Duration, limit int) (string,
 		}
 		changed := p.changed
 		p.mu.Unlock()
+		var settleC <-chan time.Time
+		if settle != nil {
+			settleC = settle.C
+		}
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-deadline.C:
 			wait = 0
+		case <-settleC:
+			settled = true
 		case <-changed:
 		}
 	}
@@ -278,7 +306,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 				if err != nil {
 					return scheme.Value{}, err
 				}
-				text, err := p.read(c.Ctx, procSettle, o.MaxOutput)
+				text, err := p.read(c.Ctx, procSettle, o.MaxOutput, 0)
 				if err != nil {
 					return scheme.Value{}, err
 				}
@@ -314,7 +342,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 				if err != nil {
 					return scheme.Value{}, err
 				}
-				text, err := p.read(c.Ctx, time.Duration(wait)*time.Second, o.MaxOutput)
+				text, err := p.read(c.Ctx, time.Duration(wait)*time.Second, o.MaxOutput, procReadSettle)
 				if err != nil {
 					return scheme.Value{}, err
 				}
@@ -354,7 +382,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 				if _, err := io.WriteString(p.stdin, text); err != nil {
 					return scheme.Value{}, fmt.Errorf("%s: %w", id, err)
 				}
-				out, err := p.read(c.Ctx, procSettle, o.MaxOutput)
+				out, err := p.read(c.Ctx, procSettle, o.MaxOutput, 0)
 				if err != nil {
 					return scheme.Value{}, err
 				}
@@ -378,7 +406,7 @@ func procPrims(o Options, ps *Procs) []*scheme.Prim {
 					return scheme.Value{}, err
 				}
 				p.stop()
-				text, err := p.read(c.Ctx, 0, o.MaxOutput)
+				text, err := p.read(c.Ctx, 0, o.MaxOutput, 0)
 				if err != nil {
 					return scheme.Value{}, err
 				}

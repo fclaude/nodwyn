@@ -646,6 +646,10 @@ func missingProgramsPrim() *scheme.Prim {
 // planRunTail how much of its output's end it gives back.
 var planRunBudget = 3 * time.Minute
 
+// planRunMax is the longest a caller may give it: a repository's whole
+// check (make validate on commit-bench) runs for minutes.
+var planRunMax = 15 * time.Minute
+
 const planRunTail = 2000
 
 // planRun builds (plan-run cmd args): run a plan's command in the working
@@ -659,6 +663,7 @@ func planRun(o Options) *scheme.Prim {
 			Params: []scheme.Param{
 				{Name: "cmd", Type: "string", Doc: "the program", Role: "argv"},
 				{Name: "args", Type: "list", Doc: "its arguments", Role: "argv"},
+				{Name: "seconds", Type: "integer", Doc: "how long it may run, at most " + planRunMax.String() + " (default " + planRunBudget.String() + ")", Optional: true},
 			},
 			Host:   true,
 			Hidden: true,
@@ -679,7 +684,17 @@ func planRun(o Options) *scheme.Prim {
 				}
 				args[i] = it.S
 			}
-			status, output, err := runCaptured(c.Ctx, o, o.Root, name, args, planRunBudget)
+			budget := planRunBudget
+			if len(c.Args) > 2 {
+				n, err := c.Int(2)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				if budget = time.Duration(n) * time.Second; budget <= 0 || budget > planRunMax {
+					budget = planRunMax
+				}
+			}
+			status, output, err := runCaptured(c.Ctx, o, o.Root, name, args, budget)
 			if err != nil {
 				return scheme.Value{}, fmt.Errorf("plan-run: %w", err)
 			}
