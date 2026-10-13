@@ -122,6 +122,17 @@ func TestTestBeforeRunsOnTheUnchangedCode(t *testing.T) {
 	if data, _ := os.ReadFile(filepath.Join(root, "calc.py")); string(data) != "def one():\n    return 10\n" {
 		t.Errorf("the working tree changed: %q", data)
 	}
+	// The change's test support goes in with the test: a fake it rewrote is
+	// the test's, not the code under test (commit-bench, dsl13 107251d0).
+	write(t, root, "test/fakes/server.py", "refuse = True\n", 0o644)
+	status, err = runTestBefore(context.Background(), o, "calc_test.py", "sh", []string{"-c", "grep -q 'refuse = True' test/fakes/server.py && grep -q 'return 10' calc.py"})
+	if err != nil || status == 0 {
+		t.Fatalf("with the new fake and the old code: status %d, error %v; want it to fail on the code", status, err)
+	}
+	status, err = runTestBefore(context.Background(), o, "calc_test.py", "sh", []string{"-c", "grep -q 'refuse = True' test/fakes/server.py"})
+	if err != nil || status != 0 {
+		t.Fatalf("the changed fake is not in the copy: status %d, error %v", status, err)
+	}
 }
 
 // The lines of a check's output that say something failed, masked so that

@@ -387,6 +387,28 @@ func runTestBefore(ctx context.Context, o Options, rel, name string, args []stri
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
 		return 0, err
 	}
+	// The change's other test files and test support (a fake, a fixture)
+	// go in too: the unchanged code is the code under test, not the tests.
+	// On commit-bench (dsl13 107251d0) two tests that drive the change through
+	// a fake it rewrote passed on a copy that had the old fake, and were said
+	// not to show the change.
+	k := &Keeper{o: o}
+	if _, paths, err := k.look(ctx); err == nil {
+		for _, p := range paths {
+			p = filepath.Clean(filepath.FromSlash(p))
+			if p == clean || !testSide(filepath.ToSlash(p)) {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(o.Root, p))
+			if err != nil {
+				continue // deleted by the change, or not a file
+			}
+			to := filepath.Join(base, p)
+			if err := os.MkdirAll(filepath.Dir(to), 0o755); err == nil {
+				_ = os.WriteFile(to, b, 0o644)
+			}
+		}
+	}
 	run := o
 	run.Root = base
 	r, err := runCheck(ctx, run, name, args, time.Now().Add(testBeforeBudget))
@@ -394,6 +416,24 @@ func runTestBefore(ctx context.Context, o Options, rel, name string, args []stri
 		return 0, err
 	}
 	return r.status, nil
+}
+
+// testSide is whether a repository path belongs to the tests rather than the
+// code they test: a test file by its name (x_test.go, test_x.py, x_test.py,
+// x.test.ts, x.spec.js) or a file under a directory of tests, fakes or
+// fixtures.
+func testSide(p string) bool {
+	base := filepath.Base(p)
+	if strings.Contains(base, "_test.") || strings.HasPrefix(base, "test_") || strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") {
+		return true
+	}
+	for _, d := range strings.Split(filepath.ToSlash(filepath.Dir(p)), "/") {
+		switch d {
+		case "test", "tests", "testdata", "fakes", "fixtures", "__tests__", "spec":
+			return true
+		}
+	}
+	return false
 }
 
 // failureLineRE is a line of a command's output that says something failed:
