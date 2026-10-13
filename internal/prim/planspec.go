@@ -521,17 +521,26 @@ func runCheckBefore(ctx context.Context, o Options, name string, args []string) 
 	if dl, ok := gctx.Deadline(); ok {
 		timeout = time.Until(dl)
 	}
+	return runCaptured(ctx, o, base, name, args, timeout)
+}
+
+// runCaptured runs a command in dir as shell-exec runs one, stopped after
+// timeout, and says its exit status and what it printed, stdout and stderr
+// in turn, up to their last checkBeforeKeep bytes each.
+func runCaptured(ctx context.Context, o Options, dir, name string, args []string, timeout time.Duration) (int, string, error) {
 	cctx, ccancel := context.WithTimeout(ctx, timeout)
 	defer ccancel()
 	cmd := exec.CommandContext(cctx, name, pipefail(name, args)...)
-	cmd.Dir = base
+	cmd.Dir = dir
 	cmd.Env = scrubEnv(o.EnvAllow)
-	cmd.Env = append(cmd.Env, "TMPDIR="+o.Scratch)
+	if o.Scratch != "" {
+		cmd.Env = append(cmd.Env, "TMPDIR="+o.Scratch)
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 5 * time.Second
 	var stdout, stderr checkBeforeOutput
-	err = runStopping(cmd, &stdout, &stderr)
+	err := runStopping(cmd, &stdout, &stderr)
 	if ctx.Err() != nil {
 		return 0, "", ctx.Err()
 	}
@@ -599,6 +608,59 @@ func missingProgramsPrim() *scheme.Prim {
 				out[i] = scheme.Str(n)
 			}
 			return scheme.List(out...), nil
+		},
+	}
+}
+
+// planRunBudget is how long (plan-run ...) may run a planned test, and
+// planRunTail how much of its output's end it gives back.
+var planRunBudget = 3 * time.Minute
+
+const planRunTail = 2000
+
+// planRun builds (plan-run cmd args): run a plan's command in the working
+// tree, as shell-exec would, for the harness: after an edit the plan's tests
+// run without the model asking (planspec.scm).
+func planRun(o Options) *scheme.Prim {
+	return &scheme.Prim{
+		Name: "plan-run",
+		Meta: scheme.Meta{
+			Doc: "Run a plan's command in the working tree within " + planRunBudget.String() + ", as shell-exec runs one. Returns an alist of status, its exit status, and tail, the end of what it printed (stdout, then stderr). Fails when it could not run. Hidden; registered in a git work tree; its command is judged by the guard as a command's is.",
+			Params: []scheme.Param{
+				{Name: "cmd", Type: "string", Doc: "the program", Role: "argv"},
+				{Name: "args", Type: "list", Doc: "its arguments", Role: "argv"},
+			},
+			Host:   true,
+			Hidden: true,
+		},
+		Handler: func(c *scheme.Call) (scheme.Value, error) {
+			name, err := c.String(0)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			items, err := c.List(1)
+			if err != nil {
+				return scheme.Value{}, err
+			}
+			args := make([]string, len(items))
+			for i, it := range items {
+				if it.Kind != scheme.KString {
+					return scheme.Value{}, errors.New("args must be a list of strings")
+				}
+				args[i] = it.S
+			}
+			status, output, err := runCaptured(c.Ctx, o, o.Root, name, args, planRunBudget)
+			if err != nil {
+				return scheme.Value{}, fmt.Errorf("plan-run: %w", err)
+			}
+			output = strings.TrimSpace(output)
+			if len(output) > planRunTail {
+				output = "…" + output[len(output)-planRunTail:]
+			}
+			return scheme.List(
+				scheme.Cons(scheme.Str("status"), scheme.Int(int64(status))),
+				scheme.Cons(scheme.Str("tail"), scheme.Str(output)),
+			), nil
 		},
 	}
 }

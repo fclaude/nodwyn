@@ -60,6 +60,8 @@
   (set! plan-language-started-ids '())
   (set! plan-language-started-lines '())
   (set! plan-language-missing-told '())
+  (set! plan-language-auto-passed '())
+  (set! plan-language-auto-runs 0)
   (plan-language-base-turn request))
 
 ;; The steps the harness has marked in this turn, and the repository paths
@@ -126,8 +128,76 @@
       (guard (e (else (log-note (format "plan language: the round's commands were not read: ~a" e))))
         (plan-language-before-round calls results))
       (guard (e (else (log-note (format "plan language: the round's marks were not made: ~a" e))))
-        (plan-language-round calls results)))
+        (plan-language-round calls results))
+      (guard (e (else (log-note (format "plan language: the plan's tests did not run: ~a" e))))
+        (plan-language-test-round calls results)))
     results))
+
+;; The plan's tests, run by the harness after each round that edited the
+;; code (2026-10-13, dsl5): the model writes the test and the code, and the
+;; result of the round's last edit says how each planned test now runs, so
+;; the model need not ask for a run to see it. In dsl3's attempts a third of
+;; the main loop's calls ran tests or checks (556d6d12: 24 of 66).
+;; A test runs when its file holds its name and its command names it (a
+;; command that runs one test, not a whole suite).
+(define plan-language-auto-passed '())   ; the tests the harness saw pass since the last edit
+(define plan-language-auto-runs 0)       ; harness runs of tests in the turn
+
+(define (plan-language-runnable-tests)
+  (filter (lambda (st)
+            (let ((name (assoc-ref st 'name "")) (run (assoc-ref st 'run "")))
+              (and (equal? (assoc-ref st 'kind "") "Test") (not (assoc-ref st 'none #f))
+                   (not (string-empty? name)) (string-contains? run name)
+                   (string-contains? (guard (e (else "")) (format "~a" (fs-read (assoc-ref st 'path "")))) name))))
+          plan-spec))
+
+(define (plan-language-step-number st)
+  (let find ((ss plan-spec) (i 1))
+    (cond ((null? ss) #f) ((eq? (car ss) st) i) (else (find (cdr ss) (+ i 1))))))
+
+(define (plan-language-test-round calls results)
+  (let find ((cs calls) (rs results) (last #f))
+    (cond ((pair? cs)
+           (find (cdr cs) (cdr rs) (if (plan-language-code-edit? (car cs) (car rs)) (cons (car cs) (car rs)) last)))
+          (last
+           (set! plan-language-auto-passed '())
+           (let ((tests (plan-language-runnable-tests)))
+             (when (pair? tests)
+               (let ((lines
+                      (map (lambda (st)
+                             (let* ((name (assoc-ref st 'name "")) (run (assoc-ref st 'run ""))
+                                    (r (guard (e (else #f)) (plan-run "bash" (list "-c" run))))
+                                    (status (and (pair? r) (assoc-ref r "status" #f))))
+                               (set! plan-language-auto-runs (+ plan-language-auto-runs 1))
+                               (cond ((not (integer? status)) (string-append name ": could not run"))
+                                     ((= status 0)
+                                      (set! plan-language-auto-passed (cons name plan-language-auto-passed))
+                                      (let* ((i (plan-language-step-number st))
+                                             (new (and i (not (member i plan-language-marked)))))
+                                        (when i (plan-language-mark-one i (string-append "evidence: " name " passed (run by the harness)")))
+                                        (string-append name ": passes"
+                                                       (let ((note (and new (plan-language-test-note st))))
+                                                         (if note (string-append " —" (substring note 7 (- (string-length note) 1))) "")))))
+                                     (else
+                                      (string-append name ": fails (exit " (number->string status) ")\n"
+                                                     (plan-language-last-lines (format "~a" (assoc-ref r "tail" "")) 15))))))
+                           tests)))
+                 (let ((c (car last)) (r (cdr last)))
+                   (fold-result (assoc-ref c 'id)
+                                (string-append (format "~a" (assoc-ref r 'value ""))
+                                               "\n[hint: the plan's tests after this edit, run by the harness:\n"
+                                               (string-join lines "\n") "]")))))))
+          (else #f))))
+
+;; The last n lines of a text.
+(define (plan-language-last-lines text n)
+  (let* ((ls (string-split text "\n")) (k (length ls)))
+    (string-join (if (> k n) (list-tail ls (- k n)) ls) "\n")))
+
+;; Whether the harness's own runs since the last edit count for an
+;; unattended turn's "you have not tested" reminder (strategy.scm).
+(define (plan-language-auto-tested?)
+  (and plan-language (pair? plan-spec) (> plan-language-auto-runs 0)))
 
 ;; The plan's commands, run by the harness as the work goes (2026-10-13).
 ;; On commit-bench the plan's check, make validate, failed in every build's
@@ -474,7 +544,10 @@
         (string-join (append (reverse out)
                              (if (pair? names) (list (string-append "Names the change produces, as the request spells them: "
                                                                     (string-join (map (lambda (n) (string-append "\"" n "\"")) names) ", ") ".")) '())
-                             (if (pair? context) (list (string-append "Names it only uses: " (string-join context ", ") ".")) '()))
+                             (if (pair? context) (list (string-append "Names it only uses: " (string-join context ", ") ".")) '())
+                             (if (let any ((ss steps)) (and (pair? ss) (or (equal? (assoc-ref (car ss) 'kind "") "Test") (any (cdr ss)))))
+                                 (list "After each of your edits to the code the harness runs the plan's tests (each test's command, once its file has the test) and adds how they ran to that edit's result: run them yourself only to see more than it shows.")
+                                 '()))
                      "\n")
         (let* ((st (car ss)) (kind (assoc-ref st 'kind "")) (n (number->string i))
                (line (cond ((assoc-ref st 'none #f) (string-append n ". " kind ": none — " (assoc-ref st 'what "")))
@@ -577,7 +650,8 @@
                          (cond ((let ((text (guard (e (else "")) (format "~a" (fs-read path)))))
                                   (not (string-contains? text name)))
                                 (string-append label ": the test is not in that file"))
-                               ((not (or (plan-language-passed? passed name) (plan-language-passed? passed (assoc-ref st 'run "")) whole))
+                               ((not (or (plan-language-passed? passed name) (plan-language-passed? passed (assoc-ref st 'run "")) whole
+                                         (member name plan-language-auto-passed)))
                                 (string-append label ": it has not passed since your last edit"))
                                ((plan-language-passes-before? st)
                                 (string-append label ": it passes on the unchanged code too (`" (assoc-ref st 'run "")

@@ -574,6 +574,10 @@
     (and (not (string-empty? name))
          (or (string-contains? text p) (string-contains? text name)))))
 
+;; Whether the plan's tests ran by the harness's hand in the turn: a plan as
+;; data (planspec.scm) redefines it.
+(define (plan-language-auto-tested?) #f)
+
 (define (evidence-loop request)
   ;; passing: the latest check or test call that exited 0 since the last
   ;; edit, for check-without. ran: the command lines run since the last edit,
@@ -693,7 +697,7 @@
                    (gap (cond (turn-stopping #f)
                               ((and (not changed) (not excused) (not (and unchanged-told tested)))
                                (if reviewed finish-no-change-reviewed-message finish-no-change-message))
-                              ((and changed (not tested) (not offered)) finish-untested-message)
+                              ((and changed (not tested) (not (plan-language-auto-tested?)) (not offered)) finish-untested-message)
                               ((and changed (equal? outcome 'failed) (not offered) (not told)) finish-failing-message)
                               (else #f)))
                    (new (if (and now changed (not noted))

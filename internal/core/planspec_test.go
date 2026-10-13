@@ -183,7 +183,8 @@ func TestAWholeCheckStandsForThePlansTests(t *testing.T) {
 // the last commit (check-before): a failure only like the one there is said,
 // in the run's own result, to have been there before the change, and the
 // check step counts as passing, with no reminder that the last run failed.
-// A planned test's first pass says whether it fails on the unchanged code.
+// The planned test runs after each edit, by the harness, and its first pass
+// says whether it fails on the unchanged code.
 // On commit-bench make validate failed on a program the environment lacks,
 // in every build's attempts, and the model spent up to 19 calls on it
 // (2026-10-13).
@@ -209,8 +210,13 @@ func TestACheckThatFailedBeforeTheChangeIsSaidSo(t *testing.T) {
 	if len(r.srv.Requests) != 7 {
 		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
 	}
-	if msg := lastMessage(r, 5); !strings.Contains(msg, "test_one fails on the unchanged code") {
-		t.Errorf("the test's first pass: %q", msg)
+	// The harness ran the planned test after each edit: failing before the
+	// change, then passing, and on its first pass on the unchanged code too.
+	if msg := lastMessage(r, 3); !strings.Contains(msg, "the plan's tests after this edit, run by the harness") || !strings.Contains(msg, "test_one: fails (exit 1)") {
+		t.Errorf("the test file's edit: %q", msg)
+	}
+	if msg := lastMessage(r, 4); !strings.Contains(msg, "test_one: passes — test_one fails on the unchanged code") {
+		t.Errorf("the code's edit: %q", msg)
 	}
 	if msg := lastMessage(r, 6); !strings.Contains(msg, "fails on the unchanged code too (run on a clone of the last commit)") || !strings.Contains(msg, "no-such-tool-here") {
 		t.Errorf("the failing check's result: %q", msg)
@@ -286,5 +292,49 @@ func TestAMissingProgramIsSaidOnceAndNotHunted(t *testing.T) {
 	}
 	if msg := lastMessage(r, 5); strings.Contains(msg, "not installed here") {
 		t.Errorf("told twice: %q", msg)
+	}
+}
+
+// The plan's tests run by the harness after each edit to the code stand for
+// the model's own runs: a turn that wrote the test and the code and ran only
+// the check is told neither that it did not test nor that the test lacks its
+// evidence, and the test step is marked by the harness (2026-10-13).
+func TestThePlansTestsRunAfterEachEdit(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(test "calc_test.py" "test_one" "one() is 10" (fails-today "it is 1") (run "grep -q 'return 10' calc.py && grep -q test_one calc_test.py"))
+(none docs "no document describes calc")
+(check "grep -q 'return 10' calc.py && echo checked")`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("t", "calc_test.py", "def test_one():\n    pass\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py && echo checked"),
+		fake.Turn{Content: "done"},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if main := string(r.srv.Requests[2].Raw); !strings.Contains(main, "After each of your edits to the code the harness runs the plan's tests") {
+		t.Errorf("the plan does not say the harness runs its tests:\n%s", main)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byHarness := false
+	for _, ev := range evs {
+		var p log.PlanStep
+		if ev.Kind == log.KindPlanStep && ev.Decode(&p) == nil && p.Step == 2 && strings.Contains(p.Note, "run by the harness") {
+			byHarness = true
+		}
+	}
+	if !byHarness {
+		t.Errorf("the test step was not marked from the harness's run")
 	}
 }
