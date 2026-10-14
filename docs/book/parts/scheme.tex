@@ -596,6 +596,8 @@ Primitive & What it does \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background; irreversible \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
 \code{(shell-send id text)} & type into it; a confirm on every call \\
+\code{(term-open cmd args [cols rows])}, \code{(term-type id text)}, \code{(term-keys id keys)} & \emph{experimental, temporary, off unless \code{[experimental] terminal} is set (\adr{48})}: run a program on a pseudo-terminal; type text into it; press keys (\code{Enter}, \code{Escape}, \code{C-w}, \dots). \code{term-open} asks once; nothing typed afterwards is checked \\
+\code{(term-screen id [offset])}, \code{(term-wait id [seconds [until]])}, \code{(term-close id)} & the terminal's screen as numbered text, scrolled back by \code{offset} lines; wait for a pattern on it, for quiet or an exit; hang up \\
 \code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc, which reads the source sandboxed; a write of \code{target}, with a preview \\
 \code{(google-doc-upload path [title])} & send a document to Google Drive as a new Google Doc; only with a stored \code{google} credential, and asks or not as \code{docs.google\_upload} says (unset: the first call asks which) \\
 \code{(scratch-dir)}, \code{(repository)}, \code{(workspace)} & the session's scratch directory; the repository's root; its mounted folders \\

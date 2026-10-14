@@ -90,12 +90,16 @@ func (p *proc) take(limit int) (text string, dropped, left int64) {
 	return string(chunk), dropped, left
 }
 
-func (p *proc) state() string {
-	if p.done && p.signalName != "" {
-		return fmt.Sprintf("exited %d (%s)", p.exit, p.signalName)
+func (p *proc) state() string { return stateText(p.done, p.exit, p.signalName) }
+
+// stateText is how a read says whether a process is still running or how it
+// ended; terminals (term.go) say it the same way.
+func stateText(done bool, exit int, signalName string) string {
+	if done && signalName != "" {
+		return fmt.Sprintf("exited %d (%s)", exit, signalName)
 	}
-	if p.done {
-		return fmt.Sprintf("exited %d", p.exit)
+	if done {
+		return fmt.Sprintf("exited %d", exit)
 	}
 	return "running"
 }
@@ -106,6 +110,23 @@ func (p *proc) state() string {
 // dsl6, 556d6d12) make validate's PASS came with "running", the model read
 // no further, and the loop never saw the run end (2026-10-13).
 var procReadSettle = time.Second
+
+// exitStatus is the code a finished command reports and, when a signal
+// ended it, the signal's name: a shell's convention of 128 plus the number.
+func exitStatus(err error) (code int, signalName string) {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		code = exit.ExitCode()
+		if ws, ok := exit.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			return 128 + int(ws.Signal()), "stopped by " + unix.SignalName(ws.Signal())
+		}
+		return code, ""
+	}
+	if err != nil {
+		return 1, ""
+	}
+	return 0, ""
+}
 
 // read waits up to wait for new output or an exit, then returns what the
 // model reads: the id and state on the first line, then the new output.
@@ -237,18 +258,7 @@ func (ps *Procs) start(o Options, name string, args []string) (*proc, error) {
 	p.cmd, p.stdin = cmd, stdin
 	ps.procs[p.id] = p
 	go func() {
-		err := cmd.Wait()
-		code, signal := 0, ""
-		var exit *exec.ExitError
-		if errors.As(err, &exit) {
-			code = exit.ExitCode()
-			if ws, ok := exit.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-				// A shell's convention: 128 plus the signal's number.
-				code, signal = 128+int(ws.Signal()), "stopped by "+unix.SignalName(ws.Signal())
-			}
-		} else if err != nil {
-			code = 1
-		}
+		code, signal := exitStatus(cmd.Wait())
 		p.mu.Lock()
 		p.done, p.exit, p.signalName = true, code, signal
 		p.signal()

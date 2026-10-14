@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/fclaude/nodwyn/internal/config"
 )
 
 // Every primitive a session registers is documented in docs/scheme.md, not
@@ -17,7 +19,9 @@ func TestSessionPrimitivesAreDocumented(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(doc)
-	r := newRig(t, true)
+	// The experimental terminal primitives are only there when asked for
+	// (ADR 48), and are documented all the same.
+	r := newRigWith(t, true, func(c *config.Config) { c.Experimental.Terminal = true })
 	for _, p := range r.s.interp.Prims() {
 		if !strings.Contains(text, "`("+p.Name+" ") && !strings.Contains(text, "`("+p.Name+")") && !strings.Contains(text, "`"+p.Name+"`") {
 			t.Errorf("primitive %q is not documented in docs/scheme.md", p.Name)

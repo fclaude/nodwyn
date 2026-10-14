@@ -215,6 +215,51 @@ func TestProgressPollsOfARunningCommandHaveTheirOwnCeiling(t *testing.T) {
 	}
 }
 
+// The same key pressed several times in a row moves down a file: it is not
+// a loop, but a turn that does nothing else for screenLimit calls is.
+func TestProgressDrivingATerminalIsNotRepeating(t *testing.T) {
+	var p turnProgress
+	down := call("term-keys", `{"id":"t1","keys":["Down"]}`)
+	for i := 1; i < screenLimit; i++ {
+		if reason := p.observe(down, toolOutcome{terminal: true}); reason != "" {
+			t.Fatalf("key %d: %q", i, reason)
+		}
+	}
+	if reason := p.observe(down, toolOutcome{terminal: true}); !strings.Contains(reason, "terminal was driven") {
+		t.Fatalf("call %d: %q", screenLimit, reason)
+	}
+
+	// Without the outcome the same calls are a loop, as before.
+	p = turnProgress{}
+	for i := 0; i < 4; i++ {
+		reason := p.observe(down, toolOutcome{})
+		if (reason != "") != (i == 3) {
+			t.Fatalf("plain call %d: %q", i, reason)
+		}
+	}
+
+	// Another tool between them starts the count again, and a key the
+	// terminal refused counts as the failure it is.
+	p = turnProgress{}
+	for i := 0; i < 3*screenLimit; i++ {
+		if i%(screenLimit-1) == screenLimit-2 {
+			p.observe(call("fs-read", fmt.Sprintf(`{"path":"a%d"}`, i)), toolOutcome{})
+			continue
+		}
+		if reason := p.observe(down, toolOutcome{terminal: true}); reason != "" {
+			t.Fatalf("call %d: %q", i, reason)
+		}
+	}
+	p = turnProgress{}
+	bad := call("term-keys", `{"id":"t1","keys":["Bogus"]}`)
+	for i := 0; i < 4; i++ {
+		reason := p.observe(bad, toolOutcome{terminal: true, failed: true})
+		if (reason != "") != (i == 3) {
+			t.Fatalf("refused key %d: %q", i, reason)
+		}
+	}
+}
+
 func TestStillRunningReadsShellReadsFirstLine(t *testing.T) {
 	for answer, want := range map[string]bool{
 		"p1: running (bash -c go test ./...)\nok  \tpkg\n": true,

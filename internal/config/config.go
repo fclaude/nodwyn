@@ -87,6 +87,9 @@ type Config struct {
 	// Approval is what a session a person can answer does without asking
 	// (ADR 35).
 	Approval Approval `toml:"approval"`
+	// Experimental are features offered to try, not supported: each may
+	// change or go away (ADR 48).
+	Experimental Experimental `toml:"experimental"`
 	// Models are the models a loop strategy may ask by name, besides the
 	// control model: (model-turn "NAME") for [models.NAME].
 	Models map[string]Model `toml:"models"`
@@ -110,6 +113,17 @@ type MCP struct {
 	// Egress is the nodwyn-egress proxy a server with a network list
 	// reaches the network through. Unset: next to the nodwyn executable.
 	Egress string `toml:"egress"`
+}
+
+// Experimental are features that are temporary: offered so that what they
+// are worth can be measured, and removed or rebuilt after that. Each is off
+// unless this says otherwise, and the ADR that adds it says what it lacks.
+type Experimental struct {
+	// Terminal offers the model a terminal: term-open and the primitives
+	// that press its keys and read its screen, so that tmux, neovim and
+	// other full-screen programs work (ADR 48). Opening one asks, once;
+	// after that nothing the model types in it is checked.
+	Terminal bool `toml:"terminal"`
 }
 
 // Approval is what a session a person can answer does without asking

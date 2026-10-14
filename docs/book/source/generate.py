@@ -51,6 +51,8 @@ GROUPS = [
      r"Start with the client API and tool descriptions, then follow either HTTP or stdio transport. The session registers the resulting tools in core. Read tests for failed calls, startup and transport behaviour, and compare the separate container layer when the server itself must be confined."),
     ("internal/container", "Running a contained server",
      r"Read runtime discovery and process construction before server setup. The session supplies policy; this package supplies the runtime mechanism. Container tests use a fake runtime, while explicitly named integration tests can exercise an installed container engine. Do not infer containment merely from the MCP protocol."),
+    ("internal/termemu", "The terminal emulator seam",
+     r"Read the interface and the registry together. This package exists because the core may not import the Charm library that parses a program's output (ADR 10): \src{internal/prim/term.go} uses only this interface, the adapter in \src{internal/frontend/termvt/termvt.go} registers the real emulator, and the binary links it in. The terminal primitives are experimental (ADR 48); expect this package to change or go with them."),
     ("internal/egress", "The contained server's network boundary",
      r"The proxy is the network route for contained MCP servers. Read its request checks with \src{cmd/nodwyn-egress/main.go} and the binding facts supplied by core. Its tests exercise the proxy directly; model tool-call checks alone cannot establish what a server sends onward."),
     ("internal/extract", "Documents and images at ingress",

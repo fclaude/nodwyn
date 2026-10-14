@@ -32,6 +32,7 @@ type turnProgress struct {
 	round    int             // model responses so far this turn
 	failures []failure       // failed calls within the last stallWindow responses
 	polls    int             // consecutive reads of a command that was still running
+	screens  int             // consecutive calls that drove a terminal
 }
 
 // pollLimit is how many reads of a command that is still running, with
@@ -43,6 +44,14 @@ type turnProgress struct {
 // to 7341, a browser check that was still running). Thirty polls of up to
 // a minute is half an hour: a command that hangs still ends the turn.
 const pollLimit = 30
+
+// screenLimit is how many calls that drive a terminal, with nothing else
+// between them, end the turn. A program driven through a terminal takes many
+// small calls (a key, a look at the screen, another key), and the same key
+// pressed four times in a row is how one moves down a file, so these calls
+// are not counted as repeats (ADR 48). The number is a guess, as the terminal
+// is experimental: no session log has driven one yet.
+const screenLimit = 150
 
 // A stall is the same tool failing on the same target in stallFailures of the
 // last stallWindow model responses. Reads, successful calls and edits that
@@ -70,8 +79,8 @@ type callKey struct{ name, args string }
 
 // toolOutcome classifies a result: failed covers any error, denied only a
 // guard refusal, waiting a read of a background command that is still
-// running.
-type toolOutcome struct{ failed, denied, waiting bool }
+// running, terminal a call that pressed a terminal's keys or read its screen.
+type toolOutcome struct{ failed, denied, waiting, terminal bool }
 
 // response notes that the model has answered again, which is the unit a
 // stall is counted in.
@@ -90,7 +99,15 @@ func (p *turnProgress) observe(call llm.ToolCall, outcome toolOutcome) string {
 		p.errors = 0
 		return ""
 	}
-	p.polls = 0
+	if outcome.terminal && !outcome.failed {
+		p.screens++
+		if p.screens >= screenLimit {
+			return fmt.Sprintf("a terminal was driven %d times in a row", p.screens)
+		}
+		p.errors = 0
+		return ""
+	}
+	p.polls, p.screens = 0, 0
 	key := keyOf(call)
 	if key == p.last {
 		p.repeated++

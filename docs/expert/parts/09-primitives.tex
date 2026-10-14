@@ -69,6 +69,8 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(shell-start cmd args)} & start a program that keeps running, in the background (irreversible) \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\
 \code{(shell-send id text)} & type into it (asks every time) \\
+\code{(term-open cmd args [cols rows])}, \code{(term-type id text)}, \code{(term-keys id keys)} & \emph{experimental, temporary, off unless \code{[experimental] terminal} is set (ADR 48)}: run a program on a pseudo-terminal; type text into it; press keys. \code{term-open} asks once; nothing typed afterwards is checked \\
+\code{(term-screen id [offset])}, \code{(term-wait id [seconds [until]])}, \code{(term-close id)} & the screen as numbered text, scrolled back by \code{offset} lines; wait for a pattern, quiet or an exit; hang up \\
 \code{(delegate-models)} & the configured models this task's model may hand work to with the \code{delegate} tool, chosen when the task opened; none by default, and then there is no such tool \\
 \code{(tool-names)} & the names of the tools the model is offered, in order: what \code{model-turn}'s \code{tools} option and \code{sub-agent}'s list accept \\
 \code{(doc-export source target)} & Markdown or LaTeX to \file{.docx}, \file{.odt} or \file{.html} with pandoc (irreversible, a write of \code{target}) \\

@@ -10,6 +10,9 @@ import (
 	"runtime/debug"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	// The terminal emulator the experimental terminal primitives use (ADR 48);
+	// the core may not import it itself (ADR 10), so the binary links it in.
+	_ "github.com/fclaude/nodwyn/internal/frontend/termvt"
 	webui "github.com/fclaude/nodwyn/internal/frontend/web"
 )
 
