@@ -101,6 +101,21 @@ it can see the thing but not change it.
 | Recorded write approvals, attachments list | yes, Changes | the conversation only | the conversation only | `replay` |
 | Project notes (`notes.read`, `session.notes.write`) | yes, Workspace | not built | — | — |
 
+## The model's terminal (ADR 48, experimental and temporary)
+
+The terminal tools are the model's (`term-open` and five more, offered only
+with `[experimental] terminal = true` in `config.toml`), so every client
+that runs a session has them; none of the clients shows a terminal. It is
+temporary: a row here goes with the feature if it is removed.
+
+| | Console | TUI | Line mode | CLI |
+|---|---|---|---|---|
+| Turn it on | edit `config.toml`; Settings does not offer it (deliberate: a switch would suggest a feature) | same | same | same; `nodwyn run` too |
+| The opening prompt, saying it is experimental | yes, as any command's | yes | yes | `nodwyn run` follows its flags |
+| The session's note saying it is experimental | yes, in the transcript | yes | yes | — |
+| The model's calls and the screens it read | as tool calls and results, like any tool | same | same | `replay` |
+| A live view of the terminal for the person | not built | not built | — | — |
+
 ## Inspection
 
 The console's **Details** (Workspace tab) has a view for each TUI inspector

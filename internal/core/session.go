@@ -137,6 +137,7 @@ type Session struct {
 	scratch  string       // the session's scratch directory (scratch.go)
 	keeper   *prim.Keeper // the state a passing test run kept, for a hard stop (keep.go)
 	procs    *prim.Procs  // background processes; stopped when the session closes
+	terms    *prim.Terms  // experimental terminals (ADR 48); nil unless [experimental] terminal is set
 	// workspace is the folders outside the root the session may use, as
 	// the workspace list named them at construction (ADR 22).
 	workspace config.Workspace
@@ -408,6 +409,9 @@ func (s *Session) Close() error {
 		s.mu.Unlock()
 		if s.procs != nil {
 			s.procs.Close()
+		}
+		if s.terms != nil {
+			s.terms.Close()
 		}
 		// Contained MCP servers stop before session.end, so their last
 		// proxy reports are recorded.

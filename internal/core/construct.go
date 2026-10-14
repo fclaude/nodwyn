@@ -240,6 +240,7 @@ func (s *Session) primitiveOptions() prim.Options {
 	po.Scratch = s.scratch
 	po.Private = []string{o.Paths.ConfigDir, o.Paths.DataDir}
 	po.Procs = s.procs
+	po.Terms = s.terms
 	// Notes are the project's, so a worktree's session shares them with
 	// the repository's (ADR 34).
 	po.NotesFile = notesFile(o.Paths.DataDir, s.project())
@@ -393,6 +394,10 @@ func (s *Session) loadInit() error {
 func (s *Session) initialize() (err error) {
 	o := s.opts
 	s.procs = prim.NewProcs()
+	if o.Config.Experimental.Terminal {
+		s.terms = prim.NewTerms()
+		s.note("Experimental: the terminal tools (term-open and the rest) are on. They are temporary and may change or go away, and once a terminal is open nothing the model types in it is checked (ADR 48).")
+	}
 	if s.scratch, err = makeScratch(s.opts.Paths.DataDir, s.id); err != nil {
 		return err
 	}

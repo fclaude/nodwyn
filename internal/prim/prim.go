@@ -46,6 +46,10 @@ type Options struct {
 	// Procs holds the session's background processes (shell-start and the
 	// rest); nil offers none, as in nodwyn repl.
 	Procs *Procs
+	// Terms holds the session's terminals (term-open and the rest,
+	// ADR 48); nil offers none, which is the default: they are experimental
+	// and offered only when [experimental] terminal is set.
+	Terms *Terms
 	// Keeper keeps the changes as they stood at a passing test run, for a
 	// turn that a hard limit stops (keep.go); nil keeps nothing.
 	Keeper *Keeper
@@ -112,6 +116,9 @@ func Register(in *scheme.Interp, o Options) error {
 	}
 	if o.Procs != nil {
 		prims = append(prims, procPrims(o, o.Procs)...)
+	}
+	if o.Terms != nil {
+		prims = append(prims, termPrims(o, o.Terms)...)
 	}
 	for _, p := range prims {
 		if err := in.Register(p); err != nil {

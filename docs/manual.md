@@ -266,6 +266,51 @@ commands), and `shell-stop`. At most four run at once, each keeps its latest
 run in their own process group; if nodwyn itself is killed, they are not
 cleaned up.
 
+### A terminal for the model (experimental)
+
+> **Experimental and temporary.** This was added to find out what a
+> terminal is worth to a model, and it will be removed or rebuilt after
+> that (ADR 48). It may change or disappear in any release, and it is not
+> supported as it is. Read "What it does not do" before turning it on.
+
+`shell-start` runs a program over pipes, so tmux, neovim, `less` and the
+like cannot run in it. With a terminal the model gets a real one, which it
+reads as text and types into. It is off. To turn it on, add this to
+`config.toml` (Settings does not offer it) and start a new task:
+
+```toml
+[experimental]
+terminal = true
+```
+
+The model then has six more tools: `term-open` runs a program on a
+pseudo-terminal (a shell, `nvim main.go`, `tmux`); `term-type` types text
+and `term-keys` presses keys (`Enter`, `Escape`, `Up`, `C-w`, `F5`, ...);
+`term-screen` shows the screen, and with an offset the lines that have
+scrolled off; `term-wait` waits for a line of the screen to match a pattern,
+or for the program to go quiet, or exit; `term-close` hangs up. The screen
+comes back as text with each row numbered, and the cursor's row and column
+in the header. A session with it on starts with a note saying it is
+experimental.
+
+Opening a terminal asks once, like `shell-start`, and the prompt says it is
+experimental. At most three are open at once, and all are hung up on when
+the session closes. tmux the model starts uses a directory of the session's
+own, never your tmux sessions; the server it leaves running is stopped when
+the session ends.
+
+**What it does not do.** Nothing the model types in a terminal is checked.
+After the one question, it is a shell with your privileges: the credential
+denylist and the folder pin apply to nodwyn's file tools and not to what a
+program in the terminal opens (the model can read any file you can, with
+neovim or `cat`); files it changes are not versioned or shown with a diff,
+so git is the only undo; its network is not limited; and a standing approval
+or the judge does not see what it does. Use it in a folder you can restore,
+on a task you would give a shell. It shows plain text only: colour,
+highlighting and the mouse are not visible to the model, and text it types
+is typed as typed, not pasted. The person sees none of it live: it appears in
+the transcript as tool calls, with the screens as their results.
+
 ### Seeing what changed
 
 In a git work tree (a folder with `.git`), the model also gets `git-status`
