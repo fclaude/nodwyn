@@ -130,20 +130,24 @@
         (plan-language-round calls results)))
     results))
 
-;; The reads of a file the plan will change stay in the window until the
-;; turn edits it (hygiene.scm, hygiene-keep?): on commit-bench (dsl16,
-;; 2026-10-14) 31 of the 38 reads a fold sent the model back to were of
-;; such files, read while exploring, folded by age, and read again to edit
-;; them. Once edited, the file's reads fold as any other's.
+;; The reads of a file a plan step will write (a change, test or docs step's
+;; file) stay in the window until the turn edits it (hygiene.scm,
+;; hygiene-keep?): on commit-bench (dsl16, 2026-10-14) 31 of the 38 reads a
+;; fold sent the model back to were of such files, read while exploring,
+;; folded by age, and read again to edit them; holding the change steps'
+;; files only (dsl17m) left the test and docs files' re-reads as they were.
+;; A step that names a directory holds nothing: its files are many. Once
+;; edited, the file's reads fold as any other's.
 (define (hygiene-keep? r)
   (and plan-language (pair? plan-spec)
-       (let ((path (list-ref r 1)))
+       (let ((path (list-ref r 1))
+             (strip (lambda (p) (if (string-prefix? "./" p) (substring p 2 (string-length p)) p))))
          (and (not (assoc-ref hygiene-edits path #f))
               (let any ((ss plan-spec))
                 (and (pair? ss)
-                     (or (and (equal? (assoc-ref (car ss) 'kind "") "Change")
+                     (or (and (member (assoc-ref (car ss) 'kind "") '("Change" "Test" "Docs"))
                               (not (assoc-ref (car ss) 'none #f))
-                              (plan-language-same-path? (assoc-ref (car ss) 'path "") path))
+                              (equal? (strip (assoc-ref (car ss) 'path "")) path))
                          (any (cdr ss)))))))))
 
 ;; New files the model writes in the repository are marked as intended for

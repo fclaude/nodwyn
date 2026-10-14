@@ -404,17 +404,18 @@ func TestAPlanWrittenInProseKeepsTheFormsItHolds(t *testing.T) {
 	}
 }
 
-// The read of a file the plan will change stays in the window until the turn
-// edits it, while an old read of another file folds (hygiene.scm,
-// hygiene-keep?): on commit-bench 31 of the 38 reads a fold sent the model
-// back to were of files the plan named, read while exploring and folded by
-// age before the edit (dsl16, 2026-10-14).
+// The reads of the files the plan's steps will write (a change's, a test's)
+// stay in the window until the turn edits them, while an old read of another
+// file folds, and so does a read under a docs step that names a directory
+// (hygiene.scm, hygiene-keep?): on commit-bench 31 of the 38 reads a fold sent
+// the model back to were of files the plan named, read while exploring and
+// folded by age before the edit (dsl16, 2026-10-14).
 func TestAFileThePlanWillChangeStaysReadUntilItIsEdited(t *testing.T) {
 	t.Parallel()
 	repo := codeRepo(t)
 	plan := `(change "big.py" "" "set first to 3")
-(none test "a one-line constant")
-(none docs "no document describes big.py")
+(test "big_test.py" "test_first" "first is 3" (fails-today "it is 1") (run "grep -q 'first = 3' big.py"))
+(docs "notes/" "say first is 3")
 (check "grep -q 'first = 3' big.py")`
 	read := func(id, path string) fake.Turn {
 		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-read", Args: map[string]any{"path": path}}}}
@@ -423,6 +424,8 @@ func TestAFileThePlanWillChangeStaysReadUntilItIsEdited(t *testing.T) {
 		fake.Turn{Content: "big.py holds first."}, // the explorer
 		fake.Turn{Content: plan},                  // the planner
 		read("big", "big.py"),
+		read("test", "big_test.py"),
+		read("notes", "notes/first.md"),
 		read("other", "bigger.py"),
 		read("s1", "small.py"),
 		read("s2", "small.py"),
@@ -430,8 +433,12 @@ func TestAFileThePlanWillChangeStaysReadUntilItIsEdited(t *testing.T) {
 		fake.Turn{Content: "done"},
 		fake.Turn{Content: "done"},
 		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
 	)
-	for name, size := range map[string]int{"big.py": 400, "bigger.py": 600, "small.py": 2} {
+	if err := os.MkdirAll(filepath.Join(repo, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, size := range map[string]int{"big.py": 400, "big_test.py": 300, "notes/first.md": 300, "bigger.py": 600, "small.py": 2} {
 		if err := os.WriteFile(filepath.Join(repo, name), []byte("first = 1\n"+strings.Repeat("value = 12345678\n", size)), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -462,7 +469,7 @@ func TestAFileThePlanWillChangeStaysReadUntilItIsEdited(t *testing.T) {
 			}
 		}
 	}
-	if folded["big"] || !folded["other"] {
-		t.Fatalf("folded %v: the read of big.py, which the plan will change, must stay; bigger.py's must fold", folded)
+	if folded["big"] || folded["test"] || !folded["notes"] || !folded["other"] {
+		t.Fatalf("folded %v: the reads of big.py and big_test.py, which the plan will write, must stay; notes/first.md's (a directory step) and bigger.py's must fold", folded)
 	}
 }
