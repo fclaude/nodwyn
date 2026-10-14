@@ -130,6 +130,22 @@
         (plan-language-round calls results)))
     results))
 
+;; The reads of a file the plan will change stay in the window until the
+;; turn edits it (hygiene.scm, hygiene-keep?): on commit-bench (dsl16,
+;; 2026-10-14) 31 of the 38 reads a fold sent the model back to were of
+;; such files, read while exploring, folded by age, and read again to edit
+;; them. Once edited, the file's reads fold as any other's.
+(define (hygiene-keep? r)
+  (and plan-language (pair? plan-spec)
+       (let ((path (list-ref r 1)))
+         (and (not (assoc-ref hygiene-edits path #f))
+              (let any ((ss plan-spec))
+                (and (pair? ss)
+                     (or (and (equal? (assoc-ref (car ss) 'kind "") "Change")
+                              (not (assoc-ref (car ss) 'none #f))
+                              (plan-language-same-path? (assoc-ref (car ss) 'path "") path))
+                         (any (cdr ss)))))))))
+
 ;; New files the model writes in the repository are marked as intended for
 ;; the next commit (git-intend), so a tool that lists the tracked files sees
 ;; them: the book's catalogue generator does, and on commit-bench (dsl8

@@ -2,7 +2,9 @@ package core
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -399,5 +401,68 @@ func TestAPlanWrittenInProseKeepsTheFormsItHolds(t *testing.T) {
 	}
 	if !marked {
 		t.Errorf("the test step was not marked under the new plan's number 1")
+	}
+}
+
+// The read of a file the plan will change stays in the window until the turn
+// edits it, while an old read of another file folds (hygiene.scm,
+// hygiene-keep?): on commit-bench 31 of the 38 reads a fold sent the model
+// back to were of files the plan named, read while exploring and folded by
+// age before the edit (dsl16, 2026-10-14).
+func TestAFileThePlanWillChangeStaysReadUntilItIsEdited(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "big.py" "" "set first to 3")
+(none test "a one-line constant")
+(none docs "no document describes big.py")
+(check "grep -q 'first = 3' big.py")`
+	read := func(id, path string) fake.Turn {
+		return fake.Turn{ToolCalls: []fake.ToolCall{{ID: id, Name: "fs-read", Args: map[string]any{"path": path}}}}
+	}
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "big.py holds first."}, // the explorer
+		fake.Turn{Content: plan},                  // the planner
+		read("big", "big.py"),
+		read("other", "bigger.py"),
+		read("s1", "small.py"),
+		read("s2", "small.py"),
+		read("s3", "small.py"),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+	)
+	for name, size := range map[string]int{"big.py": 400, "bigger.py": 600, "small.py": 2} {
+		if err := os.WriteFile(filepath.Join(repo, name), []byte("first = 1\n"+strings.Repeat("value = 12345678\n", size)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.eval("(define hygiene-age 2) (define hygiene-min-bytes 1) (define hygiene-pressure 0.0001)")
+	if e := r.planned("set first to 3 in big.py"); e != "" {
+		t.Fatal(e)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[uint64]string{}
+	folded := map[string]bool{}
+	for _, ev := range evs {
+		switch ev.Kind {
+		case log.KindToolResult:
+			var res log.ToolResult
+			if ev.Decode(&res) == nil {
+				ids[ev.Seq] = res.ID
+			}
+		case log.KindResultFold:
+			var f struct {
+				Seq uint64 `json:"seq"`
+			}
+			if ev.Decode(&f) == nil {
+				folded[ids[f.Seq]] = true
+			}
+		}
+	}
+	if folded["big"] || !folded["other"] {
+		t.Fatalf("folded %v: the read of big.py, which the plan will change, must stay; bigger.py's must fold", folded)
 	}
 }

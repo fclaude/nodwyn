@@ -23,6 +23,12 @@
 ;; is past hygiene-pressure of the high water, where room matters more.
 ;; Rule 1 folds results near the end. The log keeps everything; fs-read
 ;; ranges bring any part back.
+;; A read hygiene-keep? holds is not folded by rules 2 and 3 until the
+;; context is past hygiene-keep-pressure of the high water: the plan language
+;; holds the reads of files its plan will change and the turn has not edited
+;; yet. On commit-bench (dsl16, 2026-10-14) 31 of the 38 reads that a fold
+;; sent the model back to were of such files: read early, folded by age, then
+;; read again to edit them.
 
 (define hygiene-age 8)            ; rounds before a read is old
 (define hygiene-stale-age 2)      ; rounds before a stale read may fold
@@ -33,6 +39,11 @@
 (define hygiene-cache-share 0.25) ; the cache serves the context when it read this much of the recent prompts
 (define hygiene-cache-requests 4) ; the recent requests that say whether it does
 (define hygiene-pressure 0.5)     ; past this share of the high water, reads fold whatever the cache
+(define hygiene-keep-pressure 0.75) ; past this share of the high water, the reads hygiene-keep? holds fold too
+
+;; Whether a read stays in the window for now (rules 2 and 3); the plan
+;; language redefines it.
+(define (hygiene-keep? r) #f)
 
 ;; Lines an outline keeps: definitions, across common languages.
 (define hygiene-outline-words
@@ -226,8 +237,11 @@
 ;; Fold old and stale reads, once there is enough to fold at once and
 ;; folding it pays (hygiene-fold-reason).
 (define (hygiene-sweep)
-  (let* ((due (filter (lambda (r) (let ((age (- hygiene-round (list-ref r 4))))
+  (let* ((high (assoc-ref (window-limits) 'high-water 0))
+         (full (or (<= high 0) (>= (context-tokens) (* hygiene-keep-pressure high))))
+         (due (filter (lambda (r) (let ((age (- hygiene-round (list-ref r 4))))
                                     (and (not (hygiene-editing? r))
+                                         (or full (not (hygiene-keep? r)))
                                          (or (>= age hygiene-age) (and (hygiene-stale? r) (>= age hygiene-stale-age))))))
                       hygiene-reads))
          (bytes (fold (lambda (n r) (+ n (string-length (list-ref r 3)))) 0 due))
