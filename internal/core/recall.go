@@ -3,8 +3,8 @@ package core
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -23,8 +23,6 @@ import (
 // log keeps all of it. index-search ranks the conversation's events by
 // their words and recall brings one back as the log recorded it (ADR 50).
 const (
-	searchDefault = 8   // events index-search returns unless asked
-	searchMost    = 20  // and at most
 	searchLines   = 3   // lines shown of each event found
 	searchLineCut = 200 // characters shown of each line
 	callCut       = 300 // characters of a call's arguments in a heading
@@ -256,6 +254,11 @@ func cut(s string, n int) string {
 	return s
 }
 
+// searchConversation is index-search's "conversation" scope.
+func (s *Session) searchConversation(_ context.Context, query string, limit int) (string, error) {
+	return s.conversation.search(s, query, limit)
+}
+
 // search returns the events that best match query, each under its heading
 // with its lines that hold the most of the words matched, numbered as
 // recall numbers them.
@@ -265,7 +268,7 @@ func (c *conversation) search(s *Session, query string, limit int) (string, erro
 	if err := c.update(s); err != nil {
 		return "", err
 	}
-	hits := c.index.Search(query, limit)
+	hits := c.index.Search(query, limit, nil)
 	if len(hits) == 0 {
 		return fmt.Sprintf("No event of this conversation holds any of these words (%d events searched).", c.index.Len()), nil
 	}
@@ -372,59 +375,12 @@ func (c *conversation) resultOf(doc int, id string) uint64 {
 	return 0
 }
 
-// registerRecall adds index-search and recall, offered to the model as
-// tools. They read the log, never a file, so their values carry the log's
-// provenance (external:log), as session-events' do.
+// registerRecall adds recall, offered to the model as a tool. It reads the
+// log, never a file, so its values carry the log's provenance
+// (external:log), as session-events' do. index-search, whose conversation
+// scope is searchConversation, is prim's (internal/prim/repoindex.go).
 func (s *Session) registerRecall() error {
 	for _, p := range []*scheme.Prim{
-		{
-			Name: "index-search",
-			Meta: scheme.Meta{
-				Doc: "Search by words, best match first. Scope \"conversation\" searches this task's conversation: the person's messages, your replies and their tool calls, and tool results, including those the window has since elided, folded or cut, and sub-agents' work. Each match is an event's seq with its lines that hold the most of your words, numbered; recall brings one back whole. Use it to find what was said, decided, run or shown earlier rather than run a command again; a file as it is now is fs-read's.",
-				Params: []scheme.Param{
-					{Name: "query", Type: "string", Doc: "words or names to look for, such as \"go test core failure\" or \"ScrubEnv\": events holding more of them, and rarer ones, rank first; a name matches its parts too (ScrubEnv matches scrub)"},
-					{Name: "scope", Type: "string", Doc: "\"conversation\": this task's conversation"},
-					{Name: "limit", Type: "integer", Doc: "how many events to return: 8 unless given, at most 20", Optional: true},
-				},
-				Host:        true,
-				Origin:      "builtin",
-				TaintSource: "external:log",
-			},
-			Handler: func(c *scheme.Call) (scheme.Value, error) {
-				query, err := c.String(0)
-				if err != nil {
-					return scheme.Void, err
-				}
-				scope, err := c.String(1)
-				if err != nil {
-					return scheme.Void, err
-				}
-				if scope != "conversation" {
-					return scheme.Void, fmt.Errorf("scope %q: the scope is \"conversation\", this task's conversation; searching the repository and earlier tasks is not built yet", scope)
-				}
-				if len(retrieval.Words(query)) == 0 {
-					return scheme.Void, errors.New("the query has no words to look for")
-				}
-				limit := int64(searchDefault)
-				if len(c.Args) > 2 {
-					n, err := c.Int(2)
-					if err != nil {
-						return scheme.Void, err
-					}
-					if n < 0 {
-						return scheme.Void, fmt.Errorf("limit must be positive, got %d", n)
-					}
-					if n > 0 {
-						limit = min(n, searchMost)
-					}
-				}
-				out, err := s.conversation.search(s, query, int(limit))
-				if err != nil {
-					return scheme.Void, err
-				}
-				return scheme.Str(out), nil
-			},
-		},
 		{
 			Name: "recall",
 			Meta: scheme.Meta{

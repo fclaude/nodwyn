@@ -310,7 +310,14 @@ func (g *Guard) Before(ctx context.Context, p *scheme.Prim, args []scheme.Value)
 		}
 		return &scheme.Denied{Prim: p.Name, Reason: final.Reason}
 	}
-	// Confirm.
+	// Confirm, unless nobody is to be asked: then the answer is no.
+	if ctx.Value(notAsking{}) != nil {
+		rec.Answer, rec.Actor = "no", "not asked"
+		if recordErr := g.record(rec); recordErr != nil {
+			return recordErr
+		}
+		return &scheme.Denied{Prim: p.Name, Reason: "not asked: " + strings.Join(result.reasons, "; ")}
+	}
 	approval, err := g.confirm(ctx, Prompt{
 		Binding:  result.binding,
 		Egress:   egressScopeOf(p, args, g.scopes),

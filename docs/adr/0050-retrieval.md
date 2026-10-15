@@ -1,8 +1,9 @@
 # ADR 0050: Retrieval: a project index the model searches, recall of the conversation, and earlier tasks when allowed
 
 - Status: **accepted** 2026-10-15, with the person's answers below; the
-  conversation (R2) implemented 2026-10-15, the rest not built (see the
-  order of work at the end)
+  conversation (R2) and the repository (R1) implemented 2026-10-15, earlier
+  tasks (R3) and embeddings (R4) not built (see the order of work at the
+  end)
 - Date: 2026-10-15
 - Amends: SPEC (Memory: v0 had no cross-session index and no embeddings;
   invariant 1 stands, and every index here is a derived view of it),
@@ -159,8 +160,8 @@ what git already records about which files belong to the project.
 worktrees, attachments and kept versions never enter. Elsewhere, the walk
 `index-grep` does (hidden entries, symbolic links and ignore files
 skipped). `index-update path` with a directory indexes it whole, ignored
-files included, within the root or a workspace mount (ADR 22), as
-`fs-read` allows.
+files included, within the root. A workspace mount (ADR 22) is not
+indexed: not built.
 
 A repository's `.gitignore` is written by whoever commits to it, a
 stranger's clone included. It can only narrow what is indexed: every file
@@ -171,7 +172,7 @@ file from the search but cannot expose one the guard refuses, and
 Limits: a file is indexed whole up to 1 MiB (`fs-read`'s whole-file cap);
 binary and non-UTF-8 files are skipped; a tree indexes at most 20,000 files
 and 128 MiB of text. Past that it indexes what fits in path order, and
-every search says the index is partial and how to narrow it. nodwyn is 701
+every search says the index is partial and how to narrow it. nodwyn is 712
 files and 7.2 MB.
 
 ### 3. Every file is read through the guard, and the index holds words, not text
@@ -188,18 +189,18 @@ summary of what it read, skipped and was refused, beside those per-file
 decisions (the person's answer 3), so a log says what an index holds
 without adding up its reads.
 
-The text is redacted with the session's redactor (`Session.Redactor()`,
-the L1 shapes and the person's allow-lists) before it is cut into chunks,
-so the index is built from the text the model would read (ADR 43) and no
-known credential shape reaches it. What the index stores is, per chunk,
+The text is redacted as the log redacts a tool result (`redact.Redact`
+with the default scanner) before it is cut into chunks, so the index is
+built from the text the model would read (ADR 43) and no known credential
+shape reaches it. What the index stores is, per chunk,
 its line numbers and its words with their counts: no text. What a search
 shows, the chunk's first line included, is read again from the file at
 that moment (§7).
 
-At search time, every file is checked against the pin and the denylist
-before it can rank, without a read, as `index-grep`'s pre-filter does
-(`index_grep.go:239-254`), so a file the denylist refuses now never shows
-even if it was indexed before. The live read of each result applies the
+Every refresh, and so every search (§5), checks each listed file against
+the pin and the denylist without a read, as `index-grep`'s pre-filter does
+(`index_grep.go:239-254`), and drops the ones refused, so a file the
+denylist refuses now never ranks even if it was indexed before. The live read of each result applies the
 whole guard again; a refusal there stops the search with the refusal as
 the answer, as in `index-grep`, and drops the file from the tree's index.
 
@@ -222,16 +223,17 @@ directory (the denylist), and a clone cannot plant or poison an index.
   A new worktree from the same base costs a listing and nothing else.
 - Each working tree (the main checkout, each worktree) has a manifest:
   path, size, modification time, inode and content hash per file. It is
-  written to a temporary file and renamed; a lock serialises updates of a
-  project; searches read the manifest they find.
+  updated as a policy file is (`policyfile.Update`): under a lock beside
+  it, written to a temporary file and renamed into place.
 - A manifest whose root is gone (a removed worktree) and stored files no
   manifest names for seven days are removed by the next update.
 - Everything here is derived: a version mismatch, a file that fails to
   parse or a missing entry is rebuilt from the files, and deleting the
   directory loses nothing (SPEC, invariant 1).
 
-The daemon keeps a tree's loaded index in memory for the sessions that
-search it and loads it again when its manifest changes.
+Each session keeps the index it loaded from a manifest in memory and loads
+it again when the manifest changes. A daemon's sessions on one tree each
+load their own: sharing it is not built.
 
 ### 5. Kept fresh by the search that uses it
 
@@ -240,7 +242,8 @@ size, modification time and inode with the manifest, and reads again the
 ones that changed (each read guarded and logged, §3), for at most 10
 seconds; past that it answers from what it has and says how many files it
 did not get to. The first search in a project builds the index; for
-nodwyn that is the 701 reads. `index-update` does the same without the
+nodwyn that is 712 reads, which took 1.3 seconds, and a search afterwards
+about 90 milliseconds. `index-update` does the same without the
 10-second bound, for at most 60 seconds a call, and goes on from where it
 stopped on the next call. Both run inside a tool call, so the turn's limits
 check every read (`core/budget.go:76`, which checks a read and counts it as
@@ -249,12 +252,13 @@ indexes in the background.
 
 ### 6. Chunks and ranking
 
-A chunk starts at a top-level declaration or heading — `func`, `type`,
-`var` and `const` in Go, `(define` in Scheme, `function`, `class` and
-`export` in JavaScript, `def` and `class` in Python, `#` headings in
-Markdown, `\chapter` and `\section` in TeX — once the chunk before it has
-20 lines, and a chunk has at most 80 lines. No parser and no grammar: this
-is the chunker the replay measured, and nodwyn cuts into 4,201 chunks.
+A chunk starts at a line that begins, in its first column, a declaration
+or a heading — `func `, `type `, `var ` and `const ` (Go), `(define`
+(Scheme), `function `, `class ` and `export ` (JavaScript), `def ` and
+`class ` (Python), `#` (Markdown), `\chapter` and `\section` (TeX), in
+any file — once the chunk before it has 20 lines, and a chunk has at most
+80 lines. No parser and no grammar: this is the chunker the replay
+measured; nodwyn cuts into 4,298 chunks.
 
 Words are split as code names them: `ScrubEnv` gives `scrub`, `env` and
 `scrubenv`; `index-grep` gives `index`, `grep` and `index-grep`;
@@ -264,14 +268,15 @@ BM25 (k1 1.2, b 0.75) over the chunks of the tree.
 
 ### 7. What a search returns
 
-A header (the scope, how many chunks matched, how the index stands: files,
-when updated, how many changed files were not read again, whether it is
-partial, what share has vectors), then each result: `path:A-B`, the
-chunk's first line, the query's words it matched, and up to 8 lines around
-its best line, read from the file now through `fs-read`, so the model goes
-on with a ranged `fs-read`. A result whose file changed since it was
-indexed is indexed again before it is shown. Results carry `external:file`
-provenance, as `index-grep`'s do, and pass ordinary tool-result redaction.
+A header (how many chunks and files it ranked, and, when it applies, how
+many changed files were not read again in time and that the index is
+partial), then each result: `path:A-B: ` and the chunk's first line, then
+its three lines that hold the most of the words matched, numbered as in
+the file, read from the file now through `fs-read`, so the model goes on
+with a ranged `fs-read`. The refresh before the search has read every
+changed file; a chunk whose lines are gone by the time it is read is left
+out. Results carry `external:file` provenance, as `index-grep`'s do, and
+pass ordinary tool-result redaction.
 
 ### 8. The conversation
 
@@ -409,8 +414,8 @@ their own counts.
 - A session's first search in a project reads every file and logs a guard
   decision for each; later ones read only what changed. A worktree shares
   its repository's index.
-- nodwyn's data directory gains an index per project: a few megabytes of
-  words for a repository of nodwyn's size, more with vectors.
+- nodwyn's data directory gains an index per project: 6.5 MB of words
+  for nodwyn's 712 files (7.2 MB of text), more with vectors.
 - The window, its recipe and replay are unchanged: results are tool
   results.
 - With embeddings chosen, a project's text goes to that server, once per
@@ -451,7 +456,7 @@ Each slice is built end to end and run where it runs, with fakes only
 
 R2 depends on nothing in R1 and is the smallest, and goes first (the
 person's answer 4); then R1, then R3. R4 waits for models to embed with
-(the person's answer 1).
+(the person's answer 1). R2 and R1 are built.
 
 ## R2 implemented — 2026-10-15
 
@@ -490,6 +495,47 @@ its end: recall of its first result, a search counting all its events, a
 sub-agent's result named as the explorer's, and a compaction not taken for
 an agent's context), both in `internal/core`. They fail on the code before
 this change: the tools do not exist.
+
+## R1 implemented — 2026-10-15
+
+- `internal/retrieval`: `Chunks` (§6), `Store` (§4: chunks by hash,
+  a manifest per tree, `Collect`), and `Index.AddCounts` and a filter on
+  `Search` for a search of one directory.
+- `internal/prim/repoindex.go`: the refresh (§2, §3, §5), the in-memory
+  index, `index-search`, which moved here beside `index-grep` with its
+  conversation scope given by the core (`Options.Conversation`), and
+  `index-update`. `Options.IndexDir` is the project's
+  `projects/<key>/index`; a session without a data directory has no
+  repository index and is not offered `index-update`.
+- `guard.WithoutAsking`: under it a confirm is a refusal nobody is asked
+  for, recorded with the answer `no` and the actor `not asked`. It only
+  tightens.
+- `index.update` (ADR 2, amended): recorded by every `index-update` and by
+  a search that read or removed a file.
+- The default loop: the rule on reading code, and the explorer's,
+  second look's and optimizer's tools (ADR 32, amended 2026-10-15).
+- The console's Connections view counts the built-in tools, and the
+  `screens` browser check expected 17. R2 made them 19 and its commit
+  left the check failing: it changed no console file, so its validate ran
+  no browser check. The check now expects 20, `index-update` included.
+- Not built here: indexing a workspace mount, a daemon's sessions sharing
+  one loaded index, R3 and R4.
+
+Tests: `internal/retrieval` (chunks, the store, a filtered search);
+`internal/prim` `TestRepoIndexSearchesWhatGitLists` (tracked and
+untracked files in, ignored, denylisted and `.nodwyn/` files out, no
+credential in the store, a guarded read per file, one record, a directory,
+provenance, no match), `TestRepoIndexFollowsChanges`,
+`TestRepoIndexIsSharedByTrees` (a second tree stores nothing new; a gone
+tree's manifest goes), `TestIndexUpdateAddsAnIgnoredDirectory` and
+`TestRepoIndexLeavesOutWhatTheGuardRefuses` (a confirm refused unasked
+and named; an indexed file the guard now refuses is the answer and leaves
+the index); `internal/guard` `TestWithoutAskingRefusesAConfirmUnasked`;
+`internal/core` `TestModelSearchesTheRepository` (through the fake model:
+the result redacted, the index beside the project's notes, the record, the
+build's and the result's guarded reads). On this repository at this commit
+a build read 712 files in 1.3 seconds into 6.5 MB, and a search took 90 to
+120 milliseconds.
 
 ## Not decided
 

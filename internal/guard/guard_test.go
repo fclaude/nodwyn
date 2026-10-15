@@ -123,6 +123,30 @@ func TestNilConfirmerDenies(t *testing.T) {
 	}
 }
 
+// Under WithoutAsking a confirm is a refusal nobody is asked for, recorded
+// as such; an allow and a denial are as they are anywhere (ADR 50).
+func TestWithoutAskingRefusesAConfirmUnasked(t *testing.T) {
+	asked := 0
+	yes := ConfirmFunc(func(context.Context, Prompt) (bool, error) { asked++; return true, nil })
+	decisions := &decisionLog{}
+	quiet := WithoutAsking(context.Background())
+	g := New(yes, decisions, fixed{"b", Decision{Verdict: Confirm, Reason: "user checker secrets"}})
+	err := g.Before(quiet, prim, nil)
+	var d *scheme.Denied
+	if !errors.As(err, &d) || d.Reason != "not asked: user checker secrets" || asked != 0 {
+		t.Fatalf("a confirm under WithoutAsking: %v, asked %d", err, asked)
+	}
+	if n := len(decisions.decisions); n != 1 || decisions.decisions[0].Answer != "no" || decisions.decisions[0].Actor != "not asked" {
+		t.Fatalf("recorded: %+v", decisions.decisions)
+	}
+	if err := New(yes, nil, fixed{"a", Decision{Verdict: Allow}}).Before(quiet, prim, nil); err != nil {
+		t.Fatalf("an allow under WithoutAsking: %v", err)
+	}
+	if err := g.Before(context.Background(), prim, nil); err != nil || asked != 1 {
+		t.Fatalf("without the mark the person is asked: %v, asked %d", err, asked)
+	}
+}
+
 func TestConfirmerCancellationPropagates(t *testing.T) {
 	blocking := ConfirmFunc(func(ctx context.Context, _ Prompt) (bool, error) { <-ctx.Done(); return false, ctx.Err() })
 	g := New(blocking, nil, fixed{"b", Decision{Verdict: Confirm, Reason: "r"}})

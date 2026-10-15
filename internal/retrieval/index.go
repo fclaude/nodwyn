@@ -43,21 +43,31 @@ const (
 // Add adds a document made of fields and returns its number. A field's
 // Weight below 1 counts once.
 func (x *Index) Add(fields ...Field) int {
+	counts := map[string]int{}
+	for _, f := range fields {
+		Count(counts, f.Text, f.Weight)
+	}
+	return x.AddCounts(counts)
+}
+
+// Count adds text's words to counts, each weight times (once below 1).
+func Count(counts map[string]int, text string, weight int) {
+	for _, word := range Words(text) {
+		counts[word] += max(weight, 1)
+	}
+}
+
+// AddCounts adds a document whose words are already counted, as a
+// repository's chunks are stored, and returns its number.
+func (x *Index) AddCounts(counts map[string]int) int {
 	if x.postings == nil {
 		x.postings = map[string][]posting{}
 	}
-	counts := map[string]int{}
 	n := 0
-	for _, f := range fields {
-		w := max(f.Weight, 1)
-		for _, word := range Words(f.Text) {
-			counts[word] += w
-			n += w
-		}
-	}
 	doc := int32(len(x.lengths))
 	for word, c := range counts {
 		x.postings[word] = append(x.postings[word], posting{doc, int32(c)})
+		n += c
 	}
 	x.lengths = append(x.lengths, n)
 	x.total += n
@@ -70,8 +80,10 @@ func (x *Index) Len() int { return len(x.lengths) }
 // Search returns at most limit documents that hold words of query, best
 // first: by score, then in the order they were added. A word that many
 // documents hold weighs little and one that few hold weighs much, so a
-// query can be plain words and names together.
-func (x *Index) Search(query string, limit int) []Hit {
+// query can be plain words and names together. keep, when not nil, says
+// which documents may be returned (a search of one directory); the others
+// still weigh the words.
+func (x *Index) Search(query string, limit int, keep func(doc int) bool) []Hit {
 	n := len(x.lengths)
 	if n == 0 || x.total == 0 || limit < 1 {
 		return nil
@@ -96,7 +108,9 @@ func (x *Index) Search(query string, limit int) []Hit {
 	}
 	hits := make([]Hit, 0, len(scores))
 	for doc, score := range scores {
-		hits = append(hits, Hit{Doc: int(doc), Score: score, Matched: matched[doc]})
+		if keep == nil || keep(int(doc)) {
+			hits = append(hits, Hit{Doc: int(doc), Score: score, Matched: matched[doc]})
+		}
 	}
 	slices.SortFunc(hits, func(p, q Hit) int {
 		if c := cmp.Compare(q.Score, p.Score); c != 0 {

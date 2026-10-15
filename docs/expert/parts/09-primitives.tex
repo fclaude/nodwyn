@@ -62,7 +62,8 @@ These exist only inside a session (not in \code{nodwyn repl}):
 \code{(fs-list path)} & a directory's names; directories end with \code{/} \\
 \code{(fs-find path glob)} & file names matching a glob, at most 500 \\
 \code{(index-grep path regex [glob [context]])} & search contents with a regular expression \\
-\code{(index-search query scope [limit])} & search the conversation (\code{scope} \code{"conversation"}) by words, best match first, elided and folded results included (ADR 50) \\
+\code{(index-search query scope [limit [path]])} & search by words, best match first: the repository's files (\code{scope} \code{"repo"}) from an index nodwyn keeps, or the conversation (\code{"conversation"}), elided and folded results included (ADR 50) \\
+\code{(index-update [path])} & bring the repository's index up to date, or add a directory git ignores (ADR 50) \\
 \code{(recall seq [start [count]])} & one event of the conversation by its seq, as the log recorded it, in lines like a ranged \code{fs-read} (ADR 50) \\
 \code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree: what changed, since the last commit or since \code{against}, and the commit HEAD is on; read-only, no approval \\
 \code{(keep-passing)} & keep the changes as a test run passed on them (hidden): an unattended turn that a hard limit or the progress guard stops has its files put back to it, and what they held saved \\

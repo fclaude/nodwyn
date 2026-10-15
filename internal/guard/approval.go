@@ -18,6 +18,17 @@ type AttributedConfirmer interface {
 	ConfirmApproval(context.Context, Prompt) (Approval, error)
 }
 
+// notAsking marks a context whose confirms nobody is asked (WithoutAsking).
+type notAsking struct{}
+
+// WithoutAsking returns ctx under which every confirm is answered no
+// without putting it to anyone, and recorded so. An index build reads every
+// file of a repository through the guard, and must not ask a person once
+// per file (ADR 50). It only ever turns a confirm into a refusal.
+func WithoutAsking(ctx context.Context) context.Context {
+	return context.WithValue(ctx, notAsking{}, true)
+}
+
 func (g *Guard) confirm(ctx context.Context, p Prompt) (Approval, error) {
 	if c, ok := g.confirmer.(AttributedConfirmer); ok {
 		return c.ConfirmApproval(ctx, p)

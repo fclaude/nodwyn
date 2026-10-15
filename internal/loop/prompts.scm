@@ -179,7 +179,11 @@
    ;; (guard.ArgvTrigger, ADR 17, amended 2026-10-10).
    "\n- Before running the project's code, find the interpreter and environment it uses, in one command (for example: which -a python python3; conda env list; ls -d .venv venv 2>/dev/null), then run that environment's interpreter by the full path it shows, or with conda run -n NAME. Listing folders outside the repository asks for approval; running an environment's interpreter does not."
    "\n- If the project's code or tests do not import with the default interpreter, the project most likely has its own environment (a virtualenv, a conda environment, tox or nox settings): find it and use its interpreter before working around missing packages. Do not patch the standard library or install packages to make tests run."
-   "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
+   ;; index-search comes from ADR 50 (ADR 32, amended 2026-10-15): 57% of
+   ;; the regular-expression searches in the 78 local logs were
+   ;; alternations of three or more guessed names, a concept looked for by
+   ;; listing what it might be called.
+   "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-search with scope \"repo\" and plain words to find code by what it does or under names you would have to guess, index-grep for an exact string or pattern, and fs-find for file names. Use the shell to run code, not to read files."
    ;; project-notes-save was the person's alone, so no model ever kept a
    ;; note, and each session found out again how the tests run (ADR 32,
    ;; amended 2026-10-05).

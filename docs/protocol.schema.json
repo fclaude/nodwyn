@@ -1512,6 +1512,50 @@
       ],
       "type": "object"
     },
+    "log.IndexUpdate": {
+      "properties": {
+        "files": {
+          "type": "integer"
+        },
+        "ms": {
+          "type": "integer"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "read": {
+          "type": "integer"
+        },
+        "refused": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "removed": {
+          "type": "integer"
+        },
+        "root": {
+          "type": "string"
+        },
+        "skipped": {
+          "type": "integer"
+        },
+        "unread": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "root",
+        "files",
+        "read",
+        "ms"
+      ],
+      "type": "object"
+    },
     "log.JevReq": {
       "properties": {
         "answer": {},
@@ -2627,6 +2671,9 @@
     },
     "payload.harness.msg": {
       "$ref": "#/$defs/log.HarnessMsg"
+    },
+    "payload.index.update": {
+      "$ref": "#/$defs/log.IndexUpdate"
     },
     "payload.inspection.result": {
       "$ref": "#/$defs/event.Inspection"
@@ -8662,6 +8709,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.HarnessMsg"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "index.update"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.IndexUpdate"
             },
             "seq": {
               "minimum": 0,

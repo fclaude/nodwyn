@@ -666,6 +666,24 @@ type Attach struct {
 	PromptID    string `json:"prompt_id,omitempty"`
 }
 
+// IndexUpdate is one build or refresh of a working tree's repository index
+// (ADR 50): the files it holds now, how many it read and removed, how many
+// it skipped (not a regular file, too large, binary, protected), those the
+// guard refused, how many it left to read when its time ran out, and
+// whether the tree has more than an index holds. Each file it read has its
+// own guard.decision; this sums them. It never holds content.
+type IndexUpdate struct {
+	Root    string   `json:"root"`
+	Files   int      `json:"files"`
+	Read    int      `json:"read"`
+	Removed int      `json:"removed,omitempty"`
+	Skipped int      `json:"skipped,omitempty"`
+	Refused []string `json:"refused,omitempty"`
+	Unread  int      `json:"unread,omitempty"`
+	Partial bool     `json:"partial,omitempty"`
+	Millis  int64    `json:"ms"`
+}
+
 // ImageGap is an attached image a request did not carry, and why: its
 // stored copy is "missing", or "changed" since it was attached; the model
 // asked takes no images ("no-vision"); or the request went to a host other

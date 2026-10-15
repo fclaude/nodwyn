@@ -282,6 +282,14 @@ func (s *Session) primitiveOptions() prim.Options {
 	// 2026-10-05).
 	po.MaxRangeBytes = o.Config.Window.MaxResultTokens*3 - 256
 	po.RangeBytes = s.rangeBytes
+	// Retrieval (ADR 50): the conversation is the session's; the
+	// repository's index is the project's, so a worktree's session shares
+	// the repository's, beside its notes.
+	po.Conversation = s.searchConversation
+	if dir := projectDir(o.Paths.DataDir, s.project()); dir != "" {
+		po.IndexDir = filepath.Join(dir, "index")
+		po.IndexRecord = func(u log.IndexUpdate) { _, _ = s.Record(log.KindIndexUpdate, u) }
+	}
 	po.BindingsPath = o.Paths.Bindings
 	po.ShellTimeout = shellTimeout
 	// P3 egress: the session is the CredentialStore (it owns the keychain,

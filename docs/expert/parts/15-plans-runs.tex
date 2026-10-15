@@ -29,7 +29,8 @@ like this:
   \item A read-only sub-agent labelled \code{explorer} looks at the folder
     for up to \code{plan-explore-rounds} (12; 16 for the families that ask
     for few calls in a round, a table by model family) rounds (\code{fs-read},
-    \code{fs-list}, \code{index-grep}, \code{fs-find}), so the plan is not
+    \code{fs-list}, \code{index-grep}, \code{index-search},
+    \code{fs-find}), so the plan is not
     written blind. It reads the code at the place the request describes
     first, lists every place the change must reach and the options it finds
     without choosing one, and copies the request's examples as written: on

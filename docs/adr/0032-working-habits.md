@@ -979,3 +979,14 @@ measured as ADR 50 §13 says, and the line goes with them if they do not.
 `look-tools` gains `index-search` and `recall`, which only look, so a run of
 rounds spent searching the conversation counts towards the reading reminder
 as rounds of reading do.
+
+The same day, with the repository's index (ADR 50, R1), the rule on
+reading code names `index-search` with scope `"repo"` for code found by
+what it does or under names that would have to be guessed, keeping
+`index-grep` for an exact string or pattern: 917 of the 1,614
+regular-expression searches in those logs (57%) were alternations of three
+or more guessed names, such as `modelForm|credential|host|bind|freeClass|api_key`.
+`index-search` also joins the tools of the sub-agents that read the
+repository: the plan's explorer, `second-look-tools` and the optimizer's.
+Whether models use it is measured as ADR 50 §13 says; the rule and the
+tool go if they do not.

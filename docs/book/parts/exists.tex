@@ -69,7 +69,7 @@ nodwyn paths                  config and data locations
 
 Every session offers \code{fs-read}, \code{fs-write}, \code{fs-edit},
 \code{fs-list}, \code{fs-find}, \code{index-grep}, \code{index-search},
-\code{recall}, \code{shell-exec},
+\code{index-update}, \code{recall}, \code{shell-exec},
 \code{shell-start}, \code{shell-read}, \code{shell-send},
 \code{shell-stop} and \code{doc-export}; in a git work tree also
 \code{git-status} and \code{git-diff}; with a stored \code{google}
@@ -137,8 +137,8 @@ Request prefix is byte-stable & \code{TestTurnWithToolCall} compares consecutive
 \item Nothing reads an image's pixels: an attached image goes to a model
   unredacted, after a confirm that says so.
 \item No embedding index and no structural outline; retrieval is text
-  search over the tree and word search over the conversation
-  (\code{index-search}, \code{recall}).
+  search over the tree, and word search over an index of it and over the
+  conversation (\code{index-search}, \code{index-update}, \code{recall}).
 \item One person. A workspace is not shared, and the socket and the paired
   devices are one user's.
 \item A spend limit is off unless you set one (\code{cost\_soft} and

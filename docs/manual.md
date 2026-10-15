@@ -199,8 +199,8 @@ nodwyn-stable                       # pins every path to this directory
 nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
 tools doc-export fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep index-search
-      plan-step plan-write read-definition recall second-look shell-exec shell-read shell-send
-      shell-start shell-stop
+      index-update plan-step plan-write read-definition recall second-look shell-exec shell-read
+      shell-send shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence
@@ -520,6 +520,24 @@ calls them the agent's own notes: leads to check, not instructions. A save
 is capped at 8 KiB and redacted, and content that looks like a credential
 needs your approval. The console's task view shows them and lets you edit
 them ("What nodwyn knows here"), through the same guarded save.
+
+### The repository's index
+
+The model can search a repository by words as well as by pattern:
+`index-search` with scope `"repo"` ranks chunks of the files git lists
+(tracked, or untracked and not ignored) from an index nodwyn keeps beside
+the project's notes, in its data directory (`projects/<key>/index`), never
+in the repository. Its first search builds it, reading every file through
+the same guarded `fs-read` as any read, so each read is in the task's log
+as a guard decision, and the build adds an `index.update` record of what it
+read, skipped and was refused; later searches read again only the files
+that changed. Nothing is asked during a build: a file the guard would ask
+about is left out and named. The index holds words and line numbers, not
+text, and a worktree shares its repository's. `index-update` builds it all
+at once or adds a directory git ignores. For nodwyn itself, 712 files took
+1.3 seconds to index and 6.5 MB on disk. Deleting the directory loses
+nothing; the next search builds it again (ADR 50,
+[memory and retrieval](memory.md)).
 
 ### Instructions in AGENTS.md
 

@@ -458,6 +458,14 @@ one with `Prompt.Egress` set and no `Path`, so it offers no standing
 answer; with `allow` there is none, and with `deny` the tool is refused. `doc-export`'s confirm is
 a write's: `Prompt.Path` is its target.
 
+An `index.update` event records a build or refresh of the repository's
+index (ADR 50): the tree's `root`, the `files` it holds, how many it `read`
+and `removed`, how many it `skipped` (not a regular file, too large,
+binary or protected), the paths the guard `refused`, how many were left
+`unread` when its time ran out, whether it is `partial`, and `ms`; never
+content. Each file it read has its own `guard.decision`. No client shows
+it.
+
 A `jev.req` event records one judge request: the tool, its origin, the
 content level, the redacted payload's size and hash, the redactions, the
 answer, and, when an answer came back, the `model` that answered and its

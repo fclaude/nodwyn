@@ -124,6 +124,16 @@ func sweepScratch(root string) {
 // dataDir/projects/<hash of the repository's path>/notes.md, outside the
 // repository so they never reach its diff; "" without a data directory.
 func notesFile(dataDir, repo string) string {
+	if dir := projectDir(dataDir, repo); dir != "" {
+		return filepath.Join(dir, "notes.md")
+	}
+	return ""
+}
+
+// projectDir is where nodwyn keeps what is a repository's across sessions,
+// outside it: dataDir/projects/<hash of the repository's path>, its notes
+// and its index (ADR 50); "" without a data directory.
+func projectDir(dataDir, repo string) string {
 	if dataDir == "" || repo == "" {
 		return ""
 	}
@@ -132,5 +142,5 @@ func notesFile(dataDir, repo string) string {
 		abs = repo
 	}
 	sum := sha256.Sum256([]byte(config.CanonicalPath(abs)))
-	return filepath.Join(dataDir, "projects", hex.EncodeToString(sum[:8]), "notes.md")
+	return filepath.Join(dataDir, "projects", hex.EncodeToString(sum[:8]))
 }

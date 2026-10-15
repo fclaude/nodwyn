@@ -90,9 +90,11 @@ Requires Go 1.26 or newer (ADR 33). `make lint` builds its `staticcheck`
 from the module (`go.mod`'s `tool`), so nothing else needs installing.
 
 Text search (`index-grep`) uses the shared guard and produces session-scoped
-results. The model also searches its own conversation by words
-(`index-search`) and brings an earlier event back whole (`recall`), elided
-and folded results included, from the log. See
+results. The model also searches by words (`index-search`): the
+repository, from an index of the files git lists that nodwyn keeps in its
+data directory and refreshes as files change (`index-update`), and its own
+conversation, bringing an earlier event back whole (`recall`), elided and
+folded results included, from the log. See
 [memory and retrieval](docs/memory.md) for their limits.
 
 ## Run

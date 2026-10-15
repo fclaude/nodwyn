@@ -157,7 +157,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindEgressCheck): log.EgressCheck{}, string(log.KindGatePlan): log.GatePlan{}, string(log.KindPlanStep): log.PlanStep{}, string(log.KindJevReq): log.JevReq{},
 		string(log.KindCredRegister): log.CredRegister{}, string(log.KindCredRefresh): log.CredRefresh{}, string(log.KindMCPEgress): log.MCPEgress{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
 		string(log.KindRunState): log.RunState{}, string(log.KindRunTurn): log.RunTurn{}, string(log.KindRunCheckpoint): log.RunCheckpoint{},
-		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{}, string(log.KindAttach): log.Attach{}, string(log.KindDocUpload): log.DocUpload{},
+		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{}, string(log.KindAttach): log.Attach{}, string(log.KindDocUpload): log.DocUpload{}, string(log.KindIndexUpdate): log.IndexUpdate{},
 		string(log.KindSessionTitle): log.SessionTitle{}, string(log.KindSessionArchive): log.SessionArchive{}, string(log.KindSessionModel): log.SessionModel{}, string(log.KindSessionJudge): log.SessionJudge{}, string(log.KindSessionDelegates): log.SessionDelegates{}, string(log.KindSessionLimits): log.SessionLimits{},
 		string(log.KindWorktreeCreate): log.WorktreeChange{}, string(log.KindWorktreeRestore): log.WorktreeChange{}, string(log.KindWorktreeRemove): log.WorktreeChange{},
 		string(log.KindRedact): struct {

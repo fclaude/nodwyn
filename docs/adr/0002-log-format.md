@@ -260,3 +260,16 @@ running and working time, which a turn a crash cut off leaves to nobody.
 Nothing reads the earlier order: the recovery result
 still discharges the interrupted call for a later resume, and the model's
 transcript receives it before the next turn's message either way.
+
+## Amendment — 2026-10-15: `index.update`
+
+`index.update` records one build or refresh of a working tree's
+repository index (ADR 50): the tree's root, the files the index holds
+after it, how many it read and removed, how many it skipped (not a
+regular file, too large, binary or protected), the paths the guard
+refused, how many it left to read when its time ran out, whether the tree
+has more than an index holds, and how long it took. Each file it read
+also has its own `guard.decision`; this sums them, as the person asked
+for both. A search that read or removed nothing records none; an
+`index-update` call always records one. Never content. The window ignores
+it, and a binary older than it cannot read a log that holds one.

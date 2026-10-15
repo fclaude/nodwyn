@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -104,11 +106,12 @@ func TestModelSearchesAndRecallsItsConversation(t *testing.T) {
 		t.Fatalf("no match: %q", got)
 	}
 	for src, msg := range map[string]string{
-		`(index-search "frobnicator" "repo")`:   "not built yet",
-		`(index-search "! ?" "conversation")`:   "no words",
-		`(recall 1)`:                            "is not a message, a reply or a tool result",
-		`(recall 999999)`:                       "there is no seq 999999",
-		fmt.Sprintf("(recall %d 9 1)", readSeq): "past the end",
+		`(index-search "frobnicator" "earlier")`:               "not built yet",
+		`(index-search "frobnicator" "conversation" 8 "docs")`: "not of the conversation",
+		`(index-search "! ?" "conversation")`:                  "no words",
+		`(recall 1)`:                                           "is not a message, a reply or a tool result",
+		`(recall 999999)`:                                      "there is no seq 999999",
+		fmt.Sprintf("(recall %d 9 1)", readSeq):                "past the end",
 	} {
 		if _, err := r.s.Eval(t.Context(), src); err == nil || !strings.Contains(err.Error(), msg) {
 			t.Errorf("%s: %v, want an error saying %q", src, err, msg)
@@ -198,5 +201,71 @@ func TestRecallReadsAResumedTasksWholeLog(t *testing.T) {
 	}
 	if strings.Contains(found.S, "in the compaction's context") {
 		t.Fatalf("a compaction is not an agent's context: %q", found.S)
+	}
+}
+
+// The model searches the repository: the index lives with the project's
+// notes, every file it read has its guard decision and the build a summary
+// in the log, and the model reads the result redacted (ADR 50).
+func TestModelSearchesTheRepository(t *testing.T) {
+	t.Parallel()
+	const canary = "sk-ant-abcdefgh1234"
+	srv := fake.NewT(t,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s", Name: "index-search", Args: map[string]any{"query": "binding checker host", "scope": "repo"}}}},
+		fake.Turn{Content: "done"},
+	)
+	o := diskOptions(t)
+	o.Provider = llm.NewOllama(srv.URL)
+	if err := os.WriteFile(filepath.Join(o.Repo, "egress.go"), []byte("package egress\n\n// checkBinding refuses a key the binding does not name for the host: "+canary+"\nfunc checkBinding() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.Send("where is the binding checked?"); err != nil {
+		t.Fatal(err)
+	}
+	(&rig{t: t, s: s}).drain("n")
+	request := srv.Requests[1].Raw
+	if !bytes.Contains(request, []byte("egress.go:1-4: package egress")) || !bytes.Contains(request, []byte("[REDACTED")) || bytes.Contains(request, []byte(canary)) {
+		t.Fatalf("the model's view of the search: %s", request)
+	}
+	raw, err := os.ReadFile(log.SessionPath(o.Paths.SessionsDir, s.ID()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := log.Read(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var built *log.IndexUpdate
+	reads := 0
+	for _, ev := range events {
+		switch ev.Kind {
+		case log.KindIndexUpdate:
+			var u log.IndexUpdate
+			if ev.Decode(&u) == nil {
+				built = &u
+			}
+		case log.KindGuardDecision:
+			if bytes.Contains(ev.Payload, []byte(`"prim":"fs-read"`)) && bytes.Contains(ev.Payload, []byte("egress.go")) {
+				reads++
+			}
+		}
+	}
+	if built == nil || built.Read < 1 || built.Root != config.CanonicalPath(o.Repo) {
+		t.Fatalf("the build's summary: %+v", built)
+	}
+	if reads < 2 {
+		t.Fatalf("%d guarded reads of egress.go: the build's and the result's", reads)
+	}
+	if bytes.Contains(raw, []byte(canary)) {
+		t.Fatal("the credential reached the log")
+	}
+	trees, _ := filepath.Glob(filepath.Join(projectDir(o.Paths.DataDir, s.project()), "index", "trees", "*.json"))
+	if len(trees) != 1 {
+		t.Fatalf("the index is not with the project's notes: %v", trees)
 	}
 }

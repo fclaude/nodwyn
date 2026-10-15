@@ -164,8 +164,8 @@ names them, so `ScrubEnv` matches `scrub` and `index-grep` matches `grep`,
 and events are ranked by BM25: more of the query's words, and rarer ones,
 rank first, and a result's call counts three times its output. Each event
 found shows its three lines that hold the most of the words, numbered as
-`recall` numbers them. The only scope is `"conversation"`: the repository
-and earlier tasks are not built.
+`recall` numbers them. The other scope is the repository's (below);
+earlier tasks are not built.
 
 `recall` returns one of those events as the log recorded it, already
 redacted, under a heading naming it (`seq 812, the result of shell-exec
@@ -186,5 +186,64 @@ carry `external:log` provenance, as `session-events`'s do. A log of
 gigabytes (ADR 49) would make that first build slow and the index large;
 none is that size yet.
 
-Across sessions, a repository keeps only its project notes (`project-notes`, docs/scheme.md); searching earlier tasks (ADR 50) is not built, and there is no semantic index.
+## The repository index
+
+`index-grep` reads every candidate file on every call and keeps nothing.
+`index-search` with scope `"repo"` ranks chunks of the repository's files
+from an index nodwyn keeps (ADR 50):
+
+```scheme
+(index-search "credential binding check egress" "repo")        ; the best 8
+(index-search "deploy" "repo" 20 "docs")                       ; only docs/
+(index-update)                                                ; build it all now
+(index-update "third_party")                                  ; add an ignored directory
+```
+
+Which files: those git lists, tracked or untracked and not ignored (in
+`.nodwyn/` only tracked ones, so other sessions' worktrees and attachments
+never enter); without git, the walk `index-grep` does. `index-update path`
+adds a directory or file of the repository whole, git's ignores
+notwithstanding, from then on. A repository's `.gitignore` is written by
+whoever commits to it, a stranger's clone included; it can only narrow
+what is indexed, since every file enters through the guard. At most 20,000
+files and 128 MiB of text a tree; a file over 1 MiB, binary or not UTF-8
+is skipped, and past the limits a search says the index holds only part.
+
+How a file enters: through `fs-read`, so the pin, the denylist, a
+project's `register-check` checkers and the turn's limits apply, and each
+read logs its `guard.decision`. A read the guard would ask about is not
+asked (`guard.WithoutAsking`): the file is left out and named, as one it
+refuses is. The text is redacted as the log redacts a tool result, then cut
+into chunks: a chunk starts at a line beginning a declaration or a heading
+in its first column, once the chunk before has 20 lines, and has at most
+80. What is stored is each chunk's line numbers and its words with their
+counts, never text.
+
+Where: `projects/<key>/index` in nodwyn's data directory, beside the
+project's notes, so the model's file tools cannot reach it and a clone
+cannot write it. A file's chunks are stored once under the hash of its
+redacted text, so the worktrees and branches of a repository share them; a
+manifest per working tree records each file's size, modification time,
+inode and hash, updated under a lock and renamed into place. All of it is
+derived: deleting the directory loses nothing.
+
+Fresh: every search first reads again, for at most 10 seconds, the files
+whose size, time or inode changed, and drops the ones gone; the first search
+builds the index (nodwyn's 712 files took 1.3 seconds, and a search about
+90 milliseconds, on the computer this was written on). `index-update`
+reads for up to 60 seconds a call and goes on at the next, removes the
+manifests of working trees that are gone and chunks no tree has named for
+seven days. A build or refresh that read or removed a file records an
+`index.update` (an `index-update` call always does): files, read,
+removed, skipped, refused, left to read; never content.
+
+What a search shows is read from the file again, through `fs-read` and the
+whole guard: `path:A-B: first line`, then the chunk's three lines holding
+the most of the words, numbered as in the file. A refusal there is the
+answer, and drops the file from the index. Ranking is BM25 over the words,
+with the path and a chunk's first line counted three times. There are no
+embeddings: they wait for a model to make them (ADR 50, the person's
+answer 1).
+
+Across sessions, a repository keeps its project notes (`project-notes`, docs/scheme.md) and its index (above); searching earlier tasks (ADR 50) is not built, and there is no embedding index.
 That is not a claim made by this P10 implementation.

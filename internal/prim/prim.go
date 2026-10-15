@@ -5,6 +5,7 @@
 package prim
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/guard"
+	nlog "github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
 	"github.com/fclaude/nodwyn/internal/scheme"
 )
@@ -53,6 +55,15 @@ type Options struct {
 	// Keeper keeps the changes as they stood at a passing test run, for a
 	// turn that a hard limit stops (keep.go); nil keeps nothing.
 	Keeper *Keeper
+	// IndexDir is where the project's repository index lives, in nodwyn's
+	// data directory and shared by the project's sessions (ADR 50); ""
+	// keeps none, and offers no index-update. IndexRecord records the
+	// summary of each build or refresh (index.update).
+	IndexDir    string
+	IndexRecord func(nlog.IndexUpdate)
+	// Conversation searches the session's conversation, index-search's
+	// other scope, which the core keeps (ADR 50); nil for none.
+	Conversation func(ctx context.Context, query string, limit int) (string, error)
 
 	// P3 egress (all optional; nil disables the egress primitives — bootstrap
 	// has none). The guard's E3 checker enforces the binding table before any
@@ -108,6 +119,7 @@ func Register(in *scheme.Interp, o Options) error {
 	}
 	pin := guard.RepoPin{Root: o.Root, Scratch: o.Scratch, Mounts: o.Mounts}
 	prims := []*scheme.Prim{fsRead(o, pin), fsWrite(o, pin), fsEdit(o, pin), fsList(o, pin), indexGrep(o, pin), fsFind(o, pin), shellExec(o), docExport(o, pin)}
+	prims = append(prims, indexPrims(o, pin)...)
 	if isGitWorkTree(o.Root) {
 		prims = append(prims, gitPrims(o, pin)...)
 		if o.Worktree != nil {

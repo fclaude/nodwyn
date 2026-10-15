@@ -56,7 +56,7 @@
 
 (define second-look-tools
   (filter (lambda (t) (guard (e (else #f)) (primitive-info t) #t))
-          '("fs-read" "fs-list" "index-grep" "fs-find")))
+          '("fs-read" "fs-list" "index-grep" "index-search" "fs-find")))
 
 (define (second-look-ask system task)
   (let ((rounds sub-agent-max-rounds))
