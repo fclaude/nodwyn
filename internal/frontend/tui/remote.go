@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 
+	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/frontend/rpc"
 	"github.com/fclaude/nodwyn/internal/log"
@@ -41,9 +42,10 @@ func (r *remote) subscribe(ctx context.Context, info rpc.SessionDetails) (snapsh
 	if err := r.client.Call(ctx, "session.subscribe", map[string]any{"id": info.ID, "limit": 100}, &sub); err != nil {
 		return snapshot{}, err
 	}
-	result := snapshot{ID: info.ID, Repo: info.Repo, Busy: sub.Busy, History: sub.Page.Events, Pending: sub.Pending}
+	result := snapshot{ID: info.ID, Repo: info.Repo, Project: info.Repo, Busy: sub.Busy, History: sub.Page.Events, Pending: sub.Pending}
 	if info.Worktree != nil {
 		result.Branch = info.Worktree.Branch
+		result.Project = config.CanonicalPath(info.Worktree.Repository)
 	}
 	page := sub.Page
 	for page.More {

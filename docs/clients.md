@@ -18,8 +18,8 @@ nodwyn has four ways in, over one core:
   `devices`, `run`, `summary`, `eval`, `repl`).
 
 This page records what each one can do as of 2026-10-15 (the judge choice,
-ADR 47, a task's helpers, ADR 27, and a task without turn limits, ADR 49,
-included), so work on a
+ADR 47, a task's helpers, ADR 27, a task without turn limits, ADR 49, and
+retrieval, ADR 50, included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -52,6 +52,8 @@ it can see the thing but not change it.
 | Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` | `nodwyn eval`, `nodwyn repl` |
 | Thinking | inline, folded | `:thinking` toggles it | `--show-thinking` | `replay --show-thinking` |
 | Tool calls | grouped into one Activity row per stretch between replies | one line per call; `:details` expands them | a card per call | — |
+| Retrieval calls said in words (`index-search` and where it searched, `recall` and its seq, `index-update`; ADR 50) | yes, folded as looks (`searched 3 times · recalled 1 event · updated the index`) | yes | yes | `replay` |
+| An index build or refresh (`index.update`) | a line under the call that made it | a line under the call | a line | `replay` |
 | Usage per reply (tokens, cache share, cost) | yes | yes | yes | — |
 | Rendered markdown | yes | — (deliberate: plain text in a terminal) | — | — |
 | Attach a file (ADR 22) | yes, the composer's paperclip (staged upload) | yes, `:attach PATH` | not built | — |
@@ -102,6 +104,7 @@ it can see the thing but not change it.
 | Kept versions of a file, restore (`versions.*`, `session.restore`) | yes, Changes | not built | — | `nodwyn versions`, `nodwyn undo` |
 | Recorded write approvals, attachments list | yes, Changes | the conversation only | the conversation only | `replay` |
 | Project notes (`notes.read`, `session.notes.write`) | yes, Workspace | not built | — | — |
+| The repository index: what it holds, and forgetting it (`index.status`, `index.forget`; ADR 50) | yes, Workspaces (a folder's line and **Forget the index**) and a task's Workspace tab | yes, `:index`, `:index forget` | — | delete `projects/<key>/index` in the data directory |
 
 ## The model's terminal (ADR 48, experimental and temporary)
 
@@ -147,7 +150,7 @@ needs.
 | Credentials, OAuth2 sign-in | Connections › Credentials | — | — | `nodwyn credential` |
 | Keychain: create, unlock, passphrase | Settings › Keys & devices, and beside a provider form that needs it | unlocks at start | unlocks at start | `nodwyn keychain` |
 | Named workspaces and mounts | Workspaces | — | — | edit `workspaces.toml` |
-| Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor | not built (ADR 50) | — | edit `workspaces.toml` (`earlier_tasks = true`) |
+| Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor; a task's Workspace tab says which | yes, `:earlier`, `:earlier on`, `:earlier off` | — | edit `workspaces.toml` (`earlier_tasks = true`) |
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
 | Pair and revoke devices | yes, on this computer | — | — | `nodwyn devices` |
 

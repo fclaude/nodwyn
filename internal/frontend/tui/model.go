@@ -28,6 +28,7 @@ type model struct {
 	backend                                      backend
 	reconnect                                    func(context.Context) (backend, error)
 	repo, id                                     string
+	project                                      string // the folder retrieval keeps for (snapshot.Project)
 	branch                                       string // the session's own, in a git worktree
 	sessions                                     []rpc.SessionInfo
 	selected                                     int
@@ -75,6 +76,9 @@ type nextResult struct {
 type actionResult struct {
 	prompt, kind string
 	err          error
+	// done is what the status line says when it worked, for an action no
+	// log record reports (a folder's setting, not the session's).
+	done string
 }
 type reconnectResult struct {
 	backend  backend
@@ -144,11 +148,12 @@ func (m *model) action(kind, prompt string, work func(context.Context) error) te
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 		defer cancel()
-		return actionResult{prompt, kind, work(ctx)}
+		return actionResult{prompt: prompt, kind: kind, err: work(ctx)}
 	}
 }
 func (m *model) restore(s snapshot) {
 	m.id, m.repo, m.branch, m.busy, m.active = s.ID, s.Repo, s.Branch, s.Busy, true
+	m.project = s.Project
 	m.loading, m.disconnected = false, false
 	m.lastSeq = 0
 	m.gauge = contextGauge{}
@@ -302,7 +307,7 @@ func (m *model) actionFinished(msg actionResult) {
 		}
 		m.status = "Request failed: " + safe(msg.err.Error()) + ". Inspect state before retrying."
 	} else {
-		m.status = ""
+		m.status = msg.done
 	}
 	if msg.kind == "reply" {
 		m.clearPrompt(msg.prompt)
@@ -460,6 +465,8 @@ func (m *model) submit() tea.Cmd {
 		return m.chooseModel(fields[1:])
 	case fields[0] == ":judge":
 		return m.chooseJudge(fields[1:])
+	case fields[0] == ":earlier" || fields[0] == ":index":
+		return m.retrieval(fields)
 	case fields[0] == ":attach":
 		return m.attachFile(strings.TrimPrefix(strings.TrimSpace(text), ":attach"))
 	case text == ":q" || text == ":quit" || text == ":exit":
@@ -548,6 +555,38 @@ func (m *model) chooseJudge(args []string) tea.Cmd {
 		_, err := b.SetJudge(ctx, id, name)
 		return err
 	})
+}
+
+// retrieval runs :earlier on, :earlier off and :index forget, which change
+// what the session's project keeps for the model's searches (ADR 50); with
+// no argument they are views (isInspectorCommand).
+func (m *model) retrieval(fields []string) tea.Cmd {
+	b, project := m.backend, m.project
+	if project == "" {
+		project = m.repo
+	}
+	var done string
+	var work func(context.Context) error
+	switch strings.Join(fields, " ") {
+	case ":earlier on", ":earlier off":
+		on := fields[1] == "on"
+		done = "Earlier tasks in " + filepath.Base(project) + ": " + map[bool]string{true: "the model may search them from its next call.", false: "not searched from the model's next call."}[on]
+		work = func(ctx context.Context) error { return b.SetEarlierTasks(ctx, project, on) }
+	case ":index forget":
+		done = "Forgot the repository index of " + filepath.Base(project) + ": the next search builds it again."
+		work = func(ctx context.Context) error { return b.ForgetIndex(ctx, project) }
+	default:
+		m.status = "usage: :index shows the repository index, :index forget deletes it; :earlier shows whether earlier tasks are searched, :earlier on or :earlier off changes it"
+		return nil
+	}
+	m.composer.Reset()
+	m.operations++
+	m.working = true
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+		defer cancel()
+		return actionResult{kind: "retrieval", err: work(ctx), done: done}
+	}
 }
 
 // attachFile adds the file the rest of the line names. It runs beside the

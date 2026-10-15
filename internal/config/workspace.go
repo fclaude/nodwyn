@@ -15,10 +15,10 @@ import (
 // A workspace (ADR 22 §1) is a root directory plus a mount table: the
 // folders outside it a session there may use. The table is the person's,
 // kept with the workspace's name in workspaces.toml in the config directory,
-// which only the console on this computer writes and no model can reach: a
-// folder holds no settings of its own, so a repository someone else commits
-// cannot widen what a session there may read or write (ADR 22, amended
-// 2026-10-03). A folder nobody named has no mounts.
+// which only the console and the TUI on this computer write and no model
+// can reach: a folder holds no settings of its own, so a repository someone
+// else commits cannot widen what a session there may read or write (ADR 22,
+// amended 2026-10-03). A folder nobody named has no mounts.
 
 // Mount is a directory outside the root a workspace may use.
 type Mount struct {
@@ -237,6 +237,25 @@ func SaveRegistered(path string, entry Registered) (Registered, error) {
 	r.Workspace = append(r.Workspace, entry)
 	r.Forgotten = slices.DeleteFunc(r.Forgotten, func(folder string) bool { return folder == entry.Path })
 	return entry, writeRegistry(path, r)
+}
+
+// SetEarlierTasks turns searching the earlier tasks of the folder at root on
+// or off (ADR 50 §9), keeping its name and mounts; a folder nobody named is
+// named after itself, as the console names one.
+func SetEarlierTasks(path, root string, on bool) (Registered, error) {
+	list, err := LoadRegistry(path)
+	if err != nil {
+		return Registered{}, err
+	}
+	root = CanonicalPath(root)
+	entry := Registered{Name: filepath.Base(root), Path: root}
+	for _, r := range list {
+		if CanonicalPath(r.Path) == root {
+			entry = r
+		}
+	}
+	entry.EarlierTasks = on
+	return SaveRegistered(path, entry)
 }
 
 // RemoveRegistered forgets even an unnamed folder, without touching its files

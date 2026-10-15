@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/event"
 	"github.com/fclaude/nodwyn/internal/prim"
 )
@@ -381,5 +382,46 @@ func TestWorkspaceSaveKeepsEarlierTasksUnlessGiven(t *testing.T) {
 	}
 	if info := save(map[string]any{"name": "renamed", "earlier_tasks": false}); info.EarlierTasks {
 		t.Fatal("not turned off")
+	}
+}
+
+// index.status describes a folder's repository index once a task built it,
+// and index.forget deletes it (ADR 50).
+func TestIndexStatusAndForget(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	code := t.TempDir()
+	if err := os.WriteFile(filepath.Join(code, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status := func() core.IndexInfo {
+		t.Helper()
+		var info core.IndexInfo
+		if err := json.Unmarshal(c.ok("index.status", map[string]any{"repo": code}), &info); err != nil {
+			t.Fatal(err)
+		}
+		return info
+	}
+	if info := status(); info.Files != 0 || info.Trees != 0 || info.Bytes != 0 {
+		t.Fatalf("no index yet: %+v", info)
+	}
+	var details sessionDetails
+	json.Unmarshal(c.ok("session.open", map[string]any{"repo": code}), &details)
+	c.ok("session.subscribe", map[string]any{"id": details.ID})
+	eval(c, details.ID, "(index-update)")
+	if result := finishEval(t, c); !strings.Contains(result.Value, "The index holds 1 files") {
+		t.Fatalf("index-update: %+v", result)
+	}
+	if info := status(); info.Files != 1 || info.Trees != 1 || info.Bytes == 0 || info.Updated.IsZero() {
+		t.Fatalf("after a build: %+v", info)
+	}
+	c.ok("index.forget", map[string]any{"repo": code})
+	if info := status(); info.Files != 0 || info.Bytes != 0 {
+		t.Fatalf("after forgetting: %+v", info)
+	}
+	if r := c.call("index.status", map[string]any{"repo": "relative"}); r.Error == nil {
+		t.Fatal("a relative path was accepted")
 	}
 }

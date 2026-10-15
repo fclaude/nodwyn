@@ -910,6 +910,9 @@ details.box > summary { cursor: pointer; font-weight: 500; margin-bottom: 8px; }
 .ws-row { align-items: flex-start; }
 .ws-row .main span { white-space: normal; }
 .ws-row .main .ws-count { color: var(--faint); }
+.ws-row .main .ws-index { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--ink-2); }
+.ws-row .main .ws-index:empty { display: none; }
+.call-body .index-update { margin: 0 0 6px; color: var(--ink-2); font-size: 12px; }
 .ws-row .end { flex-wrap: wrap; justify-content: flex-end; }
 .ws-row .confirm-text { flex-basis: 100%; text-align: right; color: var(--ink-2); }
 select.input { height: 34px; padding: 0 8px; }

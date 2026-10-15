@@ -2,6 +2,7 @@ package plain
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"slices"
@@ -220,7 +221,7 @@ func (c *Chat) show(ev event.Event) {
 	case string(log.KindToolCall):
 		endStream()
 		p := ev.Payload.(log.ToolCallEvent)
-		fmt.Fprintf(c.Out, "▸ %s %s\n", p.Name, trim(string(p.Args), 200))
+		fmt.Fprintf(c.Out, "▸ %s %s\n", p.Name, callLine(p.Name, p.Args))
 	case string(log.KindToolResult):
 		endStream()
 		p := ev.Payload.(log.ToolResult)
@@ -229,9 +230,14 @@ func (c *Chat) show(ev event.Event) {
 		} else {
 			fmt.Fprintf(c.Out, "◂ %s error: %s\n", p.Name, p.Error)
 		}
+	case string(log.KindIndexUpdate):
+		endStream()
+		fmt.Fprintln(c.Out, IndexUpdateLine(ev.Payload.(log.IndexUpdate)))
 	case string(log.KindGuardDecision):
 		p := ev.Payload.(log.GuardDecision)
-		if p.Decision != "allow" {
+		// A file an index build left out without asking is named by its
+		// index.update line.
+		if p.Decision != "allow" && p.Actor != "not asked" {
 			endStream()
 			fmt.Fprintf(c.Out, "⚑ guard %s %s: %s", p.Decision, p.Prim, p.Reason)
 			if p.Answer != "" {
@@ -314,6 +320,15 @@ func (c *Chat) show(ev event.Event) {
 			fmt.Fprintln(c.Out, line)
 		}
 	}
+}
+
+// callLine is a call's arguments as line mode shows them: in words for the
+// tools CallSummary knows, otherwise as sent, cut.
+func callLine(name string, args json.RawMessage) string {
+	if s, ok := CallSummary(name, args); ok {
+		return s
+	}
+	return trim(string(args), 200)
 }
 
 // DocUploadSummary is the one line a transcript shows for a document sent
@@ -597,7 +612,7 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 				fmt.Fprintln(w, p.Content)
 			}
 			for _, tc := range p.ToolCalls {
-				fmt.Fprintf(w, "▸ %s %s\n", tc.Name, trim(string(tc.Args), 200))
+				fmt.Fprintf(w, "▸ %s %s\n", tc.Name, callLine(tc.Name, tc.Args))
 			}
 		case log.KindToolResult:
 			var p log.ToolResult
@@ -607,10 +622,14 @@ func Replay(events []log.Event, w io.Writer, showThinking bool) {
 			} else {
 				fmt.Fprintf(w, "◂ %s error: %s\n", p.Name, p.Error)
 			}
+		case log.KindIndexUpdate:
+			var p log.IndexUpdate
+			_ = ev.Decode(&p)
+			fmt.Fprintln(w, IndexUpdateLine(p))
 		case log.KindGuardDecision:
 			var p log.GuardDecision
 			_ = ev.Decode(&p)
-			if p.Decision != "allow" {
+			if p.Decision != "allow" && p.Actor != "not asked" {
 				fmt.Fprintf(w, "⚑ guard %s %s: %s %s\n", p.Decision, p.Prim, p.Reason, p.Answer)
 			}
 		case log.KindNote:

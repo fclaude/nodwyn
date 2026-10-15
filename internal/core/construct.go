@@ -286,8 +286,8 @@ func (s *Session) primitiveOptions() prim.Options {
 	// repository's index is the project's, so a worktree's session shares
 	// the repository's, beside its notes.
 	po.Conversation = s.searchConversation
-	if dir := projectDir(o.Paths.DataDir, s.project()); dir != "" {
-		po.IndexDir = filepath.Join(dir, "index")
+	if dir := indexDir(o.Paths.DataDir, s.project()); dir != "" {
+		po.IndexDir = dir
 		po.IndexRecord = func(u log.IndexUpdate) { _, _ = s.Record(log.KindIndexUpdate, u) }
 	}
 	po.BindingsPath = o.Paths.Bindings

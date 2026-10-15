@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
 	"github.com/fclaude/nodwyn/internal/log"
 )
 
@@ -70,7 +71,11 @@ func (card *toolCallView) render(details bool) string {
 	}
 	line := "⎿ " + name
 	if card.call != nil {
-		if summary := argSummary(card.call.Args); summary != "" {
+		summary, ok := plain.CallSummary(card.call.Name, card.call.Args)
+		if !ok {
+			summary = argSummary(card.call.Args)
+		}
+		if summary != "" {
 			line += "  " + summary
 		}
 	}
@@ -99,7 +104,19 @@ func (card *toolCallView) render(details bool) string {
 	}
 	if len(card.decisions) > 0 {
 		out.WriteString("  guard decisions during this call\n")
-		for _, d := range card.decisions {
+		for i := 0; i < len(card.decisions); i++ {
+			d := card.decisions[i]
+			// Allows in a row of one tool by one checker are one line: an
+			// index build's reads are hundreds of them (ADR 50).
+			same := 1
+			for i+same < len(card.decisions) && d.Decision == "allow" && sameAllow(d, card.decisions[i+same]) {
+				same++
+			}
+			if same > 1 {
+				indent(&out, fmt.Sprintf("%s · allow ×%d", d.Prim, same))
+				i += same - 1
+				continue
+			}
 			text := d.Prim + " · " + d.Decision
 			if d.Answer != "" {
 				text += " → " + d.Answer
@@ -143,13 +160,28 @@ func (card *toolCallView) state() string {
 	return fmt.Sprintf("✓ %s · %d ms", byteSize(len(card.result.Value)), card.result.Millis)
 }
 
+// sameAllow reports whether two allows are of one tool, by one checker, and
+// say nothing more: one line can stand for both.
+func sameAllow(a, b log.GuardDecision) bool {
+	return b.Decision == "allow" && a.Prim == b.Prim && a.Checker == b.Checker && a.Detail == "" && b.Detail == ""
+}
+
 // verdict is the last guard decision recorded against this call, which is
-// the one that let it run or stopped it.
+// the one that let it run or stopped it. An index build's reads of the
+// repository are its own work, not what let it run: a file one left out
+// does not make the search fail, and its index.update line names it.
 func (card *toolCallView) verdict() string {
-	if len(card.decisions) == 0 {
+	var last *log.GuardDecision
+	for i := range card.decisions {
+		d := &card.decisions[i]
+		if card.call != nil && plain.Indexing(card.call.Name) && d.Prim != card.call.Name && (d.Decision != "confirm" || d.Actor == "not asked") {
+			continue
+		}
+		last = d
+	}
+	if last == nil {
 		return ""
 	}
-	last := card.decisions[len(card.decisions)-1]
 	out := last.Decision
 	if last.Answer != "" {
 		out += "→" + last.Answer

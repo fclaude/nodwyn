@@ -257,8 +257,8 @@ With the person's leave for a project, `index-search` with scope
 ```
 
 The leave is `earlier_tasks` on the project's entry in `workspaces.toml`,
-which only the console on this computer writes (Connections › Workspaces,
-the folder's editor) and no model or repository can reach; it is read at
+which only the console and the TUI on this computer write (the folder's
+editor on Workspaces, `:earlier on`) and no model or repository can reach; it is read at
 every call, so turning it on or off counts at once, and off is the default.
 Which tasks: those whose project (`SessionInfo.Project()`) is this
 session's, so a worktree's tasks are its repository's; archived tasks are

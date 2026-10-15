@@ -270,6 +270,20 @@ config directory, never in the folder, so a folder someone else commits
 cannot mount anything (ADR 22). Mount changes apply to tasks started
 afterwards; already-open tasks keep what they loaded.
 
+**Retrieval** ([ADR 50](adr/0050-retrieval.md)). A folder's editor has
+**Let the model search the earlier tasks here**, off until ticked; it counts
+from each task's next call, open ones included, and a folder's row says when
+it is on. A folder whose repository index exists has a line saying what it
+holds (files, size, when it changed, how many working trees) with **Forget
+the index**, which deletes it until the next search builds it again; a
+paired device sees the line but not the button. A task's **Workspace** tab
+shows the same two things for its folder (**Search index**, **Earlier
+tasks**), and reads the index again each time the tab is opened. In the
+conversation the model's searches, recalls and index updates fold with its
+other looks and say what they did in words; a build of the index is a line
+under the call that made it, and the build's own reads of files never mark
+that call.
+
 **In a worktree.** Beside a git workspace, **In a worktree** is checked
 by default and starts the task in a git worktree of its own
 ([ADR 34](adr/0034-sessions-in-git-worktrees.md)): a checkout of the

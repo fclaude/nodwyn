@@ -38,12 +38,12 @@ type earlierLog struct {
 
 // earlierOff says how searching earlier tasks is turned on, to the model,
 // which can tell the person.
-const earlierOff = "searching earlier tasks is off for this project: a person can turn it on for %s in the console, Connections › Workspaces, on this computer"
+const earlierOff = "searching earlier tasks is off for this project: a person can turn it on for %s on this computer, on the console's Workspaces page or with :earlier on in the TUI"
 
 // earlierAllowed reads, now, whether the person lets the model search this
 // project's earlier tasks: workspaces.toml in the config directory, which
-// only the console on this computer writes and no model or repository can,
-// so turning it on or off counts from the next call.
+// only the console and the TUI on this computer write and no model or
+// repository can, so turning it on or off counts from the next call.
 func (s *Session) earlierAllowed() error {
 	ws, err := config.LoadWorkspace(config.RegistryFile(s.opts.Paths), s.project())
 	if err != nil {

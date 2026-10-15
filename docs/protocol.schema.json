@@ -448,6 +448,30 @@
       ],
       "type": "object"
     },
+    "core.IndexInfo": {
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "files": {
+          "type": "integer"
+        },
+        "trees": {
+          "type": "integer"
+        },
+        "updated": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "files",
+        "trees",
+        "bytes",
+        "updated"
+      ],
+      "type": "object"
+    },
     "core.JudgeState": {
       "properties": {
         "available": {
@@ -2913,6 +2937,12 @@
           "$ref": "#/$defs/request.hello"
         },
         {
+          "$ref": "#/$defs/request.index.forget"
+        },
+        {
+          "$ref": "#/$defs/request.index.status"
+        },
+        {
           "$ref": "#/$defs/request.keychain.create"
         },
         {
@@ -3353,6 +3383,68 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.helloParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.index.forget": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "index.forget"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.notesParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.index.status": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "index.status"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.notesParams"
             }
           ],
           "unevaluatedProperties": false
@@ -5525,6 +5617,14 @@
     },
     "result.hello": {
       "$ref": "#/$defs/rpc.helloResult"
+    },
+    "result.index.forget": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "result.index.status": {
+      "$ref": "#/$defs/core.IndexInfo"
     },
     "result.keychain.create": {
       "$ref": "#/$defs/rpc.keychainStatus"

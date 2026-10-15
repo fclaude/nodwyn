@@ -59,6 +59,8 @@ func contracts() map[string]methodContract {
 		"session.approve_all":      {approveAllParams{}, struct{}{}},
 		"attention.list":           {struct{}{}, []attentionItem{}},
 		"notes.read":               {notesParams{}, notesResult{}},
+		"index.status":             {notesParams{}, core.IndexInfo{}},
+		"index.forget":             {notesParams{}, struct{}{}},
 		"session.notes.write":      {notesWriteParams{}, inspectionStarted{}},
 		"models.status":            {struct{}{}, []modelStatus{}},
 		"models.offered":           {offeredParams{}, []string{}},

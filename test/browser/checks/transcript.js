@@ -65,6 +65,26 @@ check(async () => {
       t.end();
     }
     {
+      // An index build's reads (ADR 50): a file the guard left out without
+      // asking, or refused, does not mark the search, and what the build
+      // did is a line under it.
+      const { root, t } = fresh();
+      const id = call(t, "index-search", { query: "binding check", scope: "repo" });
+      t.render({ kind: "guard.decision", payload: { origin: "model", prim: "index-search", decision: "allow" } });
+      t.render({ kind: "guard.decision", payload: { origin: "model", prim: "fs-read", decision: "allow" } });
+      t.render({ kind: "guard.decision", payload: { origin: "model", prim: "fs-read", decision: "confirm", answer: "no", actor: "not asked", reason: "user checker secrets" } });
+      t.render({ kind: "guard.decision", payload: { origin: "model", prim: "fs-read", decision: "deny", reason: "user checker vault" } });
+      t.render({ kind: "index.update", payload: { root: "/r", files: 2, read: 2, refused: ["key.txt", "vault.txt"], ms: 1200 } });
+      done(t, id, "index-search", "[the 1 best]", 9);
+      const row = root.querySelector(".call");
+      out.indexBuild = {
+        args: row.querySelector(".args").textContent,
+        decision: row.querySelector(".stat").dataset.decision || "",
+        line: row.querySelector(".index-update")?.textContent || "",
+        what: root.querySelector(".activity .what").textContent,
+      };
+    }
+    {
       const { root, t } = fresh();
       const id = call(t, "git-log", { n: 3 });
       const decision = { origin: "model", prim: "shell-exec", decision: "allow", args: '("git" ("log" "--oneline" "-3"))' };
@@ -1075,6 +1095,8 @@ check(async () => {
     want(r.requests.length === 2 && r.requests[0].method === (state === "open" ? "session.subscribe" : "log.read") && r.requests[1].method === "log.read" && r.requests[1].params.after === 5 && r.requests[1].params.through === 12, `newerSessionReplayLoadsHistoryAndStatistics ${state}: fixed watermark paging: ${JSON.stringify(r.requests)}`);
   }
   want(replay.empty.loaded && !replay.empty.failed && replay.empty.empty === "Nothing has run yet." && Object.keys(replay.empty.rows).length === 0, `newerSessionReplayLoadsHistoryAndStatistics: genuinely empty history stays empty: ${JSON.stringify(replay.empty)}`);
+  const build = results.indexBuild;
+  want(build.args === "“binding check” in the repository" && build.decision === "" && build.line === "Index updated: read 2 files · left out by the guard: key.txt, vault.txt · holds 2 files · 1.2 s" && build.what === "searched once", `an index build's reads do not mark the search, and its line is under it: ${JSON.stringify(build)}`);
   const repeated = results.readWrapperRepeatedDecisions;
   want(!results.readWrapperDecisionError && repeated.nodes === 1 && repeated.command === 'shell-exec ("git" ("log" "--oneline" "-5"))' && repeated.active.includes(repeated.command) && repeated.finished, `read wrapper repeated decisions update one node and clear activity after result: ${JSON.stringify(repeated)}`);
   const delivered = results.newerSessionLiveAndReopenedStatisticsAgree;

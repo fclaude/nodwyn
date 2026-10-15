@@ -41,8 +41,8 @@ func isInspectorCommand(s string) bool {
 	switch fields[0] {
 	case ":log", ":bindings", ":replay", ":friction", ":tools", ":allow", ":plan", ":budget":
 		return true
-	case ":model", ":judge":
-		// With a name it is a choice, not a view.
+	case ":model", ":judge", ":index", ":earlier":
+		// With a name or an action it is a choice, not a view.
 		return len(fields) == 1
 	}
 	return false
@@ -76,6 +76,10 @@ func (m *model) inspect(command string) tea.Cmd {
 		return m.action("friction", "", func(ctx context.Context) error { return b.Send(ctx, id, frictionSource, true) })
 	}
 	b, id, gen, thinking := m.backend, m.id, m.generation, m.thinking
+	project := m.project
+	if project == "" {
+		project = m.repo
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
 		defer cancel()
@@ -98,6 +102,12 @@ func (m *model) inspect(command string) tea.Cmd {
 			view, err = b.Judges(ctx, id)
 			if err == nil {
 				content = formatJudges(view)
+			}
+		} else if kind == ":index" || kind == ":earlier" {
+			var view retrievalView
+			view, err = b.Retrieval(ctx, project)
+			if err == nil {
+				content = formatRetrieval(view)
 			}
 		} else if kind == ":bindings" || kind == ":allow" {
 			var policy policyView
@@ -251,6 +261,10 @@ const helpText = `Commands
 :model NAME [EFFORT]   Move the conversation to that model from its next turn.
 :judge                 The judge this task asks, and the judges set up.
 :judge NAME|none       Ask that judge, or none, from the next question.
+:index                 The repository index the model's searches read.
+:index forget          Delete it; the next search builds it again.
+:earlier               Whether the model may search this folder's other tasks.
+:earlier on|off        Let it, or stop it, from the model's next call.
 :attach PATH           Add a file to the conversation; an image asks first.
                        ~/ is home; a relative path is from where nodwyn started.
 :replay                Read-only transcript from the durable log.

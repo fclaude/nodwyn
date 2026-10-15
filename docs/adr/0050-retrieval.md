@@ -321,11 +321,12 @@ ADR 34 has it. Each result names the task, its date and the seq, which
 
 It is off unless the person allows it for the project, on this computer:
 `earlier_tasks = true` on the project's entry in `workspaces.toml`, the
-per-project registry in the configuration directory that only the console
-writes. A clone cannot write it and the model's tools cannot reach it. The
-switch is in the folder's editor on the console's Workspaces page, where
-its name and mounts are (`workspace.save`, which a paired device is
-refused, as Settings is, ADR 30); a save that does not name it keeps it,
+per-project registry in the configuration directory that the console and
+the TUI write on this computer. A clone cannot write it and the model's
+tools cannot reach it. The switch is in the folder's editor on the
+console's Workspaces page, where its name and mounts are (`workspace.save`,
+which a paired device is refused, as Settings is, ADR 30), and the TUI's
+`:earlier on` and `:earlier off`; a save that does not name it keeps it,
 so Home's naming of a folder and an older console never turn it off. It
 is read on each call, so it takes effect at once. Off, the scope answers
 that searching earlier tasks is off for this project and where a person
@@ -401,12 +402,20 @@ by what it does or under several possible names, search for the words with
 
 ### 12. Clients
 
-The model's calls show as tool calls in every client, as any tool's do.
-The console's Workspace tab shows the index (files, chunks, when updated,
-size, the share with vectors) with a button that forgets it (`index.status`,
-`index.forget`), and the switch of §9. Settings › Models has the
-embeddings choice of §10. The TUI, line mode and the CLI have none of
-these: not built, recorded in `docs/clients.md`.
+The model's calls show as tool calls in every client, with their arguments
+in words (`index-search “credential binding” in the repository`, `recall
+seq 812`, `index-update the whole repository`); the console folds them with
+its other looks (`searched 3 times · recalled 1 event · updated the index`).
+A build or refresh is a line under the call that made it, and the build's
+own reads never give that call its verdict. The console's Workspaces page
+shows each folder's index (files, size, when it changed, how many working
+trees) with **Forget the index** (`index.status`, `index.forget`, the second
+only on this computer), and a task's Workspace tab shows the same with
+whether earlier tasks are searched; the switch of §9 is in the folder's
+editor. The TUI has `:index`, `:index forget`, `:earlier` and `:earlier
+on|off`. Line mode shows the calls and the build lines, and has no
+commands for either. Settings › Models would have the embeddings choice of
+§10.
 
 ### 13. How it is judged
 
@@ -581,6 +590,41 @@ written field by field, without the flag); `internal/frontend/rpc`
 `TestWorkspaceSaveKeepsEarlierTasksUnlessGiven`; and the `firstrun`
 browser check, which ticks and unticks the box and checks the request,
 `workspaces.toml` and the folder's row after each save.
+
+## The clients made usable — 2026-10-15
+
+Run in the console against the browser demo, which now scripts a task
+that searches the repository, the conversation and earlier tasks, recalls
+an event and updates the index, the first build of the clients showed what
+did not read: `recall` and `index-update` folded as anonymous "calls", a
+search's line read `session row meta when running repo`, the conversation's
+results included nodwyn's prompts to its planner and explorer (which repeat
+the request and their instructions), and the task's Workspace tab kept the
+index as it was when the task opened. The TUI drew `recall`'s arguments as
+`60 1234 40` and gave an index build the verdict of its last file's read,
+`[confirm→no]` for a search that worked, with every read in its details;
+it and line mode dropped `index.update`. Now:
+
+- the conversation's index leaves out nodwyn's messages in a helper's
+  context (§8);
+- the clients say the calls as §12 does, the console and the TUI from the
+  same words (`callSummary` in transcript.js, `plain.CallSummary`);
+- `index.status` and `index.forget`, and the console and TUI views of §12;
+- a task's Workspace tab reads the index again when it is opened, or when
+  an `index.update` arrives;
+- the refusal of an earlier-tasks search names both the console's page and
+  the TUI's command.
+
+Tests: the `retrieval` browser check (the demo's task: the fold, each row,
+the build's line, no call marked; the Workspace tab; the Workspaces line,
+Forget and the request it sends; earlier tasks turned on showing in the
+task), a case in the `transcript` check (a build that left out one file and
+was refused another: the search unmarked, its line under it),
+`TestRetrievalCallsReadAsWords` and `TestRetrievalCommandsThroughBothBackends`
+in `internal/frontend/tui`, `TestRetrievalLinesLiveAndReplayed` in
+`internal/frontend/plain`, `TestIndexStatusAndForget` in
+`internal/frontend/rpc`, and the conversation case in
+`TestRecallReadsAResumedTasksWholeLog`.
 
 ## Not decided
 

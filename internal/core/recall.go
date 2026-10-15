@@ -129,6 +129,12 @@ func (c *conversation) add(ev log.Event) {
 		c.agents, agent = nil, ""
 		e.what = "the person's message"
 	case log.KindHarnessMsg:
+		if agent != "" {
+			// nodwyn's message in a helper's context is its prompt to the
+			// helper (the planner's task, the explorer's), which repeats
+			// the request and its own instructions: not the conversation.
+			return
+		}
 		e.what = "nodwyn's message"
 	case log.KindAttach:
 		var p log.Attach

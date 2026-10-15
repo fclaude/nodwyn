@@ -86,6 +86,30 @@ func (s *server) notesRead(req request, _ *peer) (any, *rpcError) {
 	return notesResult{text}, nil
 }
 
+// indexStatus describes a project's repository index (ADR 50), nodwyn's own
+// derived data, as notes.read reads its notes: no session needed.
+// indexForget deletes it; the next search builds it again.
+func (s *server) indexStatus(req request, _ *peer) (any, *rpcError) {
+	var p notesParams
+	if err := params(req.Params, &p, "repo"); err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(p.Repo, "/") {
+		return nil, failure(-32602, "repo must be an absolute path")
+	}
+	if req.Method == "index.forget" {
+		if err := core.ForgetProjectIndex(s.options.Paths.DataDir, p.Repo); err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		return struct{}{}, nil
+	}
+	info, err := core.ProjectIndex(s.options.Paths.DataDir, p.Repo)
+	if err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	return info, nil
+}
+
 // notesWrite replaces them through the session's guard, on the caller's
 // behalf; the outcome is a policy.result event named "notes".
 func (s *server) notesWrite(req request, client *peer) (any, *rpcError) {

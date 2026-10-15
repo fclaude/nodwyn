@@ -1,7 +1,7 @@
 // The pages that are not tasks: Connections and Workspaces (Settings is
 // settings.js). They show what the daemon reports; where it reports nothing
 // yet, they say so.
-import { h, icon, repoName, shortPath, ago, toast } from "./dom.js";
+import { h, icon, repoName, shortPath, ago, toast, sizeOf } from "./dom.js";
 import { chooseFolder, forgetFolder } from "./home.js";
 import { modelRows } from "./settings.js";
 import { renderCredentials } from "./credentials.js";
@@ -64,11 +64,35 @@ export function renderWorkspaces(root, ctx) {
         mounts.length ? h("span", {}, mounts.map((m) => `${shortPath(m.path, desk.home)} (${m.access === "write" ? "read and write" : "read only"})`).join(" · ")) : null,
         ws ? h("span", {}, ws.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the rest." : "Not a git repository: nodwyn keeps the previous version of a file before it changes it.") : null,
         ws?.earlier_tasks ? h("span", { class: "ws-earlier" }, "The model may search the earlier tasks here.") : null,
+        indexLine(folder),
         h("span", { class: "ws-count" }, count ? `${count.tasks} task${count.tasks === 1 ? "" : "s"} · ${ago(count.last)}` : "No tasks yet"),
       ),
       h("div", { class: "end" }, actions),
     );
     return editing === folder ? [node, editor(folder, ws)] : [node];
+  };
+  // indexLine says what the folder's repository index holds (ADR 50), read
+  // after the row is drawn, with a way to forget it: it is built again at
+  // the next search, so forgetting loses nothing but the time to build it.
+  const indexLine = (folder) => {
+    const line = h("span", { class: "ws-index" });
+    if (!conn.has("index.status")) return line;
+    conn.call("index.status", { repo: folder }).then((info) => {
+      if (!info.bytes) return;
+      const forget = conn.has("index.forget")
+        ? h("button", { type: "button", class: "btn small ghost", onclick: async () => {
+            try {
+              await conn.call("index.forget", { repo: folder });
+              toast("Forgot the search index. The next search builds it again.");
+            } catch (e) {
+              toast(e.message);
+            }
+            redraw();
+          } }, "Forget the index")
+        : null;
+      line.replaceChildren(`Search index: ${info.files} files · ${sizeOf(info.bytes)}${info.updated ? ` · updated ${ago(info.updated)}` : ""}${info.trees > 1 ? ` · ${info.trees} working trees` : ""}`, forget || "");
+    }).catch(() => {});
+    return line;
   };
   // editor names a folder and the folders outside it its tasks may use;
   // with no folder it adds one, and asks for its path first.

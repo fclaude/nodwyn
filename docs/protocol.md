@@ -522,6 +522,8 @@ can leave an unknown outcome. Inspect current state before retrying.
 |---|---|---|
 | `attention.list` | `{}` | Open sessions with pending prompts: `[{id, pending}]`, the same redacted descriptors `session.subscribe` returns |
 | `notes.read` | `{"repo":"/absolute/repository"}` | `{text}`: that repository's project notes; needs no session |
+| `index.status` | `{"repo":"/absolute/repository"}` | `{files, trees, bytes, updated}`: that repository's index (ADR 50), the files its own tree holds, how many working trees the project keeps one for, its size on disk and when the tree last changed; all zero for none. Needs no session; a paired device may read it |
+| `index.forget` | `{"repo":"/absolute/repository"}` | `{}`; deletes that repository's index, which the next search builds again. Only on this computer, as `workspace.save` is |
 | `session.notes.write` | `{"id":"SESSION_ID","text":"…"}` | `{operation_id}`; a `policy.result` event named `notes` reports the guarded save |
 | `models.status` | `{}` or `{"fresh":true}` | Each configured model: `name`, `server?`, `provider`, `model`, `host`, `state` (`ready`, `missing`, `unreachable`, `unconfigured`, `needs_key`, `locked`, `unbound`), `detail` (what to do about a state that is not `ready`); `fresh` asks every server now instead of taking what a check in the last 15 seconds found |
 | `models.test` | `{"name"}`, or `{"server","model"}`, and `{"effort"}` | `{ok, state, detail, model, effort?, cache_control?, status?, ms}` for one short request to the model, with that effort, through the same binding check a task's request passes: `ok`, `rejected`, `no_model`, `refused`, `limited`, `unreachable`, `error`, or the key states above before anything is sent |
@@ -745,7 +747,7 @@ its approved manifest; any other change needs approval again.
 `settings.model.write`, `settings.model.remove`, `models.test`,
 `settings.docs.write`, `settings.write`, `keychain.create`,
 `keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `session.model.set`, `session.judge.set`, `session.limits.set`, `workspace.save`,
-`workspace.active`, `workspace.remove`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
+`workspace.active`, `workspace.remove`, `index.forget`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
 `mcp.remove` and `mcp.pull` methods, and every `credentials.*` method but
 `credentials.list` are refused to a paired remote device in
 the web console (browser.md); `mcp.runtime` and `credentials.list` only read. The console never

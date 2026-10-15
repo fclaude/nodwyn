@@ -567,8 +567,8 @@ A named folder's entry in `workspaces.toml` gains `earlier_tasks`, off
 unless the person ticks it in the folder's editor on Workspaces: whether
 the model may search the folder's other tasks and recall their events
 (ADR 50 §9). It is the person's, as the mounts are: kept on this computer
-with the folder's name, written only through `workspace.save`, which a
-paired device is refused, and never in the folder, so a repository cannot
-turn it on. A save that does not name it keeps it. A session reads it at
+with the folder's name, written through `workspace.save`, which a paired
+device is refused, or the TUI's `:earlier`, and never in the folder, so a
+repository cannot turn it on. A save that does not name it keeps it. A session reads it at
 every call rather than at its start, so turning it on or off counts at
 once.

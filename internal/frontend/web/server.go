@@ -350,7 +350,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 func readOnly(method string) bool {
 	switch method {
 	case "hello", "session.list", "session.watch", "session.info", "session.subscribe", "session.unsubscribe", "log.read",
-		"attention.list", "notes.read", "models.status", "models.offered", "models.published", "run.info", "keychain.status", "settings.read",
+		"attention.list", "notes.read", "index.status", "models.status", "models.offered", "models.published", "run.info", "keychain.status", "settings.read",
 		"workspace.list", "workspace.forgotten", "versions.list", "versions.diff", "worktree.diff", "mcp.list", "mcp.runtime", "credentials.list":
 		return true
 	}
@@ -541,7 +541,7 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		return !remote
 	case "session.binding.create", "session.approve_all", "session.policy.write", "keychain.create", "keychain.unlock", "settings.control.write", "settings.docs.write", "settings.write",
 		"settings.provider.write", "settings.provider.remove", "settings.model.write", "settings.model.remove", "models.test",
-		"workspace.save", "workspace.active", "workspace.remove", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
+		"workspace.save", "workspace.active", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
 		return !remote
 	// Keys and the passphrase are typed here, and an OAuth2 provider sends
 	// the person back to a listener on this computer's loopback.

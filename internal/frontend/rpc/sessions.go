@@ -161,6 +161,8 @@ var methodTable = map[string]handler{
 	"session.list":             (*server).list,
 	"attention.list":           (*server).attentionList,
 	"notes.read":               (*server).notesRead,
+	"index.status":             (*server).indexStatus,
+	"index.forget":             (*server).indexStatus,
 	"session.notes.write":      (*server).notesWrite,
 	"models.status":            (*server).modelsStatus,
 	"models.offered":           (*server).modelsOffered,

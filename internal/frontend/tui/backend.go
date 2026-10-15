@@ -15,6 +15,9 @@ import (
 
 type snapshot struct {
 	ID, Repo string
+	// Project is the folder the session's notes, repository index and
+	// earlier tasks belong to: the repository of a worktree's session.
+	Project string
 	// Branch is the session's own branch when it works in a git worktree
 	// (ADR 34), which the title shows.
 	Branch  string
@@ -55,6 +58,12 @@ type backend interface {
 	Policy(context.Context, string) (policyView, error)
 	Tools(context.Context, string) ([]llm.Tool, error)
 	Budgets(context.Context, string) (budget.Limits, error)
+	// Retrieval says what a project keeps for the model's searches (ADR
+	// 50): its repository index, and whether its earlier tasks are
+	// searched, which SetEarlierTasks changes; ForgetIndex deletes the index.
+	Retrieval(context.Context, string) (retrievalView, error)
+	SetEarlierTasks(context.Context, string, bool) error
+	ForgetIndex(context.Context, string) error
 	Close()
 }
 
@@ -138,7 +147,7 @@ func (l *local) start(ctx context.Context, open func() (*core.Session, error)) (
 		l.session = s
 		l.mu.Unlock()
 	}
-	result := snapshot{ID: s.ID(), Repo: s.Repo(), History: history, Busy: s.Busy()}
+	result := snapshot{ID: s.ID(), Repo: s.Repo(), Project: s.Project(), History: history, Busy: s.Busy()}
 	if w := s.Worktree(); w != nil {
 		result.Branch = w.Branch
 	}

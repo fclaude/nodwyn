@@ -329,6 +329,10 @@ func (s *Session) project() string {
 	return s.opts.Repo
 }
 
+// Project is the folder the session's project keys on: what its notes, its
+// repository index and its earlier tasks belong to (ADR 34, ADR 50).
+func (s *Session) Project() string { return s.project() }
+
 // versionsDir is where the session keeps a file's previous content before
 // it writes (ADR 22 §2): the project's store, so a worktree's versions are
 // kept with its repository's, outside the worktree. They are nodwyn's undo,

@@ -242,6 +242,14 @@ func (m *model) consume(e rpc.ClientEvent) {
 		if err == nil {
 			m.append(plain.DocUploadSummary(p))
 		}
+	case string(log.KindIndexUpdate):
+		// Under the call that built or refreshed the index, which stays
+		// open for its result.
+		var p log.IndexUpdate
+		p, err = decode[log.IndexUpdate](e.Payload)
+		if err == nil {
+			m.append("  " + plain.IndexUpdateLine(p))
+		}
 	case string(log.KindHarnessMsg):
 		m.endToolInterval()
 		var p log.HarnessMsg

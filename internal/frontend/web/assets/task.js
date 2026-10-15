@@ -2,7 +2,7 @@
 // beside it, in tabs, the plan, this turn's budget, the changes, the
 // project notes and the workspace. Every figure comes from the log or from
 // session.info; a panel with no source says so instead of guessing.
-import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename } from "./dom.js";
+import { h, icon, repoName, shortPath, clock, minutes, ago, toast, basename, sizeOf } from "./dom.js";
 import { Transcript, planSteps, stepTitle, usd, contextGauge, judgeTally, spanWords } from "./transcript.js";
 import { askCard, shortcut, summary, parseDiff, splitDiff, diffView } from "./prompts.js";
 import { Attachments, attachmentChip } from "./attach.js";
@@ -43,6 +43,7 @@ export class TaskView {
     this.approveAllPending = null;
     this.limitsPending = undefined; // a limits choice sent and not yet answered
     this.notes = null;
+    this.index = null; // index.status: the project's repository index, or null when unknown
     this.asideScroll = new Map();
     // The project notes being edited, or null when they are not. Every
     // event redraws the side panel, so the field is drawn from here and
@@ -118,6 +119,7 @@ export class TaskView {
     this.approveAllPending = null;
     this.limitsPending = undefined;
     this.notes = null;
+    this.index = null;
     this.notesDraft = null;
     this.review = null;
     this.histories.clear();
@@ -164,7 +166,7 @@ export class TaskView {
       for (const event of pending) this.render(event);
       for (const event of this.queued) this.render(event);
       this.queued = [];
-      const details = Promise.all([item.open ? this.loadInfo() : null, this.loadNotes()]);
+      const details = Promise.all([item.open ? this.loadInfo() : null, this.loadNotes(), this.loadIndex()]);
       if (this.transcript.empty) this.el.transcript.prepend(h("p", { class: "hint", dataset: { placeholder: "1" } }, item.open ? "Nothing yet. Say what you want done." : "This task has no conversation."));
       this.el.transcript.scrollTop = this.el.transcript.scrollHeight;
       this.refreshAll();
@@ -260,6 +262,21 @@ export class TaskView {
       /* a closed session has no current details */
     }
   }
+  // loadIndex reads what the project's repository index holds (ADR 50),
+  // nodwyn's own data like the notes: the Workspace panel says so.
+  async loadIndex() {
+    if (!this.conn.has("index.status") || !this.item?.repo) return;
+    const version = this.version;
+    try {
+      const index = await this.conn.call("index.status", { repo: this.desk.project(this.item) });
+      if (version === this.version) {
+        this.index = index;
+        this.aside();
+      }
+    } catch {
+      this.index = null;
+    }
+  }
   async loadNotes() {
     if (!this.conn.has("notes.read") || !this.item?.repo) return;
     const version = this.version;
@@ -350,6 +367,8 @@ export class TaskView {
     // Limits turned off or on here or on another screen: the tick, the
     // heading and the budget follow.
     if (event.kind === "session.limits" && !this.loading && this.item?.open) this.loadInfo();
+    // The repository's index built or refreshed: the Workspace tab says so.
+    if (event.kind === "index.update" && !this.loading) this.loadIndex();
     if (event.kind === "session.start" || event.kind === "session.resume" || event.kind === "session.model") this.noteModel(event.kind, p);
     if (event.kind === "user.msg") this.modelChanged = false;
     switch (event.kind) {
@@ -1030,6 +1049,9 @@ export class TaskView {
             tabindex: i === at ? 0 : -1,
             onclick: () => {
               this.tab = t.id;
+              // The index changes outside the task (another task's search,
+              // Forget on Workspaces): read it again when it is looked at.
+              if (t.id === "workspace") this.loadIndex();
               this.aside();
             },
             onkeydown: (event) => this.tabKey(event),
@@ -1552,6 +1574,11 @@ export class TaskView {
     const rows = [h("div", { class: "kv" }, h("span", { class: "mono", title: item.repo }, shortPath(item.repo, this.desk.home)), h("span", {}, "write"))];
     for (const m of ws?.mounts || named?.mounts || []) rows.push(h("div", { class: "kv" }, h("span", { class: "mono", title: m.path }, shortPath(m.path, this.desk.home)), h("span", {}, m.access === "write" ? "write" : "read only")));
     if (tools) rows.push(h("div", { class: "kv" }, h("span", {}, "Tools"), h("span", {}, `${tools} offered to the model`)));
+    // Retrieval (ADR 50): what the model's searches of the repository read
+    // from, and whether it may search this folder's other tasks, which a
+    // person turns on for the folder on Workspaces.
+    if (this.index) rows.push(h("div", { class: "kv" }, h("span", {}, "Search index"), h("span", {}, this.index.files ? `${this.index.files} files · ${sizeOf(this.index.bytes)} · ${ago(this.index.updated)}` : "built at the first search")));
+    rows.push(h("div", { class: "kv", title: "Whether the model may search this folder's other tasks: turn it on or off for the folder on Workspaces." }, h("span", {}, "Earlier tasks"), h("span", { class: "earlier-tasks" }, named?.earlier_tasks ? "searched by the model" : "not searched")));
     if (this.info?.allowed_writes?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Writes without asking"), h("span", { class: "mono" }, this.info.allowed_writes.join(", "))));
     if (this.info?.allowed_commands?.length) rows.push(h("div", { class: "kv" }, h("span", {}, "Commands without asking"), h("span", {}, `${this.info.allowed_commands.length} prefixes`)));
     const w = item.worktree;

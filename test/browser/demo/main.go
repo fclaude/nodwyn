@@ -29,6 +29,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -453,6 +455,9 @@ func planStep(id string, step int, state, note string) fake.ToolCall {
 
 // respond is the scripted model. A request offering no tools is the planner;
 // otherwise the reply depends on how many tool rounds this ask has had.
+// recalled finds the first event a conversation search gave.
+var recalled = regexp.MustCompile(`\nseq (\d+), `)
+
 func respond(req fake.Request) fake.Turn {
 	// Recipe v15 (ADR 9 amended 2026-10-04) carries the person's request
 	// and the recorded plan as user messages under their headers
@@ -464,6 +469,7 @@ func respond(req fake.Request) fake.Turn {
 		planHeader = "Plan for the current task"
 	)
 	var last string
+	var results []string // the tool results since the request
 	rounds, images := 0, 0
 	for _, raw := range req.Messages {
 		var m struct {
@@ -476,13 +482,15 @@ func respond(req fake.Request) fake.Turn {
 		images += len(m.Images)
 		switch {
 		case m.Role == "user" && strings.HasPrefix(m.Content, taskHeader):
-			last, rounds = m.Content[len(taskHeader):], 0
+			last, rounds, results = m.Content[len(taskHeader):], 0, nil
 		case m.Role == "user" && strings.HasPrefix(m.Content, planHeader):
 			// The plan the turn is working: last and rounds stay.
 		case m.Role == "user" && !strings.HasPrefix(m.Content, "["):
 			last, rounds = m.Content, 0
 		case m.Role == "assistant" && len(m.ToolCalls) > 0:
 			rounds++
+		case m.Role == "tool":
+			results = append(results, m.Content)
 		}
 	}
 	time.Sleep(pace)
@@ -502,6 +510,31 @@ func respond(req fake.Request) fake.Turn {
 			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "c1", Name: "fs-list", Args: map[string]any{"path": "."}}, {ID: "c2", Name: "fs-read", Args: map[string]any{"path": "README.md"}}}}
 		}
 		return fake.Turn{Content: "## What's here\n\n- **README.md** — a one-line description\n- **app.js** — draws a session row\n- `notes/todo.md` — two open items\n\nNothing needed changing.", Chunk: 16}
+	}
+	if strings.HasPrefix(last, "Where") {
+		// Retrieval (ADR 50): the repository's index, the conversation and
+		// earlier tasks searched, an event of the conversation recalled by
+		// the seq its search gave, and the index brought up to date.
+		switch rounds {
+		case 0:
+			return fake.Turn{Thinking: "Search the code and what was said for the session list.", ToolCalls: []fake.ToolCall{
+				{ID: "s1", Name: "index-search", Args: map[string]any{"query": "session row meta when running", "scope": "repo"}},
+				{ID: "s2", Name: "index-search", Args: map[string]any{"query": "session list rows", "scope": "conversation"}},
+				{ID: "s3", Name: "index-search", Args: map[string]any{"query": "session list rows", "scope": "earlier"}},
+			}}
+		case 1:
+			seq := 1
+			for _, r := range results {
+				if m := recalled.FindStringSubmatch(r); m != nil {
+					seq, _ = strconv.Atoi(m[1])
+				}
+			}
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s4", Name: "recall", Args: map[string]any{"seq": seq}}}}
+		case 2:
+			return fake.Turn{ToolCalls: []fake.ToolCall{{ID: "s5", Name: "index-update", Args: map[string]any{}}}}
+		default:
+			return fake.Turn{Content: "The rows are drawn by `sessionRow` in app.js. Earlier tasks here are not searched until you turn that on for this folder on Workspaces.", Chunk: 20}
+		}
 	}
 	if strings.HasPrefix(last, "Draft") {
 		switch rounds {

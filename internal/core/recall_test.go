@@ -131,6 +131,7 @@ func TestRecallReadsAResumedTasksWholeLog(t *testing.T) {
 	longLog(t, o, id, 400, 395, func(write func(log.Kind, any)) {
 		write(log.KindUserMsg, log.UserMsg{Text: "plan the fix"})
 		write(log.KindContextNarrow, log.ContextNarrow{System: "explore", Agent: "explorer"})
+		write(log.KindHarnessMsg, log.HarnessMsg{Text: "Explore for the request: plan the fix of Gizmo"})
 		write(log.KindLLMResp, log.LLMResp{ToolCalls: []log.ToolCall{{ID: "e1", Name: "fs-read", Args: json.RawMessage(`{"path":"gizmo.go"}`)}}})
 		write(log.KindToolResult, log.ToolResult{ID: "e1", Name: "fs-read", OK: true, Value: "func Gizmo() {}"})
 		write(log.KindContextFold, log.ContextFold{})
@@ -170,6 +171,9 @@ func TestRecallReadsAResumedTasksWholeLog(t *testing.T) {
 	gizmo, err := s.Eval(t.Context(), `(index-search "Gizmo" "conversation")`)
 	if err != nil || !strings.Contains(gizmo.S, `the result of fs-read {"path":"gizmo.go"}, in the explorer's context`) {
 		t.Fatalf("a sub-agent's result: %q, %v", gizmo.S, err)
+	}
+	if strings.Contains(gizmo.S, "Explore for the request") {
+		t.Fatalf("nodwyn's prompt to a helper is not the conversation: %q", gizmo.S)
 	}
 	// A shell's result and a search's, one line of JSON each in the log,
 	// come back with lines: the shell's as the model read it, whole.

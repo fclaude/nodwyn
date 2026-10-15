@@ -10,11 +10,14 @@ import { attachmentChip } from "./attach.js";
 
 const readName = /(^|[-_/.])(read|list|find|grep|search|get|show|status|outline|log|diff|query|fetch|lookup|view|notes|events|info)([-_.]|$)/;
 const writes = new Set(["fs-write", "fs-edit", "doc-export"]);
+// Retrieval (ADR 50) only looks: recall reads the log back, and
+// index-update reads the repository into nodwyn's own index.
+const looks = new Set(["recall", "index-update"]);
 
 function category(name) {
   if (writes.has(name)) return "write";
   if (name === "shell-exec") return "command";
-  if (readName.test(name)) return "read";
+  if (readName.test(name) || looks.has(name)) return "read";
   return "other";
 }
 
@@ -25,15 +28,46 @@ function describe(counts) {
   if (counts.read) parts.push(n(counts.read, "read 1 file", "read # files"));
   if (counts.search) parts.push(n(counts.search, "searched once", counts.search === 2 ? "searched twice" : "searched # times"));
   if (counts.list) parts.push(n(counts.list, "listed 1 folder", "listed # folders"));
+  if (counts.recall) parts.push(n(counts.recall, "recalled 1 event", "recalled # events"));
+  if (counts.index) parts.push(n(counts.index, "updated the index", "updated the index # times"));
   if (counts.other) parts.push(n(counts.other, "1 other look", "# other looks"));
   if (counts.failed) parts.push(n(counts.failed, "1 failed", "# failed"));
   return parts.join(" · ");
 }
 function lookKind(name) {
+  if (name === "recall") return "recall";
+  if (name === "index-update") return "index";
   if (/grep|search|find|query|lookup/.test(name)) return "search";
   if (/list/.test(name)) return "list";
   if (/read|show|view|get|fetch/.test(name)) return "read";
   return "other";
+}
+
+// The calls that build or refresh the repository's index (ADR 50).
+const indexing = new Set(["index-search", "index-update"]);
+
+// indexLine says what an index.update did, in words.
+export function indexLine(p) {
+  const files = (n) => `${n} file${n === 1 ? "" : "s"}`;
+  const parts = [`read ${files(p.read || 0)}`];
+  if (p.removed) parts.push(`${p.removed} removed`);
+  if (p.skipped) parts.push(`${p.skipped} skipped`);
+  if (p.refused?.length) parts.push(`left out by the guard: ${p.refused.join(", ")}`);
+  if (p.unread) parts.push(`${files(p.unread)} still to read`);
+  if (p.partial) parts.push("the repository is larger than an index holds");
+  return `Index updated: ${parts.join(" · ")} · holds ${files(p.files || 0)} · ${((p.ms || 0) / 1000).toFixed(1)} s`;
+}
+
+// callSummary is a call's arguments in a line, said in words where a tool's
+// arguments read badly as values: a search names what it searched, a
+// recall the event and its task.
+const searched = { repo: "in the repository", conversation: "in this conversation", earlier: "in earlier tasks" };
+export function callSummary(name, args) {
+  const a = argsObject(args);
+  if (name === "index-search" && typeof a.query === "string") return [`“${a.query}”`, searched[a.scope] || a.scope, a.path ? `under ${a.path}` : ""].filter(Boolean).join(" ");
+  if (name === "recall" && a.seq != null) return [`seq ${a.seq}`, a.task ? `of task ${a.task}` : "", a.start ? `from line ${a.start}` : ""].filter(Boolean).join(" ");
+  if (name === "index-update") return a.path ? `adding ${a.path}` : "the whole repository";
+  return argSummary(args);
 }
 
 const targetKeys = ["path", "file", "dir", "pkg", "target", "url", "cmd", "name", "glob", "pattern", "query", "channel"];
@@ -466,6 +500,9 @@ export class Transcript {
       case "guard.decision":
         this.decision(p);
         break;
+      case "index.update":
+        this.indexUpdate(p);
+        break;
       case "tool.result":
         this.toolResult(p);
         break;
@@ -647,7 +684,7 @@ export class Transcript {
   }
   toolCall(p) {
     const kind = category(p.name);
-    const summaryText = argSummary(p.args);
+    const summaryText = callSummary(p.name, p.args);
     if (kind === "write") {
       // Writes in a row fold into "Edited", as reads fold into "Looked
       // around": the header counts distinct files, each write keeps its row
@@ -790,6 +827,10 @@ export class Transcript {
     else if (p.decision === "confirm" && p.scope === "all") text = "allowed: don't ask";
     else if (p.decision === "confirm" && p.actor === "setting") text = "allowed by Settings › Approvals";
     else if (p.decision === "confirm") text = p.answer === "yes" ? (p.scope && p.scope !== "once" ? `you allowed · ${p.scope}` : "you allowed once") : p.answer === "turn" ? "allowed for this turn" : "you denied";
+    // An index build reads every file through the guard: those reads are
+    // its own, summed by its index.update, and a file left out does not
+    // make the search fail. Only a question a person answered marks it.
+    if (c && p.origin === "model" && indexing.has(c.name) && p.prim !== c.name && !(p.decision === "confirm" && p.actor !== "not asked")) return;
     if (!c || p.origin !== "model") {
       // A decision outside a tool call (user-origin, a checker's own prompt)
       // is still audit history.
@@ -816,6 +857,14 @@ export class Transcript {
     if (c.note) c.note.textContent = text;
     else c.stat.dataset.decision = text;
     if (p.decision === "deny" && c.note) c.result.className = "result failed";
+  }
+  // indexUpdate puts what a build or refresh of the repository's index did
+  // under the call that made it (ADR 50); each read's own guard decision is
+  // in the log, not drawn.
+  indexUpdate(p) {
+    const c = this.call;
+    if (c?.body && indexing.has(c.name)) c.body.prepend(h("p", { class: "index-update" }, indexLine(p)));
+    else this.audit(indexLine(p), p);
   }
   toolResult(p) {
     let c = this.call;

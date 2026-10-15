@@ -54,7 +54,9 @@ the conversation gives, and a comment on the changes is a message.
 
 The conversation shows user and model text, tool calls/results, guard outcomes,
 plan scores, the steps the model marks done or skipped (`plan-step`),
-attachments, document uploads and evaluation output. After each reply a
+attachments, document uploads, a build or refresh of the repository's index
+(`[index updated: read 712 files · … · 1.3 s]`, under the call that made it)
+and evaluation output. After each reply a
 usage line gives its tokens and, when known, the share of the prompt read
 from the provider's cache, its cost, the model's time and the request's
 speed in tokens a second (`12,400→800 tok ·
@@ -135,6 +137,9 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 | `:model NAME [EFFORT]` | Move the conversation to that model from its next turn |
 | `:judge` | Show the judge this task asks and the judges set up |
 | `:judge NAME`, `:judge none` | Ask that judge, or none, from the task's next question |
+| `:index`, `:earlier` | Show the folder's repository index (files, size, when it changed) and whether the model may search its earlier tasks (ADR 50) |
+| `:index forget` | Delete the folder's repository index; the next search builds it again |
+| `:earlier on`, `:earlier off` | Let the model search the folder's other tasks, or stop it, from its next call; kept with the folder's name in `workspaces.toml`, as the console's Workspaces page keeps it |
 | `:attach PATH` | Add a file to the conversation; an image asks first |
 | `:allow` | Open the bindings/current approvals inspector |
 | `:help`, `:h` | Show available controls in a scrollable view |
@@ -159,6 +164,9 @@ and plain mode remain available.
 
 Each model tool call has one transcript group. By default it is one line: the
 tool's name, a summary of its arguments, the guard's verdict and its state.
+The retrieval tools' arguments are said in words, as the console says them:
+`index-search  “credential binding” in the repository`, `recall  seq 812 of
+task …`, `index-update  the whole repository` (ADR 50).
 `:details` expands every group to the call ID, formatted arguments, guard
 decisions and the full result or error, and collapses them again. The header reports the
 recorded result status and elapsed milliseconds. While awaiting a result it
@@ -174,7 +182,11 @@ separately with arguments marked unavailable. It never fabricates an execution.
 Guard records have no call ID. The group therefore labels them **guard decisions
 during this call**, using only model-origin records within the open call/result
 interval. This includes nested Scheme operations; it is not an inferred overall
-permission verdict. User-origin and out-of-interval decisions keep their existing
+permission verdict. Allows in a row of one tool by one checker are one line
+(`fs-read · allow ×712`): an index build reads every file through the guard.
+Those reads are the build's own work, so they do not give an `index-search`
+or `index-update` its verdict; a file one left out is named on the build's
+line instead. User-origin and out-of-interval decisions keep their existing
 standalone presentation. Pending approvals still replace the transcript and
 require an explicit answer.
 

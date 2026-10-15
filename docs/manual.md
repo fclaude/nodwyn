@@ -2401,7 +2401,15 @@ ones are gone. The choice is kept with the folder's name in
 `workspaces.toml` on this computer, never in the folder, and only this
 computer can change it, not a paired device. It counts from a task's next
 call, open tasks included; untick it to turn it off. Off, the model is told
-it is off and where you would turn it on, so it can ask you.
+it is off and where you would turn it on, so it can ask you. In the TUI,
+`:earlier on` and `:earlier off` do the same for the task's folder, and
+`:earlier` says which it is.
+
+The repository's index shows on the same page: a folder's row says how many
+files it holds, its size and when it last changed, with **Forget the
+index**, and a task's **Workspace** tab says the same for its folder (in the
+TUI, `:index` and `:index forget`). Forgetting loses nothing but the time
+the next search takes to build it again.
 
 ## Forgetting a folder in the console
 
