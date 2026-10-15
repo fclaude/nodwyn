@@ -462,6 +462,15 @@ type SessionDelegates struct {
 	Models []string `json:"models"`
 }
 
+// SessionLimits records whether a task's turns stop at the turn limits
+// (ADR 49): On false is a task a person let run as long as it needs, with no
+// limit on tool calls, tokens, actions or time; its spend limit still
+// applies. A task without one has its limits on. Resuming restores it.
+type SessionLimits struct {
+	Actor string `json:"actor,omitempty"`
+	On    bool   `json:"on"`
+}
+
 // TurnCheckpoint records a budget decision, including cancellation and the
 // unchanged hard ceiling. Text is redacted by the ordinary Record boundary.
 type TurnCheckpoint struct {

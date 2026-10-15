@@ -74,12 +74,24 @@ func (r *remote) Budgets(ctx context.Context, id string) (budget.Limits, error) 
 		return budget.Limits{}, err
 	}
 	limits := budget.Limits{ToolCalls: info.Budgets.ToolCalls, Tokens: info.Budgets.Tokens, Actions: info.Budgets.Actions, Wall: info.Budgets.Wall}
-	for _, limit := range []budget.Limit{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall} {
-		if limit.Soft <= 0 || limit.Hard < limit.Soft {
-			return budget.Limits{}, fmt.Errorf("daemon did not provide valid configured budget limits")
-		}
+	if err := checkTurnLimits(limits); err != nil {
+		return budget.Limits{}, err
 	}
 	return limits, nil
+}
+
+// checkTurnLimits refuses turn limits a daemon could not have configured.
+// A limit of 0 is none: a task whose limits a person turned off (ADR 49).
+func checkTurnLimits(limits budget.Limits) error {
+	for _, limit := range []budget.Limit{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall} {
+		if limit == (budget.Limit{}) {
+			continue
+		}
+		if limit.Soft <= 0 || limit.Hard < limit.Soft {
+			return fmt.Errorf("daemon did not provide valid configured budget limits")
+		}
+	}
+	return nil
 }
 func (l *local) History(ctx context.Context, id string) ([]log.Event, error) {
 	store := core.Store{Dir: l.options.Paths.SessionsDir}

@@ -65,6 +65,10 @@ type Options struct {
 	// 2026-10-09). None, the default, offers no such tool. A session resumed
 	// from a log that chose some takes them back, those config.toml still has.
 	Delegates *DelegateChoice
+	// Limits says whether the task's turns stop at the turn limits (ADR
+	// 49); nil is on. A session resumed from a log that chose takes that
+	// choice back.
+	Limits *LimitsChoice
 	// EventBuffer is the events channel capacity (default 256).
 	EventBuffer int
 	// LogWriter overrides the session log destination (tests).
@@ -102,6 +106,9 @@ func New(o Options) (*Session, error) {
 		secrets:   map[string]pendingSecret{},
 		judge:     initialJudge(o),
 		delegates: initialDelegates(o),
+	}
+	if o.Limits != nil && !o.Limits.On {
+		s.limitsOff, s.limitsActor = true, o.Limits.Actor
 	}
 	// The worktree comes first: it is the root everything else loads from
 	// (init.scm, allow.toml). A session that never starts
@@ -158,6 +165,11 @@ func New(o Options) (*Session, error) {
 		// The models the task may hand work to are recorded, so resuming it
 		// offers the same ones whatever the picker defaults to later.
 		_, err = s.Record(log.KindSessionDelegates, log.SessionDelegates{Actor: o.Delegates.Actor, Models: o.Delegates.Models})
+	}
+	if err == nil && s.limitsOff {
+		// A task opened with its limits off records it, so resuming it, as
+		// a schedule does for every run, keeps them off (ADR 49).
+		_, err = s.Record(log.KindSessionLimits, log.SessionLimits{Actor: s.limitsActor, On: false})
 	}
 	if c := s.opts.Model; err == nil && (c.Name != loop.ControlModel || s.effort != "") {
 		// A conversation opened on a chosen model, or asking for an effort,

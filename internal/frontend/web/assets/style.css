@@ -932,6 +932,8 @@ select.input { height: 34px; padding: 0 8px; }
 .dont-ask input { margin: 0; }
 .dont-ask.on { color: var(--warn-ink); }
 .dont-ask[hidden] { display: none; }
+/* Limits read as a warning when they are off, as Don't ask does when it is on. */
+.limits-toggle.on { color: var(--warn-ink); }
 .worktree-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
 .worktree-toggle input { margin: 0; }
 .branch { font-size: 12px; color: var(--muted); }

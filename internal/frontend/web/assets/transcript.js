@@ -556,6 +556,11 @@ export class Transcript {
         // (ADR 47), and who chose it.
         this.audit(p.server ? `Judge: ${p.server}${p.model ? ` · ${p.model}` : ""}${p.host ? ` at ${p.host}` : ""}` : "No judge: you answer the commands");
         break;
+      case "session.limits":
+        // The task's turn limits turned off or on (ADR 49): amber while its
+        // turns may run, and wait, as long as they need.
+        this.audit(p.on ? "Limits: on, turns stop at the limits in Settings" : "Limits: off, turns run as long as they need", p, p.on ? "" : "warn");
+        break;
       case "context.narrow":
         // A lasting narrowing, such as a compaction's, is where later turns
         // start; any other ends with its turn.

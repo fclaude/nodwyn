@@ -271,6 +271,14 @@ moves the checkpoint with it. At a checkpoint, \code{y} doubles the soft
 limit, \code{n} stops, and a number sets a new soft limit. Approvals and
 hard ceilings do not change.
 
+A task started in the console can do without the four turn limits (ADR 49):
+untick \textbf{Limits} on Home, or in the task between turns. Its turns then
+run, and wait for an answer, as long as they need; the spend limit, the
+timeouts and the progress guard still apply. \code{session.info} reports
+such a task with \code{limits: false} and a hard limit of 0, none, for the
+four, and the log records the choice as \code{session.limits}, which a
+resume keeps. A paired device cannot make it.
+
 After each reply the terminal shows what the request used:
 
 \begin{txt}

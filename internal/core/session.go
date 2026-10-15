@@ -86,6 +86,12 @@ type Session struct {
 	// delegate tool, chosen as it opened (ADR 27, amended 2026-10-09). The
 	// tool list is fixed for the session, so they are fixed too.
 	delegates []string
+	// limitsOff: the task's turns have no turn limits (ADR 49), as
+	// limitsActor chose; under mu, read as each turn starts. limitsMu
+	// serializes choices, so the log's last record is the one in effect.
+	limitsOff   bool
+	limitsActor string
+	limitsMu    sync.Mutex
 	// The plan a turn must record before it may do anything irreversible
 	// (SendPlanned; plan.go).
 	planRequired atomic.Bool
@@ -177,11 +183,15 @@ func (s *Session) Limits() budget.Limits {
 
 // limits computes a turn's budget; s.mu is held. The spend limit is the
 // task's: a soft limit raised at a checkpoint holds for later turns (and
-// each turn starts from what the earlier ones cost).
+// each turn starts from what the earlier ones cost). A task whose limits
+// are off keeps only that one (ADR 49).
 func (s *Session) limits() (budget.Limits, error) {
 	limits, err := s.opts.Config.Budget.Limits(s.opts.Config.Loop.MaxToolCalls)
 	if err != nil {
 		return budget.Limits{}, err
+	}
+	if s.limitsOff {
+		limits = withoutTurnLimits(limits)
 	}
 	if limits.Cost.Hard > 0 && s.costSoft > limits.Cost.Soft && s.costSoft <= limits.Cost.Hard {
 		limits.Cost.Soft = s.costSoft

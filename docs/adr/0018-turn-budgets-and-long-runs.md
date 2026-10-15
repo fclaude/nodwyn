@@ -1,6 +1,6 @@
 # ADR 0018: Turn budgets and long-running turns
 
-- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01; the run's plan carried across its turns 2026-10-02); amended by ADR 35 (soft limits off by default; the console starts only chats)
+- Status: accepted; implemented (turn budgets, checkpoints, progress guard and supervised driver 2026-09-22; unattended runs and judged approval 2026-10-01; the run's plan carried across its turns 2026-10-02); amended by ADR 35 (soft limits off by default; the console starts only chats) and ADR 49 (a task's turn limits can be off)
 - Date: 2026-09-21
 
 ## Context
@@ -488,3 +488,18 @@ its own tests accepted, and the work is collected as it lies.
   a scripted model and the real strategy; it fails with `keep-passing` taken
   out, as `TestRestoreKeptOnlyForAHardStopOfAnUnattendedTurn` covers which
   stops and sessions it applies to).
+
+## Amendment 2026-10-15: a task's turn limits can be off (ADR 49)
+
+§1's limits apply to every turn of every task unless this computer turns
+them off for one task: Home's **Limits** box as it starts, or the task's own
+between turns (`session.open {limits: false}`, `session.limits.set`). Off,
+the task's turns have no limit on tool calls, tokens, actions or time, so
+"The hard wall deadline includes model waits, tools, planning and
+confirmations" no longer stops a turn that waits all night for an answer.
+The spend limit, the timeouts and §3's progress guard stay. In the budget a
+hard limit of 0 is now none in every dimension, as it was for spend, and
+`budget.Start` sets no deadline without a wall limit; `config.toml` still
+requires positive turn limits. The choice is a `session.limits` record,
+kept on resume. A paired device can neither make the choice nor change it.
+Runs keep theirs: `session.limits.set` is refused during a run.

@@ -230,6 +230,17 @@ left unset follows its hard one. Legacy `loop.max_tool_calls` remains an explici
 At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
+In the console a task can do without the turn limits (ADR 49). **Limits**
+beside **In a worktree** on Home is ticked for every new task; untick it and
+that task's turns have no limit on tool calls, tokens, actions or time, so a
+turn may work, or wait for your answer, as long as it needs. Its spend limit,
+the request and command timeouts and the progress guard, which stops a turn
+that keeps repeating itself or failing, still apply. The task's heading says
+**No turn limits**, and **Limits** beside its model turns them on or off again
+from the next turn; the conversation says each change. The choice is kept
+when the task is resumed. Only this
+computer makes it: a paired phone's tasks start with their limits on.
+
 The console's Settings page changes these limits, the timeouts
 (`loop.request_timeout`, `loop.shell_timeout`), the window, the model
 providers and the models and efforts to choose between ("Choosing models"

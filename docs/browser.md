@@ -313,6 +313,20 @@ attachment is one), no commit its base lacks. Otherwise both stay, and
 resuming the task works in them again; a worktree that was removed is made
 again on resume.
 
+**Limits.** Beside **In a worktree**, **Limits** is ticked for every new
+task: its turns stop at the limits in Settings › General (tool calls, tokens,
+actions and time). Untick it and that task's turns have none of the four, so
+a turn may work, or wait for your answer, as long as it needs
+([ADR 49](adr/0049-scheduled-tasks.md)); the label turns amber while it is
+unticked. The spend limit, the timeouts and the progress guard still apply.
+Starting the task ticks it again for the next one. The task's heading then says
+**No turn limits**, Statistics' **This turn** says "no turn limits" and shows
+counts without bars, and Details › Budget says "no limit"; the conversation
+says when the limits went off or on, and who chose. **Limits** beside
+the task's model turns them on or off again, from its next turn; it is not
+offered during a run, which keeps the limits it started with. Only this
+computer has either box: a paired device's tasks start with their limits on.
+
 **The task list.** The sidebar puts what needs your answer first, across
 folders. Every other task is under its folder, newest activity first, and
 the folder whose task worked last comes first; the order follows as turns
@@ -474,7 +488,8 @@ kept file version, save project notes, read the policy files, see the
 credentials, and stop a run. Its tasks ask what Settings › Approvals, chosen
 on the computer nodwyn runs on, says they ask. It cannot start or resume a
 run that answers its own requests (unattended, judged, or saying yes), turn
-on "don't ask", save a credential binding,
+on "don't ask", turn a task's limits off or on (its tasks start with them on),
+save a credential binding,
 write a policy file, unlock or create the keychain or change its passphrase,
 add, replace, allow, authorize or remove a credential, change Settings, the
 model or how

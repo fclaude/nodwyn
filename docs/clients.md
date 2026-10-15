@@ -17,8 +17,9 @@ nodwyn has four ways in, over one core:
   `replay`, `versions`, `undo`, `credential`, `keychain`, `mcp`, `trust`,
   `devices`, `run`, `summary`, `eval`, `repl`).
 
-This page records what each one can do as of 2026-10-09 (the judge choice,
-ADR 47, and a task's helpers, ADR 27, included), so work on a
+This page records what each one can do as of 2026-10-15 (the judge choice,
+ADR 47, a task's helpers, ADR 27, and a task without turn limits, ADR 49,
+included), so work on a
 client starts from it instead of a fresh survey of the code. It does not
 replace the per-client docs. A change that gives one client something
 updates its row here in the same commit, and a gap is either **not built**,
@@ -65,6 +66,7 @@ it can see the thing but not change it.
 | Masked secret prompts | yes | yes | yes | — |
 | Budget checkpoints | yes | yes | yes | — |
 | Don't ask (`session.approve_all`) | yes, when Settings offers it | not built | `--yolo` at start | `nodwyn run --yolo` |
+| A task without turn limits (`limits`, `session.limits.set`, ADR 49) | yes: Home's **Limits** and the task's, on this computer | read: `:budget` says "no limit", and the conversation each change; not built: choosing it | not built: `--budget-*` set limits, none removes them | `nodwyn run`: not built, its run limits are its own |
 | Edit `allow.toml` (`session.policy.write`) | yes, the policy editor | deliberate gap: `:bindings` reads only | — | — |
 
 ## Models (ADR 40, ADR 41)

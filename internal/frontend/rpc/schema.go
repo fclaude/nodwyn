@@ -37,6 +37,7 @@ func contracts() map[string]methodContract {
 		"session.resume":           {idParams{}, sessionDetails{}},
 		"session.model.set":        {modelSetParams{}, core.ModelState{}},
 		"session.judge.set":        {judgeSetParams{}, core.JudgeState{}},
+		"session.limits.set":       {limitsSetParams{}, limitsState{}},
 		"session.info":             {idParams{}, sessionDetails{}},
 		"session.close":            {idParams{}, struct{}{}},
 		"session.rename":           {renameParams{}, struct{}{}},
@@ -157,7 +158,7 @@ func WireSchema() ([]byte, error) {
 		string(log.KindCredRegister): log.CredRegister{}, string(log.KindCredRefresh): log.CredRefresh{}, string(log.KindMCPEgress): log.MCPEgress{}, string(log.KindTurnCheckpoint): log.TurnCheckpoint{},
 		string(log.KindRunState): log.RunState{}, string(log.KindRunTurn): log.RunTurn{}, string(log.KindRunCheckpoint): log.RunCheckpoint{},
 		string(log.KindTurnEnd): log.TurnEnd{}, string(log.KindNote): log.Note{}, string(log.KindFileVersion): log.FileVersion{}, string(log.KindAttach): log.Attach{}, string(log.KindDocUpload): log.DocUpload{},
-		string(log.KindSessionTitle): log.SessionTitle{}, string(log.KindSessionArchive): log.SessionArchive{}, string(log.KindSessionModel): log.SessionModel{}, string(log.KindSessionJudge): log.SessionJudge{}, string(log.KindSessionDelegates): log.SessionDelegates{},
+		string(log.KindSessionTitle): log.SessionTitle{}, string(log.KindSessionArchive): log.SessionArchive{}, string(log.KindSessionModel): log.SessionModel{}, string(log.KindSessionJudge): log.SessionJudge{}, string(log.KindSessionDelegates): log.SessionDelegates{}, string(log.KindSessionLimits): log.SessionLimits{},
 		string(log.KindWorktreeCreate): log.WorktreeChange{}, string(log.KindWorktreeRestore): log.WorktreeChange{}, string(log.KindWorktreeRemove): log.WorktreeChange{},
 		string(log.KindRedact): struct {
 			Source uint64         `json:"source_seq"`

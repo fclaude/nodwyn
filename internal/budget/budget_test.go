@@ -285,3 +285,36 @@ func TestCachedPromptTokensCountATenth(t *testing.T) {
 		}
 	}
 }
+
+// A turn whose four limits are off (a task whose limits a person turned
+// off, ADR 49) has no deadline and asks nothing, however much it does; the
+// spend limit, which stays, still stops it.
+func TestLimitsOffLeaveOnlyTheSpendLimit(t *testing.T) {
+	limits := Limits{Cost: Limit{Micros(1), Micros(1)}}
+	ctx, turn, done := Start(context.Background(), limits, func(context.Context, Checkpoint) (Choice, error) {
+		t.Fatal("a turn with no limits asked to continue")
+		return Choice{}, nil
+	})
+	defer done()
+	if _, ok := ctx.Deadline(); ok {
+		t.Fatal("a turn with no wall limit has a deadline")
+	}
+	for i := 0; i < 1000; i++ {
+		if err := turn.ToolCall(ctx); err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+		if err := turn.Action(ctx, "f", ""); err != nil {
+			t.Fatalf("action %d: %v", i, err)
+		}
+	}
+	turn.AddTokens(math.MaxInt32, math.MaxInt32)
+	if err := turn.Check(ctx); err != nil {
+		t.Fatalf("tokens with no limit: %v", err)
+	}
+	cost := 2.0
+	turn.AddSpend(&cost, nil)
+	var stop *Stop
+	if err := turn.Finish(ctx); !errors.As(err, &stop) || !stop.Spend {
+		t.Fatalf("the spend limit did not stop a turn with no other limit: %v", err)
+	}
+}

@@ -52,6 +52,19 @@ func worktreeLine(kind log.Kind, p log.WorktreeChange) string {
 	}
 	return line
 }
+
+// limitsLine is a session.limits record in the conversation (ADR 49).
+func limitsLine(p log.SessionLimits) string {
+	line := "limits → off: turns run as long as they need"
+	if p.On {
+		line = "limits → on: turns stop at the configured limits"
+	}
+	if p.Actor != "" {
+		line += " · by " + p.Actor
+	}
+	return line
+}
+
 func decode[T any](raw json.RawMessage) (T, error) {
 	var p T
 	err := json.Unmarshal(raw, &p)
@@ -204,6 +217,12 @@ func (m *model) consume(e rpc.ClientEvent) {
 		p, err = decode[log.SessionJudge](e.Payload)
 		if err == nil {
 			m.append(judgeLine(p))
+		}
+	case string(log.KindSessionLimits):
+		var p log.SessionLimits
+		p, err = decode[log.SessionLimits](e.Payload)
+		if err == nil {
+			m.append(limitsLine(p))
 		}
 	case string(log.KindWorktreeCreate), string(log.KindWorktreeRestore), string(log.KindWorktreeRemove):
 		var p log.WorktreeChange

@@ -72,6 +72,11 @@ function pickJudge(name, desk) {
 // model alone.
 const pickedHelpers = new Set();
 
+// Whether the next task's turns stop at Settings' limits (ADR 49). Ticked by
+// default, and ticked again for each new task: running without them is a
+// choice made for one task, kept only across redraws of this page.
+let limitsOn = true;
+
 // helpersBox is the control for it: a fold that says how many are chosen, and
 // lists the other models with the labels each carries. The model the task
 // talks to is not offered, since it is the one delegating.
@@ -313,6 +318,25 @@ export function renderHome(root, ctx) {
         h("span", {}, "In a worktree"),
       )
     : null;
+  // Turning a task's limits off is this computer's choice, as Settings'
+  // limits are (ADR 49): a console that cannot reach session.limits.set,
+  // a paired device's, starts every task with them on and shows no box.
+  const limitsBox = conn.has("session.limits.set")
+    ? h(
+        "label",
+        { class: `worktree-toggle limits-toggle${limitsOn ? "" : " on"}`, title: "Stop each turn at the limits in Settings › General: tool calls, tokens, actions and time. Untick to let this task run, and wait for your answers, as long as it needs; its spend limit still applies." },
+        h("input", {
+          type: "checkbox",
+          id: "new-task-limits",
+          checked: limitsOn,
+          onchange: (event) => {
+            limitsOn = event.target.checked;
+            event.target.parentElement.classList.toggle("on", !limitsOn);
+          },
+        }),
+        h("span", {}, "Limits"),
+      )
+    : null;
   // The model and effort the task starts on. What is shown is what is sent.
   const picker = new ModelPicker("new-task-model");
   // The helpers on offer follow the model chosen, which is not one of them.
@@ -366,6 +390,8 @@ export function renderHome(root, ctx) {
           if (canJudge && pickedJudge !== null) params.judge = pickedJudge;
           // And the helpers ticked for this task, if any.
           if (canDelegate && pickedHelpers.size) params.delegates = [...pickedHelpers].sort();
+          // Limits are on unless unticked: only then is the choice sent.
+          if (limitsBox && !limitsOn) params.limits = false;
           const info = await conn.call(worktree() ? "worktree.open" : "session.open", params);
           opened = info.id;
           // An image waits for its own confirm, which the task's page shows.
@@ -377,6 +403,7 @@ export function renderHome(root, ctx) {
           pick(null, desk);
           pickJudge(null, desk);
           pickedHelpers.clear();
+          limitsOn = true;
           await desk.refresh();
           navigate(`#/task/${info.id}`);
         } catch (error) {
@@ -407,6 +434,7 @@ export function renderHome(root, ctx) {
       h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder")),
       attach,
       worktreeBox,
+      limitsBox,
       canChoose ? picker.el : h("span", { class: "where" }, where),
       helpersSlot,
       submit,

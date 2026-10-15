@@ -858,6 +858,14 @@ never approves a tool. The flags \code{--max-tool-calls},
 \code{--budget-wall}, \code{--budget-tokens} and \code{--budget-actions}
 set the hard limits for one invocation.
 
+In the console a task can do without these four (\adr{49}). Home's
+\textbf{Limits} is ticked for every new task; untick it and that task's turns
+run, and wait for your answers, as long as they need. Its heading then says
+\textbf{No turn limits}, and the task's own \textbf{Limits} turns them on
+or off again from its next turn. The spend limit below, the timeouts and the
+progress guard still apply. The choice is kept when the task is resumed, and
+only the computer nodwyn runs on makes it.
+
 A spend limit is yours to set, and off unless you do: \code{cost\_soft}
 and \code{cost\_hard} in \code{[budget]}, in US dollars, or
 \code{--budget-cost} for one session or run. It counts what the whole task

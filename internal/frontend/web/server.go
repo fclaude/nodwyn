@@ -529,6 +529,12 @@ func (b *bridge) allowed(method string, remote bool) bool {
 	// computer nodwyn runs on (ADR 30, ADR 40, ADR 47).
 	case "session.model.set", "session.judge.set":
 		return !remote
+	// A task's turn limits are what stops a turn nobody is watching, so
+	// lifting them stays with this computer too, as Settings' limits do
+	// (ADR 49); the daemon refuses limits: false in session.open from a
+	// device.
+	case "session.limits.set":
+		return !remote
 	// A log is the record of what a session did, devices included: only
 	// this computer removes one (ADR 39).
 	case "session.delete":

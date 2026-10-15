@@ -60,7 +60,7 @@ IDs are transport data and are echoed unchanged.
 | Method | Named parameters | Result |
 |---|---|---|
 | `session.list` | `{}` or omitted | Stored sessions, in ID order |
-| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"`, and `"delegates":["MODEL",…]` | Open-session details |
+| `session.open` | `{"repo":"/absolute/repository"}`, or with `"name"`, or `"server"` and `"model"`, and `"effort"`, and `"judge"`, and `"delegates":["MODEL",…]`, and `"limits":false` | Open-session details |
 | `worktree.open` | as `session.open` | Open-session details of a session in a new git worktree of `repo` |
 | `worktree.diff` | `{"id"}` | `{base,changes:[{path,status,diff}],omitted}`: what the open session changed in its worktree since its base commit |
 | `worktree.review` | `{"id","comments":[{"path","line"?,"text"}],"note"?}` | `{}`: sends the comments to the session as one message |
@@ -68,6 +68,7 @@ IDs are transport data and are echoed unchanged.
 | `session.info` | `{"id":"SESSION_ID"}` | Details of a session owned by this daemon |
 | `session.model.set` | `{"id":"SESSION_ID","name":"coder"}`, or `"server"` and `"model"`, and `"effort"` | The model and effort the conversation talks to now, and the choice queued behind a running turn |
 | `session.judge.set` | `{"id":"SESSION_ID","judge":"jev"}`, or `"judge":""` for none | The judge the task asks now |
+| `session.limits.set` | `{"id":"SESSION_ID","on":false}` | `{"on":false}`: whether the task's turns stop at the turn limits, from its next turn |
 | `session.close` | `{"id":"SESSION_ID"}` | `{}` after releasing the session writer |
 | `session.rename` | `{"id":"SESSION_ID","title":"…"}` | `{}` after recording the name; `""` takes it back |
 | `session.archive` | `{"id":"SESSION_ID","archived":true}` | `{}` after archiving a closed session, or bringing it back |
@@ -86,7 +87,11 @@ tool schemas) and `budgets`. Budgets contain `tool_calls`, `tokens`, `actions`,
 the task's spend limit in millionths of a US dollar, counted over the whole
 task rather than a turn; a `hard` of 0 is none. These are the
 configured limits, including the legacy tool-call override; this
-protocol does not expose live turn counters. Details also include
+protocol does not expose live turn counters. A `hard` of 0 is none in the
+other four too: a task whose turn limits are off reports `tool_calls`,
+`tokens`, `actions` and `wall_ns` as `{"soft":0,"hard":0}`, and its spend
+limit as configured. Details also include `limits`, false for such a task
+(ADR 49), and
 `allowed_commands`, `allowed_writes`, `turn_writes`, optional `turn_actor`,
 `approve_all` ("don't ask" is on), optional `approve_actor` (who turned it
 on) and `approve_all_offered` (Settings offers the switch,
@@ -159,6 +164,17 @@ list is, and recorded as a `session.delegates` event (`models`, `actor`), which
 resuming restores for the models `config.toml` still has. A paired device may
 not choose them (`-32602`). Session details report them as `delegates`, and
 each model in `settings.read`'s `choices` carries its `labels`.
+`limits: false` in `session.open` and `worktree.open` opens a task whose turns
+have no limit on tool calls, tokens, actions or time (ADR 49); left out, or
+`true`, they stop at the configured limits. The spend limit, the timeouts and
+the progress guard apply either way. `session.limits.set` turns an open task's
+turn limits on or off from its next turn: a turn running keeps the limits it
+started with. `on` is required. It is refused during a run (`-32000`). The
+choice, at open when it is off and at every change, is a `session.limits`
+event (`on`, `actor`), and resuming keeps the last one's. A paired device may
+not turn a task's limits off as it opens, nor change them: `limits: false`
+and `session.limits.set` are refused to it (`-32602`), and its tasks start
+with their limits on.
 Session details also contain `bindings`, a copied array of loaded metadata rows
 with `Class`, `Dest`, `Positions`, `Methods` and, when a row names them,
 `Scopes` (OAuth2 scopes the row allows, ADR 24) fields. No credential values are
@@ -713,7 +729,7 @@ its approved manifest; any other change needs approval again.
 `settings.control.write`, `settings.provider.write`, `settings.provider.remove`,
 `settings.model.write`, `settings.model.remove`, `models.test`,
 `settings.docs.write`, `settings.write`, `keychain.create`,
-`keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `session.model.set`, `session.judge.set`, `workspace.save`,
+`keychain.unlock`, `keychain.passphrase`, `session.binding.create`, `session.policy.write`, `session.model.set`, `session.judge.set`, `session.limits.set`, `workspace.save`,
 `workspace.active`, `workspace.remove`, the `mcp.inspect`, `mcp.save`, `mcp.approve`,
 `mcp.remove` and `mcp.pull` methods, and every `credentials.*` method but
 `credentials.list` are refused to a paired remote device in

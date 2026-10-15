@@ -62,6 +62,8 @@ check(async () => {
   // Where a task's content goes is chosen on the computer nodwyn runs on (ADR
   // 30, ADR 40): the phone is told the default model, and has no picker.
   assert.strictEqual(await page.$("#new-task-model-model"), null, "the phone is offered a model picker");
+  // Nor does it lift a task's limits (ADR 49): its tasks start with them on.
+  assert.strictEqual(await page.$("#new-task-limits"), null, "the phone is offered Limits on Home");
   await shows(page, ".ask-bar .where", "demo");
   await page.fill("#task", "The session list shows each session's first message. Make them easy to tell apart.");
   await page.click("button[aria-label='Start the task']");
@@ -79,6 +81,7 @@ check(async () => {
   assert.strictEqual(await page.isDisabled("#task-model-effort"), true, "the phone can change a task's effort");
   await shows(page, ".reply-opts .mp-notes", "chosen on the computer nodwyn runs on");
   assert.strictEqual(sent.of("session.model.set").length, 0, "the phone asked to change a model");
+  assert.strictEqual(await page.isVisible(".reply-opts .limits-toggle"), false, "the phone is offered a task's Limits");
   await page.screenshot({ path: `${out}/phone-approve.png` });
   await page.click(".ask-card .btn.accent");
   // The answered write folds into its Edited group, so the verdict sits

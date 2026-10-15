@@ -110,6 +110,10 @@ type sessionDetails struct {
 	// Delegates are the models the task's model may hand work to (ADR 27,
 	// amended 2026-10-09); none unless the task was opened with some.
 	Delegates []string `json:"delegates"`
+	// Limits says the task's turns stop at the turn limits; false is a task
+	// a person let run as long as it needs (ADR 49), whose Budgets then
+	// have a hard limit of 0, none, but for its spend limit.
+	Limits bool `json:"limits"`
 }
 
 func (s *server) details(session *core.Session) sessionDetails {
@@ -118,7 +122,8 @@ func (s *server) details(session *core.Session) sessionDetails {
 	limits := session.Limits()
 	trust, actor := session.TurnApproval()
 	all, allActor := session.ApproveAll()
-	return sessionDetails{Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge(), Delegates: orEmpty(session.Delegates())}
+	limitsOn, _ := session.LimitsOn()
+	return sessionDetails{Limits: limitsOn, Bindings: session.Bindings(), ID: session.ID(), Repo: session.Repo(), Busy: session.Busy() || s.sessions[session.ID()].driver.Active(), Tools: session.Tools(), Budgets: budgetInfo{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost}, Model: session.Model(), Commands: session.Allowed(), Writes: session.AllowedWrites(), TurnWrites: trust, TurnActor: actor, ApproveAll: all, ApproveActor: allActor, ApproveAllOffered: s.options.Config.Approval.DontAsk, Workspace: session.Workspace(), Git: isGit(session.Repo()), MCP: orEmpty(session.MCP()), Worktree: session.Worktree(), Judge: session.Judge(), Delegates: orEmpty(session.Delegates())}
 }
 
 func orEmpty[T any](list []T) []T {
@@ -202,6 +207,7 @@ var methodTable = map[string]handler{
 	"session.resume":           (*server).resume,
 	"session.model.set":        (*server).model,
 	"session.judge.set":        (*server).judge,
+	"session.limits.set":       (*server).limitsSet,
 	"session.info":             (*server).info,
 	"session.close":            (*server).closeSession,
 	"session.rename":           (*server).rename,
@@ -310,7 +316,7 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 // repository with a commit. Both take the same model choice (ADR 40).
 func (s *server) open(req request, client *peer) (any, *rpcError) {
 	var p openParams
-	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort", "judge", "delegates"); err != nil {
+	if err := params(req.Params, &p, "repo", "name", "server", "model", "effort", "judge", "delegates", "limits"); err != nil {
 		return nil, err
 	}
 	choice := core.ModelChoice{Name: p.Name, Server: p.Server, Model: p.Model, Effort: p.Effort, Actor: client.actor}
@@ -333,6 +339,13 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 		}
 		delegates = &core.DelegateChoice{Models: p.Delegates, Actor: client.actor}
 	}
+	var limits *core.LimitsChoice
+	if p.Limits != nil && !*p.Limits {
+		if why := deviceLimitsRefusal(client.actor); why != nil {
+			return nil, why
+		}
+		limits = &core.LimitsChoice{On: false, Actor: client.actor}
+	}
 	if !filepath.IsAbs(p.Repo) {
 		return nil, failure(-32602, "repo must be an absolute directory")
 	}
@@ -350,6 +363,7 @@ func (s *server) open(req request, client *peer) (any, *rpcError) {
 	options.Model = choice
 	options.Judge = judge
 	options.Delegates = delegates
+	options.Limits = limits
 	options.Worktree = req.Method == "worktree.open"
 	// Making a session can take a while (a worktree is checked out, with
 	// the repository's hooks and filters), so it is made without the
@@ -471,6 +485,45 @@ func (s *server) judge(req request, client *peer) (any, *rpcError) {
 		return nil, failure(-32000, err.Error())
 	}
 	return state, nil
+}
+
+// limitsSet is session.limits.set: a task's turn limits on or off, from its
+// next turn (ADR 49). The limits are what stops a turn nobody is watching,
+// so lifting them is this computer's act, as Settings' limits are (ADR 30);
+// a run keeps the limits it started with.
+func (s *server) limitsSet(req request, client *peer) (any, *rpcError) {
+	var p limitsSetParams
+	if err := params(req.Params, &p, "id", "on"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, failure(-32602, "id is required")
+	}
+	if why := deviceLimitsRefusal(client.actor); why != nil {
+		return nil, why
+	}
+	owned, ok := s.sessions[p.ID]
+	if !ok {
+		return nil, failure(-32002, "Session is not open in this daemon")
+	}
+	if owned.driver.Active() {
+		return nil, failure(-32000, "Stop the active run before changing the task's limits")
+	}
+	if err := owned.session.SetLimits(p.On, client.actor); err != nil {
+		return nil, failure(-32000, err.Error())
+	}
+	on, _ := owned.session.LimitsOn()
+	return limitsState{On: on}, nil
+}
+
+// deviceLimitsRefusal says why a paired device may not lift or change a
+// task's turn limits: a device answers a task's requests, it does not
+// decide how long a turn may run with nobody stopping it (ADR 30, ADR 49).
+func deviceLimitsRefusal(actor string) *rpcError {
+	if strings.Contains(actor, " via ") {
+		return failure(-32602, "A task's limits are chosen on the computer nodwyn runs on, not from a paired device")
+	}
+	return nil
 }
 
 // deviceModelRefusal says why a paired device may not choose the model a

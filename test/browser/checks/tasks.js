@@ -177,6 +177,49 @@ check(async () => {
   s = await settled("deleted after reload", (s) => folder(s, "receipts") && !folder(s, "receipts").tasks.includes("Receipt question 1") && folder(s, "receipts").tasks.includes("Receipts overview"));
   step("deleted");
 
+  // Limits (ADR 49): ticked on Home for every new task, and a task started
+  // with them ticked sends no choice. Unticked, the task opens with no turn
+  // limits, which the daemon then reports (the heading's badge comes from
+  // session.info), and the task's own tick turns them on again, and off,
+  // between turns; a reload reads them from the daemon again.
+  assert.ok(sent.of("session.open").length >= 6 && sent.of("session.open").every((p) => !("limits" in p)), `a task started with Limits ticked sent a choice: ${JSON.stringify(sent.of("session.open"))}`);
+  await page.evaluate(() => (location.hash = "#/"));
+  await page.waitForSelector("#new-task-limits");
+  assert.strictEqual(await page.isChecked("#new-task-limits"), true, "Limits starts unticked on Home");
+  await page.click(`button.chip[title="${repos.receipts}"]`);
+  await page.fill("#task", "Run as long as it needs");
+  await page.uncheck("#new-task-limits");
+  assert.ok(await page.$eval(".limits-toggle", (el) => el.classList.contains("on")), "unticked Limits does not read as a warning on Home");
+  await page.screenshot({ path: `${out}/tasks-limits-home.png` });
+  await page.press("#task", "Control+Enter");
+  await page.waitForFunction(() => location.hash.startsWith("#/task/"));
+  await idle();
+  const unlimited = sent.of("session.open").at(-1);
+  if (unlimited.repo !== repos.receipts || unlimited.limits !== false) await fail(`the task did not open with its limits off: ${JSON.stringify(unlimited)}`);
+  await page.waitForSelector("#no-limits");
+  const limitsTick = () => page.$eval(".limits-toggle:not(.worktree-toggle)", (el) => ({ shown: !el.hidden, checked: el.querySelector("input").checked, enabled: !el.querySelector("input").disabled }));
+  await until("the task's tick shows its limits off", async () => JSON.stringify(await limitsTick()) === JSON.stringify({ shown: true, checked: false, enabled: true }));
+  await page.screenshot({ path: `${out}/tasks-limits-off.png` });
+  await page.click(".limits-toggle:not(.worktree-toggle) input");
+  await until("the limits turned on", async () => !(await page.$("#no-limits")) && (await limitsTick()).checked && (await limitsTick()).enabled);
+  assert.deepStrictEqual(sent.of("session.limits.set"), [{ id: sent.of("session.send").at(-1).id, on: true }], "one choice, for this task");
+  await page.reload();
+  await ready();
+  await openTask("Run as long as it needs");
+  await until("the limits read from the daemon after a reload", async () => (await limitsTick()).checked && (await limitsTick()).enabled);
+  assert.strictEqual(await page.$("#no-limits"), null, "the badge came back after a reload with the limits on");
+  await page.click(".limits-toggle:not(.worktree-toggle) input");
+  await page.waitForSelector("#no-limits");
+  assert.deepStrictEqual(sent.of("session.limits.set").map((p) => p.on), [true, false], "the choices sent");
+  // Each choice, the one it opened with included, is a line in the
+  // conversation, read back from the log.
+  const limitsLines = () => page.$eval(".transcript", (el) => (el.textContent.match(/Limits: (on|off)/g) || []).join());
+  await until("the choices in the conversation", async () => (await limitsLines()) === "Limits: off,Limits: on,Limits: off").catch(async (e) => fail(`${e.message}: ${await limitsLines()}`));
+  await page.evaluate(() => (location.hash = "#/"));
+  await page.waitForSelector("#new-task-limits");
+  assert.strictEqual(await page.isChecked("#new-task-limits"), true, "Home kept Limits unticked for the next task");
+  step("a task's limits off from Home, then on and off again in the task");
+
   // A folded folder stays folded across a reload, in this browser.
   await page.click('.folder-head:has(.name:text-is("console"))');
   await settled("folded", (s) => !folder(s, "console").open && folder(s, "console").tasks.length === 0);

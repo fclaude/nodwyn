@@ -41,6 +41,7 @@ export class TaskView {
     this.info = null;
     this.infoVersion = 0; // only the newest session.info read may redraw this task
     this.approveAllPending = null;
+    this.limitsPending = undefined; // a limits choice sent and not yet answered
     this.notes = null;
     this.asideScroll = new Map();
     // The project notes being edited, or null when they are not. Every
@@ -115,6 +116,7 @@ export class TaskView {
     this.infoVersion++;
     this.switching = false;
     this.approveAllPending = null;
+    this.limitsPending = undefined;
     this.notes = null;
     this.notesDraft = null;
     this.review = null;
@@ -345,6 +347,9 @@ export class TaskView {
     // A model or effort chosen here or on another screen, or applied as a
     // response ended: the picker shows what the conversation has now.
     if ((event.kind === "session.model" || event.kind === "session.judge") && !this.loading && this.item?.open) this.loadInfo();
+    // Limits turned off or on here or on another screen: the tick, the
+    // heading and the budget follow.
+    if (event.kind === "session.limits" && !this.loading && this.item?.open) this.loadInfo();
     if (event.kind === "session.start" || event.kind === "session.resume" || event.kind === "session.model") this.noteModel(event.kind, p);
     if (event.kind === "user.msg") this.modelChanged = false;
     switch (event.kind) {
@@ -494,12 +499,21 @@ export class TaskView {
       h("input", { type: "checkbox", onchange: (event) => this.setApproveAll(event.target.checked) }),
       h("span", {}, "Don't ask: approve writes and commands"),
     );
+    // The task's turn limits (ADR 49): on unless this computer turned them
+    // off (session.limits.set, which a paired device's hello does not list).
+    // A change applies from the next turn.
+    const limits = h(
+      "label",
+      { class: "dont-ask limits-toggle", title: "Stop this task's turns at the limits in Settings › General: tool calls, tokens, actions and time. Untick to let them run, and wait for your answers, as long as they need; the spend limit still applies. A change applies from the next turn." },
+      h("input", { type: "checkbox", onchange: (event) => this.setLimits(event.target.checked) }),
+      h("span", {}, "Limits"),
+    );
     // The model and effort the next message is answered with, changeable
     // here at any time: while a response runs the change waits for its end.
     const picker = new ModelPicker("task-model", true);
     // The models this task's model may hand work to, chosen when it opened.
     const helpers = h("span", { class: "task-helpers", id: "task-helpers", hidden: true, title: "Chosen when the task started; labels can be edited in Settings › Models at any time" });
-    const opts = h("div", { class: "reply-opts" }, picker.el, helpers, dontAsk);
+    const opts = h("div", { class: "reply-opts" }, picker.el, helpers, dontAsk, limits);
     picker.el.hidden = true;
     const form = h(
       "form",
@@ -516,7 +530,7 @@ export class TaskView {
     const head = h("header", { class: "task-head" });
     this.root.replaceChildren(head, h("div", { class: "task-body" }, main, side));
     this.picker = picker;
-    this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk, helpers };
+    this.el = { head, transcript, reply, send, form, side, inspector, main, dontAsk, helpers, limits };
     this.transcript = new Transcript(transcript);
   }
   controls() {
@@ -554,6 +568,13 @@ export class TaskView {
     check.checked = !!approveAll;
     check.disabled = !this.info || this.switching || !this.conn.live;
     box.classList.toggle("on", check.checked);
+    // A run keeps the limits it started with; an older daemon reports none.
+    const limits = this.el.limits;
+    limits.hidden = !this.conn.has("session.limits.set") || !open || typeof this.info?.limits !== "boolean" || run?.status === "running";
+    const limitsCheck = limits.querySelector("input");
+    limitsCheck.checked = this.limitsPending ?? !!this.info?.limits;
+    limitsCheck.disabled = this.limitsPending !== undefined || !this.conn.live;
+    limits.classList.toggle("on", !limitsCheck.checked);
     this.drawModel();
   }
   // noteModel keeps what the log says the conversation talks to, which is all
@@ -686,6 +707,26 @@ export class TaskView {
       this.controls();
     }
   }
+  // setLimits turns the task's turn limits on or off from its next turn
+  // (ADR 49), drawing the choice at once and the daemon's answer after.
+  async setLimits(on) {
+    const id = this.item?.id;
+    if (!id || this.limitsPending !== undefined) return;
+    const version = this.version;
+    this.limitsPending = on;
+    this.controls();
+    try {
+      await this.conn.call("session.limits.set", { id, on });
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      if (version === this.version) {
+        await this.loadInfo();
+        this.limitsPending = undefined;
+        this.controls();
+      }
+    }
+  }
   async send() {
     if (this.el.send.disabled) return;
     const item = this.item,
@@ -783,6 +824,7 @@ export class TaskView {
       h("strong", {}, this.desk.folderName(this.desk.project(item))),
       h("span", { class: "mono" }, shortPath(this.desk.project(item), home)),
       item.worktree ? h("span", { class: "badge plain mono", title: `In its own git worktree at ${item.worktree.path}` }, icon("commit", 13), item.worktree.branch) : null,
+      item.open && this.info?.limits === false ? h("span", { class: "badge", id: "no-limits", title: "This task's turns have no limit on tool calls, tokens, actions or time; its spend limit still applies." }, "No turn limits") : null,
       item.started ? h("span", { class: "started" }, `· started ${sameDay(item.started) ? clock(item.started) : ago(item.started)}`) : null,
       !item.open && this.logModel ? h("span", { class: "started", id: "saved-model" }, `· ${this.logModel.model}${this.logModel.effort ? ` · ${effortLabel(this.logModel.effort)} effort` : ""}, as it was left`) : null,
       item.archived ? h("span", { class: "badge plain" }, "archived") : null,
@@ -1183,7 +1225,8 @@ export class TaskView {
     if (!turn) return null;
     // By default a soft limit is its hard one, so nothing asks first (ADR 35).
     const asks = budgets && ["tool_calls", "tokens", "actions", "wall_ns", "cost"].some((d) => budgets[d]?.soft < budgets[d]?.hard);
-    const panel = h("section", { class: "panel" }, h("h2", {}, "This turn", h("span", { class: "note" }, budgets ? (asks ? "asks before a limit" : "stops at a limit") : "counted from the log")));
+    const note = !budgets ? "counted from the log" : this.info?.limits === false ? "no turn limits" : asks ? "asks before a limit" : "stops at a limit";
+    const panel = h("section", { class: "panel" }, h("h2", {}, "This turn", h("span", { class: "note" }, note)));
     const meters = h("div", { style: "display:flex;flex-direction:column;gap:12px", dataset: { meters: "1" } });
     panel.append(meters);
     this.fillMeters(meters, turn);

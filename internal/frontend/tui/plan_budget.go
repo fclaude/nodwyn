@@ -121,6 +121,12 @@ func formatBudgets(limits budget.Limits, events []log.Event) (string, error) {
 		}{"cost", limits.Cost})
 	}
 	for _, row := range rows {
+		if row.limit.Hard == 0 {
+			// The task's limits are off (ADR 49): its turns run as long as
+			// they need.
+			fmt.Fprintf(&out, "%s · no limit\n", row.name)
+			continue
+		}
 		fmt.Fprintf(&out, "%s · soft %s · hard %s\n", row.name, budgetAmount(row.name, row.limit.Soft), budgetAmount(row.name, row.limit.Hard))
 	}
 	var g contextGauge

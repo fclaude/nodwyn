@@ -1942,6 +1942,20 @@
       ],
       "type": "object"
     },
+    "log.SessionLimits": {
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "on"
+      ],
+      "type": "object"
+    },
     "log.SessionModel": {
       "properties": {
         "actor": {
@@ -2699,6 +2713,9 @@
     "payload.session.judge": {
       "$ref": "#/$defs/log.SessionJudge"
     },
+    "payload.session.limits": {
+      "$ref": "#/$defs/log.SessionLimits"
+    },
     "payload.session.model": {
       "$ref": "#/$defs/log.SessionModel"
     },
@@ -2945,6 +2962,9 @@
         },
         {
           "$ref": "#/$defs/request.session.judge.set"
+        },
+        {
+          "$ref": "#/$defs/request.session.limits.set"
         },
         {
           "$ref": "#/$defs/request.session.list"
@@ -4352,6 +4372,37 @@
       ],
       "type": "object"
     },
+    "request.session.limits.set": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "session.limits.set"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.limitsSetParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
     "request.session.list": {
       "properties": {
         "id": {
@@ -5573,6 +5624,9 @@
     "result.session.judge.set": {
       "$ref": "#/$defs/core.JudgeState"
     },
+    "result.session.limits.set": {
+      "$ref": "#/$defs/rpc.limitsState"
+    },
     "result.session.list": {
       "items": {
         "$ref": "#/$defs/rpc.sessionInfo"
@@ -6487,6 +6541,32 @@
       ],
       "type": "object"
     },
+    "rpc.limitsSetParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "on"
+      ],
+      "type": "object"
+    },
+    "rpc.limitsState": {
+      "properties": {
+        "on": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "on"
+      ],
+      "type": "object"
+    },
     "rpc.mcpApproveParams": {
       "properties": {
         "manifest": {
@@ -7021,6 +7101,16 @@
             }
           ]
         },
+        "limits": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "model": {
           "type": "string"
         },
@@ -7487,6 +7577,9 @@
         "judge": {
           "$ref": "#/$defs/core.JudgeState"
         },
+        "limits": {
+          "type": "boolean"
+        },
         "mcp": {
           "items": {
             "$ref": "#/$defs/core.MCPServer"
@@ -7548,7 +7641,8 @@
         "git",
         "mcp",
         "judge",
-        "delegates"
+        "delegates",
+        "limits"
       ],
       "type": "object"
     },
@@ -9115,6 +9209,30 @@
             },
             "payload": {
               "$ref": "#/$defs/log.SessionJudge"
+            },
+            "seq": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "seq",
+            "payload"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "session.limits"
+            },
+            "payload": {
+              "$ref": "#/$defs/log.SessionLimits"
             },
             "seq": {
               "minimum": 0,

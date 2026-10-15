@@ -250,3 +250,38 @@ func TestBudgetViewSpend(t *testing.T) {
 		t.Fatalf("old log:\n%s", got)
 	}
 }
+
+// A task whose limits are off (ADR 49) reports a hard limit of 0 for the
+// four turn dimensions: the daemon's details are taken, not refused, and
+// :budget says there is no limit rather than "hard 0".
+func TestBudgetViewOfATaskWithoutLimits(t *testing.T) {
+	cost := budget.Limit{Soft: 2_000_000, Hard: 2_000_000}
+	if err := checkTurnLimits(budget.Limits{Cost: cost}); err != nil {
+		t.Fatalf("limits off refused: %v", err)
+	}
+	if err := checkTurnLimits(budget.Limits{ToolCalls: budget.Limit{Soft: 0, Hard: 5}}); err == nil {
+		t.Fatal("a hard limit with no soft one was taken")
+	}
+	text, err := formatBudgets(budget.Limits{Cost: cost}, []log.Event{historyRecord(1, log.KindUserMsg, log.UserMsg{Text: "work"})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"tool_calls · no limit", "tokens · no limit", "actions · no limit", "wall · no limit", "cost · soft $2.00 · hard $2.00"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("budget view missing %q:\n%s", want, text)
+		}
+	}
+}
+
+// A task's limits turned off or on are said in the conversation, as a model
+// or judge choice is, with who chose.
+func TestLimitsChoiceInTheConversation(t *testing.T) {
+	m := testModel()
+	m.consume(wire(string(log.KindSessionLimits), log.SessionLimits{On: false, Actor: "unix:uid=1"}, 1))
+	m.consume(wire(string(log.KindSessionLimits), log.SessionLimits{On: true}, 2))
+	for _, want := range []string{"limits → off: turns run as long as they need · by unix:uid=1", "limits → on: turns stop at the configured limits"} {
+		if !transcriptHas(m, want)() {
+			t.Fatalf("the conversation does not say %q", want)
+		}
+	}
+}

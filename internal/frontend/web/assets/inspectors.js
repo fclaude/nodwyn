@@ -124,11 +124,12 @@ export function renderInspector(
       container.append(
         table(
           ["Dimension", "Initial soft limit", "Hard limit"],
-          // A spend limit of 0 is none; it counts the whole task.
+          // A spend limit of 0 is none; it counts the whole task. A turn
+          // limit of 0 is none too: the task's limits are off (ADR 49).
           Object.entries(info.budgets).filter(([name, limit]) => name !== "cost" || limit.hard > 0).map(([name, limit]) => [
             name === "wall_ns" ? "wall" : name === "cost" ? "spend (whole task)" : name,
-            amount(name, limit.soft),
-            amount(name, limit.hard),
+            limit.hard > 0 ? amount(name, limit.soft) : "no limit",
+            limit.hard > 0 ? amount(name, limit.hard) : "no limit",
           ]),
         ),
       );

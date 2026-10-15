@@ -6,7 +6,9 @@
 // irreversible actions and wall time. Each has a soft limit, which raises a
 // checkpoint asking whether to continue, and a hard limit, which stops the
 // turn and cancels its context. A fifth, spend, is the person's choice: off
-// unless set, it counts the known cost of the whole task, not one turn.
+// unless set, it counts the known cost of the whole task, not one turn. A
+// dimension whose hard limit is 0 has no limit: spend until it is set, and
+// the other four in a task whose limits a person turned off (ADR 49).
 package budget
 
 import (
@@ -26,8 +28,8 @@ type Limit struct {
 	Hard int64 `json:"hard"` // reaching it stops the turn
 }
 
-// Limits are a turn's ceilings in every dimension. Cost is off when its
-// Hard is 0.
+// Limits are a turn's ceilings in every dimension. A dimension is off when
+// its Hard is 0.
 type Limits struct{ ToolCalls, Tokens, Actions, Wall, Cost Limit }
 
 // Micro is one US dollar in a cost limit's unit.
@@ -167,13 +169,17 @@ type Turn struct {
 type contextKey struct{}
 
 // Start binds the budget to the turn context. A hard wall deadline also cancels
-// blocked model calls, tools and confirmations. Limits must be validated by
+// blocked model calls, tools and confirmations; without one, a turn may wait
+// for a person as long as it takes. Limits must be validated by
 // configuration. Call the returned cleanup function on every exit.
 func Start(parent context.Context, limits Limits, confirm Confirm) (context.Context, *Turn, context.CancelFunc) {
 	if confirm == nil {
 		confirm = func(context.Context, Checkpoint) (Choice, error) { return Choice{}, nil }
 	}
-	deadline, stopTimer := context.WithTimeoutCause(parent, time.Duration(limits.Wall.Hard), &Stop{Hard: true, Reason: "hard stop: wall budget reached"})
+	deadline, stopTimer := parent, context.CancelFunc(func() {})
+	if limits.Wall.Hard > 0 {
+		deadline, stopTimer = context.WithTimeoutCause(parent, time.Duration(limits.Wall.Hard), &Stop{Hard: true, Reason: "hard stop: wall budget reached"})
+	}
 	ctx, cancel := context.WithCancelCause(deadline)
 	t := &Turn{limits: limits, start: time.Now(), confirm: confirm, cancel: cancel}
 	return context.WithValue(ctx, contextKey{}, t), t, func() {
@@ -203,12 +209,12 @@ func (t *Turn) stop(reason string, hard bool) error {
 	return err
 }
 
-// hard stops the turn if used has reached the hard limit.
+// hard stops the turn if used has reached the hard limit, when there is one.
 func (t *Turn) hard(ctx context.Context, dimension string, used int64, limit Limit) error {
 	if ctx.Err() != nil {
 		return context.Cause(ctx)
 	}
-	if used >= limit.Hard {
+	if limit.Hard > 0 && used >= limit.Hard {
 		if dimension == "cost" {
 			err := &Stop{Hard: true, Spend: true, Reason: "hard stop: spend limit reached (" + Amount("cost", used) + " of " + Amount("cost", limit.Hard) + " known)"}
 			t.cancel(err)
@@ -261,8 +267,9 @@ func (t *Turn) check(ctx context.Context, dimension string, used int64, limit *L
 	}
 	// Counts permit exactly Soft operations; elapsed time/tokens are measured
 	// after work, so reaching their soft boundary is enough for a checkpoint.
+	// A dimension with no limit asks nothing.
 	crossed := used >= limit.Soft
-	if !crossed || limit.Soft >= limit.Hard {
+	if limit.Hard <= 0 || !crossed || limit.Soft >= limit.Hard {
 		return nil
 	}
 	p := Checkpoint{Dimension: dimension, Used: used, Limit: *limit, State: t.snapshot()}
