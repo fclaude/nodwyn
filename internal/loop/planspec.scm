@@ -78,16 +78,59 @@
     ;; its change.
     (or (equal? a b) (and (not (string-empty? a)) (string-prefix? dir b)))))
 
+;; The package directory of a Go test file ("internal/log" for
+;; internal/log/log_test.go, "" at the root), or #f for another file.
+(define (plan-language-go-test-dir path)
+  (and (string-suffix? "_test.go" path)
+       (let ((parts (string-split (if (string-prefix? "./" path) (substring path 2 (string-length path)) path) "/")))
+         (string-join (reverse (cdr (reverse parts))) "/"))))
+
+;; Whether shown, the passing lines of a run (run-entry), says the package in
+;; dir passed: go test's "ok  <tab>module/dir<tab>...", unless it ran no test
+;; ("[no tests to run]", a -run that named none).
+(define (plan-language-package-ok? shown dir)
+  (let any ((ls (string-split shown "\n")))
+    (and (pair? ls)
+         (or (let ((l (car ls)))
+               (and (string-prefix? "ok  \t" l) (not (string-contains? l "[no tests to run]"))
+                    (or (string-empty? dir) (string-contains? l (string-append "/" dir "\t")) (string-suffix? (string-append "/" dir) l))))
+             (any (cdr ls))))))
+
+;; Whether one of the runs that passed (run-entry's) is a test step's: one
+;; that names its test or runs its command, or a go test of its package with
+;; no -run (the go-test tool's). A Go test's run counts only when its output
+;; shows the test, or its package, passing: an exit status alone marked steps
+;; 3-6 of 3422faf1 from a run whose tests had failed (commit-bench, dsl18m,
+;; 2026-10-14; ADR 32, amended 2026-10-14).
+(define (plan-language-test-passed? st passed)
+  (let* ((name (assoc-ref st 'name "")) (run (assoc-ref st 'run ""))
+         (dir (plan-language-go-test-dir (assoc-ref st 'path ""))))
+    (let any ((ps passed))
+      (and (pair? ps)
+           (let ((line (car (car ps))) (shown (cdr (car ps))))
+             (or (and (or (and (not (string-empty? name)) (string-contains? line name))
+                          (and (not (string-empty? run)) (string-contains? line run)))
+                      (or (not dir)
+                          (and (not (string-empty? name)) (string-contains? shown (string-append "--- PASS: " name)))
+                          (plan-language-package-ok? shown dir)))
+                 (and dir (string-contains? line "go test") (not (string-contains? line "-run"))
+                      (plan-language-package-ok? shown dir))
+                 (any (cdr ps))))))))
+
 ;; Marks as the work happens: after each round of the main context's calls,
 ;; a change or docs step whose file a call wrote, a test step whose file was
-;; written and whose test a command that passed named, and a check step whose
-;; command passed. The marks are the console's progress; what counts at the
-;; end is plan-language-check, after the last edit.
+;; written and whose test a run that passed ran (plan-language-test-passed?),
+;; and a check step whose command passed. A run is one of the repository's
+;; tools as the command it runs (tool-call), and passed as run-entry says:
+;; not on the copy of the last commit, and not on a status a pipe or an ||
+;; made 0. The marks are the console's progress; what counts at the end is
+;; plan-language-check, after the last edit.
 (define (plan-language-round calls results)
   (let walk ((cs calls) (rs results))
     (when (and (pair? cs) (pair? rs))
-      (let* ((c (car cs)) (r (car rs)) (name (assoc-ref c 'name ""))
-             (a (guard (e (else '())) (json-parse (format "~a" (assoc-ref c 'args "{}"))))))
+      (let* ((c0 (car cs)) (r0 (car rs)) (c (tool-call c0)) (r (tool-result c0 r0)) (name (assoc-ref c 'name ""))
+             (a (guard (e (else '())) (json-parse (format "~a" (assoc-ref c 'args "{}")))))
+             (entry (run-entry c r)))
         (cond ((and (member name '("fs-edit" "fs-write")) (assoc-ref r 'ok #f) (pair? a))
                (let ((path (format "~a" (assoc-ref a "path" ""))))
                  (set! plan-language-edited (cons path plan-language-edited))
@@ -97,15 +140,14 @@
                                 (plan-language-same-path? (assoc-ref (car ss) 'path "") path))
                        (plan-language-mark-one (plan-language-at (car ss) i) (string-append "evidence: " path " written")))
                      (mark (cdr ss) (+ i 1))))))
-              ((and (equal? name "shell-exec") (equal? (run-status r) 0))
-               (let ((line (command-line c)) (notes '()))
+              (entry
+               (let ((line (car entry)) (notes '()))
                  (let mark ((ss plan-spec) (i 1))
                    (when (pair? ss)
                      (let* ((st (car ss)) (kind (assoc-ref st 'kind "")) (run (assoc-ref st 'run "")))
                        (cond ((and (equal? kind "Test")
                                    (let any ((ps plan-language-edited)) (and (pair? ps) (or (plan-language-same-path? (car ps) (assoc-ref st 'path "")) (any (cdr ps)))))
-                                   (or (string-contains? line (assoc-ref st 'name "_"))
-                                       (and (not (string-empty? run)) (string-contains? line run))))
+                                   (plan-language-test-passed? st (list entry)))
                               (let ((new (not (member (plan-language-at st i) plan-language-marked))))
                                 (plan-language-mark-one (plan-language-at st i) (string-append "evidence: " (assoc-ref st 'name "") " passed"))
                                 ;; Its first pass: is it a test of the change?
@@ -116,8 +158,8 @@
                               (plan-language-mark-one (plan-language-at st i) "evidence: the check passed"))))
                      (mark (cdr ss) (+ i 1))))
                  (when (pair? notes)
-                   (fold-result (assoc-ref c 'id)
-                                (string-append (format "~a" (assoc-ref r 'value "")) (apply string-append (reverse notes))))))))
+                   (fold-result (assoc-ref c0 'id)
+                                (string-append (format "~a" (assoc-ref r0 'value "")) (apply string-append (reverse notes))))))))
         (walk (cdr cs) (cdr rs))))))
 
 (define plan-language-base-run-calls run-calls)
@@ -513,23 +555,20 @@
     (set! plan-language-marked '())
     kept))
 
-;; Whether a command the turn ran and saw pass since the last edit (passed)
-;; covers cmd: it contains it, or it is the repository's whole check.
+;; Whether a command the turn ran and saw pass since the last edit (passed,
+;; run-entry's) covers cmd: it contains it, or it is the repository's whole
+;; check.
 (define (plan-language-passed? passed what)
   (let any ((ps passed))
     (and (pair? ps)
-         (or (and (not (string-empty? what)) (string-contains? (car ps) what))
+         (or (and (not (string-empty? what)) (string-contains? (car (car ps)) what))
              (any (cdr ps))))))
 
-(define (plan-language-whole? passed)
-  (let any ((ps passed))
-    (and (pair? ps)
-         (or (let w ((ws whole-check-words)) (and (pair? ws) (or (string-contains? (car ps) (car ws)) (w (cdr ws)))))
-             (any (cdr ps))))))
+(define (plan-language-whole? passed) (whole-check-passed? passed))
 
 ;; The plan's steps that lack their evidence, as lines, and the steps that
 ;; have it, as (number . note), set against the change (plan-evidence) and
-;; the commands that passed since the last edit (passed).
+;; the runs that passed since the last edit (passed, run-entry's).
 (define (plan-language-check passed)
   (let* ((paths (map (lambda (st) (assoc-ref st 'path ""))
                      (filter (lambda (st) (and (member (assoc-ref st 'kind "") '("Change" "Docs" "Test"))
@@ -561,7 +600,7 @@
                          (cond ((let ((text (guard (e (else "")) (format "~a" (fs-read path)))))
                                   (not (string-contains? text name)))
                                 (string-append label ": the test is not in that file"))
-                               ((not (or (plan-language-passed? passed name) (plan-language-passed? passed (assoc-ref st 'run "")) whole))
+                               ((not (or (plan-language-test-passed? st passed) whole))
                                 (string-append label ": it has not passed since your last edit"))
                                ((plan-language-passes-before? st)
                                 (string-append label ": it passes on the unchanged code too (`" (assoc-ref st 'run "")

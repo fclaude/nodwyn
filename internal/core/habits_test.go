@@ -324,6 +324,59 @@ func TestGoTestRunsAreNotFoldedAsRunningNothing(t *testing.T) {
 	}
 }
 
+// A run through a repository's own tools is a test command as the one it
+// runs is (strategy.scm, tool-commands): a go-test whose package did not
+// build ran no test, and is folded with the reason it answered, once a later
+// one runs; a validate that passed ran its tests and stays. In 7 of 10
+// trusted dsl18m attempts on commit-bench (2026-10-14) validate's passing
+// summary was folded as "this test command did not run any test ()"
+// (3422faf1, call 111).
+func TestARepositorysTestToolsAreFoldedByWhatTheyRan(t *testing.T) {
+	t.Parallel()
+	init := `
+(register-tool "go-test"
+  (lambda (pkg) "exit 1\nFAIL\tgithub.com/x/y/w [build failed]\n")
+  '((doc . "Run the Go tests of a package.") (params . (("pkg" "string" "package pattern")))))
+` + trustedTools[strings.Index(trustedTools, `(register-tool "validate"`):]
+	r := trustedRigIn(t, t.TempDir(), init,
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "w", Name: "go-test", Args: map[string]any{"pkg": "./w"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "v", Name: "validate", Args: map[string]any{}}}},
+		shell("pass", `printf 'ok  \tgithub.com/x/y\t0.012s\n'; true # go test ./y`),
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("run the tests"); e != "" {
+		t.Fatal(e)
+	}
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[uint64]string{}
+	folded := map[string]string{}
+	for _, ev := range evs {
+		switch ev.Kind {
+		case log.KindToolResult:
+			var res log.ToolResult
+			if ev.Decode(&res) == nil {
+				ids[ev.Seq] = res.ID
+			}
+		case log.KindResultFold:
+			var f struct {
+				Seq  uint64 `json:"seq"`
+				Text string `json:"text"`
+			}
+			if ev.Decode(&f) == nil && strings.Contains(f.Text, "did not run any test") {
+				folded[ids[f.Seq]] = f.Text
+			}
+		}
+	}
+	if len(folded) != 1 || !strings.Contains(folded["w"], "[build failed]") || !strings.Contains(folded["w"], "a later one did: make validate") {
+		t.Fatalf("folded as running no test: %v; want only go-test's build failure, with its reason, folded once validate ran", folded)
+	}
+}
+
 // A read of a file being edited stays in the window, stale or old: folding
 // it sent the model back to read the file it was editing (transcript.js 49
 // times in session 20261005T004207Z-f0ddf504). A read of a file left alone

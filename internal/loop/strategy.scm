@@ -213,9 +213,68 @@
     "make validate" "make verify" "make ci"
     "rspec" "rake test" "phpunit" "dotnet test" "mix test" "swift test"))
 
-;; A shell-exec call's command line, cmd and args joined.
+;; The tools a repository registers to run a command for the model, as the
+;; command each runs: the tool, the program, the words before the tool's
+;; argument, and that argument's name (#f for none). A trusted repository's
+;; .nodwyn/init.scm runs its whole check, its Go tests and its make targets
+;; through such tools, and the harness counted shell-exec runs only, so the
+;; plan's evidence, check-without and the plan's marks never saw them: on
+;; commit-bench (dsl18m, 1e595e5, 2026-10-14) the end-of-turn evidence
+;; message fired in every trusted attempt, mostly after a validate or go-test
+;; run that had passed since the last edit (3422faf1: steps 3, 4, 6 and 8 said
+;; not to have passed after validate passed at call 111; ADR 32, amended
+;; 2026-10-14). A project may add its own.
+(define tool-commands
+  '(("validate" "make" ("validate") #f)
+    ("go-test" "go" ("test") "pkg")
+    ("run-make" "make" () "target")))
+
+;; A call to one of tool-commands as the shell-exec call that runs its
+;; command, made from the call's own arguments; any other call as it is.
+(define (tool-call call)
+  (let ((row (assoc (format "~a" (assoc-ref call 'name "")) tool-commands)))
+    (if (not row)
+        call
+        (let* ((a (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+               (param (list-ref row 3))
+               (value (and param (pair? a) (assoc-ref a param #f))))
+          (list (cons 'name "shell-exec") (cons 'id (assoc-ref call 'id ""))
+                (cons 'args (json-emit (list (cons "cmd" (list-ref row 1))
+                                             (cons "args" (append (list-ref row 2) (if (string? value) (list value) '())))))))))))
+
+;; The status a tool-commands tool's text says its command exited with: its
+;; first line when that is "exit N" (dev/go.scm), else the first line that
+;; reports a background run's exit ("p1: exited 0 (make validate)", the
+;; validate tool), else #f.
+(define (tool-status text)
+  (let ((lines (string-split text "\n")))
+    (or (let ((words (if (pair? lines) (string-split (car lines) " ") '())))
+          (and (= (length words) 2) (equal? (car words) "exit")
+               (let ((n (string->number (cadr words)))) (and (integer? n) n))))
+        (let walk ((ls lines))
+          (and (pair? ls)
+               (or (let ((words (string-split (car ls) " ")))
+                     (and (>= (length words) 3) (string-suffix? ":" (car words)) (equal? (cadr words) "exited")
+                          (let ((n (string->number (caddr words)))) (and (integer? n) n))))
+                   (walk (cdr ls))))))))
+
+;; A result of one of tool-commands as shell-exec gives one: the status, and
+;; the tool's text as what the command printed. It is tool output: it says
+;; whether the run counts, and goes into no call.
+(define (tool-result call result)
+  (if (not (assoc (format "~a" (assoc-ref call 'name "")) tool-commands))
+      result
+      (let* ((text (format "~a" (assoc-ref result 'value "")))
+             (status (tool-status text)))
+        (list (cons 'ok (assoc-ref result 'ok #f))
+              (cons 'value (json-emit (if status
+                                          (list (cons "status" status) (cons "stdout" text))
+                                          (list (cons "stdout" text)))))))))
+
+;; A shell-exec call's command line, cmd and args joined; for a call to one of
+;; tool-commands, the command it runs.
 (define (command-line call)
-  (let ((args (guard (e (else '())) (json-parse (assoc-ref call 'args "{}")))))
+  (let ((args (guard (e (else '())) (json-parse (assoc-ref (tool-call call) 'args "{}")))))
     (if (pair? args)
         (string-join (cons (format "~a" (assoc-ref args "cmd" ""))
                            (map (lambda (a) (format "~a" a)) (let ((l (assoc-ref args "args" '()))) (if (list? l) l '()))))
@@ -223,7 +282,7 @@
         "")))
 
 (define (test-call? call)
-  (and (equal? (assoc-ref call 'name) "shell-exec")
+  (and (equal? (assoc-ref (tool-call call) 'name) "shell-exec")
        (let ((line (command-line call)))
          (let any ((ws test-command-words))
            (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws))))))))
@@ -372,6 +431,65 @@
         (string-contains? line "${TMPDIR}/base")
         (and dir (string-contains? line (string-append dir "/base"))))))
 
+;; Whether a command line's exit status may be another command's than its
+;; tests': a pipe into another program (tail, grep) without pipefail, an ||
+;; (|| true), or a $? the line itself reports (; echo exit=$?). Such a line
+;; exits 0 whether its tests passed or not: on commit-bench (dsl18m,
+;; 2026-10-14) plan steps 3-6 of 3422faf1 were marked passed from a run whose
+;; tests had failed but which ended each in `| tail -n 8 || true`, and on
+;; c80b38ac a step from `| tail; echo exit=$?` (ADR 32, amended 2026-10-14).
+;; Quoted text is no operator: go test's -run 'TestA|TestB' pipes nothing.
+(define (masked-run? call)
+  (let ((line (command-line call)))
+    (or (string-contains? line "$?")
+        (let scan ((i 0) (quote-char #f))
+          (and (< i (string-length line))
+               (let ((ch (substring line i (+ i 1))))
+                 (cond (quote-char (scan (+ i 1) (if (equal? ch quote-char) #f quote-char)))
+                       ((member ch '("'" "\"")) (scan (+ i 1) ch))
+                       ((equal? ch "|")
+                        (or (and (< (+ i 1) (string-length line)) (equal? (substring line (+ i 1) (+ i 2)) "|"))
+                            (not (string-contains? line "pipefail"))
+                            (scan (+ i 1) #f)))
+                       (else (scan (+ i 1) #f)))))))))
+
+;; What a shell-exec result printed, its output and its errors.
+(define (run-output result)
+  (let ((v (guard (e (else #f)) (json-parse (format "~a" (assoc-ref result 'value ""))))))
+    (if (pair? v)
+        (string-append (format "~a" (assoc-ref v "stdout" "")) "\n" (format "~a" (assoc-ref v "stderr" "")))
+        "")))
+
+;; The lines of a run's output that show tests passing: go test's "--- PASS:
+;; TestX" and "ok  <tab>package", and validate's summary.
+(define (passing-lines output)
+  (filter (lambda (l) (or (string-contains? l "--- PASS: ") (string-prefix? "ok  \t" l) (string-prefix? "validate: PASS" l)))
+          (string-split output "\n")))
+
+;; Whether a run's output shows a failure: go test's "--- FAIL" and "FAIL"
+;; lines, a package that did not build or start, a panic, validate's FAIL.
+(define (failing-output? output)
+  (let any ((ls (string-split output "\n")))
+    (and (pair? ls)
+         (let ((l (string-trim (car ls))))
+           (or (string-prefix? "--- FAIL" l) (string-prefix? "FAIL" l) (string-prefix? "panic: " l)
+               (string-prefix? "validate: FAIL" l) (string-contains? l "[build failed]") (string-contains? l "[setup failed]")
+               (any (cdr ls)))))))
+
+;; A run that passed, as the plan's evidence keeps it: (line . shown), its
+;; command line and the lines of its output that show tests passing; or #f.
+;; It passed when it exited 0, on the change and not on the copy of the last
+;; commit (base-run?), and, when its status may be another command's
+;; (masked-run?), when its output shows tests passing and none failing.
+(define (run-entry call result)
+  (and (equal? (assoc-ref call 'name) "shell-exec")
+       (equal? (run-status result) 0)
+       (not (base-run? call))
+       (let ((shown (passing-lines (run-output result))))
+         (and (or (not (masked-run? call))
+                  (and (pair? shown) (not (failing-output? (run-output result)))))
+              (cons (command-line call) (string-join shown "\n"))))))
+
 (define (base-outcome result last)
   (let ((status (run-status result)))
     (if (and (equal? last 'failed) status (not (= status 0)))
@@ -451,14 +569,21 @@
 
 ;; The repository's whole check, by the names a Makefile gives it by
 ;; convention, and the commands that check the code, whole or in part: once
-;; the whole check has passed since the last edit, a report that cites one of
-;; them stands on that run.
+;; the whole check has passed since the last edit (a passing call, or one of
+;; the runs that passed, run-entry's), a report that cites one of them stands
+;; on that run.
 (define whole-check-words '("make validate" "make check" "make test" "make ci" "make verify"))
 
 (define (whole-check? call)
   (let ((line (command-line call)))
     (let any ((ws whole-check-words))
       (and (pair? ws) (or (string-contains? line (car ws)) (any (cdr ws)))))))
+
+(define (whole-check-passed? passed)
+  (let any ((ps passed))
+    (and (pair? ps)
+         (or (let w ((ws whole-check-words)) (and (pair? ws) (or (string-contains? (car (car ps)) (car ws)) (w (cdr ws)))))
+             (any (cdr ps))))))
 
 (define check-command-words
   (append test-command-words
@@ -587,7 +712,7 @@
   ;; of the last commit, which no edit makes stale; started-ids and
   ;; started-calls: the background runs started since the last edit
   ;; (started-call).
-  ;; passed: the command lines that exited 0 since the last edit; planned:
+  ;; passed: the runs that passed since the last edit (run-entry); planned:
   ;; whether the plan's evidence was checked (planspec.scm), once a turn.
   (let ((before (git-state)) (passing #f) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
         (passed '()) (planned #f) (ablated #f) (cited #f) (named '()))
@@ -617,10 +742,10 @@
                             (start (and status (if (equal? name0 "shell-start")
                                                    c0
                                                    (started-call (proc-call-id c0) started-ids started-calls))))
-                            (c (if start (background-call c0 start) c0))
-                            (r (if start (background-result status) r0)))
-                       (when (member name0 '("shell-exec" "shell-start"))
-                         (let ((cmds (call-commands c0)))
+                            (c (if start (background-call c0 start) (tool-call c0)))
+                            (r (if start (background-result status) (tool-result c0 r0))))
+                       (when (or (member name0 '("shell-exec" "shell-start")) (assoc name0 tool-commands))
+                         (let ((cmds (call-commands (tool-call c0))))
                            (set! ran (append cmds ran))
                            (set! ran-all (append cmds ran-all))
                            (when (base-run? c0)
@@ -633,11 +758,19 @@
                               (let ((id (proc-call-id c0)))
                                 (set! started-calls (started-calls-without id started-ids started-calls))
                                 (set! started-ids (started-ids-without id started-ids)))))
+                       ;; A repository tool's whole check (validate) is no
+                       ;; check to take apart: it runs for minutes, and
+                       ;; check-without has five for all its runs (a shell
+                       ;; make validate took all five on commit-bench's
+                       ;; 3422faf1, dsl18m, and named nothing). The check
+                       ;; before it stays, and its pass counts as the whole
+                       ;; check's (whole-check-passed?).
                        (when (and (not (base-run? c)) (or (check-run? c scripts) (test-call? c))
-                                  (equal? (run-status r) 0))
+                                  (equal? (run-status r) 0)
+                                  (not (and (assoc name0 tool-commands) (whole-check? c))))
                          (set! passing c))
-                       (when (and (equal? (assoc-ref c 'name) "shell-exec") (not (base-run? c)) (equal? (run-status r) 0))
-                         (set! passed (cons (command-line c) passed)))
+                       (let ((entry (run-entry c r)))
+                         (when entry (set! passed (cons entry passed))))
                        ;; A document's edit leaves the plan's evidence standing
                        ;; (passed): no test or check reads a .md or a .tex.
                        (when (and (edit-call? c) (assoc-ref r 'ok #f) (not (scratch-name c)) (not (doc-path? (repo-path c))))
@@ -742,9 +875,9 @@
                     ;; A command the report cites that has not run since the
                     ;; last edit, asked once a turn.
                     ((and changed (not turn-stopping) (not cited)
-                          (pair? (stale-citations (format "~a" (assoc-ref reply 'content "")) (append ran base-ran) ran-all (and passing (whole-check? passing)))))
+                          (pair? (stale-citations (format "~a" (assoc-ref reply 'content "")) (append ran base-ran) ran-all (or (and passing (whole-check? passing)) (whole-check-passed? passed)))))
                      (set! cited #t)
                      (add-message (finish-stale-citations-message
-                                   (stale-citations (format "~a" (assoc-ref reply 'content "")) (append ran base-ran) ran-all (and passing (whole-check? passing)))))
+                                   (stale-citations (format "~a" (assoc-ref reply 'content "")) (append ran base-ran) ran-all (or (and passing (whole-check? passing)) (whole-check-passed? passed)))))
                      (loop (ask-model) edited tested failed-runs offered reminders scripts written noted excused 0
                            outcome told unchanged-told)))))))))

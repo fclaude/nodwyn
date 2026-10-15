@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fclaude/nodwyn/internal/config"
+	"github.com/fclaude/nodwyn/internal/llm"
 	"github.com/fclaude/nodwyn/internal/log"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -471,5 +473,157 @@ func TestAFileThePlanWillChangeStaysReadUntilItIsEdited(t *testing.T) {
 	}
 	if folded["big"] || folded["test"] || !folded["notes"] || !folded["other"] {
 		t.Fatalf("folded %v: the reads of big.py and big_test.py, which the plan will write, must stay; notes/first.md's (a directory step) and bigger.py's must fold", folded)
+	}
+}
+
+// trustedRigIn is unattendedRigIn on a repository whose .nodwyn/init.scm is
+// init: a trusted repository's own tools, as nodwyn's registers validate,
+// go-test and run-make.
+func trustedRigIn(t *testing.T, repo, init string, turns ...fake.Turn) *rig {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(repo, ".nodwyn"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".nodwyn", "init.scm"), []byte(init), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := fake.NewT(t, turns...)
+	t.Cleanup(srv.Close)
+	logb := &bytes.Buffer{}
+	s, err := newInitSession(Options{Config: config.Default(), Repo: repo, Provider: llm.NewOllama(srv.URL), AutoApprove: true, LogWriter: logb})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return &rig{t: t, s: s, srv: srv, repo: repo, logb: logb}
+}
+
+// trustedTools stands for nodwyn's .nodwyn/init.scm: a go-test tool that
+// answers as dev/go.scm's does ("exit N" and go test's output), and a
+// validate tool that answers as make validate's background run reads, which
+// init.scm also counts as a test call by its name.
+const trustedTools = `
+(register-tool "go-test"
+  (lambda (pkg) "exit 0\nok  \tgithub.com/x/y/calc\t0.012s\n")
+  '((doc . "Run the Go tests of a package.") (params . (("pkg" "string" "package pattern")))))
+(register-tool "validate"
+  (lambda () "validate: 2 changed files since 0123abcd (HEAD)\np1: exited 0 (make validate)\nPASS  gofmt                  1 changed Go files\nvalidate: PASS (0 warnings)\n")
+  '((doc . "Run the repository's checks.") (params . ())))
+(define validate-base-test-call? test-call?)
+(define (test-call? call) (or (equal? (assoc-ref call 'name) "validate") (validate-base-test-call? call)))
+`
+
+// planMarks are the steps the harness marked done: each one's note, and the
+// log sequence of its mark.
+func planMarks(t *testing.T, r *rig) (notes map[int]string, seqs map[int]uint64) {
+	t.Helper()
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes, seqs = map[int]string{}, map[int]uint64{}
+	for _, ev := range evs {
+		if ev.Kind == log.KindPlanStep {
+			var p log.PlanStep
+			if ev.Decode(&p) == nil && p.State == "done" {
+				notes[p.Step], seqs[p.Step] = p.Note, ev.Seq
+			}
+		}
+	}
+	return notes, seqs
+}
+
+// A run made through the repository's own tools is the command it runs:
+// validate is make validate, go-test {pkg} is go test <pkg>. Its pass marks
+// the plan's test and check steps as the work happens, and stands for them
+// before the turn ends. On commit-bench (dsl18m, 1e595e5, 2026-10-14) the
+// end-of-turn evidence message fired in every trusted attempt, after
+// validate and go-test had passed since the last edit (3422faf1: steps 3, 4,
+// 6 and 8 after validate passed at call 111).
+func TestTheRepositorysToolsAreTheRunsTheyMake(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(test "calc/calc_test.go" "TestOne" "one() is 10" (passes-today "it guards one()") (run "go test ./calc -run TestOne"))
+(none docs "no document describes calc")
+(check "make validate")`
+	r := trustedRigIn(t, repo, trustedTools,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("t", "calc/calc_test.go", "package calc\n\nfunc TestOne(t *testing.T) {}\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "g", Name: "go-test", Args: map[string]any{"pkg": "./calc/"}}}},
+		fake.Turn{ToolCalls: []fake.ToolCall{{ID: "v", Name: "validate", Args: map[string]any{}}}},
+		fake.Turn{Content: "done: go test ./calc/ and make validate pass."},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	for i := range r.srv.Requests {
+		if msg := lastMessage(r, i); strings.Contains(msg, "your plan's evidence is missing") || strings.Contains(msg, "You changed files") {
+			t.Fatalf("request %d was told: %q", i, msg)
+		}
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7", len(r.srv.Requests))
+	}
+	notes, _ := planMarks(t, r)
+	if notes[2] != "evidence: TestOne passed" || notes[4] != "evidence: the check passed" {
+		t.Fatalf("the harness's marks: %v; want step 2 marked by go-test's pass and step 4 by validate's", notes)
+	}
+}
+
+// A run whose exit status 0 is another command's is no evidence that a
+// test passed unless its output shows it: a run on the copy of the last
+// commit, one piped into tail, one that ends in || true or echoes $?, and
+// for a Go test any run whose output does not show the test or its package
+// passing. On commit-bench (dsl18m, 2026-10-14) steps 3-6 of 3422faf1 were
+// marked passed from a base-copy run whose tests had failed, each ended in
+// `| tail -n 8 || true`, and on c80b38ac a step from `| tail; echo exit=$?`.
+func TestARunWhoseStatusHidesItsTestsIsNoEvidence(t *testing.T) {
+	t.Parallel()
+	repo := codeRepo(t)
+	plan := `(change "calc.py" "one" "return 10")
+(test "calc/calc_test.go" "TestOne" "one() is 10" (passes-today "it guards one()") (run "go test ./calc -run TestOne"))
+(none docs "no document describes calc")
+(check "grep -q 'return 10' calc.py")`
+	failing := `printf -- '--- FAIL: TestOne (0.00s)\nFAIL\tgithub.com/x/y/calc\t0.010s\nFAIL\n'`
+	r := unattendedRigIn(t, repo,
+		fake.Turn{Content: "calc.py defines one()."}, // the explorer
+		fake.Turn{Content: plan},                     // the planner
+		write("t", "calc/calc_test.go", "package calc\n\nfunc TestOne(t *testing.T) {}\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 2\n"),
+		shellArgs("b", "bash", "-c", "mkdir -p $TMPDIR/base && cd $TMPDIR/base && "+failing+" 2>&1 | tail -n 8 || true # go test ./calc -run TestOne"),
+		shellArgs("m", "bash", "-c", failing+" | tail; echo exit=$? # go test ./calc -run TestOne"),
+		shellArgs("g", "bash", "-c", "grep -n TestOne calc/calc_test.go"),
+		shellArgs("c", "bash", "-c", "grep -q 'return 10' calc.py # go test ./..."),
+		fake.Turn{Content: "done"}, // told step 2 has not passed
+		shellArgs("p", "bash", "-c", `printf 'ok  \tgithub.com/x/y/calc\t0.012s\n' | tail -n 3 # go test ./calc -run TestOne`),
+		shellArgs("c2", "bash", "-c", "grep -q 'return 10' calc.py # go test ./..."),
+		fake.Turn{Content: "done: TestOne passes."},
+	)
+	if e := r.planned("make one() return 10"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 12 {
+		t.Fatalf("%d requests, want 12; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	if msg := lastMessage(r, 9); !strings.Contains(msg, "step 2 (Test calc/calc_test.go TestOne): it has not passed since your last edit") || strings.Contains(msg, "step 4") {
+		t.Fatalf("evidence message: %q", msg)
+	}
+	notes, seqs := planMarks(t, r)
+	evs, err := log.Read(bytes.NewReader(r.logb.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var passed uint64
+	for _, ev := range evs {
+		var res log.ToolResult
+		if ev.Kind == log.KindToolResult && ev.Decode(&res) == nil && res.ID == "p" {
+			passed = ev.Seq
+		}
+	}
+	if notes[2] != "evidence: TestOne passed" || seqs[2] < passed {
+		t.Fatalf("step 2 marked %q at %d, the run that showed TestOne's package pass at %d: it must be marked by that run only", notes[2], seqs[2], passed)
 	}
 }

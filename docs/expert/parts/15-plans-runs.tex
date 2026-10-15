@@ -238,7 +238,13 @@ A command counts as a test run when its command line contains one of
 \code{cargo test}, \code{npm test}, \code{make test}, \code{rspec} and
 twenty-one more. A test run with failures still counts as a run; only
 commands that never got as far as running a test count against
-\code{unrunnable-after}.
+\code{unrunnable-after}. A tool your repository registers to run a command
+counts as that command when \code{tool-commands} names it: nodwyn's
+\code{validate} is \code{make validate}, \code{go-test} is \code{go test}
+on its package, \code{run-make} is \code{make} on its target. A run whose
+exit status may be another command's (piped into \code{tail}, ending in
+\code{|| true} or \code{; echo \$?}) shows a plan's test passing only
+when its output does.
 
 The scratch directory is not the repository. A file the model writes there,
 such as its check script \code{\$TMPDIR/check.sh}, is not a change, and a
@@ -256,7 +262,9 @@ If your project runs its tests some other way, teach the loop:
   (append test-command-words '("./run_tests" "bazel test" "just check")))
 \end{scm}
 Otherwise the evidence loop will keep telling the model it has not tested,
-however many times it runs your test script.
+however many times it runs your test script. A tool of your own that runs
+one is a row of \code{tool-commands}: its name, the program, the words
+before its argument, and the argument's name.
 \end{tip}
 
 \section{Rounds that only read}

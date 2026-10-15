@@ -1005,3 +1005,83 @@ They are to be measured on the commit-replay set kept with the benchmark runs
 (features, refactors and fixes from this repository's history, graded by each
 commit's own tests) as well as on SWE-bench, since SWE-bench alone covers bug
 fixes. Each test above fails on `9c44245` and passes with the change.
+
+## Amendment 2026-10-14: the repository's own tools are runs the harness sees
+
+A trusted repository runs its checks through tools its `.nodwyn/init.scm`
+registers: nodwyn's `validate` (make validate, in the background),
+`go-test {pkg}` (go test -race) and `run-make {target}`. The evidence loop,
+check-without and the plan's marks counted `shell-exec` runs only, so on
+commit-bench (dsl18m, `1e595e5`, trusted, 2026-10-14) they did not see those
+runs:
+
+- the end-of-turn evidence message ("has not passed since your last edit")
+  fired in every attempt, mostly after a validate or go-test that had passed
+  since the last edit: on 3422faf1 steps 3, 4, 6 and 8 after validate passed
+  at call 111. About 73 calls, 0.6M tokens and 33 minutes over 10 attempts
+  followed it, an upper bound since some of it was real work;
+- hygiene's first rule folded validate's passing result as "this test command
+  did not run any test ()" in 7 of 10 attempts, since no word of
+  `hygiene-ran-words` is in its summary;
+- a run whose exit status was another command's marked plan steps passed: on
+  3422faf1 steps 3-6 from a run on the copy of the last commit whose tests had
+  failed, each ending in `| tail -n 8 || true`, and on c80b38ac a step from
+  `| tail; echo exit=$?`.
+
+So:
+
+- **A tool is the command it runs.** `tool-commands` (strategy.scm) maps
+  `validate` to make validate, `go-test {pkg}` to go test <pkg> and
+  `run-make {target}` to make <target>; a project may add rows. `tool-call`
+  makes the shell-exec call that runs that command from the tool call's own
+  arguments, never from its output, and `tool-result` reads the status the
+  tool's text reports ("exit N" first, or a background run's "pN: exited N").
+  `command-line` and `test-call?` see the command, and the evidence loop
+  counts such a run toward the turn's test runs, the commands that passed
+  (`passed`), the passing check check-without takes apart (`passing`), and
+  the commands a report may cite. The plan's marks (`plan-language-round`)
+  see them too. A tool's whole check (validate) is not check-without's check:
+  it runs for minutes against check-without's five for all its runs, as a
+  shell `make validate && make accept; echo exit=$?` did on 3422faf1, naming
+  nothing; the check before it stays. Its pass counts as the whole check's
+  for the plan's evidence and for the report's citations
+  (`whole-check-passed?`), and the repository's own gate test
+  (`TestValidateCountsAsARunsTestRun`) still sees a run end after validate.
+- **validate's summary says it ran.** `hygiene-ran-words` gains "validate:
+  pass", "pass  gofmt" and "tests vs unchanged"; a failing validate already
+  said "failed". The fold of a tool's run that ran nothing gives the end of
+  the tool's text as its reason, not "()".
+- **A masked status is no evidence without output.** A run passed, for the
+  plan's marks and its end-of-turn evidence, when it exited 0, was not on the
+  copy of the last commit (`base-run?`), and, when its status may be another
+  command's (`masked-run?`: an unquoted pipe without pipefail, an `||`, or a
+  `$?` in the line), when its output shows tests passing (`--- PASS:`, go
+  test's `ok`, `validate: PASS`) and none failing (`run-entry`). A Go test
+  step (a `_test.go` file) takes a run only when its output shows the test
+  (`--- PASS: <name>`) or its package (`ok ... /<dir>`, not "[no tests to
+  run]") passing; a go test of the package with no `-run` counts for every
+  test step in it, which is how the go-test tool runs.
+  `TestTheRepositorysToolsAreTheRunsTheyMake`,
+  `TestARunWhoseStatusHidesItsTestsIsNoEvidence`,
+  `TestARepositorysTestToolsAreFoldedByWhatTheyRan`.
+- **Not built.** Masking for the failing-run reminder and for check-without:
+  check-without already tells a part apart by output as well as status. Test
+  steps whose test is not in the file the step names (an exfil scenario run
+  by `TestScenarios`). Reading a browser check's own summary (`== credentials:
+  ok in 6.1s`): it is this repository's runner, not a test runner's, so a
+  browser check piped into tail (on c80b38ac's runs, `run.sh credentials 2>&1
+  | tail -n 3`) is no longer a step's evidence, and validate, which runs the
+  browser checks for a console change, is. Counting `make accept` as a whole
+  check.
+
+Replayed through `run-entry`, the logged calls of 3422faf1 give: the
+base-copy run (call 78) no evidence; `generate.py --check; echo exit=$?`
+(call 108, which printed `exit=1`) none either; `make validate && make
+accept; echo exit=$?` (call 119), whose output shows its passes, evidence; and
+each go-test of a planned test's package, evidence for that test.
+
+A go-test run is now check-without's check when it is the latest that passed,
+which no trusted run's was before: one package's tests may still pass with a
+part in another package taken out, so the untested-parts message may name
+parts other runs test, as the dsl18m review found for shell runs. Each test
+above fails on `1e595e5` and passes with the change.

@@ -579,7 +579,7 @@ stands on it. A command is a test run when its command line contains one of
 `test-command-words` (pytest, go test, cargo test, npm test, make test, make
 validate, …; a project may redefine the list), whether shell-exec ran it or
 shell-start did and shell-read or shell-stop saw it exit after the last edit
-(`background-call`: the shell-start call itself, never one rebuilt from the shell's output, whose taint the guard would refuse when check-without runs it again). After `unrunnable-after` (6) test commands in a row fail to run,
+(`background-call`: the shell-start call itself, never one rebuilt from the shell's output, whose taint the guard would refuse when check-without runs it again), or a tool the repository registers to run a command did (`tool-commands`: `validate` is make validate, `go-test {pkg}` go test <pkg>, `run-make {target}` make <target>; a project may add rows): `tool-call` makes the shell-exec call that runs its command from the call's own arguments, and the tool's text gives its status ("exit N", or a background run's "pN: exited N"); a tool's whole check (validate) runs for minutes, so it is not the check check-without takes apart, though its pass stands for the whole check's. A run whose status may be another command's (`masked-run?`: a pipe without pipefail, an `||`, a `$?` in the line) passed, for a plan's evidence and marks, only when its output shows tests passing and none failing, and a run on `$TMPDIR/base` never did (`run-entry`); a Go test step needs its test's `--- PASS` or its package's `ok` in the output (ADR 32, amended 2026-10-14). After `unrunnable-after` (6) test commands in a row fail to run,
 the model gets `(finish-unrunnable-message n)` once: finish and report the
 change as unverified rather than spend the budget on a broken environment.
 When a person reads the turn's answer before anything else happens,
@@ -1035,8 +1035,8 @@ loaded after the files above in this order. Each wraps `run-calls` (and
   that never ran a test is folded to one line once a later one does (a
   command ran tests when it exited 0 or its output says so in a runner's
   words, `hygiene-ran-words`: pytest's, Go's `ok`, `--- PASS`/`--- FAIL`
-  and `=== RUN`, mocha's, jest's, node's, cargo's; a Go package that did
-  not build ran none); a read
+  and `=== RUN`, mocha's, jest's, node's, cargo's, and a repository
+  validate's summary; a Go package that did not build ran none); a read
   of a file edited since is folded to its outline after `hygiene-stale-age`
   rounds; a read `hygiene-age` rounds old is folded to its outline; neither
   folds a read of a file edited in the last `hygiene-editing-rounds` (4)
