@@ -63,25 +63,31 @@
   "[This agent was stopped for repeating the same call; its answer may be incomplete.]")
 
 ;; A sub-agent that must stop while it still asks for tools (out of rounds,
-;; or repeating itself) is asked once more, with no tools, for its answer, so
-;; the work it did is not lost with its last tool calls.
+;; or repeating itself) is asked once more for its answer, so the work it did
+;; is not lost with its last tool calls. It is offered the tools it had, and
+;; the harness refuses any call it makes: a local server lists the tools near
+;; the start of the prompt, so a request without them read the whole context
+;; again. On commit-bench (dsl18m, 2026-10-14) the explorer's last request
+;; re-read 25,000 to 48,000 tokens so in 16 of 18 attempts, 4-7% of a task,
+;; in every build (ADR 32, amended 2026-10-14).
 (define sub-agent-wrap-up-message
   "You have no tool rounds left. Answer now with what you have found: your answer or report, and anything you could not finish or check.")
 
-;; A model offered no tools may still answer with a tool call (a local
+;; A model may still answer with a tool call, offered tools or not (a local
 ;; server parses them from the model's text): such calls are skipped with
-;; this reason and the model is asked again, at most twice in all, since the
-;; context cannot fold while a call is unanswered.
+;; this reason and the model is asked again without tools, at most twice in
+;; all, since the context cannot fold while a call is unanswered.
 (define sub-agent-text-only-reason
   "tools are off now: write your answer as text")
 
-;; Skip calls with reason, ask for the answer without tools, fold: the answer.
-;; model is the name of the model that is asked.
-(define (sub-agent-wrap-up calls reason model)
+;; Skip calls with reason, ask for the answer, fold: the answer. ask asks the
+;; model as the sub-agent did, offering its tools; model is the name of the
+;; model that is asked again without them.
+(define (sub-agent-wrap-up calls reason model ask-again)
   (skip-tools calls reason)
   (add-message sub-agent-wrap-up-message)
   (let ask ((left 2))
-    (let* ((reply (ask-model model '((tools . #f))))
+    (let* ((reply (if (= left 2) (ask-again) (ask-model model '((tools . #f)))))
            (stray (assoc-ref reply 'tool-calls '()))
            (said (string-trim (assoc-ref reply 'content ""))))
       (if (null? stray)
@@ -130,7 +136,7 @@
           (fold-context)
           (string-trim (assoc-ref reply 'content "")))
          ((>= rounds sub-agent-max-rounds)
-          (sub-agent-wrap-up calls "this agent is out of rounds" model))
+          (sub-agent-wrap-up calls "this agent is out of rounds" model ask))
          (else
             (let ((allowed (cond ((procedure? tools) (filter tools calls))
                                  (tools (filter (lambda (c) (member (assoc-ref c 'name) tools)) calls))
@@ -147,7 +153,7 @@
                                ((< runs sub-agent-repeat-limit) (walk (cdr cs) (cons (car cs) run) repeats key (+ runs 1)))
                                (else (walk (cdr cs) run (cons (car cs) repeats) last runs)))))
                       ((and (pair? repeats) warned)
-                       (let ((said (sub-agent-wrap-up allowed "this agent was stopped for repeating the same call" model)))
+                       (let ((said (sub-agent-wrap-up allowed "this agent was stopped for repeating the same call" model ask)))
                          (if (string-empty? said)
                              sub-agent-stopped-note
                              (string-append said "\n\n" sub-agent-stopped-note))))

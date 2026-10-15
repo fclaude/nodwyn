@@ -160,8 +160,8 @@ func TestModelTurnRejectsUnknownToolNames(t *testing.T) {
 }
 
 // A sub-agent that repeats the same call is skipped once, then asked for its
-// answer without tools, before the core's progress stop would end the whole
-// turn.
+// answer, offered the tools it had, before the core's progress stop would
+// end the whole turn.
 func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
 	t.Parallel()
 	read := func(id string) fake.Turn { return fake.Turn{ToolCalls: []fake.ToolCall{readCall(id)}} }
@@ -183,8 +183,8 @@ func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
 	if len(r.srv.Requests) != 7 {
 		t.Fatalf("%d requests, want 7", len(r.srv.Requests))
 	}
-	if len(r.srv.Requests[5].Tools) != 0 || !strings.Contains(lastMessage(r, 5), "no tool rounds left") {
-		t.Fatalf("the wrap-up request: %d tools, last message %q", len(r.srv.Requests[5].Tools), lastMessage(r, 5))
+	if n := len(r.srv.Requests[5].Tools); n == 0 || n != len(r.srv.Requests[4].Tools) || !strings.Contains(lastMessage(r, 5), "no tool rounds left") {
+		t.Fatalf("the wrap-up request: %d tools (the expert had %d), last message %q", n, len(r.srv.Requests[4].Tools), lastMessage(r, 5))
 	}
 	results := r.results()
 	if results["r1"] != "" || results["r2"] != "" || !strings.Contains(results["r3"], "you already ran this exact call") ||
@@ -198,8 +198,11 @@ func TestSubAgentRepeatingItselfEndsOnlyItself(t *testing.T) {
 	}
 }
 
-// A sub-agent out of rounds is asked, without tools, for what it found, so
-// its work is not lost with its last tool calls.
+// A sub-agent out of rounds is asked for what it found, so its work is not
+// lost with its last tool calls. It is offered the tools it had, so a server
+// that caches the prompt reads only the request's end again: asked without
+// them, the explorer's last request re-read 25,000 to 48,000 tokens in 16 of
+// 18 attempts on commit-bench (dsl18m, 2026-10-14).
 func TestSubAgentOutOfRoundsStillAnswers(t *testing.T) {
 	t.Parallel()
 	r := strategyRig(t, `
@@ -223,17 +226,17 @@ func TestSubAgentOutOfRoundsStillAnswers(t *testing.T) {
 	if results := r.results(); !strings.Contains(results["l"], "out of rounds") {
 		t.Fatalf("the expert's last call: %+v", results)
 	}
-	if len(r.srv.Requests[3].Tools) != 0 || !strings.Contains(lastMessage(r, 3), "no tool rounds left") {
-		t.Fatalf("the wrap-up request: %d tools, last message %q", len(r.srv.Requests[3].Tools), lastMessage(r, 3))
+	if n := len(r.srv.Requests[3].Tools); n != 2 || n != len(r.srv.Requests[2].Tools) || !strings.Contains(lastMessage(r, 3), "no tool rounds left") {
+		t.Fatalf("the wrap-up request: %d tools (the expert had %d), last message %q", n, len(r.srv.Requests[2].Tools), lastMessage(r, 3))
 	}
 	if got := lastMessage(r, 4); got != "main.go declares package main; I did not get to list the directory." {
 		t.Fatalf("the model got %q from the expert", got)
 	}
 }
 
-// A model asked for its answer with no tools may still answer with a tool
-// call; the call is skipped and it is asked again, so the sub-agent still
-// folds and its caller gets an answer, not an error.
+// A model asked for its answer may still answer with a tool call; the call is
+// skipped and it is asked again, without tools, so the sub-agent still folds
+// and its caller gets an answer, not an error.
 func TestSubAgentWrapUpSurvivesAToolCall(t *testing.T) {
 	t.Parallel()
 	r := strategyRig(t, `
@@ -254,6 +257,9 @@ func TestSubAgentWrapUpSurvivesAToolCall(t *testing.T) {
 	}
 	if results := r.results(); !strings.Contains(results["l"], "tools are off now") {
 		t.Fatalf("the call made with tools off: %+v", results)
+	}
+	if offered, again := len(r.srv.Requests[3].Tools), len(r.srv.Requests[4].Tools); offered != 2 || again != 0 {
+		t.Fatalf("the wrap-up offered %d tools, and the ask after its call %d; want the expert's 2, then none", offered, again)
 	}
 	if got := lastMessage(r, 5); got != "It declares package main." {
 		t.Fatalf("the model got %q from the expert", got)

@@ -1085,3 +1085,21 @@ which no trusted run's was before: one package's tests may still pass with a
 part in another package taken out, so the untested-parts message may name
 parts other runs test, as the dsl18m review found for shell runs. Each test
 above fails on `1e595e5` and passes with the change.
+
+## Amendment 2026-10-14: a sub-agent wraps up with the tools it had
+
+A sub-agent out of rounds, or stopped for repeating a call, was asked for its
+answer with no tools. A local server lists the tools near the start of the
+prompt, so that request shared no prefix with the ones before it and the
+whole context was read again. On commit-bench (dsl18m, 2026-10-14) the
+explorer's last request re-read 25,000 to 48,000 tokens so in 16 of 18
+attempts, about 0.03-0.05M cost-eq (4-7% of a task) and 13-27 s each, and
+dsl16 and A did the same.
+
+So `sub-agent-wrap-up` asks as the sub-agent did, offering its tools, after
+`sub-agent-wrap-up-message`; a call the model makes anyway is skipped with
+`sub-agent-text-only-reason`, and the model is asked once more with no tools,
+as before. At most two asks, as before. `TestSubAgentOutOfRoundsStillAnswers`,
+`TestSubAgentRepeatingItselfEndsOnlyItself` and
+`TestSubAgentWrapUpSurvivesAToolCall` now expect the tools on the wrap-up
+request, and fail on `1e595e5`.

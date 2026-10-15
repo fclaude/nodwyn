@@ -164,10 +164,13 @@ the tool list is fixed.
 A sub-agent that loops would trip the core's progress stop and end your
 whole turn. So \code{sub-agent} stops short of it on its own: an identical
 call more than \code{sub-agent-repeat-limit} (2) times in a row is skipped,
-and if it repeats again the sub-agent is asked for its answer without
-tools, which comes back with a note that it may be incomplete. After
-\code{sub-agent-max-rounds} (40) rounds it is likewise asked to wrap up. Its
-caller's work goes on either way.
+and if it repeats again the sub-agent is asked for its answer, which comes
+back with a note that it may be incomplete. After
+\code{sub-agent-max-rounds} (40) rounds it is likewise asked to wrap up. The
+wrap-up offers the tools the sub-agent had and refuses any call it makes,
+then asks once more with none: a request without the tools changes the
+prompt near its start, and a caching server reads the whole context again.
+Its caller's work goes on either way.
 
 \section{Compaction}
 
