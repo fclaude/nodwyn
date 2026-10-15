@@ -173,7 +173,7 @@ func (l *Loop) install() error {
 		{
 			Name: "session-requests",
 			Meta: scheme.Meta{
-				Doc:    "The user's messages in this session so far, oldest first, as recorded (redacted); the running turn's request is the last. What a strategy reads to know what was asked before this turn, such as the request a compaction between turns hands over.",
+				Doc:    "The user's messages the session holds, oldest first, as recorded (redacted); the running turn's request is the last. A session opened here holds every one; a resumed one holds the end of its log, which has at least the latest three and the latest that is not a /compact. What a strategy reads to know what was asked before this turn, such as the request a compaction between turns hands over.",
 				Hidden: true,
 				Origin: "builtin",
 			},
@@ -985,8 +985,10 @@ func (l *Loop) answerCall(c *scheme.Call) (scheme.Value, error) {
 	return scheme.Void, l.record(log.KindToolResult, log.ToolResult{ID: calls[0].ID, Name: calls[0].Name, OK: true, Value: text})
 }
 
-// sessionRequests is (session-requests), read from the log like every
-// window, so it holds across a resume.
+// sessionRequests is (session-requests), read from the events the session
+// holds like every window, so it holds across a resume: a resumed session
+// holds the latest three and the latest that is not a /compact, whatever
+// else it leaves on disk (ADR 49 §10).
 func (l *Loop) sessionRequests(c *scheme.Call) (scheme.Value, error) {
 	if c.Origin == scheme.OriginModel {
 		return scheme.Void, errors.New("not callable from a model-originated evaluation")

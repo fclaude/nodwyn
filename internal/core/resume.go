@@ -23,7 +23,15 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	if err != nil {
 		return nil, err
 	}
-	writer, err := log.Open(path)
+	// The log is read from its index (ADR 49 §10): the log's end is opened
+	// for appending without reading what comes before it, and the session
+	// holds only the events from where its earliest reader needs them, so
+	// resuming a task that has run every day for months reads its last runs.
+	idx, _, err := store.index(id)
+	if err != nil {
+		return nil, err
+	}
+	writer, err := log.OpenAt(path, id, idx.Seq, idx.End)
 	truncated := errors.Is(err, log.ErrTruncated)
 	if err != nil && !truncated {
 		return nil, err
@@ -38,10 +46,22 @@ func Resume(o Options, id string) (_ *Session, err error) {
 			}
 		}
 	}()
-	info, history, err := store.read(id)
+	// Another process may have appended between the index and the lock:
+	// the index is brought to the end again, now that nothing else can.
+	if writer.Seq() != idx.Seq {
+		if idx, _, err = store.index(id); err != nil {
+			return nil, err
+		}
+	}
+	info := idx.Fold.Info
+	history, spendBefore, err := store.suffix(id, idx)
 	if err != nil {
 		return nil, err
 	}
+	// The choices a task keeps are the latest records of their kinds,
+	// wherever they are in the log: the index keeps those the session does
+	// not hold, and they come first, as earlier events.
+	choices := append(idx.Resume.choices(), history...)
 	if o.Repo != "" {
 		requested, e := filepath.Abs(o.Repo)
 		if e != nil {
@@ -61,7 +81,7 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	// another model either: the session is built on [control] only to be read
 	// and to be chosen for, and asks no turn until a model is chosen (gone).
 	gone := ""
-	if c, label := lastModelChoice(history); c != (ModelChoice{}) {
+	if c, label := lastModelChoice(choices); c != (ModelChoice{}) {
 		if _, _, err := resolveChoice(o.Config, c); err != nil {
 			gone = fmt.Sprintf("%s: %s", label, err)
 		} else {
@@ -104,20 +124,20 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	// offers is not swapped for [judge]'s: the task has none until a judge
 	// is chosen, so its plans and commands go nowhere nobody chose.
 	judge, judgeGone := initialJudge(o), ""
-	if rec, found := lastJudgeChoice(history); found {
+	if rec, found := lastJudgeChoice(choices); found {
 		judge = rec.Server
 		if err := CheckJudge(o.Config, o.Keychain, rec.Server); err != nil {
 			judge, judgeGone = "", fmt.Sprintf("%s: %s", rec.Server, err)
 		}
 	}
 	delegates := initialDelegates(o)
-	if rec, found := lastDelegates(history); found {
+	if rec, found := lastDelegates(choices); found {
 		delegates = keepConfigured(o.Config, rec.Models)
 	}
-	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree, modelLost: gone, judge: judge, delegates: delegates}
+	s = &Session{opts: o, id: id, logw: writer, out: make(chan event.Event, o.EventBuffer+len(pending)+5), prompts: map[string]pendingConfirmation{}, secrets: map[string]pendingSecret{}, worktree: info.Worktree, modelLost: gone, judge: judge, delegates: delegates, spendBefore: spendBefore}
 	// A task keeps its limits as it was left (ADR 49): a scheduled task is
 	// resumed for every run, and one let run as long as it needs stays so.
-	if rec, found := lastLimits(history); found {
+	if rec, found := lastLimits(choices); found {
 		s.limitsOff, s.limitsActor = !rec.On, rec.Actor
 	}
 	if err = s.restoreHistory(history); err != nil {

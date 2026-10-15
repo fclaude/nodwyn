@@ -210,6 +210,54 @@ func Open(path string, opts ...Option) (*Writer, error) {
 	return w, nil
 }
 
+// OpenAt is Open for a log whose complete events up to seq end at byte
+// offset end, as its index says (ADR 49 §10): only what follows is read, to
+// find the last complete event and cut a torn last line, instead of the
+// whole log. A log that does not end a line at end is refused, and so is one
+// that holds less than the index says.
+func OpenAt(path, session string, seq uint64, end int64, opts ...Option) (*Writer, error) {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("log: open: %w", err)
+	}
+	fail := func(err error) (*Writer, error) { f.Close(); return nil, err }
+	if err := lock(f); err != nil {
+		return fail(err)
+	}
+	if seq == 0 || end <= 0 {
+		return fail(fmt.Errorf("log: open %s: no complete events", path))
+	}
+	var newline [1]byte
+	if _, err := f.ReadAt(newline[:], end-1); err != nil || newline[0] != '\n' {
+		return fail(fmt.Errorf("log: open %s: no event ends at byte %d", path, end))
+	}
+	if _, err := f.Seek(end, io.SeekStart); err != nil {
+		return fail(err)
+	}
+	last, lastEnd := seq, end
+	err = ReplayFrom(f, seq+1, func(ev Event, _ []byte, e int64) error {
+		last, lastEnd = ev.Seq, end+e
+		return nil
+	})
+	truncated := errors.Is(err, ErrTruncated)
+	if err != nil && !truncated {
+		return fail(err)
+	}
+	if truncated {
+		// The lines before the torn one are left as they are: the log is
+		// cut at the end of the last complete one.
+		if err := f.Truncate(lastEnd); err != nil {
+			return fail(err)
+		}
+	}
+	w := New(lockedFile{f}, session, opts...)
+	w.seq = last
+	if truncated {
+		return w, ErrTruncated
+	}
+	return w, nil
+}
+
 // Session returns the session id this writer appends to.
 func (w *Writer) Session() string { return w.session }
 

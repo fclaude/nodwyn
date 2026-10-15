@@ -14,23 +14,33 @@ import (
 // whole task, a resumed one's history and every turn of a run included.
 
 // knownSpend is what the task's model and judge requests have cost so far,
-// as far as known.
+// as far as known: a resumed session's requests it does not hold in memory
+// (spendBefore, from the log's index) and those it holds, added in the order
+// the log has them, as adding up the whole log would.
 func (s *Session) knownSpend() float64 {
-	var total float64
+	total := s.spendBefore
 	for _, ev := range s.EventsSoFar() {
-		if ev.Kind != log.KindLLMResp && ev.Kind != log.KindJevReq {
-			continue
-		}
-		var r struct {
-			Usage *struct {
-				Cost *float64 `json:"cost"`
-			} `json:"usage"`
-		}
-		if json.Unmarshal(ev.Payload, &r) == nil && r.Usage != nil && r.Usage.Cost != nil && *r.Usage.Cost > 0 {
-			total += *r.Usage.Cost
+		if cost, ok := knownCost(ev); ok {
+			total += cost
 		}
 	}
 	return total
+}
+
+// knownCost is what one model or judge request cost, when it is known.
+func knownCost(ev log.Event) (float64, bool) {
+	if ev.Kind != log.KindLLMResp && ev.Kind != log.KindJevReq {
+		return 0, false
+	}
+	var r struct {
+		Usage *struct {
+			Cost *float64 `json:"cost"`
+		} `json:"usage"`
+	}
+	if json.Unmarshal(ev.Payload, &r) == nil && r.Usage != nil && r.Usage.Cost != nil && *r.Usage.Cost > 0 {
+		return *r.Usage.Cost, true
+	}
+	return 0, false
 }
 
 // endSpend keeps what a turn did to the spend limit: the soft limit a

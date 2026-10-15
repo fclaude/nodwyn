@@ -47,7 +47,9 @@ import (
 type Host interface {
 	// Record appends an event to the session log.
 	Record(kind log.Kind, payload any) (log.Event, error)
-	// EventsSoFar returns the log so far; every window is rebuilt from it.
+	// EventsSoFar returns the log so far, or of a resumed session its end
+	// from where the window and the loop's readers need it (ADR 49 §10);
+	// every window is rebuilt from it.
 	EventsSoFar() []log.Event
 	// Emit sends an ephemeral event to the front-end; it is not logged.
 	Emit(ev event.Event)

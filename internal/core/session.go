@@ -117,8 +117,11 @@ type Session struct {
 	// The spend limit's soft limit as a checkpoint last raised it, and
 	// whether a turn has said the limit cannot see a request's cost
 	// (spend.go). Both under mu.
-	costSoft        int64
-	spendNoted      bool
+	costSoft   int64
+	spendNoted bool
+	// spendBefore is what the requests a resumed session does not hold in
+	// memory cost (knownSpend); fixed when it resumes.
+	spendBefore     float64
 	judgeSpendNoted bool
 	prompts         map[string]pendingConfirmation
 	promptMu        sync.Mutex

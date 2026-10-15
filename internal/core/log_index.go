@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,9 +11,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/redact"
+	"github.com/fclaude/nodwyn/internal/window"
 )
 
 // A session log's index (ADR 49 §10) is what listing the session and reading
@@ -34,7 +38,7 @@ import (
 // reach (the default denylist), and whatever could write it could write the
 // log itself.
 
-const indexVersion = 1
+const indexVersion = 2
 
 // markEvery is how many events apart the index notes where a line starts: a
 // page is read from the nearest mark before it, at most this many events
@@ -51,8 +55,132 @@ type logIndex struct {
 	Hash  string `json:"hash"`
 	// Fold is the session's listing up to and including Seq.
 	Fold infoFold `json:"fold"`
-	// Marks[k] is where the line of event k*markEvery+1 starts.
-	Marks []int64 `json:"marks"`
+	// Resume is what resuming the session needs from the events it does
+	// not hold, up to and including Seq.
+	Resume resumeFold `json:"resume"`
+	// Marks[k] is where the line of event k*markEvery+1 starts, and
+	// MarkSpend[k] what the requests before it cost, as knownSpend adds it.
+	Marks     []int64   `json:"marks"`
+	MarkSpend []float64 `json:"mark_spend"`
+}
+
+// resumeFold is what a resumed session needs from the part of its log it
+// does not hold in memory (ADR 49 §10), folded as the listing is. A resumed
+// session holds the events from base on: every reader of its events finds
+// in them what it found in the whole log.
+type resumeFold struct {
+	// Window is where a window built now begins (window.StartTracker).
+	Window window.StartTracker `json:"window"`
+	// Requests are the seqs of the latest three user messages: the planner
+	// reads two before the latest (plan-chat-request), the judge two
+	// (earlierRequests), and request-context the turn before. Request is
+	// the latest that is not a /compact, which a compaction hands over
+	// (compact-last-request).
+	Requests []uint64 `json:"requests,omitempty"`
+	Request  uint64   `json:"request,omitempty"`
+	// Finished is the seq of the latest turn.end of a turn that finished:
+	// a plan an unfinished turn left is read from after it (unfinishedPlan).
+	Finished uint64 `json:"finished,omitempty"`
+	// RunStart is the seq of the latest run's first run.state: a run's plan
+	// and state are read from there (runPlan, run.Restore).
+	RunStart uint64 `json:"run_start,omitempty"`
+	// Summaries says the log has a summary, which replaces spans a window's
+	// start does not know of: such a log is held whole.
+	Summaries bool `json:"summaries,omitempty"`
+	// Spend is what the requests so far cost, as knownSpend adds it.
+	Spend float64 `json:"spend,omitempty"`
+	// Latest are the latest records of the choices a resumed task keeps,
+	// wherever they are in the log: its model, judge, helpers and limits.
+	Latest map[log.Kind]log.Event `json:"latest,omitempty"`
+}
+
+// keptChoices are the kinds whose latest record resumeFold keeps.
+var keptChoices = []log.Kind{log.KindSessionModel, log.KindSessionJudge, log.KindSessionDelegates, log.KindSessionLimits}
+
+// observe folds one event in.
+func (r *resumeFold) observe(ev log.Event) {
+	r.Window.Observe(ev)
+	switch ev.Kind {
+	case log.KindUserMsg:
+		var m log.UserMsg
+		if ev.Decode(&m) != nil {
+			return
+		}
+		r.Requests = append(r.Requests, ev.Seq)
+		if len(r.Requests) > 3 {
+			r.Requests = r.Requests[len(r.Requests)-3:]
+		}
+		if !compactRequest(m.Text) {
+			r.Request = ev.Seq
+		}
+	case log.KindTurnEnd:
+		var p log.TurnEnd
+		if ev.Decode(&p) == nil && turnFinished(p.Outcome) {
+			r.Finished = ev.Seq
+		}
+	case log.KindRunState:
+		var p log.RunState
+		if ev.Decode(&p) == nil && p.Status == "running" && p.Turns == 0 {
+			r.RunStart = ev.Seq
+		}
+	case log.KindSummary, log.KindSummaryDrop:
+		r.Summaries = true
+	case log.KindLLMResp, log.KindJevReq:
+		if cost, ok := knownCost(ev); ok {
+			r.Spend += cost
+		}
+	default:
+		if slices.Contains(keptChoices, ev.Kind) {
+			if r.Latest == nil {
+				r.Latest = map[log.Kind]log.Event{}
+			}
+			r.Latest[ev.Kind] = ev
+		}
+	}
+}
+
+// base is the seq of the first event a resumed session holds: the earliest
+// any of its readers needs.
+func (r resumeFold) base() uint64 {
+	if r.Summaries || len(r.Requests) == 0 {
+		return 1
+	}
+	b := min(r.Window.Start(), r.Requests[0], r.Finished+1)
+	if r.Request > 0 {
+		b = min(b, r.Request)
+	}
+	if r.RunStart > 0 {
+		b = min(b, r.RunStart)
+	}
+	return max(b, 1)
+}
+
+// choices are the latest choice records, oldest first, for the readers that
+// take the latest of a kind from a list of events.
+func (r resumeFold) choices() []log.Event {
+	var out []log.Event
+	for _, ev := range r.Latest {
+		out = append(out, ev)
+	}
+	slices.SortFunc(out, func(a, b log.Event) int { return cmp.Compare(a.Seq, b.Seq) })
+	return out
+}
+
+// compactRequest is compact.scm's compact-request?: a message that is a
+// /compact command.
+func compactRequest(text string) bool {
+	r := strings.TrimSpace(text)
+	return r == "/compact" || strings.HasPrefix(r, "/compact ") || strings.HasPrefix(r, "/compact\n")
+}
+
+// turnFinished is unfinishedPlan's: a turn finished unless an error, a
+// limit or the person's Stop ended it.
+func turnFinished(outcome string) bool {
+	switch outcome {
+	case "error", "stopped", "hard_budget", "spend_limit", "canceled":
+		return false
+	}
+	return true
 }
 
 func indexPath(dir, id string) string { return filepath.Join(dir, id+".idx") }
@@ -107,16 +235,18 @@ func extendIndex(f *os.File, id string, idx logIndex) (logIndex, bool, error) {
 	}
 	base, previous := idx.End, int64(0)
 	err := log.ReplayFrom(f, idx.Seq+1, func(ev log.Event, line []byte, end int64) error {
-		if err := idx.Fold.observe(id, ev); err != nil {
-			return err
-		}
 		// A line starts where the one before it ended: a blank line between
 		// them is skipped by whoever reads from there.
 		start := base + previous
 		previous = end
 		if (ev.Seq-1)%markEvery == 0 {
 			idx.Marks = append(idx.Marks, start)
+			idx.MarkSpend = append(idx.MarkSpend, idx.Resume.Spend)
 		}
+		if err := idx.Fold.observe(id, ev); err != nil {
+			return err
+		}
+		idx.Resume.observe(ev)
 		sum := sha256.Sum256(line)
 		idx.Seq, idx.Start, idx.End, idx.Hash = ev.Seq, start, base+end, hex.EncodeToString(sum[:])
 		return nil
@@ -138,7 +268,7 @@ func loadIndex(path string, f *os.File) (logIndex, bool) {
 	}
 	var idx logIndex
 	if json.Unmarshal(raw, &idx) != nil || idx.Version != indexVersion || idx.Seq == 0 || idx.Start < 0 || idx.End <= idx.Start ||
-		uint64(len(idx.Marks)) != (idx.Seq-1)/markEvery+1 || idx.Marks[0] != 0 {
+		uint64(len(idx.Marks)) != (idx.Seq-1)/markEvery+1 || len(idx.MarkSpend) != len(idx.Marks) || idx.Marks[0] != 0 {
 		return logIndex{}, false
 	}
 	line := make([]byte, idx.End-idx.Start)
@@ -224,6 +354,41 @@ func (s Store) readPage(id string, idx logIndex, page *LogPage, after, through u
 		return err
 	}
 	return nil
+}
+
+// suffix reads the events a resumed session holds (resumeFold.base), from
+// the mark at or before the first of them to the end of the log, and what
+// the requests before them cost. A mark that is not where its event's line
+// starts is an index that is not this log's: it is removed, and the whole
+// log is read instead.
+func (s Store) suffix(id string, idx logIndex) ([]log.Event, float64, error) {
+	k := (idx.Resume.base() - 1) / markEvery
+	path, err := s.path(id)
+	if err != nil {
+		return nil, 0, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("log: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.Seek(idx.Marks[k], io.SeekStart); err != nil {
+		return nil, 0, err
+	}
+	var events []log.Event
+	err = log.ReplayFrom(f, k*markEvery+1, func(ev log.Event, _ []byte, _ int64) error {
+		events = append(events, ev)
+		return nil
+	})
+	if err != nil && !errors.Is(err, log.ErrTruncated) {
+		if len(events) > 0 {
+			return nil, 0, err
+		}
+		os.Remove(indexPath(s.Dir, id))
+		_, all, err := s.read(id)
+		return all, 0, err
+	}
+	return events, idx.MarkSpend[k], nil
 }
 
 // errStaleIndex says an index's mark did not match its log.

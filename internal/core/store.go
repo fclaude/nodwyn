@@ -243,14 +243,14 @@ func (s Store) record(id string, kind log.Kind, payload any) error {
 	if err != nil {
 		return err
 	}
-	_, truncated, err := s.index(id)
+	idx, truncated, err := s.index(id)
 	if err != nil {
 		return err
 	}
 	if truncated {
 		return fmt.Errorf("core: resume the session to recover its incomplete log first")
 	}
-	writer, err := log.Open(path)
+	writer, err := log.OpenAt(path, id, idx.Seq, idx.End)
 	if err != nil {
 		if writer != nil {
 			writer.Close()

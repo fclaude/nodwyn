@@ -36,11 +36,35 @@ func (s *Session) recordRedactions(source uint64, redactions []redact.Event) err
 	return err
 }
 
-// EventsSoFar returns a snapshot of the log so far (loop.Host).
+// EventsSoFar returns a snapshot of the events the session holds (loop.Host):
+// every event of a session opened here, and of a resumed one those from
+// where its earliest reader needs them (ADR 49 §10). A front end replaying
+// the whole conversation reads History.
 func (s *Session) EventsSoFar() []log.Event {
 	s.evmu.Lock()
 	defer s.evmu.Unlock()
 	return append([]log.Event(nil), s.events...)
+}
+
+// History is every event of the session's log, redacted as the events it
+// holds are: read from the log on disk, since a resumed session holds only
+// the end of it. A session whose log is not a file holds all of it.
+func (s *Session) History() ([]log.Event, error) {
+	if s.opts.LogWriter != nil {
+		return s.EventsSoFar(), nil
+	}
+	_, events, err := Store{Dir: s.opts.Paths.SessionsDir}.read(s.id)
+	if err != nil {
+		return nil, err
+	}
+	for i, ev := range events {
+		if len(ev.Payload) > 0 {
+			if events[i].Payload, _, err = redact.JSON(ev.Payload, nil); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return events, nil
 }
 
 // FinalReply returns the model's last reply of the latest turn that the

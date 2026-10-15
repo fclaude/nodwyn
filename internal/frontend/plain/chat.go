@@ -48,7 +48,12 @@ func (c *Chat) Run(ctx context.Context) error {
 	c.lines = newLineReader(c.In, c.Out)
 	c.banner()
 	if c.ReplayHistory {
-		history := c.Session.EventsSoFar()
+		// The whole conversation, from the log: a resumed session holds
+		// only its end (ADR 49 §10).
+		history, err := c.Session.History()
+		if err != nil {
+			return err
+		}
 		Replay(history, c.Out, c.ShowThinking)
 		if len(history) > 0 {
 			c.replayedSeq = history[len(history)-1].Seq

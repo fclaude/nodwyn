@@ -556,3 +556,24 @@ again in run 2 (on) and one in run 4 (off).
 So `keep_reasoning = false`, the default, is the setting for gpt-6.1-sol.
 The setting stays for the models that follow, which may reason differently
 with their reasoning given back; the runs above are the way to find out.
+
+## Amendment 2026-10-15: a window is built from where it starts (ADR 49)
+
+A window was built from every event of the session, and a resumed session
+held every one in memory: a task that keeps every run in one log (ADR 49)
+would read gigabytes for each request. Nothing before the point where a
+request last cut the conversation reaches a later window: `buildV1` cuts
+at each user message at the innermost lasting narrowing still open, the
+task and plan start again there, the narrowings open then are closed, and
+elisions and folds are named by seq. `window.StartTracker` follows that
+point event by event, and a window built from the events from its `Start`
+is the window built from all of them: `TestWindowFromItsStart` compares
+the two at every point of a session with compactions, sub-contexts, a
+widen, plans, attachments, folds and elisions (it fails with the tracker
+cutting at a narrowing that does not last), and of the recorded sessions.
+The log's index keeps the tracker, and a resumed session holds the events
+from its start, or earlier where another reader needs them (ADR 49 §10).
+A session whose log has a summary is held whole, since a summary can
+replace a span the tracker knows nothing of. Requests are unchanged: the
+same messages, so the same request hash `nodwyn replay --window` checks.
+

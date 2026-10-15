@@ -1584,7 +1584,12 @@ index (\adr{49}): the listing \code{core.Store} would otherwise read the
 whole log for, and where every 256th line starts, so \code{log.read} reads
 a page from the nearest mark. It is derived from the log, checked against
 the log's line where it ends, and built again from the log when it does not
-match: nothing is recorded only there. The payload of each kind is a Go type in
+match: nothing is recorded only there. \code{core.Resume} opens the log at
+the index's end (\code{log.OpenAt}) and holds only the events from the
+earliest point a reader needs: where the window starts
+(\code{window.StartTracker}), the latest three requests, an unfinished
+plan's turn, a run's start. The choices a task keeps and its spend so far
+come from the index. The payload of each kind is a Go type in
 \file{internal/log/payloads.go}, which is the log's schema, with one
 exception: \code{redact.event}'s payload, the source event's seq and the
 substitutions, is built in \file{internal/core/events.go}.

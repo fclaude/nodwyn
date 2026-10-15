@@ -112,7 +112,12 @@ session and reading a page of its log need, with where every 256th line
 starts, kept so that neither reads the whole log again when it grows. It is
 derived from the log and checked against it before use; nothing is only in
 it. One that does not match its log is built again from the log, so deleting
-it is always safe, and deleting the session deletes it.
+it is always safe, and deleting the session deletes it. Resuming a task
+reads its index and the end of its log: the session holds the events from
+where its window, its last few requests and an unfinished plan need them,
+so a task that has run for months resumes as fast as one that ran today.
+`nodwyn --resume` and the TUI still show the whole conversation, read from
+the log.
 `guard.decision` lines carry `origin` (user, model, or harness for the loop
 strategy and plan gate), `decision`, `checker`,
 `reason` and, for confirms, `answer` and, when recorded, `actor`: who

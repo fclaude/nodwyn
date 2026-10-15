@@ -1032,7 +1032,8 @@ and progress stops end the turn with an error no \code{guard} can catch.
 loop's procedures (compaction, sub-agents, the plan gate, the prompts);
 Part~IV and the field guide in \file{docs/expert/} walk through them. A
 context of its own sees only what it is handed: \code{(session-requests)}
-gives the person's messages, and \code{(request-context)} the agent's last
+gives the person's messages (in a resumed session, those it holds: at least
+the latest three, \adr{49}), and \code{(request-context)} the agent's last
 answer before the latest one and the names of the files attached to it,
 which the plan gate hands its explorer and planner.
 

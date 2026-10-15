@@ -42,7 +42,11 @@ listing and where every 256th line starts, so that listing the session and
 reading a page of its log do not read the whole log again as it grows. It
 is derived from the log and checked against the log's line where it ends
 before use; one that does not match is built again from the log, so it can
-always be deleted.
+always be deleted. Resuming a session reads the index and the end of the
+log: the session holds the events from the point its window starts (where a
+request last cut the conversation at a lasting narrowing, a compaction's),
+or from its last three requests or an unfinished plan's turn if those are
+earlier, and its model, judge and limits come from the index.
 
 \section{The event kinds}
 

@@ -120,6 +120,13 @@ func (l *local) start(ctx context.Context, open func() (*core.Session, error)) (
 			}
 		}
 	}()
+	// The whole conversation, from the log: a resumed session holds only
+	// its end (ADR 49 §10).
+	history, err := s.History()
+	if err != nil {
+		s.Close()
+		return snapshot{}, err
+	}
 
 	l.mu.Lock()
 	select {
@@ -131,7 +138,7 @@ func (l *local) start(ctx context.Context, open func() (*core.Session, error)) (
 		l.session = s
 		l.mu.Unlock()
 	}
-	result := snapshot{ID: s.ID(), Repo: s.Repo(), History: s.EventsSoFar(), Busy: s.Busy()}
+	result := snapshot{ID: s.ID(), Repo: s.Repo(), History: history, Busy: s.Busy()}
 	if w := s.Worktree(); w != nil {
 		result.Branch = w.Branch
 	}

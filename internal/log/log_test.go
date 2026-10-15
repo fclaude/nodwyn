@@ -3,6 +3,7 @@ package log
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -319,5 +320,60 @@ func TestGatePlanSteps(t *testing.T) {
 		if strings.Join(got, "|") != strings.Join(want, "|") {
 			t.Errorf("%q: %q, want %q", plan, got, want)
 		}
+	}
+}
+
+// OpenAt opens a log from where its index says its complete events end
+// (ADR 49 §10): events appended since are found, a torn last line is cut
+// at the end of the last complete one, the lines before it left as they
+// are, and an end that is not a line's is refused.
+func TestOpenAtReadsOnlyFromTheIndexedEnd(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	w, err := Create(path, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 5 {
+		if _, err := w.Append(KindNote, Note{Text: fmt.Sprintf("note %d", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.Close()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third := int64(bytes.IndexByte(raw[bytes.Index(raw, []byte(`"seq":3`)):], '\n')) + int64(bytes.Index(raw, []byte(`"seq":3`))) + 1
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString(`{"seq":6,"ts":"2026-`)
+	f.Close()
+
+	if _, err := OpenAt(path, "s", 3, third-1); err == nil {
+		t.Fatal("an end inside a line was taken")
+	}
+	w, err = OpenAt(path, "s", 3, third)
+	if !errors.Is(err, ErrTruncated) {
+		t.Fatalf("a torn last line: %v", err)
+	}
+	if w.Seq() != 5 {
+		t.Fatalf("the events after the indexed end: seq %d, want 5", w.Seq())
+	}
+	if _, err := w.Append(KindNote, Note{Text: "after"}); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(after, raw) {
+		t.Fatal("the complete lines changed")
+	}
+	evs, err := ReadFile(path)
+	if err != nil || len(evs) != 6 || evs[5].Seq != 6 {
+		t.Fatalf("after the cut and an append: %d events, %v", len(evs), err)
 	}
 }

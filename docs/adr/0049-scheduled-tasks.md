@@ -207,8 +207,27 @@ yet hold totals or turn marks, which nothing reads yet. Tests:
 recorded logs and stale indexes; `log_end_test.go`, a 50,000-event log
 whose first half is unreadable).
 
-Not built, in the order proposed: the rest of §10, resume, the window and
-the spend limit read from the index and the suffix they need;
+Also built on 2026-10-15, the rest of §10 but the console's totals:
+resuming a task opens its log from the index's end (`log.OpenAt`, which
+reads only what follows it and cuts a torn last line there) and holds the
+events from the earliest point any reader needs, rounded down to a mark:
+the window's start (`window.StartTracker`, ADR 9 amended), the latest three
+requests and the latest that is not a `/compact` (the planner, the judge,
+`request-context`, `/compact`), the end of the latest turn that finished
+(an unfinished plan), and a run's start; the whole log when it has a
+summary. The task's model, judge, helpers and limits come from the index's
+latest records of their kinds, and the spend limit starts from the
+index's running sum at the mark. Front ends replaying the conversation
+(the TUI's own process, `nodwyn --resume`) read it from the log
+(`Session.History`). A session left open keeps every event it records, as
+before: memory falls back to the end of its log when it next resumes,
+which a scheduled task does for every run (§7). Tests: `internal/window`
+(`start_test.go`), `internal/core` (`resume_suffix_test.go`, a 2,000-event
+log held from its last compaction), `internal/log` (`OpenAt`), and the TUI
+and line mode replaying a resumed task whole.
+
+Not built, in the order proposed: the index's totals and run marks for the
+console;
 §11 the console reading from the end; then §1, §4–§9 and §12, the schedules
 themselves; then a login item that keeps the daemon running when no window
 is open. Not proposed: the model proposing a schedule, cron expressions,
