@@ -2386,6 +2386,23 @@ source catalogue; the PDFs are release attachments. `make book` and
 use a fresh clone for new work; old clones retain the old objects and commit
 identities. See the release guide for the migration details.
 
+## Letting the model search a folder's earlier tasks
+
+A task's model searches its own conversation (`index-search` with scope
+`"conversation"`, and `recall`) whatever you choose. Searching the folder's
+other tasks is off until you turn it on for that folder: on **Workspaces**,
+**Edit** (or **Name it**) beside the folder, tick **Let the model search the
+earlier tasks here**, and **Save**. Its tasks may then use `index-search`
+with scope `"earlier"`, which ranks what was asked in the folder's other
+tasks, the model's replies and what its tools returned, and `recall` with a
+task's id, which brings one of them back; a git repository's worktrees
+count as the repository. Archived tasks are included and marked; deleted
+ones are gone. The choice is kept with the folder's name in
+`workspaces.toml` on this computer, never in the folder, and only this
+computer can change it, not a paired device. It counts from a task's next
+call, open tasks included; untick it to turn it off. Off, the model is told
+it is off and where you would turn it on, so it can ask you.
+
 ## Forgetting a folder in the console
 
 On **Workspaces**, choose **Forget** beside a named workspace or a folder

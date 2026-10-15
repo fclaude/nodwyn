@@ -164,8 +164,8 @@ names them, so `ScrubEnv` matches `scrub` and `index-grep` matches `grep`,
 and events are ranked by BM25: more of the query's words, and rarer ones,
 rank first, and a result's call counts three times its output. Each event
 found shows its three lines that hold the most of the words, numbered as
-`recall` numbers them. The other scope is the repository's (below);
-earlier tasks are not built.
+`recall` numbers them. The repository's scope and earlier tasks' are
+below.
 
 `recall` returns one of those events as the log recorded it, already
 redacted, under a heading naming it (`seq 812, the result of shell-exec
@@ -245,5 +245,39 @@ with the path and a chunk's first line counted three times. There are no
 embeddings: they wait for a model to make them (ADR 50, the person's
 answer 1).
 
-Across sessions, a repository keeps its project notes (`project-notes`, docs/scheme.md) and its index (above); searching earlier tasks (ADR 50) is not built, and there is no embedding index.
+## Earlier tasks
+
+With the person's leave for a project, `index-search` with scope
+`"earlier"` ranks the same kinds of event in the project's other tasks, and
+`recall` with a task's id brings one back (ADR 50 §9):
+
+```scheme
+(index-search "why did the release fail" "earlier")
+(recall 812 0 0 "20261009T034803Z-3981612f")
+```
+
+The leave is `earlier_tasks` on the project's entry in `workspaces.toml`,
+which only the console on this computer writes (Connections › Workspaces,
+the folder's editor) and no model or repository can reach; it is read at
+every call, so turning it on or off counts at once, and off is the default.
+Which tasks: those whose project (`SessionInfo.Project()`) is this
+session's, so a worktree's tasks are its repository's; archived tasks are
+included and marked; a deleted task's log is gone and the task with it.
+The events of all of them are ranked as one collection, a word weighing by
+how many events of all the tasks hold it, a tie going to the newer task.
+Each result names its task (id, name or first message, the day of its last
+event, whether it is archived) and shows its three best lines, read from
+its log again by its seq.
+
+Each log is indexed in memory once per process, shared by the process's
+sessions as the session list's cache is, and again only when its size or
+modification time changed; its words and its events' headings are kept,
+its texts read again when shown. On the computer this was written on,
+the 73 earlier tasks of nodwyn among the 78 local logs (17,663 events)
+were indexed in 3.6 seconds, read in parallel, and the cache held 87 MB;
+a search after that reads it in about a millisecond. The memory is mostly
+the words of tool results, and it grows with the logs and stays for as
+long as the process runs. Nothing is written beside the logs.
+
+Across sessions, a repository keeps its project notes (`project-notes`, docs/scheme.md) and its index (above), and, when the person allows it, the model searches its earlier tasks (above); there is no embedding index.
 That is not a claim made by this P10 implementation.

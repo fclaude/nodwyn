@@ -1,9 +1,9 @@
 # ADR 0050: Retrieval: a project index the model searches, recall of the conversation, and earlier tasks when allowed
 
 - Status: **accepted** 2026-10-15, with the person's answers below; the
-  conversation (R2) and the repository (R1) implemented 2026-10-15, earlier
-  tasks (R3) and embeddings (R4) not built (see the order of work at the
-  end)
+  conversation (R2), the repository (R1) and earlier tasks (R3)
+  implemented 2026-10-15, embeddings (R4) not built (see the order of work
+  at the end)
 - Date: 2026-10-15
 - Amends: SPEC (Memory: v0 had no cross-session index and no embeddings;
   invariant 1 stands, and every index here is a derived view of it),
@@ -323,15 +323,29 @@ It is off unless the person allows it for the project, on this computer:
 `earlier_tasks = true` on the project's entry in `workspaces.toml`, the
 per-project registry in the configuration directory that only the console
 writes. A clone cannot write it and the model's tools cannot reach it. The
-console's Workspace tab has the switch; setting it is refused to a paired
-device, as Settings is (ADR 30). It is read on each call, so it takes
-effect at once. Off, the scope answers that searching earlier tasks is off
-for this project and that a person can allow it in the Workspace tab, so
-the model can ask.
+switch is in the folder's editor on the console's Workspaces page, where
+its name and mounts are (`workspace.save`, which a paired device is
+refused, as Settings is, ADR 30); a save that does not name it keeps it,
+so Home's naming of a folder and an older console never turn it off. It
+is read on each call, so it takes effect at once. Off, the scope answers
+that searching earlier tasks is off for this project and where a person
+turns it on, so the model can ask.
 
-Each earlier task's words are kept in `<id>.ridx` beside its log, derived
-like `<id>.idx`: checked against the log's end, extended with what the log
-gained, rebuilt on any mismatch, deleted with the log.
+The events of all the tasks are ranked as one collection
+(`retrieval.SearchAll`): a word weighs by how many events of all of them
+hold it, a tie goes to the newer task. Each log is indexed in memory once
+per process, shared by the process's sessions as `Store.Info`'s cache is,
+and again only when its size or modification time changed; a deleted
+task's entry goes with its log. Its words and its events' headings are
+kept, and a result's text is read again from its log by its seq
+(`Store.ReadLog`). The first search of nodwyn's 73 earlier tasks (17,663
+events, the logs read in parallel) took 3.6 seconds and the cache held 87
+MB; later searches read the cache in about a millisecond. The memory grows
+with the logs and stays while the process runs. `<id>.ridx` beside each
+log, as first proposed here, was not built: a file of words per log is a
+format and a deletion to keep, and what is kept in memory is what such a
+file would hold; it is the step to take if the memory or the first search
+matters.
 
 ### 10. Embeddings, when the person chooses a model for them
 
@@ -456,7 +470,7 @@ Each slice is built end to end and run where it runs, with fakes only
 
 R2 depends on nothing in R1 and is the smallest, and goes first (the
 person's answer 4); then R1, then R3. R4 waits for models to embed with
-(the person's answer 1). R2 and R1 are built.
+(the person's answer 1). R2, R1 and R3 are built.
 
 ## R2 implemented — 2026-10-15
 
@@ -536,6 +550,37 @@ the result redacted, the index beside the project's notes, the record, the
 build's and the result's guarded reads). On this repository at this commit
 a build read 712 files in 1.3 seconds into 6.5 MB, and a search took 90 to
 120 milliseconds.
+
+## R3 implemented — 2026-10-15
+
+- `internal/core/earlier.go`: the leave, read from `workspaces.toml` at
+  every call; the project's other tasks, indexed per log in a per-process
+  cache (§9); `index-search` with `"earlier"`, and `recall`'s `task`. The
+  text of an event is one function (`eventText`), so one read again by its
+  seq reads as it was indexed. `retrieval.SearchAll` ranks several indexes
+  as one collection.
+- `config.Registered.EarlierTasks` and `Workspace.EarlierTasks`, written by
+  hand as the registry's other fields are; `workspace.save` takes
+  `earlier_tasks` and keeps it when absent; `workspace.list` reports it
+  (ADR 22, amended).
+- The console: a box in the folder's editor on Workspaces, and a line on a
+  folder's row when it is on. The TUI, line mode and the CLI have no
+  switch: not built; `workspaces.toml` can be edited by hand
+  (`docs/clients.md`).
+- Not built here: the index's status and a way to forget it in the console
+  (§12), `<id>.ridx` (§9), and evicting the cache.
+
+Tests: `internal/core` `TestEarlierTasksAreSearchedWhenAllowed` (off by
+default, for recall too; on: this project's tasks, the archived one
+marked, never another project's or this one; recall by task, in a range;
+another project's task refused; a log that grew read again; a deleted task
+gone; off again); `internal/retrieval` `TestSearchAllRanksSeveralIndexesAsOne`
+(scores across indexes equal those in one); `internal/config`
+`TestWorkspaceKeepsWhetherEarlierTasksAreSearched` (it found the registry
+written field by field, without the flag); `internal/frontend/rpc`
+`TestWorkspaceSaveKeepsEarlierTasksUnlessGiven`; and the `firstrun`
+browser check, which ticks and unticks the box and checks the request,
+`workspaces.toml` and the folder's row after each save.
 
 ## Not decided
 

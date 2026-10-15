@@ -478,10 +478,10 @@ func indexPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 	search := &scheme.Prim{
 		Name: "index-search",
 		Meta: scheme.Meta{
-			Doc: "Search by words, best match first. Scope \"repo\" searches the repository's files: for code by what it does or under names you can only guess, give plain words and likely names together, such as \"credential binding check egress\"; it reads the files that changed first. Each match is a file's lines A-B, its first line and its lines that hold the most of your words; read more with fs-read. For an exact string or a pattern use index-grep. Scope \"conversation\" searches this task's conversation: the person's messages, your replies and their tool calls, and tool results, including those the window has since elided, folded or cut, and sub-agents' work; each match is an event's seq with its best lines, and recall brings one back whole. Use it to find what was said, decided, run or shown earlier rather than run a command again.",
+			Doc: "Search by words, best match first. Scope \"repo\" searches the repository's files: for code by what it does or under names you can only guess, give plain words and likely names together, such as \"credential binding check egress\"; it reads the files that changed first. Each match is a file's lines A-B, its first line and its lines that hold the most of your words; read more with fs-read. For an exact string or a pattern use index-grep. Scope \"conversation\" searches this task's conversation: the person's messages, your replies and their tool calls, and tool results, including those the window has since elided, folded or cut, and sub-agents' work; each match is an event's seq with its best lines, and recall brings one back whole. Use it to find what was said, decided, run or shown earlier rather than run a command again. Scope \"earlier\" searches this project's other tasks the same way, when the person has turned that on for the project; each match names its task, and recall takes the seq with the task.",
 			Params: []scheme.Param{
 				{Name: "query", Type: "string", Doc: "words or names to look for: chunks and events holding more of them, and rarer ones, rank first; a name matches its parts too (ScrubEnv matches scrub)"},
-				{Name: "scope", Type: "string", Doc: "\"repo\": the repository's files; \"conversation\": this task's conversation"},
+				{Name: "scope", Type: "string", Doc: "\"repo\": the repository's files; \"conversation\": this task's conversation; \"earlier\": this project's earlier tasks, when the person allows it"},
 				{Name: "limit", Type: "integer", Doc: "how many to return: 8 unless given, at most 20", Optional: true},
 				{Name: "path", Type: "string", Doc: "with \"repo\", only this directory or file of the repository", Role: "path", Optional: true},
 			},
@@ -526,21 +526,21 @@ func indexPrims(o Options, pin guard.RepoPin) []*scheme.Prim {
 					return scheme.Void, err
 				}
 				return scheme.Tainted(scheme.Str(out), scheme.TaintOf(scheme.TagFile)), nil
-			case "conversation":
+			case "conversation", "earlier":
 				if len(c.Args) > 3 && c.Args[3].S != "" {
-					return scheme.Void, errors.New("path narrows a search of the repository, not of the conversation")
+					return scheme.Void, errors.New("path narrows a search of the repository, not of a conversation")
 				}
 				if o.Conversation == nil {
 					return scheme.Void, errors.New("this session has no conversation to search")
 				}
-				out, err := o.Conversation(c.Ctx, query, int(limit))
+				out, err := o.Conversation(c.Ctx, scope, query, int(limit))
 				if err != nil {
 					return scheme.Void, err
 				}
 				// The log holds file contents and command output.
 				return scheme.Tainted(scheme.Str(out), scheme.TaintOf("external:log")), nil
 			}
-			return scheme.Void, fmt.Errorf("scope %q: the scope is \"repo\", the repository's files, or \"conversation\", this task's conversation; searching earlier tasks is not built yet", scope)
+			return scheme.Void, fmt.Errorf("scope %q: the scope is \"repo\", the repository's files, \"conversation\", this task's conversation, or \"earlier\", this project's earlier tasks", scope)
 		},
 	}
 	update := &scheme.Prim{

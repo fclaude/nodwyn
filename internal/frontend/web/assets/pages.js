@@ -63,6 +63,7 @@ export function renderWorkspaces(root, ctx) {
         h("span", { class: "mono", title: folder }, shortPath(folder, desk.home)),
         mounts.length ? h("span", {}, mounts.map((m) => `${shortPath(m.path, desk.home)} (${m.access === "write" ? "read and write" : "read only"})`).join(" · ")) : null,
         ws ? h("span", {}, ws.git ? "A git repository: git is the undo for what it has committed, and nodwyn keeps the rest." : "Not a git repository: nodwyn keeps the previous version of a file before it changes it.") : null,
+        ws?.earlier_tasks ? h("span", { class: "ws-earlier" }, "The model may search the earlier tasks here.") : null,
         h("span", { class: "ws-count" }, count ? `${count.tasks} task${count.tasks === 1 ? "" : "s"} · ${ago(count.last)}` : "No tasks yet"),
       ),
       h("div", { class: "end" }, actions),
@@ -95,6 +96,9 @@ export function renderWorkspaces(root, ctx) {
       );
     drawMounts();
     const mountPath = h("input", { class: "input", placeholder: "/absolute/path or ~/folder", "aria-label": "Folder to mount", spellcheck: false });
+    // Searching earlier tasks is the person's choice for each folder, kept
+    // with its name on this computer (ADR 50 §9); off unless ticked here.
+    const earlier = h("input", { type: "checkbox", id: "ws-earlier", checked: !!ws?.earlier_tasks });
     const form = h(
       "form",
       {
@@ -113,7 +117,7 @@ export function renderWorkspaces(root, ctx) {
             return;
           }
           try {
-            await conn.call("workspace.save", { path, name: name.value.trim(), mounts });
+            await conn.call("workspace.save", { path, name: name.value.trim(), mounts, earlier_tasks: earlier.checked });
             editing = "";
             addingWorkspace = false;
             await desk.refreshWorkspaces();
@@ -127,6 +131,7 @@ export function renderWorkspaces(root, ctx) {
       folder ? null : h("div", { class: "field" }, h("label", { for: "ws-path" }, "Folder"), h("div", { class: "row-actions" }, pathInput, ctx.pickFolder ? h("button", { type: "button", class: "btn", onclick: async () => { try { const p = await ctx.pickFolder(); if (p) setPath(p); } catch (e) { error.textContent = String(e?.message || e); } } }, "Choose…") : null)),
       h("div", { class: "field" }, h("label", { for: "ws-name" }, "Name"), name),
       h("div", { class: "field" }, h("label", {}, "Other folders nodwyn may use here"), list, h("div", { class: "row-actions" }, mountPath, ctx.pickFolder ? h("button", { type: "button", class: "btn small", onclick: async () => { const p = await ctx.pickFolder(); if (p) mountPath.value = p; } }, "Choose…") : null, h("button", { type: "button", class: "btn small", onclick: () => { const p = mountPath.value.trim(); if (p) { mounts.push({ path: p, access: "read" }); mountPath.value = ""; drawMounts(); } } }, "Add"))),
+      h("div", { class: "field" }, h("label", { class: "check" }, earlier, "Let the model search the earlier tasks here"), h("p", { class: "hint" }, "Off, a task sees only its own conversation. On, the model can search this folder's other tasks and read back what was asked in them, its replies and what its tools returned, from the logs on this computer.")),
       h("p", { class: "hint" }, "Kept on this computer with the workspace's name, not in the folder. A read-only folder can be read but never changed."),
       error,
       h(

@@ -29,6 +29,9 @@ type Mount struct {
 // Workspace is what a session's folder may use beyond itself.
 type Workspace struct {
 	Mounts []Mount `json:"mounts"`
+	// EarlierTasks lets the model search the folder's other tasks and
+	// recall their events (ADR 50 §9); off unless the person turned it on.
+	EarlierTasks bool `json:"earlier_tasks"`
 }
 
 // LoadWorkspace is the workspace at root as the registry at registry names
@@ -45,7 +48,7 @@ func LoadWorkspace(registry, root string) (Workspace, error) {
 	root = CanonicalPath(root)
 	for _, r := range list {
 		if CanonicalPath(r.Path) == root {
-			return Workspace{Mounts: r.Mounts}.normalize(root)
+			return Workspace{Mounts: r.Mounts, EarlierTasks: r.EarlierTasks}.normalize(root)
 		}
 	}
 	return Workspace{}, nil
@@ -99,6 +102,10 @@ type Registered struct {
 	Name   string  `toml:"name" json:"name"`
 	Path   string  `toml:"path" json:"path"`
 	Mounts []Mount `toml:"mount" json:"mounts"`
+	// EarlierTasks: the person lets the model search this folder's other
+	// tasks (ADR 50 §9). A repository cannot turn it on: this file is the
+	// console's, in the config directory no model can reach.
+	EarlierTasks bool `toml:"earlier_tasks,omitempty" json:"earlier_tasks"`
 }
 
 type registry struct {
@@ -316,6 +323,9 @@ func writeRegistry(path string, r registry) error {
 	fmt.Fprintf(&b, "forgotten = %s\n", quoteList(r.Forgotten))
 	for _, r := range r.Workspace {
 		fmt.Fprintf(&b, "\n[[workspace]]\nname = %s\npath = %s\n", quote(r.Name), quote(r.Path))
+		if r.EarlierTasks {
+			b.WriteString("earlier_tasks = true\n")
+		}
 		for _, m := range r.Mounts {
 			fmt.Fprintf(&b, "\n[[workspace.mount]]\npath = %s\naccess = %s\n", quote(m.Path), quote(m.Access))
 		}

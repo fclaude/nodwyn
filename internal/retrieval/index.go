@@ -84,39 +84,84 @@ func (x *Index) Len() int { return len(x.lengths) }
 // which documents may be returned (a search of one directory); the others
 // still weigh the words.
 func (x *Index) Search(query string, limit int, keep func(doc int) bool) []Hit {
-	n := len(x.lengths)
-	if n == 0 || x.total == 0 || limit < 1 {
+	var only func(int, int) bool
+	if keep != nil {
+		only = func(_, doc int) bool { return keep(doc) }
+	}
+	found := SearchAll([]*Index{x}, query, limit, only)
+	if len(found) == 0 {
 		return nil
 	}
-	avg := float64(x.total) / float64(n)
-	scores := map[int32]float64{}
-	matched := map[int32][]string{}
+	hits := make([]Hit, len(found))
+	for i, f := range found {
+		hits[i] = f.Hit
+	}
+	return hits
+}
+
+// Found is a document SearchAll found: the index it is in, by its place in
+// the list searched, and the document there.
+type Found struct {
+	Index int
+	Hit
+}
+
+// SearchAll ranks the documents of several indexes as one collection, as
+// Search ranks one: how many documents hold a word, and how long they are
+// on average, are counted over all of them, so a score in one index weighs
+// the same as in another (each earlier task of a project has an index of
+// its own). Ties go to the earlier index, then the earlier document.
+func SearchAll(xs []*Index, query string, limit int, keep func(index, doc int) bool) []Found {
+	n, total := 0, 0
+	for _, x := range xs {
+		n += len(x.lengths)
+		total += x.total
+	}
+	if n == 0 || total == 0 || limit < 1 {
+		return nil
+	}
+	avg := float64(total) / float64(n)
+	type key struct{ index, doc int }
+	scores := map[key]float64{}
+	matched := map[key][]string{}
 	seen := map[string]bool{}
 	for _, word := range Words(query) {
-		ps := x.postings[word]
-		if seen[word] || len(ps) == 0 {
+		if seen[word] {
 			continue
 		}
 		seen[word] = true
-		idf := math.Log(1 + (float64(n)-float64(len(ps))+0.5)/(float64(len(ps))+0.5))
-		for _, p := range ps {
-			tf := float64(p.count)
-			norm := 1 - b + b*float64(x.lengths[p.doc])/avg
-			scores[p.doc] += idf * tf * (k1 + 1) / (tf + k1*norm)
-			matched[p.doc] = append(matched[p.doc], word)
+		df := 0
+		for _, x := range xs {
+			df += len(x.postings[word])
+		}
+		if df == 0 {
+			continue
+		}
+		idf := math.Log(1 + (float64(n)-float64(df)+0.5)/(float64(df)+0.5))
+		for i, x := range xs {
+			for _, p := range x.postings[word] {
+				tf := float64(p.count)
+				norm := 1 - b + b*float64(x.lengths[p.doc])/avg
+				k := key{i, int(p.doc)}
+				scores[k] += idf * tf * (k1 + 1) / (tf + k1*norm)
+				matched[k] = append(matched[k], word)
+			}
 		}
 	}
-	hits := make([]Hit, 0, len(scores))
-	for doc, score := range scores {
-		if keep == nil || keep(int(doc)) {
-			hits = append(hits, Hit{Doc: int(doc), Score: score, Matched: matched[doc]})
+	found := make([]Found, 0, len(scores))
+	for k, score := range scores {
+		if keep == nil || keep(k.index, k.doc) {
+			found = append(found, Found{Index: k.index, Hit: Hit{Doc: k.doc, Score: score, Matched: matched[k]}})
 		}
 	}
-	slices.SortFunc(hits, func(p, q Hit) int {
+	slices.SortFunc(found, func(p, q Found) int {
 		if c := cmp.Compare(q.Score, p.Score); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(p.Index, q.Index); c != 0 {
 			return c
 		}
 		return cmp.Compare(p.Doc, q.Doc)
 	})
-	return hits[:min(limit, len(hits))]
+	return found[:min(limit, len(found))]
 }

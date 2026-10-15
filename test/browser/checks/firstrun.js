@@ -169,7 +169,7 @@ check(async () => {
     await page.click("button:has-text('Add this folder')");
     await page.waitForSelector(`.ws-row strong:has-text('${name}')`);
   }
-  assert.deepStrictEqual(sent.of("workspace.save")[1], { path: `${root}/receipts`, name: "Receipts", mounts: [{ path: `${root}/reference`, access: "read" }] });
+  assert.deepStrictEqual(sent.of("workspace.save")[1], { path: `${root}/receipts`, name: "Receipts", mounts: [{ path: `${root}/reference`, access: "read" }], earlier_tasks: false });
   assert.ok(!fs.existsSync(`${root}/receipts/.nodwyn`), "a mount was written into the folder");
   await page.waitForSelector(".ws-row:has-text('Receipts') >> text=read only");
   await page.click("button[aria-label='Forget Letters']");
@@ -183,6 +183,26 @@ check(async () => {
   assert.ok(registry.includes(`[[workspace.mount]]\npath = "${root}/reference"\naccess = "read"`), "the mount is not in workspaces.toml: " + registry);
   assert.ok(fs.existsSync(`${root}/letters`), "removing a workspace touched its folder");
   step("workspaces added and removed on Workspaces");
+
+  // Searching a folder's earlier tasks is off until ticked in its editor,
+  // and saved with its entry in workspaces.toml, never in the folder; Home
+  // naming a folder sends no choice, so it never turns it off (ADR 50).
+  const receiptsEntry = () => fs.readFileSync(`${root}/config/nodwyn/workspaces.toml`, "utf8").split("[[workspace]]").find((w) => w.includes(`path = "${root}/receipts"`));
+  assert.ok(!receiptsEntry().includes("earlier_tasks"), "on before it was turned on: " + receiptsEntry());
+  for (const on of [true, false]) {
+    await page.click(".ws-row:has-text('Receipts') button:has-text('Edit')");
+    assert.strictEqual(await page.isChecked("#ws-earlier"), !on, "the editor does not show the saved choice");
+    await page.setChecked("#ws-earlier", on);
+    if (on) await page.screenshot({ path: `${out}/firstrun-workspace-editor.png` });
+    await page.click("form.setup-form button:has-text('Save')");
+    await page.waitForSelector("#ws-earlier", { state: "detached" });
+    const last = sent.of("workspace.save").at(-1);
+    assert.deepStrictEqual([last.name, last.earlier_tasks], ["Receipts", on]);
+    assert.strictEqual(receiptsEntry().includes("earlier_tasks = true"), on, "workspaces.toml: " + receiptsEntry());
+    await page.waitForSelector(".ws-row:has-text('Receipts') .ws-earlier", { state: on ? "visible" : "detached" });
+  }
+  assert.ok(!fs.existsSync(`${root}/receipts/.nodwyn`), "the choice was written into the folder");
+  step("earlier tasks turned on and off on Workspaces");
   await page.screenshot({ path: `${out}/firstrun-workspaces.png` });
 
   // A task in the first workspace, with an attachment holding a token.

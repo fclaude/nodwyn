@@ -29,11 +29,17 @@ type workspaceInfo struct {
 	Path   string         `json:"path"`
 	Mounts []config.Mount `json:"mounts"`
 	Git    bool           `json:"git"`
+	// EarlierTasks: the model may search this folder's other tasks (ADR 50).
+	EarlierTasks bool `json:"earlier_tasks"`
 }
 type workspaceSaveParams struct {
 	Path   string         `json:"path"`
 	Name   string         `json:"name"`
 	Mounts []config.Mount `json:"mounts"`
+	// EarlierTasks, when given, turns searching earlier tasks on or off;
+	// absent keeps what was saved, so a client that does not know it (an
+	// older console, Home's naming of a folder) never turns it off.
+	EarlierTasks *bool `json:"earlier_tasks,omitempty"`
 }
 type workspacePathParams struct {
 	Path string `json:"path"`
@@ -76,7 +82,7 @@ type restoreParams struct {
 }
 
 func describeWorkspace(r config.Registered) workspaceInfo {
-	info := workspaceInfo{Name: r.Name, Path: r.Path, Mounts: []config.Mount{}}
+	info := workspaceInfo{Name: r.Name, Path: r.Path, Mounts: []config.Mount{}, EarlierTasks: r.EarlierTasks}
 	_, err := os.Stat(filepath.Join(r.Path, ".git"))
 	info.Git = err == nil
 	if r.Mounts != nil {
@@ -169,7 +175,7 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 		return struct{}{}, nil
 	}
 	var p workspaceSaveParams
-	if err := params(req.Params, &p, "path", "name", "mounts"); err != nil {
+	if err := params(req.Params, &p, "path", "name", "mounts", "earlier_tasks"); err != nil {
 		return nil, err
 	}
 	if !filepath.IsAbs(p.Path) {
@@ -186,7 +192,17 @@ func (s *server) workspaces(req request, _ *peer) (any, *rpcError) {
 	if name == "" {
 		name = filepath.Base(p.Path)
 	}
-	saved, err := config.SaveRegistered(registry, config.Registered{Name: name, Path: p.Path, Mounts: p.Mounts})
+	earlier := false
+	if p.EarlierTasks != nil {
+		earlier = *p.EarlierTasks
+	} else {
+		ws, err := config.LoadWorkspace(registry, p.Path)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		earlier = ws.EarlierTasks
+	}
+	saved, err := config.SaveRegistered(registry, config.Registered{Name: name, Path: p.Path, Mounts: p.Mounts, EarlierTasks: earlier})
 	if err != nil {
 		return nil, failure(-32602, err.Error())
 	}

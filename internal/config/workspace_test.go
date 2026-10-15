@@ -196,3 +196,29 @@ func TestNestedMountsRefused(t *testing.T) {
 		t.Fatal("nested mounts accepted")
 	}
 }
+
+// Whether the model may search a folder's earlier tasks is kept with its
+// entry, off unless saved on, and read back with the workspace (ADR 50).
+func TestWorkspaceKeepsWhetherEarlierTasksAreSearched(t *testing.T) {
+	registry := filepath.Join(t.TempDir(), "workspaces.toml")
+	root := t.TempDir()
+	if ws, err := LoadWorkspace(registry, root); err != nil || ws.EarlierTasks {
+		t.Fatalf("a folder nobody named: %+v, %v", ws, err)
+	}
+	if _, err := SaveRegistered(registry, Registered{Name: "code", Path: root}); err != nil {
+		t.Fatal(err)
+	}
+	if ws, _ := LoadWorkspace(registry, root); ws.EarlierTasks {
+		t.Fatal("on without being turned on")
+	}
+	if _, err := SaveRegistered(registry, Registered{Name: "code", Path: root, EarlierTasks: true}); err != nil {
+		t.Fatal(err)
+	}
+	if ws, _ := LoadWorkspace(registry, root); !ws.EarlierTasks {
+		t.Fatal("turned on, read as off")
+	}
+	raw, _ := os.ReadFile(registry)
+	if !strings.Contains(string(raw), "earlier_tasks = true") {
+		t.Fatalf("workspaces.toml: %s", raw)
+	}
+}

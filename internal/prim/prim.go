@@ -61,9 +61,10 @@ type Options struct {
 	// summary of each build or refresh (index.update).
 	IndexDir    string
 	IndexRecord func(nlog.IndexUpdate)
-	// Conversation searches the session's conversation, index-search's
-	// other scope, which the core keeps (ADR 50); nil for none.
-	Conversation func(ctx context.Context, query string, limit int) (string, error)
+	// Conversation is index-search's scopes the core keeps (ADR 50): scope
+	// "conversation", the session's own, and "earlier", the project's other
+	// tasks; nil for none.
+	Conversation func(ctx context.Context, scope, query string, limit int) (string, error)
 
 	// P3 egress (all optional; nil disables the egress primitives — bootstrap
 	// has none). The guard's E3 checker enforces the binding table before any

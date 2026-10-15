@@ -106,8 +106,9 @@ func TestModelSearchesAndRecallsItsConversation(t *testing.T) {
 		t.Fatalf("no match: %q", got)
 	}
 	for src, msg := range map[string]string{
-		`(index-search "frobnicator" "earlier")`:               "not built yet",
-		`(index-search "frobnicator" "conversation" 8 "docs")`: "not of the conversation",
+		`(index-search "frobnicator" "earlier")`:               "searching earlier tasks is off for this project",
+		`(index-search "frobnicator" "nowhere")`:               "the scope is",
+		`(index-search "frobnicator" "conversation" 8 "docs")`: "not of a conversation",
 		`(index-search "! ?" "conversation")`:                  "no words",
 		`(recall 1)`:                                           "is not a message, a reply or a tool result",
 		`(recall 999999)`:                                      "there is no seq 999999",

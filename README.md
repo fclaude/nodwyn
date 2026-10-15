@@ -94,7 +94,8 @@ results. The model also searches by words (`index-search`): the
 repository, from an index of the files git lists that nodwyn keeps in its
 data directory and refreshes as files change (`index-update`), and its own
 conversation, bringing an earlier event back whole (`recall`), elided and
-folded results included, from the log. See
+folded results included, from the log; and, when the person turns it on for
+a project, its earlier tasks. See
 [memory and retrieval](docs/memory.md) for their limits.
 
 ## Run

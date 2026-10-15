@@ -429,6 +429,9 @@
     },
     "config.Workspace": {
       "properties": {
+        "earlier_tasks": {
+          "type": "boolean"
+        },
         "mounts": {
           "items": {
             "$ref": "#/$defs/config.Mount"
@@ -440,7 +443,8 @@
         }
       },
       "required": [
-        "mounts"
+        "mounts",
+        "earlier_tasks"
       ],
       "type": "object"
     },
@@ -8123,6 +8127,9 @@
     },
     "rpc.workspaceInfo": {
       "properties": {
+        "earlier_tasks": {
+          "type": "boolean"
+        },
         "git": {
           "type": "boolean"
         },
@@ -8146,7 +8153,8 @@
         "name",
         "path",
         "mounts",
-        "git"
+        "git",
+        "earlier_tasks"
       ],
       "type": "object"
     },
@@ -8163,6 +8171,16 @@
     },
     "rpc.workspaceSaveParams": {
       "properties": {
+        "earlier_tasks": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "mounts": {
           "items": {
             "$ref": "#/$defs/config.Mount"

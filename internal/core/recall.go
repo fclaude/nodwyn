@@ -125,45 +125,29 @@ func (c *conversation) add(ev log.Event) {
 		}
 		return
 	case log.KindUserMsg:
-		var p log.UserMsg
-		if ev.Decode(&p) != nil {
-			return
-		}
 		// A person's message ends every narrowing still open (window.Build).
 		c.agents, agent = nil, ""
-		e = convEvent{what: "the person's message", text: p.Text}
+		e.what = "the person's message"
 	case log.KindHarnessMsg:
-		var p log.HarnessMsg
-		if ev.Decode(&p) != nil {
-			return
-		}
-		e = convEvent{what: "nodwyn's message", text: p.Text}
+		e.what = "nodwyn's message"
 	case log.KindAttach:
 		var p log.Attach
 		if ev.Decode(&p) != nil {
 			return
 		}
-		e = convEvent{what: "the attached file " + p.Name, text: window.AttachmentText(p)}
+		e.what = "the attached file " + p.Name
 	case log.KindGatePlan:
-		var p log.GatePlan
-		if ev.Decode(&p) != nil || p.Plan == "" {
-			return
-		}
-		e = convEvent{what: "the plan", text: p.Plan}
+		e.what = "the plan"
 	case log.KindSummary:
 		var p log.Summary
 		if ev.Decode(&p) != nil {
 			return
 		}
-		e = convEvent{what: fmt.Sprintf("the summary of seq %d to %d", p.From, p.Through), text: p.Text}
+		e.what = fmt.Sprintf("the summary of seq %d to %d", p.From, p.Through)
 	case log.KindLLMResp:
 		var p log.LLMResp
 		if ev.Decode(&p) != nil {
 			return
-		}
-		var lines []string
-		if p.Content != "" {
-			lines = append(lines, p.Content)
 		}
 		for _, tc := range p.ToolCalls {
 			// The window pairs a result with its reply's call; a log may
@@ -171,13 +155,9 @@ func (c *conversation) add(ev log.Event) {
 			c.calls[tc.ID] = tc
 			if !readsTheConversation(tc.Name) {
 				e.calls = append(e.calls, tc)
-				lines = append(lines, tc.Name+" "+string(tc.Args))
 			}
 		}
-		if len(lines) == 0 {
-			return
-		}
-		e.what, e.text = "a reply", strings.Join(lines, "\n")
+		e.what = "a reply"
 	case log.KindToolResult:
 		var p log.ToolResult
 		if ev.Decode(&p) != nil || readsTheConversation(p.Name) {
@@ -187,13 +167,18 @@ func (c *conversation) add(ev log.Event) {
 		if !ok {
 			call = log.ToolCall{ID: p.ID, Name: p.Name}
 		}
-		e = convEvent{what: "the result of " + callLine(call), text: resultText(p.Value), call: p.ID}
+		e.what, e.call = "the result of "+callLine(call), p.ID
 		if !p.OK {
-			e.what, e.text = e.what+", which failed", p.Error
+			e.what += ", which failed"
 		}
 		// What was asked names a result better than its output does.
 		fields = []retrieval.Field{{Text: call.Name + " " + string(call.Args), Weight: 3}}
 	default:
+		return
+	}
+	// A reply that only searched or recalled, and a gate's verdict without
+	// a plan, hold nothing to find.
+	if e.text = eventText(ev); e.text == "" && (ev.Kind == log.KindLLMResp || ev.Kind == log.KindGatePlan) {
 		return
 	}
 	e.seq, e.agent = ev.Seq, agent
@@ -202,6 +187,64 @@ func (c *conversation) add(ev log.Event) {
 }
 
 func readsTheConversation(tool string) bool { return tool == "index-search" || tool == "recall" }
+
+// eventText is an event's text as index-search ranks it and recall returns
+// it, "" for a kind they do not read. It depends on the event alone, so an
+// earlier task's event read again by its seq reads as it was indexed.
+func eventText(ev log.Event) string {
+	switch ev.Kind {
+	case log.KindUserMsg:
+		var p log.UserMsg
+		if ev.Decode(&p) == nil {
+			return p.Text
+		}
+	case log.KindHarnessMsg:
+		var p log.HarnessMsg
+		if ev.Decode(&p) == nil {
+			return p.Text
+		}
+	case log.KindAttach:
+		var p log.Attach
+		if ev.Decode(&p) == nil {
+			return window.AttachmentText(p)
+		}
+	case log.KindGatePlan:
+		var p log.GatePlan
+		if ev.Decode(&p) == nil {
+			return p.Plan
+		}
+	case log.KindSummary:
+		var p log.Summary
+		if ev.Decode(&p) == nil {
+			return p.Text
+		}
+	case log.KindLLMResp:
+		var p log.LLMResp
+		if ev.Decode(&p) != nil {
+			return ""
+		}
+		var lines []string
+		if p.Content != "" {
+			lines = append(lines, p.Content)
+		}
+		for _, tc := range p.ToolCalls {
+			if !readsTheConversation(tc.Name) {
+				lines = append(lines, tc.Name+" "+string(tc.Args))
+			}
+		}
+		return strings.Join(lines, "\n")
+	case log.KindToolResult:
+		var p log.ToolResult
+		if ev.Decode(&p) != nil || readsTheConversation(p.Name) {
+			return ""
+		}
+		if !p.OK {
+			return p.Error
+		}
+		return resultText(p.Value)
+	}
+	return ""
+}
 
 // resultText is a tool result as text with lines, so recall can page it.
 // A result is recorded as its tool returned it, and a shell's or a
@@ -254,8 +297,12 @@ func cut(s string, n int) string {
 	return s
 }
 
-// searchConversation is index-search's "conversation" scope.
-func (s *Session) searchConversation(_ context.Context, query string, limit int) (string, error) {
+// searchConversation is index-search's "conversation" and "earlier"
+// scopes (earlier.go).
+func (s *Session) searchConversation(_ context.Context, scope, query string, limit int) (string, error) {
+	if scope == "earlier" {
+		return s.searchEarlier(query, limit)
+	}
 	return s.conversation.search(s, query, limit)
 }
 
@@ -332,32 +379,45 @@ func (c *conversation) recall(s *Session, seq uint64, start, count int64, budget
 	if err := c.update(s); err != nil {
 		return "", err
 	}
+	doc, err := c.find(seq)
+	if err != nil {
+		return "", err
+	}
+	return c.show(doc, c.found[doc].text, "", start, count, budget)
+}
+
+// find is the document of the event at seq, or why there is none.
+func (c *conversation) find(seq uint64) (int, error) {
 	doc, ok := c.bySeq[seq]
 	switch {
 	case !ok && seq > c.through:
-		return "", fmt.Errorf("there is no seq %d: this conversation's last is %d", seq, c.through)
+		return 0, fmt.Errorf("there is no seq %d: the conversation's last is %d", seq, c.through)
 	case !ok:
-		return "", fmt.Errorf("seq %d is not a message, a reply or a tool result: recall brings back those, by the N of [elided seq=N] or a seq index-search gave", seq)
+		return 0, fmt.Errorf("seq %d is not a message, a reply or a tool result: recall brings back those, by the N of [elided seq=N] or a seq index-search gave", seq)
 	}
+	return doc, nil
+}
+
+// show is document doc, whose text is text, as recall returns it: its
+// heading after prefix, then its lines. A reply's calls say where their
+// results are, which an elided reply's window no longer shows.
+func (c *conversation) show(doc int, text, prefix string, start, count int64, budget int) (string, error) {
 	e := c.found[doc]
-	text := e.text
 	for _, tc := range e.calls {
-		// A reply's calls say where their results are, which an elided
-		// reply's window no longer shows.
 		if r := c.resultOf(doc, tc.ID); r != 0 {
 			text += fmt.Sprintf("\n[the result of %s is seq %d]", tc.Name, r)
 		} else {
 			text += fmt.Sprintf("\n[%s has no result recorded]", tc.Name)
 		}
 	}
-	head := "[" + e.heading() + "]\n"
+	head := "[" + prefix + e.heading() + "]\n"
 	if text == "" {
 		return head + "(empty)", nil
 	}
 	if count == 0 {
 		count = 1 << 40
 	}
-	body, err := prim.ReadLines(strings.NewReader(text), fmt.Sprintf("seq %d", seq), start, count, budget-len(head))
+	body, err := prim.ReadLines(strings.NewReader(text), fmt.Sprintf("seq %d", e.seq), start, count, budget-len(head))
 	if err != nil {
 		return "", err
 	}
@@ -384,11 +444,12 @@ func (s *Session) registerRecall() error {
 		{
 			Name: "recall",
 			Meta: scheme.Meta{
-				Doc: "Bring back one event of this task's conversation as it was recorded: a message, a reply with its tool calls, or a tool result, by its seq (the N of [elided seq=N], or a seq index-search gave). It comes back whole, a long one in lines as a ranged fs-read reads a file, so a result that was elided, folded or cut can be read again without running its command. It shows what was then, not what is now: read a file again with fs-read.",
+				Doc: "Bring back one event of this task's conversation as it was recorded: a message, a reply with its tool calls, or a tool result, by its seq (the N of [elided seq=N], or a seq index-search gave); with task, of an earlier task of this project that index-search with scope \"earlier\" found. It comes back whole, a long one in lines as a ranged fs-read reads a file, so a result that was elided, folded or cut can be read again without running its command. It shows what was then, not what is now: read a file again with fs-read.",
 				Params: []scheme.Param{
 					{Name: "seq", Type: "integer", Doc: "the event's seq"},
 					{Name: "start", Type: "integer", Doc: "the 1-based line to start at; 1 unless given", Optional: true},
 					{Name: "count", Type: "integer", Doc: "how many lines to return; as many as fit unless given", Optional: true},
+					{Name: "task", Type: "string", Doc: "an earlier task's id, as index-search with scope \"earlier\" names it; this task unless given", Optional: true},
 				},
 				Host:        true,
 				Origin:      "builtin",
@@ -413,7 +474,18 @@ func (s *Session) registerRecall() error {
 						return scheme.Void, err
 					}
 				}
-				out, err := s.conversation.recall(s, uint64(seq), start, count, s.rangeBytes())
+				task := ""
+				if len(c.Args) > 3 {
+					if task, err = c.String(3); err != nil {
+						return scheme.Void, err
+					}
+				}
+				var out string
+				if task != "" && task != s.id {
+					out, err = s.recallEarlier(task, uint64(seq), start, count)
+				} else {
+					out, err = s.conversation.recall(s, uint64(seq), start, count, s.rangeBytes())
+				}
 				if err != nil {
 					return scheme.Void, err
 				}

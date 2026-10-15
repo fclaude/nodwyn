@@ -147,6 +147,7 @@ needs.
 | Credentials, OAuth2 sign-in | Connections › Credentials | — | — | `nodwyn credential` |
 | Keychain: create, unlock, passphrase | Settings › Keys & devices, and beside a provider form that needs it | unlocks at start | unlocks at start | `nodwyn keychain` |
 | Named workspaces and mounts | Workspaces | — | — | edit `workspaces.toml` |
+| Let the model search a folder's earlier tasks (ADR 50) | Workspaces, the folder's editor | not built (ADR 50) | — | edit `workspaces.toml` (`earlier_tasks = true`) |
 | Project trust (ADR 45) | deliberate gap: no grant button or remote grant (browser.md, "Project startup") | — | — | `nodwyn trust` |
 | Pair and revoke devices | yes, on this computer | — | — | `nodwyn devices` |
 

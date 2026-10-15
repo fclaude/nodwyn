@@ -182,3 +182,38 @@ func TestStoreKeepsChunksByTextAndAManifestPerTree(t *testing.T) {
 		t.Fatal("a gone tree's manifest stays")
 	}
 }
+
+// Several indexes rank as one collection: a word common in one and rare
+// in the other weighs by its count over both, and the scores of one index
+// are those it would have in the whole.
+func TestSearchAllRanksSeveralIndexesAsOne(t *testing.T) {
+	var a, b, whole Index
+	for _, text := range []string{"binding check", "binding table", "binding moved"} {
+		a.Add(Field{Text: text})
+		whole.Add(Field{Text: text})
+	}
+	for _, text := range []string{"deploy binary", "restart service"} {
+		b.Add(Field{Text: text})
+		whole.Add(Field{Text: text})
+	}
+	got := SearchAll([]*Index{&a, &b}, "binding deploy", 10, nil)
+	want := whole.Search("binding deploy", 10, nil)
+	if len(got) != len(want) {
+		t.Fatalf("%d found across indexes, %d in one", len(got), len(want))
+	}
+	for i := range got {
+		doc := got[i].Doc
+		if got[i].Index == 1 {
+			doc += a.Len()
+		}
+		if doc != want[i].Doc || got[i].Score != want[i].Score {
+			t.Fatalf("result %d: %+v, in one index %+v", i, got[i], want[i])
+		}
+	}
+	if got[0].Index != 1 || got[0].Doc != 0 {
+		t.Fatalf("the rare word's document first: %+v", got[0])
+	}
+	if only := SearchAll([]*Index{&a, &b}, "binding", 10, func(index, _ int) bool { return index == 0 }); len(only) != 3 {
+		t.Fatalf("filtered: %+v", only)
+	}
+}

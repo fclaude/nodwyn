@@ -346,3 +346,40 @@ func TestEvalOrResolvesMissingDirectoriesThroughLinks(t *testing.T) {
 		t.Fatalf("evalOr = %q, want %q", got, want)
 	}
 }
+
+// workspace.save turns searching a folder's earlier tasks on and off, and a
+// save that does not say keeps it as it was, as Home's naming of a folder
+// and an older console send none; workspace.list reports it (ADR 50).
+func TestWorkspaceSaveKeepsEarlierTasksUnlessGiven(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	code := t.TempDir()
+	save := func(params map[string]any) workspaceInfo {
+		t.Helper()
+		var info workspaceInfo
+		params["path"], params["mounts"] = code, []any{}
+		if err := json.Unmarshal(c.ok("workspace.save", params), &info); err != nil {
+			t.Fatal(err)
+		}
+		return info
+	}
+	if info := save(map[string]any{"name": "code"}); info.EarlierTasks {
+		t.Fatal("on without being turned on")
+	}
+	if info := save(map[string]any{"name": "code", "earlier_tasks": true}); !info.EarlierTasks {
+		t.Fatal("not turned on")
+	}
+	if info := save(map[string]any{"name": "renamed"}); !info.EarlierTasks || info.Name != "renamed" {
+		t.Fatalf("a save without it turned it off: %+v", info)
+	}
+	var list []workspaceInfo
+	json.Unmarshal(c.ok("workspace.list", map[string]any{}), &list)
+	if len(list) != 1 || !list[0].EarlierTasks {
+		t.Fatalf("list: %+v", list)
+	}
+	if info := save(map[string]any{"name": "renamed", "earlier_tasks": false}); info.EarlierTasks {
+		t.Fatal("not turned off")
+	}
+}
