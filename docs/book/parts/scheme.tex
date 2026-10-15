@@ -589,6 +589,8 @@ Primitive & What it does \\
 \code{(fs-list path)} & a directory's names, sorted; directories end in \code{/} \\
 \code{(fs-find path glob)} & file names under a directory matching a glob, at most 500 \\
 \code{(index-grep path pattern [glob [context]])} & search contents with an RE2 regular expression, walked and matched in Go \\
+\code{(index-search query scope [limit])} & search by words, best match first; \code{scope} is \code{"conversation"}: the session's messages, replies, calls and results, those the window elided or folded included, read from the log (\adr{50}) \\
+\code{(recall seq [start [count]])} & one event of the conversation by its seq, the \code{N} of \code{[elided seq=N]}, as the log recorded it, in lines as a ranged \code{fs-read} reads a file (\adr{50}) \\
 \code{(git-status)}, \code{(git-diff [path [staged [against]]])}, \code{(git-head)} & in a git work tree only: status, and the changes since the last commit or since \code{against}; the commit HEAD is on; read-only, no approval \\
 \code{(keep-passing)} & keep the changes as a test run passed on them, for a turn nobody reads that a hard limit or the progress guard stops; the core then puts the files back to it and saves what they held \\
 \code{(shell-exec cmd args)} & run a program and wait for it; irreversible \\
@@ -702,8 +704,8 @@ contains. A host primitive tags its result: \code{fs-read}, \code{fs-list},
 \code{external:shell}; \code{http-request}, the \code{judge}
 primitives and \code{google-doc-upload} with
 \code{external:http}; MCP tools with \code{external:mcp};
-\code{session-list} and \code{session-events} with
-\code{external:log}. A handle carries \code{cred:<class>}. The tags of a
+\code{session-list}, \code{session-events}, \code{index-search} and
+\code{recall} with \code{external:log}. A handle carries \code{cred:<class>}. The tags of a
 call's arguments flow into its result, in one place, the primitive
 dispatch. A result that \emph{measures} its arguments rather than being made
 of them carries nothing: \code{length}, \code{string-length},
@@ -1111,6 +1113,7 @@ A session adds these:
 
 \begin{txt}
 Files        fs-read fs-write fs-edit fs-list fs-find index-grep
+Conversation index-search recall
 Git          git-status git-diff                   (in a git work tree)
 Processes    shell-exec shell-start shell-read shell-send shell-stop
 Documents    doc-export; google-doc-upload             (with a google credential)

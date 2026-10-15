@@ -142,11 +142,13 @@
             (let ((reading (reading-rounds calls reading)))
               (loop (ask-model) reading)))))))
 
-;; Tools that only look at the repository: a round whose calls are all
-;; among them neither changes nor runs anything. A project that adds tools
-;; of its own that only look may add them to the list.
+;; Tools that only look, at the repository or at the conversation: a round
+;; whose calls are all among them neither changes nor runs anything. A
+;; project that adds tools of its own that only look may add them to the
+;; list.
 (define look-tools
-  '("fs-read" "fs-list" "fs-find" "index-grep" "read-definition" "git-status" "git-diff"))
+  '("fs-read" "fs-list" "fs-find" "index-grep" "read-definition" "git-status" "git-diff"
+    "index-search" "recall"))
 
 (define (look-call? call) (member (assoc-ref call 'name) look-tools))
 

@@ -643,8 +643,10 @@ the user's words never. Before trimming would begin, the default loop
 on from it, while the log keeps everything. A user may also write a summary
 of a span by hand and revoke it later.
 
-Retrieval is text search over the current tree (\code{index-grep}); there
-is no embedding index. One thing crosses sessions: a repository's
+Retrieval is text search over the current tree (\code{index-grep}), and
+word search over the conversation, whose elided and folded results the
+model can bring back whole (\code{index-search}, \code{recall}, \adr{50});
+there is no embedding index. One thing crosses sessions: a repository's
 \emph{notes}, which a strategy saves and the next session in the same
 repository shows as the agent's own leads, not as instructions. And
 \code{/optimize} reads a repository's past session logs to improve its

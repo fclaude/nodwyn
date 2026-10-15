@@ -127,7 +127,10 @@ the window. From recipe v16, trimming an assistant's tool-call batch also
 omits its matching results, so no `tool` reply is left without its call.
 A result among the four recent entries protects its whole calling batch.
 The original events stay in the log; older requests still replay with the
-recipe they recorded. Restarting and resuming a task uses the new recipe,
+recipe they recorded. The model reads them back itself: `recall N` returns
+the event at seq N as it was recorded, and `index-search` with scope
+`"conversation"` finds earlier messages, calls and results by their words
+(ADR 50, [memory and retrieval](memory.md)). Restarting and resuming a task uses the new recipe,
 including repairing tool pairs left orphaned by an earlier trim.
 A tool result larger than `window.max_result_tokens` is shown head and
 tail; from recipe v17 the cut is at line ends and says which lines it left
@@ -195,8 +198,9 @@ nodwyn-stable                       # pins every path to this directory
 ```
 nodwyn session 20260921T143846Z-beba937b
 repo  /Users/you/src/your-repo
-tools doc-export fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep plan-step
-      plan-write read-definition second-look shell-exec shell-read shell-send shell-start shell-stop
+tools doc-export fs-edit fs-find fs-list fs-read fs-write git-diff git-status index-grep index-search
+      plan-step plan-write read-definition recall second-look shell-exec shell-read shell-send
+      shell-start shell-stop
 :h for commands
 
 you> read main.go and explain the startup sequence

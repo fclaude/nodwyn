@@ -961,3 +961,21 @@ from reading alone, and kept it.
 Each test above fails on `d208b2c` and passes with the change.
 `TestPlannerExploresFirst`, `TestUnreviewedTurnIsNotOfferedAWayOut` and
 `TestModelWritesItsOwnPlan` now expect the new texts.
+
+## Amendment 2026-10-15: older results can be recalled
+
+Both system prompts said older tool results may appear as `[elided seq=N]`
+or cut, and to "re-read a file if you need it again". Nothing brought back
+anything else: in the 78 local logs of 2026-09-30 to 10-09 the window
+elided 691 results in 8 sessions, compactions cleared three sessions'
+earlier context, and 51 shell results lost their middle to the plain-text
+rendering (`shell.scm` keeps the first 1,500 and last 6,000 characters).
+The line now names `recall`, which brings an event back by its seq as it
+was, and `index-search` with scope `"conversation"`, which finds what was
+said, run or shown earlier, and keeps `fs-read` for a file as it is now
+(ADR 50). The line says what the tools are for; whether models use them is
+measured as ADR 50 §13 says, and the line goes with them if they do not.
+
+`look-tools` gains `index-search` and `recall`, which only look, so a run of
+rounds spent searching the conversation counts towards the reading reminder
+as rounds of reading do.

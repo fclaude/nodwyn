@@ -92,6 +92,7 @@ A secret is never "suspicious" in isolation — `sk-ant-...` to `api.anthropic.c
 - **RAM =** token-budgeted window, surgical pull on demand.
 - **v0 scope:** no cross-session, no embeddings/prometheus-style index. (Jev 0.84)
 - Retrieval is session-scoped text search (grep); structural outlines and a semantic/embedding index are deferred.
+  *(Amended by ADR 50: the model also searches its own conversation by words and recalls an event by its seq, from an index kept in memory and derived from the log; a repository index, earlier tasks and embeddings are designed there, not built.)*
 
 ---
 

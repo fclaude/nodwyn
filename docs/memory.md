@@ -139,5 +139,52 @@ conversation goes on from it, in that turn and later ones (the manual,
 narrows the window (`context.narrow`); it is not a `summary` record, and the
 log keeps the whole conversation.
 
-Across sessions, a repository keeps only its project notes (`project-notes`, docs/scheme.md); there is no semantic index.
+## Conversation retrieval
+
+What a model sees of a long conversation shrinks: the window elides old
+replies and results (`[elided seq=N]`), strategies fold results to an
+outline, shell output keeps its first 1,500 and last 6,000 characters, and a
+compaction leaves a note. Two read-only primitives, offered as tools, read
+the rest back from the log (ADR 50):
+
+```scheme
+(index-search "go test core failure" "conversation")   ; the best 8 events
+(index-search "ScrubEnv" "conversation" 20)            ; up to 20
+(recall 812)                                          ; seq 812, whole
+(recall 812 200 50)                                   ; its lines 200 to 249
+```
+
+`index-search` ranks the events a model could have seen: the person's and
+nodwyn's messages, attached files, plans, summaries, replies with their tool
+calls, and tool results with the call each answers, in sub-agents' contexts
+too, each named by its seq. Not guard, egress, request or note records, not
+thinking, and not earlier searches and recalls, whose results repeat other
+events (a search would otherwise find its own call). Words are split as code
+names them, so `ScrubEnv` matches `scrub` and `index-grep` matches `grep`,
+and events are ranked by BM25: more of the query's words, and rarer ones,
+rank first, and a result's call counts three times its output. Each event
+found shows its three lines that hold the most of the words, numbered as
+`recall` numbers them. The only scope is `"conversation"`: the repository
+and earlier tasks are not built.
+
+`recall` returns one of those events as the log recorded it, already
+redacted, under a heading naming it (`seq 812, the result of shell-exec
+{…}, which failed, in the explorer's context`), in lines as a ranged
+`fs-read` returns a file: `[lines A-B of N]`, stopping at a whole line
+within the window's cut for one result. A tool's result is recorded as the
+tool returned it, and a shell's or a search's is one line of JSON, so both
+primitives read a result as text with lines: a shell's as the model read it
+(`exit N`, the output, then `[stderr]` and the errors, as `shell.scm`
+renders it) but whole, other JSON indented. A reply names the seq of each of its
+calls' results. It shows what was then: a file as it is now is `fs-read`'s.
+
+The index is built in memory from the whole log at the first search or
+recall, reading from disk the part a resumed session does not hold (ADR 49
+§10), and extended with what is recorded after. It is never written, so it
+is a view of the log and nothing else (SPEC, invariant 1). Both values
+carry `external:log` provenance, as `session-events`'s do. A log of
+gigabytes (ADR 49) would make that first build slow and the index large;
+none is that size yet.
+
+Across sessions, a repository keeps only its project notes (`project-notes`, docs/scheme.md); searching earlier tasks (ADR 50) is not built, and there is no semantic index.
 That is not a claim made by this P10 implementation.

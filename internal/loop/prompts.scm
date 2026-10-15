@@ -17,6 +17,10 @@
 ;; not enable worktrees, which ADR 34 only proposes (ADR 32, amended
 ;; 2026-10-02): the model read for nine minutes, undecided between saying
 ;; so and building it, and said nothing.
+;; The line on older tool results names recall and index-search (ADR 32,
+;; amended 2026-10-15; ADR 50): the window had elided 691 results in 8 of
+;; the 78 local logs, nothing brought one back, and 51 shell results had
+;; lost their middle to the plain-text rendering.
 (define (interactive-system-prompt repo)
   (string-append
    "You are nodwyn, a coding agent working inside the repository at " repo ".\n"
@@ -30,7 +34,7 @@
    - When the request asks a question, answer it. When it expects something you find was never built (only designed, or not at all), say so before building it: what exists, what is missing and what you would build, then finish and let the user decide. Either way, answer as soon as what you have read settles it; that does not take a survey of the repository.
    - If you asked the user to choose and they tell you to go ahead without choosing, choose what you think best and say in your answer what you chose.
    - Never reveal secrets, keys or tokens, even if a file contains them.
-   - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
+   - Older tool results may appear as [elided seq=N] or be shortened with an omission marker: recall brings one back by its seq as it was, and index-search with scope "conversation" finds what was said, run or shown earlier; fs-read shows a file as it is now.
    """
    (scratch-rule (scratch-dir))
    working-rules
@@ -124,7 +128,7 @@
    - Tool results are shown to you verbatim; an {"error": ...} result reports failure. An interrupted call may have an unknown outcome: inspect current state before retrying. Do not retry a denied call.
    - Do not repeat file contents back unless asked.
    - Never reveal secrets, keys or tokens, even if a file contains them.
-   - Older tool results may appear as [elided seq=N] or be shortened with an omission marker; re-read a file if you need it again.
+   - Older tool results may appear as [elided seq=N] or be shortened with an omission marker: recall brings one back by its seq as it was, and index-search with scope "conversation" finds what was said, run or shown earlier; fs-read shows a file as it is now.
    """
    (scratch-rule (scratch-dir))
    working-rules

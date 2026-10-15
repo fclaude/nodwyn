@@ -94,11 +94,24 @@ func fsRead(o Options, pin guard.RepoPin) *scheme.Prim {
 
 // readLines returns lines start..start+count-1 of the file at abs (shown as
 // name) under a header "[lines A-B of N]", each line exactly as in the file,
-// its line ending included, so a copy of it matches for fs-edit. Output
-// stops at a whole line once it would pass budget bytes, and the header's B
-// says where it stopped; a first line longer than budget is cut and the
-// header says so. The file is streamed, so its size is not limited.
+// its line ending included, so a copy of it matches for fs-edit (ReadLines).
+// The file is streamed, so its size is not limited.
 func readLines(abs, name string, start, count int64, budget int) (string, error) {
+	f, err := os.Open(abs)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	return ReadLines(f, name, start, count, budget)
+}
+
+// ReadLines returns lines start..start+count-1 of what src holds (shown as
+// name) under a header "[lines A-B of N]", each line exactly as it is
+// there. Output stops at a whole line once it would pass budget bytes, and
+// the header's B says where it stopped; a first line longer than budget is
+// cut and the header says so. A ranged fs-read reads a file with it, and
+// recall an event of the log, so both page alike.
+func ReadLines(src io.Reader, name string, start, count int64, budget int) (string, error) {
 	if start == 0 {
 		start = 1 // start skipped (count given alone) or 0: from the top
 	}
@@ -108,12 +121,7 @@ func readLines(abs, name string, start, count int64, budget int) (string, error)
 	if count < 1 {
 		return "", fmt.Errorf("count must be at least 1, got %d", count)
 	}
-	f, err := os.Open(abs)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	r := bufio.NewReaderSize(f, 64<<10)
+	r := bufio.NewReaderSize(src, 64<<10)
 	var body strings.Builder
 	var total, first, end int64 // lines in the file; the lines returned
 	stopped, cut := false, false

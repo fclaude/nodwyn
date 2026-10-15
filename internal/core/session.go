@@ -32,11 +32,13 @@ type Session struct {
 	logw       *log.Writer
 	events     []log.Event
 	evmu       sync.Mutex
-	outputMu   sync.Mutex
-	output     strings.Builder
-	out        chan event.Event
-	interp     *scheme.Interp
-	loop       *loop.Loop
+	// conversation is the index index-search and recall read (recall.go).
+	conversation conversation
+	outputMu     sync.Mutex
+	output       strings.Builder
+	out          chan event.Event
+	interp       *scheme.Interp
+	loop         *loop.Loop
 
 	mu         sync.Mutex
 	busy       bool

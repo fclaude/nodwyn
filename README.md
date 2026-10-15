@@ -90,7 +90,10 @@ Requires Go 1.26 or newer (ADR 33). `make lint` builds its `staticcheck`
 from the module (`go.mod`'s `tool`), so nothing else needs installing.
 
 Text search (`index-grep`) uses the shared guard and produces session-scoped
-results. See [memory and retrieval](docs/memory.md) for its limits.
+results. The model also searches its own conversation by words
+(`index-search`) and brings an earlier event back whole (`recall`), elided
+and folded results included, from the log. See
+[memory and retrieval](docs/memory.md) for their limits.
 
 ## Run
 
