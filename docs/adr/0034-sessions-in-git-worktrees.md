@@ -572,3 +572,19 @@ phone above all, cannot open the folder.
 Not built: `--worktree-base`, and `--worktree` for line mode and `nodwyn run`.
 `internal/frontend/tui/worktree_test.go` opens through the chooser and the
 flag over both backends, against a real git repository.
+
+## Amendment 2026-10-15: a worktree made again has the base it starts from (ADR 49)
+
+A resumed task whose worktree close had removed is made again on a new
+branch of the same name from its base branch's head as it is then, but the
+log kept the commit the task first started from. Review (`worktree.diff`)
+compares with that commit, so every commit `main` gained in between showed
+as the task's own change, and close's check fell back to it when the base
+branch was gone. A scheduled task, closed and resumed for every run (ADR
+49), would meet this every day. `restoreWorktree` now resolves where the new
+branch starts and returns that commit; resume records it as the worktree's
+`base_commit` in `session.resume` and `worktree.restore`, and the store
+reads the latest `worktree.restore`'s base. A worktree kept with its branch
+keeps its base. `TestWorktreeMadeAgainHasTheBaseItStartsFrom` fails on the
+code before: the base stayed the first commit.
+

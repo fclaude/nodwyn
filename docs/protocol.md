@@ -226,7 +226,10 @@ as it may call `session.open`.
 
 `worktree.diff` and `worktree.review` are for an open session in a worktree
 (ADR 34); any other session, or a closed one, is refused (`-32000`).
-`worktree.diff` returns the base commit and, per file, `status` (`A`, `M` or
+`worktree.diff` returns the base commit (the one the worktree's branch
+started from: a worktree made again on a new branch when its task resumed
+starts from where its base branch was then, ADR 34 amended 2026-10-15) and,
+per file, `status` (`A`, `M` or
 `D`; committed, staged, unstaged and untracked changes alike) and a unified
 `diff`, with the files the model may not read left out. A file whose diff has
 no lines to show says why in a note in parentheses instead: `(diff too large

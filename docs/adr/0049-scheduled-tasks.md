@@ -184,7 +184,8 @@ schedules: persistence is what an injected instruction wants most.
 
 ## Not built
 
-Built on 2026-10-15: §2, a task's turn limits, with the budget's hard limit
+Built on 2026-10-15: §3's recorded base (ADR 34, amended the same day);
+§2, a task's turn limits, with the budget's hard limit
 of 0 as none; `session.open {limits}`, `session.limits.set` and `limits` in
 `session.info`; the `session.limits` record, kept on resume; Home's
 **Limits**, the task's **Limits** and its **No turn limits** badge; a line
@@ -194,7 +195,7 @@ in the conversation for each choice, in the console and the TUI; the TUI's
 `internal/frontend/tui`, `internal/frontend/web`, and the `tasks` and
 `remote` browser checks.
 
-Not built, in the order proposed: §10 the index and §3's recorded base;
+Not built, in the order proposed: §10 the index;
 §11 the console reading from the end; then §1, §4–§9 and §12, the schedules
 themselves; then a login item that keeps the daemon running when no window
 is open. Not proposed: the model proposing a schedule, cron expressions,

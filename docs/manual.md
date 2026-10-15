@@ -389,7 +389,9 @@ task resolves them and calls it again. You can still merge a branch by
 hand, for example with `git merge nodwyn/<id>` in the repository. Closing the task removes the worktree
 and its branch when nothing would be lost (no change, no untracked or
 ignored file, no commit its base lacks); otherwise both stay and resuming
-works in them again, and a removed worktree is made again on resume. The
+works in them again, and a removed worktree is made again on resume, on a
+new branch from where its base branch is then: Review compares with that
+commit, so what `main` gained meanwhile is not shown as the task's. The
 previous versions nodwyn keeps of the task's files are kept with the
 repository's, in its `.nodwyn/versions/`, so they never keep a worktree and
 outlast it.

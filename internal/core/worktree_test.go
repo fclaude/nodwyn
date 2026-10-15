@@ -434,3 +434,83 @@ func TestWorktreeRefusals(t *testing.T) {
 		t.Fatalf("branches left: %s", branches)
 	}
 }
+
+// A worktree made again on a new branch (close removed it: nothing would be
+// lost) starts from where main is now, and that commit is its base: Review
+// compares with it and the listing says it. With the first base kept, every
+// commit main gained since showed in Review as the task's own change, which
+// a scheduled task, resumed from a removed worktree each run, met every day
+// (ADR 49 §3). A worktree kept with its branch keeps its base.
+func TestWorktreeMadeAgainHasTheBaseItStartsFrom(t *testing.T) {
+	t.Parallel()
+	repo, git := gitRepo(t)
+	o := worktreeOptions(t, repo)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := *s.Worktree()
+	id := s.ID()
+	s.Close()
+	if err := os.WriteFile(filepath.Join(repo, "landed.txt"), []byte("from main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(repo, "add", "landed.txt")
+	git(repo, "commit", "-q", "-m", "main moves on")
+	head := git(repo, "rev-parse", "HEAD")
+	if head == w.BaseCommit {
+		t.Fatal("main did not move")
+	}
+
+	o.Repo = ""
+	resumed, err := Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resumed.Worktree().BaseCommit; got != head {
+		t.Fatalf("the worktree made again from main's %s has base %s", head, got)
+	}
+	changes, _, err := prim.ChangedSince(t.Context(), prim.DefaultOptions(w.Path), resumed.Worktree().BaseCommit, 1<<20, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 0 {
+		t.Fatalf("Review shows main's commit as the task's change: %+v", changes)
+	}
+	// Kept: a commit of its own keeps the worktree and its branch, so the
+	// next resume goes on with them and the base stays.
+	if err := os.WriteFile(filepath.Join(w.Path, "mine.txt"), []byte("the task's\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(w.Path, "add", "mine.txt")
+	git(w.Path, "commit", "-q", "-m", "the task's work")
+	resumed.Close()
+	info, err := Store{Dir: o.Paths.SessionsDir}.Info(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Worktree == nil || info.Worktree.BaseCommit != head {
+		t.Fatalf("the stored task's worktree: %+v", info.Worktree)
+	}
+	again, err := Resume(o, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if got := again.Worktree().BaseCommit; got != head {
+		t.Fatalf("a kept worktree's base moved to %s", got)
+	}
+	var restores []string
+	for _, ev := range readLog(t, o, id) {
+		if ev.Kind == log.KindWorktreeRestore {
+			var c log.WorktreeChange
+			if err := ev.Decode(&c); err != nil {
+				t.Fatal(err)
+			}
+			restores = append(restores, c.BaseCommit)
+		}
+	}
+	if len(restores) != 1 || restores[0] != head {
+		t.Fatalf("worktree.restore records %v, want one with base %s", restores, head)
+	}
+}

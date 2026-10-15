@@ -72,8 +72,17 @@ func Resume(o Options, id string) (_ *Session, err error) {
 	// conversation goes on where its files are (ADR 34).
 	restored := false
 	if info.Worktree != nil {
-		if restored, err = restoreWorktree(*info.Worktree); err != nil {
+		var base string
+		if restored, base, err = restoreWorktree(*info.Worktree); err != nil {
 			return nil, err
+		}
+		// A new branch from where its base is now has that commit for its
+		// base: session.resume and worktree.restore record it, and the
+		// store reads it back from the latter.
+		if base != "" {
+			w := *info.Worktree
+			w.BaseCommit = base
+			info.Worktree = &w
 		}
 	}
 	st, err := os.Stat(o.Repo)

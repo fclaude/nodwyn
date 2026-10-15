@@ -260,19 +260,20 @@ func removeLanded(w log.Worktree) (bool, error) {
 // restoreWorktree makes a resumed session's worktree again when it is
 // missing (close removed it, or a person did): on its branch if that still
 // exists, else on a new one of the same name from its base's head. It
-// reports whether it made it.
-func restoreWorktree(w log.Worktree) (bool, error) {
+// reports whether it made it, and, when it made a new branch, the commit
+// that branch starts from: the worktree's base from then on.
+func restoreWorktree(w log.Worktree) (made bool, base string, err error) {
 	if _, err := os.Stat(w.Path); err == nil {
-		return false, nil
+		return false, "", nil
 	}
 	if !ours(w) {
-		return false, fmt.Errorf("the task's worktree %s is not one nodwyn made", w.Path)
+		return false, "", fmt.Errorf("the task's worktree %s is not one nodwyn made", w.Path)
 	}
 	if st, err := os.Stat(w.Repository); err != nil || !st.IsDir() {
-		return false, fmt.Errorf("the repository %s this task's worktree belongs to is gone", w.Repository)
+		return false, "", fmt.Errorf("the repository %s this task's worktree belongs to is gone", w.Repository)
 	}
 	if _, err := ensureWorktreesDir(w.Repository); err != nil {
-		return false, err
+		return false, "", err
 	}
 	// A worktree deleted by hand is still registered, and its branch counts
 	// as checked out there. Only its own registration is cleared: a prune
@@ -280,11 +281,11 @@ func restoreWorktree(w log.Worktree) (bool, error) {
 	// the person's on a disk not mounted included.
 	listed, err := gitIn(w.Repository, "worktree", "list", "--porcelain")
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if slices.Contains(strings.Split(listed, "\n"), "worktree "+w.Path) {
 		if _, err := gitIn(w.Repository, "worktree", "remove", w.Path); err != nil {
-			return false, err
+			return false, "", err
 		}
 	}
 	args := []string{"worktree", "add", "--quiet", w.Path, w.Branch}
@@ -293,12 +294,20 @@ func restoreWorktree(w log.Worktree) (bool, error) {
 		if w.Base != "" && branchExists(w.Repository, w.Base) {
 			from = "refs/heads/" + w.Base
 		}
-		args = []string{"worktree", "add", "--quiet", "-b", w.Branch, w.Path, from}
+		// The new branch starts where its base is now, not where it was
+		// when the task began, so that commit is the base Review compares
+		// with and close checks against from here on (ADR 49 §3): kept as
+		// the first one, every commit made on main since showed in Review
+		// as the task's own change.
+		if base, err = gitLine(w.Repository, "rev-parse", "--verify", from+"^{commit}"); err != nil {
+			return false, "", err
+		}
+		args = []string{"worktree", "add", "--quiet", "-b", w.Branch, w.Path, base}
 	}
 	if _, err := gitIn(w.Repository, args...); err != nil {
-		return false, err
+		return false, "", err
 	}
-	return true, nil
+	return true, base, nil
 }
 
 // Worktree is the git worktree the session works in, nil when it works in

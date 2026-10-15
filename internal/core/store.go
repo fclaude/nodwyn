@@ -158,6 +158,15 @@ func (s Store) read(id string) (SessionInfo, []log.Event, error) {
 			if ev.Decode(&t) == nil {
 				info.Name = redact.Redact(t.Title, nil).Text
 			}
+		case log.KindWorktreeRestore:
+			// A worktree made again on a new branch starts from where its
+			// base was then (restoreWorktree): its latest base is its base.
+			var c log.WorktreeChange
+			if ev.Decode(&c) == nil && info.Worktree != nil && config.CanonicalPath(c.Path) == info.Worktree.Path && c.BaseCommit != "" {
+				w := *info.Worktree
+				w.BaseCommit = c.BaseCommit
+				info.Worktree = &w
+			}
 		case log.KindSessionArchive:
 			var a log.SessionArchive
 			if ev.Decode(&a) == nil {
