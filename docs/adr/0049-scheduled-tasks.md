@@ -146,10 +146,14 @@ scheduled task's spend limit counts per run.
 
 ### 10. A derived index makes a long log cheap to read
 Each log gets `<id>.idx` beside it: listing info, running totals, the byte
-offset where each turn and run starts (and one every 1,000 events), the
-latest choices, and where the model's window starts. The process holding
-the log's lock folds events into it as it appends and writes it at turn
-ends, on close and every 4 MiB; readers fold in what the log has beyond it.
+offset where each turn and run starts (and one every 256 events), the
+latest choices, and where the model's window starts. Whichever nodwyn
+process reads the log folds in what the log gained beyond the index and
+writes the index back, as a temporary file renamed into place. (Changed
+while building it, 2026-10-15: the draft had the process holding the log's
+lock keep it as it appends, and a mark every 1,000 events. Readers keeping
+it leave the log's writer as it was, and two that race each wrote an index
+of the same log; a mark every 256 events keeps a page's read short.)
 A reader checks the line at the index's end, and at each offset it seeks
 to, against the log and rebuilds the index from the log on any mismatch.
 Nothing is recorded only in the index: it is a revocable view (SPEC,
@@ -195,7 +199,16 @@ in the conversation for each choice, in the console and the TUI; the TUI's
 `internal/frontend/tui`, `internal/frontend/web`, and the `tasks` and
 `remote` browser checks.
 
-Not built, in the order proposed: §10 the index;
+Also built on 2026-10-15, the first part of §10: `<id>.idx`, with the
+listing (`core.Store.Info`, so `session.list`) and `log.read` pages read
+through it, folded in from the end and checked against the log; it does not
+yet hold totals or turn marks, which nothing reads yet. Tests:
+`internal/core` (`log_index_test.go`, against a whole read for synthetic and
+recorded logs and stale indexes; `log_end_test.go`, a 50,000-event log
+whose first half is unreadable).
+
+Not built, in the order proposed: the rest of §10, resume, the window and
+the spend limit read from the index and the suffix they need;
 §11 the console reading from the end; then §1, §4–§9 and §12, the schedules
 themselves; then a login item that keeps the daemon running when no window
 is open. Not proposed: the model proposing a schedule, cron expressions,

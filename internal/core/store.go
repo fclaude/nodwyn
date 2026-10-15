@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -92,111 +93,135 @@ func (s Store) path(id string) (string, error) {
 	return path, nil
 }
 
+// read reads a whole session log: its listing and every event in it.
 func (s Store) read(id string) (SessionInfo, []log.Event, error) {
-	info := SessionInfo{ID: id}
 	path, err := s.path(id)
+	if err != nil {
+		return SessionInfo{ID: id}, nil, err
+	}
+	events, err := log.ReadFile(path)
+	truncated := errors.Is(err, log.ErrTruncated)
+	if err != nil && !truncated {
+		return SessionInfo{ID: id, Truncated: truncated}, nil, err
+	}
+	f := infoFold{Info: SessionInfo{ID: id}}
+	for _, ev := range events {
+		if err := f.observe(id, ev); err != nil {
+			f.Info.Truncated = truncated
+			return f.Info, nil, err
+		}
+	}
+	info, err := f.result(id)
+	info.Truncated = truncated
 	if err != nil {
 		return info, nil, err
 	}
-	events, err := log.ReadFile(path)
-	info.Truncated = errors.Is(err, log.ErrTruncated)
-	if err != nil && !info.Truncated {
-		return info, nil, err
+	return info, events, nil
+}
+
+// infoFold is a session's listing as the events of its log so far make it,
+// taken one event at a time, so that the log's index can keep it and fold
+// in only the events the log gained since (ADR 49 §10). Start says the
+// log's session.start was seen, First its first user.msg.
+type infoFold struct {
+	Info  SessionInfo
+	Start bool
+	First bool
+}
+
+// observe folds one event in, refusing a log that is not one session's.
+func (f *infoFold) observe(id string, ev log.Event) error {
+	if ev.Session != id {
+		return fmt.Errorf("core: mixed session ids in %s", id)
 	}
-	var start log.SessionStart
-	found := false
-	for _, ev := range events {
-		if ev.Kind != log.KindSessionStart {
-			continue
+	info := &f.Info
+	if ev.Seq == 1 {
+		info.Started = ev.TS
+	}
+	info.LastEvent = ev.TS
+	switch ev.Kind {
+	case log.KindSessionStart:
+		if f.Start {
+			return fmt.Errorf("core: duplicate session.start in %s", id)
 		}
-		if found {
-			return info, nil, fmt.Errorf("core: duplicate session.start in %s", id)
-		}
+		var start log.SessionStart
 		if err := ev.Decode(&start); err != nil {
-			return info, nil, err
+			return err
 		}
-		found = true
-	}
-	if !found {
-		return info, nil, fmt.Errorf("core: session %s has no session.start", id)
-	}
-	if !filepath.IsAbs(start.Repo) {
-		return info, nil, fmt.Errorf("core: session %s has no absolute repository path", id)
-	}
-	info.Repo = config.CanonicalPath(start.Repo)
-	info.Worktree = start.Worktree
-	if info.Worktree != nil {
-		info.Worktree.Repository = config.CanonicalPath(info.Worktree.Repository)
-		info.Worktree.Path = config.CanonicalPath(info.Worktree.Path)
-	}
-	first := false
-	written := map[string]bool{}
-	for i, ev := range events {
-		if ev.Session != id {
-			return info, nil, fmt.Errorf("core: mixed session ids in %s", id)
+		if !filepath.IsAbs(start.Repo) {
+			return fmt.Errorf("core: session %s has no absolute repository path", id)
 		}
-		if i == 0 {
-			info.Started = ev.TS
+		f.Start = true
+		info.Repo = config.CanonicalPath(start.Repo)
+		info.Worktree = start.Worktree
+		if w := info.Worktree; w != nil {
+			w.Repository = config.CanonicalPath(w.Repository)
+			w.Path = config.CanonicalPath(w.Path)
 		}
-		info.LastEvent = ev.TS
-		switch ev.Kind {
-		case log.KindGuardDecision:
-			var d log.GuardDecision
-			if ev.Decode(&d) == nil && d.Path != "" && !written[d.Path] && len(info.Changes) < maxChanges &&
-				(d.Decision == "allow" || (d.Decision == "confirm" && (d.Answer == "yes" || d.Answer == "turn"))) {
-				written[d.Path] = true
-				info.Changes = append(info.Changes, d.Path)
-			}
-		case log.KindRunState:
-			var r log.RunState
-			if ev.Decode(&r) == nil {
-				r.Task = redact.Redact(r.Task, nil).Text
-				info.Run = &r
-			}
-		case log.KindSessionTitle:
-			var t log.SessionTitle
-			if ev.Decode(&t) == nil {
-				info.Name = redact.Redact(t.Title, nil).Text
-			}
-		case log.KindWorktreeRestore:
-			// A worktree made again on a new branch starts from where its
-			// base was then (restoreWorktree): its latest base is its base.
-			var c log.WorktreeChange
-			if ev.Decode(&c) == nil && info.Worktree != nil && config.CanonicalPath(c.Path) == info.Worktree.Path && c.BaseCommit != "" {
-				w := *info.Worktree
-				w.BaseCommit = c.BaseCommit
-				info.Worktree = &w
-			}
-		case log.KindSessionArchive:
-			var a log.SessionArchive
-			if ev.Decode(&a) == nil {
-				info.Archived = a.Archived
-			}
-		case log.KindUserMsg:
-			var msg log.UserMsg
-			if err := ev.Decode(&msg); err != nil {
-				return info, nil, err
-			}
-			if !first {
-				info.FirstMessage = redact.Redact(msg.Text, nil).Text
-				first = true
-			}
-			info.InFlight = true
-		case log.KindEvalReq:
-			info.InFlight = true
-		case log.KindLLMResp:
-			var resp log.LLMResp
-			if err := ev.Decode(&resp); err != nil {
-				return info, nil, err
-			}
-			if len(resp.ToolCalls) == 0 {
-				info.InFlight = false
-			}
-		case log.KindTurnEnd, log.KindSessionEnd, log.KindSessionResume:
+	case log.KindGuardDecision:
+		var d log.GuardDecision
+		if ev.Decode(&d) == nil && d.Path != "" && !slices.Contains(info.Changes, d.Path) && len(info.Changes) < maxChanges &&
+			(d.Decision == "allow" || (d.Decision == "confirm" && (d.Answer == "yes" || d.Answer == "turn"))) {
+			info.Changes = append(info.Changes, d.Path)
+		}
+	case log.KindRunState:
+		var r log.RunState
+		if ev.Decode(&r) == nil {
+			r.Task = redact.Redact(r.Task, nil).Text
+			info.Run = &r
+		}
+	case log.KindSessionTitle:
+		var t log.SessionTitle
+		if ev.Decode(&t) == nil {
+			info.Name = redact.Redact(t.Title, nil).Text
+		}
+	case log.KindWorktreeRestore:
+		// A worktree made again on a new branch starts from where its base
+		// was then (restoreWorktree): its latest base is its base.
+		var c log.WorktreeChange
+		if ev.Decode(&c) == nil && info.Worktree != nil && config.CanonicalPath(c.Path) == info.Worktree.Path && c.BaseCommit != "" {
+			w := *info.Worktree
+			w.BaseCommit = c.BaseCommit
+			info.Worktree = &w
+		}
+	case log.KindSessionArchive:
+		var a log.SessionArchive
+		if ev.Decode(&a) == nil {
+			info.Archived = a.Archived
+		}
+	case log.KindUserMsg:
+		var msg log.UserMsg
+		if err := ev.Decode(&msg); err != nil {
+			return err
+		}
+		if !f.First {
+			info.FirstMessage = redact.Redact(msg.Text, nil).Text
+			f.First = true
+		}
+		info.InFlight = true
+	case log.KindEvalReq:
+		info.InFlight = true
+	case log.KindLLMResp:
+		var resp log.LLMResp
+		if err := ev.Decode(&resp); err != nil {
+			return err
+		}
+		if len(resp.ToolCalls) == 0 {
 			info.InFlight = false
 		}
+	case log.KindTurnEnd, log.KindSessionEnd, log.KindSessionResume:
+		info.InFlight = false
 	}
-	return info, events, nil
+	return nil
+}
+
+// result is the listing once every event is in: a log with no session.start
+// is no session's.
+func (f *infoFold) result(id string) (SessionInfo, error) {
+	if !f.Start {
+		return f.Info, fmt.Errorf("core: session %s has no session.start", id)
+	}
+	return f.Info, nil
 }
 
 // Rename gives a session no process has open its name, or with "" takes
@@ -218,11 +243,11 @@ func (s Store) record(id string, kind log.Kind, payload any) error {
 	if err != nil {
 		return err
 	}
-	info, _, err := s.read(id)
+	_, truncated, err := s.index(id)
 	if err != nil {
 		return err
 	}
-	if info.Truncated {
+	if truncated {
 		return fmt.Errorf("core: resume the session to recover its incomplete log first")
 	}
 	writer, err := log.Open(path)
@@ -248,6 +273,10 @@ func (s Store) Delete(id string) error {
 	if err := log.Remove(path); err != nil {
 		return err
 	}
+	// The log's index is the log's: it goes with it.
+	if err := os.Remove(indexPath(s.Dir, id)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	infoCache.mu.Lock()
 	delete(infoCache.entries, path)
 	infoCache.mu.Unlock()
@@ -256,7 +285,9 @@ func (s Store) Delete(id string) error {
 
 // Info reads one session's metadata without opening it for append. A log
 // whose size and modification time are unchanged since the last read is
-// answered from memory: listing sessions should not reparse every log.
+// answered from memory: listing sessions should not reparse every log. One
+// that grew is read from its index, which folds in only what it gained
+// (log_index.go).
 func (s Store) Info(id string) (SessionInfo, error) {
 	path, err := s.path(id)
 	if err != nil {
@@ -273,7 +304,12 @@ func (s Store) Info(id string) (SessionInfo, error) {
 	if ok && cached.key == key {
 		return cached.info, nil
 	}
-	info, _, err := s.read(id)
+	idx, truncated, err := s.index(id)
+	info := idx.Fold.Info
+	info.Truncated = truncated
+	if err != nil {
+		info = SessionInfo{ID: id}
+	}
 	if err == nil {
 		infoCache.mu.Lock()
 		if infoCache.entries == nil {

@@ -310,7 +310,11 @@ size. `through` selects an inclusive fixed endpoint; omitted/zero in `log.read`
 selects the current last complete record. Cursors beyond history are errors.
 An incomplete final line sets `truncated: true`; complete records remain
 readable, but corruption elsewhere fails the request. Reading a closed session
-requires no resume, writer lock or initialization.
+requires no resume, writer lock or initialization. A page is read from the
+log's index (ADR 49 §10): from the nearest of its marks, one every 256
+records, before `after`, not from the log's first record, so a page costs the
+same in a long log as in a short one. `session.list` folds into each grown
+log's index only what the log gained.
 
 Reconnect in this order:
 

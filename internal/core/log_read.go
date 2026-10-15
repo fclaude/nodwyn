@@ -1,10 +1,10 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/fclaude/nodwyn/internal/log"
-	"github.com/fclaude/nodwyn/internal/redact"
 )
 
 // LogPage is a bounded response over a fixed durable prefix. Through is the
@@ -21,39 +21,38 @@ type LogPage struct {
 
 // ReadLog never executes or rewrites history. A zero through selects the last
 // complete record; limit is 1..1000. Legacy payloads are redacted for display.
-// A partial final line is reported without discarding complete records.
+// A partial final line is reported without discarding complete records. The
+// page is read from the log's index (log_index.go): from the nearest mark
+// before it, not from the log's first event.
 func (s Store) ReadLog(id string, after, through uint64, limit int) (LogPage, error) {
 	if limit < 1 || limit > 1000 {
 		return LogPage{}, fmt.Errorf("core: log limit must be between 1 and 1000")
 	}
-	info, history, err := s.read(id)
-	if err != nil {
-		return LogPage{}, err
-	}
-	last := history[len(history)-1].Seq
-	if through == 0 {
-		through = last
-	}
-	if through > last || after > through {
-		return LogPage{}, fmt.Errorf("core: log cursor is beyond the available history")
-	}
-	page := LogPage{Events: []log.Event{}, Next: after, Through: through, Truncated: info.Truncated}
-	for _, ev := range history {
-		if ev.Seq <= after {
+	for attempt := 0; ; attempt++ {
+		idx, truncated, err := s.index(id)
+		if err != nil {
+			return LogPage{}, err
+		}
+		last := idx.Seq
+		if through == 0 {
+			through = last
+		}
+		if through > last || after > through {
+			return LogPage{}, fmt.Errorf("core: log cursor is beyond the available history")
+		}
+		page := LogPage{Events: []log.Event{}, Next: after, Through: through, Truncated: truncated}
+		if after < through {
+			err = s.readPage(id, idx, &page, after, through, limit)
+		}
+		// An index whose mark did not match its log was removed: the next
+		// one is built from the log.
+		if errors.Is(err, errStaleIndex) && attempt == 0 {
 			continue
 		}
-		if ev.Seq > through || len(page.Events) == limit {
-			break
+		if err != nil {
+			return LogPage{}, err
 		}
-		if len(ev.Payload) > 0 {
-			ev.Payload, _, err = redact.JSON(ev.Payload, nil)
-			if err != nil {
-				return LogPage{}, err
-			}
-		}
-		page.Events = append(page.Events, ev)
-		page.Next = ev.Seq
+		page.More = page.Next < through
+		return page, nil
 	}
-	page.More = page.Next < through
-	return page, nil
 }

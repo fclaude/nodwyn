@@ -299,8 +299,17 @@ var ErrSeqGap = errors.New("log: seq gap")
 // kinds. It stops at the first error from fn. A partial final line yields
 // ErrTruncated after every complete event has been delivered.
 func Replay(r io.Reader, fn func(Event) error) error {
+	return ReplayFrom(r, 1, func(ev Event, _ []byte, _ int64) error { return fn(ev) })
+}
+
+// ReplayFrom is Replay over a log read from inside it: r starts at the line
+// of event first, which an index of where lines start says (ADR 49 §10).
+// fn is also given each event's line, without its newline, and the offset
+// just past it, counted from where r starts.
+func ReplayFrom(r io.Reader, first uint64, fn func(ev Event, line []byte, end int64) error) error {
 	br := bufio.NewReaderSize(r, 64<<10)
-	var expect uint64 = 1
+	expect := first
+	var offset int64
 	for {
 		line, err := br.ReadBytes('\n')
 		if err != nil && err != io.EOF {
@@ -312,6 +321,7 @@ func Replay(r io.Reader, fn func(Event) error) error {
 			}
 			return nil
 		}
+		offset += int64(len(line))
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
@@ -326,7 +336,7 @@ func Replay(r io.Reader, fn func(Event) error) error {
 		if !Known(ev.Kind) {
 			return fmt.Errorf("log: seq %d: unknown kind %q", ev.Seq, ev.Kind)
 		}
-		if err := fn(ev); err != nil {
+		if err := fn(ev, line, offset); err != nil {
 			return err
 		}
 		expect++

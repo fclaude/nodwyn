@@ -37,6 +37,13 @@ has a \code{seq}, a timestamp, the session id, a \code{kind} and a
  "payload":{"args":"(\".\")","decision":"allow","origin":"model","prim":"fs-list"}}
 \end{txt}
 
+Beside it, \file{SESSION.idx} is the log's index (ADR 49): the session's
+listing and where every 256th line starts, so that listing the session and
+reading a page of its log do not read the whole log again as it grows. It
+is derived from the log and checked against the log's line where it ends
+before use; one that does not match is built again from the log, so it can
+always be deleted.
+
 \section{The event kinds}
 
 \begin{center}

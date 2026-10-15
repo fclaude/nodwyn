@@ -107,6 +107,12 @@ jq -c '[.seq,.kind]' ~/.local/share/nodwyn/sessions/<id>.jsonl
 ```
 
 Event kinds are listed in [internal/log/log.go](../internal/log/log.go).
+Beside each log, `<id>.idx` is its index (ADR 49 §10): what listing the
+session and reading a page of its log need, with where every 256th line
+starts, kept so that neither reads the whole log again when it grows. It is
+derived from the log and checked against it before use; nothing is only in
+it. One that does not match its log is built again from the log, so deleting
+it is always safe, and deleting the session deletes it.
 `guard.decision` lines carry `origin` (user, model, or harness for the loop
 strategy and plan gate), `decision`, `checker`,
 `reason` and, for confirms, `answer` and, when recorded, `actor`: who

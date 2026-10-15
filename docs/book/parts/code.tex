@@ -1579,7 +1579,12 @@ log it created is removed, so a refused session leaves no empty log behind.
 Each line is one event:
 \code{seq}, \code{ts}, \code{session}, \code{kind} and \code{payload}. The
 kinds are fixed in \file{internal/log/log.go}; a reader rejects any other,
-and rejects a gap in \code{seq}. The payload of each kind is a Go type in
+and rejects a gap in \code{seq}. Beside each log, \file{<id>.idx} is its
+index (\adr{49}): the listing \code{core.Store} would otherwise read the
+whole log for, and where every 256th line starts, so \code{log.read} reads
+a page from the nearest mark. It is derived from the log, checked against
+the log's line where it ends, and built again from the log when it does not
+match: nothing is recorded only there. The payload of each kind is a Go type in
 \file{internal/log/payloads.go}, which is the log's schema, with one
 exception: \code{redact.event}'s payload, the source event's seq and the
 substitutions, is built in \file{internal/core/events.go}.
