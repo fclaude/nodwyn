@@ -289,3 +289,43 @@ func TestScheduledRunStartsFromTodaysBase(t *testing.T) {
 		t.Fatalf("the ignored file went: %v", err)
 	}
 }
+
+// A task's schedule is answered from memory while its log is unchanged, as
+// its listing is: reading it decoded the task's whole index every time, which
+// a list of a few hundred tasks paid for under the daemon's lock (P2-074).
+func TestScheduleIsReadOnceWhileTheLogIsUnchanged(t *testing.T) {
+	o := diskOptions(t)
+	s, err := New(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := log.SessionSchedule{Definition: schedule.Definition{Message: "check", Repeat: "daily", At: "2026-10-16T09:00"}}
+	if _, err = s.Record(log.KindSessionSchedule, d); err != nil {
+		t.Fatal(err)
+	}
+	id := s.ID()
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Dir: o.Paths.SessionsDir}
+	first, err := store.Schedule(id)
+	if err != nil || first.Definition == nil {
+		t.Fatalf("%+v %v", first, err)
+	}
+	// The index is what a read would decode: without it, only memory can answer.
+	if err := os.Remove(indexPath(o.Paths.SessionsDir, id)); err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.Schedule(id)
+	if err != nil || second.Definition == nil || second.Sequence != first.Sequence {
+		t.Fatalf("a second read: %+v %v", second, err)
+	}
+	if _, err := os.Stat(indexPath(o.Paths.SessionsDir, id)); err == nil {
+		t.Fatal("the index was decoded and written again for a log that had not changed")
+	}
+	// A reader's change to what it was given does not reach the next one.
+	second.Definition.Message = "changed"
+	if third, _ := store.Schedule(id); third.Definition.Message != "check" {
+		t.Fatalf("a reader changed the cached schedule: %q", third.Definition.Message)
+	}
+}

@@ -50,9 +50,29 @@ func (s *ScheduleInfo) observe(ev log.Event) {
 	}
 }
 
+// clone is a copy that shares no pointer with s, so the one kept in memory
+// is never changed by a reader.
+func (s ScheduleInfo) clone() ScheduleInfo {
+	if s.Definition != nil {
+		d := *s.Definition
+		s.Definition = &d
+	}
+	if s.LastRun != nil {
+		r := *s.LastRun
+		s.LastRun = &r
+	}
+	if s.LastSkip != nil {
+		k := *s.LastSkip
+		s.LastSkip = &k
+	}
+	return s
+}
+
+// Schedule is a session's schedule as its log has it, answered from memory
+// while the log is unchanged, as Info is.
 func (s Store) Schedule(id string) (ScheduleInfo, error) {
-	idx, _, err := s.index(id)
-	return idx.Schedule, err
+	_, schedule, err := s.infoAndSchedule(id)
+	return schedule, err
 }
 
 func (s Store) SetSchedule(id string, p log.SessionSchedule) error {

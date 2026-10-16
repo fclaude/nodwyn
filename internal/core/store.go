@@ -295,36 +295,42 @@ func (s Store) Delete(id string) error {
 // that grew is read from its index, which folds in only what it gained
 // (log_index.go).
 func (s Store) Info(id string) (SessionInfo, error) {
+	info, _, err := s.infoAndSchedule(id)
+	return info, err
+}
+
+// infoAndSchedule is Info with the session's schedule, which the same index
+// holds: a list of every task asks for both, and decoding an index for each
+// task, as a schedule read of its own would, took seconds for a few hundred.
+func (s Store) infoAndSchedule(id string) (SessionInfo, ScheduleInfo, error) {
 	path, err := s.path(id)
 	if err != nil {
-		return SessionInfo{ID: id}, err
+		return SessionInfo{ID: id}, ScheduleInfo{}, err
 	}
 	stat, err := os.Stat(path)
 	if err != nil {
-		return SessionInfo{ID: id}, err
+		return SessionInfo{ID: id}, ScheduleInfo{}, err
 	}
 	key := infoKey{stat.Size(), stat.ModTime()}
 	infoCache.mu.Lock()
 	cached, ok := infoCache.entries[path]
 	infoCache.mu.Unlock()
 	if ok && cached.key == key {
-		return cached.info, nil
+		return cached.info, cached.schedule.clone(), nil
 	}
 	idx, truncated, err := s.index(id)
 	info := idx.Fold.Info
 	info.Truncated = truncated
 	if err != nil {
-		info = SessionInfo{ID: id}
+		return SessionInfo{ID: id}, ScheduleInfo{}, err
 	}
-	if err == nil {
-		infoCache.mu.Lock()
-		if infoCache.entries == nil {
-			infoCache.entries = make(map[string]cachedInfo)
-		}
-		infoCache.entries[path] = cachedInfo{key, info}
-		infoCache.mu.Unlock()
+	infoCache.mu.Lock()
+	if infoCache.entries == nil {
+		infoCache.entries = make(map[string]cachedInfo)
 	}
-	return info, err
+	infoCache.entries[path] = cachedInfo{key, info, idx.Schedule.clone()}
+	infoCache.mu.Unlock()
+	return info, idx.Schedule, nil
 }
 
 type infoKey struct {
@@ -332,8 +338,9 @@ type infoKey struct {
 	mod  time.Time
 }
 type cachedInfo struct {
-	key  infoKey
-	info SessionInfo
+	key      infoKey
+	info     SessionInfo
+	schedule ScheduleInfo
 }
 
 // infoCache is process-wide: every Store over the same directory reads the
