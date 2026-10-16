@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 243 of 490 tracked Go files: every non-test Go file, 56,478 of 104,122 Go source lines (54.2\% by lines). It also includes all 36 tracked Scheme files (4,681 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 244 of 492 tracked Go files: every non-test Go file, 57,115 of 105,040 Go source lines (54.4\% by lines). It also includes all 36 tracked Scheme files (4,772 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -281,6 +281,8 @@ Read \src{internal/loop/loop.go} for installation, freezing and turn entry; \src
 \chapter{Operations on the host}
 
 Read registration and checker assembly in \src{internal/prim/prim.go}, then choose one operation. A primitive's declaration and handler belong together: changing its arguments without changing their roles can alter what the guard sees. Filesystem reads and edits live in fs; subprocess lifetime spans shell and procs; policy and versions have their own persistence rules. The package's tests and \file{test/exfil/} cover different levels of the same boundary.
+
+\sourcefile{internal/prim/claims.go}{Go}
 
 \sourcefile{internal/prim/diff.go}{Go}
 

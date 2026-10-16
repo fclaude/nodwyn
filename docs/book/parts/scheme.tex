@@ -593,6 +593,7 @@ Primitive & What it does \\
 \code{(keep-passing)} & keep the changes as a test run passed on them, for a turn nobody reads that a hard limit or the progress guard stops; the core then puts the files back to it and saves what they held \\
 \code{(check-without cmd args)} & run a check again with each part of the change taken out in turn, putting each back; a part the check still passes without is one it does not test \\
 \code{(change-removals request)} & what the change takes away that its check cannot show: the definitions gone from their package, and the cases and assertions of existing tests removed or rewritten \\
+\code{(change-claims request runs edits declared)} & the lines the change adds to documents and comments that state what nothing in the turn showed: a run's result or figures, an amendment date, a paragraph pasted twice, entries added by hand to a generated file \\
 \code{(shell-exec cmd args)} & run a program and wait for it; irreversible \\
 \code{(shell-start cmd args)} & start a program that keeps running, in the background; irreversible \\
 \code{(shell-read id [wait])}, \code{(shell-stop id)} & its new output and state; stop it \\

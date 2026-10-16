@@ -228,8 +228,13 @@ evidence:
     edit. When that check passed, it also names what the change removed
     (\code{change-removals}): a definition gone from its package that the
     request does not name, and the cases and assertions of existing tests
-    it removed or rewrote. After it the turn is accepted: the model's next
-    answer ends it, and the reminders above are not asked again.
+    it removed or rewrote. And it names the lines the change adds to
+    documents and comments that nothing in the turn showed
+    (\code{change-claims}): a run's result or figures no passing run
+    printed, an amendment date no command printed, a paragraph pasted twice,
+    entries added by hand to a generated file. After it the turn is
+    accepted: the model's next answer ends it, and the reminders above are
+    not asked again.
   \item When a person reads the answer before anything else happens
     (\code{(reviewed?)}: a chat, or a run's turn that a checkpoint follows),
     the no-change reminder is \code{finish-no-change-reviewed-message}: make
@@ -275,7 +280,13 @@ If your project runs its tests some other way, teach the loop:
 Otherwise the evidence loop will keep telling the model it has not tested,
 however many times it runs your test script. A tool of your own that runs
 one is a row of \code{tool-commands}: its name, the program, the words
-before its argument, and the argument's name.
+before its argument, and the argument's name. A file a command of yours
+generates, whose head does not say so, is a row of \code{generated-files}:
+\begin{scm}
+(define generated-files '(("data/prices.csv" "make prices")))
+\end{scm}
+and the finish review names entries the model adds to it by hand that no
+later \code{make prices} made.
 \end{tip}
 
 \section{Rounds that only read}

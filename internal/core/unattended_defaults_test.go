@@ -978,3 +978,78 @@ func TestTheReviewIsQuietOnRemovalsTheRequestNames(t *testing.T) {
 		t.Fatalf("%d requests, want 5; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
 	}
 }
+
+// adrRepo is codeRepo with an ADR committed, whose one amendment is dated
+// 2026-10-01.
+func adrRepo(t *testing.T) string {
+	t.Helper()
+	repo := codeRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, "docs", "adr"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "docs", "adr", "0001-calc.md"), []byte("# ADR 1: calc\n\n## Amendment 2026-10-01: one\n\none returns 1.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "-c", "git add docs && git -c commit.gpgsign=false -c user.name=t -c user.email=t@t commit -q -m adr")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return repo
+}
+
+const adrAmended = "# ADR 1: calc\n\n## Amendment 2026-10-01: one\n\none returns 1.\n\n## Amendment 2026-10-06: ten\n\none returns 10. Fuzzing `one` for 40 s (9.4M executions) found nothing.\n"
+
+// The finish review names the lines a change adds to its documents that
+// nothing in the turn showed: here a fuzz run's figures with no fuzz run, and
+// an amendment date no command printed. On commit-bench three builds copied
+// the task's "40 s (9.4M executions) found nothing" into ADR 25 and models
+// guessed amendment dates (ADR 32, amended 2026-10-15).
+func TestTheReviewNamesClaimsNothingShowed(t *testing.T) {
+	t.Parallel()
+	r := unattendedRigIn(t, adrRepo(t),
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py && grep -q 'return 20' calc.py\n"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		write("a", "docs/adr/0001-calc.md", adrAmended),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"}, // reviewed: two lines nothing showed
+		fake.Turn{Content: "The fuzz figures were the request's; I took them out."},
+	)
+	if e := r.turn("make one return 10 and two return 20, fuzzed for 40 s (9.4M executions)"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 6 {
+		t.Fatalf("%d requests, want 6; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+	msg := lastMessage(r, 5)
+	for _, want := range []string{"These lines your change adds state what nothing in this turn showed:",
+		"docs/adr/0001-calc.md:7: \"## Amendment 2026-10-06: ten\" (no command of yours printed 2026-10-06",
+		"docs/adr/0001-calc.md:9: \"Fuzzing `one` for 40 s (9.4M executions) found nothing.\" (no run of fuzz of yours passed this turn)",
+		"The request's account of its author's runs is not evidence"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the review lacks %q: %q", want, msg)
+		}
+	}
+}
+
+// The same lines stand when the turn's own runs showed them: a command that
+// printed the date, and a fuzz run that passed printing the figures among its
+// last lines. The turn ends at its answer.
+func TestTheReviewIsQuietOnClaimsARunShowed(t *testing.T) {
+	t.Parallel()
+	r := unattendedRigIn(t, adrRepo(t),
+		write("c", "$TMPDIR/check.sh", "grep -q 'return 10' calc.py && grep -q 'return 20' calc.py\n"),
+		shellArgs("d", "bash", "-c", "echo 2026-10-06"),
+		write("w", "calc.py", "def one():\n    return 10\n\n\ndef two():\n    return 20\n"),
+		write("a", "docs/adr/0001-calc.md", adrAmended),
+		shellArgs("f", "bash", "-c", "printf 'fuzz: elapsed: 40s, execs: 9412345 (235308/sec)\\nPASS\\n' # go test -fuzz FuzzOne -fuzztime 40s"),
+		shellArgs("t", "bash", "$TMPDIR/check.sh"),
+		fake.Turn{Content: "done"},
+	)
+	if e := r.turn("make one return 10 and two return 20"); e != "" {
+		t.Fatal(e)
+	}
+	if len(r.srv.Requests) != 7 {
+		t.Fatalf("%d requests, want 7; last message %q", len(r.srv.Requests), lastMessage(r, len(r.srv.Requests)-1))
+	}
+}

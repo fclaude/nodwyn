@@ -419,6 +419,31 @@
                lines))
    "\nAn existing test of something the request does not change is a constraint: restore each such line and fix the code instead, or quote in your report the request's words that change it."))
 
+;; The lines the change adds to documents and comments that state what
+;; nothing in the turn showed (strategy.scm, change-claims), a point of the
+;; finish review. On commit-bench three builds copied the task's "40 s (9.4M
+;; executions) found nothing" into ADR 25 without a fuzz run of their own,
+;; models guessed amendment dates, one edit pasted an ADR paragraph twice,
+;; and four builds wrote catalogue entries from memory under models.dev's
+;; name (ADR 32, amended 2026-10-15).
+(define (finish-unshown-claims-message claims)
+  (string-append
+   "These lines your change adds state what nothing in this turn showed:"
+   (apply string-append
+          (map (lambda (c)
+                 (let* ((text (format "~a" (assoc-ref c "text" "")))
+                        (short (if (> (string-length text) 160) (string-append (substring text 0 160) "…") text))
+                        (kind (format "~a" (assoc-ref c "kind" ""))))
+                   (string-append "\n- " (format "~a" (assoc-ref c "path" ""))
+                                  (if (equal? kind "generated") " " (string-append ":" (number->string (assoc-ref c "line" 0)) ": "))
+                                  (if (member kind '("run" "date")) (string-append "\"" short "\" (") "")
+                                  (format "~a" (assoc-ref c "why" ""))
+                                  (cond ((member kind '("run" "date")) ")")
+                                        ((equal? kind "generated") ": run the command that makes it, or take the entries out and say they are missing; do not pin them in a test")
+                                        (else "")))))
+               claims))
+   "\nThe request's account of its author's runs is not evidence for this change. Rewrite each line from your own output, say whose run or source it was, or take it out."))
+
 ;; In a git work tree, files new since the turn began that git does not
 ;; track, said once: whatever is left in the repository is in the change.
 (define (finish-new-files-message files)
