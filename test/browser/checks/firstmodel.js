@@ -39,6 +39,20 @@ check(async () => {
   const bindings = () => fs.readFileSync(`${root}/config/nodwyn/bindings.toml`, "utf8");
   const passphrase = "family passphrase";
 
+  // The daemon refuses the first keychain.create, as it refuses a passphrase
+  // it dislikes; nothing else is touched.
+  let refused = false;
+  await page.routeWebSocket("**/socket", (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      const frame = JSON.parse(message);
+      if (frame.method === "keychain.create" && !refused) {
+        refused = true;
+        socket.send(JSON.stringify({ jsonrpc: "2.0", id: frame.id, error: { code: -32602, message: "Use a passphrase of at least 8 characters" } }));
+      } else server.send(message);
+    });
+    server.onMessage((message) => socket.send(message));
+  });
   await page.goto(url);
   await page.waitForSelector("#provider-url", { timeout: 10000 });
   await shows(page, "main.home", "Let's connect nodwyn to a model");
@@ -54,11 +68,22 @@ check(async () => {
   assert.strictEqual(await page.isDisabled("#provider-save"), true, "a key can be saved with no keychain to hold it");
   assert.strictEqual(await page.locator("#provider-form a:has-text('Open the keychain settings')").count(), 0, "setup sends a person to Settings for the keychain");
   await page.screenshot({ path: `${out}/firstmodel-keychain.png` });
+  // The minimum is said where a passphrase is chosen, and checked before it is
+  // sent; a refusal that does come back leaves both fields as they were typed,
+  // so it is put right and sent again rather than typed from the start.
+  await shows(page, "#first-keychain", "at least 8 characters");
+  assert.strictEqual(await page.getAttribute("#keychain-pass", "minlength"), "8");
   await page.fill("#keychain-pass", passphrase);
   await page.fill("#keychain-again", passphrase);
   await page.click("#first-keychain button:text-is('Create the keychain')");
+  await page.waitForSelector("#first-keychain .error:has-text('at least 8 characters')");
+  assert.strictEqual(await page.inputValue("#keychain-pass"), passphrase, "a refused passphrase was emptied");
+  assert.strictEqual(await page.inputValue("#keychain-again"), passphrase, "the confirmation of a refused passphrase was emptied");
+  assert.ok(!fs.existsSync(`${root}/config/nodwyn/keychain`), "a refused keychain was made");
+  await page.click("#first-keychain button:text-is('Create the keychain')");
   await page.waitForSelector("#first-keychain", { state: "detached", timeout: 20000 });
-  assert.deepStrictEqual(sent.of("keychain.create"), [{ passphrase }]);
+  assert.ok(refused, "the first keychain.create was never refused");
+  assert.deepStrictEqual(sent.of("keychain.create").at(-1), { passphrase });
   assert.ok(fs.existsSync(`${root}/config/nodwyn/keychain`), "no keychain on disk");
   // The page was drawn again around the keychain being made: what was typed
   // is still in the form, and the key may be saved now.

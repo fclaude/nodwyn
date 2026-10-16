@@ -284,10 +284,22 @@ check(async () => {
   await page.click("summary:has-text('Change or remove the passphrase')");
   await page.click("button:has-text('Remove the passphrase')");
   await page.waitForSelector("text=Enter the current passphrase");
+  // A wrong current passphrase is refused, and the new one typed beside it
+  // stays to be sent again with the right one.
+  await page.fill("#keychain-current", "wrong passphrase");
+  await page.fill("#keychain-new", "another passphrase");
+  await page.fill("#keychain-new-again", "another passphrase");
+  await page.click("button:has-text('Change the passphrase')");
+  await page.waitForFunction(() => document.querySelector(".setup-form .error")?.textContent, null, { timeout: 10000 });
+  assert.strictEqual(await page.inputValue("#keychain-new"), "another passphrase", "a refused change emptied the new passphrase");
+  assert.strictEqual(await page.inputValue("#keychain-new-again"), "another passphrase", "a refused change emptied its confirmation");
+  assert.strictEqual(await page.inputValue("#keychain-current"), "wrong passphrase", "a refused change emptied the current passphrase");
+  await page.fill("#keychain-new", "");
+  await page.fill("#keychain-new-again", "");
   await page.fill("#keychain-current", "family passphrase");
   await page.click("button:has-text('Remove the passphrase')");
   await page.waitForSelector("text=· no passphrase", { timeout: 10000 });
-  assert.deepStrictEqual(sent.of("keychain.passphrase"), [{ passphrase: "family passphrase" }, { current: "family passphrase", no_passphrase: true }]);
+  assert.deepStrictEqual(sent.of("keychain.passphrase"), [{ passphrase: "family passphrase" }, { current: "wrong passphrase", passphrase: "another passphrase" }, { current: "family passphrase", no_passphrase: true }]);
   step("passphrase removed with the current one");
 
   // Restarted, the keychain without a passphrase is open by itself.

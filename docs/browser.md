@@ -224,7 +224,11 @@ unsaved changes keeps those made in every tab. The tabs:
   default judge's own prices, each empty for the published one. A `[judge]
   model` its provider does not answer to is said, with a button that clears
   it.
-- **Keys & devices** — the keychain; **Credentials over remote HTTP**; and the
+- **Keys & devices** — the keychain (its create and change forms say the
+  8-character minimum, check it before sending, and keep what was typed when
+  the daemon refuses, so a wrong current passphrase does not empty the new
+  one; what is typed is forgotten once it worked, and an unlock forgets it as
+  it sends); **Credentials over remote HTTP**; and the
   paired devices, each with **Revoke**, which asks first, and, when none is
   paired, how to pair one (`nodwyn ui --listen`, which prints the pairing code
   in the terminal it runs in).

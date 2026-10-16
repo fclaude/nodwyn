@@ -30,6 +30,11 @@ function forget(...inputs) {
 // What a keychain without a passphrase gives up, said wherever one is made.
 export const noPassphraseWarning = "Anyone who can read the keychain file, or a backup of it, can use every key in it.";
 
+// A passphrase the daemon takes is at least this long (rpc: setup.go), said
+// where one is chosen and checked before it is sent.
+const minPassphrase = 8;
+const choosing = `Keys for model servers and tools are kept in an encrypted keychain. Choose a passphrase of at least ${minPassphrase} characters that you'll remember: nodwyn can't recover it.`;
+
 export function keychainForm(ctx, { onDone } = {}) {
   const { conn, desk } = ctx;
   const status = desk.keychain || {};
@@ -37,7 +42,9 @@ export function keychainForm(ctx, { onDone } = {}) {
   if (status.unlocked) return h("p", { class: "hint" }, `Unlocked · ${status.credentials} saved credential${status.credentials === 1 ? "" : "s"}${status.no_passphrase ? " · no passphrase" : ""}.`);
   const creating = !status.exists;
   let without = false;
-  const pass = secret("keychain-pass", { autocomplete: creating ? "new-password" : "current-password", required: !!creating });
+  // Creating asks for a new passphrase, which has a minimum; unlocking takes
+  // whatever was chosen.
+  const pass = secret("keychain-pass", { autocomplete: creating ? "new-password" : "current-password", required: !!creating, minLength: creating ? minPassphrase : 0 });
   const again = secret("keychain-again", { autocomplete: "new-password", required: true });
   const button = h("button", { type: "submit", class: "btn dark" }, creating ? "Create the keychain" : "Unlock");
   const passFields = h(
@@ -47,7 +54,7 @@ export function keychainForm(ctx, { onDone } = {}) {
     creating ? h("div", { class: "field" }, h("label", { for: "keychain-again" }, "The same passphrase again"), again) : null,
   );
   const warning = h("p", { class: "hint", hidden: true }, `Not recommended. ${noPassphraseWarning} It opens by itself when nodwyn starts, and you can set a passphrase later in Settings.`);
-  const intro = h("p", { class: "hint" }, creating ? "Keys for model servers and tools are kept in an encrypted keychain. Choose a passphrase you'll remember: nodwyn can't recover it." : "Your saved keys are locked. Enter the keychain's passphrase to use them in new tasks.");
+  const intro = h("p", { class: "hint" }, creating ? choosing : "Your saved keys are locked. Enter the keychain's passphrase to use them in new tasks.");
   const optOut = creating
     ? h(
         "label",
@@ -59,8 +66,10 @@ export function keychainForm(ctx, { onDone } = {}) {
             without = event.target.checked;
             passFields.hidden = without;
             warning.hidden = !without;
-            intro.textContent = without ? "Keys for model servers and tools are kept in the keychain." : "Keys for model servers and tools are kept in an encrypted keychain. Choose a passphrase you'll remember: nodwyn can't recover it.";
+            intro.textContent = without ? "Keys for model servers and tools are kept in the keychain." : choosing;
             pass.required = again.required = !without;
+            // A hidden field that fails its rule would stop the form being sent.
+            pass.minLength = without ? 0 : minPassphrase;
           },
         }),
         "Don't protect it with a passphrase",
@@ -78,10 +87,14 @@ export function keychainForm(ctx, { onDone } = {}) {
           return;
         }
         const passphrase = pass.value;
-        forget(pass, again);
+        // Unlocking forgets what was typed as it is sent, so a wrong one is
+        // typed again from the start; creating keeps both fields until it
+        // worked, since a refusal (too short) is put right in the same words.
+        if (!creating) forget(pass, again);
         button.disabled = true;
         try {
           desk.keychain = await conn.call(creating ? "keychain.create" : "keychain.unlock", creating && without ? { no_passphrase: true } : { passphrase });
+          forget(pass, again);
           toast(creating ? (without ? "Keychain created, without a passphrase." : "Keychain created.") : "Keychain unlocked. Tasks you open from now on can use its keys.");
           onDone?.();
         } catch (e) {
@@ -112,9 +125,11 @@ export function passphraseForm(ctx, { onDone } = {}) {
   const again = secret("keychain-new-again", { autocomplete: "new-password", required: true });
   const submit = async (params, done) => {
     error.textContent = "";
-    forget(current, pass, again);
     try {
       desk.keychain = await conn.call("keychain.passphrase", params);
+      // Forgotten once it worked: a refusal (a wrong current passphrase, a new
+      // one too short) leaves what was typed to put right.
+      forget(current, pass, again);
       toast(done);
       onDone?.();
     } catch (e) {
