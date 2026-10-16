@@ -238,7 +238,8 @@ func (s *server) scheduler(ctx context.Context, done chan<- struct{}) {
 // scheduleTick runs under the lifecycle lock, with an injected wall time in
 // tests. A tick after sleep coalesces all missed civil occurrences once.
 func (s *server) scheduleTick(now time.Time) {
-	infos, err := s.store().List()
+	// A log that cannot be read is no schedule's: the others still run.
+	infos, err := core.Readable(s.store().List())
 	if err != nil {
 		return
 	}

@@ -43,7 +43,7 @@ func (s *Session) earlierAllowed() error {
 // worktree's tasks are its repository's (ADR 34); a deleted task's log is
 // gone, and the task with it.
 func (s Store) projectTasks(project, skip string) ([]SessionInfo, error) {
-	infos, err := s.List()
+	infos, err := Readable(s.List())
 	if err != nil {
 		return nil, err
 	}

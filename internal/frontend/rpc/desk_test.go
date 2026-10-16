@@ -295,3 +295,26 @@ func TestTasksAreNamedArchivedAndDeleted(t *testing.T) {
 		t.Fatal("renamed a deleted task")
 	}
 }
+
+// A log that cannot be read (an empty one a crash left, a copy under another
+// name, a line cut in half) leaves every other task listed: it used to fail
+// session.list for every client, and with it the scheduler's tick.
+func TestUnreadableLogLeavesTheOthersListed(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	id := opened(t, c, t.TempDir())
+	for name, text := range map[string]string{"empty.jsonl": "", "a copy.jsonl": "{}\n", "cut.jsonl": "{\"seq\":1,\"kind\":"} {
+		if err := os.WriteFile(filepath.Join(o.Paths.SessionsDir, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var list []sessionInfo
+	if err := json.Unmarshal(c.ok("session.list", map[string]any{}), &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != id {
+		t.Fatalf("list: %+v", list)
+	}
+}

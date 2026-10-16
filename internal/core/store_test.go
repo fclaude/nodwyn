@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,5 +219,28 @@ func TestResumeBringsAnArchivedSessionBack(t *testing.T) {
 	info, err := store.Info("archived")
 	if err != nil || info.Archived {
 		t.Fatalf("after resume: %+v %v", info, err)
+	}
+}
+
+// List gives the sessions it can read and names the logs it cannot.
+func TestListNamesUnreadableLogsAndKeepsTheRest(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	w, err := log.Create(log.SessionPath(dir, "good"), "good")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Append(log.KindSessionStart, log.SessionStart{Repo: t.TempDir()})
+	w.Close()
+	if err := os.WriteFile(filepath.Join(dir, "empty.jsonl"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	infos, err := Store{Dir: dir}.List()
+	var bad UnreadableLogs
+	if len(infos) != 1 || infos[0].ID != "good" || !errors.As(err, &bad) || len(bad) != 1 || !strings.Contains(err.Error(), "empty.jsonl") {
+		t.Fatalf("List: %+v, %v", infos, err)
+	}
+	if infos, err := Readable(Store{Dir: dir}.List()); err != nil || len(infos) != 1 {
+		t.Fatalf("Readable: %+v, %v", infos, err)
 	}
 }

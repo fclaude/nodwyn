@@ -2471,6 +2471,7 @@ or write the text `[REDACTED anthropic-key]` over one.
 | `hard stop: tool_calls budget reached` | the turn ended; the log has everything; rephrase smaller, or raise `--max-tool-calls` |
 | a tool call errored | `:log 20` — the `tool.result` line has the exact error the model saw |
 | a confirm never appeared but a file changed | `:allow` — a standing approval covered it; the `guard.decision` line names which |
+| a task is missing from every list | its log cannot be read (empty after a crash, cut short, written by a newer nodwyn, or copied under another name): the other tasks are listed without it, and `nodwyn sessions` names it on stderr |
 
 ## Local daemon
 

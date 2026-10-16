@@ -45,7 +45,7 @@ func (s *Session) registerHistory() error {
 				default:
 					return scheme.Void, errors.New("expected at most one argument, how many sessions")
 				}
-				infos, err := store.List()
+				infos, err := Readable(store.List())
 				if err != nil {
 					return scheme.Void, err
 				}

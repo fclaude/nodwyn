@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"os"
 
 	"github.com/fclaude/nodwyn/internal/core"
 )
@@ -13,8 +15,12 @@ func (c *cli) sessions() error {
 	if c.fs.NArg() > 2 || (c.fs.NArg() == 2 && !ids) {
 		return fmt.Errorf("sessions: expected --ids or no arguments")
 	}
+	// The logs that cannot be read are named, after the rest are listed.
 	infos, err := (core.Store{Dir: c.paths.SessionsDir}).List()
-	if err != nil {
+	var bad core.UnreadableLogs
+	if errors.As(err, &bad) {
+		defer fmt.Fprintln(os.Stderr, "nodwyn:", bad)
+	} else if err != nil {
 		return err
 	}
 	for _, info := range infos {

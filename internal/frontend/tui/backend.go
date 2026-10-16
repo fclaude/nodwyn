@@ -80,7 +80,7 @@ func newLocal(o core.Options) *local {
 	return &local{options: o, events: make(chan rpc.ClientEvent, 256), stop: make(chan struct{})}
 }
 func (l *local) List(context.Context) ([]rpc.SessionInfo, error) {
-	items, err := (core.Store{Dir: l.options.Paths.SessionsDir}).List()
+	items, err := core.Readable((core.Store{Dir: l.options.Paths.SessionsDir}).List())
 	var out []rpc.SessionInfo
 	for _, s := range items {
 		out = append(out, rpc.SessionInfo{ID: s.ID, Repo: s.Repo, FirstMessage: s.FirstMessage, LastEvent: s.LastEvent, InFlight: s.InFlight, Truncated: s.Truncated, Worktree: s.Worktree})

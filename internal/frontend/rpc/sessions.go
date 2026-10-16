@@ -305,7 +305,8 @@ func (s *server) list(req request, _ *peer) (any, *rpcError) {
 	if err := params(req.Params, &struct{}{}); err != nil {
 		return nil, err
 	}
-	infos, err := s.store().List()
+	// One log that cannot be read leaves the other tasks listed.
+	infos, err := core.Readable(s.store().List())
 	if err != nil {
 		return nil, failure(-32000, err.Error())
 	}

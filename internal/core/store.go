@@ -344,8 +344,12 @@ var infoCache struct {
 	entries map[string]cachedInfo
 }
 
-// List returns sessions in sortable ID order. Corruption is reported rather
-// than quietly hiding a conversation. A missing directory is an empty store.
+// List returns the sessions it can read, in sortable ID order, and an
+// *UnreadableLogs naming the logs it cannot: an empty log a crash left, one
+// still being created, one a newer nodwyn wrote, a copy under another name.
+// One such log hides none of the others; the caller decides whether to say
+// so. Any other error is the directory's. A missing directory is an empty
+// store.
 func (s Store) List() ([]SessionInfo, error) {
 	entries, err := os.ReadDir(s.Dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -355,15 +359,43 @@ func (s Store) List() ([]SessionInfo, error) {
 		return nil, err
 	}
 	var result []SessionInfo
+	var bad UnreadableLogs
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".jsonl") {
 			continue
 		}
 		info, err := s.Info(strings.TrimSuffix(e.Name(), ".jsonl"))
 		if err != nil {
-			return nil, fmt.Errorf("core: %s: %w", e.Name(), err)
+			bad = append(bad, fmt.Errorf("%s: %w", e.Name(), err))
+			continue
 		}
 		result = append(result, info)
 	}
+	if len(bad) > 0 {
+		return result, bad
+	}
 	return result, nil
+}
+
+// UnreadableLogs is List's error for the logs in the sessions directory it
+// could not read; the sessions it returns are all the others.
+type UnreadableLogs []error
+
+func (u UnreadableLogs) Error() string {
+	msgs := make([]string, len(u))
+	for i, err := range u {
+		msgs[i] = err.Error()
+	}
+	return fmt.Sprintf("core: %d session log(s) cannot be read: %s", len(u), strings.Join(msgs, "; "))
+}
+
+// Readable is List's sessions when what it could not read was only some
+// logs: their error is dropped, as a caller that lists tasks goes on
+// without them. Any other error stays.
+func Readable(infos []SessionInfo, err error) ([]SessionInfo, error) {
+	var bad UnreadableLogs
+	if errors.As(err, &bad) {
+		return infos, nil
+	}
+	return infos, err
 }
