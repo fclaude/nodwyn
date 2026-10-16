@@ -2590,7 +2590,8 @@ Projects have one identity through symlinks: `/tmp/x` and `/private/tmp/x` on ma
 share workspace mounts, MCP selection, notes and session listings. A linked git
 worktree remains a distinct checkout of its recorded main project. Old session
 logs and kept-version indexes are read without rewriting them. Notes under an old
-path hash are migrated from the requested spelling or earlier session records,
+path hash are migrated from the requested spelling or earlier session records (read
+once for each folder, a `.aliases-checked` marker in its notes directory saying so),
 leaving a `notes.md.before-path-migration` backup. Conflicting note contents or
 duplicate registered aliases require manual reconciliation; nodwyn does not merge
 permissions or discard one copy. See [ADR 45](adr/0045-project-trust-and-security-boundaries.md).
