@@ -272,7 +272,7 @@ func runPandoc(ctx, turn context.Context, o Options, prog string, input []byte, 
 	stdout := &bounded{n: maxExportOutput}
 	var stderr bytes.Buffer
 	cmd.Stdout = stdout
-	cmd.Stderr = &capped{&stderr, 64 << 10}
+	cmd.Stderr = &capped{buf: &stderr, n: 64 << 10}
 	runErr := cmd.Run()
 	if turn.Err() != nil {
 		return nil, "", turn.Err()

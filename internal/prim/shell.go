@@ -62,7 +62,7 @@ func shellExec(o Options) *scheme.Prim {
 			cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 			cmd.WaitDelay = 5 * time.Second
 			var stdout, stderr bytes.Buffer
-			runErr := runStopping(cmd, &capped{&stdout, o.MaxOutput}, &capped{&stderr, o.MaxOutput})
+			runErr := runStopping(cmd, &capped{buf: &stdout, n: o.MaxOutput}, &capped{buf: &stderr, n: o.MaxOutput})
 			status := 0
 			if c.Ctx.Err() != nil {
 				return scheme.Value{}, c.Ctx.Err() // aborted by the user or the loop
@@ -215,20 +215,24 @@ func scrubEnv(allow []string) []string {
 // a primitive's is.
 func ScrubEnv(allow []string) []string { return scrubEnv(allow) }
 
-// capped writes at most n bytes and then appends a truncation marker once.
+// capped writes at most n bytes and then appends a truncation marker once,
+// at the first byte it drops: when the earlier writes filled it exactly,
+// output past the cap still says it was cut.
 type capped struct {
 	buf *bytes.Buffer
 	n   int
+	cut bool
 }
 
 func (c *capped) Write(p []byte) (int, error) {
-	if c.buf.Len() >= c.n {
+	if c.cut {
 		return len(p), nil
 	}
 	room := c.n - c.buf.Len()
 	if len(p) > room {
 		c.buf.Write(p[:room])
 		c.buf.WriteString("\n[output truncated at " + byteCount(c.n) + "]\n")
+		c.cut = true
 		return len(p), nil
 	}
 	return c.buf.Write(p)

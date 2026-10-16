@@ -300,8 +300,8 @@ func runGitLimit(parent context.Context, o Options, limit int, args ...string) (
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 5 * time.Second
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &capped{&stdout, limit}
-	cmd.Stderr = &capped{&stderr, 4096}
+	cmd.Stdout = &capped{buf: &stdout, n: limit}
+	cmd.Stderr = &capped{buf: &stderr, n: 4096}
 	err := cmd.Run()
 	if parent.Err() != nil {
 		return "", parent.Err()
