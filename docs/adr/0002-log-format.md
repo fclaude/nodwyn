@@ -21,9 +21,9 @@ only), `redact.event`, `summary`, `note`. Adding a kind is an amendment to this
 ADR. Amendment (ADR 27): `context.fold` ends the innermost narrowed context
 and hides it from later windows.
 
-The writer has a payload `Filter` hook. The ingress redactor (P7) installs
-itself there, so from P7 nothing reaches disk unredacted. The keychain file is
-outside the log entirely.
+The writer redacts every payload before it is written (amended 2026-10-16:
+it was said to have a payload `Filter` hook for the ingress redactor to
+install; nothing did). The keychain file is outside the log entirely.
 
 ## Consequences
 - A crash between write and fsync leaves a partial last line; `Open` repairs
@@ -274,3 +274,15 @@ also has its own `guard.decision`; this sums them, as the person asked
 for both. A search that read or removed nothing records none; an
 `index-update` call always records one. Never content. The window ignores
 it, and a binary older than it cannot read a log that holds one.
+
+## Amendment — 2026-10-16: the optional payload filter is gone
+
+The writer had an optional `Filter`, installed with `WithFilter`, that ran
+before the mandatory redaction; this ADR and the package header said the
+ingress redactor installed itself there. Nothing ever did: `core.Record`
+redacts before the log is written, and the writer applies `redact.JSON` to
+every payload on its own, whoever opened it. The hook is removed, with the
+`Writer.Session` accessor and the exported `Known` that only tests and the
+package used, so that a filter installed later cannot make the log differ from
+what the mandatory boundary then sees. The boundary is tested by
+`TestWriterRedactsEveryPayload`.

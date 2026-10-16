@@ -2,6 +2,7 @@ package log
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -91,34 +92,6 @@ func TestTruncatedTailReturnsCompleteEvents(t *testing.T) {
 	}
 }
 
-func TestFilterSeesEveryPayload(t *testing.T) {
-	var buf bytes.Buffer
-	filter := func(k Kind, p []byte) ([]byte, error) {
-		return bytes.ReplaceAll(p, []byte("sk-canary-123"), []byte("[REDACTED canary]")), nil
-	}
-	w := New(&buf, "s", WithFilter(filter))
-	if _, err := w.Append(KindUserMsg, map[string]string{"text": "key is sk-canary-123"}); err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(buf.Bytes(), []byte("sk-canary-123")) {
-		t.Fatal("secret reached the log despite filter")
-	}
-	if !bytes.Contains(buf.Bytes(), []byte("[REDACTED canary]")) {
-		t.Fatal("placeholder missing")
-	}
-}
-
-func TestFilterMustReturnJSON(t *testing.T) {
-	var buf bytes.Buffer
-	w := New(&buf, "s", WithFilter(func(Kind, []byte) ([]byte, error) { return []byte("not json"), nil }))
-	if _, err := w.Append(KindNote, map[string]int{"x": 1}); err == nil {
-		t.Fatal("invalid filter output accepted")
-	}
-	if buf.Len() != 0 {
-		t.Fatal("bad line was written")
-	}
-}
-
 func TestCreateRefusesExisting(t *testing.T) {
 	dir := t.TempDir()
 	p := SessionPath(dir, "s")
@@ -150,8 +123,8 @@ func TestOpenResumesSeqAndFsyncs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w2.Session() != "s" || w2.Seq() != 3 {
-		t.Fatalf("resume: session=%q seq=%d", w2.Session(), w2.Seq())
+	if w2.Seq() != 3 {
+		t.Fatalf("resume: seq=%d", w2.Seq())
 	}
 	ev, err := w2.Append(KindNote, nil)
 	if err != nil {
@@ -217,12 +190,13 @@ func TestSessionIDSortsByTime(t *testing.T) {
 	}
 }
 
-func TestMandatoryRedactionAfterFilter(t *testing.T) {
+// Every payload is redacted by the writer itself, whatever opened it and
+// however the secret is spelled in the JSON: here with an escape, which the
+// scanner would not see in the raw bytes.
+func TestWriterRedactsEveryPayload(t *testing.T) {
 	var b bytes.Buffer
-	w := New(&b, "test", WithFilter(func(_ Kind, _ []byte) ([]byte, error) {
-		return []byte(`{"text":"\u0073k-ant-abcdefgh1234"}`), nil
-	}))
-	ev, err := w.Append(KindNote, Note{Text: "safe"})
+	w := New(&b, "test")
+	ev, err := w.Append(KindNote, json.RawMessage(`{"text":"\u0073k-ant-abcdefgh1234"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +205,7 @@ func TestMandatoryRedactionAfterFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	if note.Text != "[REDACTED anthropic-key]" {
-		t.Fatalf("unfiltered event: %s", ev.Payload)
+		t.Fatalf("unredacted event: %s", ev.Payload)
 	}
 	if bytes.Contains(b.Bytes(), []byte("abcdefgh")) {
 		t.Fatal("canary persisted")

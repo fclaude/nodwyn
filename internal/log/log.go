@@ -5,9 +5,9 @@
 // keeps — the context window, summaries, the structural index — is a derived,
 // revocable view that can be recomputed from this file.
 //
-// The writer fsyncs after every event. Mandatory redaction runs after the
-// optional payload Filter, before either persistence or returning the event.
-// Core derives its context only from these written events.
+// The writer fsyncs after every event. Mandatory redaction runs on every
+// payload, before either persistence or returning the event, whoever opened
+// the writer. Core derives its context only from these written events.
 package log
 
 import (
@@ -102,8 +102,8 @@ var kinds = map[Kind]bool{
 	KindWorktreeCreate: true, KindWorktreeRestore: true, KindWorktreeRemove: true,
 }
 
-// Known reports whether k is one of the fixed event kinds.
-func Known(k Kind) bool { return kinds[k] }
+// known reports whether k is one of the fixed event kinds.
+func known(k Kind) bool { return kinds[k] }
 
 // Event is one line of the log.
 type Event struct {
@@ -122,10 +122,6 @@ func (e Event) Decode(v any) error {
 	return json.Unmarshal(e.Payload, v)
 }
 
-// Filter transforms a marshalled payload before it is written. The ingress
-// redactor installs one in Phase 7. It must return valid JSON.
-type Filter func(kind Kind, payload []byte) ([]byte, error)
-
 // Writer appends events to a session log.
 type Writer struct {
 	mu      sync.Mutex
@@ -134,7 +130,6 @@ type Writer struct {
 	closer  io.Closer
 	session string
 	seq     uint64
-	filter  Filter
 	now     func() time.Time
 	// broken is why an earlier event could not be written and the log not
 	// put back as it was: every later Append returns it, as one more line
@@ -146,9 +141,6 @@ type Writer struct {
 
 // Option configures a Writer.
 type Option func(*Writer)
-
-// WithFilter installs a payload filter (see Filter).
-func WithFilter(f Filter) Option { return func(w *Writer) { w.filter = f } }
 
 // WithClock replaces the timestamp source (tests).
 func WithClock(now func() time.Time) Option { return func(w *Writer) { w.now = now } }
@@ -269,9 +261,6 @@ func OpenAt(path, session string, seq uint64, end int64, opts ...Option) (*Write
 	return w, nil
 }
 
-// Session returns the session id this writer appends to.
-func (w *Writer) Session() string { return w.session }
-
 // Seq returns the seq of the last event written (0 before the first).
 func (w *Writer) Seq() uint64 {
 	w.mu.Lock()
@@ -279,10 +268,10 @@ func (w *Writer) Seq() uint64 {
 	return w.seq
 }
 
-// Append marshals payload, passes it through the filter, writes one line and
-// fsyncs. It returns the event as written.
+// Append marshals payload, redacts it, writes one line and fsyncs. It returns
+// the event as written.
 func (w *Writer) Append(kind Kind, payload any) (Event, error) {
-	if !Known(kind) {
+	if !known(kind) {
 		return Event{}, fmt.Errorf("log: unknown event kind %q", kind)
 	}
 	var raw json.RawMessage
@@ -295,17 +284,7 @@ func (w *Writer) Append(kind Kind, payload any) (Event, error) {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.filter != nil && raw != nil {
-		b, err := w.filter(kind, raw)
-		if err != nil {
-			return Event{}, fmt.Errorf("log: filter %s payload: %w", kind, err)
-		}
-		if !json.Valid(b) {
-			return Event{}, fmt.Errorf("log: filter returned invalid JSON for %s", kind)
-		}
-		raw = b
-	}
-	// Mandatory final boundary, including writers opened outside core.
+	// Mandatory boundary, including writers opened outside core.
 	if raw != nil {
 		b, _, err := redact.JSON(raw, nil)
 		if err != nil {
@@ -422,7 +401,7 @@ func ReplayFrom(r io.Reader, first uint64, fn func(ev Event, line []byte, end in
 		if ev.Seq != expect {
 			return fmt.Errorf("%w: want %d, got %d", ErrSeqGap, expect, ev.Seq)
 		}
-		if !Known(ev.Kind) {
+		if !known(ev.Kind) {
 			return fmt.Errorf("log: seq %d: unknown kind %q", ev.Seq, ev.Kind)
 		}
 		if err := fn(ev, line, offset); err != nil {
