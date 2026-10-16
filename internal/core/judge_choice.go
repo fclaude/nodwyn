@@ -194,24 +194,17 @@ func judgeRecord(c config.Config, server, actor string) log.SessionJudge {
 func (s *Session) holdIdle() (done func(), err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	switch {
-	case s.closed || s.closing:
+	switch s.busyWith() {
+	case holdClosed:
 		return nil, errors.New("core: session is closed")
-	case s.busy:
+	case holdTurn:
 		return nil, errors.New("the task is answering: choose its judge when this turn ends")
-	case s.attaching:
+	case holdAttachment:
 		return nil, errors.New("an attachment is being added: choose the judge when it is done")
-	case s.switching:
+	case holdSwitch:
 		return nil, errors.New("another change is in progress; wait until it is done")
 	}
-	s.switching = true
-	s.turns.Add(1)
-	return func() {
-		s.mu.Lock()
-		s.switching = false
-		s.mu.Unlock()
-		s.turns.Done()
-	}, nil
+	return s.holdSwitching(), nil
 }
 
 // lastJudgeChoice is the judge the log last chose for this task, if it

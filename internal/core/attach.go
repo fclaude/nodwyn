@@ -280,14 +280,14 @@ func writeNew(dest string, data []byte) error {
 func (s *Session) beginAttach() (context.Context, func(), error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	switch {
-	case s.closed || s.closing:
+	switch s.busyWith() {
+	case holdClosed:
 		return nil, nil, errors.New("core: session is closed")
-	case s.busy:
+	case holdTurn:
 		return nil, nil, errors.New("attach: wait until the current turn ends")
-	case s.attaching:
+	case holdAttachment:
 		return nil, nil, errors.New("attach: another attachment is in progress; wait until it is done")
-	case s.switching:
+	case holdSwitch:
 		return nil, nil, errors.New("attach: the model is being switched; wait until it is done")
 	}
 	ctx, cancel := context.WithCancel(context.Background())

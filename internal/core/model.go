@@ -275,24 +275,17 @@ func (s *Session) reachable(m config.Model) error {
 func (s *Session) beginSwitch() (done func(), busy bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	switch {
-	case s.closed || s.closing:
+	switch s.busyWith() {
+	case holdClosed:
 		return nil, false, errors.New("core: session is closed")
-	case s.busy:
+	case holdTurn:
 		return nil, true, nil
-	case s.attaching:
+	case holdAttachment:
 		return nil, false, errors.New("core: an attachment is being added; the model applies from the next turn, so switch when it is done")
-	case s.switching:
+	case holdSwitch:
 		return nil, false, errors.New("core: another switch is in progress; wait until it is done")
 	}
-	s.switching = true
-	s.turns.Add(1)
-	return func() {
-		s.mu.Lock()
-		s.switching = false
-		s.mu.Unlock()
-		s.turns.Done()
-	}, false, nil
+	return s.holdSwitching(), false, nil
 }
 
 // queueModel keeps a choice made while a turn runs. It is in the log at once,

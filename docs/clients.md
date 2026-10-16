@@ -87,6 +87,25 @@ it can see the thing but not change it.
 | Edit a model's labels (ADR 27, amended 2026-10-09) | yes, Settings › Models; reaches open tasks | not built | — | edit `config.toml` |
 | Let a task's model hand work to other models (`delegates`) | yes, New task's Helpers fold, this computer only | not built: a task opens with none | none | `nodwyn run`: none |
 
+## Changing a task while a turn runs
+
+A task can be changed while a turn runs in four ways, set once here (the
+checks that keep a turn, an attachment and a change from overlapping are one
+function, `Session.busyWith`, in `internal/core/session.go`):
+
+| Change | While a turn runs |
+|---|---|
+| Move to another model | queued, applied when the turn ends (ADR 40) |
+| Move to another judge, or none | refused: "choose its judge when this turn ends" |
+| Attach a file | refused until the turn ends |
+| Turn limits on or off | applies from the next turn |
+| Don't ask | applies at once |
+
+The model queues and the judge refuses on purpose, for now: the queue and
+its "will apply when the turn ends" state were built for the model (ADR 40)
+and no client shows one for the judge. Making the judge queue is a change in
+every client's picker, not in the core's guard.
+
 ## The judge (ADR 46, ADR 47)
 
 | | Console | TUI | Line mode | CLI |

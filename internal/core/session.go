@@ -315,19 +315,17 @@ func (s *Session) startTurn(work func(context.Context) error) error {
 
 func (s *Session) startScheduledTurn(work func(context.Context) error, run *log.ScheduleRun) error {
 	s.mu.Lock()
-	if s.closed || s.closing {
+	switch s.busyWith() {
+	case holdClosed:
 		s.mu.Unlock()
 		return errors.New("core: session is closed")
-	}
-	if s.busy {
+	case holdTurn:
 		s.mu.Unlock()
 		return errors.New("core: a turn is already running")
-	}
-	if s.attaching {
+	case holdAttachment:
 		s.mu.Unlock()
 		return errors.New("core: an attachment is in progress; send when it is done")
-	}
-	if s.switching {
+	case holdSwitch:
 		s.mu.Unlock()
 		return errors.New("core: the model is being switched; send when it is done")
 	}
@@ -416,6 +414,50 @@ func (s *Session) endTurn() {
 		}
 		s.mu.Unlock()
 		s.applyQueued(*queued)
+	}
+}
+
+// What keeps the session from starting a turn, an attachment or a change
+// to it now (busyWith).
+const (
+	holdFree       = iota // nothing: it may start
+	holdClosed            // the session is closing or closed
+	holdTurn              // a turn is running
+	holdAttachment        // an attachment is being added
+	holdSwitch            // a model or judge change holds the idle session
+)
+
+// busyWith says what keeps a turn, an attachment or a change from starting
+// now, so the places that start one (a turn, beginAttach, beginSwitch and
+// holdIdle) share one test and a new kind of hold is added here and not in
+// four places; each keeps its own wording of what to do instead. s.mu is
+// held.
+func (s *Session) busyWith() int {
+	switch {
+	case s.closed || s.closing:
+		return holdClosed
+	case s.busy:
+		return holdTurn
+	case s.attaching:
+		return holdAttachment
+	case s.switching:
+		return holdSwitch
+	}
+	return holdFree
+}
+
+// holdSwitching holds the idle session for a change that cannot be written
+// with s.mu held (Record emits, and Emit takes it): no turn or attachment
+// starts until the function it returns is called, and Close waits for it.
+// s.mu is held, and busyWith said holdFree.
+func (s *Session) holdSwitching() (done func()) {
+	s.switching = true
+	s.turns.Add(1)
+	return func() {
+		s.mu.Lock()
+		s.switching = false
+		s.mu.Unlock()
+		s.turns.Done()
 	}
 }
 
