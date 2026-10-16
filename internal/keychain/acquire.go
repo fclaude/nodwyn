@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/scheme"
+
+	"github.com/fclaude/nodwyn/internal/loopback"
 )
 
 // Profile is a provider's OAuth2 endpoints and its default scopes, the
@@ -192,7 +194,7 @@ func checkEndpoint(endpoint string) error {
 	if u.Scheme == "https" {
 		return nil
 	}
-	if ip := net.ParseIP(u.Hostname()); u.Scheme == "http" && (u.Hostname() == "localhost" || ip != nil && ip.IsLoopback()) {
+	if u.Scheme == "http" && loopback.Host(u.Hostname()) {
 		return nil
 	}
 	return fmt.Errorf("keychain: %s must be https", endpoint)

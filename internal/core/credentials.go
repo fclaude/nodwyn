@@ -139,15 +139,18 @@ func (s *Session) freshCtx(ctx context.Context, id string) error {
 	if s.keychain == nil {
 		return errors.New("core: no keychain configured")
 	}
-	return s.keychain.Refresh(ctx, id, func(r keychain.Refreshed) {
-		rec := log.CredRefresh{Class: r.Class, Handle: r.ID, Endpoint: r.Endpoint, Rotated: r.Rotated, OK: r.Err == nil}
-		if r.Err != nil {
-			rec.Error = r.Err.Error()
-		} else if !r.Expires.IsZero() {
-			rec.Expires = r.Expires.UTC().Format(time.RFC3339)
-		}
-		s.recordEarly(log.KindCredRefresh, rec)
-	})
+	return s.keychain.Refresh(ctx, id, s.refreshed)
+}
+
+// refreshed logs an OAuth2 refresh as cred.refresh: never a token.
+func (s *Session) refreshed(r keychain.Refreshed) {
+	rec := log.CredRefresh{Class: r.Class, Handle: r.ID, Endpoint: r.Endpoint, Rotated: r.Rotated, OK: r.Err == nil}
+	if r.Err != nil {
+		rec.Error = r.Err.Error()
+	} else if !r.Expires.IsZero() {
+		rec.Expires = r.Expires.UTC().Format(time.RFC3339)
+	}
+	s.recordEarly(log.KindCredRefresh, rec)
 }
 
 // credentialScopes returns the scopes an OAuth2 credential was granted (the
@@ -222,43 +225,95 @@ func (s *Session) SecretReplyFrom(id string, secret []byte, actor string) error 
 	return nil
 }
 
-// authorize returns how requests to a keyed model get their key. The key is
-// injected only if class is bound to the request's host for its method at
-// position (config.KeyPosition: where the model's provider reads its key; a
-// model's key must be bound for it like any other credential), checked on
-// every request so a binding change applies at once, and the check is logged
-// like any egress.
-func (s *Session) authorize(class, position string) func(*http.Request) error {
+// Keyed is how a request to a keyed model or MCP server gets its key, for a
+// task, a model probe and an MCP inspection alike: the key is injected only
+// if class is bound to the request's host for its method at position,
+// checked on every request so a binding change applies at once.
+type Keyed struct {
+	// Keychain is nil while it is locked: Locked then says why the key
+	// cannot be sent.
+	Keychain *keychain.Store
+	Locked   string
+	// Table answers the binding lookups; a session's is live, and Reload,
+	// when set, rereads it first.
+	Table  binding.Authority
+	Reload func() error
+	// Insecure is the user's allow_insecure_http policy.
+	Insecure bool
+	// Egress logs each binding check as egress, and Refreshed each OAuth2
+	// refresh; a probe has no session log, so it leaves both nil.
+	Egress    func(log.EgressCheck) error
+	Refreshed func(keychain.Refreshed)
+}
+
+// Authorize returns the function that puts class's key into a request at
+// position (config.KeyPosition: where a model's provider reads its key; a
+// model's key must be bound for it like any other credential). Only a
+// refresh that failed on the way is worth retrying with the request; a
+// credential that is missing, refused or not allowed is not.
+func (k Keyed) Authorize(class, position string) func(*http.Request) error {
 	return func(req *http.Request) error {
-		if s.keychain == nil {
-			return llm.Permanent(fmt.Errorf("the %s key is in the keychain, which was locked when this task opened: unlock it, then close and resume the task", class))
+		*req = *req.WithContext(keychain.WithInsecureHTTP(req.Context(), k.Insecure))
+		if err := keychain.CheckTransport(req); err != nil {
+			return llm.Permanent(err)
 		}
-		h := s.HandleForClass(class)
+		if k.Keychain == nil {
+			return llm.Permanent(errors.New(k.Locked))
+		}
+		h := k.Keychain.HandleForClass(class)
 		if h == nil {
 			return llm.Permanent(fmt.Errorf("no %s credential in the keychain", class))
 		}
-		if err := s.bindings.Refresh(); err != nil {
-			return err
+		info, err := k.Keychain.Info(h.ID)
+		if err != nil {
+			return llm.Permanent(err)
+		}
+		if k.Reload != nil {
+			if err := k.Reload(); err != nil {
+				return llm.Permanent(err)
+			}
 		}
 		host := strings.ToLower(req.URL.Hostname())
-		scopes := s.credentialScopes(class, h.ID)
-		bound, reason := s.bindings.Lookup(class, host, req.Method, position, scopes...)
-		if _, err := s.Record(log.KindEgressCheck, log.EgressCheck{Prim: "model-turn", Class: class, Host: host, Method: req.Method, Scopes: scopes, Bound: bound, Reason: reason}); err != nil {
-			return err
+		bound, reason := k.Table.Lookup(class, host, req.Method, position, info.Scopes...)
+		if k.Egress != nil {
+			if err := k.Egress(log.EgressCheck{Prim: "model-turn", Class: class, Host: host, Method: req.Method, Scopes: info.Scopes, Bound: bound, Reason: reason}); err != nil {
+				return err
+			}
 		}
 		if !bound {
 			return llm.Permanent(errors.New(reason))
 		}
-		_, name, prefix := binding.Position(position)
-		// A refresh that failed on the way is retried with the request; a
-		// credential that is missing, refused or not allowed is not.
-		if err := s.InjectHeader(h.ID, name, prefix, req); err != nil {
+		if err := k.Keychain.Refresh(req.Context(), h.ID, k.Refreshed); err != nil {
 			if keychain.IsTransient(err) {
 				return err
 			}
 			return llm.Permanent(err)
 		}
+		where, name, prefix := binding.Position(position)
+		if where == "query" {
+			err = k.Keychain.InjectQuery(h.ID, name, req)
+		} else {
+			err = k.Keychain.InjectHeader(h.ID, name, prefix, req)
+		}
+		if err != nil {
+			return llm.Permanent(err)
+		}
 		return nil
+	}
+}
+
+// keyed is the session's: its checks and refreshes go in its log.
+func (s *Session) keyed() Keyed {
+	return Keyed{
+		Keychain: s.keychain,
+		Locked:   "the key is in the keychain, which was locked when this task opened: unlock it, then close and resume the task",
+		Table:    s.bindings, Reload: s.bindings.Refresh,
+		Insecure: s.opts.Config.Policy.AllowInsecureHTTP,
+		Egress: func(e log.EgressCheck) error {
+			_, err := s.Record(log.KindEgressCheck, e)
+			return err
+		},
+		Refreshed: s.refreshed,
 	}
 }
 
@@ -296,7 +351,7 @@ func (s *Session) endpoint(m config.Model, effort string) loop.Endpoint {
 	// A keyed model gets its key where its provider reads it.
 	var auth func(*http.Request) error
 	if m.Credential != "" {
-		auth = s.authorize(m.Credential, config.KeyPosition(m.Provider))
+		auth = s.keyed().Authorize(m.Credential, config.KeyPosition(m.Provider))
 	}
 	var p llm.Provider
 	switch m.Provider {

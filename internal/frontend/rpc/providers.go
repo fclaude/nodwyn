@@ -790,7 +790,7 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 	}
 	var authorize func(*http.Request) error
 	if m.Credential != "" {
-		authorize = authorizer(s.options.Keychain, s.bindingTable(), m.Credential, position, s.options.Config.Policy.AllowInsecureHTTP)
+		authorize = s.keyed().Authorize(m.Credential, position)
 	}
 	var provider llm.Provider
 	switch m.Provider {
@@ -822,41 +822,6 @@ func (s *server) modelTest(req request, client *peer) (any, *rpcError) {
 	result.Ms = time.Since(started).Milliseconds()
 	classify(&result, err, u.Host, m.Provider)
 	return result, nil
-}
-
-// authorizer is how a request to a keyed model gets its key: the key goes in
-// only if class is bound to the request's host for its method at position,
-// checked on every request, as a task's is. The daemon holds neither key nor
-// binding table beyond the call.
-func authorizer(store *keychain.Store, table binding.Table, class, position string, insecure bool) func(*http.Request) error {
-	return func(req *http.Request) error {
-		*req = *req.WithContext(keychain.WithInsecureHTTP(req.Context(), insecure))
-		if err := keychain.CheckTransport(req); err != nil {
-			return llm.Permanent(err)
-		}
-		if store == nil {
-			return llm.Permanent(errors.New("the keychain is locked"))
-		}
-		h := store.HandleForClass(class)
-		if h == nil {
-			return llm.Permanent(errors.New("no key in the keychain"))
-		}
-		info, err := store.Info(h.ID)
-		if err != nil {
-			return llm.Permanent(err)
-		}
-		if bound, reason := table.Lookup(class, strings.ToLower(req.URL.Hostname()), req.Method, position, info.Scopes...); !bound {
-			return llm.Permanent(errors.New(reason))
-		}
-		if err := store.Refresh(req.Context(), h.ID, nil); err != nil {
-			if keychain.IsTransient(err) {
-				return err // retried with the request
-			}
-			return llm.Permanent(err)
-		}
-		_, name, prefix := binding.Position(position)
-		return store.InjectHeader(h.ID, name, prefix, req)
-	}
 }
 
 // classify turns what a model test returned into the words Settings shows.

@@ -42,3 +42,19 @@ func TestMCPConfigRoundTrip(t *testing.T) {
 		t.Fatal(list)
 	}
 }
+
+// The settings that send a credential over plain http agree on what this
+// machine is: any loopback address, and localhost in any case (P2-071).
+func TestPlainHTTPToThisMachineIsOneRule(t *testing.T) {
+	for _, host := range []string{"127.0.0.1:9000", "127.0.0.2:9000", "LOCALHOST:8080", "[::1]:9000"} {
+		if _, err := Parse([]byte("[docs]\ngoogle_upload_url = \"http://" + host + "/upload\"\n")); err != nil {
+			t.Errorf("docs.google_upload_url at %s: %v", host, err)
+		}
+		if err := (MCPServer{Name: "local", URL: "http://" + host + "/mcp"}).Validate(); err != nil {
+			t.Errorf("an MCP server at %s: %v", host, err)
+		}
+	}
+	if err := (MCPServer{Name: "far", URL: "http://example.com/mcp"}).Validate(); err == nil {
+		t.Error("an MCP server over plain http to another machine was accepted")
+	}
+}

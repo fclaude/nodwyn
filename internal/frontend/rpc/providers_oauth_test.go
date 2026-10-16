@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/fclaude/nodwyn/internal/binding"
+	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	fakeoauth "github.com/fclaude/nodwyn/test/fakes/oauth"
 )
@@ -46,11 +47,11 @@ func TestModelProbeRefreshesOAuthOnlyAfterBindingAllowsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := authorizer(st, binding.Table{Bind: []binding.Binding{row}}, "model-plan", config.KeyPositionBearer, false)(r); err == nil || p.Refreshes() != 0 || r.Header.Get("Authorization") != "" {
+	if err := (core.Keyed{Keychain: st, Table: binding.Table{Bind: []binding.Binding{row}}}).Authorize("model-plan", config.KeyPositionBearer)(r); err == nil || p.Refreshes() != 0 || r.Header.Get("Authorization") != "" {
 		t.Fatalf("outside scope refreshed or injected: %v", err)
 	}
 	row.Scopes = []string{"read", "write"}
-	if err := authorizer(st, binding.Table{Bind: []binding.Binding{row}}, "model-plan", config.KeyPositionBearer, false)(r); err != nil {
+	if err := (core.Keyed{Keychain: st, Table: binding.Table{Bind: []binding.Binding{row}}}).Authorize("model-plan", config.KeyPositionBearer)(r); err != nil {
 		t.Fatal(err)
 	}
 	if p.Refreshes() != 1 || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer fake-access-token-") {

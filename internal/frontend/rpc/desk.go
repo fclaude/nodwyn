@@ -380,6 +380,13 @@ func (s *server) bindingTable() binding.Table {
 	return s.options.Bindings
 }
 
+// keyed is how the daemon's own requests to a keyed server (a model test,
+// the list of models offered) get their key: as a task's do, but with
+// nothing logged, since no session is asking.
+func (s *server) keyed() core.Keyed {
+	return core.Keyed{Keychain: s.options.Keychain, Locked: "the keychain is locked", Table: s.bindingTable(), Insecure: s.options.Config.Policy.AllowInsecureHTTP}
+}
+
 // status is model m's readiness, given what its server's probe found.
 func (s *server) status(name string, m config.Model, p serverProbe) modelStatus {
 	status := modelStatus{Name: name, Server: m.Server, Provider: providerName(m.Provider), Model: m.Model, Host: p.host}
@@ -431,7 +438,7 @@ func (s *server) modelsOffered(req request, _ *peer) (any, *rpcError) {
 	}
 	var authorize func(*http.Request) error
 	if srv.Credential != "" {
-		authorize = authorizer(s.options.Keychain, s.bindingTable(), srv.Credential, config.KeyPosition(srv.Provider), s.options.Config.Policy.AllowInsecureHTTP)
+		authorize = s.keyed().Authorize(srv.Credential, config.KeyPosition(srv.Provider))
 	}
 	// As the probes do, the request runs without the lifecycle lock.
 	s.mu.Unlock()
