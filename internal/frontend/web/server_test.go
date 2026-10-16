@@ -28,8 +28,11 @@ import (
 
 const testCode = "test-only-browser-pairing-capability-000000"
 
+// testSession is the session a test bridge's paired local browser holds.
+const testSession = "test-only-browser-session-000000000000000"
+
 func TestBrowserAuthorityBoundary(t *testing.T) {
-	b := &bridge{readOnly: true, ctx: context.Background(), code: testCode}
+	b := &bridge{readOnly: true, ctx: context.Background(), code: testCode, session: testSession}
 	b.at("127.0.0.1:34567")
 	for _, tt := range []struct {
 		name, method, path, host, origin, site, body string
@@ -117,12 +120,12 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	if err := client.Call(ctx, "session.open", map[string]any{"repo": repo}, &info); err != nil {
 		t.Fatal(err)
 	}
-	b := &bridge{readOnly: true, ctx: ctx, socket: socket, code: testCode}
+	b := &bridge{readOnly: true, ctx: ctx, socket: socket, code: testCode, session: testSession}
 	server := httptest.NewUnstartedServer(b)
 	b.at(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
-	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testCode}}
+	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
 	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatal(err)
@@ -233,12 +236,12 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	b := &bridge{ctx: ctx, socket: socket, code: testCode}
+	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession}
 	server := httptest.NewUnstartedServer(b)
 	b.at(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
-	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testCode}}
+	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
 	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		t.Fatal(err)
@@ -393,7 +396,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 }
 
 func TestEmbeddedAssetsReachable(t *testing.T) {
-	b := &bridge{ctx: context.Background(), code: testCode}
+	b := &bridge{ctx: context.Background(), code: testCode, session: testSession}
 	b.at("127.0.0.1:34567")
 	var paths []string
 	err := fs.WalkDir(assets, "assets", func(name string, d fs.DirEntry, err error) error {
@@ -517,8 +520,8 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	if name, ok := s.b.authenticated(r); !ok || name != "phone" {
 		t.Fatalf("device cookie: %q %v", name, ok)
 	}
-	// The pairing code's local cookie means nothing from another machine.
-	r.Header.Set("Cookie", s.b.cookieName()+"="+testCode)
+	// The local cookie means nothing from another machine.
+	r.Header.Set("Cookie", s.b.cookieName()+"="+s.b.session)
 	if _, ok := s.b.authenticated(r); ok {
 		t.Fatal("local cookie accepted remotely")
 	}
@@ -626,7 +629,7 @@ func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	client.Close()
-	b := &bridge{ctx: ctx, socket: socket, code: testCode}
+	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession}
 	server := httptest.NewUnstartedServer(b)
 	b.at(server.Listener.Addr().String())
 	server.Start()
@@ -635,7 +638,7 @@ func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 		req, _ := http.NewRequest("POST", server.URL+"/attach?id="+details.ID+"&name="+name, strings.NewReader(body))
 		req.Header.Set("Origin", server.URL)
 		if cookie {
-			req.Header.Set("Cookie", b.cookieName()+"="+testCode)
+			req.Header.Set("Cookie", b.cookieName()+"="+testSession)
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -690,7 +693,7 @@ func TestRevokingADeviceClosesItsOpenConsole(t *testing.T) {
 	defer func() { cancel(); <-done }()
 
 	devices := OpenDevices(filepath.Join(root, "devices.toml"))
-	b := &bridge{ctx: ctx, socket: socket, code: testCode, devices: devices, recheck: 50 * time.Millisecond}
+	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession, devices: devices, recheck: 50 * time.Millisecond}
 	server := httptest.NewUnstartedServer(b)
 	b.at(server.Listener.Addr().String())
 	server.Start()
@@ -734,5 +737,30 @@ func TestRevokingADeviceClosesItsOpenConsole(t *testing.T) {
 	}
 	if !closed(watching, false) {
 		t.Fatal("a revoked device's watching console stayed open")
+	}
+}
+
+// Pairing this computer's browser gives it the run's session, not the code:
+// the browser sends the cookie to every server on the loopback address, and
+// the code can pair a device for months. A cookie holding the code is no
+// pairing.
+func TestLocalCookieHoldsTheSessionNotTheCode(t *testing.T) {
+	b := &bridge{ctx: context.Background(), code: testCode, session: testSession}
+	b.at("127.0.0.1:34567")
+	r := httptest.NewRequest("POST", "http://127.0.0.1:34567/pair", strings.NewReader(`{"code":"`+testCode+`"}`))
+	r.RemoteAddr = "127.0.0.1:50000"
+	r.Header.Set("Origin", "http://127.0.0.1:34567")
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	b.ServeHTTP(w, r)
+	cookies := w.Result().Cookies()
+	if w.Code != 204 || len(cookies) != 1 || cookies[0].Value == testCode || cookies[0].Value != testSession {
+		t.Fatalf("pairing set %d %+v", w.Code, cookies)
+	}
+	r = httptest.NewRequest("GET", "http://127.0.0.1:34567/socket", nil)
+	r.RemoteAddr = "127.0.0.1:50000"
+	r.Header.Set("Cookie", b.cookieName()+"="+testCode)
+	if _, ok := b.authenticated(r); ok {
+		t.Fatal("a cookie holding the pairing code was taken as paired")
 	}
 }

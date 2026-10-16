@@ -190,3 +190,19 @@ with this computer: the judge is shown the task's plan and commands. The
 bridge lists `session.judge.set` only for this computer, and the daemon
 refuses `judge` in `session.open` and `session.judge.set` from a paired
 device.
+
+## Amendment 2026-10-16: this computer's cookie is the run's session, not the code
+
+A browser on this computer was paired with a cookie whose value was the
+pairing code. Cookies are not scoped to a port, so every server on
+127.0.0.1 that the same browser visits (a dev server a task started, a
+repository's own) received the code, and the code pairs: from there a
+client could take this computer's powers, or, with `--listen`, pair a device
+for 180 days. The cookie now holds a random token made for each run of the
+console and accepted only until it stops; the code only pairs.
+
+This narrows the exposure but does not close it: the token still reaches
+other loopback servers, which could use this console until it stops. Closing
+it needs a host name of the console's own, such as a random `*.localhost`
+name, which not every webview is known to resolve; that is not built. The
+desktop window does not browse other sites and is not exposed.

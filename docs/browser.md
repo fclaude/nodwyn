@@ -566,8 +566,11 @@ launch ticket in the address's fragment, so that browser pairs itself. It
 also prints a random pairing code for another browser on this computer;
 paste that code into its page. The code is never put in a URL or session log.
 Keep it in the terminal rather than sharing it. The browser receives an
-HttpOnly, SameSite=Strict session cookie; no credential is written to browser
-local/session storage. Without `--listen`, restarting the bridge creates a new
+HttpOnly, SameSite=Strict session cookie holding a token made for this run,
+never the code; no credential is written to browser local/session storage.
+Browsers send a loopback cookie to every port on that address, so a server on
+another port of 127.0.0.1 that this browser visits receives the token and
+could use this console until it stops; it cannot pair another device. Without `--listen`, restarting the bridge creates a new
 port and code; with it, the port is yours and a device's cookie survives
 restarts.
 

@@ -57,11 +57,16 @@ type bridge struct {
 	readOnly     bool
 	ctx          context.Context
 	socket, code string
-	devices      *Devices
-	extra        []string
-	tls          bool
-	local        string          // the listener's address
-	hosts        map[string]bool // Host values this console answers to
+	// session is what this computer's paired browser holds in its cookie:
+	// random for each run and good only until it stops, never the pairing
+	// code, which a browser sends to every other server on the loopback
+	// address and which could pair a device for months.
+	session string
+	devices *Devices
+	extra   []string
+	tls     bool
+	local   string          // the listener's address
+	hosts   map[string]bool // Host values this console answers to
 
 	mu      sync.Mutex
 	tickets map[string]time.Time // launch tickets not yet used, by value, with their expiry
@@ -76,7 +81,8 @@ type Server struct {
 
 // New prepares a console for options.
 func New(options Options) *Server {
-	return &Server{b: &bridge{socket: options.Socket, code: options.PairingCode, readOnly: options.ReadOnly,
+	session, _ := PairingCode() // crypto/rand does not fail
+	return &Server{b: &bridge{socket: options.Socket, code: options.PairingCode, session: session, readOnly: options.ReadOnly,
 		devices: options.Devices, extra: options.Hosts, tls: options.TLS, tickets: map[string]time.Time{}}}
 }
 
@@ -285,7 +291,7 @@ func (b *bridge) authenticated(r *http.Request) (string, bool) {
 		return "", false
 	}
 	cookie, err := r.Cookie(b.cookieName())
-	return "", err == nil && subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(b.code)) == 1
+	return "", err == nil && subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(b.session)) == 1
 }
 
 // deviceLife is how long a paired device stays paired without pairing again.
@@ -342,8 +348,10 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// This machine: HttpOnly keeps the capability out of script; strict
-	// origin and host checks protect it even from another loopback port.
-	http.SetCookie(w, &http.Cookie{Name: b.cookieName(), Value: b.code, Path: "/", HttpOnly: true, Secure: b.tls, SameSite: http.SameSiteStrictMode})
+	// origin and host checks protect it from pages on another loopback
+	// port. The browser still sends it to every server on this address, so
+	// it is the run's session, not the code.
+	http.SetCookie(w, &http.Cookie{Name: b.cookieName(), Value: b.session, Path: "/", HttpOnly: true, Secure: b.tls, SameSite: http.SameSiteStrictMode})
 	w.WriteHeader(http.StatusNoContent)
 }
 
