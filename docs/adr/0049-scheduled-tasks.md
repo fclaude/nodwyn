@@ -419,3 +419,17 @@ the end of a model turn, so an evaluation, a policy read or a friction read on
 a scheduled task no longer makes a model request or holds the task busy. The
 regressions are `TestScheduledSmallRunsSurviveTheNextRun` and
 `TestAnEvaluationOnAScheduledTaskPreparesNoHandover`.
+
+## Amendment 2026-10-16: an idle task closes outside the lifecycle lock
+
+§7 closes a scheduled task after 15 idle minutes, and the scheduler did it
+inside its tick, which holds the lock every request to the daemon takes.
+Closing stops the task's containers (up to 30 seconds each) and asks git
+about its worktree (up to two minutes), so a console action, a send or a
+switch of task waited that long. The task now leaves the daemon's table and
+is marked as resuming, the lock is released while it closes, and an open or
+a resume of it meanwhile waits for the close (as it already waits for another
+resume), so there is never a second session on the same log. The per-tick
+scan of every stored task is not changed. The regression is
+`TestIdleCloseDoesNotHoldTheLifecycleLock`, whose task's MCP server holds the
+end of its session to make the close slow.

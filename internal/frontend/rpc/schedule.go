@@ -236,7 +236,8 @@ func (s *server) scheduler(ctx context.Context, done chan<- struct{}) {
 }
 
 // scheduleTick runs under the lifecycle lock, with an injected wall time in
-// tests. A tick after sleep coalesces all missed civil occurrences once.
+// tests; it releases the lock around the slow parts, as executeSchedule and
+// closeIdle do. A tick after sleep coalesces all missed civil occurrences once.
 func (s *server) scheduleTick(now time.Time) {
 	// A log that cannot be read is no schedule's: the others still run.
 	infos, err := core.Readable(s.store().List())
@@ -295,12 +296,32 @@ func (s *server) scheduleTick(now time.Time) {
 		if owned, ok := s.sessions[info.ID]; ok && !owned.session.Busy() && !owned.driver.Active() && now.Sub(info.LastEvent) >= 15*time.Minute {
 			pending, err := owned.session.PendingPrompts()
 			if err == nil && len(pending) == 0 {
-				owned.session.Close()
-				<-owned.drained
-				delete(s.sessions, info.ID)
+				s.closeIdle(info.ID, owned)
 			}
 		}
 	}
+}
+
+// closeIdle closes an idle scheduled task outside the lifecycle lock, which
+// it holds when it is called and holds again when it returns. Closing stops
+// the task's containers (up to 30 seconds each) and asks git about its
+// worktree (up to two minutes), and every request to the daemon takes the
+// lock. The task leaves s.sessions first and is marked as resuming, so an
+// open or a resume of it meanwhile waits for the close instead of starting a
+// second session on the same log, as a resume already does for another.
+func (s *server) closeIdle(id string, owned ownedSession) {
+	done := make(chan struct{})
+	if s.resuming == nil {
+		s.resuming = map[string]chan struct{}{}
+	}
+	s.resuming[id] = done
+	delete(s.sessions, id)
+	s.mu.Unlock()
+	owned.session.Close()
+	<-owned.drained
+	s.mu.Lock()
+	delete(s.resuming, id)
+	close(done)
 }
 
 func (s *server) recordSkip(id string, rec log.ScheduleSkip) error {
