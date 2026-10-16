@@ -215,13 +215,26 @@ func random(n int) []byte {
 
 // Create makes a new, empty keychain at path using the given KDF parameters
 // (pass DefaultKDF for production, FastKDF in tests). An empty passphrase
-// makes a keychain without one.
+// makes a keychain without one. A keychain already at path is never
+// replaced: under the keychain's lock, so that two creates at once (the
+// console's and nodwyn keychain init) cannot both pass a check and the
+// second replace the first with every key added in between.
 func Create(path string, kdf KDFParams, passphrase []byte) (*Store, error) {
 	if err := kdf.validate(); err != nil {
 		return nil, err
 	}
 	salt := random(saltLen)
 	st := openedStore(path, kdf, salt)
+	unlock, err := st.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if _, err := os.Lstat(path); err == nil {
+		return nil, fmt.Errorf("keychain: %s already exists: %w", path, os.ErrExist)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
 	aead, err := chacha20poly1305.NewX(derive(kdf, passphrase, salt))
 	if err != nil {
 		return nil, err

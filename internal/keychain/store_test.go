@@ -3,6 +3,8 @@ package keychain
 import (
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -220,5 +222,25 @@ func TestReplace(t *testing.T) {
 	}
 	if err := st.Replace("nonexistent", []byte("x")); err == nil {
 		t.Fatal("replaced a credential that does not exist")
+	}
+}
+
+// Create never replaces a keychain: two creates at once, or a caller that
+// did not look first, would replace every key in it.
+func TestCreateRefusesAnExistingKeychain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "keychain")
+	st, err := Create(path, FastKDF, []byte("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Add("svc", []byte("kept-value")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Create(path, FastKDF, []byte("second")); !errors.Is(err, os.ErrExist) {
+		t.Fatalf("a second create: %v", err)
+	}
+	again, err := Open(path, []byte("first"))
+	if err != nil || again.HandleForClass("svc") == nil {
+		t.Fatalf("the first keychain is gone: %v", err)
 	}
 }
