@@ -188,7 +188,11 @@ export function renderHome(root, ctx) {
     const stats = s.detail ? diffStats(s.detail) : null;
     const since = first ? desk.firstSeen.get(first.payload.ID) : null;
     const actions = h("div", { class: "card-actions" }, h("a", { class: "btn small dark", href: `#/task/${item.id}` }, s.path ? "Review the change" : "Review"));
-    if (first?.kind === "prompt.confirm" && conn.has("session.answer")) {
+    // Allow once from here only for a plain command or write: a security
+    // confirmation or a send to another host needs what the task's card
+    // shows (the reasons, the destination, the diff), so it gets Review.
+    const plain = first?.kind === "prompt.confirm" && !first.payload?.Prompt?.Security && !first.payload?.Prompt?.Egress;
+    if (plain && conn.has("session.answer")) {
       actions.append(
         h(
           "button",

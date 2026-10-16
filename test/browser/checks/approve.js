@@ -369,6 +369,15 @@ check(async () => {
   assert.deepStrictEqual(card, { title: "Edit Makefile", security: true, added: ["\t@go build ./...", "\t@go test ./... >/dev/null"], removed: ["\tgo build ./...", "\tgo test ./..."] }, "the Makefile's security confirm, one diff of both edits");
   await page.screenshot({ path: `${out}/edits-ask.png` });
   assert.strictEqual(fs.readFileSync(makefile, "utf8"), original, "the Makefile changed before the answer");
+  // Home offers this one Review only: a security confirmation is answered
+  // where its reasons and diff are, not from a line on Home.
+  const makefileTask = await page.evaluate(() => location.hash);
+  await page.evaluate(() => (location.hash = "#/"));
+  await page.waitForSelector("article.card.warn:has-text('Makefile')");
+  const makefileCard = await page.$eval("article.card.warn:has-text('Makefile') .card-actions", (e) => e.textContent);
+  assert.ok(makefileCard.includes("Review") && !makefileCard.includes("Allow once"), `Home offered for the Makefile: ${makefileCard}`);
+  await page.evaluate((hash) => (location.hash = hash), makefileTask);
+  await page.waitForSelector(".ask-card .diff");
   // Keyboard answers, as the terminal does — the reply box's focus let go
   // first, since a key pressed into a text field is text, not an answer.
   await page.evaluate(() => document.activeElement?.blur());

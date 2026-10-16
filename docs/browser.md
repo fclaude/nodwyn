@@ -791,7 +791,10 @@ budget answer. Select that session to review its normal pending-prompt panel.
 The lightweight `session.watch` feed contains only IDs, state flags and revisions;
 it does not subscribe the browser to other sessions' transcripts or prompt text.
 Late snapshots cannot replace a newer state. Closed/resolved sessions clear their
-attention indicator, and disconnect clears the live-state claim.
+attention indicator, and disconnect clears the live-state claim. Home's Needs you
+list offers **Allow once** beside **Review** only for a plain command or write;
+a security confirmation or a send to another host offers **Review** alone, since
+its reasons, destination and diff are on the task's card.
 
 Desktop notifications are optional. In Settings › Desktop notifications, **Turn
 on for this tab** asks this browser for permission; the choice is held only in
