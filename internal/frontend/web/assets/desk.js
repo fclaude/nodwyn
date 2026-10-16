@@ -164,14 +164,17 @@ export class Desk {
   }
   // refreshModels reads whether the models can be used; fresh asks every
   // server again instead of taking what a check a few seconds ago found.
-  async refreshModels(fresh = false) {
+  // The minute's check (quiet) draws nothing again when it finds what the
+  // last one did: Settings holds fields being typed into.
+  async refreshModels(fresh = false, quiet = false) {
     if (!this.conn.has("models.status")) return;
+    const before = JSON.stringify(this.models ?? null);
     try {
       this.models = await this.conn.call("models.status", fresh ? { fresh: true } : {});
     } catch {
       this.models = null;
     }
-    this.changed("models");
+    if (!quiet || JSON.stringify(this.models ?? null) !== before) this.changed("models");
   }
   watch(state, notify = true) {
     const previous = this.states.get(state.id);

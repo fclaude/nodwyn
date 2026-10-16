@@ -242,7 +242,7 @@ conn.onState(async (state, detail) => {
   }
 });
 setInterval(() => {
-  if (conn.live) desk.refreshModels();
+  if (conn.live) desk.refreshModels(false, true);
 }, 60000);
 
 // ⌘N / Ctrl+N: a new task, as the sidebar promises.

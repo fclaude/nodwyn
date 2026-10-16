@@ -198,6 +198,15 @@ check(async () => {
   await go("#/settings/keys");
   await page.waitForSelector("#keychain-new");
   await page.fill("#keychain-new", "family passphrase");
+  // The page is drawn again while it is typed (the models' check each
+  // minute, another task's state): the new field keeps what was typed,
+  // where it used to start empty.
+  await page.evaluate(() => {
+    document.querySelector("#keychain-new").dataset.old = "1";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  await page.waitForSelector("#keychain-new:not([data-old])");
+  assert.strictEqual(await page.inputValue("#keychain-new"), "family passphrase", "a redraw emptied the passphrase being typed");
   await page.fill("#keychain-new-again", "family passphrase");
   await page.click("button:has-text('Set the passphrase')");
   await page.waitForSelector("text=protected by a passphrase", { timeout: 10000 });

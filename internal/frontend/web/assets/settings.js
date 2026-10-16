@@ -263,6 +263,9 @@ const tabs = [
 export const tabOf = (name) => (tabs.some((t) => t.id === name) ? name : tabs[0].id);
 let shownTab = "";
 
+// passphraseOpen is whether the passphrase fold is open on Keys & devices.
+let passphraseOpen = false;
+
 export function renderSettings(root, ctx) {
   const { conn, desk } = ctx;
   const redraw = () => renderSettings(root, ctx);
@@ -816,7 +819,15 @@ function keychainSettings(ctx, redraw) {
     h("p", { class: "hint" }, status.no_passphrase ? `Open · ${credentials} · no passphrase.` : `Unlocked · ${credentials} · protected by a passphrase.`),
     status.no_passphrase ? h("div", { class: "callout" }, h("div", {}, h("strong", {}, "It has no passphrase. "), noPassphraseWarning)) : null,
     h("div", { class: "row-actions" }, h("a", { class: "btn small", href: "#/connections/credentials" }, icon("key", 15), "Manage credentials")),
-    conn.has("keychain.passphrase") ? h("details", { class: "box", open: !!status.no_passphrase }, h("summary", {}, status.no_passphrase ? "Set a passphrase" : "Change or remove the passphrase"), passphraseForm(ctx, { onDone: redraw })) : null,
+    conn.has("keychain.passphrase")
+      ? h(
+          "details",
+          // The fold stays as the person left it when the page is drawn again.
+          { class: "box", open: !!status.no_passphrase || passphraseOpen, ontoggle: (event) => (passphraseOpen = event.target.open) },
+          h("summary", {}, status.no_passphrase ? "Set a passphrase" : "Change or remove the passphrase"),
+          passphraseForm(ctx, { onDone: () => { passphraseOpen = false; redraw(); } }),
+        )
+      : null,
   ];
 }
 

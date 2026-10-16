@@ -4,6 +4,29 @@
 // the first run as in Settings (ADR 41).
 import { h, toast } from "./dom.js";
 
+// typed holds what is being typed into the keychain's passphrase fields, by
+// field: the page holding them is drawn again whenever the desk changes
+// (the models' status every minute, another task's state), and a new field
+// would start empty, so the person went on typing into a passphrase that had
+// lost its start. A form forgets its fields when it is sent.
+const typed = new Map();
+
+// secret is a passphrase field that keeps what is typed into it across
+// redraws.
+function secret(id, attrs) {
+  const input = h("input", { class: "input", id, type: "password", ...attrs, oninput: () => typed.set(id, input.value) });
+  input.value = typed.get(id) || "";
+  return input;
+}
+
+// forget empties the fields and what they kept.
+function forget(...inputs) {
+  for (const input of inputs) {
+    input.value = "";
+    typed.delete(input.id);
+  }
+}
+
 // What a keychain without a passphrase gives up, said wherever one is made.
 export const noPassphraseWarning = "Anyone who can read the keychain file, or a backup of it, can use every key in it.";
 
@@ -14,8 +37,8 @@ export function keychainForm(ctx, { onDone } = {}) {
   if (status.unlocked) return h("p", { class: "hint" }, `Unlocked · ${status.credentials} saved credential${status.credentials === 1 ? "" : "s"}${status.no_passphrase ? " · no passphrase" : ""}.`);
   const creating = !status.exists;
   let without = false;
-  const pass = h("input", { class: "input", id: "keychain-pass", type: "password", autocomplete: creating ? "new-password" : "current-password", required: !!creating });
-  const again = h("input", { class: "input", id: "keychain-again", type: "password", autocomplete: "new-password", required: true });
+  const pass = secret("keychain-pass", { autocomplete: creating ? "new-password" : "current-password", required: !!creating });
+  const again = secret("keychain-again", { autocomplete: "new-password", required: true });
   const button = h("button", { type: "submit", class: "btn dark" }, creating ? "Create the keychain" : "Unlock");
   const passFields = h(
     "div",
@@ -55,8 +78,7 @@ export function keychainForm(ctx, { onDone } = {}) {
           return;
         }
         const passphrase = pass.value;
-        pass.value = "";
-        again.value = "";
+        forget(pass, again);
         button.disabled = true;
         try {
           desk.keychain = await conn.call(creating ? "keychain.create" : "keychain.unlock", creating && without ? { no_passphrase: true } : { passphrase });
@@ -85,12 +107,12 @@ export function passphraseForm(ctx, { onDone } = {}) {
   const { conn, desk } = ctx;
   const has = !desk.keychain?.no_passphrase;
   const error = h("p", { class: "error", role: "alert" });
-  const current = h("input", { class: "input", id: "keychain-current", type: "password", autocomplete: "current-password", required: has });
-  const pass = h("input", { class: "input", id: "keychain-new", type: "password", autocomplete: "new-password", required: true, minLength: 8 });
-  const again = h("input", { class: "input", id: "keychain-new-again", type: "password", autocomplete: "new-password", required: true });
+  const current = secret("keychain-current", { autocomplete: "current-password", required: has });
+  const pass = secret("keychain-new", { autocomplete: "new-password", required: true, minLength: 8 });
+  const again = secret("keychain-new-again", { autocomplete: "new-password", required: true });
   const submit = async (params, done) => {
     error.textContent = "";
-    for (const input of [current, pass, again]) input.value = "";
+    forget(current, pass, again);
     try {
       desk.keychain = await conn.call("keychain.passphrase", params);
       toast(done);
