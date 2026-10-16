@@ -1336,9 +1336,17 @@ check(async () => {
     }
     let depth = 0;
     for (let q = root.querySelector("blockquote"); q; q = q.querySelector(":scope > blockquote")) depth++;
-    return { error, depth, after: root.textContent.includes("After it.") };
+    // 45 KB of backtick runs of growing length, none closed: it took the
+    // markdown reader half a minute.
+    let runs = "";
+    for (let k = 1; runs.length < 45000; k++) runs += "`".repeat(k) + "a";
+    const started = performance.now();
+    t.render({ kind: "llm.resp", payload: { content: runs, usage: { prompt_tokens: 1, output_tokens: 1 } } });
+    const backticksMs = performance.now() - started;
+    return { error, depth, after: root.textContent.includes("After it."), backticksMs };
   });
   want(!hostile.error && hostile.depth > 0 && hostile.depth <= 9 && hostile.after, `a reply of 6000 ">" draws: ${JSON.stringify(hostile)}`);
+  want(hostile.backticksMs < 1000, `a reply of 45 KB of backtick runs draws in under a second: ${Math.round(hostile.backticksMs)} ms`);
   await page.setContent("");
   if (fail.length) throw new Error(fail.join("\n"));
 });

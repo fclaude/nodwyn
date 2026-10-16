@@ -137,10 +137,13 @@ function readTable(lines, i) {
 }
 
 // inline handles code spans first (their contents are literal), then links,
-// then strong and emphasis.
+// then strong and emphasis. A code span's opening run of backticks is
+// matched whole, never from inside a run nor with part of one: backtracking
+// over every length of every run made 45 KB of runs of growing length take
+// half a minute, each time the task opened.
 export function inline(text) {
   const out = [];
-  const pattern = /(`+)([\s\S]*?[^`])\1(?!`)|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*\s][^*]*)\*|(?<![\w])_([^_\s][^_]*)_(?![\w])|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
+  const pattern = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*\s][^*]*)\*|(?<![\w])_([^_\s][^_]*)_(?![\w])|(https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"])/g;
   let last = 0;
   for (const m of text.matchAll(pattern)) {
     if (m.index > last) out.push(text.slice(last, m.index));
