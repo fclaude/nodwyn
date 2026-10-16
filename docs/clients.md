@@ -185,9 +185,6 @@ needs.
 
 ## Found while writing this
 
-- [protocol.md](protocol.md) said the console starts runs from Home with
-  `run.start`. It does not (ADR 35, [browser.md](browser.md), "Runs"), though
-  the bridge still lets the method through; protocol.md says so now.
 - The TUI's local mode makes worktrees without the daemon's task-root
   refusal, as it opens any `--repo` without it. The refusal moving into core
   is still not built (ADR 34, amended 2026-10-08).

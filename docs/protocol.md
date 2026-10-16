@@ -813,12 +813,10 @@ its approved manifest; any other change needs approval again.
 `mcp.remove` and `mcp.pull` methods, and every `credentials.*` method but
 `credentials.list` are refused to a paired remote device in
 the web console (browser.md); `mcp.runtime` and `credentials.list` only read. The console never
-offers `session.eval`, and does not start runs (ADR 35), though the bridge
-lets `run.start` through for another client of it; a
-paired remote device may start or resume only a run whose requests a person
-answers: `run.start` and `run.resume` with `auto_approve`, `judge` or
-`unattended` are refused to it, by the console and by the daemon (whose
-actor for it carries `via`).
+offers `session.eval`, and its bridge relays no run method (ADR 35). The
+daemon also refuses `run.start` and `run.resume` with `auto_approve`,
+`judge` or `unattended` to an actor that carries `via`, as the bridge's
+actor for a paired device does.
 
 An MCP server is remote (its `url` HTTPS, or plain HTTP to this machine
 only) or contained (ADR 23 W3b): the daemon runs it in podman or docker from
