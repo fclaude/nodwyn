@@ -47,7 +47,10 @@ type Options struct {
 	// Remote pairing (ADR 30). Devices remembers browsers paired from other
 	// machines; without it only this machine's browsers can pair. Hosts are
 	// names (host:port) the console answers to besides its listener address,
-	// such as a tailnet name. TLS says the listener speaks https.
+	// such as a tailnet name; one written https://NAME is reached over https
+	// through a proxy that ends TLS in front of the console (tailscale
+	// serve), so its browsers' origin is https although the listener is not.
+	// TLS says the listener speaks https.
 	Devices *Devices
 	Hosts   []string
 	TLS     bool
@@ -67,6 +70,7 @@ type bridge struct {
 	tls     bool
 	local   string          // the listener's address
 	hosts   map[string]bool // Host values this console answers to
+	https   map[string]bool // the hosts whose browsers reach it over https through a proxy
 
 	mu      sync.Mutex
 	tickets map[string]time.Time // launch tickets not yet used, by value, with their expiry
@@ -145,11 +149,8 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	b.ctx, b.local = ctx, listener.Addr().String()
-	b.hosts = map[string]bool{b.local: true}
-	for _, h := range b.extra {
-		b.hosts[h] = true
-	}
+	b.ctx = ctx
+	b.listensAt(listener.Addr().String())
 	server := &http.Server{Handler: b, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute, MaxHeaderBytes: 16 << 10}
 	done := make(chan struct{})
 	go func() {
@@ -167,8 +168,27 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	return err
 }
 
-func (b *bridge) scheme() string {
-	if b.tls {
+// listensAt gives the bridge the address it listens on and the names it
+// answers to: that address, and Options.Hosts.
+func (b *bridge) listensAt(addr string) {
+	b.local = addr
+	b.hosts, b.https = map[string]bool{addr: true}, map[string]bool{}
+	for _, h := range b.extra {
+		if name, ok := strings.CutPrefix(h, "https://"); ok {
+			h = name
+			b.https[h] = true
+		}
+		b.hosts[h] = true
+	}
+}
+
+// secure says the browser that sent a request to host reached it over https:
+// the listener speaks it, or a proxy in front does and the host was named so.
+func (b *bridge) secure(host string) bool { return b.tls || b.https[host] }
+
+// scheme is the scheme of the origin a page served for host has.
+func (b *bridge) scheme(host string) string {
+	if b.secure(host) {
 		return "https"
 	}
 	return "http"
@@ -203,13 +223,16 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	socketScheme := "ws"
-	if b.tls {
+	if b.secure(r.Host) {
 		socketScheme = "wss"
 	}
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' "+socketScheme+"://"+r.Host+"; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-	origin := b.scheme() + "://" + r.Host
+	origin := b.scheme(r.Host) + "://" + r.Host
 	if o := r.Header.Get("Origin"); o != "" && o != origin {
-		http.Error(w, "Invalid origin", http.StatusForbidden)
+		// Say what was expected: behind a proxy that ends TLS the browser's
+		// origin is https although this console speaks http, which --name
+		// https://NAME tells it.
+		http.Error(w, "Invalid origin: expected "+origin, http.StatusForbidden)
 		return
 	}
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
@@ -298,7 +321,7 @@ func (b *bridge) authenticated(r *http.Request) (string, bool) {
 const deviceLife = 180 * 24 * time.Hour
 
 func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.Header.Get("Origin") != b.scheme()+"://"+r.Host || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+	if r.Method != http.MethodPost || r.Header.Get("Origin") != b.scheme(r.Host)+"://"+r.Host || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		http.Error(w, "Same-origin JSON POST required", http.StatusForbidden)
 		return
 	}
@@ -343,7 +366,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		http.SetCookie(w, &http.Cookie{Name: deviceCookie, Value: token, Path: "/", HttpOnly: true, Secure: b.tls, SameSite: http.SameSiteStrictMode, MaxAge: int(deviceLife / time.Second)})
+		http.SetCookie(w, &http.Cookie{Name: deviceCookie, Value: token, Path: "/", HttpOnly: true, Secure: b.secure(r.Host), SameSite: http.SameSiteStrictMode, MaxAge: int(deviceLife / time.Second)})
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -351,7 +374,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 	// origin and host checks protect it from pages on another loopback
 	// port. The browser still sends it to every server on this address, so
 	// it is the run's session, not the code.
-	http.SetCookie(w, &http.Cookie{Name: b.cookieName(), Value: b.session, Path: "/", HttpOnly: true, Secure: b.tls, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: b.cookieName(), Value: b.session, Path: "/", HttpOnly: true, Secure: b.secure(r.Host), SameSite: http.SameSiteStrictMode})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -371,6 +394,15 @@ type request struct {
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params"`
 }
+
+// maxMessage is the largest message the console may send over its socket. It
+// is above the daemon's frame limit, so a request that is too large for the
+// daemon is answered with an error that says so; a socket that closes at the
+// limit instead drops the connection and every call waiting on it.
+const maxMessage = 4 << 20
+
+// maxRequest is the largest request the daemon takes (rpc's frame limit).
+const maxRequest = 1 << 20
 
 // deviceRecheck is how often an open console of a paired device checks that
 // the device is still paired, so a revocation also ends a console that is
@@ -405,7 +437,7 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 		return
 	}
 	defer conn.CloseNow()
-	conn.SetReadLimit(1 << 20)
+	conn.SetReadLimit(maxMessage)
 	// A paired device stays paired only while its token is in devices.toml:
 	// revoking it ends this console within deviceRecheck, and before any
 	// further request is relayed.
@@ -474,6 +506,8 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 		switch {
 		case req.JSONRPC != "2.0" || req.ID == 0:
 			callErr = errors.New("invalid request")
+		case len(req.Params) >= maxRequest:
+			callErr = errors.New("that message is too large to send: a request is at most 1 MB")
 		case !b.allowed(req.Method, remote):
 			callErr = errors.New("operation unavailable in this browser mode; use the terminal client")
 			if b.readOnly {

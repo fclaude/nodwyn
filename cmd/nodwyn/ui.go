@@ -34,7 +34,7 @@ type remoteFlags struct {
 
 func (r *remoteFlags) register(flags *flag.FlagSet) {
 	flags.StringVar(&r.listen, "listen", "", "also serve other machines at this address, e.g. a tailnet IP:7777 (devices pair by name)")
-	flags.Var(&r.hosts, "name", "another host:port this console answers to, such as a tailnet name (repeatable)")
+	flags.Var(&r.hosts, "name", "another host:port this console answers to, such as a tailnet name (repeatable); https://NAME when a proxy ends TLS in front of it (tailscale serve)")
 	flags.StringVar(&r.cert, "tls-cert", "", "serve https with this certificate (with --tls-key)")
 	flags.StringVar(&r.key, "tls-key", "", "the certificate's private key")
 }
@@ -84,11 +84,21 @@ func (r *remoteFlags) listener(paths config.Paths, options webui.Options) (net.L
 			fmt.Fprintln(os.Stderr, "WARNING: a device paired with the code can read every task, send messages and answer approvals")
 			fmt.Fprintln(os.Stderr, "(never settings, keys or policy files). Revoke one with: nodwyn devices revoke NAME")
 		}
-		if !options.TLS {
+		if !options.TLS && !allHTTPS(r.hosts) {
 			fmt.Fprintln(os.Stderr, "Without --tls-cert traffic is unencrypted unless the network encrypts it (a tailnet does).")
 		}
 	}
 	return listener, options, nil
+}
+
+// allHTTPS reports whether every name is reached over https through a proxy.
+func allHTTPS(hosts names) bool {
+	for _, h := range hosts {
+		if !strings.HasPrefix(h, "https://") {
+			return false
+		}
+	}
+	return len(hosts) > 0
 }
 
 func devicesFile(paths config.Paths) string { return filepath.Join(paths.ConfigDir, "devices.toml") }
@@ -139,7 +149,10 @@ func runUI(paths config.Paths, args []string) error {
 	console := webui.New(options)
 	fmt.Fprintln(os.Stderr, "Browser view:", url)
 	for _, h := range options.Hosts {
-		fmt.Fprintln(os.Stderr, "Also at:", scheme+"://"+h)
+		if !strings.HasPrefix(h, "https://") {
+			h = scheme + "://" + h
+		}
+		fmt.Fprintln(os.Stderr, "Also at:", h)
 	}
 	fmt.Fprintln(os.Stderr, "Pairing code (for another browser; keep it off chats and screenshots):", code)
 	if *readOnly {

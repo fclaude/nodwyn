@@ -244,3 +244,28 @@ client's `session.answer` and `session.send` waited too.
 
 Not changed: the `settings.*` methods still hold the lock while they wait for
 `config.toml`'s own lock, which a session holds only for the moment of a save.
+
+## Amendment 2026-10-16: behind a TLS proxy, a large message, the launch ticket
+
+- **A console behind a proxy that ends TLS is reached by `--name
+  https://NAME`.** `tailscale serve` serves https and forwards to the console
+  over http, so the browser's origin is `https://NAME` while the console
+  expected `http://NAME`, and every pairing and socket was refused as an
+  invalid origin. A name written `https://NAME` is answered with an https
+  origin, a Secure device cookie and a `wss` socket in its content policy; the
+  console itself still speaks http, and the other names keep the scheme of the
+  listener. A refused origin is answered with the one expected.
+- **A message above the daemon's frame limit is answered, not fatal.** The
+  socket's read limit was the daemon's 1 MiB, and the websocket library closes
+  the connection at the limit, so one pasted log ended the console's connection
+  and every call waiting on it. The limit is now 4 MiB, and a request of 1 MiB
+  or more is answered with an error that says so. Not built: a length check
+  in the composers.
+- **The launch ticket stays on the browser's command line.** It is single use
+  and good for a minute, but another user of the computer can read it in the
+  process list and spend it first. Handing it over through a private file (a
+  page that redirects with the ticket in its fragment) was considered and not
+  built: a sandboxed browser (a snap or flatpak one) may not read the user's
+  runtime directory, and the console would then fail to open without saying
+  why. It is documented instead, with `--no-open` and the pairing code (never
+  on a command line) as the way on a shared computer.

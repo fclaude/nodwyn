@@ -24,8 +24,11 @@ HOST:PORT` and `--tls-cert`/`--tls-key` (browser.md, "Other devices").
 
 The page the app opens pairs itself with a one-time launch ticket carried in
 the address's fragment (never sent to a server, removed from the address bar
-at once, valid for a minute). Another browser on the same computer can still
-pair with the code the app prints to its log.
+at once, valid for a minute). The browser is started with that address, so
+another user of the same computer can read the ticket in the process list for
+the moment it starts and spend it first; on a computer other people log in to,
+pair with the code the app prints to its log instead (`nodwyn ui --no-open`).
+Another browser on the same computer can pair with that code too.
 
 ## First run
 

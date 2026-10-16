@@ -33,7 +33,7 @@ const testSession = "test-only-browser-session-000000000000000"
 
 func TestBrowserAuthorityBoundary(t *testing.T) {
 	b := &bridge{readOnly: true, ctx: context.Background(), code: testCode, session: testSession}
-	b.at("127.0.0.1:34567")
+	b.listensAt("127.0.0.1:34567")
 	for _, tt := range []struct {
 		name, method, path, host, origin, site, body string
 		status                                       int
@@ -122,7 +122,7 @@ func TestWebSocketUsesDaemonAndRefusesMutations(t *testing.T) {
 	}
 	b := &bridge{readOnly: true, ctx: ctx, socket: socket, code: testCode, session: testSession}
 	server := httptest.NewUnstartedServer(b)
-	b.at(server.Listener.Addr().String())
+	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
 	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
@@ -238,7 +238,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 	}()
 	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession}
 	server := httptest.NewUnstartedServer(b)
-	b.at(server.Listener.Addr().String())
+	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
 	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
@@ -397,7 +397,7 @@ func TestConversationLifecycleThroughBrowser(t *testing.T) {
 
 func TestEmbeddedAssetsReachable(t *testing.T) {
 	b := &bridge{ctx: context.Background(), code: testCode, session: testSession}
-	b.at("127.0.0.1:34567")
+	b.listensAt("127.0.0.1:34567")
 	var paths []string
 	err := fs.WalkDir(assets, "assets", func(name string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -432,7 +432,7 @@ func TestEmbeddedAssetsReachable(t *testing.T) {
 func TestLaunchTicketPairsOnceAndExpires(t *testing.T) {
 	s := New(Options{PairingCode: testCode})
 	s.b.ctx = context.Background()
-	s.b.at("127.0.0.1:34567")
+	s.b.listensAt("127.0.0.1:34567")
 	post := func(body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", "http://127.0.0.1:34567/pair", strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:50000"
@@ -467,17 +467,11 @@ func TestLaunchTicketPairsOnceAndExpires(t *testing.T) {
 	}
 }
 
-// at gives a bridge built by a test the address Serve would give it.
-func (b *bridge) at(addr string) {
-	b.local = addr
-	b.hosts = map[string]bool{addr: true}
-}
-
 func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
 	s := New(Options{PairingCode: testCode, Devices: devices, Hosts: []string{"desk.tailnet.ts.net:7777"}})
 	s.b.ctx = context.Background()
-	s.b.at("100.64.0.5:7777")
+	s.b.listensAt("100.64.0.5:7777")
 	s.b.hosts["desk.tailnet.ts.net:7777"] = true
 	request := func(method, host, path, body, cookie string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(body))
@@ -613,7 +607,7 @@ func TestUploadAttachesThroughTheBridgeOnly(t *testing.T) {
 	client.Close()
 	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession}
 	server := httptest.NewUnstartedServer(b)
-	b.at(server.Listener.Addr().String())
+	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
 	upload := func(name, body string, cookie bool) (int, string) {
@@ -677,7 +671,7 @@ func TestRevokingADeviceClosesItsOpenConsole(t *testing.T) {
 	devices := OpenDevices(filepath.Join(root, "devices.toml"))
 	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession, devices: devices, recheck: 50 * time.Millisecond}
 	server := httptest.NewUnstartedServer(b)
-	b.at(server.Listener.Addr().String())
+	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
 	open := func(name string) *websocket.Conn {
@@ -728,7 +722,7 @@ func TestRevokingADeviceClosesItsOpenConsole(t *testing.T) {
 // pairing.
 func TestLocalCookieHoldsTheSessionNotTheCode(t *testing.T) {
 	b := &bridge{ctx: context.Background(), code: testCode, session: testSession}
-	b.at("127.0.0.1:34567")
+	b.listensAt("127.0.0.1:34567")
 	r := httptest.NewRequest("POST", "http://127.0.0.1:34567/pair", strings.NewReader(`{"code":"`+testCode+`"}`))
 	r.RemoteAddr = "127.0.0.1:50000"
 	r.Header.Set("Origin", "http://127.0.0.1:34567")
@@ -755,7 +749,7 @@ func TestSocketSaysTheDaemonIsNotRunning(t *testing.T) {
 	defer cancel()
 	b := &bridge{ctx: ctx, socket: filepath.Join(t.TempDir(), "no-daemon.sock"), code: testCode, session: testSession}
 	server := httptest.NewUnstartedServer(b)
-	b.at(server.Listener.Addr().String())
+	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
 	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
@@ -807,7 +801,7 @@ func TestASlowCallHoldsUpNothingElse(t *testing.T) {
 	defer func() { close(release); cancel(); <-done }()
 	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession}
 	server := httptest.NewUnstartedServer(b)
-	b.at(server.Listener.Addr().String())
+	b.listensAt(server.Listener.Addr().String())
 	server.Start()
 	defer server.Close()
 	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
@@ -882,5 +876,100 @@ func TestEveryAdvertisedMethodIsClassifiedByTheBridge(t *testing.T) {
 		case !slices.Contains(terminalOnly, method) && !allowed:
 			t.Errorf("%s is advertised by the daemon, but the bridge refuses it even on this computer: add it to readOnly or to allowed, or to terminalOnly here", method)
 		}
+	}
+}
+
+// A proxy that ends TLS in front of the console (tailscale serve) makes the
+// browser's origin https while the console speaks http: a name given as
+// https://NAME is answered with that origin, and its device cookie is Secure
+// (P2-085). Names given plain keep their http origin, and a refused origin
+// says which was expected.
+func TestAHostBehindATLSProxyPairsOverHTTPS(t *testing.T) {
+	devices := OpenDevices(filepath.Join(t.TempDir(), "devices.toml"))
+	s := New(Options{PairingCode: testCode, Devices: devices, Hosts: []string{"https://desk.tailnet.ts.net", "desk.local:7777"}})
+	s.b.ctx = context.Background()
+	s.b.listensAt("127.0.0.1:7777")
+	pair := func(host, origin string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "http://"+host+"/pair", strings.NewReader(`{"code":"`+testCode+`","device":"phone"}`))
+		r.RemoteAddr = "127.0.0.1:40000" // the proxy, on the phone's behalf
+		r.Header.Set("Origin", origin)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		s.b.ServeHTTP(w, r)
+		return w
+	}
+	w := pair("desk.tailnet.ts.net", "https://desk.tailnet.ts.net")
+	cookies := w.Result().Cookies()
+	if w.Code != http.StatusNoContent || len(cookies) != 1 || !cookies[0].Secure {
+		t.Fatalf("pairing through the proxy: %d %s %v", w.Code, w.Body, cookies)
+	}
+	if w := pair("desk.tailnet.ts.net", "http://desk.tailnet.ts.net"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "expected https://desk.tailnet.ts.net") {
+		t.Fatalf("an http origin for the https name: %d %s", w.Code, w.Body)
+	}
+	if w := pair("desk.local:7777", "http://desk.local:7777"); w.Code != http.StatusNoContent {
+		t.Fatalf("a plain name keeps its http origin: %d %s", w.Code, w.Body)
+	}
+	if w := pair("desk.local:7777", "https://desk.local:7777"); w.Code != http.StatusForbidden {
+		t.Fatalf("a plain name does not take an https origin: %d", w.Code)
+	}
+}
+
+// A message larger than the daemon takes is answered with an error and the
+// connection stays: the console used to be dropped, and every pending call
+// with it, by one pasted log (P2-086).
+func TestAnOversizedMessageIsAnsweredNotFatal(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	socket := filepath.Join(root, "run", "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	done := make(chan error, 1)
+	go func() { done <- rpc.Serve(ctx, listener, core.Options{Config: config.Default(), Paths: paths}) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession}
+	server := httptest.NewUnstartedServer(b)
+	b.listensAt(server.Listener.Addr().String())
+	server.Start()
+	defer server.Close()
+	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	conn.SetReadLimit(1 << 20)
+	call := func(id uint64, method string, params any) map[string]json.RawMessage {
+		t.Helper()
+		if err := wsjson.Write(ctx, conn, map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
+			t.Fatal(err)
+		}
+		rctx, stop := context.WithTimeout(ctx, 5*time.Second)
+		defer stop()
+		var frame map[string]json.RawMessage
+		if err := wsjson.Read(rctx, conn, &frame); err != nil {
+			t.Fatalf("the connection was dropped: %v", err)
+		}
+		return frame
+	}
+	call(1, "hello", map[string]any{"protocol": 1})
+	big := strings.Repeat("a", 1200<<10)
+	if raw := call(2, "session.send", map[string]any{"id": "x", "text": big}); !strings.Contains(string(raw["error"]), "too large") {
+		t.Fatalf("an oversized message was answered with %s", raw["error"])
+	}
+	if raw := call(3, "session.list", map[string]any{}); len(raw["result"]) == 0 {
+		t.Fatalf("the connection is not usable after it: %s", raw["error"])
 	}
 }

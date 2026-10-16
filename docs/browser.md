@@ -639,6 +639,9 @@ changes nothing.
 nodwyn ui --listen 100.101.102.103:7777          # a tailnet address
 nodwyn ui --listen 100.101.102.103:7777 --name desk.tail1234.ts.net:7777
 nodwyn ui --listen 0.0.0.0:7777 --name desk.local:7777 --tls-cert cert.pem --tls-key key.pem
+# behind a proxy that ends TLS (tailscale serve): the console stays on loopback
+nodwyn ui --listen 127.0.0.1:7777 --name https://desk.tail1234.ts.net
+tailscale serve --bg 127.0.0.1:7777              # see `tailscale serve --help` for your version's syntax
 nodwyn devices                                   # list paired devices
 nodwyn devices revoke phone
 ```
@@ -650,7 +653,13 @@ file cannot pair anything. Revoking takes effect without a restart: new
 requests are refused at once, and a console the device already has open is
 closed before its next request, or within five seconds if it is only
 watching. The console answers only to the names it listens on, so a wildcard
-`--listen` (`0.0.0.0`, `::`) needs `--name` with the name browsers use. Every answer from a device is recorded as the bridge's
+`--listen` (`0.0.0.0`, `::`) needs `--name` with the name browsers use. A name
+is `host:port` as the browser's address bar has it; a proxy that ends TLS in
+front of the console (`tailscale serve` serves https by default) sends the
+bare name and an `https://` origin, which `--name https://NAME` says: the
+console then expects that origin for that name, marks the device cookie
+Secure, and still speaks http to the proxy. A refused origin is answered with
+the one expected. Every answer from a device is recorded as the bridge's
 kernel identity followed by `via web:NAME`.
 
 A device can read tasks, start and steer them, and answer approvals — one-time,
@@ -688,7 +697,11 @@ nodwyn ui --socket /absolute/private/sock --no-open
 ```
 
 `nodwyn ui` connects to an existing daemon and opens the page with a one-time
-launch ticket in the address's fragment, so that browser pairs itself. It
+launch ticket in the address's fragment, so that browser pairs itself. The
+ticket is on the browser's command line while it starts, which another user of
+the same computer can read in the process list; it is good once and for a
+minute, but on a computer other people log in to, start with `--no-open` and
+paste the pairing code instead (the code is never on a command line). It
 also prints a random pairing code for another browser on this computer;
 paste that code into its page. The code is never put in a URL or session log.
 Keep it in the terminal rather than sharing it. The browser receives an
