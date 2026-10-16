@@ -9,17 +9,25 @@ import (
 	"unicode"
 )
 
+// maxWordBytes is the longest word kept: a long identifier is a few dozen
+// bytes, and nothing past this is a name.
+const maxWordBytes = 64
+
 // Words splits text into the words a search matches, as code names them:
 // each run of letters, digits, '_' and '-' gives itself, lowercased, then
 // its parts between '_' and '-', then each part's camel-case words. So
 // "ScrubEnv" gives scrubenv, scrub
 // and env; "index-grep" gives index-grep, index and grep; "HTTPServer"
 // gives httpserver, http and server. Single characters are dropped: they
-// match nearly everything.
+// match nearly everything, and so are words over maxWordBytes, with the
+// camel-case words of a part that long: a base64 line, a hash or a minified
+// bundle is not something anyone searches for, and kept whole or in pieces it
+// made the index as big as the blob. The parts of a long name that are
+// short are still words.
 func Words(text string) []string {
 	var out []string
 	add := func(w string) {
-		if len([]rune(w)) > 1 {
+		if len(w) <= maxWordBytes && len([]rune(w)) > 1 {
 			out = append(out, strings.ToLower(w))
 		}
 	}
@@ -27,6 +35,9 @@ func Words(text string) []string {
 		add(token)
 		parts := strings.FieldsFunc(token, func(r rune) bool { return r == '_' || r == '-' })
 		for _, part := range parts {
+			if len(part) > maxWordBytes {
+				continue // a blob's pieces are no more names than the blob is
+			}
 			camel := camelWords(part)
 			if len(parts) > 1 {
 				add(part)

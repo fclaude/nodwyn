@@ -664,3 +664,21 @@ earlier tasks were one too many; they are now one, this ADR's.
 - Not changed: the scopes, the switch, the repository index (§2 to §7),
   the kinds of event ranked and how they are weighed, and §13's measures.
 
+
+## Amendment 2026-10-16: long words are not words, and counts are not sizes
+
+A word of more than 64 bytes is dropped, and so are the camel-case pieces of
+a part between `_` and `-` that long: a minified bundle, a hash or a base64
+line held whole made the index (the `.mem` and the repository's chunks) as
+large as the text, for a word no query is. A 1 MB line of base64 without a
+slash or plus in it made an index of 1.7 MB; it makes almost none now. A
+line with slashes or pluses is cut into words of about 30 characters, which
+are kept.
+
+Decoding an index bounds only what is a size (counts of documents, words
+and postings, byte lengths) by the bytes that hold it. A document's word count
+and a word's frequency are quantities of the text and may exceed the index's
+size: a task whose first turn printed 40,000 words of test output had an
+index its own decoder refused, so its `.mem` was rebuilt from the whole log
+on every read. They are read as numbers up to 2^31-1, the width the postings
+store.

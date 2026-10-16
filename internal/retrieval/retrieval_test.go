@@ -2,6 +2,7 @@ package retrieval
 
 import (
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
@@ -271,4 +272,56 @@ func TestIndexKeptAsBytesRanksAsItDid(t *testing.T) {
 
 func sameHit(p, q Hit) bool {
 	return p.Doc == q.Doc && math.Abs(p.Score-q.Score) < 1e-9 && slices.Equal(p.Matched, q.Matched)
+}
+
+// A document's word count and a word's frequency are quantities of its text,
+// not sizes of the index, so they may be larger than the index is in bytes:
+// 5,000 words of one word are a few bytes of postings. Decode rejected such
+// an index, and a session's .mem was rebuilt from its log on every read.
+func TestDecodeTakesCountsLargerThanTheIndex(t *testing.T) {
+	var x Index
+	x.Add(Field{Text: strings.Repeat("alpha ", 5000) + "beta"})
+	x.Add(Field{Text: "alpha gamma"})
+	raw := x.AppendBinary(nil)
+	if len(raw) > 5000 {
+		t.Fatalf("the test needs an index smaller than its counts: %d bytes", len(raw))
+	}
+	got, err := Decode(raw, nil)
+	if err != nil {
+		t.Fatalf("a valid index: %v", err)
+	}
+	want, have := x.Search("alpha beta", 10, nil), got.Search("alpha beta", 10, nil)
+	if !slices.EqualFunc(have, want, sameHit) || got.total != x.total {
+		t.Fatalf("read back %+v (total %d), want %+v (%d)", have, got.total, want, x.total)
+	}
+}
+
+// A word longer than maxWordBytes is dropped: one 1 MB line of base64 (with no
+// slash or plus in it) made one
+// 1 MB word, and an index as large as the text.
+func TestWordsDropAWordNobodySearchesFor(t *testing.T) {
+	blob := strings.Repeat("x", 2*maxWordBytes)
+	if got := Words(blob); len(got) != 0 {
+		t.Errorf("a long run of letters gave %q", got)
+	}
+	if got := Words(strings.Repeat("a", maxWordBytes)); len(got) != 1 {
+		t.Errorf("a word at the limit: %q", got)
+	}
+	if got := Words(strings.Repeat("aB", maxWordBytes)); len(got) != 0 {
+		t.Errorf("the pieces of a long blob gave %q", got)
+	}
+	if got := Words(blob + "_tail"); !slices.Equal(got, []string{"tail"}) {
+		t.Errorf("the parts of a long name: %q", got)
+	}
+	r := rand.New(rand.NewSource(1))
+	line := make([]byte, 1<<20)
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	for i := range line {
+		line[i] = alphabet[r.Intn(len(alphabet))]
+	}
+	var x Index
+	x.Add(Field{Text: string(line)})
+	if size := len(x.AppendBinary(nil)); size > len(line)/4 {
+		t.Errorf("a 1 MB base64 line made an index of %d bytes", size)
+	}
 }

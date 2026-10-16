@@ -118,21 +118,28 @@ var errMalformed = errors.New("retrieval: a malformed index")
 // lengths weigh them as in the whole index.
 func Decode(data []byte, keep func(word string) bool) (*Index, error) {
 	at := 0
-	next := func() (int, error) {
+	// A structural size (a count of documents, words or postings, a length
+	// in bytes) cannot exceed the bytes that hold it, which bounds what is
+	// allocated for it. A document's word count and a word's frequency are
+	// quantities of the text, and are not bounded by the index's size: 40,000
+	// words of test output are a few KB of index.
+	read := func(limit uint64) (int, error) {
 		v, n := binary.Uvarint(data[at:])
-		if n <= 0 || v > uint64(len(data)) {
+		if n <= 0 || v > limit {
 			return 0, errMalformed
 		}
 		at += n
 		return int(v), nil
 	}
+	next := func() (int, error) { return read(uint64(len(data))) }
+	quantity := func() (int, error) { return read(math.MaxInt32) }
 	docs, err := next()
 	if err != nil {
 		return nil, err
 	}
 	x := &Index{postings: map[string][]posting{}, lengths: make([]int, 0, docs)}
 	for range docs {
-		n, err := next()
+		n, err := quantity()
 		if err != nil {
 			return nil, err
 		}
@@ -165,11 +172,11 @@ func Decode(data []byte, keep func(word string) bool) (*Index, error) {
 		}
 		list, doc := make([]posting, 0, count), 0
 		for range count {
-			delta, err := next()
+			delta, err := quantity()
 			if err != nil {
 				return nil, err
 			}
-			c, err := next()
+			c, err := quantity()
 			if err != nil {
 				return nil, err
 			}
