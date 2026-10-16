@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 )
 
 // Ollama speaks the native /api/chat protocol (ADR 8).
@@ -27,17 +26,7 @@ type Ollama struct {
 // no redirect: the window goes to the server the user configured, not to
 // wherever that server points (NoRedirect).
 func NewOllama(base string) *Ollama {
-	return &Ollama{
-		URL: strings.TrimRight(base, "/"),
-		Client: &http.Client{
-			Transport: &http.Transport{
-				Proxy:                 http.ProxyFromEnvironment,
-				ResponseHeaderTimeout: 0,
-				IdleConnTimeout:       90 * time.Second,
-			},
-			CheckRedirect: NoRedirect,
-		},
-	}
+	return &Ollama{URL: strings.TrimRight(base, "/"), Client: newClient()}
 }
 
 func (o *Ollama) Name() string { return "ollama" }
@@ -48,14 +37,11 @@ func (o *Ollama) Ping(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	resp, err := o.Client.Do(req)
+	resp, err := send(o.Client, nil, "ollama", req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("ollama: %s", resp.Status)
-	}
 	var v struct {
 		Version string `json:"version"`
 	}
@@ -77,18 +63,11 @@ func (o *Ollama) Capabilities(ctx context.Context, model string) ([]string, erro
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := o.Client.Do(req)
+	resp, err := send(o.Client, nil, "ollama", req)
 	if err != nil {
-		return nil, fmt.Errorf("ollama: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
-	if err := Redirected(resp, "model requests"); err != nil {
-		return nil, fmt.Errorf("ollama: %w", err)
-	}
-	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("ollama: show %s: %s: %s", model, resp.Status, strings.TrimSpace(string(b)))
-	}
 	var show struct {
 		Capabilities []string `json:"capabilities"`
 	}
@@ -221,18 +200,11 @@ func (o *Ollama) Chat(ctx context.Context, req Request, onDelta func(Delta)) (*R
 		return nil, err
 	}
 	hreq.Header.Set("Content-Type", "application/json")
-	resp, err := o.Client.Do(hreq)
+	resp, err := send(o.Client, nil, "ollama", hreq)
 	if err != nil {
-		return nil, fmt.Errorf("ollama: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
-	if err := Redirected(resp, "model requests"); err != nil {
-		return nil, Permanent(fmt.Errorf("ollama: %w", err))
-	}
-	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, refused("ollama", resp, strings.TrimSpace(string(b)))
-	}
 
 	out := &Response{Message: Message{Role: RoleAssistant}}
 	var content, thinking strings.Builder

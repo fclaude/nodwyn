@@ -105,3 +105,29 @@ func TestRedirectedNamesOnlyTheHost(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// The calls that are not chat refuse a redirect too, for every provider, as
+// one function sends them all (P2-070): Ollama's Ping read a redirect as a
+// bare status, and its model check as a plain error that a retry would repeat.
+func TestEveryCallRefusesARedirect(t *testing.T) {
+	bound := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://other.invalid/", http.StatusTemporaryRedirect)
+	}))
+	defer bound.Close()
+	ctx := context.Background()
+	ollama, openai, anthropic := NewOllama(bound.URL), NewOpenAI(bound.URL, nil), NewAnthropic(bound.URL, nil)
+	calls := map[string]func() error{
+		"ollama ping":         func() error { _, err := ollama.Ping(ctx); return err },
+		"ollama capabilities": func() error { _, err := ollama.Capabilities(ctx, "m"); return err },
+		"openai ping":         func() error { _, err := openai.Ping(ctx); return err },
+		"openai models":       func() error { _, err := openai.Models(ctx); return err },
+		"anthropic ping":      func() error { _, err := anthropic.Ping(ctx); return err },
+		"anthropic models":    func() error { _, err := anthropic.Models(ctx); return err },
+	}
+	for name, call := range calls {
+		err := call()
+		if err == nil || !strings.Contains(err.Error(), "redirected to other.invalid") || !errors.As(err, new(permanentError)) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

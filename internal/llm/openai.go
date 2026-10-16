@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // OpenAI speaks the chat-completions protocol that OpenAI defined and many
@@ -70,14 +69,7 @@ type OpenAI struct {
 // NewOpenAI returns a client for base. Like NewOllama, requests are bounded
 // by ctx, not by an overall client timeout, and no redirect is followed.
 func NewOpenAI(base string, authorize func(*http.Request) error) *OpenAI {
-	return &OpenAI{
-		URL: strings.TrimRight(base, "/"),
-		Client: &http.Client{
-			Transport:     &http.Transport{Proxy: http.ProxyFromEnvironment, IdleConnTimeout: 90 * time.Second},
-			CheckRedirect: NoRedirect,
-		},
-		Authorize: authorize,
-	}
+	return &OpenAI{URL: strings.TrimRight(base, "/"), Client: newClient(), Authorize: authorize}
 }
 
 func (o *OpenAI) Name() string { return "openai" }
@@ -97,13 +89,6 @@ func (o *OpenAI) Ping(ctx context.Context) (string, error) {
 	}
 	resp.Body.Close()
 	return "openai-compatible", nil
-}
-
-// ListedModel is one model of a server's list: its id, and how many tokens
-// its context holds when the server says (0 when it does not).
-type ListedModel struct {
-	ID            string
-	ContextLength int
 }
 
 // Models asks the server for the models it lists. The request carries the
@@ -161,16 +146,7 @@ func (o *OpenAI) ContextLength(ctx context.Context, model string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	for _, m := range models {
-		if m.ID != model {
-			continue
-		}
-		if m.ContextLength > 0 {
-			return m.ContextLength, nil
-		}
-		return 0, fmt.Errorf("openai: the model list does not give %s's context length", model)
-	}
-	return 0, fmt.Errorf("openai: %s is not in the server's model list", model)
+	return contextOf("openai", models, model)
 }
 
 // Wire types for /chat/completions.
@@ -285,11 +261,6 @@ type oaiRequest struct {
 	// puts the breakpoint on the last block, and moves it on as the
 	// conversation grows.
 	CacheControl *oaiCacheControl `json:"cache_control,omitempty"`
-}
-
-type oaiCacheControl struct {
-	Type string `json:"type"`
-	TTL  string `json:"ttl,omitempty"`
 }
 
 type oaiResponse struct {
@@ -473,27 +444,13 @@ func carriesDetails(raw json.RawMessage) bool {
 // nil to ask nothing.
 func (o *OpenAI) cacheControl() *oaiCacheControl { return cacheAsk(o.CacheControl) }
 
-// cacheAsk is the request's ask to cache the prompt that a cache_control
-// setting names ("ephemeral" or "1h"), the same in both protocols that take
-// it: nil for "", which asks nothing.
-func cacheAsk(setting string) *oaiCacheControl {
-	switch setting {
-	case "":
-		return nil
-	case "1h":
-		return &oaiCacheControl{Type: "ephemeral", TTL: "1h"}
-	}
-	return &oaiCacheControl{Type: setting}
-}
-
 // codexHeaders are the headers Codex names its session by, hyphenated as it
 // now sends them; opencode sends the same three with a plan's token
 // (anomalyco/opencode#53767).
 var codexHeaders = []string{"session-id", "thread-id", "x-client-request-id"}
 
-// send makes one authorized request and returns a 200 response. A redirect
-// is an error (NoRedirect), and a permanent one: asking again gets the same
-// answer. A request with a body, a chat completion, carries the cache key.
+// send makes one authorized request and returns a 200 response (send). A
+// request with a body, a chat completion, carries the cache key.
 func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
 	hreq, err := http.NewRequestWithContext(ctx, method, o.URL+path, bytes.NewReader(body))
 	if err != nil {
@@ -513,23 +470,5 @@ func (o *OpenAI) send(ctx context.Context, method, path string, body []byte) (*h
 			}
 		}
 	}
-	if o.Authorize != nil {
-		if err := o.Authorize(hreq); err != nil {
-			return nil, fmt.Errorf("openai: %w", err)
-		}
-	}
-	resp, err := o.Client.Do(hreq)
-	if err != nil {
-		return nil, fmt.Errorf("openai: %w", err)
-	}
-	if err := Redirected(resp, "model requests"); err != nil {
-		resp.Body.Close()
-		return nil, Permanent(fmt.Errorf("openai: %w", err))
-	}
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
-		return nil, refused("openai", resp, strings.TrimSpace(string(b)))
-	}
-	return resp, nil
+	return send(o.Client, o.Authorize, "openai", hreq)
 }

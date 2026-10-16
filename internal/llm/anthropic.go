@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 )
 
 // Anthropic speaks the Messages API (POST /messages), which Claude models
@@ -61,14 +60,7 @@ const anthropicDefaultMaxTokens = 16384
 // bounded by ctx, not by an overall client timeout, and no redirect is
 // followed.
 func NewAnthropic(base string, authorize func(*http.Request) error) *Anthropic {
-	return &Anthropic{
-		URL: strings.TrimRight(base, "/"),
-		Client: &http.Client{
-			Transport:     &http.Transport{Proxy: http.ProxyFromEnvironment, IdleConnTimeout: 90 * time.Second},
-			CheckRedirect: NoRedirect,
-		},
-		Authorize: authorize,
-	}
+	return &Anthropic{URL: strings.TrimRight(base, "/"), Client: newClient(), Authorize: authorize}
 }
 
 func (a *Anthropic) Name() string { return "anthropic" }
@@ -140,16 +132,7 @@ func (a *Anthropic) ContextLength(ctx context.Context, model string) (int, error
 	if err != nil {
 		return 0, err
 	}
-	for _, m := range models {
-		if m.ID != model {
-			continue
-		}
-		if m.ContextLength > 0 {
-			return m.ContextLength, nil
-		}
-		return 0, fmt.Errorf("anthropic: the model list does not give %s's context length", model)
-	}
-	return 0, fmt.Errorf("anthropic: %s is not in the server's model list", model)
+	return contextOf("anthropic", models, model)
 }
 
 // Wire types for /messages.
@@ -509,9 +492,7 @@ func anthropicUsage(raw json.RawMessage) Usage {
 	return u
 }
 
-// send makes one authorized request and returns a 200 response, as
-// OpenAI.send does: a redirect is a permanent error, and so is a refusal that
-// asking again would not change.
+// send makes one authorized request and returns a 200 response (send).
 func (a *Anthropic) send(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
 	return a.sendBeta(ctx, method, path, body, "")
 }
@@ -529,23 +510,5 @@ func (a *Anthropic) sendBeta(ctx context.Context, method, path string, body []by
 	if body != nil {
 		hreq.Header.Set("Content-Type", "application/json")
 	}
-	if a.Authorize != nil {
-		if err := a.Authorize(hreq); err != nil {
-			return nil, fmt.Errorf("anthropic: %w", err)
-		}
-	}
-	resp, err := a.Client.Do(hreq)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: %w", err)
-	}
-	if err := Redirected(resp, "model requests"); err != nil {
-		resp.Body.Close()
-		return nil, Permanent(fmt.Errorf("anthropic: %w", err))
-	}
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
-		return nil, refused("anthropic", resp, strings.TrimSpace(string(b)))
-	}
-	return resp, nil
+	return send(a.Client, a.Authorize, "anthropic", hreq)
 }
