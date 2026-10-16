@@ -168,6 +168,42 @@ func TestGitLandRefusesWhatItMustNot(t *testing.T) {
 	}
 }
 
+// A refused file someone already staged (a git add -A through the shell) is
+// not committed: the commit takes the whole index, so it is taken out of it
+// first.
+func TestGitLandLeavesAStagedRefusedFileOut(t *testing.T) {
+	r := newLandRig(t)
+	r.write(r.tree, ".env", "TOKEN=secret-value\n")
+	r.write(r.tree, "a.txt", "a\n")
+	r.git(r.tree, "add", "-A", "-f")
+	got, err := r.land("Add a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "left out, as files fs-read refuses: .env") {
+		t.Fatalf("the answer: %s", got)
+	}
+	if files := r.git(r.tree, "show", "--name-only", "--format=", "HEAD"); files != "a.txt" {
+		t.Fatalf("committed: %s", files)
+	}
+	if tree := r.git(r.repo, "ls-tree", "-r", "--name-only", "origin/main"); strings.Contains(tree, ".env") {
+		t.Fatalf("the refused file reached the remote: %s", tree)
+	}
+}
+
+// A staged rename lands as one: git status gives its two paths in one record
+// unless asked not to, and the second path read as a record of its own.
+func TestGitLandLandsAStagedRename(t *testing.T) {
+	r := newLandRig(t)
+	r.git(r.tree, "mv", "app.txt", "renamed.txt")
+	if _, err := r.land("Rename the app file"); err != nil {
+		t.Fatal(err)
+	}
+	if files := r.git(r.tree, "show", "--name-only", "--no-renames", "--format=", "HEAD"); files != "app.txt\nrenamed.txt" {
+		t.Fatalf("committed: %q", files)
+	}
+}
+
 // The person's checkout of main is moved only when it is clean.
 func TestGitLandLeavesADirtyCheckoutAlone(t *testing.T) {
 	r := newLandRig(t)

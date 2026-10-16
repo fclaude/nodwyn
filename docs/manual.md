@@ -442,7 +442,8 @@ stash`, which every worktree shares.
 The work stays on the branch until it lands. Ask the task to land it
 ("commit and push to main") and it calls **git-land** once validate has
 passed: one step that commits what changed with the message the model
-writes (files the guard keeps from `fs-read` are left out), rebases the
+writes (files the guard keeps from `fs-read` are left out, even when
+already staged), rebases the
 task's own commits onto the newest base (fetching its upstream first),
 refuses a change that holds credential-shaped text, pushes to the base's
 upstream by fast-forward only, and fast-forwards your checkout of the base

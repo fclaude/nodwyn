@@ -588,3 +588,15 @@ reads the latest `worktree.restore`'s base. A worktree kept with its branch
 keeps its base. `TestWorktreeMadeAgainHasTheBaseItStartsFrom` fails on the
 code before: the base stayed the first commit.
 
+## Amendment 2026-10-16: git-land commits only what it says it commits
+
+`git-land` staged the files it judged by path and then ran `git commit`,
+which takes the whole index: a credential file someone had already staged (a
+`git add -A` through the shell is common) was committed and pushed, while the
+answer named it as left out. It now stages everything, takes the refused
+files out of the index with `git reset`, and commits nothing if `git diff
+--cached` still names one. Its status read also asked for renames, which
+gives a rename's two paths in one record; the second was read as a record of
+its own and every staged rename failed. It reads status with `--no-renames`
+and only standard output. The regressions are
+`TestGitLandLeavesAStagedRefusedFileOut` and `TestGitLandLandsAStagedRename`.

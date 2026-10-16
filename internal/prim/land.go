@@ -89,13 +89,19 @@ type lander struct {
 }
 
 func (l lander) git(dir string, args ...string) (string, error) {
-	out, err := l.raw(dir, args...)
+	out, err := l.run(dir, true, args...)
 	return strings.TrimSpace(out), err
 }
 
-// raw is git's output as it gave it, for output whose leading spaces mean
-// something (status lines).
-func (l lander) raw(dir string, args ...string) (string, error) {
+// records is git's standard output as it gave it, for NUL-separated records
+// whose leading spaces mean something (status lines). A warning on standard
+// error would read as a record, so it is left out unless git fails.
+func (l lander) records(dir string, args ...string) (string, error) {
+	return l.run(dir, false, args...)
+}
+
+// run runs git in dir; combined puts standard error in the output too.
+func (l lander) run(dir string, combined bool, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(l.ctx, landTimeout)
 	defer cancel()
 	full := append([]string{"--no-pager", "-c", "core.fsmonitor=false", "-c", "core.editor=true", "-c", "sequence.editor=true", "-c", "color.ui=false"}, args...)
@@ -105,7 +111,17 @@ func (l lander) raw(dir string, args ...string) (string, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = 5 * time.Second
-	out, err := cmd.CombinedOutput()
+	var out []byte
+	var err error
+	if combined {
+		out, err = cmd.CombinedOutput()
+	} else {
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		if out, err = cmd.Output(); err != nil {
+			out = append([]byte(stderr.String()), out...)
+		}
+	}
 	if ctx.Err() != nil && l.ctx.Err() == nil {
 		return string(out), fmt.Errorf("git %s gave no answer in %s: a prompt nobody can answer, or a server that does not reply", args[0], landTimeout)
 	}
@@ -181,7 +197,9 @@ func land(ctx context.Context, o Options, message string) (string, error) {
 // "" when there was nothing to commit.
 func (l lander) commit(message string) (string, error) {
 	root := l.o.Root
-	status, err := l.raw(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	// --no-renames: a rename is its two paths, each a record of its own, and
+	// each judged on its own.
+	status, err := l.records(root, "status", "--porcelain=v1", "-z", "--no-renames", "--untracked-files=all")
 	if err != nil {
 		return "", err
 	}
@@ -204,8 +222,27 @@ func (l lander) commit(message string) (string, error) {
 	if message == "" {
 		return "", errors.New("there are changes to commit: give the commit message")
 	}
-	if _, err := l.git(root, append([]string{"add", "-A", "--"}, add...)...); err != nil {
+	// Everything is staged, then the refused files are taken out: the commit
+	// takes the whole index, and one may be in it already (a git add -A
+	// through the shell). Naming each path to add would fail on one already
+	// staged as deleted or renamed. Nothing is committed if the index still
+	// holds a refused file.
+	if _, err := l.git(root, "add", "-A"); err != nil {
 		return "", err
+	}
+	if len(left) > 0 {
+		if _, err := l.git(root, append([]string{"reset", "-q", "--"}, left...)...); err != nil {
+			return "", err
+		}
+	}
+	staged, err := l.records(root, "diff", "--cached", "--name-only", "-z", "--no-renames")
+	if err != nil {
+		return "", err
+	}
+	for _, name := range strings.Split(staged, "\x00") {
+		if name != "" && deny.Denies(name) != "" {
+			return "", fmt.Errorf("%s is staged and fs-read refuses it, so nothing was committed: unstage it (git reset -- %s), or land the work from a terminal if it belongs", name, name)
+		}
 	}
 	if out, err := l.git(root, "commit", "-q", "-m", message); err != nil {
 		if strings.Contains(out, "sign") || strings.Contains(out, "gpg") || strings.Contains(out, "agent") {
