@@ -1,0 +1,18 @@
+The Responses dialect sends the system prompt as instructions, not as an input message
+
+A ChatGPT plan credential at api.openai.com refused every request of session
+20261007T152356Z-a337f2a9 (gpt-6.1-sol, dialect "responses") with 400
+{"detail":"System messages are not allowed"}: both turns failed on their first
+request, in milliseconds, with no model call made. toResponses put the system
+prompt in input with role "system". It is now the request's top-level
+instructions, for every credential; any further system messages are joined in
+order, so none is dropped.
+
+The fake Responses servers (test/fakes/chat and the one in internal/llm) now
+refuse a system input item in that server's {"detail": ...} shape and accept
+here (make validate, 0 warnings). make accept failed once on
+not use the dialect); it passed alone and in the full internal/core package
+twice, and in the second make validate.
+
+Not shown: that the plan server accepts the request as sent. Nothing here talks
+to OpenAI, and a field it refuses next would show on the first real turn.

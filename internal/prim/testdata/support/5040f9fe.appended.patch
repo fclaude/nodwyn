@@ -1,0 +1,52 @@
+diff --git a/internal/llm/responses_test.go b/internal/llm/responses_test.go
+index 7144c91..8c90c77 100644
+--- a/internal/llm/responses_test.go
++++ b/internal/llm/responses_test.go
+@@ -277,7 +277,7 @@ func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
+ 			defer srv.Close()
+ 			o := NewOpenAI(srv.URL, nil)
+ 			o.Dialect = ChatResponses
+-			want := "Responses stream ended without a terminal response"
++			want := "Responses stream ended without a terminal response (Content-Type: text/event-stream)"
+ 			switch {
+ 			case strings.Contains(body, "response.failed"):
+ 				want = "the response failed: quota refused"
+@@ -295,3 +295,38 @@ func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
+ 		})
+ 	}
+ }
++
++// A stream that does not come under text/event-stream is still read as a
++// stream, not decoded as JSON, when it opens with an event: the plan server
++// has served its streams under other Content-Types, and decoding one fails on
++// its first character (ADR 8, amended 2026-10-07, session
++// 20261007T165642Z-97ee33d1, "invalid character 'e' looking for beginning of
++// value"). Under no type, application/json and text/plain it is buffered
++// through its terminal event and returned, not refused as JSON.
++func TestResponsesStreamUnderNonSSEContentType(t *testing.T) {
++	terminal := `{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"text":"hi"}]}]}}`
++	body := "event: response.created\n\n" +
++		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n" +
++		"event: response.completed\n" +
++		"data: " + terminal + "\n\n"
++	for _, ct := range []string{"", "application/json", "text/plain"} {
++		t.Run(ct, func(t *testing.T) {
++			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				if ct != "" {
++					w.Header().Set("Content-Type", ct)
++				}
++				fmt.Fprint(w, body)
++			}))
++			defer srv.Close()
++			o := NewOpenAI(srv.URL, nil)
++			o.Dialect = ChatResponses
++			out, err := o.Chat(context.Background(), Request{Model: "test"}, nil)
++			if err != nil {
++				t.Fatalf("Content-Type %q: %v", ct, err)
++			}
++			if out.Message.Content != "hi" {
++				t.Fatalf("Content-Type %q: %+v", ct, out)
++			}
++		})
++	}
++}

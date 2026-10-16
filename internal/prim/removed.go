@@ -120,6 +120,12 @@ type removedLine struct {
 	line int // its line at HEAD
 	text string
 	lits []string // the string literals on it, for a line that moved
+	// repl is the line the change puts in its place, "" for none: of the
+	// lines a change block adds, the one that shares most of its words with
+	// this one, if it shares half of them (a row rewritten, a map
+	// rewrapped), each used once. edit-support reads what a rewrite adds
+	// and cuts from it (ADR 32, amended 2026-10-17).
+	repl string
 }
 
 // definedNames is the top-level names a source file defines, with their
@@ -524,17 +530,37 @@ func removedExpectations(c changeFiles) []removedLine {
 			continue
 		}
 		ch := change{rel: rel}
-		for _, op := range myers(a, b) {
-			switch op.kind {
-			case '+':
+		ops := myers(a, b)
+		for i := 0; i < len(ops); {
+			if ops[i].kind == ' ' {
+				i++
+				continue
+			}
+			// A change block: the lines between two that stand as they were.
+			var gone, put []op
+			for ; i < len(ops) && ops[i].kind != ' '; i++ {
+				if ops[i].kind == '+' {
+					put = append(put, ops[i])
+				} else {
+					gone = append(gone, ops[i])
+				}
+			}
+			for _, op := range put {
 				added[normalLine(rel, op.line)] = true
 				if lits := nonEmpty(stringLiterals(rel, op.line)); len(lits) > 0 {
 					addedLits = append(addedLits, lits)
 				}
-			case '-':
-				if expectationLine(rel, op.line) {
-					ch.removed = append(ch.removed, removedLine{path: rel, line: op.ai + 1, text: strings.TrimSpace(op.line), lits: stringLiterals(rel, op.line)})
+			}
+			mate := pairRewrites(gone, put)
+			for k, op := range gone {
+				if !expectationLine(rel, op.line) {
+					continue
 				}
+				r := removedLine{path: rel, line: op.ai + 1, text: strings.TrimSpace(op.line), lits: stringLiterals(rel, op.line)}
+				if m, ok := mate[k]; ok {
+					r.repl = strings.TrimSpace(put[m].line)
+				}
+				ch.removed = append(ch.removed, r)
 			}
 		}
 		changes = append(changes, ch)
@@ -553,11 +579,58 @@ func removedExpectations(c changeFiles) []removedLine {
 	return out
 }
 
+// pairRewrites pairs the lines a change block removes with the ones it adds
+// in their place: the most alike first, a pair only if half the words of
+// the two lines stand in both, each line once. It returns, for each removed
+// line (by index), the index of the added line that replaces it.
+func pairRewrites(gone, put []op) map[int]int {
+	words := func(o op) map[string]bool {
+		m := map[string]bool{}
+		for _, w := range supportWords(o.line) {
+			m[w] = true
+		}
+		return m
+	}
+	type pair struct {
+		g, p int
+		sim  float64
+	}
+	var all []pair
+	pw := make([]map[string]bool, len(put))
+	for i, o := range put {
+		pw[i] = words(o)
+	}
+	for g, o := range gone {
+		gw := words(o)
+		for p := range put {
+			both := 0
+			for w := range gw {
+				if pw[p][w] {
+					both++
+				}
+			}
+			if union := len(gw) + len(pw[p]) - both; both > 0 && 2*both >= union {
+				all = append(all, pair{g, p, float64(both) / float64(union)})
+			}
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].sim > all[j].sim })
+	mate := map[int]int{}
+	taken := map[int]bool{}
+	for _, pr := range all {
+		if _, done := mate[pr.g]; done || taken[pr.p] {
+			continue
+		}
+		mate[pr.g], taken[pr.p] = pr.p, true
+	}
+	return mate
+}
+
 func changeRemovalsPrim(o Options) *scheme.Prim {
 	return &scheme.Prim{
 		Name: "change-removals",
 		Meta: scheme.Meta{
-			Doc:    "What the uncommitted change takes away that its own check cannot show: an alist of definitions, the top-level definitions (Go functions, methods as Type.Method, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, names request gives left out, at most " + fmt.Sprint(removalsMaxDefs) + ", each an alist of path, name, kind and line (at HEAD); and expectations, the lines of existing tests (x_test.go, test_x.py, x_test.py) that state an expectation (a case of a table: a line ending in a comma that holds a literal; an assertion that carries one: testify's assert and require, Python's assert; a literal assigned to want, expect, expected or a name that starts with one (wantErr, expected_msg); or, in Go, a strings or bytes check (Contains, ContainsAny, HasPrefix, HasSuffix, EqualFold) of a string literal) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, or whose string literals all stand on one line it adds (a case moved into another shape), at most " + fmt.Sprint(removalsMaxLines) + ", each an alist of path, line (at HEAD) and text. Hidden; registered in a git work tree. The evidence loop reads it before an unattended turn ends on a passing check (ADR 32, amended 2026-10-15).",
+			Doc:    "What the uncommitted change takes away that its own check cannot show: an alist of definitions, the top-level definitions (Go functions, methods as Type.Method, types, variables and constants; Python functions and classes; Scheme defines) HEAD has in a changed non-test file that no file of the same language in its directory defines now, names request gives left out, at most " + fmt.Sprint(removalsMaxDefs) + ", each an alist of path, name, kind and line (at HEAD); and expectations, the lines of existing tests (x_test.go, test_x.py, x_test.py) that state an expectation (a case of a table: a line ending in a comma that holds a literal; an assertion that carries one: testify's assert and require, Python's assert; a literal assigned to want, expect, expected or a name that starts with one (wantErr, expected_msg); or, in Go, a strings or bytes check (Contains, ContainsAny, HasPrefix, HasSuffix, EqualFold) of a string literal) and that the change removes and adds back nowhere in its test files, white space and trailing comments aside, or whose string literals all stand on one line it adds (a case moved into another shape), at most " + fmt.Sprint(removalsMaxLines) + ", each an alist of path, line (at HEAD), text and new (the line the change puts in its place: of the lines its change block adds, the one that shares most of its words with this one, if it shares half of them, each used once; the empty string for none). Hidden; registered in a git work tree. The evidence loop reads it before an unattended turn ends on a passing check (ADR 32, amended 2026-10-15).",
 			Params: []scheme.Param{{Name: "request", Type: "string", Doc: "the request: a name it gives is not counted as removed"}},
 			Host:   true,
 			Hidden: true,
@@ -583,7 +656,8 @@ func changeRemovalsPrim(o Options) *scheme.Prim {
 				lines = append(lines, scheme.List(
 					scheme.Cons(scheme.Str("path"), scheme.Str(l.path)),
 					scheme.Cons(scheme.Str("line"), scheme.Int(int64(l.line))),
-					scheme.Cons(scheme.Str("text"), scheme.Str(l.text))))
+					scheme.Cons(scheme.Str("text"), scheme.Str(l.text)),
+					scheme.Cons(scheme.Str("new"), scheme.Str(l.repl))))
 			}
 			return scheme.List(
 				scheme.Cons(scheme.Str("definitions"), scheme.List(defs...)),

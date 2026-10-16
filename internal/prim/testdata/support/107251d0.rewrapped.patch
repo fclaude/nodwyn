@@ -1,0 +1,159 @@
+diff --git a/internal/core/modelsettings_test.go b/internal/core/modelsettings_test.go
+index d6e1dab..acb3047 100644
+--- a/internal/core/modelsettings_test.go
++++ b/internal/core/modelsettings_test.go
+@@ -2,7 +2,9 @@ package core
+ 
+ import (
+ 	"bytes"
++	"io"
+ 	"math"
++	"net/http"
+ 	"strings"
+ 	"testing"
+ 
+@@ -11,6 +13,36 @@ import (
+ 	"github.com/fclaude/nodwyn/test/fakes/chat"
+ )
+ 
++// The chat fake refuses a message with role "system" in the input the way
++// OpenAI's plan server refused it in session 20261007T152356Z-a337f2a9, and
++// accepts the same prompt as the request's instructions: a client still on
++// the old wire fails instead of passing.
++func TestTheResponsesFakeRefusesASystemItemInInput(t *testing.T) {
++	t.Parallel()
++	srv := chat.New("", chat.Model{ID: "sol"})
++	t.Cleanup(srv.Close)
++	raw := func(body string) (int, string) {
++		resp, err := http.Post(srv.V1()+"/responses", "application/json", strings.NewReader(body))
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer resp.Body.Close()
++		b, err := io.ReadAll(resp.Body)
++		if err != nil {
++			t.Fatal(err)
++		}
++		return resp.StatusCode, string(b)
++	}
++	status, detail := raw(`{"model":"sol","input":[{"type":"message","role":"system","content":"sys"},{"type":"message","role":"user","content":"hi"}],"stream":true,"store":false}`)
++	if status != http.StatusBadRequest || detail != `{"detail":"System messages are not allowed"}` {
++		t.Fatalf("a system item in input: got %d %s", status, detail)
++	}
++	status, detail = raw(`{"model":"sol","instructions":"sys","input":[{"type":"message","role":"user","content":"hi"}],"stream":true,"store":false}`)
++	if status != http.StatusOK {
++		t.Fatalf("the same conversation as instructions: got %d %s", status, detail)
++	}
++}
++
+ // A server that says neither how large a model's context is nor what a
+ // request cost, as OpenAI's and Cerebras' do not, has both from the model's
+ // own entry (ADR 41, amended 2026-10-05). A conversation on the default
+diff --git a/internal/llm/responses_test.go b/internal/llm/responses_test.go
+index 680e7e5..a9b5fcd 100644
+--- a/internal/llm/responses_test.go
++++ b/internal/llm/responses_test.go
+@@ -18,8 +18,8 @@ import (
+ // protocol fails instead of passing. It records each body and gives reply.
+ func responsesServer(t *testing.T, reply string) (*httptest.Server, *[]map[string]json.RawMessage) {
+ 	t.Helper()
+-	known := map[string]bool{"model": true, "input": true, "tools": true, "stream": true, "store": true, "max_output_tokens": true,
+-		"temperature": true, "prompt_cache_key": true, "reasoning": true}
++	known := map[string]bool{"model": true, "instructions": true, "input": true, "tools": true, "stream": true, "store": true,
++		"max_output_tokens": true, "temperature": true, "prompt_cache_key": true, "reasoning": true}
+ 	var bodies []map[string]json.RawMessage
+ 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 		if r.URL.Path != "/v1/responses" || r.Method != http.MethodPost {
+@@ -38,6 +38,27 @@ func responsesServer(t *testing.T, reply string) (*httptest.Server, *[]map[strin
+ 				return
+ 			}
+ 		}
++		// A message with role "system" in input is refused the way
++		// OpenAI's plan server refused it; the conversation's system
++		// prompt goes out as instructions instead.
++		var items []json.RawMessage
++		if err := json.Unmarshal(body["input"], &items); err != nil {
++			w.WriteHeader(http.StatusBadRequest)
++			w.Write([]byte(`{"error":{"message":"bad input"}}`))
++			return
++		}
++		for _, item := range items {
++			var msg struct {
++				Type string `json:"type"`
++				Role string `json:"role"`
++			}
++			if json.Unmarshal(item, &msg) == nil && msg.Type == "message" && msg.Role == "system" {
++				w.Header().Set("Content-Type", "application/json")
++				w.WriteHeader(http.StatusBadRequest)
++				w.Write([]byte(`{"detail":"System messages are not allowed"}`))
++				return
++			}
++		}
+ 		bodies = append(bodies, body)
+ 		w.Write([]byte(reply))
+ 	}))
+@@ -48,7 +69,9 @@ func responsesServer(t *testing.T, reply string) (*httptest.Server, *[]map[strin
+ // A conversation goes out as Responses input items: messages, a reply's
+ // calls after its text, and each result as its call's output, with the tools
+ // flat and not strict, the effort as reasoning.effort, the cap as
+-// max_output_tokens, and nothing stored. Thinking stays out. The reply's
++// max_output_tokens, and nothing stored. The system prompt is the request's
++// instructions, joined in order where the conversation has more than one;
++// a message with role "system" stays out of the input. Thinking stays out. The reply's
+ // reasoning summary is its thinking, its text its content, its call a tool
+ // call, and its usage is read.
+ func TestResponsesRoundTrip(t *testing.T) {
+@@ -67,6 +90,7 @@ func TestResponsesRoundTrip(t *testing.T) {
+ 		Messages: []Message{
+ 			{Role: RoleSystem, Content: "sys"},
+ 			{Role: RoleUser, Content: "look", Images: []Image{png}},
++			{Role: RoleSystem, Content: "and second"},
+ 			{Role: RoleAssistant, Thinking: "list first", ToolCalls: []ToolCall{{ID: "c1", Name: "fs-list", Args: json.RawMessage(`{"path":"."}`)}, {ID: "c2", Name: "fs-list"}}},
+ 			{Role: RoleTool, Content: "a.go", ToolName: "fs-list", ToolCallID: "c1"},
+ 			{Role: RoleTool, Content: "", ToolName: "fs-list", ToolCallID: "c2"},
+@@ -84,8 +108,9 @@ func TestResponsesRoundTrip(t *testing.T) {
+ 	}
+ 	got := (*bodies)[0]
+ 	want := map[string]string{
+-		"model": `"gpt-6.1-sol"`,
+-		"input": `[{"type":"message","role":"system","content":"sys"},` +
++		"model":        `"gpt-6.1-sol"`,
++		"instructions": `"sys\n\nand second"`,
++		"input": `[` +
+ 			`{"type":"message","role":"user","content":[{"type":"input_text","text":"look"},{"type":"input_image","image_url":"data:image/png;base64,AQI="}]},` +
+ 			`{"type":"function_call","call_id":"c1","name":"fs-list","arguments":"{\"path\":\".\"}"},` +
+ 			`{"type":"function_call","call_id":"c2","name":"fs-list","arguments":"{}"},` +
+@@ -126,6 +151,33 @@ func TestResponsesRoundTrip(t *testing.T) {
+ 	}
+ }
+ 
++// A message with role "system" in input is refused the way OpenAI's plan
++// server refused it in session 20261007T152356Z-a337f2a9; the same
++// conversation with the prompt as instructions goes through.
++func TestResponsesRefusesSystemInputItem(t *testing.T) {
++	srv, _ := responsesServer(t, `{"status":"completed","output":[]}`)
++	raw := func(body string) (int, string) {
++		resp, err := http.Post(srv.URL+"/v1/responses", "application/json", strings.NewReader(body))
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer resp.Body.Close()
++		b, err := io.ReadAll(resp.Body)
++		if err != nil {
++			t.Fatal(err)
++		}
++		return resp.StatusCode, string(b)
++	}
++	status, detail := raw(`{"model":"gpt-6.1-sol","input":[{"type":"message","role":"system","content":"sys"},{"type":"message","role":"user","content":"hi"}],"stream":true,"store":false}`)
++	if status != http.StatusBadRequest || detail != `{"detail":"System messages are not allowed"}` {
++		t.Fatalf("a system item in input: got %d %s", status, detail)
++	}
++	status, detail = raw(`{"model":"gpt-6.1-sol","instructions":"sys","input":[{"type":"message","role":"user","content":"hi"}],"stream":true,"store":false}`)
++	if status != http.StatusOK || detail != `{"status":"completed","output":[]}` {
++		t.Fatalf("the same conversation as instructions: got %d %s", status, detail)
++	}
++}
++
+ // A request without an effort, sampling or cache key sends none of them.
+ func TestResponsesSendsOnlyWhatWasChosen(t *testing.T) {
+ 	srv, bodies := responsesServer(t, `{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}]}`)

@@ -1,0 +1,155 @@
+diff --git a/internal/llm/responses_test.go b/internal/llm/responses_test.go
+index 7144c91..1f09f7f 100644
+--- a/internal/llm/responses_test.go
++++ b/internal/llm/responses_test.go
+@@ -277,7 +277,7 @@ func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
+ 			defer srv.Close()
+ 			o := NewOpenAI(srv.URL, nil)
+ 			o.Dialect = ChatResponses
+-			want := "Responses stream ended without a terminal response"
++			want := "ended without a terminal response"
+ 			switch {
+ 			case strings.Contains(body, "response.failed"):
+ 				want = "the response failed: quota refused"
+@@ -295,3 +295,141 @@ func TestResponsesEventStreamRejectsMissingOrFailedTerminal(t *testing.T) {
+ 		})
+ 	}
+ }
++
++// A stream is read as a stream even when its Content-Type is not
++// text/event-stream (session 20261007T165642Z-97ee33d1): only a reply whose
++// first byte after white space opens an object is decoded as JSON.
++func TestResponsesStreamUnderWrongContentType(t *testing.T) {
++	terminal := `{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"text":"hello"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`
++	stream := "event: response.created\n\ndata: " + terminal + "\n\n"
++	for _, contentType := range []string{"", "application/json", "text/plain"} {
++		t.Run("type="+contentType, func(t *testing.T) {
++			if contentType == "" {
++				// A test server always sniffs a Content-Type, so an
++				// absent one is built directly: nothing names it.
++				got, err := readResponses(&http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(stream))})
++				if err != nil {
++					t.Fatalf("stream with no type: %v", err)
++				}
++				if len(got.Output) == 0 || len(got.Output[0].Content) == 0 || got.Output[0].Content[0].Text != "hello" {
++					t.Fatalf("stream with no type: %+v", got)
++				}
++				return
++			}
++			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				w.Header().Set("Content-Type", contentType)
++				fmt.Fprint(w, stream)
++			}))
++			defer srv.Close()
++			o := NewOpenAI(srv.URL, nil)
++			o.Dialect = ChatResponses
++			out, err := o.Chat(context.Background(), Request{Model: "gpt-6.1-sol"}, nil)
++			if err != nil {
++				t.Fatalf("stream under %q: %v", contentType, err)
++			}
++			if out.Message.Content != "hello" {
++				t.Fatalf("stream under %q: content %q", contentType, out.Message.Content)
++			}
++		})
++	}
++	for _, reply := range []string{
++		`{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"hi"}]}]}`,
++		"  \n\t" + `{"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"hi"}]}]}`,
++	} {
++		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++			w.Header().Set("Content-Type", "application/json")
++			fmt.Fprint(w, reply)
++		}))
++		defer srv.Close()
++		o := NewOpenAI(srv.URL, nil)
++		o.Dialect = ChatResponses
++		out, err := o.Chat(context.Background(), Request{Model: "gpt-6.1-sol"}, nil)
++		if err != nil {
++			t.Fatalf("JSON reply %q: %v", reply, err)
++		}
++		if out.Message.Content != "hi" {
++			t.Fatalf("JSON reply %q: content %q", reply, out.Message.Content)
++		}
++	}
++}
++
++// errBody fails every read, standing in for a reply whose connection drops.
++type errBody struct{}
++
++func (errBody) Read([]byte) (int, error) { return 0, errors.New("connection dropped") }
++
++func (errBody) Close() error { return nil }
++
++// A reply that cannot be read, and one that opens an object but is not
++// JSON, are errors naming the failure, not a stream misread.
++func TestResponsesReplyReadAndBadJSON(t *testing.T) {
++	_, err := readResponses(&http.Response{Header: http.Header{}, Body: errBody{}})
++	if err == nil || !strings.Contains(err.Error(), "read Responses reply") {
++		t.Fatalf("read error: got %v", err)
++	}
++	_, err = readResponses(&http.Response{Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"status":`))})
++	if err == nil || !strings.Contains(err.Error(), "openai: bad response:") {
++		t.Fatalf("bad JSON: got %v", err)
++	}
++}
++
++// A line longer than the stream buffer, and a terminal event with no
++// trailing blank line, both reach the scanner's edges: the first is a read
++// error, the second still completes.
++func TestResponsesStreamScannerEdges(t *testing.T) {
++	huge := "data: " + strings.Repeat("a", 33<<20) + "\n\n"
++	_, err := readResponses(&http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(huge))})
++	if err == nil || !strings.Contains(err.Error(), "read Responses stream") {
++		t.Fatalf("oversize line: got %v", err)
++	}
++	terminal := `data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"message","content":[{"text":"hi"}]}]}}`
++	got, err := readResponses(&http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(terminal))})
++	if err != nil {
++		t.Fatalf("unterminated terminal: %v", err)
++	}
++	if len(got.Output) == 0 || got.Output[0].Content[0].Text != "hi" {
++		t.Fatalf("unterminated terminal: %+v", got)
++	}
++}
++
++// A stream that ends without a terminal event names its Content-Type, which
++// redaction has seen, rather than its body, which it has not.
++func TestResponsesMissingTerminalNamesContentType(t *testing.T) {
++	for _, contentType := range []string{"", "application/json", "text/plain"} {
++		t.Run("type="+contentType, func(t *testing.T) {
++			body := "event: response.created\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial-secret\"}\n\n"
++			if contentType == "" {
++				// A test server always sniffs a Content-Type, so an
++				// absent one is built directly: nothing names it.
++				_, err := readResponses(&http.Response{Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))})
++				if err == nil {
++					t.Fatal("want missing-terminal error, got nil")
++				}
++				if want := `Content-Type ""`; !strings.Contains(err.Error(), want) {
++					t.Fatalf("want %q in %v", want, err)
++				}
++				if strings.Contains(err.Error(), "partial-secret") {
++					t.Fatalf("error quotes unseen body: %v", err)
++				}
++				return
++			}
++			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				w.Header().Set("Content-Type", contentType)
++				fmt.Fprint(w, body)
++			}))
++			defer srv.Close()
++			o := NewOpenAI(srv.URL, nil)
++			o.Dialect = ChatResponses
++			_, err := o.Chat(context.Background(), Request{Model: "test"}, nil)
++			if err == nil {
++				t.Fatal("want missing-terminal error, got nil")
++			}
++			if want := fmt.Sprintf("Content-Type %q", contentType); !strings.Contains(err.Error(), want) {
++				t.Fatalf("want %q in %v", want, err)
++			}
++			if strings.Contains(err.Error(), "partial-secret") {
++				t.Fatalf("error quotes unseen body: %v", err)
++			}
++		})
++	}
++}

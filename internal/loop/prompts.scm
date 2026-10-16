@@ -519,12 +519,61 @@
 ;; for a skipped argument, the wrong count row among them: the request names
 ;; a skipped argument, and that row's count was given as 0. So the question is
 ;; asked of the input or case the line tests, with the edit still in view
-;; (ADR 32, amended 2026-10-16).
+;; (ADR 32, amended 2026-10-16). On the next run (dsl22) it fired three times
+;; in 16 seconds and was answered the same way, in prose the loop did not read.
+;; So the answer has a form, a line for each row: the row, then a sentence
+;; copied from the request that names its input or case; the loop checks it
+;; against the request (edit-answers), and what it cannot support gets one
+;; firmer message (edited-expectations-firm-message) and, at the finish, the
+;; review's first point (finish-unsupported-edits-message). Nothing is
+;; refused: the model may keep the edit, against the evidence (ADR 32,
+;; amended 2026-10-17).
 (define (edited-expectations-message lines)
   (string-append
    "You changed these expectations of existing tests (the line numbers are the last commit's):"
    (expectation-lines lines)
-   "\nWhich sentence of the request requires the new expectation, for that input or case? A rule the request states in general words does not cover an input it does not name. If none does, restore the line and change the code to meet it (to add to what a test pins, append to the phrase it checks; do not reword it); if one does, say which in your answer. Answer in a line beside your next call. This is asked once for each test file."))
+   "\nWhich sentence of the request requires the new expectation, for that input or case? Answer with one line for each line above: the line, then a sentence copied word for word from the request that names the input or case that line tests, as in `(f 0)`: \"the sentence\". A rule the request states in general words does not cover an input it does not name. If none does, write the line and none, restore the line and change the code to meet it (to add to what a test pins, append to the phrase it checks; do not reword it). Your answer is checked against the request's text. Answer in your next reply, beside a call. This is asked once for each test file."))
+
+;; One row of the firmer message: the line, and what the request does not
+;; say of it. verdict: an alist of edit-support's.
+(define (edit-unmentioned-text verdict)
+  (let ((missing (assoc-ref verdict "unmentioned" '()))
+        (cut (assoc-ref verdict "cut" '()))
+        (put (assoc-ref verdict "put" '())))
+    (string-append
+     (if (null? missing)
+         "no sentence you quoted names it"
+         (string-append "the request does not mention "
+                        (string-join (map (lambda (m) (string-append "`" m "`")) missing) " or ")))
+     (apply string-append (map (lambda (c) (string-append "; nor does it say that `" c "` goes")) cut))
+     (apply string-append (map (lambda (p) (string-append "; nor does it put `" p "` in that phrase")) put)))))
+
+;; Said once for each row the answer to the question above did not support,
+;; when the reply quoted the request and still answered with a sentence about
+;; something else (94f5cac4: the request's rule for a skipped argument, for a
+;; count of 0 it never mentions). verdicts: alists of edit-support's.
+(define (edited-expectations-firm-message verdicts)
+  (string-append
+   "No sentence you quoted from the request names the input or case of "
+   (if (null? (cdr verdicts)) "this change" "these changes")
+   " to an existing test:"
+   (apply string-append
+          (map (lambda (v)
+                 (string-append "\n- " (format "~a" (assoc-ref v "path" "")) ":" (number->string (assoc-ref v "line" 0)) ": "
+                                (format "~a" (assoc-ref v "text" "")) " (" (edit-unmentioned-text v) ")"))
+               verdicts))
+   "\nThe default is to restore the old expectation and change the code to meet it: the last commit's version of that test is what a grader runs against your change. Keep the new expectation only by quoting, word for word, the sentence of the request that names this input or case, and saying why it requires the new result. This is said once."))
+
+;; The review's first point: the rows the question named whose answer the
+;; check could not support, with the original tests that fail on the change
+;; (original: finish-original-tests-message's failures), the grader's side
+;; of the same rows.
+(define (finish-unsupported-edits-message rows original)
+  (string-append
+   "You changed these expectations of existing tests, and no sentence you quoted from the request names their input or case:"
+   (expectation-lines rows)
+   "\nThe default is to restore each such line and change the code to meet it; keep one only by quoting, in your report, the sentence of the request that names its input or case."
+   (if (pair? original) (string-append "\n" (finish-original-tests-message original)) "")))
 
 ;; The parts of a condition the change no longer checks (strategy.scm,
 ;; change-dropped-conditions), a point of the finish review. On commit-bench

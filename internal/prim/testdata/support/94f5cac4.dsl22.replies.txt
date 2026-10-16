@@ -1,0 +1,8 @@
+#### R27
+Restoring the type-check case — the request keeps type checking, so that expectation stands.
+#### R28
+Sentence mapping for json_test: `A skipped optional argument before a later one that is given now gets its type's empty value ("", 0, #f, ())` covers `{"path":"p","count":4}` and `{"path":"p","start":null,"count":4}` → `(path 0 4)`; the dropped `start:"3"` type-error line is required by `keep type checking` so I restored it.
+#### R31
+Mapping for fs_read_range_test: `fs-read's start 0 is line 1` covers `(fs-read "big.txt" 0)` → line 1, and `gets its type's empty value ("", 0, #f, ()) which the handlers treat as not given` covers `(fs-read "big.txt" 1 0)` → count 0 as not given (default 200); explicit `-1` still errors per `keep rejecting below 1 other than placeholder 0`.
+#### R32
+Mapping for index_grep_test: `index-grep caps context above 5 instead of refusing it (models asked for 6, 8 and 10)` covers `(index-grep "pkg" "needle" "*.py" 6)` → capped, not refused.

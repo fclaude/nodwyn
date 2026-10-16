@@ -1,0 +1,10 @@
+Options by name: a skipped optional argument gets its empty value
+
+Models pass optional arguments by name, not position: on the first
+SWE-bench dev tasks with the new file tools, "argument context needs glob
+too" and "count needs start too" were 10 of 17 failed file tool calls.
+A skipped optional argument before a later one that is given now gets its
+type's empty value ("", 0, #f, ()), which the handlers treat as not given:
+fs-read's start 0 is line 1 and index-grep's glob "" is every file. index-
+grep caps context above 5 instead of refusing it (models asked for 6, 8
+and 10). ADR 29 amended.

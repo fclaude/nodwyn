@@ -63,7 +63,8 @@ func TestAnEditedExpectationOfAnExistingTestIsAskedAbout(t *testing.T) {
 	for _, want := range []string{editedLines + " (the line numbers are the last commit's):\n- calc/calc_test.go:5: \"b\",",
 		"Which sentence of the request requires the new expectation, for that input or case?",
 		"does not cover an input it does not name", "restore the line and change the code to meet it",
-		"say which in your answer", "asked once for each test file"} {
+		"Answer with one line for each line above: the line, then a sentence copied word for word from the request that names the input or case that line tests",
+		"Your answer is checked against the request's text", "asked once for each test file"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the question lacks %q: %q", want, msg)
 		}

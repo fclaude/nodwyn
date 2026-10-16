@@ -1,0 +1,150 @@
+diff --git a/internal/prim/fs_read_range_test.go b/internal/prim/fs_read_range_test.go
+index a3dcde2..c7695de 100644
+--- a/internal/prim/fs_read_range_test.go
++++ b/internal/prim/fs_read_range_test.go
+@@ -56,7 +56,6 @@ func TestReadRanges(t *testing.T) {
+ 	}
+ 	for src, want := range map[string]string{
+ 		`(fs-read "big.txt" 1001)`: "start 1001 is past the end of big.txt (1000 lines)",
+-		`(fs-read "big.txt" 0)`:    "start is a 1-based line number",
+ 		`(fs-read "big.txt" 1 0)`:  "count must be at least 1",
+ 		`(fs-read "empty.txt" 1)`:  "empty.txt is empty",
+ 		`(fs-read "big.txt" "1")`:  "expected integer",
+@@ -81,3 +80,13 @@ func TestReadRanges(t *testing.T) {
+ 		t.Error("a ranged read escaped the repository")
+ 	}
+ }
++
++// Start 0 is line 1: a skipped start filled with 0 reads from the top.
++func TestFsReadStartZero(t *testing.T) {
++	h := newHarness(t)
++	os.WriteFile(filepath.Join(h.root, "z.txt"), []byte("a\nb\nc\n"), 0o644)
++	want := h.mustEval(t, `(fs-read "z.txt" 1 2)`).S
++	if got := h.mustEval(t, `(fs-read "z.txt" 0 2)`).S; got != want {
++		t.Errorf("start 0:\n%q\nwant\n%q", got, want)
++	}
++}
+diff --git a/internal/prim/index_grep_test.go b/internal/prim/index_grep_test.go
+index 874456e..25f5f40 100644
+--- a/internal/prim/index_grep_test.go
++++ b/internal/prim/index_grep_test.go
+@@ -184,13 +184,31 @@ func TestIndexGrepGlobContextAndLargerTrees(t *testing.T) {
+ 		t.Fatalf("empty glob is every file: %+v", got)
+ 	}
+ 	for src, want := range map[string]string{
+-		`(index-grep "pkg" "needle" "*.py" 6)`: "context is 0 to 5 lines",
+-		`(index-grep "pkg" "(")`:               "invalid regular expression",
++		`(index-grep "pkg" "(")`:                "invalid regular expression",
++		`(index-grep "pkg" "needle" "*.py" -1)`: "context is 0 to 5 lines",
+ 	} {
+ 		if _, err := h.eval(t, src); err == nil || !strings.Contains(err.Error(), want) {
+ 			t.Errorf("%s: %v", src, err)
+ 		}
+ 	}
++	// Context above the limit caps to 5 instead of refusing: with 10 lines
++	// on each side of the match, an uncapped 6, 8 or 10 would return more
++	// than 5 before/after lines.
++	var sb strings.Builder
++	for i := 1; i <= 21; i++ {
++		if i == 11 {
++			sb.WriteString("capneedle\n")
++		} else {
++			fmt.Fprintf(&sb, "line %d\n", i)
++		}
++	}
++	os.WriteFile(filepath.Join(h.root, "pkg", "big.py"), []byte(sb.String()), 0o600)
++	for _, n := range []int{6, 8, 10} {
++		got := grepResult(t, h.mustEval(t, fmt.Sprintf(`(index-grep "pkg" "capneedle" "big.py" %d)`, n)))
++		if len(got.Matches) != 1 || len(got.Matches[0].Before) != 5 || len(got.Matches[0].After) != 5 {
++			t.Fatalf("context %d capped to 5: %+v", n, got)
++		}
++	}
+ 	os.MkdirAll(filepath.Join(h.root, "tree"), 0o755)
+ 	for i := 0; i < 400; i++ {
+ 		os.WriteFile(filepath.Join(h.root, "tree", fmt.Sprintf("m%03d.py", i)), []byte(fmt.Sprintf("x = %d\n", i)), 0o600)
+diff --git a/internal/scheme/json_test.go b/internal/scheme/json_test.go
+index df3991d..a0338ed 100644
+--- a/internal/scheme/json_test.go
++++ b/internal/scheme/json_test.go
+@@ -64,8 +64,9 @@ func TestToolsExcludeBuiltinsAndHidden(t *testing.T) {
+ }
+ 
+ // Optional parameters come last, are left out of the schema's required list,
+-// and a call may stop before any of them: the handler gets fewer arguments,
+-// never placeholders. One given after a missing optional one is an error,
++// and a call may stop before any of them: trailing missing or null
++// optionals end the list, while a missing optional before a later given one
++// gets its type's empty value. One given after a missing optional one is an error,
+ // since positions would shift.
+ func TestOptionalParameters(t *testing.T) {
+ 	in := New()
+@@ -95,15 +96,23 @@ func TestOptionalParameters(t *testing.T) {
+ 		}
+ 	}
+ 	for raw, want := range map[string]string{
+-		`{"path":"p","count":4}`:              `argument "count" needs "start" too`,
+-		`{"path":"p","start":null,"count":4}`: `argument "count" needs "start" too`,
+-		`{"path":"p","start":"3"}`:            `argument "start": type: expected integer`,
+-		`{"start":3}`:                         `missing argument "path"`,
++		`{"path":"p","start":"3"}`: `argument "start": type: expected integer`,
++		`{"start":3}`:              `missing argument "path"`,
+ 	} {
+ 		if _, err := p.ArgsFromJSON([]byte(raw)); err == nil || !strings.Contains(err.Error(), want) {
+ 			t.Errorf("%s: got %v, want %q", raw, err, want)
+ 		}
+ 	}
++	// A skipped optional before a later given one gets its type's empty value.
++	for raw, want := range map[string]string{
++		`{"path":"p","count":4}`:              `("p" 0 4)`,
++		`{"path":"p","start":null,"count":4}`: `("p" 0 4)`,
++	} {
++		args, err := p.ArgsFromJSON([]byte(raw))
++		if err != nil || Write(List(args...)) != want {
++			t.Errorf("%s: got %q, %v; want %s", raw, Write(List(args...)), err, want)
++		}
++	}
+ 	for src, n := range map[string]int{`(ranged "p")`: 1, `(ranged "p" 3)`: 2, `(ranged "p" 3 4)`: 3} {
+ 		if _, err := in.EvalString(t.Context(), src); err != nil || len(got) != n {
+ 			t.Errorf("%s: %d args, %v", src, len(got), err)
+@@ -125,3 +134,41 @@ func TestOptionalParameters(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// A skipped optional before a later given one fills its type's empty value:
++// string "", integer 0, boolean #f, list ().
++func TestOptionalParametersByName(t *testing.T) {
++	p := &Prim{Name: "m", Meta: Meta{Doc: "d", Params: []Param{
++		{Name: "req", Type: "string"},
++		{Name: "s", Type: "string", Optional: true},
++		{Name: "n", Type: "integer", Optional: true},
++		{Name: "b", Type: "boolean", Optional: true},
++		{Name: "l", Type: "list", Optional: true},
++	}}}
++	for raw, want := range map[string]string{
++		`{"req":"r","n":2,"l":[1]}`: `("r" "" 2 #f (1))`,
++		`{"req":"r","l":[1]}`:       `("r" "" 0 #f (1))`,
++		`{"req":"r"}`:               `("r")`,
++		`{"req":"r","s":null,"n":null,"b":null,"l":null}`: `("r")`,
++	} {
++		args, err := p.ArgsFromJSON([]byte(raw))
++		if err != nil || Write(List(args...)) != want {
++			t.Errorf("%s: got %q, %v; want %s", raw, Write(List(args...)), err, want)
++		}
++	}
++	// Vector and alist skipped optionals fill their empty values too.
++	q := &Prim{Name: "q", Meta: Meta{Doc: "d", Params: []Param{
++		{Name: "req", Type: "string"},
++		{Name: "v", Type: "vector", Optional: true},
++		{Name: "a", Type: "alist", Optional: true},
++		{Name: "tail", Type: "integer", Optional: true},
++	}}}
++	for raw, want := range map[string]string{
++		`{"req":"r","tail":9}`: `("r" #() () 9)`,
++	} {
++		args, err := q.ArgsFromJSON([]byte(raw))
++		if err != nil || Write(List(args...)) != want {
++			t.Errorf("%s: got %q, %v; want %s", raw, Write(List(args...)), err, want)
++		}
++	}
++}

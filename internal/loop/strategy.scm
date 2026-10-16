@@ -884,9 +884,11 @@
 ;; set against HEAD with change-removals, which reads only the lines HEAD
 ;; has: a test the turn added, or a case it added to a table, has none to
 ;; name. The lines it names for the fresh files go in one message
-;; (edited-expectations-message); the files that had any are returned, to be
-;; added to told. The finish review still names every such line when the
-;; latest run passed (finish-review-points): it is the last place to ask.
+;; (edited-expectations-message); the files that had any, and the lines, are
+;; returned as (files . lines), the files to be added to told and the lines
+;; to the rows the answer is checked for (edit-answers). The finish review
+;; still names every such line the answer did not support when the latest run
+;; passed (finish-review-points): it is the last place to ask.
 ;; On 94f5cac4 the review named the wrong count row among six lines, as one
 ;; of four points, some twenty rounds after the edits, and the answer
 ;; defended all six (ADR 32, amended 2026-10-16).
@@ -896,17 +898,75 @@
                        ((or (member (car ps) told) (member (car ps) out)) (keep (cdr ps) out))
                        (else (keep (cdr ps) (cons (car ps) out)))))))
     (if (or turn-stopping (null? fresh) (not (host-primitive? "change-removals")))
-        '()
+        (cons '() '())
         (let* ((removed (guard (e (else (log-note (string-append "change-removals failed: " (format "~a" (assoc-ref e 'message ""))))
                                         '()))
                           (change-removals request)))
                (lines (filter (lambda (l) (member (assoc-ref l "path" "") fresh))
                               (assoc-ref removed "expectations" '()))))
           (if (null? lines)
-              '()
+              (cons '() '())
               (begin (add-message (edited-expectations-message lines))
-                     (filter (lambda (p) (pair? (filter (lambda (l) (equal? (assoc-ref l "path" "") p)) lines)))
-                             fresh)))))))
+                     (cons (filter (lambda (p) (pair? (filter (lambda (l) (equal? (assoc-ref l "path" "") p)) lines)))
+                                   fresh)
+                           lines)))))))
+
+;; The answer to the question above is read, not weighed (edit-support): a
+;; row is answered when the reply quotes the request, word for word, in a
+;; sentence that shares distinctive words with the row's input and the
+;; message it expects. On 94f5cac4 (dsl22) the question fired three times and
+;; the model went on: it answered with the request's rule for a skipped
+;; argument, which says nothing of a count of 0, and kept the rewritten row
+;; `(fs-read "big.txt" 1 0)` "count must be at least 1" (ADR 32, amended
+;; 2026-10-17). Nothing is reverted or refused. asked is the rows the
+;; question named, each (state . line) with the state asked, firm (the
+;; firmer message was said) or ok (answered, or restored). A reply that
+;; quotes the request and answers no row gets one firmer message for it
+;; (edited-expectations-firm-message), once for each row; a reply that quotes
+;; nothing is no answer yet. The reply that ends the turn (final) is read for
+;; the rows it supports, and says nothing more: the rows it leaves are the
+;; finish review's first point, which is firm enough. Returns (asked . said):
+;; the rows as they are now, and whether it added the message.
+(define (edit-answers request content asked final)
+  (let ((open (filter (lambda (a) (not (eq? (car a) 'ok))) asked)))
+    (if (or (null? open) turn-stopping (string-empty? (string-trim content)) (not (host-primitive? "edit-support")))
+        (cons asked #f)
+        (let* ((removed (guard (e (else (log-note (string-append "change-removals failed: " (format "~a" (assoc-ref e 'message ""))))
+                                        #f))
+                          (change-removals request)))
+               ;; A row the model restored is no longer a change: answered.
+               (now (if removed (assoc-ref removed "expectations" '()) #f))
+               (present? (lambda (row)
+                           (or (not now)
+                               (let any ((ls now)) (and (pair? ls) (or (edit-same-row? row (car ls)) (any (cdr ls))))))))
+               (still (filter (lambda (a) (present? (cdr a))) open))
+               (verdicts (if (null? still)
+                             '()
+                             (map cons (map cdr still)
+                                  (guard (e (else (log-note (string-append "edit-support failed: " (format "~a" (assoc-ref e 'message ""))))
+                                                  (map (lambda (a) '()) still)))
+                                    (edit-support (map cdr still) request content)))))
+               (said '()))
+          (let ((next (filter (lambda (a) a)
+                              (map (lambda (a)
+                                     (let ((v (assoc (cdr a) verdicts)))
+                                       (cond ((eq? (car a) 'ok) a)
+                                             ((not v) #f)
+                                             ;; A row with no word to judge it by is left to
+                                             ;; the finish review's other point.
+                                             ((equal? (assoc-ref (cdr v) "status" "") "unchecked") #f)
+                                             ((not (equal? (assoc-ref (cdr v) "status" "") "unsupported")) (cons 'ok (cdr a)))
+                                             ((and (eq? (car a) 'asked) (not final) (assoc-ref (cdr v) "quoted" #f))
+                                              (set! said (append said (list (cdr v))))
+                                              (cons 'firm (cdr a)))
+                                             (else a))))
+                                   asked))))
+            (when (pair? said) (add-message (edited-expectations-firm-message said)))
+            (cons next (pair? said)))))))
+
+(define (edit-same-row? a b)
+  (and (equal? (assoc-ref a "path" "") (assoc-ref b "path" ""))
+       (equal? (assoc-ref a "text" "") (assoc-ref b "text" ""))))
 
 ;; Source files, by extension, as the finish review reads which directories a
 ;; change touches (changed-dirs); a project may redefine the list.
@@ -1053,7 +1113,7 @@
 ;; point, with a coverage run its message asked for, took 62 of the run's 167
 ;; calls and 1.12M of its 2.38M cost-eq, in tests for branches of the change
 ;; and the model's own defensive code (ADR 32, amended 2026-10-17).
-(define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits made touched)
+(define (finish-review-points request reply new passing quiet ran ran-all checked passed shown hand-edits made touched asked-edits)
   (let* ((plan (if (and plan-language (pair? plan-spec))
                    (let ((check (plan-language-check passed)))
                      (plan-language-mark (cadr check))
@@ -1065,13 +1125,28 @@
          (asked (finish-ask part-key (sort found (lambda (a b) (> (part-size a) (part-size b))))))
          (parts (car asked))
          (stale (stale-citations (format "~a" (assoc-ref reply 'content "")) ran ran-all checked))
-         (removed (if (and quiet (host-primitive? "change-removals"))
+         ;; The rows the question at the edit named and the answer did not
+         ;; support, still changed: the review's first point. They are looked
+         ;; for even when the latest run failed, since the question was asked.
+         (open-edits (map cdr (filter (lambda (a) (not (eq? (car a) 'ok))) asked-edits)))
+         (removed (if (and (or quiet (pair? open-edits)) (host-primitive? "change-removals"))
                       (guard (e (else (log-note (string-append "change-removals failed: " (format "~a" (assoc-ref e 'message ""))))
                                       '()))
                         (change-removals request))
                       '()))
-         (defs (assoc-ref removed "definitions" '()))
-         (lines (assoc-ref removed "expectations" '()))
+         (defs (if quiet (assoc-ref removed "definitions" '()) '()))
+         (current (assoc-ref removed "expectations" '()))
+         (unsupported (filter (lambda (l) (let any ((os open-edits)) (and (pair? os) (or (edit-same-row? l (car os)) (any (cdr os))))))
+                              current))
+         ;; The others are named when the latest run passed, but for the rows
+         ;; whose answer was read and supported.
+         (lines (if quiet
+                    (filter (lambda (l)
+                              (not (or (member l unsupported)
+                                       (let any ((as asked-edits))
+                                         (and (pair? as) (or (and (eq? (car (car as)) 'ok) (edit-same-row? l (cdr (car as)))) (any (cdr as))))))))
+                            current)
+                    '()))
          (original (original-test-failures touched))
          (dropped (car (finish-ask dropped-key
                                    (if (and quiet (host-primitive? "change-dropped-conditions"))
@@ -1084,13 +1159,14 @@
                                      '()))
                        (change-claims request shown hand-edits generated-files))
                      '())))
-    (append (if (pair? new) (list (finish-new-files-message new made)) '())
+    (append (if (pair? unsupported) (list (finish-unsupported-edits-message unsupported original)) '())
+            (if (pair? new) (list (finish-new-files-message new made)) '())
             (if (pair? plan) (list (plan-language-unmet-message plan)) '())
             (if (pair? parts) (list (finish-untested-parts-message (command-line passing) parts (cdr asked))) '())
             (if (pair? stale) (list (finish-stale-citations-message stale)) '())
             (if (pair? defs) (list (finish-removed-definitions-message defs)) '())
             (if (pair? lines) (list (finish-removed-expectations-message lines)) '())
-            (if (pair? original) (list (finish-original-tests-message original)) '())
+            (if (and (pair? original) (null? unsupported)) (list (finish-original-tests-message original)) '())
             (if (pair? dropped) (list (finish-dropped-conditions-message dropped)) '())
             (if (pair? claims) (list (finish-unshown-claims-message claims)) '()))))
 
@@ -1305,7 +1381,8 @@
   ;; commands and what they printed (shown-entry); hand-edits: the files the
   ;; turn edited by hand and the commands run since (hand-edits-add).
   ;; tests-edited: the test files the latest round's calls wrote; tests-told:
-  ;; the test files asked about once already (test-edit-nudge).
+  ;; the test files asked about once already (test-edit-nudge); edit-asked:
+  ;; the rows that question named and what became of each (edit-answers).
   ;; validate-made: the untracked files the turn's validate runs and tools
   ;; left (validate-settle), validate-print the repository as the latest
   ;; validate run left it, tool-before the status before the latest round
@@ -1322,7 +1399,7 @@
   ;; of the change out (shrinking-edit?), which makes the next failing run a
   ;; revert experiment, no sign that tests do not run.
   (let ((before (git-state)) (passing #f) (passing-all '()) (ran '()) (ran-all '()) (base-ran '()) (started-ids '()) (started-calls '())
-        (passed '()) (review-made #f) (shown '()) (hand-edits '()) (tests-edited '()) (tests-told '())
+        (passed '()) (review-made #f) (shown '()) (hand-edits '()) (tests-edited '()) (tests-told '()) (edit-asked '())
         (validate-made '()) (validate-print #f) (tool-before #f) (exited #f)
         (base-fails '()) (last-fails '()) (hinted '()) (sizes '()) (shrank #f))
     ;; written: the repository paths the file tools changed, for git to
@@ -1491,11 +1568,19 @@
                            (reading (reading-rounds calls reading))
                            (outcome (keep-passed outcome before edited)))
                        (when stuck (add-message (finish-unrunnable-message failed)))
-                       (set! tests-told (append (test-edit-nudge request tests-edited tests-told) tests-told))
+                       ;; What the reply says to the question asked at the end
+                       ;; of an earlier round is read before a new one is asked.
+                       (set! edit-asked (car (edit-answers request (format "~a" (assoc-ref reply 'content "")) edit-asked #f)))
+                       (let ((asked (test-edit-nudge request tests-edited tests-told)))
+                         (set! tests-told (append (car asked) tests-told))
+                         (set! edit-asked (append edit-asked (map (lambda (l) (cons 'asked l)) (cdr asked)))))
                        (set! tests-edited '())
                        (loop (ask-model) edited tested failed (or offered stuck) reminders scripts written excused
                              reading outcome told unchanged-told)))))
-            (let* ((now (and before (git-state)))
+            (let* (;; The answer that ends the turn is read too, for the rows it
+                   ;; supports; the rows it does not are the finish review's.
+                   (read (begin (set! edit-asked (car (edit-answers request (format "~a" (assoc-ref reply 'content "")) edit-asked #t))) #t))
+                   (now (and before (git-state)))
                    (outcome (if (and (equal? outcome 'failed) (failures-known? last-fails base-fails request written))
                                 'compared
                                 outcome))
@@ -1546,7 +1631,8 @@
                                     (append ran base-ran) ran-all
                                     (or (and passing (whole-check? passing)) (whole-check-passed? passed))
                                     passed shown hand-edits validate-made
-                                    (append written (map git-state-path new-lines)))))
+                                    (append written (map git-state-path new-lines))
+                                    edit-asked)))
                        (and (pair? points)
                             (begin (add-message (finish-review-message points))
                                    (finish-review-counted!)
