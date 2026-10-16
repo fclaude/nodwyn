@@ -9,6 +9,7 @@ import "github.com/fclaude/nodwyn/internal/log"
 // follow the same rules as Build. ok is false when the turn has no reply
 // left in view.
 func LastReply(events []log.Event) (reply log.LLMResp, ok bool) {
+	events = WithoutHandovers(events)
 	var replies []log.LLMResp
 	var frames []int // where each open narrowed context starts in replies
 	for _, ev := range events {
@@ -34,4 +35,40 @@ func LastReply(events []log.Event) (reply log.LLMResp, ok bool) {
 		return log.LLMResp{}, false
 	}
 	return replies[len(replies)-1], true
+}
+
+// WithoutHandovers is events without the exchanges that wrote a scheduled
+// task's handover notes: the ask for the note and the note, between a
+// context.handover's From and Through. The note is for the next scheduled
+// run, which starts from it; the conversation goes on as if it was never
+// asked, and its last answer is the agent's, not the note.
+func WithoutHandovers(events []log.Event) []log.Event {
+	type span struct{ from, through uint64 }
+	var spans []span
+	for _, ev := range events {
+		if ev.Kind != log.KindContextHandover {
+			continue
+		}
+		var p log.ContextHandover
+		if ev.Decode(&p) == nil && p.From > 0 && p.From <= p.Through {
+			spans = append(spans, span{p.From, p.Through})
+		}
+	}
+	if len(spans) == 0 {
+		return events
+	}
+	out := make([]log.Event, 0, len(events))
+	for _, ev := range events {
+		in := false
+		for _, s := range spans {
+			if ev.Seq >= s.from && ev.Seq <= s.through {
+				in = true
+				break
+			}
+		}
+		if !in {
+			out = append(out, ev)
+		}
+	}
+	return out
 }

@@ -1641,6 +1641,10 @@
     },
     "log.ContextHandover": {
       "properties": {
+        "from": {
+          "minimum": 0,
+          "type": "integer"
+        },
         "text": {
           "type": "string"
         },

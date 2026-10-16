@@ -162,6 +162,7 @@ func (s *Session) prepareHandover(ctx context.Context) {
 	if high <= 0 || size <= high/4 {
 		return
 	}
+	from := history[len(history)-1].Seq + 1
 	text, err := s.loop.Handover(ctx, "Keep what the next scheduled run needs for this request: "+def.Message)
 	if err != nil {
 		_, _ = s.Record(log.KindNote, log.Note{Text: "Could not prepare the next scheduled handover: " + err.Error()})
@@ -172,5 +173,5 @@ func (s *Session) prepareHandover(ctx context.Context) {
 	}
 	history = s.EventsSoFar()
 	through := history[len(history)-1].Seq
-	_, _ = s.Record(log.KindContextHandover, log.ContextHandover{Text: text, Through: through})
+	_, _ = s.Record(log.KindContextHandover, log.ContextHandover{Text: text, From: from, Through: through})
 }

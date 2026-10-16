@@ -1152,7 +1152,7 @@ Log payloads (see the generated schema for full shapes):
   Manual runs have a zero through and do not move the automatic cursor.
 - `schedule.skip`: due, through, started, missed, reason. A refused manual
   dispatch has zero through and leaves automatic progress alone.
-- `context.handover`: text, through (last event included in preparation).
+- `context.handover`: text, from and through (the first and last events of the exchange that wrote the note, which later windows and the last answer leave out; an older log has no from).
   A successful turn with over a quarter-window since the last note and no
   pending answer prepares it with compact-note under the same budget. The
   next scheduled turn applies a lasting context.narrow and harness message.

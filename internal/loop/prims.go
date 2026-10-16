@@ -1042,7 +1042,7 @@ func (l *Loop) requestContext(c *scheme.Call) (scheme.Value, error) {
 	if c.Origin == scheme.OriginModel {
 		return scheme.Void, errors.New("not callable from a model-originated evaluation")
 	}
-	events := l.host.EventsSoFar()
+	events := window.WithoutHandovers(l.host.EventsSoFar())
 	last := -1
 	for i, ev := range events {
 		if ev.Kind == log.KindUserMsg {

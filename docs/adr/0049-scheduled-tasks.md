@@ -374,3 +374,18 @@ with an approved write, removal and phone layout.
 
 No login item is built. The model proposing schedules, cron expressions and
 log splitting remain outside the proposal.
+
+## Amendment 2026-10-16: the handover's exchange stays out of the conversation
+
+The handover note was written by asking the model in the live conversation:
+the ask (compaction's summary prompt) and the note were recorded as a
+harness message and an ordinary reply, so a person's follow-up in the
+scheduled task's chat sent both to the model, and the note became the
+agent's last answer (`request-context`, `FinalReply`), which the plan gate
+then told its explorer and planner. `context.handover` now records `from`,
+the first event of that exchange, beside `through`, and
+`window.WithoutHandovers` leaves the events between them out of later
+windows, `request-context` and the last answer. The next run still starts
+from the note. The console still shows the note as it is written, after the
+run's answer; that is not changed here. The regression is in
+`TestScheduledHandoverWaitsForNextRun`.

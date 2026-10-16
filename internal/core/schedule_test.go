@@ -106,6 +106,10 @@ func TestScheduledHandoverWaitsForNextRun(t *testing.T) {
 			t.Fatal("handover applied before next run")
 		}
 	}
+	// The note is for the next run: the agent's last answer is still its own.
+	if reply, ok := s.FinalReply(); !ok || reply.Content != "first answer" {
+		t.Fatalf("the last answer after the handover: %q", reply.Content)
+	}
 	if err = s.Send("What was that evidence?"); err != nil {
 		t.Fatal(err)
 	}
@@ -120,6 +124,10 @@ func TestScheduledHandoverWaitsForNextRun(t *testing.T) {
 	}
 	if !strings.Contains(string(srv.Requests[2].Raw), "Earlier release evidence") {
 		t.Fatal("human follow-up lost the whole conversation")
+	}
+	// The ask for the note and the note stay out of the conversation.
+	if follow := string(srv.Requests[2].Raw); strings.Contains(follow, "Carry the release number 42") || strings.Contains(follow, "handover note") {
+		t.Fatal("the human follow-up carries the handover's exchange")
 	}
 	last := string(srv.Requests[3].Raw)
 	if strings.Contains(last, "Earlier release evidence") || !strings.Contains(last, "Carry the release number 42") {

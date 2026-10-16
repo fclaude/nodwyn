@@ -188,6 +188,7 @@ const Keep = 4
 // fixedTokens is the estimated size of everything else that rides along
 // (the tool schemas).
 func Build(events []log.Event, system string, fixedTokens int, pol Policy) Result {
+	events = WithoutHandovers(events)
 	return buildV1(summaryWindow(events), system, fixedTokens, pol)
 }
 

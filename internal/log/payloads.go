@@ -726,8 +726,12 @@ type ScheduleSkip struct {
 }
 
 // ContextHandover is a note prepared for the next scheduled message; recording
-// it does not narrow the current conversation.
+// it does not narrow the current conversation. From and Through bound the
+// exchange that wrote it, the ask for the note and the note, which later
+// windows and the last answer leave out (window.WithoutHandovers); an older
+// log's handover has no From, and its exchange stays.
 type ContextHandover struct {
 	Text    string `json:"text"`
+	From    uint64 `json:"from,omitempty"`
 	Through uint64 `json:"through"`
 }
