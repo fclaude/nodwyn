@@ -129,9 +129,23 @@ func diffOps(a, b []string) ([]op, bool) {
 	for suffix < len(a)-prefix && suffix < len(b)-prefix && a[len(a)-1-suffix] == b[len(b)-1-suffix] {
 		suffix++
 	}
-	middle, ok := myers(a[prefix:len(a)-suffix], b[prefix:len(b)-suffix])
-	if !ok {
-		return nil, false
+	midA, midB := a[prefix:len(a)-suffix], b[prefix:len(b)-suffix]
+	var middle []op
+	switch {
+	case len(midA) == 0 || len(midB) == 0:
+		// Only added or only removed lines (a new file, a deleted one) need no
+		// search, however many there are.
+		for i, line := range midA {
+			middle = append(middle, op{'-', line, i, 0})
+		}
+		for i, line := range midB {
+			middle = append(middle, op{'+', line, 0, i})
+		}
+	default:
+		var ok bool
+		if middle, ok = myers(midA, midB); !ok {
+			return nil, false
+		}
 	}
 	ops := make([]op, 0, prefix+len(middle)+suffix)
 	for i := 0; i < prefix; i++ {

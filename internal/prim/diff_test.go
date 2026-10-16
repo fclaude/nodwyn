@@ -105,3 +105,18 @@ func TestUnifiedFindsASmallEditInALongFileAndABigOneInAShortFile(t *testing.T) {
 		t.Fatalf("a 2,000-edit rewrite: %.200q", got)
 	}
 }
+
+// A new file or a deleted one is only added or only removed lines: it is shown
+// whole whatever the edit limit, which bounds a search, not a listing.
+func TestUnifiedOfANewOrADeletedFileIsShownWhole(t *testing.T) {
+	text := strings.Repeat("a line\n", 3000)
+	if got := Unified("f", "", text, 3); strings.Contains(got, "too large") || strings.Count(got, "\n+a line") != 3000 || !strings.Contains(got, "@@ -1,0 +1,3000 @@") {
+		t.Fatalf("a new file of 3,000 lines: %.120q", got)
+	}
+	if got := Unified("f", text, "", 3); strings.Contains(got, "too large") || strings.Count(got, "\n-a line") != 3000 {
+		t.Fatalf("a deleted file of 3,000 lines: %.120q", got)
+	}
+	if got := Unified("f", "keep\n"+text, "keep\n", 1); strings.Contains(got, "too large") || strings.Count(got, "\n-a line") != 3000 {
+		t.Fatalf("3,000 lines removed after a kept one: %.120q", got)
+	}
+}
