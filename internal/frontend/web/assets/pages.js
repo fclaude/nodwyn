@@ -495,7 +495,8 @@ async function serverDetail(server, ctx, redraw, runtime) {
     e.target.disabled = true;
     e.target.textContent = "Pulling…";
     try {
-      await conn.call("mcp.pull", { name: server.name });
+      // The daemon gives a pull thirty minutes, and the bridge a little more.
+      await conn.call("mcp.pull", { name: server.name }, 32 * 60 * 1000);
       inspections.delete(server.name);
       toast("Pulled. Review its tools before nodwyn offers any.");
       redraw();

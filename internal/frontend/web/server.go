@@ -485,6 +485,16 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 			}
 		case strings.HasPrefix(req.Method, "devices."):
 			result, callErr = b.deviceMethod(req)
+		case slowCalls[req.Method] > 0:
+			// Answered when it is done; the console's next requests are
+			// read meanwhile.
+			go func(req request) {
+				result, err := b.slowCall(ctx, via, req)
+				if write(ctx, conn, reply(req.ID, result, err)) != nil {
+					cancel()
+				}
+			}(req)
+			continue
 		default:
 			callCtx, stop := context.WithTimeout(ctx, 30*time.Second)
 			if req.Method == "hello" {
@@ -505,16 +515,45 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 			}
 			stop()
 		}
-		reply := map[string]any{"jsonrpc": "2.0", "id": req.ID}
-		if callErr != nil {
-			reply["error"] = map[string]any{"code": -32000, "message": callErr.Error()}
-		} else {
-			reply["result"] = result
-		}
-		if err := write(ctx, conn, reply); err != nil {
+		if err := write(ctx, conn, reply(req.ID, result, callErr)); err != nil {
 			return
 		}
 	}
+}
+
+// reply is a relayed call's answer.
+func reply(id uint64, result json.RawMessage, err error) map[string]any {
+	r := map[string]any{"jsonrpc": "2.0", "id": id}
+	if err != nil {
+		r["error"] = map[string]any{"code": -32000, "message": err.Error()}
+	} else {
+		r["result"] = result
+	}
+	return r
+}
+
+// slowCalls are the methods that may take longer than a relayed call's 30
+// seconds, each with a little more than the daemon allows it (an image pull
+// thirty minutes, a model's test a minute). The daemon answers a connection's
+// requests one at a time, so each runs on a connection of its own: on the
+// console's, a pull would hold up an abort or an answer for minutes.
+var slowCalls = map[string]time.Duration{
+	"mcp.pull":    31 * time.Minute,
+	"models.test": 65 * time.Second,
+}
+
+// slowCall relays one of slowCalls over a daemon connection of its own.
+func (b *bridge) slowCall(ctx context.Context, via string, req request) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(ctx, slowCalls[req.Method])
+	defer cancel()
+	client, err := rpc.DialAs(ctx, b.socket, via)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	var result json.RawMessage
+	err = client.Call(ctx, req.Method, req.Params, &result)
+	return result, err
 }
 func write(ctx context.Context, c *websocket.Conn, v any) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

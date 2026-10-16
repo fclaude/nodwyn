@@ -661,6 +661,13 @@ reconnect; stale/replayed answers are rejected by core. Resolution in another
 client clears the panel. Browser replies retain the Unix peer identity of the
 bridge in audit receipts; individual tabs are not separate security principals.
 
+The bridge gives each relayed call 30 seconds. The daemon answers one request
+at a time on a connection, so the calls that may take longer, a model's
+**Test** (a minute) and an MCP image's pull (thirty minutes), go over a
+connection of their own with a little more time than the daemon gives them,
+and the console's other requests, an abort or an answer, are not held up
+behind them.
+
 Closing a browser tab or stopping `nodwyn ui` does not close sessions in the separately running daemon. Stopping the daemon still closes its
 sessions normally. The session list's titles and history metadata are snapshots, read
 again when this console starts, resumes or closes a task, or another client opens one;

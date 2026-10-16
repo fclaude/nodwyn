@@ -787,3 +787,69 @@ func TestSocketSaysTheDaemonIsNotRunning(t *testing.T) {
 		t.Fatalf("closed with %v (%v)", status, err)
 	}
 }
+
+// A slow call (a model's test, an image pull) does not hold up the
+// console's next requests: the daemon answers a connection one request at
+// a time, so the bridge relays it on a connection of its own. A task's
+// abort sent while a pull ran used to wait for the pull.
+func TestASlowCallHoldsUpNothingElse(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	root, err := os.MkdirTemp("/tmp", "nodwyn-web-slow-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	socket := filepath.Join(root, "run", "sock")
+	listener, err := rpc.Listen(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+		http.NotFound(w, r)
+	}))
+	defer slow.Close()
+	cfg := config.Default()
+	cfg.Control.URL, cfg.Control.Model = slow.URL, "test-model"
+	paths := config.PathsUnder(filepath.Join(root, "config"), filepath.Join(root, "data"))
+	done := make(chan error, 1)
+	go func() {
+		done <- rpc.Serve(ctx, listener, core.Options{Config: cfg, Paths: paths, Provider: llm.NewOllama(slow.URL)})
+	}()
+	// The model is let go first: the daemon waits for its test to end.
+	defer func() { close(release); cancel(); <-done }()
+	b := &bridge{ctx: ctx, socket: socket, code: testCode, session: testSession}
+	server := httptest.NewUnstartedServer(b)
+	b.at(server.Listener.Addr().String())
+	server.Start()
+	defer server.Close()
+	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	for id, method := range []string{"models.test", "session.list"} {
+		if err := wsjson.Write(ctx, conn, map[string]any{"jsonrpc": "2.0", "id": id + 1, "method": method, "params": map[string]any{}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for {
+		var frame map[string]json.RawMessage
+		if err := wsjson.Read(ctx, conn, &frame); err != nil {
+			t.Fatalf("no answer to session.list while the test runs: %v", err)
+		}
+		if string(frame["method"]) == `"session.event"` {
+			continue
+		}
+		if string(frame["id"]) != "2" {
+			t.Fatalf("the slow call held up the next: %s", frame["id"])
+		}
+		return
+	}
+}
