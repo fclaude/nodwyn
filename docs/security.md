@@ -89,6 +89,12 @@ behaviour of an approved process. Builds and tests execute project code with the
 user's operating-system privileges, can write files and can use the network.
 The file-tool denylist does not mediate those processes' file access.
 
+The denylist judges the file a path reaches, not only the name a call uses: a
+link is matched by its own name and by the name of the file it points at, so
+`notes.png` linked to `.env` is refused as `.env` is, in every file tool and in
+the images `doc-export` embeds. Names are matched ignoring case, since macOS's
+file system opens `.env` for `.ENV`.
+
 ## Credentials and HTTP
 
 Credential injection into a header, query or body requires HTTPS by default.

@@ -257,23 +257,20 @@ var codeExtensions = map[string]bool{
 // primitive that reaches files its arguments do not name (the images a
 // document refers to) asks it about each one.
 func (d PathDenylist) Denies(raw string) string {
-	base := filepath.Base(raw)
-	if strings.HasPrefix(base, ".") || !codeExtensions[strings.ToLower(filepath.Ext(base))] {
-		for _, g := range d.Globs {
-			if ok, _ := filepath.Match(g, base); ok {
-				return "path " + raw + " matches the credential-file denylist (" + g + ")"
-			}
-		}
-	}
 	// Relative paths are the repository's, as the pin reads them, and
-	// links are followed: neither may reach a denied directory by
-	// another name.
+	// links are followed: a file may not be reached by another name, so a
+	// link called notes.png that points at .env is .env.
 	abs := raw
 	if !filepath.IsAbs(abs) && d.Root != "" {
 		abs = filepath.Join(d.Root, abs)
 	}
 	abs, _ = filepath.Abs(abs)
 	real := resolveExisting(abs)
+	for _, name := range []string{filepath.Base(raw), filepath.Base(real)} {
+		if g := d.credentialName(name); g != "" {
+			return "path " + raw + " matches the credential-file denylist (" + g + ")"
+		}
+	}
 	for _, ex := range d.Except {
 		if ex != "" && within(abs, ex) && within(real, resolveExisting(ex)) {
 			return ""
@@ -283,6 +280,21 @@ func (d PathDenylist) Denies(raw string) string {
 		rdir := resolveExisting(dir)
 		if within(abs, dir) || within(real, rdir) {
 			return "path " + raw + " is under the protected directory " + dir
+		}
+	}
+	return ""
+}
+
+// credentialName returns the glob a file name matches, or "". Case is
+// ignored, as macOS's file system ignores it (IsProtected): .ENV opens .env.
+func (d PathDenylist) credentialName(base string) string {
+	base = strings.ToLower(base)
+	if !strings.HasPrefix(base, ".") && codeExtensions[filepath.Ext(base)] {
+		return ""
+	}
+	for _, g := range d.Globs {
+		if ok, _ := filepath.Match(strings.ToLower(g), base); ok {
+			return g
 		}
 	}
 	return ""

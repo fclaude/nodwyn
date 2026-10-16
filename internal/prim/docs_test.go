@@ -112,15 +112,20 @@ func TestDocExportRunsPandocWithFixedArguments(t *testing.T) {
 	os.WriteFile(filepath.Join(h.root, "fig.png"), []byte("\x89PNG"), 0o644)
 	os.MkdirAll(filepath.Join(h.root, "keys"), 0o755)
 	os.WriteFile(filepath.Join(h.root, "keys", "id_rsa.png"), []byte("key"), 0o644)
+	// A link named like an image is the file it points at.
+	os.WriteFile(filepath.Join(h.root, ".env"), []byte("TOKEN=link-canary\n"), 0o600)
+	if err := os.Symlink(".env", filepath.Join(h.root, "pic.png")); err != nil {
+		t.Fatal(err)
+	}
 	outside := filepath.Join(filepath.Dir(h.root), "outside.png")
 	os.WriteFile(outside, []byte("\x89PNG"), 0o644)
 	t.Cleanup(func() { os.Remove(outside) })
-	os.WriteFile(filepath.Join(pandoc.dir, "tree.json"), []byte(imageTree("fig.png", "https://example.com/x.png", "../"+filepath.Base(outside), "keys/id_rsa.png", "data:image/png;base64,AAAA", "notes.md", "missing.png")), 0o644)
+	os.WriteFile(filepath.Join(pandoc.dir, "tree.json"), []byte(imageTree("fig.png", "https://example.com/x.png", "../"+filepath.Base(outside), "keys/id_rsa.png", "pic.png", "data:image/png;base64,AAAA", "notes.md", "missing.png")), 0o644)
 	os.WriteFile(filepath.Join(h.root, "notes.docx"), []byte("old document"), 0o644)
 
 	v := h.mustEval(t, `(doc-export "notes.md" "notes.docx")`)
 	got := v.S
-	if !strings.HasPrefix(got, "wrote notes.docx (Word document, 13 B) from notes.md") || !strings.Contains(got, "5 image(s) left out") {
+	if !strings.HasPrefix(got, "wrote notes.docx (Word document, 13 B) from notes.md") || !strings.Contains(got, "6 image(s) left out") {
 		t.Fatalf("result: %q", got)
 	}
 	runs := pandoc.runs()
@@ -153,14 +158,14 @@ func TestDocExportRunsPandocWithFixedArguments(t *testing.T) {
 		}
 		kinds = append(kinds, kind)
 	}
-	wantKinds := []string{"Image:" + filepath.Join(h.root, "fig.png"), "Span", "Span", "Span", "Image:data:image/png;base64,AAAA", "Span", "Span"}
+	wantKinds := []string{"Image:" + filepath.Join(h.root, "fig.png"), "Span", "Span", "Span", "Span", "Image:data:image/png;base64,AAAA", "Span", "Span"}
 	if fmt.Sprint(kinds) != fmt.Sprint(wantKinds) {
 		t.Fatalf("vetted images:\n got %v\nwant %v", kinds, wantKinds)
 	}
 	if string(tree.Blocks[1].C) != "[0.25]" {
 		t.Fatalf("numbers changed in the tree: %s", tree.Blocks[1].C)
 	}
-	for _, why := range []string{"https://example.com/x.png (a link", "(outside the repository)", "id_rsa.png (a credential file)", "notes.md (not an image)", "missing.png (no such file)"} {
+	for _, why := range []string{"https://example.com/x.png (a link", "(outside the repository)", "id_rsa.png (a credential file)", "pic.png (a credential file)", "notes.md (not an image)", "missing.png (no such file)"} {
 		if !strings.Contains(got, why) {
 			t.Fatalf("result %q does not say %q", got, why)
 		}

@@ -380,6 +380,31 @@ func TestDenylistLeavesCodeAlone(t *testing.T) {
 	}
 }
 
+// A file is denied by what it is, not by the name a call uses: a link to a
+// credential file is that file, and on macOS's file system .ENV opens .env.
+func TestDenylistFollowsLinksAndIgnoresCase(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("TOKEN=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(".env", filepath.Join(root, "pic.png")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(".env", filepath.Join(root, "notes.md")); err != nil {
+		t.Fatal(err)
+	}
+	d := DefaultDenylist()
+	d.Root = root
+	for _, path := range []string{"pic.png", "notes.md", filepath.Join(root, "pic.png"), ".ENV", "ID_RSA", "Server.KEY"} {
+		if d.Denies(path) == "" {
+			t.Errorf("%s is not refused", path)
+		}
+	}
+	if why := d.Denies("README.md"); why != "" {
+		t.Errorf("README.md: %s", why)
+	}
+}
+
 // The session's scratch directory lives in nodwyn's data directory, which
 // the denylist protects; the scratch directory itself is usable, the rest
 // of the data directory is not, and credential-shaped names are refused in

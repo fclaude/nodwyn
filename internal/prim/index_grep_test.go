@@ -50,18 +50,17 @@ func TestIndexGrepGuardedSearch(t *testing.T) {
 	if !strings.Contains(h.logBuf.String(), `"prim":"fs-read"`) {
 		t.Fatal("nested read missing guard audit")
 	}
-	for _, src := range []string{`(index-grep ".env" "secret")`, `(index-grep "escape-link" "outside")`, `(index-grep ".." "outside")`} {
+	// A link is the file it points at: naming alias.txt is naming credentials.
+	for _, src := range []string{`(index-grep ".env" "secret")`, `(index-grep "alias.txt" "hello")`, `(index-grep "escape-link" "outside")`, `(index-grep ".." "outside")`} {
 		_, err := h.eval(t, src)
 		var denied *scheme.Denied
 		if !errors.As(err, &denied) {
 			t.Fatalf("%s: %v", src, err)
 		}
 	}
-	for _, path := range []string{"linked.txt", "alias.txt"} {
-		got = grepResult(t, h.mustEval(t, fmt.Sprintf("(index-grep %q %q)", path, "hello")))
-		if len(got.Matches) != 0 || got.Skipped != 1 {
-			t.Fatalf("symlink %s: %+v", path, got)
-		}
+	got = grepResult(t, h.mustEval(t, fmt.Sprintf("(index-grep %q %q)", "linked.txt", "hello")))
+	if len(got.Matches) != 0 || got.Skipped != 1 {
+		t.Fatalf("symlink linked.txt: %+v", got)
 	}
 	// Each query reads the current file, with no disk or cross-session cache.
 	os.WriteFile(filepath.Join(h.root, "alpha.txt"), []byte("fresh needle\n"), 0600)

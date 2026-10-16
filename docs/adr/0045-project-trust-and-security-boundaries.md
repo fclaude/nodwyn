@@ -74,3 +74,17 @@ explicitly through the Go host. All checks use fake services and credentials.
 The implementation preserves the log format, Scheme primitives, keychain file
 format and default KDF. Trust intentionally changes whether repository code and
 policy load; it is not silently granted during migration.
+
+## Amendment 2026-10-16: the denylist judges the file a path reaches
+
+`PathDenylist` matched its credential-file globs against the name a call
+wrote and followed links only for the protected directories. A link named
+`pic.png` or `notes.md` that points at `.env` passed it: `fs-read` read the
+key, and `doc-export` copied it into a document as an image (reproduced). It
+also matched case-sensitively, while macOS's file system opens `.env` for
+`.ENV` and `IsProtected` already ignores case. The globs are now matched,
+ignoring case, against both the written name and the name of the file the
+path resolves to. Naming a link to a credential file in `index-grep` is now a
+refusal, as naming the file is. The regressions are
+`TestDenylistFollowsLinksAndIgnoresCase` and the symlinked image in
+`TestDocExportRunsPandocWithFixedArguments`.
