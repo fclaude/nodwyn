@@ -81,7 +81,7 @@ let limitsOn = true;
 // helpersBox is the control for it: a fold that says how many are chosen, and
 // lists the other models with the labels each carries. The model the task
 // talks to is not offered, since it is the one delegating.
-function helpersBox(desk, driving) {
+function helpersBox(desk, driving, changed) {
   // The default is listed as "control", which in a task names the model the
   // task talks to, so it is not offered: its own entry's name is not here.
   const others = choicesOf(desk).filter((c) => c.name !== driving && c.name !== "control");
@@ -102,7 +102,7 @@ function helpersBox(desk, driving) {
         h(
           "label",
           { class: "helper", dataset: { model: c.name } },
-          h("input", { type: "checkbox", checked: pickedHelpers.has(c.name), onchange: (event) => { if (event.target.checked) pickedHelpers.add(c.name); else pickedHelpers.delete(c.name); say(); } }),
+          h("input", { type: "checkbox", checked: pickedHelpers.has(c.name), onchange: (event) => { if (event.target.checked) pickedHelpers.add(c.name); else pickedHelpers.delete(c.name); say(); changed(); } }),
           h("span", {}, c.model),
           (c.labels || []).map((l) => h("span", { class: "badge plain" }, l)),
         ),
@@ -178,7 +178,7 @@ export function renderHome(root, ctx) {
   const judgeChoice = () => (pickedJudge !== null ? pickedJudge : defaultJudge(desk));
 
   // Needs you: each waiting task says what it asks.
-  const needs = h("section", { class: "home-section", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
+  const needs = h("section", { class: "home-section home-needs", "aria-labelledby": "needs" }, h("h2", { class: "eyebrow", id: "needs" }, "Needs you"));
   const waiting = desk.needsYou();
   if (!waiting.length) needs.append(h("p", { class: "empty-note" }, "Nothing is waiting for you."));
   for (const item of waiting) {
@@ -308,19 +308,34 @@ export function renderHome(root, ctx) {
     placeholder: "Fix a failing test, tidy a folder, answer an email, reconcile a spreadsheet…",
     oninput: () => {
       draft = task.value;
-      submit.disabled = !ready();
+      sync();
     },
+    // Enter starts the task and Shift+Enter breaks the line, as in a task's
+    // reply box; Cmd/Ctrl+Enter still starts it.
     onkeydown: (event) => {
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.isComposing) {
         event.preventDefault();
         form.requestSubmit();
       }
     },
   });
   task.value = draft;
-  const canRun = () => !starting && canStart && conn.live && !desk.keysLocked && !!chosen && !(canChoose && blocked(desk, selection()));
-  const ready = () => canRun() && !!task.value.trim();
+  // unready says why a task cannot be started or scheduled yet, apart from
+  // its message, or is "" when it can: a button that does nothing and says
+  // nothing reads as a broken one.
+  const unready = () =>
+    starting ? "A task is starting." : !conn.live ? "Disconnected." : desk.keysLocked ? "Unlock your keys first." : !chosen ? "Choose a folder first." : canChoose && blocked(desk, selection()) ? "The chosen model cannot be used yet." : "";
+  const ready = () => canStart && !unready() && !!task.value.trim();
   const submit = h("button", { type: "submit", class: "send-round", "aria-label": "Start the task", disabled: true }, icon("up", 18, 2));
+  // sync draws what depends on whether a task can start now.
+  const sync = () => {
+    submit.disabled = !ready();
+    if (scheduleButton) {
+      const why = unready();
+      scheduleButton.disabled = !!why;
+      scheduleButton.title = why || "Run this task later, or on a repeat";
+    }
+  };
   files ||= new Attachments();
   const attach = files.button("Attach");
   // A task in a worktree works on its own checkout and branch, so several
@@ -329,12 +344,15 @@ export function renderHome(root, ctx) {
   // that lets it through, shows the choice; only known git workspaces default
   // to it because other folders cannot be opened as worktrees.
   const worktreeDefault = () => !!desk.workspace(chosen)?.git;
-  const worktree = () => conn.has("worktree.open") && (worktreeChoices.has(chosen) ? worktreeChoices.get(chosen) : worktreeDefault());
+  // A named workspace says whether it is a git repository; a folder a task
+  // merely used does not, so it is left to the daemon, which refuses.
+  const notGit = !!desk.workspace(chosen) && !desk.workspace(chosen).git;
+  const worktree = () => conn.has("worktree.open") && !notGit && (worktreeChoices.has(chosen) ? worktreeChoices.get(chosen) : worktreeDefault());
   const worktreeBox = conn.has("worktree.open") && chosen
     ? h(
         "label",
-        { class: "worktree-toggle", title: "Start this task in a new git worktree of the folder, on a branch of its own: it does not touch the files you or other tasks are working on. Its changes stay on that branch until it is merged." },
-        h("input", { type: "checkbox", checked: worktreeChoices.has(chosen) ? worktreeChoices.get(chosen) : worktreeDefault(), onchange: (event) => worktreeChoices.set(chosen, event.target.checked) }),
+        { class: "worktree-toggle", title: notGit ? "Only a git repository can have worktrees, and this folder is not one." : "Start this task in a new git worktree of the folder, on a branch of its own: it does not touch the files you or other tasks are working on. Its changes stay on that branch until it is merged." },
+        h("input", { type: "checkbox", disabled: notGit, checked: worktree(), onchange: (event) => { worktreeChoices.set(chosen, event.target.checked); count(); } }),
         h("span", {}, "In a worktree"),
       )
     : null;
@@ -352,25 +370,43 @@ export function renderHome(root, ctx) {
           onchange: (event) => {
             limitsOn = event.target.checked;
             event.target.parentElement.classList.toggle("on", !limitsOn);
+            count();
           },
         }),
         h("span", {}, "Limits"),
       )
     : null;
+  // The rare choices sit behind one control, which says how many differ from
+  // the defaults, so the bar holds what every task needs: the files, the
+  // model and Send.
+  const scheduleButton = conn.has("schedule.set")
+    ? h("button", { type: "button", class: "btn small", id: "new-task-schedule", onclick: () => {
+        options.open = false;
+        newSchedule(conn, task.value, (d) => startTask(new Event("submit", { cancelable: true }), d));
+      } }, "Schedule…")
+    : null;
+  const optionsCount = h("span", { class: "count", hidden: true });
+  const count = () => {
+    const changed = (worktreeBox && !notGit && worktree() !== worktreeDefault() ? 1 : 0) + (limitsBox && !limitsOn ? 1 : 0) + (pickedHelpers.size ? 1 : 0);
+    optionsCount.textContent = String(changed);
+    optionsCount.hidden = !changed;
+  };
+  const option = (control, hint) => (control ? h("div", { class: "option" }, control, h("p", { class: "hint" }, hint)) : null);
   // The model and effort the task starts on. What is shown is what is sent.
   const picker = new ModelPicker("new-task-model");
   // The helpers on offer follow the model chosen, which is not one of them.
   const helpersSlot = h("span", { class: "helpers-slot" });
   const drawPicker = () => {
     const sel = selection();
-    if (canDelegate) helpersSlot.replaceChildren(...[helpersBox(desk, sel.name)].filter(Boolean));
+    if (canDelegate) helpersSlot.replaceChildren(...[helpersBox(desk, sel.name, count)].filter(Boolean));
+    count();
     picker.update({
       desk,
       selection: sel,
       onPick: (next, reset) => {
         pick(next, desk);
         drawPicker();
-        submit.disabled = !ready();
+        sync();
         if (reset) toast("That model takes other efforts: its own default is chosen.");
       },
       ...(canJudge
@@ -384,6 +420,21 @@ export function renderHome(root, ctx) {
         : {}),
     });
   };
+  const options = h(
+    "details",
+    { class: "options", id: "new-task-options", onkeydown: (event) => { if (event.key === "Escape") options.open = false; } },
+    h("summary", { class: "btn", title: "Worktree, limits, helpers and scheduling" }, "Options", optionsCount),
+    h(
+      "div",
+      { class: "options-pop stack-md" },
+      option(worktreeBox, notGit ? "Only a git repository can have worktrees, and this folder is not one." : "Work on a branch of its own, so nothing you or other tasks are editing is touched."),
+      option(limitsBox, "Stop each turn at Settings' limits on tool calls, tokens, actions and time."),
+      helpersSlot,
+      option(scheduleButton, "Run this task later, or on a repeat, instead of now."),
+    ),
+  );
+  options.hidden = !worktreeBox && !limitsBox && !scheduleButton && !canDelegate;
+  count();
   // startTask starts the task and sends its message, or, given a schedule,
   // schedules it instead. The schedule is an argument, not page state: one
   // whose start failed stayed set, and the next plain Send scheduled.
@@ -394,8 +445,9 @@ export function renderHome(root, ctx) {
       class: "ask",
       onsubmit: startTask = async (event, scheduling = null) => {
         event.preventDefault();
-        // A schedule brings its own message, so the composer may be empty.
-        if (scheduling ? !canRun() : !ready()) return;
+        // A schedule carries its own message, written in its dialog.
+        if (scheduling ? !canStart || unready() : !ready()) return;
+        const text = scheduling ? scheduling.message : task.value;
         starting = true;
         submit.disabled = true;
         let opened = "",
@@ -424,7 +476,7 @@ export function renderHome(root, ctx) {
           if (files.files.length) await files.upload(info.id);
           sending = true;
           if (scheduling) await conn.call("schedule.set", { id: info.id, ...scheduling });
-          else await conn.call("session.send", { id: info.id, text: task.value });
+          else await conn.call("session.send", { id: info.id, text });
           draft = "";
           pick(null, desk);
           pickJudge(null, desk);
@@ -438,16 +490,22 @@ export function renderHome(root, ctx) {
             // confirm declined) before the message went: the message waits
             // in the task's reply box, to send there with or without the
             // files, and Home starts afresh rather than asking again.
-            keepDraft(opened, task.value);
+            keepDraft(opened, text);
             draft = "";
             files.clear();
             toastError(`${error.message} The message was not sent: it waits in the task's reply box.`);
             navigate(`#/task/${opened}`);
-          } else toastError(`${error.message} Nothing was retried; check the task list before starting again.`);
+          } else {
+            // The daemon's refusal before any task opened says so plainly;
+            // a lost connection or a timeout may have started one, so those
+            // still send the person to the task list.
+            const refused = !opened && !/retried|timed out|Disconnected|Connection lost|Reconnecting/i.test(error.message);
+            toastError(refused ? `The task did not start: ${error.message.replace(/^[a-z]+(\.[a-z]+)+: /, "")}` : `${error.message} Nothing was retried; check the task list before starting again.`);
+          }
           desk.reload();
         } finally {
           starting = false;
-          submit.disabled = !ready();
+          sync();
         }
       },
     },
@@ -457,22 +515,14 @@ export function renderHome(root, ctx) {
     h(
       "div",
       { class: "ask-bar" },
-      h("button", { type: "button", class: "btn", title: chosen || "Choose a folder", onclick: () => document.getElementById("work-in")?.querySelector("button")?.focus() }, icon("folder", 16), h("strong", { style: "font-weight:500" }, chosen ? desk.folderName(chosen) : "Choose a folder")),
       attach,
-      worktreeBox,
-      limitsBox,
+      options,
       canChoose ? picker.el : h("span", { class: "where" }, where),
-      helpersSlot,
-      conn.has("schedule.set") ? h("button", { type: "button", class: "icon-btn", "aria-label": "Schedule", title: "Schedule", onclick: () => {
-        // Ready is a folder and a model that can be used: the message is asked
-        // for in the dialog, so the composer may still be empty.
-        if (!canRun()) return toast("Choose a folder and a model that can be used first.");
-        newSchedule(conn, (d) => startTask(new Event("submit", { cancelable: true }), d), task.value);
-      } }, icon("clock", 17)) : null,
       submit,
     ),
+    h("p", { class: "hint ask-hint" }, "Enter starts the task · Shift+Enter for a new line"),
   );
-  submit.disabled = !ready();
+  sync();
 
   const chips = h("div", { class: "work-in", id: "work-in" }, h("span", {}, "Work in"));
   const listed = [chosen, ...folders.filter((f) => f !== chosen)].filter(Boolean);
@@ -583,7 +633,7 @@ export function renderHome(root, ctx) {
       );
 
   // The composer on the page is this one now.
-  files.onChange = () => (submit.disabled = !ready());
+  files.onChange = sync;
   // Setting a model up is typed into, and any change on the desk draws the
   // page again: the field being typed in keeps the focus, as in Settings.
   const focused = settingUp && root.contains(document.activeElement) && document.activeElement.id ? document.activeElement : null;
@@ -608,7 +658,7 @@ export function renderHome(root, ctx) {
     // Redrawn when the desk changes under a page being typed into.
     refresh: () => {
       if (canChoose) drawPicker();
-      submit.disabled = !ready();
+      sync();
     },
   };
   return current;

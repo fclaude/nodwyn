@@ -2,7 +2,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, requests, until, ready, desk, check } = require("../lib");
+const { out, requests, openOptions, until, ready, desk, check } = require("../lib");
 check(async () => {
   const { url, repo, page } = await desk({ timezoneId: "Pacific/Honolulu" });
   const sent = requests(page);
@@ -16,19 +16,21 @@ check(async () => {
   await page.click(".save-bar button:has-text('Save')");
   await until('write approval setting saved', async () => sent.of('settings.write').length === 1 && await page.$eval('.save-bar', (el) => el.hidden));
   await page.evaluate(() => location.hash = '#/');
-  // Nothing is scheduled yet, and Home says so. The clock opens the dialog
-  // with the composer empty: the message is a field there, and required.
+  // Nothing is scheduled yet, and Home says so. Scheduling is one of Home's
+  // Options, and opens the dialog with the composer empty: the message is a
+  // field there, and required.
   await page.waitForSelector('#task');
   assert.ok((await page.locator('[aria-label="Scheduled tasks"]').textContent()).includes('Nothing scheduled.'), 'Home does not say that nothing is scheduled');
-  assert.strictEqual(await page.locator('button[aria-label="Schedule"] svg').count(), 1, 'the clock is not an icon like the other controls');
   assert.strictEqual(await page.inputValue('#task'), '');
-  await page.click('button[aria-label="Schedule"]', { timeout: 5000 });
+  await openOptions(page);
+  await page.click('#new-task-schedule', { timeout: 5000 });
   assert.strictEqual(await page.getAttribute('#schedule-message', 'required'), '', 'the schedule dialog does not require its message');
   assert.strictEqual(await page.inputValue('#schedule-message'), '');
   await page.click('button[aria-label="Close schedule"]');
   // What was typed in the composer is where the message starts.
   await page.fill('#task', 'Write scheduled');
-  await page.click('button[aria-label="Schedule"]', { timeout: 5000 });
+  await openOptions(page);
+  await page.click('#new-task-schedule', { timeout: 5000 });
   assert.strictEqual(await page.inputValue('#schedule-message'), 'Write scheduled', 'the composer text was not carried to the dialog');
   await page.selectOption('#schedule-repeat', 'weekly');
   await page.fill('#schedule-at', '2099-10-16T09:30');

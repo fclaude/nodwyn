@@ -196,6 +196,12 @@ async function shows(page, selector, ...texts) {
   for (const want of texts) if (!text.includes(want)) throw new Error(`${selector} does not show ${JSON.stringify(want)}; it shows:\n${text.slice(0, 1500)}`);
 }
 
+// openOptions opens Home's Options (worktree, limits, helpers, schedule),
+// which keeps its rare choices out of the composer's bar.
+async function openOptions(page) {
+  if (!(await page.$eval("#new-task-options", (el) => el.open))) await page.click("#new-task-options > summary");
+}
+
 // until asks ready every 50 ms until it returns something truthy, and
 // returns that; after limit ms it fails, saying what never happened and, if
 // a describe function is given (in place of limit, or after it), what it
@@ -247,4 +253,4 @@ function check(body) {
   })();
 }
 
-module.exports = { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, step, ready, desk, shows, until, check };
+module.exports = { out, start, line, tempDir, runtimeDir, freePort, launch, watch, expectError, requests, step, ready, desk, shows, openOptions, until, check };

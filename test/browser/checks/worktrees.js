@@ -6,7 +6,8 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, watch, requests, shows, until, step, ready, desk, check } = require("../lib");
+const { execFileSync } = require("child_process");
+const { out, watch, requests, shows, openOptions, until, step, ready, desk, check } = require("../lib");
 
 // Held replies make races and refusals deterministic without a real daemon
 // failure. The legacy opener also runs these guards on the unchanged code.
@@ -197,7 +198,7 @@ check(async () => {
   // none to wait for.
   const startTask = async (text, settle = true, useWorktree = true) => {
     await page.evaluate(() => (location.hash = "#/"));
-    await page.waitForSelector(".worktree-toggle input");
+    await page.waitForSelector(".worktree-toggle input", { state: "attached" });
     assert.strictEqual(await page.isChecked(".worktree-toggle input"), useWorktree, `the folder's worktree choice was not kept (${useWorktree})`);
     await page.fill("#task", text);
     await page.press("#task", "Control+Enter");
@@ -507,12 +508,47 @@ check(async () => {
 
   // A folder can still opt out, and the next task then starts in that folder.
   await page.evaluate(() => (location.hash = "#/"));
-  await page.waitForSelector(".worktree-toggle input");
+  await page.waitForSelector(".worktree-toggle input", { state: "attached" });
+  await openOptions(page);
   await page.uncheck(".worktree-toggle input");
   const plainOpens = sent.of("session.open").length;
   const worktreeOpens = sent.of("worktree.open").length;
   await startTask("Plain folder task", true, false);
   assert.deepStrictEqual(sent.of("session.open").slice(plainOpens), [{ repo }], "opting out did not start the task in the folder");
   assert.strictEqual(sent.of("worktree.open").length, worktreeOpens, "opting out still opened a worktree");
+
+  // Only a git repository can have worktrees. A named folder that is not one
+  // has the box disabled, with the reason; and a refusal before any task
+  // opened says the task did not start, instead of sending the person to a
+  // task list that has nothing new in it.
+  const plain = path.join(path.dirname(repo), "plain-folder");
+  const vanished = path.join(path.dirname(repo), "vanished-repo");
+  fs.mkdirSync(plain);
+  fs.mkdirSync(vanished);
+  execFileSync("git", ["init", "-q", vanished]);
+  await page.evaluate(() => (location.hash = "#/"));
+  for (const dir of [plain, vanished]) {
+    await page.click("button.chip.dashed");
+    await page.fill("#add-path", dir);
+    await page.click('.add-folder button:text-is("Add this folder")');
+    await page.waitForSelector(`button.chip[title="${dir}"][aria-pressed="true"]`);
+  }
+  assert.ok(await page.isChecked(".worktree-toggle input"), "a git folder did not default to a worktree");
+  fs.rmSync(path.join(vanished, ".git"), { recursive: true });
+  await page.fill("#task", "Start in a repository that is gone");
+  const refused = sent.of("worktree.open").length;
+  await page.press("#task", "Control+Enter");
+  await page.waitForSelector(".toast.error");
+  const said = await page.textContent(".toast.error .toast-text");
+  assert.ok(said.startsWith("The task did not start: ") && said.includes("not a git repository") && !said.includes("task list") && !said.includes("worktree.open"), said);
+  assert.strictEqual(sent.of("worktree.open").length, refused + 1, "the start was not asked");
+  assert.strictEqual(await page.inputValue("#task"), "Start in a repository that is gone", "the message did not stay on Home");
+  await page.click(".toast.error [aria-label=Dismiss]");
+  await page.click(`button.chip[title="${plain}"]`);
+  await page.waitForSelector(`button.chip[title="${plain}"][aria-pressed="true"]`);
+  const box = await page.$eval(".worktree-toggle", (el) => ({ disabled: el.querySelector("input").disabled, checked: el.querySelector("input").checked, title: el.title }));
+  assert.deepStrictEqual([box.disabled, box.checked, box.title.includes("not one")], [true, false, true], "a folder that is not a git repository offers a worktree");
+  await openOptions(page);
+  await page.screenshot({ path: `${out}/worktree-not-git.png` });
   for (const [name, passed] of Object.entries(safeguards.modes)) assert.ok(passed, `review mode safeguard: ${name}`);
 });

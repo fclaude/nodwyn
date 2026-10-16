@@ -43,7 +43,7 @@
 //   fails there, and nothing is ever asked of the other model.
 const assert = require("assert");
 const fs = require("fs");
-const { out, start, line, tempDir, runtimeDir, launch, watch, requests, until, step, ready, check } = require("../lib");
+const { out, start, line, tempDir, runtimeDir, launch, watch, requests, openOptions, until, step, ready, check } = require("../lib");
 
 check(async () => {
   const root = tempDir("nodwyn-models-");
@@ -468,6 +468,7 @@ check(async () => {
 
   // Helpers: by default a task works with its own model alone; the model it is
   // on is not offered as its own helper, and ticking then unticking sends none.
+  await openOptions(page);
   assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: none/);
   await page.click("#new-task-helpers summary");
   assert.deepStrictEqual(await page.$$eval("#new-task-helpers .helper", (e) => e.map((x) => x.dataset.model)), ["127-0-0-1-demo"], "the helpers on offer are the models besides the one chosen and the default");
@@ -518,6 +519,7 @@ check(async () => {
   await go("#/");
   await page.waitForSelector("#new-task-model-model");
   await page.selectOption("#new-task-model-effort", "low");
+  await openOptions(page);
   assert.match(await page.innerText("#new-task-helpers summary"), /Helpers: none/, "helpers ticked for one task were kept for the next");
   await page.click("#new-task-helpers summary");
   await shows("#new-task-helpers [data-model='127-0-0-1-fast']", "review");

@@ -93,13 +93,13 @@ Run markers include CLI driver starts and `schedule.run`.
 
 ## Schedules
 
-Home’s clock (an icon,
-named **Schedule**) opens a schedule form beside the ordinary ask choices,
-without sending immediately: its message is a required field, started from the
-composer's text, so the clock works with the box empty, and says what is
-missing (a folder, a model) when it cannot. `Schedule…` on a task, with or
-without a schedule, opens its saved definition and controls; **Remove
-schedule** asks first.
+Home’s **Options › Schedule…** opens a schedule form beside the ordinary ask
+choices, without sending immediately: its message is a required field, started
+from the composer's text, so it works with the box empty. When a task cannot
+start yet (no folder, a locked keychain, a model that cannot be used) the
+button is disabled and says why. `Schedule…` on a task, with or without a
+schedule, opens its saved definition and controls; **Remove schedule** asks
+first.
 `schedule.next` supplies the preview; displayed ISO times retain the daemon’s
 local offset even when a browser uses another timezone. Schedule creation and
 changes are local-only; devices can pause and run now. A pause survives reload,
@@ -353,7 +353,22 @@ says which judge it asks ("judged by Jev", or "no judge").
 
 **Starting.** Home's composer starts a task in the folder picked last,
 which this browser remembers like the theme; until a folder has been
-picked, it starts in the first one on the list. **Add a folder** names one
+picked, it starts in the first one on the list. The **Work in** chips are
+the one folder control. The bar holds what every task needs: **Attach**,
+**Options**, the model (its Effort select is left out for a model that takes
+none) and Send. **Options** holds the rare choices, **In a worktree**,
+**Limits**, the helpers and **Schedule…**, and says how many differ from
+their defaults; Escape closes it. **Enter** starts the task and
+**Shift+Enter** breaks the line, as in a task's reply box (Cmd or Ctrl+Enter
+starts it too), and a line under the box says so. **Schedule…** opens the
+schedule with the message typed so far; the schedule is saved with the
+message the form holds, so it works with an empty box and is disabled, with
+the reason as its title, only where a task cannot start (keys locked, no
+folder, the model blocked). A start the daemon refuses before any task opened
+says "The task did not start: …" and leaves the message in the box; only a
+lost connection or a timeout, which may have started one, sends the person
+to the task list. On a phone only **Needs you** comes above the composer;
+Running, Scheduled and Recently finished follow it. **Add a folder** names one
 and, in the app window, opens the system's folder chooser. Workspaces lists
 named folders and **Folders tasks used**. **Add a workspace** names another;
 **Edit** changes its name and **mounted folders** (other folders a task may
@@ -386,8 +401,10 @@ other looks and say what they did in words; a build of the index is a line
 under the call that made it, and the build's own reads of files never mark
 that call.
 
-**In a worktree.** Beside a git workspace, **In a worktree** is checked
-by default and starts the task in a git worktree of its own
+**In a worktree.** Under Home's **Options**, **In a worktree** is checked
+by default for a git workspace, is disabled with the reason for a named
+folder that is not a git repository (a folder no workspace names is left to
+the daemon, which refuses), and starts the task in a git worktree of its own
 ([ADR 34](adr/0034-sessions-in-git-worktrees.md)): a checkout of the
 repository on a branch of its own, `nodwyn/<id>`, in
 `.nodwyn/worktrees/<id>`, so several tasks can work on one repository at
@@ -429,7 +446,7 @@ attachment is one), no commit its base lacks. Otherwise both stay, and
 resuming the task works in them again; a worktree that was removed is made
 again on resume.
 
-**Limits.** Beside **In a worktree**, **Limits** is ticked for every new
+**Limits.** Under **Options**, beside **In a worktree**, **Limits** is ticked for every new
 task: its turns stop at the limits in Settings › General (tool calls, tokens,
 actions and time). Untick it and that task's turns have none of the four, so
 a turn may work, or wait for your answer, as long as it needs

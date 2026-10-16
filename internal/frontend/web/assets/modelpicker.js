@@ -117,10 +117,11 @@ export class ModelPicker {
     this.model = h("select", { class: "mp-select", id: `${id}-model`, "aria-label": "Model", onchange: () => this.pickModel() });
     this.effort = h("select", { class: "mp-select", id: `${id}-effort`, "aria-label": "Effort", onchange: () => this.pickEffort() });
     this.judge = h("select", { class: "mp-select", id: `${id}-judge`, "aria-label": "Judge", onchange: () => this.props?.onJudge?.(this.judge.value) });
+    this.effortField = label("Effort", this.effort);
     this.judgeField = label("Judge", this.judge);
     this.judgeField.hidden = true;
     this.note = h("div", { class: "mp-notes" });
-    const controls = h("div", { class: "mp-controls" }, label("Model", this.model), label("Effort", this.effort), this.judgeField);
+    const controls = (this.controls = h("div", { class: "mp-controls" }, label("Model", this.model), this.effortField, this.judgeField));
     if (compact) {
       this.summaryModel = h("span", { class: "mp-summary-model" });
       this.summaryEffort = h("span", { class: "mp-summary-effort" });
@@ -192,6 +193,8 @@ export class ModelPicker {
       this.effort.disabled = true;
       this.effort.title = "";
     } else if (!efforts.length) {
+      // A model with no effort setting has nothing to choose: the field is
+      // left out, as it would only read "Not configurable".
       this.effort.replaceChildren(h("option", { value: "" }, "Not configurable"));
       this.effort.value = "";
       this.effort.disabled = true;
@@ -207,6 +210,8 @@ export class ModelPicker {
       this.effort.title = "";
     }
 
+    this.effortField.hidden = !!selection && !efforts.length;
+    this.controls.classList.toggle("no-effort", this.effortField.hidden);
     // The judge's select lists no judge, then each judge the daemon lists,
     // and a chosen one it no longer lists as it is, so what is shown is
     // what the task has.

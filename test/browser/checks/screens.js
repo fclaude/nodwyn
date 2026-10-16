@@ -49,12 +49,21 @@ check(async () => {
       const selects = fields.map((field) => field.querySelector("select").getBoundingClientRect());
       return {
         height: box.height,
-        divider: getComputedStyle(fields[1]).borderLeftWidth,
+        fields: fields.length,
+        divider: fields[1] ? getComputedStyle(fields[1]).borderLeftWidth : "",
         contained: selects.every((r) => r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom),
       };
     });
     assert.ok(picker.height <= 46, `the Home picker is ${picker.height}px tall, not a slim paired control`);
-    assert.strictEqual(picker.divider, "1px", "a divider separates model and effort");
+    // A model that takes no effort has nothing to choose, so the picker is
+    // the model alone; two fields carry a divider.
+    assert.strictEqual(picker.fields, 1, "the effort field is offered for a model that takes none");
+    assert.ok(await page.$eval("#new-task-model-effort", (el) => el.closest(".mp-field").hidden), "the effort field is not hidden");
+    // The composer's bar holds the files, the options, the model and Send:
+    // the rare choices wait behind Options, which opens on its own.
+    const bar = await page.$eval(".ask-bar", (el) => [...el.children].filter((c) => c.offsetParent !== null).length);
+    assert.strictEqual(bar, 4, "the composer's bar holds more than the files, the options, the model and Send");
+    assert.ok(!(await page.$eval("#new-task-options", (el) => el.open)), "Options starts open");
     assert.ok(picker.contained, "the dropdowns extend outside their paired control");
     await page.focus("#new-task-model-model");
     const focus = await page.$eval("#new-task-model-model", (el) => ({ visible: el.matches(":focus-visible"), outline: getComputedStyle(el).outlineStyle }));
@@ -122,6 +131,56 @@ check(async () => {
   await shoot("home-dark", { width: 1440, height: 900 }, "dark", home);
   await shoot("home-phone", { width: 390, height: 844 }, "light", home);
   await shoot("home-phone-dark", { width: 390, height: 844 }, "dark", home);
+  // The composer's bar holds what every task needs; the rare choices are
+  // behind Options, which counts those off their defaults, and scheduling
+  // opens its own dialog that asks for the message, so it does nothing
+  // silently when the box is empty.
+  await shoot("home-options", { width: 1280, height: 800 }, "light", async (page) => {
+    await page.click("#new-task-options > summary");
+    assert.ok(await page.isVisible("#new-task-limits"), "Options did not open");
+    await shows(page, "#new-task-options", "In a worktree", "Limits", "Stop each turn at Settings' limits", "Schedule…");
+    assert.ok(await page.$eval("#new-task-options .count", (el) => el.hidden), "the count shows with everything at its default");
+    await page.uncheck("#new-task-limits");
+    assert.strictEqual(await page.textContent("#new-task-options .count"), "1", "the count does not say Limits is off");
+    await page.check("#new-task-limits");
+    assert.ok(await page.$eval("#new-task-options .count", (el) => el.hidden), "the count stayed after Limits was ticked again");
+    await page.screenshot({ path: `${out}/home-options-open.png` });
+    assert.ok(await page.isEnabled("#new-task-schedule"), "Schedule is off with an empty box");
+    await page.click("#new-task-schedule");
+    await page.waitForSelector("dialog.schedule-dialog[open]");
+    assert.strictEqual(await page.inputValue("#schedule-message"), "", "the dialog did not start from the empty box");
+    await shows(page, "dialog.schedule-dialog", "Schedule");
+    await page.screenshot({ path: `${out}/home-schedule-dialog.png` });
+    await page.click('button[aria-label="Close schedule"]');
+  });
+  await shoot("home-options-phone", { width: 390, height: 844 }, "light", async (page) => {
+    await page.click("#new-task-options > summary");
+    const pop = await page.$eval(".options-pop", (el) => { const r = el.getBoundingClientRect(); return [r.left, r.right, innerWidth]; });
+    assert.ok(pop[0] >= 0 && pop[1] <= pop[2], `the options spill off the phone: ${pop}`);
+  });
+  // Enter starts the task and Shift+Enter breaks the line, as in a task's
+  // reply box, and the box says so.
+  let enter;
+  await shoot("home-enter", { width: 1280, height: 800 }, "light", async (page) => {
+    await shows(page, ".ask", "Enter starts the task", "Shift+Enter for a new line");
+    await page.fill("#task", "line one");
+    await page.press("#task", "Shift+Enter");
+    assert.strictEqual(await page.inputValue("#task"), "line one\n", "Shift+Enter did not break the line");
+    assert.strictEqual(enter.of("session.open").length, 0, "Shift+Enter started the task");
+    await page.keyboard.type("line two");
+    await page.press("#task", "Enter");
+    await page.waitForFunction(() => location.hash.startsWith("#/task/"));
+    await until("the message sent", async () => enter.of("session.send").some((p) => p.text === "line one\nline two"));
+  }, "light", async (page) => { enter = requests(page); });
+  // On a phone only what waits for an answer comes before the composer.
+  await shoot("home-phone-order", { width: 390, height: 844 }, "light", async (page) => {
+    const top = (sel) => page.$eval(sel, (el) => el.getBoundingClientRect().top);
+    const needs = await top(".home-needs");
+    const composer = await top("#task");
+    const finished = await top("#done");
+    assert.ok(needs < composer && composer < finished, `the phone's order is not Needs you, composer, the rest: ${needs} ${composer} ${finished}`);
+    await page.screenshot({ path: `${out}/home-phone-order.png` });
+  });
   // The topbar's "1 needs you" is how a phone reaches the waiting task: the
   // sidebar is a drawer there.
   await shoot("phone-needs-you", { width: 390, height: 844 }, "light", async (page) => {

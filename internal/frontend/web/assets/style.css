@@ -317,6 +317,23 @@ textarea.input { height: auto; padding: 10px 12px; line-height: 1.5; resize: ver
 .ask-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ask-bar .btn { background: var(--bg); border-color: var(--line); }
 .ask-bar .where { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-left: auto; }
+.ask-hint { margin-top: -6px; }
+/* The rare choices behind one control: a count says how many are off their
+   defaults (home.js). */
+.options { position: relative; }
+.options > summary { list-style: none; gap: 6px; cursor: pointer; user-select: none; }
+.options > summary::-webkit-details-marker { display: none; }
+.options > summary .count { background: var(--accent-ring); color: var(--accent-link); }
+.options[open] > summary { border-color: var(--faint); }
+.options-pop {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 5; width: 340px; max-width: calc(100vw - 32px);
+  padding: 14px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow);
+}
+.option { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.option .hint { padding-left: 22px; }
+.option > .btn { align-self: flex-start; }
+.option > .btn + .hint { padding-left: 0; }
+.options-pop .helpers-pop { position: static; width: auto; max-width: none; padding: 6px 0 0; border: 0; box-shadow: none; background: none; }
 .send-round {
   width: 40px; height: 40px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
   border: none; border-radius: 50%; background: var(--accent); color: #fff;
@@ -914,6 +931,7 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 0;
   width: 320px; max-width: 100%; padding: 3px 0; border-radius: 10px; background: var(--bg);
 }
+.ask-bar .mp-controls.no-effort { grid-template-columns: minmax(0, 1fr); }
 .ask-bar .mp-field { position: relative; gap: 0; padding: 0 10px; font-weight: 500; letter-spacing: normal; line-height: 12px; }
 .ask-bar .mp-field + .mp-field { border-left: 1px solid var(--line); }
 .ask-bar .mp-field::after {
@@ -1034,8 +1052,19 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
   .shell.menu-open .sidebar { transform: none; }
   .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 15; }
   .home { padding: 28px 16px 24px; gap: 28px; }
-  /* On a phone, what waits for an answer comes before starting something new. */
-  .home.urgent .home-grid { order: -1; }
+  /* On a phone, only what waits for an answer comes before starting
+     something new: the grid dissolves, so Needs you can move alone. */
+  .home-grid { display: contents; }
+  .home-needs, .home-grid > div { width: min(880px, 100%); }
+  .home.urgent .home-needs { order: -1; }
+  /* Send stays on the first row, beside Attach and Options; the model
+     takes the row under them. */
+  .ask-bar .send-round { order: 2; margin-left: auto; }
+  .ask-bar .model-picker, .ask-bar .where { order: 3; }
+  /* The options open across the composer, not from the button's left edge. */
+  .ask { position: relative; }
+  .options { position: static; }
+  .options-pop { left: 12px; right: 12px; width: auto; max-width: none; }
   .home h1 { font-size: 34px; }
   .ask { padding: 14px; }
   .ask textarea { font-size: 16px; }

@@ -306,7 +306,7 @@ At a checkpoint, answer `y` to double the soft limit, `n` to stop, or enter a
 larger absolute soft limit. Tool approvals and hard ceilings remain unchanged.
 
 In the console a task can do without the turn limits (ADR 49). **Limits**
-beside **In a worktree** on Home is ticked for every new task; untick it and
+beside **In a worktree**, under **Options** on Home, is ticked for every new task; untick it and
 that task's turns have no limit on tool calls, tokens, actions or time, so a
 turn may work, or wait for your answer, as long as it needs. Its spend limit,
 the request and command timeouts and the progress guard, which stops a turn
@@ -2128,11 +2128,12 @@ summary or navigation, and tabs keep their reading position across events
 and switches. Narrow screens use ordinary stacked sections and page
 scrolling instead of a nested scroll area.
 
-On Home, describe the task and choose its folder or worktree, model, helpers,
-judge and turn limits as usual. The clock beside Send opens **Schedule**,
-whether or not anything is typed yet: the message for each run is a required
-field there, started from what the box holds. Choose, under **Repeat**, Once,
-Every hour, Every day, Weekdays or Every week, its first
+On Home, describe the task and choose its folder, model, and, under
+**Options**, its worktree, helpers and turn limits, as usual. **Options ›
+Schedule…** opens **Schedule**, whether or not anything is typed yet: the
+message for each run is a required field there, started from what the box
+holds. Choose, under **Repeat**, Once, Every hour, Every day, Weekdays or Every
+week, its first
 local date and minute, and its dollar spend limit per run (0 means none).
 The preview comes from the daemon and shows its local times and offsets.
 Saving opens the task immediately; its message is sent when due. Scheduled

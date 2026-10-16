@@ -30,14 +30,15 @@ check(async () => {
 
   // A redraw that keeps the composer (a sidebar folder folded) used to leave
   // the chips with that redraw's context, so a pick after it changed only
-  // where the task would start: the chips and the ask bar kept the old folder.
+  // where the task would start: the chips kept the old folder. The chips are
+  // the one folder control: the ask bar has no second one to disagree.
   await page.click("#sidebar button.folder-head");
   await page.click(`#work-in button.chip[title="${receipts}"]`);
   await until("the picked chip pressed", async () => (await pressed()) === receipts);
-  assert.strictEqual(await page.locator(`main.home button.btn[title="${receipts}"]`).count(), 1, "the ask bar does not name the folder picked");
+  assert.strictEqual(await page.locator('.ask-bar button[title^="/"]').count(), 0, "the ask bar carries a folder control of its own");
   assert.strictEqual(await page.evaluate(() => document.activeElement?.title), receipts, "the chip picked lost the focus");
   await page.click("#sidebar button.folder-head");
-  step("a pick after a redraw that kept the composer moves the chips and the ask bar");
+  step("a pick after a redraw that kept the composer moves the chips");
 
   // A pick on Home replaces the remembered one with the newer pick.
   await pick(consoleRepo);

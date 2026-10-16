@@ -57,7 +57,7 @@ function dialog() {
 
 // newSchedule asks for a schedule for a task that is not started: the message
 // is a field here, whatever was typed in the composer before is its start.
-export function newSchedule(conn, save, draft = "") {
+export function newSchedule(conn, draft, save) {
   const box = dialog();
   box.append(scheduleEditor(conn, null, async (d) => { box.close(); await save(d); }, { draft, submitLabel: "Schedule" }));
 }

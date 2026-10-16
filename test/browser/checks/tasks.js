@@ -4,7 +4,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { out, requests, until, step, ready, desk, check } = require("../lib");
+const { out, requests, openOptions, until, step, ready, desk, check } = require("../lib");
 
 check(async () => {
   const { url, repo: consoleRepo, ctx, page } = await desk();
@@ -212,10 +212,11 @@ check(async () => {
   // between turns; a reload reads them from the daemon again.
   assert.ok(sent.of("session.open").length >= 6 && sent.of("session.open").every((p) => !("limits" in p)), `a task started with Limits ticked sent a choice: ${JSON.stringify(sent.of("session.open"))}`);
   await page.evaluate(() => (location.hash = "#/"));
-  await page.waitForSelector("#new-task-limits");
+  await page.waitForSelector("#new-task-options");
   assert.strictEqual(await page.isChecked("#new-task-limits"), true, "Limits starts unticked on Home");
   await page.click(`button.chip[title="${repos.receipts}"]`);
   await page.fill("#task", "Run as long as it needs");
+  await openOptions(page);
   await page.uncheck("#new-task-limits");
   assert.ok(await page.$eval(".limits-toggle", (el) => el.classList.contains("on")), "unticked Limits does not read as a warning on Home");
   await page.screenshot({ path: `${out}/tasks-limits-home.png` });
@@ -244,7 +245,7 @@ check(async () => {
   const limitsLines = () => page.$eval(".transcript", (el) => (el.textContent.match(/Limits: (on|off)/g) || []).join());
   await until("the choices in the conversation", async () => (await limitsLines()) === "Limits: off,Limits: on,Limits: off", limitsLines);
   await page.evaluate(() => (location.hash = "#/"));
-  await page.waitForSelector("#new-task-limits");
+  await page.waitForSelector("#new-task-options");
   assert.strictEqual(await page.isChecked("#new-task-limits"), true, "Home kept Limits unticked for the next task");
   step("a task's limits off from Home, then on and off again in the task");
 
