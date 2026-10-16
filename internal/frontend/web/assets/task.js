@@ -955,6 +955,7 @@ export class TaskView {
     const home = this.desk.home;
     const st = this.status();
     const actions = h("div", { class: "task-actions" });
+    if (this.conn.has("conversation.search") && this.conn.has("log.context")) actions.append(h("a", { class: "btn ghost", href: `#/search/${encodeURIComponent(item.id)}`, "aria-label": "Search conversation" }, "Search"));
     if (this.conn.has("schedule.read") && (this.conn.has("schedule.set") || item.schedule?.definition)) actions.append(h("button", { type: "button", class: "btn ghost", onclick: () => manageSchedule(this.conn, item.id, async () => { await this.desk.refresh(); if (this.item?.id === item.id) { this.item = this.desk.sessions.get(item.id) || item; this.header(); if (this.item.open) await this.loadInfo(); } }) }, item.schedule?.definition ? "Schedule…" : "Repeat…"));
     const button = (label, iconName, handler, cls = "") => h("button", { type: "button", class: `btn ${cls}`, disabled: !this.conn.live || this.acting, onclick: handler }, iconName ? icon(iconName, 15) : null, label);
     // A run comes from nodwyn run (ADR 35): Stop ends it, and a message

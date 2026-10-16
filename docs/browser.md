@@ -374,7 +374,7 @@ computer has either box: a paired device's tasks start with their limits on.
 folders. Every other task is under its folder, newest activity first, and
 the folder whose task worked last comes first; the order follows as turns
 end and tasks close. A folder shows five tasks and **Show N more**, and
-its heading folds it (this browser remembers which). Search matches
+its heading folds it (this browser remembers which). The sidebar’s filter matches
 titles and folder paths in every folder and in the archive
 ([ADR 39](adr/0039-named-archived-deleted-tasks.md)).
 
@@ -809,3 +809,38 @@ Workspace paths and task roots resolve symlinks for identity, including macOS's
 `/tmp` and `/var` aliases. An existing alias does not become a second project;
 mounts and MCP workspace choices follow the same identity. See
 [the security reference](security.md) for notes and conflicting legacy entries.
+
+## Conversation search (ADR 51)
+
+The task header’s Search link opens `#/search/ID?q=WORDS&scope=conversation`
+(or scope `earlier`). It calls the read-only `conversation.search` with the
+anchor task ID, not a project path. The daemon derives the project from that
+log and uses the existing `.mem` word index and turn ranking. Human search
+is independent of the model’s earlier-tasks switch, as the memory CLI is:
+paired devices and read-only bridges may read these same logs. Nothing resumes
+a task or changes its permissions. Results include archived tasks and worktrees
+of the recorded project, excluding the anchor in earlier scope.
+
+Twenty best matching events are grouped by task and turn; their times, headings
+and up to three snippets are text nodes. A long line retains the matched words,
+and redaction precedes clipping. Missing source reads mark the result incomplete.
+The form survives desk updates, supports empty/error states and Retry, and
+resubmitting a query refreshes it. Query and scope survive reload and Back in
+the URL. The sidebar’s title/folder filter keeps its separate purpose.
+
+A match links to `#/history/ID/SEQ`, retaining its search URL for Back.
+`log.context` selects the containing indexed turn and run and returns at most
+81 nearby records. The separate historical Transcript opens the match’s folds
+and highlights its rendered node, including a result nested in an earlier call.
+Unsupported presentation falls back to the redacted record. Earlier/later loads
+use `log.read`, at most 500 records, within the fixed turn/run boundaries.
+No latest-run catch-up, model change, approval application or subscription occurs.
+Open task returns to the ordinary current conversation; an open task parked by
+search keeps its live subscription and draft. Leaving either search or context
+invalidates pending replies. Failed reads can be retried without replacing a
+newer view. The `conversation-search` browser check exercises these actions,
+project/worktree/archived isolation, literal untrusted snippets, reload, failure
+and stale-response paths, and desktop/phone layouts.
+
+This slice adds keyword search and focused history. A History panel listing
+all cards, Settings › Search and semantic ranking remain unbuilt.

@@ -52,6 +52,27 @@ request last cut the conversation at a lasting narrowing, a compaction's),
 or from its last three requests or an unfinished plan's turn if those are
 earlier, and its model, judge and limits come from the index.
 
+\section{Human search and focused history}
+
+The console's task-header Search uses \code{conversation.search} over the
+same word postings and turn cards as the CLI and model. Its anchor task's
+recorded project bounds earlier scope, including archived and worktree tasks;
+the model's earlier-tasks switch remains unchanged. Both new methods are
+read-only and available on paired and read-only consoles. Ranked results
+are grouped by task and turn, with event sequences, times and redacted
+snippets. Failed source reads make the result explicitly incomplete.
+
+A match opens a separate historical Transcript through \code{log.context}.
+Indexed run and turn boundaries fix its range; the first page has at most
+40 neighbouring records on either side. Earlier/later actions read up to
+500 records inside that range using \code{log.read}. The match's folds
+open and its rendered node is highlighted; historical choices and receipts
+never mutate live interaction. Open task returns to the ordinary current
+conversation. Query and scope survive reload and Back, and stale responses
+cannot replace a newer view. The broader History panel, search settings,
+semantic ranking, providers' embeddings and measurement corpus remain
+separate work (ADR 51).
+
 \section{The event kinds}
 
 \begin{center}

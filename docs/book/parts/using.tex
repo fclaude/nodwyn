@@ -352,6 +352,19 @@ stable even with a long or expanded plan; narrow screens stack normally.
 Long review lines wrap inside the diff; phone side-by-side views scroll within
 it, not the page. Review drafts are tab memory, not saved across a reload.
 
+Choose \textbf{Search} in a task's header to search \textbf{This task} or
+\textbf{Earlier tasks in this project}, including archived tasks and its
+worktrees. This reads your logs and leaves the model's earlier-tasks switch
+unchanged; paired and read-only consoles can use it too. Results show up to
+twenty matching events under their task and turn, with times and snippets.
+Query and scope survive Back and reload. Resubmit to refresh; an incomplete
+source read is labelled. A match opens a separate recorded conversation,
+with its selected event highlighted and folds open. Only nearby records load
+initially. Load earlier or later in this turn to read more within its turn
+and run. Historical choices and approval records affect only this view.
+Back to search results restores the query; Open task returns to current
+interaction. Failed reads can be retried (\adr{51}).
+
 Statistics reads whole-task figures from the daemon's derived log index,
 including for closed tasks. Recorded events refresh them; reopening reads the
 same totals. Turns and, for CLI driver and scheduled runs, Runs show their counts and the

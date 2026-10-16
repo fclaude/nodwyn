@@ -1584,7 +1584,13 @@ cards \code{memory.Folder} makes from each whole turn and each compaction's
 note, and the words of the events a model could have seen, which
 \code{index-search} ranks (\adr{50}), kept up to the end of the last whole
 turn and checked against the log there, as the index is; a search reads only
-its own words' postings from it. And \file{<id>.idx} is its
+its own words' postings from it. \code{core.Store.SearchConversations} gives
+people the same ranking as task/turn groups with bounded, redacted snippets,
+deriving the project from an anchor log. The console reaches it through the
+read-only \code{conversation.search}, independently of the model's earlier-tasks
+switch. \code{log.context} reads indexed run/turn boundaries and at most 81
+nearby records for a match; bounded pages reveal more without resuming the
+task or applying historical choices. And \file{<id>.idx} is its
 index (\adr{49}): the listing \code{core.Store} would otherwise read the
 whole log for, and where every 256th line starts, so \code{log.read} reads
 a page from the nearest mark. It is derived from the log, checked against

@@ -5,6 +5,7 @@ import { Connection, pair, takeTicket } from "./connection.js";
 import { Desk } from "./desk.js";
 import { renderSidebar } from "./sidebar.js";
 import { renderHome } from "./home.js";
+import { ConversationSearchView, ConversationContextView } from "./search.js";
 import { TaskView } from "./task.js";
 import { renderWorkspaces, renderConnections } from "./pages.js";
 import { renderSettings, applyTheme, storedTheme, applyThinking, storedThinking } from "./settings.js";
@@ -22,10 +23,15 @@ const keptViews = 8;
 let task = null; // the view on screen, when a task is
 let route = parse();
 let homeState = null;
+let conversationView = null;
 
 function parse() {
   const hash = location.hash.replace(/^#/, "");
-  const parts = hash.split("/").filter(Boolean);
+  const [path, queryString = ""] = hash.split("?");
+  const query = new URLSearchParams(queryString);
+  const parts = path.split("/").filter(Boolean);
+  if (parts[0] === "search" && parts[1]) return { name: "search", id: decodeURIComponent(parts[1]), query: query.get("q") || "", scope: query.get("scope") || "conversation" };
+  if (parts[0] === "history" && parts[1] && parts[2]) return { name: "history", id: decodeURIComponent(parts[1]), seq: Number(parts[2]), search: query.get("search") || "", query: query.get("q") || "", scope: query.get("scope") || "conversation" };
   if (parts[0] === "task" && parts[1]) return { name: "task", id: decodeURIComponent(parts[1]), review: parts[2] === "review" };
   if (["settings", "workspaces", "connections"].includes(parts[0])) return { name: parts[0], tab: parts[1] };
   return { name: "home" };
@@ -36,6 +42,8 @@ function navigate(hash) {
 }
 window.addEventListener("hashchange", () => {
   const next = parse();
+  conversationView?.leave();
+  conversationView = null;
   if (route.name === "task" && (next.name !== "task" || next.id !== route.id)) putAway(task);
   route = next;
   closeMenu();
@@ -152,6 +160,8 @@ function dropViews() {
   for (const view of views.values()) view.dispose(false);
   views.clear();
   task = null;
+  conversationView?.leave();
+  conversationView = null;
 }
 
 let lastRoute = "";
@@ -167,7 +177,7 @@ function render(routeChanged = false, what = "") {
   $("topbar-count").hidden = !attention;
   document.title = attention ? `(${attention}) nodwyn` : "nodwyn";
   const view = $("view");
-  const key = route.name === "task" ? `task:${route.id}` : route.name;
+  const key = ["task", "search", "history"].includes(route.name) ? `${route.name}:${route.id}` : route.name;
   const ctx = { conn, desk, navigate, rerender: () => render(), pickFolder: window.nodwynPickFolder };
   if (route.name === "task") {
     if (key !== lastRoute || routeChanged || !task) showTask(route.id, route.review);
@@ -182,6 +192,13 @@ function render(routeChanged = false, what = "") {
         if (fresh.open && !task.subscribed && (!task.loading || task.failed)) task.open(fresh.id);
         else task.refreshAll();
       }
+    }
+  } else if (route.name === "search" || route.name === "history") {
+    if (key !== lastRoute || routeChanged || !conversationView) {
+      conversationView?.leave();
+      conversationView = route.name === "search" ? new ConversationSearchView(conn, desk, navigate, route) : new ConversationContextView(conn, desk, route);
+      view.replaceChildren(conversationView.root);
+      conversationView.open();
     }
   } else if (route.name === "home") {
     homeState = renderHome(view, { ...ctx, keepTop: key === lastRoute && !routeChanged });

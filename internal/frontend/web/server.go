@@ -349,7 +349,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 
 func readOnly(method string) bool {
 	switch method {
-	case "schedule.read", "schedule.next", "hello", "session.list", "session.watch", "session.info", "session.totals", "session.subscribe", "session.unsubscribe", "log.read", "log.runs",
+	case "schedule.read", "schedule.next", "hello", "session.list", "session.watch", "session.info", "session.totals", "session.subscribe", "session.unsubscribe", "log.read", "log.runs", "conversation.search", "log.context",
 		"attention.list", "notes.read", "index.status", "models.status", "models.offered", "models.published", "run.info", "keychain.status", "settings.read",
 		"workspace.list", "workspace.forgotten", "versions.list", "versions.diff", "worktree.diff", "mcp.list", "mcp.runtime", "credentials.list":
 		return true

@@ -59,6 +59,8 @@ func contracts() map[string]methodContract {
 		"session.subscribe":        {subscribeParams{}, subscription{}},
 		"session.unsubscribe":      {idParams{}, struct{}{}},
 		"log.read":                 {readParams{}, core.LogPage{}},
+		"conversation.search":      {conversationSearchParams{}, core.ConversationSearch{}},
+		"log.context":              {logContextParams{}, core.LogContext{}},
 		"log.runs":                 {runsParams{}, core.RunPage{}},
 		"session.answer":           {answerParams{}, struct{}{}},
 		"session.secret":           {secretParams{}, struct{}{}},

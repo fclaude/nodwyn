@@ -413,7 +413,10 @@ Where you see it:
     opens at the latest run, with Earlier runs paging five last-reply previews
     at a time and fetching their contents only on expansion. Older renderers
     do not change the live model or prompts; read failures can be retried.
-    Inspectors label their latest-run scope; totals remain whole-task. A task
+    Inspectors label their latest-run scope; totals remain whole-task. The task
+    header's Search finds messages and tool results in this task or other tasks
+    of its project, grouped by task and turn. A match opens bounded, read-only
+    history; Open task returns to current interaction (\adr{51}). A task
     without run records keeps its full conversation. Scheduled messages and
     manual Run now reset their per-run spend base; human follow-ups share it.
     The open task adds This run and applies spend warnings to it, while

@@ -55,7 +55,7 @@ function byFolder(desk, items) {
 }
 
 export function renderSidebar(nav, { desk, route, conn, rerender }) {
-  const current = route.name === "task" ? route.id : "";
+  const current = ["task", "search", "history"].includes(route.name) ? route.id : "";
   const matches = (item) => !filter || `${item.title} ${item.repo} ${item.worktree?.branch || ""}`.toLowerCase().includes(filter.toLowerCase());
   const row = (item, sub, dot) =>
     h(

@@ -16,7 +16,7 @@ out="$here/out"
 mkdir -p "$out"
 (cd "$root" && go build -o "$out/nodwyn" ./cmd/nodwyn && go build -o "$out/demo" ./test/browser/demo)
 [ -d "$here/node_modules/playwright" ] || (cd "$here" && npm install --silent)
-read -r -a checks <<<"${*:-screens transcript approve firstrun firstmodel remote mcp credentials tasks schedule worktrees lastfolder attach models retrieval}"
+read -r -a checks <<<"${*:-screens transcript approve firstrun firstmodel remote mcp credentials tasks schedule worktrees lastfolder attach models retrieval conversation-search}"
 declare -A group took code
 stop() {
 	for pid in "${group[@]}"; do kill -KILL -- "-$pid" 2>/dev/null || true; done

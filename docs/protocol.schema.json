@@ -502,6 +502,135 @@
       ],
       "type": "object"
     },
+    "core.ConversationLine": {
+      "properties": {
+        "number": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "text"
+      ],
+      "type": "object"
+    },
+    "core.ConversationMatch": {
+      "properties": {
+        "heading": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/core.ConversationLine"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "time": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "kind",
+        "time",
+        "heading",
+        "lines"
+      ],
+      "type": "object"
+    },
+    "core.ConversationSearch": {
+      "properties": {
+        "searched_events": {
+          "type": "integer"
+        },
+        "searched_tasks": {
+          "type": "integer"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/core.ConversationTask"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "unavailable": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tasks",
+        "searched_tasks",
+        "searched_events",
+        "unavailable"
+      ],
+      "type": "object"
+    },
+    "core.ConversationTask": {
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "turns": {
+          "items": {
+            "$ref": "#/$defs/core.ConversationTurn"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "archived",
+        "turns"
+      ],
+      "type": "object"
+    },
+    "core.ConversationTurn": {
+      "properties": {
+        "heading": {
+          "type": "string"
+        },
+        "matches": {
+          "items": {
+            "$ref": "#/$defs/core.ConversationMatch"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "heading",
+        "matches"
+      ],
+      "type": "object"
+    },
     "core.IndexInfo": {
       "properties": {
         "bytes": {
@@ -593,6 +722,41 @@
         "tokens",
         "cost",
         "unpriced"
+      ],
+      "type": "object"
+    },
+    "core.LogContext": {
+      "properties": {
+        "from": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "page": {
+          "$ref": "#/$defs/core.LogPage"
+        },
+        "run": {
+          "$ref": "#/$defs/core.SessionMark"
+        },
+        "through": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "turn": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/core.SessionMark"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "from",
+        "through",
+        "run",
+        "page"
       ],
       "type": "object"
     },
@@ -3347,6 +3511,9 @@
           "$ref": "#/$defs/request.attention.list"
         },
         {
+          "$ref": "#/$defs/request.conversation.search"
+        },
+        {
           "$ref": "#/$defs/request.credentials.add"
         },
         {
@@ -3384,6 +3551,9 @@
         },
         {
           "$ref": "#/$defs/request.keychain.unlock"
+        },
+        {
+          "$ref": "#/$defs/request.log.context"
         },
         {
           "$ref": "#/$defs/request.log.read"
@@ -3626,6 +3796,37 @@
       "required": [
         "jsonrpc",
         "method"
+      ],
+      "type": "object"
+    },
+    "request.conversation.search": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "conversation.search"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.conversationSearchParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
       ],
       "type": "object"
     },
@@ -4022,6 +4223,37 @@
           "allOf": [
             {
               "$ref": "#/$defs/rpc.passphraseParams"
+            }
+          ],
+          "unevaluatedProperties": false
+        }
+      },
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "type": "object"
+    },
+    "request.log.context": {
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ]
+        },
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "log.context"
+        },
+        "params": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/rpc.logContextParams"
             }
           ],
           "unevaluatedProperties": false
@@ -6266,6 +6498,9 @@
         "null"
       ]
     },
+    "result.conversation.search": {
+      "$ref": "#/$defs/core.ConversationSearch"
+    },
     "result.credentials.add": {
       "$ref": "#/$defs/rpc.credentialsResult"
     },
@@ -6306,6 +6541,9 @@
     },
     "result.keychain.unlock": {
       "$ref": "#/$defs/rpc.keychainStatus"
+    },
+    "result.log.context": {
+      "$ref": "#/$defs/core.LogContext"
     },
     "result.log.read": {
       "$ref": "#/$defs/core.LogPage"
@@ -6866,6 +7104,27 @@
       "required": [],
       "type": "object"
     },
+    "rpc.conversationSearchParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "query": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "query"
+      ],
+      "type": "object"
+    },
     "rpc.credentialAddParams": {
       "properties": {
         "class": {
@@ -7405,6 +7664,22 @@
       },
       "required": [
         "on"
+      ],
+      "type": "object"
+    },
+    "rpc.logContextParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "seq"
       ],
       "type": "object"
     },

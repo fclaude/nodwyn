@@ -99,6 +99,30 @@ Read a test when you want to know what a claim actually means.
 
 ### Searching what earlier tasks did
 
+In the console, choose **Search** in a task’s header. Enter words and choose
+**This task** or **Earlier tasks in this project**. Earlier means the other
+tasks in the same recorded project, including archived tasks and its git
+worktrees. This is you reading your logs: it works while the model’s earlier-task
+search is off and leaves that setting unchanged. Paired and read-only consoles
+can search too, and closed tasks need no resume.
+
+Results show up to 20 matching events, grouped by task and turn, with the
+turn’s outcome, event times and snippets. Words and identifier parts are
+ranked through the same index as the model and CLI. Long snippets retain
+the match; legacy credentials are redacted before clipping. An incomplete
+read is labelled so an empty partial search cannot claim there were no matches.
+Submit the same query to refresh it. Its words and scope are kept in the URL,
+so Back and reload restore the search.
+
+Choose a match to open its recorded conversation. The selected event is
+highlighted, and its enclosing activity folds open. This initially loads a
+small section around the match; **Load earlier in this turn** and **Load later
+in this turn** reveal more within the selected turn and run. Historical choices
+and approval records affect only this read-only view. **Back to search results**
+returns to the query; **Open task** returns to the current conversation, where
+you can reply or answer live requests. A failed search or history read offers
+Retry; a failed load of more context retains the loaded history.
+
 Every turn of every task leaves a card: what was asked, how it ended, its
 plan and the marks made, the files written, the commands run and how they
 ended, errors, and the start of the answer. When the model searches its

@@ -1128,3 +1128,16 @@ button.list-row:hover, button.list-row.selected { background: var(--selected); }
 .schedule-form label { display: grid; gap: 6px; }
 .schedule-form textarea { min-height: 80px; width: 100%; }
 .schedule-dialog .row-actions { flex-wrap: wrap; }
+
+.conversation-search-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 24px 0 12px; }
+.conversation-search-form label { display: grid; gap: 6px; flex: 1 1 220px; }
+.search-task { margin-top: 28px; }
+.search-task h2 { display: flex; gap: 12px; align-items: baseline; font-size: 20px; }
+.search-turn h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 500; overflow-wrap: anywhere; }
+.search-match { padding-top: 12px; min-width: 0; }
+.search-match-link { overflow-wrap: anywhere; }
+.search-snippet { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font-size: 13px; }
+.search-snippet .line-number { color: var(--muted); }
+.conversation-context .history-transcript { padding: 24px 0; overflow: visible; }
+.conversation-context .conversation-match { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 6px; scroll-margin-block: 70px; }
+.conversation-context .page-col, .conversation-search .page-col { min-width: 0; }

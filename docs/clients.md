@@ -48,6 +48,7 @@ it can see the thing but not change it.
 
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
+| Jump from a search match to bounded, read-only turn history (`log.context`) | yes; load earlier/later within that turn, or open the live task | deliberate gap: replays whole history | replays whole | `memory recall` reads an event and the turn’s card |
 | Open at the latest run; page back through collapsed earlier runs (ADR 49) | yes; earlier contents load on expansion | deliberate gap: replays the conversation whole | replays whole | `replay` reads whole |
 | Send a message, abort a turn | yes | yes; Ctrl+C aborts | yes | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |
@@ -102,7 +103,7 @@ it can see the thing but not change it.
 | | Console | TUI | Line mode | CLI |
 |---|---|---|---|---|
 | The model sees what it found under each turn's card, and recalls a turn's message with the card and its events (`index-search`, `recall`) | yes, as any tool's result | yes | yes | `nodwyn run`: yes |
-| A person searches earlier tasks | not built (ADR 51, with ADR 49 §11) | `:eval (index-search "…" "earlier")`, with `:earlier on` | `:eval`, likewise | `nodwyn memory search`, `nodwyn memory recall`, whatever the switch |
+| A person searches this conversation or earlier tasks | yes, the task header’s **Search**; task/turn groups, snippets and links into recorded history | `:eval (index-search "…" "earlier")`, with `:earlier on` | `:eval`, likewise | `nodwyn memory search`, `nodwyn memory recall`, whatever the switch |
 
 ## Files and changes
 

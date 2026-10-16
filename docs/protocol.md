@@ -1061,6 +1061,49 @@ the explicit review/accept/revoke flow; no RPC method grants this trust. Policy
 editor saves do not grant it implicitly. A running session keeps its already loaded
 code and grants until restarted. The optimiser keeps a changed init pending review.
 
+## Human conversation search and focused history (ADR 51)
+
+`conversation.search {id,query,scope?,limit?}` is read-only, including on paired
+and read-only browser connections. `scope` is `conversation` (default, this task)
+or `earlier` (other tasks of this task’s recorded project). Archived tasks are
+included; worktree sessions use their recorded parent repository. No project
+path parameter is accepted. `query` needs searchable words, at most 4096 bytes;
+`limit` is 1..20, default 20, matching events rather than turns or tasks.
+
+This is a person reading the same logs the memory CLI reads. The model’s
+`earlier_tasks` setting is neither consulted nor changed; no task is resumed,
+model called or permission granted. Search may refresh derived `.mem` files.
+It uses the existing conversation event selection and BM25 ranking: messages,
+replies, plans, attachments, summaries and tool results, including elided history;
+thinking, guard/configuration records and searches’ own output remain excluded.
+
+The result is `{tasks,searched_tasks,searched_events,unavailable}`. Nonzero
+`unavailable` means source logs or matched records could not be read, so results
+may be incomplete. Tasks are ordered by their best matching turn; each has
+`{id,title,archived,turns}`. Turns are ordered by their best event and have
+`{heading,matches}`. Matches are in sequence order within each turn and have
+`{seq,kind,time,heading,lines:[{number,text}]}`. Snippets select at most three
+lines, each at most 200 Unicode characters plus boundary ellipses, centred near
+a match on long lines. Source payloads and display fields are redacted before
+clipping. The result groups and snippets come from the same word index and
+turn cards as index-search; no semantic model is introduced.
+
+`log.context {id,seq}` is another read-only method. The sequence must name an
+available event. It returns `{from,through,run,turn?,page}`. `run` and optional
+`turn` are indexed `{seq,ts}` marks; from/through fix an inclusive range inside
+both the turn and run. Events before the first turn use their conversation
+range. `page` is an ordinary redacted LogPage, initially at most 40 records on
+either side of seq plus the selected record, clipped to that range. Its own
+through is the initial neighbourhood’s end, not the full context range’s end.
+
+To read more, use `log.read` within the outer from/through range. The console
+reads at most 500 records per action on either side, keeping that range fixed
+as a live log grows. It renders history separately, highlights the selected
+event and offers Open task to return to live interaction. Historical settings,
+receipts and prompt-related records must never change live state. Finding the
+range and its initial page reads index offsets and the necessary suffix, without
+reading old run previews or replaying the whole log.
+
 ## Scheduled tasks (ADR 49)
 
 - `schedule.next {message,repeat,at,cost,paused}` is read-only. `repeat` is

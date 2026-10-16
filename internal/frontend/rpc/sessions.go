@@ -236,6 +236,8 @@ var methodTable = map[string]handler{
 	"session.send":             (*server).send,
 	"session.subscribe":        (*server).subscribe,
 	"log.read":                 (*server).readLog,
+	"conversation.search":      (*server).searchConversation,
+	"log.context":              (*server).readContext,
 	"log.runs":                 (*server).readRuns,
 }
 

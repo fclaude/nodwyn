@@ -3,7 +3,8 @@
 - Status: accepted; turn cards and compaction notes (§1 to §4)
   implemented 2026-10-15, searched first with tools of their own (§5 to §7)
   and, the same day, through ADR 50's `index-search` and `recall`, with the
-  words of every event kept beside each log (see the amendment); the rest
+  words of every event kept beside each log; console keyword search and
+  focused history added in the final amendment; the rest
   not built (see "Not built")
 - Date: 2026-10-15
 - Amends: 9 (memory across sessions is no longer only project notes), 50
@@ -265,3 +266,54 @@ ADR 50's `TestModelSearchesAndRecallsItsConversation` (on a log that is not
 a file: the line of the turn under way, and its message recalled after it
 ended), `TestRecallReadsAResumedTasksWholeLog` (the `.mem` beside a resumed
 log) and `TestEarlierTasksAreSearchedWhenAllowed` (turns after their tasks).
+
+
+## Amendment 2026-10-15: People search conversations in the console
+
+The task-header Search exposes the existing word search to a person, with
+This task and Earlier tasks in this project scopes. Earlier means other tasks
+of the anchor's recorded project, archived tasks and git worktrees included.
+The read-only conversation.search accepts a task ID, not a client-selected
+project path: SessionInfo.Project derives identity from session.start in the
+log, written by the nodwyn process that opened the session in its private data
+directory. No new repository-controlled authority is read. A person's search
+has the memory CLI's authority to read their own logs; it neither consults nor
+changes the model's earlier-tasks switch. Paired devices and read-only consoles
+already read those logs and may use these read methods too.
+
+Search uses the same .mem event selection, word postings and rankTurns as the
+model and CLI. Up to twenty matching events are grouped by task, then turn;
+tasks and turns follow their best hit, and each turn's events follow sequence
+order. Results show the card's heading, event time, source heading and up to
+three line snippets. Long lines retain matched words. Source payloads and
+labels are redacted before clipping; untrusted snippets and titles remain text
+nodes. Unreadable source logs or matched records make the result incomplete.
+No model call or semantic ranking is added.
+
+A match opens a separate historical Transcript. log.context uses the derived
+index to select its turn and run and reads at most 81 nearby events; explicit
+Earlier/later actions read at most 500 more records inside that fixed range.
+The selected event is highlighted with its enclosing folds open. Historical
+choices and approval records never reach a live task. Open task returns to
+normal interaction; search parks an open task's existing subscription and draft.
+Query and scope are kept in the URL for Back and reload. Resubmission refreshes
+the results, failed reads offer Retry, and leaving a view invalidates pending
+responses. No latest-run catch-up or old run-preview traversal is needed to
+open a match.
+
+This completes the proposed first console slice: search this conversation or
+its project's other tasks, grouped snippets, and direct links into bounded
+recorded conversation. A History panel listing all cards, Settings › Search,
+§8's model-written close summaries and rolling digests, §9's shipped model and
+fused ranking, §10's provider embeddings and §11's approved question set and
+measurement remain unbuilt. Scheduled handovers remain ADR 49's existing
+records; this slice does not turn them into memory episodes.
+
+Checks: core task/turn grouping, worktree/project/archived scope, live growth,
+redaction and long Unicode snippets, limits and incomplete reads; context
+boundaries and pages with an unreadable earlier prefix; RPC human searches on
+local and paired clients without session resume or permission changes, and
+strict parameters; browser actual searches and result navigation, no unrelated
+history load or subscription, earlier/later pages, archived/worktree results,
+literal untrusted content, reload, resubmission, failures/retries, stale
+responses, and desktop/phone layouts.
