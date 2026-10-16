@@ -391,7 +391,12 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 	client, err := rpc.DialAs(dialCtx, b.socket, via)
 	stop()
 	if err != nil {
-		http.Error(w, "Daemon unavailable", http.StatusServiceUnavailable)
+		// A refused handshake is all a browser learns of an HTTP error,
+		// which the console reads as "not paired": the socket opens and
+		// closes saying why instead.
+		if conn, err := websocket.Accept(w, r, nil); err == nil {
+			conn.Close(websocket.StatusTryAgainLater, "nodwyn is not running on this computer")
+		}
 		return
 	}
 	defer client.Close()

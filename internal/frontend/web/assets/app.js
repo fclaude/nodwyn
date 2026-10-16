@@ -220,7 +220,7 @@ conn.onState(async (state, detail) => {
   $("offline").hidden = state === "live" || state === "connecting" || $("shell").hidden;
   if (state === "unpaired") {
     desk.reset();
-    showPairing();
+    showPairing(detail);
   } else if (state === "down") {
     desk.reset();
     if ($("shell").hidden) showDown(detail);

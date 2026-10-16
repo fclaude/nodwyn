@@ -108,12 +108,16 @@ export class Connection {
       }
       for (const fn of this.listeners) fn(frame);
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.socket !== socket) return;
       this.fail("Connection lost; no operation was retried.");
-      // A socket refused before it opened means this browser is not paired
-      // (or the bridge is gone); an established one that drops is "down".
-      this.setState(opened ? "down" : "unpaired");
+      // The bridge says why when it closes on purpose: the daemon is not
+      // running (1013), or this device was revoked (1008). A socket
+      // refused before it opened otherwise means this browser is not
+      // paired; an established one that drops is "down".
+      if (event.code === 1013) this.setState("down", event.reason);
+      else if (event.code === 1008) this.setState("unpaired", event.reason);
+      else this.setState(opened ? "down" : "unpaired");
     };
   }
 }

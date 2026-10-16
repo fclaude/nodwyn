@@ -764,3 +764,26 @@ func TestLocalCookieHoldsTheSessionNotTheCode(t *testing.T) {
 		t.Fatal("a cookie holding the pairing code was taken as paired")
 	}
 }
+
+// With no daemon to relay to, the socket opens and closes saying so (1013):
+// a refused handshake was all the browser learned, which the console reads
+// as a browser that is not paired, and it showed the pairing form.
+func TestSocketSaysTheDaemonIsNotRunning(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	b := &bridge{ctx: ctx, socket: filepath.Join(t.TempDir(), "no-daemon.sock"), code: testCode, session: testSession}
+	server := httptest.NewUnstartedServer(b)
+	b.at(server.Listener.Addr().String())
+	server.Start()
+	defer server.Close()
+	header := http.Header{"Origin": {server.URL}, "Cookie": {b.cookieName() + "=" + testSession}}
+	conn, _, err := websocket.Dial(ctx, "ws://"+b.local+"/socket", &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		t.Fatalf("the socket was refused: %v", err)
+	}
+	defer conn.CloseNow()
+	_, _, err = conn.Read(ctx)
+	if status := websocket.CloseStatus(err); status != websocket.StatusTryAgainLater {
+		t.Fatalf("closed with %v (%v)", status, err)
+	}
+}
