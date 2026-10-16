@@ -261,5 +261,14 @@ check(async () => {
     await go(page, "#/connections");
     await page.waitForSelector("text=No MCP servers yet");
     await shows(page, "#view", "Connections", "BUILT IN", "20 tools", "Add a server");
+    // Opened there, the Models tab is drawn before the models have
+    // answered, and follows them once they do: it stayed on "Checking the
+    // configured models…" until the person went away and back.
+    await page.evaluate(() => {
+      location.hash = "#/connections/models";
+      location.reload();
+    });
+    await page.waitForSelector("html[data-ready]");
+    await page.waitForFunction(() => !document.querySelector("#view").textContent.includes("Checking the configured models"), null, { timeout: 5000 });
   });
 });

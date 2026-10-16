@@ -210,8 +210,22 @@ function render(routeChanged = false, what = "") {
     // Settings holds fields being typed into: a task's progress elsewhere
     // does not redraw it.
     renderSettings(view, { ...ctx, tab: route.tab });
+  } else if ((route.name === "workspaces" || route.name === "connections") && !editing(view)) {
+    // Workspaces and Connections read the desk too (the models' state, the
+    // folders): drawn once, they stayed on "Checking the configured
+    // models…" until the person went away and back. They follow it, unless
+    // a field on them is being edited.
+    if (route.name === "workspaces") renderWorkspaces(view, ctx);
+    else renderConnections(view, { ...ctx, tab: route.tab });
   }
   lastRoute = key;
+}
+
+// editing reports whether a field in root has the focus or holds what was
+// typed into it, which a redraw would lose.
+function editing(root) {
+  if (root.contains(document.activeElement) && document.activeElement.matches("input, textarea, select")) return true;
+  return [...root.querySelectorAll("input, textarea")].some((el) => (el.type === "checkbox" || el.type === "radio" ? el.checked !== el.defaultChecked : el.value !== el.defaultValue));
 }
 
 desk.onChange((what) => render(false, what));
