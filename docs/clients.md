@@ -36,7 +36,7 @@ it can see the thing but not change it.
 | Start a task in a folder | yes, Home's ask bar | yes, the chooser's row or `--repo` | yes, `--repo` | — |
 | Start in a git worktree (ADR 34) | yes, the default for a git workspace | yes, the chooser's first row in a repository's top folder; `--worktree` | not built (ADR 34) | `nodwyn run`: not built |
 | The worktree's branch shown | yes, the header and sidebar | yes, the title and the chooser | — | — |
-| Resume a stored session | yes, the sidebar | yes, the chooser or `--resume` | yes, `--resume` | — |
+| Resume a stored session | yes, the sidebar | yes, the chooser (paged, typing filters it) or `--resume` | yes, `--resume` | — |
 | Switch between open tasks | yes, the sidebar; several open at once | one session per process; quit and choose again | one session | — |
 | Tasks needing an answer, across tasks | yes, Home (`attention.list`) | not built | — | — |
 | Create and manage schedules (ADR 49) | yes, Home’s clock and task’s **Repeat…** / **Schedule…**; paired devices can pause or run now | not built | not built | not built |
@@ -50,7 +50,7 @@ it can see the thing but not change it.
 |---|---|---|---|---|
 | Jump from a search match to bounded, read-only turn history (`log.context`) | yes; load earlier/later within that turn, or open the live task | deliberate gap: replays whole history | replays whole | `memory recall` reads an event and the turn’s card |
 | Open at the latest run; page back through collapsed earlier runs (ADR 49) | yes; earlier contents load on expansion | deliberate gap: replays the conversation whole | replays whole | `replay` reads whole |
-| Send a message, abort a turn | yes | yes; Ctrl+C aborts | yes | — |
+| Send a message, abort a turn | yes | yes; Ctrl+C aborts, and clears an unsent draft before it quits | yes | — |
 | `/compact`, `/optimize` | yes | yes | yes | — |
 | Evaluate Scheme (`session.eval`) | deliberate gap: the console never offers it (protocol.md) | yes, `:eval` | yes, `:eval` | `nodwyn eval`, `nodwyn repl` |
 | Thinking | inline, folded | `:thinking` toggles it | `--show-thinking` | `replay --show-thinking` |

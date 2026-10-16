@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
@@ -32,6 +34,7 @@ type model struct {
 	branch                                       string // the session's own, in a git worktree
 	sessions                                     []rpc.SessionInfo
 	selected                                     int
+	filter                                       string // narrows the chooser's stored sessions
 	loading, active, busy, working, disconnected bool
 	width, height                                int
 	promptInput                                  textinput.Model
@@ -116,6 +119,9 @@ func (m *model) Init() tea.Cmd {
 	if m.worktree {
 		return m.openWorktree()
 	}
+	return m.list()
+}
+func (m *model) list() tea.Cmd {
 	return func() tea.Msg { items, err := m.backend.List(m.ctx); return listResult{items, err} }
 }
 func (m *model) attach(id string) tea.Cmd {
@@ -235,7 +241,13 @@ func (m *model) attached(msg attachResult) tea.Cmd {
 	m.loading = false
 	if msg.err != nil {
 		m.status = "Cannot attach: " + safe(msg.err.Error())
-		return nil
+		if m.sessions != nil {
+			return nil
+		}
+		// --resume and --worktree skip the chooser, so its list was never
+		// read: without it the person could not pick the session they meant.
+		m.loading = true
+		return m.list()
 	}
 	m.restore(msg.snapshot)
 	m.status = ""
@@ -267,7 +279,10 @@ func (m *model) eventArrived(msg nextResult) tea.Cmd {
 		m.prompt = nil
 		m.promptInput.Reset()
 		m.promptInput.EchoMode = textinput.EchoNormal
-		m.status = "Disconnected. Ctrl+R reconnects; submitted operations are never retried."
+		m.status = "Disconnected. Ctrl+Q quits; submitted operations are never retried."
+		if m.reconnect != nil {
+			m.status = "Disconnected. Ctrl+R reconnects, Ctrl+C or Ctrl+Q quits; submitted operations are never retried."
+		}
 		m.refresh(false)
 		return nil
 	}
@@ -326,7 +341,7 @@ func (m *model) keyPressed(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	if !m.active {
-		return m.listKey(key)
+		return m.listKey(msg)
 	}
 	if m.inspector != nil && m.prompt == nil {
 		return m.inspectorKey(key)
@@ -354,7 +369,11 @@ func (m *model) globalKey(key string) (tea.Cmd, bool) {
 			b, id := m.backend, m.id
 			return m.action("abort", "", func(ctx context.Context) error { return b.Abort(ctx, id) }), true
 		}
-		if m.busy || m.attaching {
+		// As in a shell, the first press clears what was typed and the next
+		// one quits, so a long draft is not lost to a reflex.
+		if m.active && m.composer.Value() != "" {
+			m.composer.Reset()
+			m.status = "Draft cleared. Ctrl+C again quits."
 			return nil, true
 		}
 		return tea.Quit, true
@@ -363,14 +382,19 @@ func (m *model) globalKey(key string) (tea.Cmd, bool) {
 			return nil, false
 		}
 		return m.startReconnect(), true
-	case "pgup":
-		m.viewport.PageUp()
-		return nil, true
-	case "pgdown":
-		m.viewport.PageDown()
-		return nil, true
-	case "ctrl+end":
-		m.viewport.GotoBottom()
+	case "pgup", "pgdown", "ctrl+end":
+		if !m.active {
+			// The chooser pages its own list; the viewport is hidden.
+			return nil, false
+		}
+		switch key {
+		case "pgup":
+			m.viewport.PageUp()
+		case "pgdown":
+			m.viewport.PageDown()
+		default:
+			m.viewport.GotoBottom()
+		}
 		return nil, true
 	}
 	return nil, false
@@ -415,25 +439,82 @@ func (m *model) newRows() []string {
 	return []string{"New session in " + folder}
 }
 
-// listKey moves through the session list, below the new-session rows.
-func (m *model) listKey(key string) tea.Cmd {
-	news := len(m.newRows())
-	switch key {
+// listed is the stored sessions the filter leaves, in the daemon's order.
+func (m *model) listed() []rpc.SessionInfo {
+	if m.filter == "" {
+		return m.sessions
+	}
+	var out []rpc.SessionInfo
+	for _, s := range m.sessions {
+		if strings.Contains(strings.ToLower(s.FirstMessage+" "+s.Repo+" "+sessionBranch(s)), strings.ToLower(m.filter)) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// sessionBranch is the branch a worktree session works on, empty for any
+// other.
+func sessionBranch(s rpc.SessionInfo) string {
+	if s.Worktree == nil {
+		return ""
+	}
+	return s.Worktree.Repository + " " + s.Worktree.Branch
+}
+
+// listKey moves through the session list, below the new-session rows, and
+// narrows it as the person types: a long history is reached by what the
+// session was about or where, not by counting rows.
+func (m *model) listKey(msg tea.KeyPressMsg) tea.Cmd {
+	news, shown := len(m.newRows()), m.listed()
+	last, page := news+len(shown)-1, max(1, m.height-8)
+	switch key := msg.String(); key {
 	case "up":
 		m.selected = max(0, m.selected-1)
 	case "down":
-		m.selected = min(news+len(m.sessions)-1, m.selected+1)
+		m.selected = min(last, m.selected+1)
+	case "pgup":
+		m.selected = max(0, m.selected-page)
+	case "pgdown":
+		m.selected = min(last, m.selected+page)
+	case "home":
+		m.selected = 0
+	case "end", "ctrl+end":
+		m.selected = last
+	case "esc":
+		m.filter, m.selected = "", 0
+	case "backspace":
+		if m.filter != "" {
+			_, size := utf8.DecodeLastRuneInString(m.filter)
+			m.filter = m.filter[:len(m.filter)-size]
+			m.selectFirstMatch()
+		}
 	case "enter":
 		m.loading = true
 		switch {
 		case m.selected >= news:
-			return m.attach(m.sessions[m.selected-news].ID)
+			return m.attach(shown[m.selected-news].ID)
 		case m.gitRepo && m.selected == 0:
 			return m.openWorktree()
 		}
 		return m.attach("")
+	default:
+		if msg.Text != "" && !strings.ContainsFunc(msg.Text, func(r rune) bool { return !unicode.IsPrint(r) }) {
+			m.filter += msg.Text
+			m.selectFirstMatch()
+		}
 	}
 	return nil
+}
+
+// selectFirstMatch moves the cursor to the first stored session the filter
+// leaves, or to the top when it leaves none; the new-session rows stay above
+// whatever the filter says.
+func (m *model) selectFirstMatch() {
+	m.selected = 0
+	if len(m.listed()) > 0 {
+		m.selected = len(m.newRows())
+	}
 }
 
 func (m *model) inspectorKey(key string) tea.Cmd {
@@ -683,7 +764,7 @@ func (m *model) View() tea.View {
 		for _, label := range m.newRows() {
 			rows = append(rows, row{label: label})
 		}
-		for _, s := range m.sessions {
+		for _, s := range m.listed() {
 			label := s.FirstMessage
 			if label == "" {
 				label = "untitled"
@@ -715,7 +796,14 @@ func (m *model) View() tea.View {
 			}
 			lines = append(lines, mark+twoColumn(rows[i].label, rows[i].meta, m.width-2, marked))
 		}
-		body = strings.Join(lines, "\n") + "\n\n↑/↓ select · Enter open · Ctrl+Q quit"
+		hint := "↑/↓ PgUp/PgDn Home/End select · type to filter · Enter open"
+		if m.filter != "" {
+			hint = "filter: " + safe(m.filter) + " · Backspace edits · Esc clears · Enter open"
+			if len(m.listed()) == 0 {
+				hint = "No session matches. " + hint
+			}
+		}
+		body = strings.Join(lines, "\n") + "\n\n" + hint
 	} else {
 		title += " · " + safe(m.id)
 		if m.inspector != nil {
@@ -736,13 +824,7 @@ func (m *model) View() tea.View {
 		}
 		body = m.viewport.View() + "\n" + styleRule.Render(strings.Repeat("─", m.width)) + "\n" + editor
 	}
-	help := "PgUp/PgDn scroll · Ctrl+C abort/quit · Ctrl+Q quit"
-	if m.reconnect != nil {
-		help += " · Ctrl+R reconnect (quit detaches)"
-	}
-	if m.active && m.prompt == nil && m.inspector == nil {
-		help = "Enter sends · Alt+Enter/Ctrl+J newline · Ctrl+Q quits"
-	}
+	help := m.helpLine()
 	titleStyle := styleTitle
 	if m.prompt != nil {
 		titleStyle = styleTitleAlert
@@ -754,6 +836,31 @@ func (m *model) View() tea.View {
 	v.AltScreen = true
 	return v
 }
+
+// helpLine is the footer: the keys that do something now, and above all the
+// one that stops what is running or leaves, which a person looks for first.
+func (m *model) helpLine() string {
+	reconnect := ""
+	if m.reconnect != nil {
+		reconnect = " · Ctrl+R reconnect (quit detaches)"
+	}
+	switch {
+	case !m.active:
+		return "Ctrl+C or Ctrl+Q quit"
+	case m.disconnected && m.reconnect != nil:
+		return "Ctrl+R reconnects the daemon · Ctrl+C or Ctrl+Q quits (detaches)"
+	case m.disconnected:
+		return "Ctrl+C or Ctrl+Q quits"
+	case m.prompt != nil || m.inspector != nil:
+		return "PgUp/PgDn scroll · Ctrl+C abort/quit · Ctrl+Q quit" + reconnect
+	case m.busy:
+		return "Ctrl+C aborts the turn · Enter keeps your draft · Alt+Enter/Ctrl+J newline · Ctrl+Q quits"
+	case m.attaching:
+		return "Ctrl+C cancels the attachment · Alt+Enter/Ctrl+J newline · Ctrl+Q quits"
+	}
+	return "Enter sends · Alt+Enter/Ctrl+J newline · Ctrl+C clears the draft, then quits · Ctrl+Q quits"
+}
+
 func onOff(v bool) string {
 	if v {
 		return "shown"

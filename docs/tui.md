@@ -31,10 +31,15 @@ use plain mode for pipes. No daemon is started automatically.
 ## Everyday use
 
 The initial list offers a new session in `--repo`, followed by stored sessions.
-Use arrow keys and Enter to open one. A selected stored session uses its
-recorded repository and the core's resume rules. `--resume` skips the chooser.
-Another process's writer lock remains authoritative; the TUI reports an attach
-error rather than opening a second writer.
+Use arrow keys and Enter to open one; PgUp/PgDn move a page, Home and End
+the first and last row. Typing narrows the stored sessions to those whose
+first message, folder or worktree branch contains the text (Backspace edits
+it, Esc clears it); the new-session rows stay. A selected stored session uses
+its recorded repository and the core's resume rules. `--resume` skips the
+chooser. Another process's writer lock remains authoritative; the TUI reports
+an attach error rather than opening a second writer, and when `--resume` or
+`--worktree` fails it shows the chooser, with the stored sessions, under that
+error.
 
 When `--repo` is a git repository's top folder (it has its own `.git`), the
 first row, selected at start, is "New session in a new worktree of" it, as
@@ -114,15 +119,16 @@ one's key (`ask`, `allow` or `deny`) and Enter.
 
 | Control | Meaning |
 |---|---|
-| Up / Down, Enter | In the chooser: select and open a row |
+| Up / Down, PgUp / PgDn, Home / End, Enter | In the chooser: select and open a row |
+| Typing, Backspace, Esc | In the chooser: filter the stored sessions, edit and clear the filter |
 | Enter | Send the whole draft or submit the displayed prompt answer |
 | Alt+Enter / Ctrl+J | Insert a newline in the message composer |
 | Up / Down | Move within the draft; the editor scrolls to follow the cursor |
 | PgUp / PgDn | Scroll conversation or the current approval diff |
 | Ctrl+End | Jump to the bottom |
-| Ctrl+C | Abort busy work or an attachment; quit when idle |
+| Ctrl+C | Abort busy work or an attachment; with an unsent draft, clear it; otherwise quit (also after a disconnect) |
 | Ctrl+Q | Quit immediately (detach in daemon mode) |
-| Ctrl+R | Reconnect to the daemon and refresh history/prompts |
+| Ctrl+R | Reconnect to the daemon and refresh history/prompts (daemon mode) |
 | `:eval EXPR` | Evaluate user-origin Scheme through the usual guard |
 | `:thinking` | Show or hide thinking |
 | `:log [n] [kind prefix]` | Inspect the last matching durable records (default 20, maximum 1000) |
@@ -156,7 +162,9 @@ The underlying editor supports up to 10,000 logical lines.
 
 A busy session retains an attempted submission as a draft. Prompts use their
 own single-line editor; closing a prompt returns to the same draft and cursor.
-Unsent drafts also survive daemon reconnects, but are not saved across exits.
+Unsent drafts also survive daemon reconnects, but are not saved across exits;
+a first Ctrl+C clears one rather than quitting. The footer says what stops a
+running turn (Ctrl+C) and, after a disconnect, which keys leave.
 Submitted operations are never retried automatically. Existing CLI commands
 and plain mode remain available.
 
@@ -248,8 +256,10 @@ A new message without a gate outcome does not inherit the previous message's
 plan. No recorded outcome is shown as absence, never as success or an assertion
 that the judge is disabled. Use `:log` for older outcomes and diagnostic notes.
 
-`:budget` shows the configured initial soft/hard limits for the current session
-lifetime, including the legacy tool-call override. For the latest submitted
+`:budget` shows the session's own initial soft/hard limits for the current
+session lifetime, including the legacy tool-call override and its spend limit
+when it has one (a run's `--budget-cost`), the same locally and over
+`--socket`. For the latest submitted
 user-message or Scheme-evaluation turn it then shows what its model requests
 cost, as far as the provider reported or the model's prices estimate (and the
 share of prompt tokens read from cache), or that the spend is unknown and why,
@@ -290,8 +300,8 @@ An unfinished ordinary message is kept separately while a prompt is displayed.
 
 ## Reconnect and failure
 
-A daemon connection failure clears the secret editor and disables submissions.
-Ctrl+R reconnects, resumes the selected session, loads a fixed log prefix through
+A daemon connection failure clears the secret editor and disables submissions;
+Ctrl+C and Ctrl+Q quit even if a turn was running. Ctrl+R reconnects, resumes the selected session, loads a fixed log prefix through
 paged catch-up, then applies live events beyond that prefix. Prompt snapshots
 and live duplicates share IDs; an already resolved prompt is not shown again.
 Reconnect refreshes from the full history. It never resends

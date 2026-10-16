@@ -285,3 +285,39 @@ func TestLimitsChoiceInTheConversation(t *testing.T) {
 		}
 	}
 }
+
+// The spend limit reaches :budget in both modes (the daemon's was dropped),
+// and local mode reads the session's limits, not the configuration, as the
+// daemon does: a task whose limits are off has none but its spend limit.
+func TestBudgetViewHasTheSpendLimitAndTheSessionsLimits(t *testing.T) {
+	for _, mode := range []string{"local", "rpc"} {
+		t.Run(mode, func(t *testing.T) {
+			o := testOptions(t)
+			o.Config.Budget.CostHard = 5
+			b := testBackend(t, mode, o)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			snap, err := b.Attach(ctx, o.Repo, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			limits, err := b.Budgets(ctx, snap.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if limits.Cost.Hard != 5*budget.Micro || limits.ToolCalls.Hard == 0 {
+				t.Fatalf("limits %+v", limits)
+			}
+			l, ok := b.(*local)
+			if !ok {
+				return
+			}
+			if err := l.session.SetLimits(false, "test"); err != nil {
+				t.Fatal(err)
+			}
+			if limits, err = b.Budgets(ctx, snap.ID); err != nil || limits.ToolCalls.Hard != 0 || limits.Cost.Hard != 5*budget.Micro {
+				t.Fatalf("limits of a task with them off: %+v %v", limits, err)
+			}
+		})
+	}
+}

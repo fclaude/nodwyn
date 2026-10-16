@@ -60,20 +60,22 @@ func (r *remote) Tools(ctx context.Context, id string) ([]llm.Tool, error) {
 	return info.Tools, nil
 }
 
-// These are configured limits for new turns in this session lifetime, not
-// current usage or a soft limit changed by an in-progress checkpoint reply.
+// These are the limits for new turns in this session lifetime, not current
+// usage or a soft limit changed by an in-progress checkpoint reply. Both
+// modes show the session's own: a run's spend limit and a task whose limits
+// are off differ from the configuration.
 func (l *local) Budgets(ctx context.Context, _ string) (budget.Limits, error) {
 	if err := ctx.Err(); err != nil {
 		return budget.Limits{}, err
 	}
-	return l.options.Config.Budget.Limits(l.options.Config.Loop.MaxToolCalls)
+	return l.session.Limits(), nil
 }
 func (r *remote) Budgets(ctx context.Context, id string) (budget.Limits, error) {
 	var info rpc.SessionDetails
 	if err := r.client.Call(ctx, "session.info", map[string]any{"id": id}, &info); err != nil {
 		return budget.Limits{}, err
 	}
-	limits := budget.Limits{ToolCalls: info.Budgets.ToolCalls, Tokens: info.Budgets.Tokens, Actions: info.Budgets.Actions, Wall: info.Budgets.Wall}
+	limits := budget.Limits{ToolCalls: info.Budgets.ToolCalls, Tokens: info.Budgets.Tokens, Actions: info.Budgets.Actions, Wall: info.Budgets.Wall, Cost: info.Budgets.Cost}
 	if err := checkTurnLimits(limits); err != nil {
 		return budget.Limits{}, err
 	}
@@ -83,7 +85,7 @@ func (r *remote) Budgets(ctx context.Context, id string) (budget.Limits, error) 
 // checkTurnLimits refuses turn limits a daemon could not have configured.
 // A limit of 0 is none: a task whose limits a person turned off (ADR 49).
 func checkTurnLimits(limits budget.Limits) error {
-	for _, limit := range []budget.Limit{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall} {
+	for _, limit := range []budget.Limit{limits.ToolCalls, limits.Tokens, limits.Actions, limits.Wall, limits.Cost} {
 		if limit == (budget.Limit{}) {
 			continue
 		}
