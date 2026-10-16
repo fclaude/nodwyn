@@ -116,8 +116,11 @@ func runApp(paths config.Paths, socket string, forceBrowser, noOpen bool, remote
 }
 
 // ensureDaemon attaches to a daemon that answers on socket, or starts one
-// in this process. A socket file nobody answers on is left by a crash: it
-// is removed only after the dial proved no daemon owns it.
+// in this process. A socket file nobody listens on (the connection is
+// refused) is left by a crash, and is removed. A daemon that listens but
+// cannot be used (an older protocol, a hello it refuses, a slow answer) is
+// still running its tasks and schedules: its socket stays, and the app
+// says so instead of starting a second daemon beside it.
 func ensureDaemon(ctx context.Context, paths config.Paths, socket string) (owned bool, done chan error, err error) {
 	dialCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	client, dialErr := rpc.Dial(dialCtx, socket)
@@ -127,6 +130,9 @@ func ensureDaemon(ctx context.Context, paths config.Paths, socket string) (owned
 		return false, nil, nil
 	}
 	if info, statErr := os.Lstat(socket); statErr == nil && info.Mode()&os.ModeSocket != 0 {
+		if !errors.Is(dialErr, syscall.ECONNREFUSED) {
+			return false, nil, fmt.Errorf("app: a daemon is running on %s, but this build cannot use it (%w); stop it, or run the nodwyn it came with", socket, dialErr)
+		}
 		if err := os.Remove(socket); err != nil {
 			return false, nil, fmt.Errorf("app: stale socket %s: %w", socket, err)
 		}
