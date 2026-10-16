@@ -462,7 +462,20 @@ export function renderHome(root, ctx) {
     chips.append(
       h(
         "button",
-        { type: "button", class: "chip", "aria-pressed": String(folder === chosen), title: folder, onclick: () => { setFolder(folder, desk); renderHome(root, ctx); } },
+        {
+          type: "button",
+          class: "chip",
+          "aria-pressed": String(folder === chosen),
+          title: folder,
+          // A pick changes the whole top, the chips, the ask bar's folder and
+          // the worktree box, so it redraws it, whatever redraw came before;
+          // the chip picked keeps the focus.
+          onclick: () => {
+            setFolder(folder, desk);
+            renderHome(root, { ...ctx, keepTop: false });
+            root.querySelector("#work-in button.chip[aria-pressed=true]")?.focus();
+          },
+        },
         desk.folderName(folder),
       ),
     );
