@@ -22,6 +22,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/loopback"
 	"github.com/fclaude/nodwyn/internal/policyfile"
 )
 
@@ -421,7 +422,7 @@ func (s *server) providerWrite(req request, _ *peer) (any, *rpcError) {
 				}
 			}
 		}
-		if (len(key) > 0 || srv.Credential != "") && parsed.Scheme != "https" && !loopback(host) && !current.Policy.AllowInsecureHTTP {
+		if (len(key) > 0 || srv.Credential != "") && parsed.Scheme != "https" && !loopback.Host(host) && !current.Policy.AllowInsecureHTTP {
 			return nil, config.Config{}, failure(-32602, "a model with a key must be reached over https; to use remote HTTP, enable Credentials over remote HTTP in Settings › Keys & devices")
 		}
 		var store *keychain.Store

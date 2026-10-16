@@ -63,6 +63,8 @@ GROUPS = [
      r"The proxy is the network route for contained MCP servers. Read its request checks with \src{cmd/nodwyn-egress/main.go} and the binding facts supplied by core. Its tests exercise the proxy directly; model tool-call checks alone cannot establish what a server sends onward."),
     ("internal/extract", "Documents and images at ingress",
      r"Read extraction, image handling and outgoing conversion as separate paths. Follow their core callers in attach, docs and uploads. Content entering a conversation needs provenance and redaction; conversion is not an authorisation to transmit a document."),
+    ("internal/loopback", "Which hosts are this machine",
+     r"One function, read with its test. Where plain http is acceptable, a key sent to a server on this computer cannot be read on the way: the keychain's transport check, the configuration checks and the settings pages all ask it, so a change to the answer is a change to where credentials may travel unencrypted."),
     ("internal/policyfile", "Reading and updating policy files",
      r"Read the policy document representation and update rules alongside the guarded primitives in \src{internal/prim/policy.go}. A structured update still acts on a protected file, so the caller's authority and the file's validation remain necessary."),
     ("scripts/validate", "The repository's evidence collector",

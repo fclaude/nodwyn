@@ -19,6 +19,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
+	"github.com/fclaude/nodwyn/internal/loopback"
 	"github.com/fclaude/nodwyn/internal/policyfile"
 	"github.com/fclaude/nodwyn/internal/prim"
 )
@@ -617,7 +618,7 @@ func controlServer(p controlParams, servers map[string]config.Server, old config
 		write = true
 	}
 	// The user's transport setting applies to first setup as well as later edits.
-	if (keyed || (write && srv.Credential != "")) && parsed.Scheme != "https" && !loopback(host) && !insecure {
+	if (keyed || (write && srv.Credential != "")) && parsed.Scheme != "https" && !loopback.Host(host) && !insecure {
 		return "", srv, "", false, failure(-32602, "a model with a key must be reached over https; to use remote HTTP, enable Credentials over remote HTTP in Settings › Keys & devices")
 	}
 	return name, srv, host, write, nil
@@ -644,8 +645,6 @@ func sameHost(a, b string) bool {
 	ub, errB := url.Parse(b)
 	return errA == nil && errB == nil && ua.Host == ub.Host && ua.Scheme == ub.Scheme
 }
-
-func loopback(host string) bool { return host == "localhost" || host == "127.0.0.1" || host == "::1" }
 
 var notClass = regexp.MustCompile(`[^a-z0-9]+`)
 

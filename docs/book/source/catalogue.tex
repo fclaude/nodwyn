@@ -4,7 +4,7 @@
 
 \chapter{Coverage and reading conventions}
 
-This inventory includes 270 of 568 tracked Go files: every non-test Go file, 62,931 of 117,375 Go source lines (53.6\% by lines). It also includes all 35 tracked Scheme files (3,332 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
+This inventory includes 272 of 572 tracked Go files: every non-test Go file, 62,981 of 117,472 Go source lines (53.6\% by lines). It also includes all 35 tracked Scheme files (3,332 lines). Counts include comments and blank lines; Go test files are omitted, not silently shortened.
 
 Each file is printed in full from the checkout at build time, including build constraints, imports and comments. The navigation map in Part~\ref{part:source-map} supplies routes through these listings. Some Unicode symbols are rendered with equivalent typesetting glyphs; consult the source file for exact bytes.
 
@@ -207,6 +207,8 @@ Start with \src{internal/core/session.go} and \src{internal/core/construct.go}; 
 \sourcefile{internal/core/contained.go}{Go}
 
 \sourcefile{internal/core/conversation_search.go}{Go}
+
+\sourcefile{internal/core/credential_use.go}{Go}
 
 \sourcefile{internal/core/credentials.go}{Go}
 
@@ -687,6 +689,12 @@ Read extraction, image handling and outgoing conversion as separate paths. Follo
 \sourcefile{internal/extract/image.go}{Go}
 
 \sourcefile{internal/extract/outgoing.go}{Go}
+
+\chapter{Which hosts are this machine}
+
+One function, read with its test. Where plain http is acceptable, a key sent to a server on this computer cannot be read on the way: the keychain's transport check, the configuration checks and the settings pages all ask it, so a change to the answer is a change to where credentials may travel unencrypted.
+
+\sourcefile{internal/loopback/loopback.go}{Go}
 
 \chapter{Reading and updating policy files}
 

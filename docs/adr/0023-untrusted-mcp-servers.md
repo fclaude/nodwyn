@@ -373,3 +373,27 @@ sessions the other does not know, and neither removes the other's. What an
 older nodwyn left, with no `nodwyn.pid`, is not touched. The regression is
 `TestStartingAContainedServerSweepsWhatADeadNodwynLeft`; the listing and
 inspect formats were run against podman 5.8, containers and networks.
+
+## Amendment 2026-10-16: one credential check for a session and for Connections, one loopback test
+
+Connections' review of a server (`InspectMCP`, `inspectContained`) and a
+session each wrote out the check of a server's credential: handle, binding
+lookup at the request's host, method and position, transport, refresh,
+injection, and for a contained server the lookup for every host of its
+network list. The copies had already drifted (the session refreshed through
+its own log, Connections called the keychain directly), so a change to the
+check could reach one and show tools for a server the next task refused. Both
+now build a `credentialUse` (`internal/core/credential_use.go`) from a
+keychain, a binding table and, in a session, a recorder; they differ in those
+and in nothing else.
+
+"Is this host this machine?", which decides where a key may go over plain
+http, had five answers: the keychain took any loopback address, the check of
+an MCP server's address only `localhost`, `127.0.0.1` and `::1`, the settings
+pages the same three, the docs upload `localhost` and any loopback address,
+and the image prompt also any name ending in `.localhost`. `internal/loopback`
+answers it once: `localhost`, or an address of 127.0.0.0/8 or `::1`, with a
+port or brackets allowed. A configuration check now accepts `127.0.0.2` as the
+keychain always did; a name ending in `.localhost` is no longer this machine,
+since the resolver decides where it goes. The regressions are
+`TestMCPServerOnAnyLoopbackAddressMayUseHTTP` and `loopback.TestHost`.

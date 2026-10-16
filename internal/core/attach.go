@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/guard"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/loop"
+	"github.com/fclaude/nodwyn/internal/loopback"
 	"github.com/fclaude/nodwyn/internal/redact"
 	"github.com/fclaude/nodwyn/internal/window"
 )
@@ -182,7 +182,7 @@ func imagePrompt(name string, img extract.Image, size, tokens int, model, host s
 	switch {
 	case host == "":
 		where = fmt.Sprintf("It goes to the control model %s, whose host config.toml does not name.", model)
-	case loopbackHost(host):
+	case loopback.Host(host):
 		where = fmt.Sprintf("It goes to the control model %s at %s, on this machine.", model, host)
 	}
 	return guard.Prompt{
@@ -208,19 +208,6 @@ func (s *Session) noVision(name string) error {
 		return fmt.Errorf("attach: %s is an image, and the model %s is set as taking no images; if it does, set Takes images to Yes for it in Settings › Models (vision = false in its entry in %s says it does not), or choose a model that does", name, c.Model, s.opts.Paths.ConfigFile)
 	}
 	return fmt.Errorf("attach: %s is an image, and the control model %s does not take images: ollama does not list vision among its capabilities (ollama show %s); choose a vision model for [control] in %s", name, c.Model, c.Model, s.opts.Paths.ConfigFile)
-}
-
-// loopbackHost reports whether host (host or host:port) is this machine.
-func loopbackHost(host string) bool {
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	host = strings.Trim(host, "[]")
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func sizeLabel(n int) string {

@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/container"
 	"github.com/fclaude/nodwyn/internal/egress"
@@ -340,47 +339,18 @@ func (s *Session) connectContained(server config.MCPServer) mcpConnection {
 
 // containedCredential checks a contained server's credential against the
 // binding table for every host on its network list, at its env: position,
-// and records each check; it returns how the value is put in the
-// runtime's environment. A server whose credential is not bound for one of
-// its hosts is not started: it could carry the key there.
+// and records each check; it returns how the value is put in the runtime's
+// environment. A server whose credential is not bound for one of its hosts
+// is not started: it could carry the key there.
 func (s *Session) containedCredential(server config.MCPServer) (func(*exec.Cmd) error, error) {
 	if s.keychain == nil {
 		return nil, errors.New("its credential is in the keychain, which is locked: unlock it and start a new task")
 	}
-	h := s.HandleForClass(server.Credential)
-	if h == nil {
-		return nil, fmt.Errorf("no %s credential in the keychain", server.Credential)
-	}
-	if err := s.checkContained(server, h.ID); err != nil {
+	inject, err := s.credentialUse().containedEnv(server)
+	if err != nil {
 		return nil, fmt.Errorf("not started: %w", err)
 	}
-	name := config.EnvName(server.Position)
-	return func(cmd *exec.Cmd) error {
-		// An environment variable cannot be refreshed later: the server
-		// gets the token that is valid now.
-		if err := s.freshCtx(context.Background(), h.ID); err != nil {
-			return err
-		}
-		return s.keychain.InjectEnv(h.ID, name, cmd)
-	}, nil
-}
-
-// checkContained looks up the credential's class for every host of the
-// server at its position, recording each lookup, and fails at the first
-// that is not bound.
-func (s *Session) checkContained(server config.MCPServer, id string) error {
-	if err := s.bindings.Refresh(); err != nil {
-		return err
-	}
-	scopes := s.credentialScopes(server.Credential, id)
-	for _, host := range server.NetworkHosts() {
-		bound, reason := s.bindings.Lookup(server.Credential, host, "", server.Position, scopes...)
-		s.recordEarly(log.KindEgressCheck, log.EgressCheck{Prim: config.ToolName(server.Name, "*"), Class: server.Credential, Host: host, Scopes: scopes, Bound: bound, Reason: reason})
-		if !bound {
-			return fmt.Errorf("its credential %s is not bound for %s at %s: %s", server.Credential, host, server.Position, reason)
-		}
-	}
-	return nil
+	return inject, nil
 }
 
 // recheckContained runs before every call of a keyed contained server: the
@@ -391,7 +361,7 @@ func (s *Session) recheckContained(server config.MCPServer) error {
 	if h == nil {
 		return fmt.Errorf("no %s credential in the keychain", server.Credential)
 	}
-	return s.checkContained(server, h.ID)
+	return s.credentialUse().checkHosts(server, h.ID)
 }
 
 // closeMCP stops the session's contained servers and records how many
@@ -433,28 +403,12 @@ func inspectContained(o Options, server config.MCPServer) ([]mcp.Tool, string, e
 		if o.Keychain == nil {
 			return nil, "", errors.New("unlock the keychain first: this server's credential is kept there")
 		}
-		h := o.Keychain.HandleForClass(server.Credential)
-		if h == nil {
-			return nil, "", fmt.Errorf("no %s credential in the keychain", server.Credential)
-		}
-		table, err := binding.Load(o.Paths.Bindings)
+		use, err := inspectionCredentialUse(o)
 		if err != nil {
 			return nil, "", err
 		}
-		info, err := o.Keychain.Info(h.ID)
-		if err != nil {
+		if inject, err = use.containedEnv(server); err != nil {
 			return nil, "", err
-		}
-		for _, host := range server.NetworkHosts() {
-			if bound, reason := table.Lookup(server.Credential, host, "", server.Position, info.Scopes...); !bound {
-				return nil, "", fmt.Errorf("its credential %s is not bound for %s at %s: %s", server.Credential, host, server.Position, reason)
-			}
-		}
-		inject = func(cmd *exec.Cmd) error {
-			if err := o.Keychain.Refresh(context.Background(), h.ID, nil); err != nil {
-				return err
-			}
-			return o.Keychain.InjectEnv(h.ID, config.EnvName(server.Position), cmd)
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), containedStartTimeout)

@@ -3,10 +3,10 @@ package keychain
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"net/url"
-	"strings"
+
+	"github.com/fclaude/nodwyn/internal/loopback"
 )
 
 type insecureHTTPKey struct{}
@@ -45,10 +45,8 @@ func CheckTransport(req *http.Request) error {
 		return nil
 	}
 	if req.URL.Scheme == "http" {
-		host := req.URL.Hostname()
-		ip := net.ParseIP(host)
 		allow, _ := req.Context().Value(insecureHTTPKey{}).(bool)
-		if allow || strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback()) {
+		if allow || loopback.Host(req.URL.Hostname()) {
 			return nil
 		}
 	}

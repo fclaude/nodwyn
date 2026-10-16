@@ -13,6 +13,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/fclaude/nodwyn/internal/egress"
+	"github.com/fclaude/nodwyn/internal/loopback"
 )
 
 // MCP servers (ADR 22 §4, ADR 23): mcp.toml in the config directory lists
@@ -238,7 +239,7 @@ func (s MCPServer) Validate() error {
 
 func (s MCPServer) validateRemote() error {
 	u, err := url.Parse(s.URL)
-	if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && loopbackHost(u.Hostname()))) {
+	if err != nil || u.Host == "" || (u.Scheme != "https" && !(u.Scheme == "http" && loopback.Host(u.Hostname()))) {
 		return fmt.Errorf("mcp: server %s: url must be https (http only on this computer)", s.Name)
 	}
 	if s.Image != "" || s.Command != "" || len(s.Args) > 0 || len(s.Network) > 0 || len(s.Mounts) > 0 {
@@ -302,8 +303,6 @@ func (s MCPServer) validateContained() error {
 	}
 	return nil
 }
-
-func loopbackHost(h string) bool { return h == "localhost" || h == "127.0.0.1" || h == "::1" }
 
 // SaveMCPServer adds or replaces the server of the same name.
 func SaveMCPServer(path string, server MCPServer) error {

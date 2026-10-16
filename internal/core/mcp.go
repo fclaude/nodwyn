@@ -11,9 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fclaude/nodwyn/internal/binding"
 	"github.com/fclaude/nodwyn/internal/config"
-	"github.com/fclaude/nodwyn/internal/keychain"
 	"github.com/fclaude/nodwyn/internal/log"
 	"github.com/fclaude/nodwyn/internal/mcp"
 	"github.com/fclaude/nodwyn/internal/scheme"
@@ -108,7 +106,7 @@ func (s *Session) connectServer(server config.MCPServer) mcpConnection {
 		if s.keychain == nil {
 			return fail(errors.New("its credential is in the keychain, which is locked: unlock it and start a new task"))
 		}
-		authorize = s.authorizeAt(server.Credential, server.Position, config.ToolName(server.Name, "*"))
+		authorize = s.credentialUse().authorize(server.Credential, server.Position, config.ToolName(server.Name, "*"))
 	}
 	client, err := mcp.New(server.URL, authorize)
 	if err != nil {
@@ -343,37 +341,6 @@ func schemaParams(raw json.RawMessage) []scheme.Param {
 	return params
 }
 
-// authorizeAt is authorize for an integration's own position: the key is
-// injected only if class is bound to the request's host, method and
-// position, checked on every request. Checks made while the session is
-// being built are recorded once it has started.
-func (s *Session) authorizeAt(class, position, prim string) func(*http.Request) error {
-	return func(req *http.Request) error {
-		h := s.HandleForClass(class)
-		if h == nil {
-			return fmt.Errorf("no %s credential in the keychain", class)
-		}
-		if err := s.bindings.Refresh(); err != nil {
-			return err
-		}
-		host := strings.ToLower(req.URL.Hostname())
-		scopes := s.credentialScopes(class, h.ID)
-		bound, reason := s.bindings.Lookup(class, host, req.Method, position, scopes...)
-		s.recordEarly(log.KindEgressCheck, log.EgressCheck{Prim: prim, Class: class, Host: host, Method: req.Method, Scopes: scopes, Bound: bound, Reason: reason})
-		if !bound {
-			return errors.New(reason)
-		}
-		where, name, prefix := binding.Position(position)
-		switch where {
-		case "header":
-			return s.InjectHeader(h.ID, name, prefix, req)
-		case "query":
-			return s.InjectQuery(h.ID, name, req)
-		}
-		return fmt.Errorf("position %s is not supported for MCP servers", position)
-	}
-}
-
 // heldRecord is a record made while the session was being built (an MCP
 // server connecting: its egress check, its credential's refresh).
 type heldRecord struct {
@@ -418,36 +385,11 @@ func InspectMCP(o Options, server config.MCPServer) ([]mcp.Tool, string, error) 
 		if o.Keychain == nil {
 			return nil, "", errors.New("unlock the keychain first: this server's credential is kept there")
 		}
-		table, err := binding.Load(o.Paths.Bindings)
+		use, err := inspectionCredentialUse(o)
 		if err != nil {
 			return nil, "", err
 		}
-		authorize = func(req *http.Request) error {
-			*req = *req.WithContext(keychain.WithInsecureHTTP(req.Context(), o.Config.Policy.AllowInsecureHTTP))
-			if err := keychain.CheckTransport(req); err != nil {
-				return err
-			}
-			h := o.Keychain.HandleForClass(server.Credential)
-			if h == nil {
-				return fmt.Errorf("no %s credential in the keychain", server.Credential)
-			}
-			info, err := o.Keychain.Info(h.ID)
-			if err != nil {
-				return err
-			}
-			if bound, reason := table.Lookup(server.Credential, strings.ToLower(req.URL.Hostname()), req.Method, server.Position, info.Scopes...); !bound {
-				return errors.New(reason)
-			}
-			// No session, so the refresh, if one is due, is not logged.
-			if err := o.Keychain.Refresh(req.Context(), h.ID, nil); err != nil {
-				return err
-			}
-			where, name, prefix := binding.Position(server.Position)
-			if where == "query" {
-				return o.Keychain.InjectQuery(h.ID, name, req)
-			}
-			return o.Keychain.InjectHeader(h.ID, name, prefix, req)
-		}
+		authorize = use.authorize(server.Credential, server.Position, config.ToolName(server.Name, "*"))
 	}
 	client, err := mcp.New(server.URL, authorize)
 	if err != nil {

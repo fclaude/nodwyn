@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"maps"
 	"math"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -30,6 +29,7 @@ import (
 	"github.com/fclaude/nodwyn/internal/catalogue"
 	"github.com/fclaude/nodwyn/internal/detect/l1"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/loopback"
 )
 
 // Paths are the directories and files nodwyn uses.
@@ -480,18 +480,10 @@ func (d Docs) validate() error {
 	}
 	// The access token travels with every upload: https, or plain http to
 	// this machine only (a test's fake).
-	if u.Scheme != "https" && (u.Scheme != "http" || !loopback(u.Hostname())) {
+	if u.Scheme != "https" && (u.Scheme != "http" || !loopback.Host(u.Hostname())) {
 		return fmt.Errorf("docs.google_upload_url must be https (or http on this machine), got %q", d.GoogleUploadURL)
 	}
 	return nil
-}
-
-func loopback(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // Loop bounds one turn of the agent loop.
