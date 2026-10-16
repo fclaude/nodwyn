@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,7 +34,8 @@ func TestMain(m *testing.M) {
 // The checks follow the files: documentation no test reads needs none, the
 // console needs the browser checks as well as make accept, and the browser
 // checks' own scripts need only those. The books are documentation here:
-// the release flow builds them.
+// the release flow builds them. A Go or Scheme file, test or deleted, needs
+// the books' source inventory checked: its counts include them all.
 func TestPlanFollowsTheChangedFiles(t *testing.T) {
 	t.Chdir("../..")
 	for _, c := range []struct {
@@ -42,13 +44,14 @@ func TestPlanFollowsTheChangedFiles(t *testing.T) {
 	}{
 		{[]string{"AGENTS.md", "docs/adr/0001-scheme-on-go.md", "docs/manual.md"}, nil},
 		{[]string{"docs/scheme.md"}, []string{"make accept"}},
-		{[]string{"internal/core/session.go"}, []string{"gofmt", "make accept"}},
+		{[]string{"internal/core/session.go"}, []string{"gofmt", "book inventory", "make accept"}},
 		{[]string{"internal/frontend/web/assets/home.js"}, []string{"node --check", "make accept", "browser checks"}},
 		{[]string{"test/browser/checks/screens.js"}, []string{"node --check", "browser checks"}},
-		{[]string{"internal/frontend/rpc/sessions.go"}, []string{"gofmt", "make accept", "browser checks"}},
-		{[]string{"internal/frontend/rpc/server_test.go"}, []string{"gofmt", "make accept"}},
+		{[]string{"internal/frontend/rpc/sessions.go"}, []string{"gofmt", "book inventory", "make accept", "browser checks"}},
+		{[]string{"internal/frontend/rpc/server_test.go"}, []string{"gofmt", "book inventory", "make accept"}},
 		{[]string{"docs/book/parts/scheme.tex", "docs/expert/parts/09-primitives.tex", "docs/book/source/catalogue.tex"}, nil},
-		{[]string{"internal/core/deleted.go"}, []string{"make accept"}},
+		{[]string{"internal/core/deleted.go"}, []string{"book inventory", "make accept"}},
+		{[]string{"internal/loop/strategy.scm"}, []string{"book inventory", "make accept"}},
 	} {
 		var got []string
 		for _, ch := range plan("", c.changed) {
@@ -277,6 +280,86 @@ func TestDoubleIsNotNegative(t *testing.T) {
 	}
 	if strings.Contains(byStatus["PASS"]+byStatus["WARN"]+byStatus["SKIP"], "TestUntouched") {
 		t.Errorf("a test the change did not touch was run: %v", results)
+	}
+}
+
+// The books' source inventory is checked as a commit of the tree would
+// hold it: a new file git does not track yet counts, and a deleted one does
+// not, while git's own index, the object store and TMPDIR are left as they
+// were. On commit-bench (2026-10-14) eight of twenty changes left the
+// inventory stale and validate said PASS; on 3422faf1 the inventory had
+// been regenerated with the new file untracked, so generate.py --check
+// passed.
+func TestTheBookInventoryIsCheckedWithNewFiles(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is not installed")
+	}
+	gen, err := os.ReadFile(filepath.Join("..", "..", inventoryScript))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := fixture(t, map[string]string{
+		inventoryScript:    string(gen),
+		"cmd/tool/main.go": "package main\n\nfunc main() {}\n",
+		"dev/tool.scm":     "(define tool 1)\n",
+	})
+	t.Chdir(repo)
+	generate := func() {
+		t.Helper()
+		if out, err := exec.Command("python3", inventoryScript).CombinedOutput(); err != nil {
+			t.Fatalf("generate.py: %v\n%s", err, out)
+		}
+	}
+	generate()
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-q", "-m", "the inventory")
+	logs, scratch := t.TempDir(), t.TempDir()
+	t.Setenv("TMPDIR", scratch)
+	check := func() result {
+		t.Helper()
+		r := bookInventory(logs)
+		if left, _ := os.ReadDir(scratch); len(left) > 0 {
+			t.Fatalf("the check left %v in TMPDIR", left)
+		}
+		return r
+	}
+	if r := check(); r.status != "PASS" {
+		t.Fatalf("a fresh inventory: %+v", r)
+	}
+
+	// A new file, regenerated without telling git, as on 3422faf1.
+	writeAll(t, repo, map[string]string{"cmd/tool/extra.go": "package main\n\nvar extra = 1\n"})
+	generate()
+	index := filepath.Join(repo, ".git", "index")
+	before, _ := os.ReadFile(index)
+	objects, _ := git("count-objects")
+	r := check()
+	if r.status != "FAIL" || !strings.Contains(r.detail, "catalogue.tex is stale") ||
+		!strings.Contains(r.detail, "git add -N cmd/tool/extra.go, then run python3 docs/book/source/generate.py") {
+		t.Fatalf("an inventory without the new file: %+v", r)
+	}
+	if after, _ := os.ReadFile(index); !bytes.Equal(before, after) {
+		t.Fatal("the check changed git's index")
+	}
+	if now, _ := git("count-objects"); now != objects {
+		t.Fatalf("the check wrote objects: %s, then %s", objects, now)
+	}
+	if status, _ := git("status", "--porcelain"); !strings.Contains(status, "?? cmd/tool/extra.go") {
+		t.Fatalf("the new file is no longer untracked: %q", status)
+	}
+
+	gitIn(t, repo, "add", "-N", "cmd/tool/extra.go")
+	generate()
+	if r := check(); r.status != "PASS" {
+		t.Fatalf("an inventory with the new file: %+v", r)
+	}
+
+	// The file deleted again, with git still tracking it.
+	if err := os.Remove(filepath.Join(repo, "cmd/tool/extra.go")); err != nil {
+		t.Fatal(err)
+	}
+	if r := check(); r.status != "FAIL" || !strings.Contains(r.detail, "git rm --cached cmd/tool/extra.go, then run") {
+		t.Fatalf("an inventory with a deleted file: %+v", r)
 	}
 }
 

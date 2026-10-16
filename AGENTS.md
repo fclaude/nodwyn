@@ -20,9 +20,9 @@ you wrote should do is not evidence.
 
 **Before calling work done, run `validate`** (the tool; `make validate`
 outside nodwyn) after your last edit (ADR 37). It runs what the list below
-asks for the files you changed (`gofmt`, `make accept`, the browser checks),
-runs each Go test you added or changed against the unchanged
-code, and checks the house rules a diff can show. Fix what fails, and quote
+asks for the files you changed (`gofmt`, `make accept`, the browser checks,
+the books' source inventory), runs each Go test you added or changed
+against the unchanged code, and checks the house rules a diff can show. Fix what fails, and quote
 its summary in your answer, answering each warning: a test that passes on
 the unchanged code is fixed or explained. A failure the unchanged code has
 too is not yours: say so. Never change `scripts/validate`, the `Makefile`
@@ -73,9 +73,11 @@ are faster.
   (`scripts/release.py build`, ADR 42), not by `validate` or a session.
   After changing tracked Go or Scheme files, regenerate their inventory with
   `python3 docs/book/source/generate.py` and check it with `--check`; its counts
-  include test files even though the listings omit Go tests. Commit the sources
-  and catalogue. Generated PDFs are ignored and published as Gitea release
-  attachments (ADR 42); do not add them to Git.
+  include test files even though the listings omit Go tests. It lists the
+  files git tracks, so `git add -N` a new file first: `validate` counts it
+  whether or not you did. Commit the sources and catalogue. Generated PDFs
+  are ignored and published as Gitea release attachments (ADR 42); do not
+  add them to Git.
 
 A plan's `Docs:` steps name every file this list asks for the change.
 

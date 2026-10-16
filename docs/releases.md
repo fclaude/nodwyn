@@ -86,7 +86,8 @@ PDFs. Download `nodwyn.pdf` and `expert.pdf` from a release, or run `make book`
 and `make expert` to build ignored copies in `docs/book/` and `docs/expert/`.
 After changing tracked Go or Scheme files, run
 `python3 docs/book/source/generate.py` and commit the updated catalogue; the
-release builder's `--check` refuses a stale file inventory or line count.
+release builder's `--check` refuses a stale file inventory or line count, and
+`make validate` refuses it first, counting new files git does not track yet.
 
 The PDF cleanup removed `docs/book/nibb.pdf`, `docs/book/nodwyn.pdf`
 and `docs/expert/expert.pdf` throughout the published history. The subsequent

@@ -252,3 +252,41 @@ typeset, is now found when a release is built, which fails before it
 publishes anything. The catalogue at this amendment's parent was stale (456
 Go files counted, 457 tracked), which validate did not check and that build
 would have refused; it is regenerated here.
+
+## Amendment 2026-10-15: validate checks the books' source inventory
+
+On commit-bench (tasks 556d6d12, c97f9a41, 5040f9fe, 107251d0 and 3422faf1
+under builds A, dsl16, dsl18m and dsl19; deep study of 2026-10-15), eight
+of the twenty changes left `docs/book/source/catalogue.tex` stale, and each
+had run validate after its last Go edit and read "validate: PASS (0
+warnings)": validate never ran `generate.py --check`. Five never
+regenerated the inventory; two regenerated it, then edited tests at a
+reminder; one (3422faf1, A) regenerated it with its new exfil scenario
+untracked, which the generator, listing the files git tracks, did not
+count. The validate tool's description in `.nodwyn/init.scm` said it
+covered "the book and expert guide for their sources", which it has not
+since the amendment above, and two explorers repeated it.
+
+- **Any changed, added or deleted Go or Scheme file has validate check the
+  inventory** ("book inventory"). It runs `generate.py --check` on a copy of
+  git's index, in a temporary directory, with the Go and Scheme files git
+  does not track added and those the tree no longer has removed (`git
+  update-index --add --remove --info-only`, through `GIT_INDEX_FILE`): the
+  files a commit of the tree would hold. Git's own index and object store
+  are left as they were. A stale inventory fails with what to run: `git add
+  -N` for each new file the generator cannot see, then `python3
+  docs/book/source/generate.py` after the last Go or Scheme edit.
+- **A base whose inventory is already stale fails too**, deliberately: the
+  fix is the same one command, which `AGENTS.md` asks of every Go or Scheme
+  change, and the release flow would refuse the stale file. Without
+  `python3` the check fails and says so, as `node --check` does without
+  node.
+- **The tool's description says what it runs**: the inventory for Go and
+  Scheme changes, and neither book.
+
+Replayed on the twenty trees (each task's parent with the run's patch
+applied and its new files untracked), the check failed on the eight stale
+ones and passed the other twelve, in 0.26 to 0.29 s each. Counting the
+untracked files is what catches two of the eight: 3422faf1 under A and
+107251d0 under dsl19 pass `generate.py --check` with their new files left
+out.
