@@ -538,7 +538,9 @@ run that answers its own requests (unattended, judged, or saying yes), turn
 on "don't ask", turn a task's limits off or on (its tasks start with them on),
 save a credential binding,
 write a policy file, unlock or create the keychain or change its passphrase,
-add, replace, allow, authorize or remove a credential, change Settings, the
+add, replace, allow, authorize or remove a credential (a key the model asks
+for included: the device shows the request, and the key is typed on the
+computer), change Settings, the
 model or how
 uploads to Google Docs are handled (it can answer the first upload's
 question with "allow by hand" or "deny", never "always allow"), edit

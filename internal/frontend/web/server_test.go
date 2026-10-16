@@ -72,7 +72,7 @@ func TestBrowserAuthorityBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, method := range []string{"session.open", "session.resume", "session.send", "session.eval", "session.friction", "session.answer", "session.secret", "session.binding.create", "session.approval.create", "session.abort", "session.close", "keychain.unlock", "keychain.passphrase", "settings.control.write", "settings.docs.write", "settings.write", "run.start", "devices.revoke",
+	for _, method := range []string{"session.open", "session.resume", "session.send", "session.eval", "session.friction", "session.answer", "session.secret", "session.binding.create", "session.approval.create", "session.abort", "session.close", "keychain.unlock", "keychain.passphrase", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke",
 		"credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize"} {
 		if readOnly(method) {
 			t.Fatal(method)
@@ -542,7 +542,7 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 		t.Fatal("revoked device still paired")
 	}
 	for _, method := range []string{"session.binding.create", "session.approve_all", "session.policy.write", "keychain.unlock", "keychain.create", "settings.control.write", "settings.docs.write", "settings.write", "devices.revoke", "devices.list", "session.eval", "mcp.save", "mcp.approve", "mcp.inspect", "mcp.pull",
-		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize", "session.delete", "session.model.set", "session.limits.set"} {
+		"keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize", "session.secret", "session.delete", "session.model.set", "session.limits.set"} {
 		if s.b.allowed(method, true) {
 			t.Fatalf("remote device may call %s", method)
 		}
@@ -557,7 +557,7 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	}
 	// A device may start a task in a worktree, as it may start one (ADR 34);
 	// a console that cannot reach worktree.open shows no way to ask for one.
-	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "run.start", "run.resume", "credentials.list", "session.rename", "session.archive", "session.open", "worktree.open", "worktree.diff", "worktree.review"} {
+	for _, method := range []string{"session.answer", "session.approval.create", "session.send", "session.abort", "attention.list", "mcp.list", "mcp.runtime", "credentials.list", "session.rename", "session.archive", "session.open", "worktree.open", "worktree.diff", "worktree.review"} {
 		if !s.b.allowed(method, true) {
 			t.Fatalf("remote device may not call %s", method)
 		}
@@ -575,24 +575,6 @@ func TestRemoteDevicesPairByNameAndCannotWidenPolicy(t *testing.T) {
 	defer listener.Close()
 	if err := New(Options{PairingCode: testCode, Hosts: []string{"x:1"}}).Serve(context.Background(), listener); err == nil {
 		t.Fatal("served extra hosts without device pairing")
-	}
-}
-
-// A device starts or resumes only a run it answers itself.
-func TestRemoteRunsAreAnsweredByHand(t *testing.T) {
-	for params, unwatched := range map[string]bool{
-		`{"repo":"/r","task":"t","wall":"1h","max_turns":3,"auto_approve":false}`: false,
-		`{"repo":"/r","task":"t","wall":"1h","max_turns":3,"auto_approve":true}`:  true,
-		`{"repo":"/r","task":"t","wall":"1h","max_turns":3,"unattended":true}`:    true,
-		`{"repo":"/r","task":"t","wall":"1h","max_turns":3,"judge":true}`:         true,
-		`{"repo":"/r","task":"t","wall":"1h","max_turns":3,"AUTO_APPROVE":true}`:  true,
-	} {
-		if got := unwatchedRun(request{Method: "run.start", Params: json.RawMessage(params)}); got != unwatched {
-			t.Errorf("run.start %s: unwatched %v", params, got)
-		}
-	}
-	if !unwatchedRun(request{Method: "run.resume", Params: json.RawMessage(`{"id":"x","judge":true}`)}) || unwatchedRun(request{Method: "session.open", Params: json.RawMessage(`{"judge":true}`)}) {
-		t.Fatal("resume or other methods")
 	}
 }
 

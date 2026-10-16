@@ -224,6 +224,8 @@ export function askCard(event, { methods, reply, readOnly, since, who }) {
       );
       card.append(form);
       choice("Decline", "", "danger", "session.secret", { secret: "" });
+    } else if (!readOnly) {
+      card.append(h("p", { class: "hint" }, "A key is typed on the computer nodwyn runs on: answer this there."));
     }
   } else if (event.kind === "prompt.choice") {
     // A question with named answers whose answer is saved as a setting. An

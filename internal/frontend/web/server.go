@@ -358,7 +358,7 @@ func (b *bridge) pair(w http.ResponseWriter, r *http.Request) {
 func readOnly(method string) bool {
 	switch method {
 	case "schedule.read", "schedule.next", "hello", "session.list", "session.watch", "session.info", "session.totals", "session.subscribe", "session.unsubscribe", "log.read", "log.runs", "conversation.search", "log.context",
-		"attention.list", "notes.read", "index.status", "models.status", "models.offered", "models.published", "run.info", "keychain.status", "settings.read",
+		"attention.list", "notes.read", "index.status", "models.status", "models.offered", "models.published", "keychain.status", "settings.read",
 		"workspace.list", "workspace.forgotten", "versions.list", "versions.diff", "worktree.diff", "mcp.list", "mcp.runtime", "credentials.list":
 		return true
 	}
@@ -474,12 +474,10 @@ func (b *bridge) connect(w http.ResponseWriter, r *http.Request, device, token s
 		switch {
 		case req.JSONRPC != "2.0" || req.ID == 0:
 			callErr = errors.New("invalid request")
-		case !b.allowed(req.Method, remote) || (remote && unwatchedRun(req)):
+		case !b.allowed(req.Method, remote):
 			callErr = errors.New("operation unavailable in this browser mode; use the terminal client")
 			if b.readOnly {
 				callErr = errors.New("this browser view is read-only; use the terminal client for this operation")
-			} else if remote && unwatchedRun(req) {
-				callErr = errors.New("a run whose requests nobody answers by hand starts only on the computer nodwyn runs on")
 			} else if remote {
 				callErr = errors.New("this is not available from another device; use nodwyn on its own computer")
 			}
@@ -573,8 +571,8 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		return false
 	}
 	switch method {
-	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.secret", "session.approval.create", "session.friction", "session.policy.read",
-		"schedule.pause", "schedule.run", "session.notes.write", "run.start", "run.stop", "run.resume", "session.restore", "session.rename", "session.archive":
+	case "session.open", "worktree.open", "worktree.review", "session.resume", "session.send", "session.abort", "session.close", "session.answer", "session.approval.create", "session.friction", "session.policy.read",
+		"schedule.pause", "schedule.run", "session.notes.write", "session.restore", "session.rename", "session.archive":
 		return true
 	// Choosing a conversation's model, or the judge its plans and commands
 	// go to, decides where its content goes next, so it stays with the
@@ -596,30 +594,15 @@ func (b *bridge) allowed(method string, remote bool) bool {
 		"workspace.save", "workspace.active", "workspace.remove", "index.forget", "mcp.inspect", "mcp.save", "mcp.approve", "mcp.remove", "mcp.pull":
 		return !remote
 	// Keys and the passphrase are typed here, and an OAuth2 provider sends
-	// the person back to a listener on this computer's loopback.
-	case "keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize":
+	// the person back to a listener on this computer's loopback. A key the
+	// model asks for (session.secret) is a key typed too: a device shows the
+	// request, and it is answered here.
+	case "keychain.passphrase", "credentials.add", "credentials.replace", "credentials.remove", "credentials.bind", "credentials.authorize", "session.secret":
 		return !remote
 	case "devices.list", "devices.revoke":
 		return !remote && b.devices != nil
 	}
 	return false
-}
-
-// unwatchedRun reports a run.start or run.resume whose requests a person
-// would not answer: another device may start or resume a run only as one
-// it answers itself. The daemon refuses it too, by the device's via.
-func unwatchedRun(req request) bool {
-	if req.Method != "run.start" && req.Method != "run.resume" {
-		return false
-	}
-	var p struct {
-		AutoApprove bool `json:"auto_approve"`
-		Unattended  bool `json:"unattended"`
-		Judge       bool `json:"judge"`
-	}
-	// Params the daemon would refuse anyway are left to it.
-	_ = json.Unmarshal(req.Params, &p)
-	return p.AutoApprove || p.Unattended || p.Judge
 }
 
 // maxUpload bounds one attached file.
