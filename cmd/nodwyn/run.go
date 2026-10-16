@@ -30,7 +30,7 @@ func runTask(args []string) error {
 	cost := flags.Float64("budget-cost", 0, "spend limit for the whole run in US dollars, as far as costs are known (replaces budget.cost_hard)")
 	yolo := flags.Bool("yolo", false, "answer this run's ordinary confirms with yes; denials and security confirms are unaffected")
 	judge := flags.Bool("judge", false, "the judge answers this run's ordinary confirms instead of a person, allowing a call only when it judges it called for and safe; security confirms are declined; needs a [judge] server whose key is stored")
-	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done")
+	unattended := flags.Bool("unattended", false, "nobody answers this run: confirms are declined (or, with --yolo, ordinary ones answered yes), soft budget checkpoints go on to the hard limit, and the run goes on from a turn only when it marked a plan step done or skipped")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func runTask(args []string) error {
 			fmt.Fprintf(os.Stderr, "yolo: this run's ordinary confirms are answered yes in %s; denials and security confirms still stop it\n", root)
 		}
 		if *unattended {
-			fmt.Fprintln(os.Stderr, "unattended: nobody answers this run; it stops after a turn that marks no plan step done")
+			fmt.Fprintln(os.Stderr, "unattended: nobody answers this run; it stops after a turn that marks no plan step")
 		}
 	} else {
 		if flags.NArg() != 1 {

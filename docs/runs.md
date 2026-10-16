@@ -156,9 +156,10 @@ fewer, and nothing in it ever waits for a person:
   limits are the hard ones, so only a soft limit set lower, or the spend
   limit's, makes one.)
 - **The run checkpoint is answered by progress.** A turn that marked at least
-  one step of its plan done (`plan-step`, recorded as `plan.step`) is followed
-  by the next; a turn that marked none stops the run, with the reason in its
-  status ("turn 3 marked no plan step done"), for a person to look before
+  one step of its plan done or skipped (`plan-step`, recorded as
+  `plan.step`; a plan that no longer fits is marked skipped, as the run's
+  prompt says) is followed by the next; a turn that marked none stops the
+  run, with the reason in its status ("turn 3 marked no plan step"), for a person to look before
   another. Each answer is a `run.checkpoint` with actor `unattended` and its
   reason. A mark is the model's word: what the run proves is that the model
   kept claiming progress, step by step, in a log that can be reviewed step by

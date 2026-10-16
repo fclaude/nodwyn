@@ -424,12 +424,12 @@ func TestUnattendedRunContinuesOnProgressAndStopsWithout(t *testing.T) {
 		fake.Turn{Content: "both done"},
 		fake.Turn{Content: "1. look again"},
 		fake.Turn{Content: "nothing to do"})
-	if state.Status != "stopped" || state.Turns != 2 || !strings.Contains(state.Reason, "turn 2 marked no plan step done") {
+	if state.Status != "stopped" || state.Turns != 2 || !strings.Contains(state.Reason, "turn 2 marked no plan step") {
 		t.Fatalf("%+v", state)
 	}
 	cps := checkpoints(t, history)
-	if len(cps) != 2 || !cps[0].Allowed || cps[0].Actor != "unattended" || cps[0].Reason != "turn 1 marked 2 plan steps done" ||
-		cps[1].Allowed || cps[1].Reason != "turn 2 marked no plan step done" {
+	if len(cps) != 2 || !cps[0].Allowed || cps[0].Actor != "unattended" || cps[0].Reason != "turn 1 marked 2 plan steps" ||
+		cps[1].Allowed || cps[1].Reason != "turn 2 marked no plan step" {
 		t.Fatalf("checkpoints %+v", cps)
 	}
 	// Turn 1 marked every step, so turn 2 plans again, told how the last
@@ -542,5 +542,24 @@ func TestRunStopsAtTheSpendLimit(t *testing.T) {
 	}
 	if restored, err := Restore(history); err != nil || restored.Status != "limited" {
 		t.Fatalf("restore %+v %v", restored, err)
+	}
+}
+
+// A turn that finds its plan no longer fits marks the steps skipped, as the
+// run's prompt tells it to, and that is progress: the run goes on to plan
+// again. Only done marks counted, and such a turn stopped the run.
+func TestUnattendedRunGoesOnAfterATurnThatSkips(t *testing.T) {
+	skip := func(id string, n int) fake.ToolCall {
+		return fake.ToolCall{ID: id, Name: "plan-step", Args: map[string]any{"step": n, "state": "skipped", "note": "the plan no longer fits"}}
+	}
+	_, history, _ := driveUnattended(t, config.Default(), 5, false,
+		fake.Turn{Content: "1. first\n2. second"},
+		fake.Turn{ToolCalls: []fake.ToolCall{skip("a", 1), skip("b", 2)}},
+		fake.Turn{Content: "neither applies"},
+		fake.Turn{Content: "1. look again"},
+		fake.Turn{Content: "nothing to do"})
+	cps := checkpoints(t, history)
+	if len(cps) == 0 || !cps[0].Allowed || cps[0].Reason != "turn 1 marked 2 plan steps" {
+		t.Fatalf("checkpoints %+v", cps)
 	}
 }

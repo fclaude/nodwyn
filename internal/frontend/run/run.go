@@ -66,10 +66,12 @@ func (s State) Validate() error {
 	return nil
 }
 
-// completion is how one turn ended, and the plan steps it marked done.
+// completion is how one turn ended, and the plan steps it marked, done or
+// skipped: the run's prompt tells a turn whose plan no longer fits to mark
+// the steps that do not apply skipped, and that is progress too.
 type completion struct {
-	end  log.TurnEnd
-	done int
+	end    log.TurnEnd
+	marked int
 }
 
 // Driver runs one run: it sends a planned turn, waits for it to end, stops
@@ -136,8 +138,8 @@ func (d *Driver) Observe(ev event.Event) {
 	case string(log.KindTurnEnd):
 		d.current.end, _ = ev.Payload.(log.TurnEnd)
 	case string(log.KindPlanStep):
-		if p, ok := ev.Payload.(log.PlanStep); ok && p.State == "done" {
-			d.current.done++
+		if p, ok := ev.Payload.(log.PlanStep); ok && (p.State == "done" || p.State == "skipped") {
+			d.current.marked++
 		}
 	case event.Status:
 		if p, ok := ev.Payload.(event.StatusInfo); ok && p.State == "idle" {
@@ -236,7 +238,7 @@ func (d *Driver) execute(actor string) {
 			// Nobody is there to ask. A turn that marked a step of its plan
 			// done made progress the log shows; one that marked none may be
 			// going in circles, and a person should look before another.
-			goOn, why := unattendedCheckpoint(next, result.done)
+			goOn, why := unattendedCheckpoint(next, result.marked)
 			if _, err := d.session.Record(log.KindRunCheckpoint, log.RunCheckpoint{Number: next, Allowed: goOn, Actor: "unattended", Reason: why}); err != nil {
 				d.finish("error", err.Error())
 				return
@@ -261,15 +263,15 @@ func (d *Driver) execute(actor string) {
 }
 
 // unattendedCheckpoint is an unattended run's answer after turn n, which
-// marked done plan steps done: go on if it marked any.
-func unattendedCheckpoint(n, done int) (bool, string) {
-	switch done {
+// marked that many plan steps done or skipped: go on if it marked any.
+func unattendedCheckpoint(n, marked int) (bool, string) {
+	switch marked {
 	case 0:
-		return false, fmt.Sprintf("turn %d marked no plan step done", n)
+		return false, fmt.Sprintf("turn %d marked no plan step", n)
 	case 1:
-		return true, fmt.Sprintf("turn %d marked 1 plan step done", n)
+		return true, fmt.Sprintf("turn %d marked 1 plan step", n)
 	}
-	return true, fmt.Sprintf("turn %d marked %d plan steps done", n, done)
+	return true, fmt.Sprintf("turn %d marked %d plan steps", n, marked)
 }
 
 // Complete reports whether answer ends with CompleteLine.
