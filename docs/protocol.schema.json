@@ -7112,10 +7112,6 @@
     },
     "rpc.controlParams": {
       "properties": {
-        "api_key": {
-          "type": "string",
-          "writeOnly": true
-        },
         "effort": {
           "anyOf": [
             {
@@ -7132,13 +7128,7 @@
         "name": {
           "type": "string"
         },
-        "provider": {
-          "type": "string"
-        },
         "server": {
-          "type": "string"
-        },
-        "url": {
           "type": "string"
         }
       },

@@ -1,15 +1,18 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/llm"
+	"github.com/fclaude/nodwyn/internal/policyfile"
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
 
@@ -61,7 +64,8 @@ func TestLockedKeychainRefusesTasksUntilUnlocked(t *testing.T) {
 	c := connect(t, path)
 	c.hello()
 	c.ok("keychain.create", map[string]any{"passphrase": "correct horse"})
-	c.ok("settings.control.write", map[string]any{"provider": "openai", "url": "https://api.example.com/v1", "model": "m", "api_key": "sk-test-canary"})
+	c.ok("settings.provider.write", map[string]any{"name": "api", "provider": "openai", "url": "https://api.example.com/v1", "api_key": "sk-test-canary"})
+	c.ok("settings.control.write", map[string]any{"server": "api", "model": "m"})
 	var opened sessionDetails
 	json.Unmarshal(c.ok("session.open", map[string]any{"repo": repo}), &opened)
 	c.ok("session.close", map[string]any{"id": opened.ID})
@@ -139,11 +143,12 @@ func TestSettingsWriteControlAndKey(t *testing.T) {
 	path, _ := start(t, o)
 	c := connect(t, path)
 	c.hello()
-	if r := c.call("settings.control.write", map[string]any{"provider": "ollama", "url": "file:///etc", "model": "m"}); r.Error == nil {
+	if r := c.call("settings.provider.write", map[string]any{"name": "far", "provider": "ollama", "url": "file:///etc"}); r.Error == nil {
 		t.Fatal("accepted a file URL")
 	}
 	var settings settingsResult
-	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434/", "model": "qwen"}), &settings)
+	c.ok("settings.provider.write", map[string]any{"name": "workshop", "provider": "ollama", "url": "http://workshop:11434/"})
+	json.Unmarshal(c.ok("settings.control.write", map[string]any{"server": "workshop", "model": "qwen"}), &settings)
 	if settings.Control.URL != "http://workshop:11434" || settings.Control.Model != "qwen" {
 		t.Fatalf("settings: %+v", settings)
 	}
@@ -159,11 +164,13 @@ func TestSettingsWriteControlAndKey(t *testing.T) {
 		t.Fatalf("configured open: %+v", r.Error)
 	}
 	// A key needs the keychain, and is never written to the config file.
-	if r := c.call("settings.control.write", map[string]any{"provider": "openai", "url": "https://api.example.com/v1", "model": "gpt", "api_key": "sk-test-canary-0123456789"}); r.Error == nil {
+	keyed := map[string]any{"name": "api", "provider": "openai", "url": "https://api.example.com/v1", "api_key": "sk-test-canary-0123456789"}
+	if r := c.call("settings.provider.write", keyed); r.Error == nil {
 		t.Fatal("stored a key without a keychain")
 	}
 	c.ok("keychain.create", map[string]any{"passphrase": "correct horse"})
-	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "openai", "url": "https://api.example.com/v1", "model": "gpt", "api_key": "sk-test-canary-0123456789"}), &settings)
+	c.ok("settings.provider.write", keyed)
+	json.Unmarshal(c.ok("settings.control.write", map[string]any{"server": "api", "model": "gpt"}), &settings)
 	if settings.Control.Credential != "model-api-example-com" || settings.Keychain.Credentials != 1 {
 		t.Fatalf("keyed settings: %+v", settings)
 	}
@@ -175,14 +182,84 @@ func TestSettingsWriteControlAndKey(t *testing.T) {
 	if !strings.Contains(string(bindings), `dest = "api.example.com"`) || !strings.Contains(string(bindings), "header:Authorization:Bearer") {
 		t.Fatalf("binding row:\n%s", bindings)
 	}
-	// Changing only the model keeps the credential; a new key gets its own class.
-	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "openai", "url": "https://api.example.com/v1", "model": "gpt-2"}), &settings)
+	// Changing only the model keeps the credential; a new key replaces it in
+	// place, so no old one is left bound for the host with nothing using it.
+	json.Unmarshal(c.ok("settings.control.write", map[string]any{"server": "api", "model": "gpt-2"}), &settings)
 	if settings.Control.Credential != "model-api-example-com" {
 		t.Fatalf("credential dropped: %+v", settings.Control)
 	}
-	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "openai", "url": "https://api.example.com/v1", "model": "gpt-2", "api_key": "sk-test-canary-9876543210"}), &settings)
-	if settings.Control.Credential != "model-api-example-com-2" {
-		t.Fatalf("replacement class: %+v", settings.Control)
+	keyed["api_key"] = "sk-test-canary-9876543210"
+	json.Unmarshal(c.ok("settings.provider.write", keyed), &settings)
+	if settings.Control.Credential != "model-api-example-com" || settings.Keychain.Credentials != 1 {
+		t.Fatalf("rotated key: %+v, %d credentials", settings.Control, settings.Keychain.Credentials)
+	}
+}
+
+// The default model is chosen, never given a provider or a key: those are
+// saved by settings.provider.write, which replaces a key in place, so
+// settings.control.write cannot leave an old key behind (P2-009).
+func TestControlWriteTakesNoProviderOrKey(t *testing.T) {
+	o := options(t)
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	c.ok("keychain.create", map[string]any{"passphrase": "correct horse"})
+	for _, bad := range []map[string]any{
+		{"provider": "openai", "url": "https://api.example.com/v1", "model": "gpt", "api_key": "sk-test-canary-0123456789"},
+		{"server": "api", "model": "gpt", "api_key": "sk-test-canary-0123456789"},
+		{"provider": "ollama", "url": "http://workshop:11434", "model": "qwen"},
+	} {
+		if r := c.call("settings.control.write", bad); r.Error == nil || r.Error.Code != -32602 {
+			t.Errorf("accepted %v: %+v", bad, r.Error)
+		}
+	}
+	var creds credentialsResult
+	json.Unmarshal(c.ok("credentials.list", map[string]any{}), &creds)
+	if len(creds.Credentials) != 0 {
+		t.Fatalf("a refused call stored a key: %+v", creds.Credentials)
+	}
+}
+
+// settings.control.write writes config.toml under the lock the sessions use,
+// so an edit another writer is making is neither lost nor overwritten
+// (P2-069, P2-078).
+func TestControlWriteWaitsForTheConfigLock(t *testing.T) {
+	o := options(t)
+	os.MkdirAll(o.Paths.ConfigDir, 0o700)
+	raw := "[servers.workshop]\nurl = \"http://workshop:11434\"\n"
+	os.WriteFile(o.Paths.ConfigFile, []byte(raw), 0o600)
+	cfg, err := config.Load(o.Paths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.Config = cfg
+	path, _ := start(t, o)
+	c := connect(t, path)
+	c.hello()
+	held, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- policyfile.Update(context.Background(), o.Paths.ConfigFile, func(raw []byte) ([]byte, error) {
+			close(held)
+			<-release
+			return append(raw, "\n# edited elsewhere\n"...), nil
+		})
+	}()
+	<-held
+	answered := make(chan json.RawMessage, 1)
+	go func() { answered <- c.ok("settings.control.write", map[string]any{"server": "workshop", "model": "qwen"}) }()
+	select {
+	case <-answered:
+		t.Fatal("settings.control.write wrote config.toml while another writer held its lock")
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("the other writer: %v", err)
+	}
+	<-answered
+	text, _ := os.ReadFile(o.Paths.ConfigFile)
+	if !strings.Contains(string(text), "# edited elsewhere") || !strings.Contains(string(text), "[control]") {
+		t.Fatalf("one of the two edits was lost:\n%s", text)
 	}
 }
 
@@ -203,7 +280,8 @@ func TestSettingsControlOnAServer(t *testing.T) {
 	c.hello()
 	c.ok("keychain.create", map[string]any{"passphrase": "correct horse"})
 	var settings settingsResult
-	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "openai", "url": "https://openrouter.ai/api/v1/", "model": "a", "api_key": "sk-test-canary-0123456789"}), &settings)
+	c.ok("settings.provider.write", map[string]any{"provider": "openai", "url": "https://openrouter.ai/api/v1/", "api_key": "sk-test-canary-0123456789"})
+	json.Unmarshal(c.ok("settings.control.write", map[string]any{"server": "openrouter", "model": "a"}), &settings)
 	// [models.coder] gives this address itself, so it is on the provider
 	// too, though it is not sent the key.
 	want := []modelServer{{Name: "openrouter", Provider: "openai", URL: "https://openrouter.ai/api/v1", Credential: "model-openrouter-ai", Host: "openrouter.ai", Key: "ready", Uses: []string{"control", "coder"}}}
@@ -232,7 +310,7 @@ func TestSettingsControlOnAServer(t *testing.T) {
 	// A server added to config.toml by hand since the daemon started is
 	// found by its address, and one of the same name is never written over.
 	os.WriteFile(o.Paths.ConfigFile, append(raw, "\n[servers.workshop]\nurl = \"http://workshop:11434\"\n\n[servers.localhost]\nprovider = \"openai\"\nurl = \"http://localhost:8000/v1\"\n"...), 0o600)
-	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434", "model": "qwen"}), &settings)
+	json.Unmarshal(c.ok("settings.control.write", map[string]any{"server": "workshop", "model": "qwen"}), &settings)
 	if settings.Control.Server != "workshop" || len(settings.Servers) != 3 {
 		t.Fatalf("hand-written server: %+v %+v", settings.Control, settings.Servers)
 	}
@@ -244,15 +322,16 @@ func TestSettingsControlOnAServer(t *testing.T) {
 	if len(creds.Credentials) != 1 || !creds.Credentials[0].Model || !slices.Contains(creds.Credentials[0].UsedBy, "server openrouter") || !slices.Contains(creds.Credentials[0].UsedBy, "model openrouter-a") {
 		t.Fatalf("the server's key: %+v", creds.Credentials)
 	}
-	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://localhost:11434", "model": "qwen"}), &settings)
+	c.ok("settings.provider.write", map[string]any{"provider": "ollama", "url": "http://localhost:11434"})
+	json.Unmarshal(c.ok("settings.control.write", map[string]any{"server": "localhost-2", "model": "qwen"}), &settings)
 	raw, _ = os.ReadFile(o.Paths.ConfigFile)
 	if settings.Control.Server != "localhost-2" || !strings.Contains(string(raw), "url = \"http://localhost:8000/v1\"") {
 		t.Fatalf("a server of the same name: %+v\n%s", settings.Control, raw)
 	}
 }
 
-// With two servers at one address, the main model keeps the one it names when
-// the address is given again, and an address alone is refused as ambiguous.
+// With two servers at one address, choosing another model on the one the main
+// model names keeps that server, and a provider's address is no way to choose.
 func TestControlModelKeepsNamedServer(t *testing.T) {
 	o := options(t)
 	os.MkdirAll(o.Paths.ConfigDir, 0o700)
@@ -266,7 +345,7 @@ func TestControlModelKeepsNamedServer(t *testing.T) {
 	c := connect(t, path)
 	c.hello()
 	var settings settingsResult
-	json.Unmarshal(c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434", "model": "llama"}), &settings)
+	json.Unmarshal(c.ok("settings.control.write", map[string]any{"server": "beta", "model": "llama"}), &settings)
 	if settings.Control.Server != "beta" || len(settings.Servers) != 2 {
 		t.Fatalf("control: %+v, servers %+v", settings.Control, settings.Servers)
 	}
@@ -277,7 +356,7 @@ func TestControlModelKeepsNamedServer(t *testing.T) {
 func TestSettingsWriteKeepsTuningOfTheSameModel(t *testing.T) {
 	o := options(t)
 	os.MkdirAll(o.Paths.ConfigDir, 0o700)
-	os.WriteFile(o.Paths.ConfigFile, []byte("[control]\nurl = \"http://workshop:11434\"\nmodel = \"qwen\"\nnum_ctx = 90000\ntemperature = 0.2\nseed = 5\n"), 0o600)
+	os.WriteFile(o.Paths.ConfigFile, []byte("[servers.workshop]\nurl = \"http://workshop:11434\"\n\n[control]\nurl = \"http://workshop:11434\"\nmodel = \"qwen\"\nnum_ctx = 90000\ntemperature = 0.2\nseed = 5\n"), 0o600)
 	cfg, err := config.Load(o.Paths.ConfigFile)
 	if err != nil {
 		t.Fatal(err)
@@ -286,14 +365,14 @@ func TestSettingsWriteKeepsTuningOfTheSameModel(t *testing.T) {
 	path, _ := start(t, o)
 	c := connect(t, path)
 	c.hello()
-	c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434/", "model": "qwen"})
+	c.ok("settings.control.write", map[string]any{"server": "workshop", "model": "qwen"})
 	raw, _ := os.ReadFile(o.Paths.ConfigFile)
 	for _, want := range []string{"num_ctx = 90000", "temperature = 0.2", "seed = 5"} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("lost %q:\n%s", want, raw)
 		}
 	}
-	c.ok("settings.control.write", map[string]any{"provider": "ollama", "url": "http://workshop:11434/", "model": "llama"})
+	c.ok("settings.control.write", map[string]any{"server": "workshop", "model": "llama"})
 	raw, _ = os.ReadFile(o.Paths.ConfigFile)
 	control, models, _ := strings.Cut(string(raw), "[models.")
 	control, _, _ = strings.Cut(control, "[servers.")

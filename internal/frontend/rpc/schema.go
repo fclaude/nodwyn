@@ -216,7 +216,7 @@ type schemaBuilder struct{ defs map[string]any }
 
 // writeOnly are the request fields that carry a secret into the daemon.
 var writeOnly = map[string]bool{
-	"secretParams.secret": true, "passphraseParams.passphrase": true, "controlParams.api_key": true, "providerParams.api_key": true, "mcpSaveParams.api_key": true,
+	"secretParams.secret": true, "passphraseParams.passphrase": true, "providerParams.api_key": true, "mcpSaveParams.api_key": true,
 	"keychainCreateParams.passphrase": true, "keychainPassphraseParams.current": true, "keychainPassphraseParams.passphrase": true,
 	"credentialAddParams.value": true, "credentialReplaceParams.value": true, "credentialAuthorizeParams.client_secret": true,
 }

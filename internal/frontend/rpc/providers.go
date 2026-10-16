@@ -284,29 +284,22 @@ func (s *server) modelsPublished(req request, _ *peer) (any, *rpcError) {
 // failure it will answer with.
 var errStop = errors.New("rpc: refused")
 
-// rewriteConfig reads config.toml as it is now, under the lock sessions use
-// when they save a setting, lets change turn it into the text to write, and
-// writes it. change refuses with a failure of its own, or returns an error
-// for -32602, the validation the loader would have made. The daemon then
-// takes the providers, models and default from the file; what it holds
-// besides is not config.toml's to say.
-func (s *server) rewriteConfig(change func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError)) *rpcError {
+// updateConfig is the one way a method writes config.toml: change gets the
+// file as it is now, under the lock sessions use when they save a setting,
+// and turns it into the text to write. change refuses with a failure of its
+// own (-32602 for the validation the loader would have made); a lock that
+// cannot be had or a file that cannot be written is -32000, not a bad
+// parameter.
+func (s *server) updateConfig(change func(raw []byte) ([]byte, *rpcError)) *rpcError {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	var next config.Config
 	var refusal *rpcError
 	err := policyfile.Update(ctx, s.options.Paths.ConfigFile, func(raw []byte) ([]byte, error) {
-		current, err := config.Parse(raw)
-		if err != nil {
-			refusal = failure(-32000, err.Error())
-			return nil, errStop
-		}
-		text, parsed, rerr := change(raw, current)
+		text, rerr := change(raw)
 		if rerr != nil {
 			refusal = rerr
 			return nil, errStop
 		}
-		next = parsed
 		return text, nil
 	})
 	if refusal != nil {
@@ -317,6 +310,26 @@ func (s *server) rewriteConfig(change func(raw []byte, current config.Config) ([
 	}
 	if err := os.Chmod(s.options.Paths.ConfigFile, 0o600); err != nil {
 		return failure(-32000, err.Error())
+	}
+	return nil
+}
+
+// rewriteConfig is updateConfig for a change to the providers, models and
+// default: change also parses the file it was given, and returns the config
+// the new text makes. The daemon then takes the providers, models and
+// default from it; what it holds besides is not config.toml's to say.
+func (s *server) rewriteConfig(change func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError)) *rpcError {
+	var next config.Config
+	if rerr := s.updateConfig(func(raw []byte) ([]byte, *rpcError) {
+		current, err := config.Parse(raw)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
+		text, parsed, rerr := change(raw, current)
+		next = parsed
+		return text, rerr
+	}); rerr != nil {
+		return rerr
 	}
 	s.options.Config.Servers, s.options.Config.Models, s.options.Config.Control = next.Servers, next.Models, next.Control
 	// Labels reach the tasks already open: they change what a model is called

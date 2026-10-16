@@ -1,18 +1,15 @@
 package rpc
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
-	"github.com/fclaude/nodwyn/internal/policyfile"
 )
 
 // settingKind is the JSON a setting takes.
@@ -161,32 +158,26 @@ func (s *server) settingsWrite(req request, client *peer) (any, *rpcError) {
 		changes = append(changes, config.Change{Table: table, Key: key, Value: value})
 		tables[table] = true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	next := s.options.Config
-	err := policyfile.Update(ctx, s.options.Paths.ConfigFile, func(raw []byte) ([]byte, error) {
+	if rerr := s.updateConfig(func(raw []byte) ([]byte, *rpcError) {
 		out, parsed, err := config.Edit(raw, changes...)
 		if err != nil {
-			return nil, err
+			return nil, failure(-32602, err.Error())
 		}
 		// The daemon takes the changed tables from the file; the rest of
 		// what it holds must still agree with them.
 		next = withTables(s.options.Config, parsed, tables)
 		if err := next.Validate(); err != nil {
-			return nil, err
+			return nil, failure(-32602, err.Error())
 		}
 		// A ChatGPT plan's sign-in is never sent to the Decisions API (the
 		// keychain refuses), so a judge on one would never answer (ADR 47).
 		if j := next.Judge.Server; tables["judge"] && j != "" && core.PlanSignIn(s.options.Keychain, next.Servers[j].Credential) {
-			return nil, fmt.Errorf("judge.server: %s signs in with a ChatGPT plan, which only reaches its chat models; the judge asks OpenAI's Decisions API with an API key, so add an OpenAI provider with one", j)
+			return nil, failure(-32602, fmt.Sprintf("judge.server: %s signs in with a ChatGPT plan, which only reaches its chat models; the judge asks OpenAI's Decisions API with an API key, so add an OpenAI provider with one", j))
 		}
 		return out, nil
-	})
-	if err != nil {
-		return nil, failure(-32602, err.Error())
-	}
-	if err := os.Chmod(s.options.Paths.ConfigFile, 0o600); err != nil {
-		return nil, failure(-32000, err.Error())
+	}); rerr != nil {
+		return nil, rerr
 	}
 	s.options.Config = next
 	if !next.Approval.DontAsk {

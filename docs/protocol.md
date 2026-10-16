@@ -596,7 +596,7 @@ can leave an unknown outcome. Inspect current state before retrying.
 | `keychain.unlock` | `{"passphrase":"…"}` | Keychain status; tasks opened afterwards receive the keychain. `""` opens a keychain without a passphrase. On a keychain that is `stale` it opens the keychain again in place, for the tasks that already hold it too |
 | `keychain.passphrase` | `{"current"?, "passphrase"?, "no_passphrase"?}` | Keychain status after setting, changing or (`no_passphrase`) removing the open keychain's passphrase; `current` is required when it has one, and a wrong one waits a second as `keychain.unlock` does |
 | `settings.read` | `{}` | `{config_file, control, models, servers, choices, keychain, docs, values, judge, judge_key?, judge_key_detail?, judge_host?, judge_model?, judge_published?, judges}` |
-| `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}`, or `{"provider","url","model","api_key"?,"effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on), and saving the server it names; the model it replaces stays in the list |
+| `settings.control.write` | `{"name","effort"?}`, or `{"server","model","effort"?}` | Settings after replacing `[control]` in `config.toml` (the model and effort new tasks start on); the model it replaces stays in the list. Providers and their keys are saved by `settings.provider.write` first: this method takes neither a provider and url nor a key |
 | `settings.provider.write` | `{"name"?,"provider","url","dialect"?,"api_key"?,"credential"?}` | Settings after adding a provider (`[servers.NAME]`, named by `name`, else after its host) or changing the one `name` names; servers are keyed by name, so a second can share an address (an API key and a ChatGPT plan at api.openai.com), and without `name` the address picks the server only when one is at it; `provider` is `ollama`, `openai`, `anthropic` or `jev` (a dialect is for `openai` alone; a `jev` server answers the judge and carries no model, ADR 46); `credential` is a ChatGPT plan credential in place of a key (below); the key goes to the keychain, bound for `POST` and `GET` at the host where the provider reads it (a bearer header; Anthropic's `x-api-key`), and for `POST` alone for `jev` |
 | `settings.provider.remove` | `{"name"}` | Settings after removing a provider no model and not the judge is on |
 | `settings.model.write` | `{"name"?,"server","model","efforts"?,"effort"?,"labels"?,"settings"?}` | Settings after adding a model to the list (`[models.NAME]`) or changing its provider, id, efforts, starting effort, labels and settings; `labels` (lower-case words) left out keeps the entry's, `[]` clears them, and tasks already open see the new ones at once |
@@ -678,16 +678,16 @@ sets it (ADR 9, amended 2026-10-07); `settings` does not carry it, so
 `settings.model.write` keeps an entry's own and a model given another id or
 server starts without it. Set a dialect in
 config.toml; `settings.control.write` preserves it when selecting a saved
-server, or moving an inline control to a server at the same endpoint. `settings.control.write` keeps every other
+server. It keeps every other
 line of `config.toml`, validates the result as the loader would, writes it
-atomically (0600), and applies it to sessions opened afterwards. With
-`server`, `[control]` names that server and the model. With `provider` and
-`url`, it names the server `config.toml` has at that address (as it is now,
-so one added by hand is found), or a new one it saves as `[servers.NAME]`,
-named after the host (`openrouter` for `openrouter.ai`, `-2` when that name
-is taken). An `api_key` goes to the unlocked keychain under a fresh class,
-with one binding row: that host, `POST`, `header:Authorization:Bearer`, and
-becomes the server's `credential`, so every model on the server sends it. Passphrases, keys and client secrets are
+atomically (0600) under the lock sessions take when they save the same file,
+and applies it to sessions opened afterwards. With
+`server`, `[control]` names that server (as `config.toml` has it now, so one
+added by hand is found) and the model. A key is saved with its server by
+`settings.provider.write`, which replaces it in place when the server has
+one, so no old key is left bound for the host. Every method that writes
+`config.toml` answers a lock it cannot take or a file it cannot write with
+-32000, and a value it refuses with -32602. Passphrases, keys and client secrets are
 `writeOnly` in the schema and never echoed. `docs` in the settings is `{google, google_upload}`:
 whether a Google credential class is configured, and the upload setting as
 `config.toml` has it now (`""` until the first upload or `settings.docs.write`

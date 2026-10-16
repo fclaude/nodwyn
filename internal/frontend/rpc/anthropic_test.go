@@ -173,13 +173,13 @@ func TestAnthropicKeyBoundAsABearerTokenIsNotAllowed(t *testing.T) {
 	}
 }
 
-// The first-run form sets Anthropic up in one call: the server is saved with
-// its key bound at x-api-key, and the default model answers a test request
-// through it.
+// The first-run form sets Anthropic up: the server is saved with its key
+// bound at x-api-key, and the default model answers a test request through it.
 func TestControlWriteSavesAnAnthropicServerWithItsKey(t *testing.T) {
 	c, srv, o, _ := withChat(t)
 	var settings settingsResult
-	into(t, c.ok("settings.control.write", map[string]any{"provider": "anthropic", "url": srv.V1(), "model": "thinker", "api_key": "sk-good-key-123456"}), &settings)
+	c.ok("settings.provider.write", map[string]any{"provider": "anthropic", "url": srv.V1(), "api_key": "sk-good-key-123456"})
+	into(t, c.ok("settings.control.write", map[string]any{"server": "127-0-0-1", "model": "thinker"}), &settings)
 	cfg := read(t, o.Paths.ConfigFile)
 	if !strings.Contains(cfg, "[servers.127-0-0-1]\nprovider = \"anthropic\"\nurl = \""+srv.V1()+"\"\ncredential = \"model-127-0-0-1\"\n") || strings.Contains(cfg, "sk-good") {
 		t.Fatalf("config.toml:\n%s", cfg)

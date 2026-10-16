@@ -1,8 +1,6 @@
 package rpc
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"net"
@@ -19,8 +17,6 @@ import (
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
 	"github.com/fclaude/nodwyn/internal/keychain"
-	"github.com/fclaude/nodwyn/internal/loopback"
-	"github.com/fclaude/nodwyn/internal/policyfile"
 	"github.com/fclaude/nodwyn/internal/prim"
 )
 
@@ -286,14 +282,11 @@ type docsParams struct {
 type controlParams struct {
 	// Name chooses a [models.NAME] entry as the default model, whose
 	// settings stay in the entry and are the default's (config.Tuned).
-	// Without it, Server names a configured server
-	// ([servers.NAME]) the model is on, or Provider and URL say where it is,
-	// and the server they make is saved under a name of its own, or found
-	// among those configured.
-	Name     string `json:"name,omitempty"`
-	Server   string `json:"server,omitempty"`
-	Provider string `json:"provider,omitempty"`
-	URL      string `json:"url,omitempty"`
+	// Without it, Server names a configured server ([servers.NAME]) the
+	// model is on: providers and their keys are saved by
+	// settings.provider.write, never here.
+	Name   string `json:"name,omitempty"`
+	Server string `json:"server,omitempty"`
 	// Model is the model id as the provider names it; with Name it is left
 	// out.
 	Model string `json:"model,omitempty"`
@@ -302,10 +295,6 @@ type controlParams struct {
 	// own default effort, or the one it already has when only the model's
 	// server is saved again.
 	Effort *string `json:"effort,omitempty"`
-	// APIKey, when set with Provider and URL, is stored in the keychain
-	// and bound to exactly the server's host, POST, as a bearer
-	// Authorization header. Every model on the server is sent it.
-	APIKey string `json:"api_key,omitempty"`
 }
 
 // modelServer is a model provider as Settings shows it: a [servers.NAME]
@@ -400,19 +389,16 @@ func (s *server) docsSettingsMethod(req request, _ *peer) (any, *rpcError) {
 	default:
 		return nil, failure(-32602, `google_upload must be "ask", "allow" or "deny"`)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	var cfg config.Config
-	err := policyfile.Update(ctx, s.options.Paths.ConfigFile, func(raw []byte) ([]byte, error) {
+	if rerr := s.updateConfig(func(raw []byte) ([]byte, *rpcError) {
 		out, parsed, err := config.SetKey(raw, "docs", "google_upload", p.GoogleUpload)
+		if err != nil {
+			return nil, failure(-32000, err.Error())
+		}
 		cfg = parsed
-		return out, err
-	})
-	if err != nil {
-		return nil, failure(-32000, err.Error())
-	}
-	if err := os.Chmod(s.options.Paths.ConfigFile, 0o600); err != nil {
-		return nil, failure(-32000, err.Error())
+		return out, nil
+	}); rerr != nil {
+		return nil, rerr
 	}
 	s.options.Config.Docs.GoogleUpload = cfg.Docs.GoogleUpload
 	return s.settings(), nil
@@ -426,114 +412,72 @@ func (s *server) settingsMethod(req request, _ *peer) (any, *rpcError) {
 		return s.settings(), nil
 	}
 	var p controlParams
-	if err := params(req.Params, &p, "name", "server", "provider", "url", "model", "effort", "api_key"); err != nil {
+	if err := params(req.Params, &p, "name", "server", "model", "effort"); err != nil {
 		return nil, err
 	}
-	key := []byte(p.APIKey)
-	defer clear(key)
 	model := strings.TrimSpace(p.Model)
-	if p.Name == "" && model == "" {
-		return nil, failure(-32602, "model is required")
-	}
-	raw, err := os.ReadFile(s.options.Paths.ConfigFile)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, failure(-32000, err.Error())
-	}
-	// The servers are config.toml's as it is now, so a server added there
-	// by hand since nodwyn started is found, never written over.
-	current, err := config.Parse(raw)
-	if err != nil {
-		return nil, failure(-32000, err.Error())
+	switch {
+	case p.Name != "" && (p.Server != "" || model != ""):
+		return nil, failure(-32602, "Give a model from the list by name, or a server and a model, not both")
+	case p.Name == "" && (p.Server == "" || model == ""):
+		return nil, failure(-32602, "Give a model from the list by name, or a configured server and a model")
 	}
 	old := s.options.Config.Control
-	var (
-		name, host string
-		srv        config.Server
-		write      bool
-		m          config.Model
-	)
-	if p.Name != "" {
-		// A model already in the list is the default as it is there, its
-		// settings and efforts included, which its entry keeps.
-		if p.Server != "" || p.Provider != "" || p.URL != "" || model != "" || len(key) > 0 {
-			return nil, failure(-32602, "Give a model from the list by name, or a server and a model, not both")
+	// The servers and models are config.toml's as it is under the lock, so
+	// one added there by hand since nodwyn started is found, never written
+	// over.
+	if rerr := s.rewriteConfig(func(raw []byte, current config.Config) ([]byte, config.Config, *rpcError) {
+		var m config.Model
+		if p.Name != "" {
+			// A model already in the list is the default as it is there, its
+			// settings and efforts included, which its entry keeps.
+			entry, ok := current.Models[p.Name]
+			if p.Name == config.ControlModel {
+				entry, ok = current.Control, current.Control.Model != ""
+			}
+			if !ok {
+				return nil, config.Config{}, failure(-32602, fmt.Sprintf("No model named %q is configured", p.Name))
+			}
+			m = entry
+			// Its settings and efforts are the entry's: a copy here would go stale
+			// when the entry changes, and win over it (Config.Tuned,
+			// Config.Efforts). [control] keeps only what it declared itself.
+			if p.Name != config.ControlModel {
+				m = entry.Choice()
+			}
+		} else {
+			srv, ok := current.Servers[p.Server]
+			if !ok {
+				return nil, config.Config{}, failure(-32602, fmt.Sprintf("No server %q is configured", p.Server))
+			}
+			m = config.Model{Server: p.Server, Model: model}
+			// Saving the same model on the same server keeps what was tuned by hand
+			// in config.toml; choosing another model starts from its defaults.
+			if providerName(old.Provider) == providerName(srv.Provider) && strings.TrimRight(old.URL, "/") == strings.TrimRight(srv.URL, "/") && old.Model == m.Model {
+				m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
+				m.Temperature, m.Seed, m.Vision, m.CacheKey, m.CacheControl, m.KeepReasoning = old.Temperature, old.Seed, old.Vision, old.CacheKey, old.CacheControl, old.KeepReasoning
+				m.PriceInput, m.PriceCachedInput, m.PriceOutput = old.PriceInput, old.PriceCachedInput, old.PriceOutput
+				m.Efforts, m.Effort, m.Labels = old.Efforts, old.Effort, old.Labels
+			}
 		}
-		entry, ok := current.Models[p.Name]
-		if p.Name == config.ControlModel {
-			entry, ok = current.Control, current.Control.Model != ""
+		// The effort asked for is the default's own; left out, it is what the
+		// model already has.
+		if p.Effort != nil {
+			m.Effort = *p.Effort
 		}
-		if !ok {
-			return nil, failure(-32602, fmt.Sprintf("No model named %q is configured", p.Name))
+		text, cfg, err := config.SetControl(raw, m)
+		if err != nil {
+			return nil, config.Config{}, failure(-32602, err.Error())
 		}
-		m = entry
-		// Its settings and efforts are the entry's: a copy here would go stale
-		// when the entry changes, and win over it (Config.Tuned,
-		// Config.Efforts). [control] keeps only what it declared itself.
-		if p.Name != config.ControlModel {
-			m = entry.Choice()
+		// Choosing another default does not take the one it replaces out of the
+		// models a person can choose: it stays in the list, as it was.
+		if text, cfg, err = keepPreviousDefault(text, cfg, current.Control); err != nil {
+			return nil, config.Config{}, failure(-32602, err.Error())
 		}
-	} else {
-		var rerr *rpcError
-		name, srv, host, write, rerr = controlServer(p, current.Servers, old, len(key) > 0, current.Policy.AllowInsecureHTTP)
-		if rerr != nil {
-			return nil, rerr
-		}
-		m = config.Model{Server: name, Model: model}
-		// Saving the same model on the same server keeps what was tuned by hand
-		// in config.toml; choosing another model starts from its defaults.
-		if providerName(old.Provider) == providerName(srv.Provider) && strings.TrimRight(old.URL, "/") == strings.TrimRight(srv.URL, "/") && old.Model == m.Model {
-			m.NumCtx, m.KeepAlive, m.MaxOutput, m.OutputField = old.NumCtx, old.KeepAlive, old.MaxOutput, old.OutputField
-			m.Temperature, m.Seed, m.Vision, m.CacheKey, m.CacheControl, m.KeepReasoning = old.Temperature, old.Seed, old.Vision, old.CacheKey, old.CacheControl, old.KeepReasoning
-			m.PriceInput, m.PriceCachedInput, m.PriceOutput = old.PriceInput, old.PriceCachedInput, old.PriceOutput
-			m.Efforts, m.Effort, m.Labels = old.Efforts, old.Effort, old.Labels
-		}
+		return text, cfg, nil
+	}); rerr != nil {
+		return nil, rerr
 	}
-	// The effort asked for is the default's own; left out, it is what the
-	// model already has.
-	if p.Effort != nil {
-		m.Effort = *p.Effort
-	}
-	var class string
-	if len(key) > 0 {
-		if s.options.Keychain == nil {
-			return nil, failure(-32000, "Unlock or create the keychain first: the key is kept there, never in config.toml")
-		}
-		class = s.freeClass("model-" + hostClass(host))
-		srv.Credential = class
-		write = true
-	}
-	text := raw
-	if write {
-		if text, _, err = config.SetServer(raw, name, srv); err != nil {
-			return nil, failure(-32602, err.Error())
-		}
-	}
-	text, cfg, err := config.SetControl(text, m)
-	if err != nil {
-		return nil, failure(-32602, err.Error())
-	}
-	// Choosing another default does not take the one it replaces out of the
-	// models a person can choose: it stays in the list, as it was.
-	if text, cfg, err = keepPreviousDefault(text, cfg, current.Control); err != nil {
-		return nil, failure(-32602, err.Error())
-	}
-	if len(key) > 0 {
-		// The key and its binding rows come first: a config naming a
-		// credential that was never stored would fail every request.
-		if _, err := s.options.Keychain.Add(class, key); err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-		if err := s.bindKey(class, host, srv.Provider); err != nil {
-			return nil, failure(-32000, err.Error())
-		}
-	}
-	if err := config.WriteFile(s.options.Paths.ConfigFile, text); err != nil {
-		return nil, failure(-32000, err.Error())
-	}
-	// The catalogue is not in config.toml, so the file read back has none.
-	cfg.Catalogue = s.options.Config.Catalogue
-	s.options.Config = cfg
-	forgetProbes()
 	return s.settings(), nil
 }
 
@@ -579,73 +523,6 @@ func keepPreviousDefault(text []byte, cfg config.Config, previous config.Model) 
 		name = fmt.Sprintf("%s-%d", modelName(where, previous.Model), n)
 	}
 	return config.SetModel(text, name, previous)
-}
-
-// controlServer is the server settings.control.write puts the main model
-// on, under its name among servers, and the host of the address p gives
-// (none for a server named). write says the server's table must be
-// written: it is new, or (keyed) gets a key. old is the main model until
-// now.
-func controlServer(p controlParams, servers map[string]config.Server, old config.Model, keyed, insecure bool) (name string, srv config.Server, host string, write bool, _ *rpcError) {
-	if p.Server != "" {
-		if p.Provider != "" || p.URL != "" || keyed {
-			return "", srv, "", false, failure(-32602, "Give a configured server, or a provider and url, not both")
-		}
-		srv, ok := servers[p.Server]
-		if !ok {
-			return "", srv, "", false, failure(-32602, fmt.Sprintf("No server %q is configured", p.Server))
-		}
-		return p.Server, srv, "", false, nil
-	}
-	if p.Provider != "ollama" && p.Provider != "openai" && p.Provider != "anthropic" {
-		return "", srv, "", false, failure(-32602, `provider must be "ollama", "openai" or "anthropic"`)
-	}
-	parsed, err := url.Parse(p.URL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return "", srv, "", false, failure(-32602, "url must be an http or https address, such as http://localhost:11434")
-	}
-	host = parsed.Hostname()
-	srv = config.Server{Provider: p.Provider, URL: strings.TrimRight(p.URL, "/")}
-	found := false
-	// Servers are keyed by name, so several can be at this address: the one
-	// the main model names is kept, and the address picks only when one is
-	// there.
-	var at []string
-	for _, n := range slices.Sorted(maps.Keys(servers)) {
-		if sv := servers[n]; providerName(sv.Provider) == p.Provider && strings.TrimRight(sv.URL, "/") == srv.URL {
-			at = append(at, n)
-		}
-	}
-	switch {
-	case old.Server != "" && slices.Contains(at, old.Server):
-		name, srv, found = old.Server, servers[old.Server], true
-	case len(at) == 1:
-		name, srv, found = at[0], servers[at[0]], true
-	case len(at) > 1:
-		return "", srv, "", false, failure(-32602, fmt.Sprintf("%s has several servers (%s): give the name of the one to use", srv.URL, strings.Join(at, ", ")))
-	}
-	if !found {
-		name = serverName(host)
-		for n := 2; servers[name] != (config.Server{}); n++ {
-			name = fmt.Sprintf("%s-%d", serverName(host), n)
-		}
-		// Moving an inline model into a server keeps its wire dialect only
-		// at the same endpoint; another address may speak a different one.
-		if providerName(old.Provider) == p.Provider && strings.TrimRight(old.URL, "/") == srv.URL {
-			srv.Dialect = old.Dialect
-		}
-		// Keep a key the main model already sends to this host, unless a
-		// new one replaces it.
-		if old.Credential != "" && sameHost(old.URL, srv.URL) {
-			srv.Credential = old.Credential
-		}
-		write = true
-	}
-	// The user's transport setting applies to first setup as well as later edits.
-	if (keyed || (write && srv.Credential != "")) && parsed.Scheme != "https" && !loopback.Host(host) && !insecure {
-		return "", srv, "", false, failure(-32602, "a model with a key must be reached over https; to use remote HTTP, enable Credentials over remote HTTP in Settings › Keys & devices")
-	}
-	return name, srv, host, write, nil
 }
 
 // serverName names a new server after its host: openrouter for

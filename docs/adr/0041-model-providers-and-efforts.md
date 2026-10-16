@@ -513,3 +513,22 @@ Not built: matching a conversation to a choice when the conversation's model
 has no server name and the choice's does (an entry on a named server whose
 address and provider match an inline `[control]`), which `session.info` says
 nothing of.
+
+## Amendment 2026-10-16: the default model takes no provider and no key
+
+`settings.control.write` took `provider`, `url` and `api_key` as well as a
+server and a model, and saved the server and its key itself. It was a second
+way to save a keyed provider that the console never used, and it differed from
+`settings.provider.write` where it mattered: with a key it always made a new
+credential class (`model-host`, `model-host-2`, ...) and never replaced the
+key in place, so rotating a key through it left the old one stored and bound
+for the host with nothing using it. It also wrote `config.toml` outside the
+lock the sessions take when they save the same file.
+
+- **Providers and keys are saved by `settings.provider.write` alone.**
+  `settings.control.write` is `{name, effort?}` or `{server, model,
+  effort?}`: it chooses a model, and refuses `provider`, `url` and `api_key`
+  as unknown parameters. The console already sent only `{name, effort}`.
+- **Every `config.toml` writer goes through one function** (`updateConfig`):
+  the lock, the re-read, the chmod, and an error mapping that gives a lock or
+  an I/O failure -32000, not -32602.
