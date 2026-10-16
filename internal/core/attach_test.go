@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	fake "github.com/fclaude/nodwyn/test/fakes/ollama"
 )
@@ -40,5 +41,24 @@ func TestAttachmentReachesTheModelAsRedactedData(t *testing.T) {
 	}
 	if _, err := r.s.Attach(filepath.Join(t.TempDir(), "photo.png"), "", "unix:test"); err == nil {
 		t.Fatal("attached a file that does not exist")
+	}
+}
+
+// A long name is cut to 120 bytes keeping its extension; a long "extension"
+// is cut with the rest, and no cut splits a rune. A name with an extension
+// past 120 bytes used to slice out of range, a panic that ended the daemon.
+func TestCleanNameCutsLongNames(t *testing.T) {
+	for _, name := range []string{
+		"a." + strings.Repeat("x", 200),
+		strings.Repeat("ü", 100) + ".png",
+		strings.Repeat("y", 300) + ".tar.gz",
+	} {
+		got := cleanName(name, "")
+		if len(got) > 120 || !utf8.ValidString(got) {
+			t.Errorf("%.20q… became %q (%d bytes)", name, got, len(got))
+		}
+	}
+	if got := cleanName(strings.Repeat("ü", 100)+".png", ""); !strings.HasSuffix(got, ".png") {
+		t.Errorf("the extension was lost: %q", got)
 	}
 }

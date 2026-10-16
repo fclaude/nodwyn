@@ -5,7 +5,10 @@ package rpc
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"os"
 	"reflect"
+	"runtime/debug"
 	"slices"
 	"strings"
 
@@ -113,7 +116,7 @@ func (s *server) call(raw []byte, client *peer) any {
 	if req.JSONRPC != "2.0" || req.Method == "" || !validID(req.ID) {
 		return response{"2.0", nil, nil, failure(-32600, "Invalid Request")}
 	}
-	result, err := s.dispatch(req, client)
+	result, err := s.dispatchSafely(req, client)
 	if req.ID == nil {
 		return nil
 	}
@@ -130,6 +133,20 @@ func (s *server) call(raw []byte, client *peer) any {
 	}
 	return response{"2.0", req.ID, result, err}
 }
+
+// dispatchSafely runs a method so that a bug in it fails that call, not the
+// daemon and every session it holds. The diagnostic log gets the method and
+// the stack, never the request or the panic's value, which may hold its data.
+func (s *server) dispatchSafely(req request, client *peer) (result any, err *rpcError) {
+	defer func() {
+		if recover() != nil {
+			fmt.Fprintf(os.Stderr, "nodwyn daemon: %s failed with an internal error\n%s", req.Method, debug.Stack())
+			result, err = nil, failure(-32603, "Internal error in "+req.Method)
+		}
+	}()
+	return s.dispatch(req, client)
+}
+
 func validID(id json.RawMessage) bool {
 	if len(id) == 0 || bytes.Equal(id, []byte("null")) {
 		return true

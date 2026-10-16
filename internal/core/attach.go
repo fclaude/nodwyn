@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/fclaude/nodwyn/internal/extract"
 	"github.com/fclaude/nodwyn/internal/guard"
@@ -307,8 +308,17 @@ func cleanName(name, path string) string {
 		name = "attachment" + strings.TrimLeft(name, ".")
 	}
 	if len(name) > 120 {
+		// The extension is kept when it is one: a "name" made mostly of an
+		// extension is cut like any other. The cut falls between runes.
 		ext := filepath.Ext(name)
-		name = name[:120-len(ext)] + ext
+		if len(ext) > 16 {
+			ext = ""
+		}
+		keep := 120 - len(ext)
+		for keep > 0 && !utf8.RuneStart(name[keep]) {
+			keep--
+		}
+		name = name[:keep] + ext
 	}
 	return name
 }
