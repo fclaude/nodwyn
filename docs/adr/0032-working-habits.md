@@ -1642,8 +1642,11 @@ folds).
 
 ## Amendment 2026-10-16: the scratch rule says what TMPDIR is
 
+## Amendment 2026-10-16: the scratch rule says what TMPDIR is, long files are read by the part, and the explorer's reads go with its findings
+
 The review of the nine tasks' dsl20r transcripts (commit-bench, Muse,
-2026-10-16, `muse-review-2026-10-16.md`) found a cost the working rules could name.
+2026-10-16, `muse-review-2026-10-16.md`) found two costs the working rules
+could name.
 
 - **The scratch directory and the commands that use it.** The model's
   `TMPDIR` was inside the guard-protected data directory: 5 to 17 calls of a
@@ -1655,4 +1658,41 @@ The review of the nine tasks' dsl20r transcripts (commit-bench, Muse,
   rule adds the sentence that follows from it: commands run with `TMPDIR` set
   to it, so a test suite puts its temporary files there without being told;
   do not set `TMPDIR` or `HOME` elsewhere, and do not use `/tmp`.
-  `TestPromptsSayWhereScratchIs`.
+  `TestPromptsSayWhereScratchIsAndHowToReadLongFiles`.
+- **Reading again what the explorer read.** The explorer and the planner are
+  folded away, and the model doing the work read again what the explorer had
+  read. In the nine high-effort attempts (eight tasks, one of them twice),
+  33,000 to 280,000 characters of a run's `fs-read` results were of paths the
+  explorer had read, 73 to 100% of the main loop's reads in eight of nine
+  runs (37% in the ninth), with the same sizes right after the fold; in 7513f7eb the main loop
+  read agents.scm, prompts.scm and egress.go whole again, and docs/scheme.md
+  (53,000 characters) nine times, twice whole. Pi, which never folds, reads
+  whole files too. Two changes, both information and advice, no forced read:
+  - **The lines the findings cite go with them.** The explorer is asked to
+    cite places as `path:line` (`plan-explore-task`), and `plan-hand-over`
+    adds to the findings message the lines around each place cited, copied
+    from what the explorer read as the file has them, under a heading with
+    their numbers (`plan-excerpts`: 2 lines before, 12 after, at most
+    `plan-excerpts-cap`, 12000, characters in all and 3000 an excerpt; a file
+    named without a line only when what the explorer read of it is short). The
+    reads are kept by `sub-agent-seen`, which the sub-agent loop fills while
+    plan-explore asks for it. The message says to read more of a file in a
+    range, and a failure to make the excerpts leaves the findings as they were
+    (`TestAFailureToMakeExcerptsLeavesTheFindingsAndThePlan`).
+    `TestWhatTheExplorerReadGoesWithItsFindingsToTheModelDoingTheWork`,
+    `TestTheExcerptsAreBounded`,
+    `TestAReportThatCitesMoreThanFitsGetsTheCapNotMore`. Fewer than half of
+    the mentions of a path in the nine explorers' reports carry a line (150
+    of 368, the rest a bare name), and a bare one is carried only when short,
+    so the excerpts are a floor: they do not replace a read of a file the
+    model is going to edit.
+  - **Long files are read by the part.** The reading rule names
+    `fs-read` with `start` and `count`, and a second rule says to read a long
+    file or document (docs/scheme.md, a manual, a large source file) by the
+    part needed, found with `index-grep` first, and that what was read or
+    given is in front of the model: a range is read again when it changed or
+    a result was folded.
+
+Not measured yet: the next run on these tasks is what shows whether the
+re-reads fall and whether the 12000 characters pay for themselves; the folds
+broke even at best on this review (6e18b7ba). The caps are a first step.

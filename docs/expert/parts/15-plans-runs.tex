@@ -50,7 +50,14 @@ like this:
   \item The outcome is recorded as a \code{gate.plan} event, and the window
     adds the plan to the conversation under \code{plan-header}, where it
     is never trimmed away. The explorer's findings are handed to the model that
-    does the work as well, so it does not read the same files again.
+    does the work as well, so it does not read the same files again, and with
+    them the lines of those files that they cite as \code{path:line}, copied
+    from what the explorer read (\code{plan-excerpts}, at most
+    \code{plan-excerpts-cap}, 12000, characters in all): on the benchmark's
+    nine tasks 73 to 100\% of the work's reads (37\% in one run) were of files the explorer had
+    read (\adr{32}, amended 2026-10-16). It is information the model may use,
+    not a read it must make; the system prompt says to read a long file by
+    the part needed, found with \code{index-grep}.
 \end{enumerate}
 
 Without a judge, an ordinary interactive turn has no gate. If the judge's

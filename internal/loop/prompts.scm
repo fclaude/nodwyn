@@ -194,7 +194,15 @@
    ;; The main loop shared the planner's belief on 556d6d12 (session-id read
    ;; as X-Session-Id) and never tested it (ADR 32, amended 2026-10-12).
    "\n- Take each name the request gives (a header, a flag, a field, a file) as meant literally. If you conclude it is a different name the code already has, show that with a run before you rely on it."
-   "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with a range for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
+   ;; Right after the explorer and the planner were folded away, the model
+   ;; read again what the explorer had read: on commit-bench (dsl20r, 2026-10-16)
+   ;; 33,000 to 280,000 characters of a run's reads were of files the explorer
+   ;; had read, and docs/scheme.md (53,000 characters) was read nine times in
+   ;; one run, twice whole (7513f7eb). What the explorer read now goes with
+   ;; its findings (plan.scm, plan-excerpts); the rule says to read the rest
+   ;; in ranges (ADR 32, amended 2026-10-16).
+   "\n- Read code with the file tools: read-definition for a function or class by name, fs-read with start and count for lines of a file, index-grep and fs-find to search. Use the shell to run code, not to read files."
+   "\n- Read a long file or document (docs/scheme.md, a manual, a large source file) by the part you need, not whole: index-grep for a heading, a definition or a name finds its line, then fs-read with start and count reads that part. What you have already read, and the lines you were given with the explorer's findings, are in front of you: read a range again only when it changed or a result of yours was folded."
    ;; project-notes-save was the person's alone, so no model ever kept a
    ;; note, and each session found out again how the tests run (ADR 32,
    ;; amended 2026-10-05).
@@ -311,7 +319,7 @@
 (define (plan-explore-task request)
   (string-append
    "Request:\n" request
-   "\n\nReport what a plan for this request needs to know, as facts with paths:"
+   "\n\nReport what a plan for this request needs to know, as facts with paths, each place cited as path:line (path:first-last for lines you read together):"
    "\n- every place the change must reach: each function, call site, class or export the request's words cover, not only the one its example uses;"
    "\n- the request's own examples, expected outputs, names and formats, copied exactly, and any detail of the code that decides between ways of doing it (a helper's behaviour, a type, a convention), quoted from where you read it;"
    "\n- where more than one helper, convention or fix could serve, each of them with its path and what it does, without choosing;"

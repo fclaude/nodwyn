@@ -879,7 +879,13 @@ change for its next unmarked step. In a chat a question gets an answer, and a re
 for something the model finds was never built gets told so, with what it
 would build, before it builds anything. A plan made with the judge or
 without one hands the explorer's findings to the model too, so it does not
-read the same files again. The explorer has twelve tool rounds, sixteen for
+read the same files again, and with them the lines of those files that the
+findings cite as `path:line`, copied from what the explorer read (at most
+`plan-excerpts-cap` characters in all, 12,000; a file named without a line is
+carried only when what the explorer read of it is short). They are
+information for the model, not a read it must make; the system prompt tells
+it to read a long file by the part it needs, found with `index-grep`, not
+whole. The explorer has twelve tool rounds, sixteen for
 the muse-spark, glm, qwen, deepseek and gpt-6-luna families, which ask for
 fewer calls in a round; the same table is where a project gives a model
 another count.

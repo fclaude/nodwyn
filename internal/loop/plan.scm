@@ -104,11 +104,162 @@
       ""
       (let ((rounds sub-agent-max-rounds))
         (set! sub-agent-max-rounds (tuned plan-explore-rounds))
+        (set! sub-agent-seen '())
         (let ((found (guard (e (else (set! sub-agent-max-rounds rounds) ""))
                        (sub-agent plan-explore-system (plan-explore-task request)
                                   '("fs-read" "fs-list" "index-grep" "fs-find") "explorer"))))
           (set! sub-agent-max-rounds rounds)
+          (set! plan-explore-reads (plan-reads-of sub-agent-seen))
+          (set! sub-agent-seen #f)
           found))))
+
+;; What the explorer read goes with its findings to the model that does the
+;; work. The explorer's context is folded away when it answers, and that
+;; model read again what the explorer had read: on commit-bench (dsl20r,
+;; nine tasks, 2026-10-16) 33,000 to 280,000 characters of a run's reads were
+;; of files the explorer had read, 73 to 100% of the main loop's reads in
+;; eight of nine runs, the same sizes right after the fold (7513f7eb:
+;; docs/scheme.md, 53,000 characters, nine times). The findings cite places
+;; as path:line, and the lines around them are copied from what the explorer
+;; read, within plan-excerpts-cap characters in all. They are information the
+;; model may use, not a read it must make: a file it needs more of it reads
+;; in a range, as the message says.
+(define plan-excerpts-cap 12000) ; characters of excerpts handed over in all; 0 hands over none
+(define plan-excerpt-cap 3000)   ; characters of one excerpt, and of a file named without a line that is carried whole
+(define plan-excerpt-before 2)   ; lines before a line the findings cite
+(define plan-excerpt-after 12)   ; lines after it, or after the last line of a range it cites
+
+(define plan-excerpts-intro
+  "\n\nThe lines of those files that the look read and its report points to, copied as the files are now. Use them instead of reading the same lines again; for more of a file, read a range of it (fs-read with start and count), not the whole file:\n")
+
+;; What the last explorer read, one (path first lines) per fs-read: the line
+;; number the text starts at and its lines in a vector.
+(define plan-explore-reads '())
+
+(define (plan-path p)
+  (let ((s (format "~a" p))) (if (string-prefix? "./" s) (substring s 2 (string-length s)) s)))
+
+;; The number s starts with and the rest after it, as (n . rest), or #f.
+(define (plan-leading-number s)
+  (let digits ((i 0))
+    (if (and (< i (string-length s)) (string-contains? "0123456789" (substring s i (+ i 1))))
+        (digits (+ i 1))
+        (and (> i 0) (< i 8) (cons (string->number (substring s 0 i)) (substring s i (string-length s)))))))
+
+;; An fs-read's text as (path first lines). A ranged read starts "[lines
+;; A-B of N]", then its lines as they are in the file.
+(define (plan-read path text)
+  (let* ((ranged (string-prefix? "[lines " text))
+         (head (and ranged (plan-leading-number (substring text 7 (string-length text)))))
+         (all (string-split text "\n"))
+         (body (if ranged (if (pair? all) (cdr all) '()) all))
+         (lines (if (and (pair? body) (string-empty? (car (reverse body)))) (reverse (cdr (reverse body))) body)))
+    (list path (if head (car head) 1) (list->vector lines))))
+
+;; The reads among the calls an explorer ran (sub-agent-seen, newest first),
+;; oldest first.
+(define (plan-reads-of seen)
+  (let walk ((seen seen) (out '()))
+    (if (null? seen)
+        out
+        (let* ((call (car (car seen))) (result (cdr (car seen)))
+               (args (guard (e (else '())) (json-parse (format "~a" (assoc-ref call 'args "{}")))))
+               (path (and (pair? args) (assoc-ref args "path" #f))))
+          (walk (cdr seen)
+                (if (and (equal? (assoc-ref call 'name "") "fs-read") (assoc-ref result 'ok #f) (string? path))
+                    (cons (plan-read (plan-path path) (format "~a" (assoc-ref result 'value ""))) out)
+                    out))))))
+
+;; The lines text cites for path, as "path:N" or "path:N-M": a list of
+;; (first . last).
+(define (plan-cited-lines text path)
+  (let walk ((parts (cdr (string-split text path))) (out '()))
+    (if (null? parts)
+        (reverse out)
+        (let* ((s (car parts))
+               (a (and (string-prefix? ":" s) (plan-leading-number (substring s 1 (string-length s)))))
+               (b (and a (string-prefix? "-" (cdr a)) (plan-leading-number (substring (cdr a) 1 (string-length (cdr a)))))))
+          (walk (cdr parts) (if a (cons (cons (car a) (if b (max (car a) (car b)) (car a))) out) out))))))
+
+;; Ranges (lo . hi) in order, those that touch or overlap made one.
+(define (plan-merge-ranges ranges)
+  (let walk ((rs (sort ranges (lambda (a b) (< (car a) (car b))))) (out '()))
+    (cond ((null? rs) (reverse out))
+          ((and (pair? out) (<= (car (car rs)) (+ (cdr (car out)) 1)))
+           (walk (cdr rs) (cons (cons (car (car out)) (max (cdr (car out)) (cdr (car rs)))) (cdr out))))
+          (else (walk (cdr rs) (cons (car rs) out))))))
+
+;; The lines lo to hi of path that the explorer read, as (first last lines),
+;; from the read that holds most of them, or #f when it read none.
+(define (plan-lines-read reads path lo hi)
+  (let walk ((rs reads) (best #f))
+    (if (null? rs)
+        best
+        (let* ((r (car rs)) (first (list-ref r 1)) (v (list-ref r 2))
+               (a (max lo first)) (b (min hi (+ first (vector-length v) -1))))
+          (walk (cdr rs)
+                (if (and (equal? (car r) path) (<= a b) (or (not best) (> (- b a) (- (cadr best) (car best)))))
+                    (list a b (map (lambda (k) (vector-ref v (+ (- a first) k))) (iota (+ (- b a) 1))))
+                    best))))))
+
+;; The longest start of lines that fits cap characters, with the newlines.
+(define (plan-lines-within lines cap)
+  (let walk ((ls lines) (used 0) (out '()))
+    (if (or (null? ls) (> (+ used (string-length (car ls)) 1) cap))
+        (reverse out)
+        (walk (cdr ls) (+ used (string-length (car ls)) 1) (cons (car ls) out)))))
+
+(define (plan-excerpt path first lines)
+  (string-append "== " path " lines " (number->string first) "-" (number->string (+ first (length lines) -1)) " ==\n"
+                 (string-join lines "\n") "\n"))
+
+;; The excerpts for one path the findings name: the lines around each line
+;; they cite, or, for a path named without one, what the explorer read of it
+;; when that is short enough to carry whole.
+(define (plan-path-excerpts findings reads path)
+  (let ((cited (plan-cited-lines findings path)))
+    (if (null? cited)
+        (let ((whole (plan-lines-read reads path 1 100000000)))
+          (if (and whole (<= (string-length (string-join (list-ref whole 2) "\n")) plan-excerpt-cap))
+              (list (plan-excerpt path (car whole) (list-ref whole 2)))
+              '()))
+        (let walk ((ranges (plan-merge-ranges (map (lambda (c) (cons (max 1 (- (car c) plan-excerpt-before)) (+ (cdr c) plan-excerpt-after))) cited)))
+                   (out '()))
+          (if (null? ranges)
+              (reverse out)
+              (let ((got (plan-lines-read reads path (car (car ranges)) (cdr (car ranges)))))
+                (walk (cdr ranges)
+                      (if got
+                          (let ((lines (plan-lines-within (list-ref got 2) plan-excerpt-cap)))
+                            (if (null? lines) out (cons (plan-excerpt path (car got) lines) out)))
+                          out))))))))
+
+;; Where path is first named in text, as a count of characters before it.
+(define (plan-mention path text) (string-length (car (string-split text path))))
+
+(define (plan-distinct items)
+  (let walk ((items items) (out '()))
+    (cond ((null? items) (reverse out))
+          ((member (car items) out) (walk (cdr items) out))
+          (else (walk (cdr items) (cons (car items) out))))))
+
+;; The message section for what the explorer read of the files its findings
+;; name, in the order they name them, or "" when there is none. An excerpt
+;; that does not fit what is left of plan-excerpts-cap is left out, and a
+;; shorter one after it may still go in.
+(define (plan-excerpts findings reads)
+  (if (or (<= plan-excerpts-cap 0) (null? reads) (string-empty? (string-trim findings)))
+      ""
+      (let* ((named (filter (lambda (p) (and (not (string-empty? p)) (string-contains? findings p)))
+                            (plan-distinct (map car reads))))
+             (ordered (sort named (lambda (a b) (< (plan-mention a findings) (plan-mention b findings)))))
+             (blocks (apply append (map (lambda (p) (plan-path-excerpts findings reads p)) ordered)))
+             (kept (let take ((bs blocks) (used 0) (out '()))
+                     (cond ((null? bs) (reverse out))
+                           ((<= (+ used (string-length (car bs)) 1) plan-excerpts-cap)
+                            (take (cdr bs) (+ used (string-length (car bs)) 1) (cons (car bs) out)))
+                           (else (take (cdr bs) used out))))))
+        (if (null? kept) "" (string-append plan-excerpts-intro (string-join kept "\n"))))))
 
 ;; Whether the task has a judge it can ask now: one chosen for it, or
 ;; [judge]'s, whose key is stored (ADR 46, ADR 47). The primitive is
@@ -212,9 +363,13 @@
 
 ;; What exploring found goes to the model that does the work, not only to
 ;; the planner: it would otherwise read the same files again to learn it.
+;; The excerpts are a help: a failure to make them leaves the findings as
+;; they were, and the plan stands.
 (define (plan-hand-over findings)
   (unless (string-empty? (string-trim findings))
-    (add-message (plan-findings-message findings))))
+    (let ((excerpts (guard (e (else "")) (plan-excerpts findings plan-explore-reads))))
+      (set! plan-explore-reads '())
+      (add-message (string-append (plan-findings-message findings) excerpts)))))
 
 ;; A run's later turn, or the turn after one that did not finish: the plan
 ;; again, with the marks the earlier turns made, so the steps keep their
@@ -229,6 +384,7 @@
     (and left (assoc-ref left 'next #f) left)))
 
 (define (plan-gate request)
+  (set! sub-agent-seen #f) ; nothing an unfinished exploring left is kept
   (let ((judged (plan-judge?)))
     (cond ((plan-recorded?) #f) ; this turn has its plan already
           ((plan-required?)

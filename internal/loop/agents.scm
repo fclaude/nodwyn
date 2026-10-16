@@ -62,6 +62,12 @@
 (define sub-agent-stopped-note
   "[This agent was stopped for repeating the same call; its answer may be incomplete.]")
 
+;; When a list, every call a sub-agent runs is added to it with its result,
+;; newest first, as (call . result): how the caller learns what the agent
+;; read, whose context folds away when it answers. #f, the default, keeps
+;; nothing. plan-explore sets it for the explorer (plan.scm) and clears it.
+(define sub-agent-seen #f)
+
 ;; A sub-agent that must stop while it still asks for tools (out of rounds,
 ;; or repeating itself) is asked once more for its answer, so the work it did
 ;; is not lost with its last tool calls. It is offered the tools it had, and
@@ -159,7 +165,10 @@
                              (string-append said "\n\n" sub-agent-stopped-note))))
                       (else
                        (unless (null? repeats) (skip-tools (reverse repeats) sub-agent-repeat-reason))
-                       (unless (null? run) (run-calls (reverse run)))
+                       (unless (null? run)
+                         (let* ((ran (reverse run)) (results (run-calls ran)))
+                           (when sub-agent-seen
+                             (set! sub-agent-seen (append (reverse (map cons ran results)) sub-agent-seen)))))
                        (loop (ask) (+ rounds 1) last runs (or warned (pair? repeats)))))))))))))
 
 
