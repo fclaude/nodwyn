@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/fclaude/nodwyn/internal/budget"
 	"github.com/fclaude/nodwyn/internal/core"
@@ -46,6 +47,7 @@ type Chat struct {
 
 // Run drives the session until :q or EOF.
 func (c *Chat) Run(ctx context.Context) error {
+	c.Out = TerminalText(c.Out)
 	c.lines = newLineReader(c.In, c.Out)
 	c.banner()
 	if c.ReplayHistory {
@@ -526,6 +528,34 @@ func indent(s, prefix string) string {
 	return strings.Join(lines, "\n")
 }
 
+// TerminalText writes to w with the control characters a terminal acts on
+// left out, newlines and tabs kept. What line mode prints (a reply, a diff,
+// a command's output, a file's name) is the model's or a repository's, and
+// an escape sequence in it could rewrite the screen, set the window's title
+// or answer a terminal query as if typed. Plain mode writes no colours of its
+// own, so nothing it means is lost.
+func TerminalText(w io.Writer) io.Writer {
+	if t, ok := w.(terminalText); ok {
+		return t
+	}
+	return terminalText{w}
+}
+
+type terminalText struct{ w io.Writer }
+
+func (t terminalText) Write(p []byte) (int, error) {
+	clean := strings.Map(func(r rune) rune {
+		if r != '\n' && r != '\t' && unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, string(p))
+	if _, err := io.WriteString(t.w, clean); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
 // dim marks secondary text. Plain mode has no colours; the marker is a
 // leading middle dot so it stays legible in a log file.
 func dim(s string) string {
@@ -537,6 +567,7 @@ func dim(s string) string {
 
 // Replay prints a session log as a transcript.
 func Replay(events []log.Event, w io.Writer, showThinking bool) {
+	w = TerminalText(w)
 	for _, ev := range events {
 		switch ev.Kind {
 		case log.KindSessionStart:

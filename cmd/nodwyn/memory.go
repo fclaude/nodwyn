@@ -3,12 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/fclaude/nodwyn/internal/config"
 	"github.com/fclaude/nodwyn/internal/core"
+	"github.com/fclaude/nodwyn/internal/frontend/plain"
 )
 
 // memoryCommand searches a repository's tasks and recalls their events
@@ -41,7 +43,7 @@ func memoryCommand(paths config.Paths, repo string, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(text)
+		fmt.Fprintln(plain.TerminalText(os.Stdout), text)
 		return nil
 	}
 	flags := flag.NewFlagSet("memory search", flag.ContinueOnError)
@@ -58,6 +60,6 @@ func memoryCommand(paths config.Paths, repo string, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Print(text)
+	fmt.Fprint(plain.TerminalText(os.Stdout), text)
 	return nil
 }

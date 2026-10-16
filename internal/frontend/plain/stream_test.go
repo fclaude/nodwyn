@@ -114,3 +114,36 @@ func TestStoppedTurnPrintsWhereItStopped(t *testing.T) {
 		t.Fatalf("got %q\nwant %q", out.String(), want)
 	}
 }
+
+// A reply, a command's output or a file name is the model's or a
+// repository's, and printed raw an escape sequence in it acts on the
+// terminal: line mode and replay leave the controls out.
+func TestLineModeLeavesTerminalControlsOut(t *testing.T) {
+	hostile := "done\x1b]0;owned\x07\x1b[2J\rhidden\tkept\n"
+	var out bytes.Buffer
+	c := &Chat{Out: TerminalText(&out)}
+	c.show(event.Event{Kind: event.StreamText, Payload: event.Text{Text: hostile}})
+	c.show(event.Event{Kind: event.Status, Payload: event.StatusInfo{State: "idle"}})
+	if strings.ContainsAny(out.String(), "\x1b\x07\r") || !strings.Contains(out.String(), "hidden\tkept") {
+		t.Fatalf("line mode: %q", out.String())
+	}
+}
+
+// nodwyn replay prints a log the same way.
+func TestReplayLeavesTerminalControlsOut(t *testing.T) {
+	hostile := "done\x1b]0;owned\x07\x1b[2J\rhidden\tkept\n"
+	var history bytes.Buffer
+	w := log.New(&history, "s")
+	if _, err := w.Append(log.KindLLMResp, log.LLMResp{Content: hostile}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := log.Read(&history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replayed bytes.Buffer
+	Replay(events, &replayed, false)
+	if strings.ContainsAny(replayed.String(), "\x1b\x07\r") || !strings.Contains(replayed.String(), "done") {
+		t.Fatalf("replay: %q", replayed.String())
+	}
+}
