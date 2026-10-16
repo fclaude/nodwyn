@@ -43,10 +43,10 @@ are faster.
   nothing either way: say so. Setup whose errors are ignored (an unchecked
   `os.WriteFile`) lets a test pass on a state that never existed.
 - **The console** (`internal/frontend/web/assets`: JS, CSS): Go's tests do not
-  run it. Run its browser check, `bash test/browser/run.sh <check>`
-  (`screens`, `transcript`, `approve`, `firstrun`, `remote`, `mcp`,
-  `credentials`, `tasks`, `worktrees`, `retrieval`; screenshots land in
-  `test/browser/out/<check>`),
+  run it. Run its browser check, `bash test/browser/run.sh <check>`: a
+  check is each file in `test/browser/checks`, and `test/browser/README.md`
+  says what each proves, so pick the one that exercises your page;
+  screenshots land in `test/browser/out/<check>`,
   and extend the check to the states your change adds: a setting off, after
   a save, the new action, the page that links to it. The
   check performs the new action and checks what it did (the request sent,
